@@ -17,9 +17,8 @@ func handleGetMemory(
 	r *http.Request,
 	appState *AppState,
 	redisClient *redis.Client,
+	sessionID string,
 ) {
-	sessionID := r.URL.Path[len("/sessions/"):strings.LastIndex(r.URL.Path, "/memory")]
-
 	conn := redisClient.Conn()
 	defer conn.Close()
 
@@ -71,7 +70,10 @@ func handleGetMemory(
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func handlePostMemory(
@@ -79,8 +81,8 @@ func handlePostMemory(
 	r *http.Request,
 	appState *AppState,
 	redisClient *redis.Client,
+	sessionID string,
 ) {
-	sessionID := r.URL.Path[len("/sessions/"):strings.LastIndex(r.URL.Path, "/memory")]
 
 	var memoryMessages MemoryMessagesAndContext
 	if err := json.NewDecoder(r.Body).Decode(&memoryMessages); err != nil {
@@ -136,19 +138,26 @@ func handlePostMemory(
 
 	response := AckResponse{Status: "Ok"}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
-func handleDeleteMemory(w http.ResponseWriter, r *http.Request, redisClient *redis.Client) {
-	sessionID := r.URL.Path[len("/sessions/"):strings.LastIndex(r.URL.Path, "/memory")]
+func handleDeleteMemory(
+	w http.ResponseWriter,
+	r *http.Request,
+	redisClient *redis.Client,
+	sessionID string,
+) {
 
 	conn := redisClient.Conn()
 	defer conn.Close()
 
 	contextKey := fmt.Sprintf("%s_context", sessionID)
 	tokenCountKey := fmt.Sprintf("%s_tokens", sessionID)
-	sessionKey := fmt.Sprintf("%s", sessionID)
-	keys := []string{contextKey, sessionKey, tokenCountKey}
+
+	keys := []string{contextKey, sessionID, tokenCountKey}
 
 	_, err := conn.Del(r.Context(), keys...).Result()
 	if err != nil {
@@ -158,5 +167,8 @@ func handleDeleteMemory(w http.ResponseWriter, r *http.Request, redisClient *red
 
 	response := AckResponse{Status: "Ok"}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		log.Fatal(err)
+	}
 }

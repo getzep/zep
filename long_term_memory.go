@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"math"
 
 	"github.com/jaevor/go-nanoid"
@@ -121,6 +122,9 @@ func searchRedisConn(redisConn *redis.Client, searchQuery string, vector []byte)
 		"DIALECT",
 		"2",
 	)
-	redisConn.Process(ctx, cmd)
+	err := redisConn.Process(ctx, cmd)
+	if err != nil {
+		log.Fatalf("Redis search failed: %v", err)
+	}
 	return cmd
 }

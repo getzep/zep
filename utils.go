@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"log"
 	"net/http"
 	"text/template"
 )
@@ -21,7 +22,10 @@ func respondJSON(w http.ResponseWriter, obj interface{}, statusCode int) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	w.Write(jsonStr)
+	_, err = w.Write(jsonStr)
+	if err != nil {
+		log.Default()
+	}
 }
 
 func parsePrompt(promptTemplate string, data any) (string, error) {
@@ -45,6 +49,6 @@ func jsonErrorHandler(err error, _ *http.Request) *http.Response {
 	})
 	return &http.Response{
 		StatusCode: http.StatusBadRequest,
-		Body:       ioutil.NopCloser(bytes.NewReader(body)),
+		Body:       io.NopCloser(bytes.NewReader(body)),
 	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -8,20 +9,18 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 	"github.com/sashabaranov/go-openai"
 	"github.com/spf13/viper"
 )
 
-var (
-	healthCheckHandler  http.HandlerFunc
-	getMemoryHandler    http.HandlerFunc
-	postMemoryHandler   http.HandlerFunc
-	deleteMemoryHandler http.HandlerFunc
-	runRetrievalHandler http.HandlerFunc
-)
-
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Printf("Warning: .env file not found or unable to load")
+	}
+
 	viper.SetEnvPrefix("PAPYRUS")
 	viper.AutomaticEnv()
 
@@ -63,8 +62,8 @@ func main() {
 		windowSize = 12
 	}
 
-	sessionCleanup := sync.Map{}
-	sessionState := AppState{
+	sessionCleanup := &sync.Map{}
+	appState := AppState{
 		WindowSize:     windowSize,
 		SessionCleanup: sessionCleanup,
 		OpenAIClient:   openaiClient,
@@ -73,11 +72,38 @@ func main() {
 
 	router := chi.NewRouter()
 	router.Use(middleware.Logger)
-	router.Handle("/health", healthCheckHandler)
-	router.Handle("/memory", getMemoryHandler)
-	router.Handle("/memory", postMemoryHandler)
-	router.Handle("/memory", deleteMemoryHandler)
-	router.Handle("/retrieval", runRetrievalHandler)
+
+	// Move health route to the root level
+	router.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		handleGetHealth(w, r)
+	})
+
+	// Create a route group with the version number as the common path prefix.
+	router.Route("/v1", func(r chi.Router) {
+		r.Route("/sessions/{sessionId}", func(r chi.Router) {
+			r.Get("/memory", func(w http.ResponseWriter, r *http.Request) {
+				sessionID := chi.URLParam(r, "sessionId")
+				handleGetMemory(w, r, &appState, redisClient, sessionID)
+			})
+			r.Post("/memory", func(w http.ResponseWriter, r *http.Request) {
+				sessionID := chi.URLParam(r, "sessionId")
+				handlePostMemory(w, r, &appState, redisClient, sessionID)
+			})
+			r.Delete("/memory", func(w http.ResponseWriter, r *http.Request) {
+				sessionID := chi.URLParam(r, "sessionId")
+				handleDeleteMemory(w, r, redisClient, sessionID)
+			})
+		})
+		r.Post("/retrieval", func(w http.ResponseWriter, r *http.Request) {
+			sessionID := chi.URLParam(r, "sessionId")
+			var payload SearchPayload
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			handleRunRetrieval(w, r, sessionID, payload, &appState, redisClient)
+		})
+	})
 
 	server := http.Server{
 		Addr:    fmt.Sprintf(":%d", port),

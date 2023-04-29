@@ -9,7 +9,7 @@ import (
 
 type AppState struct {
 	WindowSize     int64
-	SessionCleanup sync.Map
+	SessionCleanup *sync.Map
 	OpenAIClient   *openai.Client
 	LongTermMemory bool
 }
@@ -35,7 +35,7 @@ type MemoryResponse struct {
 }
 
 type HealthCheckResponse struct {
-	Now int64 `json:"now"` // Replace with appropriate 128-bit integer type
+	Now int64 `json:"now"`
 }
 
 type AckResponse struct {
