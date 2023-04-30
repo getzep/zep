@@ -40,6 +40,6 @@ func RunRetrievalHandler(appState *app.AppState, redisClient *redis.Client) http
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		memory.RunRetrieval(w, r, sessionID, payload, appState, redisClient)
+		memory.RunRetrieval(w, sessionID, payload, appState, redisClient)
 	}
 }

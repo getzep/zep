@@ -23,6 +23,7 @@ func CreateRedisClient() *redis.Client {
 
 func EnsureRedisearchIndexIfEnabled(redisClient *redis.Client, longTermMemory bool) {
 	if longTermMemory {
+		// TODO: Move to config
 		vectorDimensions := 1536
 		distanceMetric := "COSINE"
 

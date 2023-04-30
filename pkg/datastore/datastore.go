@@ -13,11 +13,11 @@ var log = internal.GetLogger()
 type DataStore[T any] interface {
 	GetMemory(ctx context.Context,
 		appState *app.AppState,
-		sessionID string) (*memory.MemoryResponse, error)
+		sessionID string) (*memory.Response, error)
 	PostMemory(ctx context.Context,
 		appState *app.AppState,
 		sessionID string,
-		memoryMessages memory.MemoryMessagesAndContext) error
+		memoryMessages memory.MessagesAndSummary) error
 	DeleteMemory(ctx context.Context, sessionID string) error
 }
 

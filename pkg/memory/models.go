@@ -4,20 +4,20 @@ type SearchPayload struct {
 	Text string `json:"text"`
 }
 
-type MemoryMessage struct {
+type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-type MemoryMessagesAndContext struct {
-	Messages []MemoryMessage `json:"messages"`
-	Summary  string          `json:"summary,omitempty"`
+type MessagesAndSummary struct {
+	Messages []Message `json:"messages"`
+	Summary  string    `json:"summary,omitempty"`
 }
 
-type MemoryResponse struct {
-	Messages []MemoryMessage `json:"messages"`
-	Summary  string          `json:"summary,omitempty"`
-	Tokens   int64           `json:"tokens"`
+type Response struct {
+	Messages []Message `json:"messages"`
+	Summary  string    `json:"summary,omitempty"`
+	Tokens   int64     `json:"tokens"`
 }
 
 type AckResponse struct {

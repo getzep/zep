@@ -27,7 +27,7 @@ func (rds *RedisDataStore) GetMemory(
 	ctx context.Context,
 	appState *app.AppState,
 	sessionID string,
-) (*memory.MemoryResponse, error) {
+) (*memory.Response, error) {
 	summaryKey := fmt.Sprintf("%s_summary", sessionID)
 	tokenCountKey := fmt.Sprintf("%s_tokens", sessionID)
 	keys := []string{summaryKey, tokenCountKey}
@@ -55,18 +55,18 @@ func (rds *RedisDataStore) GetMemory(
 	tokensString, _ := values[1].(string)
 	tokens, _ := strconv.ParseInt(tokensString, 10, 64)
 
-	memoryMessages := make([]memory.MemoryMessage, len(messages))
+	memoryMessages := make([]memory.Message, len(messages))
 	for i, message := range messages {
 		parts := strings.SplitN(message, ": ", 2)
 		if len(parts) == 2 {
-			memoryMessages[i] = memory.MemoryMessage{
+			memoryMessages[i] = memory.Message{
 				Role:    parts[0],
 				Content: parts[1],
 			}
 		}
 	}
 
-	response := memory.MemoryResponse{
+	response := memory.Response{
 		Messages: memoryMessages,
 		Summary:  summary,
 		Tokens:   tokens,
@@ -79,7 +79,7 @@ func (rds *RedisDataStore) PostMemory(
 	ctx context.Context,
 	appState *app.AppState,
 	sessionID string,
-	memoryMessages memory.MemoryMessagesAndContext,
+	memoryMessages memory.MessagesAndSummary,
 ) error {
 	messages := make([]string, len(memoryMessages.Messages))
 	for i, memoryMessage := range memoryMessages.Messages {

@@ -24,12 +24,11 @@ func encode(fs []float32) []byte {
 }
 
 func IndexMessages(
-	messages []MemoryMessage,
+	messages []Message,
 	sessionID string,
 	openAIClient *openai.Client,
 	redisConn *redis.Client,
 ) error {
-
 	contents := make([]string, len(messages))
 	for i, msg := range messages {
 		contents[i] = msg.Content

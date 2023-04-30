@@ -10,15 +10,14 @@ import (
 )
 
 func RunRetrieval(
-	w http.ResponseWriter,
-	r *http.Request,
+	httpWriter http.ResponseWriter,
 	sessionID string,
 	payload SearchPayload,
 	state *app.AppState,
 	redisClient *redis.Client,
 ) {
 	if !state.LongTermMemory {
-		http.Error(w, "Long term memory is disabled", http.StatusBadRequest)
+		http.Error(httpWriter, "Long term memory is disabled", http.StatusBadRequest)
 		return
 	}
 
@@ -27,19 +26,19 @@ func RunRetrieval(
 	results, err := SearchMessages(payload.Text, sessionID, openAIClient, redisClient)
 	if err != nil {
 		log.Error("Error Retrieval API: %v\n", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		http.Error(httpWriter, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	jsonResponse, err := json.Marshal(results)
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		http.Error(httpWriter, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, err = w.Write(jsonResponse)
+	httpWriter.Header().Set("Content-Type", "application/json")
+	httpWriter.WriteHeader(http.StatusOK)
+	_, err = httpWriter.Write(jsonResponse)
 	if err != nil {
 		log.Error(err)
 	}

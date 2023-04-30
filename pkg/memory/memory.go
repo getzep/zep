@@ -17,8 +17,8 @@ import (
 var log = internal.GetLogger()
 
 func GetMemory(
-	w http.ResponseWriter,
-	r *http.Request,
+	httpWriter http.ResponseWriter,
+	httpRequest *http.Request,
 	appState *app.AppState,
 	redisClient *redis.Client,
 	sessionID string,
@@ -31,27 +31,27 @@ func GetMemory(
 	keys := []string{summaryKey, tokenCountKey}
 
 	pipe := redisClient.Pipeline()
-	lrangeCmd := pipe.LRange(r.Context(), sessionID, 0, appState.WindowSize-1)
-	mgetCmd := pipe.MGet(r.Context(), keys...)
-	_, err := pipe.Exec(r.Context())
+	lrangeCmd := pipe.LRange(httpRequest.Context(), sessionID, 0, appState.WindowSize-1)
+	mgetCmd := pipe.MGet(httpRequest.Context(), keys...)
+	_, err := pipe.Exec(httpRequest.Context())
 
 	if err != nil {
 		log.Error(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(httpWriter, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	messages, err := lrangeCmd.Result()
 	if err != nil {
 		log.Error(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(httpWriter, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	values, err := mgetCmd.Result()
 	if err != nil {
 		log.Error(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(httpWriter, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -59,42 +59,41 @@ func GetMemory(
 	tokensString, _ := values[1].(string)
 	tokens, _ := strconv.ParseInt(tokensString, 10, 64)
 
-	memoryMessages := make([]MemoryMessage, len(messages))
+	memoryMessages := make([]Message, len(messages))
 	for i, message := range messages {
 		parts := strings.SplitN(message, ": ", 2)
 		if len(parts) == 2 {
-			memoryMessages[i] = MemoryMessage{
+			memoryMessages[i] = Message{
 				Role:    parts[0],
 				Content: parts[1],
 			}
 		}
 	}
 
-	response := MemoryResponse{
+	response := Response{
 		Messages: memoryMessages,
 		Summary:  summary,
 		Tokens:   tokens,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(response)
+	httpWriter.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(httpWriter).Encode(response)
 	if err != nil {
 		log.Error(err)
 	}
 }
 
 func PostMemory(
-	w http.ResponseWriter,
-	r *http.Request,
+	httpWriter http.ResponseWriter,
+	httpRequest *http.Request,
 	appState *app.AppState,
 	redisClient *redis.Client,
 	sessionID string,
 ) {
-
-	var memoryMessages MemoryMessagesAndContext
-	if err := json.NewDecoder(r.Body).Decode(&memoryMessages); err != nil {
+	var memoryMessages MessagesAndSummary
+	if err := json.NewDecoder(httpRequest.Body).Decode(&memoryMessages); err != nil {
 		log.Error(err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(httpWriter, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -107,19 +106,19 @@ func PostMemory(
 	}
 
 	if memoryMessages.Summary != "" {
-		_, err := conn.Set(r.Context(), fmt.Sprintf("%s_summary", sessionID), memoryMessages.Summary, 0).
+		_, err := conn.Set(httpRequest.Context(), fmt.Sprintf("%s_summary", sessionID), memoryMessages.Summary, 0).
 			Result()
 		if err != nil {
 			log.Error(err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(httpWriter, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
 
-	res, err := conn.LPush(r.Context(), sessionID, messages).Result()
+	res, err := conn.LPush(httpRequest.Context(), sessionID, messages).Result()
 	if err != nil {
 		log.Error(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(httpWriter, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -147,20 +146,19 @@ func PostMemory(
 	}
 
 	response := AckResponse{Status: "Ok"}
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(response)
+	httpWriter.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(httpWriter).Encode(response)
 	if err != nil {
 		log.Error(err)
 	}
 }
 
 func DeleteMemory(
-	w http.ResponseWriter,
-	r *http.Request,
+	httpWriter http.ResponseWriter,
+	httpRequest *http.Request,
 	redisClient *redis.Client,
 	sessionID string,
 ) {
-
 	conn := redisClient.Conn()
 	defer conn.Close()
 
@@ -169,16 +167,16 @@ func DeleteMemory(
 
 	keys := []string{summaryKey, sessionID, tokenCountKey}
 
-	_, err := conn.Del(r.Context(), keys...).Result()
+	_, err := conn.Del(httpRequest.Context(), keys...).Result()
 	if err != nil {
 		log.Error(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(httpWriter, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	response := AckResponse{Status: "Ok"}
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(response)
+	httpWriter.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(httpWriter).Encode(response)
 	if err != nil {
 		log.Error(err)
 	}
