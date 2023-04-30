@@ -93,15 +93,15 @@ func main() {
 				sessionID := chi.URLParam(r, "sessionId")
 				handleDeleteMemory(w, r, redisClient, sessionID)
 			})
-		})
-		r.Post("/retrieval", func(w http.ResponseWriter, r *http.Request) {
-			sessionID := chi.URLParam(r, "sessionId")
-			var payload SearchPayload
-			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			handleRunRetrieval(w, r, sessionID, payload, &appState, redisClient)
+			r.Post("/retrieval", func(w http.ResponseWriter, r *http.Request) {
+				sessionID := chi.URLParam(r, "sessionId")
+				var payload SearchPayload
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				handleRunRetrieval(w, r, sessionID, payload, &appState, redisClient)
+			})
 		})
 	})
 

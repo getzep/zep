@@ -16,7 +16,6 @@ func incrementalSummarization(
 	currentSummary *string,
 	messages []string,
 ) (string, int, error) {
-
 	reverseSlice(messages)
 	messagesJoined := strings.Join(messages, "\n")
 	prevSummary := ""
@@ -46,14 +45,13 @@ func incrementalSummarization(
 		Temperature: 0.0,
 	}
 
-	var ctx = context.Background()
+	ctx := context.Background()
 	resp, err := openAIClient.CreateChatCompletion(ctx, req)
 	if err != nil {
 		return "", 0, err
 	}
 
 	completion := resp.Choices[0].Message.Content
-
 	tokensUsed := resp.Usage.TotalTokens
 
 	return completion, tokensUsed, nil
@@ -100,9 +98,7 @@ func handleCompaction(sessionID string, appState *AppState, redisConn *redis.Cli
 	totalTokensTemp := 0
 
 	for _, message := range messages {
-		messageTokensUsed := getTokenCount(
-			message,
-		)
+		messageTokensUsed := getTokenCount(message)
 
 		if totalTokensTemp+messageTokensUsed <= maxMessageTokens {
 			tempMessages = append(tempMessages, message)
@@ -121,7 +117,8 @@ func handleCompaction(sessionID string, appState *AppState, redisConn *redis.Cli
 	}
 
 	if len(tempMessages) > 0 {
-		newSummary, summaryTokensUsed, err := incrementalSummarization(
+		newSummary, summaryTokensUsed,
+			err := incrementalSummarization(
 			appState.OpenAIClient,
 			summary,
 			tempMessages,
@@ -190,5 +187,4 @@ func getTokenCount(text string) int {
 	}
 
 	return len(tkm.Encode(text, nil, nil))
-
 }

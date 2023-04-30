@@ -79,7 +79,7 @@ func ensureRedisearchIndex(
 	_, err := indexInfoCmd.Result()
 
 	if err != nil {
-		if strings.Contains(err.Error(), "Unknown: Index name") {
+		if strings.Contains(err.Error(), "Unknown Index name") {
 			args := []interface{}{
 				indexName,
 				"ON",
@@ -106,7 +106,10 @@ func ensureRedisearchIndex(
 				distanceMetric,
 			}
 
-			_, err = redisClient.Do(ctx, "FT.CREATE", args).Result()
+			cmdArgs := []interface{}{"FT.CREATE"}
+			cmdArgs = append(cmdArgs, args...)
+
+			_, err = redisClient.Do(ctx, cmdArgs...).Result()
 			if err != nil {
 				return err
 			}
