@@ -2,12 +2,12 @@
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
 #
 # Binaries for programs and plugins
+out/
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-papyrus
 .env
 .env.local
 

@@ -96,7 +96,7 @@ func ensureRedisearchIndex(
 ) error {
 	ctx := context.Background()
 
-	indexName := "papyrus"
+	indexName := "zep"
 
 	indexInfoCmd := redisClient.Do(ctx, "FT.INFO", indexName)
 	_, err := indexInfoCmd.Result()
@@ -109,7 +109,7 @@ func ensureRedisearchIndex(
 				"HASH",
 				"PREFIX",
 				"1",
-				"papyrus:",
+				"zep:",
 				"SCHEMA",
 				"session",
 				"TEXT",

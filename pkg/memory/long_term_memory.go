@@ -53,7 +53,7 @@ func IndexMessages(
 
 	for _, data := range response.Data {
 		id := canonicID()
-		key := fmt.Sprintf("papyrus:%s", id)
+		key := fmt.Sprintf("zep:%s", id)
 		vector := encode(data.Embedding)
 
 		err := redisConn.HSet(context.Background(), key, "session", sessionID, "vector", vector, "content",
@@ -106,7 +106,7 @@ func searchRedisConn(redisConn *redis.Client, searchQuery string, vector []byte)
 	cmd := redis.NewSliceCmd(
 		ctx,
 		"FT.SEARCH",
-		"papyrus",
+		"zep",
 		searchQuery,
 		"PARAMS",
 		"2",
