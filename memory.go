@@ -12,7 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func handleGetMemory(
+func getMemory(
 	w http.ResponseWriter,
 	r *http.Request,
 	appState *AppState,
@@ -76,7 +76,7 @@ func handleGetMemory(
 	}
 }
 
-func handlePostMemory(
+func postMemory(
 	w http.ResponseWriter,
 	r *http.Request,
 	appState *AppState,
@@ -144,7 +144,7 @@ func handlePostMemory(
 	}
 }
 
-func handleDeleteMemory(
+func deleteMemory(
 	w http.ResponseWriter,
 	r *http.Request,
 	redisClient *redis.Client,

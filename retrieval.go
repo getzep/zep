@@ -8,7 +8,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func handleRunRetrieval(
+func runRetrieval(
 	w http.ResponseWriter,
 	r *http.Request,
 	sessionID string,

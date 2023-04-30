@@ -4,11 +4,35 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/spf13/viper"
 )
+
+func createRedisClient() *redis.Client {
+	redisURL := viper.GetString("REDIS_URL")
+	if redisURL == "" {
+		log.Fatal("$REDIS_URL is not set")
+	}
+	return redis.NewClient(&redis.Options{
+		Addr: redisURL,
+	})
+}
+
+func ensureRedisearchIndexIfEnabled(redisClient *redis.Client, longTermMemory bool) {
+	if longTermMemory {
+		vectorDimensions := 1536
+		distanceMetric := "COSINE"
+
+		err := ensureRedisearchIndex(redisClient, vectorDimensions, distanceMetric)
+		if err != nil {
+			log.Fatalf("RediSearch index error: %v", err)
+		}
+	}
+}
 
 func NewRedisearchResult(values []string) (RedisearchResult, error) {
 	var content, role string
