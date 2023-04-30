@@ -7,7 +7,7 @@
 *.dll
 *.so
 *.dylib
-
+papyrus
 .env
 .env.local
 

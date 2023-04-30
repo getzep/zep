@@ -22,15 +22,15 @@ func handleGetMemory(
 	conn := redisClient.Conn()
 	defer conn.Close()
 
-	lrangeKey := sessionID
-	contextKey := fmt.Sprintf("%s_context", sessionID)
+	summaryKey := fmt.Sprintf("%s_summary", sessionID)
 	tokenCountKey := fmt.Sprintf("%s_tokens", sessionID)
-	keys := []string{contextKey, tokenCountKey}
+	keys := []string{summaryKey, tokenCountKey}
 
 	pipe := redisClient.Pipeline()
-	lrangeCmd := pipe.LRange(r.Context(), lrangeKey, 0, appState.WindowSize-1)
+	lrangeCmd := pipe.LRange(r.Context(), sessionID, 0, appState.WindowSize-1)
 	mgetCmd := pipe.MGet(r.Context(), keys...)
 	_, err := pipe.Exec(r.Context())
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -48,7 +48,7 @@ func handleGetMemory(
 		return
 	}
 
-	context, _ := values[0].(string)
+	summary, _ := values[0].(string)
 	tokensString, _ := values[1].(string)
 	tokens, _ := strconv.ParseInt(tokensString, 10, 64)
 
@@ -65,7 +65,7 @@ func handleGetMemory(
 
 	response := MemoryResponse{
 		Messages: memoryMessages,
-		Summary:  context,
+		Summary:  summary,
 		Tokens:   tokens,
 	}
 
@@ -99,7 +99,7 @@ func handlePostMemory(
 	}
 
 	if memoryMessages.Summary != "" {
-		_, err := conn.Set(r.Context(), fmt.Sprintf("%s_context", sessionID), memoryMessages.Summary, 0).
+		_, err := conn.Set(r.Context(), fmt.Sprintf("%s_summary", sessionID), memoryMessages.Summary, 0).
 			Result()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -154,10 +154,10 @@ func handleDeleteMemory(
 	conn := redisClient.Conn()
 	defer conn.Close()
 
-	contextKey := fmt.Sprintf("%s_context", sessionID)
+	summaryKey := fmt.Sprintf("%s_summary", sessionID)
 	tokenCountKey := fmt.Sprintf("%s_tokens", sessionID)
 
-	keys := []string{contextKey, sessionID, tokenCountKey}
+	keys := []string{summaryKey, sessionID, tokenCountKey}
 
 	_, err := conn.Del(r.Context(), keys...).Result()
 	if err != nil {

@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
+	"github.com/pkoukk/tiktoken-go"
 	"github.com/redis/go-redis/v9"
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -32,72 +34,145 @@ func incrementalSummarization(
 		return "", 0, err
 	}
 
-	req := openai.CompletionRequest{
-		Model:       openai.GPT3Dot5Turbo,
-		MaxTokens:   512, // Change the max tokens as needed
-		Prompt:      progressivePrompt,
+	req := openai.ChatCompletionRequest{
+		Model:     openai.GPT3Dot5Turbo,
+		MaxTokens: 512,
+		Messages: []openai.ChatCompletionMessage{
+			{
+				Role:    openai.ChatMessageRoleUser,
+				Content: progressivePrompt,
+			},
+		},
 		Temperature: 0.0,
 	}
 
 	var ctx = context.Background()
-	resp, err := openAIClient.CreateCompletion(ctx, req)
+	resp, err := openAIClient.CreateChatCompletion(ctx, req)
 	if err != nil {
 		return "", 0, err
 	}
 
-	completion := resp.Choices[0].Text
+	completion := resp.Choices[0].Message.Content
 
 	tokensUsed := resp.Usage.TotalTokens
 
 	return completion, tokensUsed, nil
 }
 
-func handleCompaction(sessionID string, stateClone *AppState, redisConn *redis.Client) error {
-	half := stateClone.WindowSize / 2
-	contextKey := fmt.Sprintf("%s_context", sessionID)
-
-	var messages []string
+func handleCompaction(sessionID string, appState *AppState, redisConn *redis.Client) error {
+	half := appState.WindowSize / 2
+	summaryKey := fmt.Sprintf("%s_summary", sessionID)
 
 	ctx := context.Background()
 
-	cmds, err := redisConn.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.LRange(ctx, sessionID, half, stateClone.WindowSize)
-		pipe.Get(ctx, contextKey)
-		return nil
-	})
+	pipe := redisConn.Pipeline()
+	lrangeCmd := pipe.LRange(ctx, sessionID, half, appState.WindowSize)
+	getCmd := pipe.Get(ctx, summaryKey)
 
+	_, err := pipe.Exec(ctx)
+	if err != nil && err != redis.Nil {
+		return &PapyrusError{RedisError: err}
+	}
+
+	var messages []string
+	err = lrangeCmd.ScanSlice(&messages)
 	if err != nil {
 		return &PapyrusError{RedisError: err}
 	}
 
-	err = cmds[0].(*redis.StringSliceCmd).ScanSlice(&messages)
-	if err != nil {
+	res, err := getCmd.Result()
+	if err != nil && err != redis.Nil {
 		return &PapyrusError{RedisError: err}
 	}
 
-	res, err := cmds[1].(*redis.StringCmd).Result()
-	if err != nil {
-		return &PapyrusError{RedisError: err}
+	var summary *string
+	if res != "" {
+		summary = &res
 	}
 
-	newContext, tokensUsed, err := incrementalSummarization(stateClone.OpenAIClient, &res, messages)
-	if err != nil {
-		return &PapyrusError{IncrementalSummarizationError: err.Error()}
+	maxTokens := 4096
+	summaryMaxTokens := 512
+	bufferTokens := 230
+	maxMessageTokens := maxTokens - summaryMaxTokens - bufferTokens
+
+	totalTokens := 0
+	var tempMessages []string
+	totalTokensTemp := 0
+
+	for _, message := range messages {
+		messageTokensUsed := getTokenCount(
+			message,
+		)
+
+		if totalTokensTemp+messageTokensUsed <= maxMessageTokens {
+			tempMessages = append(tempMessages, message)
+			totalTokensTemp += messageTokensUsed
+		} else {
+			newSummary, summaryTokensUsed, err := incrementalSummarization(appState.OpenAIClient, summary, tempMessages)
+			if err != nil {
+				return &PapyrusError{IncrementalSummarizationError: err.Error()}
+			}
+
+			totalTokens += summaryTokensUsed
+			summary = &newSummary
+			tempMessages = []string{message}
+			totalTokensTemp = messageTokensUsed
+		}
 	}
 
-	tokenCountKey := fmt.Sprintf("%s_tokens", sessionID)
+	if len(tempMessages) > 0 {
+		newSummary, summaryTokensUsed, err := incrementalSummarization(
+			appState.OpenAIClient,
+			summary,
+			tempMessages,
+		)
+		if err != nil {
+			return &PapyrusError{IncrementalSummarizationError: err.Error()}
+		}
 
-	_, err = redisConn.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.LTrim(ctx, sessionID, 0, int64(half))
-		pipe.Set(ctx, contextKey, newContext, 0)
-		pipe.IncrBy(ctx, tokenCountKey, int64(tokensUsed))
-		return nil
-	})
-	if err != nil {
-		return &PapyrusError{RedisError: err}
+		totalTokens += summaryTokensUsed
+		summary = &newSummary
+	}
+
+	if summary != nil {
+		newContext := *summary
+		tokenCountKey := fmt.Sprintf("%s_tokens", sessionID)
+
+		err = executePipelinedCommands(
+			ctx,
+			half,
+			sessionID,
+			summaryKey,
+			tokenCountKey,
+			newContext,
+			int64(totalTokens),
+			redisConn,
+		)
+		if err != nil {
+			return &PapyrusError{RedisError: err}
+		}
+	} else {
+		return &PapyrusError{IncrementalSummarizationError: "No context found after summarization"}
 	}
 
 	return nil
+}
+
+func executePipelinedCommands(
+	ctx context.Context,
+	half int64,
+	sessionID, summaryKey, tokenCountKey,
+	newContext string,
+	tokensUsed int64,
+	redisConn *redis.Client,
+) error {
+	_, err := redisConn.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.LTrim(ctx, sessionID, 0, int64(half))
+		pipe.Set(ctx, summaryKey, newContext, 0)
+		pipe.IncrBy(ctx, tokenCountKey, int64(tokensUsed))
+		return nil
+	})
+	return err
 }
 
 func reverseSlice(slice []string) {
@@ -105,4 +180,15 @@ func reverseSlice(slice []string) {
 		opp := len(slice) - 1 - i
 		slice[i], slice[opp] = slice[opp], x
 	}
+}
+
+func getTokenCount(text string) int {
+	encoding := "cl100k_base"
+	tkm, err := tiktoken.GetEncoding(encoding)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return len(tkm.Encode(text, nil, nil))
+
 }
