@@ -2,66 +2,85 @@ package cmd
 
 import (
 	"fmt"
-
-	"net/http"
+	"github.com/danielchalef/zep/pkg/extractors"
+	"github.com/danielchalef/zep/pkg/llms"
+	"github.com/danielchalef/zep/pkg/memorystore"
+	"github.com/danielchalef/zep/pkg/models"
+	"github.com/danielchalef/zep/pkg/server"
+	"github.com/redis/go-redis/v9"
 	"sync"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
-
-	"github.com/danielchalef/zep/pkg/app"
-	"github.com/danielchalef/zep/pkg/llms"
-	"github.com/danielchalef/zep/pkg/memory"
-	"github.com/danielchalef/zep/pkg/routes"
 )
 
-const ReadHeaderTimeout = 10
-
+// run is the entrypoint for the zep server
 func run() {
-	openaiClient := llms.CreateOpenAIClient()
-	redisClient := memory.CreateRedisClient()
+	appState := createAppState()
 
-	longTermMemory := viper.GetBool("LONG_TERM_MEMORY")
-	memory.EnsureRedisearchIndexIfEnabled(redisClient, longTermMemory)
+	extractors.Initialize(appState)
 
-	appState := app.AppState{
-		WindowSize:     viper.GetInt64("MAX_WINDOW_SIZE"),
-		SessionCleanup: &sync.Map{},
-		OpenAIClient:   openaiClient,
-		LongTermMemory: longTermMemory,
+	srv := server.Create(appState)
+
+	log.Info("Listening on: ", srv.Addr)
+	err := srv.ListenAndServe()
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	router := setupRouter(&appState, redisClient)
-	server := createServer(router)
-
-	log.Info("Listening on", server.Addr)
-	log.Fatal(server.ListenAndServe())
 }
 
-func setupRouter(appState *app.AppState, redisClient *redis.Client) *chi.Mux {
-	router := chi.NewRouter()
-	router.Use(middleware.Logger)
+// createAppState creates an AppState struct from the config file / ENV, initializes the memory store,
+// and creates the OpenAI client
+func createAppState() *models.AppState {
+	maxSessionLength := viper.GetInt64("messages.max_session_length")
+	messageWindowSize := viper.GetInt64("memory.message_window")
 
-	router.Get("/health", routes.HandleGetHealth)
+	if maxSessionLength < messageWindowSize {
+		log.Fatal(
+			fmt.Sprintf(
+				"max_session_length (%d) must be greater than message_window (%d)",
+				maxSessionLength,
+				messageWindowSize,
+			),
+		)
+	}
 
-	router.Route("/v1", func(r chi.Router) {
-		r.Route("/sessions/{sessionId}", func(r chi.Router) {
-			r.Get("/memory", routes.GetMemoryHandler(appState, redisClient))
-			r.Post("/memory", routes.PostMemoryHandler(appState, redisClient))
-			r.Delete("/memory", routes.DeleteMemoryHandler(redisClient))
-			r.Post("/retrieval", routes.RunRetrievalHandler(appState, redisClient))
+	memoryStoreType := viper.GetString("memory_store.type")
+	if memoryStoreType == "" {
+		log.Fatal("memory_store.type must be set")
+	}
+	memoryStoreURL := viper.GetString("memory_store.url")
+	if memoryStoreURL == "" {
+		log.Fatal("memory_store.url must be set")
+	}
+
+	appState := &models.AppState{
+		SessionLock:  &sync.Map{},
+		OpenAIClient: llms.CreateOpenAIClient(),
+		Embeddings: &models.Embeddings{
+			Model:      viper.GetString("embeddings.model"),
+			Dimensions: viper.GetInt64("embeddings.dimensions"),
+			Enabled:    viper.GetBool("embeddings.enable"),
+		},
+		MaxSessionLength: maxSessionLength,
+	}
+
+	switch memoryStoreType {
+	case "redis":
+		redisClient := redis.NewClient(&redis.Options{
+			Addr: memoryStoreURL,
 		})
-	})
-
-	return router
-}
-
-func createServer(router *chi.Mux) *http.Server {
-	return &http.Server{
-		Addr:              fmt.Sprintf(":%d", viper.GetInt("PORT")),
-		Handler:           router,
-		ReadHeaderTimeout: ReadHeaderTimeout,
+		memoryStore, err := memorystore.NewRedisMemoryStore(appState, redisClient)
+		if err != nil {
+			log.Fatal(err)
+		}
+		appState.MemoryStore = memoryStore
+	case "postgres":
+		log.Fatal("postgres memory store is not yet supported")
+	default:
+		log.Fatal(fmt.Sprintf("memory_store.type (%s) is not supported", memoryStoreType))
 	}
+
+	log.Info("Using memory store: ", memoryStoreType)
+
+	return appState
 }

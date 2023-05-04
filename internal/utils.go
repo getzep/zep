@@ -19,3 +19,10 @@ func ParsePrompt(promptTemplate string, data any) (string, error) {
 
 	return buf.String(), nil
 }
+
+func ReverseSlice[T comparable](slice []T) {
+	for i, x := range slice[:len(slice)/2] {
+		opp := len(slice) - 1 - i
+		slice[i], slice[opp] = slice[opp], x
+	}
+}

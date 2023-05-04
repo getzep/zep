@@ -2,6 +2,7 @@ package internal
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 )
 
@@ -29,13 +30,16 @@ func TestParsePrompt(t *testing.T) {
 			promptTemplate: "Hello, my name is {{.Name.",
 			data:           testData{Name: "John"},
 			expected:       "",
-			expectedErr:    errors.New("template: prompt:1: unexpected \"{\" in command"),
+			expectedErr:    errors.New("template: prompt:1: unexpected \".\" in operand"),
 		},
 		{
 			name:           "Invalid data property",
 			promptTemplate: "Hello, my name is {{.InvalidProperty}}.",
 			data:           testData{Name: "John"},
 			expected:       "",
+			expectedErr: errors.New(
+				"template: prompt:1:20: executing \"prompt\" at <.InvalidProperty>: can't evaluate field InvalidProperty in type internal.testData",
+			),
 		},
 	}
 	for _, tc := range testCases {
@@ -47,6 +51,44 @@ func TestParsePrompt(t *testing.T) {
 			if (err == nil) != (tc.expectedErr == nil) ||
 				(err != nil && err.Error() != tc.expectedErr.Error()) {
 				t.Errorf("Expected error: %v, Got error: %v", tc.expectedErr, err)
+			}
+		})
+	}
+}
+
+func TestReverseSlice(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    []string
+		expected []string
+	}{
+		{
+			name:     "Empty slice",
+			input:    []string{},
+			expected: []string{},
+		},
+		{
+			name:     "Slice with one element",
+			input:    []string{"a"},
+			expected: []string{"a"},
+		},
+		{
+			name:     "Slice with even number of elements",
+			input:    []string{"a", "b", "c", "d"},
+			expected: []string{"d", "c", "b", "a"},
+		},
+		{
+			name:     "Slice with odd number of elements",
+			input:    []string{"a", "b", "c", "d", "e"},
+			expected: []string{"e", "d", "c", "b", "a"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ReverseSlice(tc.input)
+			if !reflect.DeepEqual(tc.input, tc.expected) {
+				t.Errorf("ReverseSlice(%v) = %v; want %v", tc.input, tc.input, tc.expected)
 			}
 		})
 	}
