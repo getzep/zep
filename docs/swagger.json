@@ -5,7 +5,8 @@
     ],
     "swagger": "2.0",
     "info": {
-        "title": "Zep Long-term Memory API",
+        "description": "zep stores, manages, enriches, and searches long-term memory for conversational AI applications",
+        "title": "zep Long-term Memory API",
         "contact": {},
         "license": {
             "name": "Apache 2.0",
@@ -16,7 +17,7 @@
     "paths": {
         "/api/v1/sessions/{sessionId}/memory": {
             "get": {
-                "description": "get memory messages by session id",
+                "description": "get memory by session id",
                 "consumes": [
                     "application/json"
                 ],
@@ -26,7 +27,7 @@
                 "tags": [
                     "memory"
                 ],
-                "summary": "Returns a list of memory messages for a given session",
+                "summary": "Returns a memory (latest summary and list of messages) for a given session",
                 "parameters": [
                     {
                         "type": "string",

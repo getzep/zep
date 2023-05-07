@@ -1,14 +1,6 @@
-package internal
+package test
 
-import (
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
-	"github.com/danielchalef/zep/pkg/models"
-	"github.com/joho/godotenv"
-	"github.com/spf13/viper"
-	"strings"
-)
+import "github.com/danielchalef/zep/pkg/models"
 
 var TestMessages = []models.Message{
 	{
@@ -91,39 +83,4 @@ var TestMessages = []models.Message{
 		Role:    "assistant",
 		Content: "You're welcome! Have a great time planning and enjoy your trip to Iceland!",
 	},
-}
-
-func SetDefaultsAndEnv() {
-	viper.SetDefault("embeddings.enable", true)
-	viper.SetDefault("embeddings.dimensions", 1536)
-	viper.SetDefault("embeddings.model", "AdaEmbeddingV2")
-	viper.SetDefault("llm_model", "gpt-3.5-turbo")
-	viper.SetDefault("messages.max_session_length", 20)
-	viper.SetDefault("memory.message_window", 12)
-	viper.SetDefault("memory.token_window", 500)
-	viper.SetDefault("memory.summarize.enable", true)
-	viper.SetDefault("memory.search.metric", "COSINE")
-	viper.SetDefault("memory_store.type", "redis")
-	viper.SetDefault("memory_store.url", "localhost:6379")
-	viper.SetDefault("server.port", 8000)
-
-	err := godotenv.Load()
-	if err != nil {
-		fmt.Println(".env file not found or unable to load")
-	}
-
-	viper.SetEnvPrefix(
-		"ZEP",
-	)
-	viper.SetEnvKeyReplacer(strings.NewReplacer(`.`, `_`)) // replaced nested . with _
-	viper.AutomaticEnv()
-}
-
-func GenerateRandomSessionID(length int) (string, error) {
-	bytes := make([]byte, (length+1)/2)
-	_, err := rand.Read(bytes)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate random session ID: %w", err)
-	}
-	return hex.EncodeToString(bytes)[:length], nil
 }

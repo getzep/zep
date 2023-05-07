@@ -6,12 +6,8 @@ import (
 	"github.com/danielchalef/zep/internal"
 	"github.com/danielchalef/zep/pkg/llms"
 	"github.com/danielchalef/zep/pkg/models"
-	"github.com/sashabaranov/go-openai"
-	"github.com/spf13/viper"
 	"strings"
 )
-
-// TODO: What are we doing with token count. Appears we should be incrementing it?
 
 const SummaryMaxOutputTokens = 512
 
@@ -37,8 +33,7 @@ func (se *SummaryExtractor) Extract(
 	appState *models.AppState,
 	messageEvent *models.MessageEvent,
 ) error {
-	messageWindow := viper.GetInt("memory.message_window")
-	if messageWindow == 0 {
+	if appState.Config.Memory.MessageWindow == 0 {
 		return NewExtractorError("SummaryExtractor message window is 0", nil)
 	}
 
@@ -54,12 +49,12 @@ func (se *SummaryExtractor) Extract(
 		return NewExtractorError("SummaryExtractor messages is nil", nil)
 	}
 	// If we're still under the message window, we don't need to summarize.
-	if len(messages) < messageWindow {
+	if len(messages) < appState.Config.Memory.MessageWindow {
 		return nil
 	}
 
 	newSummary, err := summarize(
-		ctx, appState, messageWindow, messages, messagesSummary.Summary, 0,
+		ctx, appState, appState.Config.Memory.MessageWindow, messages, messagesSummary.Summary, 0,
 	)
 	if err != nil {
 		return NewExtractorError("SummaryExtractor summarize failed", err)
@@ -99,7 +94,7 @@ func (se *SummaryExtractor) Notify(
 	return nil
 }
 
-func NewMaxMessageWindowSummaryExtractor() *SummaryExtractor {
+func NewSummaryExtractor() *SummaryExtractor {
 	return &SummaryExtractor{}
 }
 
@@ -126,7 +121,7 @@ func summarize(
 	// Oldest messages that are over the newMessageCount
 	messagesToSummarize := messages[:len(messages)-newMessageCount]
 
-	modelName, err := llms.GetLLMModelName()
+	modelName, err := llms.GetLLMModelName(appState.Config)
 	if err != nil {
 		return &models.Summary{}, err
 	}
@@ -192,7 +187,7 @@ func processOverLimitMessages(
 	processSummary := func() error {
 		newSummary, newSummaryTokens, err = incrementalSummarizer(
 			ctx,
-			appState.OpenAIClient,
+			appState,
 			summary,
 			tempMessageText,
 			SummaryMaxOutputTokens,
@@ -243,7 +238,7 @@ func processOverLimitMessages(
 // tokens in the summary.
 func incrementalSummarizer(
 	ctx context.Context,
-	openAIClient *openai.Client,
+	appState *models.AppState,
 	currentSummary string,
 	messages []string,
 	summaryMaxTokens int,
@@ -268,7 +263,7 @@ func incrementalSummarizer(
 		return "", 0, err
 	}
 
-	resp, err := llms.RunChatCompletion(ctx, openAIClient, summaryMaxTokens, progressivePrompt)
+	resp, err := llms.RunChatCompletion(ctx, appState, summaryMaxTokens, progressivePrompt)
 	if err != nil {
 		return "", 0, err
 	}

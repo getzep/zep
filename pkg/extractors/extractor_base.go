@@ -8,7 +8,6 @@ import (
 
 var log = internal.GetLogger()
 
-// Custom error type
 type ExtractorError struct {
 	message       string
 	originalError error

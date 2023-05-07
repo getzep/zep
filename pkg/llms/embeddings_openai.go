@@ -17,12 +17,12 @@ func EmbedMessages(
 		return nil, NewLLMError("no text to embed", nil)
 	}
 	var embeddingModel openai.EmbeddingModel
-	switch appState.Embeddings.Model {
+	switch appState.Config.Extractors.Embeddings.Model {
 	case "AdaEmbeddingV2":
 		embeddingModel = openai.AdaEmbeddingV2
 	default:
 		return nil, NewLLMError(fmt.Sprintf("invalid embedding model: %s",
-			appState.Embeddings.Model), nil)
+			appState.Config.LLM.Model), nil)
 	}
 
 	embeddingRequest := openai.EmbeddingRequest{

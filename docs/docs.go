@@ -22,7 +22,7 @@ const docTemplate = `{
     "paths": {
         "/api/v1/sessions/{sessionId}/memory": {
             "get": {
-                "description": "get memory messages by session id",
+                "description": "get memory by session id",
                 "consumes": [
                     "application/json"
                 ],
@@ -32,7 +32,7 @@ const docTemplate = `{
                 "tags": [
                     "memory"
                 ],
-                "summary": "Returns a list of memory messages for a given session",
+                "summary": "Returns a memory (latest summary and list of messages) for a given session",
                 "parameters": [
                     {
                         "type": "string",
@@ -354,8 +354,8 @@ var SwaggerInfo = &swag.Spec{
 	Host:             "",
 	BasePath:         "/apt/v1",
 	Schemes:          []string{"http", "https"},
-	Title:            "Zep Long-term Memory API",
-	Description:      "",
+	Title:            "zep Long-term Memory API",
+	Description:      "zep stores, manages, enriches, and searches long-term memory for conversational AI applications",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

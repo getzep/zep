@@ -9,7 +9,6 @@ const DefaultTemperature = 0.0
 
 var log = internal.GetLogger()
 
-// Custom error type
 type LLMError struct {
 	message       string
 	originalError error

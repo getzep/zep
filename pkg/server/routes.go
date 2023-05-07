@@ -7,8 +7,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/spf13/viper"
-	httpSwagger "github.com/swaggo/http-swagger"
-	_ "github.com/swaggo/http-swagger/example/go-chi/docs"
 	"net/http"
 	"time"
 )
@@ -19,7 +17,7 @@ const ReadHeaderTimeout = 5 * time.Second
 
 // Create creates a new HTTP server with the given app state
 func Create(appState *models.AppState) *http.Server {
-	serverPort := viper.GetInt("server.port")
+	serverPort := viper.GetInt("server.port") // TODO: get from config
 	router := setupRouter(appState)
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", serverPort),
@@ -28,7 +26,8 @@ func Create(appState *models.AppState) *http.Server {
 	}
 }
 
-// @title Zep Long-term Memory API
+// @title zep Long-term Memory API
+// @description zep stores, manages, enriches, and searches long-term memory for conversational AI applications
 
 // @license.name Apache 2.0
 // @license.url http://www.apache.org/licenses/LICENSE-2.0.html
@@ -43,11 +42,6 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 	router.Use(middleware.RealIP)
 	router.Use(middleware.Heartbeat("/healthz"))
 
-	router.Get("/swagger/*", httpSwagger.Handler(
-		httpSwagger.URL(
-			"http://localhost:8000/swagger/doc.json",
-		), //The url pointing to API definition
-	))
 	router.Route("/api/v1", func(r chi.Router) {
 		r.Route("/sessions/{sessionId}", func(r chi.Router) {
 			// Memory-related routes

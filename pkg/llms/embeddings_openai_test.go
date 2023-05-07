@@ -2,35 +2,22 @@ package llms
 
 import (
 	"context"
+	"github.com/danielchalef/zep/test"
 	"testing"
 	"time"
 
-	"github.com/danielchalef/zep/internal"
 	"github.com/danielchalef/zep/pkg/models"
-	"github.com/sashabaranov/go-openai"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestEmbedMessages(t *testing.T) {
-	internal.SetDefaultsAndEnv()
-	// Skipping the test if OpenAI API token is not provided
-	openAIKey := viper.GetString("OPENAI_API_KEY")
-	if openAIKey == "" {
-		t.Skip("Skipping test due to missing OpenAI API token")
-	}
+	cfg, err := test.NewTestConfig()
+	assert.NoError(t, err)
 
-	var vectorLength int64 = 1536
+	appState := &models.AppState{Config: cfg}
+	appState.OpenAIClient = CreateOpenAIClient(cfg)
 
-	// Configure AppState
-	appState := &models.AppState{
-		Embeddings: &models.EmbeddingsConfig{
-			Model:      "AdaEmbeddingV2",
-			Dimensions: vectorLength,
-			Enabled:    true,
-		},
-		OpenAIClient: openai.NewClient(openAIKey),
-	}
+	vectorLength := 1536
 
 	messageContents := []string{"Text 1", "Text 2"}
 

@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jinzhu/copier"
 	"github.com/pgvector/pgvector-go"
-	"github.com/spf13/viper"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
@@ -42,7 +41,7 @@ type PgSession struct {
 	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero"`
 }
 
-// dummy method to ensure uniform interface across all table models - used in table creation iterator
+// BeforeCreateTable is a dummy method to ensure uniform interface across all table models - used in table creation iterator
 func (s *PgSession) BeforeCreateTable(
 	_ context.Context,
 	_ *bun.CreateTableQuery,
@@ -66,6 +65,7 @@ type PgMessageStore struct {
 	Content   string                 `bun:",notnull"`
 	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero"`
 	Session   *PgSession             `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade"`
+	// TODO: Add TokenCount
 }
 
 func (s *PgMessageStore) BeforeCreateTable(
@@ -117,7 +117,7 @@ type PgSummaryStore struct {
 
 func (s *PgSummaryStore) BeforeCreateTable(
 	_ context.Context,
-	query *bun.CreateTableQuery,
+	_ *bun.CreateTableQuery,
 ) error {
 	return nil
 }
@@ -201,10 +201,14 @@ func (pms *PostgresMemoryStore) OnStart(
 	return nil
 }
 
+func (pms *PostgresMemoryStore) GetClient() *bun.DB {
+	return pms.Client
+}
+
 // GetMemory returns the memory for a given sessionID.
 func (pms *PostgresMemoryStore) GetMemory(
 	ctx context.Context,
-	_ *models.AppState,
+	appState *models.AppState,
 	sessionID string,
 	lastNMessages int,
 ) (*models.Memory, error) {
@@ -220,7 +224,13 @@ func (pms *PostgresMemoryStore) GetMemory(
 	}
 
 	// Retrieve either the lastNMessages or all messages up to the last SummaryPoint
-	messages, err := getMessages(ctx, pms.Client, sessionID, lastNMessages)
+	messages, err := getMessages(
+		ctx,
+		pms.Client,
+		sessionID,
+		appState.Config.Memory.MessageWindow,
+		lastNMessages,
+	)
 	if err != nil {
 		return nil, NewStorageError("failed to get messages", err)
 	}
@@ -248,11 +258,17 @@ func (pms *PostgresMemoryStore) GetSummary(
 
 func (pms *PostgresMemoryStore) PutMemory(
 	ctx context.Context,
-	_ *models.AppState,
+	appState *models.AppState,
 	sessionID string,
 	memoryMessages *models.Memory,
 ) error {
-	_, err := putMessages(ctx, pms.Client, sessionID, memoryMessages.Messages)
+	_, err := putMessages(
+		ctx,
+		pms.Client,
+		sessionID,
+		appState.Config.Extractors.Embeddings.Enabled,
+		memoryMessages.Messages,
+	)
 	if err != nil {
 		return NewStorageError("failed to put messages", err)
 	}
@@ -470,6 +486,7 @@ func putMessages(
 	ctx context.Context,
 	db *bun.DB,
 	sessionID string,
+	embeddingEnabled bool,
 	messages []models.Message,
 ) ([]models.Message, error) {
 	if len(messages) == 0 {
@@ -497,8 +514,8 @@ func putMessages(
 		pgMessages[i].SessionID = sessionID
 	}
 
-	// wrap in a transaction so we can rollback if any of the inserts fail. We don't want to
-	// partially save messages without vectorstore records.
+	// wrap in a transaction, so we can roll back if any of the inserts fail. We
+	// don't want to partially save messages without vectorstore records.
 	tx, err := db.Begin()
 	if err != nil {
 		return nil, err
@@ -517,7 +534,7 @@ func putMessages(
 
 	// If embeddings are enabled, store the new messages for future embedding.
 	// The Embedded field will be false until we run the embedding extractor out of band.
-	if viper.GetBool("extractor.embeddings.enabled") {
+	if embeddingEnabled {
 		zeroVector := make([]float32, 1536) // TODO: use config
 		embedRecords := make([]PgMessageVectorStore, len(messages))
 		for i, msg := range pgMessages {
@@ -585,14 +602,14 @@ func getMessages(
 	ctx context.Context,
 	db *bun.DB,
 	sessionID string,
+	memoryWindow int,
 	lastNMessages int,
 ) ([]models.Message, error) {
 	if sessionID == "" {
 		return nil, NewStorageError("sessionID cannot be empty", nil)
 	}
 
-	configuredMessageWindow := viper.GetInt("memory.message_window")
-	if configuredMessageWindow == 0 {
+	if memoryWindow == 0 {
 		return nil, NewStorageError("memory.message_window must be greater than 0", nil)
 	}
 
@@ -607,7 +624,7 @@ func getMessages(
 
 		// if no summary has been created yet, set lastNMessages to the configured message window
 		if summary == nil {
-			lastNMessages = configuredMessageWindow
+			lastNMessages = memoryWindow
 		}
 	}
 
@@ -619,14 +636,14 @@ func getMessages(
 			db,
 			sessionID,
 			summary.SummaryPointUUID,
-			configuredMessageWindow,
+			memoryWindow,
 		)
 		if err != nil {
 			return nil, NewStorageError("unable to retrieve last summary point", err)
 		}
 	}
 
-	messages := []PgMessageStore{}
+	var messages []PgMessageStore
 	query := db.NewSelect().
 		Model(&messages).
 		Where("session_id = ?", sessionID).

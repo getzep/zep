@@ -2,30 +2,39 @@ package extractors
 
 import (
 	"context"
-	"github.com/danielchalef/zep/internal"
 	"github.com/danielchalef/zep/pkg/llms"
+	"github.com/danielchalef/zep/pkg/memorystore"
 	"github.com/danielchalef/zep/pkg/models"
+	"github.com/danielchalef/zep/test"
 	"github.com/google/uuid"
 	"github.com/jinzhu/copier"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
-const dsn = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
-
 func TestSummarize(t *testing.T) {
 	ctx := context.Background()
 
-	internal.SetDefaultsAndEnv()
+	db := memorystore.NewPostgresConn(test.TestDsn)
+	defer db.Close()
+	memorystore.CleanDB(t, db)
 
-	appState := &models.AppState{}
-	appState.OpenAIClient = llms.CreateOpenAIClient()
+	cfg, err := test.NewTestConfig()
+	assert.NoError(t, err)
+
+	appState := &models.AppState{Config: cfg}
+
+	store, err := memorystore.NewPostgresMemoryStore(appState, db)
+	assert.NoError(t, err)
+
+	appState.OpenAIClient = llms.CreateOpenAIClient(cfg)
+	appState.MemoryStore = store
 
 	windowSize := 10
 	newMessageCountAfterSummary := windowSize / 2
 
-	messages := make([]models.Message, len(internal.TestMessages))
-	err := copier.Copy(&messages, &internal.TestMessages)
+	messages := make([]models.Message, len(test.TestMessages))
+	err = copier.Copy(&messages, &test.TestMessages)
 	assert.NoError(t, err)
 
 	messages = messages[:windowSize+2]

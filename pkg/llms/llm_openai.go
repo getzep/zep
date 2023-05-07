@@ -2,26 +2,30 @@ package llms
 
 import (
 	"context"
+	"github.com/danielchalef/zep/config"
+	"github.com/danielchalef/zep/pkg/models"
 	"github.com/pkoukk/tiktoken-go"
-	openai "github.com/sashabaranov/go-openai"
-	"github.com/spf13/viper"
+	"github.com/sashabaranov/go-openai"
 )
 
-func CreateOpenAIClient() *openai.Client {
-	openAIKey := viper.GetString("openai_api_key")
+const OpenAIAPIKeyNotSetError = "ZEP_OPENAI_API_KEY is not set"
+const InvalidLLMModelError = "llm model is not set or is invalid"
+
+func CreateOpenAIClient(cfg *config.Config) *openai.Client {
+	openAIKey := cfg.LLM.OpenAIAPIKey
 	if openAIKey == "" {
-		log.Fatal("ZEP_OPENAI_API_KEY is not set")
+		log.Fatal(OpenAIAPIKeyNotSetError)
 	}
 	return openai.NewClient(openAIKey)
 }
 
 func RunChatCompletion(
 	ctx context.Context,
-	openAIClient *openai.Client,
+	appState *models.AppState,
 	summaryMaxTokens int,
 	prompt string,
 ) (openai.ChatCompletionResponse, error) {
-	modelName, err := GetLLMModelName()
+	modelName, err := GetLLMModelName(appState.Config)
 	if err != nil {
 		return openai.ChatCompletionResponse{}, err
 	}
@@ -36,8 +40,7 @@ func RunChatCompletion(
 		},
 		Temperature: DefaultTemperature,
 	}
-
-	resp, err := openAIClient.CreateChatCompletion(ctx, req)
+	resp, err := appState.OpenAIClient.CreateChatCompletion(ctx, req)
 	if err != nil {
 		return openai.ChatCompletionResponse{}, err
 	}
@@ -50,14 +53,13 @@ func GetTokenCount(text string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-
 	return len(tkm.Encode(text, nil, nil)), nil
 }
 
-func GetLLMModelName() (string, error) {
-	llmModel := viper.GetString("llm_model")
+func GetLLMModelName(cfg *config.Config) (string, error) {
+	llmModel := cfg.LLM.Model
 	if llmModel == "" || !ValidLLMMap[llmModel] {
-		return "", NewLLMError("llm_model is not set or is invalid", nil)
+		return "", NewLLMError(InvalidLLMModelError, nil)
 	}
 	return llmModel, nil
 }
