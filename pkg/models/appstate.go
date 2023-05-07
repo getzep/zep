@@ -12,6 +12,6 @@ type AppState struct {
 	SessionLock      *sync.Map
 	OpenAIClient     *openai.Client
 	MemoryStore      MemoryStore[any]
-	Embeddings       *Embeddings
+	Embeddings       *EmbeddingsConfig
 	MaxSessionLength int64
 }

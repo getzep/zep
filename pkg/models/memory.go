@@ -1,46 +1,36 @@
 package models
 
-import "context"
-
-type Memory[T any] interface {
-	Get(ctx context.Context,
-		appState *AppState,
-		sessionID string) (*MessageResponse, error)
-	Search(ctx context.Context,
-		appState *AppState,
-		sessionID string, query interface{}) (*MessageResponse, error)
-}
-
-type BaseMemory[T any] struct {
-	DataStore *BaseMemoryStore[T]
-}
+import (
+	"github.com/google/uuid"
+	"time"
+)
 
 type Message struct {
-	Role    string         `json:"role"`
-	Content string         `json:"content"`
-	Meta    map[string]any `json:"meta,omitempty"`
+	UUID       uuid.UUID              `json:"uuid"`
+	CreatedAt  time.Time              `json:"created_at"`
+	Role       string                 `json:"role"`
+	Content    string                 `json:"content"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+	TokenCount int                    `json:"token_count"`
 }
 
 type Summary struct {
-	Content string         `json:"content"`
-	Meta    map[string]any `json:"meta,omitempty"`
+	UUID             uuid.UUID              `json:"uuid"`
+	CreatedAt        time.Time              `json:"created_at"`
+	Content          string                 `json:"content"`
+	SummaryPointUUID uuid.UUID              `json:"recent_message_uuid"` // The most recent message UUID that was used to generate this summary
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`
+	TokenCount       int                    `json:"token_count"`
 }
 
-type MessagesAndSummary struct {
-	Messages []Message      `json:"messages"`
-	Summary  Summary        `json:"summary,omitempty"`
-	Meta     map[string]any `json:"meta,omitempty"`
-}
-
-type MessageResponse struct {
-	Messages []Message      `json:"messages"`
-	Summary  Summary        `json:"summary,omitempty"`
-	Tokens   int64          `json:"tokens"`
-	Meta     map[string]any `json:"meta,omitempty"`
+type Memory struct {
+	Messages []Message              `json:"messages"`
+	Summary  *Summary               `json:"summary,omitempty"`
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type MessageEvent struct {
-	SessionID string         `json:"sessionId"`
-	Messages  []Message      `json:"messages"`
-	Meta      map[string]any `json:"meta,omitempty"`
+	SessionID string                 `json:"sessionId"`
+	Messages  []Message              `json:"messages"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }

@@ -30,6 +30,7 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 	router.Use(httpLogger.Logger("router", log))
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.RequestID)
+	router.Use(middleware.RealIP)
 	router.Use(middleware.Heartbeat("/healthz"))
 
 	router.Route("/v1", func(r chi.Router) {

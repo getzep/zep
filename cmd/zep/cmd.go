@@ -110,7 +110,7 @@ func setDefaults() {
 	viper.SetDefault("memory.token_window", 500)
 	viper.SetDefault("memory.summarize.enable", true)
 	viper.SetDefault("memory.search.metric", "COSINE")
-	viper.SetDefault("memory_store.type", "redis")
+	viper.SetDefault("memory_store.type", "postgres")
 	viper.SetDefault("memory_store.url", "localhost:6379")
 	viper.SetDefault("server.port", 8000)
 }

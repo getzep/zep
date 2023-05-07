@@ -1,13 +1,13 @@
 package models
 
 type SearchResult struct {
-	Role    string         `json:"role"`
-	Content string         `json:"content"`
-	Meta    map[string]any `json:"meta,omitempty"`
-	Dist    float64        `json:"dist"`
+	Message *Message               `json:"message"`
+	Summary *Summary               `json:"summary"`        // reserved for future use
+	Meta    map[string]interface{} `json:"meta,omitempty"` // reserved for future use
+	Dist    float64                `json:"dist"`
 }
 
 type SearchPayload struct {
-	Text string         `json:"text"`
-	Meta map[string]any `json:"meta,omitempty"`
+	Text string                 `json:"text"`
+	Meta map[string]interface{} `json:"meta,omitempty"` // reserved for future use
 }

@@ -1,24 +1,20 @@
-embeddings:
-  enable: true
-  dimensions: 1536
-  model: "AdaEmbeddingV2"
 llm_model: "gpt-3.5-turbo"
-messages:
-  # The maximum number of messages to retain for a session
-  # Ensure this is greater than your message_window
-  # -1 means unlimited
-  max_session_length: 500
 memory:
   # Ensure this is less than your max_session_length
   message_window: 12
-  search:
-    metric: "COSINE"
 extractors:
-  summarizer: true
+  summarizer:
+    enabled: true
+  embeddings:
+    enabled: true
+    dimensions: 1536
+    model: "AdaEmbeddingV2"
 memory_store:
-  type: "redis"
-  url: "localhost:6379"
+  type: "postgres"
+  postgres:
+    dsn: "postgres://postgres:postgres@localhost:5432/?sslmode=disable"
 server:
   port: 8000
 log:
   level: "debug"
+

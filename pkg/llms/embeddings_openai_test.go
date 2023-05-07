@@ -24,7 +24,7 @@ func TestEmbedMessages(t *testing.T) {
 
 	// Configure AppState
 	appState := &models.AppState{
-		Embeddings: &models.Embeddings{
+		Embeddings: &models.EmbeddingsConfig{
 			Model:      "AdaEmbeddingV2",
 			Dimensions: vectorLength,
 			Enabled:    true,
@@ -32,12 +32,12 @@ func TestEmbedMessages(t *testing.T) {
 		OpenAIClient: openai.NewClient(openAIKey),
 	}
 
-	messageContents := []string{"Message 1", "Message 2"}
+	messageContents := []string{"Text 1", "Text 2"}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	embeddings, err := EmbedMessages(ctx, appState, &messageContents)
+	embeddings, err := EmbedMessages(ctx, appState, messageContents)
 	assert.NoError(t, err)
 	assert.NotNil(t, embeddings)
 	assert.Len(t, *embeddings, 2)

@@ -12,10 +12,8 @@ type Extractor interface {
 		messageEvents *MessageEvent,
 	) error
 	Notify(ctx context.Context, appState *AppState, messageEvents *MessageEvent) error
-	ListenForEvents(ctx context.Context, appState *AppState) error
 }
 
 // BaseExtractor is the base implementation of an Extractor
 type BaseExtractor struct {
-	EventChannel chan MessageEvent
 }

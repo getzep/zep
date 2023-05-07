@@ -11,9 +11,11 @@ import (
 func EmbedMessages(
 	ctx context.Context,
 	appState *models.AppState,
-	messageContents *[]string,
+	text []string,
 ) (*[]openai.Embedding, error) {
-
+	if len(text) == 0 {
+		return nil, NewLLMError("no text to embed", nil)
+	}
 	var embeddingModel openai.EmbeddingModel
 	switch appState.Embeddings.Model {
 	case "AdaEmbeddingV2":
@@ -24,7 +26,7 @@ func EmbedMessages(
 	}
 
 	embeddingRequest := openai.EmbeddingRequest{
-		Input: *messageContents,
+		Input: text,
 		Model: embeddingModel,
 		User:  "zep_user",
 	}
