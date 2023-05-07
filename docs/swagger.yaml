@@ -1,0 +1,227 @@
+basePath: /apt/v1
+definitions:
+  models.Memory:
+    properties:
+      messages:
+        items:
+          $ref: '#/definitions/models.Message'
+        type: array
+      metadata:
+        additionalProperties: true
+        type: object
+      summary:
+        $ref: '#/definitions/models.Summary'
+    type: object
+  models.Message:
+    properties:
+      content:
+        type: string
+      created_at:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      role:
+        type: string
+      token_count:
+        type: integer
+      uuid:
+        type: string
+    type: object
+  models.SearchPayload:
+    properties:
+      meta:
+        additionalProperties: true
+        description: reserved for future use
+        type: object
+      text:
+        type: string
+    type: object
+  models.SearchResult:
+    properties:
+      dist:
+        type: number
+      message:
+        $ref: '#/definitions/models.Message'
+      meta:
+        additionalProperties: true
+        description: reserved for future use
+        type: object
+      summary:
+        allOf:
+        - $ref: '#/definitions/models.Summary'
+        description: reserved for future use
+    type: object
+  models.Summary:
+    properties:
+      content:
+        type: string
+      created_at:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      recent_message_uuid:
+        description: The most recent message UUID that was used to generate this summary
+        type: string
+      token_count:
+        type: integer
+      uuid:
+        type: string
+    type: object
+  server.APIError:
+    properties:
+      code:
+        type: integer
+      message:
+        type: string
+    type: object
+info:
+  contact: {}
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  title: Zep Long-term Memory API
+paths:
+  /api/v1/sessions/{sessionId}/memory:
+    delete:
+      consumes:
+      - application/json
+      description: delete memory messages by session id
+      parameters:
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Delete memory messages for a given session
+      tags:
+      - memory
+    get:
+      consumes:
+      - application/json
+      description: get memory messages by session id
+      parameters:
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      - description: Last N messages. Overrides memory_window configuration
+        in: query
+        name: lastn
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Memory'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Returns a list of memory messages for a given session
+      tags:
+      - memory
+    post:
+      consumes:
+      - application/json
+      description: add memory messages by session id
+      parameters:
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      - description: Memory messages
+        in: body
+        name: memoryMessages
+        required: true
+        schema:
+          $ref: '#/definitions/models.Memory'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Add memory messages to a given session
+      tags:
+      - memory
+  /api/v1/sessions/{sessionId}/search:
+    post:
+      consumes:
+      - application/json
+      description: search memory messages by session id and query
+      parameters:
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      - description: Limit the number of results returned
+        in: query
+        name: limit
+        type: integer
+      - description: Search query
+        in: body
+        name: searchPayload
+        required: true
+        schema:
+          $ref: '#/definitions/models.SearchPayload'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SearchResult'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Search memory messages for a given session
+      tags:
+      - search
+schemes:
+- http
+- https
+swagger: "2.0"
