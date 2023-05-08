@@ -521,10 +521,7 @@ func putMessages(
 		return nil, err
 	}
 	defer func(tx bun.Tx) {
-		err := tx.Rollback()
-		if err != nil {
-			log.Error("failed to rollback transaction", err)
-		}
+		_ = tx.Rollback()
 	}(tx)
 
 	_, err = tx.NewInsert().Model(&pgMessages).Exec(ctx)

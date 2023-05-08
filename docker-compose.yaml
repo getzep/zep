@@ -1,6 +1,6 @@
 version: "3.7"
 services:
-  postgres:
+  db:
     container_name: zep-postgres
     restart: on-failure
     ports:
@@ -11,3 +11,36 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.postgres
+    networks:
+      - zep-network
+  zep:
+    container_name: zep
+    restart: on-failure
+    depends_on:
+      - db
+    ports:
+        - "8000:8000"
+    configs:
+      - source: config
+        target: /app/config.yaml
+    environment:
+      - ZEP_MEMORY_STORE_POSTGRES_DSN=postgres://postgres:postgres@db:5432/postgres?sslmode=disable
+    env_file:
+      - .env # Store your OpenAI API key here as ZEP_OPENAI_API_KEY
+    build:
+      context: .
+      dockerfile: Dockerfile
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/healthz" ]
+      interval: 1m30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - zep-network
+configs:
+  config:
+    file: ./config.yaml
+networks:
+  zep-network:
+    driver: bridge
