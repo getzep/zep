@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/go-chi/chi/v5"
 	"net/http"
 	"strconv"
@@ -38,6 +39,10 @@ func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 			sessionID, lastN)
 		if err != nil {
 			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+		if sessionMemory == nil || sessionMemory.Messages == nil {
+			renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 			return
 		}
 
