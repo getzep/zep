@@ -3,19 +3,20 @@ package extractors
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/danielchalef/zep/internal"
 	"github.com/danielchalef/zep/pkg/llms"
 	"github.com/danielchalef/zep/pkg/models"
-	"strings"
 )
 
 const SummaryMaxOutputTokens = 512
 
-// Force compiler to validate that RedisMemoryStore implements the MemoryStore interface.
+// Force compiler to validate that Extractor implements the MemoryStore interface.
 var _ models.Extractor = &SummaryExtractor{}
 
 type SummaryExtractor struct {
-	models.BaseExtractor
+	BaseExtractor
 }
 
 // Extract gets a list of messages created since the last SummaryPoint,
@@ -33,13 +34,18 @@ func (se *SummaryExtractor) Extract(
 	appState *models.AppState,
 	messageEvent *models.MessageEvent,
 ) error {
+	sessionID := messageEvent.SessionID
+	sessionMutex := se.getSessionMutex(sessionID)
+	sessionMutex.Lock()
+	defer sessionMutex.Unlock()
+
 	if appState.Config.Memory.MessageWindow == 0 {
 		return NewExtractorError("SummaryExtractor message window is 0", nil)
 	}
 
 	// GetMemory will return the Messages up to the last SummaryPoint, which is the
 	// last message that was summarized, and last the Summary.
-	messagesSummary, err := appState.MemoryStore.GetMemory(ctx, appState, messageEvent.SessionID, 0)
+	messagesSummary, err := appState.MemoryStore.GetMemory(ctx, appState, sessionID, 0)
 	if err != nil {
 		return NewExtractorError("SummaryExtractor get memory failed", err)
 	}
@@ -63,7 +69,7 @@ func (se *SummaryExtractor) Extract(
 	err = appState.MemoryStore.PutSummary(
 		ctx,
 		appState,
-		messageEvent.SessionID,
+		sessionID,
 		newSummary,
 	)
 	if err != nil {

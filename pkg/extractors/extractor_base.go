@@ -2,6 +2,7 @@ package extractors
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/danielchalef/zep/internal"
 )
@@ -19,4 +20,14 @@ func (e *ExtractorError) Error() string {
 
 func NewExtractorError(message string, originalError error) *ExtractorError {
 	return &ExtractorError{message: message, originalError: originalError}
+}
+
+// BaseExtractor is the base implementation of an Extractor
+type BaseExtractor struct {
+	sessionMutexes sync.Map
+}
+
+func (b *BaseExtractor) getSessionMutex(sessionID string) *sync.Mutex {
+	mutexValue, _ := b.sessionMutexes.LoadOrStore(sessionID, &sync.Mutex{})
+	return mutexValue.(*sync.Mutex)
 }

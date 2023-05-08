@@ -1,10 +1,13 @@
 package config
 
 import (
+	"strings"
+
+	"github.com/danielchalef/zep/internal"
+
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"strings"
 )
 
 // We're bootstrapping so avoid any imports from other packages
@@ -60,5 +63,6 @@ func SetLogLevel(cfg *Config) {
 	if err != nil {
 		level = logrus.InfoLevel
 	}
-	log.SetLevel(level)
+	internal.SetLogLevel(level)
+	log.Info("Log level set to: ", level)
 }

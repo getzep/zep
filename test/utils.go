@@ -4,10 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"github.com/danielchalef/zep/config"
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/danielchalef/zep/config"
 )
 
 const TestDsn string = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"

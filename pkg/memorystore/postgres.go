@@ -4,6 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/oiime/logrusbun"
+
+	"github.com/sirupsen/logrus"
+
 	"github.com/danielchalef/zep/pkg/llms"
 	"github.com/danielchalef/zep/pkg/models"
 	"github.com/google/uuid"
@@ -12,9 +20,6 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
-	"runtime"
-	"strings"
-	"time"
 )
 
 // NewPostgresMemoryStore returns a new PostgresMemoryStore. Use this to correctly initialize the store.
@@ -22,7 +27,7 @@ func NewPostgresMemoryStore(
 	appState *models.AppState,
 	client *bun.DB,
 ) (*PostgresMemoryStore, error) {
-	pms := &PostgresMemoryStore{models.BaseMemoryStore[*bun.DB]{Client: client}}
+	pms := &PostgresMemoryStore{BaseMemoryStore[*bun.DB]{Client: client}}
 	err := pms.OnStart(context.Background(), appState)
 	if err != nil {
 		return nil, NewStorageError("failed to run OnInit", err)
@@ -56,16 +61,16 @@ type PgMessageStore struct {
 	// see https://blog.daveallie.com/ulid-primary-keys
 	UUID uuid.UUID `bun:",pk,type:uuid,default:gen_random_uuid()"`
 	// ID is used only for sorting / slicing purposes as we can't sort by CreatedAt for messages created simultaneously
-	ID        int64                  `bun:",autoincrement"`
-	CreatedAt time.Time              `bun:"type:timestamptz,notnull,default:current_timestamp"`
-	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
-	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
-	SessionID string                 `bun:",notnull"`
-	Role      string                 `bun:",notnull"`
-	Content   string                 `bun:",notnull"`
-	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero"`
-	Session   *PgSession             `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade"`
-	// TODO: Add TokenCount
+	ID         int64                  `bun:",autoincrement"`
+	CreatedAt  time.Time              `bun:"type:timestamptz,notnull,default:current_timestamp"`
+	UpdatedAt  time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
+	DeletedAt  time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
+	SessionID  string                 `bun:",notnull"`
+	Role       string                 `bun:",notnull"`
+	Content    string                 `bun:",notnull"`
+	TokenCount int                    `bun:",notnull"`
+	Metadata   map[string]interface{} `bun:"type:jsonb,nullzero"`
+	Session    *PgSession             `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade"`
 }
 
 func (s *PgMessageStore) BeforeCreateTable(
@@ -186,7 +191,7 @@ func (*PgSummaryStore) AfterCreateTable(
 var _ models.MemoryStore[*bun.DB] = &PostgresMemoryStore{}
 
 type PostgresMemoryStore struct {
-	models.BaseMemoryStore[*bun.DB]
+	BaseMemoryStore[*bun.DB]
 }
 
 func (pms *PostgresMemoryStore) OnStart(
@@ -262,7 +267,7 @@ func (pms *PostgresMemoryStore) PutMemory(
 	sessionID string,
 	memoryMessages *models.Memory,
 ) error {
-	_, err := putMessages(
+	messageResult, err := putMessages(
 		ctx,
 		pms.Client,
 		sessionID,
@@ -272,6 +277,14 @@ func (pms *PostgresMemoryStore) PutMemory(
 	if err != nil {
 		return NewStorageError("failed to put messages", err)
 	}
+
+	pms.NotifyExtractors(
+		context.Background(),
+		appState,
+		&models.MessageEvent{SessionID: sessionID,
+			Messages: messageResult},
+	)
+
 	return nil
 }
 
@@ -481,7 +494,10 @@ func getSession(
 	return &retSession, nil
 }
 
-// putMessages stores a new messages for a session.
+// putMessages stores a new or updates existing messages for a session. Existing
+// messages are determined by message UUID. Sessions are created if they do not
+// exist. We also create new PgMessageVectorStore records for each new message.
+// Embedding happens out of band.
 func putMessages(
 	ctx context.Context,
 	db *bun.DB,
@@ -501,11 +517,7 @@ func putMessages(
 	}
 
 	pgMessages := make([]PgMessageStore, len(messages))
-	err = copier.CopyWithOption(
-		&pgMessages,
-		&messages,
-		copier.Option{IgnoreEmpty: true, DeepCopy: true}, // TODO: check if this is needed
-	)
+	err = copier.Copy(&pgMessages, &messages)
 	if err != nil {
 		return nil, NewStorageError("failed to copy messages to pgMessages", err)
 	}
@@ -524,7 +536,7 @@ func putMessages(
 		_ = tx.Rollback()
 	}(tx)
 
-	_, err = tx.NewInsert().Model(&pgMessages).Exec(ctx)
+	_, err = tx.NewInsert().Model(&pgMessages).On("CONFLICT (uuid) DO UPDATE").Exec(ctx)
 	if err != nil {
 		return nil, NewStorageError("failed to save memories to store", err)
 	}
@@ -532,18 +544,29 @@ func putMessages(
 	// If embeddings are enabled, store the new messages for future embedding.
 	// The Embedded field will be false until we run the embedding extractor out of band.
 	if embeddingEnabled {
-		zeroVector := make([]float32, 1536) // TODO: use config
-		embedRecords := make([]PgMessageVectorStore, len(messages))
-		for i, msg := range pgMessages {
-			embedRecords[i] = PgMessageVectorStore{
-				SessionID:   sessionID,
-				MessageUUID: msg.UUID,
-				Embedding:   pgvector.NewVector(zeroVector), // Vector fields can't be null
+		zeroVector := make(
+			[]float32,
+			1536,
+		) // TODO: use config. will need to drill appState down to here
+
+		// Extract new messages. We use the original messages slice to filter
+		// out messages that already have UUIDs.
+		var embedRecords []PgMessageVectorStore
+		for i, msg := range messages {
+			if msg.UUID == uuid.Nil {
+				e := PgMessageVectorStore{
+					SessionID:   sessionID,
+					MessageUUID: pgMessages[i].UUID,
+					Embedding:   pgvector.NewVector(zeroVector), // Vector fields can't be null
+				}
+				embedRecords = append(embedRecords, e)
 			}
 		}
-		_, err = tx.NewInsert().Model(&embedRecords).On("CONFLICT DO NOTHING").Exec(ctx)
-		if err != nil {
-			return nil, NewStorageError("failed to save memory vector records", err)
+		if len(embedRecords) > 0 {
+			_, err = tx.NewInsert().Model(&embedRecords).Exec(ctx)
+			if err != nil {
+				return nil, NewStorageError("failed to save memory vector records", err)
+			}
 		}
 	}
 
@@ -686,12 +709,16 @@ func lastSummaryPointIndex(
 	configuredMessageWindow int,
 ) (int64, error) {
 	var messages []*PgMessageStore
+	// We need to retrieve twice as many messages as the configured message window to ensure we
+	// get the last SummaryPoint, with some buffer in case the configured message window is
+	// increased.
+	qLimit := configuredMessageWindow * 5
 	err := db.NewSelect().
 		Model(&messages).
 		Column("uuid", "id").
 		Where("session_id = ?", sessionID).
 		Order("id DESC").
-		Limit(configuredMessageWindow).
+		Limit(qLimit).
 		Scan(ctx)
 
 	if err != nil {
@@ -845,5 +872,14 @@ func NewPostgresConn(dsn string) *bun.DB {
 	sqldb.SetMaxOpenConns(maxOpenConns)
 	sqldb.SetMaxIdleConns(maxOpenConns)
 	db := bun.NewDB(sqldb, pgdialect.New())
+	db.AddQueryHook(logrusbun.NewQueryHook(logrusbun.QueryHookOptions{
+		LogSlow:         time.Second,
+		Logger:          log,
+		QueryLevel:      logrus.DebugLevel,
+		ErrorLevel:      logrus.ErrorLevel,
+		SlowLevel:       logrus.WarnLevel,
+		MessageTemplate: "{{.Operation}}[{{.Duration}}]: {{.Query}}",
+		ErrorTemplate:   "{{.Operation}}[{{.Duration}}]: {{.Query}}: {{.Error}}",
+	}))
 	return db
 }

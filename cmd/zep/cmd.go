@@ -1,9 +1,10 @@
 package cmd
 
 import (
+	"os"
+
 	"github.com/danielchalef/zep/internal"
 	"github.com/sirupsen/logrus"
-	"os"
 
 	"github.com/spf13/cobra"
 )

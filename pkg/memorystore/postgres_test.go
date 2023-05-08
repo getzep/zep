@@ -2,6 +2,14 @@ package memorystore
 
 import (
 	"fmt"
+	"math/rand"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/danielchalef/zep/internal"
+	"github.com/sirupsen/logrus"
+
 	"github.com/danielchalef/zep/pkg/llms"
 	"github.com/danielchalef/zep/pkg/models"
 	"github.com/danielchalef/zep/test"
@@ -10,47 +18,66 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
-	"math/rand"
-	"testing"
-	"time"
 
 	"context"
 )
 
+var testDB *bun.DB
+var testCtx context.Context
+
+func TestMain(m *testing.M) {
+	// Set log level to Debug for all tests in this package
+
+	setup()
+	exitCode := m.Run()
+	tearDown()
+
+	os.Exit(exitCode)
+}
+
+func setup() {
+	internal.SetLogLevel(logrus.DebugLevel)
+	// Initialize the database connection
+	testDB = NewPostgresConn(test.TestDsn)
+
+	// Initialize the test context
+	testCtx = context.Background()
+}
+
+func tearDown() {
+	// Close the database connection
+	if err := testDB.Close(); err != nil {
+		panic(err)
+	}
+	internal.SetLogLevel(logrus.InfoLevel)
+}
+
 // TODO: Add context deadlines to all tests
 func TestEnsurePostgresSchemaSetup(t *testing.T) {
-	ctx := context.Background()
-
-	db := NewPostgresConn(test.TestDsn)
-	defer db.Close()
-
-	CleanDB(t, db)
+	CleanDB(t, testDB)
 
 	t.Run("should succeed when all schema setup is successful", func(t *testing.T) {
-		err := ensurePostgresSetup(ctx, db)
+		err := ensurePostgresSetup(testCtx, testDB)
 		assert.NoError(t, err)
 
-		checkForTable(t, db, &PgSession{})
-		checkForTable(t, db, &PgMessageStore{})
-		checkForTable(t, db, &PgSummaryStore{})
-		checkForTable(t, db, &PgMessageVectorStore{})
+		checkForTable(t, testDB, &PgSession{})
+		checkForTable(t, testDB, &PgMessageStore{})
+		checkForTable(t, testDB, &PgSummaryStore{})
+		checkForTable(t, testDB, &PgMessageVectorStore{})
 	})
 	t.Run("should not fail on second run", func(t *testing.T) {
-		err := ensurePostgresSetup(ctx, db)
+		err := ensurePostgresSetup(testCtx, testDB)
 		assert.NoError(t, err)
 	})
 }
 
 func TestPutSession(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	testCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	db := NewPostgresConn(test.TestDsn)
-	defer db.Close()
+	CleanDB(t, testDB)
 
-	CleanDB(t, db)
-
-	err := ensurePostgresSetup(ctx, db)
+	err := ensurePostgresSetup(testCtx, testDB)
 	assert.NoError(t, err)
 
 	tests := []struct {
@@ -91,7 +118,7 @@ func TestPutSession(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := putSession(ctx, db, tt.sessionID, tt.metadata)
+			result, err := putSession(testCtx, testDB, tt.sessionID, tt.metadata)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -112,15 +139,12 @@ func TestPutSession(t *testing.T) {
 }
 
 func TestGetSession(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	testCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	db := NewPostgresConn(test.TestDsn)
-	defer db.Close()
+	CleanDB(t, testDB)
 
-	CleanDB(t, db)
-
-	err := ensurePostgresSetup(ctx, db)
+	err := ensurePostgresSetup(testCtx, testDB)
 	assert.NoError(t, err)
 
 	// Create a test session
@@ -128,7 +152,7 @@ func TestGetSession(t *testing.T) {
 	metadata := map[string]interface{}{
 		"key": "value",
 	}
-	_, err = putSession(ctx, db, sessionID, metadata)
+	_, err = putSession(testCtx, testDB, sessionID, metadata)
 	assert.NoError(t, err)
 
 	tests := []struct {
@@ -151,7 +175,7 @@ func TestGetSession(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := getSession(ctx, db, tt.sessionID)
+			result, err := getSession(testCtx, testDB, tt.sessionID)
 			assert.NoError(t, err)
 
 			if tt.expectedFound {
@@ -171,21 +195,16 @@ func TestPgDeleteSession(t *testing.T) {
 	memoryWindow := 10
 	viper.Set("memory.message_window", memoryWindow)
 
-	ctx := context.Background()
+	CleanDB(t, testDB)
 
-	db := NewPostgresConn(test.TestDsn)
-	defer db.Close()
-
-	CleanDB(t, db)
-
-	err := ensurePostgresSetup(ctx, db)
+	err := ensurePostgresSetup(testCtx, testDB)
 	assert.NoError(t, err)
 
 	// Test data
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
-	_, err = putSession(ctx, db, sessionID, map[string]interface{}{})
+	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
 	assert.NoError(t, err, "putSession should not return an error")
 
 	messages := []models.Message{
@@ -202,7 +221,7 @@ func TestPgDeleteSession(t *testing.T) {
 	}
 
 	// Call putMessages function
-	resultMessages, err := putMessages(ctx, db, sessionID, true, messages)
+	resultMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	// Put a summary
@@ -213,45 +232,39 @@ func TestPgDeleteSession(t *testing.T) {
 		},
 		SummaryPointUUID: resultMessages[0].UUID,
 	}
-	_, err = putSummary(ctx, db, sessionID, &summary)
+	_, err = putSummary(testCtx, testDB, sessionID, &summary)
 	assert.NoError(t, err, "putSummary should not return an error")
 
-	err = deleteSession(ctx, db, sessionID)
+	err = deleteSession(testCtx, testDB, sessionID)
 	assert.NoError(t, err, "deleteSession should not return an error")
 
 	// Test that session is deleted
-	resp, err := getSession(ctx, db, sessionID)
+	resp, err := getSession(testCtx, testDB, sessionID)
 	assert.NoError(t, err, "getSession should not return an error")
 	assert.Nil(t, resp, "getSession should return nil")
 
 	// Test that messages are deleted
-	respMessages, err := getMessages(ctx, db, sessionID, memoryWindow, 10)
+	respMessages, err := getMessages(testCtx, testDB, sessionID, memoryWindow, 10)
 	assert.NoError(t, err, "getMessages should not return an error")
 	assert.Nil(t, respMessages, "getMessages should return nil")
 
 	// Test that summary is deleted
-	respSummary, err := getSummary(ctx, db, sessionID)
+	respSummary, err := getSummary(testCtx, testDB, sessionID)
 	assert.NoError(t, err, "getSummary should not return an error")
 	assert.Nil(t, respSummary, "getSummary should return nil")
 }
 
 func TestPutMessages(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
+	CleanDB(t, testDB)
 
-	db := NewPostgresConn(test.TestDsn)
-	defer db.Close()
-
-	CleanDB(t, db)
-
-	err := ensurePostgresSetup(ctx, db)
+	err := ensurePostgresSetup(testCtx, testDB)
 	assert.NoError(t, err)
 
 	// Test data
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
-	_, err = putSession(ctx, db, sessionID, map[string]interface{}{})
+	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
 	assert.NoError(t, err, "putSession should not return an error")
 
 	messages := []models.Message{
@@ -270,75 +283,100 @@ func TestPutMessages(t *testing.T) {
 	// Force embedding to be enabled
 	viper.Set("extractor.embeddings.enabled", true)
 
-	// Call putMessages function
-	resultMessages, err := putMessages(ctx, db, sessionID, true, messages)
-	assert.NoError(t, err, "putMessages should not return an error")
+	t.Run("insert messages", func(t *testing.T) {
+		resultMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
+		assert.NoError(t, err, "putMessages should not return an error")
 
-	// Query the database and verify the inserted messages
+		// Verify the inserted messages in the database
+		verifyMessagesInDB(t, testCtx, testDB, sessionID, messages, resultMessages)
+	})
+
+	t.Run("upsert messages with updated TokenCount", func(t *testing.T) {
+		// get messages with UUIDs
+		messages, err := getMessages(testCtx, testDB, sessionID, 10, 0)
+		assert.NoError(t, err, "putMessages should not return an error")
+		// Update TokenCount values for the returned messages
+		for i := range messages {
+			messages[i].TokenCount = i + 1
+		}
+
+		// Call putMessages function to upsert the messages
+		resultMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
+		assert.NoError(t, err, "putMessages should not return an error")
+
+		// Verify the upserted messages in the database
+		verifyMessagesInDB(t, testCtx, testDB, sessionID, messages, resultMessages)
+	})
+}
+
+func verifyMessagesInDB(
+	t *testing.T,
+	testCtx context.Context,
+	testDB *bun.DB,
+	sessionID string,
+	expectedMessages,
+	resultMessages []models.Message,
+) {
 	var pgMessages []PgMessageStore
-	err = db.NewSelect().
+	err := testDB.NewSelect().
 		Model(&pgMessages).
 		Where("session_id = ?", sessionID).
 		Order("created_at ASC").
-		Scan(ctx)
+		Scan(testCtx)
 	assert.NoError(t, err, "Database query should not return an error")
 
-	assert.Equal(t, len(messages), len(pgMessages), "Expected number of messages to be equal")
+	assert.Equal(
+		t,
+		len(expectedMessages),
+		len(pgMessages),
+		"Expected number of messages to be equal",
+	)
 	for i, pgMsg := range pgMessages {
 		assert.Equal(t, sessionID, pgMsg.SessionID, "Expected sessionID to be equal")
 		assert.Equal(
 			t,
-			messages[i].Role,
+			expectedMessages[i].Role,
 			pgMsg.Role,
 			"Expected message role to be equal",
 		)
 		assert.Equal(
 			t,
-			messages[i].Content,
+			expectedMessages[i].Content,
 			pgMsg.Content,
 			"Expected message content to be equal",
 		)
 	}
 
-	assert.Equal(t, len(messages), len(resultMessages), "Expected number of messages to be equal")
+	assert.Equal(
+		t,
+		len(expectedMessages),
+		len(resultMessages),
+		"Expected number of messages to be equal",
+	)
 	for i, msg := range resultMessages {
 		assert.NotEmpty(t, msg.UUID)
 		assert.False(t, msg.CreatedAt.IsZero())
-		assert.Equal(t, messages[i].Role, msg.Role, "Expected message role to be equal")
-		assert.Equal(t, messages[i].Content, msg.Content, "Expected message content to be equal")
-		assert.Equal(t, messages[i].Metadata, msg.Metadata, "Expected metadata to be equal")
-	}
-
-	// Check for the creation of PgMessageVectorStore values
-	var pgMemoryVectorStores []PgMessageVectorStore
-	err = db.NewSelect().
-		Model(&pgMemoryVectorStores).
-		Where("session_id = ?", sessionID).
-		Order("uuid ASC").
-		Scan(ctx)
-	assert.NoError(t, err, "Database query should not return an error")
-
-	assert.Equal(
-		t,
-		len(messages),
-		len(pgMemoryVectorStores),
-		"Expected number of memory vector records to be equal",
-	)
-	for _, pgMemoryVectorStore := range pgMemoryVectorStores {
-		assert.Equal(t, sessionID, pgMemoryVectorStore.SessionID, "Expected sessionID to be equal")
-		assert.Equal(t, false, pgMemoryVectorStore.IsEmbedded, "Expected IsEmbedded to be false")
+		assert.Equal(t, expectedMessages[i].Role, msg.Role, "Expected message role to be equal")
+		assert.Equal(
+			t,
+			expectedMessages[i].Content,
+			msg.Content,
+			"Expected message content to be equal",
+		)
+		assert.Equal(t, expectedMessages[i].Metadata, msg.Metadata, "Expected metadata to be equal")
+		assert.Equal(
+			t,
+			expectedMessages[i].TokenCount,
+			msg.TokenCount,
+			"Expected TokenCount to be equal",
+		)
 	}
 }
 
 func TestGetMessages(t *testing.T) {
-	ctx := context.Background()
+	CleanDB(t, testDB)
 
-	db := NewPostgresConn(test.TestDsn)
-	defer db.Close()
-
-	CleanDB(t, db)
-
-	err := ensurePostgresSetup(ctx, db)
+	err := ensurePostgresSetup(testCtx, testDB)
 	assert.NoError(t, err)
 
 	// Create a test session
@@ -346,10 +384,10 @@ func TestGetMessages(t *testing.T) {
 	metadata := map[string]interface{}{
 		"key": "value",
 	}
-	_, err = putSession(ctx, db, sessionID, metadata)
+	_, err = putSession(testCtx, testDB, sessionID, metadata)
 	assert.NoError(t, err)
 
-	messages, err := putMessages(ctx, db, sessionID, true, test.TestMessages)
+	messages, err := putMessages(testCtx, testDB, sessionID, true, test.TestMessages)
 	assert.NoError(t, err)
 
 	// Explicitly set the message window to 10
@@ -398,11 +436,22 @@ func TestGetMessages(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.withSummary {
 				// Create a summary using the test messages. The SummaryPointUUID should be at messageWindow - 2
-				_, err = putSummary(ctx, db, sessionID, &models.Summary{Content: "Test summary",
-					SummaryPointUUID: messages[summaryPointIndex].UUID})
+				_, err = putSummary(
+					testCtx,
+					testDB,
+					sessionID,
+					&models.Summary{Content: "Test summary",
+						SummaryPointUUID: messages[summaryPointIndex].UUID},
+				)
 				assert.NoError(t, err)
 			}
-			result, err := getMessages(ctx, db, tt.sessionID, messageWindow, tt.lastNMessages)
+			result, err := getMessages(
+				testCtx,
+				testDB,
+				tt.sessionID,
+				messageWindow,
+				tt.lastNMessages,
+			)
 			assert.NoError(t, err)
 
 			if tt.expectedLength > 0 {
@@ -426,15 +475,12 @@ func TestGetMessageVectorsWhereIsEmbeddedFalse(t *testing.T) {
 	// Force embedding to be enabled
 	viper.Set("extractor.embeddings.enabled", true)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	testCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	db := NewPostgresConn(test.TestDsn)
-	defer db.Close()
+	CleanDB(t, testDB)
 
-	CleanDB(t, db)
-
-	err := ensurePostgresSetup(ctx, db)
+	err := ensurePostgresSetup(testCtx, testDB)
 	assert.NoError(t, err)
 
 	// Create a test session
@@ -442,7 +488,7 @@ func TestGetMessageVectorsWhereIsEmbeddedFalse(t *testing.T) {
 	metadata := map[string]interface{}{
 		"key": "value",
 	}
-	_, err = putSession(ctx, db, sessionID, metadata)
+	_, err = putSession(testCtx, testDB, sessionID, metadata)
 	assert.NoError(t, err)
 
 	messages := []models.Message{
@@ -458,11 +504,11 @@ func TestGetMessageVectorsWhereIsEmbeddedFalse(t *testing.T) {
 		},
 	}
 
-	addedMessages, err := putMessages(ctx, db, sessionID, true, messages)
+	addedMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
 	assert.NoError(t, err)
 
 	// getMessageVectors only for isEmbedded = false
-	embeddings, err := getMessageVectors(ctx, db, sessionID, false)
+	embeddings, err := getMessageVectors(testCtx, testDB, sessionID, false)
 	assert.NoError(t, err)
 	assert.Equal(t, len(messages), len(embeddings))
 
@@ -474,20 +520,17 @@ func TestGetMessageVectorsWhereIsEmbeddedFalse(t *testing.T) {
 }
 
 func TestPutSummary(t *testing.T) {
-	ctx := context.Background()
-	db := NewPostgresConn(test.TestDsn)
-	defer db.Close()
 
-	CleanDB(t, db)
+	CleanDB(t, testDB)
 
-	err := ensurePostgresSetup(ctx, db)
+	err := ensurePostgresSetup(testCtx, testDB)
 	assert.NoError(t, err)
 
 	// Test data
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
-	_, err = putSession(ctx, db, sessionID, map[string]interface{}{})
+	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
 	assert.NoError(t, err, "putSession should not return an error")
 
 	messages := []models.Message{
@@ -504,7 +547,7 @@ func TestPutSummary(t *testing.T) {
 	}
 
 	// Call putMessages function
-	resultMessages, err := putMessages(ctx, db, sessionID, true, messages)
+	resultMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	tests := []struct {
@@ -547,8 +590,8 @@ func TestPutSummary(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resultSummary, err := putSummary(
-				ctx,
-				db,
+				testCtx,
+				testDB,
 				tt.sessionID,
 				&tt.summary,
 			)
@@ -572,15 +615,12 @@ func TestPutSummary(t *testing.T) {
 }
 
 func TestGetSummary(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	testCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	db := NewPostgresConn(test.TestDsn)
-	defer db.Close()
+	CleanDB(t, testDB)
 
-	CleanDB(t, db)
-
-	err := ensurePostgresSetup(ctx, db)
+	err := ensurePostgresSetup(testCtx, testDB)
 	assert.NoError(t, err)
 
 	// Create a test session
@@ -588,7 +628,7 @@ func TestGetSummary(t *testing.T) {
 	metadata := map[string]interface{}{
 		"key": "value",
 	}
-	_, err = putSession(ctx, db, sessionID, metadata)
+	_, err = putSession(testCtx, testDB, sessionID, metadata)
 	assert.NoError(t, err)
 
 	summary := models.Summary{
@@ -618,15 +658,15 @@ func TestGetSummary(t *testing.T) {
 	}
 
 	// Call putMessages function
-	resultMessages, err := putMessages(ctx, db, sessionID, true, messages)
+	resultMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	summary.SummaryPointUUID = resultMessages[0].UUID
-	_, err = putSummary(ctx, db, sessionID, &summary)
+	_, err = putSummary(testCtx, testDB, sessionID, &summary)
 	assert.NoError(t, err, "putSummary should not return an error")
 
 	summaryTwo.SummaryPointUUID = resultMessages[1].UUID
-	putSummaryResultTwo, err := putSummary(ctx, db, sessionID, &summaryTwo)
+	putSummaryResultTwo, err := putSummary(testCtx, testDB, sessionID, &summaryTwo)
 	assert.NoError(t, err, "putSummary2 should not return an error")
 
 	tests := []struct {
@@ -649,7 +689,7 @@ func TestGetSummary(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := getSummary(ctx, db, tt.sessionID)
+			result, err := getSummary(testCtx, testDB, tt.sessionID)
 			assert.NoError(t, err)
 
 			if tt.expectedFound {
@@ -668,21 +708,17 @@ func TestGetSummary(t *testing.T) {
 
 func TestPutEmbeddings(t *testing.T) {
 	viper.Set("memory.message_window", 10)
-	ctx := context.Background()
 
-	db := NewPostgresConn(test.TestDsn)
-	defer db.Close()
+	CleanDB(t, testDB)
 
-	CleanDB(t, db)
-
-	err := ensurePostgresSetup(ctx, db)
+	err := ensurePostgresSetup(testCtx, testDB)
 	assert.NoError(t, err)
 
 	// Create a test session
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
-	_, err = putSession(ctx, db, sessionID, map[string]interface{}{})
+	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
 	assert.NoError(t, err, "putSession should not return an error")
 
 	messages := []models.Message{
@@ -697,7 +733,7 @@ func TestPutEmbeddings(t *testing.T) {
 	viper.Set("extractor.embeddings.enabled", true)
 
 	// Call putMessages function
-	resultMessages, err := putMessages(ctx, db, sessionID, true, messages)
+	resultMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	vector := make([]float32, 1536)
@@ -716,16 +752,16 @@ func TestPutEmbeddings(t *testing.T) {
 		},
 	}
 
-	err = putEmbeddings(ctx, db, sessionID, embeddings, true)
+	err = putEmbeddings(testCtx, testDB, sessionID, embeddings, true)
 	assert.NoError(t, err, "putEmbeddings should not return an error")
 
 	// Check for the creation of PgMessageVectorStore values
 	var pgMemoryVectorStores []PgMessageVectorStore
-	err = db.NewSelect().
+	err = testDB.NewSelect().
 		Model(&pgMemoryVectorStores).
 		Where("session_id = ?", sessionID).
 		Order("uuid ASC").
-		Scan(ctx)
+		Scan(testCtx)
 	assert.NoError(t, err)
 
 	assert.Equal(
@@ -754,26 +790,23 @@ func TestPutEmbeddings(t *testing.T) {
 }
 
 func TestLastSummaryPointIndex(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	testCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	db := NewPostgresConn(test.TestDsn)
-	defer db.Close()
+	CleanDB(t, testDB)
 
-	CleanDB(t, db)
-
-	err := ensurePostgresSetup(ctx, db)
+	err := ensurePostgresSetup(testCtx, testDB)
 	assert.NoError(t, err)
 
 	// Test data
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
-	_, err = putSession(ctx, db, sessionID, map[string]interface{}{})
+	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
 	assert.NoError(t, err, "putSession should not return an error")
 
 	// Call putMessages function using internal.TestMessages
-	resultMessages, err := putMessages(ctx, db, sessionID, true, test.TestMessages)
+	resultMessages, err := putMessages(testCtx, testDB, sessionID, true, test.TestMessages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	configuredMessageWindow := 30
@@ -807,8 +840,8 @@ func TestLastSummaryPointIndex(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resultIndex, err := lastSummaryPointIndex(
-				ctx,
-				db,
+				testCtx,
+				testDB,
 				tt.sessionID,
 				tt.summaryPointUUID,
 				tt.configuredMessageWindow,
@@ -830,10 +863,6 @@ func TestLastSummaryPointIndex(t *testing.T) {
 }
 
 func TestSearch(t *testing.T) {
-	ctx := context.Background()
-
-	db := NewPostgresConn(test.TestDsn)
-	defer db.Close()
 
 	cfg, err := test.NewTestConfig()
 	assert.NoError(t, err)
@@ -842,9 +871,9 @@ func TestSearch(t *testing.T) {
 	appState.OpenAIClient = llms.CreateOpenAIClient(cfg)
 	appState.Config = cfg
 
-	CleanDB(t, db)
+	CleanDB(t, testDB)
 
-	err = ensurePostgresSetup(ctx, db)
+	err = ensurePostgresSetup(testCtx, testDB)
 	assert.NoError(t, err)
 
 	// Test data
@@ -855,7 +884,7 @@ func TestSearch(t *testing.T) {
 	viper.Set("extractor.embeddings.enabled", true)
 
 	// Call putMessages function
-	_, err = putMessages(ctx, db, sessionID, true, test.TestMessages)
+	_, err = putMessages(testCtx, testDB, sessionID, true, test.TestMessages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	// Test cases
@@ -879,7 +908,7 @@ func TestSearch(t *testing.T) {
 				expectedLastN = 10 // Default value
 			}
 
-			s, err := searchMessages(ctx, appState, db, sessionID, &q, expectedLastN)
+			s, err := searchMessages(testCtx, appState, testDB, sessionID, &q, expectedLastN)
 
 			if tc.expectedErrorText != "" {
 				assert.ErrorContains(
@@ -903,7 +932,7 @@ func TestSearch(t *testing.T) {
 	}
 }
 
-func checkForTable(t *testing.T, db *bun.DB, schema interface{}) {
-	_, err := db.NewSelect().Model(schema).Limit(0).Exec(context.Background())
+func checkForTable(t *testing.T, testDB *bun.DB, schema interface{}) {
+	_, err := testDB.NewSelect().Model(schema).Limit(0).Exec(context.Background())
 	require.NoError(t, err)
 }

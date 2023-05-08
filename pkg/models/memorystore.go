@@ -2,7 +2,6 @@ package models
 
 import (
 	"context"
-	"google.golang.org/appengine/log"
 )
 
 // MemoryStore interface
@@ -70,32 +69,4 @@ type MemoryStore[T any] interface {
 	// Close is called when the application is shutting down. This is a good place to clean up any resources used by
 	// the MemoryStore implementation.
 	Close() error
-}
-
-// BaseMemoryStore is the base implementation of a MemoryStore. Client is the underlying datastore client, such as a
-// database connection. The extractorObservers slice is used to store all registered Extractors.
-type BaseMemoryStore[T any] struct {
-	Client             T
-	extractorObservers []Extractor
-}
-
-// Attach registers an Extractor to the MemoryStore
-func (s *BaseMemoryStore[T]) Attach(observer Extractor) {
-	s.extractorObservers = append(s.extractorObservers, observer)
-}
-
-// NotifyExtractors notifies all registered Extractors of a new MessageEvent
-func (s *BaseMemoryStore[T]) NotifyExtractors(
-	ctx context.Context,
-	appState *AppState,
-	eventData *MessageEvent,
-) {
-	for _, observer := range s.extractorObservers {
-		go func(obs Extractor) {
-			err := obs.Notify(ctx, appState, eventData)
-			if err != nil {
-				log.Errorf(ctx, "BaseMemoryStore NotifyExtractors failed: %v", err)
-			}
-		}(observer)
-	}
 }

@@ -2,15 +2,14 @@ package extractors
 
 import (
 	"context"
+	"testing"
+
 	"github.com/danielchalef/zep/pkg/llms"
 	"github.com/danielchalef/zep/pkg/memorystore"
 	"github.com/danielchalef/zep/pkg/models"
 	"github.com/danielchalef/zep/test"
-	"github.com/google/uuid"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 func TestEmbeddingExtractor_Extract(t *testing.T) {
@@ -35,27 +34,31 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	// for the vectorstore records
 	nilVector := make([]float32, 1536)
 
-	// Create messageEvent with sample data
-	messageEvent := &models.MessageEvent{
-		SessionID: "test_session",
-		Messages: []models.Message{
-			{
-				UUID:       uuid.New(),
-				CreatedAt:  time.Now(),
-				Role:       "user",
-				Content:    "Test message",
-				TokenCount: 3,
-			},
-		},
-	}
+	sessionID, err := test.GenerateRandomSessionID(16)
+	assert.NoError(t, err)
 
-	memoryMessages := &models.Memory{
-		Messages: messageEvent.Messages,
-	}
+	testMessages := test.TestMessages[:5]
 
 	// Add new messages using appState.MemoryStore.PutMemory
-	err = store.PutMemory(ctx, appState, messageEvent.SessionID, memoryMessages)
+	err = store.PutMemory(ctx, appState, sessionID, &models.Memory{Messages: testMessages})
 	assert.NoError(t, err)
+
+	// Get messages that are missing embeddings using appState.MemoryStore.GetMessageVectors
+	unembeddedMessages, err := store.GetMessageVectors(ctx, appState, sessionID, false)
+	assert.NoError(t, err)
+	assert.True(t, len(unembeddedMessages) == len(testMessages))
+
+	expectedMessages := make([]models.Message, len(testMessages))
+	for i, m := range testMessages {
+		expectedMessages[i] = m
+		expectedMessages[i].UUID = unembeddedMessages[i].TextUUID
+	}
+
+	// Create messageEvent with sample data
+	messageEvent := &models.MessageEvent{
+		SessionID: sessionID,
+		Messages:  expectedMessages,
+	}
 
 	embeddingExtractor := NewEmbeddingExtractor()
 	err = embeddingExtractor.Extract(ctx, appState, messageEvent)

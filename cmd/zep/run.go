@@ -2,15 +2,16 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/danielchalef/zep/config"
 	"github.com/danielchalef/zep/pkg/extractors"
 	"github.com/danielchalef/zep/pkg/llms"
 	"github.com/danielchalef/zep/pkg/memorystore"
 	"github.com/danielchalef/zep/pkg/models"
 	"github.com/danielchalef/zep/pkg/server"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
 const (

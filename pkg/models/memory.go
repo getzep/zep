@@ -1,8 +1,9 @@
 package models
 
 import (
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Message struct {

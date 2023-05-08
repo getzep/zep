@@ -2,9 +2,10 @@ package memorystore
 
 import (
 	"context"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
-	"testing"
 )
 
 func CleanDB(t *testing.T, db *bun.DB) {

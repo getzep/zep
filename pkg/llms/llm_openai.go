@@ -2,13 +2,14 @@ package llms
 
 import (
 	"context"
+
 	"github.com/danielchalef/zep/config"
 	"github.com/danielchalef/zep/pkg/models"
 	"github.com/pkoukk/tiktoken-go"
 	"github.com/sashabaranov/go-openai"
 )
 
-const OpenAIAPIKeyNotSetError = "ZEP_OPENAI_API_KEY is not set"
+const OpenAIAPIKeyNotSetError = "ZEP_OPENAI_API_KEY is not set" //nolint:gosec
 const InvalidLLMModelError = "llm model is not set or is invalid"
 
 func CreateOpenAIClient(cfg *config.Config) *openai.Client {

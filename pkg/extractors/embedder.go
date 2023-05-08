@@ -3,15 +3,16 @@ package extractors
 import (
 	"context"
 	"fmt"
+
 	"github.com/danielchalef/zep/pkg/llms"
 	"github.com/danielchalef/zep/pkg/models"
 )
 
-// Force compiler to validate that RedisMemoryStore implements the MemoryStore interface.
+// Force compiler to validate that Extractor implements the MemoryStore interface.
 var _ models.Extractor = &EmbeddingExtractor{}
 
 type EmbeddingExtractor struct {
-	models.BaseExtractor
+	BaseExtractor
 }
 
 func (ee *EmbeddingExtractor) Extract(
@@ -19,6 +20,11 @@ func (ee *EmbeddingExtractor) Extract(
 	appState *models.AppState,
 	messageEvent *models.MessageEvent,
 ) error {
+	sessionID := messageEvent.SessionID
+	sessionMutex := ee.getSessionMutex(sessionID)
+	sessionMutex.Lock()
+	defer sessionMutex.Unlock()
+
 	unembeddedMessages, err := appState.MemoryStore.GetMessageVectors(
 		ctx,
 		appState,

@@ -28,12 +28,8 @@ clean: ## Remove build related file
 	rm -f $(BINARY_NAME)
 	rm -f ./junit-report.xml checkstyle-report.xml ./coverage.xml ./profile.cov yamllint-checkstyle.xml
 
-watch: ## Run the code with cosmtrek/air to have automatic reload on changes
-	$(eval PACKAGE_NAME=$(shell head -n 1 go.mod | cut -d ' ' -f2))
-	docker run -it --rm -w /go/src/$(PACKAGE_NAME) -v $(shell pwd):/go/src/$(PACKAGE_NAME) -p $(SERVICE_PORT):$(SERVICE_PORT) cosmtrek/air
-
 ## Test:
-test: ## Run the tests of the project
+test: ## Run project tests
 ifeq ($(EXPORT_RESULT), true)
 	GO111MODULE=off go get -u github.com/jstemmer/go-junit-report
 	$(eval OUTPUT_OPTIONS = | tee /dev/tty | go-junit-report -set-exit-code > junit-report.xml)
@@ -51,8 +47,8 @@ endif
 
 ## Lint:
 lint:
-	docker run --rm -v $(shell pwd):/app -w /app golangci/golangci-lint:latest-alpine golangci-lint run --deadline=65s
-
+	#docker run --rm -v $(shell pwd):/app -w /app golangci/golangci-lint:latest-alpine golangci-lint run --deadline=65s
+	golangci-lint run --deadline=90s --sort-results -c golangci.yaml
 ## Docker:
 docker-build: ## Use the dockerfile to build the container
 	DOCKER_BUILDKIT=1 docker build --rm --tag $(BINARY_NAME) .

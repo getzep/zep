@@ -1,12 +1,12 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/go-chi/chi/v5"
 	"net/http"
 	"strconv"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/danielchalef/zep/internal"
 	"github.com/danielchalef/zep/pkg/models"
@@ -14,18 +14,21 @@ import (
 
 var log = internal.GetLogger()
 
+const OKResponse = "OK"
+
 // GetMemoryHandler godoc
-// @Summary      Returns a memory (latest summary and list of messages) for a given session
-// @Description  get memory by session id
-// @Tags         memory
-// @Accept       json
-// @Produce      json
-// @Param        session_id   path      string  true  "Session ID"
-// @Param        lastn    query     integer  false  "Last N messages. Overrides memory_window configuration"
-// @Success      200  {object}  []models.Memory
-// @Failure      404  {object}  APIError "Not Found"
-// @Failure      500  {object}  APIError "Internal Server Error"
-// @Router       /api/v1/sessions/{sessionId}/memory [get]
+//
+//	@Summary		Returns a memory (latest summary and list of messages) for a given session
+//	@Description	get memory by session id
+//	@Tags			memory
+//	@Accept			json
+//	@Produce		json
+//	@Param			session_id	path		string	true	"Session ID"
+//	@Param			lastn		query		integer	false	"Last N messages. Overrides memory_window configuration"
+//	@Success		200			{object}	[]models.Memory
+//	@Failure		404			{object}	APIError	"Not Found"
+//	@Failure		500			{object}	APIError	"Internal Server Error"
+//	@Router			/api/v1/sessions/{sessionId}/memory [get]
 func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
@@ -54,17 +57,18 @@ func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 }
 
 // PostMemoryHandler godoc
-// @Summary      Add memory messages to a given session
-// @Description  add memory messages by session id
-// @Tags         memory
-// @Accept       json
-// @Produce      json
-// @Param        session_id   path      string  true  "Session ID"
-// @Param        memoryMessages   body    models.Memory   true  "Memory messages"
-// @Success      200  {string}  string "OK"
-// @Failure      404  {object}  APIError "Not Found"
-// @Failure      500  {object}  APIError "Internal Server Error"
-// @Router       /api/v1/sessions/{sessionId}/memory [post]
+//
+//	@Summary		Add memory messages to a given session
+//	@Description	add memory messages by session id
+//	@Tags			memory
+//	@Accept			json
+//	@Produce		json
+//	@Param			session_id		path		string			true	"Session ID"
+//	@Param			memoryMessages	body		models.Memory	true	"Memory messages"
+//	@Success		200				{string}	string			"OK"
+//	@Failure		404				{object}	APIError		"Not Found"
+//	@Failure		500				{object}	APIError		"Internal Server Error"
+//	@Router			/api/v1/sessions/{sessionId}/memory [post]
 func PostMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
@@ -83,27 +87,22 @@ func PostMemoryHandler(appState *models.AppState) http.HandlerFunc {
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
-
-		appState.MemoryStore.NotifyExtractors(
-			context.Background(),
-			appState,
-			&models.MessageEvent{SessionID: sessionID,
-				Messages: memoryMessages.Messages},
-		)
+		_, _ = w.Write([]byte(OKResponse))
 	}
 }
 
 // DeleteMemoryHandler godoc
-// @Summary      Delete memory messages for a given session
-// @Description  delete memory messages by session id
-// @Tags         memory
-// @Accept       json
-// @Produce      json
-// @Param        session_id   path      string  true  "Session ID"
-// @Success      200  {string}  string "OK"
-// @Failure      404  {object}  APIError "Not Found"
-// @Failure      500  {object}  APIError "Internal Server Error"
-// @Router       /api/v1/sessions/{sessionId}/memory [delete]
+//
+//	@Summary		Delete memory messages for a given session
+//	@Description	delete memory messages by session id
+//	@Tags			memory
+//	@Accept			json
+//	@Produce		json
+//	@Param			session_id	path		string		true	"Session ID"
+//	@Success		200			{string}	string		"OK"
+//	@Failure		404			{object}	APIError	"Not Found"
+//	@Failure		500			{object}	APIError	"Internal Server Error"
+//	@Router			/api/v1/sessions/{sessionId}/memory [delete]
 func DeleteMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
@@ -112,22 +111,24 @@ func DeleteMemoryHandler(appState *models.AppState) http.HandlerFunc {
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
+		_, _ = w.Write([]byte(OKResponse))
 	}
 }
 
 // RunSearchHandler godoc
-// @Summary      Search memory messages for a given session
-// @Description  search memory messages by session id and query
-// @Tags         search
-// @Accept       json
-// @Produce      json
-// @Param        session_id   path      string  true  "Session ID"
-// @Param        limit   query     integer  false  "Limit the number of results returned"
-// @Param        searchPayload   body    models.SearchPayload   true  "Search query"
-// @Success      200  {object}  []models.SearchResult
-// @Failure      404  {object}  APIError "Not Found"
-// @Failure      500  {object}  APIError "Internal Server Error"
-// @Router       /api/v1/sessions/{sessionId}/search [post]
+//
+//	@Summary		Search memory messages for a given session
+//	@Description	search memory messages by session id and query
+//	@Tags			search
+//	@Accept			json
+//	@Produce		json
+//	@Param			session_id		path		string					true	"Session ID"
+//	@Param			limit			query		integer					false	"Limit the number of results returned"
+//	@Param			searchPayload	body		models.SearchPayload	true	"Search query"
+//	@Success		200				{object}	[]models.SearchResult
+//	@Failure		404				{object}	APIError	"Not Found"
+//	@Failure		500				{object}	APIError	"Internal Server Error"
+//	@Router			/api/v1/sessions/{sessionId}/search [post]
 func RunSearchHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
