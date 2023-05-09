@@ -33,8 +33,8 @@ func Create(appState *models.AppState) *http.Server {
 //	@license.name	Apache 2.0
 //	@license.url	http://www.apache.org/licenses/LICENSE-2.0.html
 
-//	@BasePath	/apt/v1
-//	@schemes	http https
+// @BasePath	/apt/v1
+// @schemes	http https
 func setupRouter(appState *models.AppState) *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(httpLogger.Logger("router", log))
