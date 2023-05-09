@@ -5,8 +5,8 @@
     ],
     "swagger": "2.0",
     "info": {
-        "description": "zep stores, manages, enriches, and searches long-term memory for conversational AI applications",
-        "title": "zep Long-term Memory API",
+        "description": "Zep stores, manages, enriches, and searches long-term memory for conversational AI applications",
+        "title": "Zep Long-term Memory API",
         "contact": {},
         "license": {
             "name": "Apache 2.0",

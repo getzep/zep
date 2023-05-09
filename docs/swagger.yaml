@@ -78,12 +78,12 @@ definitions:
     type: object
 info:
   contact: {}
-  description: zep stores, manages, enriches, and searches long-term memory for conversational
+  description: Zep stores, manages, enriches, and searches long-term memory for conversational
     AI applications
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
-  title: zep Long-term Memory API
+  title: Zep Long-term Memory API
 paths:
   /api/v1/sessions/{sessionId}/memory:
     delete:

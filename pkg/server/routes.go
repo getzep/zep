@@ -27,14 +27,14 @@ func Create(appState *models.AppState) *http.Server {
 	}
 }
 
-//	@title			zep Long-term Memory API
-//	@description	zep stores, manages, enriches, and searches long-term memory for conversational AI applications
+//	@title			Zep Long-term Memory API
+//	@description	Zep stores, manages, enriches, and searches long-term memory for conversational AI applications
 
 //	@license.name	Apache 2.0
 //	@license.url	http://www.apache.org/licenses/LICENSE-2.0.html
 
-// @BasePath	/apt/v1
-// @schemes	http https
+//	@BasePath	/apt/v1
+//	@schemes	http https
 func setupRouter(appState *models.AppState) *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(httpLogger.Logger("router", log))
