@@ -12,7 +12,7 @@ Zep's Extractor model is easily extensible, with a simple, clean interface avail
 
 Coming (very) soon:
 - Langchain `memory` and `retriever` support.
-- Support for other conversational AI and agentic AI frameworks.
+- Support for other conversational and agentic AI frameworks.
 
 ## Quick Start
 1. Clone this repo
@@ -118,6 +118,9 @@ Alongside the Python and JavaScript SDKs, Zep exposes a REST API for interacting
 ## Key Concepts
 
 ### Sessions
+Sessions represent your users. The Session ID is a string key that accepts arbitrary identifiers. Metadata can be set alongside the Session ID. Explicit creation of Sessions is unnecessary, as they are created automatically when adding Memories.
+
+Related to sessions, a time series of Memories and Summaries is captured and stored.
 
 ### Memory
 A memory is the core data structure in Zep. It contains a list of Messages and a Summary (if created). The Memory and Summary are returned with UUIDs, token counts, timestamps, and other metadata, allowing for a rich set of application-level functionality.
@@ -127,18 +130,13 @@ The Message Window, as set in the config file, defines when the Summarizer will 
 
 **NOTE REGARDING MEMORY GETS**
 
-When retrieving 
-
-### Search
+When retrieving Memories, the most recent Messages up to the last Message summarized are returned, alongside the Summary. The GUID of the newest message in the Summary is also returned as a pointer to the conversational history. The message limit can be overriden by passing the `lastN` querystring argument in the `GET` call.
 
 ### Extractors
 
-#### Summarization
-#### Embedding
-#### Token Counting
+Zep's Extractor framework allows for the simple addition of functionality that extracts information from messages. Currently, Zep has three extractors: A progressive summarizer, an embedder, and a token counter.
 
-
-## Developing for Zep
+More to come.
 
 ## Acknowledgements
 h/t to the [Motorhead](https://github.com/getmetal/motorhead) and [Langchain](https://github.com/hwchase17/langchain) projects for inspiration.
