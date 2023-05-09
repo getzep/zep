@@ -62,9 +62,9 @@ Long-term memory persistence enables a variety of use cases, including:
 However:
 - Most AI chat history or memory implementations run in-memory, and are not designed for stateless deployments or long-term persistence.
 - Standing up and managing low-latency infrastructure to store, manage, and enrich memories is non-trivial.
-- When storing messages long-term, developers are exposes to privacy and regulatory obligations around retention and deletion of user data.
+- When storing messages long-term, developers are exposed to privacy and regulatory obligations around retention and deletion of user data.
 
-The Zep server and clients SDKs are designed to address these challenges.
+The Zep server and client SDKs are designed to address these challenges.
 
 ## Client SDKs
 - [zep-python](https://github.com/getzep/zep-python): A python client with both async and sync APIs.
