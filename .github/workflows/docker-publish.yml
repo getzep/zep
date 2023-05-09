@@ -71,7 +71,7 @@ jobs:
       # https://github.com/docker/build-push-action
       - name: Build and push Docker image
         id: build-and-push
-        uses: docker/build-push-action@v4.0
+        uses: docker/build-push-action@v4.0.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
