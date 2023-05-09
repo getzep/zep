@@ -3,6 +3,7 @@ package extractors
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/danielchalef/zep/pkg/llms"
 	"github.com/danielchalef/zep/pkg/models"
@@ -35,10 +36,11 @@ func (ee *EmbeddingExtractor) Extract(
 		return NewExtractorError("EmbeddingExtractor get message vectors failed", err)
 	}
 
-	texts := make([]string, len(unembeddedMessages))
-	for i, r := range unembeddedMessages {
-		texts[i] = r.Text
+	if len(unembeddedMessages) == 0 {
+		return nil
 	}
+
+	texts := embeddingsToTextSlice(unembeddedMessages, false)
 
 	embeddings, err := llms.EmbedMessages(ctx, appState, texts)
 	if err != nil {
@@ -63,6 +65,34 @@ func (ee *EmbeddingExtractor) Extract(
 		return NewExtractorError("EmbeddingExtractor put message vectors failed", err)
 	}
 	return nil
+}
+
+// embeddingsToTextSlice converts a slice of Embeddings to a slice of strings.
+// If enrich is true, the text slice will include the prior and subsequent
+// messages text to the slice item.
+func embeddingsToTextSlice(messages []models.Embeddings, enrich bool) []string {
+	texts := make([]string, len(messages))
+	for i, r := range messages {
+		if !enrich {
+			texts[i] = r.Text
+			continue
+		}
+
+		var parts []string
+
+		if i > 0 {
+			parts = append(parts, messages[i-1].Text)
+		}
+
+		parts = append(parts, r.Text)
+
+		if i < len(messages)-1 {
+			parts = append(parts, messages[i+1].Text)
+		}
+
+		texts[i] = strings.Join(parts, " ")
+	}
+	return texts
 }
 
 func (ee *EmbeddingExtractor) Notify(

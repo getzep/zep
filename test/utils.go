@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/joho/godotenv"
+
 	"github.com/danielchalef/zep/config"
 )
 
@@ -17,6 +19,11 @@ func NewTestConfig() (*config.Config, error) {
 	projectRoot, err := FindProjectRoot()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to find project root: %v", err)
+	}
+	// load env vars from .env
+	err = godotenv.Load(filepath.Join(projectRoot, ".env"))
+	if err != nil {
+		fmt.Println(".env file not found or unable to load")
 	}
 	configPath := filepath.Join(projectRoot, "config.yaml")
 	cfg, err := config.LoadConfig(configPath)

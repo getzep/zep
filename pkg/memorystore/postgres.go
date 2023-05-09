@@ -347,10 +347,7 @@ func searchMessages(
 		ColumnExpr("m.role AS message__role").
 		ColumnExpr("m.content AS message__content").
 		ColumnExpr("m.metadata AS message__metadata").
-		// use dotproduct for OpenAI embeddings as they're normalized to 1
-		// https://platform.openai.com/docs/guides/embeddings/which-distance-function-should-i-use
-		// multiply by -1 as pgvector returns the negative inner product
-		ColumnExpr("(embedding <#> ? ) * -1 AS dist", vector).
+		ColumnExpr("1 - (embedding <=> ? ) AS dist", vector).
 		Where("m.session_id = ?", sessionID).
 		Order("dist DESC").
 		Limit(limit).

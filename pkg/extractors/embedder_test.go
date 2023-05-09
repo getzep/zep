@@ -2,6 +2,7 @@ package extractors
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/danielchalef/zep/pkg/llms"
@@ -30,10 +31,6 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	appState.MemoryStore = store
 	appState.OpenAIClient = llms.CreateOpenAIClient(cfg)
 
-	// we use a vector initialized with all 0.0 as the nil value
-	// for the vectorstore records
-	nilVector := make([]float32, 1536)
-
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err)
 
@@ -48,16 +45,26 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, len(unembeddedMessages) == len(testMessages))
 
-	expectedMessages := make([]models.Message, len(testMessages))
-	for i, m := range testMessages {
-		expectedMessages[i] = m
-		expectedMessages[i].UUID = unembeddedMessages[i].TextUUID
-	}
-
-	// Create messageEvent with sample data
+	// Create messageEvent. We only need to pass the sessionID
 	messageEvent := &models.MessageEvent{
 		SessionID: sessionID,
-		Messages:  expectedMessages,
+	}
+
+	texts := make([]string, len(unembeddedMessages))
+	for i, r := range unembeddedMessages {
+		texts[i] = r.Text
+	}
+
+	embeddings, err := llms.EmbedMessages(ctx, appState, texts)
+	assert.NoError(t, err)
+
+	expectedEmbeddingRecords := make([]models.Embeddings, len(unembeddedMessages))
+	for i, r := range unembeddedMessages {
+		expectedEmbeddingRecords[i] = models.Embeddings{
+			TextUUID:  r.TextUUID,
+			Text:      r.Text,
+			Embedding: (*embeddings)[i].Embedding,
+		}
 	}
 
 	embeddingExtractor := NewEmbeddingExtractor()
@@ -72,16 +79,35 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	// Test if the length of embeddedMessages is equal to the length of messageEvent.Messages
-	assert.Equal(t, len(messageEvent.Messages), len(embeddedMessages))
+	assert.Equal(t, len(expectedEmbeddingRecords), len(embeddedMessages))
 
-	// Test if embeddedMessages have embeddings after running EmbeddingExtractor.Extract
-	for _, embeddedMessage := range embeddedMessages {
-		assert.NotEqual(
-			t,
-			nilVector,
-			embeddedMessage.Embedding,
-			"embeddings should not be the nilVector",
-		)
+	// Test if the length of embeddedMessages is equal to the length of messageEvent.Messages
+	for i, r := range embeddedMessages {
+		assert.Equal(t, expectedEmbeddingRecords[i].TextUUID, r.TextUUID)
+		assert.Equal(t, expectedEmbeddingRecords[i].Text, r.Text)
+		compareFloat32Vectors(t, expectedEmbeddingRecords[i].Embedding, r.Embedding, 0.001)
+	}
+}
+
+// compareFloat32Vectors compares two float32 vectors, asserting that their values are within the given variance.
+func compareFloat32Vectors(t *testing.T, a, b []float32, variance float32) {
+	t.Helper()
+
+	if len(a) != len(b) {
+		t.Fatalf("Vectors have different lengths: len(a)=%d, len(b)=%d", len(a), len(b))
+	}
+
+	for i := 0; i < len(a); i++ {
+		diff := float32(math.Abs(float64(a[i] - b[i])))
+		if diff > variance {
+			t.Fatalf(
+				"Vectors differ at index %d: a=%v, b=%v, diff=%v, variance=%v",
+				i,
+				a[i],
+				b[i],
+				diff,
+				variance,
+			)
+		}
 	}
 }

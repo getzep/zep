@@ -153,6 +153,10 @@ func RunSearchHandler(appState *models.AppState) http.HandlerFunc {
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
+		if searchResult == nil {
+			renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+			return
+		}
 		if err := encodeJSON(w, searchResult); err != nil {
 			renderError(w, err, http.StatusInternalServerError)
 			return
