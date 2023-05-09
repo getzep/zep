@@ -1,4 +1,4 @@
-# Zep:A long-term memory store for conversational AI applications
+# Zep: A long-term memory store for conversational AI applications
 Zep stores, summarizes, embeds, indexes, and enriches conversational AI chat histories, and exposes them via simple, low-latency APIs. Zep allows developers to focus on developing their AI apps, rather than on building memory persistence, search, and enrichment infrastructure.
 
 Zep's Extractor model is easily extensible, with a simple, clean interface available to build new enrichment functionality, such as summarizers, entity extractors, embedders, and more.
