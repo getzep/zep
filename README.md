@@ -105,7 +105,9 @@ Many cloud providers, including AWS, now offer managed Postgres services with `p
 ## Using Zep's Vector Search
 Zep allows developers to search the long-term memory store for relevant historical conversations.
 
-Contextual search over chat histories is challenging: chat messages are typically short and when combined with high-dimensional embedding vectors, result in significant sparsity. This vector sparsity can result in many false positives when searching for relevant messages.
+Contextual search over chat histories is challenging: chat messages are typically short and can lack "information". When combined with high-dimensional embedding vectors, short texts can create very sparse vectors. This vector sparsity can result in many vectors appearing close to each other in the vectorspace. This may in turn result in many false positives when searching for relevant messages.
+
+We're thinking of strategies to address this problem, including hybrid search and enriching messages with metadata.
 
 Zep returns all messages up to a default limit, which can overridden by passing a `limit` querystring argument to the search API. Given the sparsity issue discussed above, we suggest only using the top 2-3 messages in your prompts. Alternatively, analyze your search results and use a distance threshold to filter out irrelevant messages.
 
@@ -123,7 +125,7 @@ Sessions represent your users. The Session ID is a string key that accepts arbit
 Related to sessions, a time series of Memories and Summaries is captured and stored.
 
 ### Memory
-A memory is the core data structure in Zep. It contains a list of Messages and a Summary (if created). The Memory and Summary are returned with UUIDs, token counts, timestamps, and other metadata, allowing for a rich set of application-level functionality.
+A Memory is the core data structure in Zep. It contains a list of Messages and a Summary (if created). The Memory and Summary are returned with UUIDs, token counts, timestamps, and other metadata, allowing for a rich set of application-level functionality.
 
 ### Message Window
 The Message Window, as set in the config file, defines when the Summarizer will summarize Memory contents. Once the number of unsummarized memories exceeds the message window, the summarizer will summarize any old memories over half the message window size. This is intended to limit significant LLM usage.
