@@ -7,9 +7,6 @@ name: Postgres Docker Build and Publish
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'Dockerfile.postgres'
 
 env:
   # Use docker.io for Docker Hub if empty
