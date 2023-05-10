@@ -1,4 +1,4 @@
-[![Docker](https://github.com/getzep/zep/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/getzep/zep/actions/workflows/docker-publish.yml)
+[![Docker](https://github.com/getzep/zep/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/getzep/zep/actions/workflows/docker-publish.yml) [![golangci-lint](https://github.com/getzep/zep/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/getzep/zep/actions/workflows/golangci-lint.yml)
 
 # Zep: A long-term memory store for conversational AI applications
 Zep stores, summarizes, embeds, indexes, and enriches conversational AI chat histories, and exposes them via simple, low-latency APIs. Zep allows developers to focus on developing their AI apps, rather than on building memory persistence, search, and enrichment infrastructure.
