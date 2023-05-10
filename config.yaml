@@ -17,5 +17,5 @@ memory_store:
 server:
   port: 8000
 log:
-  level: "debug"
+  level: "info"
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"runtime"
 	"strings"
 	"time"
@@ -355,7 +356,16 @@ func searchMessages(
 	if err != nil {
 		return nil, NewStorageError("memory searchMessages failed", err)
 	}
-	return results, nil
+
+	// some results may be returned where distance is NaN. This is a race between
+	// newly added messages and the search query. We filter these out.
+	var filteredResults []models.SearchResult
+	for _, result := range results {
+		if !math.IsNaN(result.Dist) {
+			filteredResults = append(filteredResults, result)
+		}
+	}
+	return filteredResults, nil
 }
 
 func (pms *PostgresMemoryStore) Close() error {

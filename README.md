@@ -1,3 +1,5 @@
+[![Docker](https://github.com/getzep/zep/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/getzep/zep/actions/workflows/docker-publish.yml) [![golangci-lint](https://github.com/getzep/zep/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/getzep/zep/actions/workflows/golangci-lint.yml)
+
 # Zep: A long-term memory store for conversational AI applications
 Zep stores, summarizes, embeds, indexes, and enriches conversational AI chat histories, and exposes them via simple, low-latency APIs. Zep allows developers to focus on developing their AI apps, rather than on building memory persistence, search, and enrichment infrastructure.
 
@@ -44,10 +46,15 @@ async with ZepClient(base_url) as client:
 ```
 See [zep-python](https://github.com/getzep/zep-python) for installation and use docs.
 
-**JavaScript**
-```typescript
-const client = new ZepClient(base_url);
-const role = "user";
+**Javascript**
+```Javascript
+ // Add memory
+ const role = "user";
+ const content = "I'm looking to plan a trip to Iceland. Can you help me?"
+ const message = new Message({ role, content });
+ const memory = new Memory();
+ memory.messages = [message];
+ const result = await client.addMemoryAsync(session_id, memory);
 ...
 ```
 ## Why Zep?
@@ -68,7 +75,8 @@ The Zep server and client SDKs are designed to address these challenges.
 
 ## Client SDKs
 - [zep-python](https://github.com/getzep/zep-python): A python client with both async and sync APIs.
-- zep-js: TBC
+- [zep-js](https://www.npmjs.com/package/zep-js): A typescript/javascript async client for Zep. 
+
 
 ## Configuration
 Zep is configured via a yaml configuration file and/or environment variables. The `zep` server accepts a CLI argument `--config` to specify the location of the config file. If no config file is specified, the server will look for a `config.yaml` file in the current working directory.

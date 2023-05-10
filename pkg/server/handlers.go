@@ -173,7 +173,7 @@ func decodeJSON(r *http.Request, data interface{}) error {
 }
 
 func renderError(w http.ResponseWriter, err error, status int) {
-	log.Errorf("error: %v", err)
+	log.Error(err)
 	http.Error(w, err.Error(), status)
 }
 
