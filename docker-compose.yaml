@@ -1,6 +1,7 @@
 version: "3.7"
 services:
   db:
+    image: ghcr.io/getzep/postgres:latest
     container_name: zep-postgres
     restart: on-failure
     ports:
@@ -14,6 +15,7 @@ services:
     networks:
       - zep-network
   zep:
+    image: ghcr.io/getzep/zep:latest
     container_name: zep
     restart: on-failure
     depends_on:
