@@ -46,10 +46,15 @@ async with ZepClient(base_url) as client:
 ```
 See [zep-python](https://github.com/getzep/zep-python) for installation and use docs.
 
-**JavaScript**
-```typescript
-const client = new ZepClient(base_url);
-const role = "user";
+**Javascript**
+```Javascript
+ // Add memory
+ const role = "user";
+ const content = "I'm looking to plan a trip to Iceland. Can you help me?"
+ const message = new Message({ role, content });
+ const memory = new Memory();
+ memory.messages = [message];
+ const result = await client.addMemoryAsync(session_id, memory);
 ...
 ```
 ## Why Zep?
@@ -70,7 +75,7 @@ The Zep server and client SDKs are designed to address these challenges.
 
 ## Client SDKs
 - [zep-python](https://github.com/getzep/zep-python): A python client with both async and sync APIs.
-- [zep-js](https://www.npmjs.com/package/zep-js): A typescript/javascript async client for zep. 
+- [zep-js](https://www.npmjs.com/package/zep-js): A typescript/javascript async client for Zep. 
 
 
 ## Configuration
