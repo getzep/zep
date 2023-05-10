@@ -75,7 +75,7 @@ The Zep server and client SDKs are designed to address these challenges.
 
 ## Client SDKs
 - [zep-python](https://github.com/getzep/zep-python): A python client with both async and sync APIs.
-- [zep-js](https://www.npmjs.com/package/zep-js): A typescript/javascript async client for Zep. 
+- [zep-js](https://github.com/getzep/zep-js): A typescript/javascript async client for Zep. 
 
 
 ## Configuration
