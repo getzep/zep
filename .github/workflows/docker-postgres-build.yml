@@ -6,6 +6,7 @@ name: Postgres Docker Build and Publish
 # documentation.
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'Dockerfile.postgres'
@@ -14,7 +15,7 @@ env:
   # Use docker.io for Docker Hub if empty
   REGISTRY: ghcr.io
   # github.repository as <account>/<repo>
-  IMAGE_NAME: ${{ github.account }}/postgres
+  IMAGE_NAME: ${{ github.owner }}/postgres
 
 
 jobs:
