@@ -348,6 +348,7 @@ func searchMessages(
 		ColumnExpr("m.role AS message__role").
 		ColumnExpr("m.content AS message__content").
 		ColumnExpr("m.metadata AS message__metadata").
+		ColumnExpr("m.token_count AS message__token_count").
 		ColumnExpr("1 - (embedding <=> ? ) AS dist", vector).
 		Where("m.session_id = ?", sessionID).
 		Order("dist DESC").
