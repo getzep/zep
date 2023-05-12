@@ -75,7 +75,6 @@ func tearDown() {
 	internal.SetLogLevel(logrus.InfoLevel)
 }
 
-// TODO: Add context deadlines to all tests
 func TestEnsurePostgresSchemaSetup(t *testing.T) {
 	CleanDB(t, testDB)
 
@@ -95,14 +94,6 @@ func TestEnsurePostgresSchemaSetup(t *testing.T) {
 }
 
 func TestPutSession(t *testing.T) {
-	testCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
-	CleanDB(t, testDB)
-
-	err := ensurePostgresSetup(testCtx, testDB)
-	assert.NoError(t, err)
-
 	tests := []struct {
 		name       string
 		sessionID  string
@@ -162,20 +153,12 @@ func TestPutSession(t *testing.T) {
 }
 
 func TestGetSession(t *testing.T) {
-	testCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
-	CleanDB(t, testDB)
-
-	err := ensurePostgresSetup(testCtx, testDB)
-	assert.NoError(t, err)
-
 	// Create a test session
 	sessionID := "123abc"
 	metadata := map[string]interface{}{
 		"key": "value",
 	}
-	_, err = putSession(testCtx, testDB, sessionID, metadata)
+	_, err := putSession(testCtx, testDB, sessionID, metadata)
 	assert.NoError(t, err)
 
 	tests := []struct {
@@ -216,12 +199,7 @@ func TestGetSession(t *testing.T) {
 
 func TestPgDeleteSession(t *testing.T) {
 	memoryWindow := 10
-	viper.Set("memory.message_window", memoryWindow)
-
-	CleanDB(t, testDB)
-
-	err := ensurePostgresSetup(testCtx, testDB)
-	assert.NoError(t, err)
+	appState.Config.Memory.MessageWindow = memoryWindow
 
 	// Test data
 	sessionID, err := test.GenerateRandomSessionID(16)
@@ -278,11 +256,6 @@ func TestPgDeleteSession(t *testing.T) {
 }
 
 func TestPutMessages(t *testing.T) {
-	CleanDB(t, testDB)
-
-	err := ensurePostgresSetup(testCtx, testDB)
-	assert.NoError(t, err)
-
 	// Test data
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
@@ -397,13 +370,9 @@ func verifyMessagesInDB(
 }
 
 func TestGetMessages(t *testing.T) {
-	CleanDB(t, testDB)
-
-	err := ensurePostgresSetup(testCtx, testDB)
-	assert.NoError(t, err)
-
 	// Create a test session
-	sessionID := "123abc"
+	sessionID, err := test.GenerateRandomSessionID(16)
+	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 	metadata := map[string]interface{}{
 		"key": "value",
 	}
@@ -427,21 +396,21 @@ func TestGetMessages(t *testing.T) {
 	}{
 		{
 			name:           "Get all messages",
-			sessionID:      "123abc",
+			sessionID:      sessionID,
 			lastNMessages:  0,
 			expectedLength: messageWindow,
 			withSummary:    false,
 		},
 		{
 			name:           "Get all messages up to SummaryPoint",
-			sessionID:      "123abc",
+			sessionID:      sessionID,
 			lastNMessages:  0,
 			expectedLength: 8,
 			withSummary:    true,
 		},
 		{
 			name:           "Get last message",
-			sessionID:      "123abc",
+			sessionID:      sessionID,
 			lastNMessages:  1,
 			expectedLength: 1,
 			withSummary:    false,
@@ -495,19 +464,9 @@ func TestGetMessages(t *testing.T) {
 }
 
 func TestGetMessageVectorsWhereIsEmbeddedFalse(t *testing.T) {
-	// Force embedding to be enabled
-	viper.Set("extractor.embeddings.enabled", true)
-
-	testCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
-	CleanDB(t, testDB)
-
-	err := ensurePostgresSetup(testCtx, testDB)
-	assert.NoError(t, err)
-
 	// Create a test session
-	sessionID := "123abc"
+	sessionID, err := test.GenerateRandomSessionID(16)
+	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 	metadata := map[string]interface{}{
 		"key": "value",
 	}
@@ -543,13 +502,6 @@ func TestGetMessageVectorsWhereIsEmbeddedFalse(t *testing.T) {
 }
 
 func TestPutSummary(t *testing.T) {
-
-	CleanDB(t, testDB)
-
-	err := ensurePostgresSetup(testCtx, testDB)
-	assert.NoError(t, err)
-
-	// Test data
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -638,16 +590,8 @@ func TestPutSummary(t *testing.T) {
 }
 
 func TestGetSummary(t *testing.T) {
-	testCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
-	CleanDB(t, testDB)
-
-	err := ensurePostgresSetup(testCtx, testDB)
-	assert.NoError(t, err)
-
-	// Create a test session
-	sessionID := "123abc"
+	sessionID, err := test.GenerateRandomSessionID(16)
+	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 	metadata := map[string]interface{}{
 		"key": "value",
 	}
@@ -730,14 +674,6 @@ func TestGetSummary(t *testing.T) {
 }
 
 func TestPutEmbeddings(t *testing.T) {
-	viper.Set("memory.message_window", 10)
-
-	CleanDB(t, testDB)
-
-	err := ensurePostgresSetup(testCtx, testDB)
-	assert.NoError(t, err)
-
-	// Create a test session
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -813,15 +749,11 @@ func TestPutEmbeddings(t *testing.T) {
 }
 
 func TestLastSummaryPointIndex(t *testing.T) {
-	testCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
+	// CleanDB and setup so expectedSummaryPointIndex is 3
 	CleanDB(t, testDB)
-
 	err := ensurePostgresSetup(testCtx, testDB)
-	assert.NoError(t, err)
+	assert.NoError(t, err, "ensurePostgresSetup should not return an error")
 
-	// Test data
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
