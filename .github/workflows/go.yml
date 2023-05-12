@@ -13,6 +13,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    environment: build-test
     services:
       postgres:
         image: ghcr.io/getzep/postgres:latest
