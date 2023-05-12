@@ -4,21 +4,43 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/spf13/viper"
 
 	"github.com/joho/godotenv"
 
 	"github.com/getzep/zep/config"
 )
 
-const TestDsn string = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+func init() {
+	// Force embedding to be enabled
+	err := viper.BindEnv("llm.openai_api_key", "ZEP_OPENAI_API_KEY")
+	if err != nil {
+		log.Fatalf("Error binding environment variable: %s", err)
+	}
+	err = viper.BindEnv("llm.memory_store.postgres.dsn", "ZEP_MEMORY_STORE_POSTGRES_DSN")
+	if err != nil {
+		log.Fatalf("Error binding environment variable: %s", err)
+	}
+}
+
+func GetDSN() string {
+	var testDsn = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+	dsnFromEnv := viper.GetString("memory_store.postgres.dsn")
+	if dsnFromEnv != "" {
+		return dsnFromEnv
+	}
+	return testDsn
+}
 
 func NewTestConfig() (*config.Config, error) {
 	projectRoot, err := FindProjectRoot()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to find project root: %v", err)
+		return nil, fmt.Errorf("failed to find project root: %v", err)
 	}
 	// load env vars from .env
 	err = godotenv.Load(filepath.Join(projectRoot, ".env"))
@@ -28,7 +50,7 @@ func NewTestConfig() (*config.Config, error) {
 	configPath := filepath.Join(projectRoot, "config.yaml")
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to load config: %v", err)
+		return nil, fmt.Errorf("failed to load config: %v", err)
 	}
 
 	return cfg, nil
