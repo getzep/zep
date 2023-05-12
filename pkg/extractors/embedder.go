@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/danielchalef/zep/pkg/llms"
-	"github.com/danielchalef/zep/pkg/models"
+	"github.com/getzep/zep/pkg/llms"
+	"github.com/getzep/zep/pkg/models"
 )
 
 // Force compiler to validate that Extractor implements the MemoryStore interface.

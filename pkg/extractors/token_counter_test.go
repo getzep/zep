@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/danielchalef/zep/internal"
+	"github.com/getzep/zep/internal"
 
-	"github.com/danielchalef/zep/pkg/memorystore"
-	"github.com/danielchalef/zep/pkg/models"
-	"github.com/danielchalef/zep/test"
+	"github.com/getzep/zep/pkg/memorystore"
+	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/test"
 	"github.com/stretchr/testify/assert"
 )
 

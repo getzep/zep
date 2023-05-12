@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/danielchalef/zep/pkg/extractors"
-	"github.com/danielchalef/zep/pkg/llms"
+	"github.com/getzep/zep/pkg/extractors"
+	"github.com/getzep/zep/pkg/llms"
 
-	"github.com/danielchalef/zep/internal"
+	"github.com/getzep/zep/internal"
 	"github.com/sirupsen/logrus"
 
-	"github.com/danielchalef/zep/pkg/models"
-	"github.com/danielchalef/zep/test"
+	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/test"
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"

@@ -1,7 +1,7 @@
 package extractors
 
 import (
-	"github.com/danielchalef/zep/pkg/models"
+	"github.com/getzep/zep/pkg/models"
 )
 
 func Initialize(appState *models.AppState) {

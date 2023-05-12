@@ -1,6 +1,6 @@
 package test
 
-import "github.com/danielchalef/zep/pkg/models"
+import "github.com/getzep/zep/pkg/models"
 
 var TestMessages = []models.Message{
 	{

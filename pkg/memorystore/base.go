@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/danielchalef/zep/internal"
-	"github.com/danielchalef/zep/pkg/models"
+	"github.com/getzep/zep/internal"
+	"github.com/getzep/zep/pkg/models"
 )
 
 var log = internal.GetLogger()

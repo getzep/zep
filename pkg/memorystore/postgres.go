@@ -13,8 +13,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/danielchalef/zep/pkg/llms"
-	"github.com/danielchalef/zep/pkg/models"
+	"github.com/getzep/zep/pkg/llms"
+	"github.com/getzep/zep/pkg/models"
 	"github.com/google/uuid"
 	"github.com/jinzhu/copier"
 	"github.com/pgvector/pgvector-go"

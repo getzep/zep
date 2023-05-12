@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/danielchalef/zep/pkg/models"
+	"github.com/getzep/zep/pkg/models"
 	"github.com/sashabaranov/go-openai"
 )
 

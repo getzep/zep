@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/danielchalef/zep/pkg/llms"
-	"github.com/danielchalef/zep/pkg/models"
+	"github.com/getzep/zep/pkg/llms"
+	"github.com/getzep/zep/pkg/models"
 )
 
 // Force compiler to validate that our Extractor implements the Extractor interface.

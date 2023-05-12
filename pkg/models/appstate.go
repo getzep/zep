@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/danielchalef/zep/config"
+	"github.com/getzep/zep/config"
 	"github.com/sashabaranov/go-openai"
 )
 
