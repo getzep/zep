@@ -1,4 +1,5 @@
 [![Docker](https://github.com/getzep/zep/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/getzep/zep/actions/workflows/docker-publish.yml) [![golangci-lint](https://github.com/getzep/zep/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/getzep/zep/actions/workflows/golangci-lint.yml)
+[![License: Apache](https://img.shields.io/badge/License-Apache-blue.svg)](https://img.shields.io/github/license/getzep/zep)
 
 # Zep: A long-term memory store for conversational AI applications
 Zep stores, summarizes, embeds, indexes, and enriches conversational AI chat histories, and exposes them via simple, low-latency APIs. Zep allows developers to focus on developing their AI apps, rather than on building memory persistence, search, and enrichment infrastructure.
@@ -75,7 +76,7 @@ The Zep server and client SDKs are designed to address these challenges.
 
 ## Client SDKs
 - [zep-python](https://github.com/getzep/zep-python): A python client with both async and sync APIs.
-- [zep-js](https://www.npmjs.com/package/zep-js): A typescript/javascript async client for Zep. 
+- [zep-js](https://github.com/getzep/zep-js): A typescript/javascript async client for Zep. 
 
 
 ## Configuration
