@@ -14,6 +14,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     environment: build-test
+    env:
+      ZEP_OPENAI_API_KEY: ${{ secrets.ZEP_OPENAI_API_KEY }}
     services:
       postgres:
         image: ghcr.io/getzep/postgres:latest
@@ -41,5 +43,4 @@ jobs:
     - name: Test
       run: go test -p 1 -v ./...
       env:
-        ZEP_OPENAI_API_KEY: ${{ secrets.ZEP_OPENAI_API_KEY }}
         ZEP_MEMORY_STORE_POSTGRES_DSN: "postgres://postgres:postgres@postgres:5432/?sslmode=disable"
