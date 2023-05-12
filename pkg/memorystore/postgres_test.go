@@ -7,10 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/danielchalef/zep/pkg/extractors"
+	"github.com/danielchalef/zep/pkg/llms"
+
 	"github.com/danielchalef/zep/internal"
 	"github.com/sirupsen/logrus"
 
-	"github.com/danielchalef/zep/pkg/llms"
 	"github.com/danielchalef/zep/pkg/models"
 	"github.com/danielchalef/zep/test"
 	"github.com/google/uuid"
@@ -24,6 +26,7 @@ import (
 
 var testDB *bun.DB
 var testCtx context.Context
+var appState *models.AppState
 
 func TestMain(m *testing.M) {
 	// Set log level to Debug for all tests in this package
@@ -36,12 +39,32 @@ func TestMain(m *testing.M) {
 }
 
 func setup() {
-	internal.SetLogLevel(logrus.WarnLevel)
+	internal.SetLogLevel(logrus.DebugLevel)
 	// Initialize the database connection
 	testDB = NewPostgresConn(test.TestDsn)
 
 	// Initialize the test context
 	testCtx = context.Background()
+
+	cfg, err := test.NewTestConfig()
+	if err != nil {
+		panic(err)
+	}
+
+	appState = &models.AppState{}
+	appState.OpenAIClient = llms.CreateOpenAIClient(cfg)
+	appState.Config = cfg
+	store, err := NewPostgresMemoryStore(appState, testDB)
+	if err != nil {
+		panic(err)
+	}
+	appState.MemoryStore = store
+	extractors.Initialize(appState)
+
+	err = ensurePostgresSetup(testCtx, testDB)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func tearDown() {
@@ -863,29 +886,24 @@ func TestLastSummaryPointIndex(t *testing.T) {
 }
 
 func TestSearch(t *testing.T) {
-
-	cfg, err := test.NewTestConfig()
-	assert.NoError(t, err)
-
-	appState := &models.AppState{}
-	appState.OpenAIClient = llms.CreateOpenAIClient(cfg)
-	appState.Config = cfg
-
-	CleanDB(t, testDB)
-
-	err = ensurePostgresSetup(testCtx, testDB)
-	assert.NoError(t, err)
-
 	// Test data
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
-	// Force embedding to be enabled
-	viper.Set("extractor.embeddings.enabled", true)
-
 	// Call putMessages function
-	_, err = putMessages(testCtx, testDB, sessionID, true, test.TestMessages)
+	msgs, err := putMessages(testCtx, testDB, sessionID, true, test.TestMessages)
 	assert.NoError(t, err, "putMessages should not return an error")
+
+	appState.MemoryStore.NotifyExtractors(
+		context.Background(),
+		appState,
+		&models.MessageEvent{SessionID: sessionID,
+			Messages: msgs},
+	)
+
+	// enrichment runs async. Wait for it to finish
+	// This is hacky but I'd prefer not to add a WaitGroup to the putMessages function just for testing purposes
+	time.Sleep(time.Second * 2)
 
 	// Test cases
 	testCases := []struct {
@@ -926,6 +944,7 @@ func TestSearch(t *testing.T) {
 					assert.NotNil(t, res.Message.CreatedAt, "message__created_at should be present")
 					assert.NotNil(t, res.Message.Role, "message__role should be present")
 					assert.NotNil(t, res.Message.Content, "message__content should be present")
+					assert.NotZero(t, res.Message.TokenCount, "message_token_count should be present")
 				}
 			}
 		})
