@@ -348,6 +348,7 @@ func searchMessages(
 		ColumnExpr("m.role AS message__role").
 		ColumnExpr("m.content AS message__content").
 		ColumnExpr("m.metadata AS message__metadata").
+		ColumnExpr("m.token_count AS message__token_count").
 		ColumnExpr("1 - (embedding <=> ? ) AS dist", vector).
 		Where("m.session_id = ?", sessionID).
 		Order("dist DESC").
@@ -655,7 +656,7 @@ func getMessages(
 		}
 	}
 
-	// if we do have a summary, determine the date of the last message in the summary
+	// if we do have a summary, determine the index of the last message in the summary
 	var summaryPointIndex int64 = 0
 	if summary != nil {
 		summaryPointIndex, err = lastSummaryPointIndex(
@@ -716,7 +717,7 @@ func lastSummaryPointIndex(
 	configuredMessageWindow int,
 ) (int64, error) {
 	var messages []*PgMessageStore
-	// We need to retrieve twice as many messages as the configured message window to ensure we
+	// We need to retrieve X as many messages as the configured message window to ensure we
 	// get the last SummaryPoint, with some buffer in case the configured message window is
 	// increased.
 	qLimit := configuredMessageWindow * 5

@@ -29,12 +29,9 @@ clean: ## Remove build related file
 	rm -f ./junit-report.xml checkstyle-report.xml ./coverage.xml ./profile.cov yamllint-checkstyle.xml
 
 ## Test:
+## don't parallelize testing as there are sideefects to some DB tests
 test: ## Run project tests
-ifeq ($(EXPORT_RESULT), true)
-	GO111MODULE=off go get -u github.com/jstemmer/go-junit-report
-	$(eval OUTPUT_OPTIONS = | tee /dev/tty | go-junit-report -set-exit-code > junit-report.xml)
-endif
-	$(GOTEST) ./... $(OUTPUT_OPTIONS)
+	$(GOTEST) -p 1 ./...
 
 coverage: ## Run the tests of the project and export the coverage
 	$(GOTEST) -cover -covermode=count -coverprofile=profile.cov ./...

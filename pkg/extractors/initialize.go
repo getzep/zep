@@ -27,7 +27,7 @@ func Initialize(appState *models.AppState) {
 	)
 	attach(
 		"TokenCountExtractor",
-		appState.Config.Extractors.Embeddings.Enabled,
+		true, // TokenCounter always operates
 		func() models.Extractor { return NewTokenCountExtractor() },
 	)
 }
