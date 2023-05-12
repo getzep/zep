@@ -1,8 +1,8 @@
 package main
 
 import (
-	cmd "github.com/danielchalef/zep/cmd/zep"
-	"github.com/danielchalef/zep/internal"
+	cmd "github.com/getzep/zep/cmd/zep"
+	"github.com/getzep/zep/internal"
 )
 
 var log = internal.GetLogger()

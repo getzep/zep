@@ -10,7 +10,7 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/danielchalef/zep/config"
+	"github.com/getzep/zep/config"
 )
 
 const TestDsn string = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"

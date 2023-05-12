@@ -3,7 +3,7 @@ package llms
 import (
 	"fmt"
 
-	"github.com/danielchalef/zep/internal"
+	"github.com/getzep/zep/internal"
 )
 
 const DefaultTemperature = 0.0

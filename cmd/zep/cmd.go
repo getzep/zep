@@ -3,7 +3,7 @@ package cmd
 import (
 	"os"
 
-	"github.com/danielchalef/zep/internal"
+	"github.com/getzep/zep/internal"
 	"github.com/sirupsen/logrus"
 
 	"github.com/spf13/cobra"

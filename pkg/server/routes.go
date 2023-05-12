@@ -6,7 +6,7 @@ import (
 	"time"
 
 	httpLogger "github.com/chi-middleware/logrus-logger"
-	"github.com/danielchalef/zep/pkg/models"
+	"github.com/getzep/zep/pkg/models"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/spf13/viper"

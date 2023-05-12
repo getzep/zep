@@ -2,14 +2,15 @@ package extractors
 
 import (
 	"context"
-	"github.com/danielchalef/zep/pkg/llms"
-	"github.com/danielchalef/zep/pkg/memorystore"
-	"github.com/danielchalef/zep/pkg/models"
-	"github.com/danielchalef/zep/test"
+	"testing"
+
+	"github.com/getzep/zep/pkg/llms"
+	"github.com/getzep/zep/pkg/memorystore"
+	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/test"
 	"github.com/google/uuid"
 	"github.com/jinzhu/copier"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestSummarize(t *testing.T) {

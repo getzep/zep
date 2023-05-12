@@ -2,11 +2,12 @@ package llms
 
 import (
 	"context"
-	"github.com/danielchalef/zep/test"
 	"testing"
 	"time"
 
-	"github.com/danielchalef/zep/pkg/models"
+	"github.com/getzep/zep/test"
+
+	"github.com/getzep/zep/pkg/models"
 	"github.com/stretchr/testify/assert"
 )
 

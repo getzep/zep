@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/danielchalef/zep/internal"
+	"github.com/getzep/zep/internal"
 )
 
 var log = internal.GetLogger()

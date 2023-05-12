@@ -3,7 +3,7 @@ package config
 import (
 	"strings"
 
-	"github.com/danielchalef/zep/internal"
+	"github.com/getzep/zep/internal"
 
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"

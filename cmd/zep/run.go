@@ -6,12 +6,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/danielchalef/zep/config"
-	"github.com/danielchalef/zep/pkg/extractors"
-	"github.com/danielchalef/zep/pkg/llms"
-	"github.com/danielchalef/zep/pkg/memorystore"
-	"github.com/danielchalef/zep/pkg/models"
-	"github.com/danielchalef/zep/pkg/server"
+	"github.com/getzep/zep/config"
+	"github.com/getzep/zep/pkg/extractors"
+	"github.com/getzep/zep/pkg/llms"
+	"github.com/getzep/zep/pkg/memorystore"
+	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/pkg/server"
 )
 
 const (
