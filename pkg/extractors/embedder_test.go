@@ -19,7 +19,7 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	// Force embedding to be enabled
 	viper.Set("extractor.embeddings.enabled", true)
 
-	db := memorystore.NewPostgresConn(test.TestDsn)
+	db := memorystore.NewPostgresConn(test.GetDSN())
 	memorystore.CleanDB(t, db)
 
 	cfg, err := test.NewTestConfig()

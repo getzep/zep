@@ -41,7 +41,7 @@ func TestMain(m *testing.M) {
 func setup() {
 	internal.SetLogLevel(logrus.DebugLevel)
 	// Initialize the database connection
-	testDB = NewPostgresConn(test.TestDsn)
+	testDB = NewPostgresConn(test.GetDSN())
 
 	// Initialize the test context
 	testCtx = context.Background()

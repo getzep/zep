@@ -16,7 +16,7 @@ import (
 func TestSummarize(t *testing.T) {
 	ctx := context.Background()
 
-	db := memorystore.NewPostgresConn(test.TestDsn)
+	db := memorystore.NewPostgresConn(test.GetDSN())
 	defer db.Close()
 	memorystore.CleanDB(t, db)
 
