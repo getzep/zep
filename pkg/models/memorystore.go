@@ -33,15 +33,13 @@ type MemoryStore[T any] interface {
 	PutMessageVectors(ctx context.Context,
 		appState *AppState,
 		sessionID string,
-		embeddings []Embeddings,
-		isEmbedded bool) error
+		embeddings []Embeddings) error
 	// GetMessageVectors retrieves a collection of Embeddings for a given sessionID. isEmbedded is a flag that
 	// whether the Embeddings records have been embedded. The Embeddings extractor uses this internally to determine
 	// which records still need to be embedded.
 	GetMessageVectors(ctx context.Context,
 		appState *AppState,
-		sessionID string,
-		isEmbedded bool) ([]Embeddings, error)
+		sessionID string) ([]Embeddings, error)
 	// SearchMemory retrieves a collection of SearchResults for a given sessionID and query. Currently, the query
 	// is a simple string, but this could be extended to support more complex queries in the future. The SearchResult
 	// structure can include both Messages and Summaries. Currently, we only search Messages.
