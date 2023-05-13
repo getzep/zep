@@ -29,8 +29,6 @@ var testCtx context.Context
 var appState *models.AppState
 
 func TestMain(m *testing.M) {
-	// Set log level to Debug for all tests in this package
-
 	setup()
 	exitCode := m.Run()
 	tearDown()
@@ -46,10 +44,7 @@ func setup() {
 	// Initialize the test context
 	testCtx = context.Background()
 
-	cfg, err := test.NewTestConfig()
-	if err != nil {
-		panic(err)
-	}
+	cfg := test.NewTestConfig()
 
 	appState = &models.AppState{}
 	appState.OpenAIClient = llms.CreateOpenAIClient(cfg)

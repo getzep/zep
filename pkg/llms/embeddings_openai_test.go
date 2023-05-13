@@ -12,8 +12,7 @@ import (
 )
 
 func TestEmbedMessages(t *testing.T) {
-	cfg, err := test.NewTestConfig()
-	assert.NoError(t, err)
+	cfg := test.NewTestConfig()
 
 	appState := &models.AppState{Config: cfg}
 	appState.OpenAIClient = CreateOpenAIClient(cfg)

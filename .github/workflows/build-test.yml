@@ -37,9 +37,6 @@ jobs:
 
     - name: Test
       run: go test -p 1 -v ./...
-#       run: |
-#         echo ${#ZEP_OPENAI_API_KEY}
-#         echo ${#ZEP_MEMORY_STORE_POSTGRES_DSN}
       env:
         ZEP_OPENAI_API_KEY: ${{ secrets.ZEP_OPENAI_API_KEY }}
         ZEP_MEMORY_STORE_POSTGRES_DSN: 'postgres://postgres:postgres@postgres:5432/?sslmode=disable'

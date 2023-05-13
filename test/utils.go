@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,15 +15,13 @@ import (
 	"github.com/getzep/zep/config"
 )
 
+var testConfig *config.Config
+
 func init() {
-	// Force embedding to be enabled
-	err := viper.BindEnv("llm.openai_api_key", "ZEP_OPENAI_API_KEY")
+	var err error
+	testConfig, err = initConfig()
 	if err != nil {
-		log.Fatalf("Error binding environment variable: %s", err)
-	}
-	err = viper.BindEnv("llm.memory_store.postgres.dsn", "ZEP_MEMORY_STORE_POSTGRES_DSN")
-	if err != nil {
-		log.Fatalf("Error binding environment variable: %s", err)
+		panic(err)
 	}
 }
 
@@ -37,7 +34,7 @@ func GetDSN() string {
 	return testDsn
 }
 
-func NewTestConfig() (*config.Config, error) {
+func initConfig() (*config.Config, error) {
 	projectRoot, err := FindProjectRoot()
 	if err != nil {
 		return nil, fmt.Errorf("failed to find project root: %v", err)
@@ -54,6 +51,10 @@ func NewTestConfig() (*config.Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func NewTestConfig() *config.Config {
+	return testConfig
 }
 
 func GenerateRandomSessionID(length int) (string, error) {

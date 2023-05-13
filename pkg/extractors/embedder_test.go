@@ -22,8 +22,7 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	db := memorystore.NewPostgresConn(test.GetDSN())
 	memorystore.CleanDB(t, db)
 
-	cfg, err := test.NewTestConfig()
-	assert.NoError(t, err)
+	cfg := test.NewTestConfig()
 
 	appState := &models.AppState{Config: cfg}
 	store, err := memorystore.NewPostgresMemoryStore(appState, db)
