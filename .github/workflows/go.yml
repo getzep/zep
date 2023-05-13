@@ -15,7 +15,6 @@ jobs:
     services:
       postgres:
         image: ghcr.io/getzep/postgres:latest
-        # Provide the password for postgres
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -37,10 +36,10 @@ jobs:
       run: go build -v ./...
 
     - name: Test
-#       run: go test -p 1 -v ./...
-      run: |
-        echo ${#ZEP_OPENAI_API_KEY}
-        echo ${#ZEP_MEMORY_STORE_POSTGRES_DSN}
+      run: go test -p 1 -v ./...
+#       run: |
+#         echo ${#ZEP_OPENAI_API_KEY}
+#         echo ${#ZEP_MEMORY_STORE_POSTGRES_DSN}
       env:
         ZEP_OPENAI_API_KEY: ${{ secrets.ZEP_OPENAI_API_KEY }}
         ZEP_MEMORY_STORE_POSTGRES_DSN: "postgres://postgres:postgres@postgres:5432/?sslmode=disable"
