@@ -20,8 +20,7 @@ func TestSummarize(t *testing.T) {
 	defer db.Close()
 	memorystore.CleanDB(t, db)
 
-	cfg, err := test.NewTestConfig()
-	assert.NoError(t, err)
+	cfg := test.NewTestConfig()
 
 	appState := &models.AppState{Config: cfg}
 
