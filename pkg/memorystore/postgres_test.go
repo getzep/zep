@@ -217,7 +217,7 @@ func TestPgDeleteSession(t *testing.T) {
 	}
 
 	// Call putMessages function
-	resultMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
+	resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	// Put a summary
@@ -275,7 +275,7 @@ func TestPutMessages(t *testing.T) {
 	viper.Set("extractor.embeddings.enabled", true)
 
 	t.Run("insert messages", func(t *testing.T) {
-		resultMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
+		resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 		assert.NoError(t, err, "putMessages should not return an error")
 
 		// Verify the inserted messages in the database
@@ -292,7 +292,7 @@ func TestPutMessages(t *testing.T) {
 		}
 
 		// Call putMessages function to upsert the messages
-		resultMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
+		resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 		assert.NoError(t, err, "putMessages should not return an error")
 
 		// Verify the upserted messages in the database
@@ -374,7 +374,7 @@ func TestGetMessages(t *testing.T) {
 	_, err = putSession(testCtx, testDB, sessionID, metadata)
 	assert.NoError(t, err)
 
-	messages, err := putMessages(testCtx, testDB, sessionID, true, test.TestMessages)
+	messages, err := putMessages(testCtx, testDB, sessionID, test.TestMessages)
 	assert.NoError(t, err)
 
 	// Explicitly set the message window to 10
@@ -458,44 +458,6 @@ func TestGetMessages(t *testing.T) {
 	}
 }
 
-func TestGetMessageVectorsWhereIsEmbeddedFalse(t *testing.T) {
-	// Create a test session
-	sessionID, err := test.GenerateRandomSessionID(16)
-	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
-	metadata := map[string]interface{}{
-		"key": "value",
-	}
-	_, err = putSession(testCtx, testDB, sessionID, metadata)
-	assert.NoError(t, err)
-
-	messages := []models.Message{
-		{
-			Role:     "user",
-			Content:  "Hello",
-			Metadata: map[string]interface{}{"timestamp": "1629462540"},
-		},
-		{
-			Role:     "bot",
-			Content:  "Hi there!",
-			Metadata: map[string]interface{}{"something": "good"},
-		},
-	}
-
-	addedMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
-	assert.NoError(t, err)
-
-	// getMessageVectors only for isEmbedded = false
-	embeddings, err := getMessageVectors(testCtx, testDB, sessionID, false)
-	assert.NoError(t, err)
-	assert.Equal(t, len(messages), len(embeddings))
-
-	for i, emb := range embeddings {
-		assert.NotNil(t, emb.TextUUID)
-		assert.NotEmpty(t, emb.Embedding)
-		assert.Equal(t, addedMessages[i].UUID, emb.TextUUID)
-	}
-}
-
 func TestPutSummary(t *testing.T) {
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
@@ -517,7 +479,7 @@ func TestPutSummary(t *testing.T) {
 	}
 
 	// Call putMessages function
-	resultMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
+	resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	tests := []struct {
@@ -620,7 +582,7 @@ func TestGetSummary(t *testing.T) {
 	}
 
 	// Call putMessages function
-	resultMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
+	resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	summary.SummaryPointUUID = resultMessages[0].UUID
@@ -687,7 +649,7 @@ func TestPutEmbeddings(t *testing.T) {
 	viper.Set("extractor.embeddings.enabled", true)
 
 	// Call putMessages function
-	resultMessages, err := putMessages(testCtx, testDB, sessionID, true, messages)
+	resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	vector := make([]float32, 1536)
@@ -706,7 +668,7 @@ func TestPutEmbeddings(t *testing.T) {
 		},
 	}
 
-	err = putEmbeddings(testCtx, testDB, sessionID, embeddings, true)
+	err = putEmbeddings(testCtx, testDB, sessionID, embeddings)
 	assert.NoError(t, err, "putEmbeddings should not return an error")
 
 	// Check for the creation of PgMessageVectorStore values
@@ -756,7 +718,7 @@ func TestLastSummaryPointIndex(t *testing.T) {
 	assert.NoError(t, err, "putSession should not return an error")
 
 	// Call putMessages function using internal.TestMessages
-	resultMessages, err := putMessages(testCtx, testDB, sessionID, true, test.TestMessages)
+	resultMessages, err := putMessages(testCtx, testDB, sessionID, test.TestMessages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	configuredMessageWindow := 30
@@ -818,7 +780,7 @@ func TestSearch(t *testing.T) {
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
 	// Call putMessages function
-	msgs, err := putMessages(testCtx, testDB, sessionID, true, test.TestMessages)
+	msgs, err := putMessages(testCtx, testDB, sessionID, test.TestMessages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	appState.MemoryStore.NotifyExtractors(

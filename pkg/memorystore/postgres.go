@@ -272,7 +272,6 @@ func (pms *PostgresMemoryStore) PutMemory(
 		ctx,
 		pms.Client,
 		sessionID,
-		appState.Config.Extractors.Embeddings.Enabled,
 		memoryMessages.Messages,
 	)
 	if err != nil {
@@ -386,7 +385,6 @@ func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
 	embeddings []models.Embeddings,
-	isEmbedded bool,
 ) error {
 	if embeddings == nil {
 		return NewStorageError("nil embeddings received", nil)
@@ -395,7 +393,7 @@ func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 		return NewStorageError("no embeddings received", nil)
 	}
 
-	err := putEmbeddings(ctx, pms.Client, sessionID, embeddings, isEmbedded)
+	err := putEmbeddings(ctx, pms.Client, sessionID, embeddings)
 	if err != nil {
 		return NewStorageError("failed to put embeddings", err)
 	}
@@ -406,9 +404,8 @@ func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 func (pms *PostgresMemoryStore) GetMessageVectors(ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
-	isEmbedded bool,
 ) ([]models.Embeddings, error) {
-	embeddings, err := getMessageVectors(ctx, pms.Client, sessionID, isEmbedded)
+	embeddings, err := getMessageVectors(ctx, pms.Client, sessionID)
 	if err != nil {
 		return nil, NewStorageError("GetMessageVectors failed to get embeddings", err)
 	}
@@ -418,8 +415,7 @@ func (pms *PostgresMemoryStore) GetMessageVectors(ctx context.Context,
 
 func getMessageVectors(ctx context.Context,
 	db *bun.DB,
-	sessionID string,
-	isEmbedded bool) ([]models.Embeddings, error) {
+	sessionID string) ([]models.Embeddings, error) {
 	var results []struct {
 		PgMessageStore
 		PgMessageVectorStore
@@ -431,7 +427,7 @@ func getMessageVectors(ctx context.Context,
 		JoinOn("message_embedding.message_uuid = message.uuid").
 		ColumnExpr("message.content").
 		ColumnExpr("message_embedding.*").
-		Where("message_embedding.is_embedded = ?", isEmbedded).
+		Where("message_embedding.is_embedded = ?", true).
 		Where("message_embedding.session_id = ?", sessionID).
 		Exec(ctx, &results)
 	if err != nil {
@@ -510,7 +506,6 @@ func putMessages(
 	ctx context.Context,
 	db *bun.DB,
 	sessionID string,
-	embeddingEnabled bool,
 	messages []models.Message,
 ) ([]models.Message, error) {
 	if len(messages) == 0 {
@@ -534,52 +529,9 @@ func putMessages(
 		pgMessages[i].SessionID = sessionID
 	}
 
-	// wrap in a transaction, so we can roll back if any of the inserts fail. We
-	// don't want to partially save messages without vectorstore records.
-	tx, err := db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer func(tx bun.Tx) {
-		_ = tx.Rollback()
-	}(tx)
-
-	_, err = tx.NewInsert().Model(&pgMessages).On("CONFLICT (uuid) DO UPDATE").Exec(ctx)
+	_, err = db.NewInsert().Model(&pgMessages).On("CONFLICT (uuid) DO UPDATE").Exec(ctx)
 	if err != nil {
 		return nil, NewStorageError("failed to save memories to store", err)
-	}
-
-	// If embeddings are enabled, store the new messages for future embedding.
-	// The Embedded field will be false until we run the embedding extractor out of band.
-	if embeddingEnabled {
-		zeroVector := make(
-			[]float32,
-			1536,
-		) // TODO: use config. will need to drill appState down to here
-
-		// Extract new messages. We use the original messages slice to filter
-		// out messages that already have UUIDs.
-		var embedRecords []PgMessageVectorStore
-		for i, msg := range messages {
-			if msg.UUID == uuid.Nil {
-				e := PgMessageVectorStore{
-					SessionID:   sessionID,
-					MessageUUID: pgMessages[i].UUID,
-					Embedding:   pgvector.NewVector(zeroVector), // Vector fields can't be null
-				}
-				embedRecords = append(embedRecords, e)
-			}
-		}
-		if len(embedRecords) > 0 {
-			_, err = tx.NewInsert().Model(&embedRecords).Exec(ctx)
-			if err != nil {
-				return nil, NewStorageError("failed to save memory vector records", err)
-			}
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, err
 	}
 
 	retMessages := make([]models.Message, len(messages))
@@ -778,7 +730,6 @@ func putEmbeddings(
 	db *bun.DB,
 	sessionID string,
 	embeddings []models.Embeddings,
-	isEmbedded bool,
 ) error {
 	if embeddings == nil {
 		return NewStorageError("nil embeddings received", nil)
@@ -793,19 +744,14 @@ func putEmbeddings(
 			SessionID:   sessionID,
 			Embedding:   pgvector.NewVector(e.Embedding),
 			MessageUUID: e.TextUUID,
+			IsEmbedded:  true,
 		}
 	}
 
-	values := db.NewValues(&embeddingVectors)
-	_, err := db.NewUpdate().
-		With("_data", values).
-		Model((*PgMessageVectorStore)(nil)).
-		TableExpr("_data").
-		Set("embedding = _data.embedding").
-		Set("is_embedded = ?", isEmbedded).
-		Where("me.message_uuid = _data.message_uuid").
-		OmitZero().
+	_, err := db.NewInsert().
+		Model(&embeddingVectors).
 		Exec(ctx)
+
 	if err != nil {
 		return NewStorageError("failed to insert message vectors", err)
 	}

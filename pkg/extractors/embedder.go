@@ -26,31 +26,17 @@ func (ee *EmbeddingExtractor) Extract(
 	sessionMutex.Lock()
 	defer sessionMutex.Unlock()
 
-	unembeddedMessages, err := appState.MemoryStore.GetMessageVectors(
-		ctx,
-		appState,
-		messageEvent.SessionID,
-		false,
-	)
-	if err != nil {
-		return NewExtractorError("EmbeddingExtractor get message vectors failed", err)
-	}
-
-	if len(unembeddedMessages) == 0 {
-		return nil
-	}
-
-	texts := embeddingsToTextSlice(unembeddedMessages, false)
+	texts := messageToStringSlice(messageEvent.Messages, false)
 
 	embeddings, err := llms.EmbedMessages(ctx, appState, texts)
 	if err != nil {
 		return NewExtractorError("EmbeddingExtractor embed messages failed", err)
 	}
 
-	embeddingRecords := make([]models.Embeddings, len(unembeddedMessages))
-	for i, r := range unembeddedMessages {
+	embeddingRecords := make([]models.Embeddings, len(messageEvent.Messages))
+	for i, r := range messageEvent.Messages {
 		embeddingRecords[i] = models.Embeddings{
-			TextUUID:  r.TextUUID,
+			TextUUID:  r.UUID,
 			Embedding: (*embeddings)[i].Embedding,
 		}
 	}
@@ -59,7 +45,6 @@ func (ee *EmbeddingExtractor) Extract(
 		appState,
 		messageEvent.SessionID,
 		embeddingRecords,
-		true,
 	)
 	if err != nil {
 		return NewExtractorError("EmbeddingExtractor put message vectors failed", err)
@@ -67,27 +52,27 @@ func (ee *EmbeddingExtractor) Extract(
 	return nil
 }
 
-// embeddingsToTextSlice converts a slice of Embeddings to a slice of strings.
+// messageToStringSlice converts a slice of Embeddings to a slice of strings.
 // If enrich is true, the text slice will include the prior and subsequent
 // messages text to the slice item.
-func embeddingsToTextSlice(messages []models.Embeddings, enrich bool) []string {
+func messageToStringSlice(messages []models.Message, enrich bool) []string {
 	texts := make([]string, len(messages))
 	for i, r := range messages {
 		if !enrich {
-			texts[i] = r.Text
+			texts[i] = r.Content
 			continue
 		}
 
 		var parts []string
 
 		if i > 0 {
-			parts = append(parts, messages[i-1].Text)
+			parts = append(parts, messages[i-1].Content)
 		}
 
-		parts = append(parts, r.Text)
+		parts = append(parts, r.Content)
 
 		if i < len(messages)-1 {
-			parts = append(parts, messages[i+1].Text)
+			parts = append(parts, messages[i+1].Content)
 		}
 
 		texts[i] = strings.Join(parts, " ")

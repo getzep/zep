@@ -40,18 +40,20 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Get messages that are missing embeddings using appState.MemoryStore.GetMessageVectors
-	unembeddedMessages, err := store.GetMessageVectors(ctx, appState, sessionID, false)
+	memories, err := store.GetMemory(ctx, appState, sessionID, 0)
 	assert.NoError(t, err)
-	assert.True(t, len(unembeddedMessages) == len(testMessages))
+	assert.True(t, len(memories.Messages) == len(testMessages))
 
+	unembeddedMessages := memories.Messages
 	// Create messageEvent. We only need to pass the sessionID
 	messageEvent := &models.MessageEvent{
 		SessionID: sessionID,
+		Messages:  unembeddedMessages,
 	}
 
 	texts := make([]string, len(unembeddedMessages))
 	for i, r := range unembeddedMessages {
-		texts[i] = r.Text
+		texts[i] = r.Content
 	}
 
 	embeddings, err := llms.EmbedMessages(ctx, appState, texts)
@@ -60,8 +62,8 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	expectedEmbeddingRecords := make([]models.Embeddings, len(unembeddedMessages))
 	for i, r := range unembeddedMessages {
 		expectedEmbeddingRecords[i] = models.Embeddings{
-			TextUUID:  r.TextUUID,
-			Text:      r.Text,
+			TextUUID:  r.UUID,
+			Text:      r.Content,
 			Embedding: (*embeddings)[i].Embedding,
 		}
 	}
@@ -74,7 +76,6 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 		ctx,
 		appState,
 		messageEvent.SessionID,
-		true,
 	)
 	assert.NoError(t, err)
 
