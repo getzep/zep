@@ -1,8 +1,8 @@
 [![Build/Test](https://github.com/getzep/zep/actions/workflows/build-test.yml/badge.svg)](https://github.com/getzep/zep/actions/workflows/build-test.yml) [![Docker](https://github.com/getzep/zep/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/getzep/zep/actions/workflows/docker-publish.yml) [![golangci-lint](https://github.com/getzep/zep/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/getzep/zep/actions/workflows/golangci-lint.yml)
 [![License: Apache](https://img.shields.io/badge/License-Apache-blue.svg)](https://img.shields.io/github/license/getzep/zep)
 
-# Zep: A long-term memory store for conversational AI applications
-Zep stores, summarizes, embeds, indexes, and enriches conversational AI chat histories, and exposes them via simple, low-latency APIs. Zep allows developers to focus on developing their AI apps, rather than on building memory persistence, search, and enrichment infrastructure.
+# Zep: A long-term memory store for LLM applications
+Zep stores, summarizes, embeds, indexes, and enriches LLM app / chatbot histories, and exposes them via simple, low-latency APIs. Zep allows developers to focus on developing their AI apps, rather than on building memory persistence, search, and enrichment infrastructure.
 
 Zep's Extractor model is easily extensible, with a simple, clean interface available to build new enrichment functionality, such as summarizers, entity extractors, embedders, and more.
 
@@ -59,7 +59,7 @@ See [zep-python](https://github.com/getzep/zep-python) for installation and use 
 ...
 ```
 ## Why Zep?
-Chat history storage is an infrastructure challenge all developers and enterprises face as they look to move from prototypes to deploying conversational AI applications that provide rich and intimate experiences to users.
+Chat history storage is an infrastructure challenge all developers and enterprises face as they look to move from prototypes to deploying LLM/ AI Chat applications that provide rich and intimate experiences to users.
 
 Long-term memory persistence enables a variety of use cases, including:
 - Personalized re-engagement of users based on their chat history.
@@ -68,7 +68,7 @@ Long-term memory persistence enables a variety of use cases, including:
 - Analysis of historical data to understand user behavior and preferences.
 
 However:
-- Most AI chat history or memory implementations run in-memory, and are not designed for stateless deployments or long-term persistence.
+- Most LLM chat history or memory implementations run in-memory, and are not designed for stateless deployments or long-term persistence.
 - Standing up and managing low-latency infrastructure to store, manage, and enrich memories is non-trivial.
 - When storing messages long-term, developers are exposed to privacy and regulatory obligations around retention and deletion of user data.
 
