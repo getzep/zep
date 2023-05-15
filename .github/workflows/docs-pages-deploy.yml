@@ -1,4 +1,4 @@
-name: Docs Pages Deploy 
+name: docs-pages-deploy 
 on:
   workflow_dispatch:
   
