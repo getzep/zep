@@ -27,9 +27,7 @@ func Create(appState *models.AppState) *http.Server {
 	}
 }
 
-//	@title			Zep Long-term Memory API
-//	@description	Zep stores, manages, enriches, and searches long-term memory for conversational AI applications
-
+//	@title			Zep REST API
 //	@license.name	Apache 2.0
 //	@license.url	http://www.apache.org/licenses/LICENSE-2.0.html
 
