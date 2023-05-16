@@ -228,9 +228,6 @@ func (pms *PostgresMemoryStore) GetMemory(
 	if err != nil {
 		return nil, NewStorageError("failed to get summary", err)
 	}
-	if summary != nil {
-		log.Debugf("Got summary for %s: %s", sessionID, summary.UUID)
-	}
 
 	// Retrieve either the lastNMessages or all messages up to the last SummaryPoint
 	messages, err := getMessages(
@@ -242,9 +239,6 @@ func (pms *PostgresMemoryStore) GetMemory(
 	)
 	if err != nil {
 		return nil, NewStorageError("failed to get messages", err)
-	}
-	if messages != nil {
-		log.Debugf("Got messages for %s: %d", sessionID, len(messages))
 	}
 
 	memory := models.Memory{
@@ -341,7 +335,6 @@ func searchMessages(
 		limit = 10
 	}
 
-	log.Debugf("searchMessages called for session %s", sessionID)
 	e, err := llms.EmbedMessages(ctx, appState, []string{s})
 	if err != nil {
 		return nil, NewStorageError("failed to embed query", err)
@@ -376,9 +369,6 @@ func searchMessages(
 			filteredResults = append(filteredResults, result)
 		}
 	}
-
-	log.Debugf("searchMessages completed for session %s", sessionID)
-
 	return filteredResults, nil
 }
 
@@ -526,7 +516,6 @@ func putMessages(
 		log.Warn("putMessages called with no messages")
 		return nil, nil
 	}
-	log.Debugf("putMessages called for session %s with %d messages", sessionID, len(messages))
 
 	// Create or update a Session
 	_, err := putSession(ctx, db, sessionID, nil)
@@ -554,8 +543,6 @@ func putMessages(
 	if err != nil {
 		return nil, NewStorageError("failed to copy pgMessages to retMessages", err)
 	}
-
-	log.Debugf("putMessages completed for session %s with %d messages", sessionID, len(messages))
 
 	return retMessages, nil
 }
@@ -749,7 +736,6 @@ func putEmbeddings(
 // deleteSession deletes a session from the memory store. This is a soft delete.
 // TODO: This is ugly. Determine why bun's cascading deletes aren't working
 func deleteSession(ctx context.Context, db *bun.DB, sessionID string) error {
-	log.Debugf("deleting from memory store for session %s", sessionID)
 	schemas := []bun.BeforeCreateTableHook{
 		&PgMessageVectorStore{},
 		&PgSummaryStore{},
@@ -757,7 +743,6 @@ func deleteSession(ctx context.Context, db *bun.DB, sessionID string) error {
 		&PgSession{},
 	}
 	for _, schema := range schemas {
-		log.Debugf("deleting session %s from schema %v", sessionID, schema)
 		_, err := db.NewDelete().
 			Model(schema).
 			Where("session_id = ?", sessionID).
@@ -766,7 +751,6 @@ func deleteSession(ctx context.Context, db *bun.DB, sessionID string) error {
 			return fmt.Errorf("error deleting rows from %T: %w", schema, err)
 		}
 	}
-	log.Debugf("completed deleting session %s", sessionID)
 
 	return nil
 }
