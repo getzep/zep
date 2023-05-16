@@ -98,7 +98,7 @@ jobs:
         run: |
           cosign sign --key env://COSIGN_PRIVATE_KEY ${TAGS}
         env:
-          TAGS: ${{ steps.docker_meta.outputs.tags }}
+          TAGS: ${{ steps.docker_meta.outputs.tags || env.TAGS }}
           COSIGN_PRIVATE_KEY: ${{secrets.COSIGN_PRIVATE_KEY}}
           COSIGN_PASSWORD: ${{secrets.COSIGN_PASSWORD}}
           DIGEST: ${{ steps.build-and-push.outputs.digest }}
@@ -106,5 +106,5 @@ jobs:
       - name: Sign the images with GitHub OIDC Token
         env:
           DIGEST: ${{ steps.build-and-push.outputs.digest }}
-          TAGS: ${{ steps.docker_meta.outputs.tags }}
+          TAGS: ${{ steps.docker_meta.outputs.tags || env.TAGS  }}
         run: echo "${TAGS}" | xargs -I {} cosign sign {}@${DIGEST}
