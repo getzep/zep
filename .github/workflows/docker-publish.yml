@@ -80,6 +80,7 @@ jobs:
           VERSION=$(git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0pre')
           echo "TAGS=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}" >> $GITHUB_ENV
 
+
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
       - name: Build and push Docker image
