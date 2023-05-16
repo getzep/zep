@@ -38,11 +38,11 @@ jobs:
 
       # Install the cosign tool except on PR
       # https://github.com/sigstore/cosign-installer
-      - name: Install cosign
-        if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@main
-        with:
-          cosign-release: 'v2.0.2'
+#      - name: Install cosign
+#        if: github.event_name != 'pull_request'
+#        uses: sigstore/cosign-installer@main
+#        with:
+#          cosign-release: 'v2.0.2'
 
 
       # Workaround: https://github.com/docker/build-push-action/issues/461
@@ -94,17 +94,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Sign image with a key
-        run: |
-          cosign sign --key env://COSIGN_PRIVATE_KEY ${TAGS}
-        env:
-          TAGS: ${{ steps.docker_meta.outputs.tags || env.TAGS }}
-          COSIGN_PRIVATE_KEY: ${{secrets.COSIGN_PRIVATE_KEY}}
-          COSIGN_PASSWORD: ${{secrets.COSIGN_PASSWORD}}
-          DIGEST: ${{ steps.build-and-push.outputs.digest }}
-
-      - name: Sign the images with GitHub OIDC Token
-        env:
-          DIGEST: ${{ steps.build-and-push.outputs.digest }}
-          TAGS: ${{ steps.docker_meta.outputs.tags || env.TAGS  }}
-        run: echo "${TAGS}" | xargs -I {} cosign sign {}@${DIGEST}
+#      - name: Sign image with a key
+#        run: |
+#          cosign sign --key env://COSIGN_PRIVATE_KEY ${TAGS}
+#        env:
+#          TAGS: ${{ steps.docker_meta.outputs.tags || env.TAGS }}
+#          COSIGN_PRIVATE_KEY: ${{secrets.COSIGN_PRIVATE_KEY}}
+#          COSIGN_PASSWORD: ${{secrets.COSIGN_PASSWORD}}
+#          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+#
+#      - name: Sign the images with GitHub OIDC Token
+#        env:
+#          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+#          TAGS: ${{ steps.docker_meta.outputs.tags || env.TAGS  }}
+#        run: echo "${TAGS}" | xargs -I {} cosign sign {}@${DIGEST}
