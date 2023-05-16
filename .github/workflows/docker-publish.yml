@@ -10,9 +10,10 @@ on:
     # Publish semver tags as releases.
     tags: [ 'v*.*.*' ]
   workflow_dispatch:
-      tag:
-        description: 'Tag to build and publish'
-        required: true
+    inputs:
+        tag:
+          description: 'Tag to build and publish'
+          required: true
 
 env:
   # Use docker.io for Docker Hub if empty
@@ -32,13 +33,14 @@ jobs:
       # with sigstore/fulcio when running outside of PRs.
       id-token: write
 
-    # if triggered via a tag, use the tag name as the version
-    # otherwise, use the manually specified version tag
+
+    # if triggered manually via dispatch, use the provided tag name
+    # otherwise, use the event ref
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          ref:  ${{ github.ref || github.event.inputs.tag }}
+          ref:  ${{ github.event.inputs.tag || github.ref  }}
         
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2.1.0
