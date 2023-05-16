@@ -2,7 +2,9 @@ package llms
 
 import (
 	"context"
+	"time"
 
+	"github.com/avast/retry-go"
 	"github.com/getzep/zep/config"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/pkoukk/tiktoken-go"
@@ -25,7 +27,7 @@ func RunChatCompletion(
 	appState *models.AppState,
 	summaryMaxTokens int,
 	prompt string,
-) (openai.ChatCompletionResponse, error) {
+) (resp openai.ChatCompletionResponse, err error) {
 	modelName, err := GetLLMModelName(appState.Config)
 	if err != nil {
 		return openai.ChatCompletionResponse{}, err
@@ -41,7 +43,21 @@ func RunChatCompletion(
 		},
 		Temperature: DefaultTemperature,
 	}
-	resp, err := appState.OpenAIClient.CreateChatCompletion(ctx, req)
+	// Retry up to 3 times with exponential backoff, cancel after 60 seconds
+	retryCtx, cancel := context.WithTimeout(ctx, time.Second*60)
+	defer cancel()
+	err = retry.Do(
+		func() error {
+			resp, err = appState.OpenAIClient.CreateChatCompletion(retryCtx, req)
+			return err
+		},
+		retry.Attempts(3),
+		retry.Context(retryCtx),
+		retry.DelayType(retry.BackOffDelay),
+		retry.OnRetry(func(n uint, err error) {
+			log.Warningf("Retrying OpenAI API attempt #%d: %s\n", n, err)
+		}),
+	)
 	if err != nil {
 		return openai.ChatCompletionResponse{}, err
 	}
