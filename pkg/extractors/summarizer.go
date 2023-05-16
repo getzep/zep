@@ -84,7 +84,7 @@ func (se *SummaryExtractor) Notify(
 	appState *models.AppState,
 	messageEvents *models.MessageEvent,
 ) error {
-	log.Debugf("SummaryExtractor notify: %v", messageEvents)
+	log.Debugf("SummaryExtractor notify: %d messages", len(messageEvents.Messages))
 	if messageEvents == nil {
 		return NewExtractorError(
 			"SummaryExtractor message events is nil at Notify",
