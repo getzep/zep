@@ -83,6 +83,7 @@ func PostMemoryHandler(appState *models.AppState) http.HandlerFunc {
 			appState,
 			sessionID,
 			&memoryMessages,
+			false,
 		); err != nil {
 			renderError(w, err, http.StatusInternalServerError)
 			return
@@ -173,7 +174,10 @@ func decodeJSON(r *http.Request, data interface{}) error {
 }
 
 func renderError(w http.ResponseWriter, err error, status int) {
-	log.Error(err)
+	if status != http.StatusNotFound {
+		// Don't log not found errors
+		log.Error(err)
+	}
 	http.Error(w, err.Error(), status)
 }
 

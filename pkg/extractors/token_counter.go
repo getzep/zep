@@ -18,15 +18,14 @@ type TokenCountExtractor struct {
 func (ee *TokenCountExtractor) Extract(
 	ctx context.Context,
 	appState *models.AppState,
-	messageEvent *models.MessageEvent,
+	messageEvents *models.MessageEvent,
 ) error {
-	log.Debugf("TokenCountExtractor extract: %v", messageEvent)
-	sessionID := messageEvent.SessionID
+	sessionID := messageEvents.SessionID
 	sessionMutex := ee.getSessionMutex(sessionID)
 	sessionMutex.Lock()
 	defer sessionMutex.Unlock()
 
-	countResult, err := ee.updateTokenCounts(messageEvent.Messages)
+	countResult, err := ee.updateTokenCounts(messageEvents.Messages)
 	if err != nil {
 		return NewExtractorError("TokenCountExtractor failed to get token count", err)
 	}
@@ -38,8 +37,9 @@ func (ee *TokenCountExtractor) Extract(
 	err = appState.MemoryStore.PutMemory(
 		ctx,
 		appState,
-		messageEvent.SessionID,
+		messageEvents.SessionID,
 		&models.Memory{Messages: countResult},
+		true,
 	)
 	if err != nil {
 		return NewExtractorError("TokenCountExtractor update messages failed", err)
@@ -71,7 +71,7 @@ func (ee *TokenCountExtractor) Notify(
 	appState *models.AppState,
 	messageEvents *models.MessageEvent,
 ) error {
-	log.Debugf("EmbeddingExtractor notify: %v", messageEvents)
+	log.Debugf("TokenCountExtractor extract: %d messages", len(messageEvents.Messages))
 	if messageEvents == nil {
 		return NewExtractorError(
 			"TokenCountExtractor message events is nil at Notify",

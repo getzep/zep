@@ -267,6 +267,7 @@ func (pms *PostgresMemoryStore) PutMemory(
 	appState *models.AppState,
 	sessionID string,
 	memoryMessages *models.Memory,
+	skipNotify bool,
 ) error {
 	messageResult, err := putMessages(
 		ctx,
@@ -276,6 +277,10 @@ func (pms *PostgresMemoryStore) PutMemory(
 	)
 	if err != nil {
 		return NewStorageError("failed to put messages", err)
+	}
+
+	if skipNotify {
+		return nil
 	}
 
 	pms.NotifyExtractors(
