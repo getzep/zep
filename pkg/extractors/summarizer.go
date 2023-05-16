@@ -52,7 +52,8 @@ func (se *SummaryExtractor) Extract(
 
 	messages := messagesSummary.Messages
 	if messages == nil {
-		return NewExtractorError("SummaryExtractor messages is nil", nil)
+		log.Warningf("SummaryExtractor GetMemory returned no messages for session %s", sessionID)
+		return nil
 	}
 	// If we're still under the message window, we don't need to summarize.
 	if len(messages) < appState.Config.Memory.MessageWindow {
