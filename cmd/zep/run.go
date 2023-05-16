@@ -22,6 +22,12 @@ const (
 
 // run is the entrypoint for the zep server
 func run() {
+	if showVersion {
+		fmt.Println(VersionString)
+		os.Exit(0)
+	}
+	log.Infof("Starting zep server version %s", VersionString)
+
 	cfg, err := config.LoadConfig(cfgFile)
 	if err != nil {
 		log.Fatalf("Error loading config: %s", err)
@@ -35,7 +41,7 @@ func run() {
 
 	srv := server.Create(appState)
 
-	log.Info("Listening on: ", srv.Addr)
+	log.Infof("Listening on: %s", srv.Addr)
 	err = srv.ListenAndServe()
 	if err != nil {
 		log.Fatal(err)

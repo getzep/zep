@@ -12,7 +12,8 @@ import (
 var (
 	log *logrus.Logger
 
-	cfgFile string
+	cfgFile     string
+	showVersion bool
 )
 
 var cmd = &cobra.Command{
@@ -23,6 +24,8 @@ var cmd = &cobra.Command{
 
 func init() {
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default config.yaml)")
+	// add cobra switch to print version number
+	cmd.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "print version number")
 }
 
 // Execute executes the root cobra command.
