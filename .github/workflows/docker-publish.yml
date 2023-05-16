@@ -10,9 +10,10 @@ on:
     # Publish semver tags as releases.
     tags: [ 'v*.*.*' ]
   workflow_dispatch:
-      tag:
-        description: 'Tag to build and publish'
-        required: true
+    inputs:
+        tag:
+          description: 'Tag to build and publish'
+          required: true
 
 env:
   # Use docker.io for Docker Hub if empty
