@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/avast/retry-go"
+	"github.com/avast/retry-go/v4"
 	"github.com/getzep/zep/config"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/pkoukk/tiktoken-go"
