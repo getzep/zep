@@ -240,7 +240,7 @@ func TestPgDeleteSession(t *testing.T) {
 	assert.Nil(t, resp, "getSession should return nil")
 
 	// Test that messages are deleted
-	respMessages, err := getMessages(testCtx, testDB, sessionID, memoryWindow, 10)
+	respMessages, err := getMessages(testCtx, testDB, sessionID, memoryWindow, nil, 0)
 	assert.NoError(t, err, "getMessages should not return an error")
 	assert.Nil(t, respMessages, "getMessages should return nil")
 
@@ -284,7 +284,7 @@ func TestPutMessages(t *testing.T) {
 
 	t.Run("upsert messages with updated TokenCount", func(t *testing.T) {
 		// get messages with UUIDs
-		messages, err := getMessages(testCtx, testDB, sessionID, 10, 0)
+		messages, err := getMessages(testCtx, testDB, sessionID, 10, nil, 0)
 		assert.NoError(t, err, "putMessages should not return an error")
 		// Update TokenCount values for the returned messages
 		for i := range messages {
@@ -303,14 +303,14 @@ func TestPutMessages(t *testing.T) {
 		"upsert messages with updated TokenCount without overwriting DeletedAt",
 		func(t *testing.T) {
 			// Get messages with UUIDs
-			messages, err := getMessages(testCtx, testDB, sessionID, 12, 0)
+			messages, err := getMessages(testCtx, testDB, sessionID, 12, nil, 0)
 			assert.NoError(t, err, "getMessages should not return an error")
 
 			// Delete using deleteSession
 			err = deleteSession(testCtx, testDB, sessionID)
 			assert.NoError(t, err, "deleteSession should not return an error")
 
-			messagesOnceDeleted, err := getMessages(testCtx, testDB, sessionID, 12, 0)
+			messagesOnceDeleted, err := getMessages(testCtx, testDB, sessionID, 12, nil, 0)
 			assert.NoError(t, err, "getMessages should not return an error")
 
 			// confirm that no records were returned
@@ -325,7 +325,7 @@ func TestPutMessages(t *testing.T) {
 			_, err = putMessages(testCtx, testDB, sessionID, messages)
 			assert.NoError(t, err, "putMessages should not return an error")
 
-			messagesInDB, err := getMessages(testCtx, testDB, sessionID, 12, 0)
+			messagesInDB, err := getMessages(testCtx, testDB, sessionID, 12, nil, 0)
 			assert.NoError(t, err, "getMessages should not return an error")
 
 			// len(messagesInDB) should be 0 since the session was deleted
@@ -403,11 +403,6 @@ func TestGetMessages(t *testing.T) {
 	// Create a test session
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
-	metadata := map[string]interface{}{
-		"key": "value",
-	}
-	_, err = putSession(testCtx, testDB, sessionID, metadata)
-	assert.NoError(t, err)
 
 	messages, err := putMessages(testCtx, testDB, sessionID, test.TestMessages)
 	assert.NoError(t, err)
@@ -428,7 +423,7 @@ func TestGetMessages(t *testing.T) {
 			name:           "Get all messages",
 			sessionID:      sessionID,
 			lastNMessages:  0,
-			expectedLength: messageWindow,
+			expectedLength: len(messages),
 			withSummary:    false,
 		},
 		{
@@ -456,9 +451,10 @@ func TestGetMessages(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var summary *models.Summary
 			if tt.withSummary {
 				// Create a summary using the test messages. The SummaryPointUUID should be at messageWindow - 2
-				_, err = putSummary(
+				summary, err = putSummary(
 					testCtx,
 					testDB,
 					sessionID,
@@ -472,6 +468,7 @@ func TestGetMessages(t *testing.T) {
 				testDB,
 				tt.sessionID,
 				messageWindow,
+				summary,
 				tt.lastNMessages,
 			)
 			assert.NoError(t, err)

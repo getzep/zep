@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/google/uuid"
+
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/jinzhu/copier"
@@ -54,7 +56,13 @@ func (pms *PostgresMemoryStore) GetClient() *bun.DB {
 	return pms.Client
 }
 
-// GetMemory returns the memory for a given sessionID.
+// GetMemory returns the most recent Summary and a list of messages for a given sessionID.
+// GetMemory returns:
+//   - the most recent Summary, if one exists
+//   - the lastNMessages messages, if lastNMessages > 0
+//   - all messages since the last SummaryPoint, if lastNMessages == 0
+//   - if no Summary (and no SummaryPoint) exists and lastNMessages == 0, returns
+//     all undeleted messages
 func (pms *PostgresMemoryStore) GetMemory(
 	ctx context.Context,
 	appState *models.AppState,
@@ -75,17 +83,23 @@ func (pms *PostgresMemoryStore) GetMemory(
 	if err != nil {
 		return nil, NewStorageError("failed to get summary", err)
 	}
+	if summary != nil {
+		log.Debugf("Got summary for %s: %s", sessionID, summary.UUID)
+	}
 
-	// Retrieve either the lastNMessages or all messages up to the last SummaryPoint
 	messages, err := getMessages(
 		ctx,
 		pms.Client,
 		sessionID,
 		appState.Config.Memory.MessageWindow,
+		summary,
 		lastNMessages,
 	)
 	if err != nil {
 		return nil, NewStorageError("failed to get messages", err)
+	}
+	if messages != nil {
+		log.Debugf("Got messages for %s: %d", sessionID, len(messages))
 	}
 
 	memory := models.Memory{
@@ -313,6 +327,7 @@ func putMessages(
 		log.Warn("putMessages called with no messages")
 		return nil, nil
 	}
+	log.Debugf("putMessages called for session %s with %d messages", sessionID, len(messages))
 
 	// Create or update a Session
 	_, err := putSession(ctx, db, sessionID, nil)
@@ -344,6 +359,8 @@ func putMessages(
 	if err != nil {
 		return nil, NewStorageError("failed to copy pgMessages to retMessages", err)
 	}
+
+	log.Debugf("putMessages completed for session %s with %d messages", sessionID, len(messages))
 
 	return retMessages, nil
 }
@@ -388,70 +405,37 @@ func getMessages(
 	db *bun.DB,
 	sessionID string,
 	memoryWindow int,
+	summary *models.Summary,
 	lastNMessages int,
 ) ([]models.Message, error) {
 	if sessionID == "" {
 		return nil, NewStorageError("sessionID cannot be empty", nil)
 	}
-
 	if memoryWindow == 0 {
 		return nil, NewStorageError("memory.message_window must be greater than 0", nil)
 	}
 
-	// if lastNMessages is 0, get the last SummaryPoint. If there is no summary, return the configured message window
-	var summary *models.Summary
+	// if lastNMessages == 0 and summary.MessagePoint != Nil, retrieve the SummaryPoint index
+	var summaryPointIndex int64
 	var err error
-	if lastNMessages == 0 {
-		summary, err = getSummary(ctx, db, sessionID)
+	if lastNMessages == 0 && summary != nil && summary.SummaryPointUUID != uuid.Nil {
+		summaryPointIndex, err = getSummaryPointIndex(ctx, db, sessionID, summary.SummaryPointUUID)
 		if err != nil {
 			return nil, NewStorageError("unable to retrieve summary", nil)
 		}
-
-		// if no summary has been created yet, set lastNMessages to the configured message window
-		if summary == nil {
-			lastNMessages = memoryWindow
-		}
-	}
-
-	// if we do have a summary, determine the index of the last message in the summary
-	var summaryPointIndex int64
-	if summary != nil {
-		var message PgMessageStore
-
-		err := db.NewSelect().
-			Model(&message).
-			Column("id").
-			Where("session_id = ? AND uuid = ?", sessionID, summary.SummaryPointUUID).
-			Where("deleted_at IS NULL").
-			Scan(ctx)
-
-		if err != nil {
-			if err == sql.ErrNoRows {
-				log.Warningf(
-					"unable to retrieve last summary point for %s: %s",
-					summary.SummaryPointUUID,
-					err,
-				)
-			} else {
-				return nil, NewStorageError("unable to retrieve last summary point for %s", err)
-			}
-			lastNMessages = memoryWindow
-		}
-
-		summaryPointIndex = message.ID
 	}
 
 	var messages []PgMessageStore
 	query := db.NewSelect().
 		Model(&messages).
 		Where("session_id = ?", sessionID).
-		Order("id DESC") // Return messages in reverse chronological order (using
+		Order("id DESC")
 
 	if lastNMessages > 0 {
 		query.Limit(lastNMessages)
 	}
 
-	// Only get messages created after the SummaryPoint
+	// Only get messages created after the SummaryPoint if summaryPointIndex != 0
 	if summaryPointIndex != 0 {
 		query.Where("id > ?", summaryPointIndex)
 	}
@@ -472,6 +456,41 @@ func getMessages(
 	}
 
 	return messageList, nil
+}
+
+// getSummaryPointIndex retrieves the index of the last summary point for a session
+// This is a bit of a hack since UUIDs are not sortable.
+// If the SummaryPoint does not exist (for e.g. if it was deleted), returns 0.
+func getSummaryPointIndex(
+	ctx context.Context,
+	db *bun.DB,
+	sessionID string,
+	summaryPointUUID uuid.UUID,
+) (int64, error) {
+	var message PgMessageStore
+
+	err := db.NewSelect().
+		Model(&message).
+		Column("id").
+		Where("session_id = ? AND uuid = ?", sessionID, summaryPointUUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Warningf(
+				"unable to retrieve last summary point for %s: %s",
+				summaryPointUUID,
+				err,
+			)
+		} else {
+			return 0, NewStorageError("unable to retrieve last summary point for %s", err)
+		}
+
+		return 0, nil
+	}
+
+	return message.ID, nil
 }
 
 // getSummary returns the most recent summary for a session
@@ -555,6 +574,8 @@ func searchMessages(
 		return nil, NewStorageError("nil appState received", nil)
 	}
 
+	log.Debugf("searchMessages called for session %s", sessionID)
+
 	if limit == 0 {
 		limit = 10
 	}
@@ -593,12 +614,15 @@ func searchMessages(
 			filteredResults = append(filteredResults, result)
 		}
 	}
+	log.Debugf("searchMessages completed for session %s", sessionID)
+
 	return filteredResults, nil
 }
 
 // deleteSession deletes a session from the memory store. This is a soft delete.
 // TODO: This is ugly. Determine why bun's cascading deletes aren't working
 func deleteSession(ctx context.Context, db *bun.DB, sessionID string) error {
+	log.Debugf("deleting from memory store for session %s", sessionID)
 	schemas := []bun.BeforeCreateTableHook{
 		&PgMessageVectorStore{},
 		&PgSummaryStore{},
@@ -606,6 +630,7 @@ func deleteSession(ctx context.Context, db *bun.DB, sessionID string) error {
 		&PgSession{},
 	}
 	for _, schema := range schemas {
+		log.Debugf("deleting session %s from schema %v", sessionID, schema)
 		_, err := db.NewDelete().
 			Model(schema).
 			Where("session_id = ?", sessionID).
@@ -614,6 +639,7 @@ func deleteSession(ctx context.Context, db *bun.DB, sessionID string) error {
 			return fmt.Errorf("error deleting rows from %T: %w", schema, err)
 		}
 	}
+	log.Debugf("completed deleting session %s", sessionID)
 
 	return nil
 }

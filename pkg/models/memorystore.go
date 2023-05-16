@@ -6,9 +6,13 @@ import (
 
 // MemoryStore interface
 type MemoryStore[T any] interface {
-	// GetMemory retrieves the Memory for a given sessionID. By default, a Memory includes both the most
-	// recent Summary and the most recent Messages up to the last SummaryPoint or configured message window,
-	// if a Summary has not yet been created.. This can be overridden by providing a lastNMessages value.
+	// GetMemory returns the most recent Summary and a list of messages for a given sessionID.
+	// GetMemory returns:
+	//   - the most recent Summary, if one exists
+	//   - the lastNMessages messages, if lastNMessages > 0
+	//   - all messages since the last SummaryPoint, if lastNMessages == 0
+	//   - if no Summary (and no SummaryPoint) exists and lastNMessages == 0, returns
+	//     all undeleted messages
 	GetMemory(ctx context.Context,
 		appState *AppState,
 		sessionID string,
