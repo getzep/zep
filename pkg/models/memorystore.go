@@ -22,7 +22,8 @@ type MemoryStore[T any] interface {
 	PutMemory(ctx context.Context,
 		appState *AppState,
 		sessionID string,
-		memoryMessages *Memory) error
+		memoryMessages *Memory,
+		skipNotify bool) error // skipNotify is used to prevent loops when calling NotifyExtractors.
 	// PutSummary stores a new Summary for a given sessionID.
 	PutSummary(ctx context.Context,
 		appState *AppState,

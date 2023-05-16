@@ -267,6 +267,7 @@ func (pms *PostgresMemoryStore) PutMemory(
 	appState *models.AppState,
 	sessionID string,
 	memoryMessages *models.Memory,
+	skipNotify bool,
 ) error {
 	messageResult, err := putMessages(
 		ctx,
@@ -276,6 +277,10 @@ func (pms *PostgresMemoryStore) PutMemory(
 	)
 	if err != nil {
 		return NewStorageError("failed to put messages", err)
+	}
+
+	if skipNotify {
+		return nil
 	}
 
 	pms.NotifyExtractors(
@@ -311,7 +316,6 @@ func (pms *PostgresMemoryStore) SearchMemory(
 ) ([]models.SearchResult, error) {
 	searchResults, err := searchMessages(ctx, appState, pms.Client, sessionID, query, limit)
 	return searchResults, err
-
 }
 
 func searchMessages(
@@ -577,7 +581,7 @@ func putSummary(
 	return &retSummary, nil
 }
 
-// getSummary returns the summary for a session, limited by either lastNMessages or to the last SummaryPoint.
+// getMessages retrieves messages from the memory store. If lastNMessages is 0, the last SummaryPoint is retrieved.
 func getMessages(
 	ctx context.Context,
 	db *bun.DB,
@@ -609,18 +613,31 @@ func getMessages(
 	}
 
 	// if we do have a summary, determine the index of the last message in the summary
-	var summaryPointIndex int64 = 0
+	var summaryPointIndex int64
 	if summary != nil {
-		summaryPointIndex, err = lastSummaryPointIndex(
-			ctx,
-			db,
-			sessionID,
-			summary.SummaryPointUUID,
-			memoryWindow,
-		)
+		var message PgMessageStore
+
+		err := db.NewSelect().
+			Model(&message).
+			Column("id").
+			Where("session_id = ? AND uuid = ?", sessionID, summary.SummaryPointUUID).
+			Where("deleted_at IS NULL").
+			Scan(ctx)
+
 		if err != nil {
-			return nil, NewStorageError("unable to retrieve last summary point", err)
+			if err == sql.ErrNoRows {
+				log.Warningf(
+					"unable to retrieve last summary point for %s: %s",
+					summary.SummaryPointUUID,
+					err,
+				)
+			} else {
+				return nil, NewStorageError("unable to retrieve last summary point for %s", err)
+			}
+			lastNMessages = memoryWindow
 		}
+
+		summaryPointIndex = message.ID
 	}
 
 	var messages []PgMessageStore
@@ -656,56 +673,13 @@ func getMessages(
 	return messageList, nil
 }
 
-// lastSummaryPointCreatedAt returns the ID of the last SummaryPoint
-// message. We use the configured message window to determine the number of
-// messages to retrieve from the db as this is guaranteed to be greater than the
-// number of messages between the SummaryPoint and the most recent message in the
-// session.
-func lastSummaryPointIndex(
-	ctx context.Context,
-	db *bun.DB,
-	sessionID string,
-	summaryPointUUID uuid.UUID,
-	configuredMessageWindow int,
-) (int64, error) {
-	var messages []*PgMessageStore
-	// We need to retrieve X as many messages as the configured message window to ensure we
-	// get the last SummaryPoint, with some buffer in case the configured message window is
-	// increased.
-	qLimit := configuredMessageWindow * 5
-	err := db.NewSelect().
-		Model(&messages).
-		Column("uuid", "id").
-		Where("session_id = ?", sessionID).
-		Order("id DESC").
-		Limit(qLimit).
-		Scan(ctx)
-
-	if err != nil {
-		return 0, NewStorageError(
-			"failed to get messages when determining SummaryPoint ID",
-			err,
-		)
-	}
-
-	for _, message := range messages {
-		if message.UUID == summaryPointUUID {
-			return message.ID, nil
-		}
-	}
-
-	return 0, NewStorageError(
-		fmt.Sprintf("message with UUID %s not found", summaryPointUUID),
-		nil,
-	)
-}
-
 // getSummary returns the most recent summary for a session
 func getSummary(ctx context.Context, db *bun.DB, sessionID string) (*models.Summary, error) {
 	summary := PgSummaryStore{}
 	err := db.NewSelect().
 		Model(&summary).
 		Where("session_id = ?", sessionID).
+		Where("deleted_at IS NULL").
 		// Get the most recent summary
 		Order("created_at DESC").
 		Limit(1).
@@ -827,9 +801,9 @@ func NewPostgresConn(dsn string) *bun.DB {
 	sqldb.SetMaxIdleConns(maxOpenConns)
 	db := bun.NewDB(sqldb, pgdialect.New())
 	db.AddQueryHook(logrusbun.NewQueryHook(logrusbun.QueryHookOptions{
-		LogSlow:         time.Second,
-		Logger:          log,
-		QueryLevel:      logrus.DebugLevel,
+		LogSlow: time.Second,
+		Logger:  log,
+		//QueryLevel:      logrus.DebugLevel,
 		ErrorLevel:      logrus.ErrorLevel,
 		SlowLevel:       logrus.WarnLevel,
 		MessageTemplate: "{{.Operation}}[{{.Duration}}]: {{.Query}}",

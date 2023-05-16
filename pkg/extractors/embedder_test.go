@@ -36,7 +36,7 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	testMessages := test.TestMessages[:5]
 
 	// Add new messages using appState.MemoryStore.PutMemory
-	err = store.PutMemory(ctx, appState, sessionID, &models.Memory{Messages: testMessages})
+	err = store.PutMemory(ctx, appState, sessionID, &models.Memory{Messages: testMessages}, true)
 	assert.NoError(t, err)
 
 	// Get messages that are missing embeddings using appState.MemoryStore.GetMessageVectors

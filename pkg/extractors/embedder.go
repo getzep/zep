@@ -85,13 +85,13 @@ func (ee *EmbeddingExtractor) Notify(
 	appState *models.AppState,
 	messageEvents *models.MessageEvent,
 ) error {
-	log.Debugf("EmbeddingExtractor notify: %v", messageEvents)
 	if messageEvents == nil {
 		return NewExtractorError(
 			"EmbeddingExtractor message events is nil at Notify",
 			nil,
 		)
 	}
+	log.Debugf("EmbeddingExtractor notify: %d messages", len(messageEvents.Messages))
 	go func() {
 		err := ee.Extract(ctx, appState, messageEvents)
 		if err != nil {

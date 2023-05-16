@@ -36,6 +36,7 @@ func TestTokenCountExtractor(t *testing.T) {
 		appState,
 		sessionID,
 		&models.Memory{Messages: test.TestMessages[:5]},
+		true,
 	)
 	assert.NoError(t, err)
 
