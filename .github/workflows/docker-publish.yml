@@ -33,6 +33,7 @@ jobs:
       # with sigstore/fulcio when running outside of PRs.
       id-token: write
 
+
     # if triggered manually via dispatch, use the provided tag name
     # otherwise, use the event ref
     steps:
