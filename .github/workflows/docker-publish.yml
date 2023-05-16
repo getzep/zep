@@ -78,7 +78,7 @@ jobs:
         id: git_describe
         run: |
           VERSION=$(git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0pre')
-          echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}" >> $GITHUB_ENV
+          echo "TAGS=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}" >> $GITHUB_ENV
 
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
@@ -89,7 +89,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags || env.tags }}
+          tags: ${{ steps.meta.outputs.tags || env.TAGS }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
