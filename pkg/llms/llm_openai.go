@@ -11,6 +11,7 @@ import (
 	"github.com/sashabaranov/go-openai"
 )
 
+const openAIAPITimeout = 60 * time.Second
 const OpenAIAPIKeyNotSetError = "ZEP_OPENAI_API_KEY is not set" //nolint:gosec
 const InvalidLLMModelError = "llm model is not set or is invalid"
 
@@ -43,8 +44,8 @@ func RunChatCompletion(
 		},
 		Temperature: DefaultTemperature,
 	}
-	// Retry up to 3 times with exponential backoff, cancel after 60 seconds
-	retryCtx, cancel := context.WithTimeout(ctx, time.Second*60)
+	// Retry up to 3 times with exponential backoff, cancel after openAIAPITimeout
+	retryCtx, cancel := context.WithTimeout(ctx, openAIAPITimeout)
 	defer cancel()
 	err = retry.Do(
 		func() error {
