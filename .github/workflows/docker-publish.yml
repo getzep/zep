@@ -75,7 +75,7 @@ jobs:
       - name: Get git describe output
         if: steps.meta.outputs.tags == ''
         id: git_describe
-        run: echo "::set-output name=tags::$(git describe --abbrev=0 --tags),latest"
+        run: echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$(git describe --abbrev=0 --tags),${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_ENV
 
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
@@ -86,7 +86,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags || steps.git_describe.outputs.tags }}
+          tags: ${{ steps.meta.outputs.tags || env.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
