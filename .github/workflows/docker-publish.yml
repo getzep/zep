@@ -70,12 +70,15 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      # If steps.meta.outputs.tags is empty, use git describe output as the tag
+      # If steps.meta.outputs.tags is empty, use git describe output as the tag, or fallback to 'v0.0.0'
       # This might happen if the triggering event is not a tag push i.e. a manual workflow dispatch
+      # Don't tag with latest in this case.
       - name: Get git describe output
         if: steps.meta.outputs.tags == ''
         id: git_describe
-        run: echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$(git describe --abbrev=0 --tags),${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_ENV
+        run: |
+          VERSION=$(git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0pre')
+          echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}" >> $GITHUB_ENV
 
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
