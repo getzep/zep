@@ -71,13 +71,13 @@ func (ee *TokenCountExtractor) Notify(
 	appState *models.AppState,
 	messageEvents *models.MessageEvent,
 ) error {
-	log.Debugf("TokenCountExtractor extract: %d messages", len(messageEvents.Messages))
 	if messageEvents == nil {
 		return NewExtractorError(
 			"TokenCountExtractor message events is nil at Notify",
 			nil,
 		)
 	}
+	log.Debugf("TokenCountExtractor extract: %d messages", len(messageEvents.Messages))
 	go func() {
 		err := ee.Extract(ctx, appState, messageEvents)
 		if err != nil {

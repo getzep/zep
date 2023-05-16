@@ -85,13 +85,13 @@ func (se *SummaryExtractor) Notify(
 	appState *models.AppState,
 	messageEvents *models.MessageEvent,
 ) error {
-	log.Debugf("SummaryExtractor notify: %d messages", len(messageEvents.Messages))
 	if messageEvents == nil {
 		return NewExtractorError(
 			"SummaryExtractor message events is nil at Notify",
 			nil,
 		)
 	}
+	log.Debugf("SummaryExtractor notify: %d messages", len(messageEvents.Messages))
 	go func() {
 		err := se.Extract(ctx, appState, messageEvents)
 		if err != nil {
