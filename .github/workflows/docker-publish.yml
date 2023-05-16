@@ -9,7 +9,10 @@ on:
   push:
     # Publish semver tags as releases.
     tags: [ 'v*.*.*' ]
-  workflow_dispatch: null
+  workflow_dispatch:
+      tag:
+        description: 'Tag to build and publish'
+        required: true
 
 env:
   # Use docker.io for Docker Hub if empty
@@ -29,21 +32,16 @@ jobs:
       # with sigstore/fulcio when running outside of PRs.
       id-token: write
 
+    # if triggered via a tag, use the tag name as the version
+    # otherwise, use the manually specified version tag
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          ref:  ${{ github.ref || github.event.inputs.tag }}
         
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2.1.0
-
-      # Install the cosign tool except on PR
-      # https://github.com/sigstore/cosign-installer
-#      - name: Install cosign
-#        if: github.event_name != 'pull_request'
-#        uses: sigstore/cosign-installer@main
-#        with:
-#          cosign-release: 'v2.0.2'
-
 
       # Workaround: https://github.com/docker/build-push-action/issues/461
       - name: Setup Docker buildx
@@ -70,16 +68,12 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      # If steps.meta.outputs.tags is empty, use git describe output as the tag, or fallback to 'v0.0.0'
-      # This might happen if the triggering event is not a tag push i.e. a manual workflow dispatch
-      # Don't tag with latest in this case.
-      - name: Get git describe output
+      # If steps.meta.outputs.tags is empty, use the tag provided in the workflow dispatch
+      - name: Generate workflow dispatch tags
         if: steps.meta.outputs.tags == ''
-        id: git_describe
+        id: dispatch_tags
         run: |
-          VERSION=$(git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0pre')
-          echo "TAGS=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}" >> $GITHUB_ENV
-
+          echo "TAGS=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.tag }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_ENV
 
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
@@ -94,18 +88,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-#      - name: Sign image with a key
-#        run: |
-#          cosign sign --key env://COSIGN_PRIVATE_KEY ${TAGS}
-#        env:
-#          TAGS: ${{ steps.docker_meta.outputs.tags || env.TAGS }}
-#          COSIGN_PRIVATE_KEY: ${{secrets.COSIGN_PRIVATE_KEY}}
-#          COSIGN_PASSWORD: ${{secrets.COSIGN_PASSWORD}}
-#          DIGEST: ${{ steps.build-and-push.outputs.digest }}
-#
-#      - name: Sign the images with GitHub OIDC Token
-#        env:
-#          DIGEST: ${{ steps.build-and-push.outputs.digest }}
-#          TAGS: ${{ steps.docker_meta.outputs.tags || env.TAGS  }}
-#        run: echo "${TAGS}" | xargs -I {} cosign sign {}@${DIGEST}
