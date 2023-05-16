@@ -2,13 +2,16 @@ package llms
 
 import (
 	"context"
+	"time"
 
+	"github.com/avast/retry-go/v4"
 	"github.com/getzep/zep/config"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/pkoukk/tiktoken-go"
 	"github.com/sashabaranov/go-openai"
 )
 
+const openAIAPITimeout = 60 * time.Second
 const OpenAIAPIKeyNotSetError = "ZEP_OPENAI_API_KEY is not set" //nolint:gosec
 const InvalidLLMModelError = "llm model is not set or is invalid"
 
@@ -25,7 +28,7 @@ func RunChatCompletion(
 	appState *models.AppState,
 	summaryMaxTokens int,
 	prompt string,
-) (openai.ChatCompletionResponse, error) {
+) (resp openai.ChatCompletionResponse, err error) {
 	modelName, err := GetLLMModelName(appState.Config)
 	if err != nil {
 		return openai.ChatCompletionResponse{}, err
@@ -41,7 +44,21 @@ func RunChatCompletion(
 		},
 		Temperature: DefaultTemperature,
 	}
-	resp, err := appState.OpenAIClient.CreateChatCompletion(ctx, req)
+	// Retry up to 3 times with exponential backoff, cancel after openAIAPITimeout
+	retryCtx, cancel := context.WithTimeout(ctx, openAIAPITimeout)
+	defer cancel()
+	err = retry.Do(
+		func() error {
+			resp, err = appState.OpenAIClient.CreateChatCompletion(retryCtx, req)
+			return err
+		},
+		retry.Attempts(3),
+		retry.Context(retryCtx),
+		retry.DelayType(retry.BackOffDelay),
+		retry.OnRetry(func(n uint, err error) {
+			log.Warningf("Retrying OpenAI API attempt #%d: %s\n", n, err)
+		}),
+	)
 	if err != nil {
 		return openai.ChatCompletionResponse{}, err
 	}
