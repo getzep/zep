@@ -30,7 +30,10 @@ func LoadConfig(configFile string) (*Config, error) {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		return nil, err
+		// Ignore error if config file not found
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, err
+		}
 	}
 
 	// Environment variables take precedence over config file

@@ -30,7 +30,7 @@ func run() {
 
 	cfg, err := config.LoadConfig(cfgFile)
 	if err != nil {
-		log.Fatalf("Error loading config: %s", err)
+		log.Fatalf("Error configuring Zep: %s", err)
 	}
 
 	config.SetLogLevel(cfg)
