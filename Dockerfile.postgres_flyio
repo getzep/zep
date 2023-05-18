@@ -6,7 +6,7 @@ RUN apt-get update && \
         build-essential \
         curl \
         postgresql-server-dev-15
-
+        
 # Set the pgvector version
 ARG PGVECTOR_VERSION=0.4.1
 
