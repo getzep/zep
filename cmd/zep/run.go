@@ -30,10 +30,7 @@ func run() {
 
 	cfg, err := config.LoadConfig(cfgFile)
 	if err != nil {
-		if os.IsNotExist(err) {
-			log.Warn("Config file not found, using ENV variables")
-		}
-		log.Fatalf("Error loading config: %s", err)
+		log.Fatalf("Error configuring Zep: %s", err)
 	}
 
 	config.SetLogLevel(cfg)
