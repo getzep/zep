@@ -298,6 +298,41 @@ func TestPutMessages(t *testing.T) {
 		// Verify the upserted messages in the database
 		verifyMessagesInDB(t, testCtx, testDB, sessionID, messages, resultMessages)
 	})
+
+	t.Run(
+		"upsert messages with updated TokenCount without overwriting DeletedAt",
+		func(t *testing.T) {
+			// Get messages with UUIDs
+			messages, err := getMessages(testCtx, testDB, sessionID, 12, 0)
+			assert.NoError(t, err, "getMessages should not return an error")
+
+			// Delete using deleteSession
+			err = deleteSession(testCtx, testDB, sessionID)
+			assert.NoError(t, err, "deleteSession should not return an error")
+
+			messagesOnceDeleted, err := getMessages(testCtx, testDB, sessionID, 12, 0)
+			assert.NoError(t, err, "getMessages should not return an error")
+
+			// confirm that no records were returned
+			assert.Equal(t, 0, len(messagesOnceDeleted), "getMessages should return 0 messages")
+
+			// Update original messages with TokenCount values
+			for i := range messages {
+				messages[i].TokenCount = i + 1
+			}
+
+			// Call putMessages function to upsert the messages
+			_, err = putMessages(testCtx, testDB, sessionID, messages)
+			assert.NoError(t, err, "putMessages should not return an error")
+
+			messagesInDB, err := getMessages(testCtx, testDB, sessionID, 12, 0)
+			assert.NoError(t, err, "getMessages should not return an error")
+
+			// len(messagesInDB) should be 0 since the session was deleted
+			assert.Equal(t, 0, len(messagesInDB), "getMessages should return 0 messages")
+		},
+	)
+
 }
 
 func verifyMessagesInDB(

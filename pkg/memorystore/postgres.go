@@ -463,6 +463,7 @@ func putSession(
 	session := PgSession{SessionID: sessionID, Metadata: metadata}
 	_, err := db.NewInsert().
 		Model(&session).
+		Column("uuid", "session_id", "created_at", "metadata").
 		On("CONFLICT (session_id) DO UPDATE").
 		Exec(ctx)
 	if err != nil {
@@ -504,8 +505,7 @@ func getSession(
 
 // putMessages stores a new or updates existing messages for a session. Existing
 // messages are determined by message UUID. Sessions are created if they do not
-// exist. We also create new PgMessageVectorStore records for each new message.
-// Embedding happens out of band.
+// exist.
 func putMessages(
 	ctx context.Context,
 	db *bun.DB,
@@ -533,7 +533,11 @@ func putMessages(
 		pgMessages[i].SessionID = sessionID
 	}
 
-	_, err = db.NewInsert().Model(&pgMessages).On("CONFLICT (uuid) DO UPDATE").Exec(ctx)
+	_, err = db.NewInsert().
+		Model(&pgMessages).
+		Column("id", "created_at", "uuid", "session_id", "role", "content", "token_count", "metadata").
+		On("CONFLICT (uuid) DO UPDATE").
+		Exec(ctx)
 	if err != nil {
 		return nil, NewStorageError("failed to save memories to store", err)
 	}
