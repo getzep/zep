@@ -1,0 +1,22 @@
+services:
+  # A Docker web service
+  - type: web
+    name: zep
+    autoDeploy: false
+    env: image
+    image:
+      url: ghcr.io/getzep/zep-cloud:latest
+    healthCheckPath: /healthz
+    envVars:
+      - key: ZEP_MEMORY_STORE_POSTGRES_DSN
+        fromDatabase:
+          name: zep-postgres
+          property: connectionString
+      - key: ZEP_OPENAI_API_KEY
+        sync: false
+
+databases:
+  - name: zep-postgres
+    databaseName: zep
+    postgresMajorVersion: 15
+    ipAllowList: [] # only allow internal connections

@@ -33,7 +33,7 @@ services:
       context: .
       dockerfile: Dockerfile
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/healthz" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/healthz" ]
       interval: 1m30s
       timeout: 10s
       retries: 3
