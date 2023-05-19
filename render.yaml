@@ -7,9 +7,10 @@ services:
       url: ghcr.io/getzep/zep-cloud:latest
     healthCheckPath: /healthz
     envVars:
-      fromDatabase:
-        name: zep-postgres
-        property: connectionString
+      - key: ZEP_MEMORY_STORE_POSTGRES_DSN
+        fromDatabase:
+          name: zep-postgres
+          property: connectionString
 
 databases:
   - name: zep-postgres
