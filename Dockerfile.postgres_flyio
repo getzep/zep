@@ -8,7 +8,7 @@ RUN apt-get update && \
         postgresql-server-dev-15
         
 # Set the pgvector version
-ARG PGVECTOR_VERSION=0.4.1
+ARG PGVECTOR_VERSION=0.4.2
 
 # Download and extract the pgvector release, build the extension, and install it
 RUN curl -L -o pgvector.tar.gz "https://github.com/ankane/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz" && \
