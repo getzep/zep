@@ -1,0 +1,29 @@
+# fly.toml app configuration file generated for zep on 2023-05-18T19:18:07-07:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "zep"
+primary_region = "sjc"
+
+[build]
+  image = "ghcr.io/getzep/zep-cloud:latest"
+
+[env]
+  ZEP_EMBEDDINGS_DIMENSIONS = "1536"
+  ZEP_EMBEDDINGS_ENABLED = "true"
+  ZEP_EMBEDDINGS_MODEL = "AdaEmbeddingV2"
+  ZEP_EXTRACTORS_SUMMARIZER_ENABLE = "true"
+  ZEP_LLM_MODEL = "gpt-3.5-turbo"
+  ZEP_LOG_LEVEL = "debug"
+  ZEP_MEMORY_MESSAGE_WINDOW = "12"
+  ZEP_MEMORY_STORE_POSTGRES_DSN = "postgres://postgres:XXXXXX@zep-postgres.flycast:5432/?sslmode=disable"
+  ZEP_MEMORY_STORE_TYPE = "postgres"
+  ZEP_SERVER_PORT = "8000"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
