@@ -11,6 +11,8 @@ services:
         fromDatabase:
           name: zep-postgres
           property: connectionString
+      - key: ZEP_OPENAI_API_KEY
+        sync: false
 
 databases:
   - name: zep-postgres
