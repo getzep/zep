@@ -1,8 +1,8 @@
-autoDeploy: false
 services:
   # A Docker web service
   - type: web
     name: zep
+    autoDeploy: false
     env: image
     image:
       url: ghcr.io/getzep/zep-cloud:latest
