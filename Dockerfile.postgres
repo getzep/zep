@@ -9,13 +9,12 @@ RUN apt-get update && \
         ca-certificates \
         build-essential \
         curl \
-        postgresql-server-dev-all
+        postgresql-server-dev-15
 
 # Download and extract the pgvector release, build the extension, and install it.
 RUN curl -f -L -o pgvector.tar.gz "https://github.com/pgvector/pgvector/archive/refs/tags/v${PGVECTOR_VERSION}.tar.gz" && \
     tar -xzf pgvector.tar.gz && \
     cd "pgvector-${PGVECTOR_VERSION}" && \
-    make && \
     make OPTFLAGS="" && \
     make install && \
     mkdir /usr/share/doc/pgvector && \
@@ -23,7 +22,7 @@ RUN curl -f -L -o pgvector.tar.gz "https://github.com/pgvector/pgvector/archive/
 
 
 # Clean up build dependencies and temporary files
-RUN apt-get remove -y build-essential curl postgresql-server-dev-all && \
+RUN apt-get remove -y build-essential curl postgresql-server-dev-15 && \
     apt-get autoremove -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
