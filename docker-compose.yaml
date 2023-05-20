@@ -14,12 +14,18 @@ services:
       dockerfile: Dockerfile.postgres
     networks:
       - zep-network
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-q", "-d", "postgres", "-U", "postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
   zep:
     image: ghcr.io/getzep/zep:latest
     container_name: zep
     restart: on-failure
     depends_on:
-      - db
+        db:
+          condition: service_healthy
     ports:
         - "8000:8000"
     configs:
