@@ -25,8 +25,8 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: install certs
-      run: apt-get update && apt-get install -y ca-certificates
+    - name: install certs and build-essential (required by CGO)
+      run: apt-get update && apt-get install -y ca-certificates build-essential
 
     - name: Set up Go
       uses: actions/setup-go@v4
@@ -36,7 +36,7 @@ jobs:
       run: go build -v ./...
 
     - name: Test
-      run: go test -p 1 -v ./...
+      run: CGO_ENABLED=1 go test -race -p 1 -v ./...
       env:
         ZEP_OPENAI_API_KEY: ${{ secrets.ZEP_OPENAI_API_KEY }}
         ZEP_MEMORY_STORE_POSTGRES_DSN: 'postgres://postgres:postgres@postgres:5432/?sslmode=disable'
