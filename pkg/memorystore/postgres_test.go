@@ -407,10 +407,13 @@ func TestGetMessages(t *testing.T) {
 	messages, err := putMessages(testCtx, testDB, sessionID, test.TestMessages)
 	assert.NoError(t, err)
 
+	expectedMessages := make([]models.Message, len(messages))
+	copy(expectedMessages, messages)
+
 	// Explicitly set the message window to 10
 	messageWindow := 10
-	summaryPointIndex := len(messages) - 9
-	viper.Set("memory.message_window", messageWindow)
+	// Get the index for the last message in the summary
+	summaryPointIndex := len(messages) - messageWindow/2 - 1
 
 	tests := []struct {
 		name           string
@@ -430,20 +433,20 @@ func TestGetMessages(t *testing.T) {
 			name:           "Get all messages up to SummaryPoint",
 			sessionID:      sessionID,
 			lastNMessages:  0,
-			expectedLength: 8,
+			expectedLength: 5,
 			withSummary:    true,
 		},
 		{
 			name:           "Get last message",
 			sessionID:      sessionID,
-			lastNMessages:  1,
-			expectedLength: 1,
+			lastNMessages:  2,
+			expectedLength: 2,
 			withSummary:    false,
 		},
 		{
 			name:           "Non-existent session",
 			sessionID:      "nonexistent",
-			lastNMessages:  -1,
+			lastNMessages:  0,
 			expectedLength: 0,
 			withSummary:    false,
 		},
@@ -462,6 +465,11 @@ func TestGetMessages(t *testing.T) {
 						SummaryPointUUID: messages[summaryPointIndex].UUID},
 				)
 				assert.NoError(t, err)
+
+				expectedMessages = expectedMessages[len(expectedMessages)-(messageWindow/2):]
+			}
+			if tt.lastNMessages > 0 {
+				expectedMessages = expectedMessages[len(expectedMessages)-tt.lastNMessages:]
 			}
 			result, err := getMessages(
 				testCtx,
@@ -477,11 +485,20 @@ func TestGetMessages(t *testing.T) {
 				assert.NotNil(t, result)
 				assert.Equal(t, tt.expectedLength, len(result))
 				for i, msg := range result {
+					expectedMessage := expectedMessages[i]
 					assert.NotEmpty(t, msg.UUID)
 					assert.False(t, msg.CreatedAt.IsZero())
-					assert.Equal(t, test.TestMessages[len(messages)-i-1].Role, msg.Role)
-					assert.Equal(t, test.TestMessages[len(messages)-i-1].Content, msg.Content)
-					assert.Equal(t, test.TestMessages[len(messages)-i-1].Metadata, msg.Metadata)
+					assert.Equal(t, expectedMessage.Role, msg.Role)
+					assert.Equal(
+						t,
+						expectedMessage.Content,
+						msg.Content,
+					)
+					assert.Equal(
+						t,
+						expectedMessage.Metadata,
+						msg.Metadata,
+					)
 				}
 			} else {
 				assert.Empty(t, result)

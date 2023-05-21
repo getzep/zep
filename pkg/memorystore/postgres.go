@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/getzep/zep/internal"
+
 	"github.com/google/uuid"
 
 	"github.com/getzep/zep/pkg/llms"
@@ -415,36 +417,16 @@ func getMessages(
 		return nil, NewStorageError("memory.message_window must be greater than 0", nil)
 	}
 
-	// if lastNMessages == 0 and summary.MessagePoint != Nil, retrieve the SummaryPoint index
-	var summaryPointIndex int64
-	var err error
-	if lastNMessages == 0 && summary != nil && summary.SummaryPointUUID != uuid.Nil {
-		summaryPointIndex, err = getSummaryPointIndex(ctx, db, sessionID, summary.SummaryPointUUID)
-		if err != nil {
-			return nil, NewStorageError("unable to retrieve summary", nil)
-		}
-	}
-
 	var messages []PgMessageStore
-	query := db.NewSelect().
-		Model(&messages).
-		Where("session_id = ?", sessionID).
-		Order("id DESC")
-
+	var err error
 	if lastNMessages > 0 {
-		query.Limit(lastNMessages)
+		messages, err = fetchLastNMessages(ctx, db, sessionID, lastNMessages)
+	} else {
+		messages, err = fetchMessagesAfterSummaryPoint(ctx, db, sessionID, summary)
 	}
-
-	// Only get messages created after the SummaryPoint if summaryPointIndex != 0
-	if summaryPointIndex != 0 {
-		query.Where("id > ?", summaryPointIndex)
-	}
-
-	err = query.Scan(ctx)
 	if err != nil {
 		return nil, NewStorageError("failed to get messages", err)
 	}
-
 	if len(messages) == 0 {
 		return nil, nil
 	}
@@ -456,6 +438,60 @@ func getMessages(
 	}
 
 	return messageList, nil
+}
+
+// fetchMessagesAfterSummaryPoint retrieves messages after a summary point. If the summaryPointIndex
+// is 0, all undeleted messages are retrieved.
+func fetchMessagesAfterSummaryPoint(
+	ctx context.Context,
+	db *bun.DB,
+	sessionID string,
+	summary *models.Summary,
+) ([]PgMessageStore, error) {
+	var summaryPointIndex int64
+	var err error
+	if summary != nil {
+		summaryPointIndex, err = getSummaryPointIndex(ctx, db, sessionID, summary.SummaryPointUUID)
+		if err != nil {
+			return nil, NewStorageError("unable to retrieve summary", nil)
+		}
+	}
+
+	messages := make([]PgMessageStore, 0)
+	query := db.NewSelect().
+		Model(&messages).
+		Where("session_id = ?", sessionID).
+		Order("id ASC")
+
+	if summaryPointIndex > 0 {
+		query.Where("id > ?", summaryPointIndex)
+	}
+
+	return messages, query.Scan(ctx)
+}
+
+// fetchLastNMessages retrieves the last N messages for a session, ordered by ID DESC
+// and then reverses the slice so that the messages are in ascending order
+func fetchLastNMessages(
+	ctx context.Context,
+	db *bun.DB,
+	sessionID string,
+	lastNMessages int,
+) ([]PgMessageStore, error) {
+	messages := make([]PgMessageStore, 0)
+	query := db.NewSelect().
+		Model(&messages).
+		Where("session_id = ?", sessionID).
+		Order("id DESC").
+		Limit(lastNMessages)
+
+	err := query.Scan(ctx)
+
+	if err == nil && len(messages) > 0 {
+		internal.ReverseSlice(messages)
+	}
+
+	return messages, err
 }
 
 // getSummaryPointIndex retrieves the index of the last summary point for a session
