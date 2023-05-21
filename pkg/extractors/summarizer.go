@@ -39,13 +39,21 @@ func (se *SummaryExtractor) Extract(
 	sessionMutex.Lock()
 	defer sessionMutex.Unlock()
 
-	if appState.Config.Memory.MessageWindow == 0 {
+	log.Debugf("SummaryExtractor called for session %s", sessionID)
+
+	messageWindow := appState.Config.Memory.MessageWindow
+
+	if messageWindow == 0 {
 		return NewExtractorError("SummaryExtractor message window is 0", nil)
 	}
 
-	// GetMemory will return the Messages up to the last SummaryPoint, which is the
-	// last message that was summarized, and last the Summary.
-	messagesSummary, err := appState.MemoryStore.GetMemory(ctx, appState, sessionID, 0)
+	// if no summary exists yet, we'll get all messages
+	messagesSummary, err := appState.MemoryStore.GetMemory(
+		ctx,
+		appState,
+		sessionID,
+		0,
+	)
 	if err != nil {
 		return NewExtractorError("SummaryExtractor get memory failed", err)
 	}
@@ -76,6 +84,8 @@ func (se *SummaryExtractor) Extract(
 	if err != nil {
 		return NewExtractorError("SummaryExtractor put summary failed", err)
 	}
+
+	log.Debugf("SummaryExtractor completed for session %s", sessionID)
 
 	return nil
 }
@@ -159,7 +169,6 @@ func summarize(
 	}
 
 	if newSummary.Content == "" {
-		fmt.Println(newSummary)
 		return &models.Summary{}, fmt.Errorf(
 			"no summary found after summarization",
 		)

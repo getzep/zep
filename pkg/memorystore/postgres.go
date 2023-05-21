@@ -2,15 +2,8 @@ package memorystore
 
 import (
 	"context"
-	"database/sql"
-	"errors"
-	"fmt"
-	"math"
 
-	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
-	"github.com/jinzhu/copier"
-	"github.com/pgvector/pgvector-go"
 	"github.com/uptrace/bun"
 )
 
@@ -54,7 +47,13 @@ func (pms *PostgresMemoryStore) GetClient() *bun.DB {
 	return pms.Client
 }
 
-// GetMemory returns the memory for a given sessionID.
+// GetMemory returns the most recent Summary and a list of messages for a given sessionID.
+// GetMemory returns:
+//   - the most recent Summary, if one exists
+//   - the lastNMessages messages, if lastNMessages > 0
+//   - all messages since the last SummaryPoint, if lastNMessages == 0
+//   - if no Summary (and no SummaryPoint) exists and lastNMessages == 0, returns
+//     all undeleted messages
 func (pms *PostgresMemoryStore) GetMemory(
 	ctx context.Context,
 	appState *models.AppState,
@@ -75,17 +74,23 @@ func (pms *PostgresMemoryStore) GetMemory(
 	if err != nil {
 		return nil, NewStorageError("failed to get summary", err)
 	}
+	if summary != nil {
+		log.Debugf("Got summary for %s: %s", sessionID, summary.UUID)
+	}
 
-	// Retrieve either the lastNMessages or all messages up to the last SummaryPoint
 	messages, err := getMessages(
 		ctx,
 		pms.Client,
 		sessionID,
 		appState.Config.Memory.MessageWindow,
+		summary,
 		lastNMessages,
 	)
 	if err != nil {
 		return nil, NewStorageError("failed to get messages", err)
+	}
+	if messages != nil {
+		log.Debugf("Got messages for %s: %d", sessionID, len(messages))
 	}
 
 	memory := models.Memory{
@@ -212,408 +217,4 @@ func (pms *PostgresMemoryStore) GetMessageVectors(ctx context.Context,
 	}
 
 	return embeddings, nil
-}
-
-func getMessageVectors(ctx context.Context,
-	db *bun.DB,
-	sessionID string) ([]models.Embeddings, error) {
-	var results []struct {
-		PgMessageStore
-		PgMessageVectorStore
-	}
-	// TODO: Check that excluding deleted
-	_, err := db.NewSelect().
-		Table("message_embedding").
-		Join("JOIN message").
-		JoinOn("message_embedding.message_uuid = message.uuid").
-		ColumnExpr("message.content").
-		ColumnExpr("message_embedding.*").
-		Where("message_embedding.is_embedded = ?", true).
-		Where("message_embedding.session_id = ?", sessionID).
-		Exec(ctx, &results)
-	if err != nil {
-		return nil, NewStorageError("failed to get message vectors", err)
-	}
-
-	embeddings := make([]models.Embeddings, len(results))
-	for i, vectorStoreRecord := range results {
-		embeddings[i] = models.Embeddings{
-			Embedding: vectorStoreRecord.Embedding.Slice(),
-			TextUUID:  vectorStoreRecord.MessageUUID,
-			Text:      vectorStoreRecord.Content,
-		}
-	}
-
-	return embeddings, nil
-}
-
-// putSession stores a new session or updates an existing session with new metadata.
-func putSession(
-	ctx context.Context,
-	db *bun.DB,
-	sessionID string,
-	metadata map[string]interface{},
-) (*models.Session, error) {
-	if sessionID == "" {
-		return nil, NewStorageError("sessionID cannot be empty", nil)
-	}
-	session := PgSession{SessionID: sessionID, Metadata: metadata}
-	_, err := db.NewInsert().
-		Model(&session).
-		Column("uuid", "session_id", "created_at", "metadata").
-		On("CONFLICT (session_id) DO UPDATE").
-		Exec(ctx)
-	if err != nil {
-		return nil, NewStorageError("failed to put session", err)
-	}
-
-	retSession := models.Session{}
-	err = copier.Copy(&retSession, &session)
-	if err != nil {
-		return nil, NewStorageError("failed to copy session", err)
-	}
-
-	return &retSession, nil
-}
-
-// getSession retrieves a session from the memory store.
-func getSession(
-	ctx context.Context,
-	db *bun.DB,
-	sessionID string,
-) (*models.Session, error) {
-	session := PgSession{}
-	err := db.NewSelect().Model(&session).Where("session_id = ?", sessionID).Scan(ctx)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, NewStorageError("failed to get session", err)
-	}
-
-	retSession := models.Session{}
-	err = copier.Copy(&retSession, &session)
-	if err != nil {
-		return nil, NewStorageError("failed to copy session", err)
-	}
-
-	return &retSession, nil
-}
-
-// putMessages stores a new or updates existing messages for a session. Existing
-// messages are determined by message UUID. Sessions are created if they do not
-// exist.
-func putMessages(
-	ctx context.Context,
-	db *bun.DB,
-	sessionID string,
-	messages []models.Message,
-) ([]models.Message, error) {
-	if len(messages) == 0 {
-		log.Warn("putMessages called with no messages")
-		return nil, nil
-	}
-
-	// Create or update a Session
-	_, err := putSession(ctx, db, sessionID, nil)
-	if err != nil {
-		return nil, NewStorageError("failed to put session", err)
-	}
-
-	pgMessages := make([]PgMessageStore, len(messages))
-	err = copier.Copy(&pgMessages, &messages)
-	if err != nil {
-		return nil, NewStorageError("failed to copy messages to pgMessages", err)
-	}
-
-	for i := range pgMessages {
-		pgMessages[i].SessionID = sessionID
-	}
-
-	_, err = db.NewInsert().
-		Model(&pgMessages).
-		Column("id", "created_at", "uuid", "session_id", "role", "content", "token_count", "metadata").
-		On("CONFLICT (uuid) DO UPDATE").
-		Exec(ctx)
-	if err != nil {
-		return nil, NewStorageError("failed to save memories to store", err)
-	}
-
-	retMessages := make([]models.Message, len(messages))
-	err = copier.Copy(&retMessages, &pgMessages)
-	if err != nil {
-		return nil, NewStorageError("failed to copy pgMessages to retMessages", err)
-	}
-
-	return retMessages, nil
-}
-
-// putSummary stores a new summary for a session. The recentMessageID is the UUID of the most recent
-// message in the session when the summary was created.
-func putSummary(
-	ctx context.Context,
-	db *bun.DB,
-	sessionID string,
-	summary *models.Summary,
-) (*models.Summary, error) {
-	if sessionID == "" {
-		return nil, NewStorageError("sessionID cannot be empty", nil)
-	}
-
-	pgSummary := PgSummaryStore{}
-	err := copier.Copy(&pgSummary, summary)
-	if err != nil {
-		return nil, NewStorageError("failed to copy summary", err)
-	}
-
-	pgSummary.SessionID = sessionID
-
-	_, err = db.NewInsert().Model(&pgSummary).Exec(ctx)
-	if err != nil {
-		return nil, NewStorageError("failed to put summary", err)
-	}
-
-	retSummary := models.Summary{}
-	err = copier.Copy(&retSummary, &pgSummary)
-	if err != nil {
-		return nil, NewStorageError("failed to copy summary", err)
-	}
-
-	return &retSummary, nil
-}
-
-// getMessages retrieves messages from the memory store. If lastNMessages is 0, the last SummaryPoint is retrieved.
-func getMessages(
-	ctx context.Context,
-	db *bun.DB,
-	sessionID string,
-	memoryWindow int,
-	lastNMessages int,
-) ([]models.Message, error) {
-	if sessionID == "" {
-		return nil, NewStorageError("sessionID cannot be empty", nil)
-	}
-
-	if memoryWindow == 0 {
-		return nil, NewStorageError("memory.message_window must be greater than 0", nil)
-	}
-
-	// if lastNMessages is 0, get the last SummaryPoint. If there is no summary, return the configured message window
-	var summary *models.Summary
-	var err error
-	if lastNMessages == 0 {
-		summary, err = getSummary(ctx, db, sessionID)
-		if err != nil {
-			return nil, NewStorageError("unable to retrieve summary", nil)
-		}
-
-		// if no summary has been created yet, set lastNMessages to the configured message window
-		if summary == nil {
-			lastNMessages = memoryWindow
-		}
-	}
-
-	// if we do have a summary, determine the index of the last message in the summary
-	var summaryPointIndex int64
-	if summary != nil {
-		var message PgMessageStore
-
-		err := db.NewSelect().
-			Model(&message).
-			Column("id").
-			Where("session_id = ? AND uuid = ?", sessionID, summary.SummaryPointUUID).
-			Where("deleted_at IS NULL").
-			Scan(ctx)
-
-		if err != nil {
-			if err == sql.ErrNoRows {
-				log.Warningf(
-					"unable to retrieve last summary point for %s: %s",
-					summary.SummaryPointUUID,
-					err,
-				)
-			} else {
-				return nil, NewStorageError("unable to retrieve last summary point for %s", err)
-			}
-			lastNMessages = memoryWindow
-		}
-
-		summaryPointIndex = message.ID
-	}
-
-	var messages []PgMessageStore
-	query := db.NewSelect().
-		Model(&messages).
-		Where("session_id = ?", sessionID).
-		Order("id DESC") // Return messages in reverse chronological order (using
-
-	if lastNMessages > 0 {
-		query.Limit(lastNMessages)
-	}
-
-	// Only get messages created after the SummaryPoint
-	if summaryPointIndex != 0 {
-		query.Where("id > ?", summaryPointIndex)
-	}
-
-	err = query.Scan(ctx)
-	if err != nil {
-		return nil, NewStorageError("failed to get messages", err)
-	}
-
-	if len(messages) == 0 {
-		return nil, nil
-	}
-
-	messageList := make([]models.Message, len(messages))
-	err = copier.Copy(&messageList, &messages)
-	if err != nil {
-		return nil, NewStorageError("failed to copy messages", err)
-	}
-
-	return messageList, nil
-}
-
-// getSummary returns the most recent summary for a session
-func getSummary(ctx context.Context, db *bun.DB, sessionID string) (*models.Summary, error) {
-	summary := PgSummaryStore{}
-	err := db.NewSelect().
-		Model(&summary).
-		Where("session_id = ?", sessionID).
-		Where("deleted_at IS NULL").
-		// Get the most recent summary
-		Order("created_at DESC").
-		Limit(1).
-		Scan(ctx)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return &models.Summary{}, NewStorageError("failed to get session", err)
-	}
-
-	respSummary := models.Summary{}
-	err = copier.Copy(&respSummary, &summary)
-	if err != nil {
-		return nil, NewStorageError("failed to copy summary", err)
-	}
-	return &respSummary, nil
-}
-
-func putEmbeddings(
-	ctx context.Context,
-	db *bun.DB,
-	sessionID string,
-	embeddings []models.Embeddings,
-) error {
-	if embeddings == nil {
-		return NewStorageError("nil embeddings received", nil)
-	}
-	if len(embeddings) == 0 {
-		return NewStorageError("no embeddings received", nil)
-	}
-
-	embeddingVectors := make([]PgMessageVectorStore, len(embeddings))
-	for i, e := range embeddings {
-		embeddingVectors[i] = PgMessageVectorStore{
-			SessionID:   sessionID,
-			Embedding:   pgvector.NewVector(e.Embedding),
-			MessageUUID: e.TextUUID,
-			IsEmbedded:  true,
-		}
-	}
-
-	_, err := db.NewInsert().
-		Model(&embeddingVectors).
-		Exec(ctx)
-
-	if err != nil {
-		return NewStorageError("failed to insert message vectors", err)
-	}
-
-	return nil
-}
-
-func searchMessages(
-	ctx context.Context,
-	appState *models.AppState,
-	db *bun.DB,
-	sessionID string,
-	query *models.SearchPayload,
-	limit int,
-) ([]models.SearchResult, error) {
-	if query == nil {
-		return nil, NewStorageError("nil query received", nil)
-	}
-
-	s := query.Text
-	if s == "" {
-		return nil, NewStorageError("empty query", errors.New("empty query"))
-	}
-
-	if appState == nil {
-		return nil, NewStorageError("nil appState received", nil)
-	}
-
-	if limit == 0 {
-		limit = 10
-	}
-
-	e, err := llms.EmbedMessages(ctx, appState, []string{s})
-	if err != nil {
-		return nil, NewStorageError("failed to embed query", err)
-	}
-	vector := pgvector.NewVector((*e)[0].Embedding)
-
-	var results []models.SearchResult
-	err = db.NewSelect().
-		TableExpr("message_embedding AS me").
-		Join("JOIN message AS m").
-		JoinOn("me.message_uuid = m.uuid").
-		ColumnExpr("m.uuid AS message__uuid").
-		ColumnExpr("m.created_at AS message__created_at").
-		ColumnExpr("m.role AS message__role").
-		ColumnExpr("m.content AS message__content").
-		ColumnExpr("m.metadata AS message__metadata").
-		ColumnExpr("m.token_count AS message__token_count").
-		ColumnExpr("1 - (embedding <=> ? ) AS dist", vector).
-		Where("m.session_id = ?", sessionID).
-		Order("dist DESC").
-		Limit(limit).
-		Scan(ctx, &results)
-	if err != nil {
-		return nil, NewStorageError("memory searchMessages failed", err)
-	}
-
-	// some results may be returned where distance is NaN. This is a race between
-	// newly added messages and the search query. We filter these out.
-	var filteredResults []models.SearchResult
-	for _, result := range results {
-		if !math.IsNaN(result.Dist) {
-			filteredResults = append(filteredResults, result)
-		}
-	}
-	return filteredResults, nil
-}
-
-// deleteSession deletes a session from the memory store. This is a soft delete.
-// TODO: This is ugly. Determine why bun's cascading deletes aren't working
-func deleteSession(ctx context.Context, db *bun.DB, sessionID string) error {
-	schemas := []bun.BeforeCreateTableHook{
-		&PgMessageVectorStore{},
-		&PgSummaryStore{},
-		&PgMessageStore{},
-		&PgSession{},
-	}
-	for _, schema := range schemas {
-		_, err := db.NewDelete().
-			Model(schema).
-			Where("session_id = ?", sessionID).
-			Exec(ctx)
-		if err != nil {
-			return fmt.Errorf("error deleting rows from %T: %w", schema, err)
-		}
-	}
-
-	return nil
 }
