@@ -12,10 +12,7 @@ Zep's Extractor model is easily extensible, with a simple, clean interface avail
 - **Vector search** over memories, with messages automatically embedded on creation. 
 - **Auto-token counting** of memories and summaries, allowing finer-grained control over prompt assembly.
 - **Python** and **JavaScript** SDKs.
-
-Coming (very) soon:
 - Langchain `memory` and `retriever` support.
-- Support for other conversational and agentic AI frameworks.
 
 ## Quick Start
 
