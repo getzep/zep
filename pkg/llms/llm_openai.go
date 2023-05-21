@@ -2,6 +2,7 @@ package llms
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/avast/retry-go/v4"
@@ -14,6 +15,21 @@ import (
 const openAIAPITimeout = 60 * time.Second
 const OpenAIAPIKeyNotSetError = "ZEP_OPENAI_API_KEY is not set" //nolint:gosec
 const InvalidLLMModelError = "llm model is not set or is invalid"
+
+var (
+	once     sync.Once
+	tkm      *tiktoken.Tiktoken
+	tkmError error
+)
+
+func getTokenCountObject() (*tiktoken.Tiktoken, error) {
+	once.Do(func() {
+		encoding := "cl100k_base"
+		tkm, tkmError = tiktoken.GetEncoding(encoding)
+	})
+
+	return tkm, tkmError
+}
 
 func CreateOpenAIClient(cfg *config.Config) *openai.Client {
 	openAIKey := cfg.LLM.OpenAIAPIKey
@@ -66,8 +82,10 @@ func RunChatCompletion(
 }
 
 func GetTokenCount(text string) (int, error) {
-	encoding := "cl100k_base"
-	tkm, err := tiktoken.GetEncoding(encoding)
+	tkm, err := getTokenCountObject()
+	if err != nil {
+		return 0, err
+	}
 	if err != nil {
 		return 0, err
 	}
