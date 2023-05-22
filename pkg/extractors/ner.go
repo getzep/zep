@@ -24,7 +24,7 @@ func NewEntityExtractor() *EntityExtractor {
 
 func (ee *EntityExtractor) Extract(
 	ctx context.Context,
-	_ *models.AppState,
+	appState *models.AppState,
 	messageEvent *models.MessageEvent,
 ) error {
 	sessionID := messageEvent.SessionID
@@ -32,12 +32,12 @@ func (ee *EntityExtractor) Extract(
 	sessionMutex.Lock()
 	defer sessionMutex.Unlock()
 
-	nerResponse, err := callNERService(ctx, messageEvent.Messages)
+	nerResponse, err := callEntityExtractor(ctx, appState, messageEvent.Messages)
 	if err != nil {
 		return NewExtractorError("EntityExtractor extract entities call failed", err)
 	}
 
-	log.Infof("EntityExtractor received %d entities: %+v", len(nerResponse.Values), nerResponse)
+	log.Debugf("EntityExtractor received %d entities: %+v", len(nerResponse.Texts), nerResponse)
 	return nil
 }
 
@@ -62,86 +62,86 @@ func (ee *EntityExtractor) Notify(
 	return nil
 }
 
-func callNERService(_ context.Context, messages []models.Message) (RecordsResponse, error) {
-	url := "http://localhost:8080/entities" // Replace with your actual server URL
+func callEntityExtractor(
+	_ context.Context,
+	_ *models.AppState,
+	messages []models.Message,
+) (Response, error) {
+	url := "http://localhost:8080/entities"
 
-	request := make([]RecordRequest, len(messages))
+	request := make([]RequestRecord, len(messages))
 	for i, m := range messages {
-		r := RecordRequest{
-			RecordId: m.UUID.String(),
-			Data: RecordDataRequest{
-				Text:     m.Content,
-				Language: "en",
-			},
+		r := RequestRecord{
+			UUID:     m.UUID.String(),
+			Text:     m.Content,
+			Language: "en",
 		}
 		request[i] = r
 	}
 
-	requestBody := RecordsRequest{Values: request}
+	requestBody := Request{Texts: request}
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
-		fmt.Println("Error marshaling request body:", err)
-		return RecordsResponse{}, err
+		log.Error("Error marshaling request body:", err)
+		return Response{}, err
 	}
 
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
-		fmt.Println("Error making POST request:", err)
-		return RecordsResponse{}, err
+		log.Error("Error making POST request:", err)
+		return Response{}, err
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println("Error reading response body:", err)
-		return RecordsResponse{}, err
+		log.Error("Error reading response body:", err)
+		return Response{}, err
 	}
 
-	var recordsResponse RecordsResponse
-	err = json.Unmarshal(bodyBytes, &recordsResponse)
+	var response Response
+	err = json.Unmarshal(bodyBytes, &response)
 	if err != nil {
 		fmt.Println("Error unmarshaling response body:", err)
-		return RecordsResponse{}, err
+		return Response{}, err
 	}
 
-	return recordsResponse, nil
+	return response, nil
 }
 
 type HTTPValidationError struct {
 	Detail []ValidationError `json:"detail"`
 }
 
-type Message struct {
-	Message string `json:"message"`
+type EntityMatch struct {
+	Start int    `json:"start"`
+	End   int    `json:"end"`
+	Text  string `json:"text"`
 }
 
-type RecordDataRequest struct {
+type Entity struct {
+	Name    string        `json:"name"`
+	Label   string        `json:"label"`
+	Matches []EntityMatch `json:"matches"`
+}
+
+type RequestRecord struct {
+	UUID     string `json:"uuid"`
 	Text     string `json:"text"`
 	Language string `json:"language"`
 }
 
-type RecordDataResponse struct {
-	Entities []interface{} `json:"entities"`
+type ResponseRecord struct {
+	UUID     string   `json:"uuid"`
+	Entities []Entity `json:"entities"`
 }
 
-type RecordRequest struct {
-	RecordId string            `json:"recordId"`
-	Data     RecordDataRequest `json:"data"`
+type Request struct {
+	Texts []RequestRecord `json:"texts"`
 }
 
-type RecordResponse struct {
-	RecordId string             `json:"recordId"`
-	Data     RecordDataResponse `json:"data"`
-	Errors   []Message          `json:"errors"`
-	Warnings []Message          `json:"warnings"`
-}
-
-type RecordsRequest struct {
-	Values []RecordRequest `json:"values"`
-}
-
-type RecordsResponse struct {
-	Values []RecordResponse `json:"values"`
+type Response struct {
+	Texts []ResponseRecord `json:"texts"`
 }
 
 type ValidationError struct {

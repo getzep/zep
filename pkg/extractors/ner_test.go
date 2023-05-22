@@ -2,29 +2,335 @@ package extractors
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/getzep/zep/pkg/models"
 )
 
-func TestEntityExtractor_Extract(t *testing.T) {
-	ctx := context.Background()
-	entityExtractor := NewEntityExtractor()
+func TestCallNERService(t *testing.T) {
+	texts := []string{
+		`But Google is starting from behind. The company made a late push
+    into hardware, and Apple's Siri, available on iPhones, and Amazon's Alexa
+    software, which runs on its Echo and Dot devices, have clear leads in
+    consumer adoption.`,
+		`South Korea’s Kospi gained as much as 1%, on track for its sixth 
+    daily advance. Samsung Electronics Co. and SK Hynix Inc. were among the biggest 
+    contributors to the benchmark after China said their US rival Micron Technology 
+    Inc. had failed to pass a cybersecurity review. "I think you’re gonna see that 
+    begin to thaw very shortly,” between the US and China, Biden said on Sunday 
+    after a Group-of-Seven summit in Japan. He added that his administration was 
+    considering whether to lift sanctions on Chinese Defense Minister Li Shangfu.`,
+	}
+	// Create messages with the texts
+	messages := createMessages(texts)
 
-	messageEvent := &models.MessageEvent{
-		SessionID: "test",
-		Messages: []models.Message{
-			{
-				Content: "HIROSHIMA, Japan — President Volodymyr Zelensky of Ukraine rejected Russia’s claim on Sunday to have captured the eastern city of Bakhmut after nearly a year of fighting, as President Biden reaffirmed that Western allies “will not waver” in their support of Kyiv.",
-				UUID:    uuid.New(),
-			},
-		},
+	// Call the NER service
+	response, err := callEntityExtractor(context.Background(), &models.AppState{}, messages)
+	// Check for errors
+	if err != nil {
+		t.Errorf("Error: %v", err)
 	}
 
-	err := entityExtractor.Extract(ctx, nil, messageEvent)
-	assert.NoError(t, err)
+	// Check the response
+	if len(response.Texts) != 2 {
+		t.Errorf("Response length is not 2: got %v", len(response.Texts))
+	}
+
+	// Check the uuids
+	for i := range messages {
+		validateUUID(t, response.Texts[i].UUID, messages[i].UUID)
+	}
+
+	expectedEntities := [][]Entity{{
+		{
+			Name:  "Google",
+			Label: "ORG",
+			Matches: []EntityMatch{
+				{
+					Start: 4,
+					End:   10,
+					Text:  "Google",
+				},
+			},
+		},
+		{
+			Name:  "Apple",
+			Label: "ORG",
+			Matches: []EntityMatch{
+				{
+					Start: 88,
+					End:   93,
+					Text:  "Apple",
+				},
+			},
+		},
+		{
+			Name:  "Siri",
+			Label: "PERSON",
+			Matches: []EntityMatch{
+				{
+					Start: 96,
+					End:   100,
+					Text:  "Siri",
+				},
+			},
+		},
+		{
+			Name:  "iPhones",
+			Label: "ORG",
+			Matches: []EntityMatch{
+				{
+					Start: 115,
+					End:   122,
+					Text:  "iPhones",
+				},
+			},
+		},
+		{
+			Name:  "Amazon",
+			Label: "ORG",
+			Matches: []EntityMatch{
+				{
+					Start: 128,
+					End:   134,
+					Text:  "Amazon",
+				},
+			},
+		},
+		{
+			Name:  "Alexa",
+			Label: "ORG",
+			Matches: []EntityMatch{
+				{
+					Start: 137,
+					End:   142,
+					Text:  "Alexa",
+				},
+			},
+		},
+		{
+			Name:  "Echo",
+			Label: "LOC",
+			Matches: []EntityMatch{
+				{
+					Start: 175,
+					End:   179,
+					Text:  "Echo",
+				},
+			},
+		},
+	}, {
+		{
+			Name:  "South Korea’s",
+			Label: "GPE",
+			Matches: []EntityMatch{
+				{
+					Start: 0,
+					End:   13,
+					Text:  "South Korea’s",
+				},
+			},
+		},
+		{
+			Name:  "As much as 1%",
+			Label: "PERCENT",
+			Matches: []EntityMatch{
+				{
+					Start: 27,
+					End:   40,
+					Text:  "as much as 1%",
+				},
+			},
+		},
+		{
+			Name:  "Sixth",
+			Label: "ORDINAL",
+			Matches: []EntityMatch{
+				{
+					Start: 59,
+					End:   64,
+					Text:  "sixth",
+				},
+			},
+		},
+		{
+			Name:  "Daily",
+			Label: "DATE",
+			Matches: []EntityMatch{
+				{
+					Start: 70,
+					End:   75,
+					Text:  "daily",
+				},
+			},
+		},
+		{
+			Name:  "Samsung Electronics Co.",
+			Label: "ORG",
+			Matches: []EntityMatch{
+				{
+					Start: 85,
+					End:   108,
+					Text:  "Samsung Electronics Co.",
+				},
+			},
+		},
+		{
+			Name:  "SK Hynix Inc.",
+			Label: "ORG",
+			Matches: []EntityMatch{
+				{
+					Start: 113,
+					End:   126,
+					Text:  "SK Hynix Inc.",
+				},
+			},
+		},
+		{
+			Name:  "China",
+			Label: "GPE",
+			Matches: []EntityMatch{
+				{
+					Start: 191,
+					End:   196,
+					Text:  "China",
+				},
+				{
+					Start: 372,
+					End:   377,
+					Text:  "China",
+				},
+			},
+		},
+		{
+			Name:  "US",
+			Label: "GPE",
+			Matches: []EntityMatch{
+				{
+					Start: 208,
+					End:   210,
+					Text:  "US",
+				},
+				{
+					Start: 365,
+					End:   367,
+					Text:  "US",
+				},
+			},
+		},
+		{
+			Name:  "Micron Technology \n    Inc.",
+			Label: "ORG",
+			Matches: []EntityMatch{
+				{
+					Start: 217,
+					End:   244,
+					Text:  "Micron Technology \n    Inc.",
+				},
+			},
+		},
+		{
+			Name:  "Biden",
+			Label: "PERSON",
+			Matches: []EntityMatch{
+				{
+					Start: 379,
+					End:   384,
+					Text:  "Biden",
+				},
+			},
+		},
+		{
+			Name:  "Sunday",
+			Label: "DATE",
+			Matches: []EntityMatch{
+				{
+					Start: 393,
+					End:   399,
+					Text:  "Sunday",
+				},
+			},
+		},
+		{
+			Name:  "Seven",
+			Label: "CARDINAL",
+			Matches: []EntityMatch{
+				{
+					Start: 422,
+					End:   427,
+					Text:  "Seven",
+				},
+			},
+		},
+		{
+			Name:  "Japan",
+			Label: "GPE",
+			Matches: []EntityMatch{
+				{
+					Start: 438,
+					End:   443,
+					Text:  "Japan",
+				},
+			},
+		},
+		{
+			Name:  "Chinese",
+			Label: "NORP",
+			Matches: []EntityMatch{
+				{
+					Start: 528,
+					End:   535,
+					Text:  "Chinese",
+				},
+			},
+		},
+		{
+			Name:  "Li Shangfu",
+			Label: "PERSON",
+			Matches: []EntityMatch{
+				{
+					Start: 553,
+					End:   563,
+					Text:  "Li Shangfu",
+				},
+			},
+		},
+	}}
+
+	// Check if the entities match the expected values
+	for i := range expectedEntities {
+		validateEntities(t, response.Texts[i].Entities, expectedEntities[i])
+	}
+}
+
+func createMessages(texts []string) []models.Message {
+	messages := make([]models.Message, len(texts))
+	for i, text := range texts {
+		messages[i] = models.Message{
+			UUID:    uuid.New(),
+			Content: text,
+		}
+	}
+	return messages
+}
+
+func validateUUID(t *testing.T, got string, want uuid.UUID) {
+	gotUUID, err := uuid.Parse(got)
+	if err != nil {
+		t.Errorf("Error: %v", err)
+	}
+	if gotUUID != want {
+		t.Errorf("Uuids do not match: got %v want %v", got, want)
+	}
+}
+
+func validateEntities(t *testing.T, got []Entity, want []Entity) {
+	for i := range want {
+		if !reflect.DeepEqual(got[i], want[i]) {
+			t.Errorf("Entities do not match: got %+v want %+v", got[i], want[i])
+		}
+	}
 }
