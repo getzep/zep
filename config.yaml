@@ -6,6 +6,8 @@ memory:
 extractors:
   summarizer:
     enabled: true
+  entities:
+    enabled: true
   embeddings:
     enabled: true
     dimensions: 1536

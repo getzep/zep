@@ -43,6 +43,7 @@ func putMessages(
 		pgMessages[i].SessionID = sessionID
 	}
 
+	// TODO: Remove metadata and insert/update separately
 	_, err = db.NewInsert().
 		Model(&pgMessages).
 		Column("id", "created_at", "uuid", "session_id", "role", "content", "token_count", "metadata").

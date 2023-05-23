@@ -33,15 +33,20 @@ type MemoryStore[T any] interface {
 		appState *AppState,
 		sessionID string,
 		summary *Summary) error
-	// PutMessageVectors stores a collection of Embeddings for a given sessionID. isEmbedded is a flag that
-	// indicates whether the provided records have been embedded.
+	// PutMessageMetadata creates, updates, or deletes metadata for a given message, and does not
+	// update the message itself.
+	// isPrivileged indicates whether the caller is privileged to add or update system metadata.
+	PutMessageMetadata(ctx context.Context,
+		appState *AppState,
+		sessionID string,
+		messageMetaSet []MessageMetadata,
+		isPrivileged bool) error
+	// PutMessageVectors stores a collection of Embeddings for a given sessionID.
 	PutMessageVectors(ctx context.Context,
 		appState *AppState,
 		sessionID string,
 		embeddings []Embeddings) error
-	// GetMessageVectors retrieves a collection of Embeddings for a given sessionID. isEmbedded is a flag that
-	// whether the Embeddings records have been embedded. The Embeddings extractor uses this internally to determine
-	// which records still need to be embedded.
+	// GetMessageVectors retrieves a collection of Embeddings for a given sessionID.
 	GetMessageVectors(ctx context.Context,
 		appState *AppState,
 		sessionID string) ([]Embeddings, error)

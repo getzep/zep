@@ -2,6 +2,10 @@ package memorystore
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/binary"
+	"errors"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/uptrace/bun"
@@ -163,6 +167,20 @@ func (pms *PostgresMemoryStore) PutSummary(
 	return nil
 }
 
+func (pms *PostgresMemoryStore) PutMessageMetadata(
+	ctx context.Context,
+	appState *models.AppState,
+	sessionID string,
+	messageMetaSet []models.MessageMetadata,
+	isPrivileged bool,
+) error {
+	err := putMessageMetadata(ctx, appState, pms.Client, sessionID, messageMetaSet, isPrivileged)
+	if err != nil {
+		return NewStorageError("failed to put message metadata", err)
+	}
+	return nil
+}
+
 func (pms *PostgresMemoryStore) SearchMemory(
 	ctx context.Context,
 	appState *models.AppState,
@@ -217,4 +235,30 @@ func (pms *PostgresMemoryStore) GetMessageVectors(ctx context.Context,
 	}
 
 	return embeddings, nil
+}
+
+// acquireAdvisoryLock acquires a PostgreSQL advisory lock for the given key.
+// Expects a transaction to be open in tx.
+// `pg_advisory_xact_lock` will wait until the lock is available. The lock is released
+// when the transaction is committed or rolled back.
+func acquireAdvisoryLock(ctx context.Context, tx bun.Tx, key string) error {
+	hasher := sha256.New()
+	hasher.Write([]byte(key))
+	hash := hasher.Sum(nil)
+	lockID := binary.BigEndian.Uint64(hash[:8])
+
+	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(?)", lockID); err != nil {
+		return NewStorageError("failed to acquire advisory lock", err)
+	}
+
+	return nil
+}
+
+// rollbackOnError rolls back the transaction if an error is encountered.
+// If the error is sql.ErrTxDone, the transaction has already been committed or rolled back
+// and we ignore the error.
+func rollbackOnError(tx bun.Tx) {
+	if rollBackErr := tx.Rollback(); rollBackErr != nil && !errors.Is(rollBackErr, sql.ErrTxDone) {
+		log.Error("failed to rollback transaction", rollBackErr)
+	}
 }

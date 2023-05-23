@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/google/uuid"
 
 	"github.com/getzep/zep/pkg/models"
@@ -29,15 +31,10 @@ func TestCallNERService(t *testing.T) {
 
 	// Call the NER service
 	response, err := callEntityExtractor(context.Background(), &models.AppState{}, messages)
-	// Check for errors
-	if err != nil {
-		t.Errorf("Error: %v", err)
-	}
+	assert.NoError(t, err)
 
 	// Check the response
-	if len(response.Texts) != 2 {
-		t.Errorf("Response length is not 2: got %v", len(response.Texts))
-	}
+	assert.Equal(t, len(response.Texts), len(texts))
 
 	// Check the uuids
 	for i := range messages {
@@ -319,16 +316,13 @@ func createMessages(texts []string) []models.Message {
 
 func validateUUID(t *testing.T, got string, want uuid.UUID) {
 	gotUUID, err := uuid.Parse(got)
-	if err != nil {
-		t.Errorf("Error: %v", err)
-	}
-	if gotUUID != want {
-		t.Errorf("Uuids do not match: got %v want %v", got, want)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, gotUUID, want)
 }
 
 func validateEntities(t *testing.T, got []Entity, want []Entity) {
 	for i := range want {
+		assert.Equal(t, got[i], want[i])
 		if !reflect.DeepEqual(got[i], want[i]) {
 			t.Errorf("Entities do not match: got %+v want %+v", got[i], want[i])
 		}

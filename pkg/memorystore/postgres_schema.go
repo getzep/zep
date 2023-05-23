@@ -26,7 +26,7 @@ type PgSession struct {
 	CreatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
 	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
 	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
-	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero"`
+	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
 }
 
 // BeforeCreateTable is a dummy method to ensure uniform interface across all table models - used in table creation iterator
@@ -52,7 +52,7 @@ type PgMessageStore struct {
 	Role       string                 `bun:",notnull"`
 	Content    string                 `bun:",notnull"`
 	TokenCount int                    `bun:",notnull"`
-	Metadata   map[string]interface{} `bun:"type:jsonb,nullzero"`
+	Metadata   map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
 	Session    *PgSession             `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade"`
 }
 
@@ -96,7 +96,7 @@ type PgSummaryStore struct {
 	DeletedAt        time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
 	SessionID        string                 `bun:",notnull"`
 	Content          string                 `bun:",nullzero"` // allow null as we might want to use Metadata without a summary
-	Metadata         map[string]interface{} `bun:"type:jsonb,nullzero"`
+	Metadata         map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
 	TokenCount       int                    `bun:",notnull"`
 	SummaryPointUUID uuid.UUID              `bun:"type:uuid,notnull,unique"` // the UUID of the most recent message that was used to create the summary
 	Session          *PgSession             `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade"`
@@ -216,9 +216,9 @@ func NewPostgresConn(dsn string) *bun.DB {
 	sqldb.SetMaxIdleConns(maxOpenConns)
 	db := bun.NewDB(sqldb, pgdialect.New())
 	db.AddQueryHook(logrusbun.NewQueryHook(logrusbun.QueryHookOptions{
-		LogSlow: time.Second,
-		Logger:  log,
-		//QueryLevel:      logrus.DebugLevel,
+		LogSlow:         time.Second,
+		Logger:          log,
+		QueryLevel:      logrus.DebugLevel,
 		ErrorLevel:      logrus.ErrorLevel,
 		SlowLevel:       logrus.WarnLevel,
 		MessageTemplate: "{{.Operation}}[{{.Duration}}]: {{.Query}}",
