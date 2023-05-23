@@ -169,12 +169,12 @@ func (pms *PostgresMemoryStore) PutSummary(
 
 func (pms *PostgresMemoryStore) PutMessageMetadata(
 	ctx context.Context,
-	appState *models.AppState,
+	_ *models.AppState,
 	sessionID string,
 	messageMetaSet []models.MessageMetadata,
 	isPrivileged bool,
 ) error {
-	err := putMessageMetadata(ctx, appState, pms.Client, sessionID, messageMetaSet, isPrivileged)
+	err := putMessageMetadata(ctx, pms.Client, sessionID, messageMetaSet, isPrivileged)
 	if err != nil {
 		return NewStorageError("failed to put message metadata", err)
 	}

@@ -43,14 +43,29 @@ func putMessages(
 		pgMessages[i].SessionID = sessionID
 	}
 
-	// TODO: Remove metadata and insert/update separately
-	_, err = db.NewInsert().
-		Model(&pgMessages).
-		Column("id", "created_at", "uuid", "session_id", "role", "content", "token_count", "metadata").
-		On("CONFLICT (uuid) DO UPDATE").
-		Exec(ctx)
+	messageMetaSet := make([]models.MessageMetadata, len(messages))
+	for i := range messages {
+		messageMetaSet[i].UUID = messages[i].UUID
+		messageMetaSet[i].Metadata = messages[i].Metadata
+	}
+
+	err = db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// Insert messages
+		_, err = db.NewInsert().
+			Model(&pgMessages).
+			Column("id", "created_at", "uuid", "session_id", "role", "content", "token_count", "metadata").
+			On("CONFLICT (uuid) DO UPDATE").
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+		return nil
+
+		// insert/update message metadata
+		//err = putMessageMetadata(ctx, tx, sessionID, messages, false)
+	})
 	if err != nil {
-		return nil, NewStorageError("failed to save memories to store", err)
+		return nil, NewStorageError("failed to put messages", err)
 	}
 
 	retMessages := make([]models.Message, len(messages))

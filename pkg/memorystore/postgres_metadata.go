@@ -16,8 +16,7 @@ import (
 // Unprivileged callers will have the `system` key removed from the metadata.
 func putMessageMetadata(
 	ctx context.Context,
-	_ *models.AppState,
-	db *bun.DB,
+	db bun.IDB,
 	sessionID string,
 	messageMetaSet []models.MessageMetadata,
 	isPrivileged bool,
@@ -105,6 +104,13 @@ func findOrCreateMetadataMap(currentMap map[string]interface{}, key string) map[
 
 // storeMetadataByPath stores the metadata at the given key path in the value map.
 func storeMetadataByPath(value map[string]interface{}, keyPath []string, metadata interface{}) {
+	if len(keyPath) == 0 || (len(keyPath) == 1 && keyPath[0] == "") {
+		for k, v := range metadata.(map[string]interface{}) {
+			value[k] = v
+		}
+		return
+	}
+
 	for _, key := range keyPath[:len(keyPath)-1] {
 		value = findOrCreateMetadataMap(value, key)
 	}
