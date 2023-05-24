@@ -52,7 +52,7 @@ func run() {
 // and creates the OpenAI client
 func NewAppState(cfg *config.Config) *models.AppState {
 	appState := &models.AppState{
-		OpenAIClient: llms.CreateOpenAIClient(cfg),
+		OpenAIClient: llms.NewOpenAIRetryClient(cfg),
 		Config:       cfg,
 	}
 

@@ -5,7 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/avast/retry-go/v4"
+	"github.com/getzep/zep/pkg/llms/openairetryclient"
+
 	"github.com/getzep/zep/config"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/pkoukk/tiktoken-go"
@@ -22,6 +23,24 @@ var (
 	tkmError error
 )
 
+func NewOpenAIRetryClient(cfg *config.Config) *openairetryclient.OpenAIRetryClient {
+	apiKey := cfg.LLM.OpenAIAPIKey
+	if apiKey == "" {
+		log.Fatal(OpenAIAPIKeyNotSetError)
+	}
+	client := openai.NewClient(apiKey)
+	return &openairetryclient.OpenAIRetryClient{
+		Client: *client,
+		Config: struct {
+			Timeout     time.Duration
+			MaxAttempts uint
+		}{
+			Timeout:     openAIAPITimeout,
+			MaxAttempts: 3,
+		},
+	}
+}
+
 func getTokenCountObject() (*tiktoken.Tiktoken, error) {
 	once.Do(func() {
 		encoding := "cl100k_base"
@@ -29,14 +48,6 @@ func getTokenCountObject() (*tiktoken.Tiktoken, error) {
 	})
 
 	return tkm, tkmError
-}
-
-func CreateOpenAIClient(cfg *config.Config) *openai.Client {
-	openAIKey := cfg.LLM.OpenAIAPIKey
-	if openAIKey == "" {
-		log.Fatal(OpenAIAPIKeyNotSetError)
-	}
-	return openai.NewClient(openAIKey)
 }
 
 func RunChatCompletion(
@@ -60,21 +71,7 @@ func RunChatCompletion(
 		},
 		Temperature: DefaultTemperature,
 	}
-	// Retry up to 3 times with exponential backoff, cancel after openAIAPITimeout
-	retryCtx, cancel := context.WithTimeout(ctx, openAIAPITimeout)
-	defer cancel()
-	err = retry.Do(
-		func() error {
-			resp, err = appState.OpenAIClient.CreateChatCompletion(retryCtx, req)
-			return err
-		},
-		retry.Attempts(3),
-		retry.Context(retryCtx),
-		retry.DelayType(retry.BackOffDelay),
-		retry.OnRetry(func(n uint, err error) {
-			log.Warningf("Retrying OpenAI API attempt #%d: %s\n", n, err)
-		}),
-	)
+	resp, err = appState.OpenAIClient.CreateChatCompletion(ctx, req)
 	if err != nil {
 		return openai.ChatCompletionResponse{}, err
 	}
