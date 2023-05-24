@@ -42,7 +42,7 @@ func searchMessages(
 	if err != nil {
 		return nil, NewStorageError("failed to embed query", err)
 	}
-	vector := pgvector.NewVector((*e)[0].Embedding)
+	vector := pgvector.NewVector(e[0].Embedding)
 
 	var results []models.SearchResult
 	err = db.NewSelect().

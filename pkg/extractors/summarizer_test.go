@@ -27,7 +27,7 @@ func TestSummarize(t *testing.T) {
 	store, err := memorystore.NewPostgresMemoryStore(appState, db)
 	assert.NoError(t, err)
 
-	appState.OpenAIClient = llms.CreateOpenAIClient(cfg)
+	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
 	appState.MemoryStore = store
 
 	windowSize := 10

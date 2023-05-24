@@ -15,7 +15,7 @@ func TestEmbedMessages(t *testing.T) {
 	cfg := test.NewTestConfig()
 
 	appState := &models.AppState{Config: cfg}
-	appState.OpenAIClient = CreateOpenAIClient(cfg)
+	appState.OpenAIClient = NewOpenAIRetryClient(cfg)
 
 	vectorLength := 1536
 
@@ -27,10 +27,10 @@ func TestEmbedMessages(t *testing.T) {
 	embeddings, err := EmbedMessages(ctx, appState, messageContents)
 	assert.NoError(t, err)
 	assert.NotNil(t, embeddings)
-	assert.Len(t, *embeddings, 2)
+	assert.Len(t, embeddings, 2)
 
 	// Check if the embeddings are of the correct length
-	for _, embedding := range *embeddings {
+	for _, embedding := range embeddings {
 		assert.Len(t, embedding.Embedding, int(vectorLength))
 	}
 }

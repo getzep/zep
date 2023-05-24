@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/avast/retry-go/v4"
-
 	"github.com/getzep/zep/pkg/models"
 	"github.com/sashabaranov/go-openai"
 )
@@ -14,7 +12,7 @@ func EmbedMessages(
 	ctx context.Context,
 	appState *models.AppState,
 	text []string,
-) (*[]openai.Embedding, error) {
+) ([]openai.Embedding, error) {
 	if len(text) == 0 {
 		return nil, NewLLMError("no text to embed", nil)
 	}
@@ -33,27 +31,10 @@ func EmbedMessages(
 		User:  "zep_user",
 	}
 
-	// Retry up to 3 times with exponential backoff, cancel after openAIAPITimeout
-	retryCtx, cancel := context.WithTimeout(ctx, openAIAPITimeout)
-	defer cancel()
-	var resp openai.EmbeddingResponse
-	err := retry.Do(
-		func() error {
-			var err error
-			resp, err = appState.OpenAIClient.CreateEmbeddings(ctx, req)
-			return err
-		},
-		retry.Attempts(3),
-		retry.Context(retryCtx),
-		retry.DelayType(retry.BackOffDelay),
-		retry.OnRetry(func(n uint, err error) {
-			log.Warningf("Retrying OpenAI API attempt #%d: %s\n", n, err)
-		}),
-	)
-
+	resp, err := appState.OpenAIClient.CreateEmbeddings(ctx, req)
 	if err != nil {
 		return nil, NewLLMError("error while creating embedding", err)
 	}
 
-	return &resp.Data, nil
+	return resp.Data, nil
 }

@@ -48,7 +48,7 @@ func setup() {
 	cfg := test.NewTestConfig()
 
 	appState = &models.AppState{}
-	appState.OpenAIClient = llms.CreateOpenAIClient(cfg)
+	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
 	appState.Config = cfg
 	store, err := NewPostgresMemoryStore(appState, testDB)
 	if err != nil {
