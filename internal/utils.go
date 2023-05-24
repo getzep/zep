@@ -28,12 +28,11 @@ func ReverseSlice[T any](slice []T) {
 	}
 }
 
-// StructToMap converts a struct to a map, recursively handling nested structs
+// StructToMap converts a struct to a map, recursively handling nested structs or lists of structs.
 func StructToMap(item interface{}) map[string]interface{} {
 	val := reflect.ValueOf(item)
 
-	// Check if this is a slice of structs
-	if val.Kind() == reflect.Slice {
+	processSlice := func(val reflect.Value) []interface{} {
 		sliceOut := make([]interface{}, val.Len())
 		for i := 0; i < val.Len(); i++ {
 			sliceVal := val.Index(i)
@@ -43,16 +42,21 @@ func StructToMap(item interface{}) map[string]interface{} {
 				sliceOut[i] = sliceVal.Interface()
 			}
 		}
-		return map[string]interface{}{"data": sliceOut}
+		return sliceOut
 	}
 
-	// Dereference pointer to struct
-	if val.Kind() == reflect.Ptr {
+	switch val.Kind() {
+	case reflect.Slice:
+		return map[string]interface{}{"data": processSlice(val)}
+	case reflect.Ptr:
 		val = val.Elem()
-	}
-
-	if val.Kind() != reflect.Struct {
-		return map[string]interface{}{}
+		if val.Kind() != reflect.Struct {
+			return map[string]interface{}{}
+		}
+	default:
+		if val.Kind() != reflect.Struct {
+			return map[string]interface{}{}
+		}
 	}
 
 	out := make(map[string]interface{})
@@ -62,21 +66,12 @@ func StructToMap(item interface{}) map[string]interface{} {
 		field := typeOfT.Field(i)
 		value := val.Field(i)
 
-		// Recursively handle nested struct
-		if value.Kind() == reflect.Struct {
+		switch value.Kind() {
+		case reflect.Struct:
 			out[field.Name] = StructToMap(value.Interface())
-		} else if value.Kind() == reflect.Slice {
-			sliceOut := make([]interface{}, value.Len())
-			for i := 0; i < value.Len(); i++ {
-				sliceVal := value.Index(i)
-				if sliceVal.Kind() == reflect.Struct {
-					sliceOut[i] = StructToMap(sliceVal.Interface())
-				} else {
-					sliceOut[i] = sliceVal.Interface()
-				}
-			}
-			out[field.Name] = sliceOut
-		} else {
+		case reflect.Slice:
+			out[field.Name] = processSlice(value)
+		default:
 			out[field.Name] = value.Interface()
 		}
 	}
