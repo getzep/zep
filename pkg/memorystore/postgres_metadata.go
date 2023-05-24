@@ -25,6 +25,11 @@ func putMessageMetadata(
 	var tx bun.Tx
 	var err error
 
+	// remove the top-level `system` key from the metadata if the caller is not privileged
+	if !isPrivileged {
+		messageMetaSet = removeSystemMetadata(messageMetaSet)
+	}
+
 	tx, isDBTransaction := db.(bun.Tx)
 	if !isDBTransaction {
 		// db is not already a transaction, so begin one
@@ -32,13 +37,6 @@ func putMessageMetadata(
 			return NewStorageError("failed to begin transaction", err)
 		}
 		defer rollbackOnError(tx)
-	}
-
-	// remove the top-level `system` key from the metadata if the caller is not privileged
-	if !isPrivileged {
-		for i := range messageMetaSet {
-			delete(messageMetaSet[i].Metadata, "system")
-		}
 	}
 
 	for i := range messageMetaSet {
@@ -56,6 +54,20 @@ func putMessageMetadata(
 	}
 
 	return nil
+}
+
+// removeSystemMetadata removes the top-level `system` key from the metadata. This
+// is used to prevent unprivileged callers from storing metadata in the `system` tree.
+func removeSystemMetadata(metadata []models.MessageMetadata) []models.MessageMetadata {
+	filteredMessageMetadata := make([]models.MessageMetadata, 0)
+
+	for _, m := range metadata {
+		if m.Key != "system" && !strings.HasPrefix(m.Key, "system.") {
+			delete(m.Metadata, "system")
+			filteredMessageMetadata = append(filteredMessageMetadata, m)
+		}
+	}
+	return filteredMessageMetadata
 }
 
 func putMessageMetadataTx(

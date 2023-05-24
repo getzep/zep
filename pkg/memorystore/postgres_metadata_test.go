@@ -9,6 +9,103 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestPutUnPrivilegedMetadata(t *testing.T) {
+	sessionID, err := test.GenerateRandomSessionID(16)
+	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
+	_, err = putSession(testCtx, testDB, sessionID, nil)
+	assert.NoError(t, err, "putSession should not return an error")
+
+	testMessages := []PgMessageStore{
+		{
+			SessionID: sessionID,
+			Role:      "human",
+			Content:   "Hello again",
+			Metadata: map[string]interface{}{
+				"some": "data",
+			},
+		},
+		{
+			SessionID: sessionID,
+			Role:      "human",
+			Content:   "Hello again",
+			Metadata: map[string]interface{}{
+				"foo": "bar",
+				"system": map[string]interface{}{
+					"this_should_be": "retained",
+				},
+			},
+		},
+	}
+
+	insertMessages(t, testMessages)
+
+	metadataToMerge := []models.MessageMetadata{
+		{
+			UUID: testMessages[0].UUID,
+			Metadata: map[string]interface{}{
+				"this_should_not": "be_stored",
+			},
+			Key: "system",
+		},
+		{
+			UUID: testMessages[1].UUID,
+			Metadata: map[string]interface{}{
+				"this_should": "be_stored",
+			},
+			Key: "",
+		},
+	}
+
+	expectedMetadata := []models.Message{
+		{
+			Metadata: map[string]interface{}{
+				"some": "data",
+			},
+		},
+		{
+			Metadata: map[string]interface{}{
+				"foo":         "bar",
+				"this_should": "be_stored",
+				"system": map[string]interface{}{
+					"this_should_be": "retained",
+				},
+			},
+		},
+	}
+
+	testCases := []map[string]interface{}{
+		{
+			"description":           "AttemptToStoreSystemKey",
+			"metadataToMergeIndex":  0,
+			"expectedMetadataIndex": 0,
+		},
+		{
+			"description":           "RetainSystemAddNewKey",
+			"metadataToMergeIndex":  1,
+			"expectedMetadataIndex": 1,
+		},
+	}
+
+	// Call putMetadata function with isPrivileged = true
+	err = putMessageMetadata(testCtx, testDB, sessionID, metadataToMerge, false)
+	assert.NoError(t, err, "putMetadata should not return an error")
+
+	msgs, err := getMessages(testCtx, testDB, sessionID, 12, &models.Summary{}, 0)
+	assert.NoError(t, err, "getMessages should not return an error")
+
+	for _, testCase := range testCases {
+		t.Run(testCase["description"].(string), func(t *testing.T) {
+			metadataToMergeIndex := testCase["metadataToMergeIndex"].(int)
+			expectedMetadataIndex := testCase["expectedMetadataIndex"].(int)
+
+			msg := msgs[metadataToMergeIndex]
+			expectedMeta := expectedMetadata[expectedMetadataIndex].Metadata
+			assert.Equal(t, expectedMeta, msg.Metadata)
+		})
+	}
+
+}
+
 func TestPutMetadata(t *testing.T) {
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
@@ -65,24 +162,7 @@ func TestPutMetadata(t *testing.T) {
 		},
 	}
 
-	cols := []string{
-		"id",
-		"created_at",
-		"uuid",
-		"session_id",
-		"role",
-		"content",
-		"token_count",
-		"metadata",
-	}
-
-	_, err = testDB.NewInsert().
-		Model(&testMessages).
-		Column(cols...).
-		On("CONFLICT (uuid) DO UPDATE").
-		Returning(strings.Join(cols, ",")).
-		Exec(testCtx)
-	assert.NoError(t, err, "messages save should not return an error")
+	insertMessages(t, testMessages)
 
 	metadataToMerge := []models.MessageMetadata{
 		{
@@ -228,4 +308,25 @@ func TestPutMetadata(t *testing.T) {
 			assert.Equal(t, expectedMeta, msg.Metadata)
 		})
 	}
+}
+
+func insertMessages(t *testing.T, testMessages []PgMessageStore) {
+	var cols = []string{
+		"id",
+		"created_at",
+		"uuid",
+		"session_id",
+		"role",
+		"content",
+		"token_count",
+		"metadata",
+	}
+
+	_, err := testDB.NewInsert().
+		Model(&testMessages).
+		Column(cols...).
+		On("CONFLICT (uuid) DO UPDATE").
+		Returning(strings.Join(cols, ",")).
+		Exec(testCtx)
+	assert.NoError(t, err, "messages save should not return an error")
 }
