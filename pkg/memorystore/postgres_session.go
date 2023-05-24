@@ -22,8 +22,9 @@ func putSession(
 	session := PgSession{SessionID: sessionID, Metadata: metadata}
 	_, err := db.NewInsert().
 		Model(&session).
-		Column("uuid", "session_id", "created_at", "metadata").
+		Column("session_id", "metadata").
 		On("CONFLICT (session_id) DO UPDATE").
+		Returning("*").
 		Exec(ctx)
 	if err != nil {
 		return nil, NewStorageError("failed to put session", err)

@@ -14,6 +14,7 @@ import (
 // metadata is determined by message UUID. isPrivileged is used to determine if
 // the caller is allowed to store metadata in the `system` top-level key.
 // Unprivileged callers will have the `system` key removed from the metadata.
+// Can be enrolled in an existing transaction by passing a bun.Tx as db.
 func putMessageMetadata(
 	ctx context.Context,
 	db bun.IDB,
@@ -21,11 +22,17 @@ func putMessageMetadata(
 	messageMetaSet []models.MessageMetadata,
 	isPrivileged bool,
 ) error {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return NewStorageError("failed to begin transaction", err)
+	var tx bun.Tx
+	var err error
+
+	tx, isDBTransaction := db.(bun.Tx)
+	if !isDBTransaction {
+		// db is not already a transaction, so begin one
+		if tx, err = db.BeginTx(ctx, &sql.TxOptions{}); err != nil {
+			return NewStorageError("failed to begin transaction", err)
+		}
+		defer rollbackOnError(tx)
 	}
-	defer rollbackOnError(tx)
 
 	// remove the top-level `system` key from the metadata if the caller is not privileged
 	if !isPrivileged {
@@ -42,8 +49,10 @@ func putMessageMetadata(
 		}
 	}
 
-	if err = tx.Commit(); err != nil {
-		return NewStorageError("failed to commit transaction", err)
+	if !isDBTransaction {
+		if err = tx.Commit(); err != nil {
+			return NewStorageError("failed to commit transaction", err)
+		}
 	}
 
 	return nil
@@ -55,6 +64,8 @@ func putMessageMetadataTx(
 	sessionID string,
 	messageMetadata *models.MessageMetadata,
 ) error {
+	// TODO: simplify all of this by getting `jsonb_set` working in bun
+
 	err := acquireAdvisoryLock(ctx, tx, sessionID+messageMetadata.UUID.String())
 	if err != nil {
 		return NewStorageError("failed to acquire advisory lock", err)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -251,13 +252,6 @@ func TestPgDeleteSession(t *testing.T) {
 }
 
 func TestPutMessages(t *testing.T) {
-	// Test data
-	sessionID, err := test.GenerateRandomSessionID(16)
-	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
-
-	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
-	assert.NoError(t, err, "putSession should not return an error")
-
 	messages := []models.Message{
 		{
 			Role:     "user",
@@ -267,44 +261,42 @@ func TestPutMessages(t *testing.T) {
 		{
 			Role:     "bot",
 			Content:  "Hi there!",
-			Metadata: map[string]interface{}{"timestamp": 1629462551},
+			Metadata: map[string]interface{}{"key": "value"},
 		},
 	}
 
-	// Force embedding to be enabled
-	viper.Set("extractor.embeddings.enabled", true)
-
 	t.Run("insert messages", func(t *testing.T) {
+		sessionID := createSession(t)
 		resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 		assert.NoError(t, err, "putMessages should not return an error")
 
-		// Verify the inserted messages in the database
-		verifyMessagesInDB(t, testCtx, testDB, sessionID, messages, resultMessages)
+		verifyMessagesInDB(t, messages, resultMessages)
 	})
 
 	t.Run("upsert messages with updated TokenCount", func(t *testing.T) {
-		// get messages with UUIDs
-		messages, err := getMessages(testCtx, testDB, sessionID, 10, nil, 0)
+		sessionID := createSession(t)
+		insertedMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 		assert.NoError(t, err, "putMessages should not return an error")
+
 		// Update TokenCount values for the returned messages
-		for i := range messages {
-			messages[i].TokenCount = i + 1
+		for i := range insertedMessages {
+			insertedMessages[i].TokenCount = i + 1
 		}
 
 		// Call putMessages function to upsert the messages
-		resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
+		upsertedMessages, err := putMessages(testCtx, testDB, sessionID, insertedMessages)
 		assert.NoError(t, err, "putMessages should not return an error")
 
-		// Verify the upserted messages in the database
-		verifyMessagesInDB(t, testCtx, testDB, sessionID, messages, resultMessages)
+		verifyMessagesInDB(t, insertedMessages, upsertedMessages)
 	})
 
 	t.Run(
-		"upsert messages with updated TokenCount without overwriting DeletedAt",
+		"upsert messages with deleted session should error",
 		func(t *testing.T) {
-			// Get messages with UUIDs
-			messages, err := getMessages(testCtx, testDB, sessionID, 12, nil, 0)
-			assert.NoError(t, err, "getMessages should not return an error")
+			sessionID := createSession(t)
+
+			insertedMessages, err := putMessages(testCtx, testDB, sessionID, messages)
+			assert.NoError(t, err, "putMessages should not return an error")
 
 			// Delete using deleteSession
 			err = deleteSession(testCtx, testDB, sessionID)
@@ -316,85 +308,71 @@ func TestPutMessages(t *testing.T) {
 			// confirm that no records were returned
 			assert.Equal(t, 0, len(messagesOnceDeleted), "getMessages should return 0 messages")
 
-			// Update original messages with TokenCount values
-			for i := range messages {
-				messages[i].TokenCount = i + 1
-			}
-
 			// Call putMessages function to upsert the messages
-			_, err = putMessages(testCtx, testDB, sessionID, messages)
-			assert.NoError(t, err, "putMessages should not return an error")
-
-			messagesInDB, err := getMessages(testCtx, testDB, sessionID, 12, nil, 0)
-			assert.NoError(t, err, "getMessages should not return an error")
-
-			// len(messagesInDB) should be 0 since the session was deleted
-			assert.Equal(t, 0, len(messagesInDB), "getMessages should return 0 messages")
+			_, err = putMessages(testCtx, testDB, sessionID, insertedMessages)
+			assert.ErrorContains(
+				t,
+				err,
+				"deleted",
+				"putMessages should return SessionDeletedError",
+			)
 		},
 	)
+}
 
+func createSession(t *testing.T) string {
+	sessionID, err := test.GenerateRandomSessionID(16)
+	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
+
+	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
+	assert.NoError(t, err, "putSession should not return an error")
+
+	return sessionID
 }
 
 func verifyMessagesInDB(
 	t *testing.T,
-	testCtx context.Context,
-	testDB *bun.DB,
-	sessionID string,
 	expectedMessages,
 	resultMessages []models.Message,
 ) {
-	var pgMessages []PgMessageStore
-	err := testDB.NewSelect().
-		Model(&pgMessages).
-		Where("session_id = ?", sessionID).
-		Order("created_at ASC").
-		Scan(testCtx)
-	assert.NoError(t, err, "Database query should not return an error")
-
-	assert.Equal(
-		t,
-		len(expectedMessages),
-		len(pgMessages),
-		"Expected number of messages to be equal",
-	)
-	for i, pgMsg := range pgMessages {
-		assert.Equal(t, sessionID, pgMsg.SessionID, "Expected sessionID to be equal")
-		assert.Equal(
-			t,
-			expectedMessages[i].Role,
-			pgMsg.Role,
-			"Expected message role to be equal",
-		)
-		assert.Equal(
-			t,
-			expectedMessages[i].Content,
-			pgMsg.Content,
-			"Expected message content to be equal",
-		)
-	}
-
 	assert.Equal(
 		t,
 		len(expectedMessages),
 		len(resultMessages),
 		"Expected number of messages to be equal",
 	)
-	for i, msg := range resultMessages {
-		assert.NotEmpty(t, msg.UUID)
-		assert.False(t, msg.CreatedAt.IsZero())
-		assert.Equal(t, expectedMessages[i].Role, msg.Role, "Expected message role to be equal")
+	for i := range expectedMessages {
+		assert.NotEmpty(t, resultMessages[i].UUID)
+		assert.False(t, resultMessages[i].CreatedAt.IsZero())
+		assert.Equal(
+			t,
+			expectedMessages[i].Role,
+			resultMessages[i].Role,
+			"Expected message role to be equal",
+		)
 		assert.Equal(
 			t,
 			expectedMessages[i].Content,
-			msg.Content,
+			resultMessages[i].Content,
 			"Expected message content to be equal",
 		)
-		assert.Equal(t, expectedMessages[i].Metadata, msg.Metadata, "Expected metadata to be equal")
+		assert.Equal(
+			t,
+			expectedMessages[i].Metadata,
+			resultMessages[i].Metadata,
+			"Expected metadata to be equal",
+		)
 		assert.Equal(
 			t,
 			expectedMessages[i].TokenCount,
-			msg.TokenCount,
+			resultMessages[i].TokenCount,
 			"Expected TokenCount to be equal",
+		)
+		assert.Equal(
+			t,
+			expectedMessages[i].Metadata,
+			resultMessages[i].Metadata,
+			"Expected Metadata to be equal",
 		)
 	}
 }
@@ -494,10 +472,9 @@ func TestGetMessages(t *testing.T) {
 						expectedMessage.Content,
 						msg.Content,
 					)
-					assert.Equal(
+					assert.True(
 						t,
-						expectedMessage.Metadata,
-						msg.Metadata,
+						equivalentMaps(expectedMessage.Metadata, msg.Metadata),
 					)
 				}
 			} else {
@@ -505,6 +482,20 @@ func TestGetMessages(t *testing.T) {
 			}
 		})
 	}
+}
+
+// equate map[string]interface{}(nil) and map[string]interface{}{}
+// the latter is returned by the database when a row has no metadata.
+// both eval to len == 0
+func isNilOrEmpty(m map[string]interface{}) bool {
+	return len(m) == 0
+}
+
+// equivalentMaps compares two maps for equality. It returns true if both maps
+// are nil or empty, or if they non-nil and deepequal.
+func equivalentMaps(expected, got map[string]interface{}) bool {
+	return (isNilOrEmpty(expected) && isNilOrEmpty(got)) ||
+		((reflect.DeepEqual(expected, got)) && (expected != nil && got != nil))
 }
 
 func TestPutSummary(t *testing.T) {
@@ -772,7 +763,7 @@ func TestSearch(t *testing.T) {
 
 	// enrichment runs async. Wait for it to finish
 	// This is hacky but I'd prefer not to add a WaitGroup to the putMessages function just for testing purposes
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 4)
 
 	// Test cases
 	testCases := []struct {

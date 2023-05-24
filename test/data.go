@@ -4,16 +4,23 @@ import "github.com/getzep/zep/pkg/models"
 
 var TestMessages = []models.Message{
 	{
-		Role:    "user",
-		Content: "Hello",
+		Role:     "user",
+		Content:  "Hello",
+		Metadata: nil,
 	},
 	{
 		Role:    "assistant",
 		Content: "Hi there!",
+		Metadata: map[string]interface{}{
+			"foo": "bar",
+		},
 	},
 	{
 		Role:    "user",
 		Content: "I'm looking to plan a trip to Iceland. Can you help me?",
+		Metadata: map[string]interface{}{
+			"bar": "foo",
+		},
 	},
 	{
 		Role:    "assistant",

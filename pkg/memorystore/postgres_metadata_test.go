@@ -1,6 +1,7 @@
 package memorystore
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/getzep/zep/pkg/models"
@@ -11,15 +12,19 @@ import (
 func TestPutMetadata(t *testing.T) {
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
+	_, err = putSession(testCtx, testDB, sessionID, nil)
+	assert.NoError(t, err, "putSession should not return an error")
 
-	testMessages := []models.Message{
+	testMessages := []PgMessageStore{
 		{
-			Role:    "user",
-			Content: "Hello",
+			SessionID: sessionID,
+			Role:      "user",
+			Content:   "Hello",
 		},
 		{
-			Role:    "human",
-			Content: "Hello again",
+			SessionID: sessionID,
+			Role:      "human",
+			Content:   "Hello again",
 			Metadata: map[string]interface{}{
 				"system": map[string]interface{}{
 					"key_to_overwrite": "value_to_overwrite",
@@ -27,8 +32,9 @@ func TestPutMetadata(t *testing.T) {
 			},
 		},
 		{
-			Role:    "human",
-			Content: "Hello again",
+			SessionID: sessionID,
+			Role:      "human",
+			Content:   "Hello again",
 			Metadata: map[string]interface{}{
 				"system": map[string]interface{}{
 					"key_to_delete": "value_to_delete",
@@ -36,13 +42,15 @@ func TestPutMetadata(t *testing.T) {
 			},
 		},
 		{
-			Role:     "bot",
-			Content:  "Hi there!",
-			Metadata: map[string]interface{}{"existing_metadata": "this is existing metadata"},
+			SessionID: sessionID,
+			Role:      "bot",
+			Content:   "Hi there!",
+			Metadata:  map[string]interface{}{"existing_metadata": "this is existing metadata"},
 		},
 		{
-			Role:    "human",
-			Content: "Bonjour!",
+			SessionID: sessionID,
+			Role:      "human",
+			Content:   "Bonjour!",
 			Metadata: map[string]interface{}{
 				"system": map[string]interface{}{
 					"some_other_system_key": "some_other_system_value",
@@ -50,50 +58,66 @@ func TestPutMetadata(t *testing.T) {
 			},
 		},
 		{
-			Role:     "human",
-			Content:  "Hi!",
-			Metadata: map[string]interface{}{"existing_key": "existing_value"},
+			SessionID: sessionID,
+			Role:      "human",
+			Content:   "Hi!",
+			Metadata:  map[string]interface{}{"existing_key": "existing_value"},
 		},
 	}
 
-	// Call putMessages function
-	newMessageRecords, err := putMessages(testCtx, testDB, sessionID, testMessages)
-	assert.NoError(t, err, "putMessages should not return an error")
+	cols := []string{
+		"id",
+		"created_at",
+		"uuid",
+		"session_id",
+		"role",
+		"content",
+		"token_count",
+		"metadata",
+	}
+
+	_, err = testDB.NewInsert().
+		Model(&testMessages).
+		Column(cols...).
+		On("CONFLICT (uuid) DO UPDATE").
+		Returning(strings.Join(cols, ",")).
+		Exec(testCtx)
+	assert.NoError(t, err, "messages save should not return an error")
 
 	metadataToMerge := []models.MessageMetadata{
 		{
-			UUID: newMessageRecords[0].UUID,
+			UUID: testMessages[0].UUID,
 			Metadata: map[string]interface{}{
 				"tags": map[string]interface{}{"Name": "Google", "Label": "ORG"},
 			},
 			Key: "system.ner",
 		},
 		{
-			UUID: newMessageRecords[1].UUID,
+			UUID: testMessages[1].UUID,
 			Metadata: map[string]interface{}{
 				"key_to_overwrite": "new_value",
 			},
 			Key: "system",
 		},
 		{
-			UUID: newMessageRecords[2].UUID,
+			UUID: testMessages[2].UUID,
 			Metadata: map[string]interface{}{
 				"key_to_delete": nil,
 			},
 			Key: "system",
 		},
 		{
-			UUID:     newMessageRecords[3].UUID,
+			UUID:     testMessages[3].UUID,
 			Key:      "new_top_level_key.new_key",
 			Metadata: map[string]interface{}{"key": "value"},
 		},
 		{
-			UUID:     newMessageRecords[4].UUID,
+			UUID:     testMessages[4].UUID,
 			Key:      "system.newkey",
 			Metadata: map[string]interface{}{"key": "value"},
 		},
 		{
-			UUID:     newMessageRecords[5].UUID,
+			UUID:     testMessages[5].UUID,
 			Key:      "",
 			Metadata: map[string]interface{}{"new_top_level_key": "value"},
 		},
@@ -204,5 +228,4 @@ func TestPutMetadata(t *testing.T) {
 			assert.Equal(t, expectedMeta, msg.Metadata)
 		})
 	}
-
 }

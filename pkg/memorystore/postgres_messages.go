@@ -3,6 +3,7 @@ package memorystore
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/getzep/zep/internal"
 	"github.com/google/uuid"
@@ -15,6 +16,7 @@ import (
 // putMessages stores a new or updates existing messages for a session. Existing
 // messages are determined by message UUID. Sessions are created if they do not
 // exist.
+// If the session is deleted, an error is returned.
 func putMessages(
 	ctx context.Context,
 	db *bun.DB,
@@ -28,50 +30,70 @@ func putMessages(
 	log.Debugf("putMessages called for session %s with %d messages", sessionID, len(messages))
 
 	// Create or update a Session
-	_, err := putSession(ctx, db, sessionID, nil)
+	s, err := putSession(ctx, db, sessionID, nil)
 	if err != nil {
 		return nil, NewStorageError("failed to put session", err)
 	}
+	// If the session is deleted, return an error
+	if !s.DeletedAt.IsZero() {
+		log.Warningf("putMessages called for deleted session %s", sessionID)
+		return nil, NewStorageError(fmt.Sprintf("session %s is deleted", sessionID), nil)
+	}
 
 	pgMessages := make([]PgMessageStore, len(messages))
-	err = copier.Copy(&pgMessages, &messages)
-	if err != nil {
-		return nil, NewStorageError("failed to copy messages to pgMessages", err)
+	for i, msg := range messages {
+		pgMessages[i] = PgMessageStore{
+			UUID:       msg.UUID,
+			SessionID:  sessionID,
+			CreatedAt:  msg.CreatedAt,
+			Role:       msg.Role,
+			Content:    msg.Content,
+			TokenCount: msg.TokenCount,
+			Metadata:   msg.Metadata,
+		}
 	}
 
-	for i := range pgMessages {
-		pgMessages[i].SessionID = sessionID
-	}
-
-	messageMetaSet := make([]models.MessageMetadata, len(messages))
-	for i := range messages {
-		messageMetaSet[i].UUID = messages[i].UUID
-		messageMetaSet[i].Metadata = messages[i].Metadata
-	}
-
+	var messageMetaSet []models.MessageMetadata
 	err = db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// Insert messages
-		_, err = db.NewInsert().
+		_, err = tx.NewInsert().
 			Model(&pgMessages).
-			Column("id", "created_at", "uuid", "session_id", "role", "content", "token_count", "metadata").
+			Column("id", "created_at", "uuid", "session_id", "role", "content", "token_count").
 			On("CONFLICT (uuid) DO UPDATE").
 			Exec(ctx)
 		if err != nil {
 			return err
 		}
-		return nil
 
-		// insert/update message metadata
-		//err = putMessageMetadata(ctx, tx, sessionID, messages, false)
+		messageMetaSet = make([]models.MessageMetadata, len(pgMessages))
+		for i := range pgMessages {
+			messageMetaSet[i].UUID = pgMessages[i].UUID
+			messageMetaSet[i].Metadata = pgMessages[i].Metadata
+		}
+
+		// insert/update message metadata. isPrivileged is false because we are
+		// most likely being called by the PutMemory handler.
+		err = putMessageMetadata(ctx, tx, sessionID, messageMetaSet, false)
+		if err != nil {
+			return err
+		}
+
+		return nil
 	})
 	if err != nil {
 		return nil, NewStorageError("failed to put messages", err)
 	}
 
-	retMessages := make([]models.Message, len(messages))
-	err = copier.Copy(&retMessages, &pgMessages)
-	if err != nil {
-		return nil, NewStorageError("failed to copy pgMessages to retMessages", err)
+	retMessages := make([]models.Message, len(pgMessages))
+	for i, pgMsg := range pgMessages {
+		retMessages[i] = models.Message{
+			UUID:       pgMsg.UUID,
+			CreatedAt:  pgMsg.CreatedAt,
+			Role:       pgMsg.Role,
+			Content:    pgMsg.Content,
+			TokenCount: pgMsg.TokenCount,
+			Metadata:   messageMetaSet[i].Metadata,
+		}
 	}
 
 	log.Debugf("putMessages completed for session %s with %d messages", sessionID, len(messages))
@@ -187,7 +209,6 @@ func getSummaryPointIndex(
 		Model(&message).
 		Column("id").
 		Where("session_id = ? AND uuid = ?", sessionID, summaryPointUUID).
-		Where("deleted_at IS NULL").
 		Scan(ctx)
 
 	if err != nil {
