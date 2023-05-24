@@ -44,18 +44,21 @@ func (ee *EntityExtractor) Extract(
 		return NewExtractorError("EntityExtractor extract entities call failed", err)
 	}
 
-	messageMetaSet := make([]models.MessageMetadata, len(nerResponse.Texts), 0)
+	messageMetaSet := make([]models.MessageMetadata, len(nerResponse.Texts))
 	for i, r := range nerResponse.Texts {
 		msgUUID, err := uuid.Parse(r.UUID)
 		if err != nil {
-			return NewExtractorError("Can't parse message UUID", err)
+			return NewExtractorError("EntityExtractor failed to parse message UUID", err)
 		}
-		messageMetaSet[i].UUID = msgUUID
-		messageMetaSet[i].Key = "system"
-		messageMetaSet[i].Metadata = map[string]interface{}{
-			"entities": internal.StructToMap(r.Entities),
+		entityList := extractEntities(r.Entities)
+
+		messageMetaSet[i] = models.MessageMetadata{
+			UUID:     msgUUID,
+			Key:      "system",
+			Metadata: map[string]interface{}{"entities": entityList},
 		}
 	}
+
 	err = appState.MemoryStore.PutMessageMetadata(ctx, appState, sessionID, messageMetaSet, true)
 	if err != nil {
 		return NewExtractorError("EntityExtractor failed to put message metadata", err)
@@ -85,16 +88,30 @@ func (ee *EntityExtractor) Notify(
 	return nil
 }
 
+func extractEntities(entities interface{}) []map[string]interface{} {
+	entityMapWithDataKey := internal.StructToMap(entities)
+	if data, ok := entityMapWithDataKey["data"]; ok {
+		entities := data.([]interface{})
+		entityList := make([]map[string]interface{}, len(entities))
+		for i, entity := range entities {
+			entityList[i] = entity.(map[string]interface{})
+		}
+		return entityList
+	}
+
+	return nil
+}
+
 func callEntityExtractor(
 	_ context.Context,
 	appState *models.AppState,
 	messages []models.Message,
-) (EntityResponse, error) {
+) (models.EntityResponse, error) {
 	url := appState.Config.NLP.ServerURL + "/entities"
 
-	request := make([]EntityRequestRecord, len(messages))
+	request := make([]models.EntityRequestRecord, len(messages))
 	for i, m := range messages {
-		r := EntityRequestRecord{
+		r := models.EntityRequestRecord{
 			UUID:     m.UUID.String(),
 			Text:     m.Content,
 			Language: "en",
@@ -102,17 +119,18 @@ func callEntityExtractor(
 		request[i] = r
 	}
 
-	requestBody := EntityRequest{Texts: request}
+	requestBody := models.EntityRequest{Texts: request}
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
 		log.Error("Error marshaling request body:", err)
-		return EntityResponse{}, err
+		return models.EntityResponse{}, err
 	}
 
 	var resp *http.Response
 	var bodyBytes []byte
-	var response EntityResponse
+	var response models.EntityResponse
 
+	// Retry POST request to entity extractor 3 times with 1 second delay.
 	err = retry.Do(
 		func() error {
 			var err error
@@ -136,54 +154,13 @@ func callEntityExtractor(
 			}
 			return nil
 		},
-		retry.Attempts(3),        // Adjust to your needs
-		retry.Delay(time.Second), // Adjust to your needs
+		retry.Attempts(3),
+		retry.Delay(time.Second),
 	)
 
 	if err != nil {
-		return EntityResponse{}, err
+		return models.EntityResponse{}, err
 	}
 
 	return response, nil
-}
-
-type HTTPValidationError struct {
-	Detail []ValidationError `json:"detail"`
-}
-
-type EntityMatch struct {
-	Start int    `json:"start"`
-	End   int    `json:"end"`
-	Text  string `json:"text"`
-}
-
-type Entity struct {
-	Name    string        `json:"name"`
-	Label   string        `json:"label"`
-	Matches []EntityMatch `json:"matches"`
-}
-
-type EntityRequestRecord struct {
-	UUID     string `json:"uuid"`
-	Text     string `json:"text"`
-	Language string `json:"language"`
-}
-
-type EntityResponseRecord struct {
-	UUID     string   `json:"uuid"`
-	Entities []Entity `json:"entities"`
-}
-
-type EntityRequest struct {
-	Texts []EntityRequestRecord `json:"texts"`
-}
-
-type EntityResponse struct {
-	Texts []EntityResponseRecord `json:"texts"`
-}
-
-type ValidationError struct {
-	Loc  []interface{} `json:"loc"`
-	Msg  string        `json:"msg"`
-	Type string        `json:"type"`
 }

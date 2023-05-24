@@ -47,11 +47,11 @@ func TestCallNERService(t *testing.T) {
 		validateUUID(t, response.Texts[i].UUID, messages[i].UUID)
 	}
 
-	expectedEntities := [][]Entity{{
+	expectedEntities := [][]models.Entity{{
 		{
 			Name:  "Google",
 			Label: "ORG",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 4,
 					End:   10,
@@ -62,7 +62,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Apple",
 			Label: "ORG",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 88,
 					End:   93,
@@ -73,7 +73,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Siri",
 			Label: "PERSON",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 96,
 					End:   100,
@@ -84,7 +84,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "iPhones",
 			Label: "ORG",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 115,
 					End:   122,
@@ -95,7 +95,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Amazon",
 			Label: "ORG",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 128,
 					End:   134,
@@ -106,7 +106,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Alexa",
 			Label: "ORG",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 137,
 					End:   142,
@@ -117,7 +117,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Echo",
 			Label: "LOC",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 175,
 					End:   179,
@@ -129,7 +129,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "South Korea’s",
 			Label: "GPE",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 0,
 					End:   13,
@@ -140,7 +140,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "As much as 1%",
 			Label: "PERCENT",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 27,
 					End:   40,
@@ -151,7 +151,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Sixth",
 			Label: "ORDINAL",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 59,
 					End:   64,
@@ -162,7 +162,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Daily",
 			Label: "DATE",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 70,
 					End:   75,
@@ -173,7 +173,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Samsung Electronics Co.",
 			Label: "ORG",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 85,
 					End:   108,
@@ -184,7 +184,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "SK Hynix Inc.",
 			Label: "ORG",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 113,
 					End:   126,
@@ -195,7 +195,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "China",
 			Label: "GPE",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 191,
 					End:   196,
@@ -211,7 +211,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "US",
 			Label: "GPE",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 208,
 					End:   210,
@@ -227,7 +227,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Micron Technology \n    Inc.",
 			Label: "ORG",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 217,
 					End:   244,
@@ -238,7 +238,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Biden",
 			Label: "PERSON",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 379,
 					End:   384,
@@ -249,7 +249,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Sunday",
 			Label: "DATE",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 393,
 					End:   399,
@@ -260,7 +260,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Seven",
 			Label: "CARDINAL",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 422,
 					End:   427,
@@ -271,7 +271,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Japan",
 			Label: "GPE",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 438,
 					End:   443,
@@ -282,7 +282,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Chinese",
 			Label: "NORP",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 528,
 					End:   535,
@@ -293,7 +293,7 @@ func TestCallNERService(t *testing.T) {
 		{
 			Name:  "Li Shangfu",
 			Label: "PERSON",
-			Matches: []EntityMatch{
+			Matches: []models.EntityMatch{
 				{
 					Start: 553,
 					End:   563,
@@ -326,7 +326,7 @@ func validateUUID(t *testing.T, got string, want uuid.UUID) {
 	assert.Equal(t, gotUUID, want)
 }
 
-func validateEntities(t *testing.T, got []Entity, want []Entity) {
+func validateEntities(t *testing.T, got []models.Entity, want []models.Entity) {
 	for i := range want {
 		assert.Equal(t, got[i], want[i])
 		if !reflect.DeepEqual(got[i], want[i]) {
