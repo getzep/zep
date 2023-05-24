@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/getzep/zep/test"
+
 	"github.com/stretchr/testify/assert"
 
 	"github.com/google/uuid"
@@ -29,8 +31,12 @@ func TestCallNERService(t *testing.T) {
 	// Create messages with the texts
 	messages := createMessages(texts)
 
+	appState := &models.AppState{
+		Config: test.NewTestConfig(),
+	}
+
 	// Call the NER service
-	response, err := callEntityExtractor(context.Background(), &models.AppState{}, messages)
+	response, err := callEntityExtractor(context.Background(), appState, messages)
 	assert.NoError(t, err)
 
 	// Check the response

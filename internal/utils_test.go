@@ -2,8 +2,11 @@ package internal
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type testData struct {
@@ -92,4 +95,83 @@ func TestReverseSlice(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStructToMap(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    Entity
+		expected map[string]interface{}
+	}{
+		{
+			name: "Test Entity 1",
+			input: Entity{
+				Name:  "Entity1",
+				Label: "Label1",
+				Matches: []EntityMatch{
+					{
+						Start: 0,
+						End:   1,
+						Text:  "Match1",
+					},
+				},
+			},
+			expected: map[string]interface{}{
+				"Name":  "Entity1",
+				"Label": "Label1",
+				"Matches": []map[string]interface{}{
+					{
+						"Start": 0,
+						"End":   1,
+						"Text":  "Match1",
+					},
+				},
+			},
+		},
+		{
+			name: "Test Entity 2",
+			input: Entity{
+				Name:  "Entity2",
+				Label: "Label2",
+				Matches: []EntityMatch{
+					{
+						Start: 2,
+						End:   3,
+						Text:  "Match2",
+					},
+				},
+			},
+			expected: map[string]interface{}{
+				"Name":  "Entity2",
+				"Label": "Label2",
+				"Matches": []map[string]interface{}{
+					{
+						"Start": 2,
+						"End":   3,
+						"Text":  "Match2",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := StructToMap(test.input)
+			// We should do this better
+			assert.True(t, fmt.Sprint(got) == fmt.Sprint(test.expected))
+		})
+	}
+}
+
+type EntityMatch struct {
+	Start int    `json:"start"`
+	End   int    `json:"end"`
+	Text  string `json:"text"`
+}
+
+type Entity struct {
+	Name    string        `json:"name"`
+	Label   string        `json:"label"`
+	Matches []EntityMatch `json:"matches"`
 }

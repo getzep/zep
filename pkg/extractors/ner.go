@@ -7,6 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
+
+	"github.com/avast/retry-go/v4"
+
+	"github.com/getzep/zep/internal"
+
+	"github.com/google/uuid"
 
 	"github.com/getzep/zep/pkg/models"
 )
@@ -37,7 +44,23 @@ func (ee *EntityExtractor) Extract(
 		return NewExtractorError("EntityExtractor extract entities call failed", err)
 	}
 
-	log.Debugf("EntityExtractor received %d entities: %+v", len(nerResponse.Texts), nerResponse)
+	messageMetaSet := make([]models.MessageMetadata, len(nerResponse.Texts), 0)
+	for i, r := range nerResponse.Texts {
+		msgUUID, err := uuid.Parse(r.UUID)
+		if err != nil {
+			return NewExtractorError("Can't parse message UUID", err)
+		}
+		messageMetaSet[i].UUID = msgUUID
+		messageMetaSet[i].Key = "system"
+		messageMetaSet[i].Metadata = map[string]interface{}{
+			"entities": internal.StructToMap(r.Entities),
+		}
+	}
+	err = appState.MemoryStore.PutMessageMetadata(ctx, appState, sessionID, messageMetaSet, true)
+	if err != nil {
+		return NewExtractorError("EntityExtractor failed to put message metadata", err)
+	}
+
 	return nil
 }
 
@@ -64,14 +87,14 @@ func (ee *EntityExtractor) Notify(
 
 func callEntityExtractor(
 	_ context.Context,
-	_ *models.AppState,
+	appState *models.AppState,
 	messages []models.Message,
-) (Response, error) {
-	url := "http://localhost:8080/entities"
+) (EntityResponse, error) {
+	url := appState.Config.NLP.ServerURL + "/entities"
 
-	request := make([]RequestRecord, len(messages))
+	request := make([]EntityRequestRecord, len(messages))
 	for i, m := range messages {
-		r := RequestRecord{
+		r := EntityRequestRecord{
 			UUID:     m.UUID.String(),
 			Text:     m.Content,
 			Language: "en",
@@ -79,31 +102,46 @@ func callEntityExtractor(
 		request[i] = r
 	}
 
-	requestBody := Request{Texts: request}
+	requestBody := EntityRequest{Texts: request}
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
 		log.Error("Error marshaling request body:", err)
-		return Response{}, err
+		return EntityResponse{}, err
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		log.Error("Error making POST request:", err)
-		return Response{}, err
-	}
-	defer resp.Body.Close()
+	var resp *http.Response
+	var bodyBytes []byte
+	var response EntityResponse
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Error("Error reading response body:", err)
-		return Response{}, err
-	}
+	err = retry.Do(
+		func() error {
+			var err error
+			resp, err = http.Post(url, "application/json", bytes.NewBuffer(jsonBody)) //nolint:gosec
+			if err != nil {
+				log.Error("Error making POST request:", err)
+				return err
+			}
+			defer resp.Body.Close()
 
-	var response Response
-	err = json.Unmarshal(bodyBytes, &response)
+			bodyBytes, err = io.ReadAll(resp.Body)
+			if err != nil {
+				log.Error("Error reading response body:", err)
+				return err
+			}
+
+			err = json.Unmarshal(bodyBytes, &response)
+			if err != nil {
+				fmt.Println("Error unmarshaling response body:", err)
+				return err
+			}
+			return nil
+		},
+		retry.Attempts(3),        // Adjust to your needs
+		retry.Delay(time.Second), // Adjust to your needs
+	)
+
 	if err != nil {
-		fmt.Println("Error unmarshaling response body:", err)
-		return Response{}, err
+		return EntityResponse{}, err
 	}
 
 	return response, nil
@@ -125,23 +163,23 @@ type Entity struct {
 	Matches []EntityMatch `json:"matches"`
 }
 
-type RequestRecord struct {
+type EntityRequestRecord struct {
 	UUID     string `json:"uuid"`
 	Text     string `json:"text"`
 	Language string `json:"language"`
 }
 
-type ResponseRecord struct {
+type EntityResponseRecord struct {
 	UUID     string   `json:"uuid"`
 	Entities []Entity `json:"entities"`
 }
 
-type Request struct {
-	Texts []RequestRecord `json:"texts"`
+type EntityRequest struct {
+	Texts []EntityRequestRecord `json:"texts"`
 }
 
-type Response struct {
-	Texts []ResponseRecord `json:"texts"`
+type EntityResponse struct {
+	Texts []EntityResponseRecord `json:"texts"`
 }
 
 type ValidationError struct {
