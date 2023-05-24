@@ -37,7 +37,7 @@ func (ee *EmbeddingExtractor) Extract(
 	for i, r := range messageEvent.Messages {
 		embeddingRecords[i] = models.Embeddings{
 			TextUUID:  r.UUID,
-			Embedding: (*embeddings)[i].Embedding,
+			Embedding: embeddings[i].Embedding,
 		}
 	}
 	err = appState.MemoryStore.PutMessageVectors(

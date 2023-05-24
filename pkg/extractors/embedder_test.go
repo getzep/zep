@@ -28,7 +28,7 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	store, err := memorystore.NewPostgresMemoryStore(appState, db)
 	assert.NoError(t, err)
 	appState.MemoryStore = store
-	appState.OpenAIClient = llms.CreateOpenAIClient(cfg)
+	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
 
 	sessionID, err := test.GenerateRandomSessionID(16)
 	assert.NoError(t, err)
@@ -64,7 +64,7 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 		expectedEmbeddingRecords[i] = models.Embeddings{
 			TextUUID:  r.UUID,
 			Text:      r.Content,
-			Embedding: (*embeddings)[i].Embedding,
+			Embedding: embeddings[i].Embedding,
 		}
 	}
 

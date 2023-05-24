@@ -86,7 +86,7 @@ func (c *OpenAIRetryClient) retryFunction(
 		retry.Context(retryCtx),
 		retry.DelayType(retry.BackOffDelay),
 		retry.OnRetry(func(n uint, err error) {
-			log.Warningf("Retrying function attempt #%d: %s\n", n, err)
+			log.Warningf("retrying function attempt #%d: %s\n", n, err)
 		}),
 	)
 
