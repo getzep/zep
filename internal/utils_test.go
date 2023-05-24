@@ -98,38 +98,40 @@ func TestReverseSlice(t *testing.T) {
 }
 
 func TestStructToMap(t *testing.T) {
+	type simpleStruct struct {
+		Name  string
+		Label string
+	}
+	type EntityMatch struct {
+		Start int    `json:"start"`
+		End   int    `json:"end"`
+		Text  string `json:"text"`
+	}
+
+	type Entity struct {
+		Name    string        `json:"name"`
+		Label   string        `json:"label"`
+		Matches []EntityMatch `json:"matches"`
+	}
+
 	tests := []struct {
 		name     string
-		input    Entity
+		input    interface{}
 		expected map[string]interface{}
 	}{
 		{
-			name: "Test Entity 1",
-			input: Entity{
+			name: "simple struct",
+			input: simpleStruct{
 				Name:  "Entity1",
 				Label: "Label1",
-				Matches: []EntityMatch{
-					{
-						Start: 0,
-						End:   1,
-						Text:  "Match1",
-					},
-				},
 			},
 			expected: map[string]interface{}{
 				"Name":  "Entity1",
 				"Label": "Label1",
-				"Matches": []map[string]interface{}{
-					{
-						"Start": 0,
-						"End":   1,
-						"Text":  "Match1",
-					},
-				},
 			},
 		},
 		{
-			name: "Test Entity 2",
+			name: "embedded struct",
 			input: Entity{
 				Name:  "Entity2",
 				Label: "Label2",
@@ -153,25 +155,75 @@ func TestStructToMap(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "list of structs",
+			input: []Entity{{
+				Name:  "Entity1",
+				Label: "Label1",
+				Matches: []EntityMatch{
+					{
+						Start: 2,
+						End:   3,
+						Text:  "Match1",
+					},
+				},
+			}, {
+				Name:  "Entity2",
+				Label: "Label2",
+				Matches: []EntityMatch{
+					{
+						Start: 2,
+						End:   3,
+						Text:  "Match2",
+					},
+					{
+						Start: 4,
+						End:   6,
+						Text:  "Match3",
+					},
+				},
+			}},
+			expected: map[string]interface{}{
+				"data": []map[string]interface{}{
+					{
+						"Name":  "Entity1",
+						"Label": "Label1",
+						"Matches": []map[string]interface{}{
+							{
+								"Start": 2,
+								"End":   3,
+								"Text":  "Match1",
+							},
+						},
+					},
+					{
+						"Name":  "Entity2",
+						"Label": "Label2",
+						"Matches": []map[string]interface{}{
+							{
+								"Start": 2,
+								"End":   3,
+								"Text":  "Match2",
+							},
+							{
+								"Start": 4,
+								"End":   6,
+								"Text":  "Match3",
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			got := StructToMap(test.input)
 			// We should do this better
-			assert.True(t, fmt.Sprint(got) == fmt.Sprint(test.expected))
+			gotString := fmt.Sprint(got)
+			expectedString := fmt.Sprint(test.expected)
+			assert.True(t, gotString == expectedString)
 		})
 	}
-}
-
-type EntityMatch struct {
-	Start int    `json:"start"`
-	End   int    `json:"end"`
-	Text  string `json:"text"`
-}
-
-type Entity struct {
-	Name    string        `json:"name"`
-	Label   string        `json:"label"`
-	Matches []EntityMatch `json:"matches"`
 }

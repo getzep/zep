@@ -30,14 +30,32 @@ func ReverseSlice[T any](slice []T) {
 
 // StructToMap converts a struct to a map, recursively handling nested structs
 func StructToMap(item interface{}) map[string]interface{} {
-	out := make(map[string]interface{})
 	val := reflect.ValueOf(item)
+
+	// Check if this is a slice of structs
+	if val.Kind() == reflect.Slice {
+		sliceOut := make([]interface{}, val.Len())
+		for i := 0; i < val.Len(); i++ {
+			sliceVal := val.Index(i)
+			if sliceVal.Kind() == reflect.Struct {
+				sliceOut[i] = StructToMap(sliceVal.Interface())
+			} else {
+				sliceOut[i] = sliceVal.Interface()
+			}
+		}
+		return map[string]interface{}{"data": sliceOut}
+	}
 
 	// Dereference pointer to struct
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
 
+	if val.Kind() != reflect.Struct {
+		return map[string]interface{}{}
+	}
+
+	out := make(map[string]interface{})
 	typeOfT := val.Type()
 
 	for i := 0; i < val.NumField(); i++ {
@@ -49,7 +67,6 @@ func StructToMap(item interface{}) map[string]interface{} {
 			out[field.Name] = StructToMap(value.Interface())
 		} else if value.Kind() == reflect.Slice {
 			sliceOut := make([]interface{}, value.Len())
-
 			for i := 0; i < value.Len(); i++ {
 				sliceVal := value.Index(i)
 				if sliceVal.Kind() == reflect.Struct {
