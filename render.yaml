@@ -25,7 +25,6 @@ services:
     env: image
     image:
       url: ghcr.io/getzep/zep-nlp-server:latest
-    healthCheckPath: /healthz
 
 databases:
   - name: zep-postgres
