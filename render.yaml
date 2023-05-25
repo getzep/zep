@@ -12,8 +12,20 @@ services:
         fromDatabase:
           name: zep-postgres
           property: connectionString
+      - key: ZEP_NLP_SERVER_URL
+        fromService:
+          name: zep-nlp
+          type: pserv
+          property: hostport
       - key: ZEP_OPENAI_API_KEY
         sync: false
+  - type: pserv
+    name: zep-nlp
+    autoDeploy: false
+    env: image
+    image:
+      url: ghcr.io/getzep/zep-nlp-server:latest
+    healthCheckPath: /healthz
 
 databases:
   - name: zep-postgres
