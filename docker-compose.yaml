@@ -28,7 +28,7 @@ services:
       interval: 5s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 10s
   zep:
     image: ghcr.io/getzep/zep:latest
     container_name: zep

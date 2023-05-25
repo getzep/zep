@@ -1,4 +1,4 @@
-name: Build/Test
+name: build-test
 
 on:
   push:
@@ -20,7 +20,14 @@ jobs:
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5  
+          --health-retries 5
+      nlp:
+        image: ghcr.io/getzep/zep-nlp-server:latest
+        options: >-
+          --health-cmd timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 5
           
     steps:
     - uses: actions/checkout@v3
@@ -40,3 +47,4 @@ jobs:
       env:
         ZEP_OPENAI_API_KEY: ${{ secrets.ZEP_OPENAI_API_KEY }}
         ZEP_MEMORY_STORE_POSTGRES_DSN: 'postgres://postgres:postgres@postgres:5432/?sslmode=disable'
+        ZEP_NLP_SERVER_URL: 'http://nlp:8080'
