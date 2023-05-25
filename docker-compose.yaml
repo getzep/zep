@@ -4,8 +4,6 @@ services:
     image: ghcr.io/getzep/postgres:latest
     container_name: zep-postgres
     restart: on-failure
-    ports:
-        - "5432:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -19,12 +17,26 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  nlp:
+    image: ghcr.io/getzep/zep-nlp-server:latest
+    container_name: zep-nlp
+    restart: on-failure
+    networks:
+      - zep-network
+    healthcheck:
+      test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1
+      interval: 5s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
   zep:
     image: ghcr.io/getzep/zep:latest
     container_name: zep
     restart: on-failure
     depends_on:
         db:
+          condition: service_healthy
+        nlp:
           condition: service_healthy
     ports:
         - "8000:8000"
@@ -33,14 +45,15 @@ services:
         target: /app/config.yaml
     environment:
       - ZEP_MEMORY_STORE_POSTGRES_DSN=postgres://postgres:postgres@db:5432/postgres?sslmode=disable
+      - ZEP_NLP_SERVER_URL=http://nlp:8080
     env_file:
       - .env # Store your OpenAI API key here as ZEP_OPENAI_API_KEY
     build:
       context: .
       dockerfile: Dockerfile
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/healthz" ]
-      interval: 1m30s
+      test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8000' || exit 1
+      interval: 5s
       timeout: 10s
       retries: 3
       start_period: 40s
