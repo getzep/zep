@@ -12,7 +12,7 @@ services:
         fromDatabase:
           name: zep-postgres
           property: connectionString
-      - key: ZEP_NLP_SERVER_URL
+      - key: ZEP_NLP_SERVER_HOSTPORT
         fromService:
           name: zep-nlp
           type: pserv
