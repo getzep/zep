@@ -1,10 +1,14 @@
 llm:
   # gpt-3.5-turbo or gpt-4
   model: "gpt-3.5-turbo"
+nlp:
+  server_url: "http://localhost:8080"
 memory:
   message_window: 12
 extractors:
   summarizer:
+    enabled: true
+  entities:
     enabled: true
   embeddings:
     enabled: true

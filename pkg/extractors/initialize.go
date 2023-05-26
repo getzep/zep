@@ -30,4 +30,9 @@ func Initialize(appState *models.AppState) {
 		true, // TokenCounter always operates
 		func() models.Extractor { return NewTokenCountExtractor() },
 	)
+	attach(
+		"EntityExtractor",
+		appState.Config.Extractors.Entities.Enabled,
+		func() models.Extractor { return NewEntityExtractor() },
+	)
 }
