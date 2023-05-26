@@ -12,6 +12,9 @@ WORKDIR /app
 COPY --from=BUILD /app/out/bin/zep /app/
 # Ship with default config that can be overridden by ENV vars
 COPY config.yaml /app/
+COPY cloud_start.sh /app/
+
+RUN chmod +x /app/cloud_start.sh
 
 EXPOSE 8000
-ENTRYPOINT ["/app/zep", "--config", "/app/config.yaml"]
+ENTRYPOINT ["/app/cloud_start.sh"]
