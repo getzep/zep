@@ -2,6 +2,7 @@ package memorystore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -42,11 +43,6 @@ func searchMessages(
 		limit = 10
 	}
 
-	var jsonPathQuery string
-	if len(m) > 0 {
-		jsonPathQuery = jsonPathFromMap(m, "$")
-	}
-
 	dbQuery := db.NewSelect().TableExpr("message_embedding AS me").
 		Join("JOIN message AS m").
 		JoinOn("me.message_uuid = m.uuid").
@@ -65,12 +61,26 @@ func searchMessages(
 		}
 	}
 
-	if jsonPathQuery != "" {
-		dbQuery = dbQuery.Where("jsonb_path_exists(m.metadata, ?)", jsonPathQuery)
-	}
+	qb := dbQuery.QueryBuilder()
 
-	dbQuery = dbQuery.Where("m.session_id = ?", sessionID).
-		Where("m.session_id = ?", sessionID)
+	if len(m) > 0 {
+		log.Debugf("searchMessages: adding metadata query: %v", m)
+		j, err := json.Marshal(m["where"])
+		if err != nil {
+			return nil, NewStorageError("error marshalling metadata", err)
+		}
+		log.Debugf("searchMessages: adding metadata query: %v", string(j))
+
+		var jq JSONQuery
+		err = json.Unmarshal(j, &jq)
+		if err != nil {
+			return nil, NewStorageError("error unmarshalling metadata", err)
+		}
+		log.Debugf("searchMessages: adding metadata query: %v", jq)
+		addWhere(qb, &jq)
+
+		dbQuery = qb.Unwrap().(*bun.SelectQuery)
+	}
 
 	if s != "" {
 		dbQuery = dbQuery.Order("dist DESC")
