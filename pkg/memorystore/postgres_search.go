@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
 	"strings"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
@@ -22,27 +23,49 @@ func searchMessages(
 	query *models.SearchPayload,
 	limit int,
 ) ([]models.SearchResult, error) {
-	var err error
-	log.Debugf("searchMessages called for session %s", sessionID)
+	logrus.Debugf("searchMessages called for session %s", sessionID)
 
-	if query == nil {
-		return nil, NewStorageError("nil query received", nil)
+	if query == nil || appState == nil {
+		return nil, NewStorageError("nil query or appState received", nil)
 	}
 
-	s := query.Text
-	m := query.Metadata
-	if s == "" && len(m) == 0 {
+	if query.Text == "" && len(query.Metadata) == 0 {
 		return nil, NewStorageError("empty query", errors.New("empty query"))
-	}
-
-	if appState == nil {
-		return nil, NewStorageError("nil appState received", nil)
 	}
 
 	if limit == 0 {
 		limit = 10
 	}
 
+	dbQuery := buildDBSelectQuery(ctx, appState, db, query)
+	if len(query.Metadata) > 0 {
+		var err error
+		dbQuery, err = applyMetadataFilter(dbQuery, query.Metadata)
+		if err != nil {
+			return nil, NewStorageError("error applying metadata filter", err)
+		}
+	}
+
+	sortQuery(query.Text, dbQuery)
+	dbQuery = dbQuery.Limit(limit)
+
+	results, err := executeScan(ctx, dbQuery)
+	if err != nil {
+		return nil, NewStorageError("memory searchMessages failed", err)
+	}
+
+	filteredResults := filterResults(results, query.Metadata)
+	logrus.Debugf("searchMessages completed for session %s", sessionID)
+
+	return filteredResults, nil
+}
+
+func buildDBSelectQuery(
+	ctx context.Context,
+	appState *models.AppState,
+	db *bun.DB,
+	query *models.SearchPayload,
+) *bun.SelectQuery {
 	dbQuery := db.NewSelect().TableExpr("message_embedding AS me").
 		Join("JOIN message AS m").
 		JoinOn("me.message_uuid = m.uuid").
@@ -53,61 +76,74 @@ func searchMessages(
 		ColumnExpr("m.metadata AS message__metadata").
 		ColumnExpr("m.token_count AS message__token_count")
 
-	// if we have a query text, add the vector column
-	if s != "" {
-		dbQuery, err = addVectorColumn(ctx, appState, dbQuery, s)
-		if err != nil {
-			return nil, NewStorageError("error adding vector column", err)
-		}
+	if query.Text != "" {
+		dbQuery, _ = addVectorColumn(ctx, appState, dbQuery, query.Text)
 	}
 
+	return dbQuery
+}
+
+func applyMetadataFilter(
+	dbQuery *bun.SelectQuery,
+	metadata map[string]interface{},
+) (*bun.SelectQuery, error) {
 	qb := dbQuery.QueryBuilder()
 
-	if len(m) > 0 {
-		log.Debugf("searchMessages: adding metadata query: %v", m)
-		j, err := json.Marshal(m["where"])
+	if where, ok := metadata["where"]; ok {
+		j, err := json.Marshal(where)
 		if err != nil {
 			return nil, NewStorageError("error marshalling metadata", err)
 		}
-		log.Debugf("searchMessages: adding metadata query: %v", string(j))
 
 		var jq JSONQuery
 		err = json.Unmarshal(j, &jq)
 		if err != nil {
 			return nil, NewStorageError("error unmarshalling metadata", err)
 		}
-		log.Debugf("searchMessages: adding metadata query: %v", jq)
 		addWhere(qb, &jq)
-
-		dbQuery = qb.Unwrap().(*bun.SelectQuery)
 	}
 
-	if s != "" {
-		dbQuery = dbQuery.Order("dist DESC")
+	addDateFilters(&qb, metadata)
+
+	dbQuery = qb.Unwrap().(*bun.SelectQuery)
+
+	return dbQuery, nil
+}
+
+func sortQuery(searchText string, dbQuery *bun.SelectQuery) {
+	if searchText != "" {
+		dbQuery.Order("dist DESC")
 	} else {
-		dbQuery = dbQuery.Order("m.created_at DESC")
+		dbQuery.Order("m.created_at DESC")
 	}
+}
 
-	dbQuery = dbQuery.Limit(limit)
-
+func executeScan(ctx context.Context, dbQuery *bun.SelectQuery) ([]models.SearchResult, error) {
 	var results []models.SearchResult
-	err = dbQuery.Scan(ctx, &results)
-	if err != nil {
-		return nil, NewStorageError("memory searchMessages failed", err)
-	}
+	err := dbQuery.Scan(ctx, &results)
+	return results, err
+}
 
-	// some results may be returned where distance is NaN. This is a race between
-	// newly added messages and the text query. We filter these out, but only
-	// if we're searching solely on search text.
+func filterResults(
+	results []models.SearchResult,
+	metadata map[string]interface{},
+) []models.SearchResult {
 	var filteredResults []models.SearchResult
 	for _, result := range results {
-		if !math.IsNaN(result.Dist) || len(m) > 0 {
+		if !math.IsNaN(result.Dist) || len(metadata) > 0 {
 			filteredResults = append(filteredResults, result)
 		}
 	}
-	log.Debugf("searchMessages completed for session %s", sessionID)
+	return filteredResults
+}
 
-	return filteredResults, nil
+func addDateFilters(qb *bun.QueryBuilder, m map[string]interface{}) {
+	if startDate, ok := m["start_date"]; ok {
+		*qb = (*qb).Where("m.created_at >= ?", startDate)
+	}
+	if endDate, ok := m["end_date"]; ok {
+		*qb = (*qb).Where("m.created_at <= ?", endDate)
+	}
 }
 
 func addVectorColumn(
@@ -126,14 +162,18 @@ func addVectorColumn(
 }
 
 type JSONQuery struct {
-	Jsonpath string       `json:"jsonpath"`
+	JSONPath string       `json:"jsonpath"`
 	And      []*JSONQuery `json:"and"`
 	Or       []*JSONQuery `json:"or"`
 }
 
 func parseQuery(qb bun.QueryBuilder, jq *JSONQuery) bun.QueryBuilder {
-	if jq.Jsonpath != "" {
-		qb = qb.Where("jsonb_path_exists(m.metadata, ?)", jq.Jsonpath)
+	if jq.JSONPath != "" {
+		path := strings.ReplaceAll(jq.JSONPath, "'", "\"")
+		qb = qb.Where(
+			"jsonb_path_exists(m.metadata, ?)",
+			path,
+		)
 	}
 
 	if len(jq.And) > 0 {
@@ -159,45 +199,4 @@ func parseQuery(qb bun.QueryBuilder, jq *JSONQuery) bun.QueryBuilder {
 
 func addWhere(qb bun.QueryBuilder, jq *JSONQuery) bun.QueryBuilder {
 	return parseQuery(qb, jq)
-}
-
-// jsonPathFromMap generates a JSONPath expression from a metadata map.
-// path is the current path in the map, and is used for recursion. Start with
-// path = "$" when calling from outside the function.
-func jsonPathFromMap(m map[string]interface{}, path string) string {
-	expressions := []string{}
-
-	for key, value := range m {
-		newPath := path
-		if newPath != "@" {
-			newPath += "." + key
-		}
-
-		switch v := value.(type) {
-		case map[string]interface{}:
-			// Recursively generate JSONPath for nested map
-			expressions = append(expressions, jsonPathFromMap(v, newPath))
-		case []interface{}:
-			// Generate JSONPath for each item in array
-			for _, item := range v {
-				if itemMap, ok := item.(map[string]interface{}); ok {
-					itemExpression := jsonPathFromMap(itemMap, "")
-					expressions = append(expressions, fmt.Sprintf("%s[*] ? (%s)", newPath, itemExpression))
-				}
-			}
-		default:
-			// Generate JSONPath for simple key-value pair
-			// Add cases for numeric types
-			switch v := value.(type) {
-			case int, float64:
-				expressions = append(expressions, fmt.Sprintf("@%s == %v", newPath, v))
-			default:
-				strValue := fmt.Sprintf("%v", v)
-				strValue = strings.ReplaceAll(strValue, "\"", "\\\"")
-				expressions = append(expressions, fmt.Sprintf("@%s == \"%v\"", newPath, strValue))
-			}
-		}
-	}
-
-	return strings.Join(expressions, " && ")
 }
