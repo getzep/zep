@@ -15,6 +15,14 @@ import (
 	"github.com/uptrace/bun"
 )
 
+const defaultSearchLimit = 10
+
+type JSONQuery struct {
+	JSONPath string       `json:"jsonpath"`
+	And      []*JSONQuery `json:"and,omitempty"`
+	Or       []*JSONQuery `json:"or,omitempty"`
+}
+
 func searchMessages(
 	ctx context.Context,
 	appState *models.AppState,
@@ -34,7 +42,7 @@ func searchMessages(
 	}
 
 	if limit == 0 {
-		limit = 10
+		limit = defaultSearchLimit
 	}
 
 	dbQuery := buildDBSelectQuery(ctx, appState, db, query)
@@ -54,7 +62,7 @@ func searchMessages(
 		return nil, NewStorageError("memory searchMessages failed", err)
 	}
 
-	filteredResults := filterResults(results, query.Metadata)
+	filteredResults := filterValidResults(results, query.Metadata)
 	logrus.Debugf("searchMessages completed for session %s", sessionID)
 
 	return filteredResults, nil
@@ -100,7 +108,7 @@ func applyMetadataFilter(
 		if err != nil {
 			return nil, NewStorageError("error unmarshalling metadata", err)
 		}
-		addWhere(qb, &jq)
+		qb = parseJSONQuery(qb, &jq)
 	}
 
 	addDateFilters(&qb, metadata)
@@ -124,7 +132,7 @@ func executeScan(ctx context.Context, dbQuery *bun.SelectQuery) ([]models.Search
 	return results, err
 }
 
-func filterResults(
+func filterValidResults(
 	results []models.SearchResult,
 	metadata map[string]interface{},
 ) []models.SearchResult {
@@ -161,13 +169,7 @@ func addVectorColumn(
 	return q.ColumnExpr("1 - (embedding <=> ? ) AS dist", vector), nil
 }
 
-type JSONQuery struct {
-	JSONPath string       `json:"jsonpath"`
-	And      []*JSONQuery `json:"and"`
-	Or       []*JSONQuery `json:"or"`
-}
-
-func parseQuery(qb bun.QueryBuilder, jq *JSONQuery) bun.QueryBuilder {
+func parseJSONQuery(qb bun.QueryBuilder, jq *JSONQuery) bun.QueryBuilder {
 	if jq.JSONPath != "" {
 		path := strings.ReplaceAll(jq.JSONPath, "'", "\"")
 		qb = qb.Where(
@@ -179,7 +181,7 @@ func parseQuery(qb bun.QueryBuilder, jq *JSONQuery) bun.QueryBuilder {
 	if len(jq.And) > 0 {
 		qb = qb.WhereGroup(" AND ", func(qq bun.QueryBuilder) bun.QueryBuilder {
 			for _, subQuery := range jq.And {
-				qq = parseQuery(qq, subQuery)
+				qq = parseJSONQuery(qq, subQuery)
 			}
 			return qq
 		})
@@ -188,15 +190,11 @@ func parseQuery(qb bun.QueryBuilder, jq *JSONQuery) bun.QueryBuilder {
 	if len(jq.Or) > 0 {
 		qb = qb.WhereGroup(" OR ", func(qq bun.QueryBuilder) bun.QueryBuilder {
 			for _, subQuery := range jq.Or {
-				qq = parseQuery(qq, subQuery)
+				qq = parseJSONQuery(qq, subQuery)
 			}
 			return qq
 		})
 	}
 
 	return qb
-}
-
-func addWhere(qb bun.QueryBuilder, jq *JSONQuery) bun.QueryBuilder {
-	return parseQuery(qb, jq)
 }

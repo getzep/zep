@@ -33,7 +33,7 @@ package memorystore
 //			err := json.Unmarshal([]byte(tt.jsonQuery), &jsonQuery)
 //			assert.NoError(t, err)
 //
-//			qb = addWhere(qb, &jsonQuery)
+//			qb = addMetadataFilters(qb, &jsonQuery)
 //
 //			selectQuery := qb.Unwrap().(*bun.SelectQuery)
 //
@@ -78,7 +78,7 @@ package memorystore
 //			err := json.Unmarshal([]byte(tt.jsonQuery), &jsonQuery)
 //			assert.NoError(t, err)
 //
-//			qb = addWhere(qb, &jsonQuery)
+//			qb = addMetadataFilters(qb, &jsonQuery)
 //
 //			selectQuery := qb.Unwrap().(*bun.SelectQuery)
 //
