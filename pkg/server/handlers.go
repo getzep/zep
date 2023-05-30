@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -178,6 +179,9 @@ func renderError(w http.ResponseWriter, err error, status int) {
 		// Don't log not found errors
 		log.Error(err)
 	}
+	if strings.Contains(err.Error(), "is deleted") {
+		status = http.StatusBadRequest
+	}
 	http.Error(w, err.Error(), status)
 }
 
@@ -196,9 +200,4 @@ func extractQueryStringValueToInt(
 		}
 	}
 	return pInt, nil
-}
-
-type APIError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
 }
