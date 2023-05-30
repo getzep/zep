@@ -763,7 +763,7 @@ func TestSearch(t *testing.T) {
 
 	// enrichment runs async. Wait for it to finish
 	// This is hacky but I'd prefer not to add a WaitGroup to the putMessages function just for testing purposes
-	time.Sleep(time.Second * 4)
+	time.Sleep(time.Second * 2)
 
 	// Test cases
 	testCases := []struct {
