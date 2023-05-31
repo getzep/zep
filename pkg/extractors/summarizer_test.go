@@ -7,7 +7,7 @@ import (
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/memorystore"
 	"github.com/getzep/zep/pkg/models"
-	"github.com/getzep/zep/test"
+	"github.com/getzep/zep/pkg/testutils"
 	"github.com/google/uuid"
 	"github.com/jinzhu/copier"
 	"github.com/stretchr/testify/assert"
@@ -16,11 +16,11 @@ import (
 func TestSummarize(t *testing.T) {
 	ctx := context.Background()
 
-	db := memorystore.NewPostgresConn(test.GetDSN())
+	db := memorystore.NewPostgresConn(testutils.GetDSN())
 	defer db.Close()
 	memorystore.CleanDB(t, db)
 
-	cfg := test.NewTestConfig()
+	cfg := testutils.NewTestConfig()
 
 	appState := &models.AppState{Config: cfg}
 
@@ -33,8 +33,8 @@ func TestSummarize(t *testing.T) {
 	windowSize := 10
 	newMessageCountAfterSummary := windowSize / 2
 
-	messages := make([]models.Message, len(test.TestMessages))
-	err = copier.Copy(&messages, &test.TestMessages)
+	messages := make([]models.Message, len(testutils.TestMessages))
+	err = copier.Copy(&messages, &testutils.TestMessages)
 	assert.NoError(t, err)
 
 	messages = messages[:windowSize+2]

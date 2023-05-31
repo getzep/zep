@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	"github.com/getzep/zep/pkg/models"
-	"github.com/getzep/zep/test"
+	"github.com/getzep/zep/pkg/testutils"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestPutUnPrivilegedMetadata(t *testing.T) {
-	sessionID, err := test.GenerateRandomSessionID(16)
+	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 	_, err = putSession(testCtx, testDB, sessionID, nil)
 	assert.NoError(t, err, "putSession should not return an error")
@@ -107,7 +107,7 @@ func TestPutUnPrivilegedMetadata(t *testing.T) {
 }
 
 func TestPutMetadata(t *testing.T) {
-	sessionID, err := test.GenerateRandomSessionID(16)
+	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 	_, err = putSession(testCtx, testDB, sessionID, nil)
 	assert.NoError(t, err, "putSession should not return an error")

@@ -8,18 +8,18 @@ import (
 
 	"github.com/getzep/zep/pkg/memorystore"
 	"github.com/getzep/zep/pkg/models"
-	"github.com/getzep/zep/test"
+	"github.com/getzep/zep/pkg/testutils"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTokenCountExtractor(t *testing.T) {
 	ctx := context.Background()
 
-	db := memorystore.NewPostgresConn(test.GetDSN())
+	db := memorystore.NewPostgresConn(testutils.GetDSN())
 	defer db.Close()
 	memorystore.CleanDB(t, db)
 
-	cfg := test.NewTestConfig()
+	cfg := testutils.NewTestConfig()
 
 	appState := &models.AppState{Config: cfg}
 
@@ -28,14 +28,14 @@ func TestTokenCountExtractor(t *testing.T) {
 
 	appState.MemoryStore = store
 
-	sessionID, err := test.GenerateRandomSessionID(16)
+	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err)
 
 	err = store.PutMemory(
 		ctx,
 		appState,
 		sessionID,
-		&models.Memory{Messages: test.TestMessages[:5]},
+		&models.Memory{Messages: testutils.TestMessages[:5]},
 		true,
 	)
 	assert.NoError(t, err)

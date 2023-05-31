@@ -15,7 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/getzep/zep/pkg/models"
-	"github.com/getzep/zep/test"
+	"github.com/getzep/zep/pkg/testutils"
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -40,12 +40,12 @@ func TestMain(m *testing.M) {
 func setup() {
 	internal.SetLogLevel(logrus.DebugLevel)
 	// Initialize the database connection
-	testDB = NewPostgresConn(test.GetDSN())
+	testDB = NewPostgresConn(testutils.GetDSN())
 
 	// Initialize the test context
 	testCtx = context.Background()
 
-	cfg := test.NewTestConfig()
+	cfg := testutils.NewTestConfig()
 
 	appState = &models.AppState{}
 	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
@@ -198,7 +198,7 @@ func TestPgDeleteSession(t *testing.T) {
 	appState.Config.Memory.MessageWindow = memoryWindow
 
 	// Test data
-	sessionID, err := test.GenerateRandomSessionID(16)
+	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
 	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
@@ -321,7 +321,7 @@ func TestPutMessages(t *testing.T) {
 }
 
 func createSession(t *testing.T) string {
-	sessionID, err := test.GenerateRandomSessionID(16)
+	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
 	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
@@ -379,10 +379,10 @@ func verifyMessagesInDB(
 
 func TestGetMessages(t *testing.T) {
 	// Create a test session
-	sessionID, err := test.GenerateRandomSessionID(16)
+	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
-	messages, err := putMessages(testCtx, testDB, sessionID, test.TestMessages)
+	messages, err := putMessages(testCtx, testDB, sessionID, testutils.TestMessages)
 	assert.NoError(t, err)
 
 	expectedMessages := make([]models.Message, len(messages))
@@ -499,7 +499,7 @@ func equivalentMaps(expected, got map[string]interface{}) bool {
 }
 
 func TestPutSummary(t *testing.T) {
-	sessionID, err := test.GenerateRandomSessionID(16)
+	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
 	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
@@ -587,7 +587,7 @@ func TestPutSummary(t *testing.T) {
 }
 
 func TestGetSummary(t *testing.T) {
-	sessionID, err := test.GenerateRandomSessionID(16)
+	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 	metadata := map[string]interface{}{
 		"key": "value",
@@ -671,7 +671,7 @@ func TestGetSummary(t *testing.T) {
 }
 
 func TestPutEmbeddings(t *testing.T) {
-	sessionID, err := test.GenerateRandomSessionID(16)
+	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
 	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
@@ -747,11 +747,11 @@ func TestPutEmbeddings(t *testing.T) {
 
 func TestSearch(t *testing.T) {
 	// Test data
-	sessionID, err := test.GenerateRandomSessionID(16)
+	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
 	// Call putMessages function
-	msgs, err := putMessages(testCtx, testDB, sessionID, test.TestMessages)
+	msgs, err := putMessages(testCtx, testDB, sessionID, testutils.TestMessages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	appState.MemoryStore.NotifyExtractors(

@@ -40,7 +40,7 @@ clean: ## Remove build related file
 ## Test:
 ## don't parallelize testing as there are sideefects to some DB tests
 test: ## Run project tests
-	$(GOTEST) -race -p 1 ./...
+	$(GOTEST) -tags=testutils -race -p 1 ./...
 
 coverage: ## Run the tests of the project and export the coverage
 	$(GOTEST) -cover -covermode=count -coverprofile=profile.cov ./...
@@ -58,7 +58,6 @@ swagger:
 
 ## Lint:
 lint:
-	#docker run --rm -v $(shell pwd):/app -w /app golangci/golangci-lint:latest-alpine golangci-lint run --deadline=65s
 	golangci-lint run --deadline=90s --sort-results -c golangci.yaml
 
 ## Docker:
