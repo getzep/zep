@@ -58,7 +58,6 @@ swagger:
 
 ## Lint:
 lint:
-	#docker run --rm -v $(shell pwd):/app -w /app golangci/golangci-lint:latest-alpine golangci-lint run --deadline=65s
 	golangci-lint run --deadline=90s --sort-results -c golangci.yaml
 
 ## Docker:
