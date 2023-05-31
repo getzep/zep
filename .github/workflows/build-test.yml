@@ -1,8 +1,12 @@
 name: build-test
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
-#     branches: [ "main" ]
+     branches: [ "main" ]
+
 
 jobs:
 
@@ -43,7 +47,7 @@ jobs:
       run: go build -v ./...
 
     - name: Test
-      run: CGO_ENABLED=1 go test -race -p 1 -v ./...
+      run: CGO_ENABLED=1 go test -tags=testutils -race -p 1 -v ./...
       env:
         ZEP_OPENAI_API_KEY: ${{ secrets.ZEP_OPENAI_API_KEY }}
         ZEP_MEMORY_STORE_POSTGRES_DSN: 'postgres://postgres:postgres@postgres:5432/?sslmode=disable'

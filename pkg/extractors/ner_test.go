@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/getzep/zep/test"
+	"github.com/getzep/zep/pkg/testutils"
 
 	"github.com/stretchr/testify/assert"
 
@@ -32,7 +32,7 @@ func TestCallNERService(t *testing.T) {
 	messages := createMessages(texts)
 
 	appState := &models.AppState{
-		Config: test.NewTestConfig(),
+		Config: testutils.NewTestConfig(),
 	}
 
 	// Call the NER service

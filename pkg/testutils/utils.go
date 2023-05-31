@@ -1,4 +1,7 @@
-package test
+//go:build testutils
+// +build testutils
+
+package testutils
 
 import (
 	"crypto/rand"

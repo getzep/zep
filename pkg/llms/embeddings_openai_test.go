@@ -5,14 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/getzep/zep/test"
+	"github.com/getzep/zep/pkg/testutils"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestEmbedMessages(t *testing.T) {
-	cfg := test.NewTestConfig()
+	cfg := testutils.NewTestConfig()
 
 	appState := &models.AppState{Config: cfg}
 	appState.OpenAIClient = NewOpenAIRetryClient(cfg)

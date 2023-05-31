@@ -8,7 +8,7 @@ import (
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/memorystore"
 	"github.com/getzep/zep/pkg/models"
-	"github.com/getzep/zep/test"
+	"github.com/getzep/zep/pkg/testutils"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
@@ -19,10 +19,10 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	// Force embedding to be enabled
 	viper.Set("extractor.embeddings.enabled", true)
 
-	db := memorystore.NewPostgresConn(test.GetDSN())
+	db := memorystore.NewPostgresConn(testutils.GetDSN())
 	memorystore.CleanDB(t, db)
 
-	cfg := test.NewTestConfig()
+	cfg := testutils.NewTestConfig()
 
 	appState := &models.AppState{Config: cfg}
 	store, err := memorystore.NewPostgresMemoryStore(appState, db)
@@ -30,10 +30,10 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	appState.MemoryStore = store
 	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
 
-	sessionID, err := test.GenerateRandomSessionID(16)
+	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err)
 
-	testMessages := test.TestMessages[:5]
+	testMessages := testutils.TestMessages[:5]
 
 	// Add new messages using appState.MemoryStore.PutMemory
 	err = store.PutMemory(ctx, appState, sessionID, &models.Memory{Messages: testMessages}, true)
