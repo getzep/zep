@@ -17,6 +17,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    ports:
+      - "5432:5432"
   nlp:
     image: ghcr.io/getzep/zep-nlp-server:latest
     container_name: zep-nlp
@@ -29,6 +31,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    ports:
+      - "8080:8080"
   zep:
     image: ghcr.io/getzep/zep:latest
     container_name: zep
