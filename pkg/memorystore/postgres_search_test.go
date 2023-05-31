@@ -11,17 +11,17 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/getzep/zep/pkg/models"
-	"github.com/getzep/zep/test"
+	"github.com/getzep/zep/pkg/testutils"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestVectorSearch(t *testing.T) {
 	// Test data
-	sessionID, err := test.GenerateRandomSessionID(16)
+	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
 	// Call putMessages function
-	msgs, err := putMessages(testCtx, testDB, sessionID, test.TestMessages)
+	msgs, err := putMessages(testCtx, testDB, sessionID, testutils.TestMessages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
 	appState.MemoryStore.NotifyExtractors(
@@ -127,7 +127,9 @@ func TestParseJSONQuery(t *testing.T) {
 
 			// Extract the WHERE conditions from the SQL query
 			sql := selectQuery.String()
-			cond := sql[strings.Index(sql, "WHERE"):]
+			whereIndex := strings.Index(sql, "WHERE")
+			assert.True(t, whereIndex > 0, "WHERE clause should be present")
+			cond := sql[whereIndex:]
 
 			// We use assert.Equal to test if the conditions are built correctly.
 			assert.Equal(t, tt.expectedCond, cond)
@@ -174,7 +176,9 @@ func TestAddDateFilters(t *testing.T) {
 
 			// Extract the WHERE conditions from the SQL query
 			sql := selectQuery.String()
-			cond := sql[strings.Index(sql, "WHERE"):]
+			whereIndex := strings.Index(sql, "WHERE")
+			assert.True(t, whereIndex > 0, "WHERE clause should be present")
+			cond := sql[whereIndex:]
 
 			// We use assert.Equal to test if the conditions are built correctly.
 			assert.Equal(t, tt.expectedCond, cond)
