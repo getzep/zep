@@ -108,7 +108,7 @@ func applyMetadataFilter(
 		if err != nil {
 			return nil, NewStorageError("error unmarshalling metadata", err)
 		}
-		qb = parseJSONQuery(qb, &jq)
+		qb = parseJSONQuery(qb, &jq, false)
 	}
 
 	addDateFilters(&qb, metadata)
@@ -145,6 +145,7 @@ func filterValidResults(
 	return filteredResults
 }
 
+// addDateFilters adds date filters to the query
 func addDateFilters(qb *bun.QueryBuilder, m map[string]interface{}) {
 	if startDate, ok := m["start_date"]; ok {
 		*qb = (*qb).Where("m.created_at >= ?", startDate)
@@ -154,6 +155,7 @@ func addDateFilters(qb *bun.QueryBuilder, m map[string]interface{}) {
 	}
 }
 
+// addVectorColumn adds a column to the query that calculates the distance between the query text and the message embedding
 func addVectorColumn(
 	ctx context.Context,
 	appState *models.AppState,
@@ -169,28 +171,37 @@ func addVectorColumn(
 	return q.ColumnExpr("1 - (embedding <=> ? ) AS dist", vector), nil
 }
 
-func parseJSONQuery(qb bun.QueryBuilder, jq *JSONQuery) bun.QueryBuilder {
+// parseJSONQuery recursively parses a JSONQuery and returns a bun.QueryBuilder.
+// TODO: fix the addition of extraneous parentheses in the query
+func parseJSONQuery(qb bun.QueryBuilder, jq *JSONQuery, isOr bool) bun.QueryBuilder {
 	if jq.JSONPath != "" {
 		path := strings.ReplaceAll(jq.JSONPath, "'", "\"")
-		qb = qb.Where(
-			"jsonb_path_exists(m.metadata, ?)",
-			path,
-		)
+		if isOr {
+			qb = qb.WhereOr(
+				"jsonb_path_exists(m.metadata, ?)",
+				path,
+			)
+		} else {
+			qb = qb.Where(
+				"jsonb_path_exists(m.metadata, ?)",
+				path,
+			)
+		}
 	}
 
 	if len(jq.And) > 0 {
 		qb = qb.WhereGroup(" AND ", func(qq bun.QueryBuilder) bun.QueryBuilder {
 			for _, subQuery := range jq.And {
-				qq = parseJSONQuery(qq, subQuery)
+				qq = parseJSONQuery(qq, subQuery, false)
 			}
 			return qq
 		})
 	}
 
 	if len(jq.Or) > 0 {
-		qb = qb.WhereGroup(" OR ", func(qq bun.QueryBuilder) bun.QueryBuilder {
+		qb = qb.WhereGroup(" AND ", func(qq bun.QueryBuilder) bun.QueryBuilder {
 			for _, subQuery := range jq.Or {
-				qq = parseJSONQuery(qq, subQuery)
+				qq = parseJSONQuery(qq, subQuery, true)
 			}
 			return qq
 		})

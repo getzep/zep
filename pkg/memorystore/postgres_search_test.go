@@ -95,12 +95,12 @@ func TestParseJSONQuery(t *testing.T) {
 		{
 			name:         "Test 2",
 			jsonQuery:    `{"where": {"or": [{"jsonpath": "$.system.entities[*] ? (@.Label == \"DATE\")"},{"jsonpath": "$.system.entities[*] ? (@.Label == \"ORG\")"}]}}`,
-			expectedCond: `WHERE ((jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Label == "DATE")') OR jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Label == "ORG")')))`,
+			expectedCond: `WHERE ((jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Label == "DATE")')) OR (jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Label == "ORG")')))`,
 		},
 		{
 			name:         "Test 3",
 			jsonQuery:    `{"where": {"and": [{"jsonpath": "$.system.entities[*] ? (@.Label == \"DATE\")"},{"jsonpath": "$.system.entities[*] ? (@.Label == \"ORG\")"},{"or": [{"jsonpath": "$.system.entities[*] ? (@.Name == \"Iceland\")"},{"jsonpath": "$.system.entities[*] ? (@.Name == \"Canada\")"}]}]}}`,
-			expectedCond: `WHERE (jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Label == "DATE")') AND jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Label == "ORG")') AND (jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Name == "Iceland")') OR jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Name == "Canada")'))`,
+			expectedCond: `WHERE ((jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Label == "DATE")')) AND (jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Label == "ORG")')) AND ((jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Name == "Iceland")')) OR (jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Name == "Canada")'))))`,
 		},
 	}
 
@@ -121,7 +121,54 @@ func TestParseJSONQuery(t *testing.T) {
 			err = json.Unmarshal(query, &jsonQuery)
 			assert.NoError(t, err)
 
-			qb = parseJSONQuery(qb, &jsonQuery)
+			qb = parseJSONQuery(qb, &jsonQuery, false)
+
+			selectQuery := qb.Unwrap().(*bun.SelectQuery)
+
+			// Extract the WHERE conditions from the SQL query
+			sql := selectQuery.String()
+			cond := sql[strings.Index(sql, "WHERE"):]
+
+			// We use assert.Equal to test if the conditions are built correctly.
+			assert.Equal(t, tt.expectedCond, cond)
+		})
+	}
+}
+
+func TestAddDateFilters(t *testing.T) {
+	tests := []struct {
+		name         string
+		inputDates   string
+		expectedCond string
+	}{
+		{
+			name:         "Test 1 - Start Date only",
+			inputDates:   `{"start_date": "2022-01-01"}`,
+			expectedCond: `WHERE (m.created_at >= '2022-01-01')`,
+		},
+		{
+			name:         "Test 2 - End Date only",
+			inputDates:   `{"end_date": "2022-01-31"}`,
+			expectedCond: `WHERE (m.created_at <= '2022-01-31')`,
+		},
+		{
+			name:         "Test 3 - Start and End Dates",
+			inputDates:   `{"start_date": "2022-01-01", "end_date": "2022-01-31"}`,
+			expectedCond: `WHERE (m.created_at >= '2022-01-01') AND (m.created_at <= '2022-01-31')`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			qb := testDB.NewSelect().
+				Model(&[]models.SearchResult{}).
+				QueryBuilder()
+
+			var inputDates map[string]interface{}
+			err := json.Unmarshal([]byte(tt.inputDates), &inputDates)
+			assert.NoError(t, err)
+
+			addDateFilters(&qb, inputDates)
 
 			selectQuery := qb.Unwrap().(*bun.SelectQuery)
 
