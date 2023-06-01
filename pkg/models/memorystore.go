@@ -50,9 +50,8 @@ type MemoryStore[T any] interface {
 	GetMessageVectors(ctx context.Context,
 		appState *AppState,
 		sessionID string) ([]Embeddings, error)
-	// SearchMemory retrieves a collection of SearchResults for a given sessionID and query. Currently, the query
-	// is a simple string, but this could be extended to support more complex queries in the future. The MemorySearchResult
-	// structure can include both Messages and Summaries. Currently, we only search Messages.
+	// SearchMemory retrieves a collection of SearchResults for a given sessionID and query. Currently, The
+	// MemorySearchResult structure can include both Messages and Summaries. Currently, we only search Messages.
 	SearchMemory(
 		ctx context.Context,
 		appState *AppState,
