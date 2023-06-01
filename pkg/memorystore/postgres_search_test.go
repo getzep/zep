@@ -50,7 +50,7 @@ func TestVectorSearch(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			q := models.SearchPayload{Text: tc.query}
+			q := models.MemorySearchPayload{Text: tc.query}
 			expectedLastN := tc.limit
 			if expectedLastN == 0 {
 				expectedLastN = 10 // Default value
@@ -107,7 +107,7 @@ func TestParseJSONQuery(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			qb := testDB.NewSelect().
-				Model(&[]models.SearchResult{}).
+				Model(&[]models.MemorySearchResult{}).
 				QueryBuilder()
 
 			var metadata map[string]interface{}
@@ -163,7 +163,7 @@ func TestAddDateFilters(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			qb := testDB.NewSelect().
-				Model(&[]models.SearchResult{}).
+				Model(&[]models.MemorySearchResult{}).
 				QueryBuilder()
 
 			var inputDates map[string]interface{}

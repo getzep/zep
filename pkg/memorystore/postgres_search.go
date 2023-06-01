@@ -28,9 +28,9 @@ func searchMessages(
 	appState *models.AppState,
 	db *bun.DB,
 	sessionID string,
-	query *models.SearchPayload,
+	query *models.MemorySearchPayload,
 	limit int,
-) ([]models.SearchResult, error) {
+) ([]models.MemorySearchResult, error) {
 	logrus.Debugf("searchMessages called for session %s", sessionID)
 
 	if query == nil || appState == nil {
@@ -72,7 +72,7 @@ func buildDBSelectQuery(
 	ctx context.Context,
 	appState *models.AppState,
 	db *bun.DB,
-	query *models.SearchPayload,
+	query *models.MemorySearchPayload,
 ) *bun.SelectQuery {
 	dbQuery := db.NewSelect().TableExpr("message_embedding AS me").
 		Join("JOIN message AS m").
@@ -126,17 +126,20 @@ func sortQuery(searchText string, dbQuery *bun.SelectQuery) {
 	}
 }
 
-func executeScan(ctx context.Context, dbQuery *bun.SelectQuery) ([]models.SearchResult, error) {
-	var results []models.SearchResult
+func executeScan(
+	ctx context.Context,
+	dbQuery *bun.SelectQuery,
+) ([]models.MemorySearchResult, error) {
+	var results []models.MemorySearchResult
 	err := dbQuery.Scan(ctx, &results)
 	return results, err
 }
 
 func filterValidResults(
-	results []models.SearchResult,
+	results []models.MemorySearchResult,
 	metadata map[string]interface{},
-) []models.SearchResult {
-	var filteredResults []models.SearchResult
+) []models.MemorySearchResult {
+	var filteredResults []models.MemorySearchResult
 	for _, result := range results {
 		if !math.IsNaN(result.Dist) || len(metadata) > 0 {
 			filteredResults = append(filteredResults, result)

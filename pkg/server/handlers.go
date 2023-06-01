@@ -117,7 +117,7 @@ func DeleteMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	}
 }
 
-// RunSearchHandler godoc
+// SearchMemoryHandler godoc
 //
 //	@Summary		Search memory messages for a given session
 //	@Description	search memory messages by session id and query
@@ -126,15 +126,15 @@ func DeleteMemoryHandler(appState *models.AppState) http.HandlerFunc {
 //	@Produce		json
 //	@Param			session_id		path		string					true	"Session ID"
 //	@Param			limit			query		integer					false	"Limit the number of results returned"
-//	@Param			searchPayload	body		models.SearchPayload	true	"Search query"
-//	@Success		200				{object}	[]models.SearchResult
+//	@Param			searchPayload	body		models.MemorySearchPayload	true	"Search query"
+//	@Success		200				{object}	[]models.MemorySearchResult
 //	@Failure		404				{object}	APIError	"Not Found"
 //	@Failure		500				{object}	APIError	"Internal Server Error"
 //	@Router			/api/v1/sessions/{sessionId}/search [post]
-func RunSearchHandler(appState *models.AppState) http.HandlerFunc {
+func SearchMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
-		var payload models.SearchPayload
+		var payload models.MemorySearchPayload
 		if err := decodeJSON(r, &payload); err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return

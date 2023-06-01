@@ -51,14 +51,14 @@ type MemoryStore[T any] interface {
 		appState *AppState,
 		sessionID string) ([]Embeddings, error)
 	// SearchMemory retrieves a collection of SearchResults for a given sessionID and query. Currently, the query
-	// is a simple string, but this could be extended to support more complex queries in the future. The SearchResult
+	// is a simple string, but this could be extended to support more complex queries in the future. The MemorySearchResult
 	// structure can include both Messages and Summaries. Currently, we only search Messages.
 	SearchMemory(
 		ctx context.Context,
 		appState *AppState,
 		sessionID string,
-		query *SearchPayload,
-		limit int) ([]SearchResult, error)
+		query *MemorySearchPayload,
+		limit int) ([]MemorySearchResult, error)
 	// DeleteSession deletes all records for a given sessionID. This is a soft delete. Hard deletes will be handled
 	// by a separate process or left to the implementation.
 	DeleteSession(ctx context.Context, sessionID string) error
