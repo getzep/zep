@@ -41,10 +41,6 @@ func searchMessages(
 		return nil, NewStorageError("empty query", errors.New("empty query"))
 	}
 
-	if limit == 0 {
-		limit = defaultSearchLimit
-	}
-
 	dbQuery := buildDBSelectQuery(ctx, appState, db, query)
 	if len(query.Metadata) > 0 {
 		var err error
@@ -54,7 +50,15 @@ func searchMessages(
 		}
 	}
 
+	// Ensure we don't return deleted records.
+	dbQuery = dbQuery.Where("m.deleted_at IS NULL")
+
+	// Add sort and limit.
 	sortQuery(query.Text, dbQuery)
+
+	if limit == 0 {
+		limit = defaultSearchLimit
+	}
 	dbQuery = dbQuery.Limit(limit)
 
 	results, err := executeScan(ctx, dbQuery)
