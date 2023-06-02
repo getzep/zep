@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestEmbedMessages(t *testing.T) {
+func TestEmbedOpenAI(t *testing.T) {
 	cfg := testutils.NewTestConfig()
 
 	appState := &models.AppState{Config: cfg}
@@ -24,13 +24,13 @@ func TestEmbedMessages(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	embeddings, err := EmbedMessages(ctx, appState, messageContents)
+	embeddings, err := EmbedTextsOpenAI(ctx, appState, messageContents)
 	assert.NoError(t, err)
 	assert.NotNil(t, embeddings)
 	assert.Len(t, embeddings, 2)
 
 	// Check if the embeddings are of the correct length
 	for _, embedding := range embeddings {
-		assert.Len(t, embedding.Embedding, int(vectorLength))
+		assert.Len(t, embedding, int(vectorLength))
 	}
 }
