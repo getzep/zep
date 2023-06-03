@@ -1,5 +1,4 @@
 //go:build testutils
-// +build testutils
 
 package testutils
 

@@ -27,10 +27,9 @@ func Create(appState *models.AppState) *http.Server {
 	}
 }
 
-//	@title			Zep REST API
-//	@license.name	Apache 2.0
-//	@license.url	http://www.apache.org/licenses/LICENSE-2.0.html
-
+// @title			Zep REST API
+// @license.name	Apache 2.0
+// @license.url	http://www.apache.org/licenses/LICENSE-2.0.html
 // @BasePath	/apt/v1
 // @schemes	http https
 func setupRouter(appState *models.AppState) *chi.Mux {
@@ -51,7 +50,7 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 			})
 			// Search-related routes
 			r.Route("/search", func(r chi.Router) {
-				r.Post("/", RunSearchHandler(appState))
+				r.Post("/", SearchMemoryHandler(appState))
 			})
 		})
 	})
