@@ -50,7 +50,7 @@ func searchMessages(
 		}
 	}
 
-	dbQuery = dbQuery.Where("session_id = ?", sessionID)
+	dbQuery = dbQuery.Where("m.session_id = ?", sessionID)
 
 	// Ensure we don't return deleted records.
 	dbQuery = dbQuery.Where("m.deleted_at IS NULL")
