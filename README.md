@@ -9,7 +9,8 @@ Zep's Extractor model is easily extensible, with a simple, clean interface avail
 **Key Features:**
 - **Long-term memory persistence**, with access to historical messages irrespective of your summarization strategy.
 - **Auto-summarization** of memory messages based on a configurable message window. A series of summaries are stored, providing flexibility for future summarization strategies.
-- **Vector search** over memories, with messages automatically embedded on creation. 
+- Hybrid **Vector search** over memories and metadata, with messages automatically embedded on creation. 
+- **Entity Extractor** that extracts named entities from messages and stores them in the message metadata.
 - **Auto-token counting** of memories and summaries, allowing finer-grained control over prompt assembly.
 - **Python** and **JavaScript** SDKs.
 - **Langchain** `memory` and `retriever` support.
