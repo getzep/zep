@@ -52,7 +52,11 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 		texts[i] = r.Content
 	}
 
-	embeddings, err := llms.EmbedTexts(ctx, appState, &llms.ShortTextEmbeddingModel, texts)
+	model := &models.EmbeddingModel{
+		Name:       "local",
+		Dimensions: 768,
+	}
+	embeddings, err := llms.EmbedTexts(ctx, appState, model, texts)
 	assert.NoError(t, err)
 
 	expectedEmbeddingRecords := make([]models.DocumentEmbeddings, len(unembeddedMessages))

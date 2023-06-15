@@ -42,13 +42,9 @@ type SummarizerConfig struct {
 }
 
 type EmbeddingsConfig struct {
-	Messages  TextEmbeddingsConfig `mapstructure:"messages"`
-	Documents TextEmbeddingsConfig `mapstructure:"documents"`
-}
-
-type TextEmbeddingsConfig struct {
-	Enabled  bool   `mapstructure:"enabled"`
-	Provider string `mapstructure:"provider"`
+	Enabled    bool   `mapstructure:"enabled"`
+	Dimensions int    `mapstructure:"dimensions"`
+	Model      string `mapstructure:"model"`
 }
 
 type EntityExtractorConfig struct {

@@ -2,21 +2,10 @@ package llms
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/getzep/zep/pkg/models"
 )
-
-var ShortTextEmbeddingModel = models.EmbeddingModel{
-	Name:         "multi-qa-MiniLM-L6-cos-v1",
-	Dimensions:   384,
-	IsNormalized: true,
-}
-
-var OpenAIEmbeddingModel = models.EmbeddingModel{
-	Name:         "AdaEmbeddingV2",
-	Dimensions:   1536,
-	IsNormalized: true,
-}
 
 func EmbedTexts(
 	ctx context.Context,
@@ -32,15 +21,17 @@ func EmbedTexts(
 	case "AdaEmbeddingV2":
 		return EmbedTextsOpenAI(ctx, appState, text)
 	default:
-		return embedTextsLocal(ctx, appState, model, text)
+		return embedTextsLocal(ctx, appState, text)
 	}
 }
 
-func GetMessageEmbeddingModel(appState *models.AppState) *models.EmbeddingModel {
-	switch appState.Config.Extractors.Embeddings.Messages.Provider {
-	case "openai":
-		return &OpenAIEmbeddingModel
-	default:
-		return &ShortTextEmbeddingModel
+func GetMessageEmbeddingModel(appState *models.AppState) (*models.EmbeddingModel, error) {
+	model := appState.Config.Extractors.Embeddings.Model
+	if model == "AdaEmbeddingV2" || model == "local" {
+		return &models.EmbeddingModel{
+			Name:       model,
+			Dimensions: appState.Config.Extractors.Embeddings.Dimensions,
+		}, nil
 	}
+	return nil, fmt.Errorf("unknown embedding model: %s", model)
 }

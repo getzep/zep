@@ -22,7 +22,7 @@ func Initialize(appState *models.AppState) {
 	)
 	attach(
 		"EmbeddingExtractor",
-		appState.Config.Extractors.Embeddings.Messages.Enabled,
+		appState.Config.Extractors.Embeddings.Enabled,
 		func() models.Extractor { return NewEmbeddingExtractor() },
 	)
 	attach(

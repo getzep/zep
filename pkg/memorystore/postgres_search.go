@@ -171,7 +171,10 @@ func addMessagesVectorColumn(
 	q *bun.SelectQuery,
 	queryText string,
 ) (*bun.SelectQuery, error) {
-	model := llms.GetMessageEmbeddingModel(appState)
+	model, err := llms.GetMessageEmbeddingModel(appState)
+	if err != nil {
+		return nil, NewStorageError("failed to get message embedding model", err)
+	}
 
 	e, err := llms.EmbedTexts(ctx, appState, model, []string{queryText})
 	if err != nil {

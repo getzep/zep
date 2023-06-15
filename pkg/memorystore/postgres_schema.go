@@ -78,7 +78,7 @@ type PgMessageVectorStore struct {
 	DeletedAt   time.Time       `bun:"type:timestamptz,soft_delete,nullzero"`
 	SessionID   string          `bun:",notnull"`
 	MessageUUID uuid.UUID       `bun:"type:uuid,notnull,unique"`
-	Embedding   pgvector.Vector `bun:"type:vector(384)"`
+	Embedding   pgvector.Vector `bun:"type:vector(1536)"`
 	IsEmbedded  bool            `bun:"type:bool,notnull,default:false"`
 	Session     *PgSession      `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade"`
 	Message     *PgMessageStore `bun:"rel:belongs-to,join:message_uuid=uuid,on_delete:cascade"`
@@ -206,8 +206,11 @@ func ensurePostgresSetup(
 		}
 	}
 
-	model := llms.GetMessageEmbeddingModel(appState)
-	if model.Dimensions != 384 {
+	model, err := llms.GetMessageEmbeddingModel(appState)
+	if err != nil {
+		return fmt.Errorf("error getting message embedding model: %w", err)
+	}
+	if model.Dimensions != 1536 {
 		err := migrateMessageEmbeddingDims(ctx, db, model.Dimensions)
 		if err != nil {
 			return fmt.Errorf("error migrating message embedding dimensions: %w", err)

@@ -11,12 +11,9 @@ extractors:
   entities:
     enabled: true
   embeddings:
-    messages:
-      enabled: true
-      provider: "openai"
-    documents:
-      enabled: true
-      provider: "local"
+    enabled: true
+    dimensions: 1536
+    model: "AdaEmbeddingV2"
 memory_store:
   type: "postgres"
   postgres:

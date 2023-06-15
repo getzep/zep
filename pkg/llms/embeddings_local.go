@@ -17,18 +17,9 @@ import (
 func embedTextsLocal(
 	ctx context.Context,
 	appState *models.AppState,
-	model *models.EmbeddingModel,
 	texts []string,
 ) ([][]float32, error) {
 	url := appState.Config.NLP.ServerURL + "/embeddings"
-	switch model.Dimensions {
-	case 384:
-		url += "/short"
-	case 768:
-		url += "/medium"
-	default:
-		return nil, NewLLMError(fmt.Sprintf("invalid embedding model: %s", model.Name), nil)
-	}
 
 	documents := make([]models.DocumentEmbeddings, len(texts))
 	for i, text := range texts {

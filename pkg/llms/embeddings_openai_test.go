@@ -31,6 +31,6 @@ func TestEmbedOpenAI(t *testing.T) {
 
 	// Check if the embeddings are of the correct length
 	for _, embedding := range embeddings {
-		assert.Len(t, embedding, int(vectorLength))
+		assert.Len(t, embedding, vectorLength)
 	}
 }

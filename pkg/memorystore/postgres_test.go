@@ -62,7 +62,10 @@ func setup() {
 		panic(err)
 	}
 
-	embeddingModel = llms.GetMessageEmbeddingModel(appState)
+	embeddingModel = &models.EmbeddingModel{
+		Name:       "local",
+		Dimensions: 768,
+	}
 }
 
 func tearDown() {
