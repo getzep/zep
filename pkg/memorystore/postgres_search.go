@@ -126,7 +126,7 @@ func applyMessagesMetadataFilter(
 
 func addMessagesSortQuery(searchText string, dbQuery *bun.SelectQuery) {
 	if searchText != "" {
-		dbQuery.Order("dist ASC")
+		dbQuery.Order("dist DESC")
 	} else {
 		dbQuery.Order("m.created_at DESC")
 	}
@@ -182,7 +182,7 @@ func addMessagesVectorColumn(
 	}
 
 	vector := pgvector.NewVector(e[0])
-	return q.ColumnExpr("embedding <#> ? AS dist", vector), nil
+	return q.ColumnExpr("(embedding <#> ?) * -1 AS dist", vector), nil
 }
 
 // parseJSONQuery recursively parses a JSONQuery and returns a bun.QueryBuilder.
