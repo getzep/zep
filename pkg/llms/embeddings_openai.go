@@ -2,31 +2,20 @@ package llms
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/sashabaranov/go-openai"
 )
 
-func EmbedMessages(
+func EmbedTextsOpenAI(
 	ctx context.Context,
 	appState *models.AppState,
-	text []string,
-) ([]openai.Embedding, error) {
-	if len(text) == 0 {
-		return nil, NewLLMError("no text to embed", nil)
-	}
-	var embeddingModel openai.EmbeddingModel
-	switch appState.Config.Extractors.Embeddings.Model {
-	case "AdaEmbeddingV2":
-		embeddingModel = openai.AdaEmbeddingV2
-	default:
-		return nil, NewLLMError(fmt.Sprintf("invalid embedding model: %s",
-			appState.Config.LLM.Model), nil)
-	}
+	texts []string,
+) ([][]float32, error) {
+	embeddingModel := openai.AdaEmbeddingV2
 
 	req := openai.EmbeddingRequest{
-		Input: text,
+		Input: texts,
 		Model: embeddingModel,
 		User:  "zep_user",
 	}
@@ -36,5 +25,10 @@ func EmbedMessages(
 		return nil, NewLLMError("error while creating embedding", err)
 	}
 
-	return resp.Data, nil
+	m := make([][]float32, len(resp.Data))
+	for i := range resp.Data {
+		m[i] = resp.Data[i].Embedding
+	}
+
+	return m, nil
 }

@@ -8,6 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getzep/zep/pkg/llms"
+
+	"github.com/getzep/zep/pkg/models"
+
 	"github.com/oiime/logrusbun"
 	"github.com/sirupsen/logrus"
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -173,6 +177,7 @@ func (*PgSummaryStore) AfterCreateTable(
 // ensurePostgresSetup creates the db schema if it does not exist.
 func ensurePostgresSetup(
 	ctx context.Context,
+	appState *models.AppState,
 	db *bun.DB,
 ) error {
 	_, err := db.Exec("CREATE EXTENSION IF NOT EXISTS vector")
@@ -199,6 +204,37 @@ func ensurePostgresSetup(
 			}
 			return fmt.Errorf("error creating table for schema %T: %w", schema, err)
 		}
+	}
+
+	model, err := llms.GetMessageEmbeddingModel(appState)
+	if err != nil {
+		return fmt.Errorf("error getting message embedding model: %w", err)
+	}
+	if model.Dimensions != 1536 {
+		err := migrateMessageEmbeddingDims(ctx, db, model.Dimensions)
+		if err != nil {
+			return fmt.Errorf("error migrating message embedding dimensions: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func migrateMessageEmbeddingDims(
+	ctx context.Context,
+	db *bun.DB,
+	dimensions int,
+) error {
+	_, err := db.NewDropColumn().Model((*PgMessageVectorStore)(nil)).Column("embedding").Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("error dropping column embedding: %w", err)
+	}
+	_, err = db.NewAddColumn().
+		Model((*PgMessageVectorStore)(nil)).
+		ColumnExpr(fmt.Sprintf("embedding vector(%d)", dimensions)).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("error adding column Embedding: %w", err)
 	}
 
 	return nil

@@ -9,15 +9,11 @@ import (
 	"github.com/getzep/zep/pkg/memorystore"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/testutils"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestEmbeddingExtractor_Extract(t *testing.T) {
 	ctx := context.Background()
-
-	// Force embedding to be enabled
-	viper.Set("extractor.embeddings.enabled", true)
 
 	db := memorystore.NewPostgresConn(testutils.GetDSN())
 	memorystore.CleanDB(t, db)
@@ -56,15 +52,19 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 		texts[i] = r.Content
 	}
 
-	embeddings, err := llms.EmbedMessages(ctx, appState, texts)
+	model := &models.EmbeddingModel{
+		Name:       "local",
+		Dimensions: 768,
+	}
+	embeddings, err := llms.EmbedTexts(ctx, appState, model, texts)
 	assert.NoError(t, err)
 
-	expectedEmbeddingRecords := make([]models.Embeddings, len(unembeddedMessages))
+	expectedEmbeddingRecords := make([]models.DocumentEmbeddings, len(unembeddedMessages))
 	for i, r := range unembeddedMessages {
-		expectedEmbeddingRecords[i] = models.Embeddings{
+		expectedEmbeddingRecords[i] = models.DocumentEmbeddings{
 			TextUUID:  r.UUID,
 			Text:      r.Content,
-			Embedding: embeddings[i].Embedding,
+			Embedding: embeddings[i],
 		}
 	}
 

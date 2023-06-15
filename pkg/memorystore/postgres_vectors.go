@@ -10,28 +10,27 @@ import (
 
 func getMessageVectors(ctx context.Context,
 	db *bun.DB,
-	sessionID string) ([]models.Embeddings, error) {
+	sessionID string) ([]models.DocumentEmbeddings, error) {
 	var results []struct {
 		PgMessageStore
 		PgMessageVectorStore
 	}
-	// TODO: Check that excluding deleted
 	_, err := db.NewSelect().
 		Table("message_embedding").
 		Join("JOIN message").
 		JoinOn("message_embedding.message_uuid = message.uuid").
 		ColumnExpr("message.content").
 		ColumnExpr("message_embedding.*").
-		Where("message_embedding.is_embedded = ?", true).
 		Where("message_embedding.session_id = ?", sessionID).
+		Where("message.deleted_at IS NULL").
 		Exec(ctx, &results)
 	if err != nil {
 		return nil, NewStorageError("failed to get message vectors", err)
 	}
 
-	embeddings := make([]models.Embeddings, len(results))
+	embeddings := make([]models.DocumentEmbeddings, len(results))
 	for i, vectorStoreRecord := range results {
-		embeddings[i] = models.Embeddings{
+		embeddings[i] = models.DocumentEmbeddings{
 			Embedding: vectorStoreRecord.Embedding.Slice(),
 			TextUUID:  vectorStoreRecord.MessageUUID,
 			Text:      vectorStoreRecord.Content,
@@ -41,11 +40,11 @@ func getMessageVectors(ctx context.Context,
 	return embeddings, nil
 }
 
-func putEmbeddings(
+func putMessageVectors(
 	ctx context.Context,
 	db *bun.DB,
 	sessionID string,
-	embeddings []models.Embeddings,
+	embeddings []models.DocumentEmbeddings,
 ) error {
 	if embeddings == nil {
 		return NewStorageError("nil embeddings received", nil)

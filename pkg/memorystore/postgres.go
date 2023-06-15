@@ -37,9 +37,9 @@ type PostgresMemoryStore struct {
 
 func (pms *PostgresMemoryStore) OnStart(
 	_ context.Context,
-	_ *models.AppState,
+	appState *models.AppState,
 ) error {
-	err := ensurePostgresSetup(context.Background(), pms.Client)
+	err := ensurePostgresSetup(context.Background(), appState, pms.Client)
 	if err != nil {
 		return NewStorageError("failed to ensure postgres schema setup", err)
 	}
@@ -208,7 +208,7 @@ func (pms *PostgresMemoryStore) DeleteSession(ctx context.Context, sessionID str
 func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
-	embeddings []models.Embeddings,
+	embeddings []models.DocumentEmbeddings,
 ) error {
 	if embeddings == nil {
 		return NewStorageError("nil embeddings received", nil)
@@ -217,7 +217,7 @@ func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 		return NewStorageError("no embeddings received", nil)
 	}
 
-	err := putEmbeddings(ctx, pms.Client, sessionID, embeddings)
+	err := putMessageVectors(ctx, pms.Client, sessionID, embeddings)
 	if err != nil {
 		return NewStorageError("failed to put embeddings", err)
 	}
@@ -228,7 +228,7 @@ func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 func (pms *PostgresMemoryStore) GetMessageVectors(ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
-) ([]models.Embeddings, error) {
+) ([]models.DocumentEmbeddings, error) {
 	embeddings, err := getMessageVectors(ctx, pms.Client, sessionID)
 	if err != nil {
 		return nil, NewStorageError("GetMessageVectors failed to get embeddings", err)

@@ -170,7 +170,7 @@ func TestAddDateFilters(t *testing.T) {
 			err := json.Unmarshal([]byte(tt.inputDates), &inputDates)
 			assert.NoError(t, err)
 
-			addDateFilters(&qb, inputDates)
+			addMessageDateFilters(&qb, inputDates)
 
 			selectQuery := qb.Unwrap().(*bun.SelectQuery)
 
