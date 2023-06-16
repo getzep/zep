@@ -23,7 +23,7 @@ services:
     image: ghcr.io/getzep/zep-nlp-server:latest
     container_name: zep-nlp
     environment:
-        - ENABLE_EMBEDDINGS=true
+        - ENABLE_EMBEDDINGS=false
     restart: on-failure
     networks:
       - zep-network
