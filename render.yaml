@@ -21,6 +21,7 @@ services:
         sync: false
   - type: pserv
     name: zep-nlp
+    plan: standard
     autoDeploy: false
     env: image
     image:
