@@ -5,6 +5,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	"github.com/oiime/logrusbun"
+	"github.com/sirupsen/logrus"
+	"github.com/uptrace/bun"
 
 	"github.com/getzep/zep/config"
 	"github.com/getzep/zep/pkg/extractors"
@@ -74,6 +79,9 @@ func initializeMemoryStore(appState *models.AppState) {
 			log.Fatal(ErrPostgresDSNNotSet)
 		}
 		db := memorystore.NewPostgresConn(appState.Config.MemoryStore.Postgres.DSN)
+		if appState.Config.Log.Level == "debug" {
+			pgDebugLogging(db)
+		}
 		memoryStore, err := memorystore.NewPostgresMemoryStore(appState, db)
 		if err != nil {
 			log.Fatal(err)
@@ -89,6 +97,18 @@ func initializeMemoryStore(appState *models.AppState) {
 	}
 
 	log.Info("Using memory store: ", appState.Config.MemoryStore.Type)
+}
+
+func pgDebugLogging(db *bun.DB) {
+	db.AddQueryHook(logrusbun.NewQueryHook(logrusbun.QueryHookOptions{
+		LogSlow:         time.Second,
+		Logger:          log,
+		QueryLevel:      logrus.DebugLevel,
+		ErrorLevel:      logrus.ErrorLevel,
+		SlowLevel:       logrus.WarnLevel,
+		MessageTemplate: "{{.Operation}}[{{.Duration}}]: {{.Query}}",
+		ErrorTemplate:   "{{.Operation}}[{{.Duration}}]: {{.Query}}: {{.Error}}",
+	}))
 }
 
 // setupSignalHandler sets up a signal handler to close the MemoryStore connection on termination

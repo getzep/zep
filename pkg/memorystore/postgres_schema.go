@@ -12,8 +12,6 @@ import (
 
 	"github.com/getzep/zep/pkg/models"
 
-	"github.com/oiime/logrusbun"
-	"github.com/sirupsen/logrus"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
 
@@ -251,14 +249,5 @@ func NewPostgresConn(dsn string) *bun.DB {
 	sqldb.SetMaxOpenConns(maxOpenConns)
 	sqldb.SetMaxIdleConns(maxOpenConns)
 	db := bun.NewDB(sqldb, pgdialect.New())
-	db.AddQueryHook(logrusbun.NewQueryHook(logrusbun.QueryHookOptions{
-		LogSlow:         time.Second,
-		Logger:          log,
-		QueryLevel:      logrus.DebugLevel,
-		ErrorLevel:      logrus.ErrorLevel,
-		SlowLevel:       logrus.WarnLevel,
-		MessageTemplate: "{{.Operation}}[{{.Duration}}]: {{.Query}}",
-		ErrorTemplate:   "{{.Operation}}[{{.Duration}}]: {{.Query}}: {{.Error}}",
-	}))
 	return db
 }
