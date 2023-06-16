@@ -2,7 +2,7 @@ package models
 
 import (
 	"github.com/getzep/zep/config"
-	openairetryclient "github.com/getzep/zep/pkg/llms/openairetryclient"
+	"github.com/getzep/zep/pkg/llms/openairetryclient"
 )
 
 // AppState is a struct that holds the state of the application

@@ -41,15 +41,15 @@ type MemoryStore[T any] interface {
 		sessionID string,
 		messageMetaSet []MessageMetadata,
 		isPrivileged bool) error
-	// PutMessageVectors stores a collection of Embeddings for a given sessionID.
+	// PutMessageVectors stores a collection of DocumentEmbeddings for a given sessionID.
 	PutMessageVectors(ctx context.Context,
 		appState *AppState,
 		sessionID string,
-		embeddings []Embeddings) error
-	// GetMessageVectors retrieves a collection of Embeddings for a given sessionID.
+		embeddings []DocumentEmbeddings) error
+	// GetMessageVectors retrieves a collection of DocumentEmbeddings for a given sessionID.
 	GetMessageVectors(ctx context.Context,
 		appState *AppState,
-		sessionID string) ([]Embeddings, error)
+		sessionID string) ([]DocumentEmbeddings, error)
 	// SearchMemory retrieves a collection of SearchResults for a given sessionID and query. Currently, The
 	// MemorySearchResult structure can include both Messages and Summaries. Currently, we only search Messages.
 	SearchMemory(

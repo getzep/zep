@@ -28,16 +28,21 @@ func (ee *EmbeddingExtractor) Extract(
 
 	texts := messageToStringSlice(messageEvent.Messages, false)
 
-	embeddings, err := llms.EmbedMessages(ctx, appState, texts)
+	model, err := llms.GetMessageEmbeddingModel(appState)
+	if err != nil {
+		return NewExtractorError("EmbeddingExtractor get message embedding model failed", err)
+	}
+
+	embeddings, err := llms.EmbedTexts(ctx, appState, model, texts)
 	if err != nil {
 		return NewExtractorError("EmbeddingExtractor embed messages failed", err)
 	}
 
-	embeddingRecords := make([]models.Embeddings, len(messageEvent.Messages))
+	embeddingRecords := make([]models.DocumentEmbeddings, len(messageEvent.Messages))
 	for i, r := range messageEvent.Messages {
-		embeddingRecords[i] = models.Embeddings{
+		embeddingRecords[i] = models.DocumentEmbeddings{
 			TextUUID:  r.UUID,
-			Embedding: embeddings[i].Embedding,
+			Embedding: embeddings[i],
 		}
 	}
 	err = appState.MemoryStore.PutMessageVectors(
@@ -52,7 +57,7 @@ func (ee *EmbeddingExtractor) Extract(
 	return nil
 }
 
-// messageToStringSlice converts a slice of Embeddings to a slice of strings.
+// messageToStringSlice converts a slice of DocumentEmbeddings to a slice of strings.
 // If enrich is true, the text slice will include the prior and subsequent
 // messages text to the slice item.
 func messageToStringSlice(messages []models.Message, enrich bool) []string {

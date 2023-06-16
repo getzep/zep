@@ -41,10 +41,10 @@ func searchMessages(
 		return nil, NewStorageError("empty query", errors.New("empty query"))
 	}
 
-	dbQuery := buildDBSelectQuery(ctx, appState, db, query)
+	dbQuery := buildMessagesSelectQuery(ctx, appState, db, query)
 	if len(query.Metadata) > 0 {
 		var err error
-		dbQuery, err = applyMetadataFilter(dbQuery, query.Metadata)
+		dbQuery, err = applyMessagesMetadataFilter(dbQuery, query.Metadata)
 		if err != nil {
 			return nil, NewStorageError("error applying metadata filter", err)
 		}
@@ -56,25 +56,25 @@ func searchMessages(
 	dbQuery = dbQuery.Where("m.deleted_at IS NULL")
 
 	// Add sort and limit.
-	sortQuery(query.Text, dbQuery)
+	addMessagesSortQuery(query.Text, dbQuery)
 
 	if limit == 0 {
 		limit = defaultSearchLimit
 	}
 	dbQuery = dbQuery.Limit(limit)
 
-	results, err := executeScan(ctx, dbQuery)
+	results, err := executeMessagesSearchScan(ctx, dbQuery)
 	if err != nil {
 		return nil, NewStorageError("memory searchMessages failed", err)
 	}
 
-	filteredResults := filterValidResults(results, query.Metadata)
+	filteredResults := filterValidMessageSearchResults(results, query.Metadata)
 	logrus.Debugf("searchMessages completed for session %s", sessionID)
 
 	return filteredResults, nil
 }
 
-func buildDBSelectQuery(
+func buildMessagesSelectQuery(
 	ctx context.Context,
 	appState *models.AppState,
 	db *bun.DB,
@@ -91,13 +91,13 @@ func buildDBSelectQuery(
 		ColumnExpr("m.token_count AS message__token_count")
 
 	if query.Text != "" {
-		dbQuery, _ = addVectorColumn(ctx, appState, dbQuery, query.Text)
+		dbQuery, _ = addMessagesVectorColumn(ctx, appState, dbQuery, query.Text)
 	}
 
 	return dbQuery
 }
 
-func applyMetadataFilter(
+func applyMessagesMetadataFilter(
 	dbQuery *bun.SelectQuery,
 	metadata map[string]interface{},
 ) (*bun.SelectQuery, error) {
@@ -117,14 +117,14 @@ func applyMetadataFilter(
 		qb = parseJSONQuery(qb, &jq, false)
 	}
 
-	addDateFilters(&qb, metadata)
+	addMessageDateFilters(&qb, metadata)
 
 	dbQuery = qb.Unwrap().(*bun.SelectQuery)
 
 	return dbQuery, nil
 }
 
-func sortQuery(searchText string, dbQuery *bun.SelectQuery) {
+func addMessagesSortQuery(searchText string, dbQuery *bun.SelectQuery) {
 	if searchText != "" {
 		dbQuery.Order("dist DESC")
 	} else {
@@ -132,7 +132,7 @@ func sortQuery(searchText string, dbQuery *bun.SelectQuery) {
 	}
 }
 
-func executeScan(
+func executeMessagesSearchScan(
 	ctx context.Context,
 	dbQuery *bun.SelectQuery,
 ) ([]models.MemorySearchResult, error) {
@@ -141,7 +141,7 @@ func executeScan(
 	return results, err
 }
 
-func filterValidResults(
+func filterValidMessageSearchResults(
 	results []models.MemorySearchResult,
 	metadata map[string]interface{},
 ) []models.MemorySearchResult {
@@ -154,8 +154,8 @@ func filterValidResults(
 	return filteredResults
 }
 
-// addDateFilters adds date filters to the query
-func addDateFilters(qb *bun.QueryBuilder, m map[string]interface{}) {
+// addMessageDateFilters adds date filters to the query
+func addMessageDateFilters(qb *bun.QueryBuilder, m map[string]interface{}) {
 	if startDate, ok := m["start_date"]; ok {
 		*qb = (*qb).Where("m.created_at >= ?", startDate)
 	}
@@ -164,20 +164,25 @@ func addDateFilters(qb *bun.QueryBuilder, m map[string]interface{}) {
 	}
 }
 
-// addVectorColumn adds a column to the query that calculates the distance between the query text and the message embedding
-func addVectorColumn(
+// addMessagesVectorColumn adds a column to the query that calculates the distance between the query text and the message embedding
+func addMessagesVectorColumn(
 	ctx context.Context,
 	appState *models.AppState,
 	q *bun.SelectQuery,
 	queryText string,
 ) (*bun.SelectQuery, error) {
-	e, err := llms.EmbedMessages(ctx, appState, []string{queryText})
+	model, err := llms.GetMessageEmbeddingModel(appState)
+	if err != nil {
+		return nil, NewStorageError("failed to get message embedding model", err)
+	}
+
+	e, err := llms.EmbedTexts(ctx, appState, model, []string{queryText})
 	if err != nil {
 		return nil, NewStorageError("failed to embed query", err)
 	}
 
-	vector := pgvector.NewVector(e[0].Embedding)
-	return q.ColumnExpr("1 - (embedding <=> ? ) AS dist", vector), nil
+	vector := pgvector.NewVector(e[0])
+	return q.ColumnExpr("(embedding <#> ?) * -1 AS dist", vector), nil
 }
 
 // parseJSONQuery recursively parses a JSONQuery and returns a bun.QueryBuilder.

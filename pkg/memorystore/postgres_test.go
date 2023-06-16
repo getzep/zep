@@ -17,7 +17,6 @@ import (
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/testutils"
 	"github.com/google/uuid"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -28,6 +27,7 @@ import (
 var testDB *bun.DB
 var testCtx context.Context
 var appState *models.AppState
+var embeddingModel *models.EmbeddingModel
 
 func TestMain(m *testing.M) {
 	setup()
@@ -57,9 +57,14 @@ func setup() {
 	appState.MemoryStore = store
 	extractors.Initialize(appState)
 
-	err = ensurePostgresSetup(testCtx, testDB)
+	err = ensurePostgresSetup(testCtx, appState, testDB)
 	if err != nil {
 		panic(err)
+	}
+
+	embeddingModel = &models.EmbeddingModel{
+		Name:       "AdaEmbeddingV2",
+		Dimensions: 1536,
 	}
 }
 
@@ -75,7 +80,7 @@ func TestEnsurePostgresSchemaSetup(t *testing.T) {
 	CleanDB(t, testDB)
 
 	t.Run("should succeed when all schema setup is successful", func(t *testing.T) {
-		err := ensurePostgresSetup(testCtx, testDB)
+		err := ensurePostgresSetup(testCtx, appState, testDB)
 		assert.NoError(t, err)
 
 		checkForTable(t, testDB, &PgSession{})
@@ -84,7 +89,7 @@ func TestEnsurePostgresSchemaSetup(t *testing.T) {
 		checkForTable(t, testDB, &PgMessageVectorStore{})
 	})
 	t.Run("should not fail on second run", func(t *testing.T) {
-		err := ensurePostgresSetup(testCtx, testDB)
+		err := ensurePostgresSetup(testCtx, appState, testDB)
 		assert.NoError(t, err)
 	})
 }
@@ -671,11 +676,12 @@ func TestGetSummary(t *testing.T) {
 }
 
 func TestPutEmbeddings(t *testing.T) {
+	CleanDB(t, testDB)
+	err := ensurePostgresSetup(testCtx, appState, testDB)
+	assert.NoError(t, err)
+
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
-
-	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
-	assert.NoError(t, err, "putSession should not return an error")
 
 	messages := []models.Message{
 		{
@@ -685,14 +691,11 @@ func TestPutEmbeddings(t *testing.T) {
 		},
 	}
 
-	// Force embedding to be enabled
-	viper.Set("extractor.embeddings.enabled", true)
-
 	// Call putMessages function
 	resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
-	vector := make([]float32, 1536)
+	vector := make([]float32, embeddingModel.Dimensions)
 	src := rand.NewSource(time.Now().UnixNano())
 	r := rand.New(src)
 	for i := range vector {
@@ -700,7 +703,7 @@ func TestPutEmbeddings(t *testing.T) {
 	}
 
 	// Create embeddings
-	embeddings := []models.Embeddings{
+	embeddings := []models.DocumentEmbeddings{
 		{
 			TextUUID:  resultMessages[0].UUID,
 			Text:      resultMessages[0].Content,
@@ -708,8 +711,8 @@ func TestPutEmbeddings(t *testing.T) {
 		},
 	}
 
-	err = putEmbeddings(testCtx, testDB, sessionID, embeddings)
-	assert.NoError(t, err, "putEmbeddings should not return an error")
+	err = putMessageVectors(testCtx, testDB, sessionID, embeddings)
+	assert.NoError(t, err, "putMessageVectors should not return an error")
 
 	// Check for the creation of PgMessageVectorStore values
 	var pgMemoryVectorStores []PgMessageVectorStore
