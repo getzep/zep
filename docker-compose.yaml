@@ -23,16 +23,16 @@ services:
     image: ghcr.io/getzep/zep-nlp-server:latest
     container_name: zep-nlp
     environment:
-        - ENABLE_EMBEDDINGS=false
+        - ENABLE_EMBEDDINGS=true
     restart: on-failure
     networks:
       - zep-network
     healthcheck:
       test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1
-      interval: 5s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
     ports:
       - "8080:8080"
   zep:
