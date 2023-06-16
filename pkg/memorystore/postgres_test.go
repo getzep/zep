@@ -63,8 +63,8 @@ func setup() {
 	}
 
 	embeddingModel = &models.EmbeddingModel{
-		Name:       "local",
-		Dimensions: 768,
+		Name:       "AdaEmbeddingV2",
+		Dimensions: 1536,
 	}
 }
 
@@ -676,6 +676,10 @@ func TestGetSummary(t *testing.T) {
 }
 
 func TestPutEmbeddings(t *testing.T) {
+	CleanDB(t, testDB)
+	err := ensurePostgresSetup(testCtx, appState, testDB)
+	assert.NoError(t, err)
+
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 

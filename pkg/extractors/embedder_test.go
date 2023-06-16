@@ -53,8 +53,8 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	}
 
 	model := &models.EmbeddingModel{
-		Name:       "local",
-		Dimensions: 768,
+		Name:       "AdaEmbeddingV2",
+		Dimensions: 1536,
 	}
 	embeddings, err := llms.EmbedTexts(ctx, appState, model, texts)
 	assert.NoError(t, err)
