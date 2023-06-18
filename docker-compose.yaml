@@ -46,9 +46,8 @@ services:
           condition: service_healthy
     ports:
         - "8000:8000"
-    configs:
-      - source: config
-        target: /app/config.yaml
+    volumes:
+      - ./config.yaml:/app/config.yaml
     environment:
       - ZEP_MEMORY_STORE_POSTGRES_DSN=postgres://postgres:postgres@db:5432/postgres?sslmode=disable
       - ZEP_NLP_SERVER_URL=http://nlp:8080
