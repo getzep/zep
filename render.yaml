@@ -22,6 +22,7 @@ services:
   - type: pserv
     name: zep-nlp
     autoDeploy: false
+    healthCheckPath: /healthz
     env: image
     image:
       url: ghcr.io/getzep/zep-nlp-server:latest
