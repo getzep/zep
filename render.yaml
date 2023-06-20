@@ -8,6 +8,8 @@ services:
       url: ghcr.io/getzep/zep-cloud:latest
     healthCheckPath: /healthz
     envVars:
+      - key: PORT
+        value: 8000
       - key: ZEP_MEMORY_STORE_POSTGRES_DSN
         fromDatabase:
           name: zep-postgres
