@@ -51,6 +51,25 @@ func (pms *PostgresMemoryStore) GetClient() *bun.DB {
 	return pms.Client
 }
 
+// GetSession retrieves a Session for a given sessionID.
+func (pms *PostgresMemoryStore) GetSession(
+	ctx context.Context,
+	appState *models.AppState,
+	sessionID string,
+) (*models.Session, error) {
+	return nil, nil
+}
+
+// PutSession creates or updates a Session for a given sessionID.
+func (pms *PostgresMemoryStore) PutSession(
+	ctx context.Context,
+	appState *models.AppState,
+	sessionID string,
+	profile *models.Session,
+) error {
+	return nil
+}
+
 // GetMemory returns the most recent Summary and a list of messages for a given sessionID.
 // GetMemory returns:
 //   - the most recent Summary, if one exists

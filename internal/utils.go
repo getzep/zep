@@ -3,6 +3,7 @@ package internal
 import (
 	"bytes"
 	"reflect"
+	"strconv"
 	"text/template"
 )
 
@@ -77,4 +78,24 @@ func StructToMap(item interface{}) map[string]interface{} {
 	}
 
 	return out
+}
+
+// FlattenMap flattens a map of metadata into a single-level map by recursively
+// flattening any nested maps into dot-separated keys.
+func FlattenMap(prefix string, src map[string]interface{}, dest map[string]interface{}) {
+	if len(prefix) > 0 {
+		prefix += "."
+	}
+	for k, v := range src {
+		switch child := v.(type) {
+		case map[string]interface{}:
+			FlattenMap(prefix+k, child, dest)
+		case []interface{}:
+			for i := 0; i < len(child); i++ {
+				dest[prefix+k+"."+strconv.Itoa(i)] = child[i]
+			}
+		default:
+			dest[prefix+k] = v
+		}
+	}
 }

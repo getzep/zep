@@ -12,7 +12,7 @@ import (
 func TestPutUnPrivilegedMetadata(t *testing.T) {
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
-	_, err = putSession(testCtx, testDB, sessionID, nil)
+	_, err = putSession(testCtx, testDB, sessionID, nil, true)
 	assert.NoError(t, err, "putSession should not return an error")
 
 	testMessages := []PgMessageStore{
@@ -108,7 +108,7 @@ func TestPutUnPrivilegedMetadata(t *testing.T) {
 func TestPutMetadata(t *testing.T) {
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
-	_, err = putSession(testCtx, testDB, sessionID, nil)
+	_, err = putSession(testCtx, testDB, sessionID, nil, true)
 	assert.NoError(t, err, "putSession should not return an error")
 
 	testMessages := []PgMessageStore{

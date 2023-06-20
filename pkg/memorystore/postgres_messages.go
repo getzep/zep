@@ -30,7 +30,7 @@ func putMessages(
 	log.Debugf("putMessages called for session %s with %d messages", sessionID, len(messages))
 
 	// Create or update a Session
-	s, err := putSession(ctx, db, sessionID, nil)
+	s, err := putSession(ctx, db, sessionID, nil, false)
 	if err != nil {
 		return nil, NewStorageError("failed to put session", err)
 	}

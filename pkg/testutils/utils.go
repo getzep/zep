@@ -9,6 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
+
+	"github.com/oiime/logrusbun"
+	"github.com/sirupsen/logrus"
+	"github.com/uptrace/bun"
 
 	"github.com/spf13/viper"
 
@@ -92,4 +97,16 @@ func FindProjectRoot() (string, error) {
 		// Move up one directory level.
 		dir = filepath.Dir(dir)
 	}
+}
+
+func SetUpDBLogging(db *bun.DB, log logrus.FieldLogger) {
+	db.AddQueryHook(logrusbun.NewQueryHook(logrusbun.QueryHookOptions{
+		LogSlow:         time.Second,
+		Logger:          log,
+		QueryLevel:      logrus.InfoLevel,
+		ErrorLevel:      logrus.ErrorLevel,
+		SlowLevel:       logrus.WarnLevel,
+		MessageTemplate: "{{.Operation}}[{{.Duration}}]: {{.Query}}",
+		ErrorTemplate:   "{{.Operation}}[{{.Duration}}]: {{.Query}}: {{.Error}}",
+	}))
 }

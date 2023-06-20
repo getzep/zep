@@ -11,3 +11,7 @@ type MemorySearchPayload struct {
 	Text     string                 `json:"text"`
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
+
+type SessionSearchPayload struct {
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
+}
