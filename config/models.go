@@ -35,6 +35,7 @@ type ExtractorsConfig struct {
 	Summarizer SummarizerConfig      `mapstructure:"summarizer"`
 	Embeddings EmbeddingsConfig      `mapstructure:"embeddings"`
 	Entities   EntityExtractorConfig `mapstructure:"entities"`
+	Intent     IntentExtractorConfig `mapstructure:"intent"`
 }
 
 type SummarizerConfig struct {
@@ -61,4 +62,8 @@ type ServerConfig struct {
 
 type LogConfig struct {
 	Level string `mapstructure:"level"`
+}
+
+type IntentExtractorConfig struct {
+	Enabled bool `mapstructure:"enabled"`
 }

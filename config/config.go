@@ -56,7 +56,7 @@ func LoadConfig(configFile string) (*Config, error) {
 func loadDotEnv() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Warn(".env file not found or unable to load")
+		log.Warn(".env file not found or unable to load with error: " + err.Error())
 	}
 }
 

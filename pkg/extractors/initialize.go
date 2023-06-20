@@ -35,4 +35,10 @@ func Initialize(appState *models.AppState) {
 		appState.Config.Extractors.Entities.Enabled,
 		func() models.Extractor { return NewEntityExtractor() },
 	)
+	attach(
+		"IntentExtractor",
+		// appState.Config.Extractors.Intent.Enabled,
+		true,
+		func() models.Extractor { return NewIntentExtractor() },
+	)
 }
