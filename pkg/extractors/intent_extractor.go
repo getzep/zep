@@ -106,9 +106,6 @@ func (ee *IntentExtractor) processMessage(
 			UUID:     message.UUID,
 			Key:      "system",
 			Metadata: map[string]interface{}{"intent": intentContent},
-			//Metadata: map[string]interface{}{
-			//	"system": map[string]interface{}{"intent": intentContent},
-			//},
 		},
 	}
 

@@ -103,7 +103,6 @@ func TestPutUnPrivilegedMetadata(t *testing.T) {
 			assert.Equal(t, expectedMeta, msg.Metadata)
 		})
 	}
-
 }
 
 func TestPutMetadata(t *testing.T) {
