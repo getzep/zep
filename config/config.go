@@ -56,7 +56,10 @@ func LoadConfig(configFile string) (*Config, error) {
 func loadDotEnv() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Warn(".env file not found or unable to load with error: " + err.Error())
+		log.Warn(
+			".env file not found or unable to load. This warning can be ignored if Zep is run" +
+				" using docker compose with env_file defined or you are passing ENV variables.",
+		)
 	}
 }
 
