@@ -31,6 +31,19 @@ type MemoryConfig struct {
 	MessageWindow int `mapstructure:"message_window"`
 }
 
+type PostgresConfig struct {
+	DSN string `mapstructure:"dsn"`
+}
+
+type ServerConfig struct {
+	Port int `mapstructure:"port"`
+}
+
+type LogConfig struct {
+	Level string `mapstructure:"level"`
+}
+
+// ExtractorsConfig holds the configuration for all extractors
 type ExtractorsConfig struct {
 	Summarizer SummarizerConfig      `mapstructure:"summarizer"`
 	Embeddings EmbeddingsConfig      `mapstructure:"embeddings"`
@@ -50,18 +63,6 @@ type EmbeddingsConfig struct {
 
 type EntityExtractorConfig struct {
 	Enabled bool `mapstructure:"enabled"`
-}
-
-type PostgresConfig struct {
-	DSN string `mapstructure:"dsn"`
-}
-
-type ServerConfig struct {
-	Port int `mapstructure:"port"`
-}
-
-type LogConfig struct {
-	Level string `mapstructure:"level"`
 }
 
 type IntentExtractorConfig struct {
