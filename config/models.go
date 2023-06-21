@@ -20,7 +20,9 @@ type MemoryStoreConfig struct {
 type LLM struct {
 	Model string `mapstructure:"model"`
 	// OpenAIAPIKey is loaded from ENV not config file.
-	OpenAIAPIKey string `mapstructure:"openai_api_key"`
+	OpenAIAPIKey        string `mapstructure:"openai_api_key"`
+	AzureOpenAIEndpoint string `mapstructure:"azure_openai_endpoint"`
+	OpenAIOrgID         string `mapstructure:"openai_org_id"`
 }
 
 type NLP struct {
