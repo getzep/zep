@@ -1,6 +1,7 @@
 package memorystore
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 	"reflect"
@@ -744,6 +745,72 @@ func TestPutEmbeddings(t *testing.T) {
 			"Expected embedding vector to be equal",
 		)
 		assert.Equal(t, true, memVec.IsEmbedded, "Expected IsEmbedded to be true")
+	}
+}
+
+func TestSearch(t *testing.T) {
+	// Test data
+	sessionID, err := testutils.GenerateRandomSessionID(16)
+	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
+
+	// Call putMessages function
+	msgs, err := putMessages(testCtx, testDB, sessionID, testutils.TestMessages)
+	assert.NoError(t, err, "putMessages should not return an error")
+
+	appState.MemoryStore.NotifyExtractors(
+		context.Background(),
+		appState,
+		&models.MessageEvent{SessionID: sessionID,
+			Messages: msgs},
+	)
+
+	// enrichment runs async. Wait for it to finish
+	// This is hacky but I'd prefer not to add a WaitGroup to the putMessages function just for testing purposes
+	time.Sleep(time.Second * 2)
+
+	// Test cases
+	testCases := []struct {
+		name              string
+		query             string
+		limit             int
+		expectedErrorText string
+	}{
+		{"Empty Query", "", 0, "empty query"},
+		{"Non-empty Query", "travel", 0, ""},
+		{"Limit 0", "travel", 0, ""},
+		{"Limit 5", "travel", 5, ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			q := models.MemorySearchPayload{Text: tc.query}
+			expectedLastN := tc.limit
+			if expectedLastN == 0 {
+				expectedLastN = 10 // Default value
+			}
+
+			s, err := searchMessages(testCtx, appState, testDB, sessionID, &q, expectedLastN)
+
+			if tc.expectedErrorText != "" {
+				assert.ErrorContains(
+					t,
+					err,
+					tc.expectedErrorText,
+					"searchMessages should return the expected error",
+				)
+			} else {
+				assert.NoError(t, err, "searchMessages should not return an error")
+				assert.Len(t, s, expectedLastN, fmt.Sprintf("Expected %d messages to be returned", expectedLastN))
+
+				for _, res := range s {
+					assert.NotNil(t, res.Message.UUID, "message__uuid should be present")
+					assert.NotNil(t, res.Message.CreatedAt, "message__created_at should be present")
+					assert.NotNil(t, res.Message.Role, "message__role should be present")
+					assert.NotNil(t, res.Message.Content, "message__content should be present")
+					assert.NotZero(t, res.Message.TokenCount, "message_token_count should be present")
+				}
+			}
+		})
 	}
 }
 
