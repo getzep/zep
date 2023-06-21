@@ -97,11 +97,14 @@ func putMessageMetadataTx(
 		msg.Metadata = make(map[string]interface{})
 	}
 
-	storeMetadataByPath(
+	err = storeMetadataByPath(
 		msg.Metadata,
 		strings.Split(messageMetadata.Key, "."),
 		messageMetadata.Metadata,
 	)
+	if err != nil {
+		return NewStorageError("failed to store metadata by path", err)
+	}
 
 	msg.UUID = messageMetadata.UUID
 	_, err = tx.NewUpdate().
