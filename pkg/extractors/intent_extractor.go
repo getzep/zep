@@ -31,7 +31,10 @@ func (ee *IntentExtractor) Extract(
 
 	// Sanity checker: Check if there's exactly one message in messageEvent
 	if len(messageEvent.Messages) != 1 {
-		return NewExtractorError(fmt.Sprintf("IntentExtractor: expected 1 message, got %d", len(messageEvent.Messages)), nil)
+		return NewExtractorError(
+			fmt.Sprintf("IntentExtractor: expected 1 message, got %d", len(messageEvent.Messages)),
+			nil,
+		)
 	}
 
 	// As we only have one message in messageEvent, we can directly use it. The iterator is in Notify.
@@ -61,8 +64,10 @@ func (ee *IntentExtractor) Extract(
 	// Put the intent into the message metadata
 	intentResponse := []models.MessageMetadata{
 		{
-			UUID:     message.UUID,
-			Metadata: map[string]interface{}{"system": map[string]interface{}{"intent": intentContent}},
+			UUID: message.UUID,
+			Metadata: map[string]interface{}{
+				"system": map[string]interface{}{"intent": intentContent},
+			},
 		},
 	}
 
@@ -70,7 +75,10 @@ func (ee *IntentExtractor) Extract(
 	log.Debugf("IntentExtractor: intentResponse: %+v", intentResponse)
 	err = appState.MemoryStore.PutMessageMetadata(ctx, appState, sessionID, intentResponse, true)
 	if err != nil {
-		return NewExtractorError("IntentExtractor failed to put message metadata: "+err.Error(), err)
+		return NewExtractorError(
+			"IntentExtractor failed to put message metadata: "+err.Error(),
+			err,
+		)
 	}
 
 	return nil
