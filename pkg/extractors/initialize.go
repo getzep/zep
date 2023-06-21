@@ -37,8 +37,7 @@ func Initialize(appState *models.AppState) {
 	)
 	attach(
 		"IntentExtractor",
-		// appState.Config.Extractors.Intent.Enabled,
-		true,
+		appState.Config.Extractors.Intent.Enabled,
 		func() models.Extractor { return NewIntentExtractor() },
 	)
 }

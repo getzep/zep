@@ -21,5 +21,3 @@ type IntentResponse struct {
 type IntentPromptTemplateData struct {
 	Input string
 }
-
-const intentPromptTemplate = `intent:`
