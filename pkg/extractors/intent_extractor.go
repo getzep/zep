@@ -2,6 +2,7 @@ package extractors
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 
@@ -35,65 +36,97 @@ func (ee *IntentExtractor) Extract(
 		wg.Add(1)
 		go func(message models.Message) {
 			defer wg.Done()
-
-			// Populate the template with the message
-			data := IntentPromptTemplateData{
-				Input: message.Content,
-			}
-
-			// Create a prompt with the Message input that needs to be classified
-			prompt, err := internal.ParsePrompt(intentPromptTemplate, data)
-			if err != nil {
-				errs <- NewExtractorError("IntentExtractor: "+err.Error(), err)
-				return
-			}
-
-			// Send the populated prompt to the language model
-			resp, err := llms.RunChatCompletion(ctx, appState, intentMaxTokens, prompt)
-			if err != nil {
-				errs <- NewExtractorError("IntentExtractor: "+err.Error(), err)
-				return
-			}
-
-			// Get the intent from the response
-			intentContent := resp.Choices[0].Message.Content
-			intentContent = strings.TrimPrefix(intentContent, "Intent: ")
-
-			// Put the intent into the message metadata
-			intentResponse := []models.MessageMetadata{
-				{
-					UUID: message.UUID,
-					Metadata: map[string]interface{}{
-						"system": map[string]interface{}{"intent": intentContent},
-					},
-				},
-			}
-
-			// Put the intent into the message metadata
-			log.Debugf("IntentExtractor: intentResponse: %+v", intentResponse)
-			err = appState.MemoryStore.PutMessageMetadata(ctx, appState, sessionID, intentResponse, true)
-			if err != nil {
-				errs <- NewExtractorError(
-					"IntentExtractor failed to put message metadata: "+err.Error(),
-					err,
-				)
-				return
-			}
+			ee.processMessage(ctx, message, appState, sessionID, errs)
 		}(message)
 	}
 
-	// Wait for all goroutines to finish
-	wg.Wait()
-	close(errs)
+	// Create a goroutine to close errs after wg is done
+	go func() {
+		wg.Wait()
+		close(errs)
+	}()
 
-	// Check if we got any errors
+	// Initialize variables for collecting multiple errors
+	var errStrings []string
+	var hasErrors bool
+
+	// Check if we got any errors and collect all errors.
+	// This will loop until errs is closed..
 	for err := range errs {
 		if err != nil {
-			return NewExtractorError("IntentExtractor: Extract Failed", err)
+			hasErrors = true
+			errStrings = append(errStrings, err.Error())
 		}
 	}
 
+	// Return combined errors strings if hasErrors is set to true
+	if hasErrors {
+		return NewExtractorError(
+			"IntentExtractor: Extract Failed",
+			errors.New(strings.Join(errStrings, "; ")),
+		)
+	}
+
 	return nil
+}
+
+func (ee *IntentExtractor) processMessage(
+	ctx context.Context,
+	message models.Message,
+	appState *models.AppState,
+	sessionID string,
+	errs chan error,
+) {
+	// Populate the template with the message
+	data := IntentPromptTemplateData{
+		Input: message.Content,
+	}
+
+	// Create a prompt with the Message input that needs to be classified
+	prompt, err := internal.ParsePrompt(intentPromptTemplate, data)
+	if err != nil {
+		errs <- NewExtractorError("IntentExtractor: "+err.Error(), err)
+		return
+	}
+
+	// Send the populated prompt to the language model
+	resp, err := llms.RunChatCompletion(ctx, appState, intentMaxTokens, prompt)
+	if err != nil {
+		errs <- NewExtractorError("IntentExtractor: "+err.Error(), err)
+		return
+	}
+
+	// Get the intent from the response
+	intentContent := resp.Choices[0].Message.Content
+	intentContent = strings.TrimPrefix(intentContent, "Intent: ")
+
+	// Put the intent into the message metadata
+	intentResponse := []models.MessageMetadata{
+		{
+			UUID:     message.UUID,
+			Key:      "system",
+			Metadata: map[string]interface{}{"intent": intentContent},
+			//Metadata: map[string]interface{}{
+			//	"system": map[string]interface{}{"intent": intentContent},
+			//},
+		},
+	}
+
+	// Put the intent into the message metadata
+	log.Debugf("IntentExtractor: intentResponse: %+v", intentResponse)
+	err = appState.MemoryStore.PutMessageMetadata(
+		ctx,
+		appState,
+		sessionID,
+		intentResponse,
+		true,
+	)
+	if err != nil {
+		errs <- NewExtractorError(
+			"IntentExtractor failed to put message metadata: "+err.Error(),
+			err,
+		)
+	}
 }
 
 func (ee *IntentExtractor) Notify(
