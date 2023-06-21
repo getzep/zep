@@ -1,5 +1,19 @@
 package extractors
 
+const intentPromptTemplate = `
+You are an AI assistant helping to provide intents. Whenever I ask a question, respond back with the intent. 
+You respond back with the Intent of the question rather than providing the answer to the question. If you can't derive an Intent then simply respond back with Intent: None.
+EXAMPLE
+Human: Does Nike make running shoes?
+Intent: The subject is inquiring about whether Nike, a specific brand, manufactures running shoes.
+
+Subject:{{.Input}}
+`
+
+type IntentPromptTemplateData struct {
+	Input string
+}
+
 const summaryPromptTemplate = `
 Review the Current Content, if there is one, and the New Lines of the provided conversation. Create a concise summary 
 of the conversation, adding from the New Lines to the Current summary.
