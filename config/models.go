@@ -10,6 +10,7 @@ type Config struct {
 	MemoryStore MemoryStoreConfig `mapstructure:"memory_store"`
 	Server      ServerConfig      `mapstructure:"server"`
 	Log         LogConfig         `mapstructure:"log"`
+	Auth        AuthConfig        `mapstructure:"auth"`
 }
 
 type MemoryStoreConfig struct {
@@ -41,6 +42,11 @@ type ServerConfig struct {
 
 type LogConfig struct {
 	Level string `mapstructure:"level"`
+}
+
+type AuthConfig struct {
+	Secret   string `mapstructure:"secret"`
+	Required bool   `mapstructure:"required"`
 }
 
 // ExtractorsConfig holds the configuration for all extractors

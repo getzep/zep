@@ -14,6 +14,7 @@ var (
 
 	cfgFile     string
 	showVersion bool
+	generateKey bool
 )
 
 var cmd = &cobra.Command{
@@ -24,8 +25,9 @@ var cmd = &cobra.Command{
 
 func init() {
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default config.yaml)")
-	// add cobra switch to print version number
 	cmd.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "print version number")
+	cmd.PersistentFlags().
+		BoolVarP(&generateKey, "generate-key", "g", false, "generate a new JWT key")
 }
 
 // Execute executes the root cobra command.
