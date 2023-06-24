@@ -34,15 +34,7 @@ func run() {
 		log.Fatalf("Error configuring Zep: %s", err)
 	}
 
-	// Test CLI switches
-	if showVersion {
-		fmt.Println(VersionString)
-		os.Exit(0)
-	}
-	if generateKey {
-		fmt.Println(auth.GenerateKey(cfg))
-		os.Exit(0)
-	}
+	handleCLIOptions(cfg)
 
 	log.Infof("Starting zep server version %s", VersionString)
 
@@ -73,6 +65,18 @@ func NewAppState(cfg *config.Config) *models.AppState {
 	setupSignalHandler(appState)
 
 	return appState
+}
+
+// handleCLIOptions handles CLI options that don't require the server to run
+func handleCLIOptions(cfg *config.Config) {
+	if showVersion {
+		fmt.Println(VersionString)
+		os.Exit(0)
+	}
+	if generateKey {
+		fmt.Println(auth.GenerateJWT(cfg))
+		os.Exit(0)
+	}
 }
 
 // initializeMemoryStore initializes the memory store based on the config file / ENV
