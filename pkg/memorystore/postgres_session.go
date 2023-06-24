@@ -3,10 +3,6 @@ package memorystore
 import (
 	"context"
 	"database/sql"
-	"fmt"
-	"strings"
-
-	"github.com/getzep/zep/internal"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/jinzhu/copier"
@@ -53,9 +49,6 @@ func putSessionMetadata(ctx context.Context,
 	db *bun.DB,
 	sessionID string,
 	metadata map[string]interface{}) (*models.Session, error) {
-	flatMetadata := map[string]interface{}{}
-	internal.FlattenMap("", metadata, flatMetadata)
-
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, NewStorageError("failed to begin transaction", err)
@@ -66,31 +59,95 @@ func putSessionMetadata(ctx context.Context,
 	if err != nil {
 		return nil, NewStorageError("failed to acquire advisory lock", err)
 	}
-	for k, v := range flatMetadata {
-		var pathSlice []string
-		for _, elem := range strings.Split(k, ".") {
-			pathSlice = append(pathSlice, fmt.Sprintf("\"%s\"", elem))
-		}
-		path := fmt.Sprintf("{%s}", strings.Join(pathSlice, ","))
 
-		_, err = tx.ExecContext(
-			ctx,
-			"UPDATE session SET metadata = jsonb_set(metadata, ?, ?, true) WHERE session_id = ?",
-			path,
-			fmt.Sprintf("%v", v),
-			sessionID,
-		)
-		if err != nil {
-			return nil, NewStorageError("failed to update session metadata", err)
-		}
+	dbSession := &PgSession{}
+	_, err = db.NewSelect().
+		Model(dbSession).
+		Where("session_id = ?", sessionID).
+		Exec(ctx)
+	if err != nil {
+		return nil, NewStorageError("failed to get session", err)
 	}
+
+	// merge the existing metadata with the new metadata
+	dbMetadata := dbSession.Metadata
+	if dbMetadata == nil {
+		dbMetadata = map[string]interface{}{}
+	}
+	err = storeMetadataByPath(dbMetadata, nil, metadata)
+	if err != nil {
+		return nil, NewStorageError("failed to store metadata", err)
+	}
+
+	// put the session metadata
+	_, err = db.NewUpdate().
+		Model(&dbSession).
+		Set("metadata = ?", dbSession.Metadata).
+		Where("session_id = ?", sessionID).
+		Returning("*").
+		Exec(ctx)
+	if err != nil {
+		return nil, NewStorageError("failed to update session metadata", err)
+	}
+
 	err = tx.Commit()
 	if err != nil {
 		return nil, NewStorageError("failed to commit update session metadata transaction", err)
 	}
 
-	return getSession(ctx, db, sessionID)
+	session := &models.Session{}
+	err = copier.Copy(session, dbSession)
+	if err != nil {
+		return nil, NewStorageError("Unable to copy session", err)
+	}
+
+	return session, nil
 }
+
+//// putSessionMetadata updates the metadata for a session. The metadata map is merged
+//// with the existing metadata map, creating keys and values if they don't exist.
+//func putSessionMetadata(ctx context.Context,
+//	db *bun.DB,
+//	sessionID string,
+//	metadata map[string]interface{}) (*models.Session, error) {
+//	flatMetadata := map[string]interface{}{}
+//	internal.FlattenMap("", metadata, flatMetadata)
+//
+//	tx, err := db.BeginTx(ctx, nil)
+//	if err != nil {
+//		return nil, NewStorageError("failed to begin transaction", err)
+//	}
+//	defer rollbackOnError(tx)
+//
+//	err = acquireAdvisoryLock(ctx, tx, sessionID)
+//	if err != nil {
+//		return nil, NewStorageError("failed to acquire advisory lock", err)
+//	}
+//	for k, v := range flatMetadata {
+//		var pathSlice []string
+//		for _, elem := range strings.Split(k, ".") {
+//			pathSlice = append(pathSlice, fmt.Sprintf("\"%s\"", elem))
+//		}
+//		path := fmt.Sprintf("{%s}", strings.Join(pathSlice, ","))
+//
+//		_, err = tx.ExecContext(
+//			ctx,
+//			"UPDATE session SET metadata = jsonb_set(metadata, ?, to_jsonb(?::text), true) WHERE session_id = ?",
+//			path,
+//			fmt.Sprintf("%v", v),
+//			sessionID,
+//		)
+//		if err != nil {
+//			return nil, NewStorageError("failed to update session metadata", err)
+//		}
+//	}
+//	err = tx.Commit()
+//	if err != nil {
+//		return nil, NewStorageError("failed to commit update session metadata transaction", err)
+//	}
+//
+//	return getSession(ctx, db, sessionID)
+//}
 
 // getSession retrieves a session from the memory store.
 func getSession(
@@ -115,31 +172,3 @@ func getSession(
 
 	return &retSession, nil
 }
-
-//func searchSessions(
-//	ctx context.Context,
-//	db *bun.DB,
-//	query *models.SessionSearchPayload,
-//	limit int,
-//) ([]models.Session, error) {
-//	//if query == nil {
-//	//	return nil, NewStorageError("nil query received", nil)
-//	//}
-//	//
-//	//dbQuery := buildSessionsSelectQuery(ctx, db, query)
-//	//
-//	//// Add sort and limit.
-//	//addSessionsSortQuery(query.Text, dbQuery)
-//	//
-//	//if limit == 0 {
-//	//	limit = defaultSearchLimit
-//	//}
-//	//dbQuery = dbQuery.Limit(limit)
-//	//
-//	//results, err := executeSessionsSearchScan(ctx, dbQuery)
-//	//if err != nil {
-//	//	return nil, NewStorageError("memory searchSessions failed", err)
-//	//}
-//	//
-//	//return results, nil
-//}
