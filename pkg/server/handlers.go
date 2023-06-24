@@ -124,8 +124,8 @@ func DeleteMemoryHandler(appState *models.AppState) http.HandlerFunc {
 //	@Tags			search
 //	@Accept			json
 //	@Produce		json
-//	@Param			session_id		path		string					true	"Session ID"
-//	@Param			limit			query		integer					false	"Limit the number of results returned"
+//	@Param			session_id		path		string						true	"Session ID"
+//	@Param			limit			query		integer						false	"Limit the number of results returned"
 //	@Param			searchPayload	body		models.MemorySearchPayload	true	"Search query"
 //	@Success		200				{object}	[]models.MemorySearchResult
 //	@Failure		404				{object}	APIError	"Not Found"
@@ -200,4 +200,9 @@ func extractQueryStringValueToInt(
 		}
 	}
 	return pInt, nil
+}
+
+// APIError represents an error response. Used for swagger documentation.
+type APIError struct {
+	Message string `json:"message"`
 }
