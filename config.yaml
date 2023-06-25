@@ -24,6 +24,10 @@ memory_store:
     dsn: "postgres://postgres:postgres@localhost:5432/?sslmode=disable"
 server:
   port: 8000
+data:
+  #  PurgeEvery is the period between hard deletes, in minutes.
+  #  If set to 0 or undefined, hard deletes will not be performed.
+  purge_every: 60
 log:
   level: "info"
 

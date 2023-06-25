@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -63,6 +64,7 @@ func NewAppState(cfg *config.Config) *models.AppState {
 
 	initializeMemoryStore(appState)
 	setupSignalHandler(appState)
+	setupPurgeProcessor(context.Background(), appState)
 
 	return appState
 }
@@ -121,5 +123,33 @@ func setupSignalHandler(appState *models.AppState) {
 			log.Errorf("Error closing MemoryStore connection: %v", err)
 		}
 		os.Exit(0)
+	}()
+}
+
+// setupPurgeProcessor sets up a go routine to purge deleted records from the MemoryStore
+// at a regular interval. It's cancellable via the passed context.
+// If Config.DataConfig.PurgeEvery is 0, this function does nothing.
+func setupPurgeProcessor(ctx context.Context, appState *models.AppState) {
+	interval := time.Duration(appState.Config.DataConfig.PurgeEvery) * time.Minute
+	if interval == 0 {
+		log.Debug("purge delete processor disabled")
+		return
+	}
+
+	log.Infof("Starting purge delete processor. Purging every %v", interval)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				log.Info("Stopping purge delete processor")
+				return
+			default:
+				err := appState.MemoryStore.PurgeDeleted(ctx)
+				if err != nil {
+					log.Errorf("error purging deleted records: %v", err)
+				}
+			}
+			time.Sleep(interval)
+		}
 	}()
 }

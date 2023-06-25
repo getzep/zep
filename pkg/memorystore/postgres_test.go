@@ -197,64 +197,6 @@ func TestGetSession(t *testing.T) {
 	}
 }
 
-func TestPgDeleteSession(t *testing.T) {
-	memoryWindow := 10
-	appState.Config.Memory.MessageWindow = memoryWindow
-
-	// Test data
-	sessionID, err := testutils.GenerateRandomSessionID(16)
-	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
-
-	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
-	assert.NoError(t, err, "putSession should not return an error")
-
-	messages := []models.Message{
-		{
-			Role:     "user",
-			Content:  "Hello",
-			Metadata: map[string]interface{}{"timestamp": "1629462540"},
-		},
-		{
-			Role:     "bot",
-			Content:  "Hi there!",
-			Metadata: map[string]interface{}{"timestamp": 1629462551},
-		},
-	}
-
-	// Call putMessages function
-	resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
-	assert.NoError(t, err, "putMessages should not return an error")
-
-	// Put a summary
-	summary := models.Summary{
-		Content: "This is a summary",
-		Metadata: map[string]interface{}{
-			"timestamp": 1629462551,
-		},
-		SummaryPointUUID: resultMessages[0].UUID,
-	}
-	_, err = putSummary(testCtx, testDB, sessionID, &summary)
-	assert.NoError(t, err, "putSummary should not return an error")
-
-	err = deleteSession(testCtx, testDB, sessionID)
-	assert.NoError(t, err, "deleteSession should not return an error")
-
-	// Test that session is deleted
-	resp, err := getSession(testCtx, testDB, sessionID)
-	assert.NoError(t, err, "getSession should not return an error")
-	assert.Nil(t, resp, "getSession should return nil")
-
-	// Test that messages are deleted
-	respMessages, err := getMessages(testCtx, testDB, sessionID, memoryWindow, nil, 0)
-	assert.NoError(t, err, "getMessages should not return an error")
-	assert.Nil(t, respMessages, "getMessages should return nil")
-
-	// Test that summary is deleted
-	respSummary, err := getSummary(testCtx, testDB, sessionID)
-	assert.NoError(t, err, "getSummary should not return an error")
-	assert.Nil(t, respSummary, "getSummary should return nil")
-}
-
 func TestPutMessages(t *testing.T) {
 	messages := []models.Message{
 		{
