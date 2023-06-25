@@ -36,7 +36,7 @@ func NewOpenAIRetryClient(cfg *config.Config) *openairetryclient.OpenAIRetryClie
 			MaxAttempts uint
 		}{
 			Timeout:     openAIAPITimeout,
-			MaxAttempts: 3,
+			MaxAttempts: 5,
 		},
 	}
 }
