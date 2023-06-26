@@ -90,7 +90,10 @@ func putMessageMetadataTx(
 		Where("session_id = ? AND uuid = ?", sessionID, messageMetadata.UUID).
 		Scan(ctx)
 	if err != nil {
-		return NewStorageError("failed to retrieve existing metadata", err)
+		return NewStorageError(
+			"failed to retrieve existing metadata. was the session deleted?",
+			err,
+		)
 	}
 
 	if msg.Metadata == nil {

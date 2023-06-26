@@ -13,7 +13,7 @@ import (
 	"github.com/sashabaranov/go-openai"
 )
 
-const openAIAPITimeout = 60 * time.Second
+const openAIAPITimeout = 90 * time.Second
 const OpenAIAPIKeyNotSetError = "ZEP_OPENAI_API_KEY is not set" //nolint:gosec
 const InvalidLLMModelError = "llm model is not set or is invalid"
 
@@ -36,7 +36,7 @@ func NewOpenAIRetryClient(cfg *config.Config) *openairetryclient.OpenAIRetryClie
 			MaxAttempts uint
 		}{
 			Timeout:     openAIAPITimeout,
-			MaxAttempts: 3,
+			MaxAttempts: 5,
 		},
 	}
 }
