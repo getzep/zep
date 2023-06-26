@@ -172,6 +172,13 @@ func (*PgSummaryStore) AfterCreateTable(
 	return err
 }
 
+var tableList = []bun.BeforeCreateTableHook{
+	&PgMessageVectorStore{},
+	&PgSummaryStore{},
+	&PgMessageStore{},
+	&PgSession{},
+}
+
 // ensurePostgresSetup creates the db schema if it does not exist.
 func ensurePostgresSetup(
 	ctx context.Context,
@@ -183,13 +190,9 @@ func ensurePostgresSetup(
 		return fmt.Errorf("error creating pgvector extension: %w", err)
 	}
 
-	schemas := []bun.BeforeCreateTableHook{
-		&PgSession{},
-		&PgMessageStore{},
-		&PgMessageVectorStore{},
-		&PgSummaryStore{},
-	}
-	for _, schema := range schemas {
+	// iterate through tableList in reverse order to create tables with foreign keys first
+	for i := len(tableList) - 1; i >= 0; i-- {
+		schema := tableList[i]
 		_, err := db.NewCreateTable().
 			Model(schema).
 			IfNotExists().

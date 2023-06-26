@@ -237,6 +237,15 @@ func (pms *PostgresMemoryStore) GetMessageVectors(ctx context.Context,
 	return embeddings, nil
 }
 
+func (pms *PostgresMemoryStore) PurgeDeleted(ctx context.Context) error {
+	err := purgeDeleted(ctx, pms.Client)
+	if err != nil {
+		return NewStorageError("failed to purge deleted", err)
+	}
+
+	return nil
+}
+
 // acquireAdvisoryLock acquires a PostgreSQL advisory lock for the given key.
 // Expects a transaction to be open in tx.
 // `pg_advisory_xact_lock` will wait until the lock is available. The lock is released

@@ -10,6 +10,7 @@ type Config struct {
 	MemoryStore MemoryStoreConfig `mapstructure:"memory_store"`
 	Server      ServerConfig      `mapstructure:"server"`
 	Log         LogConfig         `mapstructure:"log"`
+	DataConfig  DataConfig        `mapstructure:"data"`
 }
 
 type MemoryStoreConfig struct {
@@ -43,6 +44,12 @@ type ServerConfig struct {
 
 type LogConfig struct {
 	Level string `mapstructure:"level"`
+}
+
+type DataConfig struct {
+	// PurgeEvery is the period between hard deletes, in minutes.
+	// If set to 0, hard deletes will not be performed.
+	PurgeEvery int `mapstructure:"purge_every"`
 }
 
 // ExtractorsConfig holds the configuration for all extractors
