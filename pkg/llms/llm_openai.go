@@ -28,7 +28,18 @@ func NewOpenAIRetryClient(cfg *config.Config) *openairetryclient.OpenAIRetryClie
 	if apiKey == "" {
 		log.Fatal(OpenAIAPIKeyNotSetError)
 	}
-	client := openai.NewClient(apiKey)
+
+	var openAIClientConfig openai.ClientConfig
+	azureEndpoint := cfg.LLM.AzureOpenAIEndpoint
+	if azureEndpoint != "" {
+		openAIClientConfig = openai.DefaultAzureConfig(apiKey, azureEndpoint)
+	} else {
+		openAIClientConfig = openai.DefaultConfig(apiKey)
+		openAIClientConfig.OrgID = cfg.LLM.OpenAIOrgID
+	}
+
+	client := openai.NewClientWithConfig(openAIClientConfig)
+
 	return &openairetryclient.OpenAIRetryClient{
 		Client: *client,
 		Config: struct {
