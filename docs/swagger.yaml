@@ -1,4 +1,4 @@
-basePath: /apt/v1
+basePath: /api/v1
 definitions:
   models.Memory:
     properties:
@@ -11,6 +11,28 @@ definitions:
         type: object
       summary:
         $ref: '#/definitions/models.Summary'
+    type: object
+  models.MemorySearchPayload:
+    properties:
+      metadata:
+        additionalProperties: true
+        type: object
+      text:
+        type: string
+    type: object
+  models.MemorySearchResult:
+    properties:
+      dist:
+        type: number
+      message:
+        $ref: '#/definitions/models.Message'
+      metadata:
+        additionalProperties: true
+        type: object
+      summary:
+        allOf:
+        - $ref: '#/definitions/models.Summary'
+        description: reserved for future use
     type: object
   models.Message:
     properties:
@@ -27,30 +49,6 @@ definitions:
         type: integer
       uuid:
         type: string
-    type: object
-  models.SearchPayload:
-    properties:
-      meta:
-        additionalProperties: true
-        description: reserved for future use
-        type: object
-      text:
-        type: string
-    type: object
-  models.SearchResult:
-    properties:
-      dist:
-        type: number
-      message:
-        $ref: '#/definitions/models.Message'
-      meta:
-        additionalProperties: true
-        description: reserved for future use
-        type: object
-      summary:
-        allOf:
-        - $ref: '#/definitions/models.Summary'
-        description: reserved for future use
     type: object
   models.Summary:
     properties:
@@ -71,19 +69,15 @@ definitions:
     type: object
   server.APIError:
     properties:
-      code:
-        type: integer
       message:
         type: string
     type: object
 info:
   contact: {}
-  description: Zep stores, manages, enriches, and searches long-term memory for conversational
-    AI applications
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
-  title: Zep Long-term Memory API
+  title: Zep REST API
 paths:
   /api/v1/sessions/{sessionId}/memory:
     delete:
@@ -203,7 +197,7 @@ paths:
         name: searchPayload
         required: true
         schema:
-          $ref: '#/definitions/models.SearchPayload'
+          $ref: '#/definitions/models.MemorySearchPayload'
       produces:
       - application/json
       responses:
@@ -211,7 +205,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/models.SearchResult'
+              $ref: '#/definitions/models.MemorySearchResult'
             type: array
         "404":
           description: Not Found

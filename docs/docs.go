@@ -199,7 +199,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/models.SearchPayload"
+                            "$ref": "#/definitions/models.MemorySearchPayload"
                         }
                     }
                 ],
@@ -209,7 +209,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.SearchResult"
+                                "$ref": "#/definitions/models.MemorySearchResult"
                             }
                         }
                     },
@@ -248,6 +248,41 @@ const docTemplate = `{
                 }
             }
         },
+        "models.MemorySearchPayload": {
+            "type": "object",
+            "properties": {
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.MemorySearchResult": {
+            "type": "object",
+            "properties": {
+                "dist": {
+                    "type": "number"
+                },
+                "message": {
+                    "$ref": "#/definitions/models.Message"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "summary": {
+                    "description": "reserved for future use",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.Summary"
+                        }
+                    ]
+                }
+            }
+        },
         "models.Message": {
             "type": "object",
             "properties": {
@@ -269,43 +304,6 @@ const docTemplate = `{
                 },
                 "uuid": {
                     "type": "string"
-                }
-            }
-        },
-        "models.SearchPayload": {
-            "type": "object",
-            "properties": {
-                "meta": {
-                    "description": "reserved for future use",
-                    "type": "object",
-                    "additionalProperties": true
-                },
-                "text": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.SearchResult": {
-            "type": "object",
-            "properties": {
-                "dist": {
-                    "type": "number"
-                },
-                "message": {
-                    "$ref": "#/definitions/models.Message"
-                },
-                "meta": {
-                    "description": "reserved for future use",
-                    "type": "object",
-                    "additionalProperties": true
-                },
-                "summary": {
-                    "description": "reserved for future use",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/models.Summary"
-                        }
-                    ]
                 }
             }
         },
@@ -337,9 +335,6 @@ const docTemplate = `{
         "server.APIError": {
             "type": "object",
             "properties": {
-                "code": {
-                    "type": "integer"
-                },
                 "message": {
                     "type": "string"
                 }
@@ -352,10 +347,10 @@ const docTemplate = `{
 var SwaggerInfo = &swag.Spec{
 	Version:          "",
 	Host:             "",
-	BasePath:         "/apt/v1",
+	BasePath:         "/api/v1",
 	Schemes:          []string{"http", "https"},
-	Title:            "Zep Long-term Memory API",
-	Description:      "Zep stores, manages, enriches, and searches long-term memory for conversational AI applications",
+	Title:            "Zep REST API",
+	Description:      "",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

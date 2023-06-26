@@ -10,6 +10,7 @@ type Config struct {
 	MemoryStore MemoryStoreConfig `mapstructure:"memory_store"`
 	Server      ServerConfig      `mapstructure:"server"`
 	Log         LogConfig         `mapstructure:"log"`
+	Auth        AuthConfig        `mapstructure:"auth"`
 	DataConfig  DataConfig        `mapstructure:"data"`
 }
 
@@ -44,6 +45,11 @@ type ServerConfig struct {
 
 type LogConfig struct {
 	Level string `mapstructure:"level"`
+}
+
+type AuthConfig struct {
+	Secret   string `mapstructure:"secret"`
+	Required bool   `mapstructure:"required"`
 }
 
 type DataConfig struct {

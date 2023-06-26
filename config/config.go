@@ -13,6 +13,12 @@ import (
 // We're bootstrapping so avoid any imports from other packages
 var log = logrus.New()
 
+// EnvVars is a set of secrets that should be stored in the environment, not config file
+var EnvVars = map[string]string{
+	"llm.openai_api_key": "ZEP_OPENAI_API_KEY",
+	"auth.secret":        "ZEP_AUTH_SECRET",
+}
+
 // LoadConfig loads the config file and ENV variables into a Config struct
 func LoadConfig(configFile string) (*Config, error) {
 	if configFile != "" {
@@ -39,9 +45,9 @@ func LoadConfig(configFile string) (*Config, error) {
 	// Environment variables take precedence over config file
 	loadDotEnv()
 
-	err := viper.BindEnv("llm.openai_api_key", "ZEP_OPENAI_API_KEY")
-	if err != nil {
-		log.Fatalf("Error binding environment variable: %s", err)
+	// Bind environment variables to config keys
+	for key, envVar := range EnvVars {
+		bindEnv(key, envVar)
 	}
 
 	var cfg Config
@@ -60,6 +66,14 @@ func loadDotEnv() {
 			".env file not found or unable to load. This warning can be ignored if Zep is run" +
 				" using docker compose with env_file defined or you are passing ENV variables.",
 		)
+	}
+}
+
+// bindEnv binds an environment variable to a config key
+func bindEnv(key string, envVar string) {
+	err := viper.BindEnv(key, envVar)
+	if err != nil {
+		log.Fatalf("Error binding environment variable: %s", err)
 	}
 }
 

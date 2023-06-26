@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/getzep/zep/pkg/auth"
+
 	"github.com/oiime/logrusbun"
 	"github.com/sirupsen/logrus"
 	"github.com/uptrace/bun"
@@ -28,16 +30,14 @@ const (
 
 // run is the entrypoint for the zep server
 func run() {
-	if showVersion {
-		fmt.Println(VersionString)
-		os.Exit(0)
-	}
-	log.Infof("Starting zep server version %s", VersionString)
-
 	cfg, err := config.LoadConfig(cfgFile)
 	if err != nil {
 		log.Fatalf("Error configuring Zep: %s", err)
 	}
+
+	handleCLIOptions(cfg)
+
+	log.Infof("Starting zep server version %s", VersionString)
 
 	config.SetLogLevel(cfg)
 	appState := NewAppState(cfg)
@@ -67,6 +67,18 @@ func NewAppState(cfg *config.Config) *models.AppState {
 	setupPurgeProcessor(context.Background(), appState)
 
 	return appState
+}
+
+// handleCLIOptions handles CLI options that don't require the server to run
+func handleCLIOptions(cfg *config.Config) {
+	if showVersion {
+		fmt.Println(VersionString)
+		os.Exit(0)
+	}
+	if generateKey {
+		fmt.Println(auth.GenerateJWT(cfg))
+		os.Exit(0)
+	}
 }
 
 // initializeMemoryStore initializes the memory store based on the config file / ENV
