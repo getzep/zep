@@ -11,6 +11,7 @@ type Config struct {
 	Server      ServerConfig      `mapstructure:"server"`
 	Log         LogConfig         `mapstructure:"log"`
 	Auth        AuthConfig        `mapstructure:"auth"`
+	DataConfig  DataConfig        `mapstructure:"data"`
 }
 
 type MemoryStoreConfig struct {
@@ -21,7 +22,9 @@ type MemoryStoreConfig struct {
 type LLM struct {
 	Model string `mapstructure:"model"`
 	// OpenAIAPIKey is loaded from ENV not config file.
-	OpenAIAPIKey string `mapstructure:"openai_api_key"`
+	OpenAIAPIKey        string `mapstructure:"openai_api_key"`
+	AzureOpenAIEndpoint string `mapstructure:"azure_openai_endpoint"`
+	OpenAIOrgID         string `mapstructure:"openai_org_id"`
 }
 
 type NLP struct {
@@ -47,6 +50,12 @@ type LogConfig struct {
 type AuthConfig struct {
 	Secret   string `mapstructure:"secret"`
 	Required bool   `mapstructure:"required"`
+}
+
+type DataConfig struct {
+	// PurgeEvery is the period between hard deletes, in minutes.
+	// If set to 0, hard deletes will not be performed.
+	PurgeEvery int `mapstructure:"purge_every"`
 }
 
 // ExtractorsConfig holds the configuration for all extractors

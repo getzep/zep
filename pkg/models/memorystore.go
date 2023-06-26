@@ -73,6 +73,8 @@ type MemoryStore[T any] interface {
 		appState *AppState,
 		eventData *MessageEvent,
 	)
+	// PurgeDeleted hard deletes all deleted data in the MemoryStore.
+	PurgeDeleted(ctx context.Context) error
 	// Close is called when the application is shutting down. This is a good place to clean up any resources used by
 	// the MemoryStore implementation.
 	Close() error
