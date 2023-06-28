@@ -10,11 +10,13 @@ Zep's Extractor model is easily extensible, with a simple, clean interface avail
 
 **Key Features:**
 - **Fast!** Zep's async extractors operate independently of the your chat loop, ensuring a snappy user experience.
+- **Memory operations** like addMemory(), getMemory(), searchMemory(), deleteMemory() with soft & hard deletes
 - **Long-term memory persistence**, with access to historical messages irrespective of your summarization strategy.
 - **Auto-summarization** of memory messages based on a configurable message window. A series of summaries are stored, providing flexibility for future summarization strategies.
 - Hybrid **Vector search** over memories and metadata, with messages automatically embedded on creation. 
-- **Entity Extractor** that extracts named entities from messages and stores them in the message metadata.
+- **Entity Extractor** that extracts named entities and intents from messages and stores them in the message metadata.
 - **Auto-token counting** of memories and summaries, allowing finer-grained control over prompt assembly.
+- **OpenAI & Azure OpenAI Service** models for your applications
 - **Python** and **JavaScript** SDKs.
 - **Langchain** `memory` and `retriever` support.
 
