@@ -1,0 +1,164 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zep-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zep-postgres
+  template:
+    metadata:
+      labels:
+        app: zep-postgres
+    spec:
+      containers:
+        - name: zep-postgres
+          image: ghcr.io/getzep/postgres:latest
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              value: postgres
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -q
+                - -d
+                - postgres
+                - -U
+                - postgres
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zep-nlp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zep-nlp
+  template:
+    metadata:
+      labels:
+        app: zep-nlp
+    spec:
+      containers:
+        - name: zep-nlp
+          image: ghcr.io/getzep/zep-nlp-server:latest
+          env:
+            - name: ENABLE_EMBEDDINGS
+              value: "false"
+          readinessProbe:
+            tcpSocket:
+              host: 127.0.0.1
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zep
+  template:
+    metadata:
+      labels:
+        app: zep
+    spec:
+      containers:
+        - name: zep
+          image: ghcr.io/getzep/zep:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: ZEP_MEMORY_STORE_POSTGRES_DSN
+              value: postgres://postgres:postgres@zep-postgres:5432/postgres?sslmode=disable
+            - name: ZEP_NLP_SERVER_URL
+              value: http://zep-nlp:8080
+            - name: ZEP_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: zep-openai-api-key
+                  key: ZEP_OPENAI_API_KEY
+            - name: AZURE_OPENAI_SUBSCRIPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: azure-openai-secret
+                  key: subscription-key
+            - name: AZURE_OPENAI_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: azure-openai-secret
+                  key: endpoint
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+          readinessProbe:
+            tcpSocket:
+              host: 127.0.0.1
+              port: 8000
+            initialDelaySeconds: 40
+            periodSeconds: 5
+            timeoutSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+      volumes:
+        - name: config-volume
+          configMap:
+            name: zep-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zep-postgres
+spec:
+  selector:
+    app: zep-postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zep-nlp
+spec:
+  selector:
+    app: zep-nlp
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zep
+spec:
+  type: LoadBalancer
+  selector:
+    app: zep
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
