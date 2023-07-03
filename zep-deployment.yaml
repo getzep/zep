@@ -1,3 +1,9 @@
+## Kubernetes Deployment Configuration YAML
+# Zep Server
+# Note: This is designed for development/test deployments
+# See: kubernetes-readme.md for more details
+# Will need to be customized and hardened with additional security, deployment configurations for production use cases
+##
 apiVersion: apps/v1
 kind: Deployment
 metadata:
