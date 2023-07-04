@@ -1,4 +1,5 @@
 
+
 [![](https://dcbadge.vercel.app/api/server/W8Kw6bsgXQ?style=flat)](https://discord.gg/W8Kw6bsgXQ)
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/getzep/zep)
 [![Build/Test](https://github.com/getzep/zep/actions/workflows/build-test.yml/badge.svg)](https://github.com/getzep/zep/actions/workflows/build-test.yml) [![Docker](https://github.com/getzep/zep/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/getzep/zep/actions/workflows/docker-publish.yml) [![golangci-lint](https://github.com/getzep/zep/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/getzep/zep/actions/workflows/golangci-lint.yml)
@@ -22,8 +23,6 @@ Zep's Extractor model is easily extensible, with a simple, clean interface avail
 - **Langchain** `memory` and `retriever` support.
 
 ## Quick Start
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/getzep/zep)
 Read the docs: [https://docs.getzep.com/](https://docs.getzep.com/)
 Read the docs: [https://getzep.github.io](https://getzep.github.io/)
 
