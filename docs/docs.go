@@ -341,7 +341,7 @@ const docTemplate = `{
             }
         }
     }
-}`
+}
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
@@ -360,3 +360,4 @@ var SwaggerInfo = &swag.Spec{
 func init() {
 	swag.Register(SwaggerInfo.InstanceName(), SwaggerInfo)
 }
+
