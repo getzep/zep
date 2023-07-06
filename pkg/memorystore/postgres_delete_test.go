@@ -18,7 +18,7 @@ func setupTestDeleteData(ctx context.Context, testDB *bun.DB) (string, error) {
 		return "", err
 	}
 
-	_, err = putSession(ctx, testDB, sessionID, map[string]interface{}{})
+	_, err = putSession(ctx, testDB, sessionID, nil, true)
 	if err != nil {
 		return "", err
 	}
