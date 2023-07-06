@@ -1,5 +1,6 @@
 llm:
   # gpt-3.5-turbo or gpt-4
+  openai_endpoint:
   model: "gpt-3.5-turbo"
   azure_openai_endpoint:
   openai_org_id:
