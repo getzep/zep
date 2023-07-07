@@ -67,8 +67,7 @@ type MemoryStore[T any] interface {
 	PutSession(
 		ctx context.Context,
 		appState *AppState,
-		sessionID string,
-		profile *Session,
+		session *Session,
 	) error
 	// OnStart is called when the application starts. This is a good place to initialize any resources or configs that
 	// are required by the MemoryStore implementation.

@@ -50,6 +50,22 @@ definitions:
       uuid:
         type: string
     type: object
+  models.Session:
+    properties:
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      session_id:
+        type: string
+      updated_at:
+        type: string
+      uuid:
+        type: string
+    type: object
   models.Summary:
     properties:
       content:
@@ -79,6 +95,69 @@ info:
     url: http://www.apache.org/licenses/LICENSE-2.0.html
   title: Zep REST API
 paths:
+  /api/v1/sessions/{sessionId}:
+    get:
+      consumes:
+      - application/json
+      description: get session by id
+      parameters:
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Session'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Returns a session by ID
+      tags:
+      - session
+    post:
+      consumes:
+      - application/json
+      description: add session by id
+      parameters:
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      - description: Session
+        in: body
+        name: session
+        required: true
+        schema:
+          $ref: '#/definitions/models.Session'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Add a session
+      tags:
+      - session
   /api/v1/sessions/{sessionId}/memory:
     delete:
       consumes:

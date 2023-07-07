@@ -6,8 +6,8 @@ import "errors"
 // It stores the metadata in the nested map structure referenced by the key path.
 // If the key path is empty or contains only an empty string, the function merges
 // the metadata into the value map. If a key in the path does not exist or is nil,
-// it creates a new map at that key. The function returns an error if metadata must
-// be a map but is not of type map[string]interface{}.
+// it creates a new map at that key. The function returns an error if metadata is not
+// of type map[string]interface{}.
 func storeMetadataByPath(
 	value map[string]interface{},
 	keyPath []string,

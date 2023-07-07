@@ -2,6 +2,7 @@ package memorystore
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/getzep/zep/pkg/models"
@@ -189,7 +190,7 @@ func TestPutSessionMetadata(t *testing.T) {
 			name:             "Update empty metadata",
 			sessionID:        sessionID,
 			metadata:         map[string]interface{}{},
-			expectedMetadata: map[string]interface{}(nil),
+			expectedMetadata: map[string]interface{}{},
 		},
 		{
 			name:      "Update metadata",
@@ -201,9 +202,9 @@ func TestPutSessionMetadata(t *testing.T) {
 				},
 			},
 			expectedMetadata: map[string]interface{}{
-				"A": 1,
+				"A": json.Number("1"),
 				"B": map[string]interface{}{
-					"C": 2,
+					"C": json.Number("2"),
 				},
 			},
 		},
@@ -212,6 +213,72 @@ func TestPutSessionMetadata(t *testing.T) {
 	ctx := context.Background()
 	_, err = putSession(ctx, testDB, sessionID, map[string]interface{}{}, false)
 	assert.NoError(t, err, "putSession should not return an error")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			storedSession, err := putSessionMetadata(ctx, testDB, tt.sessionID, tt.metadata)
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+			} else {
+				assert.NoError(t, err)
+
+				// Compare the expected metadata and stored metadata
+				assert.Equal(t, tt.expectedMetadata, storedSession.Metadata)
+			}
+		})
+	}
+}
+
+func TestMergeSessionMetadata(t *testing.T) {
+	sessionID, err := testutils.GenerateRandomSessionID(16)
+	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
+
+	initialMetadata := map[string]interface{}{
+		"A": 1,
+		"B": map[string]interface{}{
+			"C": 2,
+		},
+		"Z": 3,
+	}
+
+	ctx := context.Background()
+	_, err = putSession(ctx, testDB, sessionID, initialMetadata, false)
+	assert.NoError(t, err, "putSession should not return an error")
+
+	tests := []struct {
+		name             string
+		sessionID        string
+		metadata         map[string]interface{}
+		expectedError    error
+		expectedMetadata map[string]interface{}
+	}{
+		{
+			name:      "Update metadata",
+			sessionID: sessionID,
+			metadata: map[string]interface{}{
+				"A": 3, // Should override initial value of "A"
+				"B": map[string]interface{}{
+					"D": 4, // Should be added to map under "B"
+					"E": map[string]interface{}{
+						"F": 5, // Test deeply nested map
+					},
+				},
+			},
+			expectedMetadata: map[string]interface{}{
+				"A": json.Number("3"), // Updated value
+				"B": map[string]interface{}{
+					"C": json.Number("2"), // Initial value
+					"D": json.Number("4"), // New value
+					"E": map[string]interface{}{
+						"F": json.Number("5"), // New value from deeply nested map
+					},
+				},
+				"Z": json.Number("3"), // Initial value
+			},
+		},
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

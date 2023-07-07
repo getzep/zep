@@ -3,7 +3,6 @@ package memorystore
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	"github.com/getzep/zep/internal"
 	"github.com/google/uuid"
@@ -30,14 +29,9 @@ func putMessages(
 	log.Debugf("putMessages called for session %s with %d messages", sessionID, len(messages))
 
 	// Create or update a Session
-	s, err := putSession(ctx, db, sessionID, nil, false)
+	_, err := putSession(ctx, db, sessionID, nil, false)
 	if err != nil {
 		return nil, NewStorageError("failed to put session", err)
-	}
-	// If the session is deleted, return an error
-	if !s.DeletedAt.IsZero() {
-		log.Warningf("putMessages called for deleted session %s", sessionID)
-		return nil, NewStorageError(fmt.Sprintf("session %s is deleted", sessionID), nil)
 	}
 
 	pgMessages := make([]PgMessageStore, len(messages))

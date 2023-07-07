@@ -78,7 +78,7 @@ func putMessageMetadataTx(
 ) error {
 	// TODO: simplify all of this by getting `jsonb_set` working in bun
 
-	err := acquireAdvisoryLock(ctx, tx, sessionID+messageMetadata.UUID.String())
+	err := acquireAdvisoryXactLock(ctx, tx, sessionID+messageMetadata.UUID.String())
 	if err != nil {
 		return NewStorageError("failed to acquire advisory lock", err)
 	}

@@ -57,6 +57,80 @@ func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	}
 }
 
+// GetSessionHandler godoc
+//
+//	@Summary		Returns a session by ID
+//	@Description	get session by id
+//	@Tags			session
+//	@Accept			json
+//	@Produce		json
+//	@Param			session_id	path		string	true	"Session ID"
+//	@Success		200			{object}	models.Session
+//	@Failure		404			{object}	APIError	"Not Found"
+//	@Failure		500			{object}	APIError	"Internal Server Error"
+//	@Router			/api/v1/sessions/{sessionId} [get]
+func GetSessionHandler(appState *models.AppState) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID := chi.URLParam(r, "sessionId")
+
+		session, err := appState.MemoryStore.GetSession(r.Context(), appState, sessionID)
+		if err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+		if session == nil {
+			renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+			return
+		}
+
+		if err := encodeJSON(w, session); err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+// PostSessionHandler godoc
+//
+//	@Summary		Add a session
+//	@Description	add session by id
+//	@Tags			session
+//	@Accept			json
+//	@Produce		json
+//	@Param			session_id	path		string			true	"Session ID"
+//	@Param			session		body		models.Session	true	"Session"
+//	@Success		200			{string}	string			"OK"
+//	@Failure		400			{object}	APIError		"Bad Request"
+//	@failure		500			{object}	APIError		"Internal Server Error"
+//	@Router			/api/v1/sessions/{sessionId} [post]
+func PostSessionHandler(appState *models.AppState) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID := chi.URLParam(r, "sessionId")
+		var session models.Session
+		if err := decodeJSON(r, &session); err != nil {
+			renderError(w, err, http.StatusBadRequest)
+			return
+		}
+		// If session ID is not provided, use the one from the URL
+		// If session ID is provided, make sure it matches the one from the URL
+		if session.SessionID != "" && session.SessionID != sessionID {
+			renderError(
+				w,
+				fmt.Errorf("session ID mismatch: %s != %s", session.SessionID, sessionID),
+				http.StatusBadRequest,
+			)
+			return
+		}
+		session.SessionID = sessionID
+
+		if err := appState.MemoryStore.PutSession(r.Context(), appState, &session); err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(OKResponse))
+	}
+}
+
 // PostMemoryHandler godoc
 //
 //	@Summary		Add memory messages to a given session
