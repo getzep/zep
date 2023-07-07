@@ -40,7 +40,7 @@ func NewOpenAIRetryClient(cfg *config.Config) *openairetryclient.OpenAIRetryClie
 
 	// Support a local LLM that utilizes OpenAI style endpoints
 	openAIEndpoint := cfg.LLM.OpenAIEndpoint
-	if localEndpoint != "" {
+	if openAIEndpoint != "" {
 		openAIClientConfig = openai.DefaultConfig(apiKey)
 		openAIClientConfig.BaseURL = openAIEndpoint
 	}
