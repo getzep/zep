@@ -15,17 +15,6 @@ type Message struct {
 	TokenCount int                    `json:"token_count"`
 }
 
-// MessageMetadata is used internally to marshal metadata updates for a given message.
-// Key is the metadata key to update. If the key doesn't exist, it will be created.
-// If the key exists, the value will be updated.
-// Metadata is a map of key/value pairs to create or update at the given Key.
-// An empty Metadata map will delete the given Key.
-type MessageMetadata struct {
-	UUID     uuid.UUID              `json:"uuid"`
-	Key      string                 `json:"key"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
-}
-
 type Summary struct {
 	UUID             uuid.UUID              `json:"uuid"`
 	CreatedAt        time.Time              `json:"created_at"`
