@@ -183,6 +183,7 @@ func TestPutSessionMetadata(t *testing.T) {
 		name             string
 		sessionID        string
 		metadata         map[string]interface{}
+		privileged       bool
 		expectedError    error
 		expectedMetadata map[string]interface{}
 	}{
@@ -190,6 +191,7 @@ func TestPutSessionMetadata(t *testing.T) {
 			name:             "Update empty metadata",
 			sessionID:        sessionID,
 			metadata:         map[string]interface{}{},
+			privileged:       true,
 			expectedMetadata: map[string]interface{}{},
 		},
 		{
@@ -201,6 +203,7 @@ func TestPutSessionMetadata(t *testing.T) {
 					"C": 2,
 				},
 			},
+			privileged: true,
 			expectedMetadata: map[string]interface{}{
 				"A": json.Number("1"),
 				"B": map[string]interface{}{
@@ -208,15 +211,61 @@ func TestPutSessionMetadata(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:      "Unprivileged update with system metadata",
+			sessionID: sessionID,
+			metadata: map[string]interface{}{
+				"A": 1,
+				"B": map[string]interface{}{
+					"C": 2,
+				},
+				"system": map[string]interface{}{
+					"foo": "bar", // This should be ignored
+				},
+			},
+			privileged: false,
+			expectedMetadata: map[string]interface{}{
+				"A": json.Number("1"),
+				"B": map[string]interface{}{
+					"C": json.Number("2"),
+				},
+			},
+		},
+		{
+			name:      "Privileged update with system metadata",
+			sessionID: sessionID,
+			metadata: map[string]interface{}{
+				"A": 1,
+				"B": map[string]interface{}{
+					"C": 2,
+				},
+				"system": map[string]interface{}{
+					"foo": "bar", // This should NOT be ignored
+				},
+			},
+			privileged: true,
+			expectedMetadata: map[string]interface{}{
+				"A": json.Number("1"),
+				"B": map[string]interface{}{
+					"C": json.Number("2"),
+				},
+				"system": map[string]interface{}{
+					"foo": "bar",
+				},
+			},
+		},
 	}
 
 	ctx := context.Background()
-	_, err = putSession(ctx, testDB, sessionID, map[string]interface{}{}, false)
-	assert.NoError(t, err, "putSession should not return an error")
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			storedSession, err := putSessionMetadata(ctx, testDB, tt.sessionID, tt.metadata)
+			storedSession, err := putSession(
+				ctx,
+				testDB,
+				sessionID,
+				tt.metadata,
+				tt.privileged,
+			)
 
 			if tt.expectedError != nil {
 				assert.Error(t, err)
