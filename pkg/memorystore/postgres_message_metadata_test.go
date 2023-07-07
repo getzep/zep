@@ -39,20 +39,20 @@ func TestPutUnPrivilegedMetadata(t *testing.T) {
 
 	insertMessages(t, testMessages)
 
-	metadataToMerge := []models.MessageMetadata{
+	metadataToMerge := []models.Message{
 		{
 			UUID: testMessages[0].UUID,
 			Metadata: map[string]interface{}{
-				"this_should_not": "be_stored",
+				"system": map[string]interface{}{
+					"this_should_not": "be_stored",
+				},
 			},
-			Key: "system",
 		},
 		{
 			UUID: testMessages[1].UUID,
 			Metadata: map[string]interface{}{
 				"this_should": "be_stored",
 			},
-			Key: "",
 		},
 	}
 
@@ -87,7 +87,7 @@ func TestPutUnPrivilegedMetadata(t *testing.T) {
 	}
 
 	// Call putMetadata function with isPrivileged = true
-	err = putMessageMetadata(testCtx, testDB, sessionID, metadataToMerge, false)
+	_, err = putMessageMetadata(testCtx, testDB, sessionID, metadataToMerge, false)
 	assert.NoError(t, err, "putMetadata should not return an error")
 
 	msgs, err := getMessages(testCtx, testDB, sessionID, 12, &models.Summary{}, 0)
@@ -163,42 +163,58 @@ func TestPutMetadata(t *testing.T) {
 
 	insertMessages(t, testMessages)
 
-	metadataToMerge := []models.MessageMetadata{
+	metadataToMerge := []models.Message{
 		{
 			UUID: testMessages[0].UUID,
 			Metadata: map[string]interface{}{
-				"tags": map[string]interface{}{"Name": "Google", "Label": "ORG"},
+				"system": map[string]interface{}{
+					"ner": map[string]interface{}{
+						"tags": map[string]interface{}{"Name": "Google", "Label": "ORG"},
+					},
+				},
 			},
-			Key: "system.ner",
 		},
 		{
 			UUID: testMessages[1].UUID,
 			Metadata: map[string]interface{}{
-				"key_to_overwrite": "new_value",
+				"system": map[string]interface{}{
+					"key_to_overwrite": "new_value",
+				},
 			},
-			Key: "system",
 		},
 		{
 			UUID: testMessages[2].UUID,
 			Metadata: map[string]interface{}{
-				"key_to_delete": nil,
+				"system": map[string]interface{}{
+					"key_to_delete": nil,
+				},
 			},
-			Key: "system",
 		},
 		{
-			UUID:     testMessages[3].UUID,
-			Key:      "new_top_level_key.new_key",
-			Metadata: map[string]interface{}{"key": "value"},
+			UUID: testMessages[3].UUID,
+			Metadata: map[string]interface{}{
+				"new_top_level_key": map[string]interface{}{
+					"new_key": map[string]interface{}{
+						"key": "value",
+					},
+				},
+			},
 		},
 		{
-			UUID:     testMessages[4].UUID,
-			Key:      "system.newkey",
-			Metadata: map[string]interface{}{"key": "value"},
+			UUID: testMessages[4].UUID,
+			Metadata: map[string]interface{}{
+				"system": map[string]interface{}{
+					"newkey": map[string]interface{}{
+						"key": "value",
+					},
+				},
+			},
 		},
 		{
-			UUID:     testMessages[5].UUID,
-			Key:      "",
-			Metadata: map[string]interface{}{"new_top_level_key": "value"},
+			UUID: testMessages[5].UUID,
+			Metadata: map[string]interface{}{
+				"new_top_level_key": "value",
+			},
 		},
 	}
 
@@ -291,7 +307,7 @@ func TestPutMetadata(t *testing.T) {
 	}
 
 	// Call putMetadata function with isPrivileged = true
-	err = putMessageMetadata(testCtx, testDB, sessionID, metadataToMerge, true)
+	_, err = putMessageMetadata(testCtx, testDB, sessionID, metadataToMerge, true)
 	assert.NoError(t, err, "putMetadata should not return an error")
 
 	msgs, err := getMessages(testCtx, testDB, sessionID, 12, &models.Summary{}, 0)

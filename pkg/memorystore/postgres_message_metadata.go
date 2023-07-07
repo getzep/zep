@@ -3,7 +3,10 @@ package memorystore
 import (
 	"context"
 	"database/sql"
-	"strings"
+
+	"github.com/jinzhu/copier"
+
+	"dario.cat/mergo"
 
 	"github.com/uptrace/bun"
 
@@ -19,104 +22,96 @@ func putMessageMetadata(
 	ctx context.Context,
 	db bun.IDB,
 	sessionID string,
-	messageMetaSet []models.MessageMetadata,
+	messages []models.Message,
 	isPrivileged bool,
-) error {
+) ([]models.Message, error) {
 	var tx bun.Tx
 	var err error
 
 	// remove the top-level `system` key from the metadata if the caller is not privileged
 	if !isPrivileged {
-		messageMetaSet = removeSystemMetadata(messageMetaSet)
+		removeSystemMetadata(messages)
 	}
 
+	// Are we already running in a transaction?
 	tx, isDBTransaction := db.(bun.Tx)
 	if !isDBTransaction {
 		// db is not already a transaction, so begin one
 		if tx, err = db.BeginTx(ctx, &sql.TxOptions{}); err != nil {
-			return NewStorageError("failed to begin transaction", err)
+			return nil, NewStorageError("failed to begin transaction", err)
 		}
 		defer rollbackOnError(tx)
 	}
 
-	for i := range messageMetaSet {
-		err := putMessageMetadataTx(ctx, tx, sessionID, &messageMetaSet[i])
+	for i := range messages {
+		returnedMessage, err := putMessageMetadataTx(ctx, tx, sessionID, &messages[i])
+		messages[i] = *returnedMessage
 		if err != nil {
 			// defer will roll back the transaction
-			return NewStorageError("failed to put message metadata", err)
+			return nil, NewStorageError("failed to put message metadata", err)
 		}
 	}
 
+	// if the calling function passed in a transaction, don't commit here
 	if !isDBTransaction {
 		if err = tx.Commit(); err != nil {
-			return NewStorageError("failed to commit transaction", err)
+			return nil, NewStorageError("failed to commit transaction", err)
 		}
 	}
 
-	return nil
+	return messages, nil
 }
 
 // removeSystemMetadata removes the top-level `system` key from the metadata. This
 // is used to prevent unprivileged callers from storing metadata in the `system` tree.
-func removeSystemMetadata(metadata []models.MessageMetadata) []models.MessageMetadata {
-	filteredMessageMetadata := make([]models.MessageMetadata, 0)
-
-	for _, m := range metadata {
-		if m.Key != "system" && !strings.HasPrefix(m.Key, "system.") {
-			delete(m.Metadata, "system")
-			filteredMessageMetadata = append(filteredMessageMetadata, m)
-		}
+func removeSystemMetadata(messages []models.Message) {
+	for i := range messages {
+		delete(messages[i].Metadata, "system")
 	}
-	return filteredMessageMetadata
 }
 
 func putMessageMetadataTx(
 	ctx context.Context,
 	tx bun.Tx,
 	sessionID string,
-	messageMetadata *models.MessageMetadata,
-) error {
-	// TODO: simplify all of this by getting `jsonb_set` working in bun
-
-	err := acquireAdvisoryXactLock(ctx, tx, sessionID+messageMetadata.UUID.String())
+	message *models.Message,
+) (*models.Message, error) {
+	err := acquireAdvisoryXactLock(ctx, tx, sessionID+message.UUID.String())
 	if err != nil {
-		return NewStorageError("failed to acquire advisory lock", err)
+		return nil, NewStorageError("failed to acquire advisory lock", err)
 	}
 
-	var msg PgMessageStore
-	err = tx.NewSelect().Model(&msg).
+	var retrievedMessage PgMessageStore
+	err = tx.NewSelect().Model(&retrievedMessage).
 		Column("metadata").
-		Where("session_id = ? AND uuid = ?", sessionID, messageMetadata.UUID).
+		Where("session_id = ? AND uuid = ?", sessionID, message.UUID).
 		Scan(ctx)
 	if err != nil {
-		return NewStorageError(
+		return nil, NewStorageError(
 			"failed to retrieve existing metadata. was the session deleted?",
 			err,
 		)
 	}
 
-	if msg.Metadata == nil {
-		msg.Metadata = make(map[string]interface{})
+	if err := mergo.Merge(&retrievedMessage.Metadata, message.Metadata, mergo.WithOverride); err != nil {
+		return nil, NewStorageError("failed to merge metadata", err)
 	}
 
-	err = storeMetadataByPath(
-		msg.Metadata,
-		strings.Split(messageMetadata.Key, "."),
-		messageMetadata.Metadata,
-	)
-	if err != nil {
-		return NewStorageError("failed to store metadata by path", err)
-	}
-
-	msg.UUID = messageMetadata.UUID
+	retrievedMessage.UUID = message.UUID
 	_, err = tx.NewUpdate().
-		Model(&msg).
+		Model(&retrievedMessage).
 		Column("metadata").
-		Where("session_id = ? AND uuid = ?", sessionID, messageMetadata.UUID).
+		Where("session_id = ? AND uuid = ?", sessionID, message.UUID).
+		Returning("*").
 		Exec(ctx)
 	if err != nil {
-		return NewStorageError("failed to update message metadata", err)
+		return nil, NewStorageError("failed to update message metadata", err)
 	}
 
-	return nil
+	err = copier.Copy(message, retrievedMessage)
+	if err != nil {
+		return nil, NewStorageError("Unable to copy message", err)
+	}
+
+	return message, nil
 }

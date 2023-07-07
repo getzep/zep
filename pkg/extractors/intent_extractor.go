@@ -101,11 +101,12 @@ func (ee *IntentExtractor) processMessage(
 	intentContent = strings.TrimPrefix(intentContent, "Intent: ")
 
 	// Put the intent into the message metadata
-	intentResponse := []models.MessageMetadata{
+	intentResponse := []models.Message{
 		{
-			UUID:     message.UUID,
-			Key:      "system",
-			Metadata: map[string]interface{}{"intent": intentContent},
+			UUID: message.UUID,
+			Metadata: map[string]interface{}{"system": map[string]interface{}{
+				"intent": intentContent},
+			},
 		},
 	}
 

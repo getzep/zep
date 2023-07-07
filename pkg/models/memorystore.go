@@ -39,7 +39,7 @@ type MemoryStore[T any] interface {
 	PutMessageMetadata(ctx context.Context,
 		appState *AppState,
 		sessionID string,
-		messageMetaSet []MessageMetadata,
+		messages []Message,
 		isPrivileged bool) error
 	// PutMessageVectors stores a collection of DocumentEmbeddings for a given sessionID.
 	PutMessageVectors(ctx context.Context,

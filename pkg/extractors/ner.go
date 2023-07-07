@@ -44,7 +44,7 @@ func (ee *EntityExtractor) Extract(
 		return NewExtractorError("EntityExtractor extract entities call failed", err)
 	}
 
-	messageMetaSet := make([]models.MessageMetadata, len(nerResponse.Texts))
+	messages := make([]models.Message, len(nerResponse.Texts))
 	for i, r := range nerResponse.Texts {
 		msgUUID, err := uuid.Parse(r.UUID)
 		if err != nil {
@@ -52,14 +52,15 @@ func (ee *EntityExtractor) Extract(
 		}
 		entityList := extractEntities(r.Entities)
 
-		messageMetaSet[i] = models.MessageMetadata{
-			UUID:     msgUUID,
-			Key:      "system",
-			Metadata: map[string]interface{}{"entities": entityList},
+		messages[i] = models.Message{
+			UUID: msgUUID,
+			Metadata: map[string]interface{}{
+				"system": map[string]interface{}{"entities": entityList},
+			},
 		}
 	}
 
-	err = appState.MemoryStore.PutMessageMetadata(ctx, appState, sessionID, messageMetaSet, true)
+	err = appState.MemoryStore.PutMessageMetadata(ctx, appState, sessionID, messages, true)
 	if err != nil {
 		return NewExtractorError("EntityExtractor failed to put message metadata", err)
 	}
