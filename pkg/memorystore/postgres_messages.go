@@ -3,7 +3,6 @@ package memorystore
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	"github.com/getzep/zep/internal"
 	"github.com/google/uuid"
@@ -30,14 +29,9 @@ func putMessages(
 	log.Debugf("putMessages called for session %s with %d messages", sessionID, len(messages))
 
 	// Create or update a Session
-	s, err := putSession(ctx, db, sessionID, nil)
+	_, err := putSession(ctx, db, sessionID, nil, false)
 	if err != nil {
 		return nil, NewStorageError("failed to put session", err)
-	}
-	// If the session is deleted, return an error
-	if !s.DeletedAt.IsZero() {
-		log.Warningf("putMessages called for deleted session %s", sessionID)
-		return nil, NewStorageError(fmt.Sprintf("session %s is deleted", sessionID), nil)
 	}
 
 	pgMessages := make([]PgMessageStore, len(messages))
@@ -53,7 +47,7 @@ func putMessages(
 		}
 	}
 
-	var messageMetaSet []models.MessageMetadata
+	// Insert messages in a transaction
 	err = db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// Insert messages
 		_, err = tx.NewInsert().
@@ -65,15 +59,15 @@ func putMessages(
 			return err
 		}
 
-		messageMetaSet = make([]models.MessageMetadata, len(pgMessages))
-		for i := range pgMessages {
-			messageMetaSet[i].UUID = pgMessages[i].UUID
-			messageMetaSet[i].Metadata = pgMessages[i].Metadata
+		// copy the UUIDs back into the original messages
+		// this is needed if the messages are new and not being updated
+		for i := range messages {
+			messages[i].UUID = pgMessages[i].UUID
 		}
 
 		// insert/update message metadata. isPrivileged is false because we are
 		// most likely being called by the PutMemory handler.
-		err = putMessageMetadata(ctx, tx, sessionID, messageMetaSet, false)
+		messages, err = putMessageMetadata(ctx, tx, sessionID, messages, false)
 		if err != nil {
 			return err
 		}
@@ -84,21 +78,9 @@ func putMessages(
 		return nil, NewStorageError("failed to put messages", err)
 	}
 
-	retMessages := make([]models.Message, len(pgMessages))
-	for i, pgMsg := range pgMessages {
-		retMessages[i] = models.Message{
-			UUID:       pgMsg.UUID,
-			CreatedAt:  pgMsg.CreatedAt,
-			Role:       pgMsg.Role,
-			Content:    pgMsg.Content,
-			TokenCount: pgMsg.TokenCount,
-			Metadata:   messageMetaSet[i].Metadata,
-		}
-	}
-
 	log.Debugf("putMessages completed for session %s with %d messages", sessionID, len(messages))
 
-	return retMessages, nil
+	return messages, nil
 }
 
 // getMessages retrieves messages from the memory store. If lastNMessages is 0, the last SummaryPoint is retrieved.

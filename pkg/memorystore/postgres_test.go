@@ -37,9 +37,11 @@ func TestMain(m *testing.M) {
 }
 
 func setup() {
+	logger := internal.GetLogger()
 	internal.SetLogLevel(logrus.DebugLevel)
 	// Initialize the database connection
 	testDB = NewPostgresConn(testutils.GetDSN())
+	testutils.SetUpDBLogging(testDB, logger)
 
 	// Initialize the test context
 	testCtx = context.Background()
@@ -91,110 +93,6 @@ func TestEnsurePostgresSchemaSetup(t *testing.T) {
 		err := ensurePostgresSetup(testCtx, appState, testDB)
 		assert.NoError(t, err)
 	})
-}
-
-func TestPutSession(t *testing.T) {
-	tests := []struct {
-		name       string
-		sessionID  string
-		metadata   map[string]interface{}
-		wantErr    bool
-		errMessage string
-	}{
-		{
-			name:      "Valid session",
-			sessionID: "123abc",
-			metadata: map[string]interface{}{
-				"key": "value",
-			},
-			wantErr: false,
-		},
-		{
-			name:      "duplicate session id should upsert",
-			sessionID: "123abc",
-			metadata: map[string]interface{}{
-				"key":  "value",
-				"key2": "value2",
-			},
-			wantErr: false,
-		},
-		{
-			name:      "Empty session ID",
-			sessionID: "",
-			metadata: map[string]interface{}{
-				"key": "value",
-			},
-			wantErr:    true,
-			errMessage: "sessionID cannot be empty",
-		},
-		// Add more test cases as needed
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := putSession(testCtx, testDB, tt.sessionID, tt.metadata)
-
-			if tt.wantErr {
-				assert.Error(t, err)
-				storageErr, ok := err.(*StorageError)
-				if ok {
-					assert.Equal(t, tt.errMessage, storageErr.message)
-				}
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, result)
-				assert.NotEmpty(t, result.UUID)
-				assert.False(t, result.CreatedAt.IsZero())
-				assert.Equal(t, tt.sessionID, result.SessionID)
-				assert.Equal(t, tt.metadata, result.Metadata)
-			}
-		})
-	}
-}
-
-func TestGetSession(t *testing.T) {
-	// Create a test session
-	sessionID := "123abc"
-	metadata := map[string]interface{}{
-		"key": "value",
-	}
-	_, err := putSession(testCtx, testDB, sessionID, metadata)
-	assert.NoError(t, err)
-
-	tests := []struct {
-		name          string
-		sessionID     string
-		expectedFound bool
-	}{
-		{
-			name:          "Existing session",
-			sessionID:     "123abc",
-			expectedFound: true,
-		},
-		{
-			name:          "Non-existent session",
-			sessionID:     "nonexistent",
-			expectedFound: false,
-		},
-		// Add more test cases as needed
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := getSession(testCtx, testDB, tt.sessionID)
-			assert.NoError(t, err)
-
-			if tt.expectedFound {
-				assert.NotNil(t, result)
-				assert.NotEmpty(t, result.UUID)
-				assert.False(t, result.CreatedAt.IsZero())
-				assert.Equal(t, tt.sessionID, result.SessionID)
-				assert.Equal(t, metadata, result.Metadata)
-			} else {
-				assert.Nil(t, result)
-			}
-		})
-	}
 }
 
 func TestPutMessages(t *testing.T) {
@@ -270,7 +168,7 @@ func createSession(t *testing.T) string {
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
-	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
+	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{}, false)
 	assert.NoError(t, err, "putSession should not return an error")
 
 	return sessionID
@@ -448,7 +346,7 @@ func TestPutSummary(t *testing.T) {
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
-	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{})
+	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{}, true)
 	assert.NoError(t, err, "putSession should not return an error")
 
 	messages := []models.Message{
@@ -538,7 +436,7 @@ func TestGetSummary(t *testing.T) {
 	metadata := map[string]interface{}{
 		"key": "value",
 	}
-	_, err = putSession(testCtx, testDB, sessionID, metadata)
+	_, err = putSession(testCtx, testDB, sessionID, metadata, true)
 	assert.NoError(t, err)
 
 	summary := models.Summary{

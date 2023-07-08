@@ -51,6 +51,25 @@ func (pms *PostgresMemoryStore) GetClient() *bun.DB {
 	return pms.Client
 }
 
+// GetSession retrieves a Session for a given sessionID.
+func (pms *PostgresMemoryStore) GetSession(
+	ctx context.Context,
+	_ *models.AppState,
+	sessionID string,
+) (*models.Session, error) {
+	return getSession(ctx, pms.Client, sessionID)
+}
+
+// PutSession creates or updates a Session for a given sessionID.
+func (pms *PostgresMemoryStore) PutSession(
+	ctx context.Context,
+	_ *models.AppState,
+	session *models.Session,
+) error {
+	_, err := putSession(ctx, pms.Client, session.SessionID, session.Metadata, false)
+	return err
+}
+
 // GetMemory returns the most recent Summary and a list of messages for a given sessionID.
 // GetMemory returns:
 //   - the most recent Summary, if one exists
@@ -171,10 +190,10 @@ func (pms *PostgresMemoryStore) PutMessageMetadata(
 	ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
-	messageMetaSet []models.MessageMetadata,
+	messages []models.Message,
 	isPrivileged bool,
 ) error {
-	err := putMessageMetadata(ctx, pms.Client, sessionID, messageMetaSet, isPrivileged)
+	_, err := putMessageMetadata(ctx, pms.Client, sessionID, messages, isPrivileged)
 	if err != nil {
 		return NewStorageError("failed to put message metadata", err)
 	}
@@ -246,11 +265,11 @@ func (pms *PostgresMemoryStore) PurgeDeleted(ctx context.Context) error {
 	return nil
 }
 
-// acquireAdvisoryLock acquires a PostgreSQL advisory lock for the given key.
+// acquireAdvisoryXactLock acquires a PostgreSQL advisory lock for the given key.
 // Expects a transaction to be open in tx.
 // `pg_advisory_xact_lock` will wait until the lock is available. The lock is released
 // when the transaction is committed or rolled back.
-func acquireAdvisoryLock(ctx context.Context, tx bun.Tx, key string) error {
+func acquireAdvisoryXactLock(ctx context.Context, tx bun.Tx, key string) error {
 	hasher := sha256.New()
 	hasher.Write([]byte(key))
 	hash := hasher.Sum(nil)
@@ -258,6 +277,33 @@ func acquireAdvisoryLock(ctx context.Context, tx bun.Tx, key string) error {
 
 	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(?)", lockID); err != nil {
 		return NewStorageError("failed to acquire advisory lock", err)
+	}
+
+	return nil
+}
+
+// acquireAdvisoryLock acquires a PostgreSQL advisory lock for the given key.
+// The lock needs to be released manually by calling releaseAdvisoryLock.
+// Accepts a bun.IDB, which can be either a *bun.DB or *bun.Tx.
+// Returns the lock ID.
+func acquireAdvisoryLock(ctx context.Context, db bun.IDB, key string) (uint64, error) {
+	hasher := sha256.New()
+	hasher.Write([]byte(key))
+	hash := hasher.Sum(nil)
+	lockID := binary.BigEndian.Uint64(hash[:8])
+
+	if _, err := db.ExecContext(ctx, "SELECT pg_advisory_lock(?)", lockID); err != nil {
+		return 0, NewStorageError("failed to acquire advisory lock", err)
+	}
+
+	return lockID, nil
+}
+
+// releaseAdvisoryLock releases a PostgreSQL advisory lock for the given key.
+// Accepts a bun.IDB, which can be either a *bun.DB or *bun.Tx.
+func releaseAdvisoryLock(ctx context.Context, db bun.IDB, lockID uint64) error {
+	if _, err := db.ExecContext(ctx, "SELECT pg_advisory_unlock(?)", lockID); err != nil {
+		return NewStorageError("failed to release advisory lock", err)
 	}
 
 	return nil
