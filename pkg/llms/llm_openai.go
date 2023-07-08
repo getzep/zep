@@ -24,22 +24,38 @@ var (
 )
 
 func NewOpenAIRetryClient(cfg *config.Config) *openairetryclient.OpenAIRetryClient {
+	// Retrieve the OpenAIAPIKey from configuration
 	apiKey := cfg.LLM.OpenAIAPIKey
+	// If the key is not set, log a fatal error and exit
 	if apiKey == "" {
 		log.Fatal(OpenAIAPIKeyNotSetError)
 	}
+	if cfg.LLM.AzureOpenAIEndpoint != "" && cfg.LLM.OpenAIEndpoint != "" {
+		log.Fatal("only one of AzureOpenAIEndpoint or OpenAIEndpoint can be set")
+	}
 
-	var openAIClientConfig openai.ClientConfig
-	azureEndpoint := cfg.LLM.AzureOpenAIEndpoint
-	if azureEndpoint != "" {
-		openAIClientConfig = openai.DefaultAzureConfig(apiKey, azureEndpoint)
-	} else {
-		openAIClientConfig = openai.DefaultConfig(apiKey)
+	// Initiate the openAIClientConfig with the default configuration
+	openAIClientConfig := openai.DefaultConfig(apiKey)
+
+	switch {
+	case cfg.LLM.AzureOpenAIEndpoint != "":
+		// Check configuration for AzureOpenAIEndpoint; if it's set, use the DefaultAzureConfig
+		// and provided endpoint URL
+		openAIClientConfig = openai.DefaultAzureConfig(apiKey, cfg.LLM.AzureOpenAIEndpoint)
+	case cfg.LLM.OpenAIEndpoint != "":
+		// If an alternate OpenAI-compatible endpoint URL is set, use this as the base URL for requests
+		openAIClientConfig.BaseURL = cfg.LLM.OpenAIEndpoint
+	default:
+		// If no specific endpoints are defined, use the default configuration with the OpenAIOrgID
+		// This optional and may just be an empty string
 		openAIClientConfig.OrgID = cfg.LLM.OpenAIOrgID
 	}
 
+	// Create a new client instance with the final openAIClientConfig
 	client := openai.NewClientWithConfig(openAIClientConfig)
 
+	// Return a new retry client. This client contains a pre-configured OpenAI client
+	// and additional retry logic (timeout duration and maximum number of attempts)
 	return &openairetryclient.OpenAIRetryClient{
 		Client: *client,
 		Config: struct {

@@ -24,6 +24,7 @@ type LLM struct {
 	// OpenAIAPIKey is loaded from ENV not config file.
 	OpenAIAPIKey        string `mapstructure:"openai_api_key"`
 	AzureOpenAIEndpoint string `mapstructure:"azure_openai_endpoint"`
+	OpenAIEndpoint      string `mapstructure:"openai_endpoint"`
 	OpenAIOrgID         string `mapstructure:"openai_org_id"`
 }
 

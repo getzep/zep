@@ -1,7 +1,10 @@
 llm:
   # gpt-3.5-turbo or gpt-4
   model: "gpt-3.5-turbo"
+  # Only used for Azure OpenAI API
   azure_openai_endpoint:
+  # Use only with an alternate OpenAI-compatible API endpoint
+  openai_endpoint:
   openai_org_id:
 nlp:
   server_url: "http://localhost:8080"

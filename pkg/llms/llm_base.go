@@ -24,13 +24,11 @@ func NewLLMError(message string, originalError error) *LLMError {
 }
 
 var MaxLLMTokensMap = map[string]int{
-	"gpt-3.5-turbo":     4096,
-	"gpt-3.5-turbo0301": 8192,
-	"gpt-4":             8192,
+	"gpt-3.5-turbo": 4096,
+	"gpt-4":         8192,
 }
 
 var ValidLLMMap = map[string]bool{
-	"gpt-3.5-turbo":     true,
-	"gpt-3.5-turbo0301": true,
-	"gpt-4":             true,
+	"gpt-3.5-turbo": true,
+	"gpt-4":         true,
 }
