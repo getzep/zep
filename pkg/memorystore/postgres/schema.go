@@ -1,4 +1,4 @@
-package memorystore
+package postgres
 
 import (
 	"context"
@@ -20,7 +20,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type PgSession struct {
+type SessionSchema struct {
 	bun.BaseModel `bun:"table:session,alias:s"`
 
 	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
@@ -32,14 +32,14 @@ type PgSession struct {
 }
 
 // BeforeCreateTable is a dummy method to ensure uniform interface across all table models - used in table creation iterator
-func (s *PgSession) BeforeCreateTable(
+func (s *SessionSchema) BeforeCreateTable(
 	_ context.Context,
 	_ *bun.CreateTableQuery,
 ) error {
 	return nil
 }
 
-type PgMessageStore struct {
+type MessageStoreSchema struct {
 	bun.BaseModel `bun:"table:message,alias:m"`
 
 	// TODO: replace UUIDs with sortable ULIDs or UUIDv7s to avoid having to have both a UUID and an ID.
@@ -55,41 +55,41 @@ type PgMessageStore struct {
 	Content    string                 `bun:",notnull"`
 	TokenCount int                    `bun:",notnull"`
 	Metadata   map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
-	Session    *PgSession             `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade"`
+	Session    *SessionSchema         `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade"`
 }
 
-func (s *PgMessageStore) BeforeCreateTable(
+func (s *MessageStoreSchema) BeforeCreateTable(
 	_ context.Context,
 	_ *bun.CreateTableQuery,
 ) error {
 	return nil
 }
 
-// PgMessageVectorStore stores the embeddings for a message.
+// MessageVectorStoreSchema stores the embeddings for a message.
 // TODO: Vector dims from config
-type PgMessageVectorStore struct {
+type MessageVectorStoreSchema struct {
 	bun.BaseModel `bun:"table:message_embedding,alias:me"`
 
-	UUID        uuid.UUID       `bun:",pk,type:uuid,default:gen_random_uuid()"`
-	CreatedAt   time.Time       `bun:"type:timestamptz,notnull,default:current_timestamp"`
-	UpdatedAt   time.Time       `bun:"type:timestamptz,nullzero,default:current_timestamp"`
-	DeletedAt   time.Time       `bun:"type:timestamptz,soft_delete,nullzero"`
-	SessionID   string          `bun:",notnull"`
-	MessageUUID uuid.UUID       `bun:"type:uuid,notnull,unique"`
-	Embedding   pgvector.Vector `bun:"type:vector(1536)"`
-	IsEmbedded  bool            `bun:"type:bool,notnull,default:false"`
-	Session     *PgSession      `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade"`
-	Message     *PgMessageStore `bun:"rel:belongs-to,join:message_uuid=uuid,on_delete:cascade"`
+	UUID        uuid.UUID           `bun:",pk,type:uuid,default:gen_random_uuid()"`
+	CreatedAt   time.Time           `bun:"type:timestamptz,notnull,default:current_timestamp"`
+	UpdatedAt   time.Time           `bun:"type:timestamptz,nullzero,default:current_timestamp"`
+	DeletedAt   time.Time           `bun:"type:timestamptz,soft_delete,nullzero"`
+	SessionID   string              `bun:",notnull"`
+	MessageUUID uuid.UUID           `bun:"type:uuid,notnull,unique"`
+	Embedding   pgvector.Vector     `bun:"type:vector(1536)"`
+	IsEmbedded  bool                `bun:"type:bool,notnull,default:false"`
+	Session     *SessionSchema      `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade"`
+	Message     *MessageStoreSchema `bun:"rel:belongs-to,join:message_uuid=uuid,on_delete:cascade"`
 }
 
-func (s *PgMessageVectorStore) BeforeCreateTable(
+func (s *MessageVectorStoreSchema) BeforeCreateTable(
 	_ context.Context,
 	_ *bun.CreateTableQuery,
 ) error {
 	return nil
 }
 
-type PgSummaryStore struct {
+type SummaryStoreSchema struct {
 	bun.BaseModel `bun:"table:summary,alias:su"`
 
 	UUID             uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
@@ -101,11 +101,11 @@ type PgSummaryStore struct {
 	Metadata         map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
 	TokenCount       int                    `bun:",notnull"`
 	SummaryPointUUID uuid.UUID              `bun:"type:uuid,notnull,unique"` // the UUID of the most recent message that was used to create the summary
-	Session          *PgSession             `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade"`
-	Message          *PgMessageStore        `bun:"rel:belongs-to,join:summary_point_uuid=uuid,on_delete:cascade"`
+	Session          *SessionSchema         `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade"`
+	Message          *MessageStoreSchema    `bun:"rel:belongs-to,join:summary_point_uuid=uuid,on_delete:cascade"`
 }
 
-func (s *PgSummaryStore) BeforeCreateTable(
+func (s *SummaryStoreSchema) BeforeCreateTable(
 	_ context.Context,
 	_ *bun.CreateTableQuery,
 ) error {
@@ -113,31 +113,31 @@ func (s *PgSummaryStore) BeforeCreateTable(
 }
 
 // Create session_id indexes after table creation
-var _ bun.AfterCreateTableHook = (*PgSession)(nil)
-var _ bun.AfterCreateTableHook = (*PgMessageStore)(nil)
-var _ bun.AfterCreateTableHook = (*PgMessageVectorStore)(nil)
-var _ bun.AfterCreateTableHook = (*PgSummaryStore)(nil)
+var _ bun.AfterCreateTableHook = (*SessionSchema)(nil)
+var _ bun.AfterCreateTableHook = (*MessageStoreSchema)(nil)
+var _ bun.AfterCreateTableHook = (*MessageVectorStoreSchema)(nil)
+var _ bun.AfterCreateTableHook = (*SummaryStoreSchema)(nil)
 
-func (*PgSession) AfterCreateTable(
+func (*SessionSchema) AfterCreateTable(
 	ctx context.Context,
 	query *bun.CreateTableQuery,
 ) error {
 	_, err := query.DB().NewCreateIndex().
-		Model((*PgSession)(nil)).
+		Model((*SessionSchema)(nil)).
 		Index("session_session_id_idx").
 		Column("session_id").
 		Exec(ctx)
 	return err
 }
 
-func (*PgMessageStore) AfterCreateTable(
+func (*MessageStoreSchema) AfterCreateTable(
 	ctx context.Context,
 	query *bun.CreateTableQuery,
 ) error {
 	colsToIndex := []string{"session_id", "id"}
 	for _, col := range colsToIndex {
 		_, err := query.DB().NewCreateIndex().
-			Model((*PgMessageStore)(nil)).
+			Model((*MessageStoreSchema)(nil)).
 			Index(fmt.Sprintf("memstore_%s_idx", col)).
 			Column(col).
 			Exec(ctx)
@@ -148,24 +148,24 @@ func (*PgMessageStore) AfterCreateTable(
 	return nil
 }
 
-func (*PgMessageVectorStore) AfterCreateTable(
+func (*MessageVectorStoreSchema) AfterCreateTable(
 	ctx context.Context,
 	query *bun.CreateTableQuery,
 ) error {
 	_, err := query.DB().NewCreateIndex().
-		Model((*PgMessageVectorStore)(nil)).
+		Model((*MessageVectorStoreSchema)(nil)).
 		Index("mem_vec_store_session_id_idx").
 		Column("session_id").
 		Exec(ctx)
 	return err
 }
 
-func (*PgSummaryStore) AfterCreateTable(
+func (*SummaryStoreSchema) AfterCreateTable(
 	ctx context.Context,
 	query *bun.CreateTableQuery,
 ) error {
 	_, err := query.DB().NewCreateIndex().
-		Model((*PgSummaryStore)(nil)).
+		Model((*SummaryStoreSchema)(nil)).
 		Index("sumstore_session_id_idx").
 		Column("session_id").
 		Exec(ctx)
@@ -173,10 +173,10 @@ func (*PgSummaryStore) AfterCreateTable(
 }
 
 var tableList = []bun.BeforeCreateTableHook{
-	&PgMessageVectorStore{},
-	&PgSummaryStore{},
-	&PgMessageStore{},
-	&PgSession{},
+	&MessageVectorStoreSchema{},
+	&SummaryStoreSchema{},
+	&MessageStoreSchema{},
+	&SessionSchema{},
 }
 
 // ensurePostgresSetup creates the db schema if it does not exist.
@@ -226,12 +226,15 @@ func migrateMessageEmbeddingDims(
 	db *bun.DB,
 	dimensions int,
 ) error {
-	_, err := db.NewDropColumn().Model((*PgMessageVectorStore)(nil)).Column("embedding").Exec(ctx)
+	_, err := db.NewDropColumn().
+		Model((*MessageVectorStoreSchema)(nil)).
+		Column("embedding").
+		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("error dropping column embedding: %w", err)
 	}
 	_, err = db.NewAddColumn().
-		Model((*PgMessageVectorStore)(nil)).
+		Model((*MessageVectorStoreSchema)(nil)).
 		ColumnExpr(fmt.Sprintf("embedding vector(%d)", dimensions)).
 		Exec(ctx)
 	if err != nil {

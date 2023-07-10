@@ -1,8 +1,10 @@
-package memorystore
+package postgres
 
 import (
 	"context"
 	"database/sql"
+
+	"github.com/getzep/zep/pkg/memorystore"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/jinzhu/copier"
@@ -18,26 +20,26 @@ func putSummary(
 	summary *models.Summary,
 ) (*models.Summary, error) {
 	if sessionID == "" {
-		return nil, NewStorageError("sessionID cannot be empty", nil)
+		return nil, memorystore.NewStorageError("sessionID cannot be empty", nil)
 	}
 
-	pgSummary := PgSummaryStore{}
+	pgSummary := SummaryStoreSchema{}
 	err := copier.Copy(&pgSummary, summary)
 	if err != nil {
-		return nil, NewStorageError("failed to copy summary", err)
+		return nil, memorystore.NewStorageError("failed to copy summary", err)
 	}
 
 	pgSummary.SessionID = sessionID
 
 	_, err = db.NewInsert().Model(&pgSummary).Exec(ctx)
 	if err != nil {
-		return nil, NewStorageError("failed to put summary", err)
+		return nil, memorystore.NewStorageError("failed to put summary", err)
 	}
 
 	retSummary := models.Summary{}
 	err = copier.Copy(&retSummary, &pgSummary)
 	if err != nil {
-		return nil, NewStorageError("failed to copy summary", err)
+		return nil, memorystore.NewStorageError("failed to copy summary", err)
 	}
 
 	return &retSummary, nil
@@ -45,7 +47,7 @@ func putSummary(
 
 // getSummary returns the most recent summary for a session
 func getSummary(ctx context.Context, db *bun.DB, sessionID string) (*models.Summary, error) {
-	summary := PgSummaryStore{}
+	summary := SummaryStoreSchema{}
 	err := db.NewSelect().
 		Model(&summary).
 		Where("session_id = ?", sessionID).
@@ -58,13 +60,13 @@ func getSummary(ctx context.Context, db *bun.DB, sessionID string) (*models.Summ
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return &models.Summary{}, NewStorageError("failed to get session", err)
+		return &models.Summary{}, memorystore.NewStorageError("failed to get session", err)
 	}
 
 	respSummary := models.Summary{}
 	err = copier.Copy(&respSummary, &summary)
 	if err != nil {
-		return nil, NewStorageError("failed to copy summary", err)
+		return nil, memorystore.NewStorageError("failed to copy summary", err)
 	}
 	return &respSummary, nil
 }

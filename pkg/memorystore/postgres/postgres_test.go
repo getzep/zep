@@ -1,4 +1,4 @@
-package memorystore
+package postgres
 
 import (
 	"math/rand"
@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/getzep/zep/pkg/memorystore"
 
 	"github.com/getzep/zep/pkg/extractors"
 	"github.com/getzep/zep/pkg/llms"
@@ -84,10 +86,10 @@ func TestEnsurePostgresSchemaSetup(t *testing.T) {
 		err := ensurePostgresSetup(testCtx, appState, testDB)
 		assert.NoError(t, err)
 
-		checkForTable(t, testDB, &PgSession{})
-		checkForTable(t, testDB, &PgMessageStore{})
-		checkForTable(t, testDB, &PgSummaryStore{})
-		checkForTable(t, testDB, &PgMessageVectorStore{})
+		checkForTable(t, testDB, &SessionSchema{})
+		checkForTable(t, testDB, &MessageStoreSchema{})
+		checkForTable(t, testDB, &SummaryStoreSchema{})
+		checkForTable(t, testDB, &MessageVectorStoreSchema{})
 	})
 	t.Run("should not fail on second run", func(t *testing.T) {
 		err := ensurePostgresSetup(testCtx, appState, testDB)
@@ -414,9 +416,9 @@ func TestPutSummary(t *testing.T) {
 
 			if tt.wantErr {
 				assert.Error(t, err)
-				storageErr, ok := err.(*StorageError)
+				storageErr, ok := err.(*memorystore.StorageError)
 				if ok {
-					assert.Equal(t, tt.errMessage, storageErr.message)
+					assert.Equal(t, tt.errMessage, storageErr.Message)
 				}
 			} else {
 				assert.NoError(t, err)
@@ -553,8 +555,8 @@ func TestPutEmbeddings(t *testing.T) {
 	err = putMessageVectors(testCtx, testDB, sessionID, embeddings)
 	assert.NoError(t, err, "putMessageVectors should not return an error")
 
-	// Check for the creation of PgMessageVectorStore values
-	var pgMemoryVectorStores []PgMessageVectorStore
+	// Check for the creation of MessageVectorStoreSchema values
+	var pgMemoryVectorStores []MessageVectorStoreSchema
 	err = testDB.NewSelect().
 		Model(&pgMemoryVectorStores).
 		Where("session_id = ?", sessionID).

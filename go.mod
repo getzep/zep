@@ -3,6 +3,7 @@ module github.com/getzep/zep
 go 1.20
 
 require (
+	dario.cat/mergo v1.0.0
 	github.com/avast/retry-go/v4 v4.3.4
 	github.com/chi-middleware/logrus-logger v0.2.0
 	github.com/go-chi/chi/v5 v5.0.8
@@ -26,7 +27,6 @@ require (
 )
 
 require (
-	dario.cat/mergo v1.0.0 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect

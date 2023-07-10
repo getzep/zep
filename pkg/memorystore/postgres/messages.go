@@ -1,8 +1,10 @@
-package memorystore
+package postgres
 
 import (
 	"context"
 	"database/sql"
+
+	"github.com/getzep/zep/pkg/memorystore"
 
 	"github.com/getzep/zep/internal"
 	"github.com/google/uuid"
@@ -26,17 +28,21 @@ func putMessages(
 		log.Warn("putMessages called with no messages")
 		return nil, nil
 	}
-	log.Debugf("putMessages called for session %s with %d messages", sessionID, len(messages))
+	log.Debugf(
+		"putMessages called for session %s with %d messages",
+		sessionID,
+		len(messages),
+	)
 
 	// Create or update a Session
 	_, err := putSession(ctx, db, sessionID, nil, false)
 	if err != nil {
-		return nil, NewStorageError("failed to put session", err)
+		return nil, memorystore.NewStorageError("failed to put session", err)
 	}
 
-	pgMessages := make([]PgMessageStore, len(messages))
+	pgMessages := make([]MessageStoreSchema, len(messages))
 	for i, msg := range messages {
-		pgMessages[i] = PgMessageStore{
+		pgMessages[i] = MessageStoreSchema{
 			UUID:       msg.UUID,
 			SessionID:  sessionID,
 			CreatedAt:  msg.CreatedAt,
@@ -75,10 +81,14 @@ func putMessages(
 		return nil
 	})
 	if err != nil {
-		return nil, NewStorageError("failed to put messages", err)
+		return nil, memorystore.NewStorageError("failed to put messages", err)
 	}
 
-	log.Debugf("putMessages completed for session %s with %d messages", sessionID, len(messages))
+	log.Debugf(
+		"putMessages completed for session %s with %d messages",
+		sessionID,
+		len(messages),
+	)
 
 	return messages, nil
 }
@@ -93,13 +103,13 @@ func getMessages(
 	lastNMessages int,
 ) ([]models.Message, error) {
 	if sessionID == "" {
-		return nil, NewStorageError("sessionID cannot be empty", nil)
+		return nil, memorystore.NewStorageError("sessionID cannot be empty", nil)
 	}
 	if memoryWindow == 0 {
-		return nil, NewStorageError("memory.message_window must be greater than 0", nil)
+		return nil, memorystore.NewStorageError("memory.message_window must be greater than 0", nil)
 	}
 
-	var messages []PgMessageStore
+	var messages []MessageStoreSchema
 	var err error
 	if lastNMessages > 0 {
 		messages, err = fetchLastNMessages(ctx, db, sessionID, lastNMessages)
@@ -107,7 +117,7 @@ func getMessages(
 		messages, err = fetchMessagesAfterSummaryPoint(ctx, db, sessionID, summary)
 	}
 	if err != nil {
-		return nil, NewStorageError("failed to get messages", err)
+		return nil, memorystore.NewStorageError("failed to get messages", err)
 	}
 	if len(messages) == 0 {
 		return nil, nil
@@ -116,7 +126,7 @@ func getMessages(
 	messageList := make([]models.Message, len(messages))
 	err = copier.Copy(&messageList, &messages)
 	if err != nil {
-		return nil, NewStorageError("failed to copy messages", err)
+		return nil, memorystore.NewStorageError("failed to copy messages", err)
 	}
 
 	return messageList, nil
@@ -129,17 +139,17 @@ func fetchMessagesAfterSummaryPoint(
 	db *bun.DB,
 	sessionID string,
 	summary *models.Summary,
-) ([]PgMessageStore, error) {
+) ([]MessageStoreSchema, error) {
 	var summaryPointIndex int64
 	var err error
 	if summary != nil {
 		summaryPointIndex, err = getSummaryPointIndex(ctx, db, sessionID, summary.SummaryPointUUID)
 		if err != nil {
-			return nil, NewStorageError("unable to retrieve summary", nil)
+			return nil, memorystore.NewStorageError("unable to retrieve summary", nil)
 		}
 	}
 
-	messages := make([]PgMessageStore, 0)
+	messages := make([]MessageStoreSchema, 0)
 	query := db.NewSelect().
 		Model(&messages).
 		Where("session_id = ?", sessionID).
@@ -159,8 +169,8 @@ func fetchLastNMessages(
 	db *bun.DB,
 	sessionID string,
 	lastNMessages int,
-) ([]PgMessageStore, error) {
-	messages := make([]PgMessageStore, 0)
+) ([]MessageStoreSchema, error) {
+	messages := make([]MessageStoreSchema, 0)
 	query := db.NewSelect().
 		Model(&messages).
 		Where("session_id = ?", sessionID).
@@ -185,7 +195,7 @@ func getSummaryPointIndex(
 	sessionID string,
 	summaryPointUUID uuid.UUID,
 ) (int64, error) {
-	var message PgMessageStore
+	var message MessageStoreSchema
 
 	err := db.NewSelect().
 		Model(&message).
@@ -201,7 +211,7 @@ func getSummaryPointIndex(
 				err,
 			)
 		} else {
-			return 0, NewStorageError("unable to retrieve last summary point for %s", err)
+			return 0, memorystore.NewStorageError("unable to retrieve last summary point for %s", err)
 		}
 
 		return 0, nil

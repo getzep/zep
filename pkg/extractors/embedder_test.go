@@ -5,8 +5,9 @@ import (
 	"math"
 	"testing"
 
+	"github.com/getzep/zep/pkg/memorystore/postgres"
+
 	"github.com/getzep/zep/pkg/llms"
-	"github.com/getzep/zep/pkg/memorystore"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/testutils"
 	"github.com/stretchr/testify/assert"
@@ -15,13 +16,13 @@ import (
 func TestEmbeddingExtractor_Extract(t *testing.T) {
 	ctx := context.Background()
 
-	db := memorystore.NewPostgresConn(testutils.GetDSN())
-	memorystore.CleanDB(t, db)
+	db := postgres.NewPostgresConn(testutils.GetDSN())
+	postgres.CleanDB(t, db)
 
 	cfg := testutils.NewTestConfig()
 
 	appState := &models.AppState{Config: cfg}
-	store, err := memorystore.NewPostgresMemoryStore(appState, db)
+	store, err := postgres.NewPostgresMemoryStore(appState, db)
 	assert.NoError(t, err)
 	appState.MemoryStore = store
 	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)

@@ -1,4 +1,4 @@
-package memorystore
+package postgres
 
 import (
 	"context"
@@ -7,9 +7,15 @@ import (
 	"encoding/binary"
 	"errors"
 
+	"github.com/getzep/zep/internal"
+
+	"github.com/getzep/zep/pkg/memorystore"
+
 	"github.com/getzep/zep/pkg/models"
 	"github.com/uptrace/bun"
 )
+
+var log = internal.GetLogger()
 
 // NewPostgresMemoryStore returns a new PostgresMemoryStore. Use this to correctly initialize the store.
 func NewPostgresMemoryStore(
@@ -17,13 +23,13 @@ func NewPostgresMemoryStore(
 	client *bun.DB,
 ) (*PostgresMemoryStore, error) {
 	if appState == nil {
-		return nil, NewStorageError("nil appState received", nil)
+		return nil, memorystore.NewStorageError("nil appState received", nil)
 	}
 
-	pms := &PostgresMemoryStore{BaseMemoryStore[*bun.DB]{Client: client}}
+	pms := &PostgresMemoryStore{memorystore.BaseMemoryStore[*bun.DB]{Client: client}}
 	err := pms.OnStart(context.Background(), appState)
 	if err != nil {
-		return nil, NewStorageError("failed to run OnInit", err)
+		return nil, memorystore.NewStorageError("failed to run OnInit", err)
 	}
 	return pms, nil
 }
@@ -32,7 +38,7 @@ func NewPostgresMemoryStore(
 var _ models.MemoryStore[*bun.DB] = &PostgresMemoryStore{}
 
 type PostgresMemoryStore struct {
-	BaseMemoryStore[*bun.DB]
+	memorystore.BaseMemoryStore[*bun.DB]
 }
 
 func (pms *PostgresMemoryStore) OnStart(
@@ -41,7 +47,7 @@ func (pms *PostgresMemoryStore) OnStart(
 ) error {
 	err := ensurePostgresSetup(context.Background(), appState, pms.Client)
 	if err != nil {
-		return NewStorageError("failed to ensure postgres schema setup", err)
+		return memorystore.NewStorageError("failed to ensure postgres schema setup", err)
 	}
 
 	return nil
@@ -84,18 +90,17 @@ func (pms *PostgresMemoryStore) GetMemory(
 	lastNMessages int,
 ) (*models.Memory, error) {
 	if appState == nil {
-		return nil, NewStorageError("nil appState received", nil)
+		return nil, memorystore.NewStorageError("nil appState received", nil)
 	}
 
-	err := checkLastNParms(0, lastNMessages)
-	if err != nil {
-		return nil, NewStorageError("invalid lastNMessages or lastNTokens in get call", err)
+	if lastNMessages < 0 {
+		return nil, memorystore.NewStorageError("cannot specify negative lastNMessages", nil)
 	}
 
 	// Get the most recent summary
 	summary, err := getSummary(ctx, pms.Client, sessionID)
 	if err != nil {
-		return nil, NewStorageError("failed to get summary", err)
+		return nil, memorystore.NewStorageError("failed to get summary", err)
 	}
 	if summary != nil {
 		log.Debugf("Got summary for %s: %s", sessionID, summary.UUID)
@@ -110,7 +115,7 @@ func (pms *PostgresMemoryStore) GetMemory(
 		lastNMessages,
 	)
 	if err != nil {
-		return nil, NewStorageError("failed to get messages", err)
+		return nil, memorystore.NewStorageError("failed to get messages", err)
 	}
 	if messages != nil {
 		log.Debugf("Got messages for %s: %d", sessionID, len(messages))
@@ -131,7 +136,7 @@ func (pms *PostgresMemoryStore) GetSummary(
 ) (*models.Summary, error) {
 	summary, err := getSummary(ctx, pms.Client, sessionID)
 	if err != nil {
-		return nil, NewStorageError("failed to get summary", err)
+		return nil, memorystore.NewStorageError("failed to get summary", err)
 	}
 
 	return summary, nil
@@ -145,7 +150,7 @@ func (pms *PostgresMemoryStore) PutMemory(
 	skipNotify bool,
 ) error {
 	if appState == nil {
-		return NewStorageError("nil appState received", nil)
+		return memorystore.NewStorageError("nil appState received", nil)
 	}
 
 	messageResult, err := putMessages(
@@ -155,7 +160,7 @@ func (pms *PostgresMemoryStore) PutMemory(
 		memoryMessages.Messages,
 	)
 	if err != nil {
-		return NewStorageError("failed to put messages", err)
+		return memorystore.NewStorageError("failed to put messages", err)
 	}
 
 	if skipNotify {
@@ -180,7 +185,7 @@ func (pms *PostgresMemoryStore) PutSummary(
 ) error {
 	_, err := putSummary(ctx, pms.Client, sessionID, summary)
 	if err != nil {
-		return NewStorageError("failed to put summary", err)
+		return memorystore.NewStorageError("failed to put summary", err)
 	}
 
 	return nil
@@ -195,7 +200,7 @@ func (pms *PostgresMemoryStore) PutMessageMetadata(
 ) error {
 	_, err := putMessageMetadata(ctx, pms.Client, sessionID, messages, isPrivileged)
 	if err != nil {
-		return NewStorageError("failed to put message metadata", err)
+		return memorystore.NewStorageError("failed to put message metadata", err)
 	}
 	return nil
 }
@@ -230,15 +235,15 @@ func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 	embeddings []models.DocumentEmbeddings,
 ) error {
 	if embeddings == nil {
-		return NewStorageError("nil embeddings received", nil)
+		return memorystore.NewStorageError("nil embeddings received", nil)
 	}
 	if len(embeddings) == 0 {
-		return NewStorageError("no embeddings received", nil)
+		return memorystore.NewStorageError("no embeddings received", nil)
 	}
 
 	err := putMessageVectors(ctx, pms.Client, sessionID, embeddings)
 	if err != nil {
-		return NewStorageError("failed to put embeddings", err)
+		return memorystore.NewStorageError("failed to put embeddings", err)
 	}
 
 	return nil
@@ -250,7 +255,7 @@ func (pms *PostgresMemoryStore) GetMessageVectors(ctx context.Context,
 ) ([]models.DocumentEmbeddings, error) {
 	embeddings, err := getMessageVectors(ctx, pms.Client, sessionID)
 	if err != nil {
-		return nil, NewStorageError("GetMessageVectors failed to get embeddings", err)
+		return nil, memorystore.NewStorageError("GetMessageVectors failed to get embeddings", err)
 	}
 
 	return embeddings, nil
@@ -259,7 +264,7 @@ func (pms *PostgresMemoryStore) GetMessageVectors(ctx context.Context,
 func (pms *PostgresMemoryStore) PurgeDeleted(ctx context.Context) error {
 	err := purgeDeleted(ctx, pms.Client)
 	if err != nil {
-		return NewStorageError("failed to purge deleted", err)
+		return memorystore.NewStorageError("failed to purge deleted", err)
 	}
 
 	return nil
@@ -276,7 +281,7 @@ func acquireAdvisoryXactLock(ctx context.Context, tx bun.Tx, key string) error {
 	lockID := binary.BigEndian.Uint64(hash[:8])
 
 	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(?)", lockID); err != nil {
-		return NewStorageError("failed to acquire advisory lock", err)
+		return memorystore.NewStorageError("failed to acquire advisory lock", err)
 	}
 
 	return nil
@@ -293,7 +298,7 @@ func acquireAdvisoryLock(ctx context.Context, db bun.IDB, key string) (uint64, e
 	lockID := binary.BigEndian.Uint64(hash[:8])
 
 	if _, err := db.ExecContext(ctx, "SELECT pg_advisory_lock(?)", lockID); err != nil {
-		return 0, NewStorageError("failed to acquire advisory lock", err)
+		return 0, memorystore.NewStorageError("failed to acquire advisory lock", err)
 	}
 
 	return lockID, nil
@@ -303,7 +308,7 @@ func acquireAdvisoryLock(ctx context.Context, db bun.IDB, key string) (uint64, e
 // Accepts a bun.IDB, which can be either a *bun.DB or *bun.Tx.
 func releaseAdvisoryLock(ctx context.Context, db bun.IDB, lockID uint64) error {
 	if _, err := db.ExecContext(ctx, "SELECT pg_advisory_unlock(?)", lockID); err != nil {
-		return NewStorageError("failed to release advisory lock", err)
+		return memorystore.NewStorageError("failed to release advisory lock", err)
 	}
 
 	return nil
