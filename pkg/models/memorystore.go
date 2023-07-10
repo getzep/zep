@@ -120,12 +120,15 @@ type MemoryStore[T any] interface {
 	// - limit: Defines the maximum number of results returned. If it's 0, all the results will be returned.
 	// - pageNumber: Specifies the current page number in the pagination scheme.
 	// - pageSize: Determines the number of results per page. If it's -1, all results are returned on a single page.
+	// The mmr parameter is used to enable/disable the MMR algorithm for search results.
 	// The function will return the results in pages as determined by pageSize.
 	SearchDocuments(
 		ctx context.Context,
 		appState *AppState,
+		collectionName string,
 		query *DocumentSearchPayload,
 		limit int,
+		mmr bool, // mmr is used to enable/disable the Maximal Marginal Relevance algorithm for search results.
 		pageNumber int,
 		pageSize int,
 	) ([]DocumentSearchResultPage, error)
