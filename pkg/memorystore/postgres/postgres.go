@@ -329,8 +329,8 @@ func (pms *PostgresMemoryStore) DeleteDocument(
 func (pms *PostgresMemoryStore) SearchDocuments(
 	ctx context.Context,
 	appState *models.AppState,
-	query *models.DocumentSearchPayload,
 	collectionName string,
+	query *models.DocumentSearchPayload,
 	limit int,
 	mmr bool,
 	pageNumber int,

@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/getzep/zep/pkg/testutils"
+
 	"github.com/getzep/zep/pkg/models"
 	"github.com/google/uuid"
 
@@ -33,12 +35,13 @@ func TestCreateDocumentTable(t *testing.T) {
 
 	collection := &models.DocumentCollection{
 		UUID:                uuid.New(),
-		Name:                "Test",
+		Name:                testutils.GenerateRandomString(10),
 		EmbeddingDimensions: 3,
 	}
 
-	_, err := createDocumentTable(ctx, testDB, collection)
-	if err != nil {
-		t.Fatalf("failed to create document table: %v", err)
-	}
+	tableName, err := generateCollectionTableName(collection)
+	assert.NoError(t, err)
+
+	err = createDocumentTable(ctx, testDB, tableName, collection.EmbeddingDimensions)
+	assert.NoError(t, err)
 }
