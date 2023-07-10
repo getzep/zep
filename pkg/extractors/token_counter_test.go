@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/getzep/zep/pkg/memorystore/postgres"
+
 	"github.com/getzep/zep/internal"
 
-	"github.com/getzep/zep/pkg/memorystore"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/testutils"
 	"github.com/stretchr/testify/assert"
@@ -15,15 +16,15 @@ import (
 func TestTokenCountExtractor(t *testing.T) {
 	ctx := context.Background()
 
-	db := memorystore.NewPostgresConn(testutils.GetDSN())
+	db := postgres.NewPostgresConn(testutils.GetDSN())
 	defer db.Close()
-	memorystore.CleanDB(t, db)
+	postgres.CleanDB(t, db)
 
 	cfg := testutils.NewTestConfig()
 
 	appState := &models.AppState{Config: cfg}
 
-	store, err := memorystore.NewPostgresMemoryStore(appState, db)
+	store, err := postgres.NewPostgresMemoryStore(appState, db)
 	assert.NoError(t, err)
 
 	appState.MemoryStore = store

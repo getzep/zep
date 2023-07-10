@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/getzep/zep/pkg/memorystore/postgres"
+
 	"github.com/getzep/zep/pkg/auth"
 
 	"github.com/oiime/logrusbun"
@@ -17,7 +19,6 @@ import (
 	"github.com/getzep/zep/config"
 	"github.com/getzep/zep/pkg/extractors"
 	"github.com/getzep/zep/pkg/llms"
-	"github.com/getzep/zep/pkg/memorystore"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/server"
 )
@@ -92,11 +93,11 @@ func initializeMemoryStore(appState *models.AppState) {
 		if appState.Config.MemoryStore.Postgres.DSN == "" {
 			log.Fatal(ErrPostgresDSNNotSet)
 		}
-		db := memorystore.NewPostgresConn(appState.Config.MemoryStore.Postgres.DSN)
+		db := postgres.NewPostgresConn(appState.Config.MemoryStore.Postgres.DSN)
 		if appState.Config.Log.Level == "debug" {
 			pgDebugLogging(db)
 		}
-		memoryStore, err := memorystore.NewPostgresMemoryStore(appState, db)
+		memoryStore, err := postgres.NewPostgresMemoryStore(appState, db)
 		if err != nil {
 			log.Fatal(err)
 		}

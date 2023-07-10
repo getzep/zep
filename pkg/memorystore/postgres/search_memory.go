@@ -1,4 +1,4 @@
-package memorystore
+package postgres
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"errors"
 	"math"
 	"strings"
+
+	"github.com/getzep/zep/pkg/memorystore"
 
 	"github.com/sirupsen/logrus"
 
@@ -34,11 +36,11 @@ func searchMessages(
 	logrus.Debugf("searchMessages called for session %s", sessionID)
 
 	if query == nil || appState == nil {
-		return nil, NewStorageError("nil query or appState received", nil)
+		return nil, memorystore.NewStorageError("nil query or appState received", nil)
 	}
 
 	if query.Text == "" && len(query.Metadata) == 0 {
-		return nil, NewStorageError("empty query", errors.New("empty query"))
+		return nil, memorystore.NewStorageError("empty query", errors.New("empty query"))
 	}
 
 	dbQuery := buildMessagesSelectQuery(ctx, appState, db, query)
@@ -46,7 +48,7 @@ func searchMessages(
 		var err error
 		dbQuery, err = applyMessagesMetadataFilter(dbQuery, query.Metadata)
 		if err != nil {
-			return nil, NewStorageError("error applying metadata filter", err)
+			return nil, memorystore.NewStorageError("error applying metadata filter", err)
 		}
 	}
 
@@ -65,7 +67,7 @@ func searchMessages(
 
 	results, err := executeMessagesSearchScan(ctx, dbQuery)
 	if err != nil {
-		return nil, NewStorageError("memory searchMessages failed", err)
+		return nil, memorystore.NewStorageError("memory searchMessages failed", err)
 	}
 
 	filteredResults := filterValidMessageSearchResults(results, query.Metadata)
@@ -106,13 +108,13 @@ func applyMessagesMetadataFilter(
 	if where, ok := metadata["where"]; ok {
 		j, err := json.Marshal(where)
 		if err != nil {
-			return nil, NewStorageError("error marshalling metadata", err)
+			return nil, memorystore.NewStorageError("error marshalling metadata", err)
 		}
 
 		var jq JSONQuery
 		err = json.Unmarshal(j, &jq)
 		if err != nil {
-			return nil, NewStorageError("error unmarshalling metadata", err)
+			return nil, memorystore.NewStorageError("error unmarshalling metadata", err)
 		}
 		qb = parseJSONQuery(qb, &jq, false)
 	}
@@ -173,12 +175,12 @@ func addMessagesVectorColumn(
 ) (*bun.SelectQuery, error) {
 	model, err := llms.GetMessageEmbeddingModel(appState)
 	if err != nil {
-		return nil, NewStorageError("failed to get message embedding model", err)
+		return nil, memorystore.NewStorageError("failed to get message embedding model", err)
 	}
 
 	e, err := llms.EmbedTexts(ctx, appState, model, []string{queryText})
 	if err != nil {
-		return nil, NewStorageError("failed to embed query", err)
+		return nil, memorystore.NewStorageError("failed to embed query", err)
 	}
 
 	vector := pgvector.NewVector(e[0])

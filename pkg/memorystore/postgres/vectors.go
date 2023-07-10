@@ -1,7 +1,9 @@
-package memorystore
+package postgres
 
 import (
 	"context"
+
+	"github.com/getzep/zep/pkg/memorystore"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/pgvector/pgvector-go"
@@ -12,8 +14,8 @@ func getMessageVectors(ctx context.Context,
 	db *bun.DB,
 	sessionID string) ([]models.DocumentEmbeddings, error) {
 	var results []struct {
-		PgMessageStore
-		PgMessageVectorStore
+		MessageStoreSchema
+		MessageVectorStoreSchema
 	}
 	_, err := db.NewSelect().
 		Table("message_embedding").
@@ -25,7 +27,7 @@ func getMessageVectors(ctx context.Context,
 		Where("message.deleted_at IS NULL").
 		Exec(ctx, &results)
 	if err != nil {
-		return nil, NewStorageError("failed to get message vectors", err)
+		return nil, memorystore.NewStorageError("failed to get message vectors", err)
 	}
 
 	embeddings := make([]models.DocumentEmbeddings, len(results))
@@ -47,15 +49,15 @@ func putMessageVectors(
 	embeddings []models.DocumentEmbeddings,
 ) error {
 	if embeddings == nil {
-		return NewStorageError("nil embeddings received", nil)
+		return memorystore.NewStorageError("nil embeddings received", nil)
 	}
 	if len(embeddings) == 0 {
-		return NewStorageError("no embeddings received", nil)
+		return memorystore.NewStorageError("no embeddings received", nil)
 	}
 
-	embeddingVectors := make([]PgMessageVectorStore, len(embeddings))
+	embeddingVectors := make([]MessageVectorStoreSchema, len(embeddings))
 	for i, e := range embeddings {
-		embeddingVectors[i] = PgMessageVectorStore{
+		embeddingVectors[i] = MessageVectorStoreSchema{
 			SessionID:   sessionID,
 			Embedding:   pgvector.NewVector(e.Embedding),
 			MessageUUID: e.TextUUID,
@@ -68,7 +70,7 @@ func putMessageVectors(
 		Exec(ctx)
 
 	if err != nil {
-		return NewStorageError("failed to insert message vectors", err)
+		return memorystore.NewStorageError("failed to insert message vectors", err)
 	}
 
 	return nil

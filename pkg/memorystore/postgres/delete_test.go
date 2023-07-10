@@ -1,4 +1,4 @@
-package memorystore
+package postgres
 
 import (
 	"context"

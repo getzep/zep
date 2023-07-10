@@ -1,4 +1,4 @@
-package memorystore
+package postgres
 
 import (
 	"strings"
@@ -15,7 +15,7 @@ func TestPutUnPrivilegedMetadata(t *testing.T) {
 	_, err = putSession(testCtx, testDB, sessionID, nil, true)
 	assert.NoError(t, err, "putSession should not return an error")
 
-	testMessages := []PgMessageStore{
+	testMessages := []MessageStoreSchema{
 		{
 			SessionID: sessionID,
 			Role:      "human",
@@ -111,7 +111,7 @@ func TestPutMetadata(t *testing.T) {
 	_, err = putSession(testCtx, testDB, sessionID, nil, true)
 	assert.NoError(t, err, "putSession should not return an error")
 
-	testMessages := []PgMessageStore{
+	testMessages := []MessageStoreSchema{
 		{
 			SessionID: sessionID,
 			Role:      "user",
@@ -325,7 +325,7 @@ func TestPutMetadata(t *testing.T) {
 	}
 }
 
-func insertMessages(t *testing.T, testMessages []PgMessageStore) {
+func insertMessages(t *testing.T, testMessages []MessageStoreSchema) {
 	var cols = []string{
 		"id",
 		"created_at",

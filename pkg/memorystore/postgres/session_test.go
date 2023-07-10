@@ -1,9 +1,11 @@
-package memorystore
+package postgres
 
 import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/getzep/zep/pkg/memorystore"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/testutils"
@@ -56,9 +58,9 @@ func TestPutSession(t *testing.T) {
 
 			if tt.wantErr {
 				assert.Error(t, err)
-				storageErr, ok := err.(*StorageError)
+				storageErr, ok := err.(*memorystore.StorageError)
 				if ok {
-					assert.Equal(t, tt.errMessage, storageErr.message)
+					assert.Equal(t, tt.errMessage, storageErr.Message)
 				}
 			} else {
 				assert.NoError(t, err)
