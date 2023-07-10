@@ -38,9 +38,9 @@ func (ee *EmbeddingExtractor) Extract(
 		return NewExtractorError("EmbeddingExtractor embed messages failed", err)
 	}
 
-	embeddingRecords := make([]models.DocumentEmbeddings, len(messageEvent.Messages))
+	embeddingRecords := make([]models.Embedding, len(messageEvent.Messages))
 	for i, r := range messageEvent.Messages {
-		embeddingRecords[i] = models.DocumentEmbeddings{
+		embeddingRecords[i] = models.Embedding{
 			TextUUID:  r.UUID,
 			Embedding: embeddings[i],
 		}
@@ -57,7 +57,7 @@ func (ee *EmbeddingExtractor) Extract(
 	return nil
 }
 
-// messageToStringSlice converts a slice of DocumentEmbeddings to a slice of strings.
+// messageToStringSlice converts a slice of Embedding to a slice of strings.
 // If enrich is true, the text slice will include the prior and subsequent
 // messages text to the slice item.
 func messageToStringSlice(messages []models.Message, enrich bool) []string {

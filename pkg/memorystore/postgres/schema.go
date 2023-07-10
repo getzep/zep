@@ -112,11 +112,53 @@ func (s *SummaryStoreSchema) BeforeCreateTable(
 	return nil
 }
 
+// DocumentCollectionSchema represents the schema for the DocumentCollection table.
+type DocumentCollectionSchema struct {
+	bun.BaseModel       `bun:"table:document_collection,alias:dc"`
+	UUID                uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
+	CreatedAt           time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt           time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
+	Name                string                 `bun:",notnull"`
+	Description         string                 `bun:",notnull"`
+	Metadata            map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
+	TableName           string                 `bun:",notnull"`
+	EmbeddingDimensions int                    `bun:",notnull"`
+	DistanceFunction    string                 `bun:",notnull"`
+	IsNormalized        bool                   `bun:",notnull"`
+	IsIndexed           bool                   `bun:",notnull"`
+}
+
+func (s *DocumentCollectionSchema) BeforeCreateTable(
+	_ context.Context,
+	_ *bun.CreateTableQuery,
+) error {
+	return nil
+}
+
+// DocumentSchemaTemplate represents the schema for the Document table.
+// Embedding is manually added when createDocumentTable is run in order to set the correct dimensions.
+// This means the embedding is not returned when querying using bun.
+type DocumentSchemaTemplate struct {
+	bun.BaseModel
+	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
+	CreatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
+	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
+	Content   string                 `bun:",notnull"`
+	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
+	// Embedding      pgvector.Vector           `bun:"type:vector(768)"`
+	CollectionUUID uuid.UUID                 `bun:"type:uuid,notnull,unique"`
+	Collection     *DocumentCollectionSchema `bun:"rel:belongs-to,join:collection_uuid=uuid,on_delete:cascade"`
+}
+
 // Create session_id indexes after table creation
 var _ bun.AfterCreateTableHook = (*SessionSchema)(nil)
 var _ bun.AfterCreateTableHook = (*MessageStoreSchema)(nil)
 var _ bun.AfterCreateTableHook = (*MessageVectorStoreSchema)(nil)
 var _ bun.AfterCreateTableHook = (*SummaryStoreSchema)(nil)
+
+// Create Collection Name index after table creation
+var _ bun.AfterCreateTableHook = (*DocumentCollectionSchema)(nil)
 
 func (*SessionSchema) AfterCreateTable(
 	ctx context.Context,
@@ -172,11 +214,48 @@ func (*SummaryStoreSchema) AfterCreateTable(
 	return err
 }
 
+func (*DocumentCollectionSchema) AfterCreateTable(
+	ctx context.Context,
+	query *bun.CreateTableQuery,
+) error {
+	_, err := query.DB().NewCreateIndex().
+		Model((*DocumentCollectionSchema)(nil)).
+		Index("document_collection_name_idx").
+		Column("name").
+		Exec(ctx)
+	return err
+}
+
 var tableList = []bun.BeforeCreateTableHook{
 	&MessageVectorStoreSchema{},
 	&SummaryStoreSchema{},
 	&MessageStoreSchema{},
 	&SessionSchema{},
+	&DocumentCollectionSchema{},
+}
+
+func createDocumentTable(
+	ctx context.Context,
+	db *bun.DB,
+	collection *models.DocumentCollection,
+) (string, error) {
+	tableName, err := generateCollectionTableName(collection)
+	if err != nil {
+		return "", fmt.Errorf("error generating document table name: %w", err)
+	}
+	schema := &DocumentSchemaTemplate{}
+	_, err = db.NewCreateTable().
+		Model(schema).
+		// override default table name
+		ModelTableExpr(tableName).
+		// create the embedding column using the provided dimensions
+		ColumnExpr("embedding vector(?)", collection.EmbeddingDimensions).
+		WithForeignKeys().
+		Exec(ctx)
+	if err != nil {
+		return "", fmt.Errorf("error creating document table: %w", err)
+	}
+	return tableName, nil
 }
 
 // ensurePostgresSetup creates the db schema if it does not exist.

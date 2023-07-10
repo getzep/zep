@@ -21,12 +21,12 @@ func embedTextsLocal(
 ) ([][]float32, error) {
 	url := appState.Config.NLP.ServerURL + "/embeddings"
 
-	documents := make([]models.DocumentEmbeddings, len(texts))
+	documents := make([]models.Embedding, len(texts))
 	for i, text := range texts {
-		documents[i] = models.DocumentEmbeddings{Text: text}
+		documents[i] = models.Embedding{Text: text}
 	}
-	collection := models.DocumentCollection{
-		Documents: documents,
+	collection := models.EmbeddingCollection{
+		Embeddings: documents,
 	}
 	jsonBody, err := json.Marshal(collection)
 	if err != nil {
@@ -58,9 +58,9 @@ func embedTextsLocal(
 		return nil, err
 	}
 
-	m := make([][]float32, len(collection.Documents))
-	for i := range collection.Documents {
-		m[i] = collection.Documents[i].Embedding
+	m := make([][]float32, len(collection.Embeddings))
+	for i := range collection.Embeddings {
+		m[i] = collection.Embeddings[i].Embedding
 	}
 
 	return m, nil

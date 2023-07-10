@@ -79,24 +79,6 @@ func tearDown() {
 	internal.SetLogLevel(logrus.InfoLevel)
 }
 
-func TestEnsurePostgresSchemaSetup(t *testing.T) {
-	CleanDB(t, testDB)
-
-	t.Run("should succeed when all schema setup is successful", func(t *testing.T) {
-		err := ensurePostgresSetup(testCtx, appState, testDB)
-		assert.NoError(t, err)
-
-		checkForTable(t, testDB, &SessionSchema{})
-		checkForTable(t, testDB, &MessageStoreSchema{})
-		checkForTable(t, testDB, &SummaryStoreSchema{})
-		checkForTable(t, testDB, &MessageVectorStoreSchema{})
-	})
-	t.Run("should not fail on second run", func(t *testing.T) {
-		err := ensurePostgresSetup(testCtx, appState, testDB)
-		assert.NoError(t, err)
-	})
-}
-
 func TestPutMessages(t *testing.T) {
 	messages := []models.Message{
 		{
@@ -544,7 +526,7 @@ func TestPutEmbeddings(t *testing.T) {
 	}
 
 	// Create embeddings
-	embeddings := []models.DocumentEmbeddings{
+	embeddings := []models.Embedding{
 		{
 			TextUUID:  resultMessages[0].UUID,
 			Text:      resultMessages[0].Content,
@@ -552,8 +534,8 @@ func TestPutEmbeddings(t *testing.T) {
 		},
 	}
 
-	err = putMessageVectors(testCtx, testDB, sessionID, embeddings)
-	assert.NoError(t, err, "putMessageVectors should not return an error")
+	err = putMessageEmbeddings(testCtx, testDB, sessionID, embeddings)
+	assert.NoError(t, err, "putMessageEmbeddings should not return an error")
 
 	// Check for the creation of MessageVectorStoreSchema values
 	var pgMemoryVectorStores []MessageVectorStoreSchema

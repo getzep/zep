@@ -10,9 +10,9 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func getMessageVectors(ctx context.Context,
+func getMessageEmbeddings(ctx context.Context,
 	db *bun.DB,
-	sessionID string) ([]models.DocumentEmbeddings, error) {
+	sessionID string) ([]models.Embedding, error) {
 	var results []struct {
 		MessageStoreSchema
 		MessageVectorStoreSchema
@@ -30,9 +30,9 @@ func getMessageVectors(ctx context.Context,
 		return nil, memorystore.NewStorageError("failed to get message vectors", err)
 	}
 
-	embeddings := make([]models.DocumentEmbeddings, len(results))
+	embeddings := make([]models.Embedding, len(results))
 	for i, vectorStoreRecord := range results {
-		embeddings[i] = models.DocumentEmbeddings{
+		embeddings[i] = models.Embedding{
 			Embedding: vectorStoreRecord.Embedding.Slice(),
 			TextUUID:  vectorStoreRecord.MessageUUID,
 			Text:      vectorStoreRecord.Content,
@@ -42,11 +42,11 @@ func getMessageVectors(ctx context.Context,
 	return embeddings, nil
 }
 
-func putMessageVectors(
+func putMessageEmbeddings(
 	ctx context.Context,
 	db *bun.DB,
 	sessionID string,
-	embeddings []models.DocumentEmbeddings,
+	embeddings []models.Embedding,
 ) error {
 	if embeddings == nil {
 		return memorystore.NewStorageError("nil embeddings received", nil)
