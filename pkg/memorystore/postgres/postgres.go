@@ -330,7 +330,9 @@ func (pms *PostgresMemoryStore) SearchDocuments(
 	ctx context.Context,
 	appState *models.AppState,
 	query *models.DocumentSearchPayload,
+	collectionName string,
 	limit int,
+	mmr bool,
 	pageNumber int,
 	pageSize int,
 ) ([]models.DocumentSearchResultPage, error) {
