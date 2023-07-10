@@ -12,6 +12,19 @@ type MemorySearchPayload struct {
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
-type SessionSearchPayload struct {
+type DocumentSearchPayload struct {
+	Text     string                 `json:"text"`
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type DocumentSearchResult struct {
+	Document *Document `json:"document"`
+	Dist     float64   `json:"dist"`
+}
+
+type DocumentSearchResultPage struct {
+	DocumentSearchResults []DocumentSearchResult `json:"results"`
+	ResultCount           int                    `json:"result_count"`
+	TotalPages            int                    `json:"total_pages"`
+	CurrentPage           int                    `json:"current_page"`
 }

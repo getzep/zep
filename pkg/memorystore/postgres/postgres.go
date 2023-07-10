@@ -7,8 +7,9 @@ import (
 	"encoding/binary"
 	"errors"
 
-	"github.com/getzep/zep/internal"
+	"github.com/google/uuid"
 
+	"github.com/getzep/zep/internal"
 	"github.com/getzep/zep/pkg/memorystore"
 
 	"github.com/getzep/zep/pkg/models"
@@ -232,7 +233,7 @@ func (pms *PostgresMemoryStore) DeleteSession(ctx context.Context, sessionID str
 func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
-	embeddings []models.DocumentEmbeddings,
+	embeddings []models.Embedding,
 ) error {
 	if embeddings == nil {
 		return memorystore.NewStorageError("nil embeddings received", nil)
@@ -241,7 +242,7 @@ func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 		return memorystore.NewStorageError("no embeddings received", nil)
 	}
 
-	err := putMessageVectors(ctx, pms.Client, sessionID, embeddings)
+	err := putMessageEmbeddings(ctx, pms.Client, sessionID, embeddings)
 	if err != nil {
 		return memorystore.NewStorageError("failed to put embeddings", err)
 	}
@@ -252,8 +253,8 @@ func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 func (pms *PostgresMemoryStore) GetMessageVectors(ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
-) ([]models.DocumentEmbeddings, error) {
-	embeddings, err := getMessageVectors(ctx, pms.Client, sessionID)
+) ([]models.Embedding, error) {
+	embeddings, err := getMessageEmbeddings(ctx, pms.Client, sessionID)
 	if err != nil {
 		return nil, memorystore.NewStorageError("GetMessageVectors failed to get embeddings", err)
 	}
@@ -268,6 +269,72 @@ func (pms *PostgresMemoryStore) PurgeDeleted(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (pms *PostgresMemoryStore) PutCollection(
+	ctx context.Context,
+	appState *models.AppState,
+	collection *models.DocumentCollection,
+) error {
+	return errors.New("not implemented")
+}
+
+func (pms *PostgresMemoryStore) GetCollection(
+	ctx context.Context,
+	appState *models.AppState,
+	collectionName string,
+) (*models.DocumentCollection, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (pms *PostgresMemoryStore) GetCollectionList(
+	ctx context.Context,
+	appState *models.AppState,
+) ([]models.DocumentCollection, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (pms *PostgresMemoryStore) DeleteCollection(
+	ctx context.Context,
+	appState *models.AppState,
+	collectionName string,
+) error {
+	return errors.New("not implemented")
+}
+
+func (pms *PostgresMemoryStore) PutDocuments(
+	ctx context.Context,
+	appState *models.AppState,
+	documents *[]models.Document,
+) error {
+	return errors.New("not implemented")
+}
+
+func (pms *PostgresMemoryStore) GetDocument(
+	ctx context.Context,
+	appState *models.AppState,
+	documentUUID uuid.UUID,
+) (*models.Document, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (pms *PostgresMemoryStore) DeleteDocument(
+	ctx context.Context,
+	appState *models.AppState,
+	documentUUID uuid.UUID,
+) error {
+	return errors.New("not implemented")
+}
+
+func (pms *PostgresMemoryStore) SearchDocuments(
+	ctx context.Context,
+	appState *models.AppState,
+	query *models.DocumentSearchPayload,
+	limit int,
+	pageNumber int,
+	pageSize int,
+) ([]models.DocumentSearchResultPage, error) {
+	return nil, errors.New("not implemented")
 }
 
 // acquireAdvisoryXactLock acquires a PostgreSQL advisory lock for the given key.

@@ -60,9 +60,9 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	embeddings, err := llms.EmbedTexts(ctx, appState, model, texts)
 	assert.NoError(t, err)
 
-	expectedEmbeddingRecords := make([]models.DocumentEmbeddings, len(unembeddedMessages))
+	expectedEmbeddingRecords := make([]models.Embedding, len(unembeddedMessages))
 	for i, r := range unembeddedMessages {
-		expectedEmbeddingRecords[i] = models.DocumentEmbeddings{
+		expectedEmbeddingRecords[i] = models.Embedding{
 			TextUUID:  r.UUID,
 			Text:      r.Content,
 			Embedding: embeddings[i],
