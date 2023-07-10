@@ -39,7 +39,7 @@ func TestCreateDocumentTable(t *testing.T) {
 		EmbeddingDimensions: 3,
 	}
 
-	tableName, err := generateCollectionTableName(collection)
+	tableName, err := generateDocumentTableName(collection)
 	assert.NoError(t, err)
 
 	err = createDocumentTable(ctx, testDB, tableName, collection.EmbeddingDimensions)

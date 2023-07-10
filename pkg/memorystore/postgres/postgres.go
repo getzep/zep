@@ -273,33 +273,49 @@ func (pms *PostgresMemoryStore) PurgeDeleted(ctx context.Context) error {
 
 func (pms *PostgresMemoryStore) PutCollection(
 	ctx context.Context,
-	appState *models.AppState,
+	_ *models.AppState,
 	collection *models.DocumentCollection,
 ) error {
-	return errors.New("not implemented")
+	err := putCollection(ctx, pms.Client, collection)
+	if err != nil {
+		return memorystore.NewStorageError("failed to put collection", err)
+	}
+	return nil
 }
 
 func (pms *PostgresMemoryStore) GetCollection(
 	ctx context.Context,
-	appState *models.AppState,
+	_ *models.AppState,
 	collectionName string,
 ) (*models.DocumentCollection, error) {
-	return nil, errors.New("not implemented")
+	collection, err := getCollection(ctx, pms.Client, collectionName)
+	if err != nil {
+		return nil, memorystore.NewStorageError("failed to get collection", err)
+	}
+	return collection, nil
 }
 
 func (pms *PostgresMemoryStore) GetCollectionList(
 	ctx context.Context,
-	appState *models.AppState,
+	_ *models.AppState,
 ) ([]models.DocumentCollection, error) {
-	return nil, errors.New("not implemented")
+	collections, err := getCollectionList(ctx, pms.Client)
+	if err != nil {
+		return nil, memorystore.NewStorageError("failed to get collection list", err)
+	}
+	return collections, nil
 }
 
 func (pms *PostgresMemoryStore) DeleteCollection(
 	ctx context.Context,
-	appState *models.AppState,
+	_ *models.AppState,
 	collectionName string,
 ) error {
-	return errors.New("not implemented")
+	err := deleteCollection(ctx, pms.Client, collectionName)
+	if err != nil {
+		return memorystore.NewStorageError("failed to delete collection", err)
+	}
+	return nil
 }
 
 func (pms *PostgresMemoryStore) PutDocuments(
