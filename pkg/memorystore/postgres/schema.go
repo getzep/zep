@@ -232,7 +232,7 @@ var tableList = []bun.BeforeCreateTableHook{
 	&DocumentCollectionSchema{},
 }
 
-// generateCollectionTableName generates a table name for a collection.
+// generateDocumentTableName generates a table name for a collection.
 // If the table already exists, the table is not recreated.
 func createDocumentTable(
 	ctx context.Context,
