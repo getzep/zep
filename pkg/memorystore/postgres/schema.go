@@ -118,7 +118,7 @@ type DocumentCollectionSchema struct {
 	UUID                uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
 	CreatedAt           time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
 	UpdatedAt           time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
-	Name                string                 `bun:",notnull"`
+	Name                string                 `bun:",notnull,unique"`
 	Description         string                 `bun:",notnull"`
 	Metadata            map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
 	TableName           string                 `bun:",notnull"`
@@ -147,8 +147,6 @@ type DocumentSchemaTemplate struct {
 	Content   string                 `bun:",notnull"`
 	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
 	// Embedding      pgvector.Vector           `bun:"type:vector(768)"`
-	CollectionUUID uuid.UUID                 `bun:"type:uuid,notnull,unique"`
-	Collection     *DocumentCollectionSchema `bun:"rel:belongs-to,join:collection_uuid=uuid,on_delete:cascade"`
 }
 
 // Create session_id indexes after table creation
@@ -234,28 +232,27 @@ var tableList = []bun.BeforeCreateTableHook{
 	&DocumentCollectionSchema{},
 }
 
+// generateCollectionTableName generates a table name for a collection.
+// If the table already exists, the table is not recreated.
 func createDocumentTable(
 	ctx context.Context,
 	db *bun.DB,
-	collection *models.DocumentCollection,
-) (string, error) {
-	tableName, err := generateCollectionTableName(collection)
-	if err != nil {
-		return "", fmt.Errorf("error generating document table name: %w", err)
-	}
+	tableName string,
+	embeddingDimensions int,
+) error {
 	schema := &DocumentSchemaTemplate{}
-	_, err = db.NewCreateTable().
+	_, err := db.NewCreateTable().
 		Model(schema).
 		// override default table name
 		ModelTableExpr(tableName).
 		// create the embedding column using the provided dimensions
-		ColumnExpr("embedding vector(?)", collection.EmbeddingDimensions).
-		WithForeignKeys().
+		ColumnExpr("embedding vector(?)", embeddingDimensions).
+		IfNotExists().
 		Exec(ctx)
 	if err != nil {
-		return "", fmt.Errorf("error creating document table: %w", err)
+		return fmt.Errorf("error creating document table: %w", err)
 	}
-	return tableName, nil
+	return nil
 }
 
 // ensurePostgresSetup creates the db schema if it does not exist.

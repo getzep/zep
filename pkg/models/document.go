@@ -12,6 +12,7 @@ type DocumentCollection struct {
 	Name                string                 `json:"name"`
 	Description         string                 `json:"description"`
 	Metadata            map[string]interface{} `json:"metadata,omitempty"`
+	TableName           string                 `json:"table_name"`
 	EmbeddingDimensions int                    `json:"embedding_dimensions"`
 	DistanceFunction    string                 `json:"distance_function"` // Distance function to use for index
 	IsNormalized        bool                   `json:"is_normalized"`     // Are the embeddings normalized?
@@ -19,9 +20,10 @@ type DocumentCollection struct {
 }
 
 type Document struct {
-	UUID       uuid.UUID              `json:"uuid"`
-	CreatedAt  time.Time              `json:"created_at"`
-	Content    string                 `json:"content"`
-	Metadata   map[string]interface{} `json:"metadata,omitempty"`
-	Embeddings []float32              `json:"embeddings"`
+	UUID           uuid.UUID              `json:"uuid"`
+	CreatedAt      time.Time              `json:"created_at"`
+	Content        string                 `json:"content"`
+	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	Embeddings     []float32              `json:"embeddings"`
+	CollectionUUID uuid.UUID              `json:"collection_uuid"`
 }
