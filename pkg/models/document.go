@@ -24,6 +24,6 @@ type Document struct {
 	CreatedAt      time.Time              `json:"created_at"`
 	Content        string                 `json:"content"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
-	Embeddings     []float32              `json:"embeddings"`
+	Embedding      []float32              `json:"embedding"`
 	CollectionUUID uuid.UUID              `json:"collection_uuid"`
 }

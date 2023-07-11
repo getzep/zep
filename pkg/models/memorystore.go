@@ -100,7 +100,8 @@ type MemoryStore[T any] interface {
 	PutDocuments(
 		ctx context.Context,
 		appState *AppState,
-		documents *[]Document,
+		collectionName string,
+		documents []*Document,
 	) error
 	// GetDocument retrieves a Document by UUID.
 	GetDocument(
