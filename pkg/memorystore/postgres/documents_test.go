@@ -174,3 +174,80 @@ func TestDeleteDocument(t *testing.T) {
 		})
 	}
 }
+
+func TestPutDocumentEmbeddings(t *testing.T) {
+	ctx := context.Background()
+
+	// Setup
+	CleanDB(t, testDB)
+	err := ensurePostgresSetup(ctx, appState, testDB)
+	assert.NoError(t, err)
+
+	collection := &models.DocumentCollection{
+		UUID:                uuid.New(),
+		Name:                testutils.GenerateRandomString(10),
+		EmbeddingDimensions: 5,
+	}
+
+	err = putCollection(ctx, testDB, collection)
+	assert.NoError(t, err)
+
+	document := &models.Document{
+		Content: testutils.GenerateRandomString(100),
+	}
+
+	documents := []*models.Document{document}
+	err = putDocuments(ctx, testDB, collection.Name, documents)
+	assert.NoError(t, err)
+
+	// Prepare embeddings for the document
+	documentEmbeddings := []*models.Document{
+		{
+			UUID:      document.UUID,
+			Embedding: []float32{0.1, 0.2, 0.3, 0.4, 0.5},
+		},
+	}
+
+	testCases := []struct {
+		name                string
+		collection          string
+		documentEmbeddings  []*models.Document
+		expectedUpdatedDocs int
+		expectError         bool
+	}{
+		{
+			name:                "test update embeddings for existing document",
+			collection:          collection.Name,
+			documentEmbeddings:  documentEmbeddings,
+			expectedUpdatedDocs: len(documentEmbeddings),
+			expectError:         false,
+		},
+		{
+			name:       "test update embeddings for non-existent document",
+			collection: collection.Name,
+			documentEmbeddings: []*models.Document{
+				{UUID: uuid.New(), Embedding: []float32{0.1, 0.2, 0.3, 0.4, 0.5}},
+			},
+			expectedUpdatedDocs: 0,
+			expectError:         true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := putDocumentEmbeddings(ctx, testDB, tc.collection, tc.documentEmbeddings)
+			if tc.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+
+				// Validate if embeddings are updated correctly
+				for _, docEmbedding := range tc.documentEmbeddings {
+					retrievedDoc, err := getDocument(ctx, testDB, tc.collection, docEmbedding.UUID)
+					assert.NoError(t, err)
+					assert.Equal(t, docEmbedding.Embedding, retrievedDoc.Embedding)
+				}
+			}
+		})
+	}
+}

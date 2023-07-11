@@ -117,6 +117,15 @@ type MemoryStore[T any] interface {
 		collectionName string,
 		documentUUID uuid.UUID,
 	) error
+	// PutDocumentEmbeddings updates documents with embeddings.
+	// We do this separetely from PutDocuments because embeddings are large
+	// and aren't in the Documents schema, complicating a potential upsert.
+	PutDocumentEmbeddings(
+		ctx context.Context,
+		appState *AppState,
+		collectionName string,
+		documents []*Document,
+	) error
 	// SearchDocuments retrieves a collection of DocumentSearchResultPage based on the provided search query.
 	// It accepts an optional limit for the total number of results, as well as parameters for pagination: pageNumber and pageSize.
 	// Parameters:

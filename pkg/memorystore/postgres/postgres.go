@@ -360,6 +360,20 @@ func (pms *PostgresMemoryStore) DeleteDocument(
 	return nil
 }
 
+func (pms *PostgresMemoryStore) PutDocumentEmbeddings(
+	ctx context.Context,
+	appState *models.AppState,
+	collectionName string,
+	documents []*models.Document,
+) error {
+	err := putDocumentEmbeddings(ctx, pms.Client, collectionName, documents)
+	if err != nil {
+		return memorystore.NewStorageError("failed to put document embeddings", err)
+	}
+
+	return nil
+}
+
 func (pms *PostgresMemoryStore) SearchDocuments(
 	ctx context.Context,
 	appState *models.AppState,
