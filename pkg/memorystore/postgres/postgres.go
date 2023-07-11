@@ -334,10 +334,16 @@ func (pms *PostgresMemoryStore) PutDocuments(
 
 func (pms *PostgresMemoryStore) GetDocument(
 	ctx context.Context,
-	appState *models.AppState,
+	_ *models.AppState,
+	collectionName string,
 	documentUUID uuid.UUID,
 ) (*models.Document, error) {
-	return nil, errors.New("not implemented")
+	document, err := getDocument(ctx, pms.Client, collectionName, documentUUID)
+	if err != nil {
+		return nil, memorystore.NewStorageError("failed to get document", err)
+	}
+
+	return document, nil
 }
 
 func (pms *PostgresMemoryStore) DeleteDocument(

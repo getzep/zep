@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/getzep/zep/pkg/memorystore"
 
 	"github.com/getzep/zep/pkg/models"
@@ -47,11 +49,16 @@ func putDocuments(
 		return fmt.Errorf("failed to insert documents: %w", err)
 	}
 
-	// TODO: push list of uuids into process channel
+	// update the UUIDs of the documents
+	for i, documentRow := range documentRows {
+		documents[i].UUID = documentRow.UUID
+	}
 
 	return nil
 }
 
+// getDocuments retrieves all documents from a collection in the DB. If limit is greater than 0, it will
+// only retrieve that many documents.
 func getDocuments(
 	ctx context.Context,
 	db *bun.DB,
@@ -79,4 +86,31 @@ func getDocuments(
 	}
 
 	return documents, nil
+}
+
+func getDocument(
+	ctx context.Context,
+	db *bun.DB,
+	collectionName string,
+	documentUUID uuid.UUID,
+) (*models.Document, error) {
+	collection, err := getCollection(ctx, db, collectionName)
+	if err != nil {
+		return nil, memorystore.NewStorageError("failed to get collection: %w", err)
+	}
+
+	// we have to run a raw query as the embeddings aren't in the DocumentSchemaTemplate
+	// this also allows us to scan directly into the Document struct
+	documents := make([]*models.Document, 1)
+	query := "SELECT uuid, created_at, content, metadata, embedding FROM ? WHERE uuid = ? AND deleted_at IS NULL"
+	err = db.NewRaw(query, bun.Ident(collection.TableName), documentUUID).Scan(ctx, &documents)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get documents: %w", err)
+	}
+
+	if len(documents) == 0 {
+		return nil, fmt.Errorf("document not found: %s", documentUUID.String())
+	}
+
+	return documents[0], nil
 }
