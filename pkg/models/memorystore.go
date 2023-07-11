@@ -114,6 +114,7 @@ type MemoryStore[T any] interface {
 	DeleteDocument(
 		ctx context.Context,
 		appState *AppState,
+		collectionName string,
 		documentUUID uuid.UUID,
 	) error
 	// SearchDocuments retrieves a collection of DocumentSearchResultPage based on the provided search query.

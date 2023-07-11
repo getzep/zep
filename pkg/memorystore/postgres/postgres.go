@@ -348,10 +348,16 @@ func (pms *PostgresMemoryStore) GetDocument(
 
 func (pms *PostgresMemoryStore) DeleteDocument(
 	ctx context.Context,
-	appState *models.AppState,
+	_ *models.AppState,
+	collectionName string,
 	documentUUID uuid.UUID,
 ) error {
-	return errors.New("not implemented")
+	err := deleteDocument(ctx, pms.Client, collectionName, documentUUID)
+	if err != nil {
+		return memorystore.NewStorageError("failed to delete document", err)
+	}
+
+	return nil
 }
 
 func (pms *PostgresMemoryStore) SearchDocuments(
