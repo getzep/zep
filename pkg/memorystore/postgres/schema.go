@@ -8,16 +8,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/uptrace/bun/driver/pgdriver"
+
 	"github.com/getzep/zep/pkg/llms"
 
 	"github.com/getzep/zep/pkg/models"
 
-	"github.com/uptrace/bun/dialect/pgdialect"
-	"github.com/uptrace/bun/driver/pgdriver"
-
 	"github.com/google/uuid"
 	"github.com/pgvector/pgvector-go"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/pgdialect"
 )
 
 type SessionSchema struct {
@@ -31,7 +31,7 @@ type SessionSchema struct {
 	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
 }
 
-// BeforeCreateTable is a dummy method to ensure uniform interface across all table models - used in table creation iterator
+// BeforeCreateTable is a marker method to ensure uniform interface across all table models - used in table creation iterator
 func (s *SessionSchema) BeforeCreateTable(
 	_ context.Context,
 	_ *bun.CreateTableQuery,
@@ -114,18 +114,8 @@ func (s *SummaryStoreSchema) BeforeCreateTable(
 
 // DocumentCollectionSchema represents the schema for the DocumentCollection table.
 type DocumentCollectionSchema struct {
-	bun.BaseModel       `bun:"table:document_collection,alias:dc"`
-	UUID                uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
-	CreatedAt           time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
-	UpdatedAt           time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
-	Name                string                 `bun:",notnull,unique"`
-	Description         string                 `bun:",notnull"`
-	Metadata            map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
-	TableName           string                 `bun:",notnull"`
-	EmbeddingDimensions int                    `bun:",notnull"`
-	DistanceFunction    string                 `bun:",notnull"`
-	IsNormalized        bool                   `bun:",notnull"`
-	IsIndexed           bool                   `bun:",notnull"`
+	bun.BaseModel `bun:"table:document_collection,alias:dc"`
+	DocumentCollection
 }
 
 func (s *DocumentCollectionSchema) BeforeCreateTable(
@@ -135,18 +125,12 @@ func (s *DocumentCollectionSchema) BeforeCreateTable(
 	return nil
 }
 
-// DocumentSchemaTemplate represents the schema for the Document table.
+// DocumentSchemaTemplate represents the schema template for Document tables.
 // Embedding is manually added when createDocumentTable is run in order to set the correct dimensions.
 // This means the embedding is not returned when querying using bun.
 type DocumentSchemaTemplate struct {
-	bun.BaseModel
-	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
-	CreatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
-	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
-	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
-	Content   string                 `bun:",notnull"`
-	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
-	// Embedding      pgvector.Vector           `bun:"type:vector(768)"`
+	bun.BaseModel `bun:"table:document,alias:d"`
+	DocumentBase
 }
 
 // Create session_id indexes after table creation
