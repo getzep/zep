@@ -107,6 +107,7 @@ type MemoryStore[T any] interface {
 	GetDocument(
 		ctx context.Context,
 		appState *AppState,
+		collectionName string,
 		documentUUID uuid.UUID,
 	) (*Document, error)
 	// DeleteDocument deletes a Document by UUID.
