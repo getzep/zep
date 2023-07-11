@@ -110,3 +110,67 @@ func TestGetDocument(t *testing.T) {
 		})
 	}
 }
+
+func TestDeleteDocument(t *testing.T) {
+	ctx := context.Background()
+
+	// Setup
+	CleanDB(t, testDB)
+	err := ensurePostgresSetup(ctx, appState, testDB)
+	assert.NoError(t, err)
+
+	collection := &models.DocumentCollection{
+		UUID:                uuid.New(),
+		Name:                testutils.GenerateRandomString(10),
+		EmbeddingDimensions: 10,
+	}
+
+	err = putCollection(ctx, testDB, collection)
+	assert.NoError(t, err)
+
+	document := &models.Document{
+		// fill with data...
+	}
+
+	documents := []*models.Document{document}
+	err = putDocuments(ctx, testDB, collection.Name, documents)
+	assert.NoError(t, err)
+
+	testCases := []struct {
+		name        string
+		collection  string
+		uuid        uuid.UUID
+		expectError bool
+	}{
+		{
+			name:        "test delete existing document",
+			collection:  collection.Name,
+			uuid:        document.UUID,
+			expectError: false,
+		},
+		{
+			name:        "test delete non-existent document",
+			collection:  collection.Name,
+			uuid:        uuid.New(),
+			expectError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err = deleteDocument(ctx, testDB, tc.collection, tc.uuid)
+
+			if tc.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+
+				// Try to retrieve the deleted document
+				_, err := getDocument(ctx, testDB, tc.collection, tc.uuid)
+				assert.Error(t, err)
+				// Check if error message says document not found
+				assert.ErrorContains(t, err, "document not found")
+			}
+		})
+	}
+}

@@ -114,3 +114,37 @@ func getDocument(
 
 	return documents[0], nil
 }
+
+func deleteDocument(
+	ctx context.Context,
+	db *bun.DB,
+	collectionName string,
+	documentUUID uuid.UUID,
+) error {
+	collection, err := getCollection(ctx, db, collectionName)
+	if err != nil {
+		return memorystore.NewStorageError("failed to get collection: %w", err)
+	}
+
+	r, err := db.NewDelete().
+		Model(&DocumentSchemaTemplate{}).
+		ModelTableExpr(collection.TableName).
+		Where("uuid = ?", documentUUID).
+		// ModelTableExpr isn't being set on the auto-soft delete in the WHERE clause
+		// so we have to use WhereAllWithDeleted to avoid adding deleted_at Is NOT NULL
+		WhereAllWithDeleted().
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to delete document: %w", err)
+	}
+
+	rowsEffected, err := r.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows effected: %w", err)
+	}
+	if rowsEffected == 0 {
+		return fmt.Errorf("document not found: %s", documentUUID.String())
+	}
+
+	return nil
+}
