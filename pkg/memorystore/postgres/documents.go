@@ -148,3 +148,48 @@ func deleteDocument(
 
 	return nil
 }
+
+func putDocumentEmbeddings(
+	ctx context.Context,
+	db *bun.DB,
+	collectionName string,
+	documentEmbeddings []*models.Document,
+) error {
+	if len(documentEmbeddings) == 0 {
+		return nil
+	}
+
+	collection, err := getCollection(ctx, db, collectionName)
+	if err != nil {
+		return memorystore.NewStorageError("failed to get collection: %w", err)
+	}
+
+	values := db.NewValues(&documentEmbeddings).Column("uuid", "embedding")
+	r, err := db.NewUpdate().
+		With("_data", values).
+		Model((*DocumentSchemaTemplate)(nil)).
+		ModelTableExpr(collection.TableName).
+		TableExpr("_data").
+		Set("embedding = _data.embedding").
+		Where("?.uuid = _data.uuid", bun.Ident(collection.TableName)).
+		WhereAllWithDeleted().
+		Returning(""). // we don't need to return anything
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to update document embeddings: %w", err)
+	}
+
+	rowsEffected, err := r.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows effected: %w", err)
+	}
+	if rowsEffected != int64(len(documentEmbeddings)) {
+		return fmt.Errorf(
+			"failed to update all document embeddings: %d != %d",
+			rowsEffected,
+			len(documentEmbeddings),
+		)
+	}
+
+	return nil
+}
