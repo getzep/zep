@@ -320,10 +320,16 @@ func (pms *PostgresMemoryStore) DeleteCollection(
 
 func (pms *PostgresMemoryStore) PutDocuments(
 	ctx context.Context,
-	appState *models.AppState,
-	documents *[]models.Document,
+	_ *models.AppState,
+	collectionName string,
+	documents []*models.Document,
 ) error {
-	return errors.New("not implemented")
+	err := putDocuments(ctx, pms.Client, collectionName, documents)
+	if err != nil {
+		return memorystore.NewStorageError("failed to put documents", err)
+	}
+
+	return nil
 }
 
 func (pms *PostgresMemoryStore) GetDocument(
