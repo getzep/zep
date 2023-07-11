@@ -7,6 +7,8 @@ import (
 	"encoding/binary"
 	"errors"
 
+	"github.com/jinzhu/copier"
+
 	"github.com/google/uuid"
 
 	"github.com/getzep/zep/internal"
@@ -276,7 +278,13 @@ func (pms *PostgresMemoryStore) PutCollection(
 	_ *models.AppState,
 	collection *models.DocumentCollection,
 ) error {
-	err := putCollection(ctx, pms.Client, collection)
+	// TODO: Use an interface rather than a struct
+	dbCollection := DocumentCollection{}
+	err := copier.Copy(&dbCollection, collection)
+	if err != nil {
+		return memorystore.NewStorageError("failed to copy collection", err)
+	}
+	err = dbCollection.put(ctx, pms.Client)
 	if err != nil {
 		return memorystore.NewStorageError("failed to put collection", err)
 	}
@@ -288,9 +296,18 @@ func (pms *PostgresMemoryStore) GetCollection(
 	_ *models.AppState,
 	collectionName string,
 ) (*models.DocumentCollection, error) {
-	collection, err := getCollection(ctx, pms.Client, collectionName)
+	if collectionName == "" {
+		return nil, memorystore.NewStorageError("collection name is empty", nil)
+	}
+	dbCollection := DocumentCollection{Name: collectionName}
+	err := dbCollection.getByName(ctx, pms.Client)
 	if err != nil {
 		return nil, memorystore.NewStorageError("failed to get collection", err)
+	}
+	collection := &models.DocumentCollection{}
+	err = copier.Copy(collection, &dbCollection)
+	if err != nil {
+		return nil, memorystore.NewStorageError("failed to copy collection", err)
 	}
 	return collection, nil
 }
@@ -299,9 +316,16 @@ func (pms *PostgresMemoryStore) GetCollectionList(
 	ctx context.Context,
 	_ *models.AppState,
 ) ([]models.DocumentCollection, error) {
-	collections, err := getCollectionList(ctx, pms.Client)
+	dbCollection := DocumentCollection{}
+	dbCollections, err := dbCollection.getAll(ctx, pms.Client)
 	if err != nil {
 		return nil, memorystore.NewStorageError("failed to get collection list", err)
+	}
+
+	collections := make([]models.DocumentCollection, len(dbCollections))
+	err = copier.Copy(&collections, &dbCollections)
+	if err != nil {
+		return nil, memorystore.NewStorageError("failed to copy collection", err)
 	}
 	return collections, nil
 }
@@ -311,7 +335,11 @@ func (pms *PostgresMemoryStore) DeleteCollection(
 	_ *models.AppState,
 	collectionName string,
 ) error {
-	err := deleteCollection(ctx, pms.Client, collectionName)
+	if collectionName == "" {
+		return memorystore.NewStorageError("collection name is empty", nil)
+	}
+	dbCollection := DocumentCollection{Name: collectionName}
+	err := dbCollection.delete(ctx, pms.Client)
 	if err != nil {
 		return memorystore.NewStorageError("failed to delete collection", err)
 	}
@@ -324,10 +352,10 @@ func (pms *PostgresMemoryStore) PutDocuments(
 	collectionName string,
 	documents []*models.Document,
 ) error {
-	err := putDocuments(ctx, pms.Client, collectionName, documents)
-	if err != nil {
-		return memorystore.NewStorageError("failed to put documents", err)
-	}
+	//err := put(ctx, pms.Client, collectionName, documents)
+	//if err != nil {
+	//	return memorystore.NewStorageError("failed to put documents", err)
+	//}
 
 	return nil
 }
@@ -338,12 +366,13 @@ func (pms *PostgresMemoryStore) GetDocument(
 	collectionName string,
 	documentUUID uuid.UUID,
 ) (*models.Document, error) {
-	document, err := getDocument(ctx, pms.Client, collectionName, documentUUID)
-	if err != nil {
-		return nil, memorystore.NewStorageError("failed to get document", err)
-	}
-
-	return document, nil
+	//document, err := getDocument(ctx, pms.Client, collectionName, documentUUID)
+	//if err != nil {
+	//	return nil, memorystore.NewStorageError("failed to get document", err)
+	//}
+	//
+	//return document, nil
+	return nil, nil
 }
 
 func (pms *PostgresMemoryStore) DeleteDocument(
@@ -352,10 +381,10 @@ func (pms *PostgresMemoryStore) DeleteDocument(
 	collectionName string,
 	documentUUID uuid.UUID,
 ) error {
-	err := deleteDocument(ctx, pms.Client, collectionName, documentUUID)
-	if err != nil {
-		return memorystore.NewStorageError("failed to delete document", err)
-	}
+	//err := deleteDocument(ctx, pms.Client, collectionName, documentUUID)
+	//if err != nil {
+	//	return memorystore.NewStorageError("failed to delete document", err)
+	//}
 
 	return nil
 }
@@ -366,10 +395,10 @@ func (pms *PostgresMemoryStore) PutDocumentEmbeddings(
 	collectionName string,
 	documents []*models.Document,
 ) error {
-	err := putDocumentEmbeddings(ctx, pms.Client, collectionName, documents)
-	if err != nil {
-		return memorystore.NewStorageError("failed to put document embeddings", err)
-	}
+	//err := putDocumentEmbeddings(ctx, pms.Client, collectionName, documents)
+	//if err != nil {
+	//	return memorystore.NewStorageError("failed to put document embeddings", err)
+	//}
 
 	return nil
 }

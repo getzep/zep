@@ -6,7 +6,6 @@ import (
 
 	"github.com/getzep/zep/pkg/testutils"
 
-	"github.com/getzep/zep/pkg/models"
 	"github.com/google/uuid"
 
 	"github.com/stretchr/testify/assert"
@@ -33,7 +32,7 @@ func TestEnsurePostgresSchemaSetup(t *testing.T) {
 func TestCreateDocumentTable(t *testing.T) {
 	ctx := context.Background()
 
-	collection := &models.DocumentCollection{
+	collection := &DocumentCollection{
 		UUID:                uuid.New(),
 		Name:                testutils.GenerateRandomString(10),
 		EmbeddingDimensions: 3,
