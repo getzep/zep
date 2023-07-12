@@ -1,4 +1,4 @@
-package memorystore
+package store
 
 import (
 	"context"

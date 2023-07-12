@@ -7,12 +7,9 @@ import (
 	"encoding/binary"
 	"errors"
 
-	"github.com/jinzhu/copier"
-
-	"github.com/google/uuid"
+	"github.com/getzep/zep/pkg/store"
 
 	"github.com/getzep/zep/internal"
-	"github.com/getzep/zep/pkg/memorystore"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/uptrace/bun"
@@ -26,13 +23,13 @@ func NewPostgresMemoryStore(
 	client *bun.DB,
 ) (*PostgresMemoryStore, error) {
 	if appState == nil {
-		return nil, memorystore.NewStorageError("nil appState received", nil)
+		return nil, store.NewStorageError("nil appState received", nil)
 	}
 
-	pms := &PostgresMemoryStore{memorystore.BaseMemoryStore[*bun.DB]{Client: client}}
+	pms := &PostgresMemoryStore{store.BaseMemoryStore[*bun.DB]{Client: client}}
 	err := pms.OnStart(context.Background(), appState)
 	if err != nil {
-		return nil, memorystore.NewStorageError("failed to run OnInit", err)
+		return nil, store.NewStorageError("failed to run OnInit", err)
 	}
 	return pms, nil
 }
@@ -41,7 +38,7 @@ func NewPostgresMemoryStore(
 var _ models.MemoryStore[*bun.DB] = &PostgresMemoryStore{}
 
 type PostgresMemoryStore struct {
-	memorystore.BaseMemoryStore[*bun.DB]
+	store.BaseMemoryStore[*bun.DB]
 }
 
 func (pms *PostgresMemoryStore) OnStart(
@@ -50,7 +47,7 @@ func (pms *PostgresMemoryStore) OnStart(
 ) error {
 	err := ensurePostgresSetup(context.Background(), appState, pms.Client)
 	if err != nil {
-		return memorystore.NewStorageError("failed to ensure postgres schema setup", err)
+		return store.NewStorageError("failed to ensure postgres schema setup", err)
 	}
 
 	return nil
@@ -93,17 +90,17 @@ func (pms *PostgresMemoryStore) GetMemory(
 	lastNMessages int,
 ) (*models.Memory, error) {
 	if appState == nil {
-		return nil, memorystore.NewStorageError("nil appState received", nil)
+		return nil, store.NewStorageError("nil appState received", nil)
 	}
 
 	if lastNMessages < 0 {
-		return nil, memorystore.NewStorageError("cannot specify negative lastNMessages", nil)
+		return nil, store.NewStorageError("cannot specify negative lastNMessages", nil)
 	}
 
 	// Get the most recent summary
 	summary, err := getSummary(ctx, pms.Client, sessionID)
 	if err != nil {
-		return nil, memorystore.NewStorageError("failed to get summary", err)
+		return nil, store.NewStorageError("failed to get summary", err)
 	}
 	if summary != nil {
 		log.Debugf("Got summary for %s: %s", sessionID, summary.UUID)
@@ -118,7 +115,7 @@ func (pms *PostgresMemoryStore) GetMemory(
 		lastNMessages,
 	)
 	if err != nil {
-		return nil, memorystore.NewStorageError("failed to get messages", err)
+		return nil, store.NewStorageError("failed to get messages", err)
 	}
 	if messages != nil {
 		log.Debugf("Got messages for %s: %d", sessionID, len(messages))
@@ -139,7 +136,7 @@ func (pms *PostgresMemoryStore) GetSummary(
 ) (*models.Summary, error) {
 	summary, err := getSummary(ctx, pms.Client, sessionID)
 	if err != nil {
-		return nil, memorystore.NewStorageError("failed to get summary", err)
+		return nil, store.NewStorageError("failed to get summary", err)
 	}
 
 	return summary, nil
@@ -153,7 +150,7 @@ func (pms *PostgresMemoryStore) PutMemory(
 	skipNotify bool,
 ) error {
 	if appState == nil {
-		return memorystore.NewStorageError("nil appState received", nil)
+		return store.NewStorageError("nil appState received", nil)
 	}
 
 	messageResult, err := putMessages(
@@ -163,7 +160,7 @@ func (pms *PostgresMemoryStore) PutMemory(
 		memoryMessages.Messages,
 	)
 	if err != nil {
-		return memorystore.NewStorageError("failed to put messages", err)
+		return store.NewStorageError("failed to Put messages", err)
 	}
 
 	if skipNotify {
@@ -188,7 +185,7 @@ func (pms *PostgresMemoryStore) PutSummary(
 ) error {
 	_, err := putSummary(ctx, pms.Client, sessionID, summary)
 	if err != nil {
-		return memorystore.NewStorageError("failed to put summary", err)
+		return store.NewStorageError("failed to Put summary", err)
 	}
 
 	return nil
@@ -203,7 +200,7 @@ func (pms *PostgresMemoryStore) PutMessageMetadata(
 ) error {
 	_, err := putMessageMetadata(ctx, pms.Client, sessionID, messages, isPrivileged)
 	if err != nil {
-		return memorystore.NewStorageError("failed to put message metadata", err)
+		return store.NewStorageError("failed to Put message metadata", err)
 	}
 	return nil
 }
@@ -226,8 +223,8 @@ func (pms *PostgresMemoryStore) Close() error {
 	return nil
 }
 
-// DeleteSession deletes a session from the memory store. This is a soft delete.
-// TODO: A hard delete will be implemented as an out-of-band process or left to the implementer.
+// DeleteSession deletes a session from the memory store. This is a soft Delete.
+// TODO: A hard Delete will be implemented as an out-of-band process or left to the implementer.
 func (pms *PostgresMemoryStore) DeleteSession(ctx context.Context, sessionID string) error {
 	return deleteSession(ctx, pms.Client, sessionID)
 }
@@ -238,15 +235,15 @@ func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 	embeddings []models.Embedding,
 ) error {
 	if embeddings == nil {
-		return memorystore.NewStorageError("nil embeddings received", nil)
+		return store.NewStorageError("nil embeddings received", nil)
 	}
 	if len(embeddings) == 0 {
-		return memorystore.NewStorageError("no embeddings received", nil)
+		return store.NewStorageError("no embeddings received", nil)
 	}
 
 	err := putMessageEmbeddings(ctx, pms.Client, sessionID, embeddings)
 	if err != nil {
-		return memorystore.NewStorageError("failed to put embeddings", err)
+		return store.NewStorageError("failed to Put embeddings", err)
 	}
 
 	return nil
@@ -258,7 +255,7 @@ func (pms *PostgresMemoryStore) GetMessageVectors(ctx context.Context,
 ) ([]models.Embedding, error) {
 	embeddings, err := getMessageEmbeddings(ctx, pms.Client, sessionID)
 	if err != nil {
-		return nil, memorystore.NewStorageError("GetMessageVectors failed to get embeddings", err)
+		return nil, store.NewStorageError("GetMessageVectors failed to get embeddings", err)
 	}
 
 	return embeddings, nil
@@ -267,153 +264,10 @@ func (pms *PostgresMemoryStore) GetMessageVectors(ctx context.Context,
 func (pms *PostgresMemoryStore) PurgeDeleted(ctx context.Context) error {
 	err := purgeDeleted(ctx, pms.Client)
 	if err != nil {
-		return memorystore.NewStorageError("failed to purge deleted", err)
+		return store.NewStorageError("failed to purge deleted", err)
 	}
 
 	return nil
-}
-
-func (pms *PostgresMemoryStore) PutCollection(
-	ctx context.Context,
-	_ *models.AppState,
-	collection *models.DocumentCollection,
-) error {
-	// TODO: Use an interface rather than a struct
-	dbCollection := DocumentCollection{}
-	err := copier.Copy(&dbCollection, collection)
-	if err != nil {
-		return memorystore.NewStorageError("failed to copy collection", err)
-	}
-	err = dbCollection.put(ctx, pms.Client)
-	if err != nil {
-		return memorystore.NewStorageError("failed to put collection", err)
-	}
-	return nil
-}
-
-func (pms *PostgresMemoryStore) GetCollection(
-	ctx context.Context,
-	_ *models.AppState,
-	collectionName string,
-) (*models.DocumentCollection, error) {
-	if collectionName == "" {
-		return nil, memorystore.NewStorageError("collection name is empty", nil)
-	}
-	dbCollection := DocumentCollection{Name: collectionName}
-	err := dbCollection.getByName(ctx, pms.Client)
-	if err != nil {
-		return nil, memorystore.NewStorageError("failed to get collection", err)
-	}
-	collection := &models.DocumentCollection{}
-	err = copier.Copy(collection, &dbCollection)
-	if err != nil {
-		return nil, memorystore.NewStorageError("failed to copy collection", err)
-	}
-	return collection, nil
-}
-
-func (pms *PostgresMemoryStore) GetCollectionList(
-	ctx context.Context,
-	_ *models.AppState,
-) ([]models.DocumentCollection, error) {
-	dbCollection := DocumentCollection{}
-	dbCollections, err := dbCollection.getAll(ctx, pms.Client)
-	if err != nil {
-		return nil, memorystore.NewStorageError("failed to get collection list", err)
-	}
-
-	collections := make([]models.DocumentCollection, len(dbCollections))
-	err = copier.Copy(&collections, &dbCollections)
-	if err != nil {
-		return nil, memorystore.NewStorageError("failed to copy collection", err)
-	}
-	return collections, nil
-}
-
-func (pms *PostgresMemoryStore) DeleteCollection(
-	ctx context.Context,
-	_ *models.AppState,
-	collectionName string,
-) error {
-	if collectionName == "" {
-		return memorystore.NewStorageError("collection name is empty", nil)
-	}
-	dbCollection := DocumentCollection{Name: collectionName}
-	err := dbCollection.delete(ctx, pms.Client)
-	if err != nil {
-		return memorystore.NewStorageError("failed to delete collection", err)
-	}
-	return nil
-}
-
-func (pms *PostgresMemoryStore) PutDocuments(
-	ctx context.Context,
-	_ *models.AppState,
-	collectionName string,
-	documents []*models.Document,
-) error {
-	//err := put(ctx, pms.Client, collectionName, documents)
-	//if err != nil {
-	//	return memorystore.NewStorageError("failed to put documents", err)
-	//}
-
-	return nil
-}
-
-func (pms *PostgresMemoryStore) GetDocument(
-	ctx context.Context,
-	_ *models.AppState,
-	collectionName string,
-	documentUUID uuid.UUID,
-) (*models.Document, error) {
-	//document, err := getDocument(ctx, pms.Client, collectionName, documentUUID)
-	//if err != nil {
-	//	return nil, memorystore.NewStorageError("failed to get document", err)
-	//}
-	//
-	//return document, nil
-	return nil, nil
-}
-
-func (pms *PostgresMemoryStore) DeleteDocument(
-	ctx context.Context,
-	_ *models.AppState,
-	collectionName string,
-	documentUUID uuid.UUID,
-) error {
-	//err := deleteDocument(ctx, pms.Client, collectionName, documentUUID)
-	//if err != nil {
-	//	return memorystore.NewStorageError("failed to delete document", err)
-	//}
-
-	return nil
-}
-
-func (pms *PostgresMemoryStore) PutDocumentEmbeddings(
-	ctx context.Context,
-	appState *models.AppState,
-	collectionName string,
-	documents []*models.Document,
-) error {
-	//err := putDocumentEmbeddings(ctx, pms.Client, collectionName, documents)
-	//if err != nil {
-	//	return memorystore.NewStorageError("failed to put document embeddings", err)
-	//}
-
-	return nil
-}
-
-func (pms *PostgresMemoryStore) SearchDocuments(
-	ctx context.Context,
-	appState *models.AppState,
-	collectionName string,
-	query *models.DocumentSearchPayload,
-	limit int,
-	mmr bool,
-	pageNumber int,
-	pageSize int,
-) ([]models.DocumentSearchResultPage, error) {
-	return nil, errors.New("not implemented")
 }
 
 // acquireAdvisoryXactLock acquires a PostgreSQL advisory lock for the given key.
@@ -427,7 +281,7 @@ func acquireAdvisoryXactLock(ctx context.Context, tx bun.Tx, key string) error {
 	lockID := binary.BigEndian.Uint64(hash[:8])
 
 	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(?)", lockID); err != nil {
-		return memorystore.NewStorageError("failed to acquire advisory lock", err)
+		return store.NewStorageError("failed to acquire advisory lock", err)
 	}
 
 	return nil
@@ -444,7 +298,7 @@ func acquireAdvisoryLock(ctx context.Context, db bun.IDB, key string) (uint64, e
 	lockID := binary.BigEndian.Uint64(hash[:8])
 
 	if _, err := db.ExecContext(ctx, "SELECT pg_advisory_lock(?)", lockID); err != nil {
-		return 0, memorystore.NewStorageError("failed to acquire advisory lock", err)
+		return 0, store.NewStorageError("failed to acquire advisory lock", err)
 	}
 
 	return lockID, nil
@@ -454,7 +308,7 @@ func acquireAdvisoryLock(ctx context.Context, db bun.IDB, key string) (uint64, e
 // Accepts a bun.IDB, which can be either a *bun.DB or *bun.Tx.
 func releaseAdvisoryLock(ctx context.Context, db bun.IDB, lockID uint64) error {
 	if _, err := db.ExecContext(ctx, "SELECT pg_advisory_unlock(?)", lockID); err != nil {
-		return memorystore.NewStorageError("failed to release advisory lock", err)
+		return store.NewStorageError("failed to release advisory lock", err)
 	}
 
 	return nil

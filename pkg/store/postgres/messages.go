@@ -4,12 +4,11 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/getzep/zep/pkg/memorystore"
-
 	"github.com/getzep/zep/internal"
 	"github.com/google/uuid"
 
 	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/pkg/store"
 	"github.com/jinzhu/copier"
 	"github.com/uptrace/bun"
 )
@@ -37,7 +36,7 @@ func putMessages(
 	// Create or update a Session
 	_, err := putSession(ctx, db, sessionID, nil, false)
 	if err != nil {
-		return nil, memorystore.NewStorageError("failed to put session", err)
+		return nil, store.NewStorageError("failed to Put session", err)
 	}
 
 	pgMessages := make([]MessageStoreSchema, len(messages))
@@ -81,7 +80,7 @@ func putMessages(
 		return nil
 	})
 	if err != nil {
-		return nil, memorystore.NewStorageError("failed to put messages", err)
+		return nil, store.NewStorageError("failed to Put messages", err)
 	}
 
 	log.Debugf(
@@ -103,10 +102,10 @@ func getMessages(
 	lastNMessages int,
 ) ([]models.Message, error) {
 	if sessionID == "" {
-		return nil, memorystore.NewStorageError("sessionID cannot be empty", nil)
+		return nil, store.NewStorageError("sessionID cannot be empty", nil)
 	}
 	if memoryWindow == 0 {
-		return nil, memorystore.NewStorageError("memory.message_window must be greater than 0", nil)
+		return nil, store.NewStorageError("memory.message_window must be greater than 0", nil)
 	}
 
 	var messages []MessageStoreSchema
@@ -117,7 +116,7 @@ func getMessages(
 		messages, err = fetchMessagesAfterSummaryPoint(ctx, db, sessionID, summary)
 	}
 	if err != nil {
-		return nil, memorystore.NewStorageError("failed to get messages", err)
+		return nil, store.NewStorageError("failed to get messages", err)
 	}
 	if len(messages) == 0 {
 		return nil, nil
@@ -126,7 +125,7 @@ func getMessages(
 	messageList := make([]models.Message, len(messages))
 	err = copier.Copy(&messageList, &messages)
 	if err != nil {
-		return nil, memorystore.NewStorageError("failed to copy messages", err)
+		return nil, store.NewStorageError("failed to copy messages", err)
 	}
 
 	return messageList, nil
@@ -145,7 +144,7 @@ func fetchMessagesAfterSummaryPoint(
 	if summary != nil {
 		summaryPointIndex, err = getSummaryPointIndex(ctx, db, sessionID, summary.SummaryPointUUID)
 		if err != nil {
-			return nil, memorystore.NewStorageError("unable to retrieve summary", nil)
+			return nil, store.NewStorageError("unable to retrieve summary", nil)
 		}
 	}
 
@@ -211,7 +210,7 @@ func getSummaryPointIndex(
 				err,
 			)
 		} else {
-			return 0, memorystore.NewStorageError("unable to retrieve last summary point for %s", err)
+			return 0, store.NewStorageError("unable to retrieve last summary point for %s", err)
 		}
 
 		return 0, nil

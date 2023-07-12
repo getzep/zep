@@ -7,10 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/getzep/zep/pkg/memorystore"
-
 	"github.com/getzep/zep/pkg/extractors"
 	"github.com/getzep/zep/pkg/llms"
+	"github.com/getzep/zep/pkg/store"
 
 	"github.com/getzep/zep/internal"
 	"github.com/sirupsen/logrus"
@@ -398,7 +397,7 @@ func TestPutSummary(t *testing.T) {
 
 			if tt.wantErr {
 				assert.Error(t, err)
-				storageErr, ok := err.(*memorystore.StorageError)
+				storageErr, ok := err.(*store.StorageError)
 				if ok {
 					assert.Equal(t, tt.errMessage, storageErr.Message)
 				}

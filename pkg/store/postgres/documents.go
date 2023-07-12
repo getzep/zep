@@ -7,26 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/getzep/zep/pkg/memorystore"
+	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/pkg/store"
 
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
-
-type DocumentCollection struct {
-	UUID                uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
-	CreatedAt           time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
-	UpdatedAt           time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
-	Name                string                 `bun:",notnull,unique"`
-	Description         string                 `bun:",notnull"`
-	Metadata            map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
-	TableName           string                 `bun:",notnull"`
-	EmbeddingModelName  string                 `bun:",notnull"`
-	EmbeddingDimensions int                    `bun:",notnull"`
-	DistanceFunction    string                 `bun:",notnull"`
-	IsNormalized        bool                   `bun:",notnull"`
-	IsIndexed           bool                   `bun:",notnull"`
-}
 
 type DocumentBase struct {
 	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
@@ -43,12 +29,33 @@ type Document struct {
 	Embedding []float32 `bun:"type:real[]"`
 }
 
-// put inserts a collection into the collections table and creates a
+func (d *Document) Marker() {}
+
+var _ models.DocumentInterface = &Document{}
+
+type DocumentCollection struct {
+	db                  *bun.DB                `bun:"-"`
+	UUID                uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
+	CreatedAt           time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt           time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
+	Name                string                 `bun:",notnull,unique"`
+	Description         string                 `bun:",notnull"`
+	Metadata            map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
+	TableName           string                 `bun:",notnull"`
+	EmbeddingModelName  string                 `bun:",notnull"`
+	EmbeddingDimensions int                    `bun:",notnull"`
+	DistanceFunction    string                 `bun:",notnull"`
+	IsNormalized        bool                   `bun:",notnull"`
+	IsIndexed           bool                   `bun:",notnull"`
+}
+
+var _ models.DocumentCollectionInterface = &DocumentCollection{}
+
+// Put inserts a collection into the collections table and creates a
 // table for the collection's documents. If the collection already exists in the collection table,
 // it will be updated.
-func (c *DocumentCollection) put(
+func (c *DocumentCollection) Put(
 	ctx context.Context,
-	db *bun.DB,
 ) error {
 	if c.TableName == "" {
 		tableName, err := generateDocumentTableName(c)
@@ -58,7 +65,7 @@ func (c *DocumentCollection) put(
 		c.TableName = tableName
 	}
 
-	_, err := db.NewInsert().
+	_, err := c.db.NewInsert().
 		Model(c).
 		ModelTableExpr("document_collection").
 		On("CONFLICT (uuid) DO UPDATE").
@@ -70,7 +77,7 @@ func (c *DocumentCollection) put(
 
 	// Create the document table for the collection. It will only be created if
 	// it doesn't already exist.
-	err = createDocumentTable(ctx, db, c.TableName, c.EmbeddingDimensions)
+	err = createDocumentTable(ctx, c.db, c.TableName, c.EmbeddingDimensions)
 	if err != nil {
 		return fmt.Errorf("failed to create document table: %w", err)
 	}
@@ -78,16 +85,15 @@ func (c *DocumentCollection) put(
 	return nil
 }
 
+// GetByName returns a collection from the collections table by name.
 // TODO: handle 404
-// getByName returns a collection from the collections table by name.
-func (c *DocumentCollection) getByName(
+func (c *DocumentCollection) GetByName(
 	ctx context.Context,
-	db *bun.DB,
 ) error {
 	if c.Name == "" {
 		return errors.New("collection name is required")
 	}
-	err := db.NewSelect().
+	err := c.db.NewSelect().
 		Model(c).
 		ModelTableExpr("document_collection").
 		Where("name = ?", c.Name).
@@ -99,36 +105,40 @@ func (c *DocumentCollection) getByName(
 	return nil
 }
 
+// GetAll returns a list of all collections from the collections table.
 // TODO: handle 404
-// getAll returns a list of all collections from the collections table.
-func (c *DocumentCollection) getAll(
+func (c *DocumentCollection) GetAll(
 	ctx context.Context,
-	db *bun.DB,
-) ([]DocumentCollection, error) {
+) ([]models.DocumentCollectionInterface, error) {
 	var collections []DocumentCollection
-	err := db.NewSelect().Model(&collections).ModelTableExpr("document_collection").Scan(ctx)
+	err := c.db.NewSelect().Model(&collections).ModelTableExpr("document_collection").Scan(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get collection list: %w", err)
 	}
+	// return slice of interfaces
+	var docCollections = make([]models.DocumentCollectionInterface, len(collections))
+	for i, v := range collections {
+		docCollections[i] = &v
+	}
 
-	return collections, nil
+	return docCollections, nil
 }
 
-// TODO: handle 404
-// delete deletes a collection from the collections table and drops the
+// Delete deletes a collection from the collections table and drops the
 // collection's document table.
-func (c *DocumentCollection) delete(ctx context.Context, db *bun.DB) error {
+// TODO: handle 404
+func (c *DocumentCollection) Delete(ctx context.Context) error {
 	if c.Name == "" {
 		return errors.New("collection name is required")
 	}
 	// start a transaction
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer rollbackOnError(tx)
 
-	err = c.getByName(ctx, db)
+	err = c.GetByName(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get collection: %w", err)
 	}
@@ -153,13 +163,12 @@ func (c *DocumentCollection) delete(ctx context.Context, db *bun.DB) error {
 	return nil
 }
 
-// putDocuments upserts the given documents into the given collection. Only the content and metadata fields are
+// PutDocuments upserts the given documents into the given collection. Only the content and metadata fields are
 // updated. The document's UUID is used to determine whether to insert or update the document.
 // NOTE: Does not persist Document Embeddings.
-func (c *DocumentCollection) putDocuments(
+func (c *DocumentCollection) PutDocuments(
 	ctx context.Context,
-	db *bun.DB,
-	documents []*Document,
+	documents []models.DocumentInterface,
 ) error {
 	if len(documents) == 0 {
 		return nil
@@ -167,11 +176,11 @@ func (c *DocumentCollection) putDocuments(
 	if c.Name == "" {
 		return errors.New("collection name cannot be empty")
 	}
-	err := c.getByName(ctx, db)
+	err := c.GetByName(ctx)
 	if err != nil {
-		return memorystore.NewStorageError("failed to get collection: %w", err)
+		return store.NewStorageError("failed to get collection: %w", err)
 	}
-	_, err = db.NewInsert().
+	_, err = c.db.NewInsert().
 		Model(&documents).
 		ModelTableExpr(c.TableName).
 		Column("content", "metadata").
@@ -185,25 +194,24 @@ func (c *DocumentCollection) putDocuments(
 	return nil
 }
 
-// getDocuments retrieves documents. If `documents` is non-Nil, it will use the document UUIDs to retrieve
+// GetDocuments retrieves documents. If `documents` is non-Nil, it will use the document UUIDs to retrieve
 // these documents. Otherwise, it will retrieve all documents. If limit is greater than 0, it will
 // only retrieve limit many documents.
 // TODO: 404
-func (c *DocumentCollection) getDocuments(
+func (c *DocumentCollection) GetDocuments(
 	ctx context.Context,
-	db *bun.DB,
 	limit int,
-	documents []*Document,
-) ([]*Document, error) {
+	documents []models.DocumentInterface,
+) error {
 	if c.Name == "" {
-		return nil, errors.New("collection name cannot be empty")
+		return errors.New("collection name cannot be empty")
 	}
-	err := c.getByName(ctx, db)
+	err := c.GetByName(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get collection: %w", err)
+		return fmt.Errorf("failed to get collection: %w", err)
 	}
 
-	query := db.NewSelect().
+	query := c.db.NewSelect().
 		Model(&documents).
 		ModelTableExpr(c.TableName+" AS document").
 		Column("uuid", "created_at", "content", "metadata").
@@ -213,7 +221,11 @@ func (c *DocumentCollection) getDocuments(
 	if len(documents) > 0 {
 		uuids := make([]uuid.UUID, len(documents))
 		for i, doc := range documents {
-			uuids[i] = doc.UUID
+			thisDoc, ok := doc.(*Document)
+			if !ok {
+				return fmt.Errorf("failed to cast document to Document")
+			}
+			uuids[i] = thisDoc.UUID
 		}
 
 		query = query.Where("uuid IN (?)", bun.In(uuids))
@@ -226,36 +238,35 @@ func (c *DocumentCollection) getDocuments(
 	err = query.
 		Scan(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get documents: %w", err)
+		return fmt.Errorf("failed to get documents: %w", err)
 	}
 
-	return documents, nil
+	return nil
 }
 
-// deleteDocument deletes a single document from a collection in the DB, identified by its UUID.
-func (c *DocumentCollection) deleteDocumentByUUID(
+// DeleteDocumentByUUID deletes a single document from a collection in the DB, identified by its UUID.
+func (c *DocumentCollection) DeleteDocumentByUUID(
 	ctx context.Context,
-	db *bun.DB,
 	documentUUID uuid.UUID,
 ) error {
 	if c.Name == "" {
 		return errors.New("collection name cannot be empty")
 	}
-	err := c.getByName(ctx, db)
+	err := c.GetByName(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get collection: %w", err)
 	}
 
-	r, err := db.NewDelete().
+	r, err := c.db.NewDelete().
 		Model(&Document{}).
 		ModelTableExpr(c.TableName).
 		Where("uuid = ?", documentUUID).
-		// ModelTableExpr isn't being set on the auto-soft delete in the WHERE clause
+		// ModelTableExpr isn't being set on the auto-soft Delete in the WHERE clause
 		// so we have to use WhereAllWithDeleted to avoid adding deleted_at Is NOT NULL
 		WhereAllWithDeleted().
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to delete document: %w", err)
+		return fmt.Errorf("failed to Delete document: %w", err)
 	}
 
 	rowsEffected, err := r.RowsAffected()
@@ -269,25 +280,24 @@ func (c *DocumentCollection) deleteDocumentByUUID(
 	return nil
 }
 
-// putDocumentEmbeddings updates the embeddings of a set of documents. The documentEmbeddings
+// PutDocumentEmbeddings updates the embeddings of a set of documents. The documentEmbeddings
 // argument must include the UUIDs and embeddings of the documents to be updated. Other fields are ignored.
 // If the UUIDs do not exist in the collection, an error is returned.
-func (c *DocumentCollection) putDocumentEmbeddings(
+func (c *DocumentCollection) PutDocumentEmbeddings(
 	ctx context.Context,
-	db *bun.DB,
-	documentEmbeddings []*Document,
+	documentEmbeddings []models.DocumentInterface,
 ) error {
 	if len(documentEmbeddings) == 0 {
 		return nil
 	}
 
-	err := c.getByName(ctx, db)
+	err := c.GetByName(ctx)
 	if err != nil {
-		return memorystore.NewStorageError("failed to get collection: %w", err)
+		return store.NewStorageError("failed to get collection: %w", err)
 	}
 
-	values := db.NewValues(&documentEmbeddings).Column("uuid", "embedding")
-	r, err := db.NewUpdate().
+	values := c.db.NewValues(&documentEmbeddings).Column("uuid", "embedding")
+	r, err := c.db.NewUpdate().
 		With("_data", values).
 		ModelTableExpr(c.TableName + " AS document").
 		TableExpr("_data").
@@ -323,7 +333,7 @@ func deleteCollectionRow(
 		"name = ?", collectionName,
 	).Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to delete collection: %w", err)
+		return fmt.Errorf("failed to Delete collection: %w", err)
 	}
 	rows, err := r.RowsAffected()
 	if err != nil {
