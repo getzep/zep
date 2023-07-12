@@ -29,7 +29,7 @@ func NewDocumentStore(
 	return pds, nil
 }
 
-// Force compiler to validate that PostgresMemoryStore implements the MemoryStore interface.
+// Force compiler to validate that DocumentStore implements the DocumentStore interface.
 var _ models.DocumentStore[*bun.DB] = &DocumentStore{}
 
 type DocumentStore struct {
@@ -180,8 +180,6 @@ func (pds *DocumentStore) PutDocumentEmbeddings(
 
 func (pds *DocumentStore) SearchCollection(
 	ctx context.Context,
-	appState *models.AppState,
-	collectionName string,
 	query *models.DocumentSearchPayload,
 	limit int,
 	mmr bool,
