@@ -19,8 +19,8 @@ type DocumentCollectionInterface interface {
 	) error
 	GetDocuments(ctx context.Context,
 		limit int,
-		documents []DocumentInterface,
-	) error
+		uuids []uuid.UUID,
+	) ([]DocumentInterface, error)
 	DeleteDocumentByUUID(
 		ctx context.Context,
 		documentUUID uuid.UUID,
@@ -72,13 +72,15 @@ func (dc *DocumentCollection) PutDocuments(
 	return errors.New("not implemented")
 }
 
-func (dc *DocumentCollection) GetDocuments(ctx context.Context,
+func (dc *DocumentCollection) GetDocuments(
+	ctx context.Context,
 	limit int,
-	documents []DocumentInterface) error {
+	uuids []uuid.UUID,
+) ([]DocumentInterface, error) {
 	_ = ctx
 	_ = limit
-	_ = documents
-	return errors.New("not implemented")
+	_ = uuids
+	return nil, errors.New("not implemented")
 }
 
 func (dc *DocumentCollection) DeleteDocumentByUUID(
