@@ -39,7 +39,7 @@ type DocumentStore[T any] interface {
 	GetDocuments(
 		ctx context.Context,
 		collectionName string,
-		documents []DocumentInterface,
+		uuids []uuid.UUID,
 	) ([]DocumentInterface, error)
 	// DeleteDocument deletes a Document by UUID.
 	DeleteDocument(

@@ -129,13 +129,14 @@ func (pds *DocumentStore) PutDocuments(
 func (pds *DocumentStore) GetDocuments(
 	ctx context.Context,
 	collectionName string,
-	documents []models.DocumentInterface,
+	uuids []uuid.UUID,
 ) ([]models.DocumentInterface, error) {
 	if collectionName == "" {
 		return nil, store.NewStorageError("collection name is empty", nil)
 	}
+
 	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
-	err := dbCollection.GetDocuments(ctx, 0, documents)
+	documents, err := dbCollection.GetDocuments(ctx, 0, uuids)
 	if err != nil {
 		return nil, store.NewStorageError("failed to get document", err)
 	}

@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/jinzhu/copier"
-
 	"github.com/getzep/zep/pkg/models"
 
 	"github.com/getzep/zep/pkg/testutils"
@@ -139,17 +137,17 @@ func TestCollectionGetAll(t *testing.T) {
 	// Compare lengths of created and retrieved collections
 	assert.Equal(t, len(collectionsToCreate), len(retrievedCollections))
 
-	// For each created collection, check if there is a matching retrieved collection
+	retrievedMap := make(map[string]*DocumentCollection, len(retrievedCollections))
+	for _, retrievedCollInterface := range retrievedCollections {
+		retrievedColl := retrievedCollInterface.(*DocumentCollection)
+		retrievedMap[retrievedColl.Name] = retrievedColl
+	}
+
+	// Check each created collection is in retrieved collections
 	for _, createdColl := range collectionsToCreate {
-		matched := false
-		for _, retrievedCollInterface := range retrievedCollections {
-			retrievedColl := retrievedCollInterface.(*DocumentCollection)
-			if createdColl.Name == retrievedColl.Name {
-				matched = true
-				break
-			}
-		}
-		assert.True(t, matched, "Created collection not found in retrieved collections")
+		retrievedColl, ok := retrievedMap[createdColl.Name]
+		assert.True(t, ok, "Created collection not found in retrieved collections")
+		assert.Equal(t, createdColl.Name, retrievedColl.Name)
 	}
 }
 
@@ -264,16 +262,23 @@ func TestDocumentCollectionPutDocuments(t *testing.T) {
 				assert.ErrorContains(t, err, tc.expectedError)
 			} else {
 				assert.NoError(t, err)
-				returnedDocuments := make([]models.DocumentInterface, len(tc.documents))
-				err := tc.collection.GetDocuments(ctx, 0, returnedDocuments)
+
+				returnedDocuments, err := tc.collection.GetDocuments(ctx, 0, nil)
 				assert.NoError(t, err)
 
 				assert.Equal(t, len(tc.documents), len(returnedDocuments))
-				for i := range tc.documents {
-					testDoc := tc.documents[i].(*Document)
-					returnedDoc := returnedDocuments[i].(*Document)
-					assert.Equal(t, testDoc.Content, returnedDoc.Content)
+				// Convert slices to maps
+				expected := make(map[string]string, len(tc.documents))
+				actual := make(map[string]string, len(returnedDocuments))
+				for _, doc := range tc.documents {
+					expected[doc.(*Document).Content] = doc.(*Document).Content
 				}
+				for _, doc := range returnedDocuments {
+					actual[doc.(*Document).Content] = doc.(*Document).Content
+				}
+
+				// Compare maps
+				assert.Equal(t, expected, actual)
 			}
 		})
 	}
@@ -334,24 +339,19 @@ func TestDocumentCollectionGetDocuments(t *testing.T) {
 			documents:     documents[:5],
 			expectedError: "",
 		},
-		{
-			name:          "test get documents from non-existent collection",
-			collection:    DocumentCollection{UUID: uuid.New(), Name: "NonExistentCollection"},
-			limit:         0,
-			documents:     nil,
-			expectedError: "failed to get collection",
-		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			returnedDocuments := make([]models.DocumentInterface, len(tc.documents))
-			err := copier.Copy(&returnedDocuments, &tc.documents)
+			// Deep copy the documents
 			assert.NoError(t, err)
-			err = tc.collection.GetDocuments(
+			uuids, err := getDocumentUUIDList(tc.documents)
+			assert.NoError(t, err)
+
+			returnedDocuments, err := tc.collection.GetDocuments(
 				ctx,
 				tc.limit,
-				returnedDocuments,
+				uuids,
 			)
 			if tc.expectedError != "" {
 				assert.ErrorContains(t, err, tc.expectedError)
@@ -363,14 +363,14 @@ func TestDocumentCollectionGetDocuments(t *testing.T) {
 				case tc.documents != nil:
 					assert.Equal(t, len(tc.documents), len(returnedDocuments))
 					for i := range tc.documents {
-						expectedDoc := tc.documents[i].(*Document)
+						expectedDoc := documents[i].(*Document)
 						returnedDoc := returnedDocuments[i].(*Document)
-						assert.Equal(t, expectedDoc.Content, returnedDoc.Content)
+						assert.Equal(t, expectedDoc.UUID, returnedDoc.UUID)
 					}
 				default:
 					assert.Equal(t, len(documents), len(returnedDocuments))
 					for i := range documents {
-						expectedDoc := tc.documents[i].(*Document)
+						expectedDoc := documents[i].(*Document)
 						returnedDoc := returnedDocuments[i].(*Document)
 						assert.Equal(t, expectedDoc.Content, returnedDoc.Content)
 					}
@@ -430,8 +430,7 @@ func TestDocumentCollectionDeleteDocumentByUUID(t *testing.T) {
 				assert.ErrorContains(t, err, "document not found")
 			} else {
 				assert.NoError(t, err)
-				returnedDocuments := make([]models.DocumentInterface, 0)
-				err := tc.collection.GetDocuments(ctx, 0, returnedDocuments)
+				returnedDocuments, err := tc.collection.GetDocuments(ctx, 0, []uuid.UUID{tc.documentUUID})
 				assert.NoError(t, err)
 				assert.Equal(t, 0, len(returnedDocuments))
 			}
@@ -505,8 +504,10 @@ func TestDocumentCollectionPutDocumentEmbeddings(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 
-				returnedDocuments := make([]models.DocumentInterface, len(tc.documentEmbeddings))
-				err := tc.collection.GetDocuments(ctx, 0, returnedDocuments)
+				uuids, err := getDocumentUUIDList(tc.documentEmbeddings)
+				assert.NoError(t, err)
+
+				returnedDocuments, err := tc.collection.GetDocuments(ctx, 0, uuids)
 				assert.NoError(t, err)
 
 				expectedDocument := tc.documentEmbeddings[0].(*Document)

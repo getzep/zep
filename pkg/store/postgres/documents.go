@@ -117,8 +117,8 @@ func (c *DocumentCollection) GetAll(
 	}
 	// return slice of interfaces
 	var docCollections = make([]models.DocumentCollectionInterface, len(collections))
-	for i, v := range collections {
-		docCollections[i] = &v
+	for i := range collections {
+		docCollections[i] = &collections[i]
 	}
 
 	return docCollections, nil
@@ -176,11 +176,10 @@ func (c *DocumentCollection) PutDocuments(
 	if c.Name == "" {
 		return errors.New("collection name cannot be empty")
 	}
-	err := c.GetByName(ctx)
-	if err != nil {
+	if err := c.GetByName(ctx); err != nil {
 		return store.NewStorageError("failed to get collection: %w", err)
 	}
-	_, err = c.db.NewInsert().
+	_, err := c.db.NewInsert().
 		Model(&documents).
 		ModelTableExpr(c.TableName).
 		Column("content", "metadata").
@@ -201,15 +200,20 @@ func (c *DocumentCollection) PutDocuments(
 func (c *DocumentCollection) GetDocuments(
 	ctx context.Context,
 	limit int,
-	documents []models.DocumentInterface,
-) error {
+	uuids []uuid.UUID,
+) ([]models.DocumentInterface, error) {
 	if c.Name == "" {
-		return errors.New("collection name cannot be empty")
+		return nil, errors.New("collection name cannot be empty")
 	}
-	err := c.GetByName(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get collection: %w", err)
+	if err := c.GetByName(ctx); err != nil {
+		return nil, fmt.Errorf("failed to get collection: %w", err)
 	}
+
+	maxDocuments := len(uuids)
+	if limit > 0 && limit > len(uuids) {
+		maxDocuments = limit
+	}
+	documents := make([]Document, maxDocuments)
 
 	query := c.db.NewSelect().
 		Model(&documents).
@@ -218,30 +222,25 @@ func (c *DocumentCollection) GetDocuments(
 		// cast the vectors to a float array
 		ColumnExpr("embedding::real[]")
 
-	if len(documents) > 0 {
-		uuids := make([]uuid.UUID, len(documents))
-		for i, doc := range documents {
-			thisDoc, ok := doc.(*Document)
-			if !ok {
-				return fmt.Errorf("failed to cast document to Document")
-			}
-			uuids[i] = thisDoc.UUID
-		}
-
+	if len(uuids) > 0 {
 		query = query.Where("uuid IN (?)", bun.In(uuids))
 	}
-
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
 
-	err = query.
+	err := query.
 		Scan(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get documents: %w", err)
+		return nil, fmt.Errorf("failed to get documents: %w", err)
 	}
 
-	return nil
+	// return slice of interfaces
+	docInterfaces := make([]models.DocumentInterface, len(documents))
+	for i := range documents {
+		docInterfaces[i] = &documents[i]
+	}
+	return docInterfaces, nil
 }
 
 // DeleteDocumentByUUID deletes a single document from a collection in the DB, identified by its UUID.
@@ -252,8 +251,7 @@ func (c *DocumentCollection) DeleteDocumentByUUID(
 	if c.Name == "" {
 		return errors.New("collection name cannot be empty")
 	}
-	err := c.GetByName(ctx)
-	if err != nil {
+	if err := c.GetByName(ctx); err != nil {
 		return fmt.Errorf("failed to get collection: %w", err)
 	}
 
@@ -384,4 +382,19 @@ func generateDocumentTableName(collection *DocumentCollection) (string, error) {
 		return "", fmt.Errorf("table name too long: %d > 63 char maximum", len(tableName))
 	}
 	return tableName, nil
+}
+
+func getDocumentUUIDList(documents []models.DocumentInterface) ([]uuid.UUID, error) {
+	uuids := make([]uuid.UUID, len(documents))
+	for i, v := range documents {
+		doc, ok := v.(*Document)
+		if !ok {
+			return nil, errors.New("failed to cast document to Document")
+		}
+		if doc.UUID == uuid.Nil {
+			continue
+		}
+		uuids[i] = doc.UUID
+	}
+	return uuids, nil
 }
