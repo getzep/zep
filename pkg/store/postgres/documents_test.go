@@ -4,6 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/jinzhu/copier"
+
+	"github.com/getzep/zep/pkg/models"
+
 	"github.com/getzep/zep/pkg/testutils"
 
 	"github.com/google/uuid"
@@ -21,6 +25,7 @@ func TestCollectionPut(t *testing.T) {
 	collection := DocumentCollection{
 		Name:                testutils.GenerateRandomString(10),
 		EmbeddingDimensions: 10,
+		db:                  testDB,
 	}
 
 	testCases := []struct {
@@ -42,7 +47,7 @@ func TestCollectionPut(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.collection.Put(ctx, testDB)
+			err := tc.collection.Put(ctx)
 			if tc.expectedError != nil {
 				assert.ErrorIs(t, err, tc.expectedError)
 			} else {
@@ -62,9 +67,10 @@ func TestCollectionGetByName(t *testing.T) {
 	collection := DocumentCollection{
 		Name:                testutils.GenerateRandomString(10),
 		EmbeddingDimensions: 10,
+		db:                  testDB,
 	}
 
-	err = collection.Put(ctx, testDB)
+	err = collection.Put(ctx)
 	assert.NoError(t, err)
 
 	testCases := []struct {
@@ -79,8 +85,11 @@ func TestCollectionGetByName(t *testing.T) {
 			expectedError: "",
 		},
 		{
-			name:             "test when collection does not exist",
-			collection:       DocumentCollection{Name: testutils.GenerateRandomString(10)},
+			name: "test when collection does not exist",
+			collection: DocumentCollection{
+				Name: testutils.GenerateRandomString(10),
+				db:   testDB,
+			},
 			expectedError:    "no rows in result set",
 			expectedNotFound: true,
 		},
@@ -88,7 +97,7 @@ func TestCollectionGetByName(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.collection.GetByName(ctx, testDB)
+			err := tc.collection.GetByName(ctx)
 			if tc.expectedError != "" {
 				assert.ErrorContains(t, err, tc.expectedError)
 			} else {
@@ -116,14 +125,15 @@ func TestCollectionGetAll(t *testing.T) {
 		collection := DocumentCollection{
 			Name:                testutils.GenerateRandomString(10),
 			EmbeddingDimensions: 10,
+			db:                  testDB,
 		}
-		err = collection.Put(ctx, testDB)
+		err = collection.Put(ctx)
 		assert.NoError(t, err)
 
 		collectionsToCreate = append(collectionsToCreate, collection)
 	}
 
-	retrievedCollections, err := collectionsToCreate[0].GetAll(ctx, testDB)
+	retrievedCollections, err := collectionsToCreate[0].GetAll(ctx)
 	assert.NoError(t, err)
 
 	// Compare lengths of created and retrieved collections
@@ -132,7 +142,8 @@ func TestCollectionGetAll(t *testing.T) {
 	// For each created collection, check if there is a matching retrieved collection
 	for _, createdColl := range collectionsToCreate {
 		matched := false
-		for _, retrievedColl := range retrievedCollections {
+		for _, retrievedCollInterface := range retrievedCollections {
+			retrievedColl := retrievedCollInterface.(*DocumentCollection)
 			if createdColl.Name == retrievedColl.Name {
 				matched = true
 				break
@@ -152,9 +163,10 @@ func TestDeleteCollection(t *testing.T) {
 	collection := DocumentCollection{
 		Name:                testutils.GenerateRandomString(10),
 		EmbeddingDimensions: 10,
+		db:                  testDB,
 	}
 
-	err = collection.Put(ctx, testDB)
+	err = collection.Put(ctx)
 	assert.NoError(t, err)
 
 	testCases := []struct {
@@ -169,8 +181,11 @@ func TestDeleteCollection(t *testing.T) {
 			expectedErrorString: "",
 		},
 		{
-			name:                "test when collection does not exist",
-			collection:          DocumentCollection{Name: testutils.GenerateRandomString(10)},
+			name: "test when collection does not exist",
+			collection: DocumentCollection{
+				Name: testutils.GenerateRandomString(10),
+				db:   testDB,
+			},
 			expectedErrorString: "no rows in result set",
 			expectedNotFound:    true,
 		},
@@ -178,7 +193,7 @@ func TestDeleteCollection(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err = tc.collection.Delete(ctx, testDB)
+			err = tc.collection.Delete(ctx)
 
 			if tc.expectedErrorString != "" {
 				assert.Error(t, err)
@@ -187,7 +202,7 @@ func TestDeleteCollection(t *testing.T) {
 				assert.NoError(t, err)
 
 				// Try to retrieve the deleted collection
-				err := tc.collection.GetByName(ctx, testDB)
+				err := tc.collection.GetByName(ctx)
 				assert.Error(t, err)
 			}
 		})
@@ -204,11 +219,12 @@ func TestDocumentCollectionPutDocuments(t *testing.T) {
 	collection := DocumentCollection{
 		Name:                testutils.GenerateRandomString(10),
 		EmbeddingDimensions: 5,
+		db:                  testDB,
 	}
-	err = collection.Put(ctx, testDB)
+	err = collection.Put(ctx)
 	assert.NoError(t, err)
 
-	documents := make([]*Document, 10)
+	documents := make([]models.DocumentInterface, 10)
 	for i := range documents {
 		documents[i] = &Document{
 			DocumentBase: DocumentBase{
@@ -220,7 +236,7 @@ func TestDocumentCollectionPutDocuments(t *testing.T) {
 	testCases := []struct {
 		name          string
 		collection    DocumentCollection
-		documents     []*Document
+		documents     []models.DocumentInterface
 		expectedError string
 	}{
 		{
@@ -230,8 +246,12 @@ func TestDocumentCollectionPutDocuments(t *testing.T) {
 			expectedError: "",
 		},
 		{
-			name:          "test Put documents into a non-existent collection",
-			collection:    DocumentCollection{UUID: uuid.New(), Name: "NonExistentCollection"},
+			name: "test Put documents into a non-existent collection",
+			collection: DocumentCollection{
+				UUID: uuid.New(),
+				Name: "NonExistentCollection",
+				db:   testDB,
+			},
 			documents:     documents,
 			expectedError: "failed to get collection",
 		},
@@ -239,18 +259,20 @@ func TestDocumentCollectionPutDocuments(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.collection.PutDocuments(ctx, testDB, tc.documents)
+			err := tc.collection.PutDocuments(ctx, tc.documents)
 			if tc.expectedError != "" {
 				assert.ErrorContains(t, err, tc.expectedError)
 			} else {
 				assert.NoError(t, err)
-
-				returnedDocuments, err := tc.collection.GetDocuments(ctx, testDB, 0, []*Document{})
+				returnedDocuments := make([]models.DocumentInterface, len(tc.documents))
+				err := tc.collection.GetDocuments(ctx, 0, returnedDocuments)
 				assert.NoError(t, err)
 
 				assert.Equal(t, len(tc.documents), len(returnedDocuments))
 				for i := range tc.documents {
-					assert.Equal(t, tc.documents[i].Content, returnedDocuments[i].Content)
+					testDoc := tc.documents[i].(*Document)
+					returnedDoc := returnedDocuments[i].(*Document)
+					assert.Equal(t, testDoc.Content, returnedDoc.Content)
 				}
 			}
 		})
@@ -267,11 +289,12 @@ func TestDocumentCollectionGetDocuments(t *testing.T) {
 	collection := DocumentCollection{
 		Name:                testutils.GenerateRandomString(10),
 		EmbeddingDimensions: 5,
+		db:                  testDB,
 	}
-	err = collection.Put(ctx, testDB)
+	err = collection.Put(ctx)
 	assert.NoError(t, err)
 
-	documents := make([]*Document, 10)
+	documents := make([]models.DocumentInterface, 10)
 	for i := range documents {
 		documents[i] = &Document{
 			DocumentBase: DocumentBase{
@@ -280,14 +303,14 @@ func TestDocumentCollectionGetDocuments(t *testing.T) {
 		}
 	}
 
-	err = collection.PutDocuments(ctx, testDB, documents)
+	err = collection.PutDocuments(ctx, documents)
 	assert.NoError(t, err)
 
 	testCases := []struct {
 		name          string
 		collection    DocumentCollection
 		limit         int
-		documents     []*Document
+		documents     []models.DocumentInterface
 		expectedError string
 	}{
 		{
@@ -322,27 +345,34 @@ func TestDocumentCollectionGetDocuments(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			returnedDocuments, err := tc.collection.GetDocuments(
+			returnedDocuments := make([]models.DocumentInterface, len(tc.documents))
+			err := copier.Copy(&returnedDocuments, &tc.documents)
+			assert.NoError(t, err)
+			err = tc.collection.GetDocuments(
 				ctx,
-				testDB,
 				tc.limit,
-				tc.documents,
+				returnedDocuments,
 			)
 			if tc.expectedError != "" {
 				assert.ErrorContains(t, err, tc.expectedError)
 			} else {
 				assert.NoError(t, err)
-				if tc.limit > 0 {
+				switch {
+				case tc.limit > 0:
 					assert.True(t, len(returnedDocuments) <= tc.limit)
-				} else if tc.documents != nil {
+				case tc.documents != nil:
 					assert.Equal(t, len(tc.documents), len(returnedDocuments))
 					for i := range tc.documents {
-						assert.Equal(t, tc.documents[i].Content, returnedDocuments[i].Content)
+						expectedDoc := tc.documents[i].(*Document)
+						returnedDoc := returnedDocuments[i].(*Document)
+						assert.Equal(t, expectedDoc.Content, returnedDoc.Content)
 					}
-				} else {
+				default:
 					assert.Equal(t, len(documents), len(returnedDocuments))
 					for i := range documents {
-						assert.Equal(t, documents[i].Content, returnedDocuments[i].Content)
+						expectedDoc := tc.documents[i].(*Document)
+						returnedDoc := returnedDocuments[i].(*Document)
+						assert.Equal(t, expectedDoc.Content, returnedDoc.Content)
 					}
 				}
 			}
@@ -360,8 +390,9 @@ func TestDocumentCollectionDeleteDocumentByUUID(t *testing.T) {
 	collection := DocumentCollection{
 		Name:                testutils.GenerateRandomString(10),
 		EmbeddingDimensions: 5,
+		db:                  testDB,
 	}
-	err = collection.Put(ctx, testDB)
+	err = collection.Put(ctx)
 	assert.NoError(t, err)
 
 	document := Document{
@@ -369,7 +400,7 @@ func TestDocumentCollectionDeleteDocumentByUUID(t *testing.T) {
 			Content: testutils.GenerateRandomString(10),
 		},
 	}
-	err = collection.PutDocuments(ctx, testDB, []*Document{&document})
+	err = collection.PutDocuments(ctx, []models.DocumentInterface{&document})
 	assert.NoError(t, err)
 
 	testCases := []struct {
@@ -394,12 +425,13 @@ func TestDocumentCollectionDeleteDocumentByUUID(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.collection.DeleteDocumentByUUID(ctx, testDB, tc.documentUUID)
+			err := tc.collection.DeleteDocumentByUUID(ctx, tc.documentUUID)
 			if tc.expectedError != "" {
 				assert.ErrorContains(t, err, "document not found")
 			} else {
 				assert.NoError(t, err)
-				returnedDocuments, err := tc.collection.GetDocuments(ctx, testDB, 0, []*Document{})
+				returnedDocuments := make([]models.DocumentInterface, 0)
+				err := tc.collection.GetDocuments(ctx, 0, returnedDocuments)
 				assert.NoError(t, err)
 				assert.Equal(t, 0, len(returnedDocuments))
 			}
@@ -417,8 +449,9 @@ func TestDocumentCollectionPutDocumentEmbeddings(t *testing.T) {
 	collection := DocumentCollection{
 		Name:                testutils.GenerateRandomString(10),
 		EmbeddingDimensions: 5,
+		db:                  testDB,
 	}
-	err = collection.Put(ctx, testDB)
+	err = collection.Put(ctx)
 	assert.NoError(t, err)
 
 	document := Document{
@@ -427,20 +460,20 @@ func TestDocumentCollectionPutDocumentEmbeddings(t *testing.T) {
 		},
 		Embedding: []float32{0.1, 0.2, 0.3, 0.4, 0.5},
 	}
-	err = collection.PutDocuments(ctx, testDB, []*Document{&document})
+	err = collection.PutDocuments(ctx, []models.DocumentInterface{&document})
 	assert.NoError(t, err)
 
 	testCases := []struct {
 		name               string
 		collection         DocumentCollection
-		documentEmbeddings []*Document
+		documentEmbeddings []models.DocumentInterface
 		expectedError      string
 	}{
 		{
 			name:       "test update existing document embedding",
 			collection: collection,
-			documentEmbeddings: []*Document{
-				{
+			documentEmbeddings: []models.DocumentInterface{
+				&Document{
 					DocumentBase: DocumentBase{
 						UUID: document.UUID,
 					},
@@ -452,8 +485,8 @@ func TestDocumentCollectionPutDocumentEmbeddings(t *testing.T) {
 		{
 			name:       "test update non-existent document embedding",
 			collection: collection,
-			documentEmbeddings: []*Document{
-				{
+			documentEmbeddings: []models.DocumentInterface{
+				&Document{
 					DocumentBase: DocumentBase{
 						UUID: uuid.New(),
 					},
@@ -466,17 +499,22 @@ func TestDocumentCollectionPutDocumentEmbeddings(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.collection.PutDocumentEmbeddings(ctx, testDB, tc.documentEmbeddings)
+			err := tc.collection.PutDocumentEmbeddings(ctx, tc.documentEmbeddings)
 			if tc.expectedError != "" {
 				assert.ErrorContains(t, err, tc.expectedError)
 			} else {
 				assert.NoError(t, err)
 
-				returnedDocuments, err := tc.collection.GetDocuments(ctx, testDB, 0, []*Document{})
+				returnedDocuments := make([]models.DocumentInterface, len(tc.documentEmbeddings))
+				err := tc.collection.GetDocuments(ctx, 0, returnedDocuments)
 				assert.NoError(t, err)
-				assert.Equal(t, tc.documentEmbeddings[0].UUID, returnedDocuments[0].UUID)
-				assert.Equal(t, tc.documentEmbeddings[0].Embedding, returnedDocuments[0].Embedding)
-				assert.Equal(t, tc.documentEmbeddings[0].Embedding, returnedDocuments[0].Embedding)
+
+				expectedDocument := tc.documentEmbeddings[0].(*Document)
+				returnedDocument := returnedDocuments[0].(*Document)
+
+				assert.Equal(t, expectedDocument.UUID, returnedDocument.UUID)
+				assert.Equal(t, expectedDocument.Embedding, returnedDocument.Embedding)
+				assert.Equal(t, expectedDocument.Embedding, returnedDocument.Embedding)
 			}
 		})
 	}

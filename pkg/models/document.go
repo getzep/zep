@@ -51,7 +51,6 @@ func (dc *DocumentCollection) Put(ctx context.Context) error {
 
 func (dc *DocumentCollection) GetByName(ctx context.Context) error {
 	_ = ctx
-
 	return errors.New("not implemented")
 }
 
