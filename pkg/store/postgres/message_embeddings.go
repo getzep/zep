@@ -3,9 +3,8 @@ package postgres
 import (
 	"context"
 
-	"github.com/getzep/zep/pkg/memorystore"
-
 	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/pkg/store"
 	"github.com/pgvector/pgvector-go"
 	"github.com/uptrace/bun"
 )
@@ -27,7 +26,7 @@ func getMessageEmbeddings(ctx context.Context,
 		Where("message.deleted_at IS NULL").
 		Exec(ctx, &results)
 	if err != nil {
-		return nil, memorystore.NewStorageError("failed to get message vectors", err)
+		return nil, store.NewStorageError("failed to get message vectors", err)
 	}
 
 	embeddings := make([]models.Embedding, len(results))
@@ -49,10 +48,10 @@ func putMessageEmbeddings(
 	embeddings []models.Embedding,
 ) error {
 	if embeddings == nil {
-		return memorystore.NewStorageError("nil embeddings received", nil)
+		return store.NewStorageError("nil embeddings received", nil)
 	}
 	if len(embeddings) == 0 {
-		return memorystore.NewStorageError("no embeddings received", nil)
+		return store.NewStorageError("no embeddings received", nil)
 	}
 
 	embeddingVectors := make([]MessageVectorStoreSchema, len(embeddings))
@@ -70,7 +69,7 @@ func putMessageEmbeddings(
 		Exec(ctx)
 
 	if err != nil {
-		return memorystore.NewStorageError("failed to insert message vectors", err)
+		return store.NewStorageError("failed to insert message vectors", err)
 	}
 
 	return nil
