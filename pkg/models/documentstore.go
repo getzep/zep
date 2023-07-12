@@ -65,8 +65,6 @@ type DocumentStore[T any] interface {
 	// The function will return the results in pages as determined by pageSize.
 	SearchCollection(
 		ctx context.Context,
-		appState *AppState,
-		collectionName string,
 		query *DocumentSearchPayload,
 		limit int,
 		mmr bool, // mmr is used to enable/disable the Maximal Marginal Relevance algorithm for search results.
