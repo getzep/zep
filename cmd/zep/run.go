@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/getzep/zep/pkg/memorystore/postgres"
+	"github.com/getzep/zep/pkg/store/postgres"
 
 	"github.com/getzep/zep/pkg/auth"
 
