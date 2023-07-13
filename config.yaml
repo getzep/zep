@@ -13,6 +13,7 @@ memory:
 extractors:
   summarizer:
     enabled: true
+    max_tokens: 512
   entities:
     enabled: true
   intent:

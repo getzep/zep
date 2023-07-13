@@ -10,7 +10,7 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
-const SummaryMaxOutputTokens = 512
+const SummaryMaxOutputTokens = appState.Config.Extractors.Summarizer.MaxTokens
 
 // Force compiler to validate that Extractor implements the MemoryStore interface.
 var _ models.Extractor = &SummaryExtractor{}
@@ -272,6 +272,7 @@ func incrementalSummarizer(
 	promptData := SummaryPromptTemplateData{
 		PrevSummary:    prevSummary,
 		MessagesJoined: messagesJoined,
+		SummaryMaxTokens: summaryMaxTokens,
 	}
 
 	progressivePrompt, err := internal.ParsePrompt(summaryPromptTemplate, promptData)
@@ -279,7 +280,7 @@ func incrementalSummarizer(
 		return "", 0, err
 	}
 
-	resp, err := llms.RunChatCompletion(ctx, appState, summaryMaxTokens, progressivePrompt)
+	resp, err := llms.RunChatCompletion(ctx, appState, progressivePrompt)
 	if err != nil {
 		return "", 0, err
 	}
