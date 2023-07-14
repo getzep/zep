@@ -44,6 +44,9 @@ func putMessageMetadata(
 	}
 
 	for i := range messages {
+		if len(messages[i].Metadata) == 0 {
+			continue
+		}
 		returnedMessage, err := putMessageMetadataTx(ctx, tx, sessionID, &messages[i])
 		if err != nil {
 			// defer will roll back the transaction
