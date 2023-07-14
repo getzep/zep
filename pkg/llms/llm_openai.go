@@ -80,7 +80,6 @@ func getTokenCountObject() (*tiktoken.Tiktoken, error) {
 func RunChatCompletion(
 	ctx context.Context,
 	appState *models.AppState,
-	summaryMaxTokens int,
 	prompt string,
 ) (resp openai.ChatCompletionResponse, err error) {
 	modelName, err := GetLLMModelName(appState.Config)
@@ -89,7 +88,6 @@ func RunChatCompletion(
 	}
 	req := openai.ChatCompletionRequest{
 		Model:     modelName,
-		MaxTokens: summaryMaxTokens,
 		Messages: []openai.ChatCompletionMessage{
 			{
 				Role:    openai.ChatMessageRoleUser,

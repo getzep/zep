@@ -32,6 +32,8 @@ The human inquires about Led Zeppelin's lead singer and other band members. The 
 singer and lists the founding members as Jimmy Page, John Paul Jones, and John Bonham.
 EXAMPLE END
 
+Make sure to limit the new summary to {{.SummaryMaxTokens}} tokens or less.
+
 Current summary:
 {{.PrevSummary}}
 New lines of conversation:
@@ -42,6 +44,7 @@ New summary:
 type SummaryPromptTemplateData struct {
 	PrevSummary    string
 	MessagesJoined string
+	SummaryMaxTokens int
 }
 
 // // Source: Langchain

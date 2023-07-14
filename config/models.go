@@ -69,6 +69,7 @@ type ExtractorsConfig struct {
 
 type SummarizerConfig struct {
 	Enabled bool `mapstructure:"enabled"`
+	MaxTokens int `mapstructure:"max_tokens"`
 }
 
 type EmbeddingsConfig struct {

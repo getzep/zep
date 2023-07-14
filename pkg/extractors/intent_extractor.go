@@ -90,7 +90,7 @@ func (ee *IntentExtractor) processMessage(
 	}
 
 	// Send the populated prompt to the language model
-	resp, err := llms.RunChatCompletion(ctx, appState, intentMaxTokens, prompt)
+	resp, err := llms.RunChatCompletion(ctx, appState, prompt)
 	if err != nil {
 		errs <- NewExtractorError("IntentExtractor: "+err.Error(), err)
 		return
