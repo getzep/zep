@@ -26,6 +26,7 @@ func putSession(
 
 	// We're not going to run this in a transaction as we don't necessarily
 	// need to roll back the session creation if the message metadata upsert fails.
+	// It's fine if the session is soft-deleted. Upserting will not undelete it.
 	session := PgSession{SessionID: sessionID}
 	_, err := db.NewInsert().
 		Model(&session).
@@ -47,7 +48,16 @@ func putSession(
 		delete(metadata, "system")
 	}
 
-	// update the session metadata and return the session
+	// return the session if there is no metadata to update
+	if len(metadata) == 0 {
+		returnedSession, err := getSession(ctx, db, sessionID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get session: %w", err)
+		}
+		return returnedSession, nil
+	}
+
+	// otherwise, update the session metadata and return the session
 	return putSessionMetadata(ctx, db, sessionID, metadata)
 }
 
