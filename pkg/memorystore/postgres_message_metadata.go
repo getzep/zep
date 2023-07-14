@@ -44,12 +44,15 @@ func putMessageMetadata(
 	}
 
 	for i := range messages {
+		if len(messages[i].Metadata) == 0 {
+			continue
+		}
 		returnedMessage, err := putMessageMetadataTx(ctx, tx, sessionID, &messages[i])
-		messages[i] = *returnedMessage
 		if err != nil {
 			// defer will roll back the transaction
 			return nil, NewStorageError("failed to put message metadata", err)
 		}
+		messages[i] = *returnedMessage
 	}
 
 	// if the calling function passed in a transaction, don't commit here

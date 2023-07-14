@@ -65,17 +65,17 @@ func putMessages(
 			messages[i].UUID = pgMessages[i].UUID
 		}
 
-		// insert/update message metadata. isPrivileged is false because we are
-		// most likely being called by the PutMemory handler.
-		messages, err = putMessageMetadata(ctx, tx, sessionID, messages, false)
-		if err != nil {
-			return err
-		}
-
 		return nil
 	})
 	if err != nil {
 		return nil, NewStorageError("failed to put messages", err)
+	}
+
+	// insert/update message metadata. isPrivileged is false because we are
+	// most likely being called by the PutMemory handler.
+	messages, err = putMessageMetadata(ctx, db, sessionID, messages, false)
+	if err != nil {
+		return nil, err
 	}
 
 	log.Debugf("putMessages completed for session %s with %d messages", sessionID, len(messages))

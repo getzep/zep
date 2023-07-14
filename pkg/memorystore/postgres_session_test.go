@@ -192,7 +192,7 @@ func TestPutSessionMetadata(t *testing.T) {
 			sessionID:        sessionID,
 			metadata:         map[string]interface{}{},
 			privileged:       true,
-			expectedMetadata: map[string]interface{}{},
+			expectedMetadata: nil,
 		},
 		{
 			name:      "Update metadata",
