@@ -10,8 +10,6 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
-const SummaryMaxOutputTokens = appState.Config.Extractors.Summarizer.MaxTokens
-
 // Force compiler to validate that Extractor implements the MemoryStore interface.
 var _ models.Extractor = &SummaryExtractor{}
 
@@ -152,9 +150,11 @@ func summarize(
 		promptTokens = 250
 	}
 
+	summarizerMaxOutputTokens := appState.Config.Extractors.Summarizer.MaxTokens
+
 	// We use this to determine how many tokens we can use for the incremental summarization
 	// loop. We add more messages to a summarization loop until we hit this.
-	summarizerMaxInputTokens := maxTokens - SummaryMaxOutputTokens - promptTokens
+	summarizerMaxInputTokens := maxTokens - summarizerMaxOutputTokens - promptTokens
 
 	// Take the oldest messages that are over newMessageCount and summarize them.
 	newSummary, err := processOverLimitMessages(
@@ -162,6 +162,7 @@ func summarize(
 		appState,
 		messagesToSummarize,
 		summarizerMaxInputTokens,
+		summarizerMaxOutputTokens,
 		currentSummaryContent,
 	)
 	if err != nil {
@@ -185,6 +186,7 @@ func processOverLimitMessages(
 	appState *models.AppState,
 	messages []models.Message,
 	summarizerMaxInputTokens int,
+	summarizeMaxOutputTokens int,
 	summary string,
 ) (*models.Summary, error) {
 	var tempMessageText []string //nolint:prealloc
@@ -199,14 +201,14 @@ func processOverLimitMessages(
 	}
 
 	newSummaryPointUUID := messages[len(messages)-1].UUID
-
+	
 	processSummary := func() error {
 		newSummary, newSummaryTokens, err = incrementalSummarizer(
 			ctx,
 			appState,
 			summary,
 			tempMessageText,
-			SummaryMaxOutputTokens,
+			summarizeMaxOutputTokens,
 		)
 		if err != nil {
 			return err
