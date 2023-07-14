@@ -52,6 +52,10 @@ func (ee *EntityExtractor) Extract(
 		}
 		entityList := extractEntities(r.Entities)
 
+		if len(entityList) == 0 {
+			continue
+		}
+
 		messages[i] = models.Message{
 			UUID: msgUUID,
 			Metadata: map[string]interface{}{

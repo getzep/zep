@@ -100,6 +100,11 @@ func (ee *IntentExtractor) processMessage(
 	intentContent := resp.Choices[0].Message.Content
 	intentContent = strings.TrimPrefix(intentContent, "Intent: ")
 
+	// if we don't have an intent, just return
+	if intentContent == "" {
+		return
+	}
+
 	// Put the intent into the message metadata
 	intentResponse := []models.Message{
 		{
