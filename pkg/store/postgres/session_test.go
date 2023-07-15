@@ -147,7 +147,7 @@ func TestPgDeleteSession(t *testing.T) {
 	resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
-	// Put a summary
+	// Create a summary
 	summary := models.Summary{
 		Content: "This is a summary",
 		Metadata: map[string]interface{}{

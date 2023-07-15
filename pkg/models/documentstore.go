@@ -8,9 +8,13 @@ import (
 
 // DocumentStore interface
 type DocumentStore[T any] interface {
-	// PutCollection creates a new DocumentCollection.
+	// CreateCollection creates a new DocumentCollection.
 	// If a collection with the same name already exists, it will be overwritten.
-	PutCollection(
+	CreateCollection(
+		ctx context.Context,
+		collection DocumentCollectionInterface,
+	) error
+	UpdateCollection(
 		ctx context.Context,
 		collection DocumentCollectionInterface,
 	) error

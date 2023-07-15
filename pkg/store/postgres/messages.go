@@ -36,7 +36,7 @@ func putMessages(
 	// Create or update a Session
 	_, err := putSession(ctx, db, sessionID, nil, false)
 	if err != nil {
-		return nil, store.NewStorageError("failed to Put session", err)
+		return nil, store.NewStorageError("failed to Create session", err)
 	}
 
 	pgMessages := make([]MessageStoreSchema, len(messages))
@@ -59,7 +59,7 @@ func putMessages(
 		On("CONFLICT (uuid) DO UPDATE").
 		Exec(ctx)
 	if err != nil {
-		return nil, store.NewStorageError("failed to Put messages", err)
+		return nil, store.NewStorageError("failed to Create messages", err)
 	}
 
 	// copy the UUIDs back into the original messages

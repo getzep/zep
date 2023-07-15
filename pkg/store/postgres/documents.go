@@ -52,10 +52,9 @@ type DocumentCollection struct {
 
 var _ models.DocumentCollectionInterface = &DocumentCollection{}
 
-// Put inserts a collection into the collections table and creates a
-// table for the collection's documents. If the collection already exists in the collection table,
-// it will be updated.
-func (c *DocumentCollection) Put(
+// Create inserts a collection into the collections table and creates a
+// table for the collection's documents.
+func (c *DocumentCollection) Create(
 	ctx context.Context,
 ) error {
 	if c.TableName == "" {
@@ -69,10 +68,12 @@ func (c *DocumentCollection) Put(
 	_, err := c.db.NewInsert().
 		Model(c).
 		ModelTableExpr("document_collection").
-		On("CONFLICT (uuid) DO UPDATE").
 		Returning("*").
 		Exec(ctx)
 	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+			return fmt.Errorf("collection with name %s already exists", c.Name)
+		}
 		return fmt.Errorf("failed to insert collection: %w", err)
 	}
 
@@ -81,6 +82,27 @@ func (c *DocumentCollection) Put(
 	err = createDocumentTable(ctx, c.db, c.TableName, c.EmbeddingDimensions)
 	if err != nil {
 		return fmt.Errorf("failed to create document table: %w", err)
+	}
+
+	return nil
+}
+
+// Update updates a collection in the collections table.
+func (c *DocumentCollection) Update(
+	ctx context.Context,
+) error {
+	if c.Name == "" {
+		return errors.New("collection Name is required")
+	}
+	_, err := c.db.NewUpdate().
+		Model(c).
+		ModelTableExpr("document_collection").
+		Where("name = ?", c.Name).
+		OmitZero().
+		Returning("*").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to update collection: %w", err)
 	}
 
 	return nil

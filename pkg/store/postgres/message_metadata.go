@@ -51,7 +51,7 @@ func putMessageMetadata(
 		returnedMessage, err := putMessageMetadataTx(ctx, tx, sessionID, &messages[i])
 		if err != nil {
 			// defer will roll back the transaction
-			return nil, store.NewStorageError("failed to Put message metadata", err)
+			return nil, store.NewStorageError("failed to Create message metadata", err)
 		}
 		messages[i] = *returnedMessage
 	}

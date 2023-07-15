@@ -35,7 +35,7 @@ func putSession(
 		Returning("*").
 		Exec(ctx)
 	if err != nil {
-		return nil, store.NewStorageError("failed to Put session", err)
+		return nil, store.NewStorageError("failed to Create session", err)
 	}
 
 	// If the session is deleted, return an error
@@ -98,7 +98,7 @@ func putSessionMetadata(ctx context.Context,
 		return nil, store.NewStorageError("failed to merge metadata", err)
 	}
 
-	// Put the session metadata, returning the updated session
+	// Create the session metadata, returning the updated session
 	_, err = db.NewUpdate().
 		Model(dbSession).
 		Set("metadata = ?", dbMetadata).

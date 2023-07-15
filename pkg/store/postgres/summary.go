@@ -32,7 +32,7 @@ func putSummary(
 
 	_, err = db.NewInsert().Model(&pgSummary).Exec(ctx)
 	if err != nil {
-		return nil, store.NewStorageError("failed to Put summary", err)
+		return nil, store.NewStorageError("failed to Create summary", err)
 	}
 
 	retSummary := models.Summary{}
