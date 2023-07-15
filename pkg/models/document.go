@@ -13,21 +13,22 @@ type DocumentCollectionInterface interface {
 	GetByName(ctx context.Context) error
 	GetAll(ctx context.Context) ([]DocumentCollectionInterface, error)
 	Delete(ctx context.Context) error
-	PutDocuments(
+	CreateDocuments(
+		ctx context.Context,
+		documents []DocumentInterface,
+	) ([]uuid.UUID, error)
+	UpdateDocuments(
 		ctx context.Context,
 		documents []DocumentInterface,
 	) error
 	GetDocuments(ctx context.Context,
 		limit int,
 		uuids []uuid.UUID,
+		documentIDs []string,
 	) ([]DocumentInterface, error)
-	DeleteDocumentByUUID(
+	DeleteDocumentsByUUID(
 		ctx context.Context,
-		documentUUID uuid.UUID,
-	) error
-	PutDocumentEmbeddings(
-		ctx context.Context,
-		documentEmbeddings []DocumentInterface,
+		documentUUIDs []uuid.UUID,
 	) error
 }
 
@@ -64,9 +65,19 @@ func (dc *DocumentCollection) Delete(ctx context.Context) error {
 	return errors.New("not implemented")
 }
 
-func (dc *DocumentCollection) PutDocuments(
+func (dc *DocumentCollection) CreateDocuments(
 	ctx context.Context,
-	documents []DocumentInterface) error {
+	documents []DocumentInterface,
+) ([]uuid.UUID, error) {
+	_ = ctx
+	_ = documents
+	return nil, errors.New("not implemented")
+}
+
+func (dc *DocumentCollection) UpdateDocuments(
+	ctx context.Context,
+	documents []DocumentInterface,
+) error {
 	_ = ctx
 	_ = documents
 	return errors.New("not implemented")
@@ -76,26 +87,20 @@ func (dc *DocumentCollection) GetDocuments(
 	ctx context.Context,
 	limit int,
 	uuids []uuid.UUID,
+	documentIDs []string,
 ) ([]DocumentInterface, error) {
 	_ = ctx
 	_ = limit
 	_ = uuids
+	_ = documentIDs
 	return nil, errors.New("not implemented")
 }
 
-func (dc *DocumentCollection) DeleteDocumentByUUID(
+func (dc *DocumentCollection) DeleteDocumentsByUUID(
 	ctx context.Context,
-	documentUUID uuid.UUID) error {
+	documentUUIDs []uuid.UUID) error {
 	_ = ctx
-	_ = documentUUID
-	return errors.New("not implemented")
-}
-
-func (dc *DocumentCollection) PutDocumentEmbeddings(
-	ctx context.Context,
-	documentEmbeddings []DocumentInterface) error {
-	_ = ctx
-	_ = documentEmbeddings
+	_ = documentUUIDs
 	return errors.New("not implemented")
 }
 
@@ -106,8 +111,10 @@ type DocumentInterface interface {
 }
 
 type Document struct {
-	UUID           uuid.UUID              `json:"uuid"`
-	CreatedAt      time.Time              `json:"created_at"`
+	UUID      uuid.UUID `json:"uuid"`
+	CreatedAt time.Time `json:"created_at"`
+	// Developer-proved arbitrary string identifier for the document
+	DocumentID     string                 `json:"document_id"`
 	Content        string                 `json:"content"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 	CollectionUUID uuid.UUID              `json:"collection_uuid"`

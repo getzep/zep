@@ -109,34 +109,53 @@ func (pds *DocumentStore) DeleteCollection(
 	return nil
 }
 
-func (pds *DocumentStore) PutDocuments(
+func (pds *DocumentStore) CreateDocuments(
+	ctx context.Context,
+	collectionName string,
+	documents []models.DocumentInterface,
+) ([]uuid.UUID, error) {
+	if collectionName == "" {
+		return nil, store.NewStorageError("collection name is empty", nil)
+	}
+	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
+	uuids, err := dbCollection.CreateDocuments(ctx, documents)
+	if err != nil {
+		return nil, store.NewStorageError("failed to Put documents", err)
+	}
+
+	return uuids, nil
+}
+
+func (pds *DocumentStore) UpdateDocuments(
 	ctx context.Context,
 	collectionName string,
 	documents []models.DocumentInterface,
 ) error {
-	if collectionName == "" {
-		return store.NewStorageError("collection name is empty", nil)
-	}
-	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
-	err := dbCollection.PutDocuments(ctx, documents)
-	if err != nil {
-		return store.NewStorageError("failed to Put documents", err)
-	}
-
-	return nil
+	//if collectionName == "" {
+	//	return nil, store.NewStorageError("collection name is empty", nil)
+	//}
+	//dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
+	//uuids, err := dbCollection.CreateDocuments(ctx, documents)
+	//if err != nil {
+	//	return nil, store.NewStorageError("failed to Put documents", err)
+	//}
+	//
+	//return uuids, nil
+	return errors.New("not implemented")
 }
 
 func (pds *DocumentStore) GetDocuments(
 	ctx context.Context,
 	collectionName string,
 	uuids []uuid.UUID,
+	documentIDs []string,
 ) ([]models.DocumentInterface, error) {
 	if collectionName == "" {
 		return nil, store.NewStorageError("collection name is empty", nil)
 	}
 
 	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
-	documents, err := dbCollection.GetDocuments(ctx, 0, uuids)
+	documents, err := dbCollection.GetDocuments(ctx, 0, uuids, documentIDs)
 	if err != nil {
 		return nil, store.NewStorageError("failed to get document", err)
 	}
@@ -144,35 +163,18 @@ func (pds *DocumentStore) GetDocuments(
 	return documents, nil
 }
 
-func (pds *DocumentStore) DeleteDocument(
+func (pds *DocumentStore) DeleteDocuments(
 	ctx context.Context,
 	collectionName string,
-	documentUUID uuid.UUID,
+	documentUUID []uuid.UUID,
 ) error {
 	if collectionName == "" {
 		return store.NewStorageError("collection name is empty", nil)
 	}
 	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
-	err := dbCollection.DeleteDocumentByUUID(ctx, documentUUID)
+	err := dbCollection.DeleteDocumentsByUUID(ctx, documentUUID)
 	if err != nil {
 		return store.NewStorageError("failed to delete document", err)
-	}
-
-	return nil
-}
-
-func (pds *DocumentStore) PutDocumentEmbeddings(
-	ctx context.Context,
-	collectionName string,
-	documents []models.DocumentInterface,
-) error {
-	if collectionName == "" {
-		return store.NewStorageError("collection name is empty", nil)
-	}
-	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
-	err := dbCollection.PutDocumentEmbeddings(ctx, documents)
-	if err != nil {
-		return store.NewStorageError("failed to put document embeddings", err)
 	}
 
 	return nil

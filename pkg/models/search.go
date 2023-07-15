@@ -22,6 +22,7 @@ type DocumentSearchResult struct {
 	Dist     float64   `json:"dist"`
 }
 
+// TODO: Generalize this to any list of docs?
 type DocumentSearchResultPage struct {
 	DocumentSearchResults []DocumentSearchResult `json:"results"`
 	ResultCount           int                    `json:"result_count"`

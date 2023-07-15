@@ -11,7 +11,7 @@ import (
 
 func getMessageEmbeddings(ctx context.Context,
 	db *bun.DB,
-	sessionID string) ([]models.Embedding, error) {
+	sessionID string) ([]models.MessageEmbedding, error) {
 	var results []struct {
 		MessageStoreSchema
 		MessageVectorStoreSchema
@@ -29,9 +29,9 @@ func getMessageEmbeddings(ctx context.Context,
 		return nil, store.NewStorageError("failed to get message vectors", err)
 	}
 
-	embeddings := make([]models.Embedding, len(results))
+	embeddings := make([]models.MessageEmbedding, len(results))
 	for i, vectorStoreRecord := range results {
-		embeddings[i] = models.Embedding{
+		embeddings[i] = models.MessageEmbedding{
 			Embedding: vectorStoreRecord.Embedding.Slice(),
 			TextUUID:  vectorStoreRecord.MessageUUID,
 			Text:      vectorStoreRecord.Content,
@@ -45,7 +45,7 @@ func putMessageEmbeddings(
 	ctx context.Context,
 	db *bun.DB,
 	sessionID string,
-	embeddings []models.Embedding,
+	embeddings []models.MessageEmbedding,
 ) error {
 	if embeddings == nil {
 		return store.NewStorageError("nil embeddings received", nil)
