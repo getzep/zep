@@ -94,7 +94,7 @@ func TestPurgeDeleted(t *testing.T) {
 	assert.NoError(t, err, "purgeDeleted should not return an error")
 
 	// Test that session is deleted
-	for _, schema := range tableList {
+	for _, schema := range messageTableList {
 		r, err := testDB.NewSelect().
 			Model(schema).
 			WhereDeleted().

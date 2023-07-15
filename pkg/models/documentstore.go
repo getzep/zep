@@ -28,9 +28,15 @@ type DocumentStore[T any] interface {
 		ctx context.Context,
 		collectionName string,
 	) error
-	// PutDocuments creates a batch of Documents.
-	// If a document with the same UUID already exists, it will be overwritten.
-	PutDocuments(
+	// CreateDocuments creates a batch of Documents.
+	CreateDocuments(
+		ctx context.Context,
+		collectionName string,
+		documents []DocumentInterface,
+	) ([]uuid.UUID, error)
+	// UpdateDocuments updates a batch of Documents.
+	// The provided Document UUIDs must match existing documents.
+	UpdateDocuments(
 		ctx context.Context,
 		collectionName string,
 		documents []DocumentInterface,
@@ -40,20 +46,13 @@ type DocumentStore[T any] interface {
 		ctx context.Context,
 		collectionName string,
 		uuids []uuid.UUID,
+		DocumentID []string,
 	) ([]DocumentInterface, error)
-	// DeleteDocument deletes a Document by UUID.
-	DeleteDocument(
+	// DeleteDocuments deletes a Document by UUID.
+	DeleteDocuments(
 		ctx context.Context,
 		collectionName string,
-		documentUUID uuid.UUID,
-	) error
-	// PutDocumentEmbeddings updates documents with embeddings.
-	// We do this separately from PutDocuments because embeddings are large
-	// and aren't in the Documents schema, complicating a potential upsert.
-	PutDocumentEmbeddings(
-		ctx context.Context,
-		collectionName string,
-		documents []DocumentInterface,
+		documentUUIDs []uuid.UUID,
 	) error
 	// SearchCollection retrieves a collection of DocumentSearchResultPage based on the provided search query.
 	// It accepts an optional limit for the total number of results, as well as parameters for pagination: pageNumber and pageSize.

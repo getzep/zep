@@ -232,7 +232,7 @@ func (pms *PostgresMemoryStore) DeleteSession(ctx context.Context, sessionID str
 func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
-	embeddings []models.Embedding,
+	embeddings []models.MessageEmbedding,
 ) error {
 	if embeddings == nil {
 		return store.NewStorageError("nil embeddings received", nil)
@@ -252,7 +252,7 @@ func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 func (pms *PostgresMemoryStore) GetMessageVectors(ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
-) ([]models.Embedding, error) {
+) ([]models.MessageEmbedding, error) {
 	embeddings, err := getMessageEmbeddings(ctx, pms.Client, sessionID)
 	if err != nil {
 		return nil, store.NewStorageError("GetMessageVectors failed to get embeddings", err)

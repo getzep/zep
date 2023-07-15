@@ -126,7 +126,7 @@ func (s *DocumentCollectionSchema) BeforeCreateTable(
 }
 
 // DocumentSchemaTemplate represents the schema template for Document tables.
-// Embedding is manually added when createDocumentTable is run in order to set the correct dimensions.
+// MessageEmbedding is manually added when createDocumentTable is run in order to set the correct dimensions.
 // This means the embedding is not returned when querying using bun.
 type DocumentSchemaTemplate struct {
 	bun.BaseModel `bun:"table:document,alias:d"`
@@ -208,12 +208,11 @@ func (*DocumentCollectionSchema) AfterCreateTable(
 	return err
 }
 
-var tableList = []bun.BeforeCreateTableHook{
+var messageTableList = []bun.BeforeCreateTableHook{
 	&MessageVectorStoreSchema{},
 	&SummaryStoreSchema{},
 	&MessageStoreSchema{},
 	&SessionSchema{},
-	&DocumentCollectionSchema{},
 }
 
 // generateDocumentTableName generates a table name for a collection.
@@ -250,7 +249,9 @@ func ensurePostgresSetup(
 		return fmt.Errorf("error creating pgvector extension: %w", err)
 	}
 
-	// iterate through tableList in reverse order to create tables with foreign keys first
+	// Create new tableList slice and append DocumentCollectionSchema to it
+	tableList := append(messageTableList, &DocumentCollectionSchema{}) //nolint:gocritic
+	// iterate through messageTableList in reverse order to create tables with foreign keys first
 	for i := len(tableList) - 1; i >= 0; i-- {
 		schema := tableList[i]
 		_, err := db.NewCreateTable().
@@ -298,7 +299,7 @@ func migrateMessageEmbeddingDims(
 		ColumnExpr(fmt.Sprintf("embedding vector(%d)", dimensions)).
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("error adding column Embedding: %w", err)
+		return fmt.Errorf("error adding column MessageEmbedding: %w", err)
 	}
 
 	return nil

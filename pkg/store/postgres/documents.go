@@ -15,12 +15,13 @@ import (
 )
 
 type DocumentBase struct {
-	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
-	CreatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
-	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
-	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
-	Content   string                 `bun:",notnull"`
-	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
+	UUID       uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
+	CreatedAt  time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt  time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
+	DeletedAt  time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
+	DocumentID string                 `bun:",unique"`
+	Content    string                 `bun:""`
+	Metadata   map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
 }
 
 type Document struct {
@@ -163,31 +164,113 @@ func (c *DocumentCollection) Delete(ctx context.Context) error {
 	return nil
 }
 
-// PutDocuments upserts the given documents into the given collection. Only the content and metadata fields are
-// updated. The document's UUID is used to determine whether to insert or update the document.
-// NOTE: Does not persist Document Embeddings.
-func (c *DocumentCollection) PutDocuments(
+// CreateDocuments inserts the given documents into the given collection.
+func (c *DocumentCollection) CreateDocuments(
+	ctx context.Context,
+	documents []models.DocumentInterface,
+) ([]uuid.UUID, error) {
+	if len(documents) == 0 {
+		return nil, nil
+	}
+	if c.Name == "" {
+		return nil, errors.New("collection name cannot be empty")
+	}
+	if err := c.GetByName(ctx); err != nil {
+		return nil, store.NewStorageError("failed to get collection", err)
+	}
+
+	_, err := c.db.NewInsert().
+		Model(&documents).
+		ModelTableExpr(c.TableName).
+		Returning("uuid").
+		Exec(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to insert documents: %w", err)
+	}
+
+	// return slice of uuids
+	uuids := make([]uuid.UUID, len(documents))
+	for i, document := range documents {
+		doc, ok := document.(*Document)
+		if !ok {
+			return nil, errors.New("failed to cast document to Document")
+		}
+		uuids[i] = doc.UUID
+	}
+
+	return uuids, nil
+}
+
+// UpdateDocuments updates the document_id, metadata, and embedding columns of the
+// given documents in the given collection. The documents must have non-nil uuids.
+// **IMPORTANT:** We determine which columns to update based on the fields that are
+// non-zero in the given documents. This means that all documents must have data
+// for the same fields. If a document is missing data for a field, there could be
+// data loss.
+func (c *DocumentCollection) UpdateDocuments(
 	ctx context.Context,
 	documents []models.DocumentInterface,
 ) error {
 	if len(documents) == 0 {
 		return nil
 	}
-	if c.Name == "" {
-		return errors.New("collection name cannot be empty")
+
+	// type assert documents to Document and check for nil uuid
+	// We also determine which columns to update based on the fields that are
+	// non-nil. This means that all documents must have data for the same fields.
+	updateDocumentID := false
+	updateMetadata := false
+	updateEmbedding := false
+	docs := make([]Document, len(documents))
+	for i, document := range documents {
+		doc, ok := document.(*Document)
+		if !ok {
+			return errors.New("failed to cast document to Document")
+		}
+		if doc.UUID == uuid.Nil {
+			return errors.New("document uuid cannot be nil")
+		}
+		docs[i] = *doc
+		if len(doc.DocumentID) > 0 {
+			updateDocumentID = true
+		}
+		if len(doc.Metadata) > 0 {
+			updateMetadata = true
+		}
+		if len(doc.Embedding) > 0 {
+			updateEmbedding = true
+		}
 	}
-	if err := c.GetByName(ctx); err != nil {
+
+	if !updateDocumentID && !updateMetadata && !updateEmbedding {
+		return errors.New("no fields to update")
+	}
+
+	columns := []string{}
+	if updateDocumentID {
+		columns = append(columns, "document_id")
+	}
+	if updateMetadata {
+		columns = append(columns, "metadata")
+	}
+	if updateEmbedding {
+		columns = append(columns, "embedding")
+	}
+
+	err := c.GetByName(ctx)
+	if err != nil {
 		return store.NewStorageError("failed to get collection: %w", err)
 	}
-	_, err := c.db.NewInsert().
-		Model(&documents).
-		ModelTableExpr(c.TableName).
-		Column("content", "metadata").
-		On("CONFLICT (uuid) DO UPDATE").
-		Returning("*").
+
+	_, err = c.db.NewUpdate().
+		Model(&docs).
+		ModelTableExpr(c.TableName + " AS document").
+		Column(columns...).
+		Bulk().
+		Where("document.uuid = _data.uuid").
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to insert documents: %w", err)
+		return fmt.Errorf("failed to update documents: %w", err)
 	}
 
 	return nil
@@ -201,10 +284,16 @@ func (c *DocumentCollection) GetDocuments(
 	ctx context.Context,
 	limit int,
 	uuids []uuid.UUID,
+	documentIDs []string,
 ) ([]models.DocumentInterface, error) {
 	if c.Name == "" {
 		return nil, errors.New("collection name cannot be empty")
 	}
+
+	if len(uuids) != 0 && len(documentIDs) != 0 {
+		return nil, errors.New("cannot specify both uuids and documentIDs")
+	}
+
 	if err := c.GetByName(ctx); err != nil {
 		return nil, fmt.Errorf("failed to get collection: %w", err)
 	}
@@ -218,12 +307,14 @@ func (c *DocumentCollection) GetDocuments(
 	query := c.db.NewSelect().
 		Model(&documents).
 		ModelTableExpr(c.TableName+" AS document").
-		Column("uuid", "created_at", "content", "metadata").
+		Column("uuid", "created_at", "content", "metadata", "document_id").
 		// cast the vectors to a float array
 		ColumnExpr("embedding::real[]")
 
 	if len(uuids) > 0 {
 		query = query.Where("uuid IN (?)", bun.In(uuids))
+	} else if len(documentIDs) > 0 {
+		query = query.Where("document_id IN (?)", bun.In(documentIDs))
 	}
 	if limit > 0 {
 		query = query.Limit(limit)
@@ -243,10 +334,10 @@ func (c *DocumentCollection) GetDocuments(
 	return docInterfaces, nil
 }
 
-// DeleteDocumentByUUID deletes a single document from a collection in the DB, identified by its UUID.
-func (c *DocumentCollection) DeleteDocumentByUUID(
+// DeleteDocumentsByUUID deletes a single document from a collection in the DB, identified by its UUID.
+func (c *DocumentCollection) DeleteDocumentsByUUID(
 	ctx context.Context,
-	documentUUID uuid.UUID,
+	documentUUIDs []uuid.UUID,
 ) error {
 	if c.Name == "" {
 		return errors.New("collection name cannot be empty")
@@ -258,7 +349,7 @@ func (c *DocumentCollection) DeleteDocumentByUUID(
 	r, err := c.db.NewDelete().
 		Model(&Document{}).
 		ModelTableExpr(c.TableName).
-		Where("uuid = ?", documentUUID).
+		Where("uuid IN (?)", bun.In(documentUUIDs)).
 		// ModelTableExpr isn't being set on the auto-soft Delete in the WHERE clause
 		// so we have to use WhereAllWithDeleted to avoid adding deleted_at Is NOT NULL
 		WhereAllWithDeleted().
@@ -272,51 +363,7 @@ func (c *DocumentCollection) DeleteDocumentByUUID(
 		return fmt.Errorf("failed to get rows effected: %w", err)
 	}
 	if rowsEffected == 0 {
-		return fmt.Errorf("document not found: %s", documentUUID.String())
-	}
-
-	return nil
-}
-
-// PutDocumentEmbeddings updates the embeddings of a set of documents. The documentEmbeddings
-// argument must include the UUIDs and embeddings of the documents to be updated. Other fields are ignored.
-// If the UUIDs do not exist in the collection, an error is returned.
-func (c *DocumentCollection) PutDocumentEmbeddings(
-	ctx context.Context,
-	documentEmbeddings []models.DocumentInterface,
-) error {
-	if len(documentEmbeddings) == 0 {
-		return nil
-	}
-
-	err := c.GetByName(ctx)
-	if err != nil {
-		return store.NewStorageError("failed to get collection: %w", err)
-	}
-
-	values := c.db.NewValues(&documentEmbeddings).Column("uuid", "embedding")
-	r, err := c.db.NewUpdate().
-		With("_data", values).
-		ModelTableExpr(c.TableName + " AS document").
-		TableExpr("_data").
-		Set("embedding = _data.embedding").
-		Where("document.uuid = _data.uuid").
-		Returning(""). // we don't need to return anything
-		Exec(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to update document embeddings: %w", err)
-	}
-
-	rowsEffected, err := r.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows effected: %w", err)
-	}
-	if rowsEffected != int64(len(documentEmbeddings)) {
-		return fmt.Errorf(
-			"failed to update all document embeddings: %d != %d",
-			rowsEffected,
-			len(documentEmbeddings),
-		)
+		return fmt.Errorf("not all documents found: %v", documentUUIDs)
 	}
 
 	return nil
