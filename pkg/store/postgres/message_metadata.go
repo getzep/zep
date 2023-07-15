@@ -49,7 +49,7 @@ func putMessageMetadata(
 		messages[i] = *returnedMessage
 		if err != nil {
 			// defer will roll back the transaction
-			return nil, store.NewStorageError("failed to Put message metadata", err)
+			return nil, store.NewStorageError("failed to Create message metadata", err)
 		}
 	}
 

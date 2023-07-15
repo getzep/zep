@@ -9,7 +9,8 @@ import (
 )
 
 type DocumentCollectionInterface interface {
-	Put(ctx context.Context) error
+	Create(ctx context.Context) error
+	Update(ctx context.Context) error
 	GetByName(ctx context.Context) error
 	GetAll(ctx context.Context) ([]DocumentCollectionInterface, error)
 	Delete(ctx context.Context) error
@@ -45,7 +46,12 @@ type DocumentCollection struct {
 	IsIndexed           bool                   `json:"is_indexed"`        // Has an index been created on the collection table?
 }
 
-func (dc *DocumentCollection) Put(ctx context.Context) error {
+func (dc *DocumentCollection) Create(ctx context.Context) error {
+	_ = ctx
+	return errors.New("not implemented")
+}
+
+func (dc *DocumentCollection) Update(ctx context.Context) error {
 	_ = ctx
 	return errors.New("not implemented")
 }

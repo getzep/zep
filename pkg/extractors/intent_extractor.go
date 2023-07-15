@@ -100,7 +100,7 @@ func (ee *IntentExtractor) processMessage(
 	intentContent := resp.Choices[0].Message.Content
 	intentContent = strings.TrimPrefix(intentContent, "Intent: ")
 
-	// Put the intent into the message metadata
+	// Create the intent into the message metadata
 	intentResponse := []models.Message{
 		{
 			UUID: message.UUID,
@@ -110,7 +110,7 @@ func (ee *IntentExtractor) processMessage(
 		},
 	}
 
-	// Put the intent into the message metadata
+	// Create the intent into the message metadata
 	log.Debugf("IntentExtractor: intentResponse: %+v", intentResponse)
 	err = appState.MemoryStore.PutMessageMetadata(
 		ctx,

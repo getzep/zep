@@ -160,7 +160,7 @@ func (pms *PostgresMemoryStore) PutMemory(
 		memoryMessages.Messages,
 	)
 	if err != nil {
-		return store.NewStorageError("failed to Put messages", err)
+		return store.NewStorageError("failed to Create messages", err)
 	}
 
 	if skipNotify {
@@ -185,7 +185,7 @@ func (pms *PostgresMemoryStore) PutSummary(
 ) error {
 	_, err := putSummary(ctx, pms.Client, sessionID, summary)
 	if err != nil {
-		return store.NewStorageError("failed to Put summary", err)
+		return store.NewStorageError("failed to Create summary", err)
 	}
 
 	return nil
@@ -200,7 +200,7 @@ func (pms *PostgresMemoryStore) PutMessageMetadata(
 ) error {
 	_, err := putMessageMetadata(ctx, pms.Client, sessionID, messages, isPrivileged)
 	if err != nil {
-		return store.NewStorageError("failed to Put message metadata", err)
+		return store.NewStorageError("failed to Create message metadata", err)
 	}
 	return nil
 }
@@ -243,7 +243,7 @@ func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 
 	err := putMessageEmbeddings(ctx, pms.Client, sessionID, embeddings)
 	if err != nil {
-		return store.NewStorageError("failed to Put embeddings", err)
+		return store.NewStorageError("failed to Create embeddings", err)
 	}
 
 	return nil

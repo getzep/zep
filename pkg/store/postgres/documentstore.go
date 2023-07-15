@@ -47,7 +47,7 @@ func (pds *DocumentStore) GetClient() *bun.DB {
 	return pds.Client
 }
 
-func (pds *DocumentStore) PutCollection(
+func (pds *DocumentStore) CreateCollection(
 	ctx context.Context,
 	collection models.DocumentCollectionInterface,
 ) error {
@@ -56,9 +56,28 @@ func (pds *DocumentStore) PutCollection(
 		return store.NewStorageError("failed to type assert document", nil)
 	}
 	dbCollection.db = pds.Client
-	err := dbCollection.Put(ctx)
+	err := dbCollection.Create(ctx)
 	if err != nil {
-		return store.NewStorageError("failed to Put collection", err)
+		return store.NewStorageError("failed to Create collection", err)
+	}
+	return nil
+}
+
+func (pds *DocumentStore) UpdateCollection(
+	ctx context.Context,
+	collection models.DocumentCollectionInterface,
+) error {
+	dbCollection, ok := collection.(*DocumentCollection)
+	if !ok {
+		return store.NewStorageError("failed to type assert document", nil)
+	}
+	if dbCollection.Name == "" {
+		return store.NewStorageError("collection name is empty", nil)
+	}
+	dbCollection.db = pds.Client
+	err := dbCollection.Update(ctx)
+	if err != nil {
+		return store.NewStorageError("failed to Update collection", err)
 	}
 	return nil
 }
@@ -120,7 +139,7 @@ func (pds *DocumentStore) CreateDocuments(
 	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
 	uuids, err := dbCollection.CreateDocuments(ctx, documents)
 	if err != nil {
-		return nil, store.NewStorageError("failed to Put documents", err)
+		return nil, store.NewStorageError("failed to Create documents", err)
 	}
 
 	return uuids, nil
@@ -137,7 +156,7 @@ func (pds *DocumentStore) UpdateDocuments(
 	//dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
 	//uuids, err := dbCollection.CreateDocuments(ctx, documents)
 	//if err != nil {
-	//	return nil, store.NewStorageError("failed to Put documents", err)
+	//	return nil, store.NewStorageError("failed to Create documents", err)
 	//}
 	//
 	//return uuids, nil

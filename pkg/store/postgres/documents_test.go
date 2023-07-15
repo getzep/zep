@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestCollectionPut(t *testing.T) {
+func TestCollectionCreate(t *testing.T) {
 	ctx := context.Background()
 
 	CleanDB(t, testDB)
@@ -30,30 +30,57 @@ func TestCollectionPut(t *testing.T) {
 	testCases := []struct {
 		name          string
 		collection    *DocumentCollection
-		expectedError error
+		expectedError string
 	}{
 		{
 			name:          "test create collection",
 			collection:    &collection,
-			expectedError: nil,
+			expectedError: "",
 		},
 		{
-			name:          "test when collection already exists. should not fail",
+			name:          "should fail when collection already exists.",
 			collection:    &collection,
-			expectedError: nil,
+			expectedError: "already exists",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.collection.Put(ctx)
-			if tc.expectedError != nil {
-				assert.ErrorIs(t, err, tc.expectedError)
+			err := tc.collection.Create(ctx)
+			if tc.expectedError != "" {
+				assert.ErrorContains(t, err, tc.expectedError)
 			} else {
 				assert.NoError(t, err)
 			}
 		})
 	}
+}
+
+func TestCollectionUpdate(t *testing.T) {
+	ctx := context.Background()
+
+	CleanDB(t, testDB)
+	err := ensurePostgresSetup(ctx, appState, testDB)
+	assert.NoError(t, err)
+
+	collection := DocumentCollection{
+		Name:                testutils.GenerateRandomString(10),
+		EmbeddingDimensions: 10,
+		db:                  testDB,
+	}
+	err = collection.Create(ctx)
+	assert.NoError(t, err)
+
+	// Update the collection
+	expectedDimensions := 20
+	collection.EmbeddingDimensions = expectedDimensions
+	err = collection.Update(ctx)
+	assert.NoError(t, err)
+
+	// Retrieve the collection again and check that the update was successful
+	err = collection.GetByName(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedDimensions, collection.EmbeddingDimensions)
 }
 
 func TestCollectionGetByName(t *testing.T) {
@@ -69,7 +96,7 @@ func TestCollectionGetByName(t *testing.T) {
 		db:                  testDB,
 	}
 
-	err = collection.Put(ctx)
+	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
 	testCases := []struct {
@@ -126,7 +153,7 @@ func TestCollectionGetAll(t *testing.T) {
 			EmbeddingDimensions: 10,
 			db:                  testDB,
 		}
-		err = collection.Put(ctx)
+		err = collection.Create(ctx)
 		assert.NoError(t, err)
 
 		collectionsToCreate = append(collectionsToCreate, collection)
@@ -165,7 +192,7 @@ func TestDeleteCollection(t *testing.T) {
 		db:                  testDB,
 	}
 
-	err = collection.Put(ctx)
+	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
 	testCases := []struct {
@@ -241,7 +268,7 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 		EmbeddingDimensions: 5,
 		db:                  testDB,
 	}
-	err = collection.Put(ctx)
+	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
 	documents := make([]models.DocumentInterface, 10)
@@ -262,13 +289,13 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 		expectedError string
 	}{
 		{
-			name:          "test Put documents into an existing collection",
+			name:          "test Create documents into an existing collection",
 			collection:    collection,
 			documents:     documents,
 			expectedError: "",
 		},
 		{
-			name: "test Put documents into a non-existent collection",
+			name: "test Create documents into a non-existent collection",
 			collection: DocumentCollection{
 				UUID: uuid.New(),
 				Name: "NonExistentCollection",
@@ -327,7 +354,7 @@ func TestDocumentCollectionUpdateDocuments(t *testing.T) {
 		EmbeddingDimensions: 5,
 		db:                  testDB,
 	}
-	err = collection.Put(ctx)
+	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
 	documents := make([]models.DocumentInterface, 10)
@@ -421,7 +448,7 @@ func TestDocumentCollectionGetDocuments(t *testing.T) {
 		EmbeddingDimensions: 5,
 		db:                  testDB,
 	}
-	err = collection.Put(ctx)
+	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
 	documents := make([]models.DocumentInterface, 10)
@@ -532,7 +559,7 @@ func TestDocumentCollectionDeleteDocumentByUUID(t *testing.T) {
 		EmbeddingDimensions: 5,
 		db:                  testDB,
 	}
-	err = collection.Put(ctx)
+	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
 	documents := make([]models.DocumentInterface, 2)
