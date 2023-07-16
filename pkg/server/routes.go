@@ -52,8 +52,8 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 	}
 
 	router.Route("/api/v1", func(r chi.Router) {
+		// Memory session-related routes
 		r.Route("/sessions/{sessionId}", func(r chi.Router) {
-			// Session-related routes
 			r.Get("/", GetSessionHandler(appState))
 			r.Post("/", PostSessionHandler(appState))
 			// Memory-related routes
@@ -62,9 +62,25 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 				r.Post("/", PostMemoryHandler(appState))
 				r.Delete("/", DeleteMemoryHandler(appState))
 			})
-			// Search-related routes
+			// Memory search-related routes
 			r.Route("/search", func(r chi.Router) {
 				r.Post("/", SearchMemoryHandler(appState))
+			})
+		})
+		// Document collection-related routes
+		r.Get("/collections", GetCollectionListHandler(appState))
+		r.Route("/collections/{collectionName}", func(r chi.Router) {
+			r.Post("/", CreateCollectionHandler(appState))
+			r.Get("/", GetCollectionHandler(appState))
+			r.Delete("/", DeleteCollectionHandler(appState))
+			r.Patch("/", UpdateCollectionHandler(appState))
+
+			// Document-related routes
+			r.Route("/documents", func(r chi.Router) {
+				r.Post("/", CreateDocumentsHandler(appState))
+				r.Get("/", GetDocumentsHandler(appState))
+				r.Delete("/", DeleteDocumentsHandler(appState))
+				r.Patch("/", UpdateDocumentsHandler(appState))
 			})
 		})
 	})
