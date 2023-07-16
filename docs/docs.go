@@ -20,6 +20,391 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/collections": {
+            "get": {
+                "description": "Returns a list of all DocumentCollections.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collection"
+                ],
+                "summary": "Gets a list of DocumentCollections",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {}
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "If a collection with the same name already exists, an error will be returned.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collection"
+                ],
+                "summary": "Creates a new DocumentCollection",
+                "parameters": [
+                    {
+                        "description": "Document Collection",
+                        "name": "collection",
+                        "in": "body",
+                        "required": true,
+                        "schema": {}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collections/{collectionName}": {
+            "get": {
+                "description": "Returns a DocumentCollection if it exists.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collection"
+                ],
+                "summary": "Gets a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {}
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "If a collection with the same name already exists, it will be overwritten.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collection"
+                ],
+                "summary": "Deletes a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collection"
+                ],
+                "summary": "Updates a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Document Collection",
+                        "name": "collection",
+                        "in": "body",
+                        "required": true,
+                        "schema": {}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collections/{collectionName}/documents": {
+            "post": {
+                "description": "Returns specified Documents from a DocumentCollection.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Gets Documents from a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "UUIDs and IDs of the Documents to be fetched",
+                        "name": "documentRequest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.documentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {}
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Deletes specified Documents from a DocumentCollection.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Deletes Documents from a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "UUIDs of the Documents to be deleted",
+                        "name": "documentUUIDs",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "Updates Documents in a specified DocumentCollection.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Updates Documents in a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of Documents to be updated",
+                        "name": "documents",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {}
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/sessions/{sessionId}": {
             "get": {
                 "description": "get session by id",
@@ -456,6 +841,23 @@ const docTemplate = `{
             "properties": {
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "server.documentRequest": {
+            "type": "object",
+            "properties": {
+                "documentIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "uuids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         }

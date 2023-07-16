@@ -582,6 +582,8 @@ func TestDocumentCollectionDeleteDocumentByUUID(t *testing.T) {
 
 	nonexistantUUIDs := []uuid.UUID{uuid.New(), uuid.New()}
 
+	expectedError := "documents not found"
+
 	testCases := []struct {
 		name          string
 		collection    DocumentCollection
@@ -598,7 +600,7 @@ func TestDocumentCollectionDeleteDocumentByUUID(t *testing.T) {
 			name:          "test Delete non-existent documents",
 			collection:    collection,
 			documentUUIDs: nonexistantUUIDs,
-			expectedError: "not all documents found",
+			expectedError: expectedError,
 		},
 	}
 
@@ -610,7 +612,7 @@ func TestDocumentCollectionDeleteDocumentByUUID(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				returnedDocuments, err := tc.collection.GetDocuments(ctx, 0, tc.documentUUIDs, nil)
-				assert.NoError(t, err)
+				assert.ErrorContains(t, err, expectedError)
 				assert.Equal(t, 0, len(returnedDocuments))
 			}
 		})

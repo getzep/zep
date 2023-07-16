@@ -63,7 +63,7 @@ func NewAppState(cfg *config.Config) *models.AppState {
 		Config:       cfg,
 	}
 
-	initializeMemoryStore(appState)
+	initializeStores(appState)
 	setupSignalHandler(appState)
 	setupPurgeProcessor(context.Background(), appState)
 
@@ -82,11 +82,13 @@ func handleCLIOptions(cfg *config.Config) {
 	}
 }
 
-// initializeMemoryStore initializes the memory store based on the config file / ENV
-func initializeMemoryStore(appState *models.AppState) {
+// TODO: refactor to include document store switch
+// initializeStores initializes the memory and document stores based on the config file / ENV
+func initializeStores(appState *models.AppState) {
 	if appState.Config.MemoryStore.Type == "" {
 		log.Fatal(ErrMemoryStoreTypeNotSet)
 	}
+	// TODO: check for document store type
 
 	switch appState.Config.MemoryStore.Type {
 	case MemoryStoreTypePostgres:
@@ -101,7 +103,14 @@ func initializeMemoryStore(appState *models.AppState) {
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		documentStore, err := postgres.NewDocumentStore(appState, db)
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		appState.MemoryStore = memoryStore
+		appState.DocumentStore = documentStore
 	default:
 		log.Fatal(
 			fmt.Sprintf(
@@ -126,6 +135,7 @@ func pgDebugLogging(db *bun.DB) {
 	}))
 }
 
+// TODO: refactor to include document store
 // setupSignalHandler sets up a signal handler to close the MemoryStore connection on termination
 func setupSignalHandler(appState *models.AppState) {
 	signalCh := make(chan os.Signal, 1)
