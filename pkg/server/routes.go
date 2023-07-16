@@ -79,9 +79,11 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 			// Document-related routes
 			r.Route("/documents", func(r chi.Router) {
 				r.Post("/", CreateDocumentsHandler(appState))
-				r.Get("/", GetDocumentsHandler(appState))
 				r.Delete("/", DeleteDocumentsHandler(appState))
 				r.Patch("/", UpdateDocumentsHandler(appState))
+
+				// Get documents by UUID or ID
+				r.Post("/list", GetDocumentsHandler(appState))
 			})
 		})
 	})
