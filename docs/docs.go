@@ -20,7 +20,7 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/api/v1/collections": {
+        "/api/v1/collection": {
             "get": {
                 "description": "Returns a list of all DocumentCollections.",
                 "consumes": [
@@ -38,7 +38,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "type": "array",
-                            "items": {}
+                            "items": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/models.DocumentCollection"
+                                }
+                            }
                         }
                     },
                     "500": {
@@ -74,7 +79,9 @@ const docTemplate = `{
                         "name": "collection",
                         "in": "body",
                         "required": true,
-                        "schema": {}
+                        "schema": {
+                            "$ref": "#/definitions/models.DocumentCollection"
+                        }
                     }
                 ],
                 "responses": {
@@ -105,7 +112,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/collections/{collectionName}": {
+        "/api/v1/collection/{collectionName}": {
             "get": {
                 "description": "Returns a DocumentCollection if it exists.",
                 "consumes": [
@@ -130,7 +137,9 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "OK",
-                        "schema": {}
+                        "schema": {
+                            "$ref": "#/definitions/models.DocumentCollection"
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -224,7 +233,9 @@ const docTemplate = `{
                         "name": "collection",
                         "in": "body",
                         "required": true,
-                        "schema": {}
+                        "schema": {
+                            "$ref": "#/definitions/models.DocumentCollection"
+                        }
                     }
                 ],
                 "responses": {
@@ -255,7 +266,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/collections/{collectionName}/documents": {
+        "/api/v1/collection/{collectionName}/document": {
             "post": {
                 "description": "Creates Documents in a specified DocumentCollection and returns their UUIDs.",
                 "consumes": [
@@ -267,7 +278,7 @@ const docTemplate = `{
                 "tags": [
                     "document"
                 ],
-                "summary": "Creates Documents in a DocumentCollection",
+                "summary": "Creates Multiple Documents in a DocumentCollection",
                 "parameters": [
                     {
                         "type": "string",
@@ -283,7 +294,9 @@ const docTemplate = `{
                         "required": true,
                         "schema": {
                             "type": "array",
-                            "items": {}
+                            "items": {
+                                "$ref": "#/definitions/models.Document"
+                            }
                         }
                     }
                 ],
@@ -310,8 +323,10 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
-            "delete": {
+            }
+        },
+        "/api/v1/collection/{collectionName}/document/batchDelete": {
+            "post": {
                 "description": "Deletes specified Documents from a DocumentCollection.",
                 "consumes": [
                     "application/json"
@@ -322,7 +337,7 @@ const docTemplate = `{
                 "tags": [
                     "document"
                 ],
-                "summary": "Deletes Documents from a DocumentCollection",
+                "summary": "Batch Deletes Documents from a DocumentCollection by UUID",
                 "parameters": [
                     {
                         "type": "string",
@@ -364,7 +379,68 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
+            }
+        },
+        "/api/v1/collection/{collectionName}/document/batchGet": {
+            "post": {
+                "description": "Returns Documents from a DocumentCollection specified by UUID or ID.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Batch Gets Documents from a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "UUIDs and IDs of the Documents to be fetched",
+                        "name": "documentRequest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.documentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/models.Document"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collection/{collectionName}/document/batchUpdate": {
             "patch": {
                 "description": "Updates Documents in a specified DocumentCollection.",
                 "consumes": [
@@ -376,7 +452,7 @@ const docTemplate = `{
                 "tags": [
                     "document"
                 ],
-                "summary": "Updates Documents in a DocumentCollection",
+                "summary": "Batch Updates Documents in a DocumentCollection",
                 "parameters": [
                     {
                         "type": "string",
@@ -392,7 +468,9 @@ const docTemplate = `{
                         "required": true,
                         "schema": {
                             "type": "array",
-                            "items": {}
+                            "items": {
+                                "$ref": "#/definitions/models.Document"
+                            }
                         }
                     }
                 ],
@@ -418,9 +496,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/collections/{collectionName}/documents/list": {
-            "post": {
-                "description": "Returns specified Documents from a DocumentCollection.",
+        "/api/v1/collection/{collectionName}/document/uuid/{documentUUID}": {
+            "get": {
+                "description": "Returns specified Document from a DocumentCollection.",
                 "consumes": [
                     "application/json"
                 ],
@@ -430,7 +508,7 @@ const docTemplate = `{
                 "tags": [
                     "document"
                 ],
-                "summary": "Gets Documents from a DocumentCollection",
+                "summary": "Gets a Document from a DocumentCollection by UUID",
                 "parameters": [
                     {
                         "type": "string",
@@ -440,12 +518,122 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "UUIDs and IDs of the Documents to be fetched",
-                        "name": "documentRequest",
+                        "type": "string",
+                        "description": "UUID of the Document to be updated",
+                        "name": "documentUUID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Document"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Delete specified Document from a DocumentCollection.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Delete Document from a DocumentCollection by UUID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UUID of the Document to be deleted",
+                        "name": "documentUUID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Document Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Updates a Document in a DocumentCollection by UUID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UUID of the Document to be updated",
+                        "name": "documentUUID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Document to be updated",
+                        "name": "document",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/server.documentRequest"
+                            "$ref": "#/definitions/models.Document"
                         }
                     }
                 ],
@@ -453,12 +641,17 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {}
+                            "type": "string"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/server.APIError"
                         }
@@ -777,6 +970,76 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "models.Document": {
+            "type": "object",
+            "properties": {
+                "collection_uuid": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "document_id": {
+                    "description": "Developer-provided arbitrary string identifier for the document",
+                    "type": "string"
+                },
+                "embedding": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "uuid": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.DocumentCollection": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "distance_function": {
+                    "description": "Distance function to use for index",
+                    "type": "string"
+                },
+                "embedding_dimensions": {
+                    "type": "integer"
+                },
+                "is_indexed": {
+                    "description": "Has an index been created on the collection table?",
+                    "type": "boolean"
+                },
+                "is_normalized": {
+                    "description": "Are the embeddings normalized?",
+                    "type": "boolean"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "name": {
+                    "type": "string"
+                },
+                "table_name": {
+                    "type": "string"
+                },
+                "uuid": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Memory": {
             "type": "object",
             "properties": {
