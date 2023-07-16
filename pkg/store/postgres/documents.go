@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/getzep/zep/pkg/models"
-	"github.com/getzep/zep/pkg/store"
-
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
@@ -57,6 +55,10 @@ var _ models.DocumentCollectionInterface = &DocumentCollection{}
 func (c *DocumentCollection) Create(
 	ctx context.Context,
 ) error {
+	// TODO: validate collection struct fields using validator
+	if c.Name == "" {
+		return errors.New("collection name is required")
+	}
 	if c.TableName == "" {
 		tableName, err := generateDocumentTableName(c)
 		if err != nil {
@@ -64,6 +66,8 @@ func (c *DocumentCollection) Create(
 		}
 		c.TableName = tableName
 	}
+
+	c.Name = strings.ToLower(c.Name)
 
 	_, err := c.db.NewInsert().
 		Model(c).
@@ -94,7 +98,7 @@ func (c *DocumentCollection) Update(
 	if c.Name == "" {
 		return errors.New("collection Name is required")
 	}
-	_, err := c.db.NewUpdate().
+	r, err := c.db.NewUpdate().
 		Model(c).
 		ModelTableExpr("document_collection").
 		Where("name = ?", c.Name).
@@ -105,11 +109,18 @@ func (c *DocumentCollection) Update(
 		return fmt.Errorf("failed to update collection: %w", err)
 	}
 
+	// check if no rows were updated
+	rowsUpdated, err := r.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsUpdated == 0 {
+		return models.NewNotFoundError("collection: " + c.Name)
+	}
 	return nil
 }
 
 // GetByName returns a collection from the collections table by name.
-// TODO: handle 404
 func (c *DocumentCollection) GetByName(
 	ctx context.Context,
 ) error {
@@ -125,11 +136,13 @@ func (c *DocumentCollection) GetByName(
 		return fmt.Errorf("failed to get collection: %w", err)
 	}
 
+	if c.UUID == uuid.Nil {
+		return models.NewNotFoundError("collection: " + c.Name)
+	}
 	return nil
 }
 
 // GetAll returns a list of all collections from the collections table.
-// TODO: handle 404
 func (c *DocumentCollection) GetAll(
 	ctx context.Context,
 ) ([]models.DocumentCollectionInterface, error) {
@@ -144,12 +157,15 @@ func (c *DocumentCollection) GetAll(
 		docCollections[i] = &collections[i]
 	}
 
+	if len(docCollections) == 0 {
+		return nil, models.NewNotFoundError("collections")
+	}
+
 	return docCollections, nil
 }
 
 // Delete deletes a collection from the collections table and drops the
 // collection's document table.
-// TODO: handle 404
 func (c *DocumentCollection) Delete(ctx context.Context) error {
 	if c.Name == "" {
 		return errors.New("collection name is required")
@@ -161,6 +177,8 @@ func (c *DocumentCollection) Delete(ctx context.Context) error {
 	}
 	defer rollbackOnError(tx)
 
+	// Get the collection row. If not found, GetByName will return a
+	// models.NotFoundError.
 	err = c.GetByName(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get collection: %w", err)
@@ -198,7 +216,7 @@ func (c *DocumentCollection) CreateDocuments(
 		return nil, errors.New("collection name cannot be empty")
 	}
 	if err := c.GetByName(ctx); err != nil {
-		return nil, store.NewStorageError("failed to get collection", err)
+		return nil, fmt.Errorf("failed to get collection %w", err)
 	}
 
 	_, err := c.db.NewInsert().
@@ -268,7 +286,7 @@ func (c *DocumentCollection) UpdateDocuments(
 		return errors.New("no fields to update")
 	}
 
-	columns := []string{}
+	var columns []string
 	if updateDocumentID {
 		columns = append(columns, "document_id")
 	}
@@ -281,10 +299,10 @@ func (c *DocumentCollection) UpdateDocuments(
 
 	err := c.GetByName(ctx)
 	if err != nil {
-		return store.NewStorageError("failed to get collection: %w", err)
+		return fmt.Errorf("failed to get collection: %w", err)
 	}
 
-	_, err = c.db.NewUpdate().
+	r, err := c.db.NewUpdate().
 		Model(&docs).
 		ModelTableExpr(c.TableName + " AS document").
 		Column(columns...).
@@ -295,13 +313,20 @@ func (c *DocumentCollection) UpdateDocuments(
 		return fmt.Errorf("failed to update documents: %w", err)
 	}
 
+	rowsUpdated, err := r.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsUpdated == 0 {
+		return models.NewNotFoundError("documents")
+	}
+
 	return nil
 }
 
 // GetDocuments retrieves documents. If `documents` is non-Nil, it will use the document UUIDs to retrieve
 // these documents. Otherwise, it will retrieve all documents. If limit is greater than 0, it will
 // only retrieve limit many documents.
-// TODO: 404
 func (c *DocumentCollection) GetDocuments(
 	ctx context.Context,
 	limit int,
@@ -353,6 +378,10 @@ func (c *DocumentCollection) GetDocuments(
 	for i := range documents {
 		docInterfaces[i] = &documents[i]
 	}
+
+	if len(docInterfaces) == 0 {
+		return nil, models.NewNotFoundError("documents")
+	}
 	return docInterfaces, nil
 }
 
@@ -372,20 +401,21 @@ func (c *DocumentCollection) DeleteDocumentsByUUID(
 		Model(&Document{}).
 		ModelTableExpr(c.TableName).
 		Where("uuid IN (?)", bun.In(documentUUIDs)).
-		// ModelTableExpr isn't being set on the auto-soft Delete in the WHERE clause
+		// ModelTableExpr isn't being set on the auto-soft Delete in the WHERE clause,
 		// so we have to use WhereAllWithDeleted to avoid adding deleted_at Is NOT NULL
 		WhereAllWithDeleted().
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to Delete document: %w", err)
+		return fmt.Errorf("failed to Delete documents: %w", err)
 	}
 
-	rowsEffected, err := r.RowsAffected()
+	rowsDeleted, err := r.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows effected: %w", err)
+		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
-	if rowsEffected == 0 {
-		return fmt.Errorf("not all documents found: %v", documentUUIDs)
+
+	if rowsDeleted == 0 {
+		return models.NewNotFoundError("documents")
 	}
 
 	return nil
@@ -407,7 +437,7 @@ func deleteCollectionRow(
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 	if rows == 0 {
-		return fmt.Errorf("collection not found: %s", collectionName)
+		return models.NewNotFoundError("collection: " + collectionName)
 	}
 	return nil
 }

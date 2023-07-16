@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/getzep/zep/pkg/store"
 
@@ -18,13 +19,13 @@ func NewDocumentStore(
 	client *bun.DB,
 ) (*DocumentStore, error) {
 	if appState == nil {
-		return nil, store.NewStorageError("nil appState received", nil)
+		return nil, errors.New("nil appState received")
 	}
 
 	pds := &DocumentStore{store.BaseDocumentStore[*bun.DB]{Client: client}}
 	err := pds.OnStart(context.Background(), appState)
 	if err != nil {
-		return nil, store.NewStorageError("failed to run OnInit", err)
+		return nil, fmt.Errorf("failed to run OnInit %w", err)
 	}
 	return pds, nil
 }
@@ -40,6 +41,7 @@ func (pds *DocumentStore) OnStart(
 	_ context.Context,
 	appState *models.AppState,
 ) error {
+	_ = appState
 	return nil
 }
 
@@ -53,12 +55,12 @@ func (pds *DocumentStore) CreateCollection(
 ) error {
 	dbCollection, ok := collection.(*DocumentCollection)
 	if !ok {
-		return store.NewStorageError("failed to type assert document", nil)
+		return errors.New("failed to type assert document")
 	}
 	dbCollection.db = pds.Client
 	err := dbCollection.Create(ctx)
 	if err != nil {
-		return store.NewStorageError("failed to Create collection", err)
+		return fmt.Errorf("failed to Create collection: %w", err)
 	}
 	return nil
 }
@@ -69,15 +71,15 @@ func (pds *DocumentStore) UpdateCollection(
 ) error {
 	dbCollection, ok := collection.(*DocumentCollection)
 	if !ok {
-		return store.NewStorageError("failed to type assert document", nil)
+		return errors.New("failed to type assert document")
 	}
 	if dbCollection.Name == "" {
-		return store.NewStorageError("collection name is empty", nil)
+		return errors.New("collection name is empty")
 	}
 	dbCollection.db = pds.Client
 	err := dbCollection.Update(ctx)
 	if err != nil {
-		return store.NewStorageError("failed to Update collection", err)
+		return fmt.Errorf("failed to Update collection: %w", err)
 	}
 	return nil
 }
@@ -87,12 +89,12 @@ func (pds *DocumentStore) GetCollection(
 	collectionName string,
 ) (models.DocumentCollectionInterface, error) {
 	if collectionName == "" {
-		return nil, store.NewStorageError("collection name is empty", nil)
+		return nil, errors.New("collection name is empty")
 	}
 	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
 	err := dbCollection.GetByName(ctx)
 	if err != nil {
-		return nil, store.NewStorageError("failed to get collection", err)
+		return nil, fmt.Errorf("failed to get collection: %w", err)
 	}
 	return &dbCollection, nil
 }
@@ -103,7 +105,7 @@ func (pds *DocumentStore) GetCollectionList(
 	dbCollection := DocumentCollection{db: pds.Client}
 	dbCollections, err := dbCollection.GetAll(ctx)
 	if err != nil {
-		return nil, store.NewStorageError("failed to get collection list", err)
+		return nil, fmt.Errorf("failed to get collection list: %w", err)
 	}
 
 	collections := make([]models.DocumentCollectionInterface, len(dbCollections))
@@ -118,12 +120,12 @@ func (pds *DocumentStore) DeleteCollection(
 	collectionName string,
 ) error {
 	if collectionName == "" {
-		return store.NewStorageError("collection name is empty", nil)
+		return errors.New("collection name is empty")
 	}
 	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
 	err := dbCollection.Delete(ctx)
 	if err != nil {
-		return store.NewStorageError("failed to Delete collection", err)
+		return fmt.Errorf("failed to Delete collection: %w", err)
 	}
 	return nil
 }
@@ -134,12 +136,12 @@ func (pds *DocumentStore) CreateDocuments(
 	documents []models.DocumentInterface,
 ) ([]uuid.UUID, error) {
 	if collectionName == "" {
-		return nil, store.NewStorageError("collection name is empty", nil)
+		return nil, errors.New("collection name is empty")
 	}
 	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
 	uuids, err := dbCollection.CreateDocuments(ctx, documents)
 	if err != nil {
-		return nil, store.NewStorageError("failed to Create documents", err)
+		return nil, fmt.Errorf("failed to Create documents: %w", err)
 	}
 
 	return uuids, nil
@@ -150,17 +152,16 @@ func (pds *DocumentStore) UpdateDocuments(
 	collectionName string,
 	documents []models.DocumentInterface,
 ) error {
-	//if collectionName == "" {
-	//	return nil, store.NewStorageError("collection name is empty", nil)
-	//}
-	//dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
-	//uuids, err := dbCollection.CreateDocuments(ctx, documents)
-	//if err != nil {
-	//	return nil, store.NewStorageError("failed to Create documents", err)
-	//}
-	//
-	//return uuids, nil
-	return errors.New("not implemented")
+	if collectionName == "" {
+		return errors.New("collection name is empty")
+	}
+	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
+	err := dbCollection.UpdateDocuments(ctx, documents)
+	if err != nil {
+		return fmt.Errorf("failed to Update documents: %w", err)
+	}
+
+	return nil
 }
 
 func (pds *DocumentStore) GetDocuments(
@@ -170,13 +171,13 @@ func (pds *DocumentStore) GetDocuments(
 	documentIDs []string,
 ) ([]models.DocumentInterface, error) {
 	if collectionName == "" {
-		return nil, store.NewStorageError("collection name is empty", nil)
+		return nil, errors.New("collection name is empty")
 	}
 
 	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
 	documents, err := dbCollection.GetDocuments(ctx, 0, uuids, documentIDs)
 	if err != nil {
-		return nil, store.NewStorageError("failed to get document", err)
+		return nil, fmt.Errorf("failed to get document: %w", err)
 	}
 
 	return documents, nil
@@ -188,12 +189,12 @@ func (pds *DocumentStore) DeleteDocuments(
 	documentUUID []uuid.UUID,
 ) error {
 	if collectionName == "" {
-		return store.NewStorageError("collection name is empty", nil)
+		return errors.New("collection name is empty")
 	}
 	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
 	err := dbCollection.DeleteDocumentsByUUID(ctx, documentUUID)
 	if err != nil {
-		return store.NewStorageError("failed to delete document", err)
+		return fmt.Errorf("failed to delete document: %w", err)
 	}
 
 	return nil

@@ -88,6 +88,17 @@ definitions:
       message:
         type: string
     type: object
+  server.documentRequest:
+    properties:
+      documentIDs:
+        items:
+          type: string
+        type: array
+      uuids:
+        items:
+          type: string
+        type: array
+    type: object
 info:
   contact: {}
   license:
@@ -96,6 +107,264 @@ info:
   title: Zep REST API
   version: 0.x
 paths:
+  /api/v1/collections:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of all DocumentCollections.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items: {}
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Gets a list of DocumentCollections
+      tags:
+      - collection
+    post:
+      consumes:
+      - application/json
+      description: If a collection with the same name already exists, an error will
+        be returned.
+      parameters:
+      - description: Document Collection
+        in: body
+        name: collection
+        required: true
+        schema: {}
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Creates a new DocumentCollection
+      tags:
+      - collection
+  /api/v1/collections/{collectionName}:
+    delete:
+      consumes:
+      - application/json
+      description: If a collection with the same name already exists, it will be overwritten.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Deletes a DocumentCollection
+      tags:
+      - collection
+    get:
+      consumes:
+      - application/json
+      description: Returns a DocumentCollection if it exists.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema: {}
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Gets a DocumentCollection
+      tags:
+      - collection
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: Document Collection
+        in: body
+        name: collection
+        required: true
+        schema: {}
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Updates a DocumentCollection
+      tags:
+      - collection
+  /api/v1/collections/{collectionName}/documents:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes specified Documents from a DocumentCollection.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: UUIDs of the Documents to be deleted
+        in: body
+        name: documentUUIDs
+        required: true
+        schema:
+          items:
+            type: string
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Deletes Documents from a DocumentCollection
+    patch:
+      consumes:
+      - application/json
+      description: Updates Documents in a specified DocumentCollection.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: Array of Documents to be updated
+        in: body
+        name: documents
+        required: true
+        schema:
+          items: {}
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Updates Documents in a DocumentCollection
+      tags:
+      - document
+    post:
+      consumes:
+      - application/json
+      description: Returns specified Documents from a DocumentCollection.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: UUIDs and IDs of the Documents to be fetched
+        in: body
+        name: documentRequest
+        required: true
+        schema:
+          $ref: '#/definitions/server.documentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items: {}
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Gets Documents from a DocumentCollection
+      tags:
+      - document
   /api/v1/sessions/{sessionId}:
     get:
       consumes:
