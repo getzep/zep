@@ -69,21 +69,25 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 			})
 		})
 		// Document collection-related routes
-		r.Get("/collections", GetCollectionListHandler(appState))
-		r.Route("/collections/{collectionName}", func(r chi.Router) {
+		r.Get("/collection", GetCollectionListHandler(appState))
+		r.Route("/collection/{collectionName}", func(r chi.Router) {
 			r.Post("/", CreateCollectionHandler(appState))
 			r.Get("/", GetCollectionHandler(appState))
 			r.Delete("/", DeleteCollectionHandler(appState))
 			r.Patch("/", UpdateCollectionHandler(appState))
 
 			// Document-related routes
-			r.Route("/documents", func(r chi.Router) {
-				r.Post("/", CreateDocumentsHandler(appState))
-				r.Delete("/", DeleteDocumentsHandler(appState))
-				r.Patch("/", UpdateDocumentsHandler(appState))
-
-				// Get documents by UUID or ID
-				r.Post("/list", GetDocumentsHandler(appState))
+			r.Route("/document", func(r chi.Router) {
+				// Single document routes (by UUID)
+				r.Route("/uuid/{documentUUID}", func(r chi.Router) {
+					r.Get("/", GetDocumentHandler(appState))
+					r.Patch("/", UpdateDocumentHandler(appState))
+					r.Delete("/", DeleteDocumentHandler(appState))
+				})
+				// Document batch routes
+				r.Post("/batchGet", GetDocumentsBatchHandler(appState))
+				r.Post("/batchDelete", DeleteDocumentsBatchHandler(appState))
+				r.Patch("/batchUpdate", UpdateDocumentsBatchHandler(appState))
 			})
 		})
 	})

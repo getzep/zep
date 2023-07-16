@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -22,13 +23,13 @@ import (
 //	@Tags			collection
 //	@Accept			json
 //	@Produce		json
-//	@Param			collectionName	path		string								true	"Name of the Document Collection"
-//	@Param			collection		body		models.DocumentCollectionInterface	true	"Document Collection"
-//	@Success		200				{object}	string								"OK"
-//	@Failure		400				{object}	APIError							"Bad Request"
-//	@Failure		404				{object}	APIError							"Not Found"
-//	@Failure		500				{object}	APIError							"Internal Server Error"
-//	@Router			/api/v1/collections [post]
+//	@Param			collectionName	path		string						true	"Name of the Document Collection"
+//	@Param			collection		body		models.DocumentCollection	true	"Document Collection"
+//	@Success		200				{object}	string						"OK"
+//	@Failure		400				{object}	APIError					"Bad Request"
+//	@Failure		404				{object}	APIError					"Not Found"
+//	@Failure		500				{object}	APIError					"Internal Server Error"
+//	@Router			/api/v1/collection [post]
 func CreateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -38,14 +39,14 @@ func CreateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		var collection models.DocumentCollectionInterface
+		var collection models.DocumentCollection
 		err := json.NewDecoder(r.Body).Decode(&collection)
 		if err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
 		}
 
-		err = store.CreateCollection(r.Context(), collection)
+		err = store.CreateCollection(r.Context(), &collection)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
 				renderError(w, err, http.StatusNotFound)
@@ -70,13 +71,13 @@ func CreateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Tags		collection
 //	@Accept		json
 //	@Produce	json
-//	@Param		collectionName	path		string								true	"Name of the Document Collection"
-//	@Param		collection		body		models.DocumentCollectionInterface	true	"Document Collection"
-//	@Success	200				{object}	string								"OK"
-//	@Failure	400				{object}	APIError							"Bad Request"
-//	@Failure	404				{object}	APIError							"Not Found"
-//	@Failure	500				{object}	APIError							"Internal Server Error"
-//	@Router		/api/v1/collections/{collectionName} [patch]
+//	@Param		collectionName	path		string						true	"Name of the Document Collection"
+//	@Param		collection		body		models.DocumentCollection	true	"Document Collection"
+//	@Success	200				{object}	string						"OK"
+//	@Failure	400				{object}	APIError					"Bad Request"
+//	@Failure	404				{object}	APIError					"Not Found"
+//	@Failure	500				{object}	APIError					"Internal Server Error"
+//	@Router		/api/v1/collection/{collectionName} [patch]
 func UpdateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -85,13 +86,13 @@ func UpdateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
 			return
 		}
-		var collection models.DocumentCollectionInterface
+		var collection models.DocumentCollection
 		if err := json.NewDecoder(r.Body).Decode(&collection); err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
 		}
 
-		err := store.UpdateCollection(r.Context(), collection)
+		err := store.UpdateCollection(r.Context(), &collection)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
 				renderError(w, err, http.StatusNotFound)
@@ -122,7 +123,7 @@ func UpdateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Failure		400				{object}	APIError	"Bad Request"
 //	@Failure		404				{object}	APIError	"Not Found"
 //	@Failure		500				{object}	APIError	"Internal Server Error"
-//	@Router			/api/v1/collections/{collectionName} [delete]
+//	@Router			/api/v1/collection/{collectionName} [delete]
 func DeleteCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -158,14 +159,18 @@ func DeleteCollectionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Tags			collection
 //	@Accept			json
 //	@Produce		json
-//	@Success		200	{array}		models.DocumentCollectionInterface	"OK"
-//	@Failure		500	{object}	APIError							"Internal Server Error"
-//	@Router			/api/v1/collections [get]
+//	@Success		200	{array}		[]models.DocumentCollection	"OK"
+//	@Failure		500	{object}	APIError					"Internal Server Error"
+//	@Router			/api/v1/collection [get]
 func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
 		collections, err := store.GetCollectionList(r.Context())
 		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				renderError(w, err, http.StatusNotFound)
+				return
+			}
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
@@ -184,12 +189,12 @@ func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 //	@Tags			collection
 //	@Accept			json
 //	@Produce		json
-//	@Param			collectionName	path		string								true	"Name of the Document Collection"
-//	@Success		200				{object}	models.DocumentCollectionInterface	"OK"
-//	@Failure		400				{object}	APIError							"Bad Request"
-//	@Failure		404				{object}	APIError							"Not Found"
-//	@Failure		500				{object}	APIError							"Internal Server Error"
-//	@Router			/api/v1/collections/{collectionName} [get]
+//	@Param			collectionName	path		string						true	"Name of the Document Collection"
+//	@Success		200				{object}	models.DocumentCollection	"OK"
+//	@Failure		400				{object}	APIError					"Bad Request"
+//	@Failure		404				{object}	APIError					"Not Found"
+//	@Failure		500				{object}	APIError					"Internal Server Error"
+//	@Router			/api/v1/collection/{collectionName} [get]
 func GetCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -218,17 +223,17 @@ func GetCollectionHandler(appState *models.AppState) http.HandlerFunc {
 
 // CreateDocumentsHandler godoc
 //
-//	@Summary		Creates Documents in a DocumentCollection
+//	@Summary		Creates Multiple Documents in a DocumentCollection
 //	@Description	Creates Documents in a specified DocumentCollection and returns their UUIDs.
 //	@Tags			document
 //	@Accept			json
 //	@Produce		json
-//	@Param			collectionName	path		string						true	"Name of the Document Collection"
-//	@Param			documents		body		[]models.DocumentInterface	true	"Array of Documents to be created"
-//	@Success		200				{array}		uuid.UUID					"OK"
-//	@Failure		400				{object}	APIError					"Bad Request"
-//	@Failure		500				{object}	APIError					"Internal Server Error"
-//	@Router			/api/v1/collections/{collectionName}/documents [post]
+//	@Param			collectionName	path		string				true	"Name of the Document Collection"
+//	@Param			documents		body		[]models.Document	true	"Array of Documents to be created"
+//	@Success		200				{array}		uuid.UUID			"OK"
+//	@Failure		400				{object}	APIError			"Bad Request"
+//	@Failure		500				{object}	APIError			"Internal Server Error"
+//	@Router			/api/v1/collection/{collectionName}/document [post]
 func CreateDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -257,20 +262,76 @@ func CreateDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 	}
 }
 
-// UpdateDocumentsHandler godoc
+// UpdateDocumentHandler godoc
 //
-//	@Summary		Updates Documents in a DocumentCollection
+//	@Summary	Updates a Document in a DocumentCollection by UUID
+//	@Tags		document
+//	@Accept		json
+//	@Produce	json
+//	@Param		collectionName	path		string			true	"Name of the Document Collection"
+//	@Param		documentUUID	path		string			true	"UUID of the Document to be updated"
+//	@Param		document		body		models.Document	true	"Document to be updated"
+//	@Success	200				{object}	string			"OK"
+//	@Failure	400				{object}	APIError		"Bad Request"
+//	@Failure	404				{object}	APIError		"Not Found"
+//	@Failure	500				{object}	APIError		"Internal Server Error"
+//	@Router		/api/v1/collection/{collectionName}/document/uuid/{documentUUID} [patch]
+func UpdateDocumentHandler(appState *models.AppState) http.HandlerFunc {
+	store := appState.DocumentStore
+	return func(w http.ResponseWriter, r *http.Request) {
+		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
+		documentUUID := parseUUIDFromURL(r, w, "documentUUID")
+
+		if collectionName == "" {
+			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			return
+		}
+		if documentUUID == uuid.Nil {
+			renderError(w, errors.New("documentUUID is required"), http.StatusBadRequest)
+			return
+		}
+
+		var document models.Document
+		if err := json.NewDecoder(r.Body).Decode(&document); err != nil {
+			renderError(w, err, http.StatusBadRequest)
+			return
+		}
+
+		document.UUID = documentUUID
+		documents := []models.DocumentInterface{&document}
+		err := store.UpdateDocuments(r.Context(), collectionName, documents)
+		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				renderError(w, err, http.StatusNotFound)
+				return
+			}
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write([]byte("OK"))
+		if err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+// UpdateDocumentsBatchHandler godoc
+//
+//	@Summary		Batch Updates Documents in a DocumentCollection
 //	@Description	Updates Documents in a specified DocumentCollection.
 //	@Tags			document
 //	@Accept			json
 //	@Produce		json
-//	@Param			collectionName	path		string						true	"Name of the Document Collection"
-//	@Param			documents		body		[]models.DocumentInterface	true	"Array of Documents to be updated"
-//	@Success		200				{object}	string						"OK"
-//	@Failure		400				{object}	APIError					"Bad Request"
-//	@Failure		500				{object}	APIError					"Internal Server Error"
-//	@Router			/api/v1/collections/{collectionName}/documents [patch]
-func UpdateDocumentsHandler(appState *models.AppState) http.HandlerFunc {
+//	@Param			collectionName	path		string				true	"Name of the Document Collection"
+//	@Param			documents		body		[]models.Document	true	"Array of Documents to be updated"
+//	@Success		200				{object}	string				"OK"
+//	@Failure		400				{object}	APIError			"Bad Request"
+//	@Failure		500				{object}	APIError			"Internal Server Error"
+//	@Router			/api/v1/collection/{collectionName}/document/batchUpdate [patch]
+func UpdateDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
@@ -287,6 +348,10 @@ func UpdateDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 
 		err := store.UpdateDocuments(r.Context(), collectionName, documents)
 		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				renderError(w, err, http.StatusNotFound)
+				return
+			}
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
@@ -300,20 +365,71 @@ func UpdateDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 	}
 }
 
-// GetDocumentsHandler godoc
+// GetDocumentHandler godoc
 //
-//	@Summary		Gets Documents from a DocumentCollection
-//	@Description	Returns specified Documents from a DocumentCollection.
+//	@Summary		Gets a Document from a DocumentCollection by UUID
+//	@Description	Returns specified Document from a DocumentCollection.
 //	@Tags			document
 //	@Accept			json
 //	@Produce		json
-//	@Param			collectionName	path		string						true	"Name of the Document Collection"
-//	@Param			documentRequest	body		documentRequest				true	"UUIDs and IDs of the Documents to be fetched"
-//	@Success		200				{array}		models.DocumentInterface	"OK"
-//	@Failure		400				{object}	APIError					"Bad Request"
-//	@Failure		500				{object}	APIError					"Internal Server Error"
-//	@Router			/api/v1/collections/{collectionName}/documents/list [post]
-func GetDocumentsHandler(appState *models.AppState) http.HandlerFunc {
+//	@Param			collectionName	path		string			true	"Name of the Document Collection"
+//	@Param			documentUUID	path		string			true	"UUID of the Document to be updated"
+//	@Success		200				{object}	models.Document	"OK"
+//	@Failure		400				{object}	APIError		"Bad Request"
+//	@Failure		500				{object}	APIError		"Internal Server Error"
+//	@Router			/api/v1/collection/{collectionName}/document/uuid/{documentUUID} [get]
+func GetDocumentHandler(appState *models.AppState) http.HandlerFunc {
+	store := appState.DocumentStore
+	return func(w http.ResponseWriter, r *http.Request) {
+		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
+		documentUUID := parseUUIDFromURL(r, w, "documentUUID")
+
+		if collectionName == "" {
+			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			return
+		}
+		if documentUUID == uuid.Nil {
+			renderError(w, errors.New("documentUUID is required"), http.StatusBadRequest)
+			return
+		}
+
+		uuids := []uuid.UUID{documentUUID}
+		documents, err := store.GetDocuments(
+			r.Context(),
+			collectionName,
+			uuids,
+			nil,
+		)
+		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				renderError(w, err, http.StatusNotFound)
+				return
+			}
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		if err := encodeJSON(w, documents); err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+// GetDocumentsBatchHandler godoc
+//
+//	@Summary		Batch Gets Documents from a DocumentCollection
+//	@Description	Returns Documents from a DocumentCollection specified by UUID or ID.
+//	@Tags			document
+//	@Accept			json
+//	@Produce		json
+//	@Param			collectionName	path		string				true	"Name of the Document Collection"
+//	@Param			documentRequest	body		documentRequest		true	"UUIDs and IDs of the Documents to be fetched"
+//	@Success		200				{array}		[]models.Document	"OK"
+//	@Failure		400				{object}	APIError			"Bad Request"
+//	@Failure		500				{object}	APIError			"Internal Server Error"
+//	@Router			/api/v1/collection/{collectionName}/document/batchGet [post]
+func GetDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
@@ -335,6 +451,10 @@ func GetDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 			docRequest.DocumentIDs,
 		)
 		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				renderError(w, err, http.StatusNotFound)
+				return
+			}
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
@@ -346,9 +466,61 @@ func GetDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 	}
 }
 
-// DeleteDocumentsHandler godoc
+// DeleteDocumentHandler godoc
 //
-//	@Summary		Deletes Documents from a DocumentCollection
+//	@Summary		Delete Document from a DocumentCollection by UUID
+//	@Description	Delete specified Document from a DocumentCollection.
+//
+//	@Tags			document
+//
+//	@Accept			json
+//	@Produce		json
+//	@Param			collectionName	path		string		true	"Name of the Document Collection"
+//	@Param			documentUUID	path		string		true	"UUID of the Document to be deleted"
+//	@Success		200				{object}	string		"OK"
+//	@Failure		400				{object}	APIError	"Bad Request"
+//	@Failure		404				{object}	APIError	"Document Not Found"
+//	@Failure		500				{object}	APIError	"Internal Server Error"
+//	@Router			/api/v1/collection/{collectionName}/document/uuid/{documentUUID} [delete]
+func DeleteDocumentHandler(appState *models.AppState) http.HandlerFunc {
+	store := appState.DocumentStore
+	return func(w http.ResponseWriter, r *http.Request) {
+		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
+		documentUUID := parseUUIDFromURL(r, w, "documentUUID")
+
+		if collectionName == "" {
+			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			return
+		}
+
+		if documentUUID == uuid.Nil {
+			renderError(w, errors.New("documentUUID is required"), http.StatusBadRequest)
+			return
+		}
+
+		uuids := []uuid.UUID{documentUUID}
+		err := store.DeleteDocuments(r.Context(), collectionName, uuids)
+		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				renderError(w, err, http.StatusNotFound)
+				return
+			}
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write([]byte("OK"))
+		if err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+// DeleteDocumentsBatchHandler godoc
+//
+//	@Summary		Batch Deletes Documents from a DocumentCollection by UUID
 //	@Description	Deletes specified Documents from a DocumentCollection.
 //
 //	@Tags			document
@@ -360,8 +532,8 @@ func GetDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 //	@Success		200				{object}	string		"OK"
 //	@Failure		400				{object}	APIError	"Bad Request"
 //	@Failure		500				{object}	APIError	"Internal Server Error"
-//	@Router			/api/v1/collections/{collectionName}/documents [delete]
-func DeleteDocumentsHandler(appState *models.AppState) http.HandlerFunc {
+//	@Router			/api/v1/collection/{collectionName}/document/batchDelete [post]
+func DeleteDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
@@ -378,6 +550,10 @@ func DeleteDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 
 		err := store.DeleteDocuments(r.Context(), collectionName, documentUUIDs)
 		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				renderError(w, err, http.StatusNotFound)
+				return
+			}
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
@@ -391,8 +567,22 @@ func DeleteDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 	}
 }
 
-// documentRequest is a struct for the request body of GetDocumentsHandler
+// documentRequest is a struct for the request body of GetDocumentsBatchHandler
 type documentRequest struct {
 	UUIDs       []uuid.UUID `json:"uuids"`
 	DocumentIDs []string    `json:"documentIDs"`
+}
+
+func parseUUIDFromURL(r *http.Request, w http.ResponseWriter, paramName string) uuid.UUID {
+	uuidStr := chi.URLParam(r, paramName)
+	documentUUID, err := uuid.Parse(uuidStr)
+	if err != nil {
+		renderError(
+			w,
+			fmt.Errorf("unable to parse document UUID: %w", err),
+			http.StatusBadRequest,
+		)
+		return uuid.Nil
+	}
+	return documentUUID
 }

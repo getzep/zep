@@ -119,7 +119,7 @@ type DocumentInterface interface {
 type Document struct {
 	UUID      uuid.UUID `json:"uuid"`
 	CreatedAt time.Time `json:"created_at"`
-	// Developer-proved arbitrary string identifier for the document
+	// Developer-provided arbitrary string identifier for the document
 	DocumentID     string                 `json:"document_id"`
 	Content        string                 `json:"content"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
