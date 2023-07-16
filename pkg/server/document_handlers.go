@@ -312,7 +312,7 @@ func UpdateDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 //	@Success		200				{array}		models.DocumentInterface	"OK"
 //	@Failure		400				{object}	APIError					"Bad Request"
 //	@Failure		500				{object}	APIError					"Internal Server Error"
-//	@Router			/api/v1/collections/{collectionName}/documents [post]
+//	@Router			/api/v1/collections/{collectionName}/documents/list [post]
 func GetDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {

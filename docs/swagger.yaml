@@ -339,6 +339,45 @@ paths:
     post:
       consumes:
       - application/json
+      description: Creates Documents in a specified DocumentCollection and returns
+        their UUIDs.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: Array of Documents to be created
+        in: body
+        name: documents
+        required: true
+        schema:
+          items: {}
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Creates Documents in a DocumentCollection
+      tags:
+      - document
+  /api/v1/collections/{collectionName}/documents/list:
+    post:
+      consumes:
+      - application/json
       description: Returns specified Documents from a DocumentCollection.
       parameters:
       - description: Name of the Document Collection

@@ -257,7 +257,7 @@ const docTemplate = `{
         },
         "/api/v1/collections/{collectionName}/documents": {
             "post": {
-                "description": "Returns specified Documents from a DocumentCollection.",
+                "description": "Creates Documents in a specified DocumentCollection and returns their UUIDs.",
                 "consumes": [
                     "application/json"
                 ],
@@ -267,7 +267,7 @@ const docTemplate = `{
                 "tags": [
                     "document"
                 ],
-                "summary": "Gets Documents from a DocumentCollection",
+                "summary": "Creates Documents in a DocumentCollection",
                 "parameters": [
                     {
                         "type": "string",
@@ -277,12 +277,13 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "UUIDs and IDs of the Documents to be fetched",
-                        "name": "documentRequest",
+                        "description": "Array of Documents to be created",
+                        "name": "documents",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/server.documentRequest"
+                            "type": "array",
+                            "items": {}
                         }
                     }
                 ],
@@ -291,7 +292,9 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "type": "array",
-                            "items": {}
+                            "items": {
+                                "type": "string"
+                            }
                         }
                     },
                     "400": {
@@ -398,6 +401,60 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collections/{collectionName}/documents/list": {
+            "post": {
+                "description": "Returns specified Documents from a DocumentCollection.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Gets Documents from a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "UUIDs and IDs of the Documents to be fetched",
+                        "name": "documentRequest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.documentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {}
                         }
                     },
                     "400": {
