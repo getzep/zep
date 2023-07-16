@@ -22,6 +22,7 @@ import (
 //	@Tags			collection
 //	@Accept			json
 //	@Produce		json
+//	@Param		collectionName	path		string								true	"Name of the Document Collection"
 //	@Param			collection	body		models.DocumentCollectionInterface	true	"Document Collection"
 //	@Success		200			{object}	string								"OK"
 //	@Failure		400			{object}	APIError							"Bad Request"
@@ -31,6 +32,12 @@ import (
 func CreateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
+		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
+		if collectionName == "" {
+			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			return
+		}
+
 		var collection models.DocumentCollectionInterface
 		err := json.NewDecoder(r.Body).Decode(&collection)
 		if err != nil {
