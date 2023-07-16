@@ -63,6 +63,13 @@ const docTemplate = `{
                 "summary": "Creates a new DocumentCollection",
                 "parameters": [
                     {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
                         "description": "Document Collection",
                         "name": "collection",
                         "in": "body",
@@ -308,6 +315,9 @@ const docTemplate = `{
                 ],
                 "produces": [
                     "application/json"
+                ],
+                "tags": [
+                    "document"
                 ],
                 "summary": "Deletes Documents from a DocumentCollection",
                 "parameters": [

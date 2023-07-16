@@ -22,12 +22,12 @@ import (
 //	@Tags			collection
 //	@Accept			json
 //	@Produce		json
-//	@Param		collectionName	path		string								true	"Name of the Document Collection"
-//	@Param			collection	body		models.DocumentCollectionInterface	true	"Document Collection"
-//	@Success		200			{object}	string								"OK"
-//	@Failure		400			{object}	APIError							"Bad Request"
-//	@Failure		404			{object}	APIError							"Not Found"
-//	@Failure		500			{object}	APIError							"Internal Server Error"
+//	@Param			collectionName	path		string								true	"Name of the Document Collection"
+//	@Param			collection		body		models.DocumentCollectionInterface	true	"Document Collection"
+//	@Success		200				{object}	string								"OK"
+//	@Failure		400				{object}	APIError							"Bad Request"
+//	@Failure		404				{object}	APIError							"Not Found"
+//	@Failure		500				{object}	APIError							"Internal Server Error"
 //	@Router			/api/v1/collections [post]
 func CreateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -351,7 +351,7 @@ func GetDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 //	@Summary		Deletes Documents from a DocumentCollection
 //	@Description	Deletes specified Documents from a DocumentCollection.
 //
-// // @Tags			document
+//	@Tags			document
 //
 //	@Accept			json
 //	@Produce		json
