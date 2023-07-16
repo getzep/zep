@@ -133,6 +133,11 @@ paths:
       description: If a collection with the same name already exists, an error will
         be returned.
       parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
       - description: Document Collection
         in: body
         name: collection
@@ -295,6 +300,8 @@ paths:
           schema:
             $ref: '#/definitions/server.APIError'
       summary: Deletes Documents from a DocumentCollection
+      tags:
+      - document
     patch:
       consumes:
       - application/json
