@@ -62,8 +62,6 @@ type MemoryStore[T any] interface {
 	// by a separate process or left to the implementation.
 	DeleteSession(ctx context.Context, sessionID string) error
 	// GetSession retrieves a Session for a given sessionID.
-	DeleteMemory(ctx context.Context, sessionID string) error
-	// DeleteMemory deletes all memory records for a given sessionID.
 	GetSession(ctx context.Context, appState *AppState, sessionID string) (*Session, error)
 	// PutSession creates or updates a Session for a given sessionID.
 	PutSession(

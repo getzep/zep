@@ -183,30 +183,6 @@ func DeleteMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
 
-		if err := appState.MemoryStore.DeleteMemory(r.Context(), sessionID); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
-			return
-		}
-		_, _ = w.Write([]byte(OKResponse))
-	}
-}
-
-// DeleteSessionHandler godoc
-//
-//	@Summary		Delete a given session
-//	@Description	delete entire session by session id
-//	@Tags			memory
-//	@Accept			json
-//	@Produce		json
-//	@Param			session_id	path		string		true	"Session ID"
-//	@Success		200			{string}	string		"OK"
-//	@Failure		404			{object}	APIError	"Not Found"
-//	@Failure		500			{object}	APIError	"Internal Server Error"
-//	@Router			/api/v1/sessions/{sessionId} [delete]
-func DeleteSessionHandler(appState *models.AppState) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		sessionID := chi.URLParam(r, "sessionId")
-
 		if err := appState.MemoryStore.DeleteSession(r.Context(), sessionID); err != nil {
 			renderError(w, err, http.StatusInternalServerError)
 			return
