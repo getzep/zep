@@ -229,6 +229,11 @@ func (pms *PostgresMemoryStore) DeleteSession(ctx context.Context, sessionID str
 	return deleteSession(ctx, pms.Client, sessionID)
 }
 
+// DeleteMemory deletes all the memory for a given sessionID from the memory store.
+func (pms *PostgresMemoryStore) DeleteMemory(ctx context.Context, sessionID string) error {
+	return deleteMemory(ctx, pms.Client, sessionID)
+}
+
 func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
