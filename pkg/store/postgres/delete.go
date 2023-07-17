@@ -28,24 +28,6 @@ func deleteSession(ctx context.Context, db *bun.DB, sessionID string) error {
 	return nil
 }
 
-// deleteMemory deletes all the memory associated with a sessionID from the memory store.
-func deleteMemory(ctx context.Context, db *bun.DB, sessionID string) error {
-	log.Debugf("deleting memory associated with session %s", sessionID)
-
-	_, err := db.NewDelete().
-		Model(&MessageStoreSchema{}).
-		Where("session_id = ?", sessionID).
-		ForceDelete().
-		Exec(ctx)
-	if err != nil {
-		return fmt.Errorf("error deleting memory from %T for session %s: %w", &MessageStoreSchema{}, sessionID, err)
-	}
-
-	log.Debugf("completed deleting memory associated with session %s", sessionID)
-
-	return nil
-}
-
 // purgeDeleted hard deletes all soft deleted records from the memory store.
 func purgeDeleted(ctx context.Context, db *bun.DB) error {
 	log.Debugf("purging memory store")
