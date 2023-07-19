@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/getzep/zep/pkg/models"
@@ -14,6 +13,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func NewTestCollectionDAO(embeddingWidth int) DocumentCollectionDAO {
+	return DocumentCollectionDAO{
+		DocumentCollection: models.DocumentCollection{
+			Name:                testutils.GenerateRandomString(10),
+			EmbeddingDimensions: embeddingWidth,
+		},
+		db: testDB,
+	}
+}
+
 func TestCollectionCreate(t *testing.T) {
 	ctx := context.Background()
 
@@ -21,15 +30,11 @@ func TestCollectionCreate(t *testing.T) {
 	err := ensurePostgresSetup(ctx, appState, testDB)
 	assert.NoError(t, err)
 
-	collection := DocumentCollection{
-		Name:                testutils.GenerateRandomString(10),
-		EmbeddingDimensions: 10,
-		db:                  testDB,
-	}
+	collection := NewTestCollectionDAO(10)
 
 	testCases := []struct {
 		name          string
-		collection    *DocumentCollection
+		collection    *DocumentCollectionDAO
 		expectedError string
 	}{
 		{
@@ -63,11 +68,7 @@ func TestCollectionUpdate(t *testing.T) {
 	err := ensurePostgresSetup(ctx, appState, testDB)
 	assert.NoError(t, err)
 
-	collection := DocumentCollection{
-		Name:                testutils.GenerateRandomString(10),
-		EmbeddingDimensions: 10,
-		db:                  testDB,
-	}
+	collection := NewTestCollectionDAO(10)
 	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
@@ -90,18 +91,14 @@ func TestCollectionGetByName(t *testing.T) {
 	err := ensurePostgresSetup(ctx, appState, testDB)
 	assert.NoError(t, err)
 
-	collection := DocumentCollection{
-		Name:                testutils.GenerateRandomString(10),
-		EmbeddingDimensions: 10,
-		db:                  testDB,
-	}
+	collection := NewTestCollectionDAO(10)
 
 	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
 	testCases := []struct {
 		name             string
-		collection       DocumentCollection
+		collection       DocumentCollectionDAO
 		expectedError    string
 		expectedNotFound bool
 	}{
@@ -111,11 +108,8 @@ func TestCollectionGetByName(t *testing.T) {
 			expectedError: "",
 		},
 		{
-			name: "test when collection does not exist",
-			collection: DocumentCollection{
-				Name: testutils.GenerateRandomString(10),
-				db:   testDB,
-			},
+			name:             "test when collection does not exist",
+			collection:       NewTestCollectionDAO(10),
 			expectedError:    "no rows in result set",
 			expectedNotFound: true,
 		},
@@ -128,7 +122,8 @@ func TestCollectionGetByName(t *testing.T) {
 				assert.ErrorContains(t, err, tc.expectedError)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, collection.UUID, tc.collection.UUID)
+				assert.NotZero(t, tc.collection.UUID)
+				assert.NotZero(t, tc.collection.CreatedAt)
 				assert.Equal(t, collection.EmbeddingDimensions, tc.collection.EmbeddingDimensions)
 			}
 			if tc.expectedNotFound {
@@ -145,14 +140,10 @@ func TestCollectionGetAll(t *testing.T) {
 	err := ensurePostgresSetup(ctx, appState, testDB)
 	assert.NoError(t, err)
 
-	var collectionsToCreate []DocumentCollection
+	var collectionsToCreate []DocumentCollectionDAO
 
 	for i := 0; i < 3; i++ {
-		collection := DocumentCollection{
-			Name:                testutils.GenerateRandomString(10),
-			EmbeddingDimensions: 10,
-			db:                  testDB,
-		}
+		collection := NewTestCollectionDAO(10)
 		err = collection.Create(ctx)
 		assert.NoError(t, err)
 
@@ -165,10 +156,9 @@ func TestCollectionGetAll(t *testing.T) {
 	// Compare lengths of created and retrieved collections
 	assert.Equal(t, len(collectionsToCreate), len(retrievedCollections))
 
-	retrievedMap := make(map[string]*DocumentCollection, len(retrievedCollections))
-	for _, retrievedCollInterface := range retrievedCollections {
-		retrievedColl := retrievedCollInterface.(*DocumentCollection)
-		retrievedMap[retrievedColl.Name] = retrievedColl
+	retrievedMap := make(map[string]models.DocumentCollection, len(retrievedCollections))
+	for _, m := range retrievedCollections {
+		retrievedMap[m.Name] = m
 	}
 
 	// Check each created collection is in retrieved collections
@@ -186,18 +176,14 @@ func TestDeleteCollection(t *testing.T) {
 	err := ensurePostgresSetup(ctx, appState, testDB)
 	assert.NoError(t, err)
 
-	collection := DocumentCollection{
-		Name:                testutils.GenerateRandomString(10),
-		EmbeddingDimensions: 10,
-		db:                  testDB,
-	}
+	collection := NewTestCollectionDAO(10)
 
 	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
 	testCases := []struct {
 		name                string
-		collection          DocumentCollection
+		collection          DocumentCollectionDAO
 		expectedErrorString string
 		expectedNotFound    bool
 	}{
@@ -207,11 +193,8 @@ func TestDeleteCollection(t *testing.T) {
 			expectedErrorString: "",
 		},
 		{
-			name: "test when collection does not exist",
-			collection: DocumentCollection{
-				Name: testutils.GenerateRandomString(10),
-				db:   testDB,
-			},
+			name:                "test when collection does not exist",
+			collection:          NewTestCollectionDAO(10),
 			expectedErrorString: "no rows in result set",
 			expectedNotFound:    true,
 		},
@@ -237,13 +220,12 @@ func TestDeleteCollection(t *testing.T) {
 
 func compareDocumentUUIDs(
 	t *testing.T,
-	expectedDocuments []models.DocumentInterface,
+	expectedDocuments []models.Document,
 	actualUUIDs []uuid.UUID,
 ) {
 	// create a map of expected UUIDs
 	expectedUUIDs := make(map[uuid.UUID]struct{}, len(expectedDocuments))
-	for _, doc := range expectedDocuments {
-		d := doc.(*Document)
+	for _, d := range expectedDocuments {
 		expectedUUIDs[d.UUID] = struct{}{}
 	}
 
@@ -263,18 +245,14 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 	err := ensurePostgresSetup(ctx, appState, testDB)
 	assert.NoError(t, err)
 
-	collection := DocumentCollection{
-		Name:                testutils.GenerateRandomString(10),
-		EmbeddingDimensions: 5,
-		db:                  testDB,
-	}
+	collection := NewTestCollectionDAO(10)
 	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
-	documents := make([]models.DocumentInterface, 10)
+	documents := make([]models.Document, 10)
 	for i := range documents {
-		documents[i] = &Document{
-			DocumentBase: DocumentBase{
+		documents[i] = models.Document{
+			DocumentBase: models.DocumentBase{
 				DocumentID: testutils.GenerateRandomString(10),
 				Content:    testutils.GenerateRandomString(10),
 				Metadata:   map[string]interface{}{"key": testutils.GenerateRandomString(3)},
@@ -284,8 +262,8 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		collection    DocumentCollection
-		documents     []models.DocumentInterface
+		collection    DocumentCollectionDAO
+		documents     []models.Document
 		expectedError string
 	}{
 		{
@@ -295,12 +273,8 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 			expectedError: "",
 		},
 		{
-			name: "test Create documents into a non-existent collection",
-			collection: DocumentCollection{
-				UUID: uuid.New(),
-				Name: "NonExistentCollection",
-				db:   testDB,
-			},
+			name:          "test Create documents into a non-existent collection",
+			collection:    NewTestCollectionDAO(10),
 			documents:     documents,
 			expectedError: "failed to get collection",
 		},
@@ -322,13 +296,13 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 
 				assert.Equal(t, len(tc.documents), len(returnedDocuments))
 				// Convert slices to maps
-				expected := make(map[string]*Document, len(tc.documents))
-				actual := make(map[string]*Document, len(returnedDocuments))
+				expected := make(map[string]models.Document, len(tc.documents))
+				actual := make(map[string]models.Document, len(returnedDocuments))
 				for _, doc := range tc.documents {
-					expected[doc.(*Document).DocumentID] = doc.(*Document)
+					expected[doc.DocumentID] = doc
 				}
 				for _, doc := range returnedDocuments {
-					actual[doc.(*Document).DocumentID] = doc.(*Document)
+					actual[doc.DocumentID] = doc
 				}
 
 				// Compare maps
@@ -349,18 +323,14 @@ func TestDocumentCollectionUpdateDocuments(t *testing.T) {
 	err := ensurePostgresSetup(ctx, appState, testDB)
 	assert.NoError(t, err)
 
-	collection := DocumentCollection{
-		Name:                testutils.GenerateRandomString(10),
-		EmbeddingDimensions: 5,
-		db:                  testDB,
-	}
+	collection := NewTestCollectionDAO(5)
 	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
-	documents := make([]models.DocumentInterface, 10)
+	documents := make([]models.Document, 10)
 	for i := range documents {
-		documents[i] = &Document{
-			DocumentBase: DocumentBase{
+		documents[i] = models.Document{
+			DocumentBase: models.DocumentBase{
 				DocumentID: testutils.GenerateRandomString(10),
 				Content:    testutils.GenerateRandomString(10),
 				Metadata:   map[string]interface{}{"key": testutils.GenerateRandomString(3)},
@@ -372,16 +342,16 @@ func TestDocumentCollectionUpdateDocuments(t *testing.T) {
 	assert.Equal(t, len(documents), len(uuids))
 	compareDocumentUUIDs(t, documents, uuids)
 
-	updatedDocuments := make([]models.DocumentInterface, 10)
+	updatedDocuments := make([]models.Document, 10)
 	for i := range updatedDocuments {
-		updatedDocuments[i] =
-			&Document{
-				DocumentBase: DocumentBase{
-					UUID:     uuids[i],
-					Metadata: map[string]interface{}{"key": testutils.GenerateRandomString(3)},
-				},
-				Embedding: []float32{0.1, 0.2, 0.3, 0.4, 0.5},
-			}
+		updatedDocuments[i] = models.Document{
+			DocumentBase: models.DocumentBase{
+				UUID:       documents[i].UUID,
+				DocumentID: testutils.GenerateRandomString(10),
+				Metadata:   documents[i].Metadata,
+			},
+			Embedding: []float32{0.1, 0.2, 0.3, 0.4, 0.5},
+		}
 	}
 
 	err = collection.UpdateDocuments(ctx, updatedDocuments)
@@ -393,45 +363,40 @@ func TestDocumentCollectionUpdateDocuments(t *testing.T) {
 	assert.Equal(t, len(documents), len(returnedDocuments))
 	compareDocumentUUIDs(t, returnedDocuments, uuids)
 
-	for i, ed := range updatedDocuments {
-		expectedDoc := ed.(*Document)
-		originalDoc := documents[i].(*Document)
-		actualDoc := returnedDocuments[i].(*Document)
+	for i := range updatedDocuments {
+		updatedDoc := updatedDocuments[i]
+		returnedDoc := returnedDocuments[i]
 
 		assert.Equal( // This should not change
 			t,
-			originalDoc.DocumentID,
-			actualDoc.DocumentID,
+			updatedDoc.DocumentID,
+			returnedDoc.DocumentID,
 			"Content mismatch for DocumentID %s",
 			i,
 		)
 
 		assert.Equal(
 			t,
-			expectedDoc.Metadata,
-			actualDoc.Metadata,
+			updatedDoc.Metadata,
+			returnedDoc.Metadata,
 			"Metadata mismatch for Metadata %s",
 			i,
 		)
 
 		assert.Equal(
 			t,
-			expectedDoc.Embedding,
-			actualDoc.Embedding,
+			updatedDoc.Embedding,
+			returnedDoc.Embedding,
 			"Metadata mismatch for MessageEmbedding %s",
 			i,
 		)
 	}
 }
 
-func getDocumentIDs(docs []models.DocumentInterface) ([]string, error) {
+func getDocumentIDs(docs []models.Document) ([]string, error) {
 	ids := make([]string, len(docs))
 	for i, doc := range docs {
-		if doc == nil {
-			return nil, errors.New("nil document")
-		}
-		d := doc.(*Document)
-		ids[i] = d.DocumentID
+		ids[i] = doc.DocumentID
 	}
 	return ids, nil
 }
@@ -443,18 +408,14 @@ func TestDocumentCollectionGetDocuments(t *testing.T) {
 	err := ensurePostgresSetup(ctx, appState, testDB)
 	assert.NoError(t, err)
 
-	collection := DocumentCollection{
-		Name:                testutils.GenerateRandomString(10),
-		EmbeddingDimensions: 5,
-		db:                  testDB,
-	}
+	collection := NewTestCollectionDAO(10)
 	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
-	documents := make([]models.DocumentInterface, 10)
+	documents := make([]models.Document, 10)
 	for i := range documents {
-		documents[i] = &Document{
-			DocumentBase: DocumentBase{
+		documents[i] = models.Document{
+			DocumentBase: models.DocumentBase{
 				Content:    testutils.GenerateRandomString(10),
 				DocumentID: testutils.GenerateRandomString(10),
 				Metadata:   map[string]interface{}{"key": testutils.GenerateRandomString(3)},
@@ -471,7 +432,7 @@ func TestDocumentCollectionGetDocuments(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		collection    DocumentCollection
+		collection    DocumentCollectionDAO
 		limit         int
 		uuids         []uuid.UUID
 		documentIDs   []string
@@ -530,15 +491,15 @@ func TestDocumentCollectionGetDocuments(t *testing.T) {
 					}
 					assert.Equal(t, docCount, len(returnedDocuments))
 					for i := range returnedDocuments {
-						expectedDoc := documents[i].(*Document)
-						returnedDoc := returnedDocuments[i].(*Document)
+						expectedDoc := documents[i]
+						returnedDoc := returnedDocuments[i]
 						assert.Equal(t, expectedDoc.UUID, returnedDoc.UUID)
 					}
 				default:
 					assert.Equal(t, len(documents), len(returnedDocuments))
 					for i := range documents {
-						expectedDoc := documents[i].(*Document)
-						returnedDoc := returnedDocuments[i].(*Document)
+						expectedDoc := documents[i]
+						returnedDoc := returnedDocuments[i]
 						assert.Equal(t, expectedDoc.Content, returnedDoc.Content)
 					}
 				}
@@ -554,18 +515,14 @@ func TestDocumentCollectionDeleteDocumentByUUID(t *testing.T) {
 	err := ensurePostgresSetup(ctx, appState, testDB)
 	assert.NoError(t, err)
 
-	collection := DocumentCollection{
-		Name:                testutils.GenerateRandomString(10),
-		EmbeddingDimensions: 5,
-		db:                  testDB,
-	}
+	collection := NewTestCollectionDAO(10)
 	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
-	documents := make([]models.DocumentInterface, 2)
+	documents := make([]models.Document, 2)
 	for i := range documents {
-		documents[i] = &Document{
-			DocumentBase: DocumentBase{
+		documents[i] = models.Document{
+			DocumentBase: models.DocumentBase{
 				Content:    testutils.GenerateRandomString(10),
 				DocumentID: testutils.GenerateRandomString(10),
 				Metadata:   map[string]interface{}{"key": testutils.GenerateRandomString(3)},
@@ -586,7 +543,7 @@ func TestDocumentCollectionDeleteDocumentByUUID(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		collection    DocumentCollection
+		collection    DocumentCollectionDAO
 		documentUUIDs []uuid.UUID
 		expectedError string
 	}{
@@ -617,4 +574,15 @@ func TestDocumentCollectionDeleteDocumentByUUID(t *testing.T) {
 			}
 		})
 	}
+}
+
+func getDocumentUUIDList(documents []models.Document) ([]uuid.UUID, error) {
+	uuids := make([]uuid.UUID, len(documents))
+	for i, doc := range documents {
+		if doc.UUID == uuid.Nil {
+			continue
+		}
+		uuids[i] = doc.UUID
+	}
+	return uuids, nil
 }

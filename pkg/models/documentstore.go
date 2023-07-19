@@ -12,21 +12,21 @@ type DocumentStore[T any] interface {
 	// If a collection with the same name already exists, it will be overwritten.
 	CreateCollection(
 		ctx context.Context,
-		collection DocumentCollectionInterface,
+		collection DocumentCollection,
 	) error
 	UpdateCollection(
 		ctx context.Context,
-		collection DocumentCollectionInterface,
+		collection DocumentCollection,
 	) error
 	// GetCollection retrieves a DocumentCollection by name.
 	GetCollection(
 		ctx context.Context,
 		collectionName string,
-	) (DocumentCollectionInterface, error)
+	) (DocumentCollection, error)
 	// GetCollectionList retrieves the list of DocumentCollection.
 	GetCollectionList(
 		ctx context.Context,
-	) ([]DocumentCollectionInterface, error)
+	) ([]DocumentCollection, error)
 	// DeleteCollection deletes a DocumentCollection by name.
 	DeleteCollection(
 		ctx context.Context,
@@ -36,14 +36,14 @@ type DocumentStore[T any] interface {
 	CreateDocuments(
 		ctx context.Context,
 		collectionName string,
-		documents []DocumentInterface,
+		documents []Document,
 	) ([]uuid.UUID, error)
 	// UpdateDocuments updates a batch of Documents.
 	// The provided Document UUIDs must match existing documents.
 	UpdateDocuments(
 		ctx context.Context,
 		collectionName string,
-		documents []DocumentInterface,
+		documents []Document,
 	) error
 	// GetDocuments retrieves a Document by UUID.
 	GetDocuments(
@@ -51,7 +51,7 @@ type DocumentStore[T any] interface {
 		collectionName string,
 		uuids []uuid.UUID,
 		DocumentID []string,
-	) ([]DocumentInterface, error)
+	) ([]Document, error)
 	// DeleteDocuments deletes a Document by UUID.
 	DeleteDocuments(
 		ctx context.Context,

@@ -4,10 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/getzep/zep/pkg/testutils"
-
-	"github.com/google/uuid"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -32,13 +28,9 @@ func TestEnsurePostgresSchemaSetup(t *testing.T) {
 func TestCreateDocumentTable(t *testing.T) {
 	ctx := context.Background()
 
-	collection := &DocumentCollection{
-		UUID:                uuid.New(),
-		Name:                testutils.GenerateRandomString(10),
-		EmbeddingDimensions: 3,
-	}
+	collection := NewTestCollectionDAO(3)
 
-	tableName, err := generateDocumentTableName(collection)
+	tableName, err := generateDocumentTableName(&collection)
 	assert.NoError(t, err)
 
 	err = createDocumentTable(ctx, testDB, tableName, collection.EmbeddingDimensions)

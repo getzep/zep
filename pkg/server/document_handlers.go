@@ -14,8 +14,6 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
-//TODO: Move interfaces to server package
-
 // CreateCollectionHandler godoc
 //
 //	@Summary		Creates a new DocumentCollection
@@ -46,7 +44,7 @@ func CreateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		err = store.CreateCollection(r.Context(), &collection)
+		err = store.CreateCollection(r.Context(), collection)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
 				renderError(w, err, http.StatusNotFound)
@@ -91,8 +89,9 @@ func UpdateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 			renderError(w, err, http.StatusBadRequest)
 			return
 		}
+		collection.Name = collectionName
 
-		err := store.UpdateCollection(r.Context(), &collection)
+		err := store.UpdateCollection(r.Context(), collection)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
 				renderError(w, err, http.StatusNotFound)
@@ -243,7 +242,7 @@ func CreateDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		var documents []models.DocumentInterface
+		var documents []models.Document
 		if err := json.NewDecoder(r.Body).Decode(&documents); err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
@@ -298,7 +297,7 @@ func UpdateDocumentHandler(appState *models.AppState) http.HandlerFunc {
 		}
 
 		document.UUID = documentUUID
-		documents := []models.DocumentInterface{&document}
+		documents := []models.Document{document}
 		err := store.UpdateDocuments(r.Context(), collectionName, documents)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
@@ -340,7 +339,7 @@ func UpdateDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		var documents []models.DocumentInterface
+		var documents []models.Document
 		if err := json.NewDecoder(r.Body).Decode(&documents); err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return

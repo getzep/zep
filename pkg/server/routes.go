@@ -78,6 +78,7 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 
 			// Document-related routes
 			r.Route("/document", func(r chi.Router) {
+				r.Post("/", CreateDocumentsHandler(appState))
 				// Single document routes (by UUID)
 				r.Route("/uuid/{documentUUID}", func(r chi.Router) {
 					r.Get("/", GetDocumentHandler(appState))

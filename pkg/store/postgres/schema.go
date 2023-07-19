@@ -112,10 +112,10 @@ func (s *SummaryStoreSchema) BeforeCreateTable(
 	return nil
 }
 
-// DocumentCollectionSchema represents the schema for the DocumentCollection table.
+// DocumentCollectionSchema represents the schema for the DocumentCollectionDAO table.
 type DocumentCollectionSchema struct {
 	bun.BaseModel `bun:"table:document_collection,alias:dc"`
-	DocumentCollection
+	models.DocumentCollection
 }
 
 func (s *DocumentCollectionSchema) BeforeCreateTable(
@@ -130,7 +130,7 @@ func (s *DocumentCollectionSchema) BeforeCreateTable(
 // This means the embedding is not returned when querying using bun.
 type DocumentSchemaTemplate struct {
 	bun.BaseModel `bun:"table:document,alias:d"`
-	DocumentBase
+	models.DocumentBase
 }
 
 // Create session_id indexes after table creation

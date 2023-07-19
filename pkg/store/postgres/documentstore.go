@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/getzep/zep/pkg/store"
 
@@ -51,12 +52,10 @@ func (pds *DocumentStore) GetClient() *bun.DB {
 
 func (pds *DocumentStore) CreateCollection(
 	ctx context.Context,
-	collection models.DocumentCollectionInterface,
+	collection models.DocumentCollection,
 ) error {
-	dbCollection, ok := collection.(*DocumentCollection)
-	if !ok {
-		return errors.New("failed to type assert document")
-	}
+	dbCollection := NewDocumentCollectionDAO(pds.Client, collection)
+
 	dbCollection.db = pds.Client
 	err := dbCollection.Create(ctx)
 	if err != nil {
@@ -67,16 +66,12 @@ func (pds *DocumentStore) CreateCollection(
 
 func (pds *DocumentStore) UpdateCollection(
 	ctx context.Context,
-	collection models.DocumentCollectionInterface,
+	collection models.DocumentCollection,
 ) error {
-	dbCollection, ok := collection.(*DocumentCollection)
-	if !ok {
-		return errors.New("failed to type assert document")
-	}
-	if dbCollection.Name == "" {
+	if collection.Name == "" {
 		return errors.New("collection name is empty")
 	}
-	dbCollection.db = pds.Client
+	dbCollection := NewDocumentCollectionDAO(pds.Client, collection)
 	err := dbCollection.Update(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to Update collection: %w", err)
@@ -87,32 +82,37 @@ func (pds *DocumentStore) UpdateCollection(
 func (pds *DocumentStore) GetCollection(
 	ctx context.Context,
 	collectionName string,
-) (models.DocumentCollectionInterface, error) {
+) (models.DocumentCollection, error) {
 	if collectionName == "" {
-		return nil, errors.New("collection name is empty")
+		return models.DocumentCollection{}, errors.New("collection name is empty")
 	}
-	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
+	dbCollection := NewDocumentCollectionDAO(
+		pds.Client,
+		models.DocumentCollection{Name: collectionName},
+	)
+
 	err := dbCollection.GetByName(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get collection: %w", err)
+		if strings.Contains(err.Error(), "no rows in result set") {
+			return models.DocumentCollection{}, models.NewNotFoundError(
+				"collection: " + collectionName,
+			)
+		}
+		return models.DocumentCollection{}, fmt.Errorf("failed to get collection: %w", err)
 	}
-	return &dbCollection, nil
+	return dbCollection.DocumentCollection, nil
 }
 
 func (pds *DocumentStore) GetCollectionList(
 	ctx context.Context,
-) ([]models.DocumentCollectionInterface, error) {
-	dbCollection := DocumentCollection{db: pds.Client}
+) ([]models.DocumentCollection, error) {
+	dbCollection := DocumentCollectionDAO{db: pds.Client}
 	dbCollections, err := dbCollection.GetAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get collection list: %w", err)
 	}
 
-	collections := make([]models.DocumentCollectionInterface, len(dbCollections))
-	for i, dbCollection := range dbCollections {
-		collections[i] = dbCollection
-	}
-	return collections, nil
+	return dbCollections, nil
 }
 
 func (pds *DocumentStore) DeleteCollection(
@@ -122,7 +122,10 @@ func (pds *DocumentStore) DeleteCollection(
 	if collectionName == "" {
 		return errors.New("collection name is empty")
 	}
-	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
+	dbCollection := NewDocumentCollectionDAO(
+		pds.Client,
+		models.DocumentCollection{Name: collectionName},
+	)
 	err := dbCollection.Delete(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to Delete collection: %w", err)
@@ -133,12 +136,15 @@ func (pds *DocumentStore) DeleteCollection(
 func (pds *DocumentStore) CreateDocuments(
 	ctx context.Context,
 	collectionName string,
-	documents []models.DocumentInterface,
+	documents []models.Document,
 ) ([]uuid.UUID, error) {
 	if collectionName == "" {
 		return nil, errors.New("collection name is empty")
 	}
-	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
+	dbCollection := NewDocumentCollectionDAO(
+		pds.Client,
+		models.DocumentCollection{Name: collectionName},
+	)
 	uuids, err := dbCollection.CreateDocuments(ctx, documents)
 	if err != nil {
 		return nil, fmt.Errorf("failed to Create documents: %w", err)
@@ -150,12 +156,15 @@ func (pds *DocumentStore) CreateDocuments(
 func (pds *DocumentStore) UpdateDocuments(
 	ctx context.Context,
 	collectionName string,
-	documents []models.DocumentInterface,
+	documents []models.Document,
 ) error {
 	if collectionName == "" {
 		return errors.New("collection name is empty")
 	}
-	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
+	dbCollection := NewDocumentCollectionDAO(
+		pds.Client,
+		models.DocumentCollection{Name: collectionName},
+	)
 	err := dbCollection.UpdateDocuments(ctx, documents)
 	if err != nil {
 		return fmt.Errorf("failed to Update documents: %w", err)
@@ -169,12 +178,14 @@ func (pds *DocumentStore) GetDocuments(
 	collectionName string,
 	uuids []uuid.UUID,
 	documentIDs []string,
-) ([]models.DocumentInterface, error) {
+) ([]models.Document, error) {
 	if collectionName == "" {
 		return nil, errors.New("collection name is empty")
 	}
-
-	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
+	dbCollection := NewDocumentCollectionDAO(
+		pds.Client,
+		models.DocumentCollection{Name: collectionName},
+	)
 	documents, err := dbCollection.GetDocuments(ctx, 0, uuids, documentIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get document: %w", err)
@@ -191,7 +202,10 @@ func (pds *DocumentStore) DeleteDocuments(
 	if collectionName == "" {
 		return errors.New("collection name is empty")
 	}
-	dbCollection := DocumentCollection{Name: collectionName, db: pds.Client}
+	dbCollection := NewDocumentCollectionDAO(
+		pds.Client,
+		models.DocumentCollection{Name: collectionName},
+	)
 	err := dbCollection.DeleteDocumentsByUUID(ctx, documentUUID)
 	if err != nil {
 		return fmt.Errorf("failed to delete document: %w", err)
