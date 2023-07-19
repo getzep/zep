@@ -1,0 +1,32 @@
+### Create Collection
+POST {{host}}/api/v1/collection/testcollection
+Content-Type: application/json
+
+{
+  "name": "testcollection",
+  "description": "Test collection",
+  "embedding_dimensions": 2
+}
+
+
+### Get Collections
+GET {{host}}/api/v1/collection
+
+
+### Get Collection by name
+GET {{host}}/api/v1/collection/testcollection
+
+
+
+### Update Collection
+PATCH {{host}}/api/v1/collection/testcollection
+Content-Type: application/json
+
+{
+  "description": "Updated test collection"
+}
+
+
+
+### Delete Collection
+DELETE {{host}}/api/v1/collection/testcollection
