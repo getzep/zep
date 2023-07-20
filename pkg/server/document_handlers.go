@@ -47,8 +47,7 @@ func CreateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		err = validate.Struct(collectionRequest)
-		if err != nil {
+		if err := validate.Struct(collectionRequest); err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
 		}
@@ -96,6 +95,11 @@ func UpdateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 		}
 		var collectionRequest models.UpdateDocumentCollectionRequest
 		if err := json.NewDecoder(r.Body).Decode(&collectionRequest); err != nil {
+			renderError(w, err, http.StatusBadRequest)
+			return
+		}
+
+		if err := validate.Struct(collectionRequest); err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
 		}
