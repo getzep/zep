@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-playground/validator/v10"
+
 	"github.com/google/uuid"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/getzep/zep/pkg/models"
+	"github.com/go-chi/chi/v5"
 )
+
+var validate = validator.New()
 
 // CreateCollectionHandler godoc
 //
@@ -37,13 +40,20 @@ func CreateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		var collection models.DocumentCollection
-		err := json.NewDecoder(r.Body).Decode(&collection)
+		var collectionRequest models.CreateDocumentCollectionRequest
+		err := json.NewDecoder(r.Body).Decode(&collectionRequest)
 		if err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
 		}
 
+		err = validate.Struct(collectionRequest)
+		if err != nil {
+			renderError(w, err, http.StatusBadRequest)
+			return
+		}
+
+		collection := documentCollectionFromCreateRequest(collectionRequest)
 		err = store.CreateCollection(r.Context(), collection)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
@@ -84,13 +94,13 @@ func UpdateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
 			return
 		}
-		var collection models.DocumentCollection
-		if err := json.NewDecoder(r.Body).Decode(&collection); err != nil {
+		var collectionRequest models.UpdateDocumentCollectionRequest
+		if err := json.NewDecoder(r.Body).Decode(&collectionRequest); err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
 		}
-		collection.Name = collectionName
 
+		collection := documentCollectionFromUpdateRequest(collectionName, collectionRequest)
 		err := store.UpdateCollection(r.Context(), collection)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
@@ -174,7 +184,9 @@ func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		if err := encodeJSON(w, collections); err != nil {
+		collectionListResponse := collectionListToCollectionResponseList(collections)
+
+		if err := encodeJSON(w, collectionListResponse); err != nil {
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
@@ -213,7 +225,9 @@ func GetCollectionHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		if err := encodeJSON(w, collection); err != nil {
+		collectionResponse := collectionToCollectionResponse(collection)
+
+		if err := encodeJSON(w, collectionResponse); err != nil {
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
@@ -437,7 +451,7 @@ func GetDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		var docRequest documentRequest
+		var docRequest models.GetDocumentListRequest
 		if err := json.NewDecoder(r.Body).Decode(&docRequest); err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
@@ -566,12 +580,6 @@ func DeleteDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 	}
 }
 
-// documentRequest is a struct for the request body of GetDocumentsBatchHandler
-type documentRequest struct {
-	UUIDs       []uuid.UUID `json:"uuids"`
-	DocumentIDs []string    `json:"documentIDs"`
-}
-
 func parseUUIDFromURL(r *http.Request, w http.ResponseWriter, paramName string) uuid.UUID {
 	uuidStr := chi.URLParam(r, paramName)
 	documentUUID, err := uuid.Parse(uuidStr)
@@ -584,4 +592,56 @@ func parseUUIDFromURL(r *http.Request, w http.ResponseWriter, paramName string) 
 		return uuid.Nil
 	}
 	return documentUUID
+}
+
+func documentCollectionFromCreateRequest(
+	collectionRequest models.CreateDocumentCollectionRequest,
+) models.DocumentCollection {
+	return models.DocumentCollection{
+		Name:                collectionRequest.Name,
+		Description:         collectionRequest.Description,
+		Metadata:            collectionRequest.Metadata,
+		EmbeddingModelName:  collectionRequest.EmbeddingModelName,
+		EmbeddingDimensions: collectionRequest.EmbeddingDimensions,
+		DistanceFunction:    collectionRequest.DistanceFunction,
+		IsNormalized:        collectionRequest.IsNormalized,
+	}
+}
+
+func documentCollectionFromUpdateRequest(
+	collectionName string,
+	collectionRequest models.UpdateDocumentCollectionRequest,
+) models.DocumentCollection {
+	return models.DocumentCollection{
+		Name:        collectionName,
+		Description: collectionRequest.Description,
+		Metadata:    collectionRequest.Metadata,
+	}
+}
+
+func collectionToCollectionResponse(
+	collection models.DocumentCollection,
+) models.DocumentCollectionResponse {
+	return models.DocumentCollectionResponse{
+		UUID:                collection.UUID,
+		CreatedAt:           collection.CreatedAt,
+		UpdatedAt:           collection.UpdatedAt,
+		Name:                collection.Name,
+		Description:         collection.Description,
+		Metadata:            collection.Metadata,
+		EmbeddingModelName:  collection.EmbeddingModelName,
+		EmbeddingDimensions: collection.EmbeddingDimensions,
+		IsNormalized:        collection.IsNormalized,
+		IsIndexed:           collection.IsIndexed,
+	}
+}
+
+func collectionListToCollectionResponseList(
+	collections []models.DocumentCollection,
+) []models.DocumentCollectionResponse {
+	collectionResponses := make([]models.DocumentCollectionResponse, len(collections))
+	for i, collection := range collections {
+		collectionResponses[i] = collectionToCollectionResponse(collection)
+	}
+	return collectionResponses
 }

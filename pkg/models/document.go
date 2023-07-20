@@ -6,33 +6,96 @@ import (
 	"github.com/google/uuid"
 )
 
+/* Collection  Models */
+
 type DocumentCollection struct {
-	UUID                uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"                     json:"uuid"`
-	CreatedAt           time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp" json:"created_at"`
-	UpdatedAt           time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"         json:"updated_at"`
-	Name                string                 `bun:",notnull,unique"                                             json:"name"`
-	Description         string                 `bun:",notnull"                                                    json:"description"`
-	Metadata            map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"                         json:"metadata,omitempty"`
-	TableName           string                 `bun:",notnull"                                                    json:"table_name"`
-	EmbeddingModelName  string                 `bun:",notnull"                                                    json:"embedding_model_name"`
-	EmbeddingDimensions int                    `bun:",notnull"                                                    json:"embedding_dimensions"`
-	DistanceFunction    string                 `bun:",notnull"                                                    json:"distance_function"` // Distance function to use for index
-	IsNormalized        bool                   `bun:",notnull"                                                    json:"is_normalized"`     // Are the embeddings normalized?
-	IsIndexed           bool                   `bun:",notnull"                                                    json:"is_indexed"`        // Has an index been created on the collection table?
+	UUID                uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
+	CreatedAt           time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt           time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
+	Name                string                 `bun:",notnull,unique"`
+	Description         string                 `bun:",notnull"`
+	Metadata            map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
+	TableName           string                 `bun:",notnull"`
+	EmbeddingModelName  string                 `bun:",notnull"`
+	EmbeddingDimensions int                    `bun:",notnull"`
+	DistanceFunction    string                 `bun:",notnull"` // Distance function to use for index
+	IsNormalized        bool                   `bun:",notnull"` // Are the embeddings normalized?
+	IsIndexed           bool                   `bun:",notnull"` // Has an index been created on the collection table?
 }
 
+type CreateDocumentCollectionRequest struct {
+	Name                string                 `json:"name"                 validate:"required,alphanum,min=3,max=40"`
+	Description         string                 `json:"description"          validate:"max=1000"`
+	Metadata            map[string]interface{} `json:"metadata,omitempty"`
+	EmbeddingModelName  string                 `json:"embedding_model_name"`
+	EmbeddingDimensions int                    `json:"embedding_dimensions" validate:"required,numeric,min=128,max=2000"`
+	DistanceFunction    string                 `json:"distance_function"`                       // Distance function to use for index
+	IsNormalized        bool                   `json:"is_normalized"        validate:"boolean"` // Are the embeddings normalized?
+}
+
+type UpdateDocumentCollectionRequest struct {
+	Description string                 `json:"description"        validate:"max=1000"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type DocumentCollectionResponse struct {
+	UUID                uuid.UUID              `json:"uuid"`
+	CreatedAt           time.Time              `json:"created_at"`
+	UpdatedAt           time.Time              `json:"updated_at"`
+	Name                string                 `json:"name"`
+	Description         string                 `json:"description"`
+	Metadata            map[string]interface{} `json:"metadata,omitempty"`
+	EmbeddingModelName  string                 `json:"embedding_model_name,omitempty"`
+	EmbeddingDimensions int                    `json:"embedding_dimensions"`
+	IsNormalized        bool                   `json:"is_normalized"`
+	IsIndexed           bool                   `json:"is_indexed"`
+}
+
+/* Document Models */
+
 type DocumentBase struct {
-	UUID           uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"                     json:"uuid"`
-	CreatedAt      time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp" json:"created_at"`
-	UpdatedAt      time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"         json:"updated_at"`
-	DeletedAt      time.Time              `bun:"type:timestamptz,soft_delete,nullzero"                       json:"deleted_at"`
-	DocumentID     string                 `bun:",unique"                                                     json:"document_id"`
-	Content        string                 `bun:""                                                            json:"content"`
-	Metadata       map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"                         json:"metadata,omitempty"`
-	CollectionUUID uuid.UUID              `                                                                  json:"collection_uuid"`
+	UUID           uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
+	CreatedAt      time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt      time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
+	DeletedAt      time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
+	DocumentID     string                 `bun:",unique"`
+	Content        string                 `bun:""`
+	Metadata       map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
+	CollectionUUID uuid.UUID
 }
 
 type Document struct {
 	DocumentBase
 	Embedding []float32 `bun:"type:real[]" json:"embedding"`
+}
+
+type CreateDocumentRequest struct {
+	DocumentID string                 `json:"document_id"        validator:"alphanum,min=3,max=40"`
+	Content    string                 `json:"content"                                              validate:"required_without=embedding,max=1000"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+	Embedding  []float32              `json:"embedding"                                            validate:"required_without=content"`
+}
+
+type UpdateDocumentRequest struct {
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type GetDocumentRequest struct {
+	UUID       uuid.UUID `json:"uuid"        validate:"required_without=document_id,uuid"`
+	DocumentID string    `json:"document_id" validate:"required_without=uuid,alphanum,min=3,max=40"`
+}
+
+type GetDocumentListRequest struct {
+	UUIDs       []uuid.UUID `json:"uuids"        validate:"required_without=document_ids"`
+	DocumentIDs []string    `json:"document_ids" validate:"required_without=uuids"`
+}
+
+type DocumentResponse struct {
+	UUID       uuid.UUID              `json:"uuid"`
+	CreatedAt  time.Time              `json:"created_at"`
+	UpdatedAt  time.Time              `json:"updated_at"`
+	DocumentID string                 `json:"document_id"`
+	Content    string                 `json:"content"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+	Embedding  []float32              `json:"embedding"`
 }

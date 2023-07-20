@@ -5,7 +5,7 @@ Content-Type: application/json
 {
   "name": "testcollection",
   "description": "Test collection",
-  "embedding_dimensions": 2
+  "embedding_dimensions": 512
 }
 
 
