@@ -23,10 +23,37 @@ PATCH {{host}}/api/v1/collection/testcollection
 Content-Type: application/json
 
 {
-  "description": "Updated test collection"
+  "description": "Updated test collection",
+  "metadata": {
+    "key1": "value1",
+    "key2": "value2"
+  }
 }
 
 
 
 ### Delete Collection
 DELETE {{host}}/api/v1/collection/testcollection
+
+
+### Create Documents
+POST {{host}}/api/v1/collection/testcollection/document
+Content-Type: application/json
+
+[
+    {
+      "document_id": "doc1",
+      "embedding": [0.1, 0.2, 0.3, 0.4],
+      "metadata": {
+        "key1": "value1",
+        "key2": "value2"
+      }
+    },
+    {
+      "content": "This is a test document",
+      "metadata": {
+        "key1": "value1",
+        "key2": "value2"
+      }
+    }
+]

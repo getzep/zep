@@ -25,12 +25,12 @@ type DocumentCollection struct {
 
 type CreateDocumentCollectionRequest struct {
 	Name                string                 `json:"name"                 validate:"required,alphanum,min=3,max=40"`
-	Description         string                 `json:"description"          validate:"max=1000"`
+	Description         string                 `json:"description"          validate:"omitempty,max=1000"`
 	Metadata            map[string]interface{} `json:"metadata,omitempty"`
 	EmbeddingModelName  string                 `json:"embedding_model_name"`
 	EmbeddingDimensions int                    `json:"embedding_dimensions" validate:"required,numeric,min=128,max=2000"`
-	DistanceFunction    string                 `json:"distance_function"`                       // Distance function to use for index
-	IsNormalized        bool                   `json:"is_normalized"        validate:"boolean"` // Are the embeddings normalized?
+	DistanceFunction    string                 `json:"distance_function"`                                 // Distance function to use for index
+	IsNormalized        bool                   `json:"is_normalized"        validate:"boolean,omitempty"` // Are the embeddings normalized?
 }
 
 type UpdateDocumentCollectionRequest struct {
@@ -54,40 +54,45 @@ type DocumentCollectionResponse struct {
 /* Document Models */
 
 type DocumentBase struct {
-	UUID           uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
-	CreatedAt      time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
-	UpdatedAt      time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
-	DeletedAt      time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
-	DocumentID     string                 `bun:",unique"`
-	Content        string                 `bun:""`
-	Metadata       map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
-	CollectionUUID uuid.UUID
+	UUID       uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
+	CreatedAt  time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt  time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
+	DeletedAt  time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
+	DocumentID string                 `bun:",unique"`
+	Content    string                 `bun:""`
+	Metadata   map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
 }
 
 type Document struct {
 	DocumentBase
-	Embedding []float32 `bun:"type:real[]" json:"embedding"`
+	Embedding []float32 `bun:"type:vector,nullzero" json:"embedding,omitempty"`
 }
 
 type CreateDocumentRequest struct {
-	DocumentID string                 `json:"document_id"        validator:"alphanum,min=3,max=40"`
-	Content    string                 `json:"content"                                              validate:"required_without=embedding,max=1000"`
+	DocumentID string                 `json:"document_id,omitempty" validate:"omitempty,alphanum,max=40"`
+	Content    string                 `json:"content,omitempty"     validate:"required_without=Embedding,omitempty,max=1000"`
 	Metadata   map[string]interface{} `json:"metadata,omitempty"`
-	Embedding  []float32              `json:"embedding"                                            validate:"required_without=content"`
+	Embedding  []float32              `json:"embedding,omitempty"   validate:"required_without=Content,omitempty"`
 }
 
 type UpdateDocumentRequest struct {
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	DocumentID string                 `json:"document_id"        validate:"alphanum,max=40,omitempty"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty" validate:"omitempty"`
+}
+
+type UpdateDocumentBatchRequest struct {
+	UUID uuid.UUID `json:"uuid" validate:"uuid"`
+	UpdateDocumentRequest
 }
 
 type GetDocumentRequest struct {
-	UUID       uuid.UUID `json:"uuid"        validate:"required_without=document_id,uuid"`
-	DocumentID string    `json:"document_id" validate:"required_without=uuid,alphanum,min=3,max=40"`
+	UUID       uuid.UUID `json:"uuid"        validate:"required_without=DocumentID,uuid,omitempty"`
+	DocumentID string    `json:"document_id" validate:"required_without=UUID,alphanum,max=40,omitempty"`
 }
 
 type GetDocumentListRequest struct {
-	UUIDs       []uuid.UUID `json:"uuids"        validate:"required_without=document_ids"`
-	DocumentIDs []string    `json:"document_ids" validate:"required_without=uuids"`
+	UUIDs       []uuid.UUID `json:"uuids"        validate:"required_without=DocumentIDs"`
+	DocumentIDs []string    `json:"document_ids" validate:"required_without=UUIDs"`
 }
 
 type DocumentResponse struct {

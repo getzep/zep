@@ -245,11 +245,11 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 	err := ensurePostgresSetup(ctx, appState, testDB)
 	assert.NoError(t, err)
 
-	collection := NewTestCollectionDAO(10)
+	collection := NewTestCollectionDAO(3)
 	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
-	documents := make([]models.Document, 10)
+	documents := make([]models.Document, 2)
 	for i := range documents {
 		documents[i] = models.Document{
 			DocumentBase: models.DocumentBase{
@@ -257,6 +257,7 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 				Content:    testutils.GenerateRandomString(10),
 				Metadata:   map[string]interface{}{"key": testutils.GenerateRandomString(3)},
 			},
+			Embedding: []float32{0.1, 0.2, 0.3},
 		}
 	}
 
@@ -274,7 +275,7 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 		},
 		{
 			name:          "test Create documents into a non-existent collection",
-			collection:    NewTestCollectionDAO(10),
+			collection:    NewTestCollectionDAO(3),
 			documents:     documents,
 			expectedError: "failed to get collection",
 		},
@@ -295,22 +296,14 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 				assert.NoError(t, err)
 
 				assert.Equal(t, len(tc.documents), len(returnedDocuments))
-				// Convert slices to maps
-				expected := make(map[string]models.Document, len(tc.documents))
-				actual := make(map[string]models.Document, len(returnedDocuments))
-				for _, doc := range tc.documents {
-					expected[doc.DocumentID] = doc
-				}
-				for _, doc := range returnedDocuments {
-					actual[doc.DocumentID] = doc
-				}
 
 				// Compare maps
-				for id, expectedDoc := range expected {
-					actualDoc, ok := actual[id]
-					assert.True(t, ok, "DocumentID %s not found in actual", id)
-					assert.Equal(t, expectedDoc.Content, actualDoc.Content, "Content mismatch for DocumentID %s", id)
-					assert.Equal(t, expectedDoc.Metadata, actualDoc.Metadata, "Metadata mismatch for DocumentID %s", id)
+				for i, expectedDoc := range tc.documents {
+					returnedDoc := returnedDocuments[i]
+					assert.Equal(t, expectedDoc.DocumentID, returnedDoc.DocumentID, "DocumentID mismatch for DocumentID %s", i)
+					assert.Equal(t, expectedDoc.Content, returnedDoc.Content, "Content mismatch for DocumentID %s", i)
+					assert.Equal(t, expectedDoc.Metadata, returnedDoc.Metadata, "Metadata mismatch for DocumentID %s", i)
+					assert.Equal(t, expectedDoc.Embedding, returnedDoc.Embedding, "Embedding mismatch for DocumentID %s", i)
 				}
 			}
 		})

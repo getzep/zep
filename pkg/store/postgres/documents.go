@@ -206,8 +206,8 @@ func (dc *DocumentCollectionDAO) CreateDocuments(
 
 	// return slice of uuids
 	uuids := make([]uuid.UUID, len(documents))
-	for i, document := range documents {
-		uuids[i] = document.UUID
+	for i := range documents {
+		uuids[i] = documents[i].UUID
 	}
 
 	return uuids, nil
@@ -321,9 +321,7 @@ func (dc *DocumentCollectionDAO) GetDocuments(
 	query := dc.db.NewSelect().
 		Model(&documents).
 		ModelTableExpr(dc.TableName+" AS document").
-		Column("uuid", "created_at", "content", "metadata", "document_id").
-		// cast the vectors to a float array
-		ColumnExpr("embedding::real[]")
+		Column("uuid", "created_at", "content", "metadata", "document_id", "embedding")
 
 	if len(uuids) > 0 {
 		query = query.Where("uuid IN (?)", bun.In(uuids))

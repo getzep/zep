@@ -1,15 +1,40 @@
 basePath: /api/v1
 definitions:
-  models.Document:
+  models.CreateDocumentCollectionRequest:
     properties:
-      collection_uuid:
+      description:
+        maxLength: 1000
         type: string
+      distance_function:
+        description: Distance function to use for index
+        type: string
+      embedding_dimensions:
+        maximum: 2000
+        minimum: 128
+        type: integer
+      embedding_model_name:
+        type: string
+      is_normalized:
+        description: Are the embeddings normalized?
+        type: boolean
+      metadata:
+        additionalProperties: true
+        type: object
+      name:
+        maxLength: 40
+        minLength: 3
+        type: string
+    required:
+    - embedding_dimensions
+    - name
+    type: object
+  models.CreateDocumentRequest:
+    properties:
       content:
-        type: string
-      created_at:
+        maxLength: 1000
         type: string
       document_id:
-        description: Developer-provided arbitrary string identifier for the document
+        maxLength: 40
         type: string
       embedding:
         items:
@@ -18,32 +43,56 @@ definitions:
       metadata:
         additionalProperties: true
         type: object
-      uuid:
-        type: string
     type: object
-  models.DocumentCollection:
+  models.DocumentCollectionResponse:
     properties:
       created_at:
         type: string
       description:
         type: string
-      distance_function:
-        description: Distance function to use for index
-        type: string
       embedding_dimensions:
         type: integer
+      embedding_model_name:
+        type: string
       is_indexed:
-        description: Has an index been created on the collection table?
         type: boolean
       is_normalized:
-        description: Are the embeddings normalized?
         type: boolean
       metadata:
         additionalProperties: true
         type: object
       name:
         type: string
-      table_name:
+      updated_at:
+        type: string
+      uuid:
+        type: string
+    type: object
+  models.DocumentResponse:
+    properties:
+      content:
+        type: string
+      created_at:
+        type: string
+      document_id:
+        type: string
+      embedding:
+        items:
+          type: number
+        type: array
+      metadata:
+        additionalProperties: true
+        type: object
+      updated_at:
+        type: string
+      uuid:
+        type: string
+    type: object
+  models.GetDocumentRequest:
+    properties:
+      document_id:
+        maxLength: 40
+        minLength: 3
         type: string
       uuid:
         type: string
@@ -131,21 +180,43 @@ definitions:
       uuid:
         type: string
     type: object
+  models.UpdateDocumentBatchRequest:
+    properties:
+      document_id:
+        maxLength: 40
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      uuid:
+        type: string
+    required:
+    - metadata
+    type: object
+  models.UpdateDocumentCollectionRequest:
+    properties:
+      description:
+        maxLength: 1000
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+    type: object
+  models.UpdateDocumentRequest:
+    properties:
+      document_id:
+        maxLength: 40
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+    required:
+    - metadata
+    type: object
   server.APIError:
     properties:
       message:
         type: string
-    type: object
-  server.documentRequest:
-    properties:
-      documentIDs:
-        items:
-          type: string
-        type: array
-      uuids:
-        items:
-          type: string
-        type: array
     type: object
 info:
   contact: {}
@@ -168,7 +239,7 @@ paths:
           schema:
             items:
               items:
-                $ref: '#/definitions/models.DocumentCollection'
+                $ref: '#/definitions/models.DocumentCollectionResponse'
               type: array
             type: array
         "500":
@@ -194,7 +265,7 @@ paths:
         name: collection
         required: true
         schema:
-          $ref: '#/definitions/models.DocumentCollection'
+          $ref: '#/definitions/models.CreateDocumentCollectionRequest'
       produces:
       - application/json
       responses:
@@ -266,7 +337,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.DocumentCollection'
+            $ref: '#/definitions/models.DocumentCollectionResponse'
         "400":
           description: Bad Request
           schema:
@@ -296,7 +367,7 @@ paths:
         name: collection
         required: true
         schema:
-          $ref: '#/definitions/models.DocumentCollection'
+          $ref: '#/definitions/models.UpdateDocumentCollectionRequest'
       produces:
       - application/json
       responses:
@@ -337,7 +408,7 @@ paths:
         required: true
         schema:
           items:
-            $ref: '#/definitions/models.Document'
+            $ref: '#/definitions/models.CreateDocumentRequest'
           type: array
       produces:
       - application/json
@@ -413,7 +484,7 @@ paths:
         name: documentRequest
         required: true
         schema:
-          $ref: '#/definitions/server.documentRequest'
+          $ref: '#/definitions/models.GetDocumentRequest'
       produces:
       - application/json
       responses:
@@ -422,7 +493,7 @@ paths:
           schema:
             items:
               items:
-                $ref: '#/definitions/models.Document'
+                $ref: '#/definitions/models.DocumentResponse'
               type: array
             type: array
         "400":
@@ -453,7 +524,7 @@ paths:
         required: true
         schema:
           items:
-            $ref: '#/definitions/models.Document'
+            $ref: '#/definitions/models.UpdateDocumentBatchRequest'
           type: array
       produces:
       - application/json
@@ -532,7 +603,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Document'
+            $ref: '#/definitions/models.DocumentResponse'
         "400":
           description: Bad Request
           schema:
@@ -563,7 +634,7 @@ paths:
         name: document
         required: true
         schema:
-          $ref: '#/definitions/models.Document'
+          $ref: '#/definitions/models.UpdateDocumentRequest'
       produces:
       - application/json
       responses:
