@@ -28,7 +28,7 @@ type CreateDocumentCollectionRequest struct {
 	Description         string                 `json:"description"          validate:"omitempty,max=1000"`
 	Metadata            map[string]interface{} `json:"metadata,omitempty"`
 	EmbeddingModelName  string                 `json:"embedding_model_name"`
-	EmbeddingDimensions int                    `json:"embedding_dimensions" validate:"required,numeric,min=128,max=2000"`
+	EmbeddingDimensions int                    `json:"embedding_dimensions" validate:"required,numeric,min=8,max=2000"`
 	DistanceFunction    string                 `json:"distance_function"`                                 // Distance function to use for index
 	IsNormalized        bool                   `json:"is_normalized"        validate:"boolean,omitempty"` // Are the embeddings normalized?
 }

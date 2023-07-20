@@ -714,8 +714,9 @@ func documentFromDocumentUpdateRequest(
 ) models.Document {
 	return models.Document{
 		DocumentBase: models.DocumentBase{
-			UUID:     documentUUID,
-			Metadata: request.Metadata,
+			UUID:       documentUUID,
+			DocumentID: request.DocumentID,
+			Metadata:   request.Metadata,
 		},
 	}
 }

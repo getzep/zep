@@ -5,7 +5,7 @@ Content-Type: application/json
 {
   "name": "testcollection",
   "description": "Test collection",
-  "embedding_dimensions": 512
+  "embedding_dimensions": 8
 }
 
 
@@ -43,7 +43,7 @@ Content-Type: application/json
 [
     {
       "document_id": "doc1",
-      "embedding": [0.1, 0.2, 0.3, 0.4],
+      "embedding": [0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4],
       "metadata": {
         "key1": "value1",
         "key2": "value2"
@@ -57,3 +57,48 @@ Content-Type: application/json
       }
     }
 ]
+
+### Get A Document from Collection
+GET {{host}}/api/v1/collection/testcollection/document/uuid/3fea4c7b-a195-4107-ac4f-d8c4a33fa250
+
+### Update a Document Metadata and DocumentID
+PATCH {{host}}/api/v1/collection/testcollection/document/uuid/3fea4c7b-a195-4107-ac4f-d8c4a33fa250
+Content-Type: application/json
+
+{
+  "document_id": "doc3",
+  "metadata": {
+    "key3": "value3",
+    "key4": "value4"
+  }
+}
+
+### Get Updated Document from Collection
+GET {{host}}/api/v1/collection/testcollection/document/uuid/3fea4c7b-a195-4107-ac4f-d8c4a33fa250
+
+### Delete a Document from Collection
+DELETE {{host}}/api/v1/collection/testcollection/document/uuid/3fea4c7b-a195-4107-ac4f-d8c4a33fa250
+
+### Create More Documents
+POST {{host}}/api/v1/collection/testcollection/document
+Content-Type: application/json
+
+[
+  {
+    "document_id": "doc5",
+    "embedding": [0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4],
+    "metadata": {
+      "key1": "value1",
+      "key2": "value2"
+    }
+  },
+  {
+    "content": "This is a test document 2",
+    "metadata": {
+      "key1": "value1",
+      "key2": "value2"
+    }
+  }
+]
+
+### Get Documents by 

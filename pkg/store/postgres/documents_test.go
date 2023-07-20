@@ -360,7 +360,7 @@ func TestDocumentCollectionUpdateDocuments(t *testing.T) {
 		updatedDoc := updatedDocuments[i]
 		returnedDoc := returnedDocuments[i]
 
-		assert.Equal( // This should not change
+		assert.Equal(
 			t,
 			updatedDoc.DocumentID,
 			returnedDoc.DocumentID,

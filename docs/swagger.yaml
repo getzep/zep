@@ -92,7 +92,6 @@ definitions:
     properties:
       document_id:
         maxLength: 40
-        minLength: 3
         type: string
       uuid:
         type: string
@@ -190,8 +189,6 @@ definitions:
         type: object
       uuid:
         type: string
-    required:
-    - metadata
     type: object
   models.UpdateDocumentCollectionRequest:
     properties:
@@ -210,8 +207,6 @@ definitions:
       metadata:
         additionalProperties: true
         type: object
-    required:
-    - metadata
     type: object
   server.APIError:
     properties:
