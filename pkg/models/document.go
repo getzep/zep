@@ -76,7 +76,7 @@ type CreateDocumentRequest struct {
 }
 
 type UpdateDocumentRequest struct {
-	DocumentID string                 `json:"document_id"        validate:"alphanum,max=40,omitempty"`
+	DocumentID string                 `json:"document_id"        validate:"printascii,max=40,omitempty"`
 	Metadata   map[string]interface{} `json:"metadata,omitempty" validate:"omitempty"`
 }
 
