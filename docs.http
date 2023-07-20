@@ -117,3 +117,14 @@ Content-Type: application/json
 
 ### Get batch updated document
 GET {{host}}/api/v1/collection/testcollection/document/uuid/69335a57-5b78-4b2c-89bd-0cd5ff598588
+
+### Get Document List
+POST {{host}}/api/v1/collection/testcollection/document/batchGet
+Content-Type: application/json
+
+{
+  "uuids": [
+    "69335a57-5b78-4b2c-89bd-0cd5ff598588",
+    "fc4bd561-35e4-40fc-a991-cf6e29050082"
+  ]
+}

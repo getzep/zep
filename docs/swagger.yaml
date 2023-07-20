@@ -10,7 +10,7 @@ definitions:
         type: string
       embedding_dimensions:
         maximum: 2000
-        minimum: 128
+        minimum: 8
         type: integer
       embedding_model_name:
         type: string
@@ -31,7 +31,6 @@ definitions:
   models.CreateDocumentRequest:
     properties:
       content:
-        maxLength: 1000
         type: string
       document_id:
         maxLength: 40
@@ -88,13 +87,16 @@ definitions:
       uuid:
         type: string
     type: object
-  models.GetDocumentRequest:
+  models.GetDocumentListRequest:
     properties:
-      document_id:
-        maxLength: 40
-        type: string
-      uuid:
-        type: string
+      document_ids:
+        items:
+          type: string
+        type: array
+      uuids:
+        items:
+          type: string
+        type: array
     type: object
   models.Memory:
     properties:
@@ -189,6 +191,8 @@ definitions:
         type: object
       uuid:
         type: string
+    required:
+    - uuid
     type: object
   models.UpdateDocumentCollectionRequest:
     properties:
@@ -479,7 +483,7 @@ paths:
         name: documentRequest
         required: true
         schema:
-          $ref: '#/definitions/models.GetDocumentRequest'
+          $ref: '#/definitions/models.GetDocumentListRequest'
       produces:
       - application/json
       responses:

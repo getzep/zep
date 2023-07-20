@@ -462,11 +462,11 @@ func GetDocumentHandler(appState *models.AppState) http.HandlerFunc {
 //	@Tags			document
 //	@Accept			json
 //	@Produce		json
-//	@Param			collectionName	path		string						true	"Name of the Document Collection"
-//	@Param			documentRequest	body		models.GetDocumentRequest	true	"UUIDs and IDs of the Documents to be fetched"
-//	@Success		200				{array}		[]models.DocumentResponse	"OK"
-//	@Failure		400				{object}	APIError					"Bad Request"
-//	@Failure		500				{object}	APIError					"Internal Server Error"
+//	@Param			collectionName	path		string							true	"Name of the Document Collection"
+//	@Param			documentRequest	body		models.GetDocumentListRequest	true	"UUIDs and IDs of the Documents to be fetched"
+//	@Success		200				{array}		[]models.DocumentResponse		"OK"
+//	@Failure		400				{object}	APIError						"Bad Request"
+//	@Failure		500				{object}	APIError						"Internal Server Error"
 //	@Router			/api/v1/collection/{collectionName}/document/batchGet [post]
 func GetDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
