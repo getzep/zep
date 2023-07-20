@@ -85,7 +85,7 @@ Content-Type: application/json
 
 [
   {
-    "document_id": "doc5",
+    "document_id": "doc_5",
     "embedding": [0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4],
     "metadata": {
       "key1": "value1",
@@ -101,4 +101,4 @@ Content-Type: application/json
   }
 ]
 
-### Get Documents by 
+### Get Documents by

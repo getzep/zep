@@ -58,7 +58,7 @@ type DocumentBase struct {
 	CreatedAt  time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
 	UpdatedAt  time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
 	DeletedAt  time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
-	DocumentID string                 `bun:",unique"`
+	DocumentID string                 `bun:",unique,nullzero"`
 	Content    string                 `bun:""`
 	Metadata   map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
 }
@@ -69,7 +69,7 @@ type Document struct {
 }
 
 type CreateDocumentRequest struct {
-	DocumentID string                 `json:"document_id,omitempty" validate:"omitempty,alphanum,max=40"`
+	DocumentID string                 `json:"document_id,omitempty" validate:"omitempty,printascii,max=40"`
 	Content    string                 `json:"content,omitempty"     validate:"required_without=Embedding,omitempty,max=1000"`
 	Metadata   map[string]interface{} `json:"metadata,omitempty"`
 	Embedding  []float32              `json:"embedding,omitempty"   validate:"required_without=Content,omitempty"`
