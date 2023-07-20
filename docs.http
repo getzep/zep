@@ -101,4 +101,19 @@ Content-Type: application/json
   }
 ]
 
-### Get Documents by
+### UpdateDocumentBatch
+PATCH {{host}}/api/v1/collection/testcollection/document/batchUpdate
+Content-Type: application/json
+
+[
+  {
+    "document_id": "qwerty",
+    "metadata": {
+      "additionalProp1": {"foo":  "bar"}
+    },
+    "uuid": "69335a57-5b78-4b2c-89bd-0cd5ff598588"
+  }
+]
+
+### Get batch updated document
+GET {{host}}/api/v1/collection/testcollection/document/uuid/69335a57-5b78-4b2c-89bd-0cd5ff598588
