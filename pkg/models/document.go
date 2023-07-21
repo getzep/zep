@@ -104,3 +104,14 @@ type DocumentResponse struct {
 	Metadata   map[string]interface{} `json:"metadata,omitempty"`
 	Embedding  []float32              `json:"embedding"`
 }
+
+type DocumentEmbeddingEvent struct {
+	UUID    uuid.UUID `json:"uuid"`
+	Content string    `json:"content"`
+}
+
+type DocumentEmbeddingEventProcessed struct {
+	UUID        uuid.UUID `json:"uuid"`
+	ProcessedAt time.Time `json:"time"`
+	Embedding   []float32 `json:"embedding,omitempty" bun:"type:vector,nullzero"`
+}

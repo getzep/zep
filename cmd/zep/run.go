@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/getzep/zep/pkg/queue"
+
 	"github.com/getzep/zep/pkg/store/postgres"
 
 	"github.com/getzep/zep/pkg/auth"
@@ -58,14 +60,22 @@ func run() {
 // NewAppState creates an AppState struct from the config file / ENV, initializes the memory store,
 // and creates the OpenAI client
 func NewAppState(cfg *config.Config) *models.AppState {
+	ctx := context.Background()
+
 	appState := &models.AppState{
 		OpenAIClient: llms.NewOpenAIRetryClient(cfg),
 		Config:       cfg,
 	}
 
 	initializeStores(appState)
+
+	// Initialize the queues and routers after the stores have been initialized
+	// We do this here because the routers require a SQL connection
+	// Runs in a goroutine as Run is blocking
+	go initializeSQLQueues(ctx, appState)
+
 	setupSignalHandler(appState)
-	setupPurgeProcessor(context.Background(), appState)
+	setupPurgeProcessor(ctx, appState)
 
 	return appState
 }
@@ -88,14 +98,13 @@ func initializeStores(appState *models.AppState) {
 	if appState.Config.MemoryStore.Type == "" {
 		log.Fatal(ErrMemoryStoreTypeNotSet)
 	}
-	// TODO: check for document store type
 
 	switch appState.Config.MemoryStore.Type {
 	case MemoryStoreTypePostgres:
 		if appState.Config.MemoryStore.Postgres.DSN == "" {
 			log.Fatal(ErrPostgresDSNNotSet)
 		}
-		db := postgres.NewPostgresConn(appState.Config.MemoryStore.Postgres.DSN)
+		db := postgres.NewPostgresConn(appState)
 		if appState.Config.Log.Level == "debug" {
 			pgDebugLogging(db)
 		}
@@ -123,6 +132,29 @@ func initializeStores(appState *models.AppState) {
 	log.Info("Using memory store: ", appState.Config.MemoryStore.Type)
 }
 
+// initializeSQLQueues initializes the queues and routers. It's called from initializeStores as it
+// requires a Store SQL connection.
+func initializeSQLQueues(ctx context.Context, appState *models.AppState) {
+	if appState.SqlDB == nil {
+		log.Fatal("SqlDB is not yet initialized")
+	}
+
+	embeddingsQueue := queue.NewQueue("embeddings")
+	if appState.Queues == nil {
+		appState.Queues = make(map[string]*models.Queue)
+	}
+	appState.Queues[embeddingsQueue.Name] = &embeddingsQueue
+
+	embeddingsRouter, err := queue.NewEmbeddingRouter(appState)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := embeddingsRouter.Run(ctx); err != nil {
+		log.Fatal(err)
+	}
+}
+
 func pgDebugLogging(db *bun.DB) {
 	db.AddQueryHook(logrusbun.NewQueryHook(logrusbun.QueryHookOptions{
 		LogSlow:         time.Second,
@@ -135,7 +167,7 @@ func pgDebugLogging(db *bun.DB) {
 	}))
 }
 
-// TODO: refactor to include document store
+// TODO: refactor to include document store if separate persistence layer
 // setupSignalHandler sets up a signal handler to close the MemoryStore connection on termination
 func setupSignalHandler(appState *models.AppState) {
 	signalCh := make(chan os.Signal, 1)

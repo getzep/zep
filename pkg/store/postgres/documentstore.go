@@ -23,8 +23,8 @@ func NewDocumentStore(
 		return nil, errors.New("nil appState received")
 	}
 
-	pds := &DocumentStore{store.BaseDocumentStore[*bun.DB]{Client: client}}
-	err := pds.OnStart(context.Background(), appState)
+	pds := &DocumentStore{store.BaseDocumentStore[*bun.DB]{Client: client}, appState}
+	err := pds.OnStart(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to run OnInit %w", err)
 	}
@@ -36,13 +36,12 @@ var _ models.DocumentStore[*bun.DB] = &DocumentStore{}
 
 type DocumentStore struct {
 	store.BaseDocumentStore[*bun.DB]
+	appState *models.AppState
 }
 
 func (pds *DocumentStore) OnStart(
 	_ context.Context,
-	appState *models.AppState,
 ) error {
-	_ = appState
 	return nil
 }
 
@@ -54,7 +53,7 @@ func (pds *DocumentStore) CreateCollection(
 	ctx context.Context,
 	collection models.DocumentCollection,
 ) error {
-	dbCollection := NewDocumentCollectionDAO(pds.Client, collection)
+	dbCollection := NewDocumentCollectionDAO(pds.appState, pds.Client, collection)
 
 	dbCollection.db = pds.Client
 	err := dbCollection.Create(ctx)
@@ -71,7 +70,7 @@ func (pds *DocumentStore) UpdateCollection(
 	if collection.Name == "" {
 		return errors.New("collection name is empty")
 	}
-	dbCollection := NewDocumentCollectionDAO(pds.Client, collection)
+	dbCollection := NewDocumentCollectionDAO(pds.appState, pds.Client, collection)
 	err := dbCollection.Update(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to Update collection: %w", err)
@@ -87,6 +86,7 @@ func (pds *DocumentStore) GetCollection(
 		return models.DocumentCollection{}, errors.New("collection name is empty")
 	}
 	dbCollection := NewDocumentCollectionDAO(
+		pds.appState,
 		pds.Client,
 		models.DocumentCollection{Name: collectionName},
 	)
@@ -123,6 +123,7 @@ func (pds *DocumentStore) DeleteCollection(
 		return errors.New("collection name is empty")
 	}
 	dbCollection := NewDocumentCollectionDAO(
+		pds.appState,
 		pds.Client,
 		models.DocumentCollection{Name: collectionName},
 	)
@@ -142,6 +143,7 @@ func (pds *DocumentStore) CreateDocuments(
 		return nil, errors.New("collection name is empty")
 	}
 	dbCollection := NewDocumentCollectionDAO(
+		pds.appState,
 		pds.Client,
 		models.DocumentCollection{Name: collectionName},
 	)
@@ -162,6 +164,7 @@ func (pds *DocumentStore) UpdateDocuments(
 		return errors.New("collection name is empty")
 	}
 	dbCollection := NewDocumentCollectionDAO(
+		pds.appState,
 		pds.Client,
 		models.DocumentCollection{Name: collectionName},
 	)
@@ -183,6 +186,7 @@ func (pds *DocumentStore) GetDocuments(
 		return nil, errors.New("collection name is empty")
 	}
 	dbCollection := NewDocumentCollectionDAO(
+		pds.appState,
 		pds.Client,
 		models.DocumentCollection{Name: collectionName},
 	)
@@ -203,6 +207,7 @@ func (pds *DocumentStore) DeleteDocuments(
 		return errors.New("collection name is empty")
 	}
 	dbCollection := NewDocumentCollectionDAO(
+		pds.appState,
 		pds.Client,
 		models.DocumentCollection{Name: collectionName},
 	)

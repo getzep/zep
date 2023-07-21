@@ -8,16 +8,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uptrace/bun/driver/pgdriver"
-
 	"github.com/getzep/zep/pkg/llms"
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/stdlib"
+	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"github.com/getzep/zep/pkg/models"
 
 	"github.com/google/uuid"
 	"github.com/pgvector/pgvector-go"
 	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/dialect/pgdialect"
 )
 
 type SessionSchema struct {
@@ -307,14 +307,28 @@ func migrateMessageEmbeddingDims(
 
 // NewPostgresConn creates a new bun.DB connection to a postgres database using the provided DSN.
 // The connection is configured to pool connections based on the number of PROCs available.
-func NewPostgresConn(dsn string) *bun.DB {
+func NewPostgresConn(appState *models.AppState) *bun.DB {
 	maxOpenConns := 4 * runtime.GOMAXPROCS(0)
+	sqldb := NewPgxDb(appState.Config.MemoryStore.Postgres.DSN)
+	sqldb.SetMaxOpenConns(maxOpenConns)
+	sqldb.SetMaxIdleConns(maxOpenConns)
+
+	appState.SqlDB = sqldb
+
+	db := bun.NewDB(sqldb, pgdialect.New())
+	return db
+}
+
+func NewPgxDb(dsn string) *sql.DB {
 	if dsn == "" {
 		log.Fatal("dsn may not be empty")
 	}
-	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
-	sqldb.SetMaxOpenConns(maxOpenConns)
-	sqldb.SetMaxIdleConns(maxOpenConns)
-	db := bun.NewDB(sqldb, pgdialect.New())
+
+	config, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		log.Fatalf("failed to parse dsn: %v", err)
+	}
+
+	db := stdlib.OpenDB(*config)
 	return db
 }
