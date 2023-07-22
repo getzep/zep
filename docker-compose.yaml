@@ -22,8 +22,8 @@ services:
   nlp:
     image: ghcr.io/getzep/zep-nlp-server:latest
     container_name: zep-nlp
-    environment:
-        - ENABLE_EMBEDDINGS=false
+    env_file:
+      - .env # You can set your embedding-related variables here
     restart: on-failure
     networks:
       - zep-network
