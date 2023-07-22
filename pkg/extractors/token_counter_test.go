@@ -1,10 +1,7 @@
 package extractors
 
 import (
-	"context"
 	"testing"
-
-	"github.com/getzep/zep/pkg/store/postgres"
 
 	"github.com/getzep/zep/internal"
 
@@ -14,26 +11,13 @@ import (
 )
 
 func TestTokenCountExtractor(t *testing.T) {
-	ctx := context.Background()
-
-	db := postgres.NewPostgresConn(testutils.GetDSN())
-	defer db.Close()
-	postgres.CleanDB(t, db)
-
-	cfg := testutils.NewTestConfig()
-
-	appState := &models.AppState{Config: cfg}
-
-	store, err := postgres.NewPostgresMemoryStore(appState, db)
-	assert.NoError(t, err)
-
-	appState.MemoryStore = store
+	store := appState.MemoryStore
 
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err)
 
 	err = store.PutMemory(
-		ctx,
+		testCtx,
 		appState,
 		sessionID,
 		&models.Memory{Messages: testutils.TestMessages[:5]},
@@ -41,7 +25,7 @@ func TestTokenCountExtractor(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	memories, err := store.GetMemory(ctx, appState, sessionID, 0)
+	memories, err := store.GetMemory(testCtx, appState, sessionID, 0)
 	assert.NoError(t, err)
 
 	messages := memories.Messages
@@ -53,10 +37,10 @@ func TestTokenCountExtractor(t *testing.T) {
 
 	tokenCountExtractor := NewTokenCountExtractor()
 
-	err = tokenCountExtractor.Extract(ctx, appState, messageEvent)
+	err = tokenCountExtractor.Extract(testCtx, appState, messageEvent)
 	assert.NoError(t, err)
 
-	memory, err := appState.MemoryStore.GetMemory(ctx, appState, messageEvent.SessionID, 0)
+	memory, err := appState.MemoryStore.GetMemory(testCtx, appState, messageEvent.SessionID, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, len(memory.Messages), len(messages))
 

@@ -1,11 +1,8 @@
 package extractors
 
 import (
-	"context"
 	"math"
 	"testing"
-
-	"github.com/getzep/zep/pkg/store/postgres"
 
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
@@ -14,18 +11,7 @@ import (
 )
 
 func TestEmbeddingExtractor_Extract(t *testing.T) {
-	ctx := context.Background()
-
-	db := postgres.NewPostgresConn(testutils.GetDSN())
-	postgres.CleanDB(t, db)
-
-	cfg := testutils.NewTestConfig()
-
-	appState := &models.AppState{Config: cfg}
-	store, err := postgres.NewPostgresMemoryStore(appState, db)
-	assert.NoError(t, err)
-	appState.MemoryStore = store
-	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
+	store := appState.MemoryStore
 
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err)
@@ -33,11 +19,17 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	testMessages := testutils.TestMessages[:5]
 
 	// Add new messages using appState.MemoryStore.PutMemory
-	err = store.PutMemory(ctx, appState, sessionID, &models.Memory{Messages: testMessages}, true)
+	err = store.PutMemory(
+		testCtx,
+		appState,
+		sessionID,
+		&models.Memory{Messages: testMessages},
+		true,
+	)
 	assert.NoError(t, err)
 
 	// Get messages that are missing embeddings using appState.MemoryStore.GetMessageVectors
-	memories, err := store.GetMemory(ctx, appState, sessionID, 0)
+	memories, err := store.GetMemory(testCtx, appState, sessionID, 0)
 	assert.NoError(t, err)
 	assert.True(t, len(memories.Messages) == len(testMessages))
 
@@ -57,7 +49,7 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 		Name:       "AdaEmbeddingV2",
 		Dimensions: 1536,
 	}
-	embeddings, err := llms.EmbedTexts(ctx, appState, model, texts)
+	embeddings, err := llms.EmbedTexts(testCtx, appState, model, texts)
 	assert.NoError(t, err)
 
 	expectedEmbeddingRecords := make([]models.MessageEmbedding, len(unembeddedMessages))
@@ -70,11 +62,11 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	}
 
 	embeddingExtractor := NewEmbeddingExtractor()
-	err = embeddingExtractor.Extract(ctx, appState, messageEvent)
+	err = embeddingExtractor.Extract(testCtx, appState, messageEvent)
 	assert.NoError(t, err)
 
 	embeddedMessages, err := store.GetMessageVectors(
-		ctx,
+		testCtx,
 		appState,
 		messageEvent.SessionID,
 	)

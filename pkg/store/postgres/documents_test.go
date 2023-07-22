@@ -19,7 +19,8 @@ func NewTestCollectionDAO(embeddingWidth int) DocumentCollectionDAO {
 			Name:                testutils.GenerateRandomString(10),
 			EmbeddingDimensions: embeddingWidth,
 		},
-		db: testDB,
+		db:       testDB,
+		appState: appState,
 	}
 }
 
@@ -110,7 +111,7 @@ func TestCollectionGetByName(t *testing.T) {
 		{
 			name:             "test when collection does not exist",
 			collection:       NewTestCollectionDAO(10),
-			expectedError:    "no rows in result set",
+			expectedError:    "not found",
 			expectedNotFound: true,
 		},
 	}
@@ -195,7 +196,7 @@ func TestDeleteCollection(t *testing.T) {
 		{
 			name:                "test when collection does not exist",
 			collection:          NewTestCollectionDAO(10),
-			expectedErrorString: "no rows in result set",
+			expectedErrorString: "not found",
 			expectedNotFound:    true,
 		},
 	}

@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/getzep/zep/pkg/extractors"
 	"github.com/getzep/zep/pkg/llms"
+
+	"github.com/getzep/zep/pkg/extractors"
 	"github.com/getzep/zep/pkg/store"
 
 	"github.com/getzep/zep/internal"
@@ -40,23 +41,25 @@ func TestMain(m *testing.M) {
 func setup() {
 	logger := internal.GetLogger()
 	internal.SetLogLevel(logrus.DebugLevel)
+
+	appState = &models.AppState{}
+	cfg := testutils.NewTestConfig()
+	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
+	appState.Config = cfg
+	appState.Config.MemoryStore.Postgres.DSN = testutils.GetDSN()
+
 	// Initialize the database connection
-	testDB = NewPostgresConn(testutils.GetDSN())
+	testDB = NewPostgresConn(appState)
 	testutils.SetUpDBLogging(testDB, logger)
 
 	// Initialize the test context
 	testCtx = context.Background()
 
-	cfg := testutils.NewTestConfig()
-
-	appState = &models.AppState{}
-	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
-	appState.Config = cfg
-	store, err := NewPostgresMemoryStore(appState, testDB)
+	memoryStore, err := NewPostgresMemoryStore(appState, testDB)
 	if err != nil {
 		panic(err)
 	}
-	appState.MemoryStore = store
+	appState.MemoryStore = memoryStore
 	extractors.Initialize(appState)
 
 	err = ensurePostgresSetup(testCtx, appState, testDB)
