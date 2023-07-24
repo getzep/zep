@@ -1,8 +1,6 @@
 package models
 
 import (
-	"database/sql"
-
 	"github.com/getzep/zep/config"
 	"github.com/getzep/zep/pkg/llms/openairetryclient"
 )
@@ -14,6 +12,4 @@ type AppState struct {
 	MemoryStore   MemoryStore[any]
 	DocumentStore DocumentStore[any]
 	Config        *config.Config
-	Queues        map[string]*Queue
-	SqlDB         *sql.DB
 }

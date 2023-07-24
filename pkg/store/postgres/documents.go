@@ -2,14 +2,9 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/ThreeDotsLabs/watermill"
-
-	"github.com/ThreeDotsLabs/watermill/message"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/google/uuid"
@@ -214,27 +209,9 @@ func (dc *DocumentCollectionDAO) CreateDocuments(
 		return nil, fmt.Errorf("failed to insert documents: %w", err)
 	}
 
-	// return slice of uuids and determine if we need to create embeddings
-	createEmbeddings := true
 	uuids := make([]uuid.UUID, len(documents))
 	for i := range documents {
 		uuids[i] = documents[i].UUID
-		if documents[i].Embedding != nil {
-			createEmbeddings = false
-		}
-	}
-
-	if createEmbeddings {
-		queue := dc.appState.Queues["embeddings"]
-		publisher := queue.Publisher
-		messages, err := messagesFromDocuments(documents)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create messages from documents: %w", err)
-		}
-		err = publisher.Publish(queue.PublishTopic, messages...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to publish messages: %w", err)
-		}
 	}
 
 	return uuids, nil
@@ -467,25 +444,4 @@ func generateDocumentTableName(collection *DocumentCollectionDAO) (string, error
 		return "", fmt.Errorf("table name too long: %d > 63 char maximum", len(tableName))
 	}
 	return tableName, nil
-}
-
-func messagesFromDocuments(documents []models.Document) ([]*message.Message, error) {
-	messages := make([]*message.Message, len(documents))
-
-	for i := range documents {
-		event := models.DocumentEmbeddingEvent{
-			UUID:    documents[i].UUID,
-			Content: documents[i].Content,
-		}
-		payload, err := json.Marshal(event)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal payload: %w", err)
-		}
-		msg := message.NewMessage(
-			watermill.NewUUID(),
-			payload,
-		)
-		messages[i] = msg
-	}
-	return messages, nil
 }

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/uptrace/bun/driver/pgdriver"
+
 	"github.com/getzep/zep/pkg/llms"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/stdlib"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"github.com/getzep/zep/pkg/models"
@@ -235,6 +235,19 @@ func createDocumentTable(
 	if err != nil {
 		return fmt.Errorf("error creating document table: %w", err)
 	}
+
+	// Create document_id indexe
+	_, err = db.NewCreateIndex().
+		Model(schema).
+		// override default table name
+		ModelTableExpr(tableName).
+		Index(tableName + "document_id_idx").
+		Column("document_id").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("error creating session_session_id_idx: %w", err)
+	}
+
 	return nil
 }
 
@@ -309,26 +322,13 @@ func migrateMessageEmbeddingDims(
 // The connection is configured to pool connections based on the number of PROCs available.
 func NewPostgresConn(appState *models.AppState) *bun.DB {
 	maxOpenConns := 4 * runtime.GOMAXPROCS(0)
-	sqldb := NewPgxDb(appState.Config.MemoryStore.Postgres.DSN)
+
+	sqldb := sql.OpenDB(
+		pgdriver.NewConnector(pgdriver.WithDSN(appState.Config.MemoryStore.Postgres.DSN)),
+	)
 	sqldb.SetMaxOpenConns(maxOpenConns)
 	sqldb.SetMaxIdleConns(maxOpenConns)
 
-	appState.SqlDB = sqldb
-
 	db := bun.NewDB(sqldb, pgdialect.New())
-	return db
-}
-
-func NewPgxDb(dsn string) *sql.DB {
-	if dsn == "" {
-		log.Fatal("dsn may not be empty")
-	}
-
-	config, err := pgx.ParseConfig(dsn)
-	if err != nil {
-		log.Fatalf("failed to parse dsn: %v", err)
-	}
-
-	db := stdlib.OpenDB(*config)
 	return db
 }

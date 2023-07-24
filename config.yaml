@@ -16,7 +16,7 @@ extractors:
   entities:
     enabled: true
   intent:
-    enabled: true
+    enabled: false
   embeddings:
     enabled: true
     dimensions: 1536

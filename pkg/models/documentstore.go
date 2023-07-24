@@ -77,6 +77,6 @@ type DocumentStore[T any] interface {
 	// OnStart is called when the application starts. This is a good place to initialize any resources or configs that
 	// are required by the MemoryStore implementation.
 	OnStart(ctx context.Context) error
-	// Attach is used by Extractors to register themselves with the MemoryStore. This allows the MemoryStore to notify
-	// the Extractors when new occur.
+	// Shutdown is called when the application is shutting down. This is a good place to clean up any resources or configs
+	Shutdown(ctx context.Context) error
 }

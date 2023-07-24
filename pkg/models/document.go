@@ -18,6 +18,7 @@ type DocumentCollection struct {
 	TableName           string                 `bun:",notnull"`
 	EmbeddingModelName  string                 `bun:",notnull"`
 	EmbeddingDimensions int                    `bun:",notnull"`
+	IsAutoEmbedded      bool                   `bun:",notnull"` // Is the collection automatically embedded by Zep?
 	DistanceFunction    string                 `bun:",notnull"` // Distance function to use for index
 	IsNormalized        bool                   `bun:",notnull"` // Are the embeddings normalized?
 	IsIndexed           bool                   `bun:",notnull"` // Has an index been created on the collection table?
@@ -29,8 +30,9 @@ type CreateDocumentCollectionRequest struct {
 	Metadata            map[string]interface{} `json:"metadata,omitempty"`
 	EmbeddingModelName  string                 `json:"embedding_model_name"`
 	EmbeddingDimensions int                    `json:"embedding_dimensions" validate:"required,numeric,min=8,max=2000"`
-	DistanceFunction    string                 `json:"distance_function"`                                 // Distance function to use for index
+	IsAutoEmbedded      bool                   `json:"is_auto_embedded"     validate:"required,boolean"`
 	IsNormalized        bool                   `json:"is_normalized"        validate:"boolean,omitempty"` // Are the embeddings normalized?
+	DistanceFunction    string                 `json:"distance_function"`                                 // Distance function to use for index
 }
 
 type UpdateDocumentCollectionRequest struct {
@@ -47,6 +49,7 @@ type DocumentCollectionResponse struct {
 	Metadata            map[string]interface{} `json:"metadata,omitempty"`
 	EmbeddingModelName  string                 `json:"embedding_model_name,omitempty"`
 	EmbeddingDimensions int                    `json:"embedding_dimensions"`
+	IsAutoEmbedded      bool                   `json:"is_auto_embedded"`
 	IsNormalized        bool                   `json:"is_normalized"`
 	IsIndexed           bool                   `json:"is_indexed"`
 }
@@ -61,6 +64,7 @@ type DocumentBase struct {
 	DocumentID string                 `bun:",unique,nullzero"`
 	Content    string                 `bun:",nullzero"`
 	Metadata   map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
+	IsEmbedded bool                   `bun:",nullzero"`
 }
 
 type Document struct {
@@ -103,15 +107,18 @@ type DocumentResponse struct {
 	Content    string                 `json:"content"`
 	Metadata   map[string]interface{} `json:"metadata,omitempty"`
 	Embedding  []float32              `json:"embedding"`
+	IsEmbedded bool                   `json:"is_embedded"`
 }
 
-type DocumentEmbeddingEvent struct {
-	UUID    uuid.UUID `json:"uuid"`
-	Content string    `json:"content"`
+type DocEmbeddingTask struct {
+	UUID           uuid.UUID `json:"uuid"`
+	CollectionName string    `json:"collection_name"`
+	Content        string    `json:"content"`
 }
 
-type DocumentEmbeddingEventProcessed struct {
-	UUID        uuid.UUID `json:"uuid"`
-	ProcessedAt time.Time `json:"time"`
-	Embedding   []float32 `json:"embedding,omitempty" bun:"type:vector,nullzero"`
+type DocEmbeddingUpdate struct {
+	UUID           uuid.UUID `json:"uuid"`
+	CollectionName string    `json:"collection_name"`
+	ProcessedAt    time.Time `json:"time"`
+	Embedding      []float32 `json:"embedding,omitempty" bun:"type:vector,nullzero"`
 }

@@ -8,8 +8,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/getzep/zep/pkg/queue"
-
 	"github.com/getzep/zep/pkg/store/postgres"
 
 	"github.com/getzep/zep/pkg/auth"
@@ -68,12 +66,6 @@ func NewAppState(cfg *config.Config) *models.AppState {
 	}
 
 	initializeStores(appState)
-
-	// Initialize the queues and routers after the stores have been initialized
-	// We do this here because the routers require a SQL connection
-	// Runs in a goroutine as Run is blocking
-	go initializeSQLQueues(ctx, appState)
-
 	setupSignalHandler(appState)
 	setupPurgeProcessor(ctx, appState)
 
@@ -132,29 +124,6 @@ func initializeStores(appState *models.AppState) {
 	log.Info("Using memory store: ", appState.Config.MemoryStore.Type)
 }
 
-// initializeSQLQueues initializes the queues and routers. It's called from initializeStores as it
-// requires a Store SQL connection.
-func initializeSQLQueues(ctx context.Context, appState *models.AppState) {
-	if appState.SqlDB == nil {
-		log.Fatal("SqlDB is not yet initialized")
-	}
-
-	embeddingsQueue := queue.NewQueue("embeddings")
-	if appState.Queues == nil {
-		appState.Queues = make(map[string]*models.Queue)
-	}
-	appState.Queues[embeddingsQueue.Name] = &embeddingsQueue
-
-	embeddingsRouter, err := queue.NewEmbeddingRouter(appState)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err := embeddingsRouter.Run(ctx); err != nil {
-		log.Fatal(err)
-	}
-}
-
 func pgDebugLogging(db *bun.DB) {
 	db.AddQueryHook(logrusbun.NewQueryHook(logrusbun.QueryHookOptions{
 		LogSlow:         time.Second,
@@ -176,6 +145,9 @@ func setupSignalHandler(appState *models.AppState) {
 		<-signalCh
 		if err := appState.MemoryStore.Close(); err != nil {
 			log.Errorf("Error closing MemoryStore connection: %v", err)
+		}
+		if err := appState.DocumentStore.Shutdown(context.Background()); err != nil {
+			log.Errorf("Error shutting down DocumentStore: %v", err)
 		}
 		os.Exit(0)
 	}()
