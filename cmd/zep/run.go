@@ -24,9 +24,9 @@ import (
 )
 
 const (
-	ErrMemoryStoreTypeNotSet = "memory_store.type must be set"
-	ErrPostgresDSNNotSet     = "memory_store.postgres.dsn must be set"
-	MemoryStoreTypePostgres  = "postgres"
+	ErrStoreTypeNotSet   = "store.type must be set"
+	ErrPostgresDSNNotSet = "store.postgres.dsn must be set"
+	StoreTypePostgres    = "postgres"
 )
 
 // run is the entrypoint for the zep server
@@ -43,9 +43,6 @@ func run() {
 	config.SetLogLevel(cfg)
 	appState := NewAppState(cfg)
 
-	// Init the extractors, which will register themselves with the MemoryStore
-	extractors.Initialize(appState)
-
 	srv := server.Create(appState)
 
 	log.Infof("Listening on: %s", srv.Addr)
@@ -55,8 +52,8 @@ func run() {
 	}
 }
 
-// NewAppState creates an AppState struct from the config file / ENV, initializes the memory store,
-// and creates the OpenAI client
+// NewAppState creates an AppState struct from the config file / ENV, initializes the stores,
+// extractors, and creates the OpenAI client
 func NewAppState(cfg *config.Config) *models.AppState {
 	ctx := context.Background()
 
@@ -65,8 +62,15 @@ func NewAppState(cfg *config.Config) *models.AppState {
 		Config:       cfg,
 	}
 
+	// TODO: make channels here.
+
 	initializeStores(appState)
+
+	// Init the extractors, which will register themselves with the MemoryStore
+	extractors.Initialize(appState)
+
 	setupSignalHandler(appState)
+
 	setupPurgeProcessor(ctx, appState)
 
 	return appState
@@ -84,16 +88,16 @@ func handleCLIOptions(cfg *config.Config) {
 	}
 }
 
-// TODO: refactor to include document store switch
 // initializeStores initializes the memory and document stores based on the config file / ENV
+// TODO: refactor to include document store switch
 func initializeStores(appState *models.AppState) {
-	if appState.Config.MemoryStore.Type == "" {
-		log.Fatal(ErrMemoryStoreTypeNotSet)
+	if appState.Config.Store.Type == "" {
+		log.Fatal(ErrStoreTypeNotSet)
 	}
 
-	switch appState.Config.MemoryStore.Type {
-	case MemoryStoreTypePostgres:
-		if appState.Config.MemoryStore.Postgres.DSN == "" {
+	switch appState.Config.Store.Type {
+	case StoreTypePostgres:
+		if appState.Config.Store.Postgres.DSN == "" {
 			log.Fatal(ErrPostgresDSNNotSet)
 		}
 		db := postgres.NewPostgresConn(appState)
@@ -115,13 +119,13 @@ func initializeStores(appState *models.AppState) {
 	default:
 		log.Fatal(
 			fmt.Sprintf(
-				"memory_store.type (%s) is not supported",
-				appState.Config.MemoryStore.Type,
+				"store.type (%s) is not supported",
+				appState.Config.Store.Type,
 			),
 		)
 	}
 
-	log.Info("Using memory store: ", appState.Config.MemoryStore.Type)
+	log.Info("Using memory store: ", appState.Config.Store.Type)
 }
 
 func pgDebugLogging(db *bun.DB) {
@@ -136,8 +140,7 @@ func pgDebugLogging(db *bun.DB) {
 	}))
 }
 
-// TODO: refactor to include document store if separate persistence layer
-// setupSignalHandler sets up a signal handler to close the MemoryStore connection on termination
+// setupSignalHandler sets up a signal handler to close the store connections and channels on termination
 func setupSignalHandler(appState *models.AppState) {
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)

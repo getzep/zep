@@ -2,7 +2,6 @@ package llms
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/getzep/zep/pkg/models"
 )
@@ -11,27 +10,42 @@ func EmbedTexts(
 	ctx context.Context,
 	appState *models.AppState,
 	model *models.EmbeddingModel,
+	documentType string,
 	text []string,
 ) ([][]float32, error) {
 	if len(text) == 0 {
 		return nil, NewLLMError("no text to embed", nil)
 	}
 
-	switch model.Name {
-	case "AdaEmbeddingV2":
+	switch model.Service {
+	case "openai":
 		return EmbedTextsOpenAI(ctx, appState, text)
+	case "local":
+		return embedTextsLocal(ctx, appState, documentType, text)
 	default:
-		return embedTextsLocal(ctx, appState, text)
+		return nil, NewLLMError("invalid embedding service", nil)
 	}
 }
 
-func GetMessageEmbeddingModel(appState *models.AppState) (*models.EmbeddingModel, error) {
-	model := appState.Config.Extractors.Embeddings.Model
-	if model == "AdaEmbeddingV2" || model == "local" {
+func GetMessageEmbeddingModel(
+	appState *models.AppState,
+	documentType string,
+) (*models.EmbeddingModel, error) {
+	switch documentType {
+	case "message":
+		config := appState.Config.Extractors.Messages.Embeddings
 		return &models.EmbeddingModel{
-			Name:       model,
-			Dimensions: appState.Config.Extractors.Embeddings.Dimensions,
+			Service:    config.Service,
+			Dimensions: config.Dimensions,
 		}, nil
+	case "document":
+		config := appState.Config.Extractors.Documents.Embeddings
+		return &models.EmbeddingModel{
+			Service:    config.Service,
+			Dimensions: config.Dimensions,
+		}, nil
+	default:
+		return nil, NewLLMError("invalid document type", nil)
+
 	}
-	return nil, fmt.Errorf("unknown embedding model: %s", model)
 }

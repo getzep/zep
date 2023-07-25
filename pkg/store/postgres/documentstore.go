@@ -28,12 +28,12 @@ func NewDocumentStore(
 	ctx, done := context.WithCancel(context.Background())
 	// limit the size of the update channel to 100. The updater will block
 	// so we don't overwhelm the database.
-	docEmbedUppdateCh := make(<-chan []models.DocEmbeddingUpdate, 100)
+	docEmbedUpdateCh := make(<-chan []models.DocEmbeddingUpdate, 100)
 	pds := &DocumentStore{
 		store.BaseDocumentStore[*bun.DB]{Client: client},
 		appState,
 		docEmbedTaskCh,
-		docEmbedUppdateCh,
+		docEmbedUpdateCh,
 		done,
 	}
 
@@ -72,6 +72,7 @@ func (pds *DocumentStore) OnStart(
 
 func (pds *DocumentStore) Shutdown(_ context.Context) error {
 	pds.done()
+	close(pds.docEmbedTaskCh)
 	return nil
 }
 

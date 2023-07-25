@@ -21,6 +21,7 @@ func (ee *EmbeddingExtractor) Extract(
 	appState *models.AppState,
 	messageEvent *models.MessageEvent,
 ) error {
+	messageType := "message"
 	sessionID := messageEvent.SessionID
 	sessionMutex := ee.getSessionMutex(sessionID)
 	sessionMutex.Lock()
@@ -28,12 +29,12 @@ func (ee *EmbeddingExtractor) Extract(
 
 	texts := messageToStringSlice(messageEvent.Messages, false)
 
-	model, err := llms.GetMessageEmbeddingModel(appState)
+	model, err := llms.GetMessageEmbeddingModel(appState, messageType)
 	if err != nil {
 		return NewExtractorError("EmbeddingExtractor get message embedding model failed", err)
 	}
 
-	embeddings, err := llms.EmbedTexts(ctx, appState, model, texts)
+	embeddings, err := llms.EmbedTexts(ctx, appState, model, messageType, texts)
 	if err != nil {
 		return NewExtractorError("EmbeddingExtractor embed messages failed", err)
 	}

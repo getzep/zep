@@ -17,9 +17,18 @@ import (
 func embedTextsLocal(
 	ctx context.Context,
 	appState *models.AppState,
+	documentType string,
 	texts []string,
 ) ([][]float32, error) {
-	url := appState.Config.NLP.ServerURL + "/embeddings"
+	if len(texts) == 0 {
+		return nil, nil
+	}
+
+	if documentType != "message" && documentType != "document" {
+		return nil, fmt.Errorf("invalid document type: %s", documentType)
+	}
+
+	url := appState.Config.NLP.ServerURL + "/embeddings/" + documentType
 
 	documents := make([]models.MessageEmbedding, len(texts))
 	for i, text := range texts {

@@ -7,23 +7,31 @@ llm:
   openai_endpoint:
   openai_org_id:
 nlp:
-  server_url: "http://localhost:8080"
+  server_url: "http://localhost:5557"
 memory:
   message_window: 12
 extractors:
-  summarizer:
-    enabled: true
-  entities:
-    enabled: true
-  intent:
-    enabled: false
-  embeddings:
-    enabled: true
-    dimensions: 1536
-    model: "AdaEmbeddingV2"
-#    dimensions: 768
-#    model: "local"
-memory_store:
+  documents:
+    embeddings:
+      enabled: true
+      dimensions: 384
+      service: "local"
+#      dimensions: 1536
+#      service: "openai"
+  messages:
+    summarizer:
+      enabled: true
+    entities:
+      enabled: true
+    intent:
+      enabled: false
+    embeddings:
+      enabled: true
+      dimensions: 384
+      service: "local"
+#      dimensions: 1536
+#      service: "openai"
+store:
   type: "postgres"
   postgres:
     dsn: "postgres://postgres:postgres@localhost:5432/?sslmode=disable"

@@ -281,10 +281,11 @@ func ensurePostgresSetup(
 		}
 	}
 
-	model, err := llms.GetMessageEmbeddingModel(appState)
+	model, err := llms.GetMessageEmbeddingModel(appState, "message")
 	if err != nil {
 		return fmt.Errorf("error getting message embedding model: %w", err)
 	}
+	// we keep this at 1536 for legacy reasons, despite the default now being 384
 	if model.Dimensions != 1536 {
 		err := migrateMessageEmbeddingDims(ctx, db, model.Dimensions)
 		if err != nil {
@@ -324,7 +325,7 @@ func NewPostgresConn(appState *models.AppState) *bun.DB {
 	maxOpenConns := 4 * runtime.GOMAXPROCS(0)
 
 	sqldb := sql.OpenDB(
-		pgdriver.NewConnector(pgdriver.WithDSN(appState.Config.MemoryStore.Postgres.DSN)),
+		pgdriver.NewConnector(pgdriver.WithDSN(appState.Config.Store.Postgres.DSN)),
 	)
 	sqldb.SetMaxOpenConns(maxOpenConns)
 	sqldb.SetMaxIdleConns(maxOpenConns)

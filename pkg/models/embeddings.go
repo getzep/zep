@@ -3,7 +3,7 @@ package models
 import "github.com/google/uuid"
 
 type EmbeddingModel struct {
-	Name         string `json:"name"`
+	Service      string `json:"service"`
 	Dimensions   int    `json:"dimensions"`
 	IsNormalized bool   `json:"normalized"`
 }
