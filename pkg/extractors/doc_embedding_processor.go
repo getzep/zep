@@ -3,6 +3,7 @@ package extractors
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/getzep/zep/pkg/llms"
@@ -13,18 +14,16 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
-const EmbeddingTaskChBuffer = 100
-
 // TODO move pool size and buffer to config
 func NewDocEmbeddingProcessor(
 	appState *models.AppState,
-	EmbeddingTaskCh chan []models.DocEmbeddingTask,
-	EmbeddingUpdateCh chan []models.DocEmbeddingUpdate,
+	embeddingTaskCh chan []models.DocEmbeddingTask,
+	embeddingUpdateCh chan []models.DocEmbeddingUpdate,
 ) *DocEmbeddingProcessor {
 	return &DocEmbeddingProcessor{
 		appState:          appState,
-		EmbeddingTaskCh:   EmbeddingTaskCh,
-		EmbeddingUpdateCh: EmbeddingUpdateCh,
+		EmbeddingTaskCh:   embeddingTaskCh,
+		EmbeddingUpdateCh: embeddingUpdateCh,
 		PoolSize:          1,
 		PoolBuffer:        100,
 	}
@@ -39,6 +38,7 @@ type DocEmbeddingProcessor struct {
 	Pool              *pond.WorkerPool
 	PoolSize          int
 	PoolBuffer        int
+	once              sync.Once
 }
 
 func (ep *DocEmbeddingProcessor) Run(
@@ -51,10 +51,11 @@ func (ep *DocEmbeddingProcessor) Run(
 	}
 	ep.model = model
 
-	go func() {
-		ep.processor(ctx)
-	}()
-
+	ep.once.Do(func() {
+		go func() {
+			ep.processor(ctx)
+		}()
+	})
 	log.Info("started document embedding processor")
 
 	return nil

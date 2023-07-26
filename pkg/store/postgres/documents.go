@@ -265,7 +265,7 @@ func (dc *DocumentCollectionDAO) UpdateDocuments(
 		columns = append(columns, "metadata")
 	}
 	if updateEmbedding {
-		columns = append(columns, "embedding")
+		columns = append(columns, "embedding", "is_embedded")
 	}
 
 	err := dc.GetByName(ctx)
@@ -325,7 +325,7 @@ func (dc *DocumentCollectionDAO) GetDocuments(
 	query := dc.db.NewSelect().
 		Model(&documents).
 		ModelTableExpr(dc.TableName+" AS document").
-		Column("uuid", "created_at", "content", "metadata", "document_id", "embedding")
+		Column("uuid", "created_at", "content", "metadata", "document_id", "embedding", "is_embedded")
 
 	if len(uuids) > 0 {
 		query = query.Where("uuid IN (?)", bun.In(uuids))

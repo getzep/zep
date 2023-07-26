@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/getzep/zep/pkg/store"
 
@@ -27,20 +28,21 @@ func NewDocumentStore(
 
 	// Create context that we'll use to shut down the document embedding updater
 	ctx, done := context.WithCancel(context.Background())
-	pds := &DocumentStore{
+	ds := &DocumentStore{
 		store.BaseDocumentStore[*bun.DB]{Client: client},
 		appState,
 		docEmbeddingUpdateTaskCh,
 		docEmbeddingTaskCh,
 		done,
+		sync.Once{},
 	}
 
-	err := pds.OnStart(ctx)
+	err := ds.OnStart(ctx)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to run OnInit %w", err)
 	}
-	return pds, nil
+	return ds, nil
 }
 
 // Force compiler to validate that DocumentStore implements the DocumentStore interface.
@@ -52,40 +54,41 @@ type DocumentStore struct {
 	DocEmbeddingUpdateTaskCh chan []models.DocEmbeddingUpdate
 	DocEmbeddingTaskCh       chan<- []models.DocEmbeddingTask
 	done                     context.CancelFunc
+	startOnce                sync.Once
 }
 
-func (pds *DocumentStore) OnStart(
+func (ds *DocumentStore) OnStart(
 	ctx context.Context,
 ) error {
 	// start the document embedding updater in a goroutine
-	go func() {
-		err := pds.documentEmbeddingUpdater(ctx)
-		if err != nil {
-			log.Fatalf("failed to start document embedding updater: %v", err)
-		}
-		log.Info("Document embedding updater started")
-	}()
-
+	ds.startOnce.Do(func() {
+		go func() {
+			log.Info("starting document embedding updater")
+			err := ds.documentEmbeddingUpdater(ctx)
+			if err != nil {
+				log.Fatalf("failed to start document embedding updater: %v", err)
+			}
+		}()
+	})
 	return nil
 }
 
-func (pds *DocumentStore) Shutdown(_ context.Context) error {
-	defer close(pds.DocEmbeddingUpdateTaskCh)
-	pds.done()
+func (ds *DocumentStore) Shutdown(_ context.Context) error {
+	ds.done()
 	return nil
 }
 
-func (pds *DocumentStore) GetClient() *bun.DB {
-	return pds.Client
+func (ds *DocumentStore) GetClient() *bun.DB {
+	return ds.Client
 }
 
-func (pds *DocumentStore) CreateCollection(
+func (ds *DocumentStore) CreateCollection(
 	ctx context.Context,
 	collection models.DocumentCollection,
 ) error {
-	dbCollection := NewDocumentCollectionDAO(pds.appState, pds.Client, collection)
+	dbCollection := NewDocumentCollectionDAO(ds.appState, ds.Client, collection)
 
-	dbCollection.db = pds.Client
+	dbCollection.db = ds.Client
 	err := dbCollection.Create(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to Create collection: %w", err)
@@ -93,14 +96,14 @@ func (pds *DocumentStore) CreateCollection(
 	return nil
 }
 
-func (pds *DocumentStore) UpdateCollection(
+func (ds *DocumentStore) UpdateCollection(
 	ctx context.Context,
 	collection models.DocumentCollection,
 ) error {
 	if collection.Name == "" {
 		return errors.New("collection name is empty")
 	}
-	dbCollection := NewDocumentCollectionDAO(pds.appState, pds.Client, collection)
+	dbCollection := NewDocumentCollectionDAO(ds.appState, ds.Client, collection)
 	err := dbCollection.Update(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to Update collection: %w", err)
@@ -108,7 +111,7 @@ func (pds *DocumentStore) UpdateCollection(
 	return nil
 }
 
-func (pds *DocumentStore) GetCollection(
+func (ds *DocumentStore) GetCollection(
 	ctx context.Context,
 	collectionName string,
 ) (models.DocumentCollection, error) {
@@ -116,8 +119,8 @@ func (pds *DocumentStore) GetCollection(
 		return models.DocumentCollection{}, errors.New("collection name is empty")
 	}
 	dbCollection := NewDocumentCollectionDAO(
-		pds.appState,
-		pds.Client,
+		ds.appState,
+		ds.Client,
 		models.DocumentCollection{Name: collectionName},
 	)
 
@@ -133,10 +136,10 @@ func (pds *DocumentStore) GetCollection(
 	return dbCollection.DocumentCollection, nil
 }
 
-func (pds *DocumentStore) GetCollectionList(
+func (ds *DocumentStore) GetCollectionList(
 	ctx context.Context,
 ) ([]models.DocumentCollection, error) {
-	dbCollection := DocumentCollectionDAO{db: pds.Client}
+	dbCollection := DocumentCollectionDAO{db: ds.Client}
 	dbCollections, err := dbCollection.GetAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get collection list: %w", err)
@@ -145,7 +148,7 @@ func (pds *DocumentStore) GetCollectionList(
 	return dbCollections, nil
 }
 
-func (pds *DocumentStore) DeleteCollection(
+func (ds *DocumentStore) DeleteCollection(
 	ctx context.Context,
 	collectionName string,
 ) error {
@@ -153,8 +156,8 @@ func (pds *DocumentStore) DeleteCollection(
 		return errors.New("collection name is empty")
 	}
 	dbCollection := NewDocumentCollectionDAO(
-		pds.appState,
-		pds.Client,
+		ds.appState,
+		ds.Client,
 		models.DocumentCollection{Name: collectionName},
 	)
 	err := dbCollection.Delete(ctx)
@@ -164,7 +167,7 @@ func (pds *DocumentStore) DeleteCollection(
 	return nil
 }
 
-func (pds *DocumentStore) CreateDocuments(
+func (ds *DocumentStore) CreateDocuments(
 	ctx context.Context,
 	collectionName string,
 	documents []models.Document,
@@ -173,8 +176,8 @@ func (pds *DocumentStore) CreateDocuments(
 		return nil, errors.New("collection name is empty")
 	}
 	collection := NewDocumentCollectionDAO(
-		pds.appState,
-		pds.Client,
+		ds.appState,
+		ds.Client,
 		models.DocumentCollection{Name: collectionName},
 	)
 
@@ -218,13 +221,13 @@ func (pds *DocumentStore) CreateDocuments(
 	// if the collection is configured to auto-embed, send the documents
 	// to the document embedding tasker
 	if collection.IsAutoEmbedded {
-		pds.documentEmbeddingTasker(collectionName, documents)
+		ds.documentEmbeddingTasker(collectionName, documents)
 	}
 
 	return uuids, nil
 }
 
-func (pds *DocumentStore) UpdateDocuments(
+func (ds *DocumentStore) UpdateDocuments(
 	ctx context.Context,
 	collectionName string,
 	documents []models.Document,
@@ -233,8 +236,8 @@ func (pds *DocumentStore) UpdateDocuments(
 		return errors.New("collection name is empty")
 	}
 	dbCollection := NewDocumentCollectionDAO(
-		pds.appState,
-		pds.Client,
+		ds.appState,
+		ds.Client,
 		models.DocumentCollection{Name: collectionName},
 	)
 	err := dbCollection.UpdateDocuments(ctx, documents)
@@ -245,7 +248,7 @@ func (pds *DocumentStore) UpdateDocuments(
 	return nil
 }
 
-func (pds *DocumentStore) GetDocuments(
+func (ds *DocumentStore) GetDocuments(
 	ctx context.Context,
 	collectionName string,
 	uuids []uuid.UUID,
@@ -255,8 +258,8 @@ func (pds *DocumentStore) GetDocuments(
 		return nil, errors.New("collection name is empty")
 	}
 	dbCollection := NewDocumentCollectionDAO(
-		pds.appState,
-		pds.Client,
+		ds.appState,
+		ds.Client,
 		models.DocumentCollection{Name: collectionName},
 	)
 	documents, err := dbCollection.GetDocuments(ctx, 0, uuids, documentIDs)
@@ -267,7 +270,7 @@ func (pds *DocumentStore) GetDocuments(
 	return documents, nil
 }
 
-func (pds *DocumentStore) DeleteDocuments(
+func (ds *DocumentStore) DeleteDocuments(
 	ctx context.Context,
 	collectionName string,
 	documentUUID []uuid.UUID,
@@ -276,8 +279,8 @@ func (pds *DocumentStore) DeleteDocuments(
 		return errors.New("collection name is empty")
 	}
 	dbCollection := NewDocumentCollectionDAO(
-		pds.appState,
-		pds.Client,
+		ds.appState,
+		ds.Client,
 		models.DocumentCollection{Name: collectionName},
 	)
 	err := dbCollection.DeleteDocumentsByUUID(ctx, documentUUID)
@@ -288,7 +291,7 @@ func (pds *DocumentStore) DeleteDocuments(
 	return nil
 }
 
-func (pds *DocumentStore) SearchCollection(
+func (ds *DocumentStore) SearchCollection(
 	ctx context.Context,
 	query *models.DocumentSearchPayload,
 	limit int,
@@ -299,7 +302,7 @@ func (pds *DocumentStore) SearchCollection(
 	return nil, errors.New("not implemented")
 }
 
-func (pds *DocumentStore) documentEmbeddingTasker(
+func (ds *DocumentStore) documentEmbeddingTasker(
 	collectionName string,
 	documents []models.Document,
 ) {
@@ -312,21 +315,29 @@ func (pds *DocumentStore) documentEmbeddingTasker(
 		}
 	}
 
-	pds.DocEmbeddingTaskCh <- tasks
+	log.Infof("sending %d documents to document embedding updater", len(tasks))
+	ds.DocEmbeddingTaskCh <- tasks
 }
 
-func (pds *DocumentStore) documentEmbeddingUpdater(
+func (ds *DocumentStore) documentEmbeddingUpdater(
 	ctx context.Context,
 ) error {
+	defer close(ds.DocEmbeddingUpdateTaskCh)
+	log.Info("started document embedding updater")
 	for {
 		select {
 		case <-ctx.Done():
 			log.Info("document embedding updater shutting down")
 			return nil
-		case updates := <-pds.DocEmbeddingUpdateTaskCh:
+		case updates := <-ds.DocEmbeddingUpdateTaskCh:
+			log.Debug("document embedding updater received update task")
+			if len(updates) == 0 {
+				log.Warning("document embedding updater received empty update list")
+			}
+			log.Debugf("document embedding updater received %d updates", len(updates))
 			dbCollection := NewDocumentCollectionDAO(
-				pds.appState,
-				pds.Client,
+				ds.appState,
+				ds.Client,
 				// TODO: this assumption is hacky. Fix this.
 				models.DocumentCollection{Name: updates[0].CollectionName},
 			)
@@ -346,7 +357,8 @@ func documentsFromEmbeddingUpdates(updates []models.DocEmbeddingUpdate) []models
 	for i := range updates {
 		d := models.Document{
 			DocumentBase: models.DocumentBase{
-				UUID: updates[i].UUID,
+				UUID:       updates[i].UUID,
+				IsEmbedded: true,
 			},
 			Embedding: updates[i].Embedding,
 		}

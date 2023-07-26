@@ -106,6 +106,7 @@ func initializeStores(appState *models.AppState) {
 		if err != nil {
 			log.Fatalf("unable to create memoryStore %v", err)
 		}
+		log.Debug("memoryStore created")
 
 		// create channels for the document embedding processor
 		// TODO: make this a configurable buffer size
@@ -124,6 +125,7 @@ func initializeStores(appState *models.AppState) {
 		if err != nil {
 			log.Fatalf("unable to create documentStore: %v", err)
 		}
+		log.Debug("documentStore created")
 
 		// start the document embedding processor
 		embeddingProcessor := extractors.NewDocEmbeddingProcessor(
@@ -135,6 +137,7 @@ func initializeStores(appState *models.AppState) {
 		if err != nil {
 			log.Fatalf("unable to start embeddingProcessor: %v", err)
 		}
+		log.Debug("embeddingProcessor started")
 
 		appState.MemoryStore = memoryStore
 		appState.DocumentStore = documentStore

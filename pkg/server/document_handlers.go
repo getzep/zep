@@ -749,6 +749,7 @@ func documentResponseFromDocument(document models.Document) models.DocumentRespo
 		Content:    document.Content,
 		Metadata:   document.Metadata,
 		Embedding:  document.Embedding,
+		IsEmbedded: document.IsEmbedded,
 	}
 }
 
