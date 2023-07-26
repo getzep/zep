@@ -5,7 +5,8 @@ Content-Type: application/json
 {
   "name": "testcollection",
   "description": "Test collection",
-  "embedding_dimensions": 8
+  "embedding_dimensions": 384,
+  "is_auto_embedded": true
 }
 
 
@@ -62,7 +63,7 @@ Content-Type: application/json
 GET {{host}}/api/v1/collection/testcollection/document/uuid/3fea4c7b-a195-4107-ac4f-d8c4a33fa250
 
 ### Update a Document Metadata and DocumentID
-PATCH {{host}}/api/v1/collection/testcollection/document/uuid/3fea4c7b-a195-4107-ac4f-d8c4a33fa250
+PATCH {{host}}/api/v1/collection/testcollection/document/uuid/7e4ecb00-1663-4e73-a013-d3094d2cb65f
 Content-Type: application/json
 
 {
@@ -85,7 +86,7 @@ Content-Type: application/json
 
 [
   {
-    "document_id": "doc_5",
+    "document_id": "doc_7",
     "content": "This is a test document 1",
     "metadata": {
       "key1": "value1",
@@ -116,7 +117,7 @@ Content-Type: application/json
 ]
 
 ### Get batch updated document
-GET {{host}}/api/v1/collection/testcollection/document/uuid/69335a57-5b78-4b2c-89bd-0cd5ff598588
+GET {{host}}/api/v1/collection/testcollection/document/uuid/60702451-04c4-4b07-972c-18ae7f92a371
 
 ### Get Document List
 POST {{host}}/api/v1/collection/testcollection/document/batchGet

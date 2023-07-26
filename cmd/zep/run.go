@@ -62,8 +62,6 @@ func NewAppState(cfg *config.Config) *models.AppState {
 		Config:       cfg,
 	}
 
-	// TODO: make channels here.
-
 	initializeStores(appState)
 
 	// Init the extractors, which will register themselves with the MemoryStore
@@ -106,12 +104,36 @@ func initializeStores(appState *models.AppState) {
 		}
 		memoryStore, err := postgres.NewPostgresMemoryStore(appState, db)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("unable to create memoryStore %v", err)
 		}
 
-		documentStore, err := postgres.NewDocumentStore(appState, db)
+		// create channels for the document embedding processor
+		// TODO: make this a configurable buffer size
+		embeddingTaskChannel := make(
+			chan []models.DocEmbeddingTask,
+			100,
+		)
+		// TODO: make this a configurable buffer size
+		embeddingUpdateChannel := make(chan []models.DocEmbeddingUpdate, 100)
+		documentStore, err := postgres.NewDocumentStore(
+			appState,
+			db,
+			embeddingUpdateChannel,
+			embeddingTaskChannel,
+		)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("unable to create documentStore: %v", err)
+		}
+
+		// start the document embedding processor
+		embeddingProcessor := extractors.NewDocEmbeddingProcessor(
+			appState,
+			embeddingTaskChannel,
+			embeddingUpdateChannel,
+		)
+		err = embeddingProcessor.Run(context.Background())
+		if err != nil {
+			log.Fatalf("unable to start embeddingProcessor: %v", err)
 		}
 
 		appState.MemoryStore = memoryStore

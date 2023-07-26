@@ -13,6 +13,8 @@ import (
 func TestEmbeddingExtractor_Extract(t *testing.T) {
 	store := appState.MemoryStore
 
+	documentType := "message"
+
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err)
 
@@ -46,10 +48,10 @@ func TestEmbeddingExtractor_Extract(t *testing.T) {
 	}
 
 	model := &models.EmbeddingModel{
-		Name:       "AdaEmbeddingV2",
-		Dimensions: 1536,
+		Service:    "local",
+		Dimensions: 384,
 	}
-	embeddings, err := llms.EmbedTexts(testCtx, appState, model, texts)
+	embeddings, err := llms.EmbedTexts(testCtx, appState, model, documentType, texts)
 	assert.NoError(t, err)
 
 	expectedEmbeddingRecords := make([]models.MessageEmbedding, len(unembeddedMessages))

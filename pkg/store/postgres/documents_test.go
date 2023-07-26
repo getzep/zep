@@ -18,6 +18,7 @@ func NewTestCollectionDAO(embeddingWidth int) DocumentCollectionDAO {
 		DocumentCollection: models.DocumentCollection{
 			Name:                testutils.GenerateRandomString(10),
 			EmbeddingDimensions: embeddingWidth,
+			IsAutoEmbedded:      true,
 		},
 		db:       testDB,
 		appState: appState,
@@ -126,6 +127,7 @@ func TestCollectionGetByName(t *testing.T) {
 				assert.NotZero(t, tc.collection.UUID)
 				assert.NotZero(t, tc.collection.CreatedAt)
 				assert.Equal(t, collection.EmbeddingDimensions, tc.collection.EmbeddingDimensions)
+				assert.Equal(t, collection.IsAutoEmbedded, tc.collection.IsAutoEmbedded)
 			}
 			if tc.expectedNotFound {
 				assert.Equal(t, tc.collection.UUID, uuid.Nil)

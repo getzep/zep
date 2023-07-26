@@ -46,7 +46,7 @@ func setup() {
 	cfg := testutils.NewTestConfig()
 	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
 	appState.Config = cfg
-	appState.Config.MemoryStore.Postgres.DSN = testutils.GetDSN()
+	appState.Config.Store.Postgres.DSN = testutils.GetDSN()
 
 	// Initialize the database connection
 	testDB = NewPostgresConn(appState)
@@ -68,8 +68,8 @@ func setup() {
 	}
 
 	embeddingModel = &models.EmbeddingModel{
-		Name:       "AdaEmbeddingV2",
-		Dimensions: 1536,
+		Service:    "local",
+		Dimensions: 384,
 	}
 }
 
@@ -500,7 +500,7 @@ func TestGetSummary(t *testing.T) {
 	}
 }
 
-func TestPutEmbeddings(t *testing.T) {
+func TestPutEmbeddingsLocal(t *testing.T) {
 	CleanDB(t, testDB)
 	err := ensurePostgresSetup(testCtx, appState, testDB)
 	assert.NoError(t, err)

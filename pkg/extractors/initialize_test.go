@@ -35,7 +35,7 @@ func setup() {
 	cfg := testutils.NewTestConfig()
 	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
 	appState.Config = cfg
-	appState.Config.MemoryStore.Postgres.DSN = testutils.GetDSN()
+	appState.Config.Store.Postgres.DSN = testutils.GetDSN()
 
 	// Initialize the database connection
 	testDB = postgres.NewPostgresConn(appState)

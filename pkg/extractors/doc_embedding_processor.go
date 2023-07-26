@@ -18,11 +18,13 @@ const EmbeddingTaskChBuffer = 100
 // TODO move pool size and buffer to config
 func NewDocEmbeddingProcessor(
 	appState *models.AppState,
-	embeddingUpdateCh chan<- []models.DocEmbeddingUpdate,
+	EmbeddingTaskCh chan []models.DocEmbeddingTask,
+	EmbeddingUpdateCh chan []models.DocEmbeddingUpdate,
 ) *DocEmbeddingProcessor {
 	return &DocEmbeddingProcessor{
 		appState:          appState,
-		EmbeddingUpdateCh: embeddingUpdateCh,
+		EmbeddingTaskCh:   EmbeddingTaskCh,
+		EmbeddingUpdateCh: EmbeddingUpdateCh,
 		PoolSize:          1,
 		PoolBuffer:        100,
 	}
@@ -41,21 +43,21 @@ type DocEmbeddingProcessor struct {
 
 func (ep *DocEmbeddingProcessor) Run(
 	ctx context.Context,
-) (<-chan []models.DocEmbeddingTask, error) {
+) error {
 	ep.documentType = "document"
 	model, err := llms.GetMessageEmbeddingModel(ep.appState, ep.documentType)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get embedding model: %w", err)
+		return fmt.Errorf("failed to get embedding model: %w", err)
 	}
 	ep.model = model
-
-	ep.EmbeddingTaskCh = make(chan []models.DocEmbeddingTask, EmbeddingTaskChBuffer)
 
 	go func() {
 		ep.processor(ctx)
 	}()
 
-	return ep.EmbeddingTaskCh, nil
+	log.Info("started document embedding processor")
+
+	return nil
 }
 
 func (ep *DocEmbeddingProcessor) processor(ctx context.Context) {

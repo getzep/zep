@@ -634,6 +634,7 @@ func documentCollectionFromCreateRequest(
 		EmbeddingModelName:  collectionRequest.EmbeddingModelName,
 		EmbeddingDimensions: collectionRequest.EmbeddingDimensions,
 		DistanceFunction:    collectionRequest.DistanceFunction,
+		IsAutoEmbedded:      collectionRequest.IsAutoEmbedded,
 		IsNormalized:        collectionRequest.IsNormalized,
 	}
 }
@@ -663,6 +664,7 @@ func collectionToCollectionResponse(
 		Metadata:            collection.Metadata,
 		EmbeddingModelName:  collection.EmbeddingModelName,
 		EmbeddingDimensions: collection.EmbeddingDimensions,
+		IsAutoEmbedded:      collection.IsAutoEmbedded,
 		IsNormalized:        collection.IsNormalized,
 		IsIndexed:           collection.IsIndexed,
 	}

@@ -18,7 +18,8 @@ import (
 func NewDocumentStore(
 	appState *models.AppState,
 	client *bun.DB,
-	docEmbedTaskCh chan<- []models.DocEmbeddingTask,
+	docEmbeddingUpdateTaskCh chan []models.DocEmbeddingUpdate,
+	docEmbeddingTaskCh chan<- []models.DocEmbeddingTask,
 ) (*DocumentStore, error) {
 	if appState == nil {
 		return nil, errors.New("nil appState received")
@@ -26,14 +27,11 @@ func NewDocumentStore(
 
 	// Create context that we'll use to shut down the document embedding updater
 	ctx, done := context.WithCancel(context.Background())
-	// limit the size of the update channel to 100. The updater will block
-	// so we don't overwhelm the database.
-	docEmbedUpdateCh := make(<-chan []models.DocEmbeddingUpdate, 100)
 	pds := &DocumentStore{
 		store.BaseDocumentStore[*bun.DB]{Client: client},
 		appState,
-		docEmbedTaskCh,
-		docEmbedUpdateCh,
+		docEmbeddingUpdateTaskCh,
+		docEmbeddingTaskCh,
 		done,
 	}
 
@@ -50,10 +48,10 @@ var _ models.DocumentStore[*bun.DB] = &DocumentStore{}
 
 type DocumentStore struct {
 	store.BaseDocumentStore[*bun.DB]
-	appState        *models.AppState
-	docEmbedTaskCh  chan<- []models.DocEmbeddingTask
-	DocUpdateTaskCh <-chan []models.DocEmbeddingUpdate
-	done            context.CancelFunc
+	appState                 *models.AppState
+	DocEmbeddingUpdateTaskCh chan []models.DocEmbeddingUpdate
+	DocEmbeddingTaskCh       chan<- []models.DocEmbeddingTask
+	done                     context.CancelFunc
 }
 
 func (pds *DocumentStore) OnStart(
@@ -61,18 +59,19 @@ func (pds *DocumentStore) OnStart(
 ) error {
 	// start the document embedding updater in a goroutine
 	go func() {
-		err := pds.documentEmbeddingUpdater(ctx, pds.DocUpdateTaskCh)
+		err := pds.documentEmbeddingUpdater(ctx)
 		if err != nil {
 			log.Fatalf("failed to start document embedding updater: %v", err)
 		}
+		log.Info("Document embedding updater started")
 	}()
 
 	return nil
 }
 
 func (pds *DocumentStore) Shutdown(_ context.Context) error {
+	defer close(pds.DocEmbeddingUpdateTaskCh)
 	pds.done()
-	close(pds.docEmbedTaskCh)
 	return nil
 }
 
@@ -179,6 +178,11 @@ func (pds *DocumentStore) CreateDocuments(
 		models.DocumentCollection{Name: collectionName},
 	)
 
+	err := collection.GetByName(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get collection: %w", err)
+	}
+
 	// determine if the documents include embeddings
 	// throw an error if the collection is configured to auto-embed
 	// and any of documents include embeddings.
@@ -209,6 +213,12 @@ func (pds *DocumentStore) CreateDocuments(
 	uuids, err := collection.CreateDocuments(ctx, documents)
 	if err != nil {
 		return nil, fmt.Errorf("failed to Create documents: %w", err)
+	}
+
+	// if the collection is configured to auto-embed, send the documents
+	// to the document embedding tasker
+	if collection.IsAutoEmbedded {
+		pds.documentEmbeddingTasker(collectionName, documents)
 	}
 
 	return uuids, nil
@@ -289,16 +299,31 @@ func (pds *DocumentStore) SearchCollection(
 	return nil, errors.New("not implemented")
 }
 
+func (pds *DocumentStore) documentEmbeddingTasker(
+	collectionName string,
+	documents []models.Document,
+) {
+	tasks := make([]models.DocEmbeddingTask, len(documents))
+	for i := range documents {
+		tasks[i] = models.DocEmbeddingTask{
+			UUID:           documents[i].UUID,
+			Content:        documents[i].Content,
+			CollectionName: collectionName,
+		}
+	}
+
+	pds.DocEmbeddingTaskCh <- tasks
+}
+
 func (pds *DocumentStore) documentEmbeddingUpdater(
 	ctx context.Context,
-	updateReceiver <-chan []models.DocEmbeddingUpdate,
 ) error {
 	for {
 		select {
 		case <-ctx.Done():
 			log.Info("document embedding updater shutting down")
 			return nil
-		case updates := <-updateReceiver:
+		case updates := <-pds.DocEmbeddingUpdateTaskCh:
 			dbCollection := NewDocumentCollectionDAO(
 				pds.appState,
 				pds.Client,
@@ -310,6 +335,8 @@ func (pds *DocumentStore) documentEmbeddingUpdater(
 			if err != nil {
 				return fmt.Errorf("failed to update document embedding: %w", err)
 			}
+
+			log.Debugf("Document embedding updater updated %d documents", len(updates))
 		}
 	}
 }
