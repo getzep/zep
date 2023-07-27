@@ -94,6 +94,7 @@ info:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
   title: Zep REST API
+  version: 0.x
 paths:
   /api/v1/sessions/{sessionId}:
     get:
