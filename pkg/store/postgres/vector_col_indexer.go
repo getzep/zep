@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/getzep/zep/pkg/models"
 
@@ -24,14 +25,16 @@ const MinRowsForIndex = 10000
 // A future improvement would be to use a the inner product distance function for normalized embeddings.
 const DefaultDistanceFunction = "cosine"
 
+// IndexMutexMap stores a mutex for each collection.
+var IndexMutexMap = make(map[string]*sync.Mutex)
+
 type VectorColIndex struct {
-	appState         *models.AppState
-	TableName        string
-	ColName          string
-	DistanceFunction string
-	RowCount         int
-	ListCount        int
-	ProbeCount       int
+	appState   *models.AppState
+	Collection models.DocumentCollection
+	ColName    string
+	RowCount   int
+	ListCount  int
+	ProbeCount int
 }
 
 func (vci *VectorColIndex) CountRows(ctx context.Context) error {
@@ -41,7 +44,7 @@ func (vci *VectorColIndex) CountRows(ctx context.Context) error {
 	}
 
 	count, err := client.NewSelect().
-		ModelTableExpr(vci.TableName).
+		ModelTableExpr(vci.Collection.TableName).
 		Count(ctx)
 	if err != nil {
 		return fmt.Errorf("error counting rows: %w", err)
@@ -57,16 +60,15 @@ func (vci *VectorColIndex) CalculateListCount() error {
 	if vci.RowCount <= 0 {
 		return fmt.Errorf("rows must be greater than 0")
 	}
-	if vci.RowCount <= 1000 {
+
+	switch {
+	case vci.RowCount <= 1000:
 		vci.ListCount = 1
-		return nil
+	case vci.RowCount <= 1_000_000:
+		vci.ListCount = vci.RowCount / 1000
+	default:
+		vci.ListCount = int(math.Sqrt(float64(vci.RowCount)))
 	}
-	// rows / 1000 for up to 1M rows and sqrt(rows) for over 1M rows
-	if vci.RowCount <= 1_000_000 {
-		vci.ListCount = int(vci.RowCount / 1000)
-		return nil
-	}
-	vci.ListCount = int(math.Sqrt(float64(vci.RowCount)))
 
 	return nil
 }
@@ -82,7 +84,15 @@ func (vci *VectorColIndex) CalculateProbes() error {
 }
 
 func (vci *VectorColIndex) CreateIndex(ctx context.Context, minRows int) error {
-	if vci.DistanceFunction != "cosine" {
+	// Check if a mutex already exists for this collection. If not, create one.
+	if _, ok := IndexMutexMap[vci.Collection.Name]; !ok {
+		IndexMutexMap[vci.Collection.Name] = &sync.Mutex{}
+	}
+	// Lock the mutex for this collection.
+	IndexMutexMap[vci.Collection.Name].Lock()
+	defer IndexMutexMap[vci.Collection.Name].Unlock()
+
+	if vci.Collection.DistanceFunction != "cosine" {
 		return fmt.Errorf("only cosine distance function is currently supported")
 	}
 
@@ -100,9 +110,10 @@ func (vci *VectorColIndex) CreateIndex(ctx context.Context, minRows int) error {
 		return fmt.Errorf("failed to get bun.DB db")
 	}
 
-	indexName := fmt.Sprintf("%s_%s_idx", vci.TableName, vci.ColName)
+	indexName := fmt.Sprintf("%s_%s_idx", vci.Collection.TableName, vci.ColName)
 
 	// Drop index if it exists
+	// We're using CONCURRENTLY for both drop and index operations. This means we can't run them in a transaction.
 	_, err := db.ExecContext(
 		ctx,
 		"DROP INDEX CONCURRENTLY IF EXISTS ?",
@@ -116,11 +127,22 @@ func (vci *VectorColIndex) CreateIndex(ctx context.Context, minRows int) error {
 	_, err = db.ExecContext(
 		ctx,
 		"CREATE INDEX CONCURRENTLY ON ? USING ivfflat (embedding vector_cosine_ops) WITH (lists = ?)",
-		bun.Ident(vci.TableName),
+		bun.Ident(vci.Collection.TableName),
 		vci.ListCount,
 	)
 	if err != nil {
 		return fmt.Errorf("error creating index: %w", err)
+	}
+
+	// Set Collection's IsIndexed flag to true
+	collection, err := vci.appState.DocumentStore.GetCollection(ctx, vci.Collection.Name)
+	if err != nil {
+		return fmt.Errorf("error getting collection: %w", err)
+	}
+	collection.IsIndexed = true
+	err = vci.appState.DocumentStore.UpdateCollection(ctx, collection)
+	if err != nil {
+		return fmt.Errorf("error updating collection: %w", err)
 	}
 
 	return nil
@@ -129,14 +151,12 @@ func (vci *VectorColIndex) CreateIndex(ctx context.Context, minRows int) error {
 func NewVectorColIndex(
 	ctx context.Context,
 	appState *models.AppState,
-	tableName string,
-	distanceFunction string,
+	collection models.DocumentCollection,
 ) (*VectorColIndex, error) {
 	vci := &VectorColIndex{
-		appState:         appState,
-		TableName:        tableName,
-		ColName:          EmbeddingColName,
-		DistanceFunction: distanceFunction,
+		appState:   appState,
+		Collection: collection,
+		ColName:    EmbeddingColName,
 	}
 
 	err := vci.CountRows(ctx)

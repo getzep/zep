@@ -53,7 +53,7 @@ func TestCreateIndex(t *testing.T) {
 		500, false, true, 384)
 	assert.NoError(t, err)
 
-	collection := docCollection.collection
+	collection := docCollection.collection.DocumentCollection
 
 	// Create channels
 	docEmbeddingUpdateTaskCh := make(chan []models.DocEmbeddingUpdate, 5)
@@ -71,13 +71,17 @@ func TestCreateIndex(t *testing.T) {
 	vci, err := NewVectorColIndex(
 		ctx,
 		appState,
-		collection.TableName,
-		DefaultDistanceFunction,
+		collection,
 	)
 	assert.NoError(t, err)
 
 	err = vci.CreateIndex(context.Background(), 100)
 	assert.NoError(t, err)
+
+	// Set Collection's IsIndexed flag to true
+	col, err := documentStore.GetCollection(ctx, vci.Collection.Name)
+	assert.NoError(t, err)
+	assert.Equal(t, true, col.IsIndexed)
 
 	err = documentStore.Shutdown(ctx)
 	assert.NoError(t, err)

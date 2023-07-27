@@ -44,6 +44,9 @@ func (dc *DocumentCollectionDAO) Create(
 		dc.TableName = tableName
 	}
 
+	// We only support cosine distance function for now.
+	dc.DistanceFunction = "cosine"
+
 	collectionRecord := DocumentCollectionSchema{DocumentCollection: dc.DocumentCollection}
 
 	_, err := dc.db.NewInsert().
