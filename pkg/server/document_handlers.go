@@ -620,7 +620,7 @@ func DeleteDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 //	@Success		200				{object}	string		"OK"
 //	@Failure		400				{object}	APIError	"Bad Request"
 //	@Failure		500				{object}	APIError	"Internal Server Error"
-//	@Router			/api/v1/collection/{collectionName}/index/create [get]
+//	@Router			/api/v1/collection/{collectionName}/index/create [post]
 func CreateCollectionIndexHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {

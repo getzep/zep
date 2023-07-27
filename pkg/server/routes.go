@@ -31,13 +31,13 @@ func Create(appState *models.AppState) *http.Server {
 	}
 }
 
-//	@title			Zep REST API
-//	@version		0.x
-//	@license.name	Apache 2.0
-//	@license.url	http://www.apache.org/licenses/LICENSE-2.0.html
-//	@BasePath		/api/v1
-//	@schemes		http https
-//	@auth			bearerAuth
+// @title			Zep REST API
+// @version		0.x
+// @license.name	Apache 2.0
+// @license.url	http://www.apache.org/licenses/LICENSE-2.0.html
+// @BasePath		/api/v1
+// @schemes		http https
+// @auth			bearerAuth
 func setupRouter(appState *models.AppState) *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(httpLogger.Logger("router", log))
@@ -77,7 +77,7 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 			r.Patch("/", UpdateCollectionHandler(appState))
 
 			// Document collection index-related routes
-			r.Get("/index/create", CreateCollectionIndexHandler(appState))
+			r.Post("/index/create", CreateCollectionIndexHandler(appState))
 
 			// Document-related routes
 			r.Route("/document", func(r chi.Router) {
