@@ -631,7 +631,7 @@ func TestDocumentEmbeddingTasker(t *testing.T) {
 }
 
 func TestDocumentEmbeddingUpdater(t *testing.T) {
-	ctx, done := context.WithCancel(context.Background())
+	ctx, done := context.WithCancel(testCtx)
 	// create document collection
 	collection := NewTestCollectionDAO(384)
 	collection.Name = testutils.GenerateRandomString(10)

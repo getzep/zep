@@ -78,7 +78,7 @@ func (ds *DocumentStore) Shutdown(_ context.Context) error {
 	return nil
 }
 
-func (ds *DocumentStore) GetClient() *bun.DB {
+func (ds *DocumentStore) GetClient() any {
 	return ds.Client
 }
 
@@ -300,6 +300,13 @@ func (ds *DocumentStore) SearchCollection(
 	pageSize int,
 ) ([]models.DocumentSearchResultPage, error) {
 	return nil, errors.New("not implemented")
+}
+
+func (ds *DocumentStore) CreateIndex(
+	ctx context.Context,
+	collectionName string,
+) error {
+	return errors.New("not implemented")
 }
 
 func (ds *DocumentStore) documentEmbeddingTasker(
