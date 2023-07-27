@@ -2,8 +2,14 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"math/rand"
 	"testing"
+
+	"github.com/google/uuid"
+
+	"github.com/getzep/zep/pkg/testutils"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/stretchr/testify/assert"
@@ -41,9 +47,13 @@ func TestCalculateProbes(t *testing.T) {
 func TestCreateIndex(t *testing.T) {
 	ctx, done := context.WithCancel(testCtx)
 
-	collection := NewTestCollectionDAO(384)
-	err := collection.Create(ctx)
+	collectionName := testutils.GenerateRandomString(16)
+
+	docCollection, err := newDocumentCollectionWithDocs(ctx, collectionName,
+		500, false, true, 384)
 	assert.NoError(t, err)
+
+	collection := docCollection.collection
 
 	// Create channels
 	docEmbeddingUpdateTaskCh := make(chan []models.DocEmbeddingUpdate, 5)
@@ -66,13 +76,73 @@ func TestCreateIndex(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	vci.RowCount = 1000
-
-	err = vci.CreateIndex(context.Background(), 0)
+	err = vci.CreateIndex(context.Background(), 100)
 	assert.NoError(t, err)
 
 	err = documentStore.Shutdown(ctx)
 	assert.NoError(t, err)
 
 	done()
+}
+
+type testDocCollection struct {
+	collection DocumentCollectionDAO
+	docUUIDs   []uuid.UUID
+}
+
+func newDocumentCollectionWithDocs(
+	ctx context.Context,
+	collectionName string,
+	numDocs int,
+	autoEmbed bool,
+	withRandomEmbeddings bool,
+	embeddingWidth int,
+) (testDocCollection, error) {
+	collection := NewTestCollectionDAO(embeddingWidth)
+	collection.Name = collectionName
+	collection.IsAutoEmbedded = autoEmbed
+	err := collection.Create(ctx)
+	if err != nil {
+		return testDocCollection{}, fmt.Errorf("error creating collection: %w", err)
+	}
+
+	var embeddings [][]float32
+	if withRandomEmbeddings {
+		embeddings = generateRandomEmbeddings(numDocs, embeddingWidth)
+		if err != nil {
+			return testDocCollection{}, fmt.Errorf("error generating random embeddings: %w", err)
+		}
+	}
+	documents := make([]models.Document, numDocs)
+	for i := 0; i < numDocs; i++ {
+		documents[i] = models.Document{
+			DocumentBase: models.DocumentBase{
+				Content:    testutils.GenerateRandomString(1000),
+				DocumentID: testutils.GenerateRandomString(20),
+			},
+			Embedding: embeddings[i],
+		}
+	}
+	uuids, err := collection.CreateDocuments(ctx, documents)
+	if err != nil {
+		return testDocCollection{}, fmt.Errorf("error creating documents: %w", err)
+	}
+
+	return testDocCollection{
+		collection: collection,
+		docUUIDs:   uuids,
+	}, nil
+}
+
+func generateRandomEmbeddings(embeddingCount int, embeddingWidth int) [][]float32 {
+	embeddings := make([][]float32, embeddingCount)
+	for i := 0; i < embeddingCount; i++ {
+		embedding := make([]float32, embeddingWidth)
+		for j := 0; j < embeddingWidth; j++ {
+			embedding[j] = rand.Float32()
+		}
+		embeddings[i] = embedding
+	}
+
+	return embeddings
 }

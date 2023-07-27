@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 
@@ -56,9 +57,13 @@ func (vci *VectorColIndex) CalculateListCount() error {
 	if vci.RowCount <= 0 {
 		return fmt.Errorf("rows must be greater than 0")
 	}
+	if vci.RowCount <= 1000 {
+		vci.ListCount = 1
+		return nil
+	}
 	// rows / 1000 for up to 1M rows and sqrt(rows) for over 1M rows
 	if vci.RowCount <= 1_000_000 {
-		vci.ListCount = vci.RowCount / 1000
+		vci.ListCount = int(vci.RowCount / 1000)
 		return nil
 	}
 	vci.ListCount = int(math.Sqrt(float64(vci.RowCount)))
@@ -69,7 +74,7 @@ func (vci *VectorColIndex) CalculateListCount() error {
 func (vci *VectorColIndex) CalculateProbes() error {
 	// sqrt(lists)
 	if vci.ListCount <= 0 {
-		return fmt.Errorf("lists must be greater than 0")
+		return errors.New("lists must be greater than 0")
 	}
 	vci.ProbeCount = int(math.Sqrt(float64(vci.ListCount)))
 
@@ -90,28 +95,28 @@ func (vci *VectorColIndex) CreateIndex(ctx context.Context, minRows int) error {
 		return fmt.Errorf("not enough rows to create index")
 	}
 
-	client, ok := vci.appState.DocumentStore.GetClient().(*bun.DB)
+	db, ok := vci.appState.DocumentStore.GetClient().(*bun.DB)
 	if !ok {
-		return fmt.Errorf("failed to get bun.DB client")
+		return fmt.Errorf("failed to get bun.DB db")
 	}
 
 	indexName := fmt.Sprintf("%s_%s_idx", vci.TableName, vci.ColName)
 
 	// Drop index if it exists
-	_, err := client.ExecContext(
+	_, err := db.ExecContext(
 		ctx,
 		"DROP INDEX CONCURRENTLY IF EXISTS ?",
-		indexName,
+		bun.Ident(indexName),
 	)
 	if err != nil {
 		return fmt.Errorf("error dropping index: %w", err)
 	}
 
 	// currently only supports cosine distance ops
-	_, err = client.ExecContext(
+	_, err = db.ExecContext(
 		ctx,
 		"CREATE INDEX CONCURRENTLY ON ? USING ivfflat (embedding vector_cosine_ops) WITH (lists = ?)",
-		vci.TableName,
+		bun.Ident(vci.TableName),
 		vci.ListCount,
 	)
 	if err != nil {
