@@ -255,45 +255,6 @@ paths:
       summary: Gets a list of DocumentCollections
       tags:
       - collection
-    post:
-      consumes:
-      - application/json
-      description: If a collection with the same name already exists, an error will
-        be returned.
-      parameters:
-      - description: Name of the Document Collection
-        in: path
-        name: collectionName
-        required: true
-        type: string
-      - description: Document Collection
-        in: body
-        name: collection
-        required: true
-        schema:
-          $ref: '#/definitions/models.CreateDocumentCollectionRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            type: string
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/server.APIError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/server.APIError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/server.APIError'
-      summary: Creates a new DocumentCollection
-      tags:
-      - collection
   /api/v1/collection/{collectionName}:
     delete:
       consumes:
@@ -394,6 +355,45 @@ paths:
           schema:
             $ref: '#/definitions/server.APIError'
       summary: Updates a DocumentCollection
+      tags:
+      - collection
+    post:
+      consumes:
+      - application/json
+      description: If a collection with the same name already exists, an error will
+        be returned.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: Document Collection
+        in: body
+        name: collection
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateDocumentCollectionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Creates a new DocumentCollection
       tags:
       - collection
   /api/v1/collection/{collectionName}/document:

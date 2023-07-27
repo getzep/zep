@@ -30,7 +30,7 @@ var validate = validator.New()
 //	@Failure		400				{object}	APIError								"Bad Request"
 //	@Failure		404				{object}	APIError								"Not Found"
 //	@Failure		500				{object}	APIError								"Internal Server Error"
-//	@Router			/api/v1/collection [post]
+//	@Router			/api/v1/collection/{collectionName} [post]
 func CreateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
