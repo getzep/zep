@@ -306,7 +306,29 @@ func (ds *DocumentStore) CreateCollectionIndex(
 	ctx context.Context,
 	collectionName string,
 ) error {
-	return errors.New("not implemented")
+	collection := NewDocumentCollectionDAO(
+		ds.appState,
+		ds.Client,
+		models.DocumentCollection{Name: collectionName},
+	)
+
+	err := collection.GetByName(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get collection: %w", err)
+	}
+
+	vci, err := NewVectorColIndex(ctx, ds.appState, collection.DocumentCollection)
+	if err != nil {
+		return fmt.Errorf("failed to create vector column index: %w", err)
+	}
+
+	// use the default MinRows value
+	err = vci.CreateIndex(ctx, 0)
+	if err != nil {
+		return fmt.Errorf("failed to create index: %w", err)
+	}
+
+	return nil
 }
 
 func (ds *DocumentStore) documentEmbeddingTasker(

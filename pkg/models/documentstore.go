@@ -74,7 +74,7 @@ type DocumentStore[T any] interface {
 		pageNumber int,
 		pageSize int,
 	) ([]DocumentSearchResultPage, error)
-	// CreateIndex creates an index on the collection. Manually calling this function will drop and
+	// CreateCollectionIndex creates an index on the collection. Manually calling this function will drop and
 	// recreate the index, if it exists.
 	CreateCollectionIndex(ctx context.Context, collectionName string) error
 	// OnStart is called when the application starts. This is a good place to initialize any resources or configs that
