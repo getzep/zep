@@ -76,7 +76,7 @@ type DocumentStore[T any] interface {
 	) ([]DocumentSearchResultPage, error)
 	// CreateIndex creates an index on the collection. Manually calling this function will drop and
 	// recreate the index, if it exists.
-	CreateIndex(ctx context.Context, collectionName string) error
+	CreateCollectionIndex(ctx context.Context, collectionName string) error
 	// OnStart is called when the application starts. This is a good place to initialize any resources or configs that
 	// are required by the MemoryStore implementation.
 	OnStart(ctx context.Context) error

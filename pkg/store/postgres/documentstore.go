@@ -302,7 +302,7 @@ func (ds *DocumentStore) SearchCollection(
 	return nil, errors.New("not implemented")
 }
 
-func (ds *DocumentStore) CreateIndex(
+func (ds *DocumentStore) CreateCollectionIndex(
 	ctx context.Context,
 	collectionName string,
 ) error {

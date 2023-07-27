@@ -607,6 +607,44 @@ func DeleteDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 	}
 }
 
+// CreateCollectionIndexHandler godoc
+//
+//	@Summary		Creates an index for a DocumentCollection
+//	@Description	Creates an index for the specified DocumentCollection to improve query performance.
+//
+//	@Tags			collection
+//
+//	@Accept			json
+//	@Produce		json
+//	@Param			collectionName	path		string		true	"Name of the Document Collection"
+//	@Success		200				{object}	string		"OK"
+//	@Failure		400				{object}	APIError	"Bad Request"
+//	@Failure		500				{object}	APIError	"Internal Server Error"
+//	@Router			/api/v1/collection/{collectionName}/index/create [get]
+func CreateCollectionIndexHandler(appState *models.AppState) http.HandlerFunc {
+	store := appState.DocumentStore
+	return func(w http.ResponseWriter, r *http.Request) {
+		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
+		if collectionName == "" {
+			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			return
+		}
+
+		err := store.CreateCollectionIndex(r.Context(), collectionName)
+		if err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write([]byte("OK"))
+		if err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
 // parseUUIDFromURL parses a UUID from a URL parameter. If the UUID is invalid, an error is
 // rendered and uuid.Nil is returned.
 func parseUUIDFromURL(r *http.Request, w http.ResponseWriter, paramName string) uuid.UUID {

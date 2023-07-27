@@ -663,6 +663,36 @@ paths:
       summary: Updates a Document in a DocumentCollection by UUID
       tags:
       - document
+  /api/v1/collection/{collectionName}/index/create:
+    get:
+      consumes:
+      - application/json
+      description: Creates an index for the specified DocumentCollection to improve
+        query performance.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Creates an index for a DocumentCollection
+      tags:
+      - collection
   /api/v1/sessions/{sessionId}:
     get:
       consumes:
