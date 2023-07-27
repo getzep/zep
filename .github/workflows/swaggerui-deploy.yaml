@@ -1,8 +1,11 @@
-name: swaggerui-deploy
+name: golangci-lint
 on:
   workflow_dispatch: {}
+  push:
+    tags:
+      - v*
 permissions:
-  contents: write
+  contents: read
 jobs:
   swaggerui:
     name: swaggerui
@@ -22,3 +25,8 @@ jobs:
         with:
           output: swagger-ui
           spec-file: docs/swagger.json
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: swagger-ui

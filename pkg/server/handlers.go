@@ -24,7 +24,7 @@ const OKResponse = "OK"
 //	@Tags			memory
 //	@Accept			json
 //	@Produce		json
-//	@Param			session_id	path		string	true	"Session ID"
+//	@Param			sessionId	path		string	true	"Session ID"
 //	@Param			lastn		query		integer	false	"Last N messages. Overrides memory_window configuration"
 //	@Success		200			{object}	[]models.Memory
 //	@Failure		404			{object}	APIError	"Not Found"
@@ -64,7 +64,7 @@ func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 //	@Tags			session
 //	@Accept			json
 //	@Produce		json
-//	@Param			session_id	path		string	true	"Session ID"
+//	@Param			sessionId	path		string	true	"Session ID"
 //	@Success		200			{object}	models.Session
 //	@Failure		404			{object}	APIError	"Not Found"
 //	@Failure		500			{object}	APIError	"Internal Server Error"
@@ -97,7 +97,7 @@ func GetSessionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Tags			session
 //	@Accept			json
 //	@Produce		json
-//	@Param			session_id	path		string			true	"Session ID"
+//	@Param			sessionId	path		string			true	"Session ID"
 //	@Param			session		body		models.Session	true	"Session"
 //	@Success		200			{string}	string			"OK"
 //	@Failure		400			{object}	APIError		"Bad Request"
@@ -138,7 +138,7 @@ func PostSessionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Tags			memory
 //	@Accept			json
 //	@Produce		json
-//	@Param			session_id		path		string			true	"Session ID"
+//	@Param			sessionId		path		string			true	"Session ID"
 //	@Param			memoryMessages	body		models.Memory	true	"Memory messages"
 //	@Success		200				{string}	string			"OK"
 //	@Failure		404				{object}	APIError		"Not Found"
@@ -174,7 +174,7 @@ func PostMemoryHandler(appState *models.AppState) http.HandlerFunc {
 //	@Tags			memory
 //	@Accept			json
 //	@Produce		json
-//	@Param			session_id	path		string		true	"Session ID"
+//	@Param			sessionId	path		string		true	"Session ID"
 //	@Success		200			{string}	string		"OK"
 //	@Failure		404			{object}	APIError	"Not Found"
 //	@Failure		500			{object}	APIError	"Internal Server Error"
@@ -198,7 +198,7 @@ func DeleteMemoryHandler(appState *models.AppState) http.HandlerFunc {
 //	@Tags			search
 //	@Accept			json
 //	@Produce		json
-//	@Param			session_id		path		string						true	"Session ID"
+//	@Param			sessionId		path		string						true	"Session ID"
 //	@Param			limit			query		integer						false	"Limit the number of results returned"
 //	@Param			searchPayload	body		models.MemorySearchPayload	true	"Search query"
 //	@Success		200				{object}	[]models.MemorySearchResult
