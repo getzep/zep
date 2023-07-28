@@ -678,10 +678,11 @@ func SearchDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
+		// disabled for now
 		withMMRStr := chi.URLParam(r, "mmr")
 		withMMR := false
 		if withMMRStr != "" {
-			withMMR, err = strconv.ParseBool(withMMRStr)
+			_, err = strconv.ParseBool(withMMRStr)
 			if err != nil {
 				renderError(w, err, http.StatusBadRequest)
 				return
@@ -700,6 +701,10 @@ func SearchDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 
 		results, err := store.SearchCollection(r.Context(), &searchPayload, limit, withMMR, 0, 0)
 		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				renderError(w, err, http.StatusNotFound)
+				return
+			}
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
