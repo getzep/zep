@@ -387,6 +387,42 @@ func (dc *DocumentCollectionDAO) DeleteDocumentsByUUID(
 	return nil
 }
 
+// SearchDocuments searches for documents in a collection. Currently pagination is not supported.
+func (dc *DocumentCollectionDAO) SearchDocuments(ctx context.Context,
+	query *models.DocumentSearchPayload,
+	limit int,
+	mmr bool,
+	pageNumber int,
+	pageSize int) ([]models.DocumentSearchResult, error) {
+
+	if dc.Name == "" {
+		return nil, errors.New("collection name cannot be empty")
+	}
+
+	if len(query.Text) == 0 && len(query.Metadata) == 0 {
+		return nil, errors.New("both query text and metadata cannot be empty")
+	}
+
+	if err := dc.GetByName(ctx); err != nil {
+		return nil, fmt.Errorf("failed to get collection: %w", err)
+	}
+
+	var documents []models.DocumentSearchResult
+	var err error
+	if mmr {
+		documents, err = dc.searchDocumentsMMR(ctx, query, limit, pageNumber, pageSize)
+	} else {
+		documents, err = dc.searchDocuments(ctx, query, limit, pageNumber, pageSize)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to search documents: %w", err)
+	}
+
+	// TODO: Add pagination
+
+	return nil, nil
+}
+
 func deleteCollectionRow(
 	ctx context.Context,
 	tx bun.Tx,

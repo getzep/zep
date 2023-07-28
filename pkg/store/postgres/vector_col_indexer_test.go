@@ -82,6 +82,8 @@ func TestCreateIndex(t *testing.T) {
 	col, err := documentStore.GetCollection(ctx, vci.Collection.Name)
 	assert.NoError(t, err)
 	assert.Equal(t, true, col.IsIndexed)
+	assert.True(t, col.ProbeCount > 0)
+	assert.True(t, col.ListCount > 0)
 
 	err = documentStore.Shutdown(ctx)
 	assert.NoError(t, err)

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -16,7 +15,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-const defaultSearchLimit = 10
+const DefaultMemorySearchLimit = 10
 
 type JSONQuery struct {
 	JSONPath string       `json:"jsonpath"`
@@ -60,7 +59,7 @@ func searchMessages(
 	addMessagesSortQuery(query.Text, dbQuery)
 
 	if limit == 0 {
-		limit = defaultSearchLimit
+		limit = DefaultMemorySearchLimit
 	}
 	dbQuery = dbQuery.Limit(limit)
 
@@ -185,43 +184,4 @@ func addMessagesVectorColumn(
 
 	vector := pgvector.NewVector(e[0])
 	return q.ColumnExpr("(embedding <#> ?) * -1 AS dist", vector), nil
-}
-
-// parseJSONQuery recursively parses a JSONQuery and returns a bun.QueryBuilder.
-// TODO: fix the addition of extraneous parentheses in the query
-func parseJSONQuery(qb bun.QueryBuilder, jq *JSONQuery, isOr bool) bun.QueryBuilder {
-	if jq.JSONPath != "" {
-		path := strings.ReplaceAll(jq.JSONPath, "'", "\"")
-		if isOr {
-			qb = qb.WhereOr(
-				"jsonb_path_exists(m.metadata, ?)",
-				path,
-			)
-		} else {
-			qb = qb.Where(
-				"jsonb_path_exists(m.metadata, ?)",
-				path,
-			)
-		}
-	}
-
-	if len(jq.And) > 0 {
-		qb = qb.WhereGroup(" AND ", func(qq bun.QueryBuilder) bun.QueryBuilder {
-			for _, subQuery := range jq.And {
-				qq = parseJSONQuery(qq, subQuery, false)
-			}
-			return qq
-		})
-	}
-
-	if len(jq.Or) > 0 {
-		qb = qb.WhereGroup(" AND ", func(qq bun.QueryBuilder) bun.QueryBuilder {
-			for _, subQuery := range jq.Or {
-				qq = parseJSONQuery(qq, subQuery, true)
-			}
-			return qq
-		})
-	}
-
-	return qb
 }

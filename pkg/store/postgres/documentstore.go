@@ -295,7 +295,7 @@ func (ds *DocumentStore) SearchCollection(
 	ctx context.Context,
 	query *models.DocumentSearchPayload,
 	limit int,
-	mmr bool,
+	withMMR bool,
 	pageNumber int,
 	pageSize int,
 ) ([]models.DocumentSearchResultPage, error) {

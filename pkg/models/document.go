@@ -22,6 +22,8 @@ type DocumentCollection struct {
 	DistanceFunction    string                 `bun:",notnull"` // Distance function to use for index
 	IsNormalized        bool                   `bun:",notnull"` // Are the embeddings normalized?
 	IsIndexed           bool                   `bun:",notnull"` // Has an index been created on the collection table?
+	ListCount           int                    `bun:",notnull"` // Number of lists in the collection index
+	ProbeCount          int                    `bun:",notnull"` // Number of probes to use when searching the index
 }
 
 type CreateDocumentCollectionRequest struct {

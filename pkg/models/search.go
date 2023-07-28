@@ -18,14 +18,13 @@ type DocumentSearchPayload struct {
 }
 
 type DocumentSearchResult struct {
-	Document *Document `json:"document"`
-	Dist     float64   `json:"dist"`
+	Document *DocumentResponse `json:"document"`
+	Dist     float64           `json:"dist"`
 }
 
-// TODO: Generalize this to any list of docs?
 type DocumentSearchResultPage struct {
-	DocumentSearchResults []DocumentSearchResult `json:"results"`
-	ResultCount           int                    `json:"result_count"`
-	TotalPages            int                    `json:"total_pages"`
-	CurrentPage           int                    `json:"current_page"`
+	Results     []DocumentSearchResult `json:"results"`
+	ResultCount int                    `json:"result_count"`
+	TotalPages  int                    `json:"total_pages"`
+	CurrentPage int                    `json:"current_page"`
 }

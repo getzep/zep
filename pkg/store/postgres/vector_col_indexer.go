@@ -140,6 +140,8 @@ func (vci *VectorColIndex) CreateIndex(ctx context.Context, minRows int) error {
 		return fmt.Errorf("error getting collection: %w", err)
 	}
 	collection.IsIndexed = true
+	collection.ProbeCount = vci.ProbeCount
+	collection.ListCount = vci.ListCount
 	err = vci.appState.DocumentStore.UpdateCollection(ctx, collection)
 	if err != nil {
 		return fmt.Errorf("error updating collection: %w", err)
