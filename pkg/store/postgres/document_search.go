@@ -95,10 +95,12 @@ func (dso *documentSearchOperation) execQuery(
 		return 0, fmt.Errorf("error building query %w", err)
 	}
 
-	count, err := query.ScanAndCount(dso.ctx, results)
+	err = query.Scan(dso.ctx, results)
 	if err != nil {
 		return 0, fmt.Errorf("error scanning query %w", err)
 	}
+
+	count := len(*results)
 
 	if count == 0 {
 		return 0, models.NewNotFoundError("no results found")
@@ -110,7 +112,10 @@ func (dso *documentSearchOperation) execQuery(
 func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, error) {
 	m := &models.DocumentSearchResult{}
 	query := db.NewSelect().Model(m).
-		ModelTableExpr(dso.collection.TableName)
+		ModelTableExpr(dso.collection.TableName).
+		Column("*").
+		WhereAllWithDeleted().
+		Where("deleted_at IS NULL") // Manually add as bun confuses model name for table name
 
 	// Add the vector column.
 	if dso.searchPayload.Text != "" {
@@ -137,11 +142,11 @@ func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, er
 	if dso.withMMR {
 		limit *= 2
 	}
-	query = query.Limit(dso.limit)
+	query = query.Limit(limit)
 
 	// Order by dist - required for index to be used.
 	if dso.searchPayload.Text != "" {
-		query.Order("dist ASC")
+		query.Order("dist DESC")
 	}
 
 	return query, nil

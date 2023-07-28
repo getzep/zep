@@ -19,8 +19,8 @@ type DocumentSearchPayload struct {
 }
 
 type DocumentSearchResult struct {
-	Document *DocumentResponse `json:"document"`
-	Dist     float64           `json:"dist"`
+	*Document `json:"document"`
+	Dist      float64 `json:"dist"`
 }
 
 type DocumentSearchResultPage struct {

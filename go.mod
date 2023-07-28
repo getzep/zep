@@ -27,10 +27,12 @@ require (
 	github.com/uptrace/bun/dialect/pgdialect v1.1.12
 	github.com/uptrace/bun/driver/pgdriver v1.1.12
 	gonum.org/v1/gonum v0.13.0
+	github.com/brianvoe/gofakeit/v6 v6.23.0
 )
 
 require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
+
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
 	github.com/dlclark/regexp2 v1.9.0 // indirect

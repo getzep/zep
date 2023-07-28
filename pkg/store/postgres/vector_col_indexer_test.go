@@ -7,6 +7,8 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/brianvoe/gofakeit/v6"
+
 	"github.com/google/uuid"
 
 	"github.com/getzep/zep/pkg/testutils"
@@ -104,6 +106,8 @@ func newDocumentCollectionWithDocs(
 	withRandomEmbeddings bool,
 	embeddingWidth int,
 ) (testDocCollection, error) {
+	gofakeit.Seed(0)
+
 	collection := NewTestCollectionDAO(embeddingWidth)
 	collection.Name = collectionName
 	collection.IsAutoEmbedded = autoEmbed
@@ -112,7 +116,7 @@ func newDocumentCollectionWithDocs(
 		return testDocCollection{}, fmt.Errorf("error creating collection: %w", err)
 	}
 
-	var embeddings [][]float32
+	embeddings := make([][]float32, numDocs)
 	if withRandomEmbeddings {
 		embeddings = generateRandomEmbeddings(numDocs, embeddingWidth)
 		if err != nil {
@@ -123,8 +127,10 @@ func newDocumentCollectionWithDocs(
 	for i := 0; i < numDocs; i++ {
 		documents[i] = models.Document{
 			DocumentBase: models.DocumentBase{
-				Content:    testutils.GenerateRandomString(1000),
+				Content:    gofakeit.HipsterParagraph(2, 2, 12, " "),
 				DocumentID: testutils.GenerateRandomString(20),
+				Metadata:   gofakeit.Map(),
+				IsEmbedded: !autoEmbed,
 			},
 			Embedding: embeddings[i],
 		}
