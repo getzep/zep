@@ -237,6 +237,13 @@ func (dc *DocumentCollectionDAO) CreateDocuments(
 		return nil, fmt.Errorf("failed to get collection %w", err)
 	}
 
+	// if the collection is not auto embedded, then we must have been given embeddings
+	// if we got this far. Set the IsEmbedded flag to true for all documents.
+	if !dc.IsAutoEmbedded {
+		for i := range documents {
+			documents[i].IsEmbedded = true
+		}
+	}
 	_, err := dc.db.NewInsert().
 		Model(&documents).
 		ModelTableExpr(dc.TableName).
