@@ -55,3 +55,22 @@ func TestAuthMiddleware(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.Code)
 	})
 }
+
+func TestSendVersion(t *testing.T) {
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+
+	handler := SendVersion(nextHandler)
+
+	req, err := http.NewRequest("GET", "/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Header().Get(versionHeader) != config.VersionString {
+		t.Errorf("handler returned wrong version header: got %v want %v",
+			rr.Header().Get(versionHeader), config.VersionString)
+	}
+}

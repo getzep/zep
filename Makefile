@@ -9,14 +9,14 @@ EXPORT_RESULT?=false # for CI please set EXPORT_RESULT to true
 
 BUILD_VAR=
 
-PACKAGE := github.com/getzep/zep/cmd
+PACKAGE := github.com/getzep/zep/config
 VERSION := $(shell git describe --tags --always --abbrev=0 --match='v[0-9]*.[0-9]*.[0-9]*' 2> /dev/null | sed 's/^.//')
 COMMIT_HASH := $(shell git rev-parse --short HEAD)
 BUILD_TIMESTAMP := $(shell date '+%Y-%m-%dT%H:%M:%S%z')
 
-LDFLAGS = -X '${PACKAGE}/zep.Version=${VERSION}' \
-          -X '${PACKAGE}/zep.CommitHash=${COMMIT_HASH}' \
-          -X '${PACKAGE}/zep.BuildTime=${BUILD_TIMESTAMP}'
+LDFLAGS = -X '${PACKAGE}.Version=${VERSION}' \
+          -X '${PACKAGE}.CommitHash=${COMMIT_HASH}' \
+          -X '${PACKAGE}.BuildTime=${BUILD_TIMESTAMP}'
 
 GREEN  := $(shell tput -Txterm setaf 2)
 YELLOW := $(shell tput -Txterm setaf 3)

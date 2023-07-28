@@ -38,7 +38,7 @@ func run() {
 
 	handleCLIOptions(cfg)
 
-	log.Infof("Starting zep server version %s", VersionString)
+	log.Infof("Starting zep server version %s", config.VersionString)
 
 	config.SetLogLevel(cfg)
 	appState := NewAppState(cfg)
@@ -77,7 +77,7 @@ func NewAppState(cfg *config.Config) *models.AppState {
 // handleCLIOptions handles CLI options that don't require the server to run
 func handleCLIOptions(cfg *config.Config) {
 	if showVersion {
-		fmt.Println(VersionString)
+		fmt.Println(config.VersionString)
 		os.Exit(0)
 	}
 	if generateKey {
