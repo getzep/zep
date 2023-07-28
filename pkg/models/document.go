@@ -24,6 +24,12 @@ type DocumentCollection struct {
 	IsIndexed           bool                   `bun:",notnull"` // Has an index been created on the collection table?
 	ListCount           int                    `bun:",notnull"` // Number of lists in the collection index
 	ProbeCount          int                    `bun:",notnull"` // Number of probes to use when searching the index
+	*DocumentCollectionCounts
+}
+
+type DocumentCollectionCounts struct {
+	DocumentCount         int `bun:"document_count"          json:"document_count"`          // Number of documents in the collection
+	DocumentEmbeddedCount int `bun:"document_embedded_count" json:"document_embedded_count"` // Number of documents with embeddings
 }
 
 type CreateDocumentCollectionRequest struct {
@@ -54,6 +60,7 @@ type DocumentCollectionResponse struct {
 	IsAutoEmbedded      bool                   `json:"is_auto_embedded"`
 	IsNormalized        bool                   `json:"is_normalized"`
 	IsIndexed           bool                   `json:"is_indexed"`
+	*DocumentCollectionCounts
 }
 
 /* Document Models */

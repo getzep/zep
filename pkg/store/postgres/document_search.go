@@ -15,6 +15,7 @@ import (
 )
 
 const DefaultDocumentSearchLimit = 20
+const MaxParallelWorkersPerGather = 4
 
 func newDocumentSearchOperation(
 	ctx context.Context,
@@ -56,26 +57,24 @@ func (dso *documentSearchOperation) Execute() (*models.DocumentSearchResultPage,
 
 	var count int
 	var err error
-	if dso.collection.IsIndexed {
-		// run in transaction to set the ivfflat.probes setting
-		err = dso.db.RunInTx(dso.ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-			_, err = dso.db.Exec("SET LOCAL ivfflat.probes = ?", dso.collection.ProbeCount)
-			if err != nil {
-				return fmt.Errorf("error setting probes: %w", err)
-			}
-			count, err = dso.execQuery(dso.db, &results)
-			if err != nil {
-				return fmt.Errorf("error executing query: %w", err)
-			}
 
-			return nil
-		})
-	} else {
-		count, err = dso.execQuery(dso.db, &results)
-		if err != nil {
-			return &models.DocumentSearchResultPage{}, fmt.Errorf("error executing query: %w", err)
+	// run in transaction to set LOCAL
+	err = dso.db.RunInTx(dso.ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+		if dso.collection.IsIndexed {
+			_, err = tx.Exec("SET LOCAL ivfflat.probes = ?", dso.collection.ProbeCount)
+		} else {
+			_, err = tx.Exec("SET LOCAL max_parallel_workers_per_gather = ?", MaxParallelWorkersPerGather)
 		}
-	}
+		if err != nil {
+			return fmt.Errorf("error setting probes: %w", err)
+		}
+		count, err = dso.execQuery(tx, &results)
+		if err != nil {
+			return fmt.Errorf("error executing query: %w", err)
+		}
+
+		return nil
+	})
 
 	resultPage := &models.DocumentSearchResultPage{
 		Results:     results,

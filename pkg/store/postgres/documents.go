@@ -127,7 +127,16 @@ func (dc *DocumentCollectionDAO) GetByName(
 	if collectionRecord.UUID == uuid.Nil {
 		return models.NewNotFoundError("collection: " + dc.Name)
 	}
+
 	dc.DocumentCollection = collectionRecord.DocumentCollection
+
+	counts, err := dc.getCollectionCounts(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get collection counts: %w", err)
+	}
+
+	dc.DocumentCollection.DocumentCollectionCounts = &counts
+
 	return nil
 }
 
@@ -146,6 +155,31 @@ func (dc *DocumentCollectionDAO) GetAll(
 	}
 
 	return collections, nil
+}
+
+// getCollectionCounts returns the number of documents and embedded documents
+func (dc *DocumentCollectionDAO) getCollectionCounts(
+	ctx context.Context,
+) (models.DocumentCollectionCounts, error) {
+	if dc.TableName == "" {
+		return models.DocumentCollectionCounts{}, errors.New("collection TableName is required")
+	}
+	counts := models.DocumentCollectionCounts{}
+
+	err := dc.db.NewSelect().
+		Model(&counts).
+		ModelTableExpr(dc.TableName).
+		ColumnExpr("count(*) as document_count").
+		ColumnExpr("COUNT(*) FILTER (WHERE is_embedded) as document_embedded_count").
+		Scan(ctx)
+	if err != nil {
+		return models.DocumentCollectionCounts{}, fmt.Errorf(
+			"failed to get collection counts: %w",
+			err,
+		)
+	}
+
+	return counts, nil
 }
 
 // Delete deletes a collection from the collections table and drops the
