@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -639,6 +640,69 @@ func CreateCollectionIndexHandler(appState *models.AppState) http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write([]byte("OK"))
 		if err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+// SearchDocumentsHandler godoc
+//
+//	@Summary		Searches Documents in a DocumentCollection
+//	@Description	Searches Documents in a DocumentCollection based on provided search criteria.
+//
+//	@Tags			document
+//
+//	@Accept			json
+//	@Produce		json
+//	@Param			collectionName	path		string							true	"Name of the Document Collection"
+//	@Param			limit			query		int								false	"Limit the number of returned documents"
+//	@Param			mmr				query		bool							false	"Use MMR to rerank the search results"
+//	@Param			searchPayload	body		models.DocumentSearchPayload	true	"Search criteria"
+//	@Success		200				{object}	[]models.Document				"OK"
+//	@Failure		400				{object}	APIError						"Bad Request"
+//	@Failure		500				{object}	APIError						"Internal Server Error"
+//	@Router			/api/v1/collection/{collectionName}/search [post]
+func SearchDocumentsHandler(appState *models.AppState) http.HandlerFunc {
+	store := appState.DocumentStore
+	return func(w http.ResponseWriter, r *http.Request) {
+		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
+		if collectionName == "" {
+			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			return
+		}
+
+		limit, err := extractQueryStringValueToInt(r, "limit")
+		if err != nil {
+			renderError(w, err, http.StatusBadRequest)
+			return
+		}
+
+		withMMRStr := chi.URLParam(r, "mmr")
+		withMMR := false
+		if withMMRStr != "" {
+			withMMR, err = strconv.ParseBool(withMMRStr)
+			if err != nil {
+				renderError(w, err, http.StatusBadRequest)
+				return
+			}
+		}
+
+		var searchPayload models.DocumentSearchPayload
+		if err := json.NewDecoder(r.Body).Decode(&searchPayload); err != nil {
+			renderError(w, err, http.StatusBadRequest)
+			return
+		}
+
+		searchPayload.CollectionName = collectionName
+
+		results, err := store.SearchCollection(r.Context(), &searchPayload, limit, withMMR, 0, 0)
+		if err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		if err := encodeJSON(w, results); err != nil {
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}

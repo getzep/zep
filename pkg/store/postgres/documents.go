@@ -391,9 +391,12 @@ func (dc *DocumentCollectionDAO) DeleteDocumentsByUUID(
 func (dc *DocumentCollectionDAO) SearchDocuments(ctx context.Context,
 	query *models.DocumentSearchPayload,
 	limit int,
-	mmr bool,
+	withMMR bool,
 	pageNumber int,
-	pageSize int) ([]models.DocumentSearchResult, error) {
+	pageSize int) (*models.DocumentSearchResultPage, error) {
+	// TODO: implement pagination
+	_ = pageNumber
+	_ = pageSize
 
 	if dc.Name == "" {
 		return nil, errors.New("collection name cannot be empty")
@@ -407,20 +410,22 @@ func (dc *DocumentCollectionDAO) SearchDocuments(ctx context.Context,
 		return nil, fmt.Errorf("failed to get collection: %w", err)
 	}
 
-	var documents []models.DocumentSearchResult
-	var err error
-	if mmr {
-		documents, err = dc.searchDocumentsMMR(ctx, query, limit, pageNumber, pageSize)
-	} else {
-		documents, err = dc.searchDocuments(ctx, query, limit, pageNumber, pageSize)
-	}
+	search := newDocumentSearchOperation(
+		ctx,
+		dc.appState,
+		dc.db,
+		query,
+		&dc.DocumentCollection,
+		limit,
+		withMMR,
+	)
+
+	results, err := search.Execute()
 	if err != nil {
-		return nil, fmt.Errorf("failed to search documents: %w", err)
+		return nil, fmt.Errorf("failed to execute search: %w", err)
 	}
 
-	// TODO: Add pagination
-
-	return nil, nil
+	return results, nil
 }
 
 func deleteCollectionRow(

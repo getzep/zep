@@ -46,6 +46,30 @@ definitions:
         additionalProperties: true
         type: object
     type: object
+  models.Document:
+    properties:
+      content:
+        type: string
+      createdAt:
+        type: string
+      deletedAt:
+        type: string
+      documentID:
+        type: string
+      embedding:
+        items:
+          type: number
+        type: array
+      isEmbedded:
+        type: boolean
+      metadata:
+        additionalProperties: true
+        type: object
+      updatedAt:
+        type: string
+      uuid:
+        type: string
+    type: object
   models.DocumentCollectionResponse:
     properties:
       created_at:
@@ -92,6 +116,16 @@ definitions:
       updated_at:
         type: string
       uuid:
+        type: string
+    type: object
+  models.DocumentSearchPayload:
+    properties:
+      collection_name:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      text:
         type: string
     type: object
   models.GetDocumentListRequest:
@@ -664,7 +698,7 @@ paths:
       tags:
       - document
   /api/v1/collection/{collectionName}/index/create:
-    get:
+    post:
       consumes:
       - application/json
       description: Creates an index for the specified DocumentCollection to improve
@@ -693,6 +727,52 @@ paths:
       summary: Creates an index for a DocumentCollection
       tags:
       - collection
+  /api/v1/collection/{collectionName}/search:
+    post:
+      consumes:
+      - application/json
+      description: Searches Documents in a DocumentCollection based on provided search
+        criteria.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: Limit the number of returned documents
+        in: query
+        name: limit
+        type: integer
+      - description: Use MMR to rerank the search results
+        in: query
+        name: mmr
+        type: boolean
+      - description: Search criteria
+        in: body
+        name: searchPayload
+        required: true
+        schema:
+          $ref: '#/definitions/models.DocumentSearchPayload'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Document'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      summary: Searches Documents in a DocumentCollection
+      tags:
+      - document
   /api/v1/sessions/{sessionId}:
     get:
       consumes:

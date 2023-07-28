@@ -299,37 +299,18 @@ func (ds *DocumentStore) SearchCollection(
 	pageNumber int,
 	pageSize int,
 ) (*models.DocumentSearchResultPage, error) {
-	// TODO: implement pagination
-	_ = pageNumber
-	_ = pageSize
-
 	collectionDAO := NewDocumentCollectionDAO(
 		ds.appState,
 		ds.Client,
 		models.DocumentCollection{Name: query.CollectionName},
 	)
 
-	err := collectionDAO.GetByName(ctx)
+	results, err := collectionDAO.SearchDocuments(ctx, query, limit, withMMR, pageNumber, pageSize)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get collection: %w", err)
+		return nil, fmt.Errorf("failed to search collection: %w", err)
 	}
 
-	search := newDocumentSearchOperation(
-		ctx,
-		ds.appState,
-		ds.Client,
-		query,
-		&collectionDAO.DocumentCollection,
-		limit,
-		withMMR,
-	)
-
-	results, err := search.Execute()
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute search: %w", err)
-	}
-
-	return results, errors.New("not implemented")
+	return results, nil
 }
 
 func (ds *DocumentStore) CreateCollectionIndex(

@@ -76,6 +76,9 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 			r.Delete("/", DeleteCollectionHandler(appState))
 			r.Patch("/", UpdateCollectionHandler(appState))
 
+			// Document collection search-related routes
+			r.Post("/search", SearchDocumentsHandler(appState))
+
 			// Document collection index-related routes
 			r.Post("/index/create", CreateCollectionIndexHandler(appState))
 
