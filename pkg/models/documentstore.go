@@ -73,7 +73,7 @@ type DocumentStore[T any] interface {
 		withMMR bool, // withMMR is used to enable/disable the Maximal Marginal Relevance algorithm for search results.
 		pageNumber int,
 		pageSize int,
-	) ([]DocumentSearchResultPage, error)
+	) (*DocumentSearchResultPage, error)
 	// CreateCollectionIndex creates an index on the collection. Manually calling this function will drop and
 	// recreate the index, if it exists.
 	CreateCollectionIndex(ctx context.Context, collectionName string) error

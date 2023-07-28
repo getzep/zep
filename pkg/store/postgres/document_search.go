@@ -9,7 +9,6 @@ import (
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/store"
 	"github.com/pgvector/pgvector-go"
-	"github.com/sirupsen/logrus"
 	"github.com/uptrace/bun"
 
 	"github.com/getzep/zep/pkg/models"
@@ -17,43 +16,36 @@ import (
 
 const DefaultDocumentSearchLimit = 20
 
-// TODO: Much of this is duplicative of searchMessages. We should refactor to share code.
-
-func (dc *DocumentCollectionDAO) searchDocuments(
+func newDocumentSearchOperation(
 	ctx context.Context,
-	query *models.DocumentSearchPayload,
+	appState *models.AppState,
+	db *bun.DB,
+	searchPayload *models.DocumentSearchPayload,
+	collection *models.DocumentCollection,
 	limit int,
-	pageNumber int,
-	pageSize int) ([]models.DocumentSearchResult, error) {
-
-	results, err := executeDocsSearchScan(ctx, dbQuery)
-	if err != nil {
-		return nil, store.NewStorageError("memory searchMessages failed", err)
+	withMMR bool,
+) *documentSearchOperation {
+	if limit <= 0 {
+		limit = DefaultDocumentSearchLimit
 	}
 
-	filteredResults := filterValidDocsSearchResults(results, query.Metadata)
-	logrus.Debugf("searchMessages completed for session %s", sessionID)
-
-	return filteredResults, nil
-
-}
-
-func (dc *DocumentCollectionDAO) searchDocumentsMMR(
-	ctx context.Context,
-	query *models.DocumentSearchPayload,
-	limit int,
-	pageNumber int,
-	pageSize int) ([]models.DocumentSearchResult, error) {
-
-	return nil, nil
+	return &documentSearchOperation{
+		ctx:           ctx,
+		appState:      appState,
+		db:            db,
+		searchPayload: searchPayload,
+		collection:    collection,
+		limit:         limit,
+		withMMR:       withMMR,
+	}
 }
 
 type documentSearchOperation struct {
 	ctx           context.Context
 	appState      *models.AppState
 	db            *bun.DB
-	searchPayload models.DocumentSearchPayload
-	collection    models.DocumentCollection
+	searchPayload *models.DocumentSearchPayload
+	collection    *models.DocumentCollection
 	limit         int
 	withMMR       bool
 }
@@ -137,11 +129,8 @@ func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, er
 		}
 	}
 
-	limit := dso.limit
-	if limit == 0 {
-		limit = DefaultDocumentSearchLimit
-	}
-	query = query.Limit(limit)
+	// Add LIMIT
+	query = query.Limit(dso.limit)
 
 	// Order by dist - required for index to be used.
 	if dso.searchPayload.Text != "" {
