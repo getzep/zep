@@ -657,7 +657,7 @@ func CreateCollectionIndexHandler(appState *models.AppState) http.HandlerFunc {
 //	@Produce		json
 //	@Param			collectionName	path		string							true	"Name of the Document Collection"
 //	@Param			limit			query		int								false	"Limit the number of returned documents"
-//	@Param			mmr				query		bool							false	"Use MMR to rerank the search results"
+//	@Param			mmr				query		bool							false	"Use MMR to rerank the search results. Not Implemented"
 //	@Param			searchPayload	body		models.DocumentSearchPayload	true	"Search criteria"
 //	@Success		200				{object}	[]models.Document				"OK"
 //	@Failure		400				{object}	APIError						"Bad Request"
@@ -686,6 +686,8 @@ func SearchDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 				renderError(w, err, http.StatusBadRequest)
 				return
 			}
+			renderError(w, errors.New("MMR not yet implemented"), http.StatusBadRequest)
+			return
 		}
 
 		var searchPayload models.DocumentSearchPayload

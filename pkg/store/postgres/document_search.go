@@ -46,6 +46,7 @@ type documentSearchOperation struct {
 	db            *bun.DB
 	searchPayload *models.DocumentSearchPayload
 	collection    *models.DocumentCollection
+	queryVector   *[]float32
 	limit         int
 	withMMR       bool
 }
@@ -130,6 +131,12 @@ func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, er
 	}
 
 	// Add LIMIT
+	// If we're using MMR, we need to add a limit of 2x the requested limit to allow for the MMR
+	// algorithm to rerank and filter out results.
+	limit := dso.limit
+	if dso.withMMR {
+		limit *= 2
+	}
 	query = query.Limit(dso.limit)
 
 	// Order by dist - required for index to be used.
@@ -154,6 +161,8 @@ func (dso *documentSearchOperation) getDocQueryVector(
 	if err != nil {
 		return pgvector.Vector{}, fmt.Errorf("failed to embed query %w", err)
 	}
+
+	dso.queryVector = &e[0]
 
 	v := pgvector.NewVector(e[0])
 	return v, nil
