@@ -29,8 +29,12 @@ var validate = validator.New()
 //	@Param			collection		body		models.CreateDocumentCollectionRequest	true	"Document Collection"
 //	@Success		200				{object}	string									"OK"
 //	@Failure		400				{object}	APIError								"Bad Request"
+//	@Failure		401				{object}	APIError								"Unauthorized"
 //	@Failure		404				{object}	APIError								"Not Found"
 //	@Failure		500				{object}	APIError								"Internal Server Error"
+//
+//	@Security		Bearer
+//
 //	@Router			/api/v1/collection/{collectionName} [post]
 func CreateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -83,8 +87,12 @@ func CreateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param		collection		body		models.UpdateDocumentCollectionRequest	true	"Document Collection"
 //	@Success	200				{object}	string									"OK"
 //	@Failure	400				{object}	APIError								"Bad Request"
+//	@Failure	401				{object}	APIError								"Unauthorized"
 //	@Failure	404				{object}	APIError								"Not Found"
 //	@Failure	500				{object}	APIError								"Internal Server Error"
+//
+//	@Security	Bearer
+//
 //	@Router		/api/v1/collection/{collectionName} [patch]
 func UpdateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -135,8 +143,12 @@ func UpdateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param			collectionName	path		string		true	"Name of the Document Collection"
 //	@Success		200				{object}	string		"OK"
 //	@Failure		400				{object}	APIError	"Bad Request"
+//	@Failure		401				{object}	APIError	"Unauthorized"
 //	@Failure		404				{object}	APIError	"Not Found"
 //	@Failure		500				{object}	APIError	"Internal Server Error"
+//
+//	@Security		Bearer
+//
 //	@Router			/api/v1/collection/{collectionName} [delete]
 func DeleteCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -174,7 +186,11 @@ func DeleteCollectionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Accept			json
 //	@Produce		json
 //	@Success		200	{array}		[]models.DocumentCollectionResponse	"OK"
+//	@Failure		401	{object}	APIError							"Unauthorized"
 //	@Failure		500	{object}	APIError							"Internal Server Error"
+//
+//	@Security		Bearer
+//
 //	@Router			/api/v1/collection [get]
 func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -208,8 +224,12 @@ func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param			collectionName	path		string								true	"Name of the Document Collection"
 //	@Success		200				{object}	models.DocumentCollectionResponse	"OK"
 //	@Failure		400				{object}	APIError							"Bad Request"
+//	@Failure		401				{object}	APIError							"Unauthorized"
 //	@Failure		404				{object}	APIError							"Not Found"
 //	@Failure		500				{object}	APIError							"Internal Server Error"
+//
+//	@Security		Bearer
+//
 //	@Router			/api/v1/collection/{collectionName} [get]
 func GetCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -250,7 +270,11 @@ func GetCollectionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param			documents		body		[]models.CreateDocumentRequest	true	"Array of Documents to be created"
 //	@Success		200				{array}		uuid.UUID						"OK"
 //	@Failure		400				{object}	APIError						"Bad Request"
+//	@Failure		401				{object}	APIError						"Unauthorized"
 //	@Failure		500				{object}	APIError						"Internal Server Error"
+//
+//	@Security		Bearer
+//
 //	@Router			/api/v1/collection/{collectionName}/document [post]
 func CreateDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -299,8 +323,12 @@ func CreateDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param		document		body		models.UpdateDocumentRequest	true	"Document to be updated"
 //	@Success	200				{object}	string							"OK"
 //	@Failure	400				{object}	APIError						"Bad Request"
+//	@Failure	401				{object}	APIError						"Unauthorized"
 //	@Failure	404				{object}	APIError						"Not Found"
 //	@Failure	500				{object}	APIError						"Internal Server Error"
+//
+//	@Security	Bearer
+//
 //	@Router		/api/v1/collection/{collectionName}/document/uuid/{documentUUID} [patch]
 func UpdateDocumentHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -360,7 +388,11 @@ func UpdateDocumentHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param			documents		body		[]models.UpdateDocumentBatchRequest	true	"Array of Documents to be updated"
 //	@Success		200				{object}	string								"OK"
 //	@Failure		400				{object}	APIError							"Bad Request"
+//	@Failure		401				{object}	APIError							"Unauthorized"
 //	@Failure		500				{object}	APIError							"Internal Server Error"
+//
+//	@Security		Bearer
+//
 //	@Router			/api/v1/collection/{collectionName}/document/batchUpdate [patch]
 func UpdateDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -413,7 +445,11 @@ func UpdateDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param			documentUUID	path		string					true	"UUID of the Document to be updated"
 //	@Success		200				{object}	models.DocumentResponse	"OK"
 //	@Failure		400				{object}	APIError				"Bad Request"
+//	@Failure		401				{object}	APIError				"Unauthorized"
 //	@Failure		500				{object}	APIError				"Internal Server Error"
+//
+//	@Security		Bearer
+//
 //	@Router			/api/v1/collection/{collectionName}/document/uuid/{documentUUID} [get]
 func GetDocumentHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -467,7 +503,11 @@ func GetDocumentHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param			documentRequest	body		models.GetDocumentListRequest	true	"UUIDs and IDs of the Documents to be fetched"
 //	@Success		200				{array}		[]models.DocumentResponse		"OK"
 //	@Failure		400				{object}	APIError						"Bad Request"
+//	@Failure		401				{object}	APIError						"Unauthorized"
 //	@Failure		500				{object}	APIError						"Internal Server Error"
+//
+//	@Security		Bearer
+//
 //	@Router			/api/v1/collection/{collectionName}/document/batchGet [post]
 func GetDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -520,8 +560,12 @@ func GetDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param			documentUUID	path		string		true	"UUID of the Document to be deleted"
 //	@Success		200				{object}	string		"OK"
 //	@Failure		400				{object}	APIError	"Bad Request"
+//	@Failure		401				{object}	APIError	"Unauthorized"
 //	@Failure		404				{object}	APIError	"Document Not Found"
 //	@Failure		500				{object}	APIError	"Internal Server Error"
+//
+//	@Security		Bearer
+//
 //	@Router			/api/v1/collection/{collectionName}/document/uuid/{documentUUID} [delete]
 func DeleteDocumentHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -572,7 +616,11 @@ func DeleteDocumentHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param			documentUUIDs	body		[]uuid.UUID	true	"UUIDs of the Documents to be deleted"
 //	@Success		200				{object}	string		"OK"
 //	@Failure		400				{object}	APIError	"Bad Request"
+//	@Failure		401				{object}	APIError	"Unauthorized"
 //	@Failure		500				{object}	APIError	"Internal Server Error"
+//
+//	@Security		Bearer
+//
 //	@Router			/api/v1/collection/{collectionName}/document/batchDelete [post]
 func DeleteDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -620,7 +668,11 @@ func DeleteDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param			collectionName	path		string		true	"Name of the Document Collection"
 //	@Success		200				{object}	string		"OK"
 //	@Failure		400				{object}	APIError	"Bad Request"
+//	@Failure		401				{object}	APIError	"Unauthorized"
 //	@Failure		500				{object}	APIError	"Internal Server Error"
+//
+//	@Security		Bearer
+//
 //	@Router			/api/v1/collection/{collectionName}/index/create [post]
 func CreateCollectionIndexHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
@@ -661,7 +713,11 @@ func CreateCollectionIndexHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param			searchPayload	body		models.DocumentSearchPayload	true	"Search criteria"
 //	@Success		200				{object}	[]models.Document				"OK"
 //	@Failure		400				{object}	APIError						"Bad Request"
+//	@Failure		401				{object}	APIError						"Unauthorized"
 //	@Failure		500				{object}	APIError						"Internal Server Error"
+//
+//	@Security		Bearer
+//
 //	@Router			/api/v1/collection/{collectionName}/search [post]
 func SearchDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore

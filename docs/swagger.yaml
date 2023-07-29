@@ -76,6 +76,12 @@ definitions:
         type: string
       description:
         type: string
+      document_count:
+        description: Number of documents in the collection
+        type: integer
+      document_embedded_count:
+        description: Number of documents with embeddings
+        type: integer
       embedding_dimensions:
         type: integer
       embedding_model_name:
@@ -282,10 +288,16 @@ paths:
                 $ref: '#/definitions/models.DocumentCollectionResponse'
               type: array
             type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Gets a list of DocumentCollections
       tags:
       - collection
@@ -311,6 +323,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "404":
           description: Not Found
           schema:
@@ -319,6 +335,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Deletes a DocumentCollection
       tags:
       - collection
@@ -343,6 +361,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "404":
           description: Not Found
           schema:
@@ -351,6 +373,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Gets a DocumentCollection
       tags:
       - collection
@@ -380,6 +404,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "404":
           description: Not Found
           schema:
@@ -388,6 +416,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Updates a DocumentCollection
       tags:
       - collection
@@ -419,6 +449,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "404":
           description: Not Found
           schema:
@@ -427,6 +461,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Creates a new DocumentCollection
       tags:
       - collection
@@ -463,10 +499,16 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Creates Multiple Documents in a DocumentCollection
       tags:
       - document
@@ -500,10 +542,16 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Batch Deletes Documents from a DocumentCollection by UUID
       tags:
       - document
@@ -540,10 +588,16 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Batch Gets Documents from a DocumentCollection
       tags:
       - document
@@ -577,10 +631,16 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Batch Updates Documents in a DocumentCollection
       tags:
       - document
@@ -611,6 +671,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "404":
           description: Document Not Found
           schema:
@@ -619,6 +683,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Delete Document from a DocumentCollection by UUID
       tags:
       - document
@@ -648,10 +714,16 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Gets a Document from a DocumentCollection by UUID
       tags:
       - document
@@ -686,6 +758,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "404":
           description: Not Found
           schema:
@@ -694,6 +770,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Updates a Document in a DocumentCollection by UUID
       tags:
       - document
@@ -720,10 +798,16 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Creates an index for a DocumentCollection
       tags:
       - collection
@@ -743,7 +827,7 @@ paths:
         in: query
         name: limit
         type: integer
-      - description: Use MMR to rerank the search results
+      - description: Use MMR to rerank the search results. Not Implemented
         in: query
         name: mmr
         type: boolean
@@ -766,10 +850,16 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Searches Documents in a DocumentCollection
       tags:
       - document
@@ -978,4 +1068,10 @@ paths:
 schemes:
 - http
 - https
+securityDefinitions:
+  Bearer:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"
