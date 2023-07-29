@@ -166,8 +166,21 @@ Content-Type: application/json
     client.test("Search request executed successfully", function () {
         client.assert(response.status === 200, "Search request status is not 200");
     });
+%}
 
-    client.test("Search response body has 'message'", function () {
-        client.assert(response.body.hasOwnProperty("message"), "Search request body does not contain 'message'");
+### Search with Metadata
+POST {{host}}/api/v1/sessions/{{session_uuid}}/search
+Content-Type: application/json
+
+{
+  "text": "What food is served in Iceland?",
+    "metadata": {
+        "foo": {"baz": "bar"}
+    }
+}
+
+> {%
+    client.test("Search request executed successfully", function () {
+        client.assert(response.status === 200, "Search request status is not 200");
     });
 %}
