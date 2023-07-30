@@ -82,7 +82,7 @@ type Document struct {
 }
 
 type CreateDocumentRequest struct {
-	DocumentID string                 `json:"document_id,omitempty" validate:"omitempty,printascii,max=40"`
+	DocumentID string                 `json:"document_id,omitempty" validate:"omitempty,printascii,max=100"`
 	Content    string                 `json:"content,omitempty"     validate:"required_without=Embedding,omitempty"`
 	Metadata   map[string]interface{} `json:"metadata,omitempty"`
 	Embedding  []float32              `json:"embedding,omitempty"   validate:"required_without=Content,omitempty"`

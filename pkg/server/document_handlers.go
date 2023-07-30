@@ -820,18 +820,26 @@ func documentCollectionFromUpdateRequest(
 func collectionToCollectionResponse(
 	collection models.DocumentCollection,
 ) models.DocumentCollectionResponse {
+	counts := &models.DocumentCollectionCounts{}
+	if collection.DocumentCollectionCounts != nil {
+		counts = &models.DocumentCollectionCounts{
+			DocumentCount:         collection.DocumentCount,
+			DocumentEmbeddedCount: collection.DocumentEmbeddedCount,
+		}
+	}
 	return models.DocumentCollectionResponse{
-		UUID:                collection.UUID,
-		CreatedAt:           collection.CreatedAt,
-		UpdatedAt:           collection.UpdatedAt,
-		Name:                collection.Name,
-		Description:         collection.Description,
-		Metadata:            collection.Metadata,
-		EmbeddingModelName:  collection.EmbeddingModelName,
-		EmbeddingDimensions: collection.EmbeddingDimensions,
-		IsAutoEmbedded:      collection.IsAutoEmbedded,
-		IsNormalized:        collection.IsNormalized,
-		IsIndexed:           collection.IsIndexed,
+		UUID:                     collection.UUID,
+		CreatedAt:                collection.CreatedAt,
+		UpdatedAt:                collection.UpdatedAt,
+		Name:                     collection.Name,
+		Description:              collection.Description,
+		Metadata:                 collection.Metadata,
+		EmbeddingModelName:       collection.EmbeddingModelName,
+		EmbeddingDimensions:      collection.EmbeddingDimensions,
+		IsAutoEmbedded:           collection.IsAutoEmbedded,
+		IsNormalized:             collection.IsNormalized,
+		IsIndexed:                collection.IsIndexed,
+		DocumentCollectionCounts: counts,
 	}
 }
 

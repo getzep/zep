@@ -76,7 +76,7 @@ func embedTextsLocal(
 }
 
 func makeEmbedRequest(ctx context.Context, url string, jsonBody []byte) ([]byte, error) {
-	httpClient := &http.Client{Timeout: 10 * time.Second}
+	httpClient := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, err
