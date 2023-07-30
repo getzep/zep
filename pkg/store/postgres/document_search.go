@@ -53,7 +53,7 @@ type documentSearchOperation struct {
 }
 
 func (dso *documentSearchOperation) Execute() (*models.DocumentSearchResultPage, error) {
-	results := make([]models.DocumentSearchResult, 0)
+	var results []models.SearchDocumentQuery
 
 	var count int
 	var err error
@@ -75,9 +75,12 @@ func (dso *documentSearchOperation) Execute() (*models.DocumentSearchResultPage,
 
 		return nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("error executing search: %w", err)
+	}
 
 	resultPage := &models.DocumentSearchResultPage{
-		Results:     results,
+		Results:     searchResultsFromSearchQueries(results),
 		ResultCount: count,
 	}
 
@@ -87,7 +90,7 @@ func (dso *documentSearchOperation) Execute() (*models.DocumentSearchResultPage,
 // execQuery executes the query and scans the results into the provided results slice. It accepts a bun DB or Tx.
 func (dso *documentSearchOperation) execQuery(
 	db bun.IDB,
-	results *[]models.DocumentSearchResult,
+	results *[]models.SearchDocumentQuery,
 ) (int, error) {
 	query, err := dso.buildQuery(db)
 	if err != nil {
@@ -109,7 +112,7 @@ func (dso *documentSearchOperation) execQuery(
 }
 
 func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, error) {
-	m := &models.DocumentSearchResult{}
+	m := &[]models.SearchDocumentQuery{}
 	query := db.NewSelect().Model(m).
 		ModelTableExpr(dso.collection.TableName).
 		Column("*").
@@ -196,4 +199,26 @@ func (dso *documentSearchOperation) applyDocsMetadataFilter(
 	query = qb.Unwrap().(*bun.SelectQuery)
 
 	return query, nil
+}
+
+func searchResultsFromSearchQueries(s []models.SearchDocumentQuery) []models.DocumentSearchResult {
+	result := make([]models.DocumentSearchResult, len(s))
+
+	for i := range s {
+		result[i] = models.DocumentSearchResult{
+			DocumentResponse: &models.DocumentResponse{
+				UUID:       s[i].UUID,
+				CreatedAt:  s[i].CreatedAt,
+				UpdatedAt:  s[i].UpdatedAt,
+				DocumentID: s[i].DocumentID,
+				Content:    s[i].Content,
+				Metadata:   s[i].Metadata,
+				Embedding:  s[i].Embedding,
+				IsEmbedded: s[i].IsEmbedded,
+			},
+			Dist: s[i].Dist,
+		}
+	}
+
+	return result
 }

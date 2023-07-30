@@ -81,6 +81,11 @@ type Document struct {
 	Embedding []float32 `bun:"type:vector,nullzero" json:"embedding,omitempty"`
 }
 
+type SearchDocumentQuery struct {
+	*Document
+	Dist float64 `json:"dist" bun:"dist"`
+}
+
 type CreateDocumentRequest struct {
 	DocumentID string                 `json:"document_id,omitempty" validate:"omitempty,printascii,max=100"`
 	Content    string                 `json:"content,omitempty"     validate:"required_without=Embedding,omitempty"`
