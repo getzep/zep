@@ -93,7 +93,7 @@ type UpdateDocumentRequest struct {
 	Metadata   map[string]interface{} `json:"metadata,omitempty" validate:"omitempty"`
 }
 
-type UpdateDocumentBatchRequest struct {
+type UpdateDocumentListRequest struct {
 	UUID uuid.UUID `json:"uuid" validate:"required"`
 	UpdateDocumentRequest
 }

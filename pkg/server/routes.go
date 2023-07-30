@@ -95,10 +95,12 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 					r.Patch("/", UpdateDocumentHandler(appState))
 					r.Delete("/", DeleteDocumentHandler(appState))
 				})
-				// Document batch routes
-				r.Post("/batchGet", GetDocumentsBatchHandler(appState))
-				r.Post("/batchDelete", DeleteDocumentsBatchHandler(appState))
-				r.Patch("/batchUpdate", UpdateDocumentsBatchHandler(appState))
+				// Document list routes
+				r.Route("/list", func(r chi.Router) {
+					r.Post("/get", GetDocumentListHandler(appState))
+					r.Post("/delete", DeleteDocumentListHandler(appState))
+					r.Patch("/update", UpdateDocumentListHandler(appState))
+				})
 			})
 		})
 	})

@@ -377,7 +377,7 @@ func UpdateDocumentHandler(appState *models.AppState) http.HandlerFunc {
 	}
 }
 
-// UpdateDocumentsBatchHandler godoc
+// UpdateDocumentListHandler godoc
 //
 //	@Summary		Batch Updates Documents in a DocumentCollection
 //	@Description	Updates Documents in a specified DocumentCollection.
@@ -385,7 +385,7 @@ func UpdateDocumentHandler(appState *models.AppState) http.HandlerFunc {
 //	@Accept			json
 //	@Produce		json
 //	@Param			collectionName	path		string								true	"Name of the Document Collection"
-//	@Param			documents		body		[]models.UpdateDocumentBatchRequest	true	"Array of Documents to be updated"
+//	@Param			documents		body		[]models.UpdateDocumentListRequest	true	"Array of Documents to be updated"
 //	@Success		200				{object}	string								"OK"
 //	@Failure		400				{object}	APIError							"Bad Request"
 //	@Failure		401				{object}	APIError							"Unauthorized"
@@ -394,7 +394,7 @@ func UpdateDocumentHandler(appState *models.AppState) http.HandlerFunc {
 //	@Security		Bearer
 //
 //	@Router			/api/v1/collection/{collectionName}/document/batchUpdate [patch]
-func UpdateDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
+func UpdateDocumentListHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
@@ -403,7 +403,7 @@ func UpdateDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		var documentsRequest []models.UpdateDocumentBatchRequest
+		var documentsRequest []models.UpdateDocumentListRequest
 		if err := json.NewDecoder(r.Body).Decode(&documentsRequest); err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
@@ -492,7 +492,7 @@ func GetDocumentHandler(appState *models.AppState) http.HandlerFunc {
 	}
 }
 
-// GetDocumentsBatchHandler godoc
+// GetDocumentListHandler godoc
 //
 //	@Summary		Batch Gets Documents from a DocumentCollection
 //	@Description	Returns Documents from a DocumentCollection specified by UUID or ID.
@@ -509,7 +509,7 @@ func GetDocumentHandler(appState *models.AppState) http.HandlerFunc {
 //	@Security		Bearer
 //
 //	@Router			/api/v1/collection/{collectionName}/document/batchGet [post]
-func GetDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
+func GetDocumentListHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
@@ -603,7 +603,7 @@ func DeleteDocumentHandler(appState *models.AppState) http.HandlerFunc {
 	}
 }
 
-// DeleteDocumentsBatchHandler godoc
+// DeleteDocumentListHandler godoc
 //
 //	@Summary		Batch Deletes Documents from a DocumentCollection by UUID
 //	@Description	Deletes specified Documents from a DocumentCollection.
@@ -622,7 +622,7 @@ func DeleteDocumentHandler(appState *models.AppState) http.HandlerFunc {
 //	@Security		Bearer
 //
 //	@Router			/api/v1/collection/{collectionName}/document/batchDelete [post]
-func DeleteDocumentsBatchHandler(appState *models.AppState) http.HandlerFunc {
+func DeleteDocumentListHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
@@ -891,7 +891,7 @@ func documentFromDocumentUpdateRequest(
 // documentListFromDocumentBatchUpdateRequest validates a list of UpdateDocumentBatchRequests
 // and returns a list of Documents. Returns an error if any of the requests are invalid.
 func documentListFromDocumentBatchUpdateRequest(
-	documentUpdates []models.UpdateDocumentBatchRequest,
+	documentUpdates []models.UpdateDocumentListRequest,
 ) ([]models.Document, error) {
 	documentList := make([]models.Document, len(documentUpdates))
 	for i := range documentUpdates {
