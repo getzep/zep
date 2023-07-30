@@ -77,7 +77,7 @@ func TestCreateIndex(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	err = vci.CreateIndex(context.Background(), 100)
+	err = vci.CreateIndex(context.Background(), true)
 	assert.NoError(t, err)
 
 	// Set Collection's IsIndexed flag to true

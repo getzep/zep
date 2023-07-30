@@ -316,6 +316,7 @@ func (ds *DocumentStore) SearchCollection(
 func (ds *DocumentStore) CreateCollectionIndex(
 	ctx context.Context,
 	collectionName string,
+	force bool,
 ) error {
 	collection := NewDocumentCollectionDAO(
 		ds.appState,
@@ -334,7 +335,7 @@ func (ds *DocumentStore) CreateCollectionIndex(
 	}
 
 	// use the default MinRows value
-	err = vci.CreateIndex(ctx, 0)
+	err = vci.CreateIndex(ctx, force)
 	if err != nil {
 		return fmt.Errorf("failed to create index: %w", err)
 	}

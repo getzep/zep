@@ -36,7 +36,7 @@ definitions:
       content:
         type: string
       document_id:
-        maxLength: 40
+        maxLength: 100
         type: string
       embedding:
         items:
@@ -228,7 +228,16 @@ definitions:
       uuid:
         type: string
     type: object
-  models.UpdateDocumentBatchRequest:
+  models.UpdateDocumentCollectionRequest:
+    properties:
+      description:
+        maxLength: 1000
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+    type: object
+  models.UpdateDocumentListRequest:
     properties:
       document_id:
         maxLength: 40
@@ -240,15 +249,6 @@ definitions:
         type: string
     required:
     - uuid
-    type: object
-  models.UpdateDocumentCollectionRequest:
-    properties:
-      description:
-        maxLength: 1000
-        type: string
-      metadata:
-        additionalProperties: true
-        type: object
     type: object
   models.UpdateDocumentRequest:
     properties:
@@ -618,7 +618,7 @@ paths:
         required: true
         schema:
           items:
-            $ref: '#/definitions/models.UpdateDocumentBatchRequest'
+            $ref: '#/definitions/models.UpdateDocumentListRequest'
           type: array
       produces:
       - application/json
@@ -787,6 +787,10 @@ paths:
         name: collectionName
         required: true
         type: string
+      - description: Force index creation
+        in: query
+        name: force
+        type: boolean
       produces:
       - application/json
       responses:

@@ -83,7 +83,7 @@ func (vci *VectorColIndex) CalculateProbes() error {
 	return nil
 }
 
-func (vci *VectorColIndex) CreateIndex(ctx context.Context, minRows int) error {
+func (vci *VectorColIndex) CreateIndex(ctx context.Context, force bool) error {
 	// Check if a mutex already exists for this collection. If not, create one.
 	if _, ok := IndexMutexMap[vci.Collection.Name]; !ok {
 		IndexMutexMap[vci.Collection.Name] = &sync.Mutex{}
@@ -96,12 +96,8 @@ func (vci *VectorColIndex) CreateIndex(ctx context.Context, minRows int) error {
 		return fmt.Errorf("only cosine distance function is currently supported")
 	}
 
-	// If minRows is 0, use the default min rows. Added to support testing.
-	minRowCount := minRows
-	if minRowCount == 0 {
-		minRowCount = MinRowsForIndex
-	}
-	if vci.RowCount < minRowCount {
+	// If this is not a forced index creation, check if there are enough rows to create an index.
+	if !force && vci.RowCount < MinRowsForIndex {
 		return fmt.Errorf("not enough rows to create index")
 	}
 

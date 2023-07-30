@@ -193,7 +193,7 @@ func (dso *documentSearchOperation) applyDocsMetadataFilter(
 		if err != nil {
 			return nil, fmt.Errorf("error unmarshalling metadata %w", err)
 		}
-		qb = parseJSONQuery(qb, &jq, false)
+		qb = parseDocumentJSONQuery(qb, &jq, false)
 	}
 
 	query = qb.Unwrap().(*bun.SelectQuery)

@@ -666,6 +666,8 @@ func DeleteDocumentListHandler(appState *models.AppState) http.HandlerFunc {
 //	@Accept			json
 //	@Produce		json
 //	@Param			collectionName	path		string		true	"Name of the Document Collection"
+//	@Param			force			query		bool		false	"Force index creation, even if there are too few documents to index"
+//
 //	@Success		200				{object}	string		"OK"
 //	@Failure		400				{object}	APIError	"Bad Request"
 //	@Failure		401				{object}	APIError	"Unauthorized"
@@ -683,7 +685,18 @@ func CreateCollectionIndexHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		err := store.CreateCollectionIndex(r.Context(), collectionName)
+		forceStr := r.URL.Query().Get("force")
+		force := false
+		if forceStr != "" {
+			var err error
+			force, err = strconv.ParseBool(forceStr)
+			if err != nil {
+				renderError(w, err, http.StatusBadRequest)
+				return
+			}
+		}
+
+		err := store.CreateCollectionIndex(r.Context(), collectionName, force)
 		if err != nil {
 			renderError(w, err, http.StatusInternalServerError)
 			return
@@ -735,7 +748,7 @@ func SearchDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 		}
 
 		// disabled for now
-		withMMRStr := chi.URLParam(r, "mmr")
+		withMMRStr := r.URL.Query().Get("mmr")
 		withMMR := false
 		if withMMRStr != "" {
 			_, err = strconv.ParseBool(withMMRStr)
