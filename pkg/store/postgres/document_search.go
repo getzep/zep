@@ -131,6 +131,7 @@ func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, er
 				return nil, fmt.Errorf("error getting query vector %w", err)
 			}
 		}
+
 		// Cosine distance is 1 - (a <=> b)
 		query = query.ColumnExpr("1 - (embedding <=> ?) AS dist", v)
 	}
@@ -153,7 +154,7 @@ func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, er
 	query = query.Limit(limit)
 
 	// Order by dist - required for index to be used.
-	if dso.searchPayload.Text != "" {
+	if dso.searchPayload.Text != "" || len(dso.searchPayload.Embedding) != 0 {
 		query.Order("dist DESC")
 	}
 
