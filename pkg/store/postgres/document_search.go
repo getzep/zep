@@ -117,13 +117,19 @@ func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, er
 		ModelTableExpr(dso.collection.TableName).
 		Column("*").
 		WhereAllWithDeleted().
-		Where("deleted_at IS NULL") // Manually add as bun confuses model name for table name
+		Where("deleted_at IS NULL") // Manually add as ModelTableExpr confuses bun
 
-	// Add the vector column.
-	if dso.searchPayload.Text != "" {
-		v, err := dso.getDocQueryVector(dso.searchPayload.Text)
-		if err != nil {
-			return nil, fmt.Errorf("error getting query vector %w", err)
+	// Add the vector column if either text or embedding is set
+	if dso.searchPayload.Text != "" || len(dso.searchPayload.Embedding) != 0 {
+		var v pgvector.Vector
+		var err error
+		if len(dso.searchPayload.Embedding) != 0 {
+			v = pgvector.NewVector(dso.searchPayload.Embedding)
+		} else {
+			v, err = dso.getDocQueryVector(dso.searchPayload.Text)
+			if err != nil {
+				return nil, fmt.Errorf("error getting query vector %w", err)
+			}
 		}
 		// Cosine distance is 1 - (a <=> b)
 		query = query.ColumnExpr("1 - (embedding <=> ?) AS dist", v)

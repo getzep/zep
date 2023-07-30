@@ -66,7 +66,7 @@ func (ds *DocumentStore) OnStart(
 			log.Info("starting document embedding updater")
 			err := ds.documentEmbeddingUpdater(ctx)
 			if err != nil {
-				log.Fatalf("failed to start document embedding updater: %v", err)
+				log.Errorf("Error from document embedding updater: %v", err)
 			}
 		}()
 	})

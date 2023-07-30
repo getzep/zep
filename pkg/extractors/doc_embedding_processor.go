@@ -14,6 +14,8 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
+const TaskChunkSize = 100
+
 // TODO move pool size and buffer to config
 func NewDocEmbeddingProcessor(
 	appState *models.AppState,
@@ -24,8 +26,8 @@ func NewDocEmbeddingProcessor(
 		appState:          appState,
 		EmbeddingTaskCh:   embeddingTaskCh,
 		EmbeddingUpdateCh: embeddingUpdateCh,
-		PoolSize:          1,
-		PoolBuffer:        100,
+		PoolSize:          5,
+		PoolBuffer:        10,
 	}
 }
 
@@ -73,14 +75,19 @@ func (ep *DocEmbeddingProcessor) processor(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case tasks := <-ep.EmbeddingTaskCh:
-			ep.Pool.Submit(func() {
-				updates, err := ep.processEmbeddingTasks(ctx, tasks)
-				if err != nil {
-					log.Errorf("failed to process embedding tasks: %s", err)
-					return
-				}
-				ep.EmbeddingUpdateCh <- updates
-			})
+			taskChunks := chunkTasks(tasks, TaskChunkSize)
+			for _, taskChunk := range taskChunks {
+				// Capture range variable
+				taskChunk := taskChunk
+				ep.Pool.Submit(func() {
+					updates, err := ep.processEmbeddingTasks(ctx, taskChunk)
+					if err != nil {
+						log.Errorf("failed to process embedding tasks: %s", err)
+						return
+					}
+					ep.EmbeddingUpdateCh <- updates
+				})
+			}
 		}
 	}
 }
@@ -119,4 +126,16 @@ func (ep *DocEmbeddingProcessor) processEmbeddingTasks(
 	}
 
 	return updates, nil
+}
+
+func chunkTasks(tasks []models.DocEmbeddingTask, chunkSize int) [][]models.DocEmbeddingTask {
+	var chunks [][]models.DocEmbeddingTask
+	for i := 0; i < len(tasks); i += chunkSize {
+		end := i + chunkSize
+		if end > len(tasks) {
+			end = len(tasks)
+		}
+		chunks = append(chunks, tasks[i:end])
+	}
+	return chunks
 }

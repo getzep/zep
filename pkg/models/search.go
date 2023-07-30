@@ -14,7 +14,8 @@ type MemorySearchPayload struct {
 
 type DocumentSearchPayload struct {
 	CollectionName string                 `json:"collection_name"`
-	Text           string                 `json:"text"`
+	Text           string                 `json:"text,omitempty"`
+	Embedding      []float32              `json:"embedding,omitempty"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 }
 
