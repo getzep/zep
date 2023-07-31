@@ -36,11 +36,9 @@ type CreateDocumentCollectionRequest struct {
 	Name                string                 `json:"name"                 validate:"required,alphanum,min=3,max=40"`
 	Description         string                 `json:"description"          validate:"omitempty,max=1000"`
 	Metadata            map[string]interface{} `json:"metadata,omitempty"`
-	EmbeddingModelName  string                 `json:"embedding_model_name"`
 	EmbeddingDimensions int                    `json:"embedding_dimensions" validate:"required,numeric,min=8,max=2000"`
-	IsAutoEmbedded      bool                   `json:"is_auto_embedded"     validate:"required,boolean"`
-	IsNormalized        bool                   `json:"is_normalized"        validate:"boolean,omitempty"` // Are the embeddings normalized?
-	DistanceFunction    string                 `json:"distance_function"`                                 // Distance function to use for index
+	// these needs to be pointers so that we can distinguish between false and unset when validating
+	IsAutoEmbedded *bool `json:"is_auto_embedded"     validate:"required,boolean"`
 }
 
 type UpdateDocumentCollectionRequest struct {

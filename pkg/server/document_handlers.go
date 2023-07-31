@@ -809,11 +809,8 @@ func documentCollectionFromCreateRequest(
 		Name:                collectionRequest.Name,
 		Description:         collectionRequest.Description,
 		Metadata:            collectionRequest.Metadata,
-		EmbeddingModelName:  collectionRequest.EmbeddingModelName,
 		EmbeddingDimensions: collectionRequest.EmbeddingDimensions,
-		DistanceFunction:    collectionRequest.DistanceFunction,
-		IsAutoEmbedded:      collectionRequest.IsAutoEmbedded,
-		IsNormalized:        collectionRequest.IsNormalized,
+		IsAutoEmbedded:      *collectionRequest.IsAutoEmbedded,
 	}
 }
 
