@@ -47,7 +47,7 @@ type documentSearchOperation struct {
 	db            *bun.DB
 	searchPayload *models.DocumentSearchPayload
 	collection    *models.DocumentCollection
-	queryVector   *[]float32
+	queryVector   []float32
 	limit         int
 	withMMR       bool
 }
@@ -81,6 +81,7 @@ func (dso *documentSearchOperation) Execute() (*models.DocumentSearchResultPage,
 
 	resultPage := &models.DocumentSearchResultPage{
 		Results:     searchResultsFromSearchQueries(results),
+		QueryVector: dso.queryVector,
 		ResultCount: count,
 	}
 
@@ -131,6 +132,7 @@ func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, er
 				return nil, fmt.Errorf("error getting query vector %w", err)
 			}
 		}
+		dso.queryVector = v.Slice()
 
 		// Cosine distance is 1 - (a <=> b)
 		query = query.ColumnExpr("1 - (embedding <=> ?) AS dist", v)
@@ -175,8 +177,6 @@ func (dso *documentSearchOperation) getDocQueryVector(
 	if err != nil {
 		return pgvector.Vector{}, fmt.Errorf("failed to embed query %w", err)
 	}
-
-	dso.queryVector = &e[0]
 
 	v := pgvector.NewVector(e[0])
 	return v, nil

@@ -26,6 +26,7 @@ type DocumentSearchResult struct {
 
 type DocumentSearchResultPage struct {
 	Results     []DocumentSearchResult `json:"results"`
+	QueryVector []float32              `json:"query_vector"`
 	ResultCount int                    `json:"result_count"`
 	TotalPages  int                    `json:"total_pages"`
 	CurrentPage int                    `json:"current_page"`

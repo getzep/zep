@@ -75,6 +75,7 @@ func TestDocumentSearchWithIndexEndToEnd(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, limit, len(searchResults.Results))
 	assert.Equal(t, limit, searchResults.ResultCount)
+	assert.NotEmpty(t, searchResults.QueryVector)
 
 	for i := range searchResults.Results {
 		assert.NotEmpty(t, searchResults.Results[i].Embedding)
