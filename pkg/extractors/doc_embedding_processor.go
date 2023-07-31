@@ -14,7 +14,9 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
-const TaskChunkSize = 100
+const TaskChunkSize = 150
+const PoolSize = 2
+const PoolBuffer = 10
 
 // TODO move pool size and buffer to config
 func NewDocEmbeddingProcessor(
@@ -26,8 +28,8 @@ func NewDocEmbeddingProcessor(
 		appState:          appState,
 		EmbeddingTaskCh:   embeddingTaskCh,
 		EmbeddingUpdateCh: embeddingUpdateCh,
-		PoolSize:          5,
-		PoolBuffer:        10,
+		PoolSize:          PoolSize,
+		PoolBuffer:        PoolBuffer,
 	}
 }
 
