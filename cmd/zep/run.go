@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -79,8 +80,10 @@ func handleCLIOptions(cfg *config.Config) {
 	if showVersion {
 		fmt.Println(config.VersionString)
 		os.Exit(0)
-	}
-	if generateKey {
+	} else if dumpConfig {
+		fmt.Println(dumpConfigToJSON(cfg))
+		os.Exit(0)
+	} else if generateKey {
 		fmt.Println(auth.GenerateJWT(cfg))
 		os.Exit(0)
 	}
@@ -207,4 +210,13 @@ func setupPurgeProcessor(ctx context.Context, appState *models.AppState) {
 			time.Sleep(interval)
 		}
 	}()
+}
+
+func dumpConfigToJSON(cfg *config.Config) string {
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		log.Fatalf("error marshalling config to JSON: %v", err)
+	}
+
+	return string(b)
 }

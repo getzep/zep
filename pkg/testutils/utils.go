@@ -35,7 +35,7 @@ func init() {
 
 func GetDSN() string {
 	var testDsn = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
-	dsnFromEnv := viper.GetString("memory_store.postgres.dsn")
+	dsnFromEnv := viper.GetString("store.postgres.dsn")
 	if dsnFromEnv != "" {
 		return dsnFromEnv
 	}
