@@ -1,43 +1,35 @@
 package extractors
 
 import (
-	"context"
 	"testing"
 	"time"
 
-	"github.com/getzep/zep/pkg/llms"
-	"github.com/getzep/zep/pkg/memorystore"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/testutils"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestIntentExtractor_Extract(t *testing.T) {
-	ctx := context.Background()
-
-	db := memorystore.NewPostgresConn(testutils.GetDSN())
-	memorystore.CleanDB(t, db)
-
-	cfg := testutils.NewTestConfig()
-
-	appState := &models.AppState{Config: cfg}
-	store, err := memorystore.NewPostgresMemoryStore(appState, db)
-	assert.NoError(t, err)
-	appState.MemoryStore = store
-	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
+	store := appState.MemoryStore
 
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err)
 
 	testMessages := testutils.TestMessages[:5]
 
-	err = store.PutMemory(ctx, appState, sessionID, &models.Memory{Messages: testMessages}, true)
+	err = store.PutMemory(
+		testCtx,
+		appState,
+		sessionID,
+		&models.Memory{Messages: testMessages},
+		true,
+	)
 	assert.NoError(t, err)
 
 	// Sleep for 2 seconds
 	time.Sleep(2 * time.Second)
 
-	memories, err := store.GetMemory(ctx, appState, sessionID, 0)
+	memories, err := store.GetMemory(testCtx, appState, sessionID, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, len(testMessages), len(memories.Messages))
 
@@ -49,7 +41,7 @@ func TestIntentExtractor_Extract(t *testing.T) {
 			Messages:  []models.Message{message},
 		}
 
-		err = intentExtractor.Extract(ctx, appState, singleMessageEvent)
+		err = intentExtractor.Extract(testCtx, appState, singleMessageEvent)
 		assert.NoError(t, err)
 
 		metadata := message.Metadata["system"]

@@ -1,4 +1,4 @@
-package memorystore
+package postgres
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/pkg/store"
 	"github.com/getzep/zep/pkg/testutils"
 	"github.com/stretchr/testify/assert"
 )
@@ -56,9 +57,9 @@ func TestPutSession(t *testing.T) {
 
 			if tt.wantErr {
 				assert.Error(t, err)
-				storageErr, ok := err.(*StorageError)
+				storageErr, ok := err.(*store.StorageError)
 				if ok {
-					assert.Equal(t, tt.errMessage, storageErr.message)
+					assert.Equal(t, tt.errMessage, storageErr.Message)
 				}
 			} else {
 				assert.NoError(t, err)
@@ -146,7 +147,7 @@ func TestPgDeleteSession(t *testing.T) {
 	resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
-	// Put a summary
+	// Create a summary
 	summary := models.Summary{
 		Content: "This is a summary",
 		Metadata: map[string]interface{}{

@@ -26,11 +26,11 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       nlp:
-        image: ghcr.io/getzep/zep-nlp-server:latest
+        image: ghcr.io/getzep/zep-nlp-server:0.3.0-beta.0
         env:
           ENABLE_EMBEDDINGS: true
         options: >-
-          --health-cmd "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1"
+          --health-cmd "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/5557' || exit 1"
           --health-interval 10s
           --health-timeout 10s
           --health-retries 5
@@ -52,5 +52,5 @@ jobs:
       run: CGO_ENABLED=1 go test -tags=testutils -race -p 1 -v ./...
       env:
         ZEP_OPENAI_API_KEY: ${{ secrets.ZEP_OPENAI_API_KEY }}
-        ZEP_MEMORY_STORE_POSTGRES_DSN: 'postgres://postgres:postgres@postgres:5432/?sslmode=disable'
-        ZEP_NLP_SERVER_URL: 'http://nlp:8080'
+        ZEP_STORE_POSTGRES_DSN: 'postgres://postgres:postgres@postgres:5432/?sslmode=disable'
+        ZEP_NLP_SERVER_URL: 'http://nlp:5557'

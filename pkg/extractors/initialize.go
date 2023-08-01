@@ -17,12 +17,12 @@ func Initialize(appState *models.AppState) {
 
 	attach(
 		"SummaryExtractor",
-		appState.Config.Extractors.Summarizer.Enabled,
+		appState.Config.Extractors.Messages.Summarizer.Enabled,
 		func() models.Extractor { return NewSummaryExtractor() },
 	)
 	attach(
 		"EmbeddingExtractor",
-		appState.Config.Extractors.Embeddings.Enabled,
+		appState.Config.Extractors.Messages.Embeddings.Enabled,
 		func() models.Extractor { return NewEmbeddingExtractor() },
 	)
 	attach(
@@ -32,12 +32,12 @@ func Initialize(appState *models.AppState) {
 	)
 	attach(
 		"EntityExtractor",
-		appState.Config.Extractors.Entities.Enabled,
+		appState.Config.Extractors.Messages.Entities.Enabled,
 		func() models.Extractor { return NewEntityExtractor() },
 	)
 	attach(
 		"IntentExtractor",
-		appState.Config.Extractors.Intent.Enabled,
+		appState.Config.Extractors.Messages.Intent.Enabled,
 		func() models.Extractor { return NewIntentExtractor() },
 	)
 }

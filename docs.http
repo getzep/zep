@@ -1,0 +1,128 @@
+### Create Collection
+POST {{host}}/api/v1/collection/testcollection
+Content-Type: application/json
+
+{
+  "name": "testcollection",
+  "description": "Test collection",
+  "embedding_dimensions": 384,
+  "is_auto_embedded": true
+}
+
+
+### Get Collections
+GET {{host}}/api/v1/collection
+
+
+### Get Collection by name
+GET {{host}}/api/v1/collection/testcollection
+
+
+
+### Update Collection
+PATCH {{host}}/api/v1/collection/testcollection
+Content-Type: application/json
+
+{
+  "description": "Updated test collection",
+  "metadata": {
+    "key1": "value1",
+    "key2": "value2"
+  }
+}
+
+
+
+### Delete Collection
+DELETE {{host}}/api/v1/collection/testcollection
+
+
+### Create Documents
+POST {{host}}/api/v1/collection/testcollection/document
+Content-Type: application/json
+
+[
+    {
+      "document_id": "doc1",
+      "embedding": [0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4],
+      "metadata": {
+        "key1": "value1",
+        "key2": "value2"
+      }
+    },
+    {
+      "content": "This is a test document",
+      "metadata": {
+        "key1": "value1",
+        "key2": "value2"
+      }
+    }
+]
+
+### Get A Document from Collection
+GET {{host}}/api/v1/collection/testcollection/document/uuid/3fea4c7b-a195-4107-ac4f-d8c4a33fa250
+
+### Update a Document Metadata and DocumentID
+PATCH {{host}}/api/v1/collection/testcollection/document/uuid/7e4ecb00-1663-4e73-a013-d3094d2cb65f
+Content-Type: application/json
+
+{
+  "document_id": "doc3",
+  "metadata": {
+    "key3": "value3",
+    "key4": "value4"
+  }
+}
+
+### Get Updated Document from Collection
+GET {{host}}/api/v1/collection/testcollection/document/uuid/3fea4c7b-a195-4107-ac4f-d8c4a33fa250
+
+### Delete a Document from Collection
+DELETE {{host}}/api/v1/collection/testcollection/document/uuid/3fea4c7b-a195-4107-ac4f-d8c4a33fa250
+
+### Create More Documents
+POST {{host}}/api/v1/collection/testcollection/document
+Content-Type: application/json
+
+[
+  {
+    "document_id": "doc_7",
+    "content": "This is a test document 1",
+    "metadata": {
+      "key1": "value1",
+      "key2": "value2"
+    }
+  },
+  {
+    "content": "This is a test document 2",
+    "metadata": {
+      "key1": "value1",
+      "key2": "value2"
+    }
+  }
+]
+
+### UpdateDocumentBatch
+PATCH {{host}}/api/v1/collection/testcollection/document/batchUpdate
+Content-Type: application/json
+
+[
+  {
+    "document_id": "qwerty",
+    "metadata": {
+      "additionalProp1": {"foo":  "bar"}
+    },
+    "uuid": "69335a57-5b78-4b2c-89bd-0cd5ff598588"
+  }
+]
+
+### Get batch updated document
+GET {{host}}/api/v1/collection/testcollection/document/uuid/7963bb32-6ba9-475c-9e7b-22dcb95c2bf4
+
+### Get Document List
+POST {{host}}/api/v1/collection/testcollection/document/batchGet
+Content-Type: application/json
+
+{
+  "uuids": ["d5bef3eb-511c-4225-93ea-8c9fdd60ce64","10a0a506-3a5b-4215-81ed-48ce2cb1e186"]
+}

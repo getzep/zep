@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/getzep/zep/pkg/store/postgres"
 
 	"github.com/getzep/zep/pkg/auth"
 
@@ -17,15 +20,14 @@ import (
 	"github.com/getzep/zep/config"
 	"github.com/getzep/zep/pkg/extractors"
 	"github.com/getzep/zep/pkg/llms"
-	"github.com/getzep/zep/pkg/memorystore"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/server"
 )
 
 const (
-	ErrMemoryStoreTypeNotSet = "memory_store.type must be set"
-	ErrPostgresDSNNotSet     = "memory_store.postgres.dsn must be set"
-	MemoryStoreTypePostgres  = "postgres"
+	ErrStoreTypeNotSet   = "store.type must be set"
+	ErrPostgresDSNNotSet = "store.postgres.dsn must be set"
+	StoreTypePostgres    = "postgres"
 )
 
 // run is the entrypoint for the zep server
@@ -37,13 +39,10 @@ func run() {
 
 	handleCLIOptions(cfg)
 
-	log.Infof("Starting zep server version %s", VersionString)
+	log.Infof("Starting zep server version %s", config.VersionString)
 
 	config.SetLogLevel(cfg)
 	appState := NewAppState(cfg)
-
-	// Init the extractors, which will register themselves with the MemoryStore
-	extractors.Initialize(appState)
 
 	srv := server.Create(appState)
 
@@ -54,17 +53,24 @@ func run() {
 	}
 }
 
-// NewAppState creates an AppState struct from the config file / ENV, initializes the memory store,
-// and creates the OpenAI client
+// NewAppState creates an AppState struct from the config file / ENV, initializes the stores,
+// extractors, and creates the OpenAI client
 func NewAppState(cfg *config.Config) *models.AppState {
+	ctx := context.Background()
+
 	appState := &models.AppState{
 		OpenAIClient: llms.NewOpenAIRetryClient(cfg),
 		Config:       cfg,
 	}
 
-	initializeMemoryStore(appState)
+	initializeStores(appState)
+
+	// Init the extractors, which will register themselves with the MemoryStore
+	extractors.Initialize(appState)
+
 	setupSignalHandler(appState)
-	setupPurgeProcessor(context.Background(), appState)
+
+	setupPurgeProcessor(ctx, appState)
 
 	return appState
 }
@@ -72,45 +78,82 @@ func NewAppState(cfg *config.Config) *models.AppState {
 // handleCLIOptions handles CLI options that don't require the server to run
 func handleCLIOptions(cfg *config.Config) {
 	if showVersion {
-		fmt.Println(VersionString)
+		fmt.Println(config.VersionString)
 		os.Exit(0)
-	}
-	if generateKey {
+	} else if dumpConfig {
+		fmt.Println(dumpConfigToJSON(cfg))
+		os.Exit(0)
+	} else if generateKey {
 		fmt.Println(auth.GenerateJWT(cfg))
 		os.Exit(0)
 	}
 }
 
-// initializeMemoryStore initializes the memory store based on the config file / ENV
-func initializeMemoryStore(appState *models.AppState) {
-	if appState.Config.MemoryStore.Type == "" {
-		log.Fatal(ErrMemoryStoreTypeNotSet)
+// initializeStores initializes the memory and document stores based on the config file / ENV
+// TODO: refactor to include document store switch
+func initializeStores(appState *models.AppState) {
+	if appState.Config.Store.Type == "" {
+		log.Fatal(ErrStoreTypeNotSet)
 	}
 
-	switch appState.Config.MemoryStore.Type {
-	case MemoryStoreTypePostgres:
-		if appState.Config.MemoryStore.Postgres.DSN == "" {
+	switch appState.Config.Store.Type {
+	case StoreTypePostgres:
+		if appState.Config.Store.Postgres.DSN == "" {
 			log.Fatal(ErrPostgresDSNNotSet)
 		}
-		db := memorystore.NewPostgresConn(appState.Config.MemoryStore.Postgres.DSN)
+		db := postgres.NewPostgresConn(appState)
 		if appState.Config.Log.Level == "debug" {
 			pgDebugLogging(db)
 		}
-		memoryStore, err := memorystore.NewPostgresMemoryStore(appState, db)
+		memoryStore, err := postgres.NewPostgresMemoryStore(appState, db)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("unable to create memoryStore %v", err)
 		}
+		log.Debug("memoryStore created")
+
+		// create channels for the document embedding processor
+		// TODO: make this a configurable buffer size
+		embeddingTaskChannel := make(
+			chan []models.DocEmbeddingTask,
+			100,
+		)
+		// TODO: make this a configurable buffer size
+		embeddingUpdateChannel := make(chan []models.DocEmbeddingUpdate, 100)
+		documentStore, err := postgres.NewDocumentStore(
+			appState,
+			db,
+			embeddingUpdateChannel,
+			embeddingTaskChannel,
+		)
+		if err != nil {
+			log.Fatalf("unable to create documentStore: %v", err)
+		}
+		log.Debug("documentStore created")
+
+		// start the document embedding processor
+		embeddingProcessor := extractors.NewDocEmbeddingProcessor(
+			appState,
+			embeddingTaskChannel,
+			embeddingUpdateChannel,
+		)
+		err = embeddingProcessor.Run(context.Background())
+		if err != nil {
+			log.Fatalf("unable to start embeddingProcessor: %v", err)
+		}
+		log.Debug("embeddingProcessor started")
+
 		appState.MemoryStore = memoryStore
+		appState.DocumentStore = documentStore
 	default:
 		log.Fatal(
 			fmt.Sprintf(
-				"memory_store.type (%s) is not supported",
-				appState.Config.MemoryStore.Type,
+				"store.type (%s) is not supported",
+				appState.Config.Store.Type,
 			),
 		)
 	}
 
-	log.Info("Using memory store: ", appState.Config.MemoryStore.Type)
+	log.Info("Using memory store: ", appState.Config.Store.Type)
 }
 
 func pgDebugLogging(db *bun.DB) {
@@ -125,7 +168,7 @@ func pgDebugLogging(db *bun.DB) {
 	}))
 }
 
-// setupSignalHandler sets up a signal handler to close the MemoryStore connection on termination
+// setupSignalHandler sets up a signal handler to close the store connections and channels on termination
 func setupSignalHandler(appState *models.AppState) {
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
@@ -133,6 +176,9 @@ func setupSignalHandler(appState *models.AppState) {
 		<-signalCh
 		if err := appState.MemoryStore.Close(); err != nil {
 			log.Errorf("Error closing MemoryStore connection: %v", err)
+		}
+		if err := appState.DocumentStore.Shutdown(context.Background()); err != nil {
+			log.Errorf("Error shutting down DocumentStore: %v", err)
 		}
 		os.Exit(0)
 	}()
@@ -164,4 +210,13 @@ func setupPurgeProcessor(ctx context.Context, appState *models.AppState) {
 			time.Sleep(interval)
 		}
 	}()
+}
+
+func dumpConfigToJSON(cfg *config.Config) string {
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		log.Fatalf("error marshalling config to JSON: %v", err)
+	}
+
+	return string(b)
 }

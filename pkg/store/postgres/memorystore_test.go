@@ -1,4 +1,4 @@
-package memorystore
+package postgres
 
 import (
 	"math/rand"
@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/getzep/zep/pkg/extractors"
 	"github.com/getzep/zep/pkg/llms"
+
+	"github.com/getzep/zep/pkg/extractors"
+	"github.com/getzep/zep/pkg/store"
 
 	"github.com/getzep/zep/internal"
 	"github.com/sirupsen/logrus"
@@ -39,23 +41,25 @@ func TestMain(m *testing.M) {
 func setup() {
 	logger := internal.GetLogger()
 	internal.SetLogLevel(logrus.DebugLevel)
+
+	appState = &models.AppState{}
+	cfg := testutils.NewTestConfig()
+	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
+	appState.Config = cfg
+	appState.Config.Store.Postgres.DSN = testutils.GetDSN()
+
 	// Initialize the database connection
-	testDB = NewPostgresConn(testutils.GetDSN())
+	testDB = NewPostgresConn(appState)
 	testutils.SetUpDBLogging(testDB, logger)
 
 	// Initialize the test context
 	testCtx = context.Background()
 
-	cfg := testutils.NewTestConfig()
-
-	appState = &models.AppState{}
-	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
-	appState.Config = cfg
-	store, err := NewPostgresMemoryStore(appState, testDB)
+	memoryStore, err := NewPostgresMemoryStore(appState, testDB)
 	if err != nil {
 		panic(err)
 	}
-	appState.MemoryStore = store
+	appState.MemoryStore = memoryStore
 	extractors.Initialize(appState)
 
 	err = ensurePostgresSetup(testCtx, appState, testDB)
@@ -64,8 +68,8 @@ func setup() {
 	}
 
 	embeddingModel = &models.EmbeddingModel{
-		Name:       "AdaEmbeddingV2",
-		Dimensions: 1536,
+		Service:    "local",
+		Dimensions: 384,
 	}
 }
 
@@ -75,24 +79,6 @@ func tearDown() {
 		panic(err)
 	}
 	internal.SetLogLevel(logrus.InfoLevel)
-}
-
-func TestEnsurePostgresSchemaSetup(t *testing.T) {
-	CleanDB(t, testDB)
-
-	t.Run("should succeed when all schema setup is successful", func(t *testing.T) {
-		err := ensurePostgresSetup(testCtx, appState, testDB)
-		assert.NoError(t, err)
-
-		checkForTable(t, testDB, &PgSession{})
-		checkForTable(t, testDB, &PgMessageStore{})
-		checkForTable(t, testDB, &PgSummaryStore{})
-		checkForTable(t, testDB, &PgMessageVectorStore{})
-	})
-	t.Run("should not fail on second run", func(t *testing.T) {
-		err := ensurePostgresSetup(testCtx, appState, testDB)
-		assert.NoError(t, err)
-	})
 }
 
 func TestPutMessages(t *testing.T) {
@@ -414,9 +400,9 @@ func TestPutSummary(t *testing.T) {
 
 			if tt.wantErr {
 				assert.Error(t, err)
-				storageErr, ok := err.(*StorageError)
+				storageErr, ok := err.(*store.StorageError)
 				if ok {
-					assert.Equal(t, tt.errMessage, storageErr.message)
+					assert.Equal(t, tt.errMessage, storageErr.Message)
 				}
 			} else {
 				assert.NoError(t, err)
@@ -514,7 +500,7 @@ func TestGetSummary(t *testing.T) {
 	}
 }
 
-func TestPutEmbeddings(t *testing.T) {
+func TestPutEmbeddingsLocal(t *testing.T) {
 	CleanDB(t, testDB)
 	err := ensurePostgresSetup(testCtx, appState, testDB)
 	assert.NoError(t, err)
@@ -542,7 +528,7 @@ func TestPutEmbeddings(t *testing.T) {
 	}
 
 	// Create embeddings
-	embeddings := []models.DocumentEmbeddings{
+	embeddings := []models.MessageEmbedding{
 		{
 			TextUUID:  resultMessages[0].UUID,
 			Text:      resultMessages[0].Content,
@@ -550,11 +536,11 @@ func TestPutEmbeddings(t *testing.T) {
 		},
 	}
 
-	err = putMessageVectors(testCtx, testDB, sessionID, embeddings)
-	assert.NoError(t, err, "putMessageVectors should not return an error")
+	err = putMessageEmbeddings(testCtx, testDB, sessionID, embeddings)
+	assert.NoError(t, err, "putMessageEmbeddings should not return an error")
 
-	// Check for the creation of PgMessageVectorStore values
-	var pgMemoryVectorStores []PgMessageVectorStore
+	// Check for the creation of MessageVectorStoreSchema values
+	var pgMemoryVectorStores []MessageVectorStoreSchema
 	err = testDB.NewSelect().
 		Model(&pgMemoryVectorStores).
 		Where("session_id = ?", sessionID).

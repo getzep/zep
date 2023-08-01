@@ -1,19 +1,20 @@
-package memorystore
+package postgres
 
 import (
 	"context"
 
 	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/pkg/store"
 	"github.com/pgvector/pgvector-go"
 	"github.com/uptrace/bun"
 )
 
-func getMessageVectors(ctx context.Context,
+func getMessageEmbeddings(ctx context.Context,
 	db *bun.DB,
-	sessionID string) ([]models.DocumentEmbeddings, error) {
+	sessionID string) ([]models.MessageEmbedding, error) {
 	var results []struct {
-		PgMessageStore
-		PgMessageVectorStore
+		MessageStoreSchema
+		MessageVectorStoreSchema
 	}
 	_, err := db.NewSelect().
 		Table("message_embedding").
@@ -25,12 +26,12 @@ func getMessageVectors(ctx context.Context,
 		Where("message.deleted_at IS NULL").
 		Exec(ctx, &results)
 	if err != nil {
-		return nil, NewStorageError("failed to get message vectors", err)
+		return nil, store.NewStorageError("failed to get message vectors", err)
 	}
 
-	embeddings := make([]models.DocumentEmbeddings, len(results))
+	embeddings := make([]models.MessageEmbedding, len(results))
 	for i, vectorStoreRecord := range results {
-		embeddings[i] = models.DocumentEmbeddings{
+		embeddings[i] = models.MessageEmbedding{
 			Embedding: vectorStoreRecord.Embedding.Slice(),
 			TextUUID:  vectorStoreRecord.MessageUUID,
 			Text:      vectorStoreRecord.Content,
@@ -40,22 +41,22 @@ func getMessageVectors(ctx context.Context,
 	return embeddings, nil
 }
 
-func putMessageVectors(
+func putMessageEmbeddings(
 	ctx context.Context,
 	db *bun.DB,
 	sessionID string,
-	embeddings []models.DocumentEmbeddings,
+	embeddings []models.MessageEmbedding,
 ) error {
 	if embeddings == nil {
-		return NewStorageError("nil embeddings received", nil)
+		return store.NewStorageError("nil embeddings received", nil)
 	}
 	if len(embeddings) == 0 {
-		return NewStorageError("no embeddings received", nil)
+		return store.NewStorageError("no embeddings received", nil)
 	}
 
-	embeddingVectors := make([]PgMessageVectorStore, len(embeddings))
+	embeddingVectors := make([]MessageVectorStoreSchema, len(embeddings))
 	for i, e := range embeddings {
-		embeddingVectors[i] = PgMessageVectorStore{
+		embeddingVectors[i] = MessageVectorStoreSchema{
 			SessionID:   sessionID,
 			Embedding:   pgvector.NewVector(e.Embedding),
 			MessageUUID: e.TextUUID,
@@ -68,7 +69,7 @@ func putMessageVectors(
 		Exec(ctx)
 
 	if err != nil {
-		return NewStorageError("failed to insert message vectors", err)
+		return store.NewStorageError("failed to insert message vectors", err)
 	}
 
 	return nil

@@ -1,5 +1,150 @@
 basePath: /api/v1
 definitions:
+  models.CreateDocumentCollectionRequest:
+    properties:
+      description:
+        maxLength: 1000
+        type: string
+      distance_function:
+        description: Distance function to use for index
+        type: string
+      embedding_dimensions:
+        maximum: 2000
+        minimum: 8
+        type: integer
+      embedding_model_name:
+        type: string
+      is_auto_embedded:
+        type: boolean
+      is_normalized:
+        description: Are the embeddings normalized?
+        type: boolean
+      metadata:
+        additionalProperties: true
+        type: object
+      name:
+        maxLength: 40
+        minLength: 3
+        type: string
+    required:
+    - embedding_dimensions
+    - is_auto_embedded
+    - name
+    type: object
+  models.CreateDocumentRequest:
+    properties:
+      content:
+        type: string
+      document_id:
+        maxLength: 100
+        type: string
+      embedding:
+        items:
+          type: number
+        type: array
+      metadata:
+        additionalProperties: true
+        type: object
+    type: object
+  models.Document:
+    properties:
+      content:
+        type: string
+      createdAt:
+        type: string
+      deletedAt:
+        type: string
+      documentID:
+        type: string
+      embedding:
+        items:
+          type: number
+        type: array
+      isEmbedded:
+        type: boolean
+      metadata:
+        additionalProperties: true
+        type: object
+      updatedAt:
+        type: string
+      uuid:
+        type: string
+    type: object
+  models.DocumentCollectionResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      document_count:
+        description: Number of documents in the collection
+        type: integer
+      document_embedded_count:
+        description: Number of documents with embeddings
+        type: integer
+      embedding_dimensions:
+        type: integer
+      embedding_model_name:
+        type: string
+      is_auto_embedded:
+        type: boolean
+      is_indexed:
+        type: boolean
+      is_normalized:
+        type: boolean
+      metadata:
+        additionalProperties: true
+        type: object
+      name:
+        type: string
+      updated_at:
+        type: string
+      uuid:
+        type: string
+    type: object
+  models.DocumentResponse:
+    properties:
+      content:
+        type: string
+      created_at:
+        type: string
+      document_id:
+        type: string
+      embedding:
+        items:
+          type: number
+        type: array
+      is_embedded:
+        type: boolean
+      metadata:
+        additionalProperties: true
+        type: object
+      updated_at:
+        type: string
+      uuid:
+        type: string
+    type: object
+  models.DocumentSearchPayload:
+    properties:
+      collection_name:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      text:
+        type: string
+    type: object
+  models.GetDocumentListRequest:
+    properties:
+      document_ids:
+        items:
+          type: string
+        type: array
+      uuids:
+        items:
+          type: string
+        type: array
+    type: object
   models.Memory:
     properties:
       messages:
@@ -83,6 +228,37 @@ definitions:
       uuid:
         type: string
     type: object
+  models.UpdateDocumentCollectionRequest:
+    properties:
+      description:
+        maxLength: 1000
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+    type: object
+  models.UpdateDocumentListRequest:
+    properties:
+      document_id:
+        maxLength: 40
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      uuid:
+        type: string
+    required:
+    - uuid
+    type: object
+  models.UpdateDocumentRequest:
+    properties:
+      document_id:
+        maxLength: 40
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+    type: object
   server.APIError:
     properties:
       message:
@@ -96,6 +272,601 @@ info:
   title: Zep REST API
   version: 0.x
 paths:
+  /api/v1/collection:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of all DocumentCollections.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              items:
+                $ref: '#/definitions/models.DocumentCollectionResponse'
+              type: array
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Gets a list of DocumentCollections
+      tags:
+      - collection
+  /api/v1/collection/{collectionName}:
+    delete:
+      consumes:
+      - application/json
+      description: If a collection with the same name already exists, it will be overwritten.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Deletes a DocumentCollection
+      tags:
+      - collection
+    get:
+      consumes:
+      - application/json
+      description: Returns a DocumentCollection if it exists.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DocumentCollectionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Gets a DocumentCollection
+      tags:
+      - collection
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: Document Collection
+        in: body
+        name: collection
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateDocumentCollectionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Updates a DocumentCollection
+      tags:
+      - collection
+    post:
+      consumes:
+      - application/json
+      description: If a collection with the same name already exists, an error will
+        be returned.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: Document Collection
+        in: body
+        name: collection
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateDocumentCollectionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Creates a new DocumentCollection
+      tags:
+      - collection
+  /api/v1/collection/{collectionName}/document:
+    post:
+      consumes:
+      - application/json
+      description: Creates Documents in a specified DocumentCollection and returns
+        their UUIDs.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: Array of Documents to be created
+        in: body
+        name: documents
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/models.CreateDocumentRequest'
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Creates Multiple Documents in a DocumentCollection
+      tags:
+      - document
+  /api/v1/collection/{collectionName}/document/batchDelete:
+    post:
+      consumes:
+      - application/json
+      description: Deletes specified Documents from a DocumentCollection.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: UUIDs of the Documents to be deleted
+        in: body
+        name: documentUUIDs
+        required: true
+        schema:
+          items:
+            type: string
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Batch Deletes Documents from a DocumentCollection by UUID
+      tags:
+      - document
+  /api/v1/collection/{collectionName}/document/batchGet:
+    post:
+      consumes:
+      - application/json
+      description: Returns Documents from a DocumentCollection specified by UUID or
+        ID.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: UUIDs and IDs of the Documents to be fetched
+        in: body
+        name: documentRequest
+        required: true
+        schema:
+          $ref: '#/definitions/models.GetDocumentListRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              items:
+                $ref: '#/definitions/models.DocumentResponse'
+              type: array
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Batch Gets Documents from a DocumentCollection
+      tags:
+      - document
+  /api/v1/collection/{collectionName}/document/batchUpdate:
+    patch:
+      consumes:
+      - application/json
+      description: Updates Documents in a specified DocumentCollection.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: Array of Documents to be updated
+        in: body
+        name: documents
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/models.UpdateDocumentListRequest'
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Batch Updates Documents in a DocumentCollection
+      tags:
+      - document
+  /api/v1/collection/{collectionName}/document/uuid/{documentUUID}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete specified Document from a DocumentCollection.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: UUID of the Document to be deleted
+        in: path
+        name: documentUUID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "404":
+          description: Document Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Delete Document from a DocumentCollection by UUID
+      tags:
+      - document
+    get:
+      consumes:
+      - application/json
+      description: Returns specified Document from a DocumentCollection.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: UUID of the Document to be updated
+        in: path
+        name: documentUUID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DocumentResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Gets a Document from a DocumentCollection by UUID
+      tags:
+      - document
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: UUID of the Document to be updated
+        in: path
+        name: documentUUID
+        required: true
+        type: string
+      - description: Document to be updated
+        in: body
+        name: document
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateDocumentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Updates a Document in a DocumentCollection by UUID
+      tags:
+      - document
+  /api/v1/collection/{collectionName}/index/create:
+    post:
+      consumes:
+      - application/json
+      description: Creates an index for the specified DocumentCollection to improve
+        query performance.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: Force index creation
+        in: query
+        name: force
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Creates an index for a DocumentCollection
+      tags:
+      - collection
+  /api/v1/collection/{collectionName}/search:
+    post:
+      consumes:
+      - application/json
+      description: Searches Documents in a DocumentCollection based on provided search
+        criteria.
+      parameters:
+      - description: Name of the Document Collection
+        in: path
+        name: collectionName
+        required: true
+        type: string
+      - description: Limit the number of returned documents
+        in: query
+        name: limit
+        type: integer
+      - description: Use MMR to rerank the search results. Not Implemented
+        in: query
+        name: mmr
+        type: boolean
+      - description: Search criteria
+        in: body
+        name: searchPayload
+        required: true
+        schema:
+          $ref: '#/definitions/models.DocumentSearchPayload'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Document'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Searches Documents in a DocumentCollection
+      tags:
+      - document
   /api/v1/sessions/{sessionId}:
     get:
       consumes:
@@ -301,4 +1072,10 @@ paths:
 schemes:
 - http
 - https
+securityDefinitions:
+  Bearer:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

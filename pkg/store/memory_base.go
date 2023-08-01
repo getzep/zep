@@ -1,4 +1,4 @@
-package memorystore
+package store
 
 import (
 	"context"
@@ -39,29 +39,14 @@ func (s *BaseMemoryStore[T]) NotifyExtractors(
 }
 
 type StorageError struct {
-	message       string
-	originalError error
+	Message       string
+	OriginalError error
 }
 
 func (e *StorageError) Error() string {
-	return fmt.Sprintf("storage error: %s (original error: %v)", e.message, e.originalError)
+	return fmt.Sprintf("storage error: %s (original error: %v)", e.Message, e.OriginalError)
 }
 
 func NewStorageError(message string, originalError error) *StorageError {
-	return &StorageError{message: message, originalError: originalError}
-}
-
-func checkLastNParms(lastNTokens int, lastNMessages int) error {
-	if lastNTokens > 0 {
-		return NewStorageError("not implemented", nil)
-	}
-
-	if lastNMessages > 0 && lastNTokens > 0 {
-		return NewStorageError("cannot specify both lastNMessages and lastNTokens", nil)
-	}
-
-	if lastNMessages < 0 || lastNTokens < 0 {
-		return NewStorageError("cannot specify negative lastNMessages or lastNTokens", nil)
-	}
-	return nil
+	return &StorageError{Message: message, OriginalError: originalError}
 }

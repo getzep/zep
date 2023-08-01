@@ -17,16 +17,25 @@ import (
 func embedTextsLocal(
 	ctx context.Context,
 	appState *models.AppState,
+	documentType string,
 	texts []string,
 ) ([][]float32, error) {
-	url := appState.Config.NLP.ServerURL + "/embeddings"
-
-	documents := make([]models.DocumentEmbeddings, len(texts))
-	for i, text := range texts {
-		documents[i] = models.DocumentEmbeddings{Text: text}
+	if len(texts) == 0 {
+		return nil, nil
 	}
-	collection := models.DocumentCollection{
-		Documents: documents,
+
+	if documentType != "message" && documentType != "document" {
+		return nil, fmt.Errorf("invalid document type: %s", documentType)
+	}
+
+	url := appState.Config.NLP.ServerURL + "/embeddings/" + documentType
+
+	documents := make([]models.MessageEmbedding, len(texts))
+	for i, text := range texts {
+		documents[i] = models.MessageEmbedding{Text: text}
+	}
+	collection := models.MessageEmbeddingCollection{
+		Embeddings: documents,
 	}
 	jsonBody, err := json.Marshal(collection)
 	if err != nil {
@@ -58,16 +67,16 @@ func embedTextsLocal(
 		return nil, err
 	}
 
-	m := make([][]float32, len(collection.Documents))
-	for i := range collection.Documents {
-		m[i] = collection.Documents[i].Embedding
+	m := make([][]float32, len(collection.Embeddings))
+	for i := range collection.Embeddings {
+		m[i] = collection.Embeddings[i].Embedding
 	}
 
 	return m, nil
 }
 
 func makeEmbedRequest(ctx context.Context, url string, jsonBody []byte) ([]byte, error) {
-	httpClient := &http.Client{Timeout: 10 * time.Second}
+	httpClient := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, err

@@ -41,15 +41,15 @@ type MemoryStore[T any] interface {
 		sessionID string,
 		messages []Message,
 		isPrivileged bool) error
-	// PutMessageVectors stores a collection of DocumentEmbeddings for a given sessionID.
+	// PutMessageVectors stores a collection of MessageEmbedding for a given sessionID.
 	PutMessageVectors(ctx context.Context,
 		appState *AppState,
 		sessionID string,
-		embeddings []DocumentEmbeddings) error
-	// GetMessageVectors retrieves a collection of DocumentEmbeddings for a given sessionID.
+		embeddings []MessageEmbedding) error
+	// GetMessageVectors retrieves a collection of MessageEmbedding for a given sessionID.
 	GetMessageVectors(ctx context.Context,
 		appState *AppState,
-		sessionID string) ([]DocumentEmbeddings, error)
+		sessionID string) ([]MessageEmbedding, error)
 	// SearchMemory retrieves a collection of SearchResults for a given sessionID and query. Currently, The
 	// MemorySearchResult structure can include both Messages and Summaries. Currently, we only search Messages.
 	SearchMemory(
@@ -62,15 +62,17 @@ type MemoryStore[T any] interface {
 	// by a separate process or left to the implementation.
 	DeleteSession(ctx context.Context, sessionID string) error
 	// GetSession retrieves a Session for a given sessionID.
-	GetSession(ctx context.Context, appState *AppState, sessionID string) (*Session, error)
+	GetSession(
+		ctx context.Context,
+		appState *AppState,
+		sessionID string,
+	) (*Session, error)
 	// PutSession creates or updates a Session for a given sessionID.
 	PutSession(
 		ctx context.Context,
 		appState *AppState,
 		session *Session,
 	) error
-	// OnStart is called when the application starts. This is a good place to initialize any resources or configs that
-	// are required by the MemoryStore implementation.
 	OnStart(ctx context.Context, appState *AppState) error
 	// Attach is used by Extractors to register themselves with the MemoryStore. This allows the MemoryStore to notify
 	// the Extractors when new occur.

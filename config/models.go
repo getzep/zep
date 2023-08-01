@@ -3,18 +3,18 @@ package config
 // Config holds the configuration of the application
 // Use cmd.NewConfig to create a new instance
 type Config struct {
-	LLM         LLM               `mapstructure:"llm"`
-	NLP         NLP               `mapstructure:"nlp"`
-	Memory      MemoryConfig      `mapstructure:"memory"`
-	Extractors  ExtractorsConfig  `mapstructure:"extractors"`
-	MemoryStore MemoryStoreConfig `mapstructure:"memory_store"`
-	Server      ServerConfig      `mapstructure:"server"`
-	Log         LogConfig         `mapstructure:"log"`
-	Auth        AuthConfig        `mapstructure:"auth"`
-	DataConfig  DataConfig        `mapstructure:"data"`
+	LLM        LLM              `mapstructure:"llm"`
+	NLP        NLP              `mapstructure:"nlp"`
+	Memory     MemoryConfig     `mapstructure:"memory"`
+	Extractors ExtractorsConfig `mapstructure:"extractors"`
+	Store      StoreConfig      `mapstructure:"store"`
+	Server     ServerConfig     `mapstructure:"server"`
+	Log        LogConfig        `mapstructure:"log"`
+	Auth       AuthConfig       `mapstructure:"auth"`
+	DataConfig DataConfig       `mapstructure:"data"`
 }
 
-type MemoryStoreConfig struct {
+type StoreConfig struct {
 	Type     string         `mapstructure:"type"`
 	Postgres PostgresConfig `mapstructure:"postgres"`
 }
@@ -59,12 +59,21 @@ type DataConfig struct {
 	PurgeEvery int `mapstructure:"purge_every"`
 }
 
-// ExtractorsConfig holds the configuration for all extractors
 type ExtractorsConfig struct {
+	Messages  MessageExtractorsConfig  `mapstructure:"messages"`
+	Documents DocumentExtractorsConfig `mapstructure:"documents"`
+}
+
+// MessageExtractorsConfig holds the configuration for all extractors
+type MessageExtractorsConfig struct {
 	Summarizer SummarizerConfig      `mapstructure:"summarizer"`
 	Embeddings EmbeddingsConfig      `mapstructure:"embeddings"`
 	Entities   EntityExtractorConfig `mapstructure:"entities"`
 	Intent     IntentExtractorConfig `mapstructure:"intent"`
+}
+
+type DocumentExtractorsConfig struct {
+	Embeddings EmbeddingsConfig `mapstructure:"embeddings"`
 }
 
 type SummarizerConfig struct {
@@ -74,7 +83,7 @@ type SummarizerConfig struct {
 type EmbeddingsConfig struct {
 	Enabled    bool   `mapstructure:"enabled"`
 	Dimensions int    `mapstructure:"dimensions"`
-	Model      string `mapstructure:"model"`
+	Service    string `mapstructure:"service"`
 }
 
 type EntityExtractorConfig struct {

@@ -1,4 +1,4 @@
-package memorystore
+package postgres
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"dario.cat/mergo"
 
 	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/pkg/store"
 	"github.com/jinzhu/copier"
 	"github.com/uptrace/bun"
 )
@@ -21,13 +22,12 @@ func putSession(
 	isPrivileged bool,
 ) (*models.Session, error) {
 	if sessionID == "" {
-		return nil, NewStorageError("sessionID cannot be empty", nil)
+		return nil, store.NewStorageError("sessionID cannot be empty", nil)
 	}
 
 	// We're not going to run this in a transaction as we don't necessarily
 	// need to roll back the session creation if the message metadata upsert fails.
-	// It's fine if the session is soft-deleted. Upserting will not undelete it.
-	session := PgSession{SessionID: sessionID}
+	session := SessionSchema{SessionID: sessionID}
 	_, err := db.NewInsert().
 		Model(&session).
 		Column("session_id").
@@ -35,12 +35,15 @@ func putSession(
 		Returning("*").
 		Exec(ctx)
 	if err != nil {
-		return nil, NewStorageError("failed to put session", err)
+		return nil, store.NewStorageError("failed to Create session", err)
 	}
 
 	// If the session is deleted, return an error
 	if !session.DeletedAt.IsZero() {
-		return nil, NewStorageError(fmt.Sprintf("session %s is deleted", sessionID), nil)
+		return nil, store.NewStorageError(
+			fmt.Sprintf("session %s is deleted", sessionID),
+			nil,
+		)
 	}
 
 	// remove the top-level `system` key from the metadata if the caller is not privileged
@@ -71,7 +74,7 @@ func putSessionMetadata(ctx context.Context,
 	// to the session metadata.
 	lockID, err := acquireAdvisoryLock(ctx, db, sessionID)
 	if err != nil {
-		return nil, NewStorageError("failed to acquire advisory lock", err)
+		return nil, store.NewStorageError("failed to acquire advisory lock", err)
 	}
 	defer func(ctx context.Context, db bun.IDB, lockID uint64) {
 		err := releaseAdvisoryLock(ctx, db, lockID)
@@ -80,22 +83,22 @@ func putSessionMetadata(ctx context.Context,
 		}
 	}(ctx, db, lockID)
 
-	dbSession := &PgSession{}
+	dbSession := &SessionSchema{}
 	err = db.NewSelect().
 		Model(dbSession).
 		Where("session_id = ?", sessionID).
 		Scan(ctx)
 	if err != nil {
-		return nil, NewStorageError("failed to get session", err)
+		return nil, store.NewStorageError("failed to get session", err)
 	}
 
 	// merge the existing metadata with the new metadata
 	dbMetadata := dbSession.Metadata
 	if err := mergo.Merge(&dbMetadata, metadata, mergo.WithOverride); err != nil {
-		return nil, NewStorageError("failed to merge metadata", err)
+		return nil, store.NewStorageError("failed to merge metadata", err)
 	}
 
-	// put the session metadata, returning the updated session
+	// Create the session metadata, returning the updated session
 	_, err = db.NewUpdate().
 		Model(dbSession).
 		Set("metadata = ?", dbMetadata).
@@ -103,13 +106,13 @@ func putSessionMetadata(ctx context.Context,
 		Returning("*").
 		Exec(ctx)
 	if err != nil {
-		return nil, NewStorageError("failed to update session metadata", err)
+		return nil, store.NewStorageError("failed to update session metadata", err)
 	}
 
 	session := &models.Session{}
 	err = copier.Copy(session, dbSession)
 	if err != nil {
-		return nil, NewStorageError("Unable to copy session", err)
+		return nil, store.NewStorageError("Unable to copy session", err)
 	}
 
 	return session, nil
@@ -121,19 +124,19 @@ func getSession(
 	db *bun.DB,
 	sessionID string,
 ) (*models.Session, error) {
-	session := PgSession{}
+	session := SessionSchema{}
 	err := db.NewSelect().Model(&session).Where("session_id = ?", sessionID).Scan(ctx)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, NewStorageError("failed to get session", err)
+		return nil, store.NewStorageError("failed to get session", err)
 	}
 
 	retSession := models.Session{}
 	err = copier.Copy(&retSession, &session)
 	if err != nil {
-		return nil, NewStorageError("failed to copy session", err)
+		return nil, store.NewStorageError("failed to copy session", err)
 	}
 
 	return &retSession, nil

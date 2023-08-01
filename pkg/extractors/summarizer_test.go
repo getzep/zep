@@ -1,11 +1,8 @@
 package extractors
 
 import (
-	"context"
 	"testing"
 
-	"github.com/getzep/zep/pkg/llms"
-	"github.com/getzep/zep/pkg/memorystore"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/testutils"
 	"github.com/google/uuid"
@@ -14,27 +11,11 @@ import (
 )
 
 func TestSummarize(t *testing.T) {
-	ctx := context.Background()
-
-	db := memorystore.NewPostgresConn(testutils.GetDSN())
-	defer db.Close()
-	memorystore.CleanDB(t, db)
-
-	cfg := testutils.NewTestConfig()
-
-	appState := &models.AppState{Config: cfg}
-
-	store, err := memorystore.NewPostgresMemoryStore(appState, db)
-	assert.NoError(t, err)
-
-	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
-	appState.MemoryStore = store
-
 	windowSize := 10
 	newMessageCountAfterSummary := windowSize / 2
 
 	messages := make([]models.Message, len(testutils.TestMessages))
-	err = copier.Copy(&messages, &testutils.TestMessages)
+	err := copier.Copy(&messages, &testutils.TestMessages)
 	assert.NoError(t, err)
 
 	messages = messages[:windowSize+2]
@@ -69,7 +50,7 @@ func TestSummarize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			newSummary, err := summarize(ctx, appState, windowSize, tt.messages, tt.summary, 0)
+			newSummary, err := summarize(testCtx, appState, windowSize, tt.messages, tt.summary, 0)
 			assert.NoError(t, err)
 
 			assert.Equal(t, newSummaryPointUUID, newSummary.SummaryPointUUID)

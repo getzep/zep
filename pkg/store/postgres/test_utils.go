@@ -1,4 +1,4 @@
-package memorystore
+package postgres
 
 import (
 	"context"
@@ -10,26 +10,32 @@ import (
 
 func CleanDB(t *testing.T, db *bun.DB) {
 	_, err := db.NewDropTable().
-		Model(&PgSession{}).
+		Model(&SessionSchema{}).
 		Cascade().
 		IfExists().
 		Exec(context.Background())
 	require.NoError(t, err)
 
 	_, err = db.NewDropTable().
-		Model(&PgMessageStore{}).
+		Model(&MessageStoreSchema{}).
 		Cascade().
 		IfExists().
 		Exec(context.Background())
 	require.NoError(t, err)
 	_, err = db.NewDropTable().
-		Model(&PgMessageVectorStore{}).
+		Model(&MessageVectorStoreSchema{}).
 		IfExists().
 		Cascade().
 		Exec(context.Background())
 	require.NoError(t, err)
 	_, err = db.NewDropTable().
-		Model(&PgSummaryStore{}).
+		Model(&SummaryStoreSchema{}).
+		Cascade().
+		IfExists().
+		Exec(context.Background())
+	require.NoError(t, err)
+	_, err = db.NewDropTable().
+		Model(&DocumentCollectionSchema{}).
 		Cascade().
 		IfExists().
 		Exec(context.Background())

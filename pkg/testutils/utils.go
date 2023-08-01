@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -34,7 +35,7 @@ func init() {
 
 func GetDSN() string {
 	var testDsn = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
-	dsnFromEnv := viper.GetString("memory_store.postgres.dsn")
+	dsnFromEnv := viper.GetString("store.postgres.dsn")
 	if dsnFromEnv != "" {
 		return dsnFromEnv
 	}
@@ -109,4 +110,16 @@ func SetUpDBLogging(db *bun.DB, log logrus.FieldLogger) {
 		MessageTemplate: "{{.Operation}}[{{.Duration}}]: {{.Query}}",
 		ErrorTemplate:   "{{.Operation}}[{{.Duration}}]: {{.Query}}: {{.Error}}",
 	}))
+}
+
+const charset = "abcdefghijklmnopqrstuvwxyz" +
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+func GenerateRandomString(length int) string {
+	b := make([]byte, length)
+	for i := range b {
+		bigInt, _ := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		b[i] = charset[bigInt.Int64()]
+	}
+	return string(b)
 }

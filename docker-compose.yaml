@@ -22,19 +22,19 @@ services:
   nlp:
     image: ghcr.io/getzep/zep-nlp-server:latest
     container_name: zep-nlp
-    environment:
-        - ENABLE_EMBEDDINGS=false
+    env_file:
+      - .env # You can set your embedding-related variables here
     restart: on-failure
     networks:
       - zep-network
     healthcheck:
-      test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1
+      test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/5557' || exit 1
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 45s
     ports:
-      - "8080:8080"
+      - "5557:5557"
   zep:
     image: ghcr.io/getzep/zep:latest
     container_name: zep

@@ -21,6 +21,7 @@ func (ee *EmbeddingExtractor) Extract(
 	appState *models.AppState,
 	messageEvent *models.MessageEvent,
 ) error {
+	messageType := "message"
 	sessionID := messageEvent.SessionID
 	sessionMutex := ee.getSessionMutex(sessionID)
 	sessionMutex.Lock()
@@ -28,19 +29,19 @@ func (ee *EmbeddingExtractor) Extract(
 
 	texts := messageToStringSlice(messageEvent.Messages, false)
 
-	model, err := llms.GetMessageEmbeddingModel(appState)
+	model, err := llms.GetMessageEmbeddingModel(appState, messageType)
 	if err != nil {
 		return NewExtractorError("EmbeddingExtractor get message embedding model failed", err)
 	}
 
-	embeddings, err := llms.EmbedTexts(ctx, appState, model, texts)
+	embeddings, err := llms.EmbedTexts(ctx, appState, model, messageType, texts)
 	if err != nil {
 		return NewExtractorError("EmbeddingExtractor embed messages failed", err)
 	}
 
-	embeddingRecords := make([]models.DocumentEmbeddings, len(messageEvent.Messages))
+	embeddingRecords := make([]models.MessageEmbedding, len(messageEvent.Messages))
 	for i, r := range messageEvent.Messages {
-		embeddingRecords[i] = models.DocumentEmbeddings{
+		embeddingRecords[i] = models.MessageEmbedding{
 			TextUUID:  r.UUID,
 			Embedding: embeddings[i],
 		}
@@ -57,7 +58,7 @@ func (ee *EmbeddingExtractor) Extract(
 	return nil
 }
 
-// messageToStringSlice converts a slice of DocumentEmbeddings to a slice of strings.
+// messageToStringSlice converts a slice of MessageEmbedding to a slice of strings.
 // If enrich is true, the text slice will include the prior and subsequent
 // messages text to the slice item.
 func messageToStringSlice(messages []models.Message, enrich bool) []string {

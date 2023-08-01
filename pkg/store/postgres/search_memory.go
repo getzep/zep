@@ -1,21 +1,21 @@
-package memorystore
+package postgres
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"math"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/pkg/store"
 	"github.com/pgvector/pgvector-go"
 	"github.com/uptrace/bun"
 )
 
-const defaultSearchLimit = 10
+const DefaultMemorySearchLimit = 10
 
 type JSONQuery struct {
 	JSONPath string       `json:"jsonpath"`
@@ -34,11 +34,11 @@ func searchMessages(
 	logrus.Debugf("searchMessages called for session %s", sessionID)
 
 	if query == nil || appState == nil {
-		return nil, NewStorageError("nil query or appState received", nil)
+		return nil, store.NewStorageError("nil query or appState received", nil)
 	}
 
 	if query.Text == "" && len(query.Metadata) == 0 {
-		return nil, NewStorageError("empty query", errors.New("empty query"))
+		return nil, store.NewStorageError("empty query", errors.New("empty query"))
 	}
 
 	dbQuery := buildMessagesSelectQuery(ctx, appState, db, query)
@@ -46,7 +46,7 @@ func searchMessages(
 		var err error
 		dbQuery, err = applyMessagesMetadataFilter(dbQuery, query.Metadata)
 		if err != nil {
-			return nil, NewStorageError("error applying metadata filter", err)
+			return nil, store.NewStorageError("error applying metadata filter", err)
 		}
 	}
 
@@ -59,13 +59,13 @@ func searchMessages(
 	addMessagesSortQuery(query.Text, dbQuery)
 
 	if limit == 0 {
-		limit = defaultSearchLimit
+		limit = DefaultMemorySearchLimit
 	}
 	dbQuery = dbQuery.Limit(limit)
 
 	results, err := executeMessagesSearchScan(ctx, dbQuery)
 	if err != nil {
-		return nil, NewStorageError("memory searchMessages failed", err)
+		return nil, store.NewStorageError("memory searchMessages failed", err)
 	}
 
 	filteredResults := filterValidMessageSearchResults(results, query.Metadata)
@@ -106,13 +106,13 @@ func applyMessagesMetadataFilter(
 	if where, ok := metadata["where"]; ok {
 		j, err := json.Marshal(where)
 		if err != nil {
-			return nil, NewStorageError("error marshalling metadata", err)
+			return nil, store.NewStorageError("error marshalling metadata", err)
 		}
 
 		var jq JSONQuery
 		err = json.Unmarshal(j, &jq)
 		if err != nil {
-			return nil, NewStorageError("error unmarshalling metadata", err)
+			return nil, store.NewStorageError("error unmarshalling metadata", err)
 		}
 		qb = parseJSONQuery(qb, &jq, false)
 	}
@@ -171,55 +171,17 @@ func addMessagesVectorColumn(
 	q *bun.SelectQuery,
 	queryText string,
 ) (*bun.SelectQuery, error) {
-	model, err := llms.GetMessageEmbeddingModel(appState)
+	documentType := "message"
+	model, err := llms.GetMessageEmbeddingModel(appState, documentType)
 	if err != nil {
-		return nil, NewStorageError("failed to get message embedding model", err)
+		return nil, store.NewStorageError("failed to get message embedding model", err)
 	}
 
-	e, err := llms.EmbedTexts(ctx, appState, model, []string{queryText})
+	e, err := llms.EmbedTexts(ctx, appState, model, documentType, []string{queryText})
 	if err != nil {
-		return nil, NewStorageError("failed to embed query", err)
+		return nil, store.NewStorageError("failed to embed query", err)
 	}
 
 	vector := pgvector.NewVector(e[0])
 	return q.ColumnExpr("(embedding <#> ?) * -1 AS dist", vector), nil
-}
-
-// parseJSONQuery recursively parses a JSONQuery and returns a bun.QueryBuilder.
-// TODO: fix the addition of extraneous parentheses in the query
-func parseJSONQuery(qb bun.QueryBuilder, jq *JSONQuery, isOr bool) bun.QueryBuilder {
-	if jq.JSONPath != "" {
-		path := strings.ReplaceAll(jq.JSONPath, "'", "\"")
-		if isOr {
-			qb = qb.WhereOr(
-				"jsonb_path_exists(m.metadata, ?)",
-				path,
-			)
-		} else {
-			qb = qb.Where(
-				"jsonb_path_exists(m.metadata, ?)",
-				path,
-			)
-		}
-	}
-
-	if len(jq.And) > 0 {
-		qb = qb.WhereGroup(" AND ", func(qq bun.QueryBuilder) bun.QueryBuilder {
-			for _, subQuery := range jq.And {
-				qq = parseJSONQuery(qq, subQuery, false)
-			}
-			return qq
-		})
-	}
-
-	if len(jq.Or) > 0 {
-		qb = qb.WhereGroup(" AND ", func(qq bun.QueryBuilder) bun.QueryBuilder {
-			for _, subQuery := range jq.Or {
-				qq = parseJSONQuery(qq, subQuery, true)
-			}
-			return qq
-		})
-	}
-
-	return qb
 }

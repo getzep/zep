@@ -1,4 +1,4 @@
-package memorystore
+package postgres
 
 import (
 	"context"
@@ -7,13 +7,13 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// deleteSession deletes a session from the memory store. This is a soft delete.
-// Note: soft_deletes don't trigger cascade deletes, so we need to delete all
+// deleteSession deletes a session from the memory store. This is a soft Delete.
+// Note: soft_deletes don't trigger cascade deletes, so we need to Delete all
 // related records manually.
 func deleteSession(ctx context.Context, db *bun.DB, sessionID string) error {
 	log.Debugf("deleting from memory store for session %s", sessionID)
 
-	for _, schema := range tableList {
+	for _, schema := range messageTableList {
 		log.Debugf("deleting session %s from schema %T", sessionID, schema)
 		_, err := db.NewDelete().
 			Model(schema).
@@ -32,7 +32,7 @@ func deleteSession(ctx context.Context, db *bun.DB, sessionID string) error {
 func purgeDeleted(ctx context.Context, db *bun.DB) error {
 	log.Debugf("purging memory store")
 
-	for _, schema := range tableList {
+	for _, schema := range messageTableList {
 		log.Debugf("purging schema %T", schema)
 		_, err := db.NewDelete().
 			Model(schema).

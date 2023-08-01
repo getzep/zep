@@ -1,4 +1,4 @@
-package memorystore
+package postgres
 
 import (
 	"context"
@@ -94,7 +94,7 @@ func TestPurgeDeleted(t *testing.T) {
 	assert.NoError(t, err, "purgeDeleted should not return an error")
 
 	// Test that session is deleted
-	for _, schema := range tableList {
+	for _, schema := range messageTableList {
 		r, err := testDB.NewSelect().
 			Model(schema).
 			WhereDeleted().
@@ -102,6 +102,6 @@ func TestPurgeDeleted(t *testing.T) {
 		assert.NoError(t, err, "purgeDeleted should not return an error")
 		rows, err := r.RowsAffected()
 		assert.NoError(t, err, "RowsAffected should not return an error")
-		assert.True(t, rows == 0, "purgeDeleted should delete all rows")
+		assert.True(t, rows == 0, "purgeDeleted should Delete all rows")
 	}
 }
