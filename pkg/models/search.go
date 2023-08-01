@@ -21,7 +21,7 @@ type DocumentSearchPayload struct {
 
 type DocumentSearchResult struct {
 	*DocumentResponse
-	Dist float64 `json:"dist"`
+	Score float64 `json:"score"`
 }
 
 type DocumentSearchResultPage struct {

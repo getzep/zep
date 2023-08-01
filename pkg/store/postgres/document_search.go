@@ -134,8 +134,8 @@ func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, er
 		}
 		dso.queryVector = v.Slice()
 
-		// Cosine distance is 1 - (a <=> b)
-		query = query.ColumnExpr("1 - (embedding <=> ?) AS dist", v)
+		// Score is cosine distance normalized to 1
+		query = query.ColumnExpr("(embedding <=> ?)/2 AS score", v)
 	}
 
 	if len(dso.searchPayload.Metadata) > 0 {
@@ -157,7 +157,7 @@ func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, er
 
 	// Order by dist - required for index to be used.
 	if dso.searchPayload.Text != "" || len(dso.searchPayload.Embedding) != 0 {
-		query.Order("dist DESC")
+		query.Order("score DESC")
 	}
 
 	return query, nil
@@ -223,7 +223,7 @@ func searchResultsFromSearchQueries(s []models.SearchDocumentQuery) []models.Doc
 				Embedding:  s[i].Embedding,
 				IsEmbedded: s[i].IsEmbedded,
 			},
-			Dist: s[i].Dist,
+			Score: s[i].Score,
 		}
 	}
 

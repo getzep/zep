@@ -81,7 +81,7 @@ func TestDocumentSearchWithIndexEndToEnd(t *testing.T) {
 		assert.NotEmpty(t, searchResults.Results[i].Embedding)
 		assert.NotEmpty(t, searchResults.Results[i].Content)
 		assert.NotEmpty(t, searchResults.Results[i].Metadata)
-		assert.NotEmpty(t, searchResults.Results[i].Dist)
+		assert.NotEmpty(t, searchResults.Results[i].Score)
 		assert.NotEmpty(t, searchResults.Results[i].DocumentID)
 	}
 

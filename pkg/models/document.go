@@ -81,7 +81,7 @@ type Document struct {
 
 type SearchDocumentQuery struct {
 	*Document
-	Dist float64 `json:"dist" bun:"dist"`
+	Score float64 `json:"score" bun:"score"`
 }
 
 type CreateDocumentRequest struct {
