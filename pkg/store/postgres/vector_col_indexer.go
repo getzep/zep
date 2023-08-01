@@ -44,7 +44,7 @@ func (vci *VectorColIndex) CountRows(ctx context.Context) error {
 	}
 
 	count, err := client.NewSelect().
-		ModelTableExpr(vci.Collection.TableName).
+		ModelTableExpr("?", bun.Ident(vci.Collection.TableName)).
 		Count(ctx)
 	if err != nil {
 		return fmt.Errorf("error counting rows: %w", err)

@@ -168,7 +168,7 @@ func (dc *DocumentCollectionDAO) getCollectionCounts(
 
 	err := dc.db.NewSelect().
 		Model(&counts).
-		ModelTableExpr(dc.TableName).
+		ModelTableExpr("?", bun.Ident(dc.TableName)).
 		ColumnExpr("count(*) as document_count").
 		ColumnExpr("COUNT(*) FILTER (WHERE is_embedded) as document_embedded_count").
 		Scan(ctx)
@@ -246,7 +246,7 @@ func (dc *DocumentCollectionDAO) CreateDocuments(
 	}
 	_, err := dc.db.NewInsert().
 		Model(&documents).
-		ModelTableExpr(dc.TableName).
+		ModelTableExpr("?", bun.Ident(dc.TableName)).
 		Returning("uuid").
 		Exec(ctx)
 	if err != nil {
@@ -319,7 +319,7 @@ func (dc *DocumentCollectionDAO) UpdateDocuments(
 
 	r, err := dc.db.NewUpdate().
 		Model(&documents).
-		ModelTableExpr(dc.TableName + " AS document").
+		ModelTableExpr("? AS document", bun.Ident(dc.TableName)).
 		Column(columns...).
 		Bulk().
 		Where("document.uuid = _data.uuid").
@@ -368,7 +368,7 @@ func (dc *DocumentCollectionDAO) GetDocuments(
 
 	query := dc.db.NewSelect().
 		Model(&documents).
-		ModelTableExpr(dc.TableName+" AS document").
+		ModelTableExpr("? AS document", bun.Ident(dc.TableName)).
 		Column("uuid", "created_at", "content", "metadata", "document_id", "embedding", "is_embedded")
 
 	if len(uuids) > 0 {
@@ -406,7 +406,7 @@ func (dc *DocumentCollectionDAO) DeleteDocumentsByUUID(
 
 	r, err := dc.db.NewDelete().
 		Model(&models.Document{}).
-		ModelTableExpr(dc.TableName).
+		ModelTableExpr("?", bun.Ident(dc.TableName)).
 		Where("uuid IN (?)", bun.In(documentUUIDs)).
 		// ModelTableExpr isn't being set on the auto-soft Delete in the WHERE clause,
 		// so we have to use WhereAllWithDeleted to avoid adding deleted_at Is NOT NULL
@@ -506,7 +506,8 @@ func dropDocumentTable(ctx context.Context, db bun.IDB, tableName string) error 
 
 // generateDocumentTableName generates a table name for a given collection.
 // The tableName needs to be less than 63 characters long, so we limit the
-// collection name to 47 characters
+// collection name to 47 characters.
+// We also need to sanitize the collection name.
 func generateDocumentTableName(collection *DocumentCollectionDAO) (string, error) {
 	if collection == nil {
 		return "", errors.New("collection is nil")

@@ -115,7 +115,7 @@ func (dso *documentSearchOperation) execQuery(
 func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, error) {
 	m := &[]models.SearchDocumentQuery{}
 	query := db.NewSelect().Model(m).
-		ModelTableExpr(dso.collection.TableName).
+		ModelTableExpr("?", bun.Ident(dso.collection.TableName)).
 		Column("*").
 		WhereAllWithDeleted().
 		Where("deleted_at IS NULL") // Manually add as ModelTableExpr confuses bun

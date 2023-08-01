@@ -227,7 +227,7 @@ func createDocumentTable(
 	_, err := db.NewCreateTable().
 		Model(schema).
 		// override default table name
-		ModelTableExpr(tableName).
+		ModelTableExpr("?", bun.Ident(tableName)).
 		// create the embedding column using the provided dimensions
 		ColumnExpr("embedding vector(?)", embeddingDimensions).
 		IfNotExists().
@@ -240,7 +240,7 @@ func createDocumentTable(
 	_, err = db.NewCreateIndex().
 		Model(schema).
 		// override default table name
-		ModelTableExpr(tableName).
+		ModelTableExpr("?", bun.Ident(tableName)).
 		Index(tableName + "document_id_idx").
 		Column("document_id").
 		Exec(ctx)
