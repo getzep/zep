@@ -34,12 +34,12 @@ Zep: A long-term memory store for LLM applications
 <p>&nbsp;</p>
 <p align="center">
   <a href="https://docs.getzep.com/sdk">
-    <img src="https://raw.githubusercontent.com/getzep/zep/main/assets/memory_search.svg" width="345" 
+    <img src="https://raw.githubusercontent.com/getzep/zep/main/assets/memory_search.svg" width="365" 
 alt="Zep Chat History Search"
 />
   </a>
   <a href="https://docs.getzep.com/sdk">
-    <img src="https://uploads-ssl.webflow.com/64bb1eccfd2a4cab9f500053/64ca91719264b8fe6c255e22_doc_search.svg" width="350"
+    <img src="https://uploads-ssl.webflow.com/64bb1eccfd2a4cab9f500053/64ca91719264b8fe6c255e22_doc_search.svg" width="370"
 alt="Zep Document Search"
 />
   </a>
