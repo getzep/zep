@@ -34,12 +34,12 @@ Zep: A long-term memory store for LLM applications
 <p>&nbsp;</p>
 <p align="center">
   <a href="https://docs.getzep.com/sdk">
-    <img src="https://raw.githubusercontent.com/getzep/zep/main/assets/memory_search.svg" width="295" 
+    <img src="https://raw.githubusercontent.com/getzep/zep/main/assets/memory_search.svg" width="345" 
 alt="Zep Chat History Search"
 />
   </a>
   <a href="https://docs.getzep.com/sdk">
-    <img src="https://uploads-ssl.webflow.com/64bb1eccfd2a4cab9f500053/64ca91719264b8fe6c255e22_doc_search.svg" width="300"
+    <img src="https://uploads-ssl.webflow.com/64bb1eccfd2a4cab9f500053/64ca91719264b8fe6c255e22_doc_search.svg" width="350"
 alt="Zep Document Search"
 />
   </a>
@@ -75,7 +75,7 @@ docker compose -f docker-compose-beta.yaml up
 
 Please see the [Zep Quick Start Guide](https://docs.getzep.com/deployment/quickstart/) for important configuration information.
 
-<a href="https://docs.getzep.com/deployment">Other Deployment Options</a>
+Looking for <a href="https://docs.getzep.com/deployment">other deployment options</a>?
 
 #### Install SDK
 
