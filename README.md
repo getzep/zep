@@ -4,11 +4,9 @@
   </a>
 </p>
 
-<p align="center">
-  <strong>
-    Zep: A long-term memory store for LLM applications
-  </strong>
-</p>
+<h1 align="center">
+Zep: A long-term memory store for LLM applications
+</h1>
 
 <p align="center">
   <a href="https://discord.gg/W8Kw6bsgXQ"><img
@@ -22,7 +20,6 @@
   src="https://github.com/getzep/zep/actions/workflows/golangci-lint.yml/badge.svg"
   alt="GoLangCI Lint"
   />
-  <img src="https://img.shields.io/badge/License-Apache-blue.svg" alt="Apache Software License 2.0" />
 </p>
 
 <p align="center">
@@ -32,17 +29,17 @@
 <a href="https://discord.gg/W8Kw6bsgXQ">Discord</a><br />
 <a href="https://www.getzep.com">www.getzep.com</a>
 </p>
-
+<p>&nbsp;</p>
 <h2 align="center">Easily add relevant documents, chat history memory & rich user data to your LLM app's prompts.</h2>
 <p>&nbsp;</p>
 <p align="center">
   <a href="https://docs.getzep.com/sdk">
-    <img src="https://raw.githubusercontent.com/getzep/zep/main/assets/memory_search.svg" width="495" 
+    <img src="https://raw.githubusercontent.com/getzep/zep/main/assets/memory_search.svg" width="295" 
 alt="Zep Chat History Search"
 />
   </a>
   <a href="https://docs.getzep.com/sdk">
-    <img src="https://uploads-ssl.webflow.com/64bb1eccfd2a4cab9f500053/64ca91719264b8fe6c255e22_doc_search.svg" width="500"
+    <img src="https://uploads-ssl.webflow.com/64bb1eccfd2a4cab9f500053/64ca91719264b8fe6c255e22_doc_search.svg" width="300"
 alt="Zep Document Search"
 />
   </a>
