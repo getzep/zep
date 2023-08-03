@@ -41,7 +41,7 @@ jobs:
     - name: Check branch name for beta and move config file
       shell: bash
       run: |
-        BRANCH_NAME=${GITHUB_REF#refs/heads/}
+        BRANCH_NAME=${{ github.head_ref }}
         if [[ $BRANCH_NAME == beta/* ]]; then
           mv config-beta.yaml config.yaml
           echo "Moved beta config"
