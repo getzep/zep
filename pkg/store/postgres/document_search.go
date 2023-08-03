@@ -135,7 +135,7 @@ func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, er
 		dso.queryVector = v.Slice()
 
 		// Score is cosine distance normalized to 1
-		query = query.ColumnExpr("(embedding <=> ?)/2 AS score", v)
+		query = query.ColumnExpr("(1 - (embedding <=> ?))/2 AS score", v)
 	}
 
 	if len(dso.searchPayload.Metadata) > 0 {
