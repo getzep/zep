@@ -38,6 +38,15 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: Check branch name for beta and move config file
+      shell: bash
+      run: |
+        BRANCH_NAME=${{ github.head_ref }}
+        if [[ $BRANCH_NAME == beta/* ]]; then
+          mv config-beta.yaml config.yaml
+          echo "Moved beta config"
+        fi
+
     - name: install certs and build-essential (required by CGO)
       run: apt-get update && apt-get install -y ca-certificates build-essential
 
