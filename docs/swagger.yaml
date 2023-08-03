@@ -5,19 +5,13 @@ definitions:
       description:
         maxLength: 1000
         type: string
-      distance_function:
-        description: Distance function to use for index
-        type: string
       embedding_dimensions:
         maximum: 2000
         minimum: 8
         type: integer
-      embedding_model_name:
-        type: string
       is_auto_embedded:
-        type: boolean
-      is_normalized:
-        description: Are the embeddings normalized?
+        description: these needs to be pointers so that we can distinguish between
+          false and unset when validating
         type: boolean
       metadata:
         additionalProperties: true
@@ -128,6 +122,10 @@ definitions:
     properties:
       collection_name:
         type: string
+      embedding:
+        items:
+          type: number
+        type: array
       metadata:
         additionalProperties: true
         type: object
@@ -787,7 +785,8 @@ paths:
         name: collectionName
         required: true
         type: string
-      - description: Force index creation
+      - description: Force index creation, even if there are too few documents to
+          index
         in: query
         name: force
         type: boolean
