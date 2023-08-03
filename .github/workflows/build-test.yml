@@ -44,6 +44,7 @@ jobs:
         BRANCH_NAME=${GITHUB_REF#refs/heads/}
         if [[ $BRANCH_NAME == beta/* ]]; then
           mv config-beta.yaml config.yaml
+          echo "Moved beta config"
         fi
 
     - name: install certs and build-essential (required by CGO)
