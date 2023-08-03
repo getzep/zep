@@ -63,6 +63,8 @@ Populate your prompts with relevant documents and chat history. Rich metadata an
 
 #### Install Server
 
+Please see the [Zep Quick Start Guide](https://docs.getzep.com/deployment/quickstart/) for important configuration information.
+
 ```bash
 docker compose up
 ```
@@ -73,13 +75,11 @@ docker compose up
 docker compose -f docker-compose-beta.yaml up
 ```
 
-Please see the [Zep Quick Start Guide](https://docs.getzep.com/deployment/quickstart/) for important configuration information.
-
 Looking for <a href="https://docs.getzep.com/deployment">other deployment options</a>?
 
 #### Install SDK
 
-Please see the Zep [Develoment Guide](https://docs.getzep.com/sdk/).
+Please see the Zep [Develoment Guide](https://docs.getzep.com/sdk/) for important beta information and usage instructions.
 
 ```bash
 pip install zep-python
