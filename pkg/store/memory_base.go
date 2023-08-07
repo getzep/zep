@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/getzep/zep/internal"
 	"github.com/getzep/zep/pkg/models"
@@ -36,17 +35,4 @@ func (s *BaseMemoryStore[T]) NotifyExtractors(
 			}
 		}(observer)
 	}
-}
-
-type StorageError struct {
-	Message       string
-	OriginalError error
-}
-
-func (e *StorageError) Error() string {
-	return fmt.Sprintf("storage error: %s (original error: %v)", e.Message, e.OriginalError)
-}
-
-func NewStorageError(message string, originalError error) *StorageError {
-	return &StorageError{Message: message, OriginalError: originalError}
 }
