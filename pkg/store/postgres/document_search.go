@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/store"
@@ -100,6 +101,9 @@ func (dso *documentSearchOperation) execQuery(
 
 	err = query.Scan(dso.ctx, results)
 	if err != nil {
+		if strings.Contains(err.Error(), "different vector dimensions") {
+			return 0, store.NewEmbeddingMismatchError(err)
+		}
 		return 0, fmt.Errorf("error scanning query %w", err)
 	}
 
@@ -142,7 +146,7 @@ func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, er
 		var err error
 		query, err = dso.applyDocsMetadataFilter(query, dso.searchPayload.Metadata)
 		if err != nil {
-			return nil, store.NewStorageError("error applying metadata filter", err)
+			return nil, fmt.Errorf("error applying metadata filter: %w", err)
 		}
 	}
 

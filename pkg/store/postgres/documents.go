@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/getzep/zep/pkg/store"
+
 	"github.com/getzep/zep/pkg/models"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
@@ -250,6 +252,9 @@ func (dc *DocumentCollectionDAO) CreateDocuments(
 		Returning("uuid").
 		Exec(ctx)
 	if err != nil {
+		if strings.Contains(err.Error(), "different vector dimensions") {
+			return nil, store.NewEmbeddingMismatchError(err)
+		}
 		return nil, fmt.Errorf("failed to insert documents: %w", err)
 	}
 
@@ -325,6 +330,9 @@ func (dc *DocumentCollectionDAO) UpdateDocuments(
 		Where("document.uuid = _data.uuid").
 		Exec(ctx)
 	if err != nil {
+		if strings.Contains(err.Error(), "different vector dimensions") {
+			return store.NewEmbeddingMismatchError(err)
+		}
 		return fmt.Errorf("failed to update documents: %w", err)
 	}
 
