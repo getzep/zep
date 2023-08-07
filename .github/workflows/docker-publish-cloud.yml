@@ -69,6 +69,8 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=match,pattern=v(.*-beta),group=1
+            type=match,pattern=v.*-(beta),group=1
 
       # If steps.meta.outputs.tags is empty, use the tag provided in the workflow dispatch
       - name: Generate workflow dispatch tags
