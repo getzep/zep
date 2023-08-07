@@ -1,4 +1,4 @@
-FROM golang:1.20.4-bullseye AS BUILD
+FROM golang:1.20.6-bullseye AS BUILD
 LABEL authors="danielchalef"
 
 RUN mkdir /app
