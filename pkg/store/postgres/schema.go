@@ -296,15 +296,26 @@ func ensurePostgresSetup(
 	return nil
 }
 
+// migrateMessageEmbeddingDims drops the old embedding column and creates a new one with the
+// correct dimensions.
 func migrateMessageEmbeddingDims(
 	ctx context.Context,
 	db *bun.DB,
 	dimensions int,
 ) error {
-	_, err := db.NewDropColumn().
-		Model((*MessageVectorStoreSchema)(nil)).
-		Column("embedding").
-		Exec(ctx)
+	columnQuery := `DO $$ 
+BEGIN 
+    IF EXISTS (
+        SELECT 1 
+        FROM   information_schema.columns 
+        WHERE  table_name = 'message_embedding' 
+        AND    column_name = 'embedding'
+    ) THEN 
+        ALTER TABLE message_embedding DROP COLUMN embedding; 
+    END IF; 
+END $$;`
+
+	_, err := db.ExecContext(ctx, columnQuery)
 	if err != nil {
 		return fmt.Errorf("error dropping column embedding: %w", err)
 	}
