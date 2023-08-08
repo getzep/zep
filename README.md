@@ -46,6 +46,8 @@ alt="Zep Document Search"
 </p>
 <p>&nbsp;</p>
 
+
+
 ### Vector Database with Hybrid Search
 Populate your prompts with relevant documents and chat history. Rich metadata and JSONPath query filters offer a powerful hybrid search over texts.
 
@@ -58,6 +60,10 @@ Populate your prompts with relevant documents and chat history. Rich metadata an
 - Zep’s local embedding models and async enrichment ensure a snappy user experience. 
 - Storing documents and history in Zep and not in memory enables stateless deployment.
 
+### Python & TypeScript/JS SDKs, LangChain Support, Edge Deployment
+- Python & TypeScript/JS SDKs for easy integration with your LLM app.
+- LangChain and LangChain.js integration
+- TypeScript/JS SDK supports edge deployment.
 
 ### Get Started
 
@@ -67,12 +73,6 @@ Please see the [Zep Quick Start Guide](https://docs.getzep.com/deployment/quicks
 
 ```bash
 docker compose up
-```
-
-**or**
-
-```bash
-docker compose -f docker-compose-beta.yaml up
 ```
 
 Looking for <a href="https://docs.getzep.com/deployment">other deployment options</a>?
