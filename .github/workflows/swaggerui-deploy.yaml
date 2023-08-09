@@ -1,11 +1,11 @@
-name: golangci-lint
+name: swagger-deploy
 on:
   workflow_dispatch: {}
   push:
     tags:
       - v*
 permissions:
-  contents: read
+  contents: write
 jobs:
   swaggerui:
     name: swaggerui
