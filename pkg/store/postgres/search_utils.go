@@ -68,7 +68,7 @@ func parseDocumentJSONQuery(qb bun.QueryBuilder, jq *JSONQuery, isOr bool) bun.Q
 	if len(jq.And) > 0 {
 		qb = qb.WhereGroup(" AND ", func(qq bun.QueryBuilder) bun.QueryBuilder {
 			for _, subQuery := range jq.And {
-				qq = parseJSONQuery(qq, subQuery, false)
+				qq = parseDocumentJSONQuery(qq, subQuery, false)
 			}
 			return qq
 		})
@@ -77,7 +77,7 @@ func parseDocumentJSONQuery(qb bun.QueryBuilder, jq *JSONQuery, isOr bool) bun.Q
 	if len(jq.Or) > 0 {
 		qb = qb.WhereGroup(" AND ", func(qq bun.QueryBuilder) bun.QueryBuilder {
 			for _, subQuery := range jq.Or {
-				qq = parseJSONQuery(qq, subQuery, true)
+				qq = parseDocumentJSONQuery(qq, subQuery, true)
 			}
 			return qq
 		})
