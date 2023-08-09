@@ -10,10 +10,928 @@
         "license": {
             "name": "Apache 2.0",
             "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
-        }
+        },
+        "version": "0.x"
     },
     "basePath": "/api/v1",
     "paths": {
+        "/api/v1/collection": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Returns a list of all DocumentCollections.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collection"
+                ],
+                "summary": "Gets a list of DocumentCollections",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/models.DocumentCollectionResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collection/{collectionName}": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Returns a DocumentCollection if it exists.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collection"
+                ],
+                "summary": "Gets a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.DocumentCollectionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "If a collection with the same name already exists, an error will be returned.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collection"
+                ],
+                "summary": "Creates a new DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Document Collection",
+                        "name": "collection",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateDocumentCollectionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "If a collection with the same name already exists, it will be overwritten.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collection"
+                ],
+                "summary": "Deletes a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collection"
+                ],
+                "summary": "Updates a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Document Collection",
+                        "name": "collection",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateDocumentCollectionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collection/{collectionName}/document": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Creates Documents in a specified DocumentCollection and returns their UUIDs.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Creates Multiple Documents in a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of Documents to be created",
+                        "name": "documents",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.CreateDocumentRequest"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collection/{collectionName}/document/batchDelete": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Deletes specified Documents from a DocumentCollection.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Batch Deletes Documents from a DocumentCollection by UUID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "UUIDs of the Documents to be deleted",
+                        "name": "documentUUIDs",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collection/{collectionName}/document/batchGet": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Returns Documents from a DocumentCollection specified by UUID or ID.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Batch Gets Documents from a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "UUIDs and IDs of the Documents to be fetched",
+                        "name": "documentRequest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.GetDocumentListRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/models.DocumentResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collection/{collectionName}/document/batchUpdate": {
+            "patch": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Updates Documents in a specified DocumentCollection.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Batch Updates Documents in a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of Documents to be updated",
+                        "name": "documents",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.UpdateDocumentListRequest"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collection/{collectionName}/document/uuid/{documentUUID}": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Returns specified Document from a DocumentCollection.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Gets a Document from a DocumentCollection by UUID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UUID of the Document to be updated",
+                        "name": "documentUUID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.DocumentResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Delete specified Document from a DocumentCollection.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Delete Document from a DocumentCollection by UUID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UUID of the Document to be deleted",
+                        "name": "documentUUID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Document Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Updates a Document in a DocumentCollection by UUID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UUID of the Document to be updated",
+                        "name": "documentUUID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Document to be updated",
+                        "name": "document",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateDocumentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collection/{collectionName}/index/create": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Creates an index for the specified DocumentCollection to improve query performance.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collection"
+                ],
+                "summary": "Creates an index for a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Force index creation, even if there are too few documents to index",
+                        "name": "force",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collection/{collectionName}/search": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Searches Documents in a DocumentCollection based on provided search criteria.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document"
+                ],
+                "summary": "Searches Documents in a DocumentCollection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the Document Collection",
+                        "name": "collectionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Limit the number of returned documents",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Use MMR to rerank the search results. Not Implemented",
+                        "name": "mmr",
+                        "in": "query"
+                    },
+                    {
+                        "description": "Search criteria",
+                        "name": "searchPayload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.DocumentSearchPayload"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Document"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/sessions/{sessionId}": {
             "get": {
                 "description": "get session by id",
@@ -31,7 +949,7 @@
                     {
                         "type": "string",
                         "description": "Session ID",
-                        "name": "session_id",
+                        "name": "sessionId",
                         "in": "path",
                         "required": true
                     }
@@ -73,7 +991,7 @@
                     {
                         "type": "string",
                         "description": "Session ID",
-                        "name": "session_id",
+                        "name": "sessionId",
                         "in": "path",
                         "required": true
                     },
@@ -126,7 +1044,7 @@
                     {
                         "type": "string",
                         "description": "Session ID",
-                        "name": "session_id",
+                        "name": "sessionId",
                         "in": "path",
                         "required": true
                     },
@@ -177,7 +1095,7 @@
                     {
                         "type": "string",
                         "description": "Session ID",
-                        "name": "session_id",
+                        "name": "sessionId",
                         "in": "path",
                         "required": true
                     },
@@ -228,7 +1146,7 @@
                     {
                         "type": "string",
                         "description": "Session ID",
-                        "name": "session_id",
+                        "name": "sessionId",
                         "in": "path",
                         "required": true
                     }
@@ -272,7 +1190,7 @@
                     {
                         "type": "string",
                         "description": "Session ID",
-                        "name": "session_id",
+                        "name": "sessionId",
                         "in": "path",
                         "required": true
                     },
@@ -319,6 +1237,214 @@
         }
     },
     "definitions": {
+        "models.CreateDocumentCollectionRequest": {
+            "type": "object",
+            "required": [
+                "embedding_dimensions",
+                "is_auto_embedded",
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 1000
+                },
+                "embedding_dimensions": {
+                    "type": "integer",
+                    "maximum": 2000,
+                    "minimum": 8
+                },
+                "is_auto_embedded": {
+                    "description": "these needs to be pointers so that we can distinguish between false and unset when validating",
+                    "type": "boolean"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "minLength": 3
+                }
+            }
+        },
+        "models.CreateDocumentRequest": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "document_id": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "embedding": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "models.Document": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "deletedAt": {
+                    "type": "string"
+                },
+                "documentID": {
+                    "type": "string"
+                },
+                "embedding": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "isEmbedded": {
+                    "type": "boolean"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "uuid": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.DocumentCollectionResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "document_count": {
+                    "description": "Number of documents in the collection",
+                    "type": "integer"
+                },
+                "document_embedded_count": {
+                    "description": "Number of documents with embeddings",
+                    "type": "integer"
+                },
+                "embedding_dimensions": {
+                    "type": "integer"
+                },
+                "embedding_model_name": {
+                    "type": "string"
+                },
+                "is_auto_embedded": {
+                    "type": "boolean"
+                },
+                "is_indexed": {
+                    "type": "boolean"
+                },
+                "is_normalized": {
+                    "type": "boolean"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "uuid": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.DocumentResponse": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "document_id": {
+                    "type": "string"
+                },
+                "embedding": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "is_embedded": {
+                    "type": "boolean"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "uuid": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.DocumentSearchPayload": {
+            "type": "object",
+            "properties": {
+                "collection_name": {
+                    "type": "string"
+                },
+                "embedding": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.GetDocumentListRequest": {
+            "type": "object",
+            "properties": {
+                "document_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "uuids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "models.Memory": {
             "type": "object",
             "properties": {
@@ -445,6 +1571,51 @@
                 }
             }
         },
+        "models.UpdateDocumentCollectionRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 1000
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "models.UpdateDocumentListRequest": {
+            "type": "object",
+            "required": [
+                "uuid"
+            ],
+            "properties": {
+                "document_id": {
+                    "type": "string",
+                    "maxLength": 40
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "uuid": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.UpdateDocumentRequest": {
+            "type": "object",
+            "properties": {
+                "document_id": {
+                    "type": "string",
+                    "maxLength": 40
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
         "server.APIError": {
             "type": "object",
             "properties": {
@@ -452,6 +1623,14 @@
                     "type": "string"
                 }
             }
+        }
+    },
+    "securityDefinitions": {
+        "Bearer": {
+            "description": "Type \"Bearer\" followed by a space and JWT token.",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
         }
     }
 }
