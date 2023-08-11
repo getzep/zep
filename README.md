@@ -13,7 +13,7 @@ Zep: A long-term memory store for LLM applications
     src="https://dcbadge.vercel.app/api/server/W8Kw6bsgXQ?style=flat"
     alt="Chat on Discord"
   /></a>
-  <img alt="Twitter Follow" src="https://img.shields.io/twitter/follow/zep_ai">
+  <a href="https://twitter.com/intent/follow?screen_name=zep_ai" target="_new"><img alt="Twitter Follow" src="https://img.shields.io/twitter/follow/zep_ai"></a>
   <a href="https://pypi.org/project/zep-python"><img alt="PyPI - Downloads" src="https://img.shields.io/pypi/dw/zep-python?label=pypi%20downloads"></a>
   <a href="https://www.npmjs.com/package/@getzep/zep-js"><img alt="@getzep/zep-js" src="https://img.shields.io/npm/dw/%40getzep/zep-js?label=npm%20downloads"></a>
   <img src="https://github.com/getzep/zep/actions/workflows/build-test.yml/badge.svg" alt="build/test" />
