@@ -30,20 +30,14 @@ func putSession(
 	session := SessionSchema{SessionID: sessionID}
 	_, err := db.NewInsert().
 		Model(&session).
-		Column("session_id").
+		// intentionally overwrite the deleted_at field, undeleting the session
+		// if the session is exists and is deleted
+		Column("session_id", "deleted_at").
 		On("CONFLICT (session_id) DO UPDATE"). // we'll do an upsert
 		Returning("*").
 		Exec(ctx)
 	if err != nil {
 		return nil, store.NewStorageError("failed to Create session", err)
-	}
-
-	// If the session is deleted, return an error
-	if !session.DeletedAt.IsZero() {
-		return nil, store.NewStorageError(
-			fmt.Sprintf("session %s is deleted", sessionID),
-			nil,
-		)
 	}
 
 	// remove the top-level `system` key from the metadata if the caller is not privileged

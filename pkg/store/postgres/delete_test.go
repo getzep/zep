@@ -83,6 +83,24 @@ func TestDeleteSession(t *testing.T) {
 	assert.Nil(t, respSummary, "getSummary should return nil")
 }
 
+func TestUndeleteSession(t *testing.T) {
+	sessionID, err := setupTestDeleteData(testCtx, testDB)
+	assert.NoError(t, err, "setupTestDeleteData should not return an error")
+
+	err = deleteSession(testCtx, testDB, sessionID)
+	assert.NoError(t, err, "deleteSession should not return an error")
+
+	s, err := putSession(testCtx, testDB, sessionID, nil, false)
+	assert.NoError(t, err, "putSession should not return an error")
+	assert.NotNil(t, s, "putSession should return a session")
+	assert.Emptyf(t, s.DeletedAt, "putSession should not have a DeletedAt value")
+
+	// Test that messages remain deleted
+	respMessages, err := getMessages(testCtx, testDB, sessionID, 2, nil, 0)
+	assert.NoError(t, err, "getMessages should not return an error")
+	assert.Nil(t, respMessages, "getMessages should return nil")
+}
+
 func TestPurgeDeleted(t *testing.T) {
 	sessionID, err := setupTestDeleteData(testCtx, testDB)
 	assert.NoError(t, err, "setupTestDeleteData should not return an error")
