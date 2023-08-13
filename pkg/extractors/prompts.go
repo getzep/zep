@@ -1,13 +1,16 @@
 package extractors
 
 const intentPromptTemplate = `
-You are an AI assistant helping to provide intents. Whenever I ask a question, respond back with the intent. 
-You respond back with the Intent of the question rather than providing the answer to the question. If you can't derive an Intent then simply respond back with Intent: None.
+Identify the intent of the subject's statement or question below.
+
+If you can't derive an Intent then simply respond back with Intent: None.
+
 EXAMPLE
-Human: Does Nike make running shoes?
+Subject: Does Nike make running shoes?
 Intent: The subject is inquiring about whether Nike, a specific brand, manufactures running shoes.
 
-Subject:{{.Input}}
+Subject: {{.Input}}
+Intent:
 `
 
 type IntentPromptTemplateData struct {
@@ -42,36 +45,4 @@ New summary:
 type SummaryPromptTemplateData struct {
 	PrevSummary    string
 	MessagesJoined string
-}
-
-// // Source: Langchain
-//
-//nolint:unused
-const entityExtractorTemplate = `You are an AI assistant helping a human keep track of facts about relevant people,
-places, and concepts in their life. Update the summary of the provided entity in the "Entity" section based on the last
-line of your conversation with the human. If you are writing the summary for the first time, return a single sentence.
-The update should only include facts that are relayed in the last line of conversation about the provided entity, and
-should only contain facts about the provided entity.
-
-If there is no new information about the provided entity or the information is not worth noting (not an important or
-relevant fact to remember long-term), return the existing summary unchanged.
-
-Full conversation history (for context):
-{.History}
-
-Entity to summarize:
-{.Entity}
-
-Existing summary of {entity}:
-{.Content}
-
-Last line of conversation:
-Human: {.Input}
-Updated summary:`
-
-type EntityExtractorPromptTemplateData struct {
-	History string
-	Entity  string
-	Summary string
-	Input   string
 }
