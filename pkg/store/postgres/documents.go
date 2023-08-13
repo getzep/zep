@@ -268,6 +268,7 @@ func (dc *DocumentCollectionDAO) CreateDocuments(
 
 // UpdateDocuments updates the document_id, metadata, and embedding columns of the
 // given documents in the given collection. The documents must have non-nil uuids.
+//
 // **IMPORTANT:** We determine which columns to update based on the fields that are
 // non-zero in the given documents. This means that all documents must have data
 // for the same fields. If a document is missing data for a field, there could be
