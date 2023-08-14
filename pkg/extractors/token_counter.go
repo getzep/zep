@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
 )
 
@@ -13,6 +12,7 @@ var _ models.Extractor = &TokenCountExtractor{}
 
 type TokenCountExtractor struct {
 	BaseExtractor
+	appState *models.AppState
 }
 
 func (ee *TokenCountExtractor) Extract(
@@ -24,6 +24,8 @@ func (ee *TokenCountExtractor) Extract(
 	sessionMutex := ee.getSessionMutex(sessionID)
 	sessionMutex.Lock()
 	defer sessionMutex.Unlock()
+
+	ee.appState = appState
 
 	countResult, err := ee.updateTokenCounts(messageEvents.Messages)
 	if err != nil {
@@ -56,7 +58,7 @@ func (ee *TokenCountExtractor) updateTokenCounts(
 		if m.TokenCount != 0 {
 			continue
 		}
-		t, err := llms.GetTokenCount(fmt.Sprintf("%s: %s", m.Role, m.Content))
+		t, err := ee.appState.LLMClient.GetTokenCount(fmt.Sprintf("%s: %s", m.Role, m.Content))
 		if err != nil {
 			return nil, err
 		}

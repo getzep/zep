@@ -1,57 +1,154 @@
 package llms
 
 import (
+	"context"
 	"testing"
-	"time"
+
+	"github.com/getzep/zep/pkg/testutils"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/getzep/zep/config"
-	"github.com/getzep/zep/pkg/llms/openairetryclient"
-	"github.com/stretchr/testify/assert"
 )
 
-// Minimal set of test cases. We'd need to refactor the error states to not immediately
-// exit the program to test more thoroughly.
-
-// Test with a valid Azure configuration.
-func TestNewOpenAIRetryClient_ValidAzureConfig(t *testing.T) {
+func TestZepOpenAILLM_Init(t *testing.T) {
 	cfg := &config.Config{
 		LLM: config.LLM{
-			OpenAIAPIKey:        "testKey",
-			AzureOpenAIEndpoint: "azureEndpoint",
+			Model:        "gpt-3.5-turbo",
+			OpenAIAPIKey: "test-key",
 		},
 	}
 
-	client := NewOpenAIRetryClient(cfg)
-	assert.IsType(t, &openairetryclient.OpenAIRetryClient{}, client)
-	assert.IsType(t, time.Duration(0), client.Config.Timeout)
-	assert.Equal(t, uint(5), client.Config.MaxAttempts)
+	zllm := &ZepOpenAILLM{}
+
+	err := zllm.Init(context.Background(), cfg)
+	assert.NoError(t, err, "Expected no error from Init")
+	assert.NotNil(t, zllm.llm, "Expected llm to be initialized")
+	assert.NotNil(t, zllm.tkm, "Expected tkm to be initialized")
 }
 
-// Test with a valid configuration.
-func TestNewOpenAIRetryClient_ValidConfig(t *testing.T) {
-	cfg := &config.Config{
-		LLM: config.LLM{
-			OpenAIAPIKey: "testKey",
-		},
-	}
+func TestZepOpenAILLM_TestConfigureClient(t *testing.T) {
+	zllm := &ZepOpenAILLM{}
 
-	client := NewOpenAIRetryClient(cfg)
-	assert.IsType(t, &openairetryclient.OpenAIRetryClient{}, client)
-	assert.IsType(t, time.Duration(0), client.Config.Timeout)
-	assert.Equal(t, uint(5), client.Config.MaxAttempts)
+	t.Run("Test with OpenAIAPIKey", func(t *testing.T) {
+		cfg := &config.Config{
+			LLM: config.LLM{
+				OpenAIAPIKey: "test-key",
+			},
+		}
+
+		options, err := zllm.configureClient(cfg)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+
+		if len(options) != 3 {
+			t.Errorf("Expected 2 options, got %d", len(options))
+		}
+	})
+
+	t.Run("Test with AzureOpenAIEndpoint", func(t *testing.T) {
+		cfg := &config.Config{
+			LLM: config.LLM{
+				OpenAIAPIKey:        "test-key",
+				AzureOpenAIEndpoint: "https://azure.openai.com",
+			},
+		}
+
+		options, err := zllm.configureClient(cfg)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+
+		if len(options) != 5 {
+			t.Errorf("Expected 4 options, got %d", len(options))
+		}
+	})
+
+	t.Run("Test with OpenAIEndpoint", func(t *testing.T) {
+		cfg := &config.Config{
+			LLM: config.LLM{
+				OpenAIAPIKey:   "test-key",
+				OpenAIEndpoint: "https://openai.com",
+			},
+		}
+
+		options, err := zllm.configureClient(cfg)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+
+		if len(options) != 4 {
+			t.Errorf("Expected 3 options, got %d", len(options))
+		}
+	})
+
+	t.Run("Test with OpenAIOrgID", func(t *testing.T) {
+		cfg := &config.Config{
+			LLM: config.LLM{
+				OpenAIAPIKey: "test-key",
+				OpenAIOrgID:  "org-id",
+			},
+		}
+
+		options, err := zllm.configureClient(cfg)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+
+		if len(options) != 4 {
+			t.Errorf("Expected 3 options, got %d", len(options))
+		}
+	})
 }
 
-// Test with a valid configuration.
-func TestNewOpenAIRetryClient_ValidConfigCustomEndpoint(t *testing.T) {
-	cfg := &config.Config{
-		LLM: config.LLM{
-			OpenAIAPIKey:   "testKey",
-			OpenAIEndpoint: "https://api.openai.com/v1",
-		},
+func TestZepOpenAILLM_Call(t *testing.T) {
+	cfg := testutils.NewTestConfig()
+
+	zllm, err := NewOpenAILLM(context.Background(), cfg)
+	assert.NoError(t, err, "Expected no error from NewOpenAILLM")
+
+	prompt := "Hello, world!"
+	result, err := zllm.Call(context.Background(), prompt)
+	assert.NoError(t, err, "Expected no error from Call")
+
+	assert.NotEmpty(t, result, "Expected result to be non-empty")
+}
+
+func TestZepOpenAILLM_EmbedTexts(t *testing.T) {
+	cfg := testutils.NewTestConfig()
+
+	zllm, err := NewOpenAILLM(context.Background(), cfg)
+	assert.NoError(t, err, "Expected no error from NewOpenAILLM")
+
+	texts := []string{"Hello, world!", "Another text"}
+	embeddings, err := zllm.EmbedTexts(context.Background(), texts)
+	assert.NoError(t, err, "Expected no error from EmbedTexts")
+	assert.Equal(t, len(texts), len(embeddings), "Expected embeddings to have same length as texts")
+	assert.NotZero(t, embeddings[0], "Expected embeddings to be non-zero")
+	assert.NotZero(t, embeddings[1], "Expected embeddings to be non-zero")
+}
+
+func TestZepOpenAILLM_GetTokenCount(t *testing.T) {
+	cfg := testutils.NewTestConfig()
+
+	zllm, err := NewOpenAILLM(context.Background(), cfg)
+	assert.NoError(t, err, "Expected no error from NewOpenAILLM")
+
+	tests := []struct {
+		text     string
+		expected int
+	}{
+		{"Hello, world!", 4},
+		{"Another text", 2},
+		// Add more test cases as needed
 	}
 
-	client := NewOpenAIRetryClient(cfg)
-	assert.IsType(t, &openairetryclient.OpenAIRetryClient{}, client)
-	assert.IsType(t, time.Duration(0), client.Config.Timeout)
-	assert.Equal(t, uint(5), client.Config.MaxAttempts)
+	for _, tt := range tests {
+		t.Run(tt.text, func(t *testing.T) {
+			count, err := zllm.GetTokenCount(tt.text)
+			assert.NoError(t, err, "Expected no error from GetTokenCount")
+			assert.Equal(t, tt.expected, count, "Unexpected token count for '%s'", tt.text)
+		})
+	}
 }

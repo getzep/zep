@@ -281,7 +281,7 @@ func ensurePostgresSetup(
 		}
 	}
 
-	model, err := llms.GetMessageEmbeddingModel(appState, "message")
+	model, err := llms.GetEmbeddingModel(appState, "message")
 	if err != nil {
 		return fmt.Errorf("error getting message embedding model: %w", err)
 	}

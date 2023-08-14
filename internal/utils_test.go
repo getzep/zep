@@ -13,6 +13,27 @@ type testData struct {
 	Name string
 }
 
+func TestMergeMaps(t *testing.T) {
+	map1 := map[string]int{"one": 1, "two": 2}
+	map2 := map[string]int{"three": 3, "four": 4}
+	map3 := map[string]int{"five": 5, "six": 6}
+
+	expected := map[string]int{
+		"one":   1,
+		"two":   2,
+		"three": 3,
+		"four":  4,
+		"five":  5,
+		"six":   6,
+	}
+
+	result := MergeMaps(map1, map2, map3)
+
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("Expected %v, but got %v", expected, result)
+	}
+}
+
 func TestParsePrompt(t *testing.T) {
 	testCases := []struct {
 		name           string

@@ -29,7 +29,7 @@ func (ee *EmbeddingExtractor) Extract(
 
 	texts := messageToStringSlice(messageEvent.Messages, false)
 
-	model, err := llms.GetMessageEmbeddingModel(appState, messageType)
+	model, err := llms.GetEmbeddingModel(appState, messageType)
 	if err != nil {
 		return NewExtractorError("EmbeddingExtractor get message embedding model failed", err)
 	}

@@ -58,9 +58,15 @@ func run() {
 func NewAppState(cfg *config.Config) *models.AppState {
 	ctx := context.Background()
 
+	// Create a new LLM client
+	llmClient, err := llms.NewLLMClient(ctx, cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	appState := &models.AppState{
-		OpenAIClient: llms.NewOpenAIRetryClient(cfg),
-		Config:       cfg,
+		LLMClient: llmClient,
+		Config:    cfg,
 	}
 
 	initializeStores(appState)
