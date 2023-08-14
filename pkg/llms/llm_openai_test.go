@@ -104,6 +104,7 @@ func TestZepOpenAILLM_TestConfigureClient(t *testing.T) {
 
 func TestZepOpenAILLM_Call(t *testing.T) {
 	cfg := testutils.NewTestConfig()
+	cfg.LLM.Model = "gpt-3.5-turbo"
 
 	zllm, err := NewOpenAILLM(context.Background(), cfg)
 	assert.NoError(t, err, "Expected no error from NewOpenAILLM")

@@ -17,7 +17,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/oiime/logrusbun v0.1.1
 	github.com/pgvector/pgvector-go v0.1.1
-	github.com/pkoukk/tiktoken-go v0.1.2
+	github.com/pkoukk/tiktoken-go v0.1.5
 	github.com/sashabaranov/go-openai v1.14.2
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.7.0
@@ -36,7 +36,7 @@ require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
-	github.com/dlclark/regexp2 v1.9.0 // indirect
+	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
