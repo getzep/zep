@@ -13,7 +13,7 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
-const AnthropicAPITimeout = 5 * time.Second
+const AnthropicAPITimeout = 30 * time.Second
 const AnthropicAPIKeyNotSetError = "ZEP_ANTHROPIC_API_KEY is not set" //nolint:gosec
 
 var _ models.ZepLLM = &ZepAnthropicLLM{}

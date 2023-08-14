@@ -20,8 +20,8 @@ type StoreConfig struct {
 }
 
 type LLM struct {
-	Model string `mapstructure:"model"`
-	// API Keys are loaded from ENV not config file.
+	Service             string `mapstructure:"service"`
+	Model               string `mapstructure:"model"`
 	AnthropicAPIKey     string `mapstructure:"anthropic_api_key"`
 	OpenAIAPIKey        string `mapstructure:"openai_api_key"`
 	AzureOpenAIEndpoint string `mapstructure:"azure_openai_endpoint"`
