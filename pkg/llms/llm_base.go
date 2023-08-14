@@ -68,8 +68,8 @@ var ValidOpenAILLMs = map[string]bool{
 }
 
 var ValidAnthropicLLMs = map[string]bool{
-	"claude":   true,
-	"claude-2": true,
+	"claude-instant-1": true,
+	"claude-2":         true,
 }
 
 var ValidLLMMap = internal.MergeMaps(ValidOpenAILLMs, ValidAnthropicLLMs)
@@ -79,7 +79,7 @@ var MaxLLMTokensMap = map[string]int{
 	"gpt-3.5-turbo-16k": 16_384,
 	"gpt-4":             8192,
 	"gpt-4-32k":         32_768,
-	"claude":            100_000,
+	"claude-instant-1":  100_000,
 	"claude-2":          100_000,
 }
 
