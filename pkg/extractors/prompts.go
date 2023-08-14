@@ -6,11 +6,10 @@ Identify the intent of the subject's statement or question below.
 If you can't derive an Intent then simply respond back with Intent: None.
 
 EXAMPLE
-Subject: Does Nike make running shoes?
-Intent: The subject is inquiring about whether Nike, a specific brand, manufactures running shoes.
+Human: Does Nike make running shoes?
+Assistant: The subject is inquiring about whether Nike, a specific brand, manufactures running shoes.
 
-Subject: {{.Input}}
-Intent:
+Human: {{.Input}}
 `
 
 type IntentPromptTemplateData struct {
@@ -28,7 +27,7 @@ The human inquires about Led Zeppelin's lead singer and other band members. The 
 lead singer.
 New lines of conversation:
 Human: Who were the other members of Led Zeppelin?
-AI: The other founding members of Led Zeppelin were Jimmy Page (guitar), John Paul Jones (bass, keyboards), and 
+Assistant: The other founding members of Led Zeppelin were Jimmy Page (guitar), John Paul Jones (bass, keyboards), and 
 John Bonham (drums).
 New summary:
 The human inquires about Led Zeppelin's lead singer and other band members. The AI identifies Robert Plant as the lead

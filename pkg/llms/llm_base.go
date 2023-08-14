@@ -25,7 +25,7 @@ func NewLLMClient(ctx context.Context, cfg *config.Config) (models.ZepLLM, error
 	case ValidOpenAILLMs[cfg.LLM.Model]:
 		return NewOpenAILLM(ctx, cfg)
 	case ValidAnthropicLLMs[cfg.LLM.Model]:
-		return nil, errors.New("anthropic llms are not yet supported")
+		return NewAnthropicLLM(ctx, cfg)
 	default:
 		return nil, errors.New("invalid llm model")
 	}

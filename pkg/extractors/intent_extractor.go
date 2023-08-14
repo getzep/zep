@@ -3,6 +3,7 @@ package extractors
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -15,6 +16,8 @@ import (
 var _ models.Extractor = &IntentExtractor{}
 
 const intentMaxTokens = 512
+
+var IntentStringRegex = regexp.MustCompile(`(?i)^\s*intent\W+\s+`)
 
 type IntentExtractor struct {
 	BaseExtractor
@@ -102,7 +105,9 @@ func (ee *IntentExtractor) processMessage(
 	}
 
 	// Get the intent from the response
-	intentContent = strings.TrimPrefix(intentContent, "Intent: ")
+	intentContent = IntentStringRegex.ReplaceAllStringFunc(intentContent, func(s string) string {
+		return ""
+	})
 
 	// if we don't have an intent, just return
 	if intentContent == "" {
