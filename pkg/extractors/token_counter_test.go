@@ -3,6 +3,8 @@ package extractors
 import (
 	"testing"
 
+	"github.com/getzep/zep/pkg/llms"
+
 	"github.com/getzep/zep/internal"
 
 	"github.com/getzep/zep/pkg/models"
@@ -10,7 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTokenCountExtractor(t *testing.T) {
+func runTestTokenCountExtractor(
+	t *testing.T,
+	llmClient models.ZepLLM,
+) *models.Memory {
+	appState.LLMClient = llmClient
+
 	store := appState.MemoryStore
 
 	sessionID, err := testutils.GenerateRandomSessionID(16)
@@ -47,8 +54,33 @@ func TestTokenCountExtractor(t *testing.T) {
 	// reverse order since select orders LIFO
 	internal.ReverseSlice(memory.Messages)
 
+	return memory
+}
+
+func TestTokenCountExtractor_OpenAI(t *testing.T) {
+	appState.Config.LLM.Service = "openai"
+	appState.Config.LLM.Model = "gpt-3.5-turbo"
+	llmClient, err := llms.NewOpenAILLM(testCtx, appState.Config)
+	assert.NoError(t, err)
+	appState.LLMClient = llmClient
+
+	memory := runTestTokenCountExtractor(t, llmClient)
+
 	for i := range memory.Messages {
-		assert.NotZero(t, memory.Messages[i].TokenCount)
 		assert.True(t, memory.Messages[i].TokenCount > 0)
+	}
+}
+
+func TestTokenCountExtractor_Anthropic(t *testing.T) {
+	appState.Config.LLM.Service = "anthropic"
+	appState.Config.LLM.Model = "claude-2"
+	llmClient, err := llms.NewAnthropicLLM(testCtx, appState.Config)
+	assert.NoError(t, err)
+	appState.LLMClient = llmClient
+
+	memory := runTestTokenCountExtractor(t, llmClient)
+
+	for i := range memory.Messages {
+		assert.Zero(t, memory.Messages[i].TokenCount)
 	}
 }

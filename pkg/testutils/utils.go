@@ -58,6 +58,7 @@ func initConfig() (*config.Config, error) {
 		return nil, fmt.Errorf("failed to load config: %v", err)
 	}
 
+	cfg.LLM.Service = "openai"
 	cfg.LLM.Model = "gpt-3.5-turbo"
 
 	return cfg, nil

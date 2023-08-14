@@ -10,7 +10,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestEmbeddingExtractor_Extract(t *testing.T) {
+func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
+	appState.Config.LLM.Service = "openai"
+	appState.Config.LLM.Model = "gpt-3.5-turbo"
+	llmClient, err := llms.NewOpenAILLM(testCtx, appState.Config)
+	assert.NoError(t, err)
+	appState.LLMClient = llmClient
+
 	store := appState.MemoryStore
 
 	documentType := "message"
