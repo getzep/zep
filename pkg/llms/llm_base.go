@@ -2,7 +2,6 @@ package llms
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/getzep/zep/pkg/models"
@@ -21,13 +20,30 @@ const InvalidLLMModelError = "llm model is not set or is invalid"
 var log = internal.GetLogger()
 
 func NewLLMClient(ctx context.Context, cfg *config.Config) (models.ZepLLM, error) {
-	switch {
-	case ValidOpenAILLMs[cfg.LLM.Model]:
+	switch cfg.LLM.Service {
+	case "openai":
+		if _, ok := ValidOpenAILLMs[cfg.LLM.Model]; !ok {
+			return nil, fmt.Errorf(
+				"invalid llm model \"%s\" for %s",
+				cfg.LLM.Model,
+				cfg.LLM.Service,
+			)
+		}
 		return NewOpenAILLM(ctx, cfg)
-	case ValidAnthropicLLMs[cfg.LLM.Model]:
+	case "anthropic":
+		if _, ok := ValidAnthropicLLMs[cfg.LLM.Model]; !ok {
+			return nil, fmt.Errorf(
+				"invalid llm model \"%s\" for %s",
+				cfg.LLM.Model,
+				cfg.LLM.Service,
+			)
+		}
 		return NewAnthropicLLM(ctx, cfg)
+	case "":
+		// for backward compatibility
+		return NewOpenAILLM(ctx, cfg)
 	default:
-		return nil, errors.New("invalid llm model")
+		return nil, fmt.Errorf("invalid LLM service: %s", cfg.LLM.Service)
 	}
 }
 

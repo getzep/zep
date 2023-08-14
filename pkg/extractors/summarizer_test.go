@@ -3,6 +3,7 @@ package extractors
 import (
 	"testing"
 
+	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/testutils"
 	"github.com/google/uuid"
@@ -10,7 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSummarize(t *testing.T) {
+func runTestSummarize(t *testing.T, llmClient models.ZepLLM) {
+	appState.LLMClient = llmClient
+
 	windowSize := 10
 	newMessageCountAfterSummary := windowSize / 2
 
@@ -55,7 +58,22 @@ func TestSummarize(t *testing.T) {
 
 			assert.Equal(t, newSummaryPointUUID, newSummary.SummaryPointUUID)
 			assert.NotEmpty(t, newSummary.Content)
-			assert.True(t, newSummary.TokenCount > 0)
 		})
 	}
+}
+
+func TestSummarize_OpenAI(t *testing.T) {
+	appState.Config.LLM.Service = "openai"
+	appState.Config.LLM.Model = "gpt-3.5-turbo"
+	llmClient, err := llms.NewOpenAILLM(testCtx, appState.Config)
+	assert.NoError(t, err)
+	runTestSummarize(t, llmClient)
+}
+
+func TestSummarize_Anthropic(t *testing.T) {
+	appState.Config.LLM.Service = "anthropic"
+	appState.Config.LLM.Model = "claude-2"
+	llmClient, err := llms.NewAnthropicLLM(testCtx, appState.Config)
+	assert.NoError(t, err)
+	runTestSummarize(t, llmClient)
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
-const SummaryMaxOutputTokens = 512
+const SummaryMaxOutputTokens = 1024
 
 // Force compiler to validate that Extractor implements the MemoryStore interface.
 var _ models.Extractor = &SummaryExtractor{}
@@ -276,6 +276,16 @@ func incrementalSummarizer(
 		MessagesJoined: messagesJoined,
 	}
 
+	var summaryPromptTemplate string
+	switch appState.Config.LLM.Service {
+	case "openai":
+		summaryPromptTemplate = summaryPromptTemplateOpenAI
+	case "anthropic":
+		summaryPromptTemplate = summaryPromptTemplateAnthropic
+	default:
+		return "", 0, fmt.Errorf("unknown LLM service: %s", appState.Config.LLM.Service)
+	}
+
 	progressivePrompt, err := internal.ParsePrompt(summaryPromptTemplate, promptData)
 	if err != nil {
 		return "", 0, err
@@ -289,6 +299,8 @@ func incrementalSummarizer(
 	if err != nil {
 		return "", 0, err
 	}
+
+	summary = strings.TrimSpace(summary)
 
 	tokensUsed, err := appState.LLMClient.GetTokenCount(summary)
 	if err != nil {
