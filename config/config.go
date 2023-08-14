@@ -15,8 +15,9 @@ var log = logrus.New()
 
 // EnvVars is a set of secrets that should be stored in the environment, not config file
 var EnvVars = map[string]string{
-	"llm.openai_api_key": "ZEP_OPENAI_API_KEY",
-	"auth.secret":        "ZEP_AUTH_SECRET",
+	"llm.anthropic_api_key": "ZEP_ANTHROPIC_API_KEY",
+	"llm.openai_api_key":    "ZEP_OPENAI_API_KEY",
+	"auth.secret":           "ZEP_AUTH_SECRET",
 }
 
 // LoadConfig loads the config file and ENV variables into a Config struct

@@ -49,7 +49,7 @@ func (ep *DocEmbeddingProcessor) Run(
 	ctx context.Context,
 ) error {
 	ep.documentType = "document"
-	model, err := llms.GetMessageEmbeddingModel(ep.appState, ep.documentType)
+	model, err := llms.GetEmbeddingModel(ep.appState, ep.documentType)
 	if err != nil {
 		return fmt.Errorf("failed to get embedding model: %w", err)
 	}

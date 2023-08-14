@@ -172,7 +172,7 @@ func (dso *documentSearchOperation) getDocQueryVector(
 	queryText string,
 ) (pgvector.Vector, error) {
 	documentType := "document"
-	model, err := llms.GetMessageEmbeddingModel(dso.appState, documentType)
+	model, err := llms.GetEmbeddingModel(dso.appState, documentType)
 	if err != nil {
 		return pgvector.Vector{}, fmt.Errorf("failed to get document embedding model %w", err)
 	}

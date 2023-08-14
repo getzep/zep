@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	llms2 "github.com/tmc/langchaingo/llms"
+
 	"github.com/getzep/zep/internal"
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
@@ -218,7 +220,7 @@ func processOverLimitMessages(
 
 	for _, message := range messages {
 		messageText := fmt.Sprintf("%s: %s", message.Role, message.Content)
-		messageTokens, err := llms.GetTokenCount(messageText)
+		messageTokens, err := appState.LLMClient.GetTokenCount(messageText)
 		if err != nil {
 			return nil, err
 		}
@@ -279,13 +281,19 @@ func incrementalSummarizer(
 		return "", 0, err
 	}
 
-	resp, err := llms.RunChatCompletion(ctx, appState, summaryMaxTokens, progressivePrompt)
+	summary, err := appState.LLMClient.Call(
+		ctx,
+		progressivePrompt,
+		llms2.WithMaxTokens(summaryMaxTokens),
+	)
 	if err != nil {
 		return "", 0, err
 	}
 
-	completion := resp.Choices[0].Message.Content
-	tokensUsed := resp.Usage.TotalTokens
+	tokensUsed, err := appState.LLMClient.GetTokenCount(summary)
+	if err != nil {
+		return "", 0, err
+	}
 
-	return completion, tokensUsed, nil
+	return summary, tokensUsed, nil
 }

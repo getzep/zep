@@ -2,6 +2,7 @@ package llms
 
 import (
 	"context"
+	"errors"
 
 	"github.com/getzep/zep/pkg/models"
 )
@@ -14,20 +15,20 @@ func EmbedTexts(
 	text []string,
 ) ([][]float32, error) {
 	if len(text) == 0 {
-		return nil, NewLLMError("no text to embed", nil)
+		return nil, errors.New("no text to embed")
 	}
 
-	switch model.Service {
-	case "openai":
-		return EmbedTextsOpenAI(ctx, appState, text)
-	case "local":
-		return embedTextsLocal(ctx, appState, documentType, text)
-	default:
-		return nil, NewLLMError("invalid embedding service", nil)
+	if appState.LLMClient == nil {
+		return nil, errors.New(InvalidLLMModelError)
 	}
+
+	if model.Service == "local" {
+		return embedTextsLocal(ctx, appState, documentType, text)
+	}
+	return appState.LLMClient.EmbedTexts(ctx, text)
 }
 
-func GetMessageEmbeddingModel(
+func GetEmbeddingModel(
 	appState *models.AppState,
 	documentType string,
 ) (*models.EmbeddingModel, error) {
@@ -45,7 +46,7 @@ func GetMessageEmbeddingModel(
 			Dimensions: config.Dimensions,
 		}, nil
 	default:
-		return nil, NewLLMError("invalid document type", nil)
+		return nil, errors.New("invalid document type")
 
 	}
 }

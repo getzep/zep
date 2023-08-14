@@ -78,3 +78,13 @@ func StructToMap(item interface{}) map[string]interface{} {
 
 	return out
 }
+
+func MergeMaps[T any](maps ...map[string]T) map[string]T {
+	result := make(map[string]T)
+	for _, m := range maps {
+		for k, v := range m {
+			result[k] = v
+		}
+	}
+	return result
+}

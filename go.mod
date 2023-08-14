@@ -6,6 +6,7 @@ require (
 	dario.cat/mergo v1.0.0
 	github.com/alitto/pond v1.8.3
 	github.com/avast/retry-go/v4 v4.3.4
+	github.com/brianvoe/gofakeit/v6 v6.23.0
 	github.com/chi-middleware/logrus-logger v0.2.0
 	github.com/go-chi/chi/v5 v5.0.8
 	github.com/go-chi/jwtauth/v5 v5.1.0
@@ -16,8 +17,8 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/oiime/logrusbun v0.1.1
 	github.com/pgvector/pgvector-go v0.1.1
-	github.com/pkoukk/tiktoken-go v0.1.1
-	github.com/sashabaranov/go-openai v1.11.3
+	github.com/pkoukk/tiktoken-go v0.1.2
+	github.com/sashabaranov/go-openai v1.14.2
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.15.0
@@ -27,12 +28,12 @@ require (
 	github.com/uptrace/bun/dialect/pgdialect v1.1.12
 	github.com/uptrace/bun/driver/pgdriver v1.1.12
 	gonum.org/v1/gonum v0.13.0
-	github.com/brianvoe/gofakeit/v6 v6.23.0
 )
+
+require github.com/tmc/langchaingo v0.0.0-20230811231558-fd8b7f099537 // indirect
 
 require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
-
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
 	github.com/dlclark/regexp2 v1.9.0 // indirect
@@ -45,6 +46,8 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
+	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
+	github.com/hashicorp/go-retryablehttp v0.7.4 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgx/v5 v5.4.2 // indirect
@@ -64,7 +67,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.0.7 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/rogpeppe/go-internal v1.10.0 // indirect
+	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/spf13/afero v1.9.5 // indirect
 	github.com/spf13/cast v1.5.0 // indirect

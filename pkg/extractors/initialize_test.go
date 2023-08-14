@@ -33,7 +33,13 @@ func setup() {
 
 	appState = &models.AppState{}
 	cfg := testutils.NewTestConfig()
-	appState.OpenAIClient = llms.NewOpenAIRetryClient(cfg)
+
+	llmClient, err := llms.NewLLMClient(context.Background(), cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	appState.LLMClient = llmClient
 	appState.Config = cfg
 	appState.Config.Store.Postgres.DSN = testutils.GetDSN()
 

@@ -6,8 +6,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/tmc/langchaingo/llms"
+
 	"github.com/getzep/zep/internal"
-	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
 )
 
@@ -90,14 +91,17 @@ func (ee *IntentExtractor) processMessage(
 	}
 
 	// Send the populated prompt to the language model
-	resp, err := llms.RunChatCompletion(ctx, appState, intentMaxTokens, prompt)
+	intentContent, err := appState.LLMClient.Call(
+		ctx,
+		prompt,
+		llms.WithMaxTokens(intentMaxTokens),
+	)
 	if err != nil {
 		errs <- NewExtractorError("IntentExtractor: "+err.Error(), err)
 		return
 	}
 
 	// Get the intent from the response
-	intentContent := resp.Choices[0].Message.Content
 	intentContent = strings.TrimPrefix(intentContent, "Intent: ")
 
 	// if we don't have an intent, just return
