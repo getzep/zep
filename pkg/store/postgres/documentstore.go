@@ -385,7 +385,7 @@ func (ds *DocumentStore) documentEmbeddingUpdater(
 			docs := documentsFromEmbeddingUpdates(updates)
 			err := dbCollection.UpdateDocuments(ctx, docs)
 			if err != nil {
-				return fmt.Errorf("failed to update document embedding: %w", err)
+				log.Errorf("failed to update document embedding: %s", err)
 			}
 
 			log.Debugf("Document embedding updater updated %d documents", len(updates))
