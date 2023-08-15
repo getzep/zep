@@ -61,9 +61,10 @@ Populate your prompts with relevant documents and chat history. Rich metadata an
 - Zep’s local embedding models and async enrichment ensure a snappy user experience. 
 - Storing documents and history in Zep and not in memory enables stateless deployment.
 
-### Python & TypeScript/JS SDKs, LangChain Support, Edge Deployment
+### Python & TypeScript/JS SDKs, LlamaIndex and LangChain Support, Edge Deployment
 - Python & TypeScript/JS SDKs for easy integration with your LLM app.
 - LangChain and LangChain.js integration
+- LlamaIndex VectorStore and Reader
 - TypeScript/JS SDK supports edge deployment.
 
 ### Get Started
