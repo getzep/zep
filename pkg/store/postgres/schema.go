@@ -11,6 +11,7 @@ import (
 	"github.com/uptrace/bun/driver/pgdriver"
 
 	"github.com/getzep/zep/pkg/llms"
+	"github.com/getzep/zep/pkg/store/postgres/migrations"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"github.com/getzep/zep/pkg/models"
@@ -29,6 +30,8 @@ type SessionSchema struct {
 	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
 	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
 	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
+	UserUUID  uuid.UUID              `bun:",nullzero,type:uuid"`
+	User      *UserSchema            `bun:"rel:belongs-to,join:user_uuid=uuid,on_delete:cascade"`
 }
 
 // BeforeCreateTable is a marker method to ensure uniform interface across all table models - used in table creation iterator
@@ -66,7 +69,6 @@ func (s *MessageStoreSchema) BeforeCreateTable(
 }
 
 // MessageVectorStoreSchema stores the embeddings for a message.
-// TODO: Vector dims from config
 type MessageVectorStoreSchema struct {
 	bun.BaseModel `bun:"table:message_embedding,alias:me"`
 
@@ -133,11 +135,31 @@ type DocumentSchemaTemplate struct {
 	models.DocumentBase
 }
 
+type UserSchema struct {
+	bun.BaseModel `bun:"table:user,alias:u"`
+
+	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
+	CreatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
+	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
+	UserID    string                 `bun:",unique,notnull"`
+	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
+}
+
+// BeforeCreateTable is a marker method to ensure uniform interface across all table models - used in table creation iterator
+func (u *UserSchema) BeforeCreateTable(
+	_ context.Context,
+	_ *bun.CreateTableQuery,
+) error {
+	return nil
+}
+
 // Create session_id indexes after table creation
 var _ bun.AfterCreateTableHook = (*SessionSchema)(nil)
 var _ bun.AfterCreateTableHook = (*MessageStoreSchema)(nil)
 var _ bun.AfterCreateTableHook = (*MessageVectorStoreSchema)(nil)
 var _ bun.AfterCreateTableHook = (*SummaryStoreSchema)(nil)
+var _ bun.AfterCreateTableHook = (*UserSchema)(nil)
 
 // Create Collection Name index after table creation
 var _ bun.AfterCreateTableHook = (*DocumentCollectionSchema)(nil)
@@ -151,7 +173,20 @@ func (*SessionSchema) AfterCreateTable(
 		Index("session_session_id_idx").
 		Column("session_id").
 		Exec(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+
+	_, err = query.DB().NewCreateIndex().
+		Model((*SessionSchema)(nil)).
+		Index("session_user_uuid_idx").
+		Column("user_uuid").
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (*MessageStoreSchema) AfterCreateTable(
@@ -208,11 +243,24 @@ func (*DocumentCollectionSchema) AfterCreateTable(
 	return err
 }
 
+func (*UserSchema) AfterCreateTable(
+	ctx context.Context,
+	query *bun.CreateTableQuery,
+) error {
+	_, err := query.DB().NewCreateIndex().
+		Model((*UserSchema)(nil)).
+		Index("user_user_id_idx").
+		Column("user_id").
+		Exec(ctx)
+	return err
+}
+
 var messageTableList = []bun.BeforeCreateTableHook{
 	&MessageVectorStoreSchema{},
 	&SummaryStoreSchema{},
 	&MessageStoreSchema{},
 	&SessionSchema{},
+	&UserSchema{},
 }
 
 // generateDocumentTableName generates a table name for a collection.
@@ -291,6 +339,11 @@ func ensurePostgresSetup(
 		if err != nil {
 			return fmt.Errorf("error migrating message embedding dimensions: %w", err)
 		}
+	}
+
+	// apply migrations
+	if err := migrations.Migrate(ctx, db); err != nil {
+		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
 	return nil
