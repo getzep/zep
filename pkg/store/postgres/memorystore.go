@@ -76,6 +76,19 @@ func (pms *PostgresMemoryStore) PutSession(
 	return err
 }
 
+// DeleteSession deletes a session from the memory store. This is a soft Delete.
+func (pms *PostgresMemoryStore) DeleteSession(ctx context.Context, sessionID string) error {
+	return deleteSession(ctx, pms.Client, sessionID)
+}
+
+// GetSessions retrieves all Sessions.
+func (pms *PostgresMemoryStore) GetSessions(
+	ctx context.Context,
+	_ *models.AppState,
+) ([]models.Session, error) {
+	return getSessions(ctx, pms.Client)
+}
+
 // GetMemory returns the most recent Summary and a list of messages for a given sessionID.
 // GetMemory returns:
 //   - the most recent Summary, if one exists
@@ -221,12 +234,6 @@ func (pms *PostgresMemoryStore) Close() error {
 		return pms.Client.Close()
 	}
 	return nil
-}
-
-// DeleteSession deletes a session from the memory store. This is a soft Delete.
-// TODO: A hard Delete will be implemented as an out-of-band process or left to the implementer.
-func (pms *PostgresMemoryStore) DeleteSession(ctx context.Context, sessionID string) error {
-	return deleteSession(ctx, pms.Client, sessionID)
 }
 
 func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,

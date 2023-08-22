@@ -73,6 +73,11 @@ type MemoryStore[T any] interface {
 		appState *AppState,
 		session *Session,
 	) error
+	// GetSessions retrieves all Sessions.
+	GetSessions(
+		ctx context.Context,
+		appState *AppState,
+	) ([]Session, error)
 	OnStart(ctx context.Context, appState *AppState) error
 	// Attach is used by Extractors to register themselves with the MemoryStore. This allows the MemoryStore to notify
 	// the Extractors when new occur.

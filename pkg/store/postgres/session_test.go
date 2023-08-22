@@ -346,3 +346,36 @@ func TestMergeSessionMetadata(t *testing.T) {
 		})
 	}
 }
+
+func TestGetSessions(t *testing.T) {
+	CleanDB(t, testDB)
+	err := ensurePostgresSetup(testCtx, appState, testDB)
+	assert.NoError(t, err)
+	// Create a few test sessions
+	sessionIDs := make([]string, 3)
+	for i := 0; i < 3; i++ {
+		sessionID, err := testutils.GenerateRandomSessionID(16)
+		assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
+		metadata := map[string]interface{}{
+			"key": "value",
+		}
+		_, err = putSession(testCtx, testDB, sessionID, metadata, true)
+		assert.NoError(t, err)
+		sessionIDs[i] = sessionID
+	}
+
+	// Test getSessions
+	sessions, err := getSessions(testCtx, testDB)
+	assert.NoError(t, err)
+	assert.NotNil(t, sessions)
+
+	// Check that the correct number of sessions were returned
+	assert.Equal(t, len(sessionIDs), len(sessions))
+
+	// Check that the correct session IDs were returned
+	returnedIDs := make([]string, len(sessions))
+	for i, session := range sessions {
+		returnedIDs[i] = session.SessionID
+	}
+	assert.ElementsMatch(t, sessionIDs, returnedIDs)
+}

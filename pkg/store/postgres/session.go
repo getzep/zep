@@ -73,7 +73,7 @@ func putSessionMetadata(ctx context.Context,
 	defer func(ctx context.Context, db bun.IDB, lockID uint64) {
 		err := releaseAdvisoryLock(ctx, db, lockID)
 		if err != nil {
-			log.Error(ctx, "failed to release advisory lock", err)
+			log.Error("failed to release advisory lock", err)
 		}
 	}(ctx, db, lockID)
 
@@ -134,4 +134,25 @@ func getSession(
 	}
 
 	return &retSession, nil
+}
+
+// getSessions retrieves all sessions from the memory store.
+func getSessions(ctx context.Context, db *bun.DB) ([]models.Session, error) {
+	var dbSessions []SessionSchema
+	err := db.NewSelect().Model(&dbSessions).Scan(ctx)
+	if err != nil {
+		return nil, store.NewStorageError("failed to get sessions", err)
+	}
+
+	sessions := make([]models.Session, len(dbSessions))
+	for i, dbSession := range dbSessions {
+		session := models.Session{}
+		err = copier.Copy(&session, &dbSession)
+		if err != nil {
+			return nil, store.NewStorageError("failed to copy session", err)
+		}
+		sessions[i] = session
+	}
+
+	return sessions, nil
 }
