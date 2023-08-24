@@ -22,18 +22,23 @@ func NewUserStoreDAO(db *bun.DB) *UserStoreDAO {
 	}
 }
 
+// Create creates a new user.
 func (dao *UserStoreDAO) Create(
 	ctx context.Context,
 	user *models.CreateUserRequest,
 ) (uuid.UUID, error) {
 	userDB := UserSchema{
-		UserID:   user.UserID,
-		Metadata: user.Metadata,
+		UserID:    user.UserID,
+		Email:     user.Email,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		Metadata:  user.Metadata,
 	}
 	_, err := dao.db.NewInsert().Model(&userDB).Returning("uuid").Exec(ctx)
 	return userDB.UUID, err
 }
 
+// Get gets a user by UserID.
 func (dao *UserStoreDAO) Get(ctx context.Context, userID string) (*models.User, error) {
 	user := new(UserSchema)
 	err := dao.db.NewSelect().Model(user).Where("user_id = ?", userID).Scan(ctx)
@@ -46,13 +51,18 @@ func (dao *UserStoreDAO) Get(ctx context.Context, userID string) (*models.User, 
 	return userSchemaToUser(user), nil
 }
 
+// Update updates a user.
 func (dao *UserStoreDAO) Update(ctx context.Context, user *models.UpdateUserRequest) error {
 	userDB := UserSchema{
-		Metadata: user.Metadata,
+		Email:     user.Email,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		Metadata:  user.Metadata,
 	}
 	r, err := dao.db.NewUpdate().
 		Model(&userDB).
-		Column("metadata").
+		Column("email", "first_name", "last_name", "metadata").
+		OmitZero().
 		Where("user_id = ?", user.UserID).
 		Exec(ctx)
 	if err != nil {
@@ -69,6 +79,7 @@ func (dao *UserStoreDAO) Update(ctx context.Context, user *models.UpdateUserRequ
 	return nil
 }
 
+// Delete deletes a user.
 func (dao *UserStoreDAO) Delete(ctx context.Context, userID string) error {
 	r, err := dao.db.NewDelete().Model(&models.User{}).Where("user_id = ?", userID).Exec(ctx)
 	if err != nil {
@@ -85,6 +96,7 @@ func (dao *UserStoreDAO) Delete(ctx context.Context, userID string) error {
 	return nil
 }
 
+// ListAll lists all users. The cursor is the time of the last user returned.
 func (dao *UserStoreDAO) ListAll(
 	ctx context.Context,
 	cursor time.Time,
@@ -109,6 +121,7 @@ func (dao *UserStoreDAO) ListAll(
 	return users, nil
 }
 
+// GetSessions gets all sessions for a user.
 func (dao *UserStoreDAO) GetSessions(
 	ctx context.Context,
 	userID string,
@@ -142,6 +155,9 @@ func userSchemaToUser(user *UserSchema) *models.User {
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		UserID:    user.UserID,
+		Email:     user.Email,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
 		Metadata:  user.Metadata,
 	}
 }

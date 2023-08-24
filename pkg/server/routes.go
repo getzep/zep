@@ -5,14 +5,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/jwtauth/v5"
-
 	"github.com/getzep/zep/pkg/auth"
 
 	httpLogger "github.com/chi-middleware/logrus-logger"
 	"github.com/getzep/zep/pkg/models"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/jwtauth/v5"
 	"github.com/spf13/viper"
 )
 

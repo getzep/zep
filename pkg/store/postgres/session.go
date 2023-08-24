@@ -147,7 +147,7 @@ func (dao *SessionDAO) updateSession(
 		Model(&sessionDB).
 		// intentionally overwrite the deleted_at field, undeleting the session
 		// if the session exists and is deleted
-		Column("session_id", "metadata", "deleted_at").
+		Column("metadata", "deleted_at").
 		// use WhereAllWithDeleted to update soft-deleted sessions
 		WhereAllWithDeleted().
 		Where("session_id = ?", session.SessionID).

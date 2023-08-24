@@ -13,18 +13,27 @@ type User struct {
 	UpdatedAt time.Time              `json:"updated_at"`
 	DeletedAt *time.Time             `json:"deleted_at"`
 	UserID    string                 `json:"user_id"`
+	Email     string                 `json:"email"`
+	FirstName string                 `json:"first_name"`
+	LastName  string                 `json:"last_name"`
 	Metadata  map[string]interface{} `json:"metadata"`
 }
 
 type CreateUserRequest struct {
-	UserID   string                 `json:"user_id"`
-	Metadata map[string]interface{} `json:"metadata"`
+	UserID    string                 `json:"user_id"`
+	Email     string                 `json:"email"`
+	FirstName string                 `json:"first_name"`
+	LastName  string                 `json:"last_name"`
+	Metadata  map[string]interface{} `json:"metadata"`
 }
 
 type UpdateUserRequest struct {
-	UUID     uuid.UUID              `json:"uuid"`
-	UserID   string                 `json:"user_id"`
-	Metadata map[string]interface{} `json:"metadata"`
+	UUID      uuid.UUID              `json:"uuid"`
+	UserID    string                 `json:"user_id"`
+	Email     string                 `json:"email"`
+	FirstName string                 `json:"first_name"`
+	LastName  string                 `json:"last_name"`
+	Metadata  map[string]interface{} `json:"metadata"`
 }
 
 type UserStore interface {

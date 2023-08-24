@@ -144,6 +144,9 @@ type UserSchema struct {
 	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
 	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
 	UserID    string                 `bun:",unique,notnull"`
+	Email     string                 `bun:","`
+	FirstName string                 `bun:","`
+	LastName  string                 `bun:","`
 	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
 }
 
@@ -253,7 +256,20 @@ func (*UserSchema) AfterCreateTable(
 		Index("user_user_id_idx").
 		Column("user_id").
 		Exec(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+
+	_, err = query.DB().NewCreateIndex().
+		Model((*UserSchema)(nil)).
+		Index("user_email_idx").
+		Column("email").
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 var messageTableList = []bun.BeforeCreateTableHook{
