@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/getzep/zep/internal"
 	"github.com/google/uuid"
@@ -33,10 +34,22 @@ func putMessages(
 		len(messages),
 	)
 
-	// Create or update a Session
-	_, err := putSession(ctx, db, sessionID, nil, false)
+	// Try Update the session first. If no rows are affected, create a new session.
+	sessionStore := NewSessionDAO(db)
+	err := sessionStore.Update(ctx, &models.SessionUpdateRequest{
+		SessionID: sessionID,
+	}, false)
 	if err != nil {
-		return nil, store.NewStorageError("failed to Create session", err)
+		if errors.Is(err, models.ErrNotFound) {
+			_, err = sessionStore.Create(ctx, &models.CreateSessionRequest{
+				SessionID: sessionID,
+			})
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
 	}
 
 	pgMessages := make([]MessageStoreSchema, len(messages))
@@ -191,7 +204,7 @@ func getSummaryPointIndex(
 		Scan(ctx)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			log.Warningf(
 				"unable to retrieve last summary point for %s: %s",
 				summaryPointUUID,

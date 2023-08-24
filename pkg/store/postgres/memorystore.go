@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"errors"
+	"time"
 
 	"github.com/getzep/zep/pkg/store"
 
@@ -26,7 +27,11 @@ func NewPostgresMemoryStore(
 		return nil, store.NewStorageError("nil appState received", nil)
 	}
 
-	pms := &PostgresMemoryStore{store.BaseMemoryStore[*bun.DB]{Client: client}}
+	pms := &PostgresMemoryStore{
+		BaseMemoryStore: store.BaseMemoryStore[*bun.DB]{Client: client},
+		SessionStore:    NewSessionDAO(client),
+	}
+
 	err := pms.OnStart(context.Background(), appState)
 	if err != nil {
 		return nil, store.NewStorageError("failed to run OnInit", err)
@@ -39,6 +44,8 @@ var _ models.MemoryStore[*bun.DB] = &PostgresMemoryStore{}
 
 type PostgresMemoryStore struct {
 	store.BaseMemoryStore[*bun.DB]
+
+	SessionStore *SessionDAO
 }
 
 func (pms *PostgresMemoryStore) OnStart(
@@ -63,17 +70,41 @@ func (pms *PostgresMemoryStore) GetSession(
 	_ *models.AppState,
 	sessionID string,
 ) (*models.Session, error) {
-	return getSession(ctx, pms.Client, sessionID)
+	return pms.SessionStore.Get(ctx, sessionID)
 }
 
-// PutSession creates or updates a Session for a given sessionID.
-func (pms *PostgresMemoryStore) PutSession(
+// CreateSession creates or updates a Session for a given sessionID.
+func (pms *PostgresMemoryStore) CreateSession(
 	ctx context.Context,
 	_ *models.AppState,
-	session *models.Session,
+	session *models.CreateSessionRequest,
+) (*models.Session, error) {
+	return pms.SessionStore.Create(ctx, session)
+}
+
+// UpdateSession creates or updates a Session for a given sessionID.
+func (pms *PostgresMemoryStore) UpdateSession(
+	ctx context.Context,
+	_ *models.AppState,
+	session *models.SessionUpdateRequest,
 ) error {
-	_, err := putSession(ctx, pms.Client, session.SessionID, session.Metadata, false)
+	err := pms.SessionStore.Update(ctx, session, false)
 	return err
+}
+
+// DeleteSession deletes a session from the memory store. This is a soft Delete.
+func (pms *PostgresMemoryStore) DeleteSession(ctx context.Context, sessionID string) error {
+	return pms.SessionStore.Delete(ctx, sessionID)
+}
+
+// ListSessions returns a list of all Sessions.
+func (pms *PostgresMemoryStore) ListSessions(
+	ctx context.Context,
+	_ *models.AppState,
+	cursor time.Time,
+	limit int,
+) ([]*models.Session, error) {
+	return pms.SessionStore.ListAll(ctx, cursor, limit)
 }
 
 // GetMemory returns the most recent Summary and a list of messages for a given sessionID.
@@ -221,12 +252,6 @@ func (pms *PostgresMemoryStore) Close() error {
 		return pms.Client.Close()
 	}
 	return nil
-}
-
-// DeleteSession deletes a session from the memory store. This is a soft Delete.
-// TODO: A hard Delete will be implemented as an out-of-band process or left to the implementer.
-func (pms *PostgresMemoryStore) DeleteSession(ctx context.Context, sessionID string) error {
-	return deleteSession(ctx, pms.Client, sessionID)
 }
 
 func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,

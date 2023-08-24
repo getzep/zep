@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -741,7 +740,7 @@ func SearchDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		limit, err := extractQueryStringValueToInt(r, "limit")
+		limit, err := extractQueryStringValueToInt[int](r, "limit")
 		if err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
@@ -783,22 +782,6 @@ func SearchDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 	}
-}
-
-// parseUUIDFromURL parses a UUID from a URL parameter. If the UUID is invalid, an error is
-// rendered and uuid.Nil is returned.
-func parseUUIDFromURL(r *http.Request, w http.ResponseWriter, paramName string) uuid.UUID {
-	uuidStr := chi.URLParam(r, paramName)
-	documentUUID, err := uuid.Parse(uuidStr)
-	if err != nil {
-		renderError(
-			w,
-			fmt.Errorf("unable to parse document UUID: %w", err),
-			http.StatusBadRequest,
-		)
-		return uuid.Nil
-	}
-	return documentUUID
 }
 
 // documentCollectionFromCreateRequest converts a CreateDocumentCollectionRequest to a DocumentCollection.

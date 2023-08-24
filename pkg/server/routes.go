@@ -60,7 +60,9 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 		// Memory session-related routes
 		r.Route("/sessions/{sessionId}", func(r chi.Router) {
 			r.Get("/", GetSessionHandler(appState))
-			r.Post("/", PostSessionHandler(appState))
+			r.Patch("/", UpdateSessionHandler(appState))
+			r.Post("/", CreateSessionHandler(appState))
+			r.Get("/list", GetSessionListHandler(appState))
 			// Memory-related routes
 			r.Route("/memory", func(r chi.Router) {
 				r.Get("/", GetMemoryHandler(appState))

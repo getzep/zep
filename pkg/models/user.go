@@ -16,9 +16,22 @@ type User struct {
 	Metadata  map[string]interface{} `json:"metadata"`
 }
 
+type CreateUserRequest struct {
+	UserID   string                 `json:"user_id"`
+	Metadata map[string]interface{} `json:"metadata"`
+}
+
+type UpdateUserRequest struct {
+	UUID     uuid.UUID              `json:"uuid"`
+	UserID   string                 `json:"user_id"`
+	Metadata map[string]interface{} `json:"metadata"`
+}
+
 type UserStore interface {
-	CreateUser(ctx context.Context, user *User) error
-	GetUser(ctx context.Context, userID string) (*User, error)
-	UpdateUser(ctx context.Context, user *User) error
-	DeleteUser(ctx context.Context, userID string) error
+	Create(ctx context.Context, user *CreateUserRequest) (uuid.UUID, error)
+	Get(ctx context.Context, userID string) (*User, error)
+	Update(ctx context.Context, user *UpdateUserRequest) error
+	Delete(ctx context.Context, userID string) error
+	GetSessions(ctx context.Context, userID string) ([]*Session, error)
+	ListAll(ctx context.Context, cursor time.Time, limit int) ([]*User, error)
 }

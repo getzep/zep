@@ -40,6 +40,17 @@ definitions:
         additionalProperties: true
         type: object
     type: object
+  models.CreateSessionRequest:
+    properties:
+      metadata:
+        additionalProperties: true
+        type: object
+      session_id:
+        type: string
+      user_uuid:
+        description: Must be a pointer to allow for null values
+        type: string
+    type: object
   models.Document:
     properties:
       content:
@@ -206,7 +217,18 @@ definitions:
         type: string
       updated_at:
         type: string
+      user_uuid:
+        description: Must be a pointer to allow for null values
+        type: string
       uuid:
+        type: string
+    type: object
+  models.SessionUpdateRequest:
+    properties:
+      metadata:
+        additionalProperties: true
+        type: object
+      session_id:
         type: string
     type: object
   models.Summary:
@@ -866,6 +888,44 @@ paths:
       summary: Searches Documents in a DocumentCollection
       tags:
       - document
+  /api/v1/sessions:
+    get:
+      consumes:
+      - application/json
+      description: get all sessions with optional limit and cursor for pagination
+      parameters:
+      - description: Limit the number of results returned
+        in: query
+        name: limit
+        type: integer
+      - description: Cursor for pagination (Unix timestamp)
+        in: query
+        name: cursor
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              items:
+                $ref: '#/definitions/models.Session'
+              type: array
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Returns all sessions
+      tags:
+      - session
   /api/v1/sessions/{sessionId}:
     get:
       consumes:
@@ -892,6 +952,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Returns a session by ID
       tags:
       - session
@@ -910,7 +972,7 @@ paths:
         name: session
         required: true
         schema:
-          $ref: '#/definitions/models.Session'
+          $ref: '#/definitions/models.SessionUpdateRequest'
       produces:
       - application/json
       responses:
@@ -922,10 +984,16 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Add a session
       tags:
       - session
@@ -955,6 +1023,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Delete memory messages for a given session
       tags:
       - memory
@@ -989,6 +1059,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Returns a memory (latest summary and list of messages) for a given
         session
       tags:
@@ -1024,6 +1096,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Add memory messages to a given session
       tags:
       - memory
@@ -1065,6 +1139,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
       summary: Search memory messages for a given session
       tags:
       - search

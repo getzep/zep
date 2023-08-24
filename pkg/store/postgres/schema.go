@@ -30,8 +30,9 @@ type SessionSchema struct {
 	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
 	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
 	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
-	UserUUID  uuid.UUID              `bun:",nullzero,type:uuid"`
-	User      *UserSchema            `bun:"rel:belongs-to,join:user_uuid=uuid,on_delete:cascade"`
+	// UserUUID must be pointer type in order to be nullable
+	UserUUID *uuid.UUID  `bun:",type:uuid"`
+	User     *UserSchema `bun:"rel:belongs-to,join:user_uuid=uuid,on_delete:cascade"`
 }
 
 // BeforeCreateTable is a marker method to ensure uniform interface across all table models - used in table creation iterator
@@ -136,11 +137,11 @@ type DocumentSchemaTemplate struct {
 }
 
 type UserSchema struct {
-	bun.BaseModel `bun:"table:user,alias:u"`
+	bun.BaseModel `bun:"table:users,alias:u"`
 
 	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
-	CreatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
-	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
+	CreatedAt time.Time              `bun:"type:timestamptz,notnull,default:current_timestamp"`
+	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
 	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
 	UserID    string                 `bun:",unique,notnull"`
 	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
@@ -260,7 +261,6 @@ var messageTableList = []bun.BeforeCreateTableHook{
 	&SummaryStoreSchema{},
 	&MessageStoreSchema{},
 	&SessionSchema{},
-	&UserSchema{},
 }
 
 // generateDocumentTableName generates a table name for a collection.
@@ -311,7 +311,11 @@ func ensurePostgresSetup(
 	}
 
 	// Create new tableList slice and append DocumentCollectionSchema to it
-	tableList := append(messageTableList, &DocumentCollectionSchema{}) //nolint:gocritic
+	tableList := append( //nolint:gocritic
+		messageTableList,
+		&UserSchema{},
+		&DocumentCollectionSchema{},
+	)
 	// iterate through messageTableList in reverse order to create tables with foreign keys first
 	for i := len(tableList) - 1; i >= 0; i-- {
 		schema := tableList[i]
