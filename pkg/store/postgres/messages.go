@@ -36,7 +36,7 @@ func putMessages(
 
 	// Try Update the session first. If no rows are affected, create a new session.
 	sessionStore := NewSessionDAO(db)
-	err := sessionStore.Update(ctx, &models.SessionUpdateRequest{
+	err := sessionStore.Update(ctx, &models.UpdateSessionRequest{
 		SessionID: sessionID,
 	}, false)
 	if err != nil {

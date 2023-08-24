@@ -86,7 +86,7 @@ func (pms *PostgresMemoryStore) CreateSession(
 func (pms *PostgresMemoryStore) UpdateSession(
 	ctx context.Context,
 	_ *models.AppState,
-	session *models.SessionUpdateRequest,
+	session *models.UpdateSessionRequest,
 ) error {
 	err := pms.SessionStore.Update(ctx, session, false)
 	return err

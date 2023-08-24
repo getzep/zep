@@ -78,7 +78,7 @@ type MemoryStore[T any] interface {
 	UpdateSession(
 		ctx context.Context,
 		appState *AppState,
-		session *SessionUpdateRequest,
+		session *UpdateSessionRequest,
 	) error
 	// ListSessions returns a list of all Sessions.
 	ListSessions(

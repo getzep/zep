@@ -333,7 +333,7 @@ func TestSessionDAO_UndeleteSession(t *testing.T) {
 	err = sessionStore.Delete(testCtx, sessionID)
 	assert.NoError(t, err, "deleteSession should not return an error")
 
-	session := &models.SessionUpdateRequest{
+	session := &models.UpdateSessionRequest{
 		SessionID: sessionID,
 	}
 	err = sessionStore.Update(testCtx, session, false)

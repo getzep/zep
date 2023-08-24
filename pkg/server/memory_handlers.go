@@ -141,7 +141,7 @@ func CreateSessionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Accept			json
 //	@Produce		json
 //	@Param			sessionId	path		string						true	"Session ID"
-//	@Param			session		body		models.SessionUpdateRequest	true	"Session"
+//	@Param			session		body		models.UpdateSessionRequest	true	"Session"
 //	@Success		200			{string}	string						"OK"
 //	@Failure		400			{object}	APIError					"Bad Request"
 //	@Failure		404			{object}	APIError					"Not Found"
@@ -151,7 +151,7 @@ func CreateSessionHandler(appState *models.AppState) http.HandlerFunc {
 func UpdateSessionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
-		var session models.SessionUpdateRequest
+		var session models.UpdateSessionRequest
 		if err := decodeJSON(r, &session); err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return

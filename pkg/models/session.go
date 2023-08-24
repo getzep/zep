@@ -25,7 +25,7 @@ type CreateSessionRequest struct {
 	Metadata map[string]interface{} `json:"metadata"`
 }
 
-type SessionUpdateRequest struct {
+type UpdateSessionRequest struct {
 	SessionID string                 `json:"session_id"`
 	Metadata  map[string]interface{} `json:"metadata"`
 }
@@ -33,7 +33,7 @@ type SessionUpdateRequest struct {
 type SessionManager interface {
 	Create(ctx context.Context, session *CreateSessionRequest) (*Session, error)
 	Get(ctx context.Context, sessionID string) (*Session, error)
-	Update(ctx context.Context, session *SessionUpdateRequest, isPrivileged bool) error
+	Update(ctx context.Context, session *UpdateSessionRequest, isPrivileged bool) error
 	Delete(ctx context.Context, sessionID string) error
 	ListAll(ctx context.Context, cursor time.Time, limit int) ([]*Session, error)
 }

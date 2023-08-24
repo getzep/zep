@@ -85,12 +85,12 @@ func (dao *SessionDAO) Get(ctx context.Context, sessionID string) (*models.Sessi
 }
 
 // Update updates a session in the database.
-// It takes a context, a pointer to a SessionUpdateRequest struct, and a boolean indicating whether the caller is privileged.
+// It takes a context, a pointer to a UpdateSessionRequest struct, and a boolean indicating whether the caller is privileged.
 // It returns an error if the update fails.
 // Note: Update will update soft-deleted sessions and undelete them. Messages and message embeddings are not undeleted.
 func (dao *SessionDAO) Update(
 	ctx context.Context,
-	session *models.SessionUpdateRequest,
+	session *models.UpdateSessionRequest,
 	isPrivileged bool,
 ) error {
 	if session.SessionID == "" {
@@ -126,7 +126,7 @@ func (dao *SessionDAO) Update(
 		return fmt.Errorf("failed to merge session metadata: %w", err)
 	}
 
-	session = &models.SessionUpdateRequest{
+	session = &models.UpdateSessionRequest{
 		SessionID: session.SessionID,
 		Metadata:  mergedMetadata,
 	}
@@ -136,7 +136,7 @@ func (dao *SessionDAO) Update(
 // updateSession updates a session in the database. It expects the metadata to be merged.
 func (dao *SessionDAO) updateSession(
 	ctx context.Context,
-	session *models.SessionUpdateRequest,
+	session *models.UpdateSessionRequest,
 ) error {
 	sessionDB := SessionSchema{
 		SessionID: session.SessionID,
