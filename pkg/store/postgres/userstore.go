@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/uptrace/bun"
@@ -67,7 +68,51 @@ func (dao *UserStoreDAO) Get(ctx context.Context, userID string) (*models.User, 
 }
 
 // Update updates a user.
-func (dao *UserStoreDAO) Update(ctx context.Context, user *models.UpdateUserRequest) error {
+func (dao *UserStoreDAO) Update(
+	ctx context.Context,
+	user *models.UpdateUserRequest,
+	isPrivileged bool,
+) error {
+	if user.UserID == "" {
+		return errors.New("UserID cannot be empty")
+	}
+
+	// if metadata is null, we can keep this a cheap operation
+	if user.Metadata == nil {
+		return dao.updateUser(ctx, user)
+	}
+
+	// Acquire a lock for this UserID. This is to prevent concurrent updates
+	// to the session metadata.
+	lockID, err := acquireAdvisoryLock(ctx, dao.db, user.UserID)
+	if err != nil {
+		return fmt.Errorf("failed to acquire advisory lock: %w", err)
+	}
+	defer func(ctx context.Context, db bun.IDB, lockID uint64) {
+		err := releaseAdvisoryLock(ctx, db, lockID)
+		if err != nil {
+			log.Errorf("failed to release advisory lock: %v", err)
+		}
+	}(ctx, dao.db, lockID)
+
+	mergedMetadata, err := mergeMetadata(
+		ctx,
+		dao.db,
+		"user_id",
+		user.UserID,
+		"users",
+		user.Metadata,
+		isPrivileged,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to merge metadata: %w", err)
+	}
+
+	user.Metadata = mergedMetadata
+	return dao.updateUser(ctx, user)
+}
+
+func (dao *UserStoreDAO) updateUser(ctx context.Context, user *models.UpdateUserRequest) error {
 	userDB := UserSchema{
 		Email:     user.Email,
 		FirstName: user.FirstName,

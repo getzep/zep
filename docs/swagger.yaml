@@ -1200,7 +1200,7 @@ paths:
       summary: Search memory messages for a given session
       tags:
       - search
-  /api/v1/users:
+  /api/v1/user:
     get:
       consumes:
       - application/json
@@ -1236,7 +1236,38 @@ paths:
       summary: List all users
       tags:
       - user
-  /api/v1/users/{userId}:
+    post:
+      consumes:
+      - application/json
+      description: add user by id
+      parameters:
+      - description: User
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Successfully created user
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Add a user
+      tags:
+      - user
+  /api/v1/user/{userId}:
     delete:
       consumes:
       - application/json
@@ -1297,38 +1328,7 @@ paths:
       summary: Returns a user by ID
       tags:
       - user
-    post:
-      consumes:
-      - application/json
-      description: add user by id
-      parameters:
-      - description: User
-        in: body
-        name: user
-        required: true
-        schema:
-          $ref: '#/definitions/models.CreateUserRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Successfully created user
-          schema:
-            $ref: '#/definitions/models.User'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/server.APIError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/server.APIError'
-      security:
-      - Bearer: []
-      summary: Add a user
-      tags:
-      - user
-    put:
+    patch:
       consumes:
       - application/json
       description: update user by id
@@ -1364,7 +1364,7 @@ paths:
       summary: Update a user
       tags:
       - user
-  /api/v1/users/{userId}/sessions:
+  /api/v1/user/{userId}/sessions:
     get:
       consumes:
       - application/json

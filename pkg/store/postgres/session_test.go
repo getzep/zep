@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/getzep/zep/pkg/models"
@@ -168,130 +167,6 @@ func TestSessionDAO_Delete(t *testing.T) {
 				// Verify the session is deleted
 				_, err := dao.Get(testCtx, tt.sessionID)
 				assert.ErrorIs(t, err, models.ErrNotFound)
-			}
-		})
-	}
-}
-
-func TestSessionDAO_mergeSessionMetadata(t *testing.T) {
-	// Initialize SessionDAO
-	dao := NewSessionDAO(testDB)
-
-	// Create a test session
-	sessionID, err := testutils.GenerateRandomSessionID(16)
-	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
-
-	session := &models.CreateSessionRequest{
-		SessionID: sessionID,
-		Metadata: map[string]interface{}{
-			"A": 1,
-			"B": map[string]interface{}{
-				"C": 2,
-			},
-			"Z": 3,
-		},
-	}
-	_, err = dao.Create(testCtx, session)
-	assert.NoError(t, err)
-
-	tests := []struct {
-		name             string
-		sessionID        string
-		metadata         map[string]interface{}
-		privileged       bool
-		expectedError    error
-		expectedMetadata map[string]interface{}
-	}{
-		{
-			name:      "Update metadata",
-			sessionID: sessionID,
-			metadata: map[string]interface{}{
-				"A": 3, // Should override initial value of "A"
-				"B": map[string]interface{}{
-					"D": 4, // Should be added to map under "B"
-					"E": map[string]interface{}{
-						"F": 5, // Test deeply nested map
-					},
-				},
-			},
-			privileged: false,
-			expectedMetadata: map[string]interface{}{
-				"A": 3, // Updated value
-				"B": map[string]interface{}{
-					"C": json.Number("2"), // Initial value will be converted to json.Number
-					"D": 4,                // New value
-					"E": map[string]interface{}{
-						"F": 5, // New value from deeply nested map
-					},
-				},
-				"Z": json.Number("3"), // Initial value will be converted to json.Number
-			},
-		},
-		{
-			name:      "Unprivileged update with system metadata",
-			sessionID: sessionID,
-			metadata: map[string]interface{}{
-				"A": 1,
-				"B": map[string]interface{}{
-					"C": 2,
-				},
-				"system": map[string]interface{}{
-					"foo": "bar", // This should be ignored
-				},
-			},
-			privileged: false,
-			expectedMetadata: map[string]interface{}{
-				"A": 1,
-				"B": map[string]interface{}{
-					"C": 2,
-				},
-				"Z": json.Number("3"), // Initial value will be converted to json.Number
-			},
-		},
-		{
-			name:      "Privileged update with system metadata",
-			sessionID: sessionID,
-			metadata: map[string]interface{}{
-				"A": 1,
-				"B": map[string]interface{}{
-					"C": 2,
-				},
-				"system": map[string]interface{}{
-					"foo": "bar", // This should NOT be ignored
-				},
-			},
-			privileged: true,
-			expectedMetadata: map[string]interface{}{
-				"A": 1,
-				"B": map[string]interface{}{
-					"C": 2,
-				},
-				"Z": json.Number("3"), // Initial value will be converted to json.Number
-				"system": map[string]interface{}{
-					"foo": "bar",
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mergedMetadata, err := mergeSessionMetadata(
-				testCtx,
-				testDB,
-				tt.sessionID,
-				tt.metadata,
-				tt.privileged,
-			)
-
-			if tt.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tt.expectedError, err)
-			} else {
-				assert.NoError(t, err)
-
-				// Compare the expected metadata and merged metadata
-				assert.Equal(t, tt.expectedMetadata, mergedMetadata)
 			}
 		})
 	}

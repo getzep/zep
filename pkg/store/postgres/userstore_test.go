@@ -72,7 +72,7 @@ func TestUserStoreDAO(t *testing.T) {
 			Email:     "",
 			FirstName: "bob",
 		}
-		err = userStore.Update(ctx, userUpdate)
+		err = userStore.Update(ctx, userUpdate, false)
 		assert.NoError(t, err)
 
 		// Retrieve the updated user
@@ -90,7 +90,7 @@ func TestUserStoreDAO(t *testing.T) {
 			UserID: "non-existant-user-id",
 			Email:  "email",
 		}
-		err := userStore.Update(ctx, userUpdate)
+		err := userStore.Update(ctx, userUpdate, false)
 		assert.ErrorIs(t, err, models.ErrNotFound)
 	})
 

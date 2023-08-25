@@ -16,8 +16,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// http-swagger middleware
-
 const ReadHeaderTimeout = 5 * time.Second
 
 // Create creates a new HTTP server with the given app state
@@ -76,6 +74,7 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 		})
 		// User-related routes
 		r.Post("/user", CreateUserHandler(appState))
+		r.Get("/user", ListAllUsersHandler(appState))
 		r.Route("/user/{userId}", func(r chi.Router) {
 			r.Get("/", GetUserHandler(appState))
 			r.Patch("/", UpdateUserHandler(appState))

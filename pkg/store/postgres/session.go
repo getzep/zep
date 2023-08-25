@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"dario.cat/mergo"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/uptrace/bun"
 )
@@ -120,10 +119,12 @@ func (dao *SessionDAO) Update(
 		}
 	}(ctx, dao.db, lockID)
 
-	mergedMetadata, err := mergeSessionMetadata(
+	mergedMetadata, err := mergeMetadata(
 		ctx,
 		dao.db,
+		"session_id",
 		session.SessionID,
+		"session",
 		session.Metadata,
 		isPrivileged,
 	)
@@ -243,39 +244,4 @@ func (dao *SessionDAO) ListAll(
 	}
 
 	return retSessions, nil
-}
-
-// mergeSessionMetadata merges the received metadata map with the existing metadata map,
-// creating keys and values if they don't exist, and overwriting others.
-func mergeSessionMetadata(ctx context.Context,
-	db *bun.DB,
-	sessionID string,
-	metadata map[string]interface{},
-	isPrivileged bool) (map[string]interface{}, error) {
-	// remove the top-level `system` key from the metadata if the caller is not privileged
-	if !isPrivileged {
-		delete(metadata, "system")
-	}
-
-	dbSession := &SessionSchema{}
-	err := db.NewSelect().
-		Model(dbSession).
-		// use WhereAllWithDeleted to update soft-deleted sessions
-		WhereAllWithDeleted().
-		Where("session_id = ?", sessionID).
-		Scan(ctx)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, models.NewNotFoundError("session " + sessionID)
-		}
-		return nil, fmt.Errorf("failed to get session: %w", err)
-	}
-
-	// merge the existing metadata with the new metadata
-	dbMetadata := dbSession.Metadata
-	if err := mergo.Merge(&dbMetadata, metadata, mergo.WithOverride); err != nil {
-		return nil, fmt.Errorf("failed to merge metadata: %w", err)
-	}
-
-	return dbMetadata, nil
 }
