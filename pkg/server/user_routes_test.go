@@ -4,14 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/getzep/zep/pkg/store/postgres"
 	"github.com/getzep/zep/pkg/testutils"
 
 	"github.com/getzep/zep/pkg/models"
-	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -106,6 +104,7 @@ func TestUpdateUserRoute(t *testing.T) {
 	// Update the user
 	updateUser := &models.UpdateUserRequest{
 		UserID: userID,
+		Email:  "test@example.com",
 		Metadata: map[string]interface{}{
 			"key": "new value",
 		},
@@ -116,28 +115,26 @@ func TestUpdateUserRoute(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create a request
-	req, err := http.NewRequest("PATCH", "/api/v1/user/"+userID, bytes.NewBuffer(updateUserJSON))
+	req, err := http.NewRequest(
+		"PATCH",
+		testServer.URL+"/api/v1/user/"+userID,
+		bytes.NewBuffer(updateUserJSON),
+	)
 	assert.NoError(t, err)
 
-	// Create a ResponseRecorder to record the response
-	rr := httptest.NewRecorder()
-
-	// Create the handler
-	handler := UpdateUserRoute(appState)
-
-	// Create a router to get the URL parameters
-	r := chi.NewRouter()
-	r.Patch("/api/v1/user/{userId}", handler)
-
-	// Serve the request
-	r.ServeHTTP(rr, req)
+	// Create a client and do the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	assert.NoError(t, err)
 
 	// Check the status code
-	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Fetch the user and check the updated fields
 	fetchedUser, err := testUserStore.Get(testCtx, userID)
 	assert.NoError(t, err)
+	assert.Equal(t, fetchedUser.UserID, userID)
+	assert.Equal(t, fetchedUser.Email, updateUser.Email)
 	assert.Equal(t, fetchedUser.Metadata["key"], "new value")
 }
 
