@@ -96,38 +96,27 @@ func GetSessionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Tags			session
 //	@Accept			json
 //	@Produce		json
-//	@Param			sessionId	path		string						true	"Session ID"
 //	@Param			session		body		models.CreateSessionRequest	true	"Session"
-//	@Success		200			{string}	string						"OK"
+//	@Success		201			{string}	string						"OK"
 //	@Failure		400			{object}	APIError					"Bad Request"
 //	@failure		500			{object}	APIError					"Internal Server Error"
 //	@Security		Bearer
-//	@Router			/api/v1/sessions/{sessionId} [post]
+//	@Router			/api/v1/sessions [post]
 func CreateSessionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sessionID := chi.URLParam(r, "sessionId")
 		var session models.CreateSessionRequest
 		if err := decodeJSON(r, &session); err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
 		}
-		// If session ID is not provided, use the one from the URL
-		// If session ID is provided, make sure it matches the one from the URL
-		if session.SessionID != "" && session.SessionID != sessionID {
-			renderError(
-				w,
-				fmt.Errorf("session ID mismatch: %s != %s", session.SessionID, sessionID),
-				http.StatusBadRequest,
-			)
-			return
-		}
-		session.SessionID = sessionID
 
 		_, err := appState.MemoryStore.CreateSession(r.Context(), appState, &session)
 		if err != nil {
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
+
+		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(OKResponse))
 	}
 }
@@ -146,23 +135,13 @@ func CreateSessionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Failure		404			{object}	APIError					"Not Found"
 //	@failure		500			{object}	APIError					"Internal Server Error"
 //	@Security		Bearer
-//	@Router			/api/v1/sessions/{sessionId} [post]
+//	@Router			/api/v1/sessions/{sessionId} [patch]
 func UpdateSessionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
 		var session models.UpdateSessionRequest
 		if err := decodeJSON(r, &session); err != nil {
 			renderError(w, err, http.StatusBadRequest)
-			return
-		}
-		// If session ID is not provided, use the one from the URL
-		// If session ID is provided, make sure it matches the one from the URL
-		if session.SessionID != "" && session.SessionID != sessionID {
-			renderError(
-				w,
-				fmt.Errorf("session ID mismatch: %s != %s", session.SessionID, sessionID),
-				http.StatusBadRequest,
-			)
 			return
 		}
 		session.SessionID = sessionID

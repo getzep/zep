@@ -204,6 +204,7 @@ func (dao *UserStoreDAO) GetSessions(
 			UpdatedAt: sessionsDB[i].UpdatedAt,
 			SessionID: sessionsDB[i].SessionID,
 			Metadata:  sessionsDB[i].Metadata,
+			UserUUID:  sessionsDB[i].UserUUID,
 		}
 	}
 	return sessions, nil

@@ -13,10 +13,10 @@ import (
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/store/postgres"
 	"github.com/getzep/zep/pkg/testutils"
+	"github.com/go-chi/chi/v5"
 	"github.com/sirupsen/logrus"
 	"github.com/uptrace/bun"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/stretchr/testify/assert"
@@ -25,6 +25,8 @@ import (
 var testDB *bun.DB
 var testCtx context.Context
 var appState *models.AppState
+var testUserStore models.UserStore
+var testServer *httptest.Server
 
 func TestMain(m *testing.M) {
 	setup()
@@ -62,13 +64,23 @@ func setup() {
 		panic(err)
 	}
 	appState.MemoryStore = memoryStore
+
+	testUserStore = postgres.NewUserStoreDAO(testDB)
+	appState.UserStore = testUserStore
+
+	testServer = httptest.NewServer(
+		setupRouter(appState),
+	)
 }
 
 func tearDown() {
+	testServer.Close()
+
 	// Close the database connection
 	if err := testDB.Close(); err != nil {
 		panic(err)
 	}
+
 	internal.SetLogLevel(logrus.InfoLevel)
 }
 

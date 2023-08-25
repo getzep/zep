@@ -68,7 +68,7 @@ func setup() {
 	appState.MemoryStore = memoryStore
 	extractors.Initialize(appState)
 
-	err = ensurePostgresSetup(testCtx, appState, testDB)
+	err = CreateSchema(testCtx, appState, testDB)
 	if err != nil {
 		panic(err)
 	}
@@ -510,7 +510,7 @@ func TestGetSummary(t *testing.T) {
 
 func TestPutEmbeddingsLocal(t *testing.T) {
 	CleanDB(t, testDB)
-	err := ensurePostgresSetup(testCtx, appState, testDB)
+	err := CreateSchema(testCtx, appState, testDB)
 	assert.NoError(t, err)
 
 	sessionID, err := testutils.GenerateRandomSessionID(16)

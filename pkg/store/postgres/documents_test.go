@@ -32,7 +32,7 @@ func TestCollectionCreate(t *testing.T) {
 	ctx := context.Background()
 
 	CleanDB(t, testDB)
-	err := ensurePostgresSetup(ctx, appState, testDB)
+	err := CreateSchema(ctx, appState, testDB)
 	assert.NoError(t, err)
 
 	collection := NewTestCollectionDAO(10)
@@ -70,7 +70,7 @@ func TestCollectionUpdate(t *testing.T) {
 	ctx := context.Background()
 
 	CleanDB(t, testDB)
-	err := ensurePostgresSetup(ctx, appState, testDB)
+	err := CreateSchema(ctx, appState, testDB)
 	assert.NoError(t, err)
 
 	collection := NewTestCollectionDAO(10)
@@ -93,7 +93,7 @@ func TestCollectionGetByName(t *testing.T) {
 	ctx := context.Background()
 
 	CleanDB(t, testDB)
-	err := ensurePostgresSetup(ctx, appState, testDB)
+	err := CreateSchema(ctx, appState, testDB)
 	assert.NoError(t, err)
 
 	collection := NewTestCollectionDAO(10)
@@ -143,7 +143,7 @@ func TestCollectionGetAll(t *testing.T) {
 	ctx := context.Background()
 
 	CleanDB(t, testDB)
-	err := ensurePostgresSetup(ctx, appState, testDB)
+	err := CreateSchema(ctx, appState, testDB)
 	assert.NoError(t, err)
 
 	var collectionsToCreate []DocumentCollectionDAO
@@ -179,7 +179,7 @@ func TestDeleteCollection(t *testing.T) {
 	ctx := context.Background()
 
 	CleanDB(t, testDB)
-	err := ensurePostgresSetup(ctx, appState, testDB)
+	err := CreateSchema(ctx, appState, testDB)
 	assert.NoError(t, err)
 
 	collection := NewTestCollectionDAO(10)
@@ -248,7 +248,7 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 	ctx := context.Background()
 
 	CleanDB(t, testDB)
-	err := ensurePostgresSetup(ctx, appState, testDB)
+	err := CreateSchema(ctx, appState, testDB)
 	assert.NoError(t, err)
 
 	collection := NewTestCollectionDAO(3)
@@ -319,7 +319,7 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 func TestDocumentCollectionUpdateDocuments(t *testing.T) {
 	ctx := context.Background()
 	CleanDB(t, testDB)
-	err := ensurePostgresSetup(ctx, appState, testDB)
+	err := CreateSchema(ctx, appState, testDB)
 	assert.NoError(t, err)
 
 	collection := NewTestCollectionDAO(5)
@@ -404,7 +404,7 @@ func TestDocumentCollectionGetDocuments(t *testing.T) {
 	ctx := context.Background()
 
 	CleanDB(t, testDB)
-	err := ensurePostgresSetup(ctx, appState, testDB)
+	err := CreateSchema(ctx, appState, testDB)
 	assert.NoError(t, err)
 
 	collection := NewTestCollectionDAO(10)
@@ -511,7 +511,7 @@ func TestDocumentCollectionDeleteDocumentByUUID(t *testing.T) {
 	ctx := context.Background()
 
 	CleanDB(t, testDB)
-	err := ensurePostgresSetup(ctx, appState, testDB)
+	err := CreateSchema(ctx, appState, testDB)
 	assert.NoError(t, err)
 
 	collection := NewTestCollectionDAO(10)

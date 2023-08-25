@@ -317,8 +317,8 @@ func createDocumentTable(
 	return nil
 }
 
-// ensurePostgresSetup creates the db schema if it does not exist.
-func ensurePostgresSetup(
+// CreateSchema creates the db schema if it does not exist.
+func CreateSchema(
 	ctx context.Context,
 	appState *models.AppState,
 	db *bun.DB,

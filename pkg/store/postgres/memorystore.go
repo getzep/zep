@@ -51,7 +51,7 @@ func (pms *PostgresMemoryStore) OnStart(
 	_ context.Context,
 	appState *models.AppState,
 ) error {
-	err := ensurePostgresSetup(context.Background(), appState, pms.Client)
+	err := CreateSchema(context.Background(), appState, pms.Client)
 	if err != nil {
 		return store.NewStorageError("failed to ensure postgres schema setup", err)
 	}

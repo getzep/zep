@@ -148,7 +148,7 @@ func TestUserStoreDAO(t *testing.T) {
 
 func TestUserStoreDAO_ListAll(t *testing.T) {
 	CleanDB(t, testDB)
-	err := ensurePostgresSetup(testCtx, appState, testDB)
+	err := CreateSchema(testCtx, appState, testDB)
 	assert.NoError(t, err)
 
 	// Initialize UserStoreDAO
