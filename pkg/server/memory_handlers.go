@@ -96,10 +96,10 @@ func GetSessionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Tags			session
 //	@Accept			json
 //	@Produce		json
-//	@Param			session		body		models.CreateSessionRequest	true	"Session"
-//	@Success		201			{string}	string						"OK"
-//	@Failure		400			{object}	APIError					"Bad Request"
-//	@failure		500			{object}	APIError					"Internal Server Error"
+//	@Param			session	body		models.CreateSessionRequest	true	"Session"
+//	@Success		201		{string}	string						"OK"
+//	@Failure		400		{object}	APIError					"Bad Request"
+//	@failure		500		{object}	APIError					"Internal Server Error"
 //	@Security		Bearer
 //	@Router			/api/v1/sessions [post]
 func CreateSessionHandler(appState *models.AppState) http.HandlerFunc {

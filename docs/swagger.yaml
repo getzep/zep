@@ -982,6 +982,37 @@ paths:
       summary: Returns all sessions
       tags:
       - session
+    post:
+      consumes:
+      - application/json
+      description: add session by id
+      parameters:
+      - description: Session
+        in: body
+        name: session
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Add a session
+      tags:
+      - session
   /api/v1/sessions/{sessionId}:
     get:
       consumes:
@@ -1013,7 +1044,7 @@ paths:
       summary: Returns a session by ID
       tags:
       - session
-    post:
+    patch:
       consumes:
       - application/json
       description: add session by id
@@ -1251,7 +1282,7 @@ paths:
       - application/json
       responses:
         "201":
-          description: Successfully created user
+          description: Created
           schema:
             $ref: '#/definitions/models.User'
         "400":
