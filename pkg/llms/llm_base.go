@@ -22,6 +22,33 @@ var log = internal.GetLogger()
 func NewLLMClient(ctx context.Context, cfg *config.Config) (models.ZepLLM, error) {
 	switch cfg.LLM.Service {
 	case "openai":
+		// Azure OpenAI model names can't be validated by any hard-coded models
+		// list as it is configured by custom deployment name that may or may not match the model name.
+		// We will copy the Model name value down to AzureOpenAI LLM Deployment
+		// to assume user deployed base model with matching deployment name as
+		// advised by Microsoft, but still support custom models or otherwise-named
+		// base model.
+		if cfg.LLM.AzureOpenAIEndpoint != "" {
+			if cfg.LLM.AzureOpenAIModel.LLMDeployment != "" {
+				cfg.LLM.Model = cfg.LLM.AzureOpenAIModel.LLMDeployment
+			}
+			if cfg.LLM.Model == "" {
+				return nil, fmt.Errorf(
+					"invalid llm deployment for %s, deployment name is required",
+					cfg.LLM.Service,
+				)
+			}
+
+			// EmbeddingsDeployment is only required if Zep is also configured to use
+			// OpenAI embeddings for document or message extractors
+			if cfg.LLM.AzureOpenAIModel.EmbeddingDeployment == "" && useOpenAIEmbeddings(cfg) {
+				return nil, fmt.Errorf(
+					"invalid embeddings deployment for %s, deployment name is required",
+					cfg.LLM.Service,
+				)
+			}
+			return NewOpenAILLM(ctx, cfg)
+		}
 		if _, ok := ValidOpenAILLMs[cfg.LLM.Model]; !ok {
 			return nil, fmt.Errorf(
 				"invalid llm model \"%s\" for %s",
@@ -109,4 +136,16 @@ func NewRetryableHTTPClient() *retryablehttp.Client {
 	retryableHttpClient.Logger = log
 
 	return retryableHttpClient
+}
+
+// useOpenAIEmbeddings is true if OpenAI embeddings are enabled
+func useOpenAIEmbeddings(cfg *config.Config) bool {
+	switch {
+	case cfg.Extractors.Messages.Embeddings.Enabled:
+		return cfg.Extractors.Messages.Embeddings.Service == "openai"
+	case cfg.Extractors.Documents.Embeddings.Enabled:
+		return cfg.Extractors.Documents.Embeddings.Service == "openai"
+	}
+
+	return false
 }

@@ -65,6 +65,27 @@ func TestZepOpenAILLM_TestConfigureClient(t *testing.T) {
 		}
 	})
 
+	t.Run("Test with AzureOpenAIEmbeddingModel", func(t *testing.T) {
+		cfg := &config.Config{
+			LLM: config.LLM{
+				OpenAIAPIKey:        "test-key",
+				AzureOpenAIEndpoint: "https://azure.openai.com",
+				AzureOpenAIModel: config.AzureOpenAIConfig{
+					EmbeddingDeployment: "test-deployment",
+				},
+			},
+		}
+
+		options, err := zllm.configureClient(cfg)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+
+		if len(options) != 6 {
+			t.Errorf("Expected 6 options, got %d", len(options))
+		}
+	})
+
 	t.Run("Test with OpenAIEndpoint", func(t *testing.T) {
 		cfg := &config.Config{
 			LLM: config.LLM{
