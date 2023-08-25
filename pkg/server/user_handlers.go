@@ -17,7 +17,7 @@ import (
 //	@Accept			json
 //	@Produce		json
 //	@Param			user	body		models.CreateUserRequest	true	"User"
-//	@Success		201		{object}	models.User					"Successfully created user"
+//	@Success		201		{object}	models.User
 //	@Failure		400		{object}	APIError					"Bad Request"
 //	@failure		500		{object}	APIError					"Internal Server Error"
 //	@Security		Bearer

@@ -1,15 +1,81 @@
 package server
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
+
+	"github.com/getzep/zep/internal"
+	"github.com/getzep/zep/pkg/llms"
+	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/pkg/store/postgres"
+	"github.com/getzep/zep/pkg/testutils"
+	"github.com/sirupsen/logrus"
+	"github.com/uptrace/bun"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/stretchr/testify/assert"
 )
+
+var testDB *bun.DB
+var testCtx context.Context
+var appState *models.AppState
+
+func TestMain(m *testing.M) {
+	setup()
+	exitCode := m.Run()
+	tearDown()
+
+	os.Exit(exitCode)
+}
+
+func setup() {
+	logger := internal.GetLogger()
+	internal.SetLogLevel(logrus.DebugLevel)
+
+	appState = &models.AppState{}
+	cfg := testutils.NewTestConfig()
+
+	llmClient, err := llms.NewLLMClient(context.Background(), cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	appState.LLMClient = llmClient
+	appState.Config = cfg
+	appState.Config.Store.Postgres.DSN = testutils.GetDSN()
+
+	// Initialize the database connection
+	testDB = postgres.NewPostgresConn(appState)
+	testutils.SetUpDBLogging(testDB, logger)
+
+	// Initialize the test context
+	testCtx = context.Background()
+
+	memoryStore, err := postgres.NewPostgresMemoryStore(appState, testDB)
+	if err != nil {
+		panic(err)
+	}
+	appState.MemoryStore = memoryStore
+}
+
+func tearDown() {
+	// Close the database connection
+	if err := testDB.Close(); err != nil {
+		panic(err)
+	}
+	internal.SetLogLevel(logrus.InfoLevel)
+}
+
+func decodeRecordedResponse(t *testing.T, rr *httptest.ResponseRecorder, expected interface{}) {
+	err := json.Unmarshal(rr.Body.Bytes(), expected)
+	assert.NoError(t, err)
+}
 
 func TestExtractQueryStringValueToInt(t *testing.T) {
 	req := httptest.NewRequest("GET", "/?param=123", nil)
