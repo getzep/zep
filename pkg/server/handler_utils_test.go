@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -82,11 +81,6 @@ func tearDown() {
 	}
 
 	internal.SetLogLevel(logrus.InfoLevel)
-}
-
-func decodeRecordedResponse(t *testing.T, rr *httptest.ResponseRecorder, expected interface{}) {
-	err := json.Unmarshal(rr.Body.Bytes(), expected)
-	assert.NoError(t, err)
 }
 
 func TestExtractQueryStringValueToInt(t *testing.T) {
