@@ -30,7 +30,7 @@ require (
 	gonum.org/v1/gonum v0.13.0
 )
 
-require github.com/tmc/langchaingo v0.0.0-20230811231558-fd8b7f099537 // indirect
+require github.com/tmc/langchaingo v0.0.0-20230823213549-ededff76a967 // indirect
 
 require (
 	github.com/KyleBanks/depth v1.2.1 // indirect

@@ -20,13 +20,19 @@ type StoreConfig struct {
 }
 
 type LLM struct {
-	Service             string `mapstructure:"service"`
-	Model               string `mapstructure:"model"`
-	AnthropicAPIKey     string `mapstructure:"anthropic_api_key"`
-	OpenAIAPIKey        string `mapstructure:"openai_api_key"`
-	AzureOpenAIEndpoint string `mapstructure:"azure_openai_endpoint"`
-	OpenAIEndpoint      string `mapstructure:"openai_endpoint"`
-	OpenAIOrgID         string `mapstructure:"openai_org_id"`
+	Service             string            `mapstructure:"service"`
+	Model               string            `mapstructure:"model"`
+	AnthropicAPIKey     string            `mapstructure:"anthropic_api_key"`
+	OpenAIAPIKey        string            `mapstructure:"openai_api_key"`
+	AzureOpenAIEndpoint string            `mapstructure:"azure_openai_endpoint"`
+	AzureOpenAIModel    AzureOpenAIConfig `mapstructure:"azure_openai"`
+	OpenAIEndpoint      string            `mapstructure:"openai_endpoint"`
+	OpenAIOrgID         string            `mapstructure:"openai_org_id"`
+}
+
+type AzureOpenAIConfig struct {
+	LLMDeployment       string `mapstructure:"llm_deployment"`
+	EmbeddingDeployment string `mapstructure:"embedding_deployment"`
 }
 
 type NLP struct {
