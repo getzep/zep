@@ -30,3 +30,20 @@ END IF;
 END
 $$;
 
+--bun:split
+DO $$
+BEGIN
+    IF NOT EXISTS(
+        SELECT
+            1
+        FROM
+            information_schema.columns
+        WHERE
+            table_name = 'session'
+            AND column_name = 'id') THEN
+    ALTER TABLE session
+        ADD COLUMN id BIGSERIAL;
+END IF;
+END
+$$;
+

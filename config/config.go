@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/getzep/zep/internal"
@@ -38,7 +39,7 @@ func LoadConfig(configFile string) (*Config, error) {
 
 	if err := viper.ReadInConfig(); err != nil {
 		// Ignore error if config file not found
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		if errors.Is(err, viper.ConfigFileNotFoundError{}) {
 			return nil, err
 		}
 	}

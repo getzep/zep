@@ -21,8 +21,8 @@ func TestExtractQueryStringValueToInt(t *testing.T) {
 func TestParseUUIDFromURL(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/{uuid}", func(w http.ResponseWriter, r *http.Request) {
-		uuid := parseUUIDFromURL(r, w, "uuid")
-		assert.NotNil(t, uuid)
+		urlUUID := parseUUIDFromURL(r, w, "uuid")
+		assert.NotNil(t, urlUUID)
 	})
 
 	ts := httptest.NewServer(r)

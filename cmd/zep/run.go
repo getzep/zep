@@ -148,8 +148,12 @@ func initializeStores(appState *models.AppState) {
 		}
 		log.Debug("embeddingProcessor started")
 
+		userStore := postgres.NewUserStoreDAO(db)
+		log.Debug("userStore created")
+
 		appState.MemoryStore = memoryStore
 		appState.DocumentStore = documentStore
+		appState.UserStore = userStore
 	default:
 		log.Fatal(
 			fmt.Sprintf(

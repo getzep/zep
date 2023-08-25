@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"errors"
-	"time"
 
 	"github.com/getzep/zep/pkg/store"
 
@@ -101,7 +100,7 @@ func (pms *PostgresMemoryStore) DeleteSession(ctx context.Context, sessionID str
 func (pms *PostgresMemoryStore) ListSessions(
 	ctx context.Context,
 	_ *models.AppState,
-	cursor time.Time,
+	cursor int64,
 	limit int,
 ) ([]*models.Session, error) {
 	return pms.SessionStore.ListAll(ctx, cursor, limit)

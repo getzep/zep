@@ -9,6 +9,7 @@ import (
 
 type Session struct {
 	UUID      uuid.UUID              `json:"uuid"`
+	ID        int64                  `json:"id"`
 	CreatedAt time.Time              `json:"created_at"`
 	UpdatedAt time.Time              `json:"updated_at"`
 	DeletedAt *time.Time             `json:"deleted_at"`
@@ -35,5 +36,5 @@ type SessionManager interface {
 	Get(ctx context.Context, sessionID string) (*Session, error)
 	Update(ctx context.Context, session *UpdateSessionRequest, isPrivileged bool) error
 	Delete(ctx context.Context, sessionID string) error
-	ListAll(ctx context.Context, cursor time.Time, limit int) ([]*Session, error)
+	ListAll(ctx context.Context, cursor int64, limit int) ([]*Session, error)
 }

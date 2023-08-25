@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/getzep/zep/internal"
 	"github.com/getzep/zep/pkg/models"
@@ -189,7 +188,7 @@ func UpdateSessionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Accept			json
 //	@Produce		json
 //	@Param			limit	query		integer	false	"Limit the number of results returned"
-//	@Param			cursor	query		int64	false	"Cursor for pagination (Unix timestamp)"
+//	@Param			cursor	query		int64	false	"Cursor for pagination)"
 //	@Success		200		{array}		[]models.Session
 //	@Failure		400		{object}	APIError	"Bad Request"
 //	@Failure		500		{object}	APIError	"Internal Server Error"
@@ -205,12 +204,11 @@ func GetSessionListHandler(appState *models.AppState) http.HandlerFunc {
 			renderError(w, err, http.StatusBadRequest)
 			return
 		}
-		var cursorTime int64
-		if cursorTime, err = extractQueryStringValueToInt[int64](r, "cursor"); err != nil {
+		var cursor int64
+		if cursor, err = extractQueryStringValueToInt[int64](r, "cursor"); err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
 		}
-		cursor := time.Unix(cursorTime, 0)
 		sessions, err := appState.MemoryStore.ListSessions(r.Context(), appState, cursor, limit)
 		if err != nil {
 			renderError(w, err, http.StatusInternalServerError)

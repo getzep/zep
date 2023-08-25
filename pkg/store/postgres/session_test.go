@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/testutils"
@@ -58,6 +57,7 @@ func TestSessionDAO_Create(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NotNil(t, result)
 				assert.NotEmpty(t, result.UUID)
+				assert.NotEmpty(t, result.ID)
 				assert.False(t, result.CreatedAt.IsZero())
 				assert.Equal(t, tt.session.SessionID, result.SessionID)
 				assert.Equal(t, tt.session.Metadata, result.Metadata)
@@ -408,6 +408,7 @@ func TestSessionDAO_ListAll(t *testing.T) {
 	dao := NewSessionDAO(testDB)
 
 	// Create a few test sessions
+	var lastID int64
 	for i := 0; i < 5; i++ {
 		sessionID, err := testutils.GenerateRandomSessionID(16)
 		assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
@@ -418,45 +419,33 @@ func TestSessionDAO_ListAll(t *testing.T) {
 				"key": "value",
 			},
 		}
-		_, err = dao.Create(testCtx, session)
+		createdSession, err := dao.Create(testCtx, session)
 		assert.NoError(t, err)
 
-		// Update the CreatedAt field to a time relative to now
-		_, err = dao.db.NewUpdate().
-			Model(&SessionSchema{}).
-			Set("created_at = ?", time.Now().Add(-time.Duration(i)*time.Hour)).
-			Where("session_id = ?", sessionID).
-			Exec(testCtx)
-		assert.NoError(t, err)
+		lastID = createdSession.ID
 	}
 
 	tests := []struct {
 		name   string
-		cursor time.Time
+		cursor int64
 		limit  int
 		want   int
 	}{
 		{
 			name:   "Get all sessions",
-			cursor: time.Now().Add(-5 * time.Hour), // 5 hours ago
+			cursor: 0, // start from the beginning
 			limit:  10,
 			want:   5,
 		},
 		{
-			name:   "Get sessions last 2 hours",
-			cursor: time.Now().Add(-2 * time.Hour), // 2 hours ago
-			limit:  10,
-			want:   2,
-		},
-		{
 			name:   "Get no sessions",
-			cursor: time.Now().Add(time.Hour), // 1 hour in the future
+			cursor: lastID, // start from the last session
 			limit:  10,
 			want:   0,
 		},
 		{
 			name:   "Limit number of sessions",
-			cursor: time.Now().Add(-5 * time.Hour), // all sessions
+			cursor: 0, // start from the beginning
 			limit:  3,
 			want:   3,
 		},

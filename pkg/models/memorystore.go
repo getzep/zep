@@ -2,7 +2,6 @@ package models
 
 import (
 	"context"
-	"time"
 )
 
 // MemoryStore interface
@@ -84,7 +83,7 @@ type MemoryStore[T any] interface {
 	ListSessions(
 		ctx context.Context,
 		appState *AppState,
-		cursor time.Time,
+		cursor int64,
 		limit int,
 	) ([]*Session, error)
 	OnStart(ctx context.Context, appState *AppState) error

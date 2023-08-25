@@ -25,6 +25,7 @@ type SessionSchema struct {
 	bun.BaseModel `bun:"table:session,alias:s"`
 
 	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
+	ID        int64                  `bun:",autoincrement"` // used as a cursor for pagination
 	SessionID string                 `bun:",unique,notnull"`
 	CreatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
 	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
@@ -140,6 +141,7 @@ type UserSchema struct {
 	bun.BaseModel `bun:"table:users,alias:u"`
 
 	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
+	ID        int64                  `bun:",autoincrement"` // used as a cursor for pagination
 	CreatedAt time.Time              `bun:"type:timestamptz,notnull,default:current_timestamp"`
 	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
 	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`

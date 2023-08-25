@@ -51,6 +51,20 @@ definitions:
         description: Must be a pointer to allow for null values
         type: string
     type: object
+  models.CreateUserRequest:
+    properties:
+      email:
+        type: string
+      first_name:
+        type: string
+      last_name:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      user_id:
+        type: string
+    type: object
   models.Document:
     properties:
       content:
@@ -210,6 +224,8 @@ definitions:
         type: string
       deleted_at:
         type: string
+      id:
+        type: integer
       metadata:
         additionalProperties: true
         type: object
@@ -221,14 +237,6 @@ definitions:
         description: Must be a pointer to allow for null values
         type: string
       uuid:
-        type: string
-    type: object
-  models.SessionUpdateRequest:
-    properties:
-      metadata:
-        additionalProperties: true
-        type: object
-      session_id:
         type: string
     type: object
   models.Summary:
@@ -279,6 +287,54 @@ definitions:
         additionalProperties: true
         type: object
     type: object
+  models.UpdateSessionRequest:
+    properties:
+      metadata:
+        additionalProperties: true
+        type: object
+      session_id:
+        type: string
+    type: object
+  models.UpdateUserRequest:
+    properties:
+      email:
+        type: string
+      first_name:
+        type: string
+      last_name:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      user_id:
+        type: string
+      uuid:
+        type: string
+    type: object
+  models.User:
+    properties:
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: integer
+      last_name:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      updated_at:
+        type: string
+      user_id:
+        type: string
+      uuid:
+        type: string
+    type: object
   server.APIError:
     properties:
       message:
@@ -289,7 +345,7 @@ info:
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
-  title: Zep REST API
+  title: Zep REST-like API
   version: 0.x
 paths:
   /api/v1/collection:
@@ -898,7 +954,7 @@ paths:
         in: query
         name: limit
         type: integer
-      - description: Cursor for pagination (Unix timestamp)
+      - description: Cursor for pagination)
         in: query
         name: cursor
         type: integer
@@ -972,7 +1028,7 @@ paths:
         name: session
         required: true
         schema:
-          $ref: '#/definitions/models.SessionUpdateRequest'
+          $ref: '#/definitions/models.UpdateSessionRequest'
       produces:
       - application/json
       responses:
@@ -1144,6 +1200,203 @@ paths:
       summary: Search memory messages for a given session
       tags:
       - search
+  /api/v1/users:
+    get:
+      consumes:
+      - application/json
+      description: list all users with pagination
+      parameters:
+      - description: Limit
+        in: query
+        name: limit
+        required: true
+        type: integer
+      - description: Cursor
+        in: query
+        name: cursor
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved list of users
+          schema:
+            items:
+              items:
+                $ref: '#/definitions/models.User'
+              type: array
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: List all users
+      tags:
+      - user
+  /api/v1/users/{userId}:
+    delete:
+      consumes:
+      - application/json
+      description: delete user by id
+      parameters:
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Delete a user
+      tags:
+      - user
+    get:
+      consumes:
+      - application/json
+      description: get user by id
+      parameters:
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Returns a user by ID
+      tags:
+      - user
+    post:
+      consumes:
+      - application/json
+      description: add user by id
+      parameters:
+      - description: User
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Successfully created user
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Add a user
+      tags:
+      - user
+    put:
+      consumes:
+      - application/json
+      description: update user by id
+      parameters:
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      - description: User
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: Update a user
+      tags:
+      - user
+  /api/v1/users/{userId}/sessions:
+    get:
+      consumes:
+      - application/json
+      description: list all sessions for a user by user id
+      parameters:
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Session'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.APIError'
+      security:
+      - Bearer: []
+      summary: List all sessions for a user
+      tags:
+      - user
 schemes:
 - http
 - https

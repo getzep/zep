@@ -2,11 +2,10 @@ package postgres
 
 import (
 	"context"
-	"strings"
-	"time"
+	"database/sql"
+	"errors"
 
 	"github.com/getzep/zep/pkg/models"
-	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
 
@@ -26,16 +25,32 @@ func NewUserStoreDAO(db *bun.DB) *UserStoreDAO {
 func (dao *UserStoreDAO) Create(
 	ctx context.Context,
 	user *models.CreateUserRequest,
-) (uuid.UUID, error) {
-	userDB := UserSchema{
+) (*models.User, error) {
+	userDB := &UserSchema{
 		UserID:    user.UserID,
 		Email:     user.Email,
 		FirstName: user.FirstName,
 		LastName:  user.LastName,
 		Metadata:  user.Metadata,
 	}
-	_, err := dao.db.NewInsert().Model(&userDB).Returning("uuid").Exec(ctx)
-	return userDB.UUID, err
+	_, err := dao.db.NewInsert().Model(userDB).Returning("*").Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	createdUser := &models.User{
+		UUID:      userDB.UUID,
+		ID:        userDB.ID,
+		CreatedAt: userDB.CreatedAt,
+		UpdatedAt: userDB.UpdatedAt,
+		UserID:    userDB.UserID,
+		Email:     userDB.Email,
+		FirstName: userDB.FirstName,
+		LastName:  userDB.LastName,
+		Metadata:  userDB.Metadata,
+	}
+
+	return createdUser, err
 }
 
 // Get gets a user by UserID.
@@ -43,7 +58,7 @@ func (dao *UserStoreDAO) Get(ctx context.Context, userID string) (*models.User, 
 	user := new(UserSchema)
 	err := dao.db.NewSelect().Model(user).Where("user_id = ?", userID).Scan(ctx)
 	if err != nil {
-		if strings.Contains(err.Error(), "no rows in result set") {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, models.NewNotFoundError("user " + userID)
 		}
 		return nil, err
@@ -96,17 +111,17 @@ func (dao *UserStoreDAO) Delete(ctx context.Context, userID string) error {
 	return nil
 }
 
-// ListAll lists all users. The cursor is the time of the last user returned.
+// ListAll lists all users. The cursor is used to paginate results.
 func (dao *UserStoreDAO) ListAll(
 	ctx context.Context,
-	cursor time.Time,
+	cursor int64,
 	limit int,
 ) ([]*models.User, error) {
 	var usersDB []*UserSchema
 	err := dao.db.NewSelect().
 		Model(&usersDB).
-		Where("created_at > ?", cursor).
-		OrderExpr("created_at ASC").
+		Where("id > ?", cursor).
+		OrderExpr("id ASC").
 		Limit(limit).
 		Scan(ctx)
 	if err != nil {
@@ -152,6 +167,7 @@ func (dao *UserStoreDAO) GetSessions(
 func userSchemaToUser(user *UserSchema) *models.User {
 	return &models.User{
 		UUID:      user.UUID,
+		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		UserID:    user.UserID,

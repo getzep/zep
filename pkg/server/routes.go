@@ -31,7 +31,7 @@ func Create(appState *models.AppState) *http.Server {
 	}
 }
 
-// @title						Zep REST API
+// @title						Zep REST-like API
 // @version					0.x
 // @license.name				Apache 2.0
 // @license.url				http://www.apache.org/licenses/LICENSE-2.0.html
@@ -58,11 +58,11 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 
 	router.Route("/api/v1", func(r chi.Router) {
 		// Memory session-related routes
+		r.Get("/sessions", GetSessionListHandler(appState))
 		r.Route("/sessions/{sessionId}", func(r chi.Router) {
 			r.Get("/", GetSessionHandler(appState))
 			r.Patch("/", UpdateSessionHandler(appState))
 			r.Post("/", CreateSessionHandler(appState))
-			r.Get("/list", GetSessionListHandler(appState))
 			// Memory-related routes
 			r.Route("/memory", func(r chi.Router) {
 				r.Get("/", GetMemoryHandler(appState))
@@ -73,6 +73,14 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 			r.Route("/search", func(r chi.Router) {
 				r.Post("/", SearchMemoryHandler(appState))
 			})
+		})
+		// User-related routes
+		r.Post("/user", CreateUserHandler(appState))
+		r.Route("/user/{userId}", func(r chi.Router) {
+			r.Get("/", GetUserHandler(appState))
+			r.Patch("/", UpdateUserHandler(appState))
+			r.Delete("/", DeleteUserHandler(appState))
+			r.Get("/sessions", ListUserSessionsHandler(appState))
 		})
 		// Document collection-related routes
 		r.Get("/collection", GetCollectionListHandler(appState))

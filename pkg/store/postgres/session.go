@@ -52,6 +52,7 @@ func (dao *SessionDAO) Create(
 
 	return &models.Session{
 		UUID:      sessionDB.UUID,
+		ID:        sessionDB.ID,
 		CreatedAt: sessionDB.CreatedAt,
 		UpdatedAt: sessionDB.UpdatedAt,
 		SessionID: sessionDB.SessionID,
@@ -65,7 +66,10 @@ func (dao *SessionDAO) Create(
 // It returns a pointer to the retrieved Session struct or an error if the retrieval fails.
 func (dao *SessionDAO) Get(ctx context.Context, sessionID string) (*models.Session, error) {
 	session := SessionSchema{}
-	err := dao.db.NewSelect().Model(&session).Where("session_id = ?", sessionID).Scan(ctx)
+	err := dao.db.NewSelect().
+		Model(&session).
+		Where("session_id = ?", sessionID).
+		Scan(ctx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, models.NewNotFoundError("session " + sessionID)
@@ -75,6 +79,7 @@ func (dao *SessionDAO) Get(ctx context.Context, sessionID string) (*models.Sessi
 
 	retSession := models.Session{
 		UUID:      session.UUID,
+		ID:        session.ID,
 		CreatedAt: session.CreatedAt,
 		UpdatedAt: session.UpdatedAt,
 		SessionID: session.SessionID,
@@ -210,14 +215,14 @@ func (dao *SessionDAO) Delete(ctx context.Context, sessionID string) error {
 // It returns a slice of pointers to Session structs or an error if the retrieval fails.
 func (dao *SessionDAO) ListAll(
 	ctx context.Context,
-	cursor time.Time,
+	cursor int64,
 	limit int,
 ) ([]*models.Session, error) {
 	var sessions []SessionSchema
 	err := dao.db.NewSelect().
 		Model(&sessions).
-		Where("created_at > ?", cursor).
-		Order("created_at ASC").
+		Where("id > ?", cursor).
+		Order("id ASC").
 		Limit(limit).
 		Scan(ctx)
 	if err != nil {
@@ -228,6 +233,7 @@ func (dao *SessionDAO) ListAll(
 	for i := range sessions {
 		retSessions[i] = &models.Session{
 			UUID:      sessions[i].UUID,
+			ID:        sessions[i].ID,
 			CreatedAt: sessions[i].CreatedAt,
 			UpdatedAt: sessions[i].UpdatedAt,
 			SessionID: sessions[i].SessionID,

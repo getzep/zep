@@ -52,14 +52,17 @@ func extractQueryStringValueToInt[T ~int | int32 | int64](
 	return 0, nil
 }
 
+// encodeJSON encodes data into JSON and writes it to the response writer.
 func encodeJSON(w http.ResponseWriter, data interface{}) error {
 	return json.NewEncoder(w).Encode(data)
 }
 
+// decodeJSON decodes a JSON request body into the provided data struct.
 func decodeJSON(r *http.Request, data interface{}) error {
 	return json.NewDecoder(r.Body).Decode(&data)
 }
 
+// renderError renders an error response.
 func renderError(w http.ResponseWriter, err error, status int) {
 	if status != http.StatusNotFound {
 		// Don't log not found errors

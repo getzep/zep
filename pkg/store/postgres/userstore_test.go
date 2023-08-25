@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/getzep/zep/pkg/testutils"
 
@@ -31,6 +30,13 @@ func TestUserStoreDAO(t *testing.T) {
 	t.Run("Create", func(t *testing.T) {
 		_, err := userStore.Create(ctx, user)
 		assert.NoError(t, err)
+
+		// Check that the user was created
+		createdUser, err := userStore.Get(ctx, user.UserID)
+		assert.NoError(t, err)
+		assert.Equal(t, user.UserID, createdUser.UserID)
+		assert.Equal(t, user.Metadata, createdUser.Metadata)
+		assert.NotEmpty(t, createdUser.ID)
 	})
 
 	// Test Get
@@ -149,6 +155,7 @@ func TestUserStoreDAO_ListAll(t *testing.T) {
 	dao := NewUserStoreDAO(testDB)
 
 	// Create a few test users
+	var lastID int64
 	for i := 0; i < 5; i++ {
 		userID := testutils.GenerateRandomString(16)
 		assert.NoError(t, err, "GenerateRandomString should not return an error")
@@ -159,45 +166,33 @@ func TestUserStoreDAO_ListAll(t *testing.T) {
 				"key": "value",
 			},
 		}
-		_, err = dao.Create(testCtx, user)
+		createdUser, err := dao.Create(testCtx, user)
 		assert.NoError(t, err)
 
-		// Update the CreatedAt field to a time relative to now
-		_, err = dao.db.NewUpdate().
-			Model(&UserSchema{}).
-			Set("created_at = ?", time.Now().Add(-time.Duration(i)*time.Hour)).
-			Where("user_id = ?", userID).
-			Exec(testCtx)
-		assert.NoError(t, err)
+		lastID = createdUser.ID
 	}
 
 	tests := []struct {
 		name   string
-		cursor time.Time
+		cursor int64
 		limit  int
 		want   int
 	}{
 		{
 			name:   "Get all users",
-			cursor: time.Now().Add(-5 * time.Hour), // 5 hours ago
+			cursor: 0, // start from the beginning
 			limit:  10,
 			want:   5,
 		},
 		{
-			name:   "Get users last 2 hours",
-			cursor: time.Now().Add(-2 * time.Hour), // 2 hours ago
-			limit:  10,
-			want:   2,
-		},
-		{
 			name:   "Get no users",
-			cursor: time.Now().Add(time.Hour), // 1 hour in the future
+			cursor: lastID, // start from the last user
 			limit:  10,
 			want:   0,
 		},
 		{
 			name:   "Limit number of users",
-			cursor: time.Now().Add(-5 * time.Hour), // all users
+			cursor: 0, // start from the beginning
 			limit:  3,
 			want:   3,
 		},
