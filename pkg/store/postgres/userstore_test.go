@@ -78,6 +78,7 @@ func TestUserStoreDAO(t *testing.T) {
 		// Check that the updated user still has the original non-zero values
 		assert.Equal(t, user.Metadata, updatedUser.Metadata)
 		assert.Equal(t, user.Email, updatedUser.Email)
+		// Bob should be the new first name
 		assert.Equal(t, "bob", updatedUser.FirstName)
 	})
 
