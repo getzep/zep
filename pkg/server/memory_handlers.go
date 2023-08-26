@@ -216,7 +216,6 @@ func GetSessionListHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param			sessionId		path		string			true	"Session ID"
 //	@Param			memoryMessages	body		models.Memory	true	"Memory messages"
 //	@Success		200				{string}	string			"OK"
-//	@Failure		404				{object}	APIError		"Not Found"
 //	@Failure		500				{object}	APIError		"Internal Server Error"
 //	@Security		Bearer
 //	@Router			/api/v1/sessions/{sessionId}/memory [post]
@@ -261,6 +260,10 @@ func DeleteMemoryHandler(appState *models.AppState) http.HandlerFunc {
 		sessionID := chi.URLParam(r, "sessionId")
 
 		if err := appState.MemoryStore.DeleteSession(r.Context(), sessionID); err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+				return
+			}
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}

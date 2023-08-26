@@ -19,7 +19,7 @@ import (
 //	@Param			user	body		models.CreateUserRequest	true	"User"
 //	@Success		201		{object}	models.User
 //	@Failure		400		{object}	APIError	"Bad Request"
-//	@failure		500		{object}	APIError	"Internal Server Error"
+//	@Failure		500		{object}	APIError	"Internal Server Error"
 //	@Security		Bearer
 //	@Router			/api/v1/user [post]
 func CreateUserHandler(appState *models.AppState) http.HandlerFunc {
@@ -89,6 +89,7 @@ func GetUserHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param			user	body		models.UpdateUserRequest	true	"User"
 //	@Success		200		{object}	models.User
 //	@Failure		400		{object}	APIError	"Bad Request"
+//	@Failure		404		{object}	APIError	"Not Found"
 //	@Failure		500		{object}	APIError	"Internal Server Error"
 //	@Security		Bearer
 //	@Router			/api/v1/user/{userId} [patch]
@@ -157,9 +158,10 @@ func DeleteUserHandler(appState *models.AppState) http.HandlerFunc {
 //	@Tags			user
 //	@Accept			json
 //	@Produce		json
-//	@Param			limit	query		int				true	"Limit"
-//	@Param			cursor	query		int64			true	"Cursor"
+//	@Param			limit	query		int				false	"Limit"
+//	@Param			cursor	query		int64			false	"Cursor"
 //	@Success		200		{array}		[]models.User	"Successfully retrieved list of users"
+//	@Failure		400		{object}	APIError		"Bad Request"
 //	@Failure		500		{object}	APIError		"Internal Server Error"
 //	@Security		Bearer
 //	@Router			/api/v1/user [get]
@@ -199,7 +201,6 @@ func ListAllUsersHandler(appState *models.AppState) http.HandlerFunc {
 //	@Produce		json
 //	@Param			userId	path		string	true	"User ID"
 //	@Success		200		{array}		models.Session
-//	@Failure		404		{object}	APIError	"Not Found"
 //	@Failure		500		{object}	APIError	"Internal Server Error"
 //	@Security		Bearer
 //	@Router			/api/v1/user/{userId}/sessions [get]
