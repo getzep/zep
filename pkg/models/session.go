@@ -34,7 +34,7 @@ type UpdateSessionRequest struct {
 type SessionManager interface {
 	Create(ctx context.Context, session *CreateSessionRequest) (*Session, error)
 	Get(ctx context.Context, sessionID string) (*Session, error)
-	Update(ctx context.Context, session *UpdateSessionRequest, isPrivileged bool) error
+	Update(ctx context.Context, session *UpdateSessionRequest, isPrivileged bool) (*Session, error)
 	Delete(ctx context.Context, sessionID string) error
 	ListAll(ctx context.Context, cursor int64, limit int) ([]*Session, error)
 }

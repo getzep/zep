@@ -47,7 +47,7 @@ definitions:
         type: object
       session_id:
         type: string
-      user_uuid:
+      user_id:
         description: Must be a pointer to allow for null values
         type: string
     type: object
@@ -233,7 +233,7 @@ definitions:
         type: string
       updated_at:
         type: string
-      user_uuid:
+      user_id:
         description: Must be a pointer to allow for null values
         type: string
       uuid:
@@ -997,9 +997,9 @@ paths:
       - application/json
       responses:
         "201":
-          description: OK
+          description: Created
           schema:
-            type: string
+            $ref: '#/definitions/models.Session'
         "400":
           description: Bad Request
           schema:
@@ -1066,7 +1066,7 @@ paths:
         "200":
           description: OK
           schema:
-            type: string
+            $ref: '#/definitions/models.Session'
         "400":
           description: Bad Request
           schema:
@@ -1381,7 +1381,7 @@ paths:
         "200":
           description: OK
           schema:
-            type: string
+            $ref: '#/definitions/models.User'
         "400":
           description: Bad Request
           schema:

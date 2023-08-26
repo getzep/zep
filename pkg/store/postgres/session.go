@@ -96,9 +96,9 @@ func (dao *SessionDAO) Update(
 	ctx context.Context,
 	session *models.UpdateSessionRequest,
 	isPrivileged bool,
-) error {
+) (*models.Session, error) {
 	if session.SessionID == "" {
-		return errors.New("sessionID cannot be empty")
+		return nil, errors.New("sessionID cannot be empty")
 	}
 
 	// if metadata is null, we can keep this a cheap operation
@@ -110,7 +110,7 @@ func (dao *SessionDAO) Update(
 	// to the session metadata.
 	lockID, err := acquireAdvisoryLock(ctx, dao.db, session.SessionID)
 	if err != nil {
-		return fmt.Errorf("failed to acquire advisory lock: %w", err)
+		return nil, fmt.Errorf("failed to acquire advisory lock: %w", err)
 	}
 	defer func(ctx context.Context, db bun.IDB, lockID uint64) {
 		err := releaseAdvisoryLock(ctx, db, lockID)
@@ -129,7 +129,7 @@ func (dao *SessionDAO) Update(
 		isPrivileged,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to merge session metadata: %w", err)
+		return nil, fmt.Errorf("failed to merge session metadata: %w", err)
 	}
 
 	session = &models.UpdateSessionRequest{
@@ -143,7 +143,7 @@ func (dao *SessionDAO) Update(
 func (dao *SessionDAO) updateSession(
 	ctx context.Context,
 	session *models.UpdateSessionRequest,
-) error {
+) (*models.Session, error) {
 	sessionDB := SessionSchema{
 		SessionID: session.SessionID,
 		Metadata:  session.Metadata,
@@ -157,19 +157,30 @@ func (dao *SessionDAO) updateSession(
 		// use WhereAllWithDeleted to update soft-deleted sessions
 		WhereAllWithDeleted().
 		Where("session_id = ?", session.SessionID).
+		Returning("*").
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to update session %w", err)
+		return nil, fmt.Errorf("failed to update session %w", err)
 	}
 	rowsAffected, err := r.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
+		return nil, fmt.Errorf("failed to get rows affected: %w", err)
 	}
 	if rowsAffected == 0 {
-		return models.NewNotFoundError("session " + session.SessionID)
+		return nil, models.NewNotFoundError("session " + session.SessionID)
 	}
 
-	return nil
+	returnedSession := models.Session{
+		UUID:      sessionDB.UUID,
+		ID:        sessionDB.ID,
+		CreatedAt: sessionDB.CreatedAt,
+		UpdatedAt: sessionDB.UpdatedAt,
+		SessionID: sessionDB.SessionID,
+		Metadata:  sessionDB.Metadata,
+		UserID:    sessionDB.UserID,
+	}
+
+	return &returnedSession, nil
 }
 
 // Delete soft-deletes a session from the database by its sessionID.

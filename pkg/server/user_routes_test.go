@@ -78,13 +78,13 @@ func TestGetUserRoute(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Check the response body
-	expectedUser := new(models.User)
-	err = json.NewDecoder(resp.Body).Decode(expectedUser)
+	resultingUser := new(models.User)
+	err = json.NewDecoder(resp.Body).Decode(resultingUser)
 	assert.NoError(t, err)
 
-	assert.NotEmpty(t, expectedUser.UUID)
-	assert.Equal(t, expectedUser.UserID, userID)
-	assert.Equal(t, expectedUser.Metadata["key"], "value")
+	assert.NotEmpty(t, resultingUser.UUID)
+	assert.Equal(t, resultingUser.UserID, userID)
+	assert.Equal(t, resultingUser.Metadata["key"], "value")
 }
 
 func TestUpdateUserRoute(t *testing.T) {
@@ -130,12 +130,15 @@ func TestUpdateUserRoute(t *testing.T) {
 	// Check the status code
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	// Fetch the user and check the updated fields
-	fetchedUser, err := testUserStore.Get(testCtx, userID)
+	// Check the response body
+	updatedUser := new(models.User)
+	err = json.NewDecoder(resp.Body).Decode(updatedUser)
 	assert.NoError(t, err)
-	assert.Equal(t, fetchedUser.UserID, userID)
-	assert.Equal(t, fetchedUser.Email, updateUser.Email)
-	assert.Equal(t, fetchedUser.Metadata["key"], "new value")
+
+	// Check the updated fields
+	assert.Equal(t, updatedUser.UserID, userID)
+	assert.Equal(t, updatedUser.Email, updateUser.Email)
+	assert.Equal(t, updatedUser.Metadata["key"], "new value")
 }
 
 func TestDeleteUserRoute(t *testing.T) {

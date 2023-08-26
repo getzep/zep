@@ -97,9 +97,9 @@ func GetSessionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Accept			json
 //	@Produce		json
 //	@Param			session	body		models.CreateSessionRequest	true	"Session"
-//	@Success		201		{string}	string						"OK"
-//	@Failure		400		{object}	APIError					"Bad Request"
-//	@failure		500		{object}	APIError					"Internal Server Error"
+//	@Success		201		{object}	models.Session
+//	@Failure		400		{object}	APIError	"Bad Request"
+//	@failure		500		{object}	APIError	"Internal Server Error"
 //	@Security		Bearer
 //	@Router			/api/v1/sessions [post]
 func CreateSessionHandler(appState *models.AppState) http.HandlerFunc {
@@ -110,14 +110,17 @@ func CreateSessionHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		_, err := appState.MemoryStore.CreateSession(r.Context(), appState, &session)
+		newSession, err := appState.MemoryStore.CreateSession(r.Context(), appState, &session)
 		if err != nil {
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(OKResponse))
+		if err := encodeJSON(w, newSession); err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
 	}
 }
 
@@ -130,10 +133,10 @@ func CreateSessionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Produce		json
 //	@Param			sessionId	path		string						true	"Session ID"
 //	@Param			session		body		models.UpdateSessionRequest	true	"Session"
-//	@Success		200			{string}	string						"OK"
-//	@Failure		400			{object}	APIError					"Bad Request"
-//	@Failure		404			{object}	APIError					"Not Found"
-//	@failure		500			{object}	APIError					"Internal Server Error"
+//	@Success		200			{object}	models.Session
+//	@Failure		400			{object}	APIError	"Bad Request"
+//	@Failure		404			{object}	APIError	"Not Found"
+//	@failure		500			{object}	APIError	"Internal Server Error"
 //	@Security		Bearer
 //	@Router			/api/v1/sessions/{sessionId} [patch]
 func UpdateSessionHandler(appState *models.AppState) http.HandlerFunc {
@@ -146,7 +149,7 @@ func UpdateSessionHandler(appState *models.AppState) http.HandlerFunc {
 		}
 		session.SessionID = sessionID
 
-		err := appState.MemoryStore.UpdateSession(r.Context(), appState, &session)
+		updatedSession, err := appState.MemoryStore.UpdateSession(r.Context(), appState, &session)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
 				renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
@@ -155,7 +158,10 @@ func UpdateSessionHandler(appState *models.AppState) http.HandlerFunc {
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
-		_, _ = w.Write([]byte(OKResponse))
+		if err := encodeJSON(w, updatedSession); err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
 	}
 }
 

@@ -211,13 +211,12 @@ func TestSessionDAO_UndeleteSession(t *testing.T) {
 	session := &models.UpdateSessionRequest{
 		SessionID: sessionID,
 	}
-	err = sessionStore.Update(testCtx, session, false)
+	updatesSession, err := sessionStore.Update(testCtx, session, false)
 	assert.NoError(t, err, "Update should not return an error")
 
-	s, err := sessionStore.Get(testCtx, sessionID)
 	assert.NoError(t, err, "Get should not return an error")
-	assert.NotNil(t, s, "Update should return a session")
-	assert.Emptyf(t, s.DeletedAt, "Update should not have a DeletedAt value")
+	assert.NotNil(t, updatesSession, "Update should return a session")
+	assert.Emptyf(t, updatesSession.DeletedAt, "Update should not have a DeletedAt value")
 
 	// Test that messages remain deleted
 	respMessages, err := getMessages(testCtx, testDB, sessionID, 2, nil, 0)

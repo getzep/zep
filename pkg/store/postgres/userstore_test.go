@@ -52,8 +52,8 @@ func TestUserStoreDAO(t *testing.T) {
 		assert.ErrorIs(t, err, models.ErrNotFound)
 	})
 
-	t.Run("Update should not overwrite with zero values", func(t *testing.T) {
-		userID := testutils.GenerateRandomString(16)
+	// Test Update
+	t.Run("Update", func(t *testing.T) {
 		// Create a user with non-zero values
 		user := &models.CreateUserRequest{
 			UserID: userID,
@@ -72,11 +72,7 @@ func TestUserStoreDAO(t *testing.T) {
 			Email:     "",
 			FirstName: "bob",
 		}
-		err = userStore.Update(ctx, userUpdate, false)
-		assert.NoError(t, err)
-
-		// Retrieve the updated user
-		updatedUser, err := userStore.Get(ctx, user.UserID)
+		updatedUser, err := userStore.Update(ctx, userUpdate, false)
 		assert.NoError(t, err)
 
 		// Check that the updated user still has the original non-zero values
@@ -85,12 +81,12 @@ func TestUserStoreDAO(t *testing.T) {
 		assert.Equal(t, "bob", updatedUser.FirstName)
 	})
 
-	t.Run("Update Non-Existant Session should result in NotFoundError", func(t *testing.T) {
+	t.Run("Update Non-Existant User should result in NotFoundError", func(t *testing.T) {
 		userUpdate := &models.UpdateUserRequest{
 			UserID: "non-existant-user-id",
 			Email:  "email",
 		}
-		err := userStore.Update(ctx, userUpdate, false)
+		_, err := userStore.Update(ctx, userUpdate, false)
 		assert.ErrorIs(t, err, models.ErrNotFound)
 	})
 

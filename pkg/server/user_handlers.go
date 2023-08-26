@@ -87,9 +87,9 @@ func GetUserHandler(appState *models.AppState) http.HandlerFunc {
 //	@Produce		json
 //	@Param			userId	path		string						true	"User ID"
 //	@Param			user	body		models.UpdateUserRequest	true	"User"
-//	@Success		200		{string}	string						"OK"
-//	@Failure		400		{object}	APIError					"Bad Request"
-//	@Failure		500		{object}	APIError					"Internal Server Error"
+//	@Success		200		{object}	models.User
+//	@Failure		400		{object}	APIError	"Bad Request"
+//	@Failure		500		{object}	APIError	"Internal Server Error"
 //	@Security		Bearer
 //	@Router			/api/v1/user/{userId} [patch]
 func UpdateUserHandler(appState *models.AppState) http.HandlerFunc {
@@ -103,7 +103,8 @@ func UpdateUserHandler(appState *models.AppState) http.HandlerFunc {
 
 		user.UserID = userID
 
-		if err := appState.UserStore.Update(r.Context(), &user, false); err != nil {
+		updatedUser, err := appState.UserStore.Update(r.Context(), &user, true)
+		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
 				renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 				return
@@ -112,7 +113,10 @@ func UpdateUserHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		_, _ = w.Write([]byte(OKResponse))
+		if err := encodeJSON(w, updatedUser); err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
 	}
 }
 

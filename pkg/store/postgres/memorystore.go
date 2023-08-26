@@ -86,9 +86,8 @@ func (pms *PostgresMemoryStore) UpdateSession(
 	ctx context.Context,
 	_ *models.AppState,
 	session *models.UpdateSessionRequest,
-) error {
-	err := pms.SessionStore.Update(ctx, session, false)
-	return err
+) (*models.Session, error) {
+	return pms.SessionStore.Update(ctx, session, false)
 }
 
 // DeleteSession deletes a session from the memory store. This is a soft Delete.

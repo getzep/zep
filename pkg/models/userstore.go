@@ -40,7 +40,7 @@ type UpdateUserRequest struct {
 type UserStore interface {
 	Create(ctx context.Context, user *CreateUserRequest) (*User, error)
 	Get(ctx context.Context, userID string) (*User, error)
-	Update(ctx context.Context, user *UpdateUserRequest, isPrivileged bool) error
+	Update(ctx context.Context, user *UpdateUserRequest, isPrivileged bool) (*User, error)
 	Delete(ctx context.Context, userID string) error
 	GetSessions(ctx context.Context, userID string) ([]*Session, error)
 	ListAll(ctx context.Context, cursor int64, limit int) ([]*User, error)

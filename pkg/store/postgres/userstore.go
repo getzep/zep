@@ -72,9 +72,9 @@ func (dao *UserStoreDAO) Update(
 	ctx context.Context,
 	user *models.UpdateUserRequest,
 	isPrivileged bool,
-) error {
+) (*models.User, error) {
 	if user.UserID == "" {
-		return errors.New("UserID cannot be empty")
+		return nil, errors.New("UserID cannot be empty")
 	}
 
 	// if metadata is null, we can keep this a cheap operation
@@ -86,7 +86,7 @@ func (dao *UserStoreDAO) Update(
 	// to the session metadata.
 	lockID, err := acquireAdvisoryLock(ctx, dao.db, user.UserID)
 	if err != nil {
-		return fmt.Errorf("failed to acquire advisory lock: %w", err)
+		return nil, fmt.Errorf("failed to acquire advisory lock: %w", err)
 	}
 	defer func(ctx context.Context, db bun.IDB, lockID uint64) {
 		err := releaseAdvisoryLock(ctx, db, lockID)
@@ -105,14 +105,17 @@ func (dao *UserStoreDAO) Update(
 		isPrivileged,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to merge metadata: %w", err)
+		return nil, fmt.Errorf("failed to merge metadata: %w", err)
 	}
 
 	user.Metadata = mergedMetadata
 	return dao.updateUser(ctx, user)
 }
 
-func (dao *UserStoreDAO) updateUser(ctx context.Context, user *models.UpdateUserRequest) error {
+func (dao *UserStoreDAO) updateUser(
+	ctx context.Context,
+	user *models.UpdateUserRequest,
+) (*models.User, error) {
 	userDB := UserSchema{
 		Email:     user.Email,
 		FirstName: user.FirstName,
@@ -124,19 +127,40 @@ func (dao *UserStoreDAO) updateUser(ctx context.Context, user *models.UpdateUser
 		Column("email", "first_name", "last_name", "metadata").
 		OmitZero().
 		Where("user_id = ?", user.UserID).
+		// We can't use Returning("*") here asc it breaks OmitZero()
+		//Returning("*").
 		Exec(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	rowsAffected, err := r.RowsAffected()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if rowsAffected == 0 {
-		return models.NewNotFoundError("user " + user.UserID)
+		return nil, models.NewNotFoundError("user " + user.UserID)
 	}
 
-	return nil
+	// We're can't return the updated User above as we're using OmitZero,
+	// so we need to get the updated user from the DB
+	updatedUserDB, err := dao.Get(ctx, user.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedUser := &models.User{
+		UUID:      updatedUserDB.UUID,
+		ID:        updatedUserDB.ID,
+		CreatedAt: updatedUserDB.CreatedAt,
+		UpdatedAt: updatedUserDB.UpdatedAt,
+		UserID:    updatedUserDB.UserID,
+		Email:     updatedUserDB.Email,
+		FirstName: updatedUserDB.FirstName,
+		LastName:  updatedUserDB.LastName,
+		Metadata:  updatedUserDB.Metadata,
+	}
+
+	return updatedUser, nil
 }
 
 // Delete deletes a user.
