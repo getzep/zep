@@ -115,7 +115,7 @@ func TestUserStoreDAO(t *testing.T) {
 				Metadata: map[string]interface{}{
 					"key": metadataValues[i],
 				},
-				UserUUID: &returnedUser.UUID,
+				UserID: &returnedUser.UserID,
 			}
 			_, err = sessionStore.Create(ctx, session)
 			assert.NoError(t, err)

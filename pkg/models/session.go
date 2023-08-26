@@ -16,13 +16,13 @@ type Session struct {
 	SessionID string                 `json:"session_id"`
 	Metadata  map[string]interface{} `json:"metadata"`
 	// Must be a pointer to allow for null values
-	UserUUID *uuid.UUID `json:"user_uuid"`
+	UserID *string `json:"user_id"`
 }
 
 type CreateSessionRequest struct {
 	SessionID string `json:"session_id"`
 	// Must be a pointer to allow for null values
-	UserUUID *uuid.UUID             `json:"user_uuid"`
+	UserID   *string                `json:"user_id"`
 	Metadata map[string]interface{} `json:"metadata"`
 }
 

@@ -38,7 +38,7 @@ func (dao *SessionDAO) Create(
 	}
 	sessionDB := SessionSchema{
 		SessionID: session.SessionID,
-		UserUUID:  session.UserUUID,
+		UserID:    session.UserID,
 		Metadata:  session.Metadata,
 	}
 	_, err := dao.db.NewInsert().
@@ -56,7 +56,7 @@ func (dao *SessionDAO) Create(
 		UpdatedAt: sessionDB.UpdatedAt,
 		SessionID: sessionDB.SessionID,
 		Metadata:  sessionDB.Metadata,
-		UserUUID:  sessionDB.UserUUID,
+		UserID:    sessionDB.UserID,
 	}, nil
 }
 
@@ -83,7 +83,7 @@ func (dao *SessionDAO) Get(ctx context.Context, sessionID string) (*models.Sessi
 		UpdatedAt: session.UpdatedAt,
 		SessionID: session.SessionID,
 		Metadata:  session.Metadata,
-		UserUUID:  session.UserUUID,
+		UserID:    session.UserID,
 	}
 	return &retSession, nil
 }
@@ -239,7 +239,7 @@ func (dao *SessionDAO) ListAll(
 			UpdatedAt: sessions[i].UpdatedAt,
 			SessionID: sessions[i].SessionID,
 			Metadata:  sessions[i].Metadata,
-			UserUUID:  sessions[i].UserUUID,
+			UserID:    sessions[i].UserID,
 		}
 	}
 

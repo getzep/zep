@@ -189,7 +189,7 @@ func (dao *UserStoreDAO) GetSessions(
 	var sessionsDB []*SessionSchema
 	err := dao.db.NewSelect().
 		Model(&sessionsDB).
-		Join("JOIN users u ON u.uuid = s.user_uuid").
+		Join("JOIN users u ON u.user_id = s.user_id").
 		Where("u.user_id = ?", userID).
 		Scan(ctx)
 	if err != nil {
@@ -204,7 +204,7 @@ func (dao *UserStoreDAO) GetSessions(
 			UpdatedAt: sessionsDB[i].UpdatedAt,
 			SessionID: sessionsDB[i].SessionID,
 			Metadata:  sessionsDB[i].Metadata,
-			UserUUID:  sessionsDB[i].UserUUID,
+			UserID:    sessionsDB[i].UserID,
 		}
 	}
 	return sessions, nil

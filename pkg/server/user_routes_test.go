@@ -232,7 +232,7 @@ func TestListUserSessionsRoute(t *testing.T) {
 		sessionID := testutils.GenerateRandomString(10)
 		session := &models.CreateSessionRequest{
 			SessionID: sessionID,
-			UserUUID:  &createdUser.UUID,
+			UserID:    &createdUser.UserID,
 			Metadata: map[string]interface{}{
 				"key": "value",
 			},
@@ -265,6 +265,6 @@ func TestListUserSessionsRoute(t *testing.T) {
 
 	// Check that the sessions belong to the user
 	for _, session := range sessions {
-		assert.Equal(t, createdUser.UUID, *session.UserUUID)
+		assert.Equal(t, createdUser.UserID, *session.UserID)
 	}
 }

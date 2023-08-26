@@ -60,7 +60,7 @@ func TestSessionDAO_Create(t *testing.T) {
 				assert.False(t, result.CreatedAt.IsZero())
 				assert.Equal(t, tt.session.SessionID, result.SessionID)
 				assert.Equal(t, tt.session.Metadata, result.Metadata)
-				assert.Equal(t, tt.session.UserUUID, result.UserUUID)
+				assert.Equal(t, tt.session.UserID, result.UserID)
 			}
 		})
 	}
@@ -111,7 +111,7 @@ func TestSessionDAO_Get(t *testing.T) {
 				assert.False(t, result.CreatedAt.IsZero())
 				assert.Equal(t, tt.sessionID, result.SessionID)
 				assert.Equal(t, session.Metadata, result.Metadata)
-				assert.Equal(t, session.UserUUID, result.UserUUID)
+				assert.Equal(t, session.UserID, result.UserID)
 			} else {
 				assert.ErrorIs(t, err, models.ErrNotFound)
 				assert.Nil(t, result)

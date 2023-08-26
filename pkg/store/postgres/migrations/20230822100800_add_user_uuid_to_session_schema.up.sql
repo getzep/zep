@@ -7,9 +7,9 @@ BEGIN
             information_schema.columns
         WHERE
             table_name = 'session'
-            AND column_name = 'user_uuid') THEN
+            AND column_name = 'user_id') THEN
     ALTER TABLE session
-        ADD COLUMN user_uuid UUID;
+        ADD COLUMN user_id UUID;
 END IF;
 END
 $$;
@@ -24,8 +24,8 @@ BEGIN
             pg_indexes
         WHERE
             tablename = 'session'
-            AND indexname = 'session_user_uuid_idx') THEN
-    CREATE INDEX session_user_uuid_idx ON session(user_uuid);
+            AND indexname = 'session_user_id_idx') THEN
+    CREATE INDEX session_user_id_idx ON session(user_id);
 END IF;
 END
 $$;

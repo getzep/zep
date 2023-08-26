@@ -32,8 +32,8 @@ type SessionSchema struct {
 	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
 	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
 	// UserUUID must be pointer type in order to be nullable
-	UserUUID *uuid.UUID  `bun:",type:uuid"`
-	User     *UserSchema `bun:"rel:belongs-to,join:user_uuid=uuid,on_delete:cascade"`
+	UserID *string     `bun:","`
+	User   *UserSchema `bun:"rel:belongs-to,join:user_id=user_id,on_delete:cascade"`
 }
 
 // BeforeCreateTable is a marker method to ensure uniform interface across all table models - used in table creation iterator
@@ -185,8 +185,8 @@ func (*SessionSchema) AfterCreateTable(
 
 	_, err = query.DB().NewCreateIndex().
 		Model((*SessionSchema)(nil)).
-		Index("session_user_uuid_idx").
-		Column("user_uuid").
+		Index("session_user_id_idx").
+		Column("user_id").
 		Exec(ctx)
 	if err != nil {
 		return err
