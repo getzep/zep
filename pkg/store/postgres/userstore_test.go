@@ -55,6 +55,7 @@ func TestUserStoreDAO(t *testing.T) {
 	// Test Update
 	t.Run("Update", func(t *testing.T) {
 		// Create a user with non-zero values
+		userID := testutils.GenerateRandomString(16)
 		user := &models.CreateUserRequest{
 			UserID: userID,
 			Metadata: map[string]interface{}{
