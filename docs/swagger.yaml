@@ -1175,10 +1175,6 @@ paths:
           description: OK
           schema:
             type: string
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/server.APIError'
         "500":
           description: Internal Server Error
           schema:
@@ -1240,12 +1236,10 @@ paths:
       - description: Limit
         in: query
         name: limit
-        required: true
         type: integer
       - description: Cursor
         in: query
         name: cursor
-        required: true
         type: integer
       produces:
       - application/json
@@ -1258,6 +1252,10 @@ paths:
                 $ref: '#/definitions/models.User'
               type: array
             type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.APIError'
         "500":
           description: Internal Server Error
           schema:
@@ -1386,6 +1384,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/server.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.APIError'
         "500":
           description: Internal Server Error
           schema:
@@ -1415,10 +1417,6 @@ paths:
             items:
               $ref: '#/definitions/models.Session'
             type: array
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/server.APIError'
         "500":
           description: Internal Server Error
           schema:
