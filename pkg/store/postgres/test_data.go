@@ -193,6 +193,9 @@ func createTestDocumentTables(ctx context.Context, db *bun.DB) error {
 	// Create tables for each DocumentCollection
 	for _, table := range results {
 		err = createDocumentTable(ctx, db, table.TableName, table.EmbeddingDimensions)
+		if err != nil {
+			return fmt.Errorf("failed to create table %s: %w", table.TableName, err)
+		}
 	}
 
 	return nil
