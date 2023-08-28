@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/store"
@@ -56,7 +57,7 @@ func getSummary(ctx context.Context, db *bun.DB, sessionID string) (*models.Summ
 		Limit(1).
 		Scan(ctx)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return &models.Summary{}, store.NewStorageError("failed to get session", err)

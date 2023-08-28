@@ -5,18 +5,16 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/jwtauth/v5"
-
 	"github.com/getzep/zep/pkg/auth"
 
 	httpLogger "github.com/chi-middleware/logrus-logger"
 	"github.com/getzep/zep/pkg/models"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/jwtauth/v5"
 	"github.com/spf13/viper"
 )
-
-// http-swagger middleware
 
 const ReadHeaderTimeout = 5 * time.Second
 
@@ -31,16 +29,16 @@ func Create(appState *models.AppState) *http.Server {
 	}
 }
 
-// @title						Zep REST API
-// @version					0.x
-// @license.name				Apache 2.0
-// @license.url				http://www.apache.org/licenses/LICENSE-2.0.html
-// @BasePath					/api/v1
-// @schemes					http https
-// @securityDefinitions.apikey	Bearer
-// @in							header
-// @name						Authorization
-// @description				Type "Bearer" followed by a space and JWT token.
+//	@title						Zep REST-like API
+//	@version					0.x
+//	@license.name				Apache 2.0
+//	@license.url				http://www.apache.org/licenses/LICENSE-2.0.html
+//	@BasePath					/api/v1
+//	@schemes					http https
+//	@securityDefinitions.apikey	Bearer
+//	@in							header
+//	@name						Authorization
+//	@description				Type "Bearer" followed by a space and JWT token.
 func setupRouter(appState *models.AppState) *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(httpLogger.Logger("router", log))
@@ -58,9 +56,11 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 
 	router.Route("/api/v1", func(r chi.Router) {
 		// Memory session-related routes
+		r.Get("/sessions", GetSessionListHandler(appState))
+		r.Post("/sessions", CreateSessionHandler(appState))
 		r.Route("/sessions/{sessionId}", func(r chi.Router) {
 			r.Get("/", GetSessionHandler(appState))
-			r.Post("/", PostSessionHandler(appState))
+			r.Patch("/", UpdateSessionHandler(appState))
 			// Memory-related routes
 			r.Route("/memory", func(r chi.Router) {
 				r.Get("/", GetMemoryHandler(appState))
@@ -71,6 +71,15 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 			r.Route("/search", func(r chi.Router) {
 				r.Post("/", SearchMemoryHandler(appState))
 			})
+		})
+		// User-related routes
+		r.Post("/user", CreateUserHandler(appState))
+		r.Get("/user", ListAllUsersHandler(appState))
+		r.Route("/user/{userId}", func(r chi.Router) {
+			r.Get("/", GetUserHandler(appState))
+			r.Patch("/", UpdateUserHandler(appState))
+			r.Delete("/", DeleteUserHandler(appState))
+			r.Get("/sessions", ListUserSessionsHandler(appState))
 		})
 		// Document collection-related routes
 		r.Get("/collection", GetCollectionListHandler(appState))

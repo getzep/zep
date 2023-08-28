@@ -58,8 +58,8 @@ type MemoryStore[T any] interface {
 		sessionID string,
 		query *MemorySearchPayload,
 		limit int) ([]MemorySearchResult, error)
-	// DeleteSession deletes all records for a given sessionID. This is a soft delete. Hard deletes will be handled
-	// by a separate process or left to the implementation.
+	// DeleteSession deletes all records for a given sessionID. This is a soft delete. Related Messages
+	// and MessageEmbeddings are also soft deleted.
 	DeleteSession(ctx context.Context, sessionID string) error
 	// GetSession retrieves a Session for a given sessionID.
 	GetSession(
@@ -67,12 +67,25 @@ type MemoryStore[T any] interface {
 		appState *AppState,
 		sessionID string,
 	) (*Session, error)
-	// PutSession creates or updates a Session for a given sessionID.
-	PutSession(
+	// CreateSession creates a new Session for a given sessionID.
+	CreateSession(
 		ctx context.Context,
 		appState *AppState,
-		session *Session,
-	) error
+		session *CreateSessionRequest,
+	) (*Session, error)
+	// UpdateSession updates a Session for a given sessionID. Omly the metadata is updated.
+	UpdateSession(
+		ctx context.Context,
+		appState *AppState,
+		session *UpdateSessionRequest,
+	) (*Session, error)
+	// ListSessions returns a list of all Sessions.
+	ListSessions(
+		ctx context.Context,
+		appState *AppState,
+		cursor int64,
+		limit int,
+	) ([]*Session, error)
 	OnStart(ctx context.Context, appState *AppState) error
 	// Attach is used by Extractors to register themselves with the MemoryStore. This allows the MemoryStore to notify
 	// the Extractors when new occur.

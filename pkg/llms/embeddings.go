@@ -47,6 +47,5 @@ func GetEmbeddingModel(
 		}, nil
 	default:
 		return nil, errors.New("invalid document type")
-
 	}
 }

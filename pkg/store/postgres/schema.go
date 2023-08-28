@@ -11,6 +11,7 @@ import (
 	"github.com/uptrace/bun/driver/pgdriver"
 
 	"github.com/getzep/zep/pkg/llms"
+	"github.com/getzep/zep/pkg/store/postgres/migrations"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"github.com/getzep/zep/pkg/models"
@@ -21,14 +22,18 @@ import (
 )
 
 type SessionSchema struct {
-	bun.BaseModel `bun:"table:session,alias:s"`
+	bun.BaseModel `bun:"table:session,alias:s" yaml:"-"`
 
-	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
-	SessionID string                 `bun:",unique,notnull"`
-	CreatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
-	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
-	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
-	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
+	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"                     yaml:"uuid,omitempty"`
+	ID        int64                  `bun:",autoincrement"                                              yaml:"id,omitempty"` // used as a cursor for pagination
+	SessionID string                 `bun:",unique,notnull"                                             yaml:"session_id,omitempty"`
+	CreatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp" yaml:"created_at,omitempty"`
+	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp" yaml:"updated_at,omitempty"`
+	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"                       yaml:"deleted_at,omitempty"`
+	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"                         yaml:"metadata,omitempty"`
+	// UserUUID must be pointer type in order to be nullable
+	UserID *string     `bun:","                                                           yaml:"user_id,omitempty"`
+	User   *UserSchema `bun:"rel:belongs-to,join:user_id=user_id,on_delete:cascade"       yaml:"-"`
 }
 
 // BeforeCreateTable is a marker method to ensure uniform interface across all table models - used in table creation iterator
@@ -66,7 +71,6 @@ func (s *MessageStoreSchema) BeforeCreateTable(
 }
 
 // MessageVectorStoreSchema stores the embeddings for a message.
-// TODO: Vector dims from config
 type MessageVectorStoreSchema struct {
 	bun.BaseModel `bun:"table:message_embedding,alias:me"`
 
@@ -90,7 +94,7 @@ func (s *MessageVectorStoreSchema) BeforeCreateTable(
 }
 
 type SummaryStoreSchema struct {
-	bun.BaseModel `bun:"table:summary,alias:su"`
+	bun.BaseModel `bun:"table:summary,alias:su" ,yaml:"-"`
 
 	UUID             uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
 	CreatedAt        time.Time              `bun:"type:timestamptz,notnull,default:current_timestamp"`
@@ -114,8 +118,8 @@ func (s *SummaryStoreSchema) BeforeCreateTable(
 
 // DocumentCollectionSchema represents the schema for the DocumentCollectionDAO table.
 type DocumentCollectionSchema struct {
-	bun.BaseModel `bun:"table:document_collection,alias:dc"`
-	models.DocumentCollection
+	bun.BaseModel             `bun:"table:document_collection,alias:dc" yaml:"-"`
+	models.DocumentCollection `                                         yaml:",inline"`
 }
 
 func (s *DocumentCollectionSchema) BeforeCreateTable(
@@ -133,11 +137,35 @@ type DocumentSchemaTemplate struct {
 	models.DocumentBase
 }
 
+type UserSchema struct {
+	bun.BaseModel `bun:"table:users,alias:u" yaml:"-"`
+
+	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"             yaml:"uuid,omitempty"`
+	ID        int64                  `bun:",autoincrement"                                      yaml:"id,omitempty"` // used as a cursor for pagination
+	CreatedAt time.Time              `bun:"type:timestamptz,notnull,default:current_timestamp"  yaml:"created_at,omitempty"`
+	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp" yaml:"updated_at,omitempty"`
+	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"               yaml:"deleted_at,omitempty"`
+	UserID    string                 `bun:",unique,notnull"                                     yaml:"user_id,omitempty"`
+	Email     string                 `bun:","                                                   yaml:"email,omitempty"`
+	FirstName string                 `bun:","                                                   yaml:"first_name,omitempty"`
+	LastName  string                 `bun:","                                                   yaml:"last_name,omitempty"`
+	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"                 yaml:"metadata,omitempty"`
+}
+
+// BeforeCreateTable is a marker method to ensure uniform interface across all table models - used in table creation iterator
+func (u *UserSchema) BeforeCreateTable(
+	_ context.Context,
+	_ *bun.CreateTableQuery,
+) error {
+	return nil
+}
+
 // Create session_id indexes after table creation
 var _ bun.AfterCreateTableHook = (*SessionSchema)(nil)
 var _ bun.AfterCreateTableHook = (*MessageStoreSchema)(nil)
 var _ bun.AfterCreateTableHook = (*MessageVectorStoreSchema)(nil)
 var _ bun.AfterCreateTableHook = (*SummaryStoreSchema)(nil)
+var _ bun.AfterCreateTableHook = (*UserSchema)(nil)
 
 // Create Collection Name index after table creation
 var _ bun.AfterCreateTableHook = (*DocumentCollectionSchema)(nil)
@@ -151,7 +179,20 @@ func (*SessionSchema) AfterCreateTable(
 		Index("session_session_id_idx").
 		Column("session_id").
 		Exec(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+
+	_, err = query.DB().NewCreateIndex().
+		Model((*SessionSchema)(nil)).
+		Index("session_user_id_idx").
+		Column("user_id").
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (*MessageStoreSchema) AfterCreateTable(
@@ -208,6 +249,31 @@ func (*DocumentCollectionSchema) AfterCreateTable(
 	return err
 }
 
+func (*UserSchema) AfterCreateTable(
+	ctx context.Context,
+	query *bun.CreateTableQuery,
+) error {
+	_, err := query.DB().NewCreateIndex().
+		Model((*UserSchema)(nil)).
+		Index("user_user_id_idx").
+		Column("user_id").
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = query.DB().NewCreateIndex().
+		Model((*UserSchema)(nil)).
+		Index("user_email_idx").
+		Column("email").
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 var messageTableList = []bun.BeforeCreateTableHook{
 	&MessageVectorStoreSchema{},
 	&SummaryStoreSchema{},
@@ -251,8 +317,8 @@ func createDocumentTable(
 	return nil
 }
 
-// ensurePostgresSetup creates the db schema if it does not exist.
-func ensurePostgresSetup(
+// CreateSchema creates the db schema if it does not exist.
+func CreateSchema(
 	ctx context.Context,
 	appState *models.AppState,
 	db *bun.DB,
@@ -263,7 +329,11 @@ func ensurePostgresSetup(
 	}
 
 	// Create new tableList slice and append DocumentCollectionSchema to it
-	tableList := append(messageTableList, &DocumentCollectionSchema{}) //nolint:gocritic
+	tableList := append( //nolint:gocritic
+		messageTableList,
+		&UserSchema{},
+		&DocumentCollectionSchema{},
+	)
 	// iterate through messageTableList in reverse order to create tables with foreign keys first
 	for i := len(tableList) - 1; i >= 0; i-- {
 		schema := tableList[i]
@@ -291,6 +361,11 @@ func ensurePostgresSetup(
 		if err != nil {
 			return fmt.Errorf("error migrating message embedding dimensions: %w", err)
 		}
+	}
+
+	// apply migrations
+	if err := migrations.Migrate(ctx, db); err != nil {
+		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
 	return nil

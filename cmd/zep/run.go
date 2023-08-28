@@ -83,13 +83,14 @@ func NewAppState(cfg *config.Config) *models.AppState {
 
 // handleCLIOptions handles CLI options that don't require the server to run
 func handleCLIOptions(cfg *config.Config) {
-	if showVersion {
+	switch {
+	case showVersion:
 		fmt.Println(config.VersionString)
 		os.Exit(0)
-	} else if dumpConfig {
+	case dumpConfig:
 		fmt.Println(dumpConfigToJSON(cfg))
 		os.Exit(0)
-	} else if generateKey {
+	case generateKey:
 		fmt.Println(auth.GenerateJWT(cfg))
 		os.Exit(0)
 	}
@@ -148,8 +149,12 @@ func initializeStores(appState *models.AppState) {
 		}
 		log.Debug("embeddingProcessor started")
 
+		userStore := postgres.NewUserStoreDAO(db)
+		log.Debug("userStore created")
+
 		appState.MemoryStore = memoryStore
 		appState.DocumentStore = documentStore
+		appState.UserStore = userStore
 	default:
 		log.Fatal(
 			fmt.Sprintf(

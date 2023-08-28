@@ -1,16 +1,13 @@
 package server
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/getzep/zep/internal"
 	"github.com/getzep/zep/pkg/models"
+	"github.com/go-chi/chi/v5"
 )
 
 var log = internal.GetLogger()
@@ -29,11 +26,12 @@ const OKResponse = "OK"
 //	@Success		200			{object}	[]models.Memory
 //	@Failure		404			{object}	APIError	"Not Found"
 //	@Failure		500			{object}	APIError	"Internal Server Error"
+//	@Security		Bearer
 //	@Router			/api/v1/sessions/{sessionId}/memory [get]
 func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
-		lastN, err := extractQueryStringValueToInt(r, "lastn")
+		lastN, err := extractQueryStringValueToInt[int](r, "lastn")
 		if err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
@@ -68,6 +66,7 @@ func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 //	@Success		200			{object}	models.Session
 //	@Failure		404			{object}	APIError	"Not Found"
 //	@Failure		500			{object}	APIError	"Internal Server Error"
+//	@Security		Bearer
 //	@Router			/api/v1/sessions/{sessionId} [get]
 func GetSessionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -75,11 +74,11 @@ func GetSessionHandler(appState *models.AppState) http.HandlerFunc {
 
 		session, err := appState.MemoryStore.GetSession(r.Context(), appState, sessionID)
 		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+				return
+			}
 			renderError(w, err, http.StatusInternalServerError)
-			return
-		}
-		if session == nil {
-			renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 			return
 		}
 
@@ -90,44 +89,120 @@ func GetSessionHandler(appState *models.AppState) http.HandlerFunc {
 	}
 }
 
-// PostSessionHandler godoc
+// CreateSessionHandler godoc
 //
 //	@Summary		Add a session
 //	@Description	add session by id
 //	@Tags			session
 //	@Accept			json
 //	@Produce		json
-//	@Param			sessionId	path		string			true	"Session ID"
-//	@Param			session		body		models.Session	true	"Session"
-//	@Success		200			{string}	string			"OK"
-//	@Failure		400			{object}	APIError		"Bad Request"
-//	@failure		500			{object}	APIError		"Internal Server Error"
-//	@Router			/api/v1/sessions/{sessionId} [post]
-func PostSessionHandler(appState *models.AppState) http.HandlerFunc {
+//	@Param			session	body		models.CreateSessionRequest	true	"Session"
+//	@Success		201		{object}	models.Session
+//	@Failure		400		{object}	APIError	"Bad Request"
+//	@failure		500		{object}	APIError	"Internal Server Error"
+//	@Security		Bearer
+//	@Router			/api/v1/sessions [post]
+func CreateSessionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sessionID := chi.URLParam(r, "sessionId")
-		var session models.Session
+		var session models.CreateSessionRequest
 		if err := decodeJSON(r, &session); err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
 		}
-		// If session ID is not provided, use the one from the URL
-		// If session ID is provided, make sure it matches the one from the URL
-		if session.SessionID != "" && session.SessionID != sessionID {
-			renderError(
-				w,
-				fmt.Errorf("session ID mismatch: %s != %s", session.SessionID, sessionID),
-				http.StatusBadRequest,
-			)
+
+		newSession, err := appState.MemoryStore.CreateSession(r.Context(), appState, &session)
+		if err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		if err := encodeJSON(w, newSession); err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+// UpdateSessionHandler godoc
+//
+//	@Summary		Add a session
+//	@Description	add session by id
+//	@Tags			session
+//	@Accept			json
+//	@Produce		json
+//	@Param			sessionId	path		string						true	"Session ID"
+//	@Param			session		body		models.UpdateSessionRequest	true	"Session"
+//	@Success		200			{object}	models.Session
+//	@Failure		400			{object}	APIError	"Bad Request"
+//	@Failure		404			{object}	APIError	"Not Found"
+//	@failure		500			{object}	APIError	"Internal Server Error"
+//	@Security		Bearer
+//	@Router			/api/v1/sessions/{sessionId} [patch]
+func UpdateSessionHandler(appState *models.AppState) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID := chi.URLParam(r, "sessionId")
+		var session models.UpdateSessionRequest
+		if err := decodeJSON(r, &session); err != nil {
+			renderError(w, err, http.StatusBadRequest)
 			return
 		}
 		session.SessionID = sessionID
 
-		if err := appState.MemoryStore.PutSession(r.Context(), appState, &session); err != nil {
+		updatedSession, err := appState.MemoryStore.UpdateSession(r.Context(), appState, &session)
+		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+				return
+			}
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
-		_, _ = w.Write([]byte(OKResponse))
+		if err := encodeJSON(w, updatedSession); err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+// GetSessionListHandler godoc
+//
+//	@Summary		Returns all sessions
+//	@Description	get all sessions with optional limit and cursor for pagination
+//	@Tags			session
+//	@Accept			json
+//	@Produce		json
+//	@Param			limit	query		integer	false	"Limit the number of results returned"
+//	@Param			cursor	query		int64	false	"Cursor for pagination)"
+//	@Success		200		{array}		[]models.Session
+//	@Failure		400		{object}	APIError	"Bad Request"
+//	@Failure		500		{object}	APIError	"Internal Server Error"
+//
+//	@Security		Bearer
+//
+//	@Router			/api/v1/sessions [get]
+func GetSessionListHandler(appState *models.AppState) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var limit int
+		var err error
+		if limit, err = extractQueryStringValueToInt[int](r, "limit"); err != nil {
+			renderError(w, err, http.StatusBadRequest)
+			return
+		}
+		var cursor int64
+		if cursor, err = extractQueryStringValueToInt[int64](r, "cursor"); err != nil {
+			renderError(w, err, http.StatusBadRequest)
+			return
+		}
+		sessions, err := appState.MemoryStore.ListSessions(r.Context(), appState, cursor, limit)
+		if err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
+		if err := encodeJSON(w, sessions); err != nil {
+			renderError(w, err, http.StatusInternalServerError)
+			return
+		}
 	}
 }
 
@@ -141,8 +216,8 @@ func PostSessionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Param			sessionId		path		string			true	"Session ID"
 //	@Param			memoryMessages	body		models.Memory	true	"Memory messages"
 //	@Success		200				{string}	string			"OK"
-//	@Failure		404				{object}	APIError		"Not Found"
 //	@Failure		500				{object}	APIError		"Internal Server Error"
+//	@Security		Bearer
 //	@Router			/api/v1/sessions/{sessionId}/memory [post]
 func PostMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -178,12 +253,17 @@ func PostMemoryHandler(appState *models.AppState) http.HandlerFunc {
 //	@Success		200			{string}	string		"OK"
 //	@Failure		404			{object}	APIError	"Not Found"
 //	@Failure		500			{object}	APIError	"Internal Server Error"
+//	@Security		Bearer
 //	@Router			/api/v1/sessions/{sessionId}/memory [delete]
 func DeleteMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
 
 		if err := appState.MemoryStore.DeleteSession(r.Context(), sessionID); err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+				return
+			}
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
@@ -204,6 +284,7 @@ func DeleteMemoryHandler(appState *models.AppState) http.HandlerFunc {
 //	@Success		200				{object}	[]models.MemorySearchResult
 //	@Failure		404				{object}	APIError	"Not Found"
 //	@Failure		500				{object}	APIError	"Internal Server Error"
+//	@Security		Bearer
 //	@Router			/api/v1/sessions/{sessionId}/search [post]
 func SearchMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -213,7 +294,7 @@ func SearchMemoryHandler(appState *models.AppState) http.HandlerFunc {
 			renderError(w, err, http.StatusBadRequest)
 			return
 		}
-		limit, err := extractQueryStringValueToInt(r, "limit")
+		limit, err := extractQueryStringValueToInt[int](r, "limit")
 		if err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
@@ -238,45 +319,4 @@ func SearchMemoryHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 	}
-}
-
-func encodeJSON(w http.ResponseWriter, data interface{}) error {
-	return json.NewEncoder(w).Encode(data)
-}
-
-func decodeJSON(r *http.Request, data interface{}) error {
-	return json.NewDecoder(r.Body).Decode(&data)
-}
-
-func renderError(w http.ResponseWriter, err error, status int) {
-	if status != http.StatusNotFound {
-		// Don't log not found errors
-		log.Error(err)
-	}
-	if strings.Contains(err.Error(), "is deleted") {
-		status = http.StatusBadRequest
-	}
-	http.Error(w, err.Error(), status)
-}
-
-// extractQueryStringValueToInt extracts a query string value and converts it to an int
-func extractQueryStringValueToInt(
-	r *http.Request,
-	param string,
-) (int, error) {
-	p := r.URL.Query().Get(param)
-	var pInt int
-	if p != "" {
-		var err error
-		pInt, err = strconv.Atoi(p)
-		if err != nil {
-			return 0, err
-		}
-	}
-	return pInt, nil
-}
-
-// APIError represents an error response. Used for swagger documentation.
-type APIError struct {
-	Message string `json:"message"`
 }

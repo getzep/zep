@@ -10,5 +10,6 @@ type AppState struct {
 	LLMClient     ZepLLM
 	MemoryStore   MemoryStore[any]
 	DocumentStore DocumentStore[any]
+	UserStore     UserStore
 	Config        *config.Config
 }

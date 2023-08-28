@@ -11,7 +11,7 @@ func TestEnsurePostgresSchemaSetup(t *testing.T) {
 	CleanDB(t, testDB)
 
 	t.Run("should succeed when all schema setup is successful", func(t *testing.T) {
-		err := ensurePostgresSetup(testCtx, appState, testDB)
+		err := CreateSchema(testCtx, appState, testDB)
 		assert.NoError(t, err)
 
 		checkForTable(t, testDB, &SessionSchema{})
@@ -20,7 +20,7 @@ func TestEnsurePostgresSchemaSetup(t *testing.T) {
 		checkForTable(t, testDB, &MessageVectorStoreSchema{})
 	})
 	t.Run("should not fail on second run", func(t *testing.T) {
-		err := ensurePostgresSetup(testCtx, appState, testDB)
+		err := CreateSchema(testCtx, appState, testDB)
 		assert.NoError(t, err)
 	})
 }

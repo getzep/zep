@@ -68,7 +68,7 @@ func setup() {
 	appState.MemoryStore = memoryStore
 	extractors.Initialize(appState)
 
-	err = ensurePostgresSetup(testCtx, appState, testDB)
+	err = CreateSchema(testCtx, appState, testDB)
 	if err != nil {
 		panic(err)
 	}
@@ -127,15 +127,15 @@ func TestPutMessages(t *testing.T) {
 	})
 
 	t.Run(
-		"upsert messages with deleted session should error",
+		"upsert messages with deleted session should not error",
 		func(t *testing.T) {
 			sessionID := createSession(t)
 
 			insertedMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 			assert.NoError(t, err, "putMessages should not return an error")
 
-			// Delete using deleteSession
-			err = deleteSession(testCtx, testDB, sessionID)
+			sessionStore := NewSessionDAO(testDB)
+			err = sessionStore.Delete(testCtx, sessionID)
 			assert.NoError(t, err, "deleteSession should not return an error")
 
 			messagesOnceDeleted, err := getMessages(testCtx, testDB, sessionID, 12, nil, 0)
@@ -146,12 +146,7 @@ func TestPutMessages(t *testing.T) {
 
 			// Call putMessages function to upsert the messages
 			_, err = putMessages(testCtx, testDB, sessionID, insertedMessages)
-			assert.ErrorContains(
-				t,
-				err,
-				"deleted",
-				"putMessages should return SessionDeletedError",
-			)
+			assert.NoError(t, err, "putMessages should not return an error")
 		},
 	)
 }
@@ -160,7 +155,11 @@ func createSession(t *testing.T) string {
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
-	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{}, false)
+	sessionManager := NewSessionDAO(testDB)
+	session := &models.CreateSessionRequest{
+		SessionID: sessionID,
+	}
+	_, err = sessionManager.Create(testCtx, session)
 	assert.NoError(t, err, "putSession should not return an error")
 
 	return sessionID
@@ -335,11 +334,7 @@ func equivalentMaps(expected, got map[string]interface{}) bool {
 }
 
 func TestPutSummary(t *testing.T) {
-	sessionID, err := testutils.GenerateRandomSessionID(16)
-	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
-
-	_, err = putSession(testCtx, testDB, sessionID, map[string]interface{}{}, true)
-	assert.NoError(t, err, "putSession should not return an error")
+	sessionID := createSession(t)
 
 	messages := []models.Message{
 		{
@@ -428,8 +423,15 @@ func TestGetSummary(t *testing.T) {
 	metadata := map[string]interface{}{
 		"key": "value",
 	}
-	_, err = putSession(testCtx, testDB, sessionID, metadata, true)
-	assert.NoError(t, err)
+
+	session := &models.CreateSessionRequest{
+		SessionID: sessionID,
+		Metadata:  metadata,
+	}
+
+	sessionManager := NewSessionDAO(testDB)
+	_, err = sessionManager.Create(testCtx, session)
+	assert.NoError(t, err, "Create should not return an error")
 
 	summary := models.Summary{
 		Content: "Test content",
@@ -508,7 +510,7 @@ func TestGetSummary(t *testing.T) {
 
 func TestPutEmbeddingsLocal(t *testing.T) {
 	CleanDB(t, testDB)
-	err := ensurePostgresSetup(testCtx, appState, testDB)
+	err := CreateSchema(testCtx, appState, testDB)
 	assert.NoError(t, err)
 
 	sessionID, err := testutils.GenerateRandomSessionID(16)

@@ -23,3 +23,4 @@ out/
 # Go workspace file
 go.work
 .idea
+.vscode

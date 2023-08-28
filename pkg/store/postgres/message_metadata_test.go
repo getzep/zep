@@ -12,8 +12,14 @@ import (
 func TestPutUnPrivilegedMetadata(t *testing.T) {
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
-	_, err = putSession(testCtx, testDB, sessionID, nil, true)
-	assert.NoError(t, err, "putSession should not return an error")
+
+	session := &models.CreateSessionRequest{
+		SessionID: sessionID,
+	}
+
+	sessionStore := NewSessionDAO(testDB)
+	_, err = sessionStore.Create(testCtx, session)
+	assert.NoError(t, err, "sessionStore.create should not return an error")
 
 	testMessages := []MessageStoreSchema{
 		{
@@ -108,8 +114,14 @@ func TestPutUnPrivilegedMetadata(t *testing.T) {
 func TestPutMetadata(t *testing.T) {
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
-	_, err = putSession(testCtx, testDB, sessionID, nil, true)
-	assert.NoError(t, err, "putSession should not return an error")
+
+	session := &models.CreateSessionRequest{
+		SessionID: sessionID,
+	}
+
+	sessionStore := NewSessionDAO(testDB)
+	_, err = sessionStore.Create(testCtx, session)
+	assert.NoError(t, err, "sessionStore.Create should not return an error")
 
 	testMessages := []MessageStoreSchema{
 		{

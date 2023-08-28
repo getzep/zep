@@ -14,6 +14,8 @@ import (
 // TODO: Unit test documentSearchOperation
 // TODO: Test non-happy paths
 
+// End to end with local embedding
+// won't pass if NLP service is running via docker-compose
 func TestDocumentSearchWithIndexEndToEnd(t *testing.T) {
 	gofakeit.Seed(0)
 	ctx, done := context.WithCancel(testCtx)

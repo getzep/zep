@@ -9,27 +9,27 @@ import (
 /* Collection  Models */
 
 type DocumentCollection struct {
-	UUID                uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
-	CreatedAt           time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
-	UpdatedAt           time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
-	Name                string                 `bun:",notnull,unique"`
-	Description         string                 `bun:",notnull"`
-	Metadata            map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
-	TableName           string                 `bun:",notnull"`
-	EmbeddingModelName  string                 `bun:",notnull"`
-	EmbeddingDimensions int                    `bun:",notnull"`
-	IsAutoEmbedded      bool                   `bun:",notnull"` // Is the collection automatically embedded by Zep?
-	DistanceFunction    string                 `bun:",notnull"` // Distance function to use for index
-	IsNormalized        bool                   `bun:",notnull"` // Are the embeddings normalized?
-	IsIndexed           bool                   `bun:",notnull"` // Has an index been created on the collection table?
-	ListCount           int                    `bun:",notnull"` // Number of lists in the collection index
-	ProbeCount          int                    `bun:",notnull"` // Number of probes to use when searching the index
-	*DocumentCollectionCounts
+	UUID                      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"                     yaml:"uuid"`
+	CreatedAt                 time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp" yaml:"created_at"`
+	UpdatedAt                 time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"         yaml:"updated_at"`
+	Name                      string                 `bun:",notnull,unique"                                             yaml:"name"`
+	Description               string                 `bun:",notnull"                                                    yaml:"description"`
+	Metadata                  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"                         yaml:"metadata"`
+	TableName                 string                 `bun:",notnull"                                                    yaml:"table_name"`
+	EmbeddingModelName        string                 `bun:",notnull"                                                    yaml:"embedding_model_name"`
+	EmbeddingDimensions       int                    `bun:",notnull"                                                    yaml:"embedding_dimensions"`
+	IsAutoEmbedded            bool                   `bun:",notnull"                                                    yaml:"is_auto_embedded"`  // Is the collection automatically embedded by Zep?
+	DistanceFunction          string                 `bun:",notnull"                                                    yaml:"distance_function"` // Distance function to use for index
+	IsNormalized              bool                   `bun:",notnull"                                                    yaml:"is_normalized"`     // Are the embeddings normalized?
+	IsIndexed                 bool                   `bun:",notnull"                                                    yaml:"is_indexed"`        // Has an index been created on the collection table?
+	ListCount                 int                    `bun:",notnull"                                                    yaml:"list_count"`        // Number of lists in the collection index
+	ProbeCount                int                    `bun:",notnull"                                                    yaml:"probe_count"`       // Number of probes to use when searching the index
+	*DocumentCollectionCounts ` yaml:"document_collection_counts,inline"`
 }
 
 type DocumentCollectionCounts struct {
-	DocumentCount         int `bun:"document_count"          json:"document_count"`          // Number of documents in the collection
-	DocumentEmbeddedCount int `bun:"document_embedded_count" json:"document_embedded_count"` // Number of documents with embeddings
+	DocumentCount         int `bun:"document_count"          json:"document_count"          yaml:"document_count,omitempty"`          // Number of documents in the collection
+	DocumentEmbeddedCount int `bun:"document_embedded_count" json:"document_embedded_count" yaml:"document_embedded_count,omitempty"` // Number of documents with embeddings
 }
 
 type CreateDocumentCollectionRequest struct {
