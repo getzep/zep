@@ -138,6 +138,12 @@ func (zllm *ZepOpenAILLM) configureClient(cfg *config.Config) ([]openai.Option, 
 			openai.WithAPIType(openai.APITypeAzure),
 			openai.WithBaseURL(cfg.LLM.AzureOpenAIEndpoint),
 		)
+		if cfg.LLM.AzureOpenAIModel.EmbeddingDeployment != "" {
+			options = append(
+				options,
+				openai.WithEmbeddingModel(cfg.LLM.AzureOpenAIModel.EmbeddingDeployment),
+			)
+		}
 	case cfg.LLM.OpenAIEndpoint != "":
 		// If an alternate OpenAI-compatible endpoint URL is set, use this as the base URL for requests
 		options = append(

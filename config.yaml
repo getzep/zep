@@ -6,6 +6,15 @@ llm:
   ## OpenAI-specific settings
   # Only used for Azure OpenAI API
   azure_openai_endpoint:
+  # for Azure OpenAI API deployment, the model may be deployed with custom deployment names
+  # set the deployment names if you encounter in logs HTTP 404 errors:
+  #   "The API deployment for this resource does not exist."
+  azure_openai:
+  # llm.model name is used as deployment name as reasonable default if not set
+  # assuming base model is deployed with deployment name matching model name
+  #   llm_deployment: "gpt-3.5-turbo-customname"
+  # embeddings deployment is required when Zep is configured to use OpenAI embeddings
+  #   embedding_deployment: "text-embedding-ada-002-customname"
   # Use only with an alternate OpenAI-compatible API endpoint
   openai_endpoint:
   openai_org_id:
