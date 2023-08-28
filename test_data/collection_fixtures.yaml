@@ -1,0 +1,1602 @@
+- model: DocumentCollectionSchema
+  rows:
+    - uuid: 670922db-56ee-456c-970b-a97121de82b5
+      created_at: 2023-08-19T18:48:49.523760142Z
+      updated_at: 2023-08-19T18:48:49.523760142Z
+      name: panel413901935558
+      description: Oedipus the King
+      metadata:
+        key: slavery
+      table_name: docstore_panel413901935558_1536
+      embedding_model_name: from
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 8
+      probe_count: 74
+    - uuid: 7f03f108-cec6-45b6-8b4d-e0f60c24a59a
+      created_at: 2023-08-25T22:48:07.124150776Z
+      updated_at: 2023-08-25T22:48:07.124150776Z
+      name: interface735341875166
+      description: Blindness
+      metadata:
+        key: for
+      table_name: docstore_interface735341875166_768
+      embedding_model_name: turn
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 93
+      probe_count: 29
+    - uuid: 25476b1e-a483-4da3-a275-7ea9029bffbc
+      created_at: 2023-08-24T07:24:54.658529732Z
+      updated_at: 2023-08-24T07:24:54.658529732Z
+      name: monitor996989426376
+      description: Zorba the Greek
+      metadata:
+        key: shall
+      table_name: docstore_monitor996989426376_384
+      embedding_model_name: their
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 18
+      probe_count: 100
+    - uuid: bb2b5ccd-90f4-4430-b238-087245e42699
+      created_at: 2023-08-17T06:39:46.314433035Z
+      updated_at: 2023-08-17T06:39:46.314433035Z
+      name: interface884718039774
+      description: One Hundred Years of Solitude
+      metadata:
+        key: fly
+      table_name: docstore_interface884718039774_1536
+      embedding_model_name: then
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 24
+      probe_count: 34
+    - uuid: e9bb7230-cbf8-4bd0-ad8f-6213cf8f5b12
+      created_at: 2023-08-27T18:38:52.677624151Z
+      updated_at: 2023-08-27T18:38:52.677624151Z
+      name: protocol846855671173
+      description: Harry potter and the sorcerer's stone
+      metadata:
+        key: train
+      table_name: docstore_protocol846855671173_768
+      embedding_model_name: he
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 78
+      probe_count: 12
+    - uuid: 0c99ecde-b982-4fb9-8bcc-dcca7e518c57
+      created_at: 2023-08-16T04:33:56.829705695Z
+      updated_at: 2023-08-16T04:33:56.829705695Z
+      name: system523559472023
+      description: Anna Karenina
+      metadata:
+        key: furthermore
+      table_name: docstore_system523559472023_768
+      embedding_model_name: somebody
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 86
+      probe_count: 59
+    - uuid: 6a089d92-0b31-4f93-a571-2e1bfc0d3524
+      created_at: 2023-08-18T21:03:58.392635878Z
+      updated_at: 2023-08-18T21:03:58.392635878Z
+      name: driver443141430852
+      description: Gulliver's Travels
+      metadata:
+        key: why
+      table_name: docstore_driver443141430852_384
+      embedding_model_name: paralyze
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 60
+      probe_count: 33
+    - uuid: 91c35ce1-c576-4d83-b677-3974b7f8d202
+      created_at: 2023-08-19T18:52:13.208158513Z
+      updated_at: 2023-08-19T18:52:13.208158513Z
+      name: feed399478133153
+      description: Metamorphoses
+      metadata:
+        key: indeed
+      table_name: docstore_feed399478133153_384
+      embedding_model_name: happy
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 76
+      probe_count: 80
+    - uuid: f877d481-65d1-4280-9f68-28611bd0eb13
+      created_at: 2023-08-27T11:38:15.960531464Z
+      updated_at: 2023-08-27T11:38:15.960531464Z
+      name: feed390715365701
+      description: Don Quijote De La Mancha
+      metadata:
+        key: a
+      table_name: docstore_feed390715365701_384
+      embedding_model_name: clarity
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 43
+      probe_count: 70
+    - uuid: cf5dbdaf-7189-460a-aec7-c8eb23d6807c
+      created_at: 2023-08-18T15:00:31.677191884Z
+      updated_at: 2023-08-18T15:00:31.677191884Z
+      name: microchip127461682860
+      description: War and Peace
+      metadata:
+        key: kindly
+      table_name: docstore_microchip127461682860_384
+      embedding_model_name: including
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 82
+      probe_count: 86
+    - uuid: fe79a25b-c53c-4e81-a2a7-9f8c586a2ac8
+      created_at: 2023-08-22T06:15:22.15701084Z
+      updated_at: 2023-08-22T06:15:22.15701084Z
+      name: alarm899341841135
+      description: Wuthering Heights
+      metadata:
+        key: indoors
+      table_name: docstore_alarm899341841135_1536
+      embedding_model_name: man
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 11
+      probe_count: 10
+    - uuid: 53e4bc9b-4c7e-4224-afe5-8eedd329c563
+      created_at: 2023-08-18T19:32:07.085721964Z
+      updated_at: 2023-08-18T19:32:07.085721964Z
+      name: transmitter534853060039
+      description: Fairy tales
+      metadata:
+        key: hundred
+      table_name: docstore_transmitter534853060039_1536
+      embedding_model_name: between
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 39
+      probe_count: 55
+    - uuid: 6cc418ce-16d8-4fac-bd5c-fdacc1d5d541
+      created_at: 2023-08-20T02:56:02.006557554Z
+      updated_at: 2023-08-20T02:56:02.006557554Z
+      name: firewall379528625998
+      description: Romeo & Juliet
+      metadata:
+        key: bale
+      table_name: docstore_firewall379528625998_768
+      embedding_model_name: Turkishish
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 8
+      probe_count: 12
+    - uuid: cf8065e7-1c94-4bfd-9a90-ef43541587b5
+      created_at: 2023-08-17T23:21:17.157880687Z
+      updated_at: 2023-08-17T23:21:17.157880687Z
+      name: firewall561055170097
+      description: Faust
+      metadata:
+        key: next
+      table_name: docstore_firewall561055170097_1536
+      embedding_model_name: secondly
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 56
+      probe_count: 71
+    - uuid: 994302ea-f223-4555-905d-8b2f683dc667
+      created_at: 2023-08-14T16:55:26.491451112Z
+      updated_at: 2023-08-14T16:55:26.491451112Z
+      name: program228733972167
+      description: Zorba the Greek
+      metadata:
+        key: anywhere
+      table_name: docstore_program228733972167_768
+      embedding_model_name: quite
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 85
+      probe_count: 7
+    - uuid: 13f06609-6af3-46fd-8447-e39105623f95
+      created_at: 2023-08-27T21:18:30.400587338Z
+      updated_at: 2023-08-27T21:18:30.400587338Z
+      name: system845652066175
+      description: Crime and Punishment
+      metadata:
+        key: other
+      table_name: docstore_system845652066175_1536
+      embedding_model_name: to
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 86
+      probe_count: 82
+    - uuid: af47f8c5-eda1-434e-9949-ebdef9ca676f
+      created_at: 2023-08-15T12:29:12.38197373Z
+      updated_at: 2023-08-15T12:29:12.38197373Z
+      name: program665661542536
+      description: Blindness
+      metadata:
+        key: i.e.
+      table_name: docstore_program665661542536_768
+      embedding_model_name: was
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 55
+      probe_count: 56
+    - uuid: 26cf18ef-c9fb-4d8d-b33a-aa5f2eb0cf97
+      created_at: 2023-08-27T08:44:33.257981305Z
+      updated_at: 2023-08-27T08:44:33.257981305Z
+      name: bandwidth105980630747
+      description: One Hundred Years of Solitude
+      metadata:
+        key: German
+      table_name: docstore_bandwidth105980630747_384
+      embedding_model_name: well
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 63
+      probe_count: 90
+    - uuid: 2e52b788-2edb-4775-b84a-3469c3510e13
+      created_at: 2023-08-14T23:49:26.132297447Z
+      updated_at: 2023-08-14T23:49:26.132297447Z
+      name: sensor489275159920
+      description: The Idiot
+      metadata:
+        key: repel
+      table_name: docstore_sensor489275159920_768
+      embedding_model_name: string
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 89
+      probe_count: 78
+    - uuid: 64d0970f-1531-4b10-b780-15045632c44c
+      created_at: 2023-08-18T06:59:21.777655999Z
+      updated_at: 2023-08-18T06:59:21.777655999Z
+      name: firewall194180389940
+      description: Nineteen Eighty-Four
+      metadata:
+        key: single
+      table_name: docstore_firewall194180389940_1536
+      embedding_model_name: his
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 6
+      probe_count: 65
+    - uuid: 57e9fc8e-db1d-4a6e-afa8-18b5f61dc622
+      created_at: 2023-08-27T20:38:18.964817739Z
+      updated_at: 2023-08-27T20:38:18.964817739Z
+      name: card446479732601
+      description: Hamlet
+      metadata:
+        key: generally
+      table_name: docstore_card446479732601_768
+      embedding_model_name: group
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 58
+      probe_count: 1
+    - uuid: 33a702fa-e870-4b56-a2f2-f4ea0dd39118
+      created_at: 2023-08-16T11:09:31.402147346Z
+      updated_at: 2023-08-16T11:09:31.402147346Z
+      name: panel297607052083
+      description: Madame Bovary
+      metadata:
+        key: moreover
+      table_name: docstore_panel297607052083_1536
+      embedding_model_name: utterly
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 63
+      probe_count: 86
+    - uuid: e3fc0b3a-3f1d-485e-a38b-d1842969ece3
+      created_at: 2023-08-23T00:25:37.630167057Z
+      updated_at: 2023-08-23T00:25:37.630167057Z
+      name: panel489258113538
+      description: Pride and Prejudice
+      metadata:
+        key: can
+      table_name: docstore_panel489258113538_384
+      embedding_model_name: does
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 40
+      probe_count: 48
+    - uuid: dfad3381-839d-4f0d-8cdb-c9b73b6f6506
+      created_at: 2023-08-23T08:52:10.230765778Z
+      updated_at: 2023-08-23T08:52:10.230765778Z
+      name: bus159005554441
+      description: The Golden Notebook
+      metadata:
+        key: mine
+      table_name: docstore_bus159005554441_768
+      embedding_model_name: warmly
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 11
+      probe_count: 37
+    - uuid: 7e4a7aad-5443-4130-8252-af20990657c1
+      created_at: 2023-08-19T02:24:28.550457593Z
+      updated_at: 2023-08-19T02:24:28.550457593Z
+      name: firewall128408640430
+      description: Leaves of Grass
+      metadata:
+        key: cluster
+      table_name: docstore_firewall128408640430_768
+      embedding_model_name: give
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 38
+      probe_count: 64
+    - uuid: 51ae9f5f-d16d-4d72-8a62-7b22fd8c6199
+      created_at: 2023-08-22T12:41:24.490826936Z
+      updated_at: 2023-08-22T12:41:24.490826936Z
+      name: interface406844382425
+      description: Madame Bovary
+      metadata:
+        key: instance
+      table_name: docstore_interface406844382425_1536
+      embedding_model_name: pack
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 60
+      probe_count: 44
+    - uuid: 994f3766-7e5a-4e2d-a35e-e2cba1bab333
+      created_at: 2023-08-15T14:03:58.478217517Z
+      updated_at: 2023-08-15T14:03:58.478217517Z
+      name: program565374725019
+      description: Harry potter and the sorcerer's stone
+      metadata:
+        key: fortnightly
+      table_name: docstore_program565374725019_1536
+      embedding_model_name: recently
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 19
+      probe_count: 30
+    - uuid: b7277374-9cf1-42e0-afb6-e35dc9e094cc
+      created_at: 2023-08-18T03:42:47.306243505Z
+      updated_at: 2023-08-18T03:42:47.306243505Z
+      name: system216409809655
+      description: Leaves of Grass
+      metadata:
+        key: inside
+      table_name: docstore_system216409809655_384
+      embedding_model_name: all
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 9
+      probe_count: 21
+    - uuid: 489a7e18-6ccf-49d1-b05f-42175c06a72d
+      created_at: 2023-08-16T10:59:47.702421444Z
+      updated_at: 2023-08-16T10:59:47.702421444Z
+      name: application685571979243
+      description: Lolita
+      metadata:
+        key: fancy
+      table_name: docstore_application685571979243_768
+      embedding_model_name: mine
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 62
+      probe_count: 7
+    - uuid: fd9a989b-3f97-41cc-8c6a-2bddd68bd150
+      created_at: 2023-08-27T17:44:59.329640616Z
+      updated_at: 2023-08-27T17:44:59.329640616Z
+      name: alarm281012257392
+      description: The Idiot
+      metadata:
+        key: some
+      table_name: docstore_alarm281012257392_768
+      embedding_model_name: fully
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 12
+      probe_count: 92
+    - uuid: 5f6303ca-d5cd-447d-a5dd-c396a4222aac
+      created_at: 2023-08-17T18:51:20.560075477Z
+      updated_at: 2023-08-17T18:51:20.560075477Z
+      name: feed392985013253
+      description: Sherlock Holmes
+      metadata:
+        key: despite
+      table_name: docstore_feed392985013253_1536
+      embedding_model_name: these
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 47
+      probe_count: 43
+    - uuid: 64a3471d-ff75-48a5-8329-ddc1d19c5caf
+      created_at: 2023-08-14T08:34:46.614218902Z
+      updated_at: 2023-08-14T08:34:46.614218902Z
+      name: capacitor564387755705
+      description: Pippi Longstocking
+      metadata:
+        key: grow
+      table_name: docstore_capacitor564387755705_768
+      embedding_model_name: whom
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 52
+      probe_count: 14
+    - uuid: 17504037-bebd-44d8-9d01-166854f65718
+      created_at: 2023-08-19T05:43:21.962263369Z
+      updated_at: 2023-08-19T05:43:21.962263369Z
+      name: port749400875172
+      description: Crime and Punishment
+      metadata:
+        key: then
+      table_name: docstore_port749400875172_1536
+      embedding_model_name: beneath
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 60
+      probe_count: 5
+    - uuid: 7eed3f0f-9557-42e8-aab8-9e6234fd9f8c
+      created_at: 2023-08-20T16:18:27.689183273Z
+      updated_at: 2023-08-20T16:18:27.689183273Z
+      name: protocol983639449911
+      description: Gulliver's Travels
+      metadata:
+        key: "off"
+      table_name: docstore_protocol983639449911_768
+      embedding_model_name: Buddhist
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 6
+      probe_count: 20
+    - uuid: bb7d5014-63ec-4488-969e-b5bf454b1d56
+      created_at: 2023-08-20T15:04:47.123167955Z
+      updated_at: 2023-08-20T15:04:47.123167955Z
+      name: microchip689615584127
+      description: The Idiot
+      metadata:
+        key: place
+      table_name: docstore_microchip689615584127_1536
+      embedding_model_name: lately
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 90
+      probe_count: 85
+    - uuid: 1895daf3-9088-475e-82a9-edbc7965137c
+      created_at: 2023-08-25T00:01:10.061483269Z
+      updated_at: 2023-08-25T00:01:10.061483269Z
+      name: card494335001853
+      description: The Brothers Karamazov
+      metadata:
+        key: fiction
+      table_name: docstore_card494335001853_1536
+      embedding_model_name: peep
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 63
+      probe_count: 46
+    - uuid: 5cf9eb36-ef62-4164-abe5-6ddc75427a49
+      created_at: 2023-08-21T11:44:53.348524189Z
+      updated_at: 2023-08-21T11:44:53.348524189Z
+      name: capacitor127136086789
+      description: King Lear
+      metadata:
+        key: in
+      table_name: docstore_capacitor127136086789_384
+      embedding_model_name: nutrition
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 2
+      probe_count: 82
+    - uuid: 16b1fa46-0087-4a1c-bd7b-92f21fa204ac
+      created_at: 2023-08-25T08:59:44.918791029Z
+      updated_at: 2023-08-25T08:59:44.918791029Z
+      name: capacitor772908800633
+      description: Othello
+      metadata:
+        key: yesterday
+      table_name: docstore_capacitor772908800633_384
+      embedding_model_name: aside
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 73
+      probe_count: 35
+    - uuid: e125b540-242e-40c4-a1b0-78b35ca6da56
+      created_at: 2023-08-16T01:01:26.70012945Z
+      updated_at: 2023-08-16T01:01:26.70012945Z
+      name: pixel899078318121
+      description: King Lear
+      metadata:
+        key: positively
+      table_name: docstore_pixel899078318121_768
+      embedding_model_name: man
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 56
+      probe_count: 49
+    - uuid: de77ac12-90f2-42f4-809e-4ab0fc957f98
+      created_at: 2023-08-26T16:09:02.209204016Z
+      updated_at: 2023-08-26T16:09:02.209204016Z
+      name: transmitter522535086713
+      description: Blindness
+      metadata:
+        key: sing
+      table_name: docstore_transmitter522535086713_1536
+      embedding_model_name: are
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 42
+      probe_count: 19
+    - uuid: 1dc55bc7-16b4-42a8-96bd-925f81bb3c87
+      created_at: 2023-08-14T05:01:03.427774987Z
+      updated_at: 2023-08-14T05:01:03.427774987Z
+      name: program164750293565
+      description: One Thousand and One Nights
+      metadata:
+        key: shy
+      table_name: docstore_program164750293565_384
+      embedding_model_name: one
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 10
+      probe_count: 79
+    - uuid: 4c2e8107-aecc-4305-9d81-7e6967c494e7
+      created_at: 2023-08-22T22:16:14.219830347Z
+      updated_at: 2023-08-22T22:16:14.219830347Z
+      name: driver574989886915
+      description: Gulliver's Travels
+      metadata:
+        key: this
+      table_name: docstore_driver574989886915_768
+      embedding_model_name: painfully
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 26
+      probe_count: 55
+    - uuid: 24aa0b9c-e1e1-466f-be94-1f8018e0c8ad
+      created_at: 2023-08-14T02:06:48.556006947Z
+      updated_at: 2023-08-14T02:06:48.556006947Z
+      name: transmitter462876284997
+      description: Fairy tales
+      metadata:
+        key: part
+      table_name: docstore_transmitter462876284997_384
+      embedding_model_name: anyone
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 8
+      probe_count: 70
+    - uuid: 9fa4f383-9635-4f90-b1c9-2cfdbeed4a93
+      created_at: 2023-08-17T01:03:13.801323038Z
+      updated_at: 2023-08-17T01:03:13.801323038Z
+      name: array152274988030
+      description: Pride and Prejudice
+      metadata:
+        key: later
+      table_name: docstore_array152274988030_1536
+      embedding_model_name: myself
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 48
+      probe_count: 34
+    - uuid: ab115103-3e85-4680-9286-8db7fa9a3922
+      created_at: 2023-08-19T10:41:58.732176355Z
+      updated_at: 2023-08-19T10:41:58.732176355Z
+      name: matrix483070553731
+      description: Moby Dick
+      metadata:
+        key: before
+      table_name: docstore_matrix483070553731_768
+      embedding_model_name: across
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 69
+      probe_count: 5
+    - uuid: eb0b03a0-90c0-422f-8a0a-4b34d411c085
+      created_at: 2023-08-26T06:33:38.349641899Z
+      updated_at: 2023-08-26T06:33:38.349641899Z
+      name: bus460790250050
+      description: War and Peace
+      metadata:
+        key: had
+      table_name: docstore_bus460790250050_768
+      embedding_model_name: daily
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 83
+      probe_count: 68
+    - uuid: 2b8b3106-9632-4750-9252-70ebb16fb2a5
+      created_at: 2023-08-22T13:01:03.713594591Z
+      updated_at: 2023-08-22T13:01:03.713594591Z
+      name: program259165317219
+      description: Buddenbrooks
+      metadata:
+        key: enormously
+      table_name: docstore_program259165317219_768
+      embedding_model_name: driver
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 77
+      probe_count: 39
+    - uuid: 3a1a1942-448f-4131-8ef3-b0e7b423a7ec
+      created_at: 2023-08-17T21:12:46.618436809Z
+      updated_at: 2023-08-17T21:12:46.618436809Z
+      name: application360939051328
+      description: Pride and Prejudice
+      metadata:
+        key: quiver
+      table_name: docstore_application360939051328_384
+      embedding_model_name: where
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 22
+      probe_count: 87
+    - uuid: fa2b5369-9b86-4d29-b481-717bf1a542e6
+      created_at: 2023-08-25T23:52:24.225340033Z
+      updated_at: 2023-08-25T23:52:24.225340033Z
+      name: feed269582167765
+      description: The Old Man and the Sea
+      metadata:
+        key: how
+      table_name: docstore_feed269582167765_768
+      embedding_model_name: bathe
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 96
+      probe_count: 22
+    - uuid: c1352c5e-aa2c-4e9d-ad0f-6a1a7ceeb872
+      created_at: 2023-08-14T06:55:03.233858579Z
+      updated_at: 2023-08-14T06:55:03.233858579Z
+      name: application278250620344
+      description: The Idiot
+      metadata:
+        key: herself
+      table_name: docstore_application278250620344_384
+      embedding_model_name: harvest
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 10
+      probe_count: 69
+    - uuid: 3951868b-f157-4f28-a2b2-b693be028635
+      created_at: 2023-08-18T16:41:49.956517464Z
+      updated_at: 2023-08-18T16:41:49.956517464Z
+      name: card501217308813
+      description: The Golden Notebook
+      metadata:
+        key: fly
+      table_name: docstore_card501217308813_384
+      embedding_model_name: "on"
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 97
+      probe_count: 37
+    - uuid: 0a9af156-ef81-479e-b279-bb4a79a73a2f
+      created_at: 2023-08-26T06:16:46.885664093Z
+      updated_at: 2023-08-26T06:16:46.885664093Z
+      name: driver572107449980
+      description: Anna Karenina
+      metadata:
+        key: did
+      table_name: docstore_driver572107449980_1536
+      embedding_model_name: fight
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 95
+      probe_count: 59
+    - uuid: 1c21ed08-7792-4fb7-9187-81ea71eb605c
+      created_at: 2023-08-18T07:37:21.855488332Z
+      updated_at: 2023-08-18T07:37:21.855488332Z
+      name: firewall836613621068
+      description: Anna Karenina
+      metadata:
+        key: dream
+      table_name: docstore_firewall836613621068_1536
+      embedding_model_name: these
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 15
+      probe_count: 43
+    - uuid: 88e8f9dd-d5f3-4ce9-afc9-3794ddf4bc41
+      created_at: 2023-08-25T15:23:25.662985535Z
+      updated_at: 2023-08-25T15:23:25.662985535Z
+      name: capacitor794453425518
+      description: Madame Bovary
+      metadata:
+        key: who
+      table_name: docstore_capacitor794453425518_768
+      embedding_model_name: still
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 87
+      probe_count: 43
+    - uuid: 1abfce81-6126-4db7-8dcb-160eb3807c42
+      created_at: 2023-08-23T22:06:46.971362505Z
+      updated_at: 2023-08-23T22:06:46.971362505Z
+      name: capacitor907198289408
+      description: Lolita
+      metadata:
+        key: sometimes
+      table_name: docstore_capacitor907198289408_1536
+      embedding_model_name: tweak
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 97
+      probe_count: 34
+    - uuid: e9113223-7bdd-479a-9463-63181f55c107
+      created_at: 2023-08-25T05:14:18.719539467Z
+      updated_at: 2023-08-25T05:14:18.719539467Z
+      name: matrix113355293668
+      description: Zorba the Greek
+      metadata:
+        key: you
+      table_name: docstore_matrix113355293668_768
+      embedding_model_name: us
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 97
+      probe_count: 87
+    - uuid: 649fa4c6-3937-4044-a8b2-c56d047a6d71
+      created_at: 2023-08-20T03:12:15.068035056Z
+      updated_at: 2023-08-20T03:12:15.068035056Z
+      name: bandwidth325792269170
+      description: Gypsy Ballads
+      metadata:
+        key: you
+      table_name: docstore_bandwidth325792269170_1536
+      embedding_model_name: problem
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 66
+      probe_count: 69
+    - uuid: 11319700-1cbc-4ae8-8c20-cd518210e68d
+      created_at: 2023-08-18T10:10:15.35358724Z
+      updated_at: 2023-08-18T10:10:15.35358724Z
+      name: driver333180821239
+      description: Crime and Punishment
+      metadata:
+        key: within
+      table_name: docstore_driver333180821239_768
+      embedding_model_name: for
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 94
+      probe_count: 41
+    - uuid: 959242f7-0ef5-4ceb-a902-af55300c20db
+      created_at: 2023-08-19T05:56:49.569375818Z
+      updated_at: 2023-08-19T05:56:49.569375818Z
+      name: application859473890250
+      description: Hamlet
+      metadata:
+        key: these
+      table_name: docstore_application859473890250_768
+      embedding_model_name: who
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 90
+      probe_count: 29
+    - uuid: 3aed38c4-365e-4599-a472-e8bb5184500d
+      created_at: 2023-08-25T19:38:24.651006949Z
+      updated_at: 2023-08-25T19:38:24.651006949Z
+      name: system155286866942
+      description: Buddenbrooks
+      metadata:
+        key: that
+      table_name: docstore_system155286866942_1536
+      embedding_model_name: regularly
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 14
+      probe_count: 7
+    - uuid: 31c1fbcb-8536-4112-910b-d64dbb77bf66
+      created_at: 2023-08-18T13:18:53.991291409Z
+      updated_at: 2023-08-18T13:18:53.991291409Z
+      name: transmitter694422941973
+      description: Gulliver's Travels
+      metadata:
+        key: backwards
+      table_name: docstore_transmitter694422941973_768
+      embedding_model_name: hundred
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 54
+      probe_count: 86
+    - uuid: af51e748-c860-47df-9e4c-89841dce5035
+      created_at: 2023-08-16T22:13:41.745109459Z
+      updated_at: 2023-08-16T22:13:41.745109459Z
+      name: protocol767976841533
+      description: The Adventures of Huckleberry Finn
+      metadata:
+        key: next
+      table_name: docstore_protocol767976841533_1536
+      embedding_model_name: party
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 29
+      probe_count: 88
+    - uuid: 80956579-f0ad-49af-984f-362ef41804eb
+      created_at: 2023-08-16T22:18:49.128899466Z
+      updated_at: 2023-08-16T22:18:49.128899466Z
+      name: microchip678996233807
+      description: The Adventures of Huckleberry Finn
+      metadata:
+        key: do
+      table_name: docstore_microchip678996233807_768
+      embedding_model_name: hers
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 37
+      probe_count: 77
+    - uuid: b18096b8-c2a8-4939-9cc0-7916cceb0bbb
+      created_at: 2023-08-17T16:10:03.750697647Z
+      updated_at: 2023-08-17T16:10:03.750697647Z
+      name: port128436425095
+      description: Anna Karenina
+      metadata:
+        key: horror
+      table_name: docstore_port128436425095_1536
+      embedding_model_name: it
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 45
+      probe_count: 30
+    - uuid: adfca291-276b-4179-9896-c4739a8e9e78
+      created_at: 2023-08-19T05:09:58.281840791Z
+      updated_at: 2023-08-19T05:09:58.281840791Z
+      name: monitor625026810063
+      description: The Golden Notebook
+      metadata:
+        key: mob
+      table_name: docstore_monitor625026810063_1536
+      embedding_model_name: sadly
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 77
+      probe_count: 15
+    - uuid: 55d36a73-1d8f-4a3b-a7ae-a882660892e1
+      created_at: 2023-08-25T04:23:25.316087388Z
+      updated_at: 2023-08-25T04:23:25.316087388Z
+      name: firewall119981679303
+      description: Crime and Punishment
+      metadata:
+        key: one
+      table_name: docstore_firewall119981679303_768
+      embedding_model_name: painfully
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 10
+      probe_count: 55
+    - uuid: 0b4bdc8b-fd9d-40b1-a736-337a43392caf
+      created_at: 2023-08-18T11:43:41.071953092Z
+      updated_at: 2023-08-18T11:43:41.071953092Z
+      name: microchip377545015735
+      description: Blindness
+      metadata:
+        key: cry
+      table_name: docstore_microchip377545015735_1536
+      embedding_model_name: load
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 99
+      probe_count: 42
+    - uuid: ca62965b-b283-4e66-88a8-e4d0cf3ed0df
+      created_at: 2023-08-15T20:40:19.672322802Z
+      updated_at: 2023-08-15T20:40:19.672322802Z
+      name: bandwidth848442661954
+      description: Sons and Lovers
+      metadata:
+        key: that
+      table_name: docstore_bandwidth848442661954_768
+      embedding_model_name: change
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 73
+      probe_count: 80
+    - uuid: 2ed0b05b-0ea5-42ec-b741-6e84ba619670
+      created_at: 2023-08-16T04:37:44.41290748Z
+      updated_at: 2023-08-16T04:37:44.41290748Z
+      name: bus537384520437
+      description: Odyssey
+      metadata:
+        key: as
+      table_name: docstore_bus537384520437_1536
+      embedding_model_name: aunt
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 13
+      probe_count: 71
+    - uuid: b190f1ab-3961-4363-a173-3dcf91024051
+      created_at: 2023-08-22T00:18:05.370559124Z
+      updated_at: 2023-08-22T00:18:05.370559124Z
+      name: protocol321704984106
+      description: Pride and Prejudice
+      metadata:
+        key: Somali
+      table_name: docstore_protocol321704984106_384
+      embedding_model_name: those
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 33
+      probe_count: 3
+    - uuid: 4ef39118-063d-4c75-9f61-cb104ccbe2be
+      created_at: 2023-08-25T03:51:32.270883522Z
+      updated_at: 2023-08-25T03:51:32.270883522Z
+      name: interface646156479425
+      description: Pride and Prejudice
+      metadata:
+        key: hair
+      table_name: docstore_interface646156479425_384
+      embedding_model_name: scooter
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 26
+      probe_count: 13
+    - uuid: ec1cca8b-b6bf-4da5-8fcf-addf06de3f17
+      created_at: 2023-08-27T12:50:54.69240015Z
+      updated_at: 2023-08-27T12:50:54.69240015Z
+      name: firewall192080364254
+      description: King Lear
+      metadata:
+        key: none
+      table_name: docstore_firewall192080364254_768
+      embedding_model_name: must
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 89
+      probe_count: 38
+    - uuid: 42c0a1a7-386b-441b-9b7a-28fe09313bb3
+      created_at: 2023-08-26T23:38:58.349043652Z
+      updated_at: 2023-08-26T23:38:58.349043652Z
+      name: hard drive462526883031
+      description: King Lear
+      metadata:
+        key: tomorrow
+      table_name: docstore_hard_drive462526883031_384
+      embedding_model_name: my
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 74
+      probe_count: 77
+    - uuid: 4db4ba5c-d0ec-4037-add1-13c2b740d2ed
+      created_at: 2023-08-17T05:38:32.338238734Z
+      updated_at: 2023-08-17T05:38:32.338238734Z
+      name: application533970973527
+      description: Bostan
+      metadata:
+        key: regiment
+      table_name: docstore_application533970973527_1536
+      embedding_model_name: Slovak
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 86
+      probe_count: 7
+    - uuid: 3827a4d2-a71f-4f8c-acf9-54f9812f618e
+      created_at: 2023-08-24T16:07:34.858305762Z
+      updated_at: 2023-08-24T16:07:34.858305762Z
+      name: microchip881181104726
+      description: Othello
+      metadata:
+        key: Welsh
+      table_name: docstore_microchip881181104726_768
+      embedding_model_name: for
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 75
+      probe_count: 6
+    - uuid: 7aadca6d-c478-44f1-b29c-7218d3e95dfd
+      created_at: 2023-08-22T02:11:27.097179968Z
+      updated_at: 2023-08-22T02:11:27.097179968Z
+      name: system575920837308
+      description: Crime and Punishment
+      metadata:
+        key: instance
+      table_name: docstore_system575920837308_1536
+      embedding_model_name: paint
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 80
+      probe_count: 16
+    - uuid: d1263485-cd31-4819-b97a-1a7e885673ab
+      created_at: 2023-08-14T14:59:26.853066038Z
+      updated_at: 2023-08-14T14:59:26.853066038Z
+      name: program693849235845
+      description: Lolita
+      metadata:
+        key: anyone
+      table_name: docstore_program693849235845_1536
+      embedding_model_name: at
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 21
+      probe_count: 69
+    - uuid: a4a8c5ea-87b7-43c0-8b51-fbaf2d301705
+      created_at: 2023-08-25T09:38:51.305302443Z
+      updated_at: 2023-08-25T09:38:51.305302443Z
+      name: firewall932428399471
+      description: Oedipus the King
+      metadata:
+        key: scold
+      table_name: docstore_firewall932428399471_384
+      embedding_model_name: library
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 68
+      probe_count: 93
+    - uuid: cd4729a3-cad0-4a96-a89a-60ea9f8a6f4e
+      created_at: 2023-08-15T06:32:04.981174781Z
+      updated_at: 2023-08-15T06:32:04.981174781Z
+      name: protocol565548878966
+      description: The Stranger
+      metadata:
+        key: weary
+      table_name: docstore_protocol565548878966_1536
+      embedding_model_name: some
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 72
+      probe_count: 72
+    - uuid: 7436b1b4-a0f5-4cb5-b105-0637aa458b75
+      created_at: 2023-08-15T01:12:19.865556486Z
+      updated_at: 2023-08-15T01:12:19.865556486Z
+      name: panel291523959448
+      description: The Book Of Job
+      metadata:
+        key: guilt
+      table_name: docstore_panel291523959448_384
+      embedding_model_name: there
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 15
+      probe_count: 7
+    - uuid: dd428861-5b8d-41c1-90c1-995d6d5d2e94
+      created_at: 2023-08-14T17:05:58.313959051Z
+      updated_at: 2023-08-14T17:05:58.313959051Z
+      name: matrix749962419626
+      description: Things Fall Apart
+      metadata:
+        key: despite
+      table_name: docstore_matrix749962419626_1536
+      embedding_model_name: this
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 16
+      probe_count: 13
+    - uuid: 9d6ac860-690d-482b-91bb-8823b29d5440
+      created_at: 2023-08-21T20:04:30.927096302Z
+      updated_at: 2023-08-21T20:04:30.927096302Z
+      name: system323623011912
+      description: Memoirs of Hadrian
+      metadata:
+        key: it
+      table_name: docstore_system323623011912_384
+      embedding_model_name: her
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 46
+      probe_count: 5
+    - uuid: 8cac317c-5ce9-44f5-8c14-1b18014ed6c5
+      created_at: 2023-08-21T16:24:03.582178531Z
+      updated_at: 2023-08-21T16:24:03.582178531Z
+      name: matrix349498869968
+      description: Moby Dick
+      metadata:
+        key: our
+      table_name: docstore_matrix349498869968_1536
+      embedding_model_name: few
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 93
+      probe_count: 88
+    - uuid: 2af6f91d-d536-4191-8bcb-3ef4ea507b62
+      created_at: 2023-08-22T21:22:12.647617884Z
+      updated_at: 2023-08-22T21:22:12.647617884Z
+      name: sensor676484393279
+      description: Wuthering Heights
+      metadata:
+        key: elegance
+      table_name: docstore_sensor676484393279_1536
+      embedding_model_name: ski
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 43
+      probe_count: 43
+    - uuid: 8be9ae66-5577-4b74-9e5a-f6329ff84bdf
+      created_at: 2023-08-20T16:19:31.291314245Z
+      updated_at: 2023-08-20T16:19:31.291314245Z
+      name: interface857977308254
+      description: One Hundred Years of Solitude
+      metadata:
+        key: how
+      table_name: docstore_interface857977308254_384
+      embedding_model_name: business
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 37
+      probe_count: 66
+    - uuid: 098438af-9a88-4fc1-a697-fff872f7e2e4
+      created_at: 2023-08-25T12:39:01.728956483Z
+      updated_at: 2023-08-25T12:39:01.728956483Z
+      name: monitor966364345145
+      description: Fairy tales
+      metadata:
+        key: listen
+      table_name: docstore_monitor966364345145_768
+      embedding_model_name: which
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 8
+      probe_count: 36
+    - uuid: 018310d9-f8ee-4327-929a-4b280c5268ed
+      created_at: 2023-08-15T14:55:51.316867008Z
+      updated_at: 2023-08-15T14:55:51.316867008Z
+      name: interface775006734529
+      description: Wuthering Heights
+      metadata:
+        key: choir
+      table_name: docstore_interface775006734529_768
+      embedding_model_name: meanwhile
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 83
+      probe_count: 20
+    - uuid: b34f829a-0998-474a-a6ae-d8b11c9942e1
+      created_at: 2023-08-21T18:38:42.046448057Z
+      updated_at: 2023-08-21T18:38:42.046448057Z
+      name: protocol829465394133
+      description: Faust
+      metadata:
+        key: still
+      table_name: docstore_protocol829465394133_384
+      embedding_model_name: neither
+      embedding_dimensions: 384
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 45
+      probe_count: 63
+    - uuid: adb9804d-b46f-41a3-9289-fd438f7c4a15
+      created_at: 2023-08-19T01:06:21.762801726Z
+      updated_at: 2023-08-19T01:06:21.762801726Z
+      name: transmitter454624295877
+      description: Beloved
+      metadata:
+        key: finally
+      table_name: docstore_transmitter454624295877_768
+      embedding_model_name: you
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 73
+      probe_count: 100
+    - uuid: f9a9782a-a89f-423f-8353-4642fdefaef4
+      created_at: 2023-08-20T05:46:16.022915747Z
+      updated_at: 2023-08-20T05:46:16.022915747Z
+      name: firewall504293020055
+      description: The Stranger
+      metadata:
+        key: other
+      table_name: docstore_firewall504293020055_768
+      embedding_model_name: would
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 85
+      probe_count: 40
+    - uuid: 4f5923a5-b3a1-4cdf-846e-707b52b0d0fe
+      created_at: 2023-08-17T21:08:33.466465093Z
+      updated_at: 2023-08-17T21:08:33.466465093Z
+      name: pixel964978050745
+      description: Crime and Punishment
+      metadata:
+        key: can
+      table_name: docstore_pixel964978050745_384
+      embedding_model_name: to
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 77
+      probe_count: 34
+    - uuid: 977deeeb-2573-45bf-8485-96cb7feac099
+      created_at: 2023-08-18T11:24:45.544597546Z
+      updated_at: 2023-08-18T11:24:45.544597546Z
+      name: port662334826614
+      description: Faust
+      metadata:
+        key: for
+      table_name: docstore_port662334826614_1536
+      embedding_model_name: whom
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 80
+      probe_count: 22
+    - uuid: fe99df52-a13a-46ba-81da-89d521313a45
+      created_at: 2023-08-25T22:27:22.60443058Z
+      updated_at: 2023-08-25T22:27:22.60443058Z
+      name: driver358282298459
+      description: Hamlet
+      metadata:
+        key: than
+      table_name: docstore_driver358282298459_384
+      embedding_model_name: his
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 22
+      probe_count: 6
+    - uuid: cf423d63-0ea8-4de0-9f7a-d07b768ff3c9
+      created_at: 2023-08-23T01:01:50.548415305Z
+      updated_at: 2023-08-23T01:01:50.548415305Z
+      name: matrix477685257202
+      description: Beloved
+      metadata:
+        key: then
+      table_name: docstore_matrix477685257202_768
+      embedding_model_name: we
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 50
+      probe_count: 98
+    - uuid: 8fd61f53-2199-4db0-bce7-33c82bdffbe6
+      created_at: 2023-08-18T14:55:45.496038969Z
+      updated_at: 2023-08-18T14:55:45.496038969Z
+      name: protocol140829820098
+      description: One Thousand and One Nights
+      metadata:
+        key: whatever
+      table_name: docstore_protocol140829820098_384
+      embedding_model_name: crowd
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: false
+      list_count: 14
+      probe_count: 60
+    - uuid: 15582865-1973-4a87-ade4-351cc9b18c84
+      created_at: 2023-08-16T01:45:37.337244705Z
+      updated_at: 2023-08-16T01:45:37.337244705Z
+      name: firewall453324015860
+      description: Beloved
+      metadata:
+        key: too
+      table_name: docstore_firewall453324015860_768
+      embedding_model_name: today
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 16
+      probe_count: 53
+    - uuid: 2a1bbdfc-7cd2-4150-8470-78a96d631977
+      created_at: 2023-08-20T05:23:17.489229725Z
+      updated_at: 2023-08-20T05:23:17.489229725Z
+      name: hard drive447955325437
+      description: Pride and Prejudice
+      metadata:
+        key: that
+      table_name: docstore_hard_drive447955325437_1536
+      embedding_model_name: murder
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 84
+      probe_count: 100
+    - uuid: 5a6d1bde-72b0-4340-87bb-86e903a3b459
+      created_at: 2023-08-14T14:41:35.325588038Z
+      updated_at: 2023-08-14T14:41:35.325588038Z
+      name: circuit135213590059
+      description: Sons and Lovers
+      metadata:
+        key: firstly
+      table_name: docstore_circuit135213590059_384
+      embedding_model_name: disregard
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 80
+      probe_count: 7
+    - uuid: c61aac83-c422-4ca4-b5dc-45f033eda6ea
+      created_at: 2023-08-22T09:02:15.76832106Z
+      updated_at: 2023-08-22T09:02:15.76832106Z
+      name: bandwidth647393069027
+      description: Leaves of Grass
+      metadata:
+        key: his
+      table_name: docstore_bandwidth647393069027_384
+      embedding_model_name: him
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 17
+      probe_count: 39
+    - uuid: 1ce2d8f2-dfbf-48e0-a396-1eed90768a88
+      created_at: 2023-08-16T16:01:31.930992154Z
+      updated_at: 2023-08-16T16:01:31.930992154Z
+      name: pixel434931491800
+      description: Bostan
+      metadata:
+        key: upshot
+      table_name: docstore_pixel434931491800_384
+      embedding_model_name: may
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: false
+      list_count: 85
+      probe_count: 25

@@ -22,18 +22,18 @@ import (
 )
 
 type SessionSchema struct {
-	bun.BaseModel `bun:"table:session,alias:s"`
+	bun.BaseModel `bun:"table:session,alias:s" yaml:"-"`
 
-	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
-	ID        int64                  `bun:",autoincrement"` // used as a cursor for pagination
-	SessionID string                 `bun:",unique,notnull"`
-	CreatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
-	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
-	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
-	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
+	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"                     yaml:"uuid,omitempty"`
+	ID        int64                  `bun:",autoincrement"                                              yaml:"id,omitempty"` // used as a cursor for pagination
+	SessionID string                 `bun:",unique,notnull"                                             yaml:"session_id,omitempty"`
+	CreatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp" yaml:"created_at,omitempty"`
+	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp" yaml:"updated_at,omitempty"`
+	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"                       yaml:"deleted_at,omitempty"`
+	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"                         yaml:"metadata,omitempty"`
 	// UserUUID must be pointer type in order to be nullable
-	UserID *string     `bun:","`
-	User   *UserSchema `bun:"rel:belongs-to,join:user_id=user_id,on_delete:cascade"`
+	UserID *string     `bun:","                                                           yaml:"user_id,omitempty"`
+	User   *UserSchema `bun:"rel:belongs-to,join:user_id=user_id,on_delete:cascade"       yaml:"-"`
 }
 
 // BeforeCreateTable is a marker method to ensure uniform interface across all table models - used in table creation iterator
@@ -94,7 +94,7 @@ func (s *MessageVectorStoreSchema) BeforeCreateTable(
 }
 
 type SummaryStoreSchema struct {
-	bun.BaseModel `bun:"table:summary,alias:su"`
+	bun.BaseModel `bun:"table:summary,alias:su" ,yaml:"-"`
 
 	UUID             uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
 	CreatedAt        time.Time              `bun:"type:timestamptz,notnull,default:current_timestamp"`
@@ -118,8 +118,8 @@ func (s *SummaryStoreSchema) BeforeCreateTable(
 
 // DocumentCollectionSchema represents the schema for the DocumentCollectionDAO table.
 type DocumentCollectionSchema struct {
-	bun.BaseModel `bun:"table:document_collection,alias:dc"`
-	models.DocumentCollection
+	bun.BaseModel             `bun:"table:document_collection,alias:dc" yaml:"-"`
+	models.DocumentCollection `                                         yaml:",inline"`
 }
 
 func (s *DocumentCollectionSchema) BeforeCreateTable(
@@ -138,18 +138,18 @@ type DocumentSchemaTemplate struct {
 }
 
 type UserSchema struct {
-	bun.BaseModel `bun:"table:users,alias:u"`
+	bun.BaseModel `bun:"table:users,alias:u" yaml:"-"`
 
-	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"`
-	ID        int64                  `bun:",autoincrement"` // used as a cursor for pagination
-	CreatedAt time.Time              `bun:"type:timestamptz,notnull,default:current_timestamp"`
-	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
-	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
-	UserID    string                 `bun:",unique,notnull"`
-	Email     string                 `bun:","`
-	FirstName string                 `bun:","`
-	LastName  string                 `bun:","`
-	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
+	UUID      uuid.UUID              `bun:",pk,type:uuid,default:gen_random_uuid()"             yaml:"uuid,omitempty"`
+	ID        int64                  `bun:",autoincrement"                                      yaml:"id,omitempty"` // used as a cursor for pagination
+	CreatedAt time.Time              `bun:"type:timestamptz,notnull,default:current_timestamp"  yaml:"created_at,omitempty"`
+	UpdatedAt time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp" yaml:"updated_at,omitempty"`
+	DeletedAt time.Time              `bun:"type:timestamptz,soft_delete,nullzero"               yaml:"deleted_at,omitempty"`
+	UserID    string                 `bun:",unique,notnull"                                     yaml:"user_id,omitempty"`
+	Email     string                 `bun:","                                                   yaml:"email,omitempty"`
+	FirstName string                 `bun:","                                                   yaml:"first_name,omitempty"`
+	LastName  string                 `bun:","                                                   yaml:"last_name,omitempty"`
+	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"                 yaml:"metadata,omitempty"`
 }
 
 // BeforeCreateTable is a marker method to ensure uniform interface across all table models - used in table creation iterator
