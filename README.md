@@ -42,7 +42,7 @@ Zep: A long-term memory store for LLM applications
 - Rich metadata and JSONPath query filters offer a powerful hybrid search over texts.
 
 ### 🔋 Batteries Included Embedding & Enrichment
-- Automatically embed texts and messages using state-of-the-art opeb source models, OpenAI, or bring your own vectors. 
+- Automatically embed texts and messages using state-of-the-art open source models, OpenAI, or bring your own vectors. 
 - Enrichment of chat histories with summaries, named entities, token counts. Use these as search filters.
 - Associate your own metadata with sessions, documents & chat histories.
 
