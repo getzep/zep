@@ -149,11 +149,15 @@ func (dao *SessionDAO) updateSession(
 		Metadata:  session.Metadata,
 		DeletedAt: time.Time{}, // Intentionally overwrite soft-delete with zero value
 	}
+	var columns = []string{"deleted_at"}
+	if session.Metadata != nil {
+		columns = append(columns, "metadata")
+	}
 	r, err := dao.db.NewUpdate().
 		Model(&sessionDB).
 		// intentionally overwrite the deleted_at field, undeleting the session
 		// if the session exists and is deleted
-		Column("metadata", "deleted_at").
+		Column(columns...).
 		// use WhereAllWithDeleted to update soft-deleted sessions
 		WhereAllWithDeleted().
 		Where("session_id = ?", session.SessionID).

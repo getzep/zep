@@ -155,6 +155,38 @@ func TestSessionDAO_Update(t *testing.T) {
 	assert.Equal(t, updateSession.Metadata, updatedSession.Metadata)
 }
 
+func TestSessionDAO_UpdateWithNilMetadata(t *testing.T) {
+	// Initialize SessionDAO
+	dao := NewSessionDAO(testDB)
+
+	// Create a test session
+	sessionID, err := testutils.GenerateRandomSessionID(16)
+	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
+
+	session := &models.CreateSessionRequest{
+		SessionID: sessionID,
+		Metadata: map[string]interface{}{
+			"key": "value",
+		},
+	}
+	createdSession, err := dao.Create(testCtx, session)
+	assert.NoError(t, err)
+
+	// Update the session
+	updateSession := &models.UpdateSessionRequest{
+		SessionID: sessionID,
+	}
+	updatedSession, err := dao.Update(testCtx, updateSession, false)
+	assert.NoError(t, err)
+
+	// Verify the update hasn't nilled out the metadata
+	assert.Equal(t, createdSession.UUID, updatedSession.UUID)
+	assert.Equal(t, createdSession.ID, updatedSession.ID)
+	assert.Equal(t, createdSession.SessionID, updatedSession.SessionID)
+	assert.Equal(t, createdSession.UserID, updatedSession.UserID)
+	assert.Equal(t, session.Metadata, updatedSession.Metadata) // Metadata should not be nil
+}
+
 func TestSessionDAO_Delete(t *testing.T) {
 	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
