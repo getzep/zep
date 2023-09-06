@@ -1,0 +1,26 @@
+{
+  "name": "zep-admin-ui",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --emptyOutDir",
+    "preview": "vite preview",
+    "format": "prettier --write './src/**/*.{html,js,jsx,ts,tsx}'"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "htmx.org": "^1.9.5",
+    "preline": "^1.9.0",
+    "tailwindcss": "^3.3.3",
+    "cssnano": "^6.0.1"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.15",
+    "postcss": "^8.4.29",
+    "prettier": "^3.0.3",
+    "prettier-plugin-tailwindcss": "^0.5.4",
+    "tailwindcss": "^3.3.3",
+    "vite": "^4.4.9"
+  }
+}
