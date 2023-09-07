@@ -48,7 +48,8 @@ type PostgresConfig struct {
 }
 
 type ServerConfig struct {
-	Port int `mapstructure:"port"`
+	Host string `mapstructure:"host"`
+	Port int    `mapstructure:"port"`
 }
 
 type LogConfig struct {

@@ -6,24 +6,25 @@ import (
 	"time"
 
 	"github.com/getzep/zep/pkg/auth"
+	"github.com/getzep/zep/pkg/web"
+	"github.com/go-chi/jwtauth/v5"
 
 	httpLogger "github.com/chi-middleware/logrus-logger"
 	"github.com/getzep/zep/pkg/models"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/jwtauth/v5"
-	"github.com/spf13/viper"
 )
 
 const ReadHeaderTimeout = 5 * time.Second
 
 // Create creates a new HTTP server with the given app state
 func Create(appState *models.AppState) *http.Server {
-	serverPort := viper.GetInt("server.port") // TODO: get from config
+	host := appState.Config.Server.Host
+	port := appState.Config.Server.Port
 	router := setupRouter(appState)
 	return &http.Server{
-		Addr:              fmt.Sprintf(":%d", serverPort),
+		Addr:              fmt.Sprintf("%s:%d", host, port),
 		Handler:           router,
 		ReadHeaderTimeout: ReadHeaderTimeout,
 	}
@@ -48,71 +49,95 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 	router.Use(SendVersion)
 	router.Use(middleware.Heartbeat("/healthz"))
 
-	if appState.Config.Auth.Required {
-		log.Info("JWT authentication required")
-		router.Use(auth.JWTVerifier(appState.Config))
-		router.Use(jwtauth.Authenticator)
-	}
+	setupWebRoutes(router)
+	setupAPIRoutes(router, appState)
 
+	return router
+}
+
+func setupWebRoutes(router chi.Router) {
+	router.Handle(
+		"/static/*",
+		http.FileServer(http.FS(web.StaticFS)),
+	)
+	// Web routes
+	router.Get("/admin", web.IndexHandler)
+}
+
+func setupAPIRoutes(router chi.Router, appState *models.AppState) {
 	router.Route("/api/v1", func(r chi.Router) {
-		// Memory session-related routes
-		r.Get("/sessions", GetSessionListHandler(appState))
-		r.Post("/sessions", CreateSessionHandler(appState))
-		r.Route("/sessions/{sessionId}", func(r chi.Router) {
-			r.Get("/", GetSessionHandler(appState))
-			r.Patch("/", UpdateSessionHandler(appState))
-			// Memory-related routes
-			r.Route("/memory", func(r chi.Router) {
-				r.Get("/", GetMemoryHandler(appState))
-				r.Post("/", PostMemoryHandler(appState))
-				r.Delete("/", DeleteMemoryHandler(appState))
-			})
-			// Memory search-related routes
-			r.Route("/search", func(r chi.Router) {
-				r.Post("/", SearchMemoryHandler(appState))
-			})
+		// JWT authentication on all API routes
+		if appState.Config.Auth.Required {
+			log.Info("JWT authentication required")
+			r.Use(auth.JWTVerifier(appState.Config))
+			r.Use(jwtauth.Authenticator)
+		}
+
+		setupSessionRoutes(r, appState)
+		setupUserRoutes(r, appState)
+		setupCollectionRoutes(r, appState)
+	})
+}
+
+func setupSessionRoutes(router chi.Router, appState *models.AppState) {
+	router.Get("/sessions", GetSessionListHandler(appState))
+	router.Post("/sessions", CreateSessionHandler(appState))
+	router.Route("/sessions/{sessionId}", func(r chi.Router) {
+		r.Get("/", GetSessionHandler(appState))
+		r.Patch("/", UpdateSessionHandler(appState))
+		// Memory-related routes
+		r.Route("/memory", func(r chi.Router) {
+			r.Get("/", GetMemoryHandler(appState))
+			r.Post("/", PostMemoryHandler(appState))
+			r.Delete("/", DeleteMemoryHandler(appState))
 		})
-		// User-related routes
-		r.Post("/user", CreateUserHandler(appState))
-		r.Get("/user", ListAllUsersHandler(appState))
-		r.Route("/user/{userId}", func(r chi.Router) {
-			r.Get("/", GetUserHandler(appState))
-			r.Patch("/", UpdateUserHandler(appState))
-			r.Delete("/", DeleteUserHandler(appState))
-			r.Get("/sessions", ListUserSessionsHandler(appState))
+		// Memory search-related routes
+		r.Route("/search", func(r chi.Router) {
+			r.Post("/", SearchMemoryHandler(appState))
 		})
-		// Document collection-related routes
-		r.Get("/collection", GetCollectionListHandler(appState))
-		r.Route("/collection/{collectionName}", func(r chi.Router) {
-			r.Post("/", CreateCollectionHandler(appState))
-			r.Get("/", GetCollectionHandler(appState))
-			r.Delete("/", DeleteCollectionHandler(appState))
-			r.Patch("/", UpdateCollectionHandler(appState))
+	})
+}
 
-			// Document collection search-related routes
-			r.Post("/search", SearchDocumentsHandler(appState))
+func setupUserRoutes(router chi.Router, appState *models.AppState) {
+	router.Post("/user", CreateUserHandler(appState))
+	router.Get("/user", ListAllUsersHandler(appState))
+	router.Route("/user/{userId}", func(r chi.Router) {
+		r.Get("/", GetUserHandler(appState))
+		r.Patch("/", UpdateUserHandler(appState))
+		r.Delete("/", DeleteUserHandler(appState))
+		r.Get("/sessions", ListUserSessionsHandler(appState))
+	})
+}
 
-			// Document collection index-related routes
-			r.Post("/index/create", CreateCollectionIndexHandler(appState))
+func setupCollectionRoutes(router chi.Router, appState *models.AppState) {
+	router.Get("/collection", GetCollectionListHandler(appState))
+	router.Route("/collection/{collectionName}", func(r chi.Router) {
+		r.Post("/", CreateCollectionHandler(appState))
+		r.Get("/", GetCollectionHandler(appState))
+		r.Delete("/", DeleteCollectionHandler(appState))
+		r.Patch("/", UpdateCollectionHandler(appState))
 
-			// Document-related routes
-			r.Route("/document", func(r chi.Router) {
-				r.Post("/", CreateDocumentsHandler(appState))
-				// Single document routes (by UUID)
-				r.Route("/uuid/{documentUUID}", func(r chi.Router) {
-					r.Get("/", GetDocumentHandler(appState))
-					r.Patch("/", UpdateDocumentHandler(appState))
-					r.Delete("/", DeleteDocumentHandler(appState))
-				})
-				// Document list routes
-				r.Route("/list", func(r chi.Router) {
-					r.Post("/get", GetDocumentListHandler(appState))
-					r.Post("/delete", DeleteDocumentListHandler(appState))
-					r.Patch("/update", UpdateDocumentListHandler(appState))
-				})
+		// Document collection search-related routes
+		r.Post("/search", SearchDocumentsHandler(appState))
+
+		// Document collection index-related routes
+		r.Post("/index/create", CreateCollectionIndexHandler(appState))
+
+		// Document-related routes
+		r.Route("/document", func(r chi.Router) {
+			r.Post("/", CreateDocumentsHandler(appState))
+			// Single document routes (by UUID)
+			r.Route("/uuid/{documentUUID}", func(r chi.Router) {
+				r.Get("/", GetDocumentHandler(appState))
+				r.Patch("/", UpdateDocumentHandler(appState))
+				r.Delete("/", DeleteDocumentHandler(appState))
+			})
+			// Document list routes
+			r.Route("/list", func(r chi.Router) {
+				r.Post("/get", GetDocumentListHandler(appState))
+				r.Post("/delete", DeleteDocumentListHandler(appState))
+				r.Patch("/update", UpdateDocumentListHandler(appState))
 			})
 		})
 	})
-
-	return router
 }
