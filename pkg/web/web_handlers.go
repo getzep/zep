@@ -36,23 +36,50 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	data := PageData{
 		Title:     "Dashboard",
 		SubTitle:  "Dashboard subtitle",
-		MenuItems: menuItems, // assuming menuItems is defined
+		MenuItems: menuItems,
 	}
 
-	tmpl, err := template.New("Index").Funcs(toLower()).ParseFS(
+	tmpl, err := template.New("Layout").Funcs(toLower()).ParseFS(
 		TemplatesFS,
 		"templates/pages/index.html",
 		"templates/components/layout/*.html",
+		"templates/components/content/*.html",
 	)
 	if err != nil {
-		log.Error("Failed to parse template: %s", err)
+		log.Errorf("Failed to parse template: %s", err)
 		http.Error(w, "Failed to parse template", http.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.ExecuteTemplate(w, "Layout", data)
 	if err != nil {
-		log.Error("Failed to parse template: %s", err)
+		log.Errorf("Failed to parse template: %s", err)
+		http.Error(w, "Failed to execute template", http.StatusInternalServerError)
+		return
+	}
+}
+
+func DashboardHandler(w http.ResponseWriter, r *http.Request) {
+	data := PageData{
+		Title:     "Dashboard",
+		SubTitle:  "Dashboard subtitle",
+		MenuItems: menuItems,
+	}
+
+	tmpl, err := template.New("dashboard.html").Funcs(toLower()).ParseFS(
+		TemplatesFS,
+		"templates/pages/dashboard.html",
+		"templates/components/content/*.html",
+	)
+	if err != nil {
+		log.Errorf("Failed to parse template: %s", err)
+		http.Error(w, "Failed to parse template", http.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.ExecuteTemplate(w, "dashboard.html", data)
+	if err != nil {
+		log.Errorf("Failed to parse template: %s", err)
 		http.Error(w, "Failed to execute template", http.StatusInternalServerError)
 		return
 	}
@@ -62,23 +89,23 @@ func UserListHandler(w http.ResponseWriter, r *http.Request) {
 	data := PageData{
 		Title:     "Users",
 		SubTitle:  "Users subtitle",
-		MenuItems: menuItems, // assuming menuItems is defined
+		MenuItems: menuItems,
 	}
 
-	tmpl, err := template.New("Index").Funcs(toLower()).ParseFS(
+	tmpl, err := template.New("users").Funcs(toLower()).ParseFS(
 		TemplatesFS,
-		"templates/pages/index.html",
-		"templates/components/layout/*.html",
+		"templates/pages/users.html",
+		"templates/components/content/*.html",
 	)
 	if err != nil {
-		log.Error("Failed to parse template: %s", err)
+		log.Errorf("Failed to parse template: %s", err)
 		http.Error(w, "Failed to parse template", http.StatusInternalServerError)
 		return
 	}
 
-	err = tmpl.ExecuteTemplate(w, "Layout", data)
+	err = tmpl.ExecuteTemplate(w, "users.html", data)
 	if err != nil {
-		log.Error("Failed to parse template: %s", err)
+		log.Errorf("Failed to parse template: %s", err)
 		http.Error(w, "Failed to execute template", http.StatusInternalServerError)
 		return
 	}

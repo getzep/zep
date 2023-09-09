@@ -62,6 +62,7 @@ func setupWebRoutes(router chi.Router) {
 	)
 	// Web routes
 	router.Get("/admin", web.IndexHandler)
+	router.Get("/admin/dashboard", web.DashboardHandler)
 	router.Get("/admin/users", web.UserListHandler)
 }
 

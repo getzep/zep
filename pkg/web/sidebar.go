@@ -17,7 +17,7 @@ type SubMenuItem struct {
 var menuItems = []MenuItem{
 	{
 		Name: "Dashboard",
-		URL:  "javascript:;",
+		URL:  "/admin/dashboard",
 		Icon: template.HTML(DashboardIcon),
 	},
 	{
