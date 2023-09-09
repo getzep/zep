@@ -21,6 +21,7 @@ var log = internal.GetLogger()
 
 type PageData struct {
 	Title     string
+	SubTitle  string
 	MenuItems []MenuItem
 }
 
@@ -33,7 +34,34 @@ func toLower() template.FuncMap {
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := PageData{
-		Title:     "My Page",
+		Title:     "Dashboard",
+		SubTitle:  "Dashboard subtitle",
+		MenuItems: menuItems, // assuming menuItems is defined
+	}
+
+	tmpl, err := template.New("Index").Funcs(toLower()).ParseFS(
+		TemplatesFS,
+		"templates/pages/index.html",
+		"templates/components/layout/*.html",
+	)
+	if err != nil {
+		log.Error("Failed to parse template: %s", err)
+		http.Error(w, "Failed to parse template", http.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.ExecuteTemplate(w, "Layout", data)
+	if err != nil {
+		log.Error("Failed to parse template: %s", err)
+		http.Error(w, "Failed to execute template", http.StatusInternalServerError)
+		return
+	}
+}
+
+func UserListHandler(w http.ResponseWriter, r *http.Request) {
+	data := PageData{
+		Title:     "Users",
+		SubTitle:  "Users subtitle",
 		MenuItems: menuItems, // assuming menuItems is defined
 	}
 

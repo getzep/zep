@@ -18,31 +18,31 @@ var menuItems = []MenuItem{
 	{
 		Name: "Dashboard",
 		URL:  "javascript:;",
-		Icon: template.HTML(DashboardIcon), //gosec:ignore
+		Icon: template.HTML(DashboardIcon),
 	},
 	{
 		Name: "Users",
-		URL:  "javascript:;",
-		Icon: template.HTML(UsersIcon), //gosec:ignore
-		SubItems: []SubMenuItem{
-			{
-				Name: "Sub Menu 1",
-				URL:  "javascript:;",
-			},
-			{
-				Name: "Sub Menu 2",
-				URL:  "javascript:;",
-			},
-		},
+		URL:  "/admin/users",
+		Icon: template.HTML(UsersIcon),
+		//SubItems: []SubMenuItem{
+		//	{
+		//		Name: "Sub Menu 1",
+		//		URL:  "javascript:;",
+		//	},
+		//	{
+		//		Name: "Sub Menu 2",
+		//		URL:  "javascript:;",
+		//	},
+		//},
 	},
 	{
 		Name: "Collections",
 		URL:  "javascript:;",
-		Icon: template.HTML(CollectionsIcon), //gosec:ignore
+		Icon: template.HTML(CollectionsIcon),
 	},
 	{
 		Name: "Settings",
 		URL:  "javascript:;",
-		Icon: template.HTML(DashboardIcon), //gosec:ignore
+		Icon: template.HTML(DashboardIcon),
 	},
 }
