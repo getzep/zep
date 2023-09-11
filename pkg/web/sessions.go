@@ -24,7 +24,6 @@ func NewSessionList(
 type SessionList struct {
 	MemoryStore models.MemoryStore[*bun.DB]
 	Sessions    []*models.Session
-	Users       []*models.User
 	TotalCount  int
 	Cursor      int64
 	Limit       int64

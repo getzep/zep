@@ -1,12 +1,7 @@
-{{ define "UserTableHeader" }}
+{{ define "CollectionTableHeader" }}
 <div class="px-6 py-4 grid gap-3 md:flex md:justify-between md:items-center border-b border-gray-200 dark:border-gray-700">
     <div>
         <div class="inline-flex gap-x-2">
-            <a class="py-2 px-3 inline-flex justify-center items-center gap-2 rounded-md border font-medium bg-white text-gray-700 shadow-sm align-middle hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-blue-600 transition-all text-sm dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white dark:focus:ring-offset-gray-800"
-               href="#">
-                View all
-            </a>
-
             <a class="py-2 px-3 inline-flex justify-center items-center gap-2 rounded-md border border-transparent font-semibold bg-blue-500 text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all text-sm dark:focus:ring-offset-gray-800"
                href="#">
                 <svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"
@@ -14,14 +9,14 @@
                     <path d="M2.63452 7.50001L13.6345 7.5M8.13452 13V2" stroke="currentColor" stroke-width="2"
                           stroke-linecap="round"/>
                 </svg>
-                Add user
+                Add
             </a>
         </div>
     </div>
 </div>
 {{end}}
 
-{{ define "UserTHead" }}
+{{ define "CollectionTHead" }}
 <thead class="bg-gray-50 dark:bg-slate-800">
 <tr>
     <th scope="col" class="pl-6 py-3 text-left">
@@ -36,18 +31,11 @@
     <th scope="col" class="pl-6 lg:pl-3 xl:pl-0 pr-6 py-3 text-left">
         <div class="flex items-center gap-x-2">
                     <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
-                      User
+                      Collection
                     </span>
         </div>
     </th>
 
-    <th scope="col" class="px-6 py-3 text-left">
-        <div class="flex items-center gap-x-2">
-                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
-                      Email
-                    </span>
-        </div>
-    </th>
 
     <th scope="col" class="px-6 py-3 text-left">
         <div class="flex items-center gap-x-2">
@@ -57,13 +45,28 @@
         </div>
     </th>
 
+    <th scope="col" class="px-6 py-3 text-left">
+        <div class="flex items-center gap-x-2">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
+                      Embedding Width
+                    </span>
+        </div>
+    </th>
+
+    <th scope="col" class="px-6 py-3 text-left">
+        <div class="flex items-center gap-x-2">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
+                        Embedding Status
+                    </span>
+        </div>
+    </th>
 
     <th scope="col" class="px-6 py-3 text-right"></th>
 </tr>
 </thead>
 {{ end }}
 
-{{ define "UserTableRow" }}
+{{ define "CollectionTableRow" }}
 <tr>
     <!-- Checkbox -->
     <td class="h-px w-px whitespace-nowrap">
@@ -77,25 +80,18 @@
         </div>
     </td>
     <!-- End Checkbox -->
-    <!-- UserID & Name -->
+    <!-- CollectionID & Name -->
     <td class="h-px w-px whitespace-nowrap">
         <div class="pl-6 lg:pl-3 xl:pl-0 pr-6 py-3">
             <div class="flex items-center gap-x-3">
                 <div class="grow">
-                    <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .UserID }}</span>
-                    <span class="block text-sm text-gray-500">{{ .FirstName }} {{ .LastName }}</span>
+                    <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .Name }}</span>
+                    <span class="block text-sm text-gray-500">{{ .Description }}</span>
                 </div>
             </div>
         </div>
     </td>
-    <!-- End UserID & Name -->
-    <!-- Email -->
-    <td class="h-px w-px whitespace-nowrap">
-        <div class="px-6 py-3">
-            <span class="text-sm text-gray-500">{{ .Email }}</span>
-        </div>
-    </td>
-    <!-- End Email -->
+    <!-- End CollectionID & Name -->
     <!-- CreatedAt -->
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-3">
@@ -103,14 +99,51 @@
         </div>
     </td>
     <!-- End CreatedAt -->
+    <!-- Email -->
+    <td class="h-px w-px whitespace-nowrap">
+        <div class="px-6 py-3">
+            <span class="text-sm text-gray-500">{{ .EmbeddingDimensions }}</span>
+        </div>
+    </td>
+    <!-- End Email -->
 
+    <td class="h-px w-px whitespace-nowrap">
+        <div class="px-6 py-3">
+            <div class="flex items-center gap-x-3">
+                {{ if .DocumentCollectionCounts }}
+                <span class="text-xs text-gray-500">{{ .DocumentEmbeddedCount }}/{{ .DocumentCount }}</span>
+                <div class="flex w-full h-1.5 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
+                    <div class="flex flex-col justify-center overflow-hidden bg-gray-800 dark:bg-gray-200"
+                         role="progressbar" style="width:{{ Percent .DocumentEmbeddedCount .DocumentCount }}%;"
+                         aria-valuenow="{{ Percent .DocumentEmbeddedCount .DocumentCount }}" aria-valuemin="0"
+                         aria-valuemax="100"></div>
+                </div>
+                {{ else }}
+                <span class="text-xs text-gray-500">
+                Empty Collection
+                </span>
+                {{ end }}
+            </div>
+        </div>
+    </td>
+
+    <td class="h-px w-px whitespace-nowrap">
+        <div class="px-6 py-3">
+            {{ if .IsAutoEmbedded }}
+                {{ template "IsAutoEmbeddedLabel" . }}
+            {{ end }}
+            {{ if .IsIndexed }}
+                {{ template "IndexedLabel" . }}
+            {{ end }}
+        </div>
+    </td>
 
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-1.5">
             <a class="inline-flex items-center gap-x-1.5 text-sm text-blue-600 decoration-2 hover:underline font-medium"
                hx-boost="true"
                hx-target="#page-content"
-               href="/admin/users/{{ .UserID }}">
+               href="/admin/Collections/{{ .UUID }}">
                 Edit
             </a>
         </div>
@@ -118,46 +151,63 @@
 </tr>
 {{ end }}
 
-{{ define "UserTableNoData" }}
+{{ define "IndexedLabel" }}
+<span class="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full text-xs font-medium bg-green-100 text-green-800">
+  <span class="w-1.5 h-1.5 inline-block bg-emerald-400 rounded-full"></span>
+  Indexed
+</span>
+{{end}}
+
+{{ define "IsAutoEmbeddedLabel" }}
+<span class="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+  <span class="w-1.5 h-1.5 inline-block bg-indigo-400 rounded-full"></span>
+  Auto-Embedded
+</span>
+{{end}}
+
+{{ define "CollectionTableNoData" }}
 <div class="min-h-[15rem] flex flex-col bg-white border shadow-sm rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:shadow-slate-700/[.7]">
     <div class="flex flex-auto flex-col justify-center items-center p-4 md:p-5">
-      <h3 class="text-lg font-bold text-gray-800 dark:text-white">
-        No Users Found
-      </h3>
-      <p class="mt-2 text-gray-800 dark:text-gray-400">
-        No <span class="font-mono">Users</span> associated with <span class="font-mono">Sessions</span>.
-      </p>
-      <a class="inline-flex items-center gap-2 mt-5 text-sm font-medium text-blue-500 hover:text-blue-700" href="https://docs.getzep.com/sdk/chat_history/users/" target="_new">
-        Learn More
-        <svg class="w-2.5 h-auto" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M5 1L10.6869 7.16086C10.8637 7.35239 10.8637 7.64761 10.6869 7.83914L5 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-      </a>
+        <h3 class="text-lg font-bold text-gray-800 dark:text-white">
+            No Collections Found
+        </h3>
+        <p class="mt-2 text-gray-800 dark:text-gray-400">
+            No <span class="font-mono">Collections</span> associated with <span class="font-mono">Sessions</span>.
+        </p>
+        <a class="inline-flex items-center gap-2 mt-5 text-sm font-medium text-blue-500 hover:text-blue-700"
+           href="https://docs.getzep.com/sdk/chat_history/Collections/" target="_new">
+            Learn More
+            <svg class="w-2.5 h-auto" width="16" height="16" viewBox="0 0 16 16" fill="none"
+                 xmlns="http://www.w3.org/2000/svg">
+                <path d="M5 1L10.6869 7.16086C10.8637 7.35239 10.8637 7.64761 10.6869 7.83914L5 14"
+                      stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+        </a>
     </div>
-  </div>
-  {{ end }}
+</div>
+{{ end }}
 
-{{ define "UserTable" }}
-<div id="user-list-table" class="max-w-[85rem] px-4 py-10 sm:px-6 lg:px-8 lg:py-10 mx-auto">
+{{ define "CollectionsTable" }}
+<div id="Collection-list-table" class="max-w-[85rem] px-4 py-10 sm:px-6 lg:px-8 lg:py-10 mx-auto">
     <!-- Card -->
     <div class="flex flex-col">
         <div class="-m-1.5 overflow-x-auto">
             <div class="p-1.5 min-w-full inline-block align-middle">
                 <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden dark:bg-slate-900 dark:border-gray-700">
-                    <!-- Header -->
-                    <!-- {{ template "UserTableHeader" . }} -->
-                    <!-- End Header -->
+<!--                    Header-->
+                    {{ template "CollectionTableHeader" . }}
+<!--                    End Header-->
 
-                    {{ if eq (len .Data.Users) 0 }}
-                    {{ template "UserTableNoData" . }}
+                    {{ if eq (len .Data.Collections) 0 }}
+                    {{ template "CollectionTableNoData" . }}
                     {{ else }}
                     <!-- Table -->
                     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        {{ template "UserTHead" . }}
+                        {{ template "CollectionTHead" . }}
 
                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        {{ range .Data.Users }}
-                        {{ template "UserTableRow" . }}
+                        {{ range .Data.Collections }}
+                        {{ template "CollectionTableRow" . }}
                         {{ end }}
                         </tbody>
 

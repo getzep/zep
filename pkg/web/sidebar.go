@@ -20,13 +20,13 @@ var menuItems = []MenuItem{
 	{
 		Name:      "Dashboard",
 		Path:      "/admin/dashboard",
-		Icon:      template.HTML(DashboardIcon),
+		Icon:      DashboardIcon,
 		ContentID: "#dashboard",
 	},
 	{
 		Name:      "Users",
 		Path:      "/admin/users",
-		Icon:      template.HTML(UsersIcon),
+		Icon:      UsersIcon,
 		ContentID: "#users",
 		//	{
 		//		Name: "Sub Menu 2",
@@ -37,16 +37,17 @@ var menuItems = []MenuItem{
 	{
 		Name:      "Sessions",
 		Path:      "/admin/sessions",
+		Icon:      SessionsIcon,
 		ContentID: "#sessions",
 	},
 	{
 		Name: "Collections",
-		Path: "javascript:;",
-		Icon: template.HTML(CollectionsIcon),
+		Path: "/admin/collections",
+		Icon: CollectionsIcon,
 	},
 	{
 		Name: "Settings",
 		Path: "javascript:;",
-		Icon: template.HTML(DashboardIcon),
+		Icon: SettingsIcon,
 	},
 }
