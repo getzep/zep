@@ -49,13 +49,13 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 	router.Use(SendVersion)
 	router.Use(middleware.Heartbeat("/healthz"))
 
-	setupWebRoutes(router)
+	setupWebRoutes(router, appState)
 	setupAPIRoutes(router, appState)
 
 	return router
 }
 
-func setupWebRoutes(router chi.Router) {
+func setupWebRoutes(router chi.Router, appState *models.AppState) {
 	router.Handle(
 		"/static/*",
 		http.FileServer(http.FS(web.StaticFS)),
@@ -63,7 +63,8 @@ func setupWebRoutes(router chi.Router) {
 	// Web routes
 	router.Get("/admin", web.IndexHandler)
 	router.Get("/admin/dashboard", web.DashboardHandler)
-	router.Get("/admin/users", web.UserListHandler)
+	router.Get("/admin/users", web.CreateUserListHandler(appState))
+	router.Get("/admin/sessions", web.CreateSessionListHandler(appState))
 }
 
 func setupAPIRoutes(router chi.Router, appState *models.AppState) {

@@ -1,4 +1,4 @@
-{{ define "UserTableHeader" }}
+{{ define "SessionTableHeader" }}
 <div class="px-6 py-4 grid gap-3 md:flex md:justify-between md:items-center border-b border-gray-200 dark:border-gray-700">
     <div>
         <div class="inline-flex gap-x-2">
@@ -21,7 +21,7 @@
 </div>
 {{end}}
 
-{{ define "UserTHead" }}
+{{ define "SessionTHead" }}
 <thead class="bg-gray-50 dark:bg-slate-800">
 <tr>
     <th scope="col" class="pl-6 py-3 text-left">
@@ -36,7 +36,7 @@
     <th scope="col" class="pl-6 lg:pl-3 xl:pl-0 pr-6 py-3 text-left">
         <div class="flex items-center gap-x-2">
                     <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
-                      User
+                      Session
                     </span>
         </div>
     </th>
@@ -44,7 +44,7 @@
     <th scope="col" class="px-6 py-3 text-left">
         <div class="flex items-center gap-x-2">
                     <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
-                      Email
+                      User
                     </span>
         </div>
     </th>
@@ -63,7 +63,7 @@
 </thead>
 {{ end }}
 
-{{ define "UserTableRow" }}
+{{ define "SessionTableRow" }}
 <tr>
     <!-- Checkbox -->
     <td class="h-px w-px whitespace-nowrap">
@@ -77,22 +77,21 @@
         </div>
     </td>
     <!-- End Checkbox -->
-    <!-- UserID & Name -->
+    <!-- SessionID  -->
     <td class="h-px w-px whitespace-nowrap">
         <div class="pl-6 lg:pl-3 xl:pl-0 pr-6 py-3">
             <div class="flex items-center gap-x-3">
                 <div class="grow">
-                    <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .UserID }}</span>
-                    <span class="block text-sm text-gray-500">{{ .FirstName }} {{ .LastName }}</span>
+                    <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .SessionID }}</span>
                 </div>
             </div>
         </div>
     </td>
-    <!-- End UserID & Name -->
+    <!-- End SessionID & Name -->
     <!-- Email -->
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-3">
-            <span class="text-sm text-gray-500">{{ .Email }}</span>
+            <span class="text-sm text-gray-500">{{ .UserID }}</span>
         </div>
     </td>
     <!-- End Email -->
@@ -116,14 +115,14 @@
 </tr>
 {{ end }}
 
-{{ define "UserTableNoData" }}
+{{ define "SessionTableNoData" }}
 <div class="min-h-[15rem] flex flex-col bg-white border shadow-sm rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:shadow-slate-700/[.7]">
     <div class="flex flex-auto flex-col justify-center items-center p-4 md:p-5">
       <h3 class="text-lg font-bold text-gray-800 dark:text-white">
-        No Users Found
+        No Sessions Found
       </h3>
       <p class="mt-2 text-gray-800 dark:text-gray-400">
-        No <span class="font-mono">Users</span> associated with <span class="font-mono">Sessions</span>.
+        No <span class="font-mono">Sessions</span> associated with <span class="font-mono">Sessions</span>.
       </p>
       <a class="inline-flex items-center gap-2 mt-5 text-sm font-medium text-blue-500 hover:text-blue-700" href="https://docs.getzep.com/sdk/chat_history/users/" target="_new">
         Learn More
@@ -135,27 +134,27 @@
   </div>
   {{ end }}
 
-{{ define "UserTable" }}
-<div id="user-list-table" class="max-w-[85rem] px-4 py-10 sm:px-6 lg:px-8 lg:py-10 mx-auto">
+{{ define "SessionTable" }}
+<div class="max-w-[85rem] px-4 py-10 sm:px-6 lg:px-8 lg:py-10 mx-auto">
     <!-- Card -->
     <div class="flex flex-col">
         <div class="-m-1.5 overflow-x-auto">
             <div class="p-1.5 min-w-full inline-block align-middle">
                 <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden dark:bg-slate-900 dark:border-gray-700">
                     <!-- Header -->
-                    <!-- {{ template "UserTableHeader" . }} -->
+                    <!-- {{ template "SessionTableHeader" . }} -->
                     <!-- End Header -->
 
-                    {{ if eq (len .Data.Users) 0 }}
-                    {{ template "UserTableNoData" . }}
+                    {{ if eq (len .Data.Sessions) 0 }}
+                    {{ template "SessionTableNoData" . }}
                     {{ else }}
                     <!-- Table -->
                     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        {{ template "UserTHead" . }}
+                        {{ template "SessionTHead" . }}
 
                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        {{ range .Data.Users }}
-                        {{ template "UserTableRow" . }}
+                        {{ range .Data.Sessions }}
+                        {{ template "SessionTableRow" . }}
                         {{ end }}
                         </tbody>
 

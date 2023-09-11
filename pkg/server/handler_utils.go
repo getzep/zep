@@ -74,7 +74,7 @@ func renderError(w http.ResponseWriter, err error, status int) {
 	http.Error(w, err.Error(), status)
 }
 
-// parseUUIDFromURL parses a UUID from a URL parameter. If the UUID is invalid, an error is
+// parseUUIDFromURL parses a UUID from a Path parameter. If the UUID is invalid, an error is
 // rendered and uuid.Nil is returned.
 func parseUUIDFromURL(r *http.Request, w http.ResponseWriter, paramName string) uuid.UUID {
 	uuidStr := chi.URLParam(r, paramName)

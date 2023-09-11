@@ -3,46 +3,50 @@ package web
 import "html/template"
 
 type MenuItem struct {
-	Name     string
-	URL      string
-	Icon     template.HTML // SVG icon as a string
-	SubItems []SubMenuItem
+	Name      string
+	Path      string
+	Icon      template.HTML // SVG icon as a string
+	SubItems  []SubMenuItem
+	ContentID string
 }
 
 type SubMenuItem struct {
-	Name string
-	URL  string
+	Name      string
+	URL       string
+	ContentID string
 }
 
 var menuItems = []MenuItem{
 	{
-		Name: "Dashboard",
-		URL:  "/admin/dashboard",
-		Icon: template.HTML(DashboardIcon),
+		Name:      "Dashboard",
+		Path:      "/admin/dashboard",
+		Icon:      template.HTML(DashboardIcon),
+		ContentID: "#dashboard",
 	},
 	{
-		Name: "Users",
-		URL:  "/admin/users",
-		Icon: template.HTML(UsersIcon),
-		//SubItems: []SubMenuItem{
-		//	{
-		//		Name: "Sub Menu 1",
-		//		URL:  "javascript:;",
-		//	},
+		Name:      "Users",
+		Path:      "/admin/users",
+		Icon:      template.HTML(UsersIcon),
+		ContentID: "#users",
 		//	{
 		//		Name: "Sub Menu 2",
-		//		URL:  "javascript:;",
+		//		Path:  "javascript:;",
 		//	},
 		//},
 	},
 	{
+		Name:      "Sessions",
+		Path:      "/admin/sessions",
+		ContentID: "#sessions",
+	},
+	{
 		Name: "Collections",
-		URL:  "javascript:;",
+		Path: "javascript:;",
 		Icon: template.HTML(CollectionsIcon),
 	},
 	{
 		Name: "Settings",
-		URL:  "javascript:;",
+		Path: "javascript:;",
 		Icon: template.HTML(DashboardIcon),
 	},
 }
