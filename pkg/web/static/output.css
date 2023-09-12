@@ -550,6 +550,10 @@ video {
   pointer-events: none;
 }
 
+.visible {
+  visibility: visible;
+}
+
 .collapse {
   visibility: collapse;
 }
@@ -670,12 +674,20 @@ video {
   margin-top: 1.25rem;
 }
 
+.mt-8 {
+  margin-top: 2rem;
+}
+
 .block {
   display: block;
 }
 
 .inline-block {
   display: inline-block;
+}
+
+.inline {
+  display: inline;
 }
 
 .flex {
@@ -802,12 +814,8 @@ video {
   min-width: 100%;
 }
 
-.max-w-6xl {
-  max-width: 72rem;
-}
-
-.max-w-\[65\%\] {
-  max-width: 65%;
+.max-w-\[60\%\] {
+  max-width: 60%;
 }
 
 .max-w-\[85rem\] {

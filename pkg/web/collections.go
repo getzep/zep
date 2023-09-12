@@ -60,9 +60,8 @@ func CreateCollectionistHandler(appState *models.AppState) http.HandlerFunc {
 				"templates/components/collections_table.html",
 			},
 			collectionList,
-			nil,
 		)
 
-		page.Render(w)
+		page.Render(w, r)
 	}
 }

@@ -14,8 +14,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 			"templates/components/content/*.html",
 		},
 		nil,
-		nil,
 	)
 
-	page.Render(w)
+	page.Render(w, r)
 }

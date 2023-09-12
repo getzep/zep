@@ -64,7 +64,7 @@ func setupWebRoutes(router chi.Router, appState *models.AppState) {
 	router.Get("/admin", web.IndexHandler)
 	router.Get("/admin/dashboard", web.DashboardHandler)
 	router.Get("/admin/users", web.CreateUserListHandler(appState))
-	router.Get("/admin/users/{userID}", web.CreateUserDetailsHandler(appState))
+	router.Get("/admin/users/{userID}", web.GetUserDetailsHandler(appState))
 	router.Get("/admin/sessions", web.CreateSessionListHandler(appState))
 	router.Get("/admin/collections", web.CreateCollectionistHandler(appState))
 }

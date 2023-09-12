@@ -1,4 +1,8 @@
+{{ template "Content" . }}
+
+{{ define "Content" }}
 <div id="collections">
-    {{ template "PageHeader" . }}
+    {{ template "PageTitles" . }}
     {{ template "CollectionsTable" . }}
 </div>
+{{ end }}

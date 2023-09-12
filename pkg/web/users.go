@@ -77,9 +77,8 @@ func CreateUserListHandler(appState *models.AppState) http.HandlerFunc {
 				"templates/components/user_table.html",
 			},
 			userList,
-			nil,
 		)
 
-		page.Render(w)
+		page.Render(w, r)
 	}
 }

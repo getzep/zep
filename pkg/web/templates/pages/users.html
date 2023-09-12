@@ -1,4 +1,8 @@
+{{ template "Content" . }}
+
+{{ define "Content" }}
 <div id="users">
-    {{ template "PageHeader" . }}
+    {{ template "PageTitles" . }}
     {{ template "UserTable" . }}
 </div>
+{{ end }}

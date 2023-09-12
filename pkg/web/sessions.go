@@ -68,9 +68,8 @@ func CreateSessionListHandler(appState *models.AppState) http.HandlerFunc {
 				"templates/components/session_table.html",
 			},
 			sessionList,
-			nil,
 		)
 
-		page.Render(w)
+		page.Render(w, r)
 	}
 }
