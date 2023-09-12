@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +20,7 @@ import (
 )
 
 type Row interface {
-	UserSchema | SessionSchema | DocumentCollectionSchema
+	UserSchema | SessionSchema | DocumentCollectionSchema | MessageStoreSchema
 }
 
 type FixtureModel[T Row] struct {
@@ -44,8 +45,22 @@ func generateTestTableName(collectionName string, embeddingDims int) string {
 	)
 }
 
+type CustomRandSource struct {
+	rand.Source
+}
+
+// Override Intn method
+func (s *CustomRandSource) Intn(n int) int { //nolint:revive
+	// 90% prob to return 1 (true), 10% chance to return 0 (false)
+	if rand.Float32() < 0.9 { //nolint:gosec
+		return 1
+	}
+	return 0
+}
+
 func GenerateFixtureData(fixtureCount int, outputDir string) {
-	gofakeit.Seed(0)
+	fakerGlobal := gofakeit.NewUnlocked(0)
+	gofakeit.SetGlobalFaker(fakerGlobal)
 
 	// Generate test data for UserSchema
 	users := make([]UserSchema, fixtureCount)
@@ -55,7 +70,7 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 			UUID:      uuid.New(),
 			CreatedAt: dateCreated,
 			UpdatedAt: dateCreated,
-			UserID:    gofakeit.Username(),
+			UserID:    strings.ToLower(gofakeit.Username()),
 			Email:     gofakeit.Email(),
 			FirstName: gofakeit.FirstName(),
 			LastName:  gofakeit.LastName(),
@@ -64,7 +79,7 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 	// Generate test data for SessionSchema
 	var sessions []SessionSchema
 	for i := 0; i < fixtureCount; i++ {
-		sessionCount := gofakeit.Number(1, fixtureCount)
+		sessionCount := gofakeit.Number(1, 5)
 		for j := 0; j < sessionCount; j++ {
 			dateCreated := generateTimeLastNDays(14)
 			sessions = append(sessions, SessionSchema{
@@ -78,10 +93,12 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 	}
 
 	// Generate test data for DocumentCollection
-	collections := make([]DocumentCollectionSchema, fixtureCount)
+	// Override fixtureCount to 10 for DocumentCollectionSchema
+	fixtureCountCollections := 10
+	collections := make([]DocumentCollectionSchema, fixtureCountCollections)
 	embeddingDimensions := []int{384, 768, 1536}
 
-	for i := 0; i < fixtureCount; i++ {
+	for i := 0; i < fixtureCountCollections; i++ {
 		gofakeit.ShuffleInts(embeddingDimensions)
 		dateCreated := generateTimeLastNDays(14)
 		collectionName := strings.ToLower(gofakeit.HackerNoun() + gofakeit.AchAccount())
@@ -107,6 +124,26 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 			},
 		}
 	}
+	// Generate test data for MessageStoreSchema
+	var messages []MessageStoreSchema
+	roles := []string{"ai", "human"}
+
+	for _, session := range sessions {
+		messageCount := gofakeit.Number(5, 30)
+		for j := 0; j < messageCount; j++ {
+			gofakeit.ShuffleStrings(roles)
+			dateCreated := generateTimeLastNDays(14)
+			messages = append(messages, MessageStoreSchema{
+				UUID:      uuid.New(),
+				CreatedAt: dateCreated,
+				UpdatedAt: dateCreated,
+				SessionID: session.SessionID,
+				Role:      roles[j%2],
+				Content:   gofakeit.Phrase(),
+				Metadata:  gofakeit.Map(),
+			})
+		}
+	}
 
 	userFixture := Fixtures[UserSchema]{
 		{
@@ -129,6 +166,13 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 		},
 	}
 
+	messageFixture := Fixtures[MessageStoreSchema]{
+		{
+			Model: "MessageStoreSchema",
+			Rows:  messages,
+		},
+	}
+
 	if outputDir == "" {
 		outputDir = "./"
 	} else {
@@ -142,9 +186,20 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 		}
 	}
 
+	// Create document table directory if it doesn't exist
+	documentTablePath := filepath.Join(outputDir, "document_tables")
+	if _, err := os.Stat(documentTablePath); os.IsNotExist(err) {
+		err = os.Mkdir(documentTablePath, 0755)
+		if err != nil {
+			fmt.Printf("unable to create %s: %v", documentTablePath, err)
+			return
+		}
+	}
+
 	// Write fixtures to YAML files
 	writeFixtureToYAML(userFixture, outputDir, "user_fixtures.yaml")
 	writeFixtureToYAML(sessionFixture, outputDir, "session_fixtures.yaml")
+	writeFixtureToYAML(messageFixture, outputDir, "message_fixtures.yaml")
 	writeFixtureToYAML(collectionFixture, outputDir, "collection_fixtures.yaml")
 }
 
@@ -196,6 +251,46 @@ func createTestDocumentTables(ctx context.Context, db *bun.DB) error {
 		if err != nil {
 			return fmt.Errorf("failed to create table %s: %w", table.TableName, err)
 		}
+
+		err = addTestDocuments(ctx, db, table.TableName)
+		if err != nil {
+			return fmt.Errorf("failed to add test documents to table %s: %w", table.TableName, err)
+		}
+	}
+
+	return nil
+}
+
+func addTestDocuments(
+	ctx context.Context,
+	db *bun.DB,
+	tableName string,
+) error {
+	source := &CustomRandSource{rand.NewSource(time.Now().UnixNano())}
+	r := rand.New(source)
+	// 90% prob to return 1 (true), 10% to return 0 (false)
+	boolFaker := gofakeit.NewCustom(r)
+
+	documentCount := gofakeit.Number(50, 100)
+
+	documents := make([]models.DocumentBase, documentCount)
+
+	for i := 0; i < documentCount; i++ {
+		document := models.DocumentBase{
+			DocumentID: gofakeit.Adjective() + gofakeit.Color() + gofakeit.Animal(),
+			Content:    gofakeit.Sentence(20),
+			IsEmbedded: boolFaker.Bool(),
+		}
+		documents[i] = document
+	}
+
+	// add documents to table
+	_, err := db.NewInsert().
+		Model(&documents).
+		ModelTableExpr(tableName).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to insert documents: %w", err)
 	}
 
 	return nil
@@ -214,7 +309,14 @@ func LoadFixtures(
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	db.RegisterModel((*UserSchema)(nil), (*SessionSchema)(nil), (*DocumentCollectionSchema)(nil))
+	db.RegisterModel(
+		(*UserSchema)(nil),
+		(*SessionSchema)(nil),
+		(*DocumentCollectionSchema)(nil),
+		(*MessageStoreSchema)(nil),
+		(*MessageVectorStoreSchema)(nil),
+		(*DocumentSchemaTemplate)(nil),
+	)
 
 	fixture := dbfixture.New(db, dbfixture.WithRecreateTables())
 
