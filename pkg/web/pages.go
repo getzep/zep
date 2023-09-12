@@ -17,7 +17,7 @@ var LayoutTemplates = []string{
 	"templates/components/content/*.html",
 }
 
-//go:embed static/output.css
+//go:embed static/*
 //go:embed static/preline/*
 //go:embed static/js/*
 var StaticFS embed.FS

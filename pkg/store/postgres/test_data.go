@@ -51,8 +51,8 @@ type CustomRandSource struct {
 
 // Override Intn method
 func (s *CustomRandSource) Intn(n int) int { //nolint:revive
-	// 90% prob to return 1 (true), 10% chance to return 0 (false)
-	if rand.Float32() < 0.9 { //nolint:gosec
+	// 98% prob to return 1 (true)
+	if rand.Float32() < 0.98 { //nolint:gosec
 		return 1
 	}
 	return 0
@@ -275,11 +275,17 @@ func addTestDocuments(
 
 	documents := make([]models.DocumentBase, documentCount)
 
+	isFullyEmbedded := boolFaker.Bool()
+
 	for i := 0; i < documentCount; i++ {
+		var embedded bool = true
+		if !isFullyEmbedded {
+			embedded = boolFaker.Bool()
+		}
 		document := models.DocumentBase{
 			DocumentID: gofakeit.Adjective() + gofakeit.Color() + gofakeit.Animal(),
 			Content:    gofakeit.Sentence(20),
-			IsEmbedded: boolFaker.Bool(),
+			IsEmbedded: embedded,
 		}
 		documents[i] = document
 	}
@@ -304,7 +310,17 @@ func LoadFixtures(
 ) error {
 	db.AddQueryHook(bundebug.NewQueryHook(bundebug.WithVerbose(true)))
 
-	err := CreateSchema(ctx, appState, db)
+	dropSchemaQuery := `DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+GRANT ALL ON SCHEMA public TO postgres;
+GRANT ALL ON SCHEMA public TO public;`
+
+	_, err := db.ExecContext(ctx, dropSchemaQuery)
+	if err != nil {
+		return fmt.Errorf("failed to drop schema: %w", err)
+	}
+
+	err = CreateSchema(ctx, appState, db)
 	if err != nil {
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
