@@ -1,5 +1,5 @@
 {{ define "ChatHistory" }}
-<div class="max-w-4xl px-4 py-10 sm:px-6 lg:px-8 lg:py-10 mx-auto overflow-hidden">
+<div class="px-4 py-10 sm:px-6 lg:px-8 lg:py-10 mx-auto overflow-hidden">
     <!-- Card -->
     <div class="flex flex-col">
         <div class="-m-1.5 overflow-x-auto">
@@ -7,15 +7,15 @@
                 <div
                     class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden dark:bg-slate-900 dark:border-gray-700">
                     <div class="relative p-8">
-                        <div class="max-w-4xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14 mx-auto">
+                        <div class="px-4 py-10 sm:px-6 lg:px-8 lg:py-14 mx-auto">
                             <ul class="space-y-5">
-                                {{ range $index, $message := .Data.Messages }}
-                                    {{ if Mod $index 2 }}
-                                        {{ template "ChatBubbleRoleA" $message }}
-                                    {{ else }}
-                                        {{ template "ChatBubbleRoleB" $message }}
-                                    {{ end }}
+                                {{ range $i, $msg := .Data.Messages }}
+                                {{ if Mod $i 2 }}
+                                    {{ template "ChatBubble" Dict "Message" $msg "BgColor" "bg-gray-50" }}
+                                {{ else }}
+                                    {{ template "ChatBubble" Dict "Message" $msg "BgColor" "bng-white" }}
                                 {{ end }}
+                            {{ end }}
                             </ul>
                         </div>
                     </div>
@@ -27,45 +27,28 @@
 </div>
 {{ end }}
 
-{{ define "ChatBubbleRoleA" }}
-<li class="max-w-2xl ml-auto flex justify-end gap-x-2 sm:gap-x-4">
-    <div class="grow text-end space-y-3">
-        <!-- Card -->
-        <div class="inline-block bg-blue-600 rounded-lg p-4 shadow-sm">
-            <p class="text-xs font-light text-white">
-                {{ .CreatedAt.Format "2006-01-02 15:04:05" }}
+{{ define "ChatBubble" }}
+<li class=" ml-auto flex justify-end gap-x-2 sm:gap-x-4 space-y-3 ">
+    <div class="grow flex">
+        <!-- Consolidated Card -->
+        <div class="inline-block {{.BgColor}} border-gray-200 border rounded-lg p-4 shadow-sm flex-grow">
+            <p class="text-xs font-light mb-3 ">
+                {{ .Message.Role }} | {{ .Message.CreatedAt.Format "2006-01-02 15:04:05" }} | {{ .Message.TokenCount }} tokens
             </p>
-            <p class="text-base text-white">
-                {{ .Content }}
-            </p>
+            <div class="flex justify-between">
+                <!-- Message Content -->
+                <div class="border-r border-gray-200 w-[50%] pr-6">
+                    <p class="text-base">
+                        {{ .Message.Content }}
+                    </p>
+                </div>
+                <!-- Metadata Content -->
+                <div class="w-[50%] pl-6 text-xs">
+                    {{ ToJSON .Message.Metadata }}
+                </div>
+            </div>
         </div>
-        <!-- End Card -->
+        <!-- Consolidated Card End -->
     </div>
-
-    <span
-        class="flex-shrink-0 inline-flex items-center justify-center h-[2.375rem] w-[2.375rem] rounded-full bg-gray-600">
-        <span class="text-sm font-medium text-white leading-none">{{ .Role }}</span>
-    </span>
-</li>
-{{ end }}
-
-{{ define "ChatBubbleRoleB" }}
-<!-- Chat Bubble -->
-<li class="flex gap-x-2 sm:gap-x-4">
-    <span
-        class="flex-shrink-0 inline-flex items-center justify-center h-[2.375rem] w-[2.375rem] rounded-full bg-gray-600">
-        <span class="text-sm font-medium text-white leading-none">{{ .Role }}</span>
-    </span>
-
-    <!-- Card -->
-    <div class="bg-white border border-gray-200 rounded-lg p-4 space-y-3 dark:bg-slate-900 dark:border-gray-700">
-        <p class="text-xs font-light">
-            {{ .CreatedAt.Format "2006-01-02 15:04:05" }}
-        </p>
-        <p class="text-base">
-            {{ .Content }}
-        </p>
-    </div>
-    <!-- End Card -->
 </li>
 {{ end }}

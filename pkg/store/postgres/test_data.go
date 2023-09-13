@@ -130,17 +130,21 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 
 	for _, session := range sessions {
 		messageCount := gofakeit.Number(5, 30)
+		wordCount := gofakeit.Number(1, 200)
+		// Start from the session's creation time and increment for each message
+		dateCreated := generateTimeLastNDays(14)
+		gofakeit.ShuffleStrings(roles)
 		for j := 0; j < messageCount; j++ {
-			gofakeit.ShuffleStrings(roles)
-			dateCreated := generateTimeLastNDays(14)
+			dateCreated = dateCreated.Add(time.Second * time.Duration(gofakeit.Number(5, 120)))
 			messages = append(messages, MessageStoreSchema{
-				UUID:      uuid.New(),
-				CreatedAt: dateCreated,
-				UpdatedAt: dateCreated,
-				SessionID: session.SessionID,
-				Role:      roles[j%2],
-				Content:   gofakeit.Phrase(),
-				Metadata:  gofakeit.Map(),
+				UUID:       uuid.New(),
+				CreatedAt:  dateCreated,
+				UpdatedAt:  dateCreated,
+				SessionID:  session.SessionID,
+				Role:       roles[j%2],
+				Content:    gofakeit.Paragraph(1, 5, wordCount, "."),
+				Metadata:   gofakeit.Map(),
+				TokenCount: gofakeit.Number(200, 500),
 			})
 		}
 	}
@@ -284,7 +288,7 @@ func addTestDocuments(
 		}
 		document := models.DocumentBase{
 			DocumentID: gofakeit.Adjective() + gofakeit.Color() + gofakeit.Animal(),
-			Content:    gofakeit.Sentence(20),
+			Content:    gofakeit.Sentence(50),
 			IsEmbedded: embedded,
 		}
 		documents[i] = document
