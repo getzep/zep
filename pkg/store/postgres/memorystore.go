@@ -158,6 +158,26 @@ func (pms *PostgresMemoryStore) GetMemory(
 	return &memory, nil
 }
 
+// GetMessageList retrieves a list of messages for a given sessionID. Paginated by cursor and limit.
+func (pms *PostgresMemoryStore) GetMessageList(
+	ctx context.Context,
+	appState *models.AppState,
+	sessionID string,
+	cursor int64,
+	limit int,
+) ([]models.Message, error) {
+	if appState == nil {
+		return nil, store.NewStorageError("nil appState received", nil)
+	}
+
+	messages, err := getMessageList(ctx, pms.Client, sessionID, cursor, limit)
+	if err != nil {
+		return nil, store.NewStorageError("failed to get messages", err)
+	}
+
+	return messages, nil
+}
+
 func (pms *PostgresMemoryStore) GetSummary(
 	ctx context.Context,
 	_ *models.AppState,

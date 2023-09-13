@@ -48,7 +48,7 @@ func (u *UserList) Get(ctx context.Context) error {
 	return nil
 }
 
-func CreateUserListHandler(appState *models.AppState) http.HandlerFunc {
+func GetUserListHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cursorStr := r.URL.Query().Get("cursor")
 		cursor, _ := strconv.ParseInt(

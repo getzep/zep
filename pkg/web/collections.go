@@ -38,7 +38,7 @@ func (c *CollectionList) Get(ctx context.Context, appState *models.AppState) err
 	return nil
 }
 
-func CreateCollectionistHandler(appState *models.AppState) http.HandlerFunc {
+func GetCollectionistHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionList := NewCollectionList(appState.DocumentStore, 0, 0)
 

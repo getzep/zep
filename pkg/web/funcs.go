@@ -32,6 +32,13 @@ func percent(a, b int) int {
 	return int(float32(a) / float32(b) * 100)
 }
 
+func mod(a, b int) int {
+	if b == 0 {
+		return 0
+	}
+	return a % b
+}
+
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"ToLower": strings.ToLower,
@@ -40,5 +47,6 @@ func templateFuncs() template.FuncMap {
 		"Div":     div,
 		"Product": product,
 		"Percent": percent,
+		"Mod":     mod,
 	}
 }

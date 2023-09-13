@@ -319,6 +319,75 @@ func TestGetMessages(t *testing.T) {
 	}
 }
 
+func TestGetMessageList(t *testing.T) {
+	// Create a test session
+	sessionID, err := testutils.GenerateRandomSessionID(16)
+	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
+
+	messages, err := putMessages(testCtx, testDB, sessionID, testutils.TestMessages)
+	assert.NoError(t, err)
+
+	expectedMessages := make([]models.Message, len(messages))
+	copy(expectedMessages, messages)
+
+	tests := []struct {
+		name           string
+		sessionID      string
+		cursor         int64
+		limit          int
+		expectedLength int
+	}{
+		{
+			name:           "Existing session",
+			sessionID:      sessionID,
+			cursor:         0,
+			limit:          10,
+			expectedLength: 10,
+		},
+		{
+			name:           "Non-existent session",
+			sessionID:      "nonexistent",
+			cursor:         0,
+			limit:          10,
+			expectedLength: 0,
+		},
+		{
+			name:           "Existing session with pagination",
+			sessionID:      sessionID,
+			cursor:         10,
+			limit:          10,
+			expectedLength: 10,
+		},
+		// Add more test cases as needed
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := getMessageList(testCtx, testDB, tt.sessionID, tt.cursor, tt.limit)
+			assert.NoError(t, err)
+
+			if tt.expectedLength > 0 {
+				assert.NotNil(t, result)
+				assert.Equal(t, tt.expectedLength, len(result))
+
+				expectedDict := make(map[string]bool)
+				for _, msg := range expectedMessages {
+					expectedDict[msg.Role+msg.Content] = true
+				}
+
+				for _, msg := range result {
+					_, exists := expectedDict[msg.Role+msg.Content]
+					assert.True(t, exists)
+					assert.NotEmpty(t, msg.UUID)
+					assert.False(t, msg.CreatedAt.IsZero())
+				}
+			} else {
+				assert.Empty(t, result)
+			}
+		})
+	}
+}
+
 // equate map[string]interface{}(nil) and map[string]interface{}{}
 // the latter is returned by the database when a row has no metadata.
 // both eval to len == 0

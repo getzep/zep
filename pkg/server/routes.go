@@ -61,17 +61,26 @@ func setupWebRoutes(router chi.Router, appState *models.AppState) {
 		http.FileServer(http.FS(web.StaticFS)),
 	)
 	router.Route("/admin", func(r chi.Router) {
+		// Turn off caching in development mode
+		if appState.Config.Development {
+			r.Use(middleware.NoCache)
+		}
 		r.Get("/", web.IndexHandler)
 		r.Get("/dashboard", web.DashboardHandler)
 		r.Route("/users", func(r chi.Router) {
-			r.Get("/", web.CreateUserListHandler(appState))
+			r.Get("/", web.GetUserListHandler(appState))
 			r.Route("/{userID}", func(r chi.Router) {
 				r.Get("/", web.GetUserDetailsHandler(appState))
 				r.Post("/", web.PostUserDetailsHandler(appState))
 			})
 		})
-		r.Get("/sessions", web.CreateSessionListHandler(appState))
-		r.Get("/collections", web.CreateCollectionistHandler(appState))
+		r.Route("/sessions", func(r chi.Router) {
+			r.Get("/", web.GetSessionListHandler(appState))
+			r.Route("/{sessionID}", func(r chi.Router) {
+				r.Get("/", web.GetSessionDetailsHandler(appState))
+			})
+		})
+		r.Get("/collections", web.GetCollectionistHandler(appState))
 	})
 }
 

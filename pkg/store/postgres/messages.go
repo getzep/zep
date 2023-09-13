@@ -93,6 +93,55 @@ func putMessages(
 	return messages, nil
 }
 
+// getMessageList retrieves all messages for a sessionID with pagination.
+func getMessageList(
+	ctx context.Context,
+	db *bun.DB,
+	sessionID string,
+	cursor int64,
+	limit int,
+) ([]models.Message, error) {
+	if sessionID == "" {
+		return nil, store.NewStorageError("sessionID cannot be empty", nil)
+	}
+	if limit < 1 {
+		return nil, store.NewStorageError("limit must be greater than 0", nil)
+	}
+
+	var messages []MessageStoreSchema
+	query := db.NewSelect().
+		Model(&messages).
+		Where("session_id = ?", sessionID).
+		Order("id ASC").
+		Limit(limit)
+
+	if cursor > 0 {
+		query.Where("id > ?", cursor)
+	}
+
+	err := query.Scan(ctx)
+	if err != nil {
+		return nil, store.NewStorageError("failed to get messages", err)
+	}
+	if len(messages) == 0 {
+		return nil, nil
+	}
+
+	messageList := make([]models.Message, len(messages))
+	for i, msg := range messages {
+		messageList[i] = models.Message{
+			UUID:       msg.UUID,
+			CreatedAt:  msg.CreatedAt,
+			Role:       msg.Role,
+			Content:    msg.Content,
+			TokenCount: msg.TokenCount,
+			Metadata:   msg.Metadata,
+		}
+	}
+
+	return messageList, nil
+}
+
 // getMessages retrieves messages from the memory store. If lastNMessages is 0, the last SummaryPoint is retrieved.
 func getMessages(
 	ctx context.Context,

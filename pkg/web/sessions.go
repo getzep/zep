@@ -39,7 +39,7 @@ func (u *SessionList) Get(ctx context.Context, appState *models.AppState) error 
 	return nil
 }
 
-func CreateSessionListHandler(appState *models.AppState) http.HandlerFunc {
+func GetSessionListHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cursorStr := r.URL.Query().Get("cursor")
 		cursor, _ := strconv.ParseInt(

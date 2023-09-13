@@ -17,6 +17,13 @@ type MemoryStore[T any] interface {
 		appState *AppState,
 		sessionID string,
 		lastNMessages int) (*Memory, error)
+	// GetMessageList retrieves a list of messages for a given sessionID. Paginated by cursor and limit.
+	GetMessageList(ctx context.Context,
+		appState *AppState,
+		sessionID string,
+		cursor int64,
+		limit int,
+	) ([]Message, error)
 	// GetSummary retrieves the most recent Summary for a given sessionID. The Summary return includes the UUID of the
 	// SummaryPoint, which the most recent Message in the collection of messages that was used to generate the Summary.
 	GetSummary(ctx context.Context,
