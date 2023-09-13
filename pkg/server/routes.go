@@ -60,13 +60,19 @@ func setupWebRoutes(router chi.Router, appState *models.AppState) {
 		"/static/*",
 		http.FileServer(http.FS(web.StaticFS)),
 	)
-	// Web routes
-	router.Get("/admin", web.IndexHandler)
-	router.Get("/admin/dashboard", web.DashboardHandler)
-	router.Get("/admin/users", web.CreateUserListHandler(appState))
-	router.Get("/admin/users/{userID}", web.GetUserDetailsHandler(appState))
-	router.Get("/admin/sessions", web.CreateSessionListHandler(appState))
-	router.Get("/admin/collections", web.CreateCollectionistHandler(appState))
+	router.Route("/admin", func(r chi.Router) {
+		r.Get("/", web.IndexHandler)
+		r.Get("/dashboard", web.DashboardHandler)
+		r.Route("/users", func(r chi.Router) {
+			r.Get("/", web.CreateUserListHandler(appState))
+			r.Route("/{userID}", func(r chi.Router) {
+				r.Get("/", web.GetUserDetailsHandler(appState))
+				r.Post("/", web.PostUserDetailsHandler(appState))
+			})
+		})
+		r.Get("/sessions", web.CreateSessionListHandler(appState))
+		r.Get("/collections", web.CreateCollectionistHandler(appState))
+	})
 }
 
 func setupAPIRoutes(router chi.Router, appState *models.AppState) {

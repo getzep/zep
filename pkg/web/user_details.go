@@ -2,6 +2,8 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -19,8 +21,7 @@ func GetUserDetailsHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID := chi.URLParam(r, "userID")
 		if userID == "" {
-			log.Error("user id not provided")
-			http.Error(w, "user id not provided", http.StatusInternalServerError)
+			handleError(w, errors.New("user id not provided"), "user id not provided")
 			return
 		}
 
@@ -32,8 +33,38 @@ func PostUserDetailsHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID := chi.URLParam(r, "userID")
 		if userID == "" {
-			log.Error("user id not provided")
-			http.Error(w, "user id not provided", http.StatusInternalServerError)
+			handleError(w, errors.New("user id not provided"), "user id not provided")
+			return
+		}
+
+		if err := r.ParseForm(); err != nil {
+			handleError(w, err, "failed to parse form")
+			return
+		}
+
+		var metadata map[string]interface{}
+		if len(r.PostForm.Get("metadata")) != 0 {
+			if err := json.Unmarshal([]byte(r.FormValue("metadata")), &metadata); err != nil {
+				handleError(w, err, "failed to unmarshal metadata")
+				return
+			}
+		}
+
+		user := models.UpdateUserRequest{
+			UserID:    userID,
+			Email:     r.PostForm.Get("email"),
+			FirstName: r.PostForm.Get("first_name"),
+			LastName:  r.PostForm.Get("last_name"),
+			Metadata:  metadata,
+		}
+
+		_, err := appState.UserStore.Update(r.Context(), &user, true)
+		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				handleError(w, err, fmt.Sprintf("user %s not found", userID))
+				return
+			}
+			handleError(w, err, "failed to update user")
 			return
 		}
 
@@ -49,8 +80,7 @@ func renderUserDetailForm(
 ) {
 	user, err := appState.UserStore.Get(r.Context(), userID)
 	if err != nil {
-		log.Errorf("failed to get user: %s", err)
-		http.Error(w, "failed to get user", http.StatusInternalServerError)
+		handleError(w, err, "failed to get user")
 		return
 	}
 
@@ -58,8 +88,7 @@ func renderUserDetailForm(
 	if len(user.Metadata) != 0 {
 		metadataBytes, err := json.Marshal(user.Metadata)
 		if err != nil {
-			log.Errorf("failed to marshal user metadata: %s", err)
-			http.Error(w, "failed to marshal user metadata", http.StatusInternalServerError)
+			handleError(w, err, "failed to marshal user metadata")
 			return
 		}
 		metadataString = string(metadataBytes)
@@ -67,8 +96,7 @@ func renderUserDetailForm(
 
 	sessions, err := appState.UserStore.GetSessions(r.Context(), user.UserID)
 	if err != nil {
-		log.Errorf("failed to get user sessions: %s", err)
-		http.Error(w, "failed to get user sessions", http.StatusInternalServerError)
+		handleError(w, err, "failed to get user sessions")
 		return
 	}
 
