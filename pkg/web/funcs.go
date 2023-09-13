@@ -5,6 +5,8 @@ import (
 	"errors"
 	"html/template"
 	"strings"
+
+	"github.com/Masterminds/sprig/v3"
 )
 
 func add(a, b int64) int64 {
@@ -92,7 +94,7 @@ func HTMLEscapeMap(data map[string]interface{}) map[string]interface{} {
 }
 
 func templateFuncs() template.FuncMap {
-	return template.FuncMap{
+	funcMap := template.FuncMap{
 		"ToLower": strings.ToLower,
 		"Add":     add,
 		"Sub":     sub,
@@ -103,4 +105,9 @@ func templateFuncs() template.FuncMap {
 		"Dict":    dict,
 		"ToJSON":  JSONSerializeHTML,
 	}
+
+	for k, v := range sprig.FuncMap() {
+		funcMap[k] = v
+	}
+	return funcMap
 }

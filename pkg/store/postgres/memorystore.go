@@ -163,14 +163,14 @@ func (pms *PostgresMemoryStore) GetMessageList(
 	ctx context.Context,
 	appState *models.AppState,
 	sessionID string,
-	cursor int64,
-	limit int,
-) ([]models.Message, error) {
+	pageNumber int,
+	pageSize int,
+) (*models.MessageListResponse, error) {
 	if appState == nil {
 		return nil, store.NewStorageError("nil appState received", nil)
 	}
 
-	messages, err := getMessageList(ctx, pms.Client, sessionID, cursor, limit)
+	messages, err := getMessageList(ctx, pms.Client, sessionID, pageNumber, pageSize)
 	if err != nil {
 		return nil, store.NewStorageError("failed to get messages", err)
 	}

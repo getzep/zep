@@ -13,15 +13,15 @@ import (
 
 func NewMessageList(
 	memoryStore models.MemoryStore[*bun.DB],
-	SessionID string,
-	cursor int64,
-	limit int64,
+	sessionID string,
+	pageNumber int,
+	pageSize int,
 ) *MessageList {
 	return &MessageList{
 		MemoryStore: memoryStore,
-		SessionID:   SessionID,
-		Cursor:      cursor,
-		Limit:       limit,
+		SessionID:   sessionID,
+		PageNumber:  pageNumber,
+		PageSize:    pageSize,
 	}
 }
 
@@ -30,16 +30,21 @@ type MessageList struct {
 	SessionID   string
 	Messages    []models.Message
 	TotalCount  int
-	Cursor      int64
-	Limit       int64
+	PageNumber  int
+	PageSize    int
+	Offset      int
 }
 
 func (m *MessageList) Get(ctx context.Context, appState *models.AppState) error {
-	messages, err := m.MemoryStore.GetMessageList(ctx, appState, m.SessionID, m.Cursor, int(m.Limit))
+	messages, err := m.MemoryStore.GetMessageList(ctx, appState, m.SessionID, m.PageNumber, m.PageSize)
 	if err != nil {
 		return err
 	}
-	m.Messages = messages
+	if messages == nil {
+		return errors.New("failed to get message list")
+	}
+	m.Messages = messages.Messages
+	m.TotalCount = messages.TotalCount
 
 	return nil
 }
@@ -52,15 +57,18 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		cursorStr := r.URL.Query().Get("cursor")
-		cursor, _ := strconv.ParseInt(
-			cursorStr,
+		pageNumberStr := r.URL.Query().Get("page")
+		pageNumber, _ := strconv.ParseInt(
+			pageNumberStr,
 			10,
-			64,
+			32,
 		) // safely ignore error, it will be 0 if conversion fails
 
-		var limit int64 = 10
-		messageList := NewMessageList(appState.MemoryStore, sessionID, cursor, limit)
+		var pageSize = 10
+		if pageNumber == 0 {
+			pageNumber = 1
+		}
+		messageList := NewMessageList(appState.MemoryStore, sessionID, int(pageNumber), pageSize)
 
 		err := messageList.Get(r.Context(), appState)
 		if err != nil {
@@ -69,10 +77,12 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
+		messageList.Offset = (int(pageNumber)-1)*pageSize + 1
+
 		page := NewPage(
 			"Session Details",
 			sessionID,
-			"/admin/messages",
+			"/admin/sessions/"+sessionID,
 			[]string{
 				"templates/pages/session_details.html",
 				"templates/components/content/*.html",

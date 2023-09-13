@@ -98,28 +98,34 @@ func getMessageList(
 	ctx context.Context,
 	db *bun.DB,
 	sessionID string,
-	cursor int64,
-	limit int,
-) ([]models.Message, error) {
+	pageNumber int,
+	pageSize int,
+) (*models.MessageListResponse, error) {
 	if sessionID == "" {
 		return nil, store.NewStorageError("sessionID cannot be empty", nil)
 	}
-	if limit < 1 {
-		return nil, store.NewStorageError("limit must be greater than 0", nil)
+	if pageSize < 1 {
+		return nil, store.NewStorageError("pageSize must be greater than 0", nil)
 	}
 
+	// Get count of all messages for this session
+	count, err := db.NewSelect().
+		Model(&MessageStoreSchema{}).
+		Where("session_id = ?", sessionID).
+		Count(ctx)
+	if err != nil {
+		return nil, store.NewStorageError("failed to get message count", err)
+	}
+
+	// Get messages
 	var messages []MessageStoreSchema
-	query := db.NewSelect().
+	err = db.NewSelect().
 		Model(&messages).
 		Where("session_id = ?", sessionID).
-		Order("id ASC").
-		Limit(limit)
-
-	if cursor > 0 {
-		query.Where("id > ?", cursor)
-	}
-
-	err := query.Scan(ctx)
+		OrderExpr("id ASC").
+		Limit(pageSize).
+		Offset((pageNumber - 1) * pageSize).
+		Scan(ctx)
 	if err != nil {
 		return nil, store.NewStorageError("failed to get messages", err)
 	}
@@ -139,7 +145,13 @@ func getMessageList(
 		}
 	}
 
-	return messageList, nil
+	r := &models.MessageListResponse{
+		Messages:      messageList,
+		TotalCount:    count,
+		ResponseCount: len(messages),
+	}
+
+	return r, nil
 }
 
 // getMessages retrieves messages from the memory store. If lastNMessages is 0, the last SummaryPoint is retrieved.
