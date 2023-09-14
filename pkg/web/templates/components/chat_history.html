@@ -13,10 +13,14 @@
                         <div class="px-4 py-5 sm:px-6 lg:px-8 lg:py-8 mx-auto">
                             <ul class="space-y-5">
                                 {{ range $i, $msg := .Data.Messages }}
-                                {{ if Mod $i 2 }}
-                                    {{ template "ChatBubble" Dict "Message" $msg "BgColor" "bg-gray-50" }}
+                                {{ if eq $msg.Role "summarizer" }}
+                                    {{ template "ChatBubble" Dict "Message" $msg "BgColor" "bg-fuchsia-50" }}
                                 {{ else }}
-                                    {{ template "ChatBubble" Dict "Message" $msg "BgColor" "bng-white" }}
+                                    {{ if Mod $i 2 }}
+                                        {{ template "ChatBubble" Dict "Message" $msg "BgColor" "bg-gray-50" }}
+                                    {{ else }}
+                                        {{ template "ChatBubble" Dict "Message" $msg "BgColor" "bng-white" }}
+                                    {{ end }}
                                 {{ end }}
                             {{ end }}
                             </ul>

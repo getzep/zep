@@ -8,6 +8,7 @@ import (
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
 
@@ -36,6 +37,34 @@ type SessionDetails struct {
 	Offset      int
 }
 
+func mergeMessagesSummaries(messages []models.Message, summaries []models.Summary) []models.Message {
+	// Create a map to hold the summaries with the MessagePointUUID as the key
+	summariesMap := make(map[uuid.UUID]models.Summary)
+	for _, summary := range summaries {
+		summariesMap[summary.SummaryPointUUID] = summary
+	}
+
+	// Iterate over the messages and insert the summary immediately after the message with UUID = summaries MessagePointUUID
+	var merged []models.Message
+	for _, message := range messages {
+		merged = append(merged, message)
+		if summary, ok := summariesMap[message.UUID]; ok {
+			s := models.Message{
+				Role:       "summarizer",
+				CreatedAt:  summary.CreatedAt,
+				Content:    summary.Content,
+				Metadata:   summary.Metadata,
+				TokenCount: summary.TokenCount,
+			}
+			merged = append(merged, s)
+			// Remove the summary from the map to prevent it from being added again
+			delete(summariesMap, message.UUID)
+		}
+	}
+
+	return merged
+}
+
 func (m *SessionDetails) Get(ctx context.Context, appState *models.AppState) error {
 	messages, err := m.MemoryStore.GetMessageList(ctx, appState, m.SessionID, m.PageNumber, m.PageSize)
 	if err != nil {
@@ -43,6 +72,14 @@ func (m *SessionDetails) Get(ctx context.Context, appState *models.AppState) err
 	}
 	if messages == nil {
 		return errors.New("failed to get message list")
+	}
+	// pageSize needs to be >= MessageList page size so that we get all summaries related to the messages
+	summaries, err := m.MemoryStore.GetSummaryList(ctx, appState, m.SessionID, m.PageNumber, m.PageSize)
+	if err != nil {
+		return err
+	}
+	if len(summaries.Summaries) > 0 {
+		messages.Messages = mergeMessagesSummaries(messages.Messages, summaries.Summaries)
 	}
 	m.Messages = messages.Messages
 	m.TotalCount = messages.TotalCount
