@@ -191,6 +191,25 @@ func (pms *PostgresMemoryStore) GetSummary(
 	return summary, nil
 }
 
+func (pms *PostgresMemoryStore) GetSummaryList(
+	ctx context.Context,
+	appState *models.AppState,
+	sessionID string,
+	pageNumber int,
+	pageSize int,
+) (*models.SummaryListResponse, error) {
+	if appState == nil {
+		return nil, store.NewStorageError("nil appState received", nil)
+	}
+
+	summaries, err := getSummaryList(ctx, pms.Client, sessionID, pageNumber, pageSize)
+	if err != nil {
+		return nil, store.NewStorageError("failed to get summaries", err)
+	}
+
+	return summaries, nil
+}
+
 func (pms *PostgresMemoryStore) PutMemory(
 	ctx context.Context,
 	appState *models.AppState,

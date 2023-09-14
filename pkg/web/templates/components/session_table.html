@@ -41,7 +41,8 @@
 {{ end }}
 
 {{ define "SessionTableRow" }}
-<tr>
+<tr hx-boost="true" hx-push-url="true" hx-target="#page-content">
+    {{ $path := contains "/users/" .Path | ternary (print .Path "/session") .Path }}
     <!-- Checkbox -->
     <td class="h-px w-px whitespace-nowrap">
         <div class="pl-6 py-3">
@@ -58,8 +59,10 @@
     <td class="h-px w-px whitespace-nowrap">
         <div class="pl-6 lg:pl-3 xl:pl-0 pr-6 py-3">
             <div class="flex items-center gap-x-3">
-                <div class="grow" hx-disable>
-                    <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .Session.SessionID }}</span>
+                <div class="grow">
+                    <a href="{{ $path }}/{{ .Session.SessionID }}">
+                        <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .Session.SessionID }}</span>
+                    </a>
                 </div>
             </div>
         </div>
@@ -67,8 +70,8 @@
     <!-- End SessionID & Name -->
     <!-- Email -->
     <td class="h-px w-px whitespace-nowrap">
-        <div class="px-6 py-3" hx-disable>
-            <span class="text-sm text-gray-500">{{ .Session.UserID }}</span>
+        <div class="px-6 py-3">
+            <span class="text-sm text-gray-500">{{ empty .Session.UserID | ternary "" .Session.UserID }}</span>
         </div>
     </td>
     <!-- End Email -->
@@ -79,12 +82,7 @@
         </div>
     </td>
     <!-- End CreatedAt -->
-
-
     <td class="h-px w-px whitespace-nowrap">
-        <!-- TODO: this is ugly -->
-        {{ $path := contains "/users/" .Path | ternary (cat .Path "/session" | nospace) .Path }}
-        <!-- end ugly stuff -->
         <div class="px-6 py-1.5">
             <a class="inline-flex items-center gap-x-1.5 text-sm text-blue-600 decoration-2 hover:underline font-medium"
                href="{{ $path }}/{{ .Session.SessionID }}">

@@ -70,3 +70,50 @@ func getSummary(ctx context.Context, db *bun.DB, sessionID string) (*models.Summ
 	}
 	return &respSummary, nil
 }
+
+// GetSummaryList returns a list of summaries for a session
+func getSummaryList(ctx context.Context,
+	db *bun.DB,
+	sessionID string,
+	pageNumber int,
+	pageSize int,
+) (*models.SummaryListResponse, error) {
+	if sessionID == "" {
+		return nil, store.NewStorageError("sessionID cannot be empty", nil)
+	}
+
+	summariesDB := make([]SummaryStoreSchema, 0)
+	err := db.NewSelect().
+		Model(&summariesDB).
+		Where("session_id = ?", sessionID).
+		Where("deleted_at IS NULL").
+		Order("created_at ASC").
+		Offset((pageNumber - 1) * pageSize).
+		Limit(pageSize).
+		Scan(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, store.NewStorageError("failed to get sessions", err)
+	}
+
+	summaries := make([]models.Summary, len(summariesDB))
+	for i, summary := range summariesDB {
+		summaries[i] = models.Summary{
+			UUID:             summary.UUID,
+			CreatedAt:        summary.CreatedAt,
+			Content:          summary.Content,
+			SummaryPointUUID: summary.SummaryPointUUID,
+			Metadata:         summary.Metadata,
+			TokenCount:       summary.TokenCount,
+		}
+	}
+
+	respSummary := models.SummaryListResponse{
+		Summaries:     summaries,
+		ResponseCount: len(summaries),
+	}
+
+	return &respSummary, nil
+}

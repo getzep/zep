@@ -49,7 +49,7 @@
                 </div>
                 <!-- Metadata Content -->
                 <div class="w-[50%] pl-6 text-xs max-h-44 overflow-y-auto">
-                    {{ ToJSON .Message.Metadata }}
+                    {{ empty .Message.Metadata | ternary "No metadata" (ToJSON .Message.Metadata) }}
                 </div>
             </div>
         </div>

@@ -21,6 +21,12 @@ type MessageListResponse struct {
 	ResponseCount int       `json:"response_count"`
 }
 
+type SummaryListResponse struct {
+	Summaries     []Summary `json:"summaries"`
+	TotalCount    int       `json:"total_count"`
+	ResponseCount int       `json:"response_count"`
+}
+
 type Summary struct {
 	UUID             uuid.UUID              `json:"uuid"`
 	CreatedAt        time.Time              `json:"created_at"`

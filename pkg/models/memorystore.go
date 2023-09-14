@@ -29,6 +29,13 @@ type MemoryStore[T any] interface {
 	GetSummary(ctx context.Context,
 		appState *AppState,
 		sessionID string) (*Summary, error)
+	// GetSummaryList retrieves a list of Summary for a given sessionID. Paginated by cursor and limit.
+	GetSummaryList(ctx context.Context,
+		appState *AppState,
+		sessionID string,
+		pageNumber int,
+		pageSize int,
+	) (*SummaryListResponse, error)
 	// PutMemory stores a Memory for a given sessionID. If the SessionID doesn't exist, a new one is created.
 	PutMemory(ctx context.Context,
 		appState *AppState,
