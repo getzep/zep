@@ -44,4 +44,5 @@ type UserStore interface {
 	Delete(ctx context.Context, userID string) error
 	GetSessions(ctx context.Context, userID string) ([]*Session, error)
 	ListAll(ctx context.Context, cursor int64, limit int) ([]*User, error)
+	CountAll(ctx context.Context) (int, error)
 }

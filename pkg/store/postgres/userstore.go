@@ -234,6 +234,15 @@ func (dao *UserStoreDAO) GetSessions(
 	return sessions, nil
 }
 
+// CountAll counts all users.
+func (dao *UserStoreDAO) CountAll(ctx context.Context) (int, error) {
+	count, err := dao.db.NewSelect().Model(&UserSchema{}).Count(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func userSchemaToUser(user *UserSchema) *models.User {
 	return &models.User{
 		UUID:      user.UUID,
