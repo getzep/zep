@@ -36,6 +36,13 @@
     <th scope="col" class="px-6 py-3 text-left">
         <div class="flex items-center gap-x-2">
                     <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
+                      Documents
+                    </span>
+        </div>
+    </th>
+    <th scope="col" class="px-6 py-3 text-left">
+        <div class="flex items-center gap-x-2">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
                       Embedding Width
                     </span>
         </div>
@@ -47,6 +54,7 @@
                     </span>
         </div>
     </th>
+    <th scope="col" class="px-6 py-3 text-right"></th>
     <th scope="col" class="px-6 py-3 text-right"></th>
 </tr>
 </thead>
@@ -73,6 +81,13 @@
         </div>
     </td>
     <!-- End CreatedAt -->
+    <!-- Email -->
+    <td class="h-px w-px whitespace-nowrap">
+        <div class="px-6 py-3">
+            <span class="text-sm text-gray-500">{{ .DocumentCount }}</span>
+        </div>
+    </td>
+    <!-- End Email -->
     <!-- Email -->
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-3">
@@ -198,7 +213,7 @@
                     <!-- End Table -->
 
                     <!-- Footer -->
-                    {{ template "TablePager" . }}
+                    {{ template "CursorPager" . }}
                     <!-- End Footer -->
                     {{ end }}
                 </div>

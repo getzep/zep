@@ -81,10 +81,6 @@ func (p *Page) renderPartial(w http.ResponseWriter) {
 		return
 	}
 
-	if p.Path != "" {
-		w.Header().Set("HX-Push", p.Path)
-	}
-
 	// Render template content only
 	err = tmpl.ExecuteTemplate(w, "Content", p)
 	if err != nil {

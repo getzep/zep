@@ -25,6 +25,7 @@ type SessionList struct {
 	MemoryStore models.MemoryStore[*bun.DB]
 	Sessions    []*models.Session
 	TotalCount  int
+	ListCount   int
 	Cursor      int64
 	Limit       int64
 }
@@ -35,6 +36,7 @@ func (u *SessionList) Get(ctx context.Context, appState *models.AppState) error 
 		return err
 	}
 	u.Sessions = sessions
+	u.ListCount = len(sessions)
 
 	return nil
 }

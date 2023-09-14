@@ -71,6 +71,7 @@ func setupWebRoutes(router chi.Router, appState *models.AppState) {
 			r.Route("/{userID}", func(r chi.Router) {
 				r.Get("/", web.GetUserDetailsHandler(appState))
 				r.Post("/", web.PostUserDetailsHandler(appState))
+				r.Delete("/", web.DeleteUserHandler(appState))
 
 				r.Route("/session", func(r chi.Router) {
 					r.Get("/{sessionID}", web.GetSessionDetailsHandler(appState))
