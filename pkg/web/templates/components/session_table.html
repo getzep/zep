@@ -59,7 +59,7 @@
         <div class="pl-6 lg:pl-3 xl:pl-0 pr-6 py-3">
             <div class="flex items-center gap-x-3">
                 <div class="grow" hx-disable>
-                    <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .SessionID }}</span>
+                    <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .Session.SessionID }}</span>
                 </div>
             </div>
         </div>
@@ -68,23 +68,26 @@
     <!-- Email -->
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-3" hx-disable>
-            <span class="text-sm text-gray-500">{{ .UserID }}</span>
+            <span class="text-sm text-gray-500">{{ .Session.UserID }}</span>
         </div>
     </td>
     <!-- End Email -->
     <!-- CreatedAt -->
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-3">
-            <span class="text-sm text-gray-500">{{ .CreatedAt.Format "2006-01-02 15:04:05" }}</span>
+            <span class="text-sm text-gray-500">{{ .Session.CreatedAt.Format "2006-01-02 15:04:05" }}</span>
         </div>
     </td>
     <!-- End CreatedAt -->
 
 
     <td class="h-px w-px whitespace-nowrap">
+        <!-- TODO: this is ugly -->
+        {{ $path := contains "/users/" .Path | ternary (cat .Path "/session" | nospace) .Path }}
+        <!-- end ugly stuff -->
         <div class="px-6 py-1.5">
             <a class="inline-flex items-center gap-x-1.5 text-sm text-blue-600 decoration-2 hover:underline font-medium"
-               href="/admin/sessions/{{ .SessionID }}">
+               href="{{ $path }}/{{ .Session.SessionID }}">
                 View
             </a>
         </div>
@@ -99,7 +102,7 @@
         No Sessions Found
       </h3>
       <p class="mt-2 text-gray-800 dark:text-gray-400">
-        No <span class="font-mono">Sessions</span> associated with <span class="font-mono">Sessions</span>.
+        No <span class="font-mono">Sessions</span> found.
       </p>
       <a class="inline-flex items-center gap-2 mt-5 text-sm font-medium text-blue-500 hover:text-blue-700" href="https://docs.getzep.com/sdk/chat_history/users/" target="_new">
         Learn More
@@ -112,7 +115,7 @@
   {{ end }}
 
 {{ define "SessionTable" }}
-<div class="max-w-[85rem] px-4 py-10 sm:px-6 lg:px-8 lg:py-10 mx-auto">
+<div class="max-w-[85rem] px-4 py-3 sm:px-6 lg:px-8 lg:py-7 mx-auto">
     <!-- Card -->
     <div class="flex flex-col">
         <div class="-m-1.5 overflow-x-auto">
@@ -126,8 +129,9 @@
                         {{ template "SessionTHead" . }}
 
                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        {{ range .Data.Sessions }}
-                        {{ template "SessionTableRow" . }}
+                        {{ $path := .Path }}
+                        {{ range $session := .Data.Sessions }}
+                            {{ template "SessionTableRow" dict "Path" $path "Session" $session }}
                         {{ end }}
                         </tbody>
 

@@ -2,11 +2,51 @@
 
 {{ define "Content" }}
 <div id="sessions">
+    {{template "BreadCrumbs" .}}
     {{ template "PageTitles" . }}
+    {{ template "SessionDetails" . }}
     {{ template "ChatHistory" . }}
-    <div class="border-b border-gray-200"></div>
-    <div class="max-w-[85rem] px-4 py-1 sm:px-6 lg:px-8 lg:py-2 mx-auto">
-        <h3 class="mt-8 text-xl text-gray-800 font-bold dark:text-gray-400">Summaries</h3>
+</div>
+{{ end }}
+
+{{ define "SessionDetails" }}
+<div class="px-4 py-3 sm:px-6 lg:px-8 lg:py-7 mx-auto overflow-hidden">
+    <!-- Card -->
+    <div class="flex flex-col">
+        <div class="-m-1.5 overflow-x-auto">
+            <div class="p-1.5 min-w-full inline-block align-middle">
+                <div
+                    class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden dark:bg-slate-900 dark:border-gray-700">
+                    <div class="max-w-[85rem] px-4 py-1 sm:px-6 lg:px-8 lg:py-2 mx-auto">
+                        <p class="mt-8 text-xs text-gray-800 font-bold dark:text-gray-400">Session ID</p>
+                        <h3 class="my-2 text-xl text-gray-800 font-bold dark:text-gray-400">{{ .Data.SessionID }}</h3>
+                        <p class="text-sm">Created: {{ .Data.Session.CreatedAt.Format "2006-01-02 15:04:05" }} 
+                            <span class="px-3">|</span> Updated: {{ .Data.Session.UpdatedAt.Format "2006-01-02 15:04:05"}} 
+                        </p>
+                    </div>
+                    <div class="grow flex m-8">
+                        <!-- Card -->
+                        <div
+                            class="inline-block border-gray-200 border rounded-lg p-4 shadow-sm flex-grow max-h-60">
+                            <p class="text-xs font-light mb-3 ">
+                                Metadata
+                            </p>
+                            <!-- Metadata -->
+                            <div class="w-[50%] pl-6 text-xs max-h-44 overflow-y-auto">
+                                {{ if .Data.Session.Metadata }}
+                                    {{ ToJSON .Data.Session.Metadata }}
+                                {{ else }}
+                                    <p class="text-sm">No metadata</p>
+                                {{ end }}
+                            </div>
+                            <!-- End Metadata -->
+                        </div>
+                        <!-- Card End -->
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+    <!-- End Card -->
 </div>
 {{ end }}

@@ -112,15 +112,27 @@ func renderUserDetailForm(
 		SessionList:    sessionList,
 	}
 
+	path := "/admin/users/" + user.UserID
+
 	page := NewPage(
 		"User Details",
 		"View, edit, and delete a user.",
-		"/admin/users/"+user.UserID,
+		path,
 		[]string{
 			"templates/pages/user_details.html",
 			"templates/components/content/*.html",
 			"templates/components/user_details.html",
 			"templates/components/session_table.html",
+		},
+		[]BreadCrumb{
+			{
+				Title: "Users",
+				Path:  "/admin/users",
+			},
+			{
+				Title: user.UserID,
+				Path:  path,
+			},
 		},
 		userData,
 	)

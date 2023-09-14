@@ -58,14 +58,22 @@ func GetSessionListHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
+		path := "/admin/sessions"
+
 		page := NewPage(
 			"Sessions",
 			"Sessions subtitle",
-			"/admin/sessions",
+			path,
 			[]string{
 				"templates/pages/sessions.html",
 				"templates/components/content/*.html",
 				"templates/components/session_table.html",
+			},
+			[]BreadCrumb{
+				{
+					Title: "Sessions",
+					Path:  path,
+				},
 			},
 			sessionList,
 		)

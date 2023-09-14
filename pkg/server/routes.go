@@ -66,12 +66,15 @@ func setupWebRoutes(router chi.Router, appState *models.AppState) {
 			r.Use(middleware.NoCache)
 		}
 		r.Get("/", web.IndexHandler)
-		r.Get("/dashboard", web.DashboardHandler)
 		r.Route("/users", func(r chi.Router) {
 			r.Get("/", web.GetUserListHandler(appState))
 			r.Route("/{userID}", func(r chi.Router) {
 				r.Get("/", web.GetUserDetailsHandler(appState))
 				r.Post("/", web.PostUserDetailsHandler(appState))
+
+				r.Route("/session", func(r chi.Router) {
+					r.Get("/{sessionID}", web.GetSessionDetailsHandler(appState))
+				})
 			})
 		})
 		r.Route("/sessions", func(r chi.Router) {

@@ -2,14 +2,15 @@
 
 {{ define "Content" }}
 <div id="users_details">
+    {{ template "BreadCrumbs" .}}
     {{ template "PageTitles" . }}
     {{ template "UserDetailsForm" . }}
-    <div class="max-w-[85rem] px-4 py-1 sm:px-6 lg:px-8 lg:py-5 mx-auto">
+    <div class="max-w-[85rem] px-4 py-1 sm:px-6 lg:px-8 lg:py-1 mx-auto">
         <div class="border-b border-gray-200"></div>
         <h3 class="mt-8 text-xl text-gray-800 font-bold dark:text-gray-400">Sessions</h3>
     </div>
     {{ template "SessionTable" . }}
-    <div class="max-w-[85rem] px-4 py-1 sm:px-6 lg:px-8 lg:py-5 mx-auto">
+    <div class="max-w-[85rem] px-4 py-1 sm:px-6 lg:px-8 lg:py-1 mx-auto">
         <div class="border-b border-gray-200"></div>
         <h3 class="mt-8 text-xl text-gray-800 font-bold dark:text-gray-400">Danger</h3>
     </div>
@@ -19,7 +20,7 @@
 
 {{ define "DeleteUser" }}
 <!-- Card Section -->
-<div class="px-4 py-10 sm:px-6 lg:px-8 lg:py-14 mx-auto">
+<div class="px-4 py-5 sm:px-6 lg:px-8 lg:py-7 mx-auto">
     <!-- Card -->
     <div class="bg-white rounded-xl shadow p-4 sm:p-7 dark:bg-slate-900">
         <button type="button"

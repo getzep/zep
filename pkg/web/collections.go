@@ -39,6 +39,8 @@ func (c *CollectionList) Get(ctx context.Context, appState *models.AppState) err
 }
 
 func GetCollectionistHandler(appState *models.AppState) http.HandlerFunc {
+	const path = "/admin/collections"
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionList := NewCollectionList(appState.DocumentStore, 0, 0)
 
@@ -53,11 +55,17 @@ func GetCollectionistHandler(appState *models.AppState) http.HandlerFunc {
 		page := NewPage(
 			"Collections",
 			"Collections subtitle",
-			"/admin/collections",
+			path,
 			[]string{
 				"templates/pages/collections.html",
 				"templates/components/content/*.html",
 				"templates/components/collections_table.html",
+			},
+			[]BreadCrumb{
+				{
+					Title: "Collections",
+					Path:  path,
+				},
 			},
 			collectionList,
 		)

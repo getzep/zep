@@ -18,27 +18,19 @@ type SubMenuItem struct {
 
 var menuItems = []MenuItem{
 	{
-		Name:      "Dashboard",
-		Path:      "/admin/dashboard",
-		Icon:      DashboardIcon,
-		ContentID: "#dashboard",
+		Name: "Dashboard",
+		Path: "/admin",
+		Icon: DashboardIcon,
 	},
 	{
-		Name:      "Users",
-		Path:      "/admin/users",
-		Icon:      UsersIcon,
-		ContentID: "#users",
-		//	{
-		//		Name: "Sub Menu 2",
-		//		Path:  "javascript:;",
-		//	},
-		//},
+		Name: "Users",
+		Path: "/admin/users",
+		Icon: UsersIcon,
 	},
 	{
-		Name:      "Sessions",
-		Path:      "/admin/sessions",
-		Icon:      SessionsIcon,
-		ContentID: "#sessions",
+		Name: "Sessions",
+		Path: "/admin/sessions",
+		Icon: SessionsIcon,
 	},
 	{
 		Name: "Collections",

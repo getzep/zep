@@ -49,6 +49,8 @@ func (u *UserList) Get(ctx context.Context) error {
 }
 
 func GetUserListHandler(appState *models.AppState) http.HandlerFunc {
+	const path = "/admin/users"
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		cursorStr := r.URL.Query().Get("cursor")
 		cursor, _ := strconv.ParseInt(
@@ -70,11 +72,17 @@ func GetUserListHandler(appState *models.AppState) http.HandlerFunc {
 		page := NewPage(
 			"Users",
 			"Users subtitle",
-			"/admin/users",
+			path,
 			[]string{
 				"templates/pages/users.html",
 				"templates/components/content/*.html",
 				"templates/components/user_table.html",
+			},
+			[]BreadCrumb{
+				{
+					Title: "Users",
+					Path:  path,
+				},
 			},
 			userList,
 		)

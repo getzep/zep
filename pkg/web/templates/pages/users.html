@@ -2,6 +2,7 @@
 
 {{ define "Content" }}
 <div id="users">
+    {{ template "BreadCrumbs" .}}
     {{ template "PageTitles" . }}
     {{ template "UserTable" . }}
 </div>

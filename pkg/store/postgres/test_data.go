@@ -88,6 +88,7 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 				CreatedAt: dateCreated,
 				UpdatedAt: dateCreated,
 				UserID:    &users[i].UserID,
+				Metadata:  gofakeit.Map(),
 			})
 		}
 	}

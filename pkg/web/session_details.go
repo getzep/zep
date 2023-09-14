@@ -11,13 +11,13 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func NewMessageList(
+func NewSessionDetails(
 	memoryStore models.MemoryStore[*bun.DB],
 	sessionID string,
 	pageNumber int,
 	pageSize int,
-) *MessageList {
-	return &MessageList{
+) *SessionDetails {
+	return &SessionDetails{
 		MemoryStore: memoryStore,
 		SessionID:   sessionID,
 		PageNumber:  pageNumber,
@@ -25,9 +25,10 @@ func NewMessageList(
 	}
 }
 
-type MessageList struct {
+type SessionDetails struct {
 	MemoryStore models.MemoryStore[*bun.DB]
 	SessionID   string
+	Session     *models.Session
 	Messages    []models.Message
 	TotalCount  int
 	PageNumber  int
@@ -35,7 +36,7 @@ type MessageList struct {
 	Offset      int
 }
 
-func (m *MessageList) Get(ctx context.Context, appState *models.AppState) error {
+func (m *SessionDetails) Get(ctx context.Context, appState *models.AppState) error {
 	messages, err := m.MemoryStore.GetMessageList(ctx, appState, m.SessionID, m.PageNumber, m.PageSize)
 	if err != nil {
 		return err
@@ -57,6 +58,9 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
+		userID := chi.URLParam(r, "userID")
+
+		// Get Messages
 		pageNumberStr := r.URL.Query().Get("page")
 		pageNumber, _ := strconv.ParseInt(
 			pageNumberStr,
@@ -68,27 +72,64 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 		if pageNumber == 0 {
 			pageNumber = 1
 		}
-		messageList := NewMessageList(appState.MemoryStore, sessionID, int(pageNumber), pageSize)
+		sessionDetails := NewSessionDetails(appState.MemoryStore, sessionID, int(pageNumber), pageSize)
 
-		err := messageList.Get(r.Context(), appState)
+		err := sessionDetails.Get(r.Context(), appState)
 		if err != nil {
-			log.Errorf("Failed to get user list: %s", err)
-			http.Error(w, "Failed to get user list", http.StatusInternalServerError)
+			handleError(w, err, "failed to get message list")
 			return
 		}
 
-		messageList.Offset = (int(pageNumber)-1)*pageSize + 1
+		sessionDetails.Offset = (int(pageNumber)-1)*pageSize + 1
+
+		// Get Session Details
+		session, err := appState.MemoryStore.GetSession(r.Context(), appState, sessionID)
+		if err != nil {
+			handleError(w, err, "failed to get session")
+			return
+		}
+		sessionDetails.Session = session
+
+		var breadCrumbs []BreadCrumb
+		if len(userID) == 0 {
+			breadCrumbs = []BreadCrumb{
+				{
+					Title: "Sessions",
+					Path:  "/admin/sessions",
+				},
+				{
+					Title: sessionID,
+					Path:  "/admin/sessions/" + sessionID,
+				},
+			}
+		} else {
+			breadCrumbs = []BreadCrumb{
+				{
+					Title: "Users",
+					Path:  "/admin/users",
+				},
+				{
+					Title: userID,
+					Path:  "/admin/users/" + userID,
+				},
+				{
+					Title: sessionID,
+					Path:  "/admin/users/" + userID + "/sessions/" + sessionID,
+				},
+			}
+		}
 
 		page := NewPage(
 			"Session Details",
-			sessionID,
+			"View session information and related messages",
 			"/admin/sessions/"+sessionID,
 			[]string{
 				"templates/pages/session_details.html",
 				"templates/components/content/*.html",
 				"templates/components/chat_history.html",
 			},
-			messageList,
+			breadCrumbs,
+			sessionDetails,
 		)
 
 		page.Render(w, r)

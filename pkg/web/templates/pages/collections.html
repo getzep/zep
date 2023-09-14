@@ -2,6 +2,7 @@
 
 {{ define "Content" }}
 <div id="collections">
+    {{template "BreadCrumbs" .}}
     {{ template "PageTitles" . }}
     {{ template "CollectionsTable" . }}
 </div>

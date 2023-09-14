@@ -29,27 +29,35 @@ var TemplatesFS embed.FS
 func NewPage(
 	title, subTitle, path string,
 	templates []string,
+	breadCrumbs []BreadCrumb,
 	data interface{},
 ) *Page {
 	return &Page{
-		Title:     title,
-		SubTitle:  subTitle,
-		MenuItems: menuItems,
-		Templates: templates,
-		Path:      path,
-		Slug:      slugify(title),
-		Data:      data,
+		Title:       title,
+		SubTitle:    subTitle,
+		MenuItems:   menuItems,
+		Templates:   templates,
+		Path:        path,
+		Slug:        slugify(title),
+		BreadCrumbs: breadCrumbs,
+		Data:        data,
 	}
 }
 
+type BreadCrumb struct {
+	Title string
+	Path  string
+}
+
 type Page struct {
-	Title     string
-	SubTitle  string
-	MenuItems []MenuItem
-	Templates []string
-	Path      string
-	Slug      string
-	Data      interface{}
+	Title       string
+	SubTitle    string
+	MenuItems   []MenuItem
+	Templates   []string
+	Path        string
+	Slug        string
+	BreadCrumbs []BreadCrumb
+	Data        interface{}
 }
 
 func (p *Page) Render(w http.ResponseWriter, r *http.Request) {

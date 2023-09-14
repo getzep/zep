@@ -1,12 +1,13 @@
 {{ define "UserDetailsForm" }}
 <!-- Card Section -->
-<div class="px-4 py-10 sm:px-6 lg:px-8 lg:py-14 mx-auto">
+<div class="px-4 py-5 sm:px-6 lg:px-8 lg:py-7 mx-auto">
     <!-- Card -->
     <div class="bg-white rounded-xl shadow p-4 sm:p-7 dark:bg-slate-900">
         <div class="mb-8">
-            <h2 class="text-xl font-bold text-gray-800 dark:text-gray-200">
+            <p class="mt-8 text-xs text-gray-800 font-bold dark:text-gray-400">User ID</p>
+            <h3 class="my-2 text-xl text-gray-800 font-bold dark:text-gray-400">
                 {{ .Data.UserID }}
-            </h2>
+            </h3>
         </div>
 
         <form id="user-detail-form" action="{{ .Path }}" method="post" hx-boost="true"  hx-target="#user-detail-form" hx-select="#user-detail-form"  x-data="{ edit: false }" x-ref="{{ .Slug }}">
@@ -54,9 +55,10 @@
                 <!-- End Col -->
 
                 <div class="sm:col-span-9">
-                    <textarea id="metadata" name="metadata"
-                        class="py-2 px-3 block w-full border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-slate-900 dark:border-gray-700 dark:text-gray-400"
-                        rows="6" x-bind:disabled="!edit">{{ .Data.MetadataString }}</textarea>
+                    <div id="metadata"
+                        class="py-2 px-3 w-full shadow-sm text-xs rounded-lg bg-gray-50 dark:bg-slate-900 dark:border-gray-700 dark:text-gray-400">
+                        {{ empty .Data.Metadata | ternary  "No metadata" (ToJSON .Data.Metadata) }}
+                    </div>
                 </div>
                 <!-- End Col -->
             </div>

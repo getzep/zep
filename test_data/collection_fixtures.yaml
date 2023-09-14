@@ -1,162 +1,162 @@
 - model: DocumentCollectionSchema
   rows:
-    - uuid: f911b539-4805-4c02-8525-858069274e82
-      created_at: 2023-08-31T15:02:18.795654465Z
-      updated_at: 2023-08-31T15:02:18.795654465Z
-      name: driver382085197590
-      description: The Golden Notebook
+    - uuid: f85495ca-a635-4df8-a1e7-9dae27ee974a
+      created_at: 2023-09-01T04:32:19.610980808Z
+      updated_at: 2023-09-01T04:32:19.610980808Z
+      name: hard drive231567403983
+      description: The Idiot
       metadata:
-        key: crowd
-      table_name: docstore_driver382085197590_1536
-      embedding_model_name: behind
+        key: could
+      table_name: docstore_hard_drive231567403983_1536
+      embedding_model_name: early
       embedding_dimensions: 1536
       is_auto_embedded: false
       distance_function: cosine
       is_normalized: false
-      is_indexed: false
-      list_count: 73
-      probe_count: 66
-    - uuid: e2b64e27-aa94-48c6-ae3d-ca0f5077407e
-      created_at: 2023-08-31T04:24:51.086658339Z
-      updated_at: 2023-08-31T04:24:51.086658339Z
-      name: panel242203710892
-      description: Othello
+      is_indexed: true
+      list_count: 63
+      probe_count: 2
+    - uuid: 3581b485-50e4-4c75-b8a6-facfc5ec6fa9
+      created_at: 2023-09-02T22:06:49.363191824Z
+      updated_at: 2023-09-02T22:06:49.363191824Z
+      name: alarm185350689692
+      description: The Idiot
       metadata:
-        key: firstly
-      table_name: docstore_panel242203710892_384
-      embedding_model_name: man
+        key: must
+      table_name: docstore_alarm185350689692_1536
+      embedding_model_name: we
+      embedding_dimensions: 1536
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 15
+      probe_count: 3
+    - uuid: f4f3b32a-1ad0-431c-8a6b-c82174c1704a
+      created_at: 2023-09-02T13:57:56.222361926Z
+      updated_at: 2023-09-02T13:57:56.222361926Z
+      name: transmitter474733306065
+      description: Gypsy Ballads
+      metadata:
+        key: upon
+      table_name: docstore_transmitter474733306065_1536
+      embedding_model_name: width
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 64
+      probe_count: 75
+    - uuid: fcef288d-0d60-4749-9775-b70d5f74c30e
+      created_at: 2023-09-09T02:03:20.968371472Z
+      updated_at: 2023-09-09T02:03:20.968371472Z
+      name: panel723385805679
+      description: Anna Karenina
+      metadata:
+        key: theirs
+      table_name: docstore_panel723385805679_768
+      embedding_model_name: already
+      embedding_dimensions: 768
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 5
+      probe_count: 73
+    - uuid: 03849326-0842-464a-afed-8ba7492864a0
+      created_at: 2023-09-10T14:28:46.060872827Z
+      updated_at: 2023-09-10T14:28:46.060872827Z
+      name: bandwidth637246716274
+      description: Faust
+      metadata:
+        key: patrol
+      table_name: docstore_bandwidth637246716274_384
+      embedding_model_name: barely
       embedding_dimensions: 384
       is_auto_embedded: false
       distance_function: cosine
       is_normalized: true
       is_indexed: true
-      list_count: 25
-      probe_count: 92
-    - uuid: 30004f22-88ff-40e3-9808-50a1c943b318
-      created_at: 2023-09-10T01:50:45.780865139Z
-      updated_at: 2023-09-10T01:50:45.780865139Z
-      name: driver917262451317
-      description: Buddenbrooks
+      list_count: 58
+      probe_count: 18
+    - uuid: e4b4cb49-4ada-4b47-bbac-f492a0af6270
+      created_at: 2023-09-01T05:52:27.490514638Z
+      updated_at: 2023-09-01T05:52:27.490514638Z
+      name: bandwidth921579737535
+      description: Fairy tales
       metadata:
-        key: so
-      table_name: docstore_driver917262451317_384
-      embedding_model_name: dynasty
+        key: am
+      table_name: docstore_bandwidth921579737535_1536
+      embedding_model_name: rarely
+      embedding_dimensions: 1536
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 72
+      probe_count: 70
+    - uuid: 19d17264-ed0e-4440-afc0-41bb3f834cc7
+      created_at: 2023-09-05T10:58:35.022405966Z
+      updated_at: 2023-09-05T10:58:35.022405966Z
+      name: hard drive940449337882
+      description: The Adventures of Huckleberry Finn
+      metadata:
+        key: everything
+      table_name: docstore_hard_drive940449337882_384
+      embedding_model_name: "on"
       embedding_dimensions: 384
       is_auto_embedded: false
       distance_function: cosine
       is_normalized: false
-      is_indexed: false
-      list_count: 57
-      probe_count: 41
-    - uuid: 0592d962-087a-403d-ab1f-76ef8a72765f
-      created_at: 2023-09-06T16:50:46.504860979Z
-      updated_at: 2023-09-06T16:50:46.504860979Z
-      name: bandwidth331154861906
-      description: Harry potter and the sorcerer's stone
-      metadata:
-        key: toothpaste
-      table_name: docstore_bandwidth331154861906_768
-      embedding_model_name: without
-      embedding_dimensions: 768
-      is_auto_embedded: true
-      distance_function: cosine
-      is_normalized: false
-      is_indexed: false
-      list_count: 47
-      probe_count: 49
-    - uuid: daf90439-519e-4fac-9a9e-feb00d13f925
-      created_at: 2023-09-04T07:32:04.012560196Z
-      updated_at: 2023-09-04T07:32:04.012560196Z
-      name: monitor182092101848
-      description: Memoirs of Hadrian
-      metadata:
-        key: indeed
-      table_name: docstore_monitor182092101848_1536
-      embedding_model_name: besides
-      embedding_dimensions: 1536
-      is_auto_embedded: true
-      distance_function: cosine
-      is_normalized: false
-      is_indexed: false
-      list_count: 100
-      probe_count: 3
-    - uuid: 1046a328-4242-4c75-b088-3b0df07ad4e1
-      created_at: 2023-09-10T23:43:30.760473768Z
-      updated_at: 2023-09-10T23:43:30.760473768Z
-      name: interface679920024882
-      description: The Old Man and the Sea
-      metadata:
-        key: straw
-      table_name: docstore_interface679920024882_1536
-      embedding_model_name: everything
-      embedding_dimensions: 1536
-      is_auto_embedded: false
-      distance_function: cosine
-      is_normalized: false
       is_indexed: true
-      list_count: 6
-      probe_count: 61
-    - uuid: e54003fc-6215-4b9b-b575-fc6e2266438b
-      created_at: 2023-09-08T00:38:49.881446351Z
-      updated_at: 2023-09-08T00:38:49.881446351Z
-      name: circuit824453567633
-      description: One Hundred Years of Solitude
+      list_count: 44
+      probe_count: 99
+    - uuid: d4d4d96a-e20d-4e88-bb21-db1568f74ab7
+      created_at: 2023-09-08T09:19:49.856088158Z
+      updated_at: 2023-09-08T09:19:49.856088158Z
+      name: array727474662354
+      description: Leaves of Grass
       metadata:
-        key: anything
-      table_name: docstore_circuit824453567633_768
-      embedding_model_name: me
-      embedding_dimensions: 768
-      is_auto_embedded: false
-      distance_function: cosine
-      is_normalized: false
-      is_indexed: true
-      list_count: 96
-      probe_count: 45
-    - uuid: 926595d2-73b7-4e9a-ad66-b44964082808
-      created_at: 2023-09-10T09:03:04.430960293Z
-      updated_at: 2023-09-10T09:03:04.430960293Z
-      name: monitor600549242384
-      description: Moby Dick
-      metadata:
-        key: itself
-      table_name: docstore_monitor600549242384_768
-      embedding_model_name: upon
-      embedding_dimensions: 768
+        key: mine
+      table_name: docstore_array727474662354_1536
+      embedding_model_name: that
+      embedding_dimensions: 1536
       is_auto_embedded: false
       distance_function: cosine
       is_normalized: false
       is_indexed: false
       list_count: 87
-      probe_count: 73
-    - uuid: 0c3cf1bd-9538-4c5b-8273-ba02c60956b2
-      created_at: 2023-09-13T04:58:26.071680685Z
-      updated_at: 2023-09-13T04:58:26.071680685Z
-      name: card335873568262
-      description: One Thousand and One Nights
+      probe_count: 25
+    - uuid: 6caf357d-a6bc-40fb-98a9-19309e2c3550
+      created_at: 2023-09-02T18:11:39.624110275Z
+      updated_at: 2023-09-02T18:11:39.624110275Z
+      name: port766173722418
+      description: Harry potter and the sorcerer's stone
       metadata:
-        key: which
-      table_name: docstore_card335873568262_1536
-      embedding_model_name: without
+        key: its
+      table_name: docstore_port766173722418_1536
+      embedding_model_name: he
       embedding_dimensions: 1536
       is_auto_embedded: true
       distance_function: cosine
       is_normalized: true
       is_indexed: false
-      list_count: 18
+      list_count: 13
       probe_count: 11
-    - uuid: 89e3ad68-4915-45c6-b8f6-3d65952ff517
-      created_at: 2023-09-02T15:22:55.441352999Z
-      updated_at: 2023-09-02T15:22:55.441352999Z
-      name: feed985046694517
-      description: Hamlet
+    - uuid: 9093f3f5-b456-4da9-97a7-ec7c5fb97cbd
+      created_at: 2023-08-31T22:26:34.676606012Z
+      updated_at: 2023-08-31T22:26:34.676606012Z
+      name: microchip669776733007
+      description: Lolita
       metadata:
-        key: from
-      table_name: docstore_feed985046694517_1536
-      embedding_model_name: as
-      embedding_dimensions: 1536
+        key: widen
+      table_name: docstore_microchip669776733007_768
+      embedding_model_name: are
+      embedding_dimensions: 768
       is_auto_embedded: true
       distance_function: cosine
       is_normalized: true
       is_indexed: true
-      list_count: 77
-      probe_count: 42
+      list_count: 74
+      probe_count: 85
