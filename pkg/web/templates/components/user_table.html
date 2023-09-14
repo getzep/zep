@@ -53,6 +53,14 @@
         <th scope="col" class="px-6 py-3 text-left">
             <div class="flex items-center gap-x-2">
                 <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
+                    Sessions
+                </span>
+            </div>
+        </th>
+
+        <th scope="col" class="px-6 py-3 text-left">
+            <div class="flex items-center gap-x-2">
+                <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
                     Created
                 </span>
             </div>
@@ -99,6 +107,13 @@
         </div>
     </td>
     <!-- End Email -->
+        <!-- Sessions -->
+        <td class="h-px w-px whitespace-nowrap">
+            <div class="px-6 py-3">
+                <span class="text-sm text-gray-500">{{ .SessionCount }}</span>
+            </div>
+        </td>
+        <!-- End Sessions -->
     <!-- CreatedAt -->
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-3">
@@ -152,7 +167,7 @@
                     class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden dark:bg-slate-900 dark:border-gray-700">
 
 
-                    {{ if eq (len .Data.Users) 0 }}
+                    {{ if eq (len .Data.UserRows) 0 }}
                     {{ template "UserTableNoData" . }}
                     {{ else }}
                     <!-- Table -->
@@ -160,7 +175,7 @@
                         {{ template "UserTHead" . }}
 
                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                            {{ range .Data.Users }}
+                            {{ range .Data.UserRows }}
                             {{ template "UserTableRow" . }}
                             {{ end }}
                         </tbody>

@@ -14,6 +14,11 @@ import (
 
 const UserListLimit int64 = 10
 
+type UserRow struct {
+	*models.User
+	SessionCount int
+}
+
 func NewUserList(userStore models.UserStore, cursor int64, limit int64) *UserList {
 	return &UserList{
 		UserStore: userStore,
@@ -24,7 +29,7 @@ func NewUserList(userStore models.UserStore, cursor int64, limit int64) *UserLis
 
 type UserList struct {
 	UserStore  models.UserStore
-	Users      []*models.User
+	UserRows   []*UserRow
 	TotalCount int64
 	ListCount  int
 	Cursor     int64
@@ -36,8 +41,26 @@ func (u *UserList) Get(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	u.Users = users
+
+	userRows := make([]*UserRow, len(users))
+	for i, user := range users {
+		sessions, err := u.UserStore.GetSessions(ctx, user.UserID)
+		if err != nil {
+			return err
+		}
+		userRows[i] = &UserRow{
+			User:         user,
+			SessionCount: len(sessions),
+		}
+	}
+
+	count, err := u.UserStore.CountAll(ctx)
+	if err != nil {
+		return err
+	}
+	u.UserRows = userRows
 	u.ListCount = len(users)
+	u.TotalCount = int64(count)
 
 	return nil
 }
