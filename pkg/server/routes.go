@@ -85,6 +85,7 @@ func setupWebRoutes(router chi.Router, appState *models.AppState) {
 			})
 		})
 		r.Get("/collections", web.GetCollectionistHandler(appState))
+		r.Get("/settings", web.GetSettingsHandler(appState))
 	})
 }
 

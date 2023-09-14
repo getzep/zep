@@ -1,0 +1,22 @@
+{{ template "Content" . }}
+
+{{ define "Content" }}
+<div id="settings">
+    {{template "BreadCrumbs" .}}
+    {{ template "PageTitles" . }}
+
+    <div class="px-4 py-5 sm:px-6 lg:px-8 lg:py-7 mx-auto">
+        <!-- Card -->
+        <div class="bg-white rounded-xl shadow p-4 sm:p-7 dark:bg-slate-900">
+            <div class="max-w-[85rem] px-4 py-1 sm:px-6 lg:px-8 lg:py-2 mx-auto">
+                <h3 class="my-2 text-xl text-gray-800 font-bold dark:text-gray-400">Loaded Config</h3>
+            </div>
+            <div class="pl-10 py-10 text-xs max-h-[40rem] overflow-y-scroll">
+                {{ .Data.ConfigHTML }}
+            </div>            
+        </div>
+    </div>
+
+
+</div>
+{{ end }}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
+	"reflect"
 	"strings"
 
 	"github.com/Masterminds/sprig/v3"
@@ -88,6 +89,29 @@ func HTMLEscapeMap(data map[string]interface{}) map[string]interface{} {
 			data[key] = HTMLEscapeMap(v)
 		default:
 			// do nothing for other types
+		}
+	}
+	return data
+}
+
+// HTMLEscapeStruct recursively walks a struct and any child structs and HTML escapes any string fields
+func HTMLEscapeStruct(data interface{}) interface{} {
+	v := reflect.ValueOf(data)
+
+	switch v.Kind() {
+	case reflect.String:
+		return template.HTMLEscapeString(v.String())
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			field := v.Field(i)
+			if field.CanSet() {
+				switch field.Kind() {
+				case reflect.String:
+					field.SetString(template.HTMLEscapeString(field.String()))
+				case reflect.Struct:
+					HTMLEscapeStruct(field.Interface())
+				}
+			}
 		}
 	}
 	return data

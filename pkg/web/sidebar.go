@@ -2,6 +2,8 @@ package web
 
 import "html/template"
 
+const AdminPath = "/admin"
+
 type MenuItem struct {
 	Name      string
 	Path      string
@@ -19,27 +21,27 @@ type SubMenuItem struct {
 var menuItems = []MenuItem{
 	{
 		Name: "Dashboard",
-		Path: "/admin",
+		Path: AdminPath,
 		Icon: DashboardIcon,
 	},
 	{
 		Name: "Users",
-		Path: "/admin/users",
+		Path: AdminPath + "/users",
 		Icon: UsersIcon,
 	},
 	{
 		Name: "Sessions",
-		Path: "/admin/sessions",
+		Path: AdminPath + "/sessions",
 		Icon: SessionsIcon,
 	},
 	{
 		Name: "Collections",
-		Path: "/admin/collections",
+		Path: AdminPath + "/collections",
 		Icon: CollectionsIcon,
 	},
 	{
 		Name: "Settings",
-		Path: "javascript:;",
+		Path: AdminPath + "/settings",
 		Icon: SettingsIcon,
 	},
 }

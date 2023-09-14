@@ -804,6 +804,10 @@ video {
   max-height: 15rem;
 }
 
+.max-h-\[40rem\] {
+  max-height: 40rem;
+}
+
 .min-h-\[15rem\] {
   min-height: 15rem;
 }
@@ -1049,6 +1053,10 @@ video {
   overflow-x: hidden;
 }
 
+.overflow-y-scroll {
+  overflow-y: scroll;
+}
+
 .truncate {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1261,6 +1269,10 @@ video {
 
 .pb-10 {
   padding-bottom: 2.5rem;
+}
+
+.pl-10 {
+  padding-left: 2.5rem;
 }
 
 .pl-11 {
