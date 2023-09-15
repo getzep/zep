@@ -102,7 +102,7 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 	for i := 0; i < fixtureCountCollections; i++ {
 		gofakeit.ShuffleInts(embeddingDimensions)
 		dateCreated := generateTimeLastNDays(14)
-		collectionName := strings.ToLower(gofakeit.HackerNoun() + gofakeit.AchAccount())
+		collectionName := strings.ToLower(gofakeit.Color() + gofakeit.AchAccount())
 		tableName := generateTestTableName(collectionName, embeddingDimensions[0])
 
 		collections[i] = DocumentCollectionSchema{

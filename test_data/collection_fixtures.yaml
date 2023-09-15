@@ -1,162 +1,162 @@
 - model: DocumentCollectionSchema
   rows:
-    - uuid: f85495ca-a635-4df8-a1e7-9dae27ee974a
-      created_at: 2023-09-01T04:32:19.610980808Z
-      updated_at: 2023-09-01T04:32:19.610980808Z
-      name: hard drive231567403983
-      description: The Idiot
+    - uuid: f7284f8b-f092-408e-bee2-ec884498e2ba
+      created_at: 2023-09-03T21:45:01.19551449Z
+      updated_at: 2023-09-03T21:45:01.19551449Z
+      name: saddlebrown937577188512
+      description: Ulysses
       metadata:
-        key: could
-      table_name: docstore_hard_drive231567403983_1536
-      embedding_model_name: early
+        key: quiver
+      table_name: docstore_saddlebrown937577188512_1536
+      embedding_model_name: charming
       embedding_dimensions: 1536
       is_auto_embedded: false
       distance_function: cosine
       is_normalized: false
-      is_indexed: true
-      list_count: 63
-      probe_count: 2
-    - uuid: 3581b485-50e4-4c75-b8a6-facfc5ec6fa9
-      created_at: 2023-09-02T22:06:49.363191824Z
-      updated_at: 2023-09-02T22:06:49.363191824Z
-      name: alarm185350689692
-      description: The Idiot
+      is_indexed: false
+      list_count: 77
+      probe_count: 50
+    - uuid: 6d682306-1335-4231-b43b-36d37273ed3c
+      created_at: 2023-09-13T07:14:16.918386456Z
+      updated_at: 2023-09-13T07:14:16.918386456Z
+      name: darkslateblue224319929452
+      description: Pride and Prejudice
       metadata:
-        key: must
-      table_name: docstore_alarm185350689692_1536
-      embedding_model_name: we
-      embedding_dimensions: 1536
-      is_auto_embedded: true
-      distance_function: cosine
-      is_normalized: true
-      is_indexed: true
-      list_count: 15
-      probe_count: 3
-    - uuid: f4f3b32a-1ad0-431c-8a6b-c82174c1704a
-      created_at: 2023-09-02T13:57:56.222361926Z
-      updated_at: 2023-09-02T13:57:56.222361926Z
-      name: transmitter474733306065
-      description: Gypsy Ballads
-      metadata:
-        key: upon
-      table_name: docstore_transmitter474733306065_1536
-      embedding_model_name: width
-      embedding_dimensions: 1536
-      is_auto_embedded: false
-      distance_function: cosine
-      is_normalized: false
-      is_indexed: true
-      list_count: 64
-      probe_count: 75
-    - uuid: fcef288d-0d60-4749-9775-b70d5f74c30e
-      created_at: 2023-09-09T02:03:20.968371472Z
-      updated_at: 2023-09-09T02:03:20.968371472Z
-      name: panel723385805679
-      description: Anna Karenina
-      metadata:
-        key: theirs
-      table_name: docstore_panel723385805679_768
-      embedding_model_name: already
+        key: scold
+      table_name: docstore_darkslateblue224319929452_768
+      embedding_model_name: bathe
       embedding_dimensions: 768
       is_auto_embedded: true
       distance_function: cosine
       is_normalized: true
-      is_indexed: true
-      list_count: 5
-      probe_count: 73
-    - uuid: 03849326-0842-464a-afed-8ba7492864a0
-      created_at: 2023-09-10T14:28:46.060872827Z
-      updated_at: 2023-09-10T14:28:46.060872827Z
-      name: bandwidth637246716274
-      description: Faust
+      is_indexed: false
+      list_count: 36
+      probe_count: 39
+    - uuid: 993a5135-e008-4d9c-9929-dd55a01d0af7
+      created_at: 2023-09-12T23:55:25.104413699Z
+      updated_at: 2023-09-12T23:55:25.104413699Z
+      name: seashell384758188829
+      description: Nineteen Eighty-Four
       metadata:
-        key: patrol
-      table_name: docstore_bandwidth637246716274_384
-      embedding_model_name: barely
-      embedding_dimensions: 384
-      is_auto_embedded: false
+        key: usually
+      table_name: docstore_seashell384758188829_768
+      embedding_model_name: that
+      embedding_dimensions: 768
+      is_auto_embedded: true
       distance_function: cosine
-      is_normalized: true
+      is_normalized: false
       is_indexed: true
-      list_count: 58
-      probe_count: 18
-    - uuid: e4b4cb49-4ada-4b47-bbac-f492a0af6270
-      created_at: 2023-09-01T05:52:27.490514638Z
-      updated_at: 2023-09-01T05:52:27.490514638Z
-      name: bandwidth921579737535
-      description: Fairy tales
+      list_count: 9
+      probe_count: 19
+    - uuid: d5323059-789f-4c47-85f0-d9def022667a
+      created_at: 2023-09-04T18:51:49.59422854Z
+      updated_at: 2023-09-04T18:51:49.59422854Z
+      name: pink878916468345
+      description: Hamlet
       metadata:
-        key: am
-      table_name: docstore_bandwidth921579737535_1536
-      embedding_model_name: rarely
+        key: ball
+      table_name: docstore_pink878916468345_1536
+      embedding_model_name: where
       embedding_dimensions: 1536
       is_auto_embedded: false
       distance_function: cosine
       is_normalized: false
       is_indexed: true
       list_count: 72
-      probe_count: 70
-    - uuid: 19d17264-ed0e-4440-afc0-41bb3f834cc7
-      created_at: 2023-09-05T10:58:35.022405966Z
-      updated_at: 2023-09-05T10:58:35.022405966Z
-      name: hard drive940449337882
-      description: The Adventures of Huckleberry Finn
+      probe_count: 94
+    - uuid: 8fb2fbbd-42c7-4488-ac1f-ef4d154ef997
+      created_at: 2023-09-08T18:49:22.812861422Z
+      updated_at: 2023-09-08T18:49:22.812861422Z
+      name: whitesmoke869194477960
+      description: Faust
       metadata:
-        key: everything
-      table_name: docstore_hard_drive940449337882_384
-      embedding_model_name: "on"
+        key: before
+      table_name: docstore_whitesmoke869194477960_384
+      embedding_model_name: phone
       embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 43
+      probe_count: 1
+    - uuid: 196335cb-245d-4773-ac24-60101d432970
+      created_at: 2023-09-03T16:44:40.809703621Z
+      updated_at: 2023-09-03T16:44:40.809703621Z
+      name: linen315762146490
+      description: Nineteen Eighty-Four
+      metadata:
+        key: frantic
+      table_name: docstore_linen315762146490_384
+      embedding_model_name: our
+      embedding_dimensions: 384
+      is_auto_embedded: true
+      distance_function: cosine
+      is_normalized: false
+      is_indexed: true
+      list_count: 85
+      probe_count: 52
+    - uuid: 11756ed2-4be4-41f4-b681-26e0cf14c430
+      created_at: 2023-09-14T12:36:06.318733757Z
+      updated_at: 2023-09-14T12:36:06.318733757Z
+      name: mediumblue151459639864
+      description: The Brothers Karamazov
+      metadata:
+        key: board
+      table_name: docstore_mediumblue151459639864_768
+      embedding_model_name: besides
+      embedding_dimensions: 768
+      is_auto_embedded: false
+      distance_function: cosine
+      is_normalized: true
+      is_indexed: true
+      list_count: 91
+      probe_count: 99
+    - uuid: 39761328-1ef2-4977-8962-61789c49b013
+      created_at: 2023-09-13T04:27:27.783183224Z
+      updated_at: 2023-09-13T04:27:27.783183224Z
+      name: lightyellow359506116239
+      description: Zorba the Greek
+      metadata:
+        key: wave
+      table_name: docstore_lightyellow359506116239_768
+      embedding_model_name: alone
+      embedding_dimensions: 768
       is_auto_embedded: false
       distance_function: cosine
       is_normalized: false
       is_indexed: true
-      list_count: 44
-      probe_count: 99
-    - uuid: d4d4d96a-e20d-4e88-bb21-db1568f74ab7
-      created_at: 2023-09-08T09:19:49.856088158Z
-      updated_at: 2023-09-08T09:19:49.856088158Z
-      name: array727474662354
-      description: Leaves of Grass
+      list_count: 28
+      probe_count: 70
+    - uuid: ce28c770-5c25-4fee-9567-825d86b9d302
+      created_at: 2023-09-01T11:22:59.652481241Z
+      updated_at: 2023-09-01T11:22:59.652481241Z
+      name: darkviolet180744389011
+      description: Faust
       metadata:
-        key: mine
-      table_name: docstore_array727474662354_1536
-      embedding_model_name: that
+        key: few
+      table_name: docstore_darkviolet180744389011_1536
+      embedding_model_name: e.g.
       embedding_dimensions: 1536
       is_auto_embedded: false
       distance_function: cosine
       is_normalized: false
       is_indexed: false
-      list_count: 87
-      probe_count: 25
-    - uuid: 6caf357d-a6bc-40fb-98a9-19309e2c3550
-      created_at: 2023-09-02T18:11:39.624110275Z
-      updated_at: 2023-09-02T18:11:39.624110275Z
-      name: port766173722418
-      description: Harry potter and the sorcerer's stone
+      list_count: 4
+      probe_count: 85
+    - uuid: bff76ccf-bc64-46e6-b069-5f6d193f0d3f
+      created_at: 2023-09-04T14:21:36.05069763Z
+      updated_at: 2023-09-04T14:21:36.05069763Z
+      name: mintcream992867624159
+      description: Bostan
       metadata:
-        key: its
-      table_name: docstore_port766173722418_1536
-      embedding_model_name: he
-      embedding_dimensions: 1536
-      is_auto_embedded: true
-      distance_function: cosine
-      is_normalized: true
-      is_indexed: false
-      list_count: 13
-      probe_count: 11
-    - uuid: 9093f3f5-b456-4da9-97a7-ec7c5fb97cbd
-      created_at: 2023-08-31T22:26:34.676606012Z
-      updated_at: 2023-08-31T22:26:34.676606012Z
-      name: microchip669776733007
-      description: Lolita
-      metadata:
-        key: widen
-      table_name: docstore_microchip669776733007_768
-      embedding_model_name: are
+        key: firstly
+      table_name: docstore_mintcream992867624159_768
+      embedding_model_name: block
       embedding_dimensions: 768
       is_auto_embedded: true
       distance_function: cosine
       is_normalized: true
-      is_indexed: true
-      list_count: 74
-      probe_count: 85
+      is_indexed: false
+      list_count: 49
+      probe_count: 67

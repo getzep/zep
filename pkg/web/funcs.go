@@ -2,62 +2,17 @@ package web
 
 import (
 	"encoding/json"
-	"errors"
 	"html/template"
 	"reflect"
-	"strings"
 
 	"github.com/Masterminds/sprig/v3"
 )
-
-func add(a, b int64) int64 {
-	return a + b
-}
-
-func sub(a, b int64) int64 {
-	return a - b
-}
-
-// returns 0 on a divide by 0
-func div(a, b int) float32 {
-	if b == 0 {
-		return 0
-	}
-	return float32(a) / float32(b)
-}
-
-func product(a, b float32) float32 {
-	return a * b
-}
 
 func percent(a, b int) int {
 	if b == 0 {
 		return 0
 	}
 	return int(float32(a) / float32(b) * 100)
-}
-
-func mod(a, b int) int {
-	if b == 0 {
-		return 0
-	}
-	return a % b
-}
-
-// dict is a helper function to create a map[string]interface{} in a template
-func dict(values ...interface{}) (map[string]interface{}, error) {
-	if len(values)%2 != 0 {
-		return nil, errors.New("invalid dict call")
-	}
-	dict := make(map[string]interface{}, len(values)/2)
-	for i := 0; i < len(values); i += 2 {
-		key, ok := values[i].(string)
-		if !ok {
-			return nil, errors.New("dict keys must be strings")
-		}
-		dict[key] = values[i+1]
-	}
-	return dict, nil
 }
 
 // JSONSerializeHTML serializes a map to a JSON string and outputs as HTML
@@ -119,14 +74,7 @@ func HTMLEscapeStruct(data interface{}) interface{} {
 
 func templateFuncs() template.FuncMap {
 	funcMap := template.FuncMap{
-		"ToLower": strings.ToLower,
-		"Add":     add,
-		"Sub":     sub,
-		"Div":     div,
-		"Product": product,
 		"Percent": percent,
-		"Mod":     mod,
-		"Dict":    dict,
 		"ToJSON":  JSONSerializeHTML,
 	}
 

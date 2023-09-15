@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/getzep/zep/pkg/models"
+	"github.com/go-chi/chi/v5"
 	"github.com/uptrace/bun"
 )
 
@@ -12,11 +13,13 @@ func NewCollectionList(
 	documentStore models.DocumentStore[*bun.DB],
 	cursor int64,
 	limit int64,
+	path string,
 ) *CollectionList {
 	return &CollectionList{
 		DocumentStore: documentStore,
 		Cursor:        cursor,
 		Limit:         limit,
+		Path:          path,
 	}
 }
 
@@ -26,6 +29,7 @@ type CollectionList struct {
 	TotalCount    int
 	Cursor        int64
 	Limit         int64
+	Path          string
 }
 
 func (c *CollectionList) Get(ctx context.Context, appState *models.AppState) error {
@@ -38,16 +42,20 @@ func (c *CollectionList) Get(ctx context.Context, appState *models.AppState) err
 	return nil
 }
 
-func GetCollectionistHandler(appState *models.AppState) http.HandlerFunc {
+type CollectionDetails struct {
+	*models.DocumentCollection
+	Path string
+}
+
+func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 	const path = "/admin/collections"
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		collectionList := NewCollectionList(appState.DocumentStore, 0, 0)
+		collectionList := NewCollectionList(appState.DocumentStore, 0, 0, path)
 
 		err := collectionList.Get(r.Context(), appState)
 		if err != nil {
-			log.Errorf("Failed to get collection list: %s", err)
-			http.Error(w, "Failed to get user collection", http.StatusInternalServerError)
+			handleError(w, err, "failed to get collection list")
 			return
 		}
 		log.Debugf("CollectionList: %+v", collectionList)
@@ -68,6 +76,46 @@ func GetCollectionistHandler(appState *models.AppState) http.HandlerFunc {
 				},
 			},
 			collectionList,
+		)
+
+		page.Render(w, r)
+	}
+}
+
+func ViewCollectionHandler(appState *models.AppState) http.HandlerFunc {
+	const path = "/admin/collections"
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		collectionName := chi.URLParam(r, "collectionName")
+
+		collection, err := appState.DocumentStore.GetCollection(r.Context(), collectionName)
+		if err != nil {
+			handleError(w, err, "failed to get collection")
+			return
+		}
+
+		page := NewPage(
+			collectionName,
+			collection.Description,
+			path,
+			[]string{
+				"templates/pages/collection_details.html",
+				"templates/components/content/*.html",
+			},
+			[]BreadCrumb{
+				{
+					Title: "Collections",
+					Path:  path,
+				},
+				{
+					Title: collectionName,
+					Path:  path + "/" + collectionName,
+				},
+			},
+			CollectionDetails{
+				DocumentCollection: &collection,
+				Path:               path + "/" + collectionName,
+			},
 		)
 
 		page.Render(w, r)

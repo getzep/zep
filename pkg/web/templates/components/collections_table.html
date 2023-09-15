@@ -67,8 +67,8 @@
         <div class="pl-6 lg:pl-8 xl:pl-8 pr-6 py-3">
             <div class="flex items-center gap-x-3">
                 <div class="grow">
-                    <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .Name }}</span>
-                    <span class="block text-sm text-gray-500">{{ .Description }}</span>
+                    <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .Collection.Name }}</span>
+                    <span class="block text-sm text-gray-500">{{ .Collection.Description }}</span>
                 </div>
             </div>
         </div>
@@ -77,21 +77,21 @@
     <!-- CreatedAt -->
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-3">
-            <span class="text-sm text-gray-500">{{ .CreatedAt.Format "2006-01-02 15:04:05" }}</span>
+            <span class="text-sm text-gray-500">{{ .Collection.CreatedAt.Format "2006-01-02 15:04:05" }}</span>
         </div>
     </td>
     <!-- End CreatedAt -->
     <!-- Email -->
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-3">
-            <span class="text-sm text-gray-500">{{ .DocumentCount }}</span>
+            <span class="text-sm text-gray-500">{{ .Collection.DocumentCount }}</span>
         </div>
     </td>
     <!-- End Email -->
     <!-- Email -->
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-3">
-            <span class="text-sm text-gray-500">{{ .EmbeddingDimensions }}</span>
+            <span class="text-sm text-gray-500">{{ .Collection.EmbeddingDimensions }}</span>
         </div>
     </td>
     <!-- End Email -->
@@ -99,15 +99,16 @@
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-3">
             <div class="flex items-center gap-x-3">
-                {{ if .DocumentCollectionCounts }}
-                    {{ if eq .DocumentEmbeddedCount .DocumentCount }}
+                {{ $percent := Percent .Collection.DocumentEmbeddedCount .Collection.DocumentCount }}
+                {{ if .Collection.DocumentCollectionCounts }}
+                    {{ if eq .Collection.DocumentEmbeddedCount .Collection.DocumentCount }}
                         {{ template "StatusReadyLabel" . }}
                     {{ else }}
-                    <span class="text-xs text-gray-500">{{ .DocumentEmbeddedCount }}/{{ .DocumentCount }}</span>
+                    <span class="text-xs text-gray-500">{{ .Collection.DocumentEmbeddedCount }}/{{ .Collection.DocumentCount }}</span>
                     <div class="flex w-full h-1.5 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
                         <div class="flex flex-col justify-center overflow-hidden bg-gray-800 dark:bg-gray-200"
-                             role="progressbar" style="width:{{ Percent .DocumentEmbeddedCount .DocumentCount }}%;"
-                             aria-valuenow="{{ Percent .DocumentEmbeddedCount .DocumentCount }}" aria-valuemin="0"
+                             role="progressbar" style="width:{{ $percent }}%;"
+                             aria-valuenow="{{ $percent }}" aria-valuemin="0"
                              aria-valuemax="100"></div>
                     </div>
                 {{ end }}
@@ -122,10 +123,10 @@
 
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-3">
-            {{ if .IsAutoEmbedded }}
+            {{ if .Collection.IsAutoEmbedded }}
                 {{ template "IsAutoEmbeddedLabel" . }}
             {{ end }}
-            {{ if .IsIndexed }}
+            {{ if .Collection.IsIndexed }}
                 {{ template "IndexedLabel" . }}
             {{ end }}
         </div>
@@ -136,32 +137,14 @@
             <a class="inline-flex items-center gap-x-1.5 text-sm text-blue-600 decoration-2 hover:underline font-medium"
                hx-boost="true"
                hx-target="#page-content"
-               href="/admin/Collections/{{ .UUID }}">
-                Edit
+               href="{{ .Path }}/{{ .Collection.Name }}">
+                View
             </a>
         </div>
     </td>
 </tr>
 {{ end }}
 
-{{ define "StatusReadyLabel" }}
-<span class="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full text-xs font-medium bg-green-100 text-green-800">
-  <span class="w-1.5 h-1.5 inline-block bg-emerald-400 rounded-full"></span>
-  Ready
-</span>
-{{end}}
-
-{{ define "IndexedLabel" }}
-<span class="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-  Indexed
-</span>
-{{end}}
-
-{{ define "IsAutoEmbeddedLabel" }}
-<span class="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-  Auto-Embedded
-</span>
-{{end}}
 
 {{ define "CollectionTableNoData" }}
 <div class="min-h-[15rem] flex flex-col bg-white border shadow-sm rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:shadow-slate-700/[.7]">
@@ -204,8 +187,9 @@
                         {{ template "CollectionTHead" . }}
 
                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                        {{ $path := .Path }}
                         {{ range .Data.Collections }}
-                        {{ template "CollectionTableRow" . }}
+                        {{ template "CollectionTableRow" dict "Collection" . "Path" $path }}
                         {{ end }}
                         </tbody>
 

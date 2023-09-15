@@ -46,8 +46,12 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
+	router.Use(middleware.CleanPath)
 	router.Use(SendVersion)
 	router.Use(middleware.Heartbeat("/healthz"))
+
+	// NotFound handler
+	router.NotFound(web.NotFoundHandler())
 
 	setupWebRoutes(router, appState)
 	setupAPIRoutes(router, appState)
@@ -56,15 +60,23 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 }
 
 func setupWebRoutes(router chi.Router, appState *models.AppState) {
-	router.Handle(
-		"/static/*",
-		http.FileServer(http.FS(web.StaticFS)),
-	)
-	router.Route("/admin", func(r chi.Router) {
+	compressor := middleware.Compress(5, "text/html", "text/css", "application/javascript", "application/json", "image/svg+xml")
+
+	// Static handler
+	router.Route("/static", func(r chi.Router) {
 		// Turn off caching in development mode
 		if appState.Config.Development {
 			r.Use(middleware.NoCache)
 		}
+		r.Use(compressor)
+		r.Handle("/*", http.FileServer(http.FS(web.StaticFS)))
+	})
+
+	// Page handlers
+	router.Route("/admin", func(r chi.Router) {
+		// Add additional middleware for admin routes
+		r.Use(middleware.StripSlashes)
+		r.Use(compressor)
 		r.Get("/", web.IndexHandler)
 		r.Route("/users", func(r chi.Router) {
 			r.Get("/", web.GetUserListHandler(appState))
@@ -84,7 +96,15 @@ func setupWebRoutes(router chi.Router, appState *models.AppState) {
 				r.Get("/", web.GetSessionDetailsHandler(appState))
 			})
 		})
-		r.Get("/collections", web.GetCollectionistHandler(appState))
+		r.Route("/collections", func(r chi.Router) {
+			r.Get("/", web.GetCollectionListHandler(appState))
+			r.Route("/{collectionName}", func(r chi.Router) {
+				r.Get("/", web.ViewCollectionHandler(appState))
+				// r.Post("/", web.PostCollectionDetailsHandler(appState))
+				// r.Delete("/", web.DeleteCollectionHandler(appState))
+			})
+		})
+		r.Get("/collections", web.GetCollectionListHandler(appState))
 		r.Get("/settings", web.GetSettingsHandler(appState))
 	})
 }

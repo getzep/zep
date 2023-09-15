@@ -93,7 +93,7 @@ func renderUserListPage(w http.ResponseWriter, r *http.Request,
 
 	page := NewPage(
 		"Users",
-		"Users subtitle",
+		"View, edit, and delete users",
 		path,
 		[]string{
 			"templates/pages/users.html",

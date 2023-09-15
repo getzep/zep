@@ -105,10 +105,6 @@ func (p *Page) renderFull(w http.ResponseWriter) {
 		return
 	}
 
-	if p.Path != "" {
-		w.Header().Set("HX-Push", p.Path)
-	}
-
 	// Render full layout
 	err = tmpl.ExecuteTemplate(w, "Layout", p)
 	if err != nil {

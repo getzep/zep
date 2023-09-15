@@ -2,7 +2,7 @@
 <nav class="hs-accordion-group p-6 w-full flex flex-col flex-wrap" data-hs-accordion-always-open>
     <ul class="space-y-1.5" hx-boost="true">
         {{range .MenuItems }}
-        <li class="hs-accordion" id="{{ .Name | ToLower }}-accordion">
+        <li class="hs-accordion" id="{{ lower .Name }}-accordion">
             <a class="hs-accordion-toggle flex items-center gap-x-3.5 py-2 px-2.5 hs-accordion-active:hover:bg-transparent text-sm text-slate-700 rounded-md hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-900 dark:text-slate-400 dark:hover:text-slate-300 dark:hs-accordion-active:text-white"
                 href="{{.Path}}" hx-select="{{ .ContentID }}" hx-target="#page-content">
                 {{.Icon }}
@@ -27,7 +27,7 @@
                 class="hs-accordion-content w-full overflow-hidden transition-[height] duration-300 hidden">
                 <ul class="hs-accordion-group pl-3 pt-2" data-hs-accordion-always-open>
                     {{range .SubItems}}
-                    <li class="hs-accordion" id="{{ .Name | ToLower }}-sub-accordian">
+                    <li class="hs-accordion" id="{{ lower .Name }}-sub-accordian">
                         <a class="hs-accordion-toggle flex items-center gap-x-3.5 py-2 px-2.5 hs-accordion-active:hover:bg-transparent text-sm text-slate-700 rounded-md hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-900 dark:text-slate-400 dark:hover:text-slate-300 dark:hs-accordion-active:text-white"
                             href="{{.Path }}">
                             {{.Name}}
