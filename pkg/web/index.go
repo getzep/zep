@@ -9,7 +9,7 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 	page := NewPage(
 		"Dashboard",
-		"Dashboard subtitle",
+		"",
 		path,
 		[]string{
 			"templates/pages/dashboard.html",
