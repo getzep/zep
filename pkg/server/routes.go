@@ -50,10 +50,11 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 	router.Use(SendVersion)
 	router.Use(middleware.Heartbeat("/healthz"))
 
-	// NotFound handler
-	router.NotFound(web.NotFoundHandler())
+	// Only setup web routes if enabled
+	if appState.Config.Server.WebEnabled {
+		setupWebRoutes(router, appState)
+	}
 
-	setupWebRoutes(router, appState)
 	setupAPIRoutes(router, appState)
 
 	return router
@@ -61,6 +62,9 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 
 func setupWebRoutes(router chi.Router, appState *models.AppState) {
 	compressor := middleware.Compress(5, "text/html", "text/css", "application/javascript", "application/json", "image/svg+xml")
+
+	// NotFound handler
+	router.NotFound(web.NotFoundHandler())
 
 	// Static handler
 	router.Route("/static", func(r chi.Router) {

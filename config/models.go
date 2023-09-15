@@ -49,8 +49,9 @@ type PostgresConfig struct {
 }
 
 type ServerConfig struct {
-	Host string `mapstructure:"host"`
-	Port int    `mapstructure:"port"`
+	Host       string `mapstructure:"host"`
+	Port       int    `mapstructure:"port"`
+	WebEnabled bool   `mapstructure:"web_enabled"`
 }
 
 type LogConfig struct {
