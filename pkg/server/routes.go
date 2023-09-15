@@ -100,8 +100,8 @@ func setupWebRoutes(router chi.Router, appState *models.AppState) {
 			r.Get("/", web.GetCollectionListHandler(appState))
 			r.Route("/{collectionName}", func(r chi.Router) {
 				r.Get("/", web.ViewCollectionHandler(appState))
-				// r.Post("/", web.PostCollectionDetailsHandler(appState))
-				// r.Delete("/", web.DeleteCollectionHandler(appState))
+				r.Delete("/", web.DeleteCollectionHandler(appState))
+				r.Get("/index", web.IndexCollectionHandler(appState))
 			})
 		})
 		r.Get("/collections", web.GetCollectionListHandler(appState))

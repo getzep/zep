@@ -61,6 +61,11 @@ type Page struct {
 }
 
 func (p *Page) Render(w http.ResponseWriter, r *http.Request) {
+	// if new Path is set, push it to the client
+	if len(p.Path) > 0 {
+		w.Header().Set("HX-Push", p.Path)
+	}
+
 	// If HX-Request header is set, render content template only
 	// If the page was loaded directly, render full layout
 	if r.Header.Get("HX-Request") == "true" {

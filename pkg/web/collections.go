@@ -19,7 +19,6 @@ func NewCollectionList(
 		DocumentStore: documentStore,
 		Cursor:        cursor,
 		Limit:         limit,
-		Path:          path,
 	}
 }
 
@@ -29,7 +28,6 @@ type CollectionList struct {
 	TotalCount    int
 	Cursor        int64
 	Limit         int64
-	Path          string
 }
 
 func (c *CollectionList) Get(ctx context.Context, appState *models.AppState) error {
@@ -44,12 +42,10 @@ func (c *CollectionList) Get(ctx context.Context, appState *models.AppState) err
 
 type CollectionDetails struct {
 	*models.DocumentCollection
-	Path string
 }
 
 func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 	const path = "/admin/collections"
-
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionList := NewCollectionList(appState.DocumentStore, 0, 0, path)
 
@@ -62,7 +58,7 @@ func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 
 		page := NewPage(
 			"Collections",
-			"Collections subtitle",
+			"Manage document collections in the vector store",
 			path,
 			[]string{
 				"templates/pages/collections.html",
@@ -83,8 +79,6 @@ func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 }
 
 func ViewCollectionHandler(appState *models.AppState) http.HandlerFunc {
-	const path = "/admin/collections"
-
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := chi.URLParam(r, "collectionName")
 
@@ -94,10 +88,11 @@ func ViewCollectionHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
+		const path = "/admin/collections"
 		page := NewPage(
-			collectionName,
+			collection.Name,
 			collection.Description,
-			path,
+			path+"/"+collection.Name,
 			[]string{
 				"templates/pages/collection_details.html",
 				"templates/components/content/*.html",
@@ -108,16 +103,52 @@ func ViewCollectionHandler(appState *models.AppState) http.HandlerFunc {
 					Path:  path,
 				},
 				{
-					Title: collectionName,
-					Path:  path + "/" + collectionName,
+					Title: collection.Name,
+					Path:  path + "/" + collection.Name,
 				},
 			},
 			CollectionDetails{
 				DocumentCollection: &collection,
-				Path:               path + "/" + collectionName,
 			},
 		)
 
 		page.Render(w, r)
+	}
+}
+
+func IndexCollectionHandler(appState *models.AppState) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		collectionName := chi.URLParam(r, "collectionName")
+		if collectionName == "" {
+			http.Error(w, "missing collection name", http.StatusBadRequest)
+			return
+		}
+
+		// Force index creation
+		err := appState.DocumentStore.CreateCollectionIndex(r.Context(), collectionName, true)
+		if err != nil {
+			handleError(w, err, "failed to index collection")
+			return
+		}
+
+		ViewCollectionHandler(appState)(w, r)
+	}
+}
+
+func DeleteCollectionHandler(appState *models.AppState) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		collectionName := chi.URLParam(r, "collectionName")
+		if collectionName == "" {
+			http.Error(w, "missing collection name", http.StatusBadRequest)
+			return
+		}
+
+		err := appState.DocumentStore.DeleteCollection(r.Context(), collectionName)
+		if err != nil {
+			handleError(w, err, "failed to delete collection")
+			return
+		}
+
+		GetCollectionListHandler(appState)(w, r)
 	}
 }

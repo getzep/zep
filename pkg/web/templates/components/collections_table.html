@@ -1,13 +1,14 @@
 {{ define "CollectionTableHeader" }}
-<div class="px-6 py-4 grid gap-3 md:flex md:justify-between md:items-center border-b border-gray-200 dark:border-gray-700">
+<div
+    class="px-6 py-4 grid gap-3 md:flex md:justify-between md:items-center border-b border-gray-200 dark:border-gray-700">
     <div>
         <div class="inline-flex gap-x-2">
             <a class="py-2 px-3 inline-flex justify-center items-center gap-2 rounded-md border border-transparent font-semibold bg-blue-500 text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all text-sm dark:focus:ring-offset-gray-800"
-               href="#">
+                href="#">
                 <svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"
-                     fill="none">
+                    fill="none">
                     <path d="M2.63452 7.50001L13.6345 7.5M8.13452 13V2" stroke="currentColor" stroke-width="2"
-                          stroke-linecap="round"/>
+                        stroke-linecap="round" />
                 </svg>
                 Add
             </a>
@@ -18,57 +19,60 @@
 
 {{ define "CollectionTHead" }}
 <thead class="bg-gray-50 dark:bg-slate-800">
-<tr>
-    <th scope="col" class="pl-6 lg:pl-8 xl:pl-8 pr-6 py-3 text-left">
-        <div class="flex items-center gap-x-2">
-                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
-                      Collection
-                    </span>
-        </div>
-    </th>
-    <th scope="col" class="px-6 py-3 text-left">
-        <div class="flex items-center gap-x-2">
-                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
-                      Created
-                    </span>
-        </div>
-    </th>
-    <th scope="col" class="px-6 py-3 text-left">
-        <div class="flex items-center gap-x-2">
-                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
-                      Documents
-                    </span>
-        </div>
-    </th>
-    <th scope="col" class="px-6 py-3 text-left">
-        <div class="flex items-center gap-x-2">
-                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
-                      Embedding Width
-                    </span>
-        </div>
-    </th>
-    <th scope="col" class="px-6 py-3 text-left">
-        <div class="flex items-center gap-x-2">
-                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
-                        Embedding Status
-                    </span>
-        </div>
-    </th>
-    <th scope="col" class="px-6 py-3 text-right"></th>
-    <th scope="col" class="px-6 py-3 text-right"></th>
-</tr>
+    <tr>
+        <th scope="col" class="pl-6 lg:pl-8 xl:pl-8 pr-6 py-3 text-left">
+            <div class="flex items-center gap-x-2">
+                <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
+                    Collection
+                </span>
+            </div>
+        </th>
+        <th scope="col" class="px-6 py-3 text-left">
+            <div class="flex items-center gap-x-2">
+                <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
+                    Created
+                </span>
+            </div>
+        </th>
+        <th scope="col" class="px-6 py-3 text-left">
+            <div class="flex items-center gap-x-2">
+                <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
+                    Documents
+                </span>
+            </div>
+        </th>
+        <th scope="col" class="px-6 py-3 text-left">
+            <div class="flex items-center gap-x-2">
+                <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
+                    Embedding Width
+                </span>
+            </div>
+        </th>
+        <th scope="col" class="px-6 py-3 text-left">
+            <div class="flex items-center gap-x-2">
+                <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
+                    Embedding Status
+                </span>
+            </div>
+        </th>
+        <th scope="col" class="px-6 py-3 text-right"></th>
+        <th scope="col" class="px-6 py-3 text-right"></th>
+    </tr>
 </thead>
 {{ end }}
 
 {{ define "CollectionTableRow" }}
-<tr>
+<tr hx-boost="true" hx-target="#page-content">
     <!-- CollectionID & Name -->
     <td class="h-px w-px whitespace-nowrap">
         <div class="pl-6 lg:pl-8 xl:pl-8 pr-6 py-3">
             <div class="flex items-center gap-x-3">
                 <div class="grow">
-                    <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .Collection.Name }}</span>
-                    <span class="block text-sm text-gray-500">{{ .Collection.Description }}</span>
+                    <a href="{{ .Path }}/{{ .Collection.Name }}">
+                        <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .Collection.Name
+                            }}</span>
+                        <span class="block text-sm text-gray-500">{{ .Collection.Description }}</span>
+                    </a>
                 </div>
             </div>
         </div>
@@ -101,20 +105,20 @@
             <div class="flex items-center gap-x-3">
                 {{ $percent := Percent .Collection.DocumentEmbeddedCount .Collection.DocumentCount }}
                 {{ if .Collection.DocumentCollectionCounts }}
-                    {{ if eq .Collection.DocumentEmbeddedCount .Collection.DocumentCount }}
-                        {{ template "StatusReadyLabel" . }}
-                    {{ else }}
-                    <span class="text-xs text-gray-500">{{ .Collection.DocumentEmbeddedCount }}/{{ .Collection.DocumentCount }}</span>
-                    <div class="flex w-full h-1.5 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
-                        <div class="flex flex-col justify-center overflow-hidden bg-gray-800 dark:bg-gray-200"
-                             role="progressbar" style="width:{{ $percent }}%;"
-                             aria-valuenow="{{ $percent }}" aria-valuemin="0"
-                             aria-valuemax="100"></div>
-                    </div>
+                {{ if eq .Collection.DocumentEmbeddedCount .Collection.DocumentCount }}
+                {{ template "StatusReadyLabel" . }}
+                {{ else }}
+                <span class="text-xs text-gray-500">{{ .Collection.DocumentEmbeddedCount }}/{{ .Collection.DocumentCount
+                    }}</span>
+                <div class="flex w-full h-1.5 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
+                    <div class="flex flex-col justify-center overflow-hidden bg-gray-800 dark:bg-gray-200"
+                        role="progressbar" style="width:{{ $percent }}%;" aria-valuenow="{{ $percent }}"
+                        aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
                 {{ end }}
                 {{ else }}
                 <span class="text-xs text-gray-500">
-                Empty Collection
+                    Empty Collection
                 </span>
                 {{ end }}
             </div>
@@ -124,10 +128,10 @@
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-3">
             {{ if .Collection.IsAutoEmbedded }}
-                {{ template "IsAutoEmbeddedLabel" . }}
+            {{ template "IsAutoEmbeddedLabel" . }}
             {{ end }}
             {{ if .Collection.IsIndexed }}
-                {{ template "IndexedLabel" . }}
+            {{ template "IndexedLabel" . }}
             {{ end }}
         </div>
     </td>
@@ -135,9 +139,7 @@
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-1.5">
             <a class="inline-flex items-center gap-x-1.5 text-sm text-blue-600 decoration-2 hover:underline font-medium"
-               hx-boost="true"
-               hx-target="#page-content"
-               href="{{ .Path }}/{{ .Collection.Name }}">
+                href="{{ .Path }}/{{ .Collection.Name }}">
                 View
             </a>
         </div>
@@ -147,7 +149,8 @@
 
 
 {{ define "CollectionTableNoData" }}
-<div class="min-h-[15rem] flex flex-col bg-white border shadow-sm rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:shadow-slate-700/[.7]">
+<div
+    class="min-h-[15rem] flex flex-col bg-white border shadow-sm rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:shadow-slate-700/[.7]">
     <div class="flex flex-auto flex-col justify-center items-center p-4 md:p-5">
         <h3 class="text-lg font-bold text-gray-800 dark:text-white">
             No Collections Found
@@ -156,12 +159,12 @@
             No <span class="font-mono">Collections</span> associated with <span class="font-mono">Sessions</span>.
         </p>
         <a class="inline-flex items-center gap-2 mt-5 text-sm font-medium text-blue-500 hover:text-blue-700"
-           href="https://docs.getzep.com/sdk/chat_history/Collections/" target="_new">
+            href="https://docs.getzep.com/sdk/chat_history/Collections/" target="_new">
             Learn More
             <svg class="w-2.5 h-auto" width="16" height="16" viewBox="0 0 16 16" fill="none"
-                 xmlns="http://www.w3.org/2000/svg">
+                xmlns="http://www.w3.org/2000/svg">
                 <path d="M5 1L10.6869 7.16086C10.8637 7.35239 10.8637 7.64761 10.6869 7.83914L5 14"
-                      stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" />
             </svg>
         </a>
     </div>
@@ -174,10 +177,11 @@
     <div class="flex flex-col">
         <div class="-m-1.5 overflow-x-auto">
             <div class="p-1.5 min-w-full inline-block align-middle">
-                <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden dark:bg-slate-900 dark:border-gray-700">
-<!--                    Header-->
-                    {{ template "CollectionTableHeader" . }}
-<!--                    End Header-->
+                <div
+                    class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden dark:bg-slate-900 dark:border-gray-700">
+                    <!--                    Header-->
+                    <!-- {{ template "CollectionTableHeader" . }} -->
+                    <!--                    End Header-->
 
                     {{ if eq (len .Data.Collections) 0 }}
                     {{ template "CollectionTableNoData" . }}
@@ -187,10 +191,10 @@
                         {{ template "CollectionTHead" . }}
 
                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        {{ $path := .Path }}
-                        {{ range .Data.Collections }}
-                        {{ template "CollectionTableRow" dict "Collection" . "Path" $path }}
-                        {{ end }}
+                            {{ $path := .Path }}
+                            {{ range .Data.Collections }}
+                            {{ template "CollectionTableRow" dict "Collection" . "Path" $path }}
+                            {{ end }}
                         </tbody>
 
                     </table>
