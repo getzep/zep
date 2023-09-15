@@ -9,6 +9,11 @@
                     <div class="max-w-[85rem] px-4 py-1 sm:px-6 lg:px-8 lg:py-2 mx-auto">
                         <h3 class="mt-8 text-xl text-gray-800 font-bold dark:text-gray-400">Chat History</h3>
                     </div>
+                    {{ if eq (len .Data.Messages) 0 }}
+                    <div class="p-10">
+                        {{ template "NoDataCard" . }}
+                    </div>
+                    {{ else }}
                     <div class="relative">
                         <div class="px-4 py-5 sm:px-6 lg:px-8 lg:py-8 mx-auto">
                             <ul class="space-y-5">
@@ -27,6 +32,7 @@
                         </div>
                     </div>
                     {{ template "PageCountPager" . }}
+                    {{ end }}
                 </div>
             </div>
         </div>
