@@ -74,42 +74,36 @@ func GetUserListHandler(appState *models.AppState) http.HandlerFunc {
 			64,
 		) // safely ignore error, it will be 0 if conversion fails
 
-		renderUserListPage(w, r, appState, cursor, UserListLimit)
-	}
-}
+		const path = "/admin/users"
+		userList := NewUserList(appState.UserStore, cursor, UserListLimit)
 
-func renderUserListPage(w http.ResponseWriter, r *http.Request,
-	appState *models.AppState, cursor int64, limit int64) {
-	const path = "/admin/users"
+		err := userList.Get(r.Context())
+		if err != nil {
+			log.Errorf("Failed to get user list: %s", err)
+			http.Error(w, "Failed to get user list", http.StatusInternalServerError)
+			return
+		}
 
-	userList := NewUserList(appState.UserStore, cursor, limit)
-
-	err := userList.Get(r.Context())
-	if err != nil {
-		log.Errorf("Failed to get user list: %s", err)
-		http.Error(w, "Failed to get user list", http.StatusInternalServerError)
-		return
-	}
-
-	page := NewPage(
-		"Users",
-		"View, edit, and delete users",
-		path,
-		[]string{
-			"templates/pages/users.html",
-			"templates/components/content/*.html",
-			"templates/components/user_table.html",
-		},
-		[]BreadCrumb{
-			{
-				Title: "Users",
-				Path:  path,
+		page := NewPage(
+			"Users",
+			"View, edit, and delete users",
+			path,
+			[]string{
+				"templates/pages/users.html",
+				"templates/components/content/*.html",
+				"templates/components/user_table.html",
 			},
-		},
-		userList,
-	)
+			[]BreadCrumb{
+				{
+					Title: "Users",
+					Path:  path,
+				},
+			},
+			userList,
+		)
 
-	page.Render(w, r)
+		page.Render(w, r)
+	}
 }
 
 type UserFormData struct {
@@ -126,7 +120,66 @@ func GetUserDetailsHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		renderUserDetailForm(appState, w, r, userID)
+		user, err := appState.UserStore.Get(r.Context(), userID)
+		if err != nil {
+			handleError(w, err, "failed to get user")
+			return
+		}
+
+		var metadataString = ""
+		if len(user.Metadata) != 0 {
+			metadataBytes, err := json.Marshal(user.Metadata)
+			if err != nil {
+				handleError(w, err, "failed to marshal user metadata")
+				return
+			}
+			metadataString = string(metadataBytes)
+		}
+
+		sessions, err := appState.UserStore.GetSessions(r.Context(), user.UserID)
+		if err != nil {
+			handleError(w, err, "failed to get user sessions")
+			return
+		}
+
+		sessionList := &SessionList{
+			Sessions: sessions,
+			Limit:    0,
+			Cursor:   0,
+		}
+
+		userData := UserFormData{
+			User:           *user,
+			MetadataString: string(metadataString),
+			SessionList:    sessionList,
+		}
+
+		path := "/admin/users/" + user.UserID
+
+		page := NewPage(
+			user.UserID,
+			fmt.Sprintf("%s %s", user.FirstName, user.LastName),
+			path,
+			[]string{
+				"templates/pages/user_details.html",
+				"templates/components/content/*.html",
+				"templates/components/user_details.html",
+				"templates/components/session_table.html",
+			},
+			[]BreadCrumb{
+				{
+					Title: "Users",
+					Path:  "/admin/users",
+				},
+				{
+					Title: user.UserID,
+					Path:  path,
+				},
+			},
+			userData,
+		)
+
+		page.Render(w, r)
 	}
 }
 
@@ -169,76 +222,8 @@ func PostUserDetailsHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		renderUserDetailForm(appState, w, r, userID)
+		GetUserDetailsHandler(appState)(w, r)
 	}
-}
-
-func renderUserDetailForm(
-	appState *models.AppState,
-	w http.ResponseWriter,
-	r *http.Request,
-	userID string,
-) {
-	user, err := appState.UserStore.Get(r.Context(), userID)
-	if err != nil {
-		handleError(w, err, "failed to get user")
-		return
-	}
-
-	var metadataString = ""
-	if len(user.Metadata) != 0 {
-		metadataBytes, err := json.Marshal(user.Metadata)
-		if err != nil {
-			handleError(w, err, "failed to marshal user metadata")
-			return
-		}
-		metadataString = string(metadataBytes)
-	}
-
-	sessions, err := appState.UserStore.GetSessions(r.Context(), user.UserID)
-	if err != nil {
-		handleError(w, err, "failed to get user sessions")
-		return
-	}
-
-	sessionList := &SessionList{
-		Sessions: sessions,
-		Limit:    0,
-		Cursor:   0,
-	}
-
-	userData := UserFormData{
-		User:           *user,
-		MetadataString: string(metadataString),
-		SessionList:    sessionList,
-	}
-
-	path := "/admin/users/" + user.UserID
-
-	page := NewPage(
-		"User Details",
-		"View, edit, and delete a user.",
-		path,
-		[]string{
-			"templates/pages/user_details.html",
-			"templates/components/content/*.html",
-			"templates/components/user_details.html",
-			"templates/components/session_table.html",
-		},
-		[]BreadCrumb{
-			{
-				Title: "Users",
-				Path:  "/admin/users",
-			},
-			{
-				Title: user.UserID,
-				Path:  path,
-			},
-		},
-		userData,
-	)
-
-	page.Render(w, r)
 }
 
 func DeleteUserHandler(appState *models.AppState) http.HandlerFunc {
@@ -255,6 +240,6 @@ func DeleteUserHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		renderUserListPage(w, r, appState, 0, UserListLimit)
+		GetUserListHandler(appState)(w, r)
 	}
 }

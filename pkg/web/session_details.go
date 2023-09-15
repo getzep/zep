@@ -156,10 +156,17 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 			}
 		}
 
+		var path string
+		if len(userID) == 0 {
+			path = "/admin/sessions/" + sessionID
+		} else {
+			path = "/admin/users/" + userID + "/session/" + sessionID
+		}
+
 		page := NewPage(
-			"Session Details",
-			"View session information and related messages",
-			"/admin/sessions/"+sessionID,
+			sessionID,
+			"View session information and chat history",
+			path,
 			[]string{
 				"templates/pages/session_details.html",
 				"templates/components/content/*.html",
@@ -170,5 +177,29 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 		)
 
 		page.Render(w, r)
+	}
+}
+
+func DeleteSessionHandler(appState *models.AppState) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionID := chi.URLParam(r, "sessionID")
+		if sessionID == "" {
+			handleError(w, errors.New("session id not provided"), "session id not provided")
+			return
+		}
+
+		err := appState.MemoryStore.DeleteSession(r.Context(), sessionID)
+		if err != nil {
+			handleError(w, err, "failed to delete session")
+			return
+		}
+
+		userID := chi.URLParam(r, "userID")
+		if len(userID) == 0 {
+			GetSessionListHandler(appState)(w, r)
+		} else {
+			GetUserDetailsHandler(appState)(w, r)
+		}
+
 	}
 }

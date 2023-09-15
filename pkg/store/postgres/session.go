@@ -260,3 +260,16 @@ func (dao *SessionDAO) ListAll(
 
 	return retSessions, nil
 }
+
+// CountAll counts all sessions in the database.
+func (dao *SessionDAO) CountAll(ctx context.Context) (int, error) {
+	var count int
+	count, err := dao.db.NewSelect().
+		Model((*SessionSchema)(nil)).
+		Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count sessions: %w", err)
+	}
+
+	return count, nil
+}

@@ -5,6 +5,7 @@ import (
 )
 
 // MemoryStore interface
+// TODO: This needs to be broken up into smaller interfaces.
 type MemoryStore[T any] interface {
 	// GetMemory returns the most recent Summary and a list of messages for a given sessionID.
 	// GetMemory returns:
@@ -100,6 +101,11 @@ type MemoryStore[T any] interface {
 		cursor int64,
 		limit int,
 	) ([]*Session, error)
+	// CountSessions returns the total number of Sessions in the database.
+	CountSessions(
+		ctx context.Context,
+		appState *AppState,
+	) (int, error)
 	OnStart(ctx context.Context, appState *AppState) error
 	// Attach is used by Extractors to register themselves with the MemoryStore. This allows the MemoryStore to notify
 	// the Extractors when new occur.

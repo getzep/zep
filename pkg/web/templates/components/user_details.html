@@ -3,13 +3,6 @@
 <div class="px-4 py-5 sm:px-6 lg:px-8 lg:py-7 mx-auto">
     <!-- Card -->
     <div class="bg-white rounded-xl shadow p-4 sm:p-7 dark:bg-slate-900">
-        <div class="mb-8">
-            <p class="mt-8 text-xs text-gray-800 font-bold dark:text-gray-400">User ID</p>
-            <h3 class="my-2 text-xl text-gray-800 font-bold dark:text-gray-400">
-                {{ .Data.UserID }}
-            </h3>
-        </div>
-
         <form id="user-detail-form" action="{{ .Path }}" method="post" hx-boost="true" hx-target="#user-detail-form"
             hx-select="#user-detail-form" x-data="{ edit: false }" x-ref="{{ .Slug }}">
             <!-- Grid -->

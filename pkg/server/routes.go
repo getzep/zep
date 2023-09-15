@@ -87,6 +87,7 @@ func setupWebRoutes(router chi.Router, appState *models.AppState) {
 
 				r.Route("/session", func(r chi.Router) {
 					r.Get("/{sessionID}", web.GetSessionDetailsHandler(appState))
+					r.Delete("/{sessionID}", web.DeleteSessionHandler(appState))
 				})
 			})
 		})
@@ -94,6 +95,7 @@ func setupWebRoutes(router chi.Router, appState *models.AppState) {
 			r.Get("/", web.GetSessionListHandler(appState))
 			r.Route("/{sessionID}", func(r chi.Router) {
 				r.Get("/", web.GetSessionDetailsHandler(appState))
+				r.Delete("/", web.DeleteSessionHandler(appState))
 			})
 		})
 		r.Route("/collections", func(r chi.Router) {

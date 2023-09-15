@@ -105,6 +105,14 @@ func (pms *PostgresMemoryStore) ListSessions(
 	return pms.SessionStore.ListAll(ctx, cursor, limit)
 }
 
+// CountSessions returns the total number of Sessions in the database.
+func (pms *PostgresMemoryStore) CountSessions(
+	ctx context.Context,
+	_ *models.AppState,
+) (int, error) {
+	return pms.SessionStore.CountAll(ctx)
+}
+
 // GetMemory returns the most recent Summary and a list of messages for a given sessionID.
 // GetMemory returns:
 //   - the most recent Summary, if one exists

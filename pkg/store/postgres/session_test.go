@@ -400,3 +400,45 @@ func TestSessionDAO_ListAll(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionDAO_CountAll(t *testing.T) {
+	CleanDB(t, testDB)
+	err := CreateSchema(testCtx, appState, testDB)
+	assert.NoError(t, err)
+
+	// Initialize SessionDAO
+	dao := NewSessionDAO(testDB)
+
+	// Create a few test sessions
+	for i := 0; i < 5; i++ {
+		sessionID, err := testutils.GenerateRandomSessionID(16)
+		assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
+
+		session := &models.CreateSessionRequest{
+			SessionID: sessionID,
+			Metadata: map[string]interface{}{
+				"key": "value",
+			},
+		}
+		_, err = dao.Create(testCtx, session)
+		assert.NoError(t, err)
+	}
+
+	tests := []struct {
+		name string
+		want int
+	}{
+		{
+			name: "Count all sessions",
+			want: 5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			count, err := dao.CountAll(testCtx)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, count)
+		})
+	}
+}

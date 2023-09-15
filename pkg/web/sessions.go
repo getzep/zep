@@ -38,6 +38,13 @@ func (u *SessionList) Get(ctx context.Context, appState *models.AppState) error 
 	u.Sessions = sessions
 	u.ListCount = len(sessions)
 
+	count, err := u.MemoryStore.CountSessions(ctx, appState)
+	if err != nil {
+		handleError(nil, err, "failed to get session count")
+		return err
+	}
+	u.TotalCount = count
+
 	return nil
 }
 
@@ -55,8 +62,7 @@ func GetSessionListHandler(appState *models.AppState) http.HandlerFunc {
 
 		err := sessionList.Get(r.Context(), appState)
 		if err != nil {
-			log.Errorf("Failed to get user list: %s", err)
-			http.Error(w, "Failed to get user list", http.StatusInternalServerError)
+			handleError(w, err, "failed to get session list")
 			return
 		}
 
@@ -64,7 +70,7 @@ func GetSessionListHandler(appState *models.AppState) http.HandlerFunc {
 
 		page := NewPage(
 			"Sessions",
-			"Sessions subtitle",
+			"View and delete sessions",
 			path,
 			[]string{
 				"templates/pages/sessions.html",
