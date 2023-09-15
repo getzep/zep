@@ -1,16 +1,16 @@
 {{ define "SessionTHead" }}
 <thead class="bg-gray-50 dark:bg-slate-800">
 <tr>
-    <th scope="col" class="pl-6 py-3 text-left">
+    <!-- <th scope="col" class="pl-6 py-3 text-left">
         <label for="hs-at-with-checkboxes-main" class="flex">
             <input type="checkbox"
                    class="shrink-0 border-gray-200 rounded text-blue-600 pointer-events-none focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:checked:bg-blue-500 dark:checked:border-blue-500 dark:focus:ring-offset-gray-800"
                    id="hs-at-with-checkboxes-main">
             <span class="sr-only">Checkbox</span>
         </label>
-    </th>
+    </th> -->
 
-    <th scope="col" class="pl-6 lg:pl-3 xl:pl-0 pr-6 py-3 text-left">
+    <th scope="col" class="pl-6 lg:pl-6 xl:pl-6 pr-6 py-3 text-left">
         <div class="flex items-center gap-x-2">
                     <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
                       Session
@@ -44,7 +44,7 @@
 <tr hx-boost="true" hx-push-url="true" hx-target="#page-content">
     {{ $path := contains "/users/" .Path | ternary (print .Path "/session") .Path }}
     <!-- Checkbox -->
-    <td class="h-px w-px whitespace-nowrap">
+    <!-- <td class="h-px w-px whitespace-nowrap">
         <div class="pl-6 py-3">
             <label for="checkbox-{{ .UUID }}" class="flex">
                 <input type="checkbox"
@@ -53,11 +53,11 @@
                 <span class="sr-only">Checkbox</span>
             </label>
         </div>
-    </td>
+    </td> -->
     <!-- End Checkbox -->
     <!-- SessionID  -->
     <td class="h-px w-px whitespace-nowrap">
-        <div class="pl-6 lg:pl-3 xl:pl-0 pr-6 py-3">
+        <div class="pl-6 lg:pl-6 xl:pl-6 pr-6 py-3">
             <div class="flex items-center gap-x-3">
                 <div class="grow">
                     <a href="{{ $path }}/{{ .Session.SessionID }}">

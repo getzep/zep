@@ -152,10 +152,6 @@ func (dc *DocumentCollectionDAO) GetAll(
 		return nil, fmt.Errorf("failed to get collection list: %w", err)
 	}
 
-	if len(collections) == 0 {
-		return nil, models.NewNotFoundError("collections")
-	}
-
 	for i := range collections {
 		c := NewDocumentCollectionDAO(dc.appState, dc.db, collections[i])
 		err = c.GetByName(ctx)

@@ -70,9 +70,11 @@ func (m *SessionDetails) Get(ctx context.Context, appState *models.AppState) err
 	if err != nil {
 		return err
 	}
-	if messages == nil {
-		return errors.New("failed to get message list")
+
+	if messages == nil || len(messages.Messages) == 0 {
+		return nil
 	}
+
 	// pageSize needs to be >= MessageList page size so that we get all summaries related to the messages
 	summaries, err := m.MemoryStore.GetSummaryList(ctx, appState, m.SessionID, m.PageNumber, m.PageSize)
 	if err != nil {

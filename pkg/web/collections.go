@@ -54,7 +54,6 @@ func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 			handleError(w, err, "failed to get collection list")
 			return
 		}
-		log.Debugf("CollectionList: %+v", collectionList)
 
 		page := NewPage(
 			"Collections",

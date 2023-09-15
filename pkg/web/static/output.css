@@ -1389,10 +1389,6 @@ video {
   padding-top: 2.5rem;
 }
 
-.pt-2 {
-  padding-top: 0.5rem;
-}
-
 .pt-7 {
   padding-top: 1.75rem;
 }
@@ -1596,12 +1592,6 @@ video {
   transition-duration: 150ms;
 }
 
-.transition-\[height\] {
-  transition-property: height;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-}
-
 .transition-all {
   transition-property: all;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
@@ -1745,53 +1735,12 @@ video {
   color: rgb(37 99 235 / var(--tw-text-opacity));
 }
 
-.group:hover .group-hover\:text-gray-500 {
-  --tw-text-opacity: 1;
-  color: rgb(107 114 128 / var(--tw-text-opacity));
-}
-
 .hs-tooltip.show .hs-tooltip-shown\:visible {
   visibility: visible;
 }
 
 .hs-tooltip.show .hs-tooltip-shown\:opacity-100 {
   opacity: 1;
-}
-
-.hs-accordion.active.hs-accordion-active\:block {
-  display: block;
-}
-
-.hs-accordion.active.hs-accordion-active\:hidden {
-  display: none;
-}
-
-.hs-accordion.active.hs-accordion-active\:hover\:bg-transparent:hover {
-  background-color: transparent;
-}
-
-.hs-accordion.active > .hs-accordion-toggle .hs-accordion-active\:block {
-  display: block;
-}
-
-.hs-accordion.active > .hs-accordion-toggle .hs-accordion-active\:hidden {
-  display: none;
-}
-
-.hs-accordion.active > .hs-accordion-toggle .hs-accordion-active\:hover\:bg-transparent:hover {
-  background-color: transparent;
-}
-
-.hs-accordion.active > .hs-accordion-toggle.hs-accordion-active\:block {
-  display: block;
-}
-
-.hs-accordion.active > .hs-accordion-toggle.hs-accordion-active\:hidden {
-  display: none;
-}
-
-.hs-accordion.active > .hs-accordion-toggle.hs-accordion-active\:hover\:bg-transparent:hover {
-  background-color: transparent;
 }
 
 .open.hs-overlay-open\:translate-x-0 {
@@ -1935,21 +1884,6 @@ video {
   .group:hover .dark\:group-hover\:text-gray-400 {
     --tw-text-opacity: 1;
     color: rgb(156 163 175 / var(--tw-text-opacity));
-  }
-
-  .hs-accordion.active.dark\:hs-accordion-active\:text-white {
-    --tw-text-opacity: 1;
-    color: rgb(255 255 255 / var(--tw-text-opacity));
-  }
-
-  .hs-accordion.active > .hs-accordion-toggle .dark\:hs-accordion-active\:text-white {
-    --tw-text-opacity: 1;
-    color: rgb(255 255 255 / var(--tw-text-opacity));
-  }
-
-  .hs-accordion.active > .hs-accordion-toggle.dark\:hs-accordion-active\:text-white {
-    --tw-text-opacity: 1;
-    color: rgb(255 255 255 / var(--tw-text-opacity));
   }
 }
 
@@ -2190,10 +2124,6 @@ video {
     padding-bottom: 2rem;
   }
 
-  .lg\:pl-3 {
-    padding-left: 0.75rem;
-  }
-
   .lg\:pl-6 {
     padding-left: 1.5rem;
   }
@@ -2212,10 +2142,6 @@ video {
 }
 
 @media (min-width: 1280px) {
-  .xl\:pl-0 {
-    padding-left: 0px;
-  }
-
   .xl\:pl-6 {
     padding-left: 1.5rem;
   }
