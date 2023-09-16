@@ -357,7 +357,7 @@ func CreateSchema(
 	}
 	// we keep this at 1536 for legacy reasons, despite the default now being 384
 	if model.Dimensions != 1536 {
-		err := migrateMessageEmbeddingDims(ctx, db, model.Dimensions)
+		err := MigrateMessageEmbeddingDims(ctx, db, model.Dimensions)
 		if err != nil {
 			return fmt.Errorf("error migrating message embedding dimensions: %w", err)
 		}
@@ -371,9 +371,9 @@ func CreateSchema(
 	return nil
 }
 
-// migrateMessageEmbeddingDims drops the old embedding column and creates a new one with the
+// MigrateMessageEmbeddingDims drops the old embedding column and creates a new one with the
 // correct dimensions.
-func migrateMessageEmbeddingDims(
+func MigrateMessageEmbeddingDims(
 	ctx context.Context,
 	db *bun.DB,
 	dimensions int,

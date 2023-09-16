@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 
+	"github.com/getzep/zep/pkg/store/postgres"
+
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/testutils"
@@ -16,6 +18,9 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 	llmClient, err := llms.NewOpenAILLM(testCtx, appState.Config)
 	assert.NoError(t, err)
 	appState.LLMClient = llmClient
+
+	err = postgres.MigrateMessageEmbeddingDims(testCtx, testDB, 1536)
+	assert.NoError(t, err)
 
 	store := appState.MemoryStore
 
@@ -54,8 +59,8 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 	}
 
 	model := &models.EmbeddingModel{
-		Service:    "local",
-		Dimensions: 384,
+		Service:    "openai",
+		Dimensions: 1536,
 	}
 	embeddings, err := llms.EmbedTexts(testCtx, appState, model, documentType, texts)
 	assert.NoError(t, err)

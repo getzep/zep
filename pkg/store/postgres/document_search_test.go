@@ -20,6 +20,9 @@ func TestDocumentSearchWithIndexEndToEnd(t *testing.T) {
 	gofakeit.Seed(0)
 	ctx, done := context.WithCancel(testCtx)
 
+	appState.Config.Extractors.Documents.Embeddings.Service = "local"
+	appState.Config.Extractors.Documents.Embeddings.Dimensions = 384
+
 	collectionName := testutils.GenerateRandomString(16)
 
 	// Create channels

@@ -61,7 +61,14 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 }
 
 func setupWebRoutes(router chi.Router, appState *models.AppState) {
-	compressor := middleware.Compress(5, "text/html", "text/css", "application/javascript", "application/json", "image/svg+xml")
+	compressor := middleware.Compress(
+		5,
+		"text/html",
+		"text/css",
+		"application/javascript",
+		"application/json",
+		"image/svg+xml",
+	)
 
 	// NotFound handler
 	router.NotFound(web.NotFoundHandler())

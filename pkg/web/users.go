@@ -116,7 +116,11 @@ func GetUserDetailsHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID := chi.URLParam(r, "userID")
 		if userID == "" {
-			handleError(w, models.NewBadRequestError("user id not provided"), "user id not provided")
+			handleError(
+				w,
+				models.NewBadRequestError("user id not provided"),
+				"user id not provided",
+			)
 			return
 		}
 
@@ -187,7 +191,11 @@ func PostUserDetailsHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID := chi.URLParam(r, "userID")
 		if userID == "" {
-			handleError(w, models.NewBadRequestError("user id not provided"), "user id not provided")
+			handleError(
+				w,
+				models.NewBadRequestError("user id not provided"),
+				"user id not provided",
+			)
 			return
 		}
 
@@ -230,7 +238,11 @@ func DeleteUserHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID := chi.URLParam(r, "userID")
 		if userID == "" {
-			handleError(w, models.NewBadRequestError("user id not provided"), "user id not provided")
+			handleError(
+				w,
+				models.NewBadRequestError("user id not provided"),
+				"user id not provided",
+			)
 			return
 		}
 

@@ -37,7 +37,10 @@ type SessionDetails struct {
 	Offset      int
 }
 
-func mergeMessagesSummaries(messages []models.Message, summaries []models.Summary) []models.Message {
+func mergeMessagesSummaries(
+	messages []models.Message,
+	summaries []models.Summary,
+) []models.Message {
 	// Create a map to hold the summaries with the MessagePointUUID as the key
 	summariesMap := make(map[uuid.UUID]models.Summary)
 	for _, summary := range summaries {
@@ -66,7 +69,13 @@ func mergeMessagesSummaries(messages []models.Message, summaries []models.Summar
 }
 
 func (m *SessionDetails) Get(ctx context.Context, appState *models.AppState) error {
-	messages, err := m.MemoryStore.GetMessageList(ctx, appState, m.SessionID, m.PageNumber, m.PageSize)
+	messages, err := m.MemoryStore.GetMessageList(
+		ctx,
+		appState,
+		m.SessionID,
+		m.PageNumber,
+		m.PageSize,
+	)
 	if err != nil {
 		return err
 	}
@@ -76,7 +85,13 @@ func (m *SessionDetails) Get(ctx context.Context, appState *models.AppState) err
 	}
 
 	// pageSize needs to be >= MessageList page size so that we get all summaries related to the messages
-	summaries, err := m.MemoryStore.GetSummaryList(ctx, appState, m.SessionID, m.PageNumber, m.PageSize)
+	summaries, err := m.MemoryStore.GetSummaryList(
+		ctx,
+		appState,
+		m.SessionID,
+		m.PageNumber,
+		m.PageSize,
+	)
 	if err != nil {
 		return err
 	}
@@ -111,7 +126,12 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 		if pageNumber == 0 {
 			pageNumber = 1
 		}
-		sessionDetails := NewSessionDetails(appState.MemoryStore, sessionID, int(pageNumber), pageSize)
+		sessionDetails := NewSessionDetails(
+			appState.MemoryStore,
+			sessionID,
+			int(pageNumber),
+			pageSize,
+		)
 
 		err := sessionDetails.Get(r.Context(), appState)
 		if err != nil {

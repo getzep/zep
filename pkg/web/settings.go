@@ -24,7 +24,10 @@ func redactHTMLEncodeConfig(cfg *config.Config) (*config.Config, error) {
 	redactedConfig.Auth.Secret = "**redacted**"
 
 	re := regexp.MustCompile(`(?i:postgres://[^:]+:)([^@]+)`)
-	redactedConfig.Store.Postgres.DSN = re.ReplaceAllString(redactedConfig.Store.Postgres.DSN, "$1:**redacted**")
+	redactedConfig.Store.Postgres.DSN = re.ReplaceAllString(
+		redactedConfig.Store.Postgres.DSN,
+		"$1:**redacted**",
+	)
 
 	escapedConfig := HTMLEscapeStruct(redactedConfig)
 
@@ -75,7 +78,12 @@ func GetSettingsHandler(appState *models.AppState) http.HandlerFunc {
 	}
 }
 
-func renderSettingsPage(w http.ResponseWriter, r *http.Request, path string, configData ConfigData) {
+func renderSettingsPage(
+	w http.ResponseWriter,
+	r *http.Request,
+	path string,
+	configData ConfigData,
+) {
 	page := NewPage(
 		"Settings",
 		"How Zep is currently configured",

@@ -39,7 +39,11 @@ func codeHighlight(code string, lexer string) (string, error) {
 
 	var buf bytes.Buffer
 	l := lexers.Get(lexer)
-	formatter := html.New(html.WrapLongLines(true), html.TabWidth(2), html.WithPreWrapper(preWrapper))
+	formatter := html.New(
+		html.WrapLongLines(true),
+		html.TabWidth(2),
+		html.WithPreWrapper(preWrapper),
+	)
 
 	style := styles.Get("github")
 	iterator, err := l.Tokenise(nil, code)

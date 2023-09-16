@@ -11,10 +11,6 @@ import (
 )
 
 func TestAuthMiddleware(t *testing.T) {
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
 	t.Run("auth required", func(t *testing.T) {
 		appState := &models.AppState{
 			Config: &config.Config{
@@ -26,9 +22,8 @@ func TestAuthMiddleware(t *testing.T) {
 		}
 
 		router := setupRouter(appState)
-		router.Handle("/", testHandler)
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1", nil)
 		res := httptest.NewRecorder()
 
 		router.ServeHTTP(res, req)
@@ -46,13 +41,12 @@ func TestAuthMiddleware(t *testing.T) {
 		}
 
 		router := setupRouter(appState)
-		router.Handle("/", testHandler)
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1", nil)
 		res := httptest.NewRecorder()
 
 		router.ServeHTTP(res, req)
-		require.Equal(t, http.StatusOK, res.Code)
+		require.Equal(t, http.StatusNotFound, res.Code)
 	})
 }
 
@@ -61,7 +55,7 @@ func TestSendVersion(t *testing.T) {
 
 	handler := SendVersion(nextHandler)
 
-	req, err := http.NewRequest("GET", "/", nil)
+	req, err := http.NewRequest("GET", "/api", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

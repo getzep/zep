@@ -240,7 +240,13 @@ func TestGetSummaryList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			summaries, err := getSummaryList(testCtx, testDB, tt.sessionID, tt.pageNumber, tt.pageSize)
+			summaries, err := getSummaryList(
+				testCtx,
+				testDB,
+				tt.sessionID,
+				tt.pageNumber,
+				tt.pageSize,
+			)
 			assert.NoError(t, err)
 
 			// Check the number of summaries returned
