@@ -1,14 +1,16 @@
-package web
+package webhandlers
 
 import (
 	"html/template"
 	"net/http"
+
+	"github.com/getzep/zep/pkg/web"
 )
 
 func NotFoundHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tmpl, err := template.New("404.html").Funcs(templateFuncs()).ParseFS(
-			TemplatesFS,
+		tmpl, err := template.New("404.html").Funcs(web.TemplateFuncs()).ParseFS(
+			web.TemplatesFS,
 			"templates/pages/404.html",
 		)
 		if err != nil {

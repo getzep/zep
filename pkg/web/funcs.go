@@ -25,7 +25,7 @@ func JSONSerializeHTML(data map[string]interface{}) (template.HTML, error) {
 		return "", err
 	}
 
-	highlightedJSON, err := codeHighlight(string(jsonBytes), "json")
+	highlightedJSON, err := CodeHighlight(string(jsonBytes), "json")
 	if err != nil {
 		return "", err
 	}
@@ -72,7 +72,7 @@ func HTMLEscapeStruct(data interface{}) interface{} {
 	return data
 }
 
-func templateFuncs() template.FuncMap {
+func TemplateFuncs() template.FuncMap {
 	funcMap := template.FuncMap{
 		"Percent": percent,
 		"ToJSON":  JSONSerializeHTML,

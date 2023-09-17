@@ -85,3 +85,10 @@ func parseDocumentJSONQuery(qb bun.QueryBuilder, jq *JSONQuery, isOr bool) bun.Q
 
 	return qb
 }
+
+func getAscDesc(asc bool) string {
+	if asc {
+		return "ASC"
+	}
+	return "DESC"
+}

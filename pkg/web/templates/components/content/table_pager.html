@@ -3,23 +3,30 @@
 <div
     class="px-6 py-4 grid gap-3 md:flex md:justify-between md:items-center border-t border-gray-200 dark:border-gray-700">
     {{ if .Data.TotalCount }}
+    {{ $listMax := sub (add .Data.Cursor .Data.RowCount) 1 }}
     <div>
-        <p class="text-sm text-gray-600 dark:text-gray-400">
-            <span class="font-semibold text-gray-800 dark:text-gray-200">
-                {{ if (gt .Data.Cursor .Data.TotalCount) }}
-                {{.Data.TotalCount}}
-                {{ else }}
-                {{ .Data.Cursor }}
-                {{ end }}
-                of {{ .Data.TotalCount }}</span> results
-        </p>
+        <div>
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                <span class="font-semibold text-gray-800 dark:text-gray-200">
+                    {{ .Data.Cursor }}
+                </span>
+                to
+                <span class="font-semibold text-gray-800 dark:text-gray-200">
+                    {{ $listMax }}
+                </span> of
+                <span class="font-semibold text-gray-800 dark:text-gray-200">
+                    {{ .Data.TotalCount }}
+                </span>
+                results
+            </p>
+        </div>
     </div>
     {{ end }}
     <div>
         {{ $pagerPath := print .Path "?cursor=" }}
         {{ $nextPath := print $pagerPath (add .Data.Cursor .Data.Limit) }}
         {{ $prevPath := print $pagerPath (sub .Data.Cursor .Data.Limit) }}
-        {{ $nextDisabled := and .Data.ListCount (gt .Data.Limit .Data.ListCount) }}
+        {{ $nextDisabled := and .Data.RowCount (gt .Data.Limit .Data.RowCount) }}
         {{ $prevDisabled := eq .Data.Cursor 0 }}
         <div class="inline-flex gap-x-2" hx-swap="innerHTML" hx-target="#page-content" hx-push-url="true">
             <button type="button" {{ if $prevDisabled }} disabled {{ end }} hx-get="{{ $prevPath }}"
@@ -52,20 +59,32 @@
 <div
     class="px-6 py-4 grid gap-3 md:flex md:justify-between md:items-center border-t border-gray-200 dark:border-gray-700">
     {{ if .Data.TotalCount }}
-    <div>
-        <p class="text-sm text-gray-600 dark:text-gray-400">
+    <div class="text-sm text-gray-600 dark:text-gray-400">
+        <p>
+            Page
             <span class="font-semibold text-gray-800 dark:text-gray-200">
-                {{ .Data.Offset }} of {{ .Data.TotalCount }}</span> results
+                {{ .Data.CurrentPage }}
+            </span>
+            of
+            <span class="font-semibold text-gray-800 dark:text-gray-200">
+                {{ .Data.PageCount }}
+            </span>
+        </p>
+        <p class="mt-2">
+            <span class="font-semibold text-gray-800 dark:text-gray-200">
+                {{ .Data.TotalCount }}
+            </span>
+            results
         </p>
     </div>
     {{ end }}
     {{ if gt .Data.TotalCount .Data.PageSize }}
     <div>
-        {{ $pagerPath := print .Path "?page=" }}
-        {{ $nextPath := print $pagerPath (add1 (.Data.PageNumber | int64)) }}
-        {{ $prevPath := print $pagerPath (sub (.Data.PageNumber | int64) 1) }}
+        {{ $pagerPath := print .Path "&page=" }}
+        {{ $nextPath := print $pagerPath (add1 (.Data.CurrentPage | int64)) }}
+        {{ $prevPath := print $pagerPath (sub (.Data.CurrentPage | int64) 1) }}
         {{ $nextDisabled := gt (add .Data.Offset .Data.PageSize) .Data.TotalCount }}
-        {{ $prevDisabled := eq .Data.PageNumber 1 }}
+        {{ $prevDisabled := eq .Data.CurrentPage 1 }}
         <div class="inline-flex gap-x-2" hx-swap="innerHTML" hx-target="#page-content" hx-push-url="true">
             <button type="button" {{ if $prevDisabled }} disabled {{ end }} hx-get="{{ $prevPath }}"
                 class="{{ if $prevDisabled }}cursor-not-allowed{{ end }} py-2 px-3 inline-flex justify-center items-center gap-2 rounded-md border font-medium bg-white text-gray-700 shadow-sm align-middle hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-blue-600 transition-all text-sm dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white dark:focus:ring-offset-gray-800">

@@ -1,31 +1,15 @@
-package web
+package webhandlers
 
 import (
 	"errors"
 	"net/http"
 
+	"github.com/getzep/zep/internal"
+
 	"github.com/getzep/zep/pkg/models"
 )
 
-type ExternalPage struct {
-	Title string
-	URL   string
-}
-
-var ExternalPages = map[string]ExternalPage{
-	"website": {
-		Title: "Website",
-		URL:   "https://getzep.com",
-	},
-	"docs": {
-		Title: "Documentation",
-		URL:   "https://docs.getzep.com",
-	},
-	"github": {
-		Title: "GitHub",
-		URL:   "https://github.com/getzep/zep",
-	},
-}
+var log = internal.GetLogger()
 
 func handleError(w http.ResponseWriter, err error, message string) {
 	switch {

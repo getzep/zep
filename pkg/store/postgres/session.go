@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/getzep/zep/pkg/models"
@@ -227,7 +228,7 @@ func (dao *SessionDAO) Delete(ctx context.Context, sessionID string) error {
 }
 
 // ListAll retrieves all sessions from the database.
-// It takes a context, a cursor time.Time, and a limit int.
+// It takes a context, a cursor int64, and a limit int.
 // It returns a slice of pointers to Session structs or an error if the retrieval fails.
 func (dao *SessionDAO) ListAll(
 	ctx context.Context,
@@ -245,6 +246,77 @@ func (dao *SessionDAO) ListAll(
 		return nil, fmt.Errorf("failed to list sessions: %w", err)
 	}
 
+	retSessions := sessionSchemaToSession(sessions)
+
+	return retSessions, nil
+}
+
+func (dao *SessionDAO) ListAllOrdered(
+	ctx context.Context,
+	pageNumber int,
+	pageSize int,
+	orderBy string,
+	asc bool,
+) (*models.SessionListResponse, error) {
+	var totalCount int
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+	var sessions []SessionSchema
+
+	if orderBy == "" {
+		orderBy = "id"
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		err = dao.db.NewSelect().
+			Model(&sessions).
+			Order(fmt.Sprintf("%s %s", orderBy, getAscDesc(asc))).
+			Limit(pageSize).
+			Offset((pageNumber - 1) * pageSize).
+			Scan(ctx)
+
+		mu.Lock()
+		if firstErr == nil {
+			firstErr = err
+		}
+		mu.Unlock()
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		totalCount, err = dao.db.NewSelect().
+			Model((*SessionSchema)(nil)).
+			Count(ctx)
+
+		mu.Lock()
+		if firstErr == nil {
+			firstErr = err
+		}
+		mu.Unlock()
+	}()
+
+	if firstErr != nil {
+		return nil, fmt.Errorf("failed to list sessions: %w", firstErr)
+	}
+
+	wg.Wait()
+
+	retSessions := sessionSchemaToSession(sessions)
+
+	return &models.SessionListResponse{
+		Sessions:      retSessions,
+		TotalCount:    totalCount,
+		ResponseCount: len(retSessions),
+	}, nil
+}
+
+func sessionSchemaToSession(sessions []SessionSchema) []*models.Session {
 	retSessions := make([]*models.Session, len(sessions))
 	for i := range sessions {
 		retSessions[i] = &models.Session{
@@ -257,19 +329,5 @@ func (dao *SessionDAO) ListAll(
 			UserID:    sessions[i].UserID,
 		}
 	}
-
-	return retSessions, nil
-}
-
-// CountAll counts all sessions in the database.
-func (dao *SessionDAO) CountAll(ctx context.Context) (int, error) {
-	var count int
-	count, err := dao.db.NewSelect().
-		Model((*SessionSchema)(nil)).
-		Count(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("failed to count sessions: %w", err)
-	}
-
-	return count, nil
+	return retSessions
 }

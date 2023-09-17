@@ -33,7 +33,7 @@ func (p *CustomPreWrapper) End(code bool) string {
 
 // codeHighlight takes a string of code and a lexer name and returns a highlighted
 // HTML string.
-func codeHighlight(code string, lexer string) (string, error) {
+func CodeHighlight(code string, lexer string) (string, error) {
 	// Create a preWrapper that implements the PreWrapper interface
 	preWrapper := &CustomPreWrapper{}
 

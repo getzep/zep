@@ -1,4 +1,4 @@
-package web
+package webhandlers
 
 import (
 	"context"
@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
+	"sync"
+
+	"github.com/getzep/zep/pkg/server/handlertools"
+	"github.com/getzep/zep/pkg/web"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/go-chi/chi/v5"
@@ -37,27 +40,54 @@ type UserList struct {
 }
 
 func (u *UserList) Get(ctx context.Context) error {
+	var wg sync.WaitGroup
+	var users []*models.User
+	var count int
+	var userRows []*UserRow
+	var mu sync.Mutex
+	var firstErr error
+
 	users, err := u.UserStore.ListAll(ctx, u.Cursor, int(u.Limit))
 	if err != nil {
 		return err
 	}
 
-	userRows := make([]*UserRow, len(users))
-	for i, user := range users {
-		sessions, err := u.UserStore.GetSessions(ctx, user.UserID)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		userRows = make([]*UserRow, len(users))
+		for i, user := range users {
+			sessions, err := u.UserStore.GetSessions(ctx, user.UserID)
+			if err != nil {
+				mu.Lock()
+				firstErr = err
+				mu.Unlock()
+				return
+			}
+			userRows[i] = &UserRow{
+				User:         user,
+				SessionCount: len(sessions),
+			}
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		count, err = u.UserStore.CountAll(ctx)
 		if err != nil {
-			return err
+			mu.Lock()
+			firstErr = err
+			mu.Unlock()
+			return
 		}
-		userRows[i] = &UserRow{
-			User:         user,
-			SessionCount: len(sessions),
-		}
+	}()
+
+	wg.Wait()
+
+	if firstErr != nil {
+		return firstErr
 	}
 
-	count, err := u.UserStore.CountAll(ctx)
-	if err != nil {
-		return err
-	}
 	u.UserRows = userRows
 	u.ListCount = len(users)
 	u.TotalCount = int64(count)
@@ -67,24 +97,19 @@ func (u *UserList) Get(ctx context.Context) error {
 
 func GetUserListHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cursorStr := r.URL.Query().Get("cursor")
-		cursor, _ := strconv.ParseInt(
-			cursorStr,
-			10,
-			64,
-		) // safely ignore error, it will be 0 if conversion fails
+		cursor, err := handlertools.IntFromQuery[int64](r, "cursor")
 
 		const path = "/admin/users"
 		userList := NewUserList(appState.UserStore, cursor, UserListLimit)
 
-		err := userList.Get(r.Context())
+		err = userList.Get(r.Context())
 		if err != nil {
 			log.Errorf("Failed to get user list: %s", err)
 			http.Error(w, "Failed to get user list", http.StatusInternalServerError)
 			return
 		}
 
-		page := NewPage(
+		page := web.NewPage(
 			"Users",
 			"View, edit, and delete users",
 			path,
@@ -93,7 +118,7 @@ func GetUserListHandler(appState *models.AppState) http.HandlerFunc {
 				"templates/components/content/*.html",
 				"templates/components/user_table.html",
 			},
-			[]BreadCrumb{
+			[]web.BreadCrumb{
 				{
 					Title: "Users",
 					Path:  path,
@@ -140,27 +165,17 @@ func GetUserDetailsHandler(appState *models.AppState) http.HandlerFunc {
 			metadataString = string(metadataBytes)
 		}
 
-		sessions, err := appState.UserStore.GetSessions(r.Context(), user.UserID)
-		if err != nil {
-			handleError(w, err, "failed to get user sessions")
-			return
-		}
-
-		sessionList := &SessionList{
-			Sessions: sessions,
-			Limit:    0,
-			Cursor:   0,
-		}
+		sl := NewSessionList(appState.MemoryStore, r)
 
 		userData := UserFormData{
 			User:           *user,
 			MetadataString: string(metadataString),
-			SessionList:    sessionList,
+			SessionList:    sl,
 		}
 
 		path := "/admin/users/" + user.UserID
 
-		page := NewPage(
+		page := web.NewPage(
 			user.UserID,
 			fmt.Sprintf("%s %s", user.FirstName, user.LastName),
 			path,
@@ -170,7 +185,7 @@ func GetUserDetailsHandler(appState *models.AppState) http.HandlerFunc {
 				"templates/components/user_details.html",
 				"templates/components/session_table.html",
 			},
-			[]BreadCrumb{
+			[]web.BreadCrumb{
 				{
 					Title: "Users",
 					Path:  "/admin/users",

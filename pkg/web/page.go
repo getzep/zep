@@ -61,11 +61,6 @@ type Page struct {
 }
 
 func (p *Page) Render(w http.ResponseWriter, r *http.Request) {
-	// if new Path is set, push it to the client
-	if len(p.Path) > 0 {
-		w.Header().Set("HX-Push", p.Path)
-	}
-
 	// If HX-Request header is set, render content template only
 	// If the page was loaded directly, render full layout
 	if r.Header.Get("HX-Request") == "true" {
@@ -76,7 +71,7 @@ func (p *Page) Render(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Page) renderPartial(w http.ResponseWriter) {
-	tmpl, err := template.New(p.Title).Funcs(templateFuncs()).ParseFS(
+	tmpl, err := template.New(p.Title).Funcs(TemplateFuncs()).ParseFS(
 		TemplatesFS,
 		p.Templates...,
 	)
@@ -100,7 +95,7 @@ func (p *Page) renderFull(w http.ResponseWriter) {
 
 	templates := append(LayoutTemplates, p.Templates...) //nolint:gocritic
 
-	tmpl, err := template.New(p.Title).Funcs(templateFuncs()).ParseFS(
+	tmpl, err := template.New(p.Title).Funcs(TemplateFuncs()).ParseFS(
 		TemplatesFS,
 		templates...,
 	)
@@ -124,4 +119,24 @@ func slugify(s string) string {
 	reg := regexp.MustCompile("[^a-zA-Z]+")
 	processedString := reg.ReplaceAllString(s, "")
 	return strings.ToLower(processedString)
+}
+
+type ExternalPage struct {
+	Title string
+	URL   string
+}
+
+var ExternalPages = map[string]ExternalPage{
+	"website": {
+		Title: "Website",
+		URL:   "https://getzep.com",
+	},
+	"docs": {
+		Title: "Documentation",
+		URL:   "https://docs.getzep.com",
+	},
+	"github": {
+		Title: "GitHub",
+		URL:   "https://github.com/getzep/zep",
+	},
 }

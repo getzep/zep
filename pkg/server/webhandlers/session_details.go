@@ -1,10 +1,12 @@
-package web
+package webhandlers
 
 import (
 	"context"
 	"errors"
 	"net/http"
 	"strconv"
+
+	"github.com/getzep/zep/pkg/web"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/go-chi/chi/v5"
@@ -149,9 +151,9 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 		}
 		sessionDetails.Session = session
 
-		var breadCrumbs []BreadCrumb
+		var breadCrumbs []web.BreadCrumb
 		if len(userID) == 0 {
-			breadCrumbs = []BreadCrumb{
+			breadCrumbs = []web.BreadCrumb{
 				{
 					Title: "Sessions",
 					Path:  "/admin/sessions",
@@ -162,7 +164,7 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 				},
 			}
 		} else {
-			breadCrumbs = []BreadCrumb{
+			breadCrumbs = []web.BreadCrumb{
 				{
 					Title: "Users",
 					Path:  "/admin/users",
@@ -185,7 +187,7 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 			path = "/admin/users/" + userID + "/session/" + sessionID
 		}
 
-		page := NewPage(
+		page := web.NewPage(
 			sessionID,
 			"View session information and chat history",
 			path,

@@ -94,19 +94,24 @@ type MemoryStore[T any] interface {
 		appState *AppState,
 		session *UpdateSessionRequest,
 	) (*Session, error)
-	// ListSessions returns a list of all Sessions.
+	// ListSessions returns a list of all Sessions, paginated by cursor and limit.
 	ListSessions(
 		ctx context.Context,
 		appState *AppState,
 		cursor int64,
 		limit int,
 	) ([]*Session, error)
-	// CountSessions returns the total number of Sessions in the database.
-	CountSessions(
+	// ListSessionsOrdered returns an ordered list of all Sessions, paginated by pageNumber and pageSize, and
+	// the total count of all sessions.
+	// orderedBy is the column to order by. asc is a boolean indicating whether to order ascending or descending.
+	ListSessionsOrdered(
 		ctx context.Context,
 		appState *AppState,
-	) (int, error)
-	OnStart(ctx context.Context, appState *AppState) error
+		pageNumber int,
+		pageSize int,
+		orderedBy string,
+		asc bool,
+	) (*SessionListResponse, error)
 	// Attach is used by Extractors to register themselves with the MemoryStore. This allows the MemoryStore to notify
 	// the Extractors when new occur.
 	Attach(observer Extractor)

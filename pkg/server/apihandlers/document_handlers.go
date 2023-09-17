@@ -1,4 +1,4 @@
-package server
+package apihandlers
 
 import (
 	"encoding/json"
@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/getzep/zep/pkg/server/handlertools"
 
 	"github.com/go-playground/validator/v10"
 
@@ -40,19 +42,23 @@ func CreateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
 		if collectionName == "" {
-			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("collectionName is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
 		var collectionRequest models.CreateDocumentCollectionRequest
 		err := json.NewDecoder(r.Body).Decode(&collectionRequest)
 		if err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
 		if err := validate.Struct(collectionRequest); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
@@ -60,17 +66,17 @@ func CreateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 		err = store.CreateCollection(r.Context(), collection)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, err, http.StatusNotFound)
+				handlertools.RenderError(w, err, http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write([]byte(OKResponse))
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -98,17 +104,21 @@ func UpdateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
 		if collectionName == "" {
-			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("collectionName is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 		var collectionRequest models.UpdateDocumentCollectionRequest
 		if err := json.NewDecoder(r.Body).Decode(&collectionRequest); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
 		if err := validate.Struct(collectionRequest); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
@@ -116,17 +126,17 @@ func UpdateCollectionHandler(appState *models.AppState) http.HandlerFunc {
 		err := store.UpdateCollection(r.Context(), collection)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, err, http.StatusNotFound)
+				handlertools.RenderError(w, err, http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write([]byte("OK"))
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -154,24 +164,28 @@ func DeleteCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
 		if collectionName == "" {
-			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("collectionName is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
 		err := store.DeleteCollection(r.Context(), collectionName)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, err, http.StatusNotFound)
+				handlertools.RenderError(w, err, http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write([]byte("OK"))
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -197,17 +211,17 @@ func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 		collections, err := store.GetCollectionList(r.Context())
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, err, http.StatusNotFound)
+				handlertools.RenderError(w, err, http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		collectionListResponse := collectionListToCollectionResponseList(collections)
 
-		if err := encodeJSON(w, collectionListResponse); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, collectionListResponse); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -235,24 +249,28 @@ func GetCollectionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
 		if collectionName == "" {
-			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("collectionName is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
 		collection, err := store.GetCollection(r.Context(), collectionName)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, err, http.StatusNotFound)
+				handlertools.RenderError(w, err, http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		collectionResponse := collectionToCollectionResponse(collection)
 
-		if err := encodeJSON(w, collectionResponse); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, collectionResponse); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -280,13 +298,17 @@ func CreateDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
 		if collectionName == "" {
-			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("collectionName is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
 		var documentListRequest []models.CreateDocumentRequest
 		if err := json.NewDecoder(r.Body).Decode(&documentListRequest); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
@@ -294,18 +316,18 @@ func CreateDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 			documentListRequest,
 		)
 		if err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
 		uuids, err := store.CreateDocuments(r.Context(), collectionName, documents)
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
-		if err := encodeJSON(w, uuids); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, uuids); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -333,25 +355,33 @@ func UpdateDocumentHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
-		documentUUID := parseUUIDFromURL(r, w, "documentUUID")
+		documentUUID := handlertools.UUIDFromURL(r, w, "documentUUID")
 
 		if collectionName == "" {
-			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("collectionName is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 		if documentUUID == uuid.Nil {
-			renderError(w, errors.New("documentUUID is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("documentUUID is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
 		var documentRequest models.UpdateDocumentRequest
 		if err := json.NewDecoder(r.Body).Decode(&documentRequest); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
 		if err := validate.Struct(documentRequest); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
@@ -360,17 +390,17 @@ func UpdateDocumentHandler(appState *models.AppState) http.HandlerFunc {
 		err := store.UpdateDocuments(r.Context(), collectionName, documents)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, err, http.StatusNotFound)
+				handlertools.RenderError(w, err, http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write([]byte("OK"))
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -398,36 +428,40 @@ func UpdateDocumentListHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
 		if collectionName == "" {
-			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("collectionName is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
 		var documentsRequest []models.UpdateDocumentListRequest
 		if err := json.NewDecoder(r.Body).Decode(&documentsRequest); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
 		documents, err := documentListFromDocumentBatchUpdateRequest(documentsRequest)
 		if err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
 		err = store.UpdateDocuments(r.Context(), collectionName, documents)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, err, http.StatusNotFound)
+				handlertools.RenderError(w, err, http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write([]byte("OK"))
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -454,14 +488,22 @@ func GetDocumentHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
-		documentUUID := parseUUIDFromURL(r, w, "documentUUID")
+		documentUUID := handlertools.UUIDFromURL(r, w, "documentUUID")
 
 		if collectionName == "" {
-			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("collectionName is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 		if documentUUID == uuid.Nil {
-			renderError(w, errors.New("documentUUID is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("documentUUID is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
@@ -475,17 +517,17 @@ func GetDocumentHandler(appState *models.AppState) http.HandlerFunc {
 
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, err, http.StatusNotFound)
+				handlertools.RenderError(w, err, http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		documentResponse := documentResponseFromDocument(documents[0])
 
-		if err := encodeJSON(w, documentResponse); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, documentResponse); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -513,13 +555,17 @@ func GetDocumentListHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
 		if collectionName == "" {
-			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("collectionName is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
 		var docRequest models.GetDocumentListRequest
 		if err := json.NewDecoder(r.Body).Decode(&docRequest); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
@@ -531,16 +577,16 @@ func GetDocumentListHandler(appState *models.AppState) http.HandlerFunc {
 		)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, err, http.StatusNotFound)
+				handlertools.RenderError(w, err, http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		documentResponses := documentBatchResponseFromDocumentList(documents)
-		if err := encodeJSON(w, documentResponses); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, documentResponses); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -570,15 +616,23 @@ func DeleteDocumentHandler(appState *models.AppState) http.HandlerFunc {
 	store := appState.DocumentStore
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
-		documentUUID := parseUUIDFromURL(r, w, "documentUUID")
+		documentUUID := handlertools.UUIDFromURL(r, w, "documentUUID")
 
 		if collectionName == "" {
-			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("collectionName is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
 		if documentUUID == uuid.Nil {
-			renderError(w, errors.New("documentUUID is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("documentUUID is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
@@ -586,17 +640,17 @@ func DeleteDocumentHandler(appState *models.AppState) http.HandlerFunc {
 		err := store.DeleteDocuments(r.Context(), collectionName, uuids)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, err, http.StatusNotFound)
+				handlertools.RenderError(w, err, http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write([]byte("OK"))
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -626,30 +680,34 @@ func DeleteDocumentListHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
 		if collectionName == "" {
-			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("collectionName is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
 		var documentUUIDs []uuid.UUID
 		if err := json.NewDecoder(r.Body).Decode(&documentUUIDs); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
 		err := store.DeleteDocuments(r.Context(), collectionName, documentUUIDs)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, err, http.StatusNotFound)
+				handlertools.RenderError(w, err, http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write([]byte("OK"))
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -680,7 +738,11 @@ func CreateCollectionIndexHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
 		if collectionName == "" {
-			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("collectionName is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
@@ -690,21 +752,21 @@ func CreateCollectionIndexHandler(appState *models.AppState) http.HandlerFunc {
 			var err error
 			force, err = strconv.ParseBool(forceStr)
 			if err != nil {
-				renderError(w, err, http.StatusBadRequest)
+				handlertools.RenderError(w, err, http.StatusBadRequest)
 				return
 			}
 		}
 
 		err := store.CreateCollectionIndex(r.Context(), collectionName, force)
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write([]byte("OK"))
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -736,13 +798,17 @@ func SearchDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		collectionName := strings.ToLower(chi.URLParam(r, "collectionName"))
 		if collectionName == "" {
-			renderError(w, errors.New("collectionName is required"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("collectionName is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
-		limit, err := extractQueryStringValueToInt[int](r, "limit")
+		limit, err := handlertools.IntFromQuery[int](r, "limit")
 		if err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
@@ -752,16 +818,20 @@ func SearchDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 		if withMMRStr != "" {
 			_, err = strconv.ParseBool(withMMRStr)
 			if err != nil {
-				renderError(w, err, http.StatusBadRequest)
+				handlertools.RenderError(w, err, http.StatusBadRequest)
 				return
 			}
-			renderError(w, errors.New("MMR not yet implemented"), http.StatusBadRequest)
+			handlertools.RenderError(
+				w,
+				errors.New("MMR not yet implemented"),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
 		var searchPayload models.DocumentSearchPayload
 		if err := json.NewDecoder(r.Body).Decode(&searchPayload); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
@@ -770,15 +840,15 @@ func SearchDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 		results, err := store.SearchCollection(r.Context(), &searchPayload, limit, withMMR, 0, 0)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, err, http.StatusNotFound)
+				handlertools.RenderError(w, err, http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
-		if err := encodeJSON(w, results); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, results); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}

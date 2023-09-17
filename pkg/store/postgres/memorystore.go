@@ -105,12 +105,17 @@ func (pms *PostgresMemoryStore) ListSessions(
 	return pms.SessionStore.ListAll(ctx, cursor, limit)
 }
 
-// CountSessions returns the total number of Sessions in the database.
-func (pms *PostgresMemoryStore) CountSessions(
+// ListSessionsOrdered returns an ordered list of all Sessions, paginated by pageNumber and pageSize.
+// orderedBy is the column to order by. asc is a boolean indicating whether to order ascending or descending.
+func (pms *PostgresMemoryStore) ListSessionsOrdered(
 	ctx context.Context,
 	_ *models.AppState,
-) (int, error) {
-	return pms.SessionStore.CountAll(ctx)
+	pageNumber int,
+	pageSize int,
+	orderedBy string,
+	asc bool,
+) (*models.SessionListResponse, error) {
+	return pms.SessionStore.ListAllOrdered(ctx, pageNumber, pageSize, orderedBy, asc)
 }
 
 // GetMemory returns the most recent Summary and a list of messages for a given sessionID.

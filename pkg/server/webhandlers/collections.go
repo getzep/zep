@@ -1,8 +1,10 @@
-package web
+package webhandlers
 
 import (
 	"context"
 	"net/http"
+
+	"github.com/getzep/zep/pkg/web"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/go-chi/chi/v5"
@@ -55,7 +57,7 @@ func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		page := NewPage(
+		page := web.NewPage(
 			"Collections",
 			"Manage document collections in the vector store",
 			path,
@@ -64,7 +66,7 @@ func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 				"templates/components/content/*.html",
 				"templates/components/collections_table.html",
 			},
-			[]BreadCrumb{
+			[]web.BreadCrumb{
 				{
 					Title: "Collections",
 					Path:  path,
@@ -88,7 +90,7 @@ func ViewCollectionHandler(appState *models.AppState) http.HandlerFunc {
 		}
 
 		const path = "/admin/collections"
-		page := NewPage(
+		page := web.NewPage(
 			collection.Name,
 			collection.Description,
 			path+"/"+collection.Name,
@@ -96,7 +98,7 @@ func ViewCollectionHandler(appState *models.AppState) http.HandlerFunc {
 				"templates/pages/collection_details.html",
 				"templates/components/content/*.html",
 			},
-			[]BreadCrumb{
+			[]web.BreadCrumb{
 				{
 					Title: "Collections",
 					Path:  path,

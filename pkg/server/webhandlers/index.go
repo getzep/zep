@@ -1,13 +1,15 @@
-package web
+package webhandlers
 
 import (
 	"net/http"
+
+	"github.com/getzep/zep/pkg/web"
 )
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	const path = "/admin"
 
-	page := NewPage(
+	page := web.NewPage(
 		"Dashboard",
 		"",
 		path,
@@ -15,7 +17,7 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 			"templates/pages/dashboard.html",
 			"templates/components/content/*.html",
 		},
-		[]BreadCrumb{
+		[]web.BreadCrumb{
 			{
 				Title: "Dashboard",
 				Path:  path,

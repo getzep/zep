@@ -1,42 +1,25 @@
 {{ define "SessionTHead" }}
-<thead class="bg-gray-50 dark:bg-slate-800">
-<tr>
-    <!-- <th scope="col" class="pl-6 py-3 text-left">
+<thead class="bg-gray-50 dark:bg-slate-800" hx-boost="true" hx-swap="innerHTML" hx-target="#page-content"
+    hx-push-url="true">
+    <tr>
+        <!-- <th scope="col" class="pl-6 py-3 text-left">
         <label for="hs-at-with-checkboxes-main" class="flex">
-            <input type="checkbox"
+            <input type="checkbox" x-model="checked" 
                    class="shrink-0 border-gray-200 rounded text-blue-600 pointer-events-none focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:checked:bg-blue-500 dark:checked:border-blue-500 dark:focus:ring-offset-gray-800"
                    id="hs-at-with-checkboxes-main">
             <span class="sr-only">Checkbox</span>
         </label>
     </th> -->
 
-    <th scope="col" class="pl-6 lg:pl-6 xl:pl-6 pr-6 py-3 text-left">
-        <div class="flex items-center gap-x-2">
-                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
-                      Session
-                    </span>
-        </div>
-    </th>
+        {{ $tableState := dict "Path" .Path "OrderBy" .Data.OrderBy "Asc" .Data.Asc }} 
+        {{ range .Data.Columns }}
+            {{ if .Sortable }}
+                {{ template "THSortable" dict "Table" $tableState "Column" . }}
+            {{ end }}
+        {{ end }}
 
-    <th scope="col" class="px-6 py-3 text-left">
-        <div class="flex items-center gap-x-2">
-                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
-                      User
-                    </span>
-        </div>
-    </th>
-
-    <th scope="col" class="px-6 py-3 text-left">
-        <div class="flex items-center gap-x-2">
-                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
-                      Created
-                    </span>
-        </div>
-    </th>
-
-
-    <th scope="col" class="px-6 py-3 text-right"></th>
-</tr>
+        <th scope="col" class="px-6 py-3 text-right"></th>
+    </tr>
 </thead>
 {{ end }}
 
@@ -61,7 +44,8 @@
             <div class="flex items-center gap-x-3">
                 <div class="grow">
                     <a href="{{ $path }}/{{ .Session.SessionID }}">
-                        <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .Session.SessionID }}</span>
+                        <span class="block text-sm font-semibold text-gray-800 dark:text-gray-200">{{ .Session.SessionID
+                            }}</span>
                     </a>
                 </div>
             </div>
@@ -85,7 +69,7 @@
     <td class="h-px w-px whitespace-nowrap">
         <div class="px-6 py-1.5">
             <a class="inline-flex items-center gap-x-1.5 text-sm text-blue-600 decoration-2 hover:underline font-medium"
-               href="{{ $path }}/{{ .Session.SessionID }}">
+                href="{{ $path }}/{{ .Session.SessionID }}">
                 View
             </a>
         </div>
@@ -101,8 +85,9 @@
     <div class="flex flex-col">
         <div class="-m-1.5 overflow-x-auto">
             <div class="p-1.5 min-w-full inline-block align-middle">
-                <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden dark:bg-slate-900 dark:border-gray-700">
-                    {{ if eq (len .Data.Sessions) 0 }}
+                <div
+                    class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden dark:bg-slate-900 dark:border-gray-700">
+                    {{ if eq (len .Data.Rows) 0 }}
                     {{ template "NoDataCard" . }}
                     {{ else }}
                     <!-- Table -->
@@ -110,17 +95,19 @@
                         {{ template "SessionTHead" . }}
 
                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        {{ $path := .Path }}
-                        {{ range $session := .Data.Sessions }}
-                            {{ template "SessionTableRow" dict "Path" $path "Session" $session }}
-                        {{ end }}
+                            {{ $path := .Path }}
+                            {{ range $session := .Data.Rows }}
+                                {{ template "SessionTableRow" dict "Path" $path "Session" $session }}
+                            {{ end }}
                         </tbody>
 
                     </table>
                     <!-- End Table -->
 
                     <!-- Footer -->
-                    {{ template "CursorPager" . }}
+                    {{ if gt .Data.TotalCount .Data.RowCount }}
+                    {{ template "PageCountPager" . }}
+                    {{ end }}
                     <!-- End Footer -->
                     {{ end }}
                 </div>

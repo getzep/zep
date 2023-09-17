@@ -1,4 +1,4 @@
-package web
+package webhandlers
 
 import (
 	"encoding/json"
@@ -6,6 +6,8 @@ import (
 	"html/template"
 	"net/http"
 	"regexp"
+
+	"github.com/getzep/zep/pkg/web"
 
 	"github.com/getzep/zep/config"
 	"github.com/getzep/zep/pkg/models"
@@ -29,7 +31,7 @@ func redactHTMLEncodeConfig(cfg *config.Config) (*config.Config, error) {
 		"$1:**redacted**",
 	)
 
-	escapedConfig := HTMLEscapeStruct(redactedConfig)
+	escapedConfig := web.HTMLEscapeStruct(redactedConfig)
 
 	if redactedConfig, ok := escapedConfig.(config.Config); ok {
 		return &redactedConfig, nil
@@ -45,7 +47,7 @@ func getConfigJSONAndHTML(cfg *config.Config) (string, string, error) {
 		return "", "", err
 	}
 
-	configHTML, err := codeHighlight(string(cfgBytes), "json")
+	configHTML, err := web.CodeHighlight(string(cfgBytes), "json")
 	if err != nil {
 		return "", "", err
 	}
@@ -84,7 +86,7 @@ func renderSettingsPage(
 	path string,
 	configData ConfigData,
 ) {
-	page := NewPage(
+	page := web.NewPage(
 		"Settings",
 		"How Zep is currently configured",
 		path,
@@ -92,7 +94,7 @@ func renderSettingsPage(
 			"templates/pages/settings.html",
 			"templates/components/content/*.html",
 		},
-		[]BreadCrumb{
+		[]web.BreadCrumb{
 			{
 				Title: "Settings",
 				Path:  path,

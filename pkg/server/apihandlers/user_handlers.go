@@ -1,9 +1,11 @@
-package server
+package apihandlers
 
 import (
 	"errors"
 	"fmt"
 	"net/http"
+
+	"github.com/getzep/zep/pkg/server/handlertools"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/go-chi/chi/v5"
@@ -25,20 +27,20 @@ import (
 func CreateUserHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var user models.CreateUserRequest
-		if err := decodeJSON(r, &user); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+		if err := handlertools.DecodeJSON(r, &user); err != nil {
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
 		createdUser, err := appState.UserStore.Create(r.Context(), &user)
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusCreated)
-		if err := encodeJSON(w, createdUser); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, createdUser); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -64,15 +66,15 @@ func GetUserHandler(appState *models.AppState) http.HandlerFunc {
 		user, err := appState.UserStore.Get(r.Context(), userId)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+				handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
-		if err := encodeJSON(w, user); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, user); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -97,8 +99,8 @@ func UpdateUserHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID := chi.URLParam(r, "userId")
 		var user models.UpdateUserRequest
-		if err := decodeJSON(r, &user); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+		if err := handlertools.DecodeJSON(r, &user); err != nil {
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
@@ -107,15 +109,15 @@ func UpdateUserHandler(appState *models.AppState) http.HandlerFunc {
 		updatedUser, err := appState.UserStore.Update(r.Context(), &user, true)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+				handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
-		if err := encodeJSON(w, updatedUser); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, updatedUser); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -140,10 +142,10 @@ func DeleteUserHandler(appState *models.AppState) http.HandlerFunc {
 
 		if err := appState.UserStore.Delete(r.Context(), userID); err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+				handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
@@ -167,26 +169,26 @@ func DeleteUserHandler(appState *models.AppState) http.HandlerFunc {
 //	@Router			/api/v1/user [get]
 func ListAllUsersHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		limit, err := extractQueryStringValueToInt[int](r, "limit")
+		limit, err := handlertools.IntFromQuery[int](r, "limit")
 		if err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
-		cursor, err := extractQueryStringValueToInt[int64](r, "cursor")
+		cursor, err := handlertools.IntFromQuery[int64](r, "cursor")
 		if err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
 		users, err := appState.UserStore.ListAll(r.Context(), cursor, limit)
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
-		if err := encodeJSON(w, users); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, users); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -210,12 +212,12 @@ func ListUserSessionsHandler(appState *models.AppState) http.HandlerFunc {
 
 		sessions, err := appState.UserStore.GetSessions(r.Context(), userID)
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
-		if err := encodeJSON(w, sessions); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, sessions); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}

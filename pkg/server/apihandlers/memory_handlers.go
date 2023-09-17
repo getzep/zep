@@ -1,16 +1,15 @@
-package server
+package apihandlers
 
 import (
 	"errors"
 	"fmt"
 	"net/http"
 
-	"github.com/getzep/zep/internal"
+	"github.com/getzep/zep/pkg/server/handlertools"
+
 	"github.com/getzep/zep/pkg/models"
 	"github.com/go-chi/chi/v5"
 )
-
-var log = internal.GetLogger()
 
 const OKResponse = "OK"
 
@@ -31,25 +30,25 @@ const OKResponse = "OK"
 func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
-		lastN, err := extractQueryStringValueToInt[int](r, "lastn")
+		lastN, err := handlertools.IntFromQuery[int](r, "lastn")
 		if err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
 		sessionMemory, err := appState.MemoryStore.GetMemory(r.Context(), appState,
 			sessionID, lastN)
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 		if sessionMemory == nil || sessionMemory.Messages == nil {
-			renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+			handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 			return
 		}
 
-		if err := encodeJSON(w, sessionMemory); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, sessionMemory); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -75,15 +74,15 @@ func GetSessionHandler(appState *models.AppState) http.HandlerFunc {
 		session, err := appState.MemoryStore.GetSession(r.Context(), appState, sessionID)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+				handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
-		if err := encodeJSON(w, session); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, session); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -105,20 +104,20 @@ func GetSessionHandler(appState *models.AppState) http.HandlerFunc {
 func CreateSessionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var session models.CreateSessionRequest
-		if err := decodeJSON(r, &session); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+		if err := handlertools.DecodeJSON(r, &session); err != nil {
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
 		newSession, err := appState.MemoryStore.CreateSession(r.Context(), appState, &session)
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusCreated)
-		if err := encodeJSON(w, newSession); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, newSession); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -143,8 +142,8 @@ func UpdateSessionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
 		var session models.UpdateSessionRequest
-		if err := decodeJSON(r, &session); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+		if err := handlertools.DecodeJSON(r, &session); err != nil {
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 		session.SessionID = sessionID
@@ -152,14 +151,14 @@ func UpdateSessionHandler(appState *models.AppState) http.HandlerFunc {
 		updatedSession, err := appState.MemoryStore.UpdateSession(r.Context(), appState, &session)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+				handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
-		if err := encodeJSON(w, updatedSession); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, updatedSession); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -185,22 +184,22 @@ func GetSessionListHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var limit int
 		var err error
-		if limit, err = extractQueryStringValueToInt[int](r, "limit"); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+		if limit, err = handlertools.IntFromQuery[int](r, "limit"); err != nil {
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 		var cursor int64
-		if cursor, err = extractQueryStringValueToInt[int64](r, "cursor"); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+		if cursor, err = handlertools.IntFromQuery[int64](r, "cursor"); err != nil {
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 		sessions, err := appState.MemoryStore.ListSessions(r.Context(), appState, cursor, limit)
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
-		if err := encodeJSON(w, sessions); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, sessions); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -223,8 +222,8 @@ func PostMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
 		var memoryMessages models.Memory
-		if err := decodeJSON(r, &memoryMessages); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+		if err := handlertools.DecodeJSON(r, &memoryMessages); err != nil {
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
@@ -235,7 +234,7 @@ func PostMemoryHandler(appState *models.AppState) http.HandlerFunc {
 			&memoryMessages,
 			false,
 		); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 		_, _ = w.Write([]byte(OKResponse))
@@ -261,10 +260,10 @@ func DeleteMemoryHandler(appState *models.AppState) http.HandlerFunc {
 
 		if err := appState.MemoryStore.DeleteSession(r.Context(), sessionID); err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+				handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 				return
 			}
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 		_, _ = w.Write([]byte(OKResponse))
@@ -290,13 +289,13 @@ func SearchMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
 		var payload models.MemorySearchPayload
-		if err := decodeJSON(r, &payload); err != nil {
-			renderError(w, err, http.StatusBadRequest)
+		if err := handlertools.DecodeJSON(r, &payload); err != nil {
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
-		limit, err := extractQueryStringValueToInt[int](r, "limit")
+		limit, err := handlertools.IntFromQuery[int](r, "limit")
 		if err != nil {
-			renderError(w, err, http.StatusBadRequest)
+			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 		searchResult, err := appState.MemoryStore.SearchMemory(
@@ -307,15 +306,15 @@ func SearchMemoryHandler(appState *models.AppState) http.HandlerFunc {
 			limit,
 		)
 		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 		if searchResult == nil {
-			renderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+			handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 			return
 		}
-		if err := encodeJSON(w, searchResult); err != nil {
-			renderError(w, err, http.StatusInternalServerError)
+		if err := handlertools.EncodeJSON(w, searchResult); err != nil {
+			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}

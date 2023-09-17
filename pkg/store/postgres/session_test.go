@@ -340,17 +340,9 @@ func setupTestDeleteData(ctx context.Context, testDB *bun.DB) (string, error) {
 	return sessionID, nil
 }
 
-func TestSessionDAO_ListAll(t *testing.T) {
-	CleanDB(t, testDB)
-	err := CreateSchema(testCtx, appState, testDB)
-	assert.NoError(t, err)
-
-	// Initialize SessionDAO
-	dao := NewSessionDAO(testDB)
-
-	// Create a few test sessions
-	var lastID int64
-	for i := 0; i < 5; i++ {
+func createTestSessions(t *testing.T, dao *SessionDAO, numSessions int) []*models.Session {
+	var sessions []*models.Session
+	for i := 0; i < numSessions; i++ {
 		sessionID, err := testutils.GenerateRandomSessionID(16)
 		assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -363,8 +355,22 @@ func TestSessionDAO_ListAll(t *testing.T) {
 		createdSession, err := dao.Create(testCtx, session)
 		assert.NoError(t, err)
 
-		lastID = createdSession.ID
+		sessions = append(sessions, createdSession)
 	}
+	return sessions
+}
+
+func TestSessionDAO_ListAll(t *testing.T) {
+	CleanDB(t, testDB)
+	err := CreateSchema(testCtx, appState, testDB)
+	assert.NoError(t, err)
+
+	// Initialize SessionDAO
+	dao := NewSessionDAO(testDB)
+
+	// Create a few test sessions
+	sessions := createTestSessions(t, dao, 5)
+	lastID := sessions[len(sessions)-1].ID
 
 	tests := []struct {
 		name   string
@@ -401,44 +407,98 @@ func TestSessionDAO_ListAll(t *testing.T) {
 	}
 }
 
-func TestSessionDAO_CountAll(t *testing.T) {
+func TestSessionDAO_ListAllOrdered(t *testing.T) {
+	// Initialize SessionDAO
 	CleanDB(t, testDB)
 	err := CreateSchema(testCtx, appState, testDB)
 	assert.NoError(t, err)
 
-	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
 
-	// Create a few test sessions
-	for i := 0; i < 5; i++ {
-		sessionID, err := testutils.GenerateRandomSessionID(16)
-		assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
+	totalCount := 5
+	pageSize := 5
 
-		session := &models.CreateSessionRequest{
-			SessionID: sessionID,
-			Metadata: map[string]interface{}{
-				"key": "value",
-			},
-		}
-		_, err = dao.Create(testCtx, session)
-		assert.NoError(t, err)
-	}
+	// Create a few test sessions
+	sessions := createTestSessions(t, dao, totalCount)
 
 	tests := []struct {
-		name string
-		want int
+		name       string
+		pageNumber int
+		pageSize   int
+		orderBy    string
+		asc        bool
+		want       *models.SessionListResponse
 	}{
 		{
-			name: "Count all sessions",
-			want: 5,
+			name:       "Order by ID ASC",
+			pageNumber: 0,
+			pageSize:   pageSize,
+			orderBy:    "id",
+			asc:        true,
+			want: &models.SessionListResponse{
+				Sessions:      sessions,
+				TotalCount:    totalCount,
+				ResponseCount: pageSize,
+			},
+		},
+		{
+			name:       "Order by ID DESC",
+			pageNumber: 0,
+			pageSize:   pageSize,
+			orderBy:    "id",
+			asc:        false,
+			want: &models.SessionListResponse{
+				Sessions:      reverse(sessions),
+				TotalCount:    pageSize,
+				ResponseCount: pageSize,
+			},
+		},
+		{
+			name:       "Order by CreatedAt ASC",
+			pageNumber: 0,
+			pageSize:   pageSize,
+			orderBy:    "created_at",
+			asc:        true,
+			want: &models.SessionListResponse{
+				Sessions:      sessions,
+				TotalCount:    pageSize,
+				ResponseCount: pageSize,
+			},
+		},
+		{
+			name:       "Order by CreatedAt DESC",
+			pageNumber: 0,
+			pageSize:   pageSize,
+			orderBy:    "created_at",
+			asc:        false,
+			want: &models.SessionListResponse{
+				Sessions:      reverse(sessions),
+				TotalCount:    pageSize,
+				ResponseCount: pageSize,
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			count, err := dao.CountAll(testCtx)
+			result, err := dao.ListAllOrdered(
+				testCtx,
+				tt.pageNumber,
+				tt.pageSize,
+				tt.orderBy,
+				tt.asc,
+			)
 			assert.NoError(t, err)
-			assert.Equal(t, tt.want, count)
+			assert.Equal(t, tt.want, result)
 		})
 	}
+}
+
+// Helper function to reverse a slice of sessions
+func reverse(sessions []*models.Session) []*models.Session {
+	reversed := make([]*models.Session, len(sessions))
+	for i, session := range sessions {
+		reversed[len(sessions)-1-i] = session
+	}
+	return reversed
 }
