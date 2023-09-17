@@ -75,7 +75,7 @@ func getSummary(ctx context.Context, db *bun.DB, sessionID string) (*models.Summ
 func getSummaryList(ctx context.Context,
 	db *bun.DB,
 	sessionID string,
-	pageNumber int,
+	currentPage int,
 	pageSize int,
 ) (*models.SummaryListResponse, error) {
 	if sessionID == "" {
@@ -88,7 +88,7 @@ func getSummaryList(ctx context.Context,
 		Where("session_id = ?", sessionID).
 		Where("deleted_at IS NULL").
 		Order("created_at ASC").
-		Offset((pageNumber - 1) * pageSize).
+		Offset((currentPage - 1) * pageSize).
 		Limit(pageSize).
 		Scan(ctx)
 	if err != nil {
@@ -111,8 +111,8 @@ func getSummaryList(ctx context.Context,
 	}
 
 	respSummary := models.SummaryListResponse{
-		Summaries:     summaries,
-		ResponseCount: len(summaries),
+		Summaries: summaries,
+		RowCount:  len(summaries),
 	}
 
 	return &respSummary, nil

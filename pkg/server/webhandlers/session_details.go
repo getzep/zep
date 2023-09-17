@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/getzep/zep/pkg/web"
 
@@ -16,15 +15,15 @@ import (
 
 func NewSessionDetails(
 	memoryStore models.MemoryStore[*bun.DB],
+	r *http.Request,
 	sessionID string,
-	pageNumber int,
-	pageSize int,
 ) *SessionDetails {
+	t := web.NewTable("messages-table", nil)
+	t.ParseQueryParams(r)
 	return &SessionDetails{
 		MemoryStore: memoryStore,
 		SessionID:   sessionID,
-		PageNumber:  pageNumber,
-		PageSize:    pageSize,
+		Table:       t,
 	}
 }
 
@@ -33,10 +32,7 @@ type SessionDetails struct {
 	SessionID   string
 	Session     *models.Session
 	Messages    []models.Message
-	TotalCount  int
-	PageNumber  int
-	PageSize    int
-	Offset      int
+	*web.Table
 }
 
 func mergeMessagesSummaries(
@@ -75,7 +71,7 @@ func (m *SessionDetails) Get(ctx context.Context, appState *models.AppState) err
 		ctx,
 		appState,
 		m.SessionID,
-		m.PageNumber,
+		m.CurrentPage,
 		m.PageSize,
 	)
 	if err != nil {
@@ -87,11 +83,12 @@ func (m *SessionDetails) Get(ctx context.Context, appState *models.AppState) err
 	}
 
 	// pageSize needs to be >= MessageList page size so that we get all summaries related to the messages
+	// TODO: this may break under some circumstances. fix it.
 	summaries, err := m.MemoryStore.GetSummaryList(
 		ctx,
 		appState,
 		m.SessionID,
-		m.PageNumber,
+		m.CurrentPage,
 		m.PageSize,
 	)
 	if err != nil {
@@ -102,6 +99,9 @@ func (m *SessionDetails) Get(ctx context.Context, appState *models.AppState) err
 	}
 	m.Messages = messages.Messages
 	m.TotalCount = messages.TotalCount
+	m.RowCount = messages.RowCount
+	m.PageCount = m.GetPageCount()
+	m.Offset = m.GetOffset()
 
 	return nil
 }
@@ -117,22 +117,10 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 		userID := chi.URLParam(r, "userID")
 
 		// Get Messages
-		pageNumberStr := r.URL.Query().Get("page")
-		pageNumber, _ := strconv.ParseInt(
-			pageNumberStr,
-			10,
-			32,
-		) // safely ignore error, it will be 0 if conversion fails
-
-		var pageSize = 10
-		if pageNumber == 0 {
-			pageNumber = 1
-		}
 		sessionDetails := NewSessionDetails(
 			appState.MemoryStore,
+			r,
 			sessionID,
-			int(pageNumber),
-			pageSize,
 		)
 
 		err := sessionDetails.Get(r.Context(), appState)
@@ -140,8 +128,6 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 			handleError(w, err, "failed to get message list")
 			return
 		}
-
-		sessionDetails.Offset = (int(pageNumber)-1)*pageSize + 1
 
 		// Get Session Details
 		session, err := appState.MemoryStore.GetSession(r.Context(), appState, sessionID)
@@ -182,9 +168,10 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 
 		var path string
 		if len(userID) == 0 {
-			path = "/admin/sessions/" + sessionID
+			path = sessionDetails.GetTablePath("/admin/sessions/" + sessionID)
 		} else {
 			path = "/admin/users/" + userID + "/session/" + sessionID
+			path = sessionDetails.GetTablePath(path)
 		}
 
 		page := web.NewPage(

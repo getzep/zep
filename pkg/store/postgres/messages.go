@@ -98,7 +98,7 @@ func getMessageList(
 	ctx context.Context,
 	db *bun.DB,
 	sessionID string,
-	pageNumber int,
+	currentPage int,
 	pageSize int,
 ) (*models.MessageListResponse, error) {
 	if sessionID == "" {
@@ -124,7 +124,7 @@ func getMessageList(
 		Where("session_id = ?", sessionID).
 		OrderExpr("id ASC").
 		Limit(pageSize).
-		Offset((pageNumber - 1) * pageSize).
+		Offset((currentPage - 1) * pageSize).
 		Scan(ctx)
 	if err != nil {
 		return nil, store.NewStorageError("failed to get messages", err)
@@ -146,9 +146,9 @@ func getMessageList(
 	}
 
 	r := &models.MessageListResponse{
-		Messages:      messageList,
-		TotalCount:    count,
-		ResponseCount: len(messages),
+		Messages:   messageList,
+		TotalCount: count,
+		RowCount:   len(messages),
 	}
 
 	return r, nil

@@ -16,15 +16,15 @@ type Message struct {
 }
 
 type MessageListResponse struct {
-	Messages      []Message `json:"messages"`
-	TotalCount    int       `json:"total_count"`
-	ResponseCount int       `json:"response_count"`
+	Messages   []Message `json:"messages"`
+	TotalCount int       `json:"total_count"`
+	RowCount   int       `json:"row_count"`
 }
 
 type SummaryListResponse struct {
-	Summaries     []Summary `json:"summaries"`
-	TotalCount    int       `json:"total_count"`
-	ResponseCount int       `json:"response_count"`
+	Summaries  []Summary `json:"summaries"`
+	TotalCount int       `json:"total_count"`
+	RowCount   int       `json:"row_count"`
 }
 
 type Summary struct {

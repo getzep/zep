@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 
 	"github.com/getzep/zep/pkg/server/handlertools"
@@ -72,7 +73,9 @@ func (t *Table) GetPageSize() int {
 }
 
 func (t *Table) GetPageCount() int {
-	return t.TotalCount / t.GetPageSize()
+	totalCount := float64(t.TotalCount)
+	pageSize := float64(t.GetPageSize())
+	return int(math.Ceil(totalCount / pageSize))
 }
 
 func (t *Table) ParseQueryParams(r *http.Request) {
