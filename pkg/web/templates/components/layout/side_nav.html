@@ -1,0 +1,20 @@
+{{ define "SideNav" }}
+<nav class="p-6 w-full flex flex-col flex-wrap" x-data="{ currentItem: window.location.pathname.split('/')[2] ?? '' }"
+    x-init="window.addEventListener('htmx:pushedIntoHistory', () => { currentItem = window.location.pathname.split('/')[2] ?? '' })">
+    <ul class="space-y-1.5" hx-boost="true">
+        {{range .MenuItems }}
+            {{ $pathList := split "/" .Path }}
+            {{ $item := $pathList._2 }}
+        <li>
+            <a :class="{ 'bg-fuchsia-50': '{{ $item }}' === currentItem }"
+                class="flex items-center gap-x-3.5 py-2 px-2.5 text-sm text-slate-700 rounded-md hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-900 dark:text-slate-400 dark:hover:text-slate-300"
+                {{ if .External }} target="_blank" rel="noopener noreferrer" {{ end }} href="{{ .Path }}"
+                hx-select="{{ .ContentID }}" hx-target="#page-content">
+                {{.Icon }}
+                {{.Name}}
+            </a>
+        </li>
+        {{end}}
+    </ul>
+</nav>
+{{end}}

@@ -1,0 +1,9 @@
+{{ template "Content" . }}
+
+{{ define "Content" }}
+<div id="sessions">
+    {{template "BreadCrumbs" .}}
+    {{ template "PageTitles" . }}
+    {{ template "SessionTable" . }}
+</div>
+{{ end }}

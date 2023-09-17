@@ -48,7 +48,13 @@ store:
   postgres:
     dsn: "postgres://postgres:postgres@localhost:5432/?sslmode=disable"
 server:
+  # Specify the host to listen on. Defaults to 0.0.0.0
+  host: 0.0.0.0
   port: 8000
+  # Is the Web UI enabled?
+  # Warning: The Web UI is not secured by authentication and should not be enabled if
+  # Zep is exposed to the public internet.
+  web_enabled: true
 auth:
   # Set to true to enable authentication
   required: false

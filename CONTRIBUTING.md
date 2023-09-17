@@ -22,6 +22,18 @@ Thank you for your interest in contributing to Zep! We appreciate your efforts a
    git checkout -b feature/your-feature-name
    ```
 
+### Setting "Development" Mode
+"Development" mode forces Zep's log level to "debug" and disables caching of the web UI. This is useful when developing Zep locally.
+
+To enable "development" mode, set the `ZEP_DEVELOPMENT` environment variable to `true`:
+
+```
+export ZEP_DEVELOPMENT=true
+```
+
+or modify your `.env` file accordingly.
+
+
 ### Building Zep
 
 Follow these steps to build Zep locally:

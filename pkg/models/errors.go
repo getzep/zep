@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+/* NotFoundError */
+
 var ErrNotFound = errors.New("not found")
 
 type NotFoundError struct {
@@ -21,4 +23,24 @@ func (e *NotFoundError) Unwrap() error {
 
 func NewNotFoundError(resource string) error {
 	return &NotFoundError{Resource: resource}
+}
+
+/* BadRequestError */
+
+var ErrBadRequest = errors.New("bad request")
+
+type BadRequestError struct {
+	Message string
+}
+
+func (e *BadRequestError) Error() string {
+	return fmt.Sprintf("bad request: %s", e.Message)
+}
+
+func (e *BadRequestError) Unwrap() error {
+	return ErrBadRequest
+}
+
+func NewBadRequestError(message string) error {
+	return &BadRequestError{Message: message}
 }

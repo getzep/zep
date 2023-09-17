@@ -105,6 +105,19 @@ func (pms *PostgresMemoryStore) ListSessions(
 	return pms.SessionStore.ListAll(ctx, cursor, limit)
 }
 
+// ListSessionsOrdered returns an ordered list of all Sessions, paginated by pageNumber and pageSize.
+// orderedBy is the column to order by. asc is a boolean indicating whether to order ascending or descending.
+func (pms *PostgresMemoryStore) ListSessionsOrdered(
+	ctx context.Context,
+	_ *models.AppState,
+	pageNumber int,
+	pageSize int,
+	orderedBy string,
+	asc bool,
+) (*models.SessionListResponse, error) {
+	return pms.SessionStore.ListAllOrdered(ctx, pageNumber, pageSize, orderedBy, asc)
+}
+
 // GetMemory returns the most recent Summary and a list of messages for a given sessionID.
 // GetMemory returns:
 //   - the most recent Summary, if one exists
@@ -158,6 +171,26 @@ func (pms *PostgresMemoryStore) GetMemory(
 	return &memory, nil
 }
 
+// GetMessageList retrieves a list of messages for a given sessionID. Paginated by cursor and limit.
+func (pms *PostgresMemoryStore) GetMessageList(
+	ctx context.Context,
+	appState *models.AppState,
+	sessionID string,
+	pageNumber int,
+	pageSize int,
+) (*models.MessageListResponse, error) {
+	if appState == nil {
+		return nil, store.NewStorageError("nil appState received", nil)
+	}
+
+	messages, err := getMessageList(ctx, pms.Client, sessionID, pageNumber, pageSize)
+	if err != nil {
+		return nil, store.NewStorageError("failed to get messages", err)
+	}
+
+	return messages, nil
+}
+
 func (pms *PostgresMemoryStore) GetSummary(
 	ctx context.Context,
 	_ *models.AppState,
@@ -169,6 +202,25 @@ func (pms *PostgresMemoryStore) GetSummary(
 	}
 
 	return summary, nil
+}
+
+func (pms *PostgresMemoryStore) GetSummaryList(
+	ctx context.Context,
+	appState *models.AppState,
+	sessionID string,
+	pageNumber int,
+	pageSize int,
+) (*models.SummaryListResponse, error) {
+	if appState == nil {
+		return nil, store.NewStorageError("nil appState received", nil)
+	}
+
+	summaries, err := getSummaryList(ctx, pms.Client, sessionID, pageNumber, pageSize)
+	if err != nil {
+		return nil, store.NewStorageError("failed to get summaries", err)
+	}
+
+	return summaries, nil
 }
 
 func (pms *PostgresMemoryStore) PutMemory(

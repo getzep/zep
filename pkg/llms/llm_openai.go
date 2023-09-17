@@ -132,7 +132,7 @@ func (zllm *ZepOpenAILLM) configureClient(cfg *config.Config) ([]openai.Option, 
 	switch {
 	case cfg.LLM.AzureOpenAIEndpoint != "":
 		// Check configuration for AzureOpenAIEndpoint; if it's set, use the DefaultAzureConfig
-		// and provided endpoint URL
+		// and provided endpoint Path
 		options = append(
 			options,
 			openai.WithAPIType(openai.APITypeAzure),
@@ -145,7 +145,7 @@ func (zllm *ZepOpenAILLM) configureClient(cfg *config.Config) ([]openai.Option, 
 			)
 		}
 	case cfg.LLM.OpenAIEndpoint != "":
-		// If an alternate OpenAI-compatible endpoint URL is set, use this as the base URL for requests
+		// If an alternate OpenAI-compatible endpoint Path is set, use this as the base Path for requests
 		options = append(
 			options,
 			openai.WithBaseURL(cfg.LLM.OpenAIEndpoint),

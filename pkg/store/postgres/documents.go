@@ -132,7 +132,7 @@ func (dc *DocumentCollectionDAO) GetByName(
 
 	dc.DocumentCollection = collectionRecord.DocumentCollection
 
-	counts, err := dc.getCollectionCounts(ctx)
+	counts, err := dc.GetCollectionCounts(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get collection counts: %w", err)
 	}
@@ -152,15 +152,24 @@ func (dc *DocumentCollectionDAO) GetAll(
 		return nil, fmt.Errorf("failed to get collection list: %w", err)
 	}
 
-	if len(collections) == 0 {
-		return nil, models.NewNotFoundError("collections")
+	for i := range collections {
+		c := NewDocumentCollectionDAO(dc.appState, dc.db, collections[i])
+		err = c.GetByName(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get collection: %w", err)
+		}
+		counts, err := c.GetCollectionCounts(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get collection counts: %w", err)
+		}
+		collections[i].DocumentCollectionCounts = &counts
 	}
 
 	return collections, nil
 }
 
-// getCollectionCounts returns the number of documents and embedded documents
-func (dc *DocumentCollectionDAO) getCollectionCounts(
+// GetCollectionCounts returns the number of documents and embedded documents
+func (dc *DocumentCollectionDAO) GetCollectionCounts(
 	ctx context.Context,
 ) (models.DocumentCollectionCounts, error) {
 	if dc.TableName == "" {

@@ -5,6 +5,7 @@ import (
 )
 
 // MemoryStore interface
+// TODO: This needs to be broken up into smaller interfaces.
 type MemoryStore[T any] interface {
 	// GetMemory returns the most recent Summary and a list of messages for a given sessionID.
 	// GetMemory returns:
@@ -17,11 +18,25 @@ type MemoryStore[T any] interface {
 		appState *AppState,
 		sessionID string,
 		lastNMessages int) (*Memory, error)
+	// GetMessageList retrieves a list of messages for a given sessionID. Paginated by cursor and limit.
+	GetMessageList(ctx context.Context,
+		appState *AppState,
+		sessionID string,
+		pageNumber int,
+		pageSize int,
+	) (*MessageListResponse, error)
 	// GetSummary retrieves the most recent Summary for a given sessionID. The Summary return includes the UUID of the
 	// SummaryPoint, which the most recent Message in the collection of messages that was used to generate the Summary.
 	GetSummary(ctx context.Context,
 		appState *AppState,
 		sessionID string) (*Summary, error)
+	// GetSummaryList retrieves a list of Summary for a given sessionID. Paginated by cursor and limit.
+	GetSummaryList(ctx context.Context,
+		appState *AppState,
+		sessionID string,
+		pageNumber int,
+		pageSize int,
+	) (*SummaryListResponse, error)
 	// PutMemory stores a Memory for a given sessionID. If the SessionID doesn't exist, a new one is created.
 	PutMemory(ctx context.Context,
 		appState *AppState,
@@ -79,14 +94,24 @@ type MemoryStore[T any] interface {
 		appState *AppState,
 		session *UpdateSessionRequest,
 	) (*Session, error)
-	// ListSessions returns a list of all Sessions.
+	// ListSessions returns a list of all Sessions, paginated by cursor and limit.
 	ListSessions(
 		ctx context.Context,
 		appState *AppState,
 		cursor int64,
 		limit int,
 	) ([]*Session, error)
-	OnStart(ctx context.Context, appState *AppState) error
+	// ListSessionsOrdered returns an ordered list of all Sessions, paginated by pageNumber and pageSize, and
+	// the total count of all sessions.
+	// orderedBy is the column to order by. asc is a boolean indicating whether to order ascending or descending.
+	ListSessionsOrdered(
+		ctx context.Context,
+		appState *AppState,
+		pageNumber int,
+		pageSize int,
+		orderedBy string,
+		asc bool,
+	) (*SessionListResponse, error)
 	// Attach is used by Extractors to register themselves with the MemoryStore. This allows the MemoryStore to notify
 	// the Extractors when new occur.
 	Attach(observer Extractor)

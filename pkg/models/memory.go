@@ -15,6 +15,18 @@ type Message struct {
 	TokenCount int                    `json:"token_count"`
 }
 
+type MessageListResponse struct {
+	Messages   []Message `json:"messages"`
+	TotalCount int       `json:"total_count"`
+	RowCount   int       `json:"row_count"`
+}
+
+type SummaryListResponse struct {
+	Summaries  []Summary `json:"summaries"`
+	TotalCount int       `json:"total_count"`
+	RowCount   int       `json:"row_count"`
+}
+
 type Summary struct {
 	UUID             uuid.UUID              `json:"uuid"`
 	CreatedAt        time.Time              `json:"created_at"`

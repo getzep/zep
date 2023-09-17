@@ -19,6 +19,7 @@ var EnvVars = map[string]string{
 	"llm.anthropic_api_key": "ZEP_ANTHROPIC_API_KEY",
 	"llm.openai_api_key":    "ZEP_OPENAI_API_KEY",
 	"auth.secret":           "ZEP_AUTH_SECRET",
+	"development":           "ZEP_DEVELOPMENT",
 }
 
 // LoadConfig loads the config file and ENV variables into a Config struct
@@ -81,6 +82,11 @@ func bindEnv(key string, envVar string) {
 
 // SetLogLevel sets the log level based on the config file. Defaults to INFO if not set or invalid
 func SetLogLevel(cfg *Config) {
+	if cfg.Development {
+		internal.SetLogLevel(logrus.DebugLevel)
+		log.Info("Development mode. Setting log level to: ", logrus.DebugLevel)
+		return
+	}
 	level, err := logrus.ParseLevel(cfg.Log.Level)
 	if err != nil {
 		level = logrus.InfoLevel

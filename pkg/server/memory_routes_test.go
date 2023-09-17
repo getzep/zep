@@ -126,7 +126,7 @@ func TestUpdateSessionRoute(t *testing.T) {
 	// Create a request
 	req, err := http.NewRequest(
 		"PATCH",
-		testServer.URL+"/api/v1/sessions/"+sessionID, // Use the server URL here
+		testServer.URL+"/api/v1/sessions/"+sessionID, // Use the server Path here
 		bytes.NewBuffer(updateSessionJSON),
 	)
 	assert.NoError(t, err)

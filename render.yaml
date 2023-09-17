@@ -1,5 +1,4 @@
 services:
-  # A Docker web service
   - type: web
     name: zep
     autoDeploy: false
@@ -8,6 +7,10 @@ services:
       url: ghcr.io/getzep/zep-cloud:latest
     healthCheckPath: /healthz
     envVars:
+      # Disable web UI. WARNING: Do not enable this unless
+      # you are running Zep on a private network.
+      - key: ZEP_SERVER_WEB_ENABLED
+        value: false
       - key: PORT
         value: 8000
       - key: ZEP_STORE_POSTGRES_DSN

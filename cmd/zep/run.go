@@ -39,7 +39,7 @@ func run() {
 
 	handleCLIOptions(cfg)
 
-	log.Infof("Starting zep server version %s", config.VersionString)
+	log.Infof("Starting Zep server version %s", config.VersionString)
 
 	config.SetLogLevel(cfg)
 	appState := NewAppState(cfg)

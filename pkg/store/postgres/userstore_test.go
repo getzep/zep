@@ -204,3 +204,58 @@ func TestUserStoreDAO_ListAll(t *testing.T) {
 		})
 	}
 }
+
+func TestUserStoreDAO_ListAllOrdered(t *testing.T) {
+	CleanDB(t, testDB)
+	err := CreateSchema(testCtx, appState, testDB)
+	assert.NoError(t, err)
+
+	// Initialize UserStoreDAO
+	dao := NewUserStoreDAO(testDB)
+
+	// Create a few test users
+	for i := 0; i < 5; i++ {
+		userID := testutils.GenerateRandomString(16)
+		assert.NoError(t, err, "GenerateRandomString should not return an error")
+
+		user := &models.CreateUserRequest{
+			UserID: userID,
+			Metadata: map[string]interface{}{
+				"key": "value",
+			},
+		}
+		_, err := dao.Create(testCtx, user)
+		assert.NoError(t, err)
+	}
+
+	tests := []struct {
+		name       string
+		pageNumber int
+		pageSize   int
+		orderBy    string
+		want       int
+	}{
+		{
+			name:       "Get all users ordered by UserID",
+			pageNumber: 1,
+			pageSize:   10,
+			orderBy:    "user_id",
+			want:       5,
+		},
+		{
+			name:       "Get first 3 users ordered by UserID",
+			pageNumber: 1,
+			pageSize:   3,
+			orderBy:    "user_id",
+			want:       3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			users, err := dao.ListAllOrdered(testCtx, tt.pageNumber, tt.pageSize, tt.orderBy, true)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, len(users.Users))
+		})
+	}
+}

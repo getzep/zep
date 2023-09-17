@@ -3,15 +3,16 @@ package config
 // Config holds the configuration of the application
 // Use cmd.NewConfig to create a new instance
 type Config struct {
-	LLM        LLM              `mapstructure:"llm"`
-	NLP        NLP              `mapstructure:"nlp"`
-	Memory     MemoryConfig     `mapstructure:"memory"`
-	Extractors ExtractorsConfig `mapstructure:"extractors"`
-	Store      StoreConfig      `mapstructure:"store"`
-	Server     ServerConfig     `mapstructure:"server"`
-	Log        LogConfig        `mapstructure:"log"`
-	Auth       AuthConfig       `mapstructure:"auth"`
-	DataConfig DataConfig       `mapstructure:"data"`
+	LLM         LLM              `mapstructure:"llm"`
+	NLP         NLP              `mapstructure:"nlp"`
+	Memory      MemoryConfig     `mapstructure:"memory"`
+	Extractors  ExtractorsConfig `mapstructure:"extractors"`
+	Store       StoreConfig      `mapstructure:"store"`
+	Server      ServerConfig     `mapstructure:"server"`
+	Log         LogConfig        `mapstructure:"log"`
+	Auth        AuthConfig       `mapstructure:"auth"`
+	DataConfig  DataConfig       `mapstructure:"data"`
+	Development bool             `mapstructure:"development"`
 }
 
 type StoreConfig struct {
@@ -48,7 +49,9 @@ type PostgresConfig struct {
 }
 
 type ServerConfig struct {
-	Port int `mapstructure:"port"`
+	Host       string `mapstructure:"host"`
+	Port       int    `mapstructure:"port"`
+	WebEnabled bool   `mapstructure:"web_enabled"`
 }
 
 type LogConfig struct {

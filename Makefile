@@ -60,6 +60,15 @@ swagger:
 lint:
 	golangci-lint run --deadline=90s --sort-results -c golangci.yaml
 
+## Go Watch for web development
+## https://github.com/mitranim/gow
+gow:
+	gow -e=go,mod,html,css -i=node_modules run .
+
+# Build web assets
+web:
+	cd pkg/web && npx tailwindcss -i static/input.css -o static/output.css
+
 ## Docker:
 docker-build: ## Use the dockerfile to build the container
 	DOCKER_BUILDKIT=1 docker build --rm --tag $(BINARY_NAME) .

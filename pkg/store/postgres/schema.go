@@ -45,22 +45,22 @@ func (s *SessionSchema) BeforeCreateTable(
 }
 
 type MessageStoreSchema struct {
-	bun.BaseModel `bun:"table:message,alias:m"`
+	bun.BaseModel `bun:"table:message,alias:m" yaml:"-"`
 
 	// TODO: replace UUIDs with sortable ULIDs or UUIDv7s to avoid having to have both a UUID and an ID.
 	// see https://blog.daveallie.com/ulid-primary-keys
-	UUID uuid.UUID `bun:",pk,type:uuid,default:gen_random_uuid()"`
+	UUID uuid.UUID `bun:",pk,type:uuid,default:gen_random_uuid()"                     yaml:"uuid"`
 	// ID is used only for sorting / slicing purposes as we can't sort by CreatedAt for messages created simultaneously
-	ID         int64                  `bun:",autoincrement"`
-	CreatedAt  time.Time              `bun:"type:timestamptz,notnull,default:current_timestamp"`
-	UpdatedAt  time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"`
-	DeletedAt  time.Time              `bun:"type:timestamptz,soft_delete,nullzero"`
-	SessionID  string                 `bun:",notnull"`
-	Role       string                 `bun:",notnull"`
-	Content    string                 `bun:",notnull"`
-	TokenCount int                    `bun:",notnull"`
-	Metadata   map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"`
-	Session    *SessionSchema         `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade"`
+	ID         int64                  `bun:",autoincrement"                                              yaml:"id,omitempty"`
+	CreatedAt  time.Time              `bun:"type:timestamptz,notnull,default:current_timestamp"          yaml:"created_at,omitempty"`
+	UpdatedAt  time.Time              `bun:"type:timestamptz,nullzero,default:current_timestamp"         yaml:"updated_at,omitempty"`
+	DeletedAt  time.Time              `bun:"type:timestamptz,soft_delete,nullzero"                       yaml:"deleted_at,omitempty"`
+	SessionID  string                 `bun:",notnull"                                                    yaml:"session_id,omitempty"`
+	Role       string                 `bun:",notnull"                                                    yaml:"role,omitempty"`
+	Content    string                 `bun:",notnull"                                                    yaml:"content,omitempty"`
+	TokenCount int                    `bun:",notnull"                                                    yaml:"token_count,omitempty"`
+	Metadata   map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"                         yaml:"metadata,omitempty"`
+	Session    *SessionSchema         `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade" yaml:"-"`
 }
 
 func (s *MessageStoreSchema) BeforeCreateTable(
@@ -357,7 +357,7 @@ func CreateSchema(
 	}
 	// we keep this at 1536 for legacy reasons, despite the default now being 384
 	if model.Dimensions != 1536 {
-		err := migrateMessageEmbeddingDims(ctx, db, model.Dimensions)
+		err := MigrateMessageEmbeddingDims(ctx, db, model.Dimensions)
 		if err != nil {
 			return fmt.Errorf("error migrating message embedding dimensions: %w", err)
 		}
@@ -371,9 +371,9 @@ func CreateSchema(
 	return nil
 }
 
-// migrateMessageEmbeddingDims drops the old embedding column and creates a new one with the
+// MigrateMessageEmbeddingDims drops the old embedding column and creates a new one with the
 // correct dimensions.
-func migrateMessageEmbeddingDims(
+func MigrateMessageEmbeddingDims(
 	ctx context.Context,
 	db *bun.DB,
 	dimensions int,

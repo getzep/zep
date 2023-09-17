@@ -27,8 +27,6 @@ jobs:
           --health-retries 5
       nlp:
         image: ghcr.io/getzep/zep-nlp-server:latest
-        env:
-          ENABLE_EMBEDDINGS: true
         options: >-
           --health-cmd "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/5557' || exit 1"
           --health-interval 10s

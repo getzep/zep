@@ -19,6 +19,12 @@ type Session struct {
 	UserID *string `json:"user_id"`
 }
 
+type SessionListResponse struct {
+	Sessions   []*Session `json:"sessions"`
+	TotalCount int        `json:"total_count"`
+	RowCount   int        `json:"response_count"`
+}
+
 type CreateSessionRequest struct {
 	SessionID string `json:"session_id"`
 	// Must be a pointer to allow for null values

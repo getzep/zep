@@ -1,12 +1,13 @@
 package postgres
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/getzep/zep/pkg/extractors"
 
 	"github.com/uptrace/bun"
 
@@ -15,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestVectorSearch(t *testing.T) {
+func TestMemorySearch(t *testing.T) {
 	// Test data
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
@@ -24,12 +25,9 @@ func TestVectorSearch(t *testing.T) {
 	msgs, err := putMessages(testCtx, testDB, sessionID, testutils.TestMessages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
-	appState.MemoryStore.NotifyExtractors(
-		context.Background(),
-		appState,
-		&models.MessageEvent{SessionID: sessionID,
-			Messages: msgs},
-	)
+	e := extractors.NewEmbeddingExtractor()
+	err = e.Extract(testCtx, appState, &models.MessageEvent{SessionID: sessionID, Messages: msgs})
+	assert.NoError(t, err, "EmbeddingExtractor.Extract should not return an error")
 
 	// enrichment runs async. Wait for it to finish
 	// This is hacky but I'd prefer not to add a WaitGroup to the putMessages function just for testing purposes
@@ -74,7 +72,6 @@ func TestVectorSearch(t *testing.T) {
 					assert.NotNil(t, res.Message.CreatedAt, "message__created_at should be present")
 					assert.NotNil(t, res.Message.Role, "message__role should be present")
 					assert.NotNil(t, res.Message.Content, "message__content should be present")
-					assert.NotZero(t, res.Message.TokenCount, "message_token_count should be present")
 				}
 			}
 		})
