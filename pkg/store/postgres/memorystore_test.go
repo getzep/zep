@@ -406,6 +406,7 @@ func TestPutEmbeddingsLocal(t *testing.T) {
 	assert.NoError(t, err)
 
 	err = MigrateMessageEmbeddingDims(testCtx, testDB, embeddingModel.Dimensions)
+	assert.NoError(t, err)
 
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
