@@ -15,6 +15,8 @@
         {{ range .Data.Columns }}
             {{ if .Sortable }}
                 {{ template "THSortable" dict "Table" $tableState "Column" . }}
+            {{ else }}
+                {{ template "TH" . }}
             {{ end }}
         {{ end }}
 
@@ -25,7 +27,8 @@
 
 {{ define "SessionTableRow" }}
 <tr hx-boost="true" hx-push-url="true" hx-target="#page-content">
-    {{ $path := contains "/users/" .Path | ternary (print .Path "/session") .Path }}
+    {{ $basePath := (split "?" .Path)._0 }}
+    {{ $path := contains "/users/" $basePath | ternary (print $basePath "/session") $basePath }}
     <!-- Checkbox -->
     <!-- <td class="h-px w-px whitespace-nowrap">
         <div class="pl-6 py-3">
@@ -85,7 +88,7 @@
     <div class="flex flex-col">
         <div class="-m-1.5 overflow-x-auto">
             <div class="p-1.5 min-w-full inline-block align-middle">
-                <div
+                <div id="{{ .Data.TableID }}"
                     class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden dark:bg-slate-900 dark:border-gray-700">
                     {{ if eq (len .Data.Rows) 0 }}
                     {{ template "NoDataCard" . }}

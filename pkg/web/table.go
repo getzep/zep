@@ -11,6 +11,13 @@ const DefaultPageSize = 10
 const DefaultSortKey = "created_at"
 const DefaultSortAsc = false
 
+func NewTable(id string, columns []Column) *Table {
+	return &Table{
+		TableID: id,
+		Columns: columns,
+	}
+}
+
 type Column struct {
 	Name       string
 	Sortable   bool
@@ -18,7 +25,7 @@ type Column struct {
 }
 
 type Table struct {
-	ID          string
+	TableID     string
 	Columns     []Column
 	Rows        interface{}
 	TotalCount  int

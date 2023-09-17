@@ -2,13 +2,14 @@
 {{ $basePath := (split "?" .Table.Path)._0 }}
 {{ $asc := true }}
 {{ if eq .Column.OrderByKey .Table.OrderBy }}
-    {{ if (contains "asc=true" .Table.Path) }}
-        {{ $asc = false }}
-    {{ end }}
+{{ if (contains "asc=true" .Table.Path) }}
+{{ $asc = false }}
+{{ end }}
 {{ end }}
 <th scope="col" class="pl-6 lg:pl-6 xl:pl-6 pr-6 py-3 text-left">
     <div class="flex items-center gap-x-2">
-        <a class="group inline-flex items-center gap-x-2" href="{{ $basePath }}?order={{ .Column.OrderByKey }}&asc={{ $asc }}">
+        <a class="group inline-flex items-center gap-x-2"
+            href="{{ $basePath }}?order={{ .Column.OrderByKey }}&asc={{ $asc }}">
             <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
                 {{ .Column.Name }}
             </span>
@@ -24,6 +25,17 @@
                         fill="currentColor" />
                 </svg>
         </a>
+    </div>
+    </div>
+</th>
+{{ end }}
+
+{{ define "TH" }}
+<th scope="col" class="pl-6 lg:pl-6 xl:pl-6 pr-6 py-3 text-left">
+    <div class="flex items-center gap-x-2">
+        <span class="text-xs font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">
+            {{ .Name }}
+        </span>
     </div>
     </div>
 </th>

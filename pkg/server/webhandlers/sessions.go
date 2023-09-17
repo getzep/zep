@@ -31,14 +31,19 @@ var SessionTableColumns = []web.Column{
 }
 
 func NewSessionList(
-	memoryStore models.MemoryStore[*bun.DB], r *http.Request,
+	memoryStore models.MemoryStore[*bun.DB], r *http.Request, userID string,
 ) *SessionList {
+	// if we have a userID, the columns are not sortable
+	if userID != "" {
+		for i := range SessionTableColumns {
+			SessionTableColumns[i].Sortable = false
+		}
+	}
+	t := web.NewTable("session-table", SessionTableColumns)
 	s := &SessionList{
 		MemoryStore: memoryStore,
-		Table: &web.Table{
-			ID:      "session-table",
-			Columns: SessionTableColumns,
-		},
+		UserID:      userID,
+		Table:       t,
 	}
 	s.ParseQueryParams(r)
 	return s
@@ -46,24 +51,42 @@ func NewSessionList(
 
 type SessionList struct {
 	MemoryStore models.MemoryStore[*bun.DB]
+	UserID      string
 	*web.Table
 }
 
 func (sl *SessionList) Get(ctx context.Context, appState *models.AppState) error {
-	sessionResponse, err := sl.MemoryStore.ListSessionsOrdered(
-		ctx,
-		appState,
-		sl.CurrentPage,
-		sl.PageSize,
-		sl.OrderBy,
-		sl.Asc,
-	)
-	if err != nil {
-		return err
+	var sr *models.SessionListResponse
+	if sl.UserID == "" {
+		var err error
+		sr, err = sl.MemoryStore.ListSessionsOrdered(
+			ctx,
+			appState,
+			sl.CurrentPage,
+			sl.PageSize,
+			sl.OrderBy,
+			sl.Asc,
+		)
+		if err != nil {
+			return err
+		}
+	} else {
+		sessions, err := appState.UserStore.GetSessions(
+			ctx,
+			sl.UserID,
+		)
+		if err != nil {
+			return err
+		}
+		sr = &models.SessionListResponse{
+			Sessions:      sessions,
+			ResponseCount: len(sessions),
+			TotalCount:    len(sessions),
+		}
 	}
-	sl.Rows = sessionResponse.Sessions
-	sl.RowCount = sessionResponse.ResponseCount
-	sl.TotalCount = sessionResponse.TotalCount
+	sl.Rows = sr.Sessions
+	sl.RowCount = sr.ResponseCount
+	sl.TotalCount = sr.TotalCount
 	sl.Offset = sl.GetOffset()
 	sl.PageCount = sl.GetPageCount()
 
@@ -72,15 +95,13 @@ func (sl *SessionList) Get(ctx context.Context, appState *models.AppState) error
 
 func GetSessionListHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sl := NewSessionList(appState.MemoryStore, r)
-
+		sl := NewSessionList(appState.MemoryStore, r, "")
 		if err := sl.Get(r.Context(), appState); err != nil {
 			handleError(w, err, "failed to get session list")
 			return
 		}
 
 		path := sl.GetTablePath("/admin/sessions")
-
 		page := web.NewPage(
 			"Sessions",
 			"View and delete sessions",

@@ -98,6 +98,10 @@ func (u *UserList) Get(ctx context.Context) error {
 func GetUserListHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cursor, err := handlertools.IntFromQuery[int64](r, "cursor")
+		if err != nil {
+			handleError(w, err, "failed to parse cursor")
+			return
+		}
 
 		const path = "/admin/users"
 		userList := NewUserList(appState.UserStore, cursor, UserListLimit)
@@ -165,7 +169,11 @@ func GetUserDetailsHandler(appState *models.AppState) http.HandlerFunc {
 			metadataString = string(metadataBytes)
 		}
 
-		sl := NewSessionList(appState.MemoryStore, r)
+		sl := NewSessionList(appState.MemoryStore, r, userID)
+		if err := sl.Get(r.Context(), appState); err != nil {
+			handleError(w, err, "failed to get session list")
+			return
+		}
 
 		userData := UserFormData{
 			User:           *user,
@@ -173,7 +181,7 @@ func GetUserDetailsHandler(appState *models.AppState) http.HandlerFunc {
 			SessionList:    sl,
 		}
 
-		path := "/admin/users/" + user.UserID
+		path := sl.GetTablePath("/admin/users/" + user.UserID)
 
 		page := web.NewPage(
 			user.UserID,
