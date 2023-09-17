@@ -2,9 +2,12 @@ package postgres
 
 import (
 	"context"
+	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/uptrace/bun"
 )
 
 func TestEnsurePostgresSchemaSetup(t *testing.T) {
@@ -26,13 +29,50 @@ func TestEnsurePostgresSchemaSetup(t *testing.T) {
 }
 
 func TestCreateDocumentTable(t *testing.T) {
-	ctx := context.Background()
-
 	collection := NewTestCollectionDAO(3)
 
 	tableName, err := generateDocumentTableName(&collection)
 	assert.NoError(t, err)
 
-	err = createDocumentTable(ctx, testDB, tableName, collection.EmbeddingDimensions)
+	err = createDocumentTable(testCtx, testDB, tableName, collection.EmbeddingDimensions)
 	assert.NoError(t, err)
+}
+
+func TestUpdatedAtIsSetAfterUpdate(t *testing.T) {
+	// Define a list of all schemas
+	schemas := []bun.BeforeAppendModelHook{
+		&SessionSchema{},
+		&MessageStoreSchema{},
+		&SummaryStoreSchema{},
+		&MessageVectorStoreSchema{},
+		&UserSchema{},
+		&DocumentCollectionSchema{},
+	}
+
+	// Iterate over all schemas
+	for _, schema := range schemas {
+		// Create a new instance of the schema
+		instance := reflect.New(reflect.TypeOf(schema).Elem()).Interface().(bun.BeforeAppendModelHook)
+
+		// Set the UpdatedAt field to a time far in the past
+		reflect.ValueOf(instance).
+			Elem().
+			FieldByName("UpdatedAt").
+			Set(reflect.ValueOf(time.Unix(0, 0)))
+
+		// Create a dummy UpdateQuery
+		updateQuery := &bun.UpdateQuery{}
+
+		// Call the BeforeAppendModel method, which should update the UpdatedAt field
+		err := instance.BeforeAppendModel(context.Background(), updateQuery)
+		assert.NoError(t, err)
+
+		// Check that the UpdatedAt field was updated
+		assert.True(
+			t,
+			reflect.ValueOf(instance).Elem().FieldByName("UpdatedAt").Interface().(time.Time).After(
+				time.Now().Add(-time.Minute),
+			),
+		)
+	}
 }

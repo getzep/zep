@@ -36,6 +36,15 @@ type SessionSchema struct {
 	User   *UserSchema `bun:"rel:belongs-to,join:user_id=user_id,on_delete:cascade"       yaml:"-"`
 }
 
+var _ bun.BeforeAppendModelHook = (*SessionSchema)(nil)
+
+func (s *SessionSchema) BeforeAppendModel(_ context.Context, query bun.Query) error {
+	if _, ok := query.(*bun.UpdateQuery); ok {
+		s.UpdatedAt = time.Now()
+	}
+	return nil
+}
+
 // BeforeCreateTable is a marker method to ensure uniform interface across all table models - used in table creation iterator
 func (s *SessionSchema) BeforeCreateTable(
 	_ context.Context,
@@ -47,8 +56,6 @@ func (s *SessionSchema) BeforeCreateTable(
 type MessageStoreSchema struct {
 	bun.BaseModel `bun:"table:message,alias:m" yaml:"-"`
 
-	// TODO: replace UUIDs with sortable ULIDs or UUIDv7s to avoid having to have both a UUID and an ID.
-	// see https://blog.daveallie.com/ulid-primary-keys
 	UUID uuid.UUID `bun:",pk,type:uuid,default:gen_random_uuid()"                     yaml:"uuid"`
 	// ID is used only for sorting / slicing purposes as we can't sort by CreatedAt for messages created simultaneously
 	ID         int64                  `bun:",autoincrement"                                              yaml:"id,omitempty"`
@@ -61,6 +68,15 @@ type MessageStoreSchema struct {
 	TokenCount int                    `bun:",notnull"                                                    yaml:"token_count,omitempty"`
 	Metadata   map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"                         yaml:"metadata,omitempty"`
 	Session    *SessionSchema         `bun:"rel:belongs-to,join:session_id=session_id,on_delete:cascade" yaml:"-"`
+}
+
+var _ bun.BeforeAppendModelHook = (*MessageStoreSchema)(nil)
+
+func (s *MessageStoreSchema) BeforeAppendModel(_ context.Context, query bun.Query) error {
+	if _, ok := query.(*bun.UpdateQuery); ok {
+		s.UpdatedAt = time.Now()
+	}
+	return nil
 }
 
 func (s *MessageStoreSchema) BeforeCreateTable(
@@ -86,6 +102,15 @@ type MessageVectorStoreSchema struct {
 	Message     *MessageStoreSchema `bun:"rel:belongs-to,join:message_uuid=uuid,on_delete:cascade"`
 }
 
+var _ bun.BeforeAppendModelHook = (*MessageVectorStoreSchema)(nil)
+
+func (s *MessageVectorStoreSchema) BeforeAppendModel(_ context.Context, query bun.Query) error {
+	if _, ok := query.(*bun.UpdateQuery); ok {
+		s.UpdatedAt = time.Now()
+	}
+	return nil
+}
+
 func (s *MessageVectorStoreSchema) BeforeCreateTable(
 	_ context.Context,
 	_ *bun.CreateTableQuery,
@@ -109,6 +134,15 @@ type SummaryStoreSchema struct {
 	Message          *MessageStoreSchema    `bun:"rel:belongs-to,join:summary_point_uuid=uuid,on_delete:cascade"`
 }
 
+var _ bun.BeforeAppendModelHook = (*SummaryStoreSchema)(nil)
+
+func (s *SummaryStoreSchema) BeforeAppendModel(_ context.Context, query bun.Query) error {
+	if _, ok := query.(*bun.UpdateQuery); ok {
+		s.UpdatedAt = time.Now()
+	}
+	return nil
+}
+
 func (s *SummaryStoreSchema) BeforeCreateTable(
 	_ context.Context,
 	_ *bun.CreateTableQuery,
@@ -126,6 +160,15 @@ func (s *DocumentCollectionSchema) BeforeCreateTable(
 	_ context.Context,
 	_ *bun.CreateTableQuery,
 ) error {
+	return nil
+}
+
+var _ bun.BeforeAppendModelHook = (*DocumentCollectionSchema)(nil)
+
+func (s *DocumentCollectionSchema) BeforeAppendModel(_ context.Context, query bun.Query) error {
+	if _, ok := query.(*bun.UpdateQuery); ok {
+		s.UpdatedAt = time.Now()
+	}
 	return nil
 }
 
@@ -150,6 +193,15 @@ type UserSchema struct {
 	FirstName string                 `bun:","                                                   yaml:"first_name,omitempty"`
 	LastName  string                 `bun:","                                                   yaml:"last_name,omitempty"`
 	Metadata  map[string]interface{} `bun:"type:jsonb,nullzero,json_use_number"                 yaml:"metadata,omitempty"`
+}
+
+var _ bun.BeforeAppendModelHook = (*UserSchema)(nil)
+
+func (u *UserSchema) BeforeAppendModel(_ context.Context, query bun.Query) error {
+	if _, ok := query.(*bun.UpdateQuery); ok {
+		u.UpdatedAt = time.Now()
+	}
+	return nil
 }
 
 // BeforeCreateTable is a marker method to ensure uniform interface across all table models - used in table creation iterator
