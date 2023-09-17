@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/uptrace/bun"
@@ -205,6 +206,74 @@ func (dao *UserStoreDAO) ListAll(
 	return users, nil
 }
 
+func (dao *UserStoreDAO) ListAllOrdered(
+	ctx context.Context,
+	pageNumber int,
+	pageSize int,
+	orderBy string,
+	asc bool,
+) (*models.UserListResponse, error) {
+	var totalCount int
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+	var users []UserSchema
+
+	if orderBy == "" {
+		orderBy = "id"
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		err = dao.db.NewSelect().
+			Model(&users).
+			Order(fmt.Sprintf("%s %s", orderBy, getAscDesc(asc))).
+			Limit(pageSize).
+			Offset((pageNumber - 1) * pageSize).
+			Scan(ctx)
+
+		mu.Lock()
+		if firstErr == nil {
+			firstErr = err
+		}
+		mu.Unlock()
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		totalCount, err = dao.db.NewSelect().
+			Model((*UserSchema)(nil)).
+			Count(ctx)
+
+		mu.Lock()
+		if firstErr == nil {
+			firstErr = err
+		}
+		mu.Unlock()
+	}()
+
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, fmt.Errorf("failed to list users: %w", firstErr)
+	}
+
+	u := make([]*models.User, len(users))
+	for i := range users {
+		u[i] = userSchemaToUser(&users[i])
+	}
+
+	return &models.UserListResponse{
+		Users:      u,
+		RowCount:   len(u),
+		TotalCount: totalCount,
+	}, nil
+}
+
 // GetSessions gets all sessions for a user.
 func (dao *UserStoreDAO) GetSessions(
 	ctx context.Context,
@@ -232,15 +301,6 @@ func (dao *UserStoreDAO) GetSessions(
 		}
 	}
 	return sessions, nil
-}
-
-// CountAll counts all users.
-func (dao *UserStoreDAO) CountAll(ctx context.Context) (int, error) {
-	count, err := dao.db.NewSelect().Model(&UserSchema{}).Count(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return count, nil
 }
 
 func userSchemaToUser(user *UserSchema) *models.User {

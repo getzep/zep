@@ -436,9 +436,9 @@ func TestSessionDAO_ListAllOrdered(t *testing.T) {
 			orderBy:    "id",
 			asc:        true,
 			want: &models.SessionListResponse{
-				Sessions:      sessions,
-				TotalCount:    totalCount,
-				ResponseCount: pageSize,
+				Sessions:   sessions,
+				TotalCount: totalCount,
+				RowCount:   pageSize,
 			},
 		},
 		{
@@ -448,9 +448,9 @@ func TestSessionDAO_ListAllOrdered(t *testing.T) {
 			orderBy:    "id",
 			asc:        false,
 			want: &models.SessionListResponse{
-				Sessions:      reverse(sessions),
-				TotalCount:    pageSize,
-				ResponseCount: pageSize,
+				Sessions:   reverse(sessions),
+				TotalCount: pageSize,
+				RowCount:   pageSize,
 			},
 		},
 		{
@@ -460,9 +460,9 @@ func TestSessionDAO_ListAllOrdered(t *testing.T) {
 			orderBy:    "created_at",
 			asc:        true,
 			want: &models.SessionListResponse{
-				Sessions:      sessions,
-				TotalCount:    pageSize,
-				ResponseCount: pageSize,
+				Sessions:   sessions,
+				TotalCount: pageSize,
+				RowCount:   pageSize,
 			},
 		},
 		{
@@ -472,9 +472,9 @@ func TestSessionDAO_ListAllOrdered(t *testing.T) {
 			orderBy:    "created_at",
 			asc:        false,
 			want: &models.SessionListResponse{
-				Sessions:      reverse(sessions),
-				TotalCount:    pageSize,
-				ResponseCount: pageSize,
+				Sessions:   reverse(sessions),
+				TotalCount: pageSize,
+				RowCount:   pageSize,
 			},
 		},
 	}

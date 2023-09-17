@@ -20,6 +20,12 @@ type User struct {
 	Metadata  map[string]interface{} `json:"metadata"`
 }
 
+type UserListResponse struct {
+	Users      []*User `json:"users"`
+	TotalCount int     `json:"total_count"`
+	RowCount   int     `json:"row_count"`
+}
+
 type CreateUserRequest struct {
 	UserID    string                 `json:"user_id"`
 	Email     string                 `json:"email"`
@@ -44,5 +50,10 @@ type UserStore interface {
 	Delete(ctx context.Context, userID string) error
 	GetSessions(ctx context.Context, userID string) ([]*Session, error)
 	ListAll(ctx context.Context, cursor int64, limit int) ([]*User, error)
-	CountAll(ctx context.Context) (int, error)
+	ListAllOrdered(ctx context.Context,
+		pageNumber int,
+		pageSize int,
+		orderBy string,
+		asc bool,
+	) (*UserListResponse, error)
 }

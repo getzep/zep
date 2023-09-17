@@ -10,8 +10,6 @@ import (
 	"github.com/uptrace/bun"
 )
 
-const SessionPageSize = 10
-
 var SessionTableColumns = []web.Column{
 	{
 		Name:       "Session",
@@ -79,13 +77,13 @@ func (sl *SessionList) Get(ctx context.Context, appState *models.AppState) error
 			return err
 		}
 		sr = &models.SessionListResponse{
-			Sessions:      sessions,
-			ResponseCount: len(sessions),
-			TotalCount:    len(sessions),
+			Sessions:   sessions,
+			RowCount:   len(sessions),
+			TotalCount: len(sessions),
 		}
 	}
 	sl.Rows = sr.Sessions
-	sl.RowCount = sr.ResponseCount
+	sl.RowCount = sr.RowCount
 	sl.TotalCount = sr.TotalCount
 	sl.Offset = sl.GetOffset()
 	sl.PageCount = sl.GetPageCount()

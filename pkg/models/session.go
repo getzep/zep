@@ -20,9 +20,9 @@ type Session struct {
 }
 
 type SessionListResponse struct {
-	Sessions      []*Session `json:"sessions"`
-	TotalCount    int        `json:"total_count"`
-	ResponseCount int        `json:"response_count"`
+	Sessions   []*Session `json:"sessions"`
+	TotalCount int        `json:"total_count"`
+	RowCount   int        `json:"response_count"`
 }
 
 type CreateSessionRequest struct {

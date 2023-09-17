@@ -205,7 +205,7 @@ func TestUserStoreDAO_ListAll(t *testing.T) {
 	}
 }
 
-func TestUserStoreDAO_CountAll(t *testing.T) {
+func TestUserStoreDAO_ListAllOrdered(t *testing.T) {
 	CleanDB(t, testDB)
 	err := CreateSchema(testCtx, appState, testDB)
 	assert.NoError(t, err)
@@ -214,8 +214,7 @@ func TestUserStoreDAO_CountAll(t *testing.T) {
 	dao := NewUserStoreDAO(testDB)
 
 	// Create a few test users
-	count := 5
-	for i := 0; i < count; i++ {
+	for i := 0; i < 5; i++ {
 		userID := testutils.GenerateRandomString(16)
 		assert.NoError(t, err, "GenerateRandomString should not return an error")
 
@@ -230,20 +229,33 @@ func TestUserStoreDAO_CountAll(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string
-		want int
+		name       string
+		pageNumber int
+		pageSize   int
+		orderBy    string
+		want       int
 	}{
 		{
-			name: "Count all users",
-			want: count,
+			name:       "Get all users ordered by UserID",
+			pageNumber: 1,
+			pageSize:   10,
+			orderBy:    "user_id",
+			want:       5,
+		},
+		{
+			name:       "Get first 3 users ordered by UserID",
+			pageNumber: 1,
+			pageSize:   3,
+			orderBy:    "user_id",
+			want:       3,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			count, err := dao.CountAll(testCtx)
+			users, err := dao.ListAllOrdered(testCtx, tt.pageNumber, tt.pageSize, tt.orderBy, true)
 			assert.NoError(t, err)
-			assert.Equal(t, tt.want, count)
+			assert.Equal(t, tt.want, len(users.Users))
 		})
 	}
 }

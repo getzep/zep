@@ -301,18 +301,18 @@ func (dao *SessionDAO) ListAllOrdered(
 		mu.Unlock()
 	}()
 
+	wg.Wait()
+
 	if firstErr != nil {
 		return nil, fmt.Errorf("failed to list sessions: %w", firstErr)
 	}
 
-	wg.Wait()
-
 	retSessions := sessionSchemaToSession(sessions)
 
 	return &models.SessionListResponse{
-		Sessions:      retSessions,
-		TotalCount:    totalCount,
-		ResponseCount: len(retSessions),
+		Sessions:   retSessions,
+		TotalCount: totalCount,
+		RowCount:   len(retSessions),
 	}, nil
 }
 

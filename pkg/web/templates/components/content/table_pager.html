@@ -83,7 +83,7 @@
         {{ $pagerPath := print .Path "&page=" }}
         {{ $nextPath := print $pagerPath (add1 (.Data.CurrentPage | int64)) }}
         {{ $prevPath := print $pagerPath (sub (.Data.CurrentPage | int64) 1) }}
-        {{ $nextDisabled := gt (add .Data.Offset .Data.PageSize) .Data.TotalCount }}
+        {{ $nextDisabled := eq .Data.CurrentPage .Data.PageCount }}
         {{ $prevDisabled := eq .Data.CurrentPage 1 }}
         <div class="inline-flex gap-x-2" hx-swap="innerHTML" hx-target="#{{ .Data.TableID }}" hx-select="#{{ .Data.TableID }}" hx-push-url="true">
             <button type="button" {{ if $prevDisabled }} disabled {{ end }} hx-get="{{ $prevPath }}"

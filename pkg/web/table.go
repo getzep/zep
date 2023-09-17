@@ -72,7 +72,7 @@ func (t *Table) GetPageSize() int {
 }
 
 func (t *Table) GetPageCount() int {
-	return (t.TotalCount / t.GetPageSize()) + 1
+	return t.TotalCount / t.GetPageSize()
 }
 
 func (t *Table) ParseQueryParams(r *http.Request) {

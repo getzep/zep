@@ -6,113 +6,95 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sync"
 
-	"github.com/getzep/zep/pkg/server/handlertools"
 	"github.com/getzep/zep/pkg/web"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/go-chi/chi/v5"
 )
 
-const UserListLimit int64 = 10
+var UserTableColumns = []web.Column{
+	{
+		Name:       "User",
+		Sortable:   true,
+		OrderByKey: "user_id",
+	},
+	{
+		Name:       "Email",
+		Sortable:   true,
+		OrderByKey: "email",
+	},
+	{
+		Name:       "Sessions",
+		Sortable:   false,
+		OrderByKey: "session_count",
+	},
+	{
+		Name:       "Created",
+		Sortable:   true,
+		OrderByKey: "created_at",
+	},
+}
 
 type UserRow struct {
 	*models.User
 	SessionCount int
 }
 
-func NewUserList(userStore models.UserStore, cursor int64, limit int64) *UserList {
+func NewUserList(userStore models.UserStore, r *http.Request) *UserList {
+	t := web.NewTable("user-table", UserTableColumns)
+	t.ParseQueryParams(r)
 	return &UserList{
 		UserStore: userStore,
-		Cursor:    cursor,
-		Limit:     limit,
+		Table:     t,
 	}
 }
 
 type UserList struct {
-	UserStore  models.UserStore
-	UserRows   []*UserRow
-	TotalCount int64
-	ListCount  int
-	Cursor     int64
-	Limit      int64
+	UserStore models.UserStore
+	*web.Table
 }
 
 func (u *UserList) Get(ctx context.Context) error {
-	var wg sync.WaitGroup
-	var users []*models.User
-	var count int
 	var userRows []*UserRow
-	var mu sync.Mutex
-	var firstErr error
 
-	users, err := u.UserStore.ListAll(ctx, u.Cursor, int(u.Limit))
+	ur, err := u.UserStore.ListAllOrdered(ctx, u.CurrentPage, u.PageSize, u.OrderBy, u.Asc)
 	if err != nil {
 		return err
 	}
 
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		userRows = make([]*UserRow, len(users))
-		for i, user := range users {
-			sessions, err := u.UserStore.GetSessions(ctx, user.UserID)
-			if err != nil {
-				mu.Lock()
-				firstErr = err
-				mu.Unlock()
-				return
-			}
-			userRows[i] = &UserRow{
-				User:         user,
-				SessionCount: len(sessions),
-			}
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		count, err = u.UserStore.CountAll(ctx)
+	userRows = make([]*UserRow, len(ur.Users))
+	for i, user := range ur.Users {
+		sessions, err := u.UserStore.GetSessions(ctx, user.UserID)
 		if err != nil {
-			mu.Lock()
-			firstErr = err
-			mu.Unlock()
-			return
+			return err
 		}
-	}()
-
-	wg.Wait()
-
-	if firstErr != nil {
-		return firstErr
+		userRows[i] = &UserRow{
+			User:         user,
+			SessionCount: len(sessions),
+		}
 	}
 
-	u.UserRows = userRows
-	u.ListCount = len(users)
-	u.TotalCount = int64(count)
+	u.Rows = userRows
+	u.RowCount = ur.RowCount
+	u.TotalCount = ur.TotalCount
+	u.PageCount = u.GetPageCount()
+	u.Offset = u.GetOffset()
+
+	log.Debugf("user list: %+v", u.Table)
 
 	return nil
 }
 
 func GetUserListHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cursor, err := handlertools.IntFromQuery[int64](r, "cursor")
-		if err != nil {
-			handleError(w, err, "failed to parse cursor")
+		ul := NewUserList(appState.UserStore, r)
+		if err := ul.Get(r.Context()); err != nil {
+			handleError(w, err, "failed to get user list")
 			return
 		}
 
-		const path = "/admin/users"
-		userList := NewUserList(appState.UserStore, cursor, UserListLimit)
-
-		err = userList.Get(r.Context())
-		if err != nil {
-			log.Errorf("Failed to get user list: %s", err)
-			http.Error(w, "Failed to get user list", http.StatusInternalServerError)
-			return
-		}
-
+		path := ul.GetTablePath("/admin/users")
 		page := web.NewPage(
 			"Users",
 			"View, edit, and delete users",
@@ -128,7 +110,7 @@ func GetUserListHandler(appState *models.AppState) http.HandlerFunc {
 					Path:  path,
 				},
 			},
-			userList,
+			ul,
 		)
 
 		page.Render(w, r)
