@@ -59,7 +59,10 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 
 	// Only setup web routes if enabled
 	if appState.Config.Server.WebEnabled {
+		log.Info("Web interface enabled")
 		setupWebRoutes(router, appState)
+	} else {
+		log.Info("Web interface disabled")
 	}
 
 	setupAPIRoutes(router, appState)
