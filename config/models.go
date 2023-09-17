@@ -12,7 +12,7 @@ type Config struct {
 	Log         LogConfig        `mapstructure:"log"`
 	Auth        AuthConfig       `mapstructure:"auth"`
 	DataConfig  DataConfig       `mapstructure:"data"`
-	Development bool             `mapstructure:"development"` // Development mode
+	Development bool             `mapstructure:"development"`
 }
 
 type StoreConfig struct {
