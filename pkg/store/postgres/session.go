@@ -271,8 +271,7 @@ func (dao *SessionDAO) ListAllOrdered(
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var err error
-		err = dao.db.NewSelect().
+		err := dao.db.NewSelect().
 			Model(&sessions).
 			Order(fmt.Sprintf("%s %s", orderBy, getAscDesc(asc))).
 			Limit(pageSize).

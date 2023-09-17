@@ -128,8 +128,6 @@ func (dao *UserStoreDAO) updateUser(
 		Column("email", "first_name", "last_name", "metadata").
 		OmitZero().
 		Where("user_id = ?", user.UserID).
-		// We can't use Returning("*") here asc it breaks OmitZero()
-		//Returning("*").
 		Exec(ctx)
 	if err != nil {
 		return nil, err
@@ -226,8 +224,7 @@ func (dao *UserStoreDAO) ListAllOrdered(
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var err error
-		err = dao.db.NewSelect().
+		err := dao.db.NewSelect().
 			Model(&users).
 			Order(fmt.Sprintf("%s %s", orderBy, getAscDesc(asc))).
 			Limit(pageSize).
