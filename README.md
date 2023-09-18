@@ -35,12 +35,17 @@ Zep: A platform for productionizing LLM apps.
 
 [![Zep Demo Video](https://img.youtube.com/vi/d6ryNEvMXno/maxresdefault.jpg)](https://www.youtube.com/watch?v=d6ryNEvMXno)
 
-<h2>Use as drop-in replacements for LangChain or LlamaIndex components, or with a frameworkless app.</h2>
+## 
 
 ## ⭐️ Core Features
 ### 💬 Designed for building conversational LLM applications
-- Understands chat messages, roles, and user metadata, not just texts and embeddings. 
-- Zep Memory and VectorStore implementations are shipped with your favorite frameworks: LangChain, LangChain.js, LlamaIndex, and more.
+- Manage users, sessions, chat messages, chat roles, and more, not just texts and embeddings.
+- Build autopilots, agents, Q&A over docs apps, chatbots, and more. 
+
+### 🛠️ Use as drop-in replacements for LangChain or LlamaIndex components, or with a frameworkless app.
+- Zep Memory and VectorStore implementations are shipped with LangChain, LangChain.js, and LlamaIndex.
+- Python & TypeScript/JS SDKs for easy integration with your LLM app.
+- TypeScript/JS SDK supports edge deployment.
 
 ### 🔎 Vector Database with Hybrid Search
 - Populate your prompts with relevant documents and chat history.
@@ -53,11 +58,8 @@ Zep: A platform for productionizing LLM apps.
 
 ### ⚡️ Fast, scalable, low-latency APIs and stateless deployments
 - Zep’s local embedding models and async enrichment ensure a snappy user experience. 
-- Storing documents and history in Zep and not in memory enables stateless deployment.
+- Storing documents and history in Zep and not in memory enables stateless deployment. 
 
-### 🛠️ Python & TypeScript/JS SDKs, Edge Deployment
-- Python & TypeScript/JS SDKs for easy integration with your LLM app.
-- TypeScript/JS SDK supports edge deployment.
 
 ## Learn more
 - 🏎️ **[Quick Start Guide](https://docs.getzep.com/deployment/quickstart/)**: Docker or cloud deployment, and coding, in < 5 minutes.
