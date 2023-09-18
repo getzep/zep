@@ -153,6 +153,7 @@ func TestSessionDAO_Update(t *testing.T) {
 	assert.Equal(t, createdSession.SessionID, updatedSession.SessionID)
 	assert.Equal(t, createdSession.UserID, updatedSession.UserID)
 	assert.Equal(t, updateSession.Metadata, updatedSession.Metadata)
+	assert.Less(t, createdSession.UpdatedAt, updatedSession.UpdatedAt)
 }
 
 func TestSessionDAO_UpdateWithNilMetadata(t *testing.T) {

@@ -125,7 +125,7 @@ func (dao *UserStoreDAO) updateUser(
 	}
 	r, err := dao.db.NewUpdate().
 		Model(&userDB).
-		Column("email", "first_name", "last_name", "metadata").
+		Column("email", "first_name", "last_name", "metadata", "updated_at").
 		OmitZero().
 		Where("user_id = ?", user.UserID).
 		Exec(ctx)

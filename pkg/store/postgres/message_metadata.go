@@ -106,7 +106,7 @@ func putMessageMetadataTx(
 	retrievedMessage.UUID = message.UUID
 	_, err = tx.NewUpdate().
 		Model(&retrievedMessage).
-		Column("metadata").
+		Column("metadata", "updated_at").
 		Where("session_id = ? AND uuid = ?", sessionID, message.UUID).
 		Returning("*").
 		Exec(ctx)

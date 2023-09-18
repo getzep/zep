@@ -87,6 +87,7 @@ func TestCollectionUpdate(t *testing.T) {
 	err = collection.GetByName(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedDimensions, collection.EmbeddingDimensions)
+	assert.Less(t, collection.CreatedAt, collection.UpdatedAt)
 }
 
 func TestCollectionGetByName(t *testing.T) {

@@ -207,6 +207,12 @@ func verifyMessagesInDB(
 			resultMessages[i].Metadata,
 			"Expected Metadata to be equal",
 		)
+		assert.Less(
+			t,
+			resultMessages[i].CreatedAt,
+			resultMessages[i].UpdatedAt,
+			"CreatedAt should be less than UpdatedAt",
+		)
 	}
 }
 

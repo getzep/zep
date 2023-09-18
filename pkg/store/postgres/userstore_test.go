@@ -63,7 +63,7 @@ func TestUserStoreDAO(t *testing.T) {
 			},
 			Email: "email",
 		}
-		_, err := userStore.Create(ctx, user)
+		createdUser, err := userStore.Create(ctx, user)
 		assert.NoError(t, err)
 
 		// Update the user with zero values
@@ -77,10 +77,11 @@ func TestUserStoreDAO(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Check that the updated user still has the original non-zero values
-		assert.Equal(t, user.Metadata, updatedUser.Metadata)
-		assert.Equal(t, user.Email, updatedUser.Email)
+		assert.Equal(t, createdUser.Metadata, updatedUser.Metadata)
+		assert.Equal(t, createdUser.Email, updatedUser.Email)
 		// Bob should be the new first name
 		assert.Equal(t, "bob", updatedUser.FirstName)
+		assert.Less(t, createdUser.UpdatedAt, updatedUser.UpdatedAt)
 	})
 
 	t.Run("Update Non-Existant User should result in NotFoundError", func(t *testing.T) {

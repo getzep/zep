@@ -150,7 +150,7 @@ func (dao *SessionDAO) updateSession(
 		Metadata:  session.Metadata,
 		DeletedAt: time.Time{}, // Intentionally overwrite soft-delete with zero value
 	}
-	var columns = []string{"deleted_at"}
+	var columns = []string{"deleted_at", "updated_at"}
 	if session.Metadata != nil {
 		columns = append(columns, "metadata")
 	}
