@@ -403,16 +403,9 @@ func CreateSchema(
 		}
 	}
 
-	model, err := llms.GetEmbeddingModel(appState, "message")
-	if err != nil {
-		return fmt.Errorf("error getting message embedding model: %w", err)
-	}
-	// we keep this at 1536 for legacy reasons, despite the default now being 384
-	if model.Dimensions != 1536 {
-		err := MigrateMessageEmbeddingDims(ctx, db, model.Dimensions)
-		if err != nil {
-			return fmt.Errorf("error migrating message embedding dimensions: %w", err)
-		}
+	// check that the message embedding dimensions match the configured model
+	if err := checkMessageEmbeddingDims(ctx, appState, db); err != nil {
+		return fmt.Errorf("error checking message embedding dimensions: %w", err)
 	}
 
 	// apply migrations
@@ -421,6 +414,49 @@ func CreateSchema(
 	}
 
 	return nil
+}
+
+// checkMessageEmbeddingDims checks the dimensions of the message embedding column against the
+// dimensions of the configured message embedding model. If they do not match, the column is dropped and
+// recreated with the correct dimensions.
+func checkMessageEmbeddingDims(ctx context.Context, appState *models.AppState, db *bun.DB) error {
+	model, err := llms.GetEmbeddingModel(appState, "message")
+	if err != nil {
+		return fmt.Errorf("error getting message embedding model: %w", err)
+	}
+	width, err := getEmbeddingColumnWidth(ctx, "message_embedding", db)
+	if err != nil {
+		return fmt.Errorf("error getting embedding column width: %w", err)
+	}
+
+	if width != model.Dimensions {
+		log.Warnf(
+			"message embedding dimensions are %d, expected %d.\n migrating message embedding column width to %d. this may result in loss of existing embedding vectors",
+			width,
+			model.Dimensions,
+			model.Dimensions,
+		)
+		err := MigrateMessageEmbeddingDims(ctx, db, model.Dimensions)
+		if err != nil {
+			return fmt.Errorf("error migrating message embedding dimensions: %w", err)
+		}
+	}
+	return nil
+}
+
+// getEmbeddingColumnWidth returns the width of the embedding column in the provided table.
+func getEmbeddingColumnWidth(ctx context.Context, tableName string, db *bun.DB) (int, error) {
+	var width int
+	err := db.NewSelect().
+		Table("pg_attribute").
+		ColumnExpr("atttypmod"). // vector width is stored in atttypmod
+		Where("attrelid = ?::regclass", tableName).
+		Where("attname = 'embedding'").
+		Scan(ctx, &width)
+	if err != nil {
+		return 0, fmt.Errorf("error getting embedding column width: %w", err)
+	}
+	return width, nil
 }
 
 // MigrateMessageEmbeddingDims drops the old embedding column and creates a new one with the
