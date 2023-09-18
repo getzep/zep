@@ -36,6 +36,7 @@ Zep: A platform for productionizing LLM apps.
 [![Zep Demo Video](https://img.youtube.com/vi/d6ryNEvMXno/maxresdefault.jpg)](https://www.youtube.com/watch?v=d6ryNEvMXno)
 
 <h2>Use as drop-in replacements for LangChain or LlamaIndex components, or with a frameworkless app.</h2>
+
 ## ⭐️ Core Features
 ### 💬 Designed for building conversational LLM applications
 - Understands chat messages, roles, and user metadata, not just texts and embeddings. 
