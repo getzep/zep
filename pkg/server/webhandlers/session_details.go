@@ -82,14 +82,16 @@ func (m *SessionDetails) Get(ctx context.Context, appState *models.AppState) err
 		return nil
 	}
 
-	// pageSize needs to be >= MessageList page size so that we get all summaries related to the messages
-	// TODO: this may break under some circumstances. fix it.
+	// GetSummaryList returns a list of summaries for the given session. It can be
+	// paginated, but we are not using pagination to ensure that we retrieve all summaries for
+	// the messages we're displaying.
+	// Hacky solution: set the page offset to 0 and the limit to a large number
 	summaries, err := m.MemoryStore.GetSummaryList(
 		ctx,
 		appState,
 		m.SessionID,
-		m.CurrentPage,
-		m.PageSize,
+		0,
+		9999,
 	)
 	if err != nil {
 		return err
