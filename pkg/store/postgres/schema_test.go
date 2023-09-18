@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/getzep/zep/pkg/llms"
 	"github.com/stretchr/testify/assert"
 	"github.com/uptrace/bun"
 )
@@ -75,4 +76,31 @@ func TestUpdatedAtIsSetAfterUpdate(t *testing.T) {
 			),
 		)
 	}
+}
+
+func TestCheckMessageEmbeddingDims(t *testing.T) {
+	// Create a new DB
+	CleanDB(t, testDB)
+	err := CreateSchema(testCtx, appState, testDB)
+	assert.NoError(t, err)
+
+	// Get the embedding model
+	model, err := llms.GetEmbeddingModel(appState, "message")
+	assert.NoError(t, err)
+
+	testWidth := model.Dimensions + 1
+	// Set the embedding column to a specific width
+	err = MigrateMessageEmbeddingDims(testCtx, testDB, testWidth)
+	assert.NoError(t, err)
+
+	width, err := getEmbeddingColumnWidth(testCtx, "message_embedding", testDB)
+	assert.NoError(t, err)
+
+	assert.Equal(t, width, testWidth)
+
+	// Clean the DB
+	CleanDB(t, testDB)
+	err = CreateSchema(testCtx, appState, testDB)
+	assert.NoError(t, err)
+
 }
