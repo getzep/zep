@@ -5,10 +5,9 @@
 </p>
 
 <h1 align="center">
-Zep: An open source platform for productionizing LLM apps
+Zep: A platform for productionizing LLM apps.
 </h1>
 <h2 align="center">Fast, scalable building blocks for chat history memory, vector search, data enrichment, and more.</h2>
-<h3>Drop-in replacements for LangChain or LlamaIndex functionality, or use with a frameworkless app.</h3>
 <br />
 <p align="center">
   <a href="https://discord.gg/W8Kw6bsgXQ"><img
@@ -34,8 +33,9 @@ Zep: An open source platform for productionizing LLM apps
 <a href="https://www.getzep.com">www.getzep.com</a>
 </p>
 
-[![Final video of fixing issues in your code in VS Code](https://img.youtube.com/vi/d6ryNEvMXno/maxresdefault.jpg)](https://www.youtube.com/watch?v=d6ryNEvMXno)
+[![Zep Demo Video](https://img.youtube.com/vi/d6ryNEvMXno/maxresdefault.jpg)](https://www.youtube.com/watch?v=d6ryNEvMXno)
 
+<h2>Use as drop-in replacements for LangChain or LlamaIndex components, or with a frameworkless app.</h2>
 ## ⭐️ Core Features
 ### 💬 Designed for building conversational LLM applications
 - Understands chat messages, roles, and user metadata, not just texts and embeddings. 
