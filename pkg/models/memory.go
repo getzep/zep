@@ -9,6 +9,7 @@ import (
 type Message struct {
 	UUID       uuid.UUID              `json:"uuid"`
 	CreatedAt  time.Time              `json:"created_at"`
+	UpdatedAt  time.Time              `json:"updated_at"`
 	Role       string                 `json:"role"`
 	Content    string                 `json:"content"`
 	Metadata   map[string]interface{} `json:"metadata,omitempty"`
