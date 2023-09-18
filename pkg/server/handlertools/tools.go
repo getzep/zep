@@ -16,11 +16,6 @@ import (
 
 var log = internal.GetLogger()
 
-// APIError represents an error response. Used for swagger documentation.
-type APIError struct {
-	Message string `json:"message"`
-}
-
 // IntFromQuery extracts a query string value and converts it to an int
 // if it is not empty. If the value is empty, it returns 0.
 func IntFromQuery[T ~int | int32 | int64](

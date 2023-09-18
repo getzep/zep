@@ -1,5 +1,10 @@
 basePath: /api/v1
 definitions:
+  apihandlers.APIError:
+    properties:
+      message:
+        type: string
+    type: object
   models.CreateDocumentCollectionRequest:
     properties:
       description:
@@ -215,6 +220,8 @@ definitions:
         type: string
       token_count:
         type: integer
+      updated_at:
+        type: string
       uuid:
         type: string
     type: object
@@ -335,11 +342,6 @@ definitions:
       uuid:
         type: string
     type: object
-  server.APIError:
-    properties:
-      message:
-        type: string
-    type: object
 info:
   contact: {}
   license:
@@ -367,11 +369,11 @@ paths:
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Gets a list of DocumentCollections
@@ -398,19 +400,19 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Deletes a DocumentCollection
@@ -436,19 +438,19 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Gets a DocumentCollection
@@ -479,19 +481,19 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Updates a DocumentCollection
@@ -524,19 +526,19 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Creates a new DocumentCollection
@@ -574,15 +576,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Creates Multiple Documents in a DocumentCollection
@@ -617,15 +619,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Batch Deletes Documents from a DocumentCollection by UUID
@@ -663,15 +665,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Batch Gets Documents from a DocumentCollection
@@ -706,15 +708,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Batch Updates Documents in a DocumentCollection
@@ -746,19 +748,19 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "404":
           description: Document Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Delete Document from a DocumentCollection by UUID
@@ -789,15 +791,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Gets a Document from a DocumentCollection by UUID
@@ -833,19 +835,19 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Updates a Document in a DocumentCollection by UUID
@@ -878,15 +880,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Creates an index for a DocumentCollection
@@ -930,15 +932,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Searches Documents in a DocumentCollection
@@ -972,11 +974,11 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Returns all sessions
@@ -1003,11 +1005,11 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Add a session
@@ -1034,11 +1036,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Returns a session by ID
@@ -1070,15 +1072,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Add a session
@@ -1105,11 +1107,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Delete memory messages for a given session
@@ -1141,11 +1143,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Returns a memory (latest summary and list of messages) for a given
@@ -1178,7 +1180,7 @@ paths:
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Add memory messages to a given session
@@ -1217,11 +1219,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Search memory messages for a given session
@@ -1255,11 +1257,11 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: List all users
@@ -1286,11 +1288,11 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Add a user
@@ -1317,11 +1319,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Delete a user
@@ -1347,11 +1349,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Returns a user by ID
@@ -1383,15 +1385,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: Update a user
@@ -1420,7 +1422,7 @@ paths:
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/server.APIError'
+            $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
       summary: List all sessions for a user
