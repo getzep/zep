@@ -14,10 +14,10 @@ type User struct {
 	UpdatedAt time.Time              `json:"updated_at"`
 	DeletedAt *time.Time             `json:"deleted_at"`
 	UserID    string                 `json:"user_id"`
-	Email     string                 `json:"email"`
-	FirstName string                 `json:"first_name"`
-	LastName  string                 `json:"last_name"`
-	Metadata  map[string]interface{} `json:"metadata"`
+	Email     string                 `json:"email,omitempty"`
+	FirstName string                 `json:"first_name,omitempty"`
+	LastName  string                 `json:"last_name,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type UserListResponse struct {
