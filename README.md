@@ -5,9 +5,9 @@
 </p>
 
 <h1 align="center">
-Zep: Fast, scalable building blocks for production LLM apps
+Zep: Fast, scalable building blocks for LLM apps
 </h1>
-<h2 align="center">The Zep platform includes chat history memory, vector search, data enrichment, and more.</h2>
+<h2 align="center">Production-grade chat history memory, vector search, data enrichment, and more.</h2>
 <br />
 <p align="center">
   <a href="https://discord.gg/W8Kw6bsgXQ"><img
@@ -35,8 +35,8 @@ Zep: Fast, scalable building blocks for production LLM apps
 
 [![Zep Demo Video](https://img.youtube.com/vi/d6ryNEvMXno/maxresdefault.jpg)](https://vimeo.com/865785086?share=copy)
 
-
-## 
+## What is Zep?
+Zep is an open source platform for productionizing LLM apps. Go from a prototype built in LangChain or LlamaIndex, or a custom app, to production in minutes without rewriting code.
 
 ## ⭐️ Core Features
 ### 💬 Designed for building conversational LLM applications
