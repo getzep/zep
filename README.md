@@ -5,9 +5,10 @@
 </p>
 
 <h1 align="center">
-Zep: A long-term memory store for LLM applications
+Zep: Fast, scalable building blocks for LLM apps
 </h1>
-
+<h2 align="center">Production-grade chat history memory, vector search, data enrichment, and more.</h2>
+<br />
 <p align="center">
   <a href="https://discord.gg/W8Kw6bsgXQ"><img
     src="https://dcbadge.vercel.app/api/server/W8Kw6bsgXQ?style=flat"
@@ -26,16 +27,27 @@ Zep: A long-term memory store for LLM applications
 <p align="center">
 <a href="https://docs.getzep.com/deployment/quickstart/">Quick Start</a> | 
 <a href="https://docs.getzep.com/">Documentation</a> | 
-<a href="https://docs.getzep.com/sdk/langchain/">LangChain Support</a> | 
+<a href="https://docs.getzep.com/sdk/langchain/">LangChain</a> and 
+<a href="https://docs.getzep.com/sdk/langchain/">LlamaIndex</a> Support | 
 <a href="https://discord.gg/W8Kw6bsgXQ">Discord</a><br />
 <a href="https://www.getzep.com">www.getzep.com</a>
 </p>
-<h2 align="center">Easily add relevant documents, chat history memory & rich user data to your LLM app's prompts.</h2>
+
+## What is Zep?
+Zep is an open source platform for productionizing LLM apps. Go from a prototype built in LangChain or LlamaIndex, or a custom app, to production in minutes without rewriting code.
+
+[![Zep Demo Video](https://img.youtube.com/vi/d6ryNEvMXno/maxresdefault.jpg)](https://vimeo.com/865785086?share=copy)
+
 
 ## ⭐️ Core Features
 ### 💬 Designed for building conversational LLM applications
-- Understands chat messages, roles, and user metadata, not just texts and embeddings. 
-- Zep Memory and VectorStore implementations are shipped with your favorite frameworks: LangChain, LangChain.js, LlamaIndex, and more.
+- Manage users, sessions, chat messages, chat roles, and more, not just texts and embeddings.
+- Build autopilots, agents, Q&A over docs apps, chatbots, and more. 
+
+### 🛠️ Use as drop-in replacements for LangChain or LlamaIndex components, or with a frameworkless app.
+- Zep Memory and VectorStore implementations are shipped with LangChain, LangChain.js, and LlamaIndex.
+- Python & TypeScript/JS SDKs for easy integration with your LLM app.
+- TypeScript/JS SDK supports edge deployment.
 
 ### 🔎 Vector Database with Hybrid Search
 - Populate your prompts with relevant documents and chat history.
@@ -46,77 +58,53 @@ Zep: A long-term memory store for LLM applications
 - Enrichment of chat histories with summaries, named entities, token counts. Use these as search filters.
 - Associate your own metadata with sessions, documents & chat histories.
 
-### ⚡️ Fast, low-latency APIs and stateless deployments
+### ⚡️ Fast, scalable, low-latency APIs and stateless deployments
 - Zep’s local embedding models and async enrichment ensure a snappy user experience. 
-- Storing documents and history in Zep and not in memory enables stateless deployment.
+- Storing documents and history in Zep and not in memory enables stateless deployment. 
 
-### 🛠️ Python & TypeScript/JS SDKs, Edge Deployment
-- Python & TypeScript/JS SDKs for easy integration with your LLM app.
-- TypeScript/JS SDK supports edge deployment.
 
 ## Learn more
 - 🏎️ **[Quick Start Guide](https://docs.getzep.com/deployment/quickstart/)**: Docker or cloud deployment, and coding, in < 5 minutes.
+- 📚 **[Zep By Example](https://docs.getzep.com/sdk/examples/)**: Learn how to use Zep by example.
 - 🦙 **[Building Apps with LlamaIndex](https://docs.getzep.com/sdk/llamaindex/)**
 - 🦜⛓️ **[Building Apps with LangChain](https://docs.getzep.com/sdk/langchain/)**
 - 🛠️ [**Getting Started with TypeScript/JS or Python**](https://docs.getzep.com/sdk/)
-- 🔑 **[Key Concepts](https://docs.getzep.com/sdk/concepts/)**
 
 ## Examples
 
-### Hybrid similarity search with text input and JSONPath filters (TypeScript)
-```typescript
-const query = "The celestial motions are nothing but a continual";
-const searchResults = await collection.search({ text: query }, 3);
-
-// Search for documents using both text and metadata
-const metadataQuery = {
-    where: { jsonpath: '$[*] ? (@.bar == "qux")' },
-};
-
-const newSearchResults = await collection.search(
-    {
-        text: query,
-        metadata: metadataQuery,
-    },
-    3
-);
-```
-
-### Search search by embedding (Python)
+### Create Users, Chat Sessions, and Chat Messages (Zep Python SDK)
 ```python
-# Search by embedding vector, rather than text query
-# embedding is a list of floats
-results = collection.search(
-    embedding=embedding, limit=5
+user_request = CreateUserRequest(
+    user_id=user_id,
+    email="user@example.com",
+    first_name="Jane",
+    last_name="Smith",
+    metadata={"foo": "bar"},
 )
-```
+new_user = client.user.add(user_request)
 
-### Persist Chat History to Zep (Python)
-```python
-session_id = "2a2a2a" 
+# create a chat session
+session_id = uuid.uuid4().hex # A new session identifier
+session = Session(
+            session_id=session_id, 
+            user_id=user_id,
+            metadata={"foo" : "bar"}
+        )
+client.memory.add_session(session)
 
+# Add a chat message to the session
 history = [
      { role: "human", content: "Who was Octavia Butler?" },
-     {
-        role: "ai",
-        content:
-           "Octavia Estelle Butler (June 22, 1947 – February 24, 2006) was an American" +
-           " science fiction author.",
-     },
-     {
-        role: "human",
-        content: "Which books of hers were made into movies?",
-        metadata={"foo": "bar"},
-     }
 ]
+messages = [Message(role=m.role, content=m.content) for m in history]
+memory = Memory(messages=messages)
+client.memory.add_memory(session_id, memory)
 
+# Get all sessions for user_id
+sessions = client.user.getSessions(user_id)
+```
 
- messages = [Message(role=m.role, content=m.content) for m in history]
- memory = Memory(messages=messages)
- result = await client.aadd_memory(session_id, memory)
- ```
-
-### Persist Chat History with LangChain.js (TypeScript)
+### Persist Chat History with LangChain.js (Zep TypeScript SDK)
 ```typescript
 const memory = new ZepMemory({
     sessionId,
@@ -129,7 +117,57 @@ const response = await chain.run(
         input="What is the book's relevance to the challenges facing contemporary society?"
     },
 );
-````
+```
+
+### Hybrid similarity search over a document collection with text input and JSONPath filters (TypeScript)
+```typescript
+const query = "Who was Octavia Butler?";
+const searchResults = await collection.search({ text: query }, 3);
+
+// Search for documents using both text and metadata
+const metadataQuery = {
+    where: { jsonpath: '$[*] ? (@.genre == "scifi")' },
+};
+
+const newSearchResults = await collection.search(
+    {
+        text: query,
+        metadata: metadataQuery,
+    },
+    3
+);
+```
+
+### Create a LlamaIndex Index using Zep as a VectorStore (Python)
+```python
+from llama_index import VectorStoreIndex, SimpleDirectoryReader
+from llama_index.vector_stores import ZepVectorStore
+from llama_index.storage.storage_context import StorageContext
+
+vector_store = ZepVectorStore(
+    api_url=zep_api_url,
+    api_key=zep_api_key,
+    collection_name=collection_name
+)
+
+documents = SimpleDirectoryReader("documents/").load_data()
+storage_context = StorageContext.from_defaults(vector_store=vector_store)
+index = VectorStoreIndex.from_documents(
+                            documents,
+                            storage_context=storage_context
+)
+```                  
+
+### Search by embedding (Zep Python SDK)
+```python
+# Search by embedding vector, rather than text query
+# embedding is a list of floats
+results = collection.search(
+    embedding=embedding, limit=5
+)
+```
+
+
 
 
 ## Get Started
