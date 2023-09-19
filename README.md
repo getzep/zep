@@ -33,10 +33,11 @@ Zep: Fast, scalable building blocks for LLM apps
 <a href="https://www.getzep.com">www.getzep.com</a>
 </p>
 
-[![Zep Demo Video](https://img.youtube.com/vi/d6ryNEvMXno/maxresdefault.jpg)](https://vimeo.com/865785086?share=copy)
-
 ## What is Zep?
 Zep is an open source platform for productionizing LLM apps. Go from a prototype built in LangChain or LlamaIndex, or a custom app, to production in minutes without rewriting code.
+
+[![Zep Demo Video](https://img.youtube.com/vi/d6ryNEvMXno/maxresdefault.jpg)](https://vimeo.com/865785086?share=copy)
+
 
 ## ⭐️ Core Features
 ### 💬 Designed for building conversational LLM applications
