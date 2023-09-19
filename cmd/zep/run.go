@@ -47,6 +47,9 @@ func run() {
 	srv := server.Create(appState)
 
 	log.Infof("Listening on: %s", srv.Addr)
+	if cfg.Server.WebEnabled {
+		log.Infof("Web UI available at: %s", srv.Addr+"/admin")
+	}
 	err = srv.ListenAndServe()
 	if err != nil {
 		log.Fatal(err)
