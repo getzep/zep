@@ -49,13 +49,13 @@
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -98,25 +98,25 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -166,25 +166,25 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -225,25 +225,25 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -292,25 +292,25 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -368,19 +368,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -435,19 +435,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -505,19 +505,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -572,19 +572,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -634,19 +634,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -694,25 +694,25 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "404": {
                         "description": "Document Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -768,25 +768,25 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -835,19 +835,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -914,19 +914,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -980,13 +980,13 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1029,13 +1029,13 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1078,13 +1078,13 @@
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1134,19 +1134,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1198,13 +1198,13 @@
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1254,7 +1254,7 @@
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1295,13 +1295,13 @@
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1362,13 +1362,13 @@
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1422,13 +1422,13 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1471,13 +1471,13 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1520,13 +1520,13 @@
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1567,13 +1567,13 @@
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1623,19 +1623,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1681,7 +1681,7 @@
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/server.APIError"
+                            "$ref": "#/definitions/apihandlers.APIError"
                         }
                     }
                 }
@@ -1689,6 +1689,14 @@
         }
     },
     "definitions": {
+        "apihandlers.APIError": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "models.CreateDocumentCollectionRequest": {
             "type": "object",
             "required": [
@@ -2006,6 +2014,9 @@
                 "token_count": {
                     "type": "integer"
                 },
+                "updated_at": {
+                    "type": "string"
+                },
                 "uuid": {
                     "type": "string"
                 }
@@ -2180,14 +2191,6 @@
                     "type": "string"
                 },
                 "uuid": {
-                    "type": "string"
-                }
-            }
-        },
-        "server.APIError": {
-            "type": "object",
-            "properties": {
-                "message": {
                     "type": "string"
                 }
             }
