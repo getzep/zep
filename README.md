@@ -5,9 +5,9 @@
 </p>
 
 <h1 align="center">
-Zep: A platform for productionizing LLM apps.
+Zep: Fast, scalable building blocks for production LLM apps
 </h1>
-<h2 align="center">Fast, scalable building blocks for chat history memory, vector search, data enrichment, and more.</h2>
+<h2 align="center">The Zep platform includes chat history memory, vector search, data enrichment, and more.</h2>
 <br />
 <p align="center">
   <a href="https://discord.gg/W8Kw6bsgXQ"><img
@@ -33,7 +33,8 @@ Zep: A platform for productionizing LLM apps.
 <a href="https://www.getzep.com">www.getzep.com</a>
 </p>
 
-[![Zep Demo Video](https://img.youtube.com/vi/d6ryNEvMXno/maxresdefault.jpg)](https://www.youtube.com/watch?v=d6ryNEvMXno)
+[![Zep Demo Video](https://img.youtube.com/vi/d6ryNEvMXno/maxresdefault.jpg)](https://vimeo.com/865785086?share=copy)
+
 
 ## 
 
