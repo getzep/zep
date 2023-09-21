@@ -12,6 +12,8 @@ services:
       dockerfile: Dockerfile.postgres
     networks:
       - zep-network
+    volumes:
+      - zep-db:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD", "pg_isready", "-q", "-d", "postgres", "-U", "postgres" ]
       interval: 5s
@@ -71,4 +73,5 @@ services:
 networks:
   zep-network:
     driver: bridge
-
+volumes:
+  zep-db:
