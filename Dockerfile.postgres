@@ -5,6 +5,7 @@ ARG PGVECTOR_VERSION=0.4.1
 
 # Install build dependencies
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         build-essential \
