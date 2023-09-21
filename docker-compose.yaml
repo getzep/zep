@@ -45,7 +45,7 @@ services:
         nlp:
           condition: service_healthy
     ports:
-        - "8000:8000"
+        - "8003:8000"
     volumes:
       - ./config.yaml:/app/config.yaml
     environment:
