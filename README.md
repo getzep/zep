@@ -7,7 +7,7 @@
 <h1 align="center">
 Zep: Fast, scalable building blocks for LLM apps
 </h1>
-<h2 align="center">Production-grade chat history memory, vector search, data enrichment, and more.</h2>
+<h2 align="center">Chat history memory, embedding, vector search, data enrichment, and more.</h2>
 <br />
 <p align="center">
   <a href="https://discord.gg/W8Kw6bsgXQ"><img
@@ -34,7 +34,7 @@ Zep: Fast, scalable building blocks for LLM apps
 </p>
 
 ## What is Zep?
-Zep is an open source platform for productionizing LLM apps. Go from a prototype built in LangChain or LlamaIndex, or a custom app, to production in minutes without rewriting code.
+Zep is an open source platform for productionizing LLM apps. Zep summarizes, embeds, and enriches chat histories and documents asynchronously, ensuring these operations don't impact your user's chat experience. Data is persisted to database, allowing you to scale out when growth demands. As drop-in replacements for popular LangChain components, you can get to production in minutes without rewriting code.
 
 [![Zep Demo Video](https://img.youtube.com/vi/d6ryNEvMXno/maxresdefault.jpg)](https://vimeo.com/865785086?share=copy)
 
@@ -43,6 +43,10 @@ Zep is an open source platform for productionizing LLM apps. Go from a prototype
 ### 💬 Designed for building conversational LLM applications
 - Manage users, sessions, chat messages, chat roles, and more, not just texts and embeddings.
 - Build autopilots, agents, Q&A over docs apps, chatbots, and more. 
+
+### ⚡️ Fast, scalable, low-latency APIs and stateless deployments
+- Zep’s local embedding models and async enrichment ensure a snappy user experience. 
+- Storing documents and history in Zep and not in memory enables stateless deployment. 
 
 ### 🛠️ Use as drop-in replacements for LangChain or LlamaIndex components, or with a frameworkless app.
 - Zep Memory and VectorStore implementations are shipped with LangChain, LangChain.js, and LlamaIndex.
@@ -57,10 +61,6 @@ Zep is an open source platform for productionizing LLM apps. Go from a prototype
 - Automatically embed texts and messages using state-of-the-art open source models, OpenAI, or bring your own vectors. 
 - Enrichment of chat histories with summaries, named entities, token counts. Use these as search filters.
 - Associate your own metadata with sessions, documents & chat histories.
-
-### ⚡️ Fast, scalable, low-latency APIs and stateless deployments
-- Zep’s local embedding models and async enrichment ensure a snappy user experience. 
-- Storing documents and history in Zep and not in memory enables stateless deployment. 
 
 
 ## Learn more
