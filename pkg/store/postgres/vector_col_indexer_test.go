@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/brianvoe/gofakeit/v6"
 
@@ -77,10 +78,12 @@ func TestCreateIndex(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
+	// CreateIndex will add a timeout to the ctx
 	err = vci.CreateIndex(context.Background(), true)
 	assert.NoError(t, err)
 
-	// Set Collection's IsIndexed flag to true
+	pollIndexCreation(documentStore, collectionName, ctx, t)
+
 	col, err := documentStore.GetCollection(ctx, vci.Collection.Name)
 	assert.NoError(t, err)
 	assert.Equal(t, true, col.IsIndexed)
@@ -157,4 +160,29 @@ func generateRandomEmbeddings(embeddingCount int, embeddingWidth int) [][]float3
 	}
 
 	return embeddings
+}
+
+func pollIndexCreation(
+	documentStore *DocumentStore,
+	collectionName string,
+	ctx context.Context,
+	t *testing.T,
+) {
+	timeout := time.After(10 * time.Minute)
+	tick := time.Tick(500 * time.Millisecond)
+Loop:
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timed out waiting for index to be created")
+		case <-tick:
+			col, err := documentStore.GetCollection(ctx, collectionName)
+			if err != nil {
+				t.Fatal("error getting collection: ", err)
+			}
+			if col.IsIndexed {
+				break Loop
+			}
+		}
+	}
 }
