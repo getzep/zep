@@ -111,7 +111,7 @@ func (vci *VectorColIndex) CreateIndex(ctx context.Context, force bool) error {
 	go func() {
 		defer IndexMutexMap[vci.Collection.Name].Unlock()
 		// Create a new context with a timeout
-		ctx, cancel := context.WithTimeout(ctx, IndexTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), IndexTimeout)
 		defer cancel()
 
 		// Drop index if it exists
