@@ -56,6 +56,8 @@ func TestDocumentSearchWithIndexEndToEnd(t *testing.T) {
 	err = vci.CreateIndex(context.Background(), true)
 	assert.NoError(t, err)
 
+	pollIndexCreation(documentStore, collectionName, ctx, t)
+
 	// Set Collection's IsIndexed flag to true
 	col, err := documentStore.GetCollection(ctx, vci.Collection.Name)
 	assert.NoError(t, err)
