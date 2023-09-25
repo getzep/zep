@@ -3,7 +3,7 @@ services:
   db:
     image: ghcr.io/getzep/postgres:latest
     container_name: zep-postgres
-    restart: on-failure
+    restart: always
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -26,7 +26,7 @@ services:
     container_name: zep-nlp
     env_file:
       - .env # You can set your embedding-related variables here
-    restart: on-failure
+    restart: always
     networks:
       - zep-network
     healthcheck:
@@ -40,7 +40,7 @@ services:
   zep:
     image: ghcr.io/getzep/zep:latest
     container_name: zep
-    restart: on-failure
+    restart: always
     depends_on:
         db:
           condition: service_healthy
