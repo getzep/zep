@@ -22,9 +22,9 @@
                                     {{ template "ChatBubble" dict "Message" $msg "BgColor" "bg-fuchsia-50" }}
                                 {{ else }}
                                     {{ if mod $i 2 }}
-                                        {{ template "ChatBubble" dict "Message" $msg "BgColor" "bg-gray-50" }}
+                                        {{ template "ChatBubble" dict "Message" $msg "BgColor" "bg-gray-50 dark:bg-gray-100" }}
                                     {{ else }}
-                                        {{ template "ChatBubble" dict "Message" $msg "BgColor" "bng-white" }}
+                                        {{ template "ChatBubble" dict "Message" $msg "BgColor" "bg-white dark:bg-gray-300" }}
                                     {{ end }}
                                 {{ end }}
                             {{ end }}
@@ -52,7 +52,7 @@
             </p>
             <div class="flex justify-between">
                 <!-- Message Content -->
-                <div class="border-r border-gray-200 w-[50%] pr-6 max-h-44 overflow-y-auto">
+                <div class="border-r border-gray-200 dark:border-gray-50 w-[50%] pr-6 max-h-44 overflow-y-auto">
                     <p class="text-sm">
                         {{ .Message.Content }}
                     </p>
