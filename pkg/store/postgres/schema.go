@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/uptrace/bun/driver/pgdriver"
 
 	"github.com/getzep/zep/pkg/llms"
@@ -260,6 +261,7 @@ func (*MessageStoreSchema) AfterCreateTable(
 			Index(fmt.Sprintf("memstore_%s_idx", col)).
 			IfNotExists().
 			Column(col).
+			IfNotExists().
 			Exec(ctx)
 		if err != nil {
 			return err
@@ -277,6 +279,7 @@ func (*MessageVectorStoreSchema) AfterCreateTable(
 		Index("mem_vec_store_session_id_idx").
 		IfNotExists().
 		Column("session_id").
+		IfNotExists().
 		Exec(ctx)
 	return err
 }
@@ -290,6 +293,7 @@ func (*SummaryStoreSchema) AfterCreateTable(
 		Index("sumstore_session_id_idx").
 		IfNotExists().
 		Column("session_id").
+		IfNotExists().
 		Exec(ctx)
 	return err
 }
@@ -303,6 +307,7 @@ func (*DocumentCollectionSchema) AfterCreateTable(
 		Index("document_collection_name_idx").
 		IfNotExists().
 		Column("name").
+		IfNotExists().
 		Exec(ctx)
 	return err
 }
@@ -383,9 +388,17 @@ func CreateSchema(
 	appState *models.AppState,
 	db *bun.DB,
 ) error {
+	// Create pgvector extension if it does not exist
 	_, err := db.Exec("CREATE EXTENSION IF NOT EXISTS vector")
 	if err != nil {
 		return fmt.Errorf("error creating pgvector extension: %w", err)
+	}
+
+	// if this is an upgrade, we may need to update the pgvector extension
+	// this is a no-op if the extension is already up to date
+	_, err = db.Exec("ALTER EXTENSION vector UPDATE")
+	if err != nil {
+		return fmt.Errorf("error updating pgvector extension: %w", err)
 	}
 
 	// Create new tableList slice and append DocumentCollectionSchema to it
@@ -416,10 +429,48 @@ func CreateSchema(
 		return fmt.Errorf("error checking message embedding dimensions: %w", err)
 	}
 
+	// Create HNSW index on messages_embeddings if available
+	if appState.Config.Store.Postgres.AvaliableIndexes.HSNW {
+		if err := createHNSWIndexMessageEmbedding(ctx, db); err != nil {
+			return fmt.Errorf("error creating hnsw index: %w", err)
+		}
+	}
+
 	// apply migrations
 	if err := migrations.Migrate(ctx, db); err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
+
+	return nil
+}
+
+// createHNSWIndexMessageEmbedding creates an HNSW index on the message_embedding table if it does not exist.
+// The index is created with the default M and efConstruction values. Only vector_cosine_ops is supported.
+func createHNSWIndexMessageEmbedding(ctx context.Context, db *bun.DB) error {
+	const (
+		t              = "message_embedding"
+		c              = "embedding"
+		n              = "message_embedding_hnsw_idx"
+		m              = 16
+		efConstruction = 64
+	)
+
+	log.Info("creating hnsw index on message_embedding if it does not exist")
+
+	_, err := db.ExecContext(
+		ctx,
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS ? ON ? USING hnsw (? vector_cosine_ops) WITH (M = ?, ef_construction = ?);",
+		n,
+		bun.Ident(t),
+		c,
+		m,
+		efConstruction,
+	)
+	if err != nil {
+		return err
+	}
+
+	log.Infof("hnsw index created successfully on message_embedding if it did not exist")
 
 	return nil
 }
@@ -515,5 +566,82 @@ func NewPostgresConn(appState *models.AppState) *bun.DB {
 	sqldb.SetMaxIdleConns(maxOpenConns)
 
 	db := bun.NewDB(sqldb, pgdialect.New())
+
+	// IVFFLAT indexes are always available
+	appState.Config.Store.Postgres.AvaliableIndexes.IVFFLAT = true
+
+	// Check if HNSW indexes are available
+	isHNSW, err := isHNSWAvailable(context.Background(), db)
+	if err != nil {
+		log.Fatal("error checking vector extension version: ", err)
+	}
+	if isHNSW {
+		appState.Config.Store.Postgres.AvaliableIndexes.HSNW = true
+	}
+
 	return db
+}
+
+// isHNSWAvailable checks if the vector extension version is 0.5.0+.
+func isHNSWAvailable(ctx context.Context, db *bun.DB) (bool, error) {
+	const minVersion = "0.5.0"
+	requiredVersion, err := semver.NewVersion(minVersion)
+	if err != nil {
+		return false, fmt.Errorf("error parsing required vector extension version: %w", err)
+	}
+
+	var version string
+	err = db.NewSelect().
+		Column("extversion").
+		TableExpr("pg_extension").
+		Where("extname = 'vector'").
+		Scan(ctx, &version)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// The vector extension is not installed
+			log.Debug("vector extension not installed")
+			return false, nil
+		}
+		// An error occurred while executing the query
+		return false, fmt.Errorf("error checking vector extension version: %w", err)
+	}
+
+	thisVersion, err := semver.NewVersion(version)
+	if err != nil {
+		return false, fmt.Errorf("error parsing vector extension version: %w", err)
+	}
+
+	// Compare the version numbers
+	if requiredVersion.GreaterThan(thisVersion) {
+		// The vector extension version is < 0.5.0
+		log.Infof("vector extension version is < %s. hnsw indexing not available", minVersion)
+		return false, nil
+	}
+
+	// The vector extension version is >= 0.5.0
+	log.Infof("vector extension version is >= %s. hnsw indexing available", minVersion)
+
+	return true, nil
+}
+
+type IndexStatus struct {
+	Phase       string `bun:"phase"`
+	TuplesTotal int    `bun:"tuples_total"`
+	TuplesDone  int    `bun:"tuples_done"`
+}
+
+// GetIndexStatus queries for an index's status given an index name.
+func GetIndexStatus(ctx context.Context, db *bun.DB, indexName string) (IndexStatus, error) {
+	var status IndexStatus
+	err := db.NewSelect().
+		ColumnExpr("i.phase, i.tuples_total, i.tuples_done").
+		TableExpr("pg_stat_progress_create_index AS i").
+		Join("pg_class AS c ON c.oid = i.index_relid").
+		Where("c.relname = ?", indexName).
+		Scan(ctx, &status)
+	if err != nil {
+		return IndexStatus{}, fmt.Errorf("error querying index status: %w", err)
+	}
+
+	return status, nil
 }

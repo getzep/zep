@@ -45,7 +45,13 @@ type MemoryConfig struct {
 }
 
 type PostgresConfig struct {
-	DSN string `mapstructure:"dsn"`
+	DSN              string           `mapstructure:"dsn"`
+	AvaliableIndexes AvailableIndexes `mapstructure:"available_indexes"`
+}
+
+type AvailableIndexes struct {
+	IVFFLAT bool `mapstructure:"ivfflat"`
+	HSNW    bool `mapstructure:"hsnw"`
 }
 
 type ServerConfig struct {

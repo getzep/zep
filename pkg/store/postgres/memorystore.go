@@ -43,7 +43,6 @@ var _ models.MemoryStore[*bun.DB] = &PostgresMemoryStore{}
 
 type PostgresMemoryStore struct {
 	store.BaseMemoryStore[*bun.DB]
-
 	SessionStore *SessionDAO
 }
 
