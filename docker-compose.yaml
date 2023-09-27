@@ -19,8 +19,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    ports:
-      - "5432:5432"
+   # ports:
+   #  - "5432:5432"
   nlp:
     image: ghcr.io/getzep/zep-nlp-server:latest
     container_name: zep-nlp
@@ -35,8 +35,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 45s
-    ports:
-      - "5557:5557"
+    #ports:
+    # - "5557:5557"
   zep:
     image: ghcr.io/getzep/zep:latest
     container_name: zep
@@ -46,8 +46,8 @@ services:
           condition: service_healthy
         nlp:
           condition: service_healthy
-    ports:
-        - "8003:8000"
+    #ports:
+    #    - "8003:8000"
     volumes:
       - ./config.yaml:/app/config.yaml
     environment:
