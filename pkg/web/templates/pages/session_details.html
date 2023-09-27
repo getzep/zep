@@ -1,7 +1,7 @@
 {{ template "Content" . }}
 
 {{ define "Content" }}
-<div id="sessions">
+<div id="sessions" class="max-w-[85rem] mx-auto">
     {{template "BreadCrumbs" .}}
     {{ template "PageTitles" . }}
     {{ template "SessionDetails" . }}
@@ -21,7 +21,7 @@
         <div class="-m-1.5 overflow-x-auto">
             <div class="p-1.5 min-w-full inline-block align-middle">
                 <div
-                    class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden dark:bg-slate-900 dark:border-gray-700">
+                    class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden dark:bg-gray-200 dark:border-gray-700">
                     <div class="max-w-[85rem] px-4 py-4 sm:px-6 lg:px-8 lg:py-8 mx-auto">
                         <p class="text-sm">Created: {{ .Data.Session.CreatedAt.Format "2006-01-02 15:04:05" }} 
                             <span class="px-3">|</span> Updated: {{ .Data.Session.UpdatedAt.Format "2006-01-02 15:04:05"}} 

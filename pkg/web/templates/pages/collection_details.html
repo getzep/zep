@@ -1,7 +1,7 @@
 {{ template "Content" . }}
 
 {{ define "Content" }}
-<div id="collection_details">
+<div id="collection_details" class="max-w-[85rem] mx-auto">
     {{ template "BreadCrumbs" .}}
     {{ template "PageTitlesWithStatus" . }}
     {{ template "CollectionView" . }}
@@ -39,7 +39,7 @@
     <!-- Grid -->
     <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <!-- Card -->
-        <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-slate-900 dark:border-gray-800">
+        <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-gray-200 dark:border-gray-800">
             <div class="p-4 md:p-5">
                 <div class="flex items-center gap-x-2">
                     <p class="text-xs uppercase tracking-wide text-gray-500">
@@ -65,7 +65,7 @@
         <!-- End Card -->
 
         <!-- Card -->
-        <div class=" flex flex-col bg-white border shadow-sm rounded-xl dark:bg-slate-900 dark:border-gray-800">
+        <div class=" flex flex-col bg-white border shadow-sm rounded-xl dark:bg-gray-200 dark:border-gray-800">
             <div class="p-4 md:p-5">
                 <div class="flex items-center gap-x-2">
                     <p class="text-xs uppercase tracking-wide text-gray-500">
@@ -74,7 +74,7 @@
                 </div>
 
                 <div class="mt-1 flex items-center">
-                    <h3 class="text-xl sm:text-2xl font-medium text-gray-800 dark:text-gray-200">
+                    <h3 class="text-xl sm:text-2xl font-medium text-gray-800 ">
                         {{ .Data.DocumentCount }}
                     </h3>
 
@@ -84,7 +84,7 @@
         <!-- End Card -->
 
         <!-- Card -->
-        <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-slate-900 dark:border-gray-800">
+        <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-gray-200 dark:border-gray-800">
             <div class="p-4 md:p-5">
                 <div class="flex items-center gap-x-2">
                     <p class="text-xs uppercase tracking-wide text-gray-500">
@@ -111,7 +111,7 @@
                 </div>
 
                 <div class="mt-1 flex items-center">
-                    <h3 class="text-xl sm:text-2xl font-medium text-gray-800 dark:text-gray-200">
+                    <h3 class="text-xl sm:text-2xl font-medium text-gray-800 ">
                         {{ .Data.DocumentEmbeddedCount }}
                     </h3>
                     {{ if ne .Data.DocumentEmbeddedCount .Data.DocumentCount }}
@@ -127,7 +127,7 @@
         <!-- End Card -->
 
         <!-- Card -->
-        <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-slate-900 dark:border-gray-800">
+        <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-gray-200 dark:border-gray-800">
             <div class="p-4 md:p-5">
                 <div class="flex items-center gap-x-2">
                     <p class="text-xs uppercase tracking-wide text-gray-500">
@@ -136,7 +136,7 @@
                 </div>
 
                 <div class="mt-1 flex items-center">
-                    <h3 class="text-xl sm:text-2xl font-medium text-gray-800 dark:text-gray-200">
+                    <h3 class="text-xl sm:text-2xl font-medium text-gray-800 ">
                         {{ .Data.EmbeddingDimensions }}
                     </h3>
                 </div>
@@ -155,15 +155,15 @@
 <!-- Card Section -->
 <div class="px-4 py-5 sm:px-6 lg:px-8 lg:py-7 mx-auto">
     <!-- Card -->
-    <div class="bg-white rounded-xl shadow p-4 sm:p-7 dark:bg-slate-900">
+    <div class="bg-white rounded-xl shadow p-4 sm:p-7 dark:bg-gray-200">
         <div class="flex items-start gap-x-6 my-2">
-            <div class="text-sm text-gray-800 dark:text-gray-200 font-bold w-20">
+            <div class="text-sm text-gray-800 font-bold w-20">
                 Status
             </div>
             <div>{{ .Data.IsIndexed | ternary "Indexed" "Not Indexed" }}</div>
         </div>
         <div class="flex items-start gap-x-6 my-2">
-            <div class="text-sm text-gray-800 dark:text-gray-200 font-bold w-20">
+            <div class="text-sm text-gray-800 font-bold w-20">
                 Type
             </div>
             <div>IVFFLAT</div>

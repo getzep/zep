@@ -230,6 +230,7 @@ func (*SessionSchema) AfterCreateTable(
 		Model((*SessionSchema)(nil)).
 		Index("session_session_id_idx").
 		Column("session_id").
+		IfNotExists().
 		Exec(ctx)
 	if err != nil {
 		return err
@@ -239,6 +240,7 @@ func (*SessionSchema) AfterCreateTable(
 		Model((*SessionSchema)(nil)).
 		Index("session_user_id_idx").
 		Column("user_id").
+		IfNotExists().
 		Exec(ctx)
 	if err != nil {
 		return err
@@ -256,6 +258,7 @@ func (*MessageStoreSchema) AfterCreateTable(
 		_, err := query.DB().NewCreateIndex().
 			Model((*MessageStoreSchema)(nil)).
 			Index(fmt.Sprintf("memstore_%s_idx", col)).
+			IfNotExists().
 			Column(col).
 			Exec(ctx)
 		if err != nil {
@@ -272,6 +275,7 @@ func (*MessageVectorStoreSchema) AfterCreateTable(
 	_, err := query.DB().NewCreateIndex().
 		Model((*MessageVectorStoreSchema)(nil)).
 		Index("mem_vec_store_session_id_idx").
+		IfNotExists().
 		Column("session_id").
 		Exec(ctx)
 	return err
@@ -284,6 +288,7 @@ func (*SummaryStoreSchema) AfterCreateTable(
 	_, err := query.DB().NewCreateIndex().
 		Model((*SummaryStoreSchema)(nil)).
 		Index("sumstore_session_id_idx").
+		IfNotExists().
 		Column("session_id").
 		Exec(ctx)
 	return err
@@ -296,6 +301,7 @@ func (*DocumentCollectionSchema) AfterCreateTable(
 	_, err := query.DB().NewCreateIndex().
 		Model((*DocumentCollectionSchema)(nil)).
 		Index("document_collection_name_idx").
+		IfNotExists().
 		Column("name").
 		Exec(ctx)
 	return err
@@ -309,6 +315,7 @@ func (*UserSchema) AfterCreateTable(
 		Model((*UserSchema)(nil)).
 		Index("user_user_id_idx").
 		Column("user_id").
+		IfNotExists().
 		Exec(ctx)
 	if err != nil {
 		return err
@@ -318,6 +325,7 @@ func (*UserSchema) AfterCreateTable(
 		Model((*UserSchema)(nil)).
 		Index("user_email_idx").
 		Column("email").
+		IfNotExists().
 		Exec(ctx)
 	if err != nil {
 		return err
@@ -498,8 +506,10 @@ END $$;`
 func NewPostgresConn(appState *models.AppState) *bun.DB {
 	maxOpenConns := 4 * runtime.GOMAXPROCS(0)
 
+	// WithReadTimeout is 10 minutes to avoid timeouts when creating indexes.
+	// TODO: This is not ideal. Use separate connections for index creation?
 	sqldb := sql.OpenDB(
-		pgdriver.NewConnector(pgdriver.WithDSN(appState.Config.Store.Postgres.DSN)),
+		pgdriver.NewConnector(pgdriver.WithDSN(appState.Config.Store.Postgres.DSN), pgdriver.WithReadTimeout(10*time.Minute)),
 	)
 	sqldb.SetMaxOpenConns(maxOpenConns)
 	sqldb.SetMaxIdleConns(maxOpenConns)
