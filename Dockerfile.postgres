@@ -1,7 +1,6 @@
-# SOURCE: https://community.fly.io/t/adding-pgvector-to-fly-postgres/12202
-FROM postgres:15.2-bullseye
+FROM postgres:15.4-bullseye
 # Set the pgvector version
-ARG PGVECTOR_VERSION=0.4.1
+ARG PGVECTOR_VERSION=0.5.0
 
 # Install build dependencies
 RUN apt-get update && \
