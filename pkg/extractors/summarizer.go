@@ -284,8 +284,8 @@ func incrementalSummarizer(
 	prevSummaryIdentifier := "{{.PrevSummary}}"
 	messagesJoinedIdentifier := "{{.MessagesJoined}}"
 
-	isCustomPromptValid := strings.Contains(customPrompt, prevSummaryIdentifier)
-	                       && strings.Contains(customPrompt, messagesJoinedIdentifier)
+	isCustomPromptValid := strings.Contains(customPrompt, prevSummaryIdentifier) &&
+	                       strings.Contains(customPrompt, messagesJoinedIdentifier)
 
 	if isCustomPromptSet && !isCustomPromptValid {
 		log.Warn(
