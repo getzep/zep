@@ -277,15 +277,42 @@ func incrementalSummarizer(
 	}
 
 	var summaryPromptTemplate string
+
+	customPrompt := appState.Config.Extractors.Messages.Summarizer.CustomPrompt
+	isCustomPromptSet := strings.TrimSpace(customPrompt) != ""
+
+	prevSummaryIdentifier := "{{.PrevSummary}}"
+	messagesJoinedIdentifier := "{{.MessagesJoined}}"
+
+	isCustomPromptValid := strings.Contains(customPrompt, prevSummaryIdentifier)
+	                       && strings.Contains(customPrompt, messagesJoinedIdentifier)
+
+	if isCustomPromptSet && !isCustomPromptValid {
+		log.Warn(
+			"A custom summarizer prompt was set but the format used is wrong. Using default prompt instead." +
+				"Please make sure the prompt contains the identifiers {{.PrevSummary}} and {{.MessagesJoined}}.",
+		)
+	}
+
+	useCustomPrompt := isCustomPromptSet && isCustomPromptValid
+
 	switch appState.Config.LLM.Service {
 	case "openai":
-		summaryPromptTemplate = summaryPromptTemplateOpenAI
+		if useCustomPrompt {
+			summaryPromptTemplate = customPrompt
+		} else {
+			summaryPromptTemplate = summaryPromptTemplateOpenAI
+		}
 	case "anthropic":
-		summaryPromptTemplate = summaryPromptTemplateAnthropic
+		if useCustomPrompt {
+			summaryPromptTemplate = customPrompt
+		} else {
+			summaryPromptTemplate = summaryPromptTemplateAnthropic
+		}
 	default:
 		return "", 0, fmt.Errorf("unknown LLM service: %s", appState.Config.LLM.Service)
 	}
-
+	
 	progressivePrompt, err := internal.ParsePrompt(summaryPromptTemplate, promptData)
 	if err != nil {
 		return "", 0, err
