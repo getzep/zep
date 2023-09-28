@@ -290,7 +290,7 @@ func incrementalSummarizer(
 	if isCustomPromptSet && !isCustomPromptValid {
 		log.Warn(
 			"A custom summarizer prompt was set but the format used is wrong. Using default prompt instead." +
-				"Please make sure the prompt contains the identifiers {{.PrevSummary}} and {{.MessagesJoined}}.",
+				" Please make sure the prompt contains the identifiers {{.PrevSummary}} and {{.MessagesJoined}}.",
 		)
 	}
 
