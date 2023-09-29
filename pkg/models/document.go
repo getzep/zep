@@ -6,6 +6,9 @@ import (
 	"github.com/google/uuid"
 )
 
+type IndexType string
+type DistanceFunction string
+
 /* Collection  Models */
 
 type DocumentCollection struct {
@@ -19,9 +22,10 @@ type DocumentCollection struct {
 	EmbeddingModelName        string                 `bun:",notnull"                                                    yaml:"embedding_model_name"`
 	EmbeddingDimensions       int                    `bun:",notnull"                                                    yaml:"embedding_dimensions"`
 	IsAutoEmbedded            bool                   `bun:",notnull"                                                    yaml:"is_auto_embedded"`  // Is the collection automatically embedded by Zep?
-	DistanceFunction          string                 `bun:",notnull"                                                    yaml:"distance_function"` // Distance function to use for index
+	DistanceFunction          DistanceFunction       `bun:",notnull"                                                    yaml:"distance_function"` // Distance function to use for index
 	IsNormalized              bool                   `bun:",notnull"                                                    yaml:"is_normalized"`     // Are the embeddings normalized?
 	IsIndexed                 bool                   `bun:",notnull"                                                    yaml:"is_indexed"`        // Has an index been created on the collection table?
+	IndexType                 IndexType              `bun:",notnull"                                                    yaml:"index_type"`        // Type of index to use
 	ListCount                 int                    `bun:",notnull"                                                    yaml:"list_count"`        // Number of lists in the collection index
 	ProbeCount                int                    `bun:",notnull"                                                    yaml:"probe_count"`       // Number of probes to use when searching the index
 	*DocumentCollectionCounts ` yaml:"document_collection_counts,inline"`

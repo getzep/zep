@@ -350,6 +350,7 @@ var messageTableList = []bun.BeforeCreateTableHook{
 // If the table already exists, the table is not recreated.
 func createDocumentTable(
 	ctx context.Context,
+	appState *models.AppState,
 	db *bun.DB,
 	tableName string,
 	embeddingDimensions int,
@@ -367,7 +368,7 @@ func createDocumentTable(
 		return fmt.Errorf("error creating document table: %w", err)
 	}
 
-	// Create document_id indexe
+	// Create document_id index
 	_, err = db.NewCreateIndex().
 		Model(schema).
 		// override default table name
@@ -377,6 +378,14 @@ func createDocumentTable(
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("error creating session_session_id_idx: %w", err)
+	}
+
+	// If HNSW indexes are available, create an HNSW index on the embedding column
+	if appState.Config.Store.Postgres.AvailableIndexes.HSNW {
+		err = createHNSWIndex(ctx, db, tableName, "embedding")
+		if err != nil {
+			return fmt.Errorf("error creating hnsw index: %w", err)
+		}
 	}
 
 	return nil
@@ -430,8 +439,10 @@ func CreateSchema(
 	}
 
 	// Create HNSW index on messages_embeddings if available
-	if appState.Config.Store.Postgres.AvaliableIndexes.HSNW {
-		if err := createHNSWIndexMessageEmbedding(ctx, db); err != nil {
+	t := "message_embedding"
+	c := "embedding"
+	if appState.Config.Store.Postgres.AvailableIndexes.HSNW {
+		if err := createHNSWIndex(ctx, db, t, c); err != nil {
 			return fmt.Errorf("error creating hnsw index: %w", err)
 		}
 	}
@@ -444,25 +455,24 @@ func CreateSchema(
 	return nil
 }
 
-// createHNSWIndexMessageEmbedding creates an HNSW index on the message_embedding table if it does not exist.
+// createHNSWIndex creates an HNSW index on the given table and column if it does not exist.
 // The index is created with the default M and efConstruction values. Only vector_cosine_ops is supported.
-func createHNSWIndexMessageEmbedding(ctx context.Context, db *bun.DB) error {
+func createHNSWIndex(ctx context.Context, db *bun.DB, table, column string) error {
 	const (
-		t              = "message_embedding"
-		c              = "embedding"
-		n              = "message_embedding_hnsw_idx"
 		m              = 16
 		efConstruction = 64
 	)
 
-	log.Info("creating hnsw index on message_embedding if it does not exist")
+	idx := table + "_" + column + "_hnsw_idx"
+
+	log.Infof("creating hnsw index on %s.%s if it does not exist", table, column)
 
 	_, err := db.ExecContext(
 		ctx,
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS ? ON ? USING hnsw (? vector_cosine_ops) WITH (M = ?, ef_construction = ?);",
-		n,
-		bun.Ident(t),
-		c,
+		bun.Safe(idx),
+		bun.Ident(table),
+		bun.Ident(column),
 		m,
 		efConstruction,
 	)
@@ -470,7 +480,7 @@ func createHNSWIndexMessageEmbedding(ctx context.Context, db *bun.DB) error {
 		return err
 	}
 
-	log.Infof("hnsw index created successfully on message_embedding if it did not exist")
+	log.Infof("created hnsw index successfully on %s.%s if it did not exist", table, column)
 
 	return nil
 }
@@ -568,7 +578,7 @@ func NewPostgresConn(appState *models.AppState) *bun.DB {
 	db := bun.NewDB(sqldb, pgdialect.New())
 
 	// IVFFLAT indexes are always available
-	appState.Config.Store.Postgres.AvaliableIndexes.IVFFLAT = true
+	appState.Config.Store.Postgres.AvailableIndexes.IVFFLAT = true
 
 	// Check if HNSW indexes are available
 	isHNSW, err := isHNSWAvailable(context.Background(), db)
@@ -576,7 +586,7 @@ func NewPostgresConn(appState *models.AppState) *bun.DB {
 		log.Fatal("error checking vector extension version: ", err)
 	}
 	if isHNSW {
-		appState.Config.Store.Postgres.AvaliableIndexes.HSNW = true
+		appState.Config.Store.Postgres.AvailableIndexes.HSNW = true
 	}
 
 	return db

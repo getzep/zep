@@ -233,7 +233,7 @@ func writeFixtureToYAML[T Row](fixtures Fixtures[T], outputDir, filename string)
 	fmt.Printf("Fixtures generated successfully in %s!\n", filename)
 }
 
-func createTestDocumentTables(ctx context.Context, db *bun.DB) error {
+func createTestDocumentTables(ctx context.Context, appState *models.AppState, db *bun.DB) error {
 	type Result struct {
 		TableName           string `bun:"table_name"`
 		EmbeddingDimensions int    `bun:"embedding_dimensions"`
@@ -252,7 +252,7 @@ func createTestDocumentTables(ctx context.Context, db *bun.DB) error {
 
 	// Create tables for each DocumentCollection
 	for _, table := range results {
-		err = createDocumentTable(ctx, db, table.TableName, table.EmbeddingDimensions)
+		err = createDocumentTable(ctx, appState, db, table.TableName, table.EmbeddingDimensions)
 		if err != nil {
 			return fmt.Errorf("failed to create table %s: %w", table.TableName, err)
 		}
@@ -358,7 +358,7 @@ GRANT ALL ON SCHEMA public TO public;`
 		}
 	}
 
-	err = createTestDocumentTables(ctx, db)
+	err = createTestDocumentTables(ctx, appState, db)
 	if err != nil {
 		return fmt.Errorf("failed to create test document tables: %w", err)
 	}
