@@ -28,8 +28,8 @@ extractors:
       enabled: true
       dimensions: 384
       service: "local"
-  #      dimensions: 1536
-  #      service: "openai"
+#      dimensions: 1536
+#      service: "openai"
   messages:
     summarizer:
       enabled: true
