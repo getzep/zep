@@ -250,6 +250,22 @@ func processOverLimitMessages(
 	}, nil
 }
 
+prevSummaryIdentifier := "{{.PrevSummary}}"
+messagesJoinedIdentifier := "{{.MessagesJoined}}"
+
+func validateSummarizerPrompt(prompt string) error {
+	isCustomPromptValid := strings.Contains(prompt, prevSummaryIdentifier) &&
+		strings.Contains(prompt, messagesJoinedIdentifier)
+
+	if !isCustomPromptValid {
+		return fmt.Errorf(
+			"Wrong summary prompt format. Please make sure it contains the identifiers %s and %s",
+			prevSummaryIdentifier, messagesJoinedIdentifier,
+		)
+	}
+	return nil
+}
+
 // incrementalSummarizer takes a slice of messages and a summary, calls the LLM,
 // and returns a new summary enriched with the messages content. Summary can be
 // an empty string. Returns a string with the new summary and the number of
@@ -278,39 +294,18 @@ func incrementalSummarizer(
 
 	var summaryPromptTemplate string
 
-	customPrompt := appState.Config.Extractors.Messages.Summarizer.CustomPrompt
-	isCustomPromptSet := strings.TrimSpace(customPrompt) != ""
-
-	prevSummaryIdentifier := "{{.PrevSummary}}"
-	messagesJoinedIdentifier := "{{.MessagesJoined}}"
-
-	isCustomPromptValid := strings.Contains(customPrompt, prevSummaryIdentifier) &&
-	                       strings.Contains(customPrompt, messagesJoinedIdentifier)
-
-	if isCustomPromptSet && !isCustomPromptValid {
-		log.Warn(
-			"A custom summarizer prompt was set but the format used is wrong. Using default prompt instead." +
-			" Please make sure the prompt contains the identifiers {{.PrevSummary}} and {{.MessagesJoined}}.",
-		)
-	}
-
-	useCustomPrompt := isCustomPromptSet && isCustomPromptValid
-
 	switch appState.Config.LLM.Service {
 	case "openai":
-		if useCustomPrompt {
-			summaryPromptTemplate = customPrompt
-		} else {
-			summaryPromptTemplate = summaryPromptTemplateOpenAI
-		}
+		summaryPromptTemplate = summaryPromptTemplateOpenAI
 	case "anthropic":
-		if useCustomPrompt {
-			summaryPromptTemplate = customPrompt
-		} else {
-			summaryPromptTemplate = summaryPromptTemplateAnthropic
-		}
+    summaryPromptTemplate = summaryPromptTemplateAnthropic
 	default:
 		return "", 0, fmt.Errorf("unknown LLM service: %s", appState.Config.LLM.Service)
+	}
+
+	err := validateSummarizerPrompt(summaryPromptTemplate)
+	if err != nil {
+		return "", 0, err
 	}
 	
 	progressivePrompt, err := internal.ParsePrompt(summaryPromptTemplate, promptData)
