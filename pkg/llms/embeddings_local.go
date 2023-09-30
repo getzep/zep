@@ -76,9 +76,17 @@ func makeEmbedRequest(ctx context.Context, url string, jsonBody []byte) ([]byte,
 	ctx, cancel := context.WithTimeout(ctx, LocalEmbedderTimeout)
 	defer cancel()
 
-	retryableHTTPClient := NewRetryableHTTPClient(MaxLocalEmbedderRetryAttempts, LocalEmbedderTimeout)
+	retryableHTTPClient := NewRetryableHTTPClient(
+		MaxLocalEmbedderRetryAttempts,
+		LocalEmbedderTimeout,
+	)
 
-	req, err := retryablehttp.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(jsonBody))
+	req, err := retryablehttp.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		url,
+		bytes.NewBuffer(jsonBody),
+	)
 	if err != nil {
 		return nil, err
 	}

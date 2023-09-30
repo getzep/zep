@@ -53,7 +53,10 @@ func setup() {
 	appState.Config.Store.Postgres.DSN = testutils.GetDSN()
 
 	// Initialize the database connection
-	testDB = NewPostgresConn(appState)
+	testDB, err = NewPostgresConn(appState)
+	if err != nil {
+		panic(err)
+	}
 	testutils.SetUpDBLogging(testDB, logger)
 
 	// Initialize the test context

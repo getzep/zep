@@ -569,7 +569,7 @@ END $$;`
 
 // NewPostgresConn creates a new bun.DB connection to a postgres database using the provided DSN.
 // The connection is configured to pool connections based on the number of PROCs available.
-func NewPostgresConn(appState *models.AppState) *bun.DB {
+func NewPostgresConn(appState *models.AppState) (*bun.DB, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -578,7 +578,10 @@ func NewPostgresConn(appState *models.AppState) *bun.DB {
 	// WithReadTimeout is 10 minutes to avoid timeouts when creating indexes.
 	// TODO: This is not ideal. Use separate connections for index creation?
 	sqldb := sql.OpenDB(
-		pgdriver.NewConnector(pgdriver.WithDSN(appState.Config.Store.Postgres.DSN), pgdriver.WithReadTimeout(10*time.Minute)),
+		pgdriver.NewConnector(
+			pgdriver.WithDSN(appState.Config.Store.Postgres.DSN),
+			pgdriver.WithReadTimeout(10*time.Minute),
+		),
 	)
 	sqldb.SetMaxOpenConns(maxOpenConns)
 	sqldb.SetMaxIdleConns(maxOpenConns)
@@ -587,6 +590,10 @@ func NewPostgresConn(appState *models.AppState) *bun.DB {
 
 	// Enable pgvector extension
 	err := enablePgVectorExtension(ctx, db)
+	if err != nil {
+		log.Print("error enabling pgvector extension: ", err)
+		return nil, err
+	}
 
 	// IVFFLAT indexes are always available
 	appState.Config.Store.Postgres.AvailableIndexes.IVFFLAT = true
@@ -594,13 +601,14 @@ func NewPostgresConn(appState *models.AppState) *bun.DB {
 	// Check if HNSW indexes are available
 	isHNSW, err := isHNSWAvailable(ctx, db)
 	if err != nil {
-		log.Fatal("error checking vector extension version: ", err)
+		log.Print("error checking if hnsw indexes are available: ", err)
+		return nil, err
 	}
 	if isHNSW {
 		appState.Config.Store.Postgres.AvailableIndexes.HSNW = true
 	}
 
-	return db
+	return db, nil
 }
 
 // isHNSWAvailable checks if the vector extension version is 0.5.0+.

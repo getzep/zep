@@ -15,6 +15,7 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
+const DefaultEFSearch = 100
 const DefaultDocumentSearchLimit = 20
 const MaxParallelWorkersPerGather = 4
 
@@ -61,14 +62,26 @@ func (dso *documentSearchOperation) Execute() (*models.DocumentSearchResultPage,
 
 	// run in transaction to set LOCAL
 	err = dso.db.RunInTx(dso.ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-		if dso.collection.IsIndexed {
-			_, err = tx.Exec("SET LOCAL ivfflat.probes = ?", dso.collection.ProbeCount)
-		} else {
-			_, err = tx.Exec("SET LOCAL max_parallel_workers_per_gather = ?", MaxParallelWorkersPerGather)
+		switch dso.collection.IndexType {
+		case "ivfflat":
+			if dso.collection.IsIndexed {
+				_, err = tx.Exec("SET LOCAL ivfflat.probes = ?", dso.collection.ProbeCount)
+			} else {
+				_, err = tx.Exec("SET LOCAL max_parallel_workers_per_gather = ?", MaxParallelWorkersPerGather)
+			}
+			if err != nil {
+				return fmt.Errorf("error setting probes: %w", err)
+			}
+		case "hnsw":
+			if dso.collection.IsIndexed {
+				_, err = tx.Exec("SET LOCAL hnsw.ef_search = ?", DefaultEFSearch)
+			} else {
+				_, err = tx.Exec("SET LOCAL max_parallel_workers_per_gather = ?", MaxParallelWorkersPerGather)
+			}
+		default:
+			return fmt.Errorf("unknown index type %s", dso.collection.IndexType)
 		}
-		if err != nil {
-			return fmt.Errorf("error setting probes: %w", err)
-		}
+
 		count, err = dso.execQuery(tx, &results)
 		if err != nil {
 			return fmt.Errorf("error executing query: %w", err)

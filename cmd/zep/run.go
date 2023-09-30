@@ -110,7 +110,10 @@ func initializeStores(appState *models.AppState) {
 		if appState.Config.Store.Postgres.DSN == "" {
 			log.Fatal(ErrPostgresDSNNotSet)
 		}
-		db := postgres.NewPostgresConn(appState)
+		db, err := postgres.NewPostgresConn(appState)
+		if err != nil {
+			log.Fatalf("Failed to connect to database: %v\n", err)
+		}
 		if appState.Config.Log.Level == "debug" {
 			pgDebugLogging(db)
 		}
