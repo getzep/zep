@@ -165,6 +165,11 @@ func NewVectorColIndex(
 	appState *models.AppState,
 	collection models.DocumentCollection,
 ) (*VectorColIndex, error) {
+
+	if collection.IndexType != "ivfflat" {
+		return nil, fmt.Errorf("index type %s not supported for standalone indexing", collection.IndexType)
+	}
+
 	vci := &VectorColIndex{
 		appState:   appState,
 		Collection: collection,

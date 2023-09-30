@@ -100,7 +100,6 @@ func handleCLIOptions(cfg *config.Config) {
 }
 
 // initializeStores initializes the memory and document stores based on the config file / ENV
-// TODO: refactor to include document store switch
 func initializeStores(appState *models.AppState) {
 	if appState.Config.Store.Type == "" {
 		log.Fatal(ErrStoreTypeNotSet)
@@ -122,13 +121,13 @@ func initializeStores(appState *models.AppState) {
 		log.Debug("memoryStore created")
 
 		// create channels for the document embedding processor
-		// TODO: make this a configurable buffer size
 		embeddingTaskChannel := make(
 			chan []models.DocEmbeddingTask,
-			100,
+			// We use the Pool's buffer, so this doesn't need to be large
+			10,
 		)
-		// TODO: make this a configurable buffer size
-		embeddingUpdateChannel := make(chan []models.DocEmbeddingUpdate, 100)
+		// TODO: Make channel size configurable
+		embeddingUpdateChannel := make(chan []models.DocEmbeddingUpdate, 500)
 		documentStore, err := postgres.NewDocumentStore(
 			appState,
 			db,

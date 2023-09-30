@@ -391,12 +391,8 @@ func createDocumentTable(
 	return nil
 }
 
-// CreateSchema creates the db schema if it does not exist.
-func CreateSchema(
-	ctx context.Context,
-	appState *models.AppState,
-	db *bun.DB,
-) error {
+// enablePgVectorExtension creates the pgvector extension if it does not exist and updates it if it is out of date.
+func enablePgVectorExtension(ctx context.Context, db *bun.DB) error {
 	// Create pgvector extension if it does not exist
 	_, err := db.Exec("CREATE EXTENSION IF NOT EXISTS vector")
 	if err != nil {
@@ -410,6 +406,15 @@ func CreateSchema(
 		return fmt.Errorf("error updating pgvector extension: %w", err)
 	}
 
+	return nil
+}
+
+// CreateSchema creates the db schema if it does not exist.
+func CreateSchema(
+	ctx context.Context,
+	appState *models.AppState,
+	db *bun.DB,
+) error {
 	// Create new tableList slice and append DocumentCollectionSchema to it
 	tableList := append( //nolint:gocritic
 		messageTableList,
@@ -565,6 +570,9 @@ END $$;`
 // NewPostgresConn creates a new bun.DB connection to a postgres database using the provided DSN.
 // The connection is configured to pool connections based on the number of PROCs available.
 func NewPostgresConn(appState *models.AppState) *bun.DB {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	maxOpenConns := 4 * runtime.GOMAXPROCS(0)
 
 	// WithReadTimeout is 10 minutes to avoid timeouts when creating indexes.
@@ -577,11 +585,14 @@ func NewPostgresConn(appState *models.AppState) *bun.DB {
 
 	db := bun.NewDB(sqldb, pgdialect.New())
 
+	// Enable pgvector extension
+	err := enablePgVectorExtension(ctx, db)
+
 	// IVFFLAT indexes are always available
 	appState.Config.Store.Postgres.AvailableIndexes.IVFFLAT = true
 
 	// Check if HNSW indexes are available
-	isHNSW, err := isHNSWAvailable(context.Background(), db)
+	isHNSW, err := isHNSWAvailable(ctx, db)
 	if err != nil {
 		log.Fatal("error checking vector extension version: ", err)
 	}

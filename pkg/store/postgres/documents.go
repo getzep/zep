@@ -46,6 +46,15 @@ func (dc *DocumentCollectionDAO) Create(
 		dc.TableName = tableName
 	}
 
+	// Determine the index type to use. Default to HNSW if available, otherwise
+	// use IVFFLAT.
+	dc.IndexType = "ivfflat"
+	if dc.appState.Config.Store.Postgres.AvailableIndexes.HSNW {
+		dc.IndexType = "hnsw"
+		// We'll create the index when we create the document table.
+		dc.IsIndexed = true
+	}
+
 	// We only support cosine distance function for now.
 	dc.DistanceFunction = "cosine"
 

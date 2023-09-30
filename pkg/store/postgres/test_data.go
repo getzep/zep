@@ -120,6 +120,7 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 				DistanceFunction:    "cosine",
 				IsNormalized:        gofakeit.Bool(),
 				IsIndexed:           gofakeit.Bool(),
+				IndexType:           "ivfflat",
 				ListCount:           gofakeit.Number(1, 100),
 				ProbeCount:          gofakeit.Number(1, 100),
 			},
@@ -323,6 +324,12 @@ GRANT ALL ON SCHEMA public TO public;`
 	_, err := db.ExecContext(ctx, dropSchemaQuery)
 	if err != nil {
 		return fmt.Errorf("failed to drop schema: %w", err)
+	}
+
+	// Enable vector extension
+	err = enablePgVectorExtension(ctx, db)
+	if err != nil {
+		return fmt.Errorf("failed to enable pg_vector extension: %w", err)
 	}
 
 	err = CreateSchema(ctx, appState, db)

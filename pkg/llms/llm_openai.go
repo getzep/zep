@@ -16,6 +16,7 @@ import (
 
 const OpenAIAPITimeout = 90 * time.Second
 const OpenAIAPIKeyNotSetError = "ZEP_OPENAI_API_KEY is not set" //nolint:gosec
+const MaxOpenAIAPIRequestAttempts = 5
 
 var _ models.ZepLLM = &ZepOpenAILLM{}
 
@@ -97,10 +98,7 @@ func (zllm *ZepOpenAILLM) EmbedTexts(ctx context.Context, texts []string) ([][]f
 		return nil, NewLLMError("error while creating embedding", err)
 	}
 
-	// downcast the embeddings to [][]float32
-	m := Float64ToFloat32Matrix(embeddings)
-
-	return m, nil
+	return embeddings, nil
 }
 
 // GetTokenCount returns the number of tokens in the text
@@ -119,7 +117,7 @@ func (zllm *ZepOpenAILLM) configureClient(cfg *config.Config) ([]openai.Option, 
 		log.Fatal("only one of AzureOpenAIEndpoint or OpenAIEndpoint can be set")
 	}
 
-	retryableHTTPClient := NewRetryableHTTPClient()
+	retryableHTTPClient := NewRetryableHTTPClient(MaxOpenAIAPIRequestAttempts, OpenAIAPITimeout)
 
 	options := make([]openai.Option, 0)
 	options = append(

@@ -1,7 +1,7 @@
 {{ template "Content" . }}
 
 {{ define "Content" }}
-<div id="collection_details" class="max-w-[85rem] mx-auto">
+<div id="collection_details" class="max-w-[85rem] mx-auto" hx-get="{{ .Path }}" hx-trigger="every 2s">
     {{ template "BreadCrumbs" .}}
     {{ template "PageTitlesWithStatus" . }}
     {{ template "CollectionView" . }}
@@ -75,7 +75,7 @@
 
                 <div class="mt-1 flex items-center">
                     <h3 class="text-xl sm:text-2xl font-medium text-gray-800 ">
-                        {{ .Data.DocumentCount }}
+                        {{ CommaInt (.Data.DocumentCount | int64) }}
                     </h3>
 
                 </div>
@@ -112,7 +112,7 @@
 
                 <div class="mt-1 flex items-center">
                     <h3 class="text-xl sm:text-2xl font-medium text-gray-800 ">
-                        {{ .Data.DocumentEmbeddedCount }}
+                        {{ CommaInt (.Data.DocumentEmbeddedCount | int64) }}
                     </h3>
                     {{ if ne .Data.DocumentEmbeddedCount .Data.DocumentCount }}
                     <span class="flex items-center text-red-600 pl-3">
@@ -137,7 +137,7 @@
 
                 <div class="mt-1 flex items-center">
                     <h3 class="text-xl sm:text-2xl font-medium text-gray-800 ">
-                        {{ .Data.EmbeddingDimensions }}
+                        {{ CommaInt (.Data.EmbeddingDimensions | int64) }}
                     </h3>
                 </div>
             </div>
@@ -152,6 +152,7 @@
 
 
 {{ define "IndexStatus" }}
+{{ $disableIndexButton := and .Data.IsIndexed (eq .Data.IndexType "hnsw") }}
 <!-- Card Section -->
 <div class="px-4 py-5 sm:px-6 lg:px-8 lg:py-7 mx-auto">
     <!-- Card -->
@@ -166,16 +167,16 @@
             <div class="text-sm text-gray-800 font-bold w-20">
                 Type
             </div>
-            <div>IVFFLAT</div>
+            <div>{{ .Data.IndexType | toString | upper }}</div>
         </div>
 
         <div class="mt-6">
             <div class="my-4">Force index or reindex of a collection. Doing so will index the collection's documents
                 irrespective if enough documents have been added to the collection. Indexing too early may increase
-                memory usage.</div>
-            <button type="button" hx-confirm="Are you sure you want to index this collection?"
+                memory usage. Unavailable for HNSW indexes.</div>
+            <button type="button" hx-confirm="Are you sure you want to index this collection?" disabled="{{ $disableIndexButton }}"
                 hx-get="{{ .Path }}/index" hx-target="#page-content"
-                class="py-3 px-4 inline-flex justify-center items-center gap-2 rounded-md border border-transparent font-semibold bg-blue-500 text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all text-sm dark:focus:ring-offset-gray-800">
+                class="{{ if $disableIndexButton }}cursor-not-allowed opacity-50{{ end }} py-3 px-4 inline-flex justify-center items-center gap-2 rounded-md border border-transparent font-semibold bg-blue-500 text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all text-sm dark:focus:ring-offset-gray-800">
                 Force Index Collection
             </button>
         </div>
