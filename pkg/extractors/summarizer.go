@@ -293,12 +293,11 @@ func incrementalSummarizer(
 	}
 
 	var summaryPromptTemplate string
-
 	switch appState.Config.LLM.Service {
 	case "openai":
 		summaryPromptTemplate = summaryPromptTemplateOpenAI
 	case "anthropic":
-    summaryPromptTemplate = summaryPromptTemplateAnthropic
+		summaryPromptTemplate = summaryPromptTemplateAnthropic
 	default:
 		return "", 0, fmt.Errorf("unknown LLM service: %s", appState.Config.LLM.Service)
 	}
