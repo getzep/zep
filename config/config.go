@@ -20,7 +20,6 @@ var EnvVars = map[string]string{
 	"llm.openai_api_key":                           "ZEP_OPENAI_API_KEY",
 	"auth.secret":                                  "ZEP_AUTH_SECRET",
 	"development":                                  "ZEP_DEVELOPMENT",
-	"extractors.messages.summarizer.custom_prompt": "ZEP_SUMMARIZER_CUSTOM_PROMPT",
 }
 
 // LoadConfig loads the config file and ENV variables into a Config struct
