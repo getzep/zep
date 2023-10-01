@@ -101,6 +101,12 @@ func testConfigDefaults() (*config.Config, error) {
 		}
 	}
 
+	// load postgres config from env
+	p := os.Getenv("ZEP_STORE_POSTGRES_DSN")
+	if p != "" {
+		testConfig.Store.Postgres.DSN = p
+	}
+
 	// load nlp server config from env
 	n := os.Getenv("ZEP_NLP_SERVER")
 	if n != "" {
