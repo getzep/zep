@@ -108,7 +108,7 @@ func testConfigDefaults() (*config.Config, error) {
 	}
 
 	// load nlp server config from env
-	n := os.Getenv("ZEP_NLP_SERVER")
+	n := os.Getenv("ZEP_NLP_SERVER_URL")
 	if n != "" {
 		testConfig.NLP.ServerURL = n
 	}
