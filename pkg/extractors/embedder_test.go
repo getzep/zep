@@ -13,9 +13,6 @@ import (
 )
 
 func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
-	appState.Config.Extractors.Messages.Embeddings.Service = "openai"
-	appState.Config.Extractors.Messages.Embeddings.Dimensions = 1536
-
 	llmClient, err := llms.NewOpenAILLM(testCtx, appState.Config)
 	assert.NoError(t, err)
 	appState.LLMClient = llmClient

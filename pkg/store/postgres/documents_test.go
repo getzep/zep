@@ -634,7 +634,7 @@ func TestDocumentEmbeddingTasker(t *testing.T) {
 func TestDocumentEmbeddingUpdater(t *testing.T) {
 	ctx, done := context.WithCancel(testCtx)
 	// create document collection
-	collection := NewTestCollectionDAO(384)
+	collection := NewTestCollectionDAO(1536)
 	collection.Name = testutils.GenerateRandomString(10)
 	collection.IsAutoEmbedded = true
 	err := collection.Create(ctx)
@@ -643,7 +643,7 @@ func TestDocumentEmbeddingUpdater(t *testing.T) {
 	// create document
 	document := models.Document{
 		DocumentBase: models.DocumentBase{
-			Content: testutils.GenerateRandomString(384),
+			Content: testutils.GenerateRandomString(1536),
 		},
 	}
 	uuids, err := collection.CreateDocuments(ctx, []models.Document{document})
@@ -686,12 +686,12 @@ func TestDocumentEmbeddingUpdater(t *testing.T) {
 	)
 
 	// this is ugly. TODO: use a done channel
-	time.Sleep(5 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	documents, err := collection.GetDocuments(ctx, 0, uuids, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(documents))
-	assert.Equal(t, 384, len(documents[0].Embedding))
+	assert.Equal(t, 1536, len(documents[0].Embedding))
 	assert.Equal(t, true, documents[0].IsEmbedded)
 
 	err = documentStore.Shutdown(ctx)

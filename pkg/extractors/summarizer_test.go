@@ -76,4 +76,7 @@ func TestSummarize_Anthropic(t *testing.T) {
 	llmClient, err := llms.NewAnthropicLLM(testCtx, appState.Config)
 	assert.NoError(t, err)
 	runTestSummarize(t, llmClient)
+
+	// Reset the config to the default
+	appState.Config = testutils.NewTestConfig()
 }

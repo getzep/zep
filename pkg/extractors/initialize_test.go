@@ -41,7 +41,6 @@ func setup() {
 
 	appState.LLMClient = llmClient
 	appState.Config = cfg
-	appState.Config.Store.Postgres.DSN = testutils.GetDSN()
 
 	// Initialize the database connection
 	testDB, err = postgres.NewPostgresConn(appState)
