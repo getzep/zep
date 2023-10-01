@@ -33,8 +33,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: install certs
-        run: apt-get update && apt-get install -y ca-certificates
+      - name: install certs and build-essential (required by CGO)
+        run: apt-get update && apt-get install -y ca-certificates build-essential
   
       - name: Set up Go
         uses: actions/setup-go@v4
