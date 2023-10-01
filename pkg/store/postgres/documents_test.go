@@ -686,7 +686,7 @@ func TestDocumentEmbeddingUpdater(t *testing.T) {
 	)
 
 	// this is ugly. TODO: use a done channel
-	time.Sleep(1 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	documents, err := collection.GetDocuments(ctx, 0, uuids, nil)
 	assert.NoError(t, err)
