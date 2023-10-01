@@ -56,7 +56,7 @@ func testConfigDefaults() (*config.Config, error) {
 		Store: config.StoreConfig{
 			Type: "postgres",
 			Postgres: config.PostgresConfig{
-				DSN: "postgres://postgres:postgres@localhost:5432/?sslmode=disable",
+				DSN: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable",
 			},
 		},
 		Server: config.ServerConfig{
@@ -101,19 +101,13 @@ func testConfigDefaults() (*config.Config, error) {
 		}
 	}
 
-	// load DSN from environment variable
-	testConfig.Store.Postgres.DSN = getDSN()
+	// load nlp server config from env
+	n := os.Getenv("ZEP_NLP_SERVER")
+	if n != "" {
+		testConfig.NLP.ServerURL = n
+	}
 
 	return testConfig, nil
-}
-
-func getDSN() string {
-	var testDsn = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
-	dsnFromEnv := os.Getenv("ZEP_STORE_POSTGRES_DSN")
-	if dsnFromEnv != "" {
-		return dsnFromEnv
-	}
-	return testDsn
 }
 
 func NewTestConfig() *config.Config {
