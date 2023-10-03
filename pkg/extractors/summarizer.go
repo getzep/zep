@@ -252,7 +252,7 @@ func processOverLimitMessages(
 
 func validateSummarizerPrompt(prompt string) error {
 	prevSummaryIdentifier := "{{.PrevSummary}}"
-  messagesJoinedIdentifier := "{{.MessagesJoined}}"
+    messagesJoinedIdentifier := "{{.MessagesJoined}}"
 
 	isCustomPromptValid := strings.Contains(prompt, prevSummaryIdentifier) &&
 		strings.Contains(prompt, messagesJoinedIdentifier)
@@ -293,7 +293,7 @@ func incrementalSummarizer(
 	}
 
 	customSummaryPromptTemplateAnthropic := appState.Config.CustomPrompts.SummarizerPrompts.Anthropic
-  customSummaryPromptTemplateOpenAI := appState.Config.CustomPrompts.SummarizerPrompts.OpenAI
+    customSummaryPromptTemplateOpenAI := appState.Config.CustomPrompts.SummarizerPrompts.OpenAI
 
 	var summaryPromptTemplate string
 	switch appState.Config.LLM.Service {
