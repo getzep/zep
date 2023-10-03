@@ -8,8 +8,13 @@ out/
 *.dll
 *.so
 *.dylib
+
+# Secrets
 .env
 .env.local
+
+# Test data
+test_data
 
 # Test binary, built with `go test -c`
 *.test

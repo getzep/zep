@@ -917,6 +917,10 @@ video {
   max-width: 64rem;
 }
 
+.max-w-\[250ch\] {
+  max-width: 250ch;
+}
+
 .max-w-\[50rem\] {
   max-width: 50rem;
 }
@@ -1058,6 +1062,12 @@ video {
 .gap-x-6 {
   -moz-column-gap: 1.5rem;
        column-gap: 1.5rem;
+}
+
+.space-x-4 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-x-reverse: 0;
+  margin-right: calc(1rem * var(--tw-space-x-reverse));
+  margin-left: calc(1rem * calc(1 - var(--tw-space-x-reverse)));
 }
 
 .space-y-1 > :not([hidden]) ~ :not([hidden]) {
