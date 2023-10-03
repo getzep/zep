@@ -104,6 +104,12 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 		dateCreated := generateTimeLastNDays(14)
 		collectionName := strings.ToLower(gofakeit.Color() + gofakeit.AchAccount())
 		tableName := generateTestTableName(collectionName, embeddingDimensions[0])
+		var indexType models.IndexType
+		if i%2 == 0 {
+			indexType = "ivfflat"
+		} else {
+			indexType = "hnsw"
+		}
 
 		collections[i] = DocumentCollectionSchema{
 			DocumentCollection: models.DocumentCollection{
@@ -120,7 +126,7 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 				DistanceFunction:    "cosine",
 				IsNormalized:        gofakeit.Bool(),
 				IsIndexed:           gofakeit.Bool(),
-				IndexType:           "ivfflat",
+				IndexType:           indexType,
 				ListCount:           gofakeit.Number(1, 100),
 				ProbeCount:          gofakeit.Number(1, 100),
 			},
