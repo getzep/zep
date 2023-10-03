@@ -250,10 +250,10 @@ func processOverLimitMessages(
 	}, nil
 }
 
-prevSummaryIdentifier := "{{.PrevSummary}}"
-messagesJoinedIdentifier := "{{.MessagesJoined}}"
-
 func validateSummarizerPrompt(prompt string) error {
+	prevSummaryIdentifier := "{{.PrevSummary}}"
+  messagesJoinedIdentifier := "{{.MessagesJoined}}"
+
 	isCustomPromptValid := strings.Contains(prompt, prevSummaryIdentifier) &&
 		strings.Contains(prompt, messagesJoinedIdentifier)
 
@@ -292,12 +292,23 @@ func incrementalSummarizer(
 		MessagesJoined: messagesJoined,
 	}
 
+	customSummaryPromptTemplateAnthropic := appState.Config.CustomPrompts.SummarizerPrompts.Anthropic
+  customSummaryPromptTemplateOpenAI := appState.Config.CustomPrompts.SummarizerPrompts.OpenAI
+
 	var summaryPromptTemplate string
 	switch appState.Config.LLM.Service {
 	case "openai":
-		summaryPromptTemplate = summaryPromptTemplateOpenAI
+		if customSummaryPromptTemplateOpenAI != "" {
+			summaryPromptTemplate = customSummaryPromptTemplateOpenAI
+		} else {
+			summaryPromptTemplate = defaultSummaryPromptTemplateOpenAI
+		}
 	case "anthropic":
-		summaryPromptTemplate = summaryPromptTemplateAnthropic
+		if customSummaryPromptTemplateAnthropic != "" {
+			summaryPromptTemplate = customSummaryPromptTemplateAnthropic
+		} else {
+			summaryPromptTemplate = defaultSummaryPromptTemplateAnthropic
+		}
 	default:
 		return "", 0, fmt.Errorf("unknown LLM service: %s", appState.Config.LLM.Service)
 	}

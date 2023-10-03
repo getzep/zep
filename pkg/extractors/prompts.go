@@ -72,19 +72,6 @@ New lines of conversation:
 New summary:
 `
 
-summaryPromptTemplateAnthropic := defaultSummaryPromptTemplateAnthropic
-summaryPromptTemplateOpenAI := defaultSummaryPromptTemplateOpenAI
-
-func init() {
-	if appState.Config.CustomPrompts.SummarizerPrompt.Anthropic != "" {
-		SummaryPromptTemplateAnthropic = config.CustomSummaryPromptTemplateAnthropic
-	}
-
-	if appState.Config.CustomPrompts.SummarizerPrompt.OpenAI != "" {
-		SummaryPromptTemplateOpenAI = config.CustomSummaryPromptTemplateOpenAI
-	}
-}
-
 type SummaryPromptTemplateData struct {
 	PrevSummary    string
 	MessagesJoined string

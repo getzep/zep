@@ -16,7 +16,7 @@ type Config struct {
 	CustomPrompts CustomPromptsConfig `mapstructure:"custom_prompts"`
 }
 
-type CustomPromptConfig struct {
+type CustomPromptsConfig struct {
 	SummarizerPrompts ExtractorPromptsConfig `mapstructure:"summarizer_prompts"`
 }
 
