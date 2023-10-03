@@ -12,60 +12,116 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/oiime/logrusbun"
 	"github.com/sirupsen/logrus"
 	"github.com/uptrace/bun"
 
-	"github.com/spf13/viper"
-
-	"github.com/joho/godotenv"
-
 	"github.com/getzep/zep/config"
 )
 
-var testConfig *config.Config
-
-func init() {
-	var err error
-	testConfig, err = initConfig()
-	if err != nil {
-		panic(err)
+// testConfigDefaults returns a config.Config with default values for testing.
+// It also loads secrets from .env file or environment variables.
+func testConfigDefaults() (*config.Config, error) {
+	testConfig := &config.Config{
+		LLM: config.LLM{
+			Service: "openai",
+			Model:   "gpt-3.5-turbo",
+		},
+		NLP: config.NLP{
+			ServerURL: "http://localhost:5557",
+		},
+		Memory: config.MemoryConfig{
+			MessageWindow: 12,
+		},
+		Extractors: config.ExtractorsConfig{
+			Documents: config.DocumentExtractorsConfig{
+				Embeddings: config.EmbeddingsConfig{
+					Enabled:    true,
+					Dimensions: 1536,
+					Service:    "openai",
+				},
+			},
+			Messages: config.MessageExtractorsConfig{
+				Summarizer: config.SummarizerConfig{
+					Enabled: true,
+				},
+				Embeddings: config.EmbeddingsConfig{
+					Enabled:    true,
+					Dimensions: 1536,
+					Service:    "openai",
+				},
+			},
+		},
+		Store: config.StoreConfig{
+			Type: "postgres",
+			Postgres: config.PostgresConfig{
+				DSN: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable",
+			},
+		},
+		Server: config.ServerConfig{
+			Host:       "0.0.0.0",
+			Port:       8000,
+			WebEnabled: true,
+		},
+		Auth: config.AuthConfig{
+			Secret:   "do-not-use-this-secret-in-production",
+			Required: false,
+		},
+		DataConfig: config.DataConfig{
+			PurgeEvery: 60,
+		},
+		Log: config.LogConfig{
+			Level: "info",
+		},
 	}
-}
 
-func GetDSN() string {
-	var testDsn = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
-	dsnFromEnv := viper.GetString("store.postgres.dsn")
-	if dsnFromEnv != "" {
-		return dsnFromEnv
-	}
-	return testDsn
-}
-
-func initConfig() (*config.Config, error) {
 	projectRoot, err := FindProjectRoot()
 	if err != nil {
 		return nil, fmt.Errorf("failed to find project root: %v", err)
 	}
+
 	// load env vars from .env
 	err = godotenv.Load(filepath.Join(projectRoot, ".env"))
 	if err != nil {
 		fmt.Println(".env file not found or unable to load")
 	}
-	configPath := filepath.Join(projectRoot, "config.yaml")
-	cfg, err := config.LoadConfig(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %v", err)
+
+	// Load secrets from environment variables
+	for key, envVar := range config.EnvVars {
+		switch key {
+		case "llm.anthropic_api_key":
+			testConfig.LLM.AnthropicAPIKey = os.Getenv(envVar)
+		case "llm.openai_api_key":
+			testConfig.LLM.OpenAIAPIKey = os.Getenv(envVar)
+		case "auth.secret":
+			testConfig.Auth.Secret = os.Getenv(envVar)
+		case "development":
+			testConfig.Development = os.Getenv(envVar) == "true"
+		}
 	}
 
-	cfg.LLM.Service = "openai"
-	cfg.LLM.Model = "gpt-3.5-turbo"
+	// load postgres config from env
+	p := os.Getenv("ZEP_STORE_POSTGRES_DSN")
+	if p != "" {
+		testConfig.Store.Postgres.DSN = p
+	}
 
-	return cfg, nil
+	// load nlp server config from env
+	n := os.Getenv("ZEP_NLP_SERVER_URL")
+	if n != "" {
+		testConfig.NLP.ServerURL = n
+	}
+
+	return testConfig, nil
 }
 
 func NewTestConfig() *config.Config {
-	return testConfig
+	c, err := testConfigDefaults()
+	if err != nil {
+		panic(err)
+	}
+	return c
 }
 
 func GenerateRandomSessionID(length int) (string, error) {

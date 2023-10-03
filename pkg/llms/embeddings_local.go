@@ -9,11 +9,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/avast/retry-go/v4"
+	"github.com/hashicorp/go-retryablehttp"
 
 	"github.com/getzep/zep/pkg/models"
 )
 
+const MaxLocalEmbedderRetryAttempts = 5
+const LocalEmbedderTimeout = 60 * time.Second
+
+// embedTextsLocal embeds a slice of texts using the local embeddings service
 func embedTextsLocal(
 	ctx context.Context,
 	appState *models.AppState,
@@ -43,20 +47,7 @@ func embedTextsLocal(
 		return nil, err
 	}
 
-	var bodyBytes []byte
-	// Retry POST request to entity extractor 3 times with 1 second delay.
-	err = retry.Do(
-		func() error {
-			var err error
-			bodyBytes, err = makeEmbedRequest(ctx, url, jsonBody)
-			if err != nil {
-				return err
-			}
-			return nil
-		},
-		retry.Attempts(3),
-		retry.Delay(time.Second),
-	)
+	bodyBytes, err := makeEmbedRequest(ctx, url, jsonBody)
 	if err != nil {
 		return nil, err
 	}
@@ -75,15 +66,33 @@ func embedTextsLocal(
 	return m, nil
 }
 
+// makeEmbedRequest makes a POST request to the local embeddings service. It
+// returns the response body as a byte slice. A retryablehttp.Client is used to
+// make the request.
 func makeEmbedRequest(ctx context.Context, url string, jsonBody []byte) ([]byte, error) {
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(jsonBody))
+	// we set both the context and the request timeout (below) to the same value
+	// so that the request will be cancelled if the context times out and/or the
+	// request times out
+	ctx, cancel := context.WithTimeout(ctx, LocalEmbedderTimeout)
+	defer cancel()
+
+	retryableHTTPClient := NewRetryableHTTPClient(
+		MaxLocalEmbedderRetryAttempts,
+		LocalEmbedderTimeout,
+	)
+
+	req, err := retryablehttp.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		url,
+		bytes.NewBuffer(jsonBody),
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := retryableHTTPClient.Do(req)
 	if err != nil {
 		log.Error("Error making POST request:", err)
 		return nil, err

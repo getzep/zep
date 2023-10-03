@@ -4,6 +4,7 @@ services:
     image: ghcr.io/getzep/postgres:latest
     container_name: zep-postgres
     restart: on-failure
+    shm_size: "128mb"  # Increase this if vacuuming fails with a "no space left on device" error
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres

@@ -104,6 +104,12 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 		dateCreated := generateTimeLastNDays(14)
 		collectionName := strings.ToLower(gofakeit.Color() + gofakeit.AchAccount())
 		tableName := generateTestTableName(collectionName, embeddingDimensions[0])
+		var indexType models.IndexType
+		if i%2 == 0 {
+			indexType = "ivfflat"
+		} else {
+			indexType = "hnsw"
+		}
 
 		collections[i] = DocumentCollectionSchema{
 			DocumentCollection: models.DocumentCollection{
@@ -120,6 +126,7 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 				DistanceFunction:    "cosine",
 				IsNormalized:        gofakeit.Bool(),
 				IsIndexed:           gofakeit.Bool(),
+				IndexType:           indexType,
 				ListCount:           gofakeit.Number(1, 100),
 				ProbeCount:          gofakeit.Number(1, 100),
 			},
@@ -233,7 +240,7 @@ func writeFixtureToYAML[T Row](fixtures Fixtures[T], outputDir, filename string)
 	fmt.Printf("Fixtures generated successfully in %s!\n", filename)
 }
 
-func createTestDocumentTables(ctx context.Context, db *bun.DB) error {
+func createTestDocumentTables(ctx context.Context, appState *models.AppState, db *bun.DB) error {
 	type Result struct {
 		TableName           string `bun:"table_name"`
 		EmbeddingDimensions int    `bun:"embedding_dimensions"`
@@ -252,7 +259,7 @@ func createTestDocumentTables(ctx context.Context, db *bun.DB) error {
 
 	// Create tables for each DocumentCollection
 	for _, table := range results {
-		err = createDocumentTable(ctx, db, table.TableName, table.EmbeddingDimensions)
+		err = createDocumentTable(ctx, appState, db, table.TableName, table.EmbeddingDimensions)
 		if err != nil {
 			return fmt.Errorf("failed to create table %s: %w", table.TableName, err)
 		}
@@ -325,6 +332,12 @@ GRANT ALL ON SCHEMA public TO public;`
 		return fmt.Errorf("failed to drop schema: %w", err)
 	}
 
+	// Enable vector extension
+	err = enablePgVectorExtension(ctx, db)
+	if err != nil {
+		return fmt.Errorf("failed to enable pg_vector extension: %w", err)
+	}
+
 	err = CreateSchema(ctx, appState, db)
 	if err != nil {
 		return fmt.Errorf("failed to create schema: %w", err)
@@ -358,7 +371,7 @@ GRANT ALL ON SCHEMA public TO public;`
 		}
 	}
 
-	err = createTestDocumentTables(ctx, db)
+	err = createTestDocumentTables(ctx, appState, db)
 	if err != nil {
 		return fmt.Errorf("failed to create test document tables: %w", err)
 	}

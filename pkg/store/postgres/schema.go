@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/uptrace/bun/driver/pgdriver"
 
 	"github.com/getzep/zep/pkg/llms"
@@ -260,6 +261,7 @@ func (*MessageStoreSchema) AfterCreateTable(
 			Index(fmt.Sprintf("memstore_%s_idx", col)).
 			IfNotExists().
 			Column(col).
+			IfNotExists().
 			Exec(ctx)
 		if err != nil {
 			return err
@@ -277,6 +279,7 @@ func (*MessageVectorStoreSchema) AfterCreateTable(
 		Index("mem_vec_store_session_id_idx").
 		IfNotExists().
 		Column("session_id").
+		IfNotExists().
 		Exec(ctx)
 	return err
 }
@@ -290,6 +293,7 @@ func (*SummaryStoreSchema) AfterCreateTable(
 		Index("sumstore_session_id_idx").
 		IfNotExists().
 		Column("session_id").
+		IfNotExists().
 		Exec(ctx)
 	return err
 }
@@ -303,6 +307,7 @@ func (*DocumentCollectionSchema) AfterCreateTable(
 		Index("document_collection_name_idx").
 		IfNotExists().
 		Column("name").
+		IfNotExists().
 		Exec(ctx)
 	return err
 }
@@ -345,6 +350,7 @@ var messageTableList = []bun.BeforeCreateTableHook{
 // If the table already exists, the table is not recreated.
 func createDocumentTable(
 	ctx context.Context,
+	appState *models.AppState,
 	db *bun.DB,
 	tableName string,
 	embeddingDimensions int,
@@ -362,7 +368,7 @@ func createDocumentTable(
 		return fmt.Errorf("error creating document table: %w", err)
 	}
 
-	// Create document_id indexe
+	// Create document_id index
 	_, err = db.NewCreateIndex().
 		Model(schema).
 		// override default table name
@@ -374,6 +380,32 @@ func createDocumentTable(
 		return fmt.Errorf("error creating session_session_id_idx: %w", err)
 	}
 
+	// If HNSW indexes are available, create an HNSW index on the embedding column
+	if appState.Config.Store.Postgres.AvailableIndexes.HSNW {
+		err = createHNSWIndex(ctx, db, tableName, "embedding")
+		if err != nil {
+			return fmt.Errorf("error creating hnsw index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// enablePgVectorExtension creates the pgvector extension if it does not exist and updates it if it is out of date.
+func enablePgVectorExtension(ctx context.Context, db *bun.DB) error {
+	// Create pgvector extension if it does not exist
+	_, err := db.Exec("CREATE EXTENSION IF NOT EXISTS vector")
+	if err != nil {
+		return fmt.Errorf("error creating pgvector extension: %w", err)
+	}
+
+	// if this is an upgrade, we may need to update the pgvector extension
+	// this is a no-op if the extension is already up to date
+	_, err = db.Exec("ALTER EXTENSION vector UPDATE")
+	if err != nil {
+		return fmt.Errorf("error updating pgvector extension: %w", err)
+	}
+
 	return nil
 }
 
@@ -383,11 +415,6 @@ func CreateSchema(
 	appState *models.AppState,
 	db *bun.DB,
 ) error {
-	_, err := db.Exec("CREATE EXTENSION IF NOT EXISTS vector")
-	if err != nil {
-		return fmt.Errorf("error creating pgvector extension: %w", err)
-	}
-
 	// Create new tableList slice and append DocumentCollectionSchema to it
 	tableList := append( //nolint:gocritic
 		messageTableList,
@@ -416,10 +443,49 @@ func CreateSchema(
 		return fmt.Errorf("error checking message embedding dimensions: %w", err)
 	}
 
+	// Create HNSW index on messages_embeddings if available
+	t := "message_embedding"
+	c := "embedding"
+	if appState.Config.Store.Postgres.AvailableIndexes.HSNW {
+		if err := createHNSWIndex(ctx, db, t, c); err != nil {
+			return fmt.Errorf("error creating hnsw index: %w", err)
+		}
+	}
+
 	// apply migrations
 	if err := migrations.Migrate(ctx, db); err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
+
+	return nil
+}
+
+// createHNSWIndex creates an HNSW index on the given table and column if it does not exist.
+// The index is created with the default M and efConstruction values. Only vector_cosine_ops is supported.
+func createHNSWIndex(ctx context.Context, db *bun.DB, table, column string) error {
+	const (
+		m              = 16
+		efConstruction = 64
+	)
+
+	idx := table + "_" + column + "_hnsw_idx"
+
+	log.Infof("creating hnsw index on %s.%s if it does not exist", table, column)
+
+	_, err := db.ExecContext(
+		ctx,
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS ? ON ? USING hnsw (? vector_cosine_ops) WITH (M = ?, ef_construction = ?);",
+		bun.Safe(idx),
+		bun.Ident(table),
+		bun.Ident(column),
+		m,
+		efConstruction,
+	)
+	if err != nil {
+		return err
+	}
+
+	log.Infof("created hnsw index successfully on %s.%s if it did not exist", table, column)
 
 	return nil
 }
@@ -503,17 +569,108 @@ END $$;`
 
 // NewPostgresConn creates a new bun.DB connection to a postgres database using the provided DSN.
 // The connection is configured to pool connections based on the number of PROCs available.
-func NewPostgresConn(appState *models.AppState) *bun.DB {
+func NewPostgresConn(appState *models.AppState) (*bun.DB, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	maxOpenConns := 4 * runtime.GOMAXPROCS(0)
 
 	// WithReadTimeout is 10 minutes to avoid timeouts when creating indexes.
 	// TODO: This is not ideal. Use separate connections for index creation?
 	sqldb := sql.OpenDB(
-		pgdriver.NewConnector(pgdriver.WithDSN(appState.Config.Store.Postgres.DSN), pgdriver.WithReadTimeout(10*time.Minute)),
+		pgdriver.NewConnector(
+			pgdriver.WithDSN(appState.Config.Store.Postgres.DSN),
+			pgdriver.WithReadTimeout(10*time.Minute),
+		),
 	)
 	sqldb.SetMaxOpenConns(maxOpenConns)
 	sqldb.SetMaxIdleConns(maxOpenConns)
 
 	db := bun.NewDB(sqldb, pgdialect.New())
-	return db
+
+	// Enable pgvector extension
+	err := enablePgVectorExtension(ctx, db)
+	if err != nil {
+		log.Print("error enabling pgvector extension: ", err)
+		return nil, err
+	}
+
+	// IVFFLAT indexes are always available
+	appState.Config.Store.Postgres.AvailableIndexes.IVFFLAT = true
+
+	// Check if HNSW indexes are available
+	isHNSW, err := isHNSWAvailable(ctx, db)
+	if err != nil {
+		log.Print("error checking if hnsw indexes are available: ", err)
+		return nil, err
+	}
+	if isHNSW {
+		appState.Config.Store.Postgres.AvailableIndexes.HSNW = true
+	}
+
+	return db, nil
+}
+
+// isHNSWAvailable checks if the vector extension version is 0.5.0+.
+func isHNSWAvailable(ctx context.Context, db *bun.DB) (bool, error) {
+	const minVersion = "0.5.0"
+	requiredVersion, err := semver.NewVersion(minVersion)
+	if err != nil {
+		return false, fmt.Errorf("error parsing required vector extension version: %w", err)
+	}
+
+	var version string
+	err = db.NewSelect().
+		Column("extversion").
+		TableExpr("pg_extension").
+		Where("extname = 'vector'").
+		Scan(ctx, &version)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// The vector extension is not installed
+			log.Debug("vector extension not installed")
+			return false, nil
+		}
+		// An error occurred while executing the query
+		return false, fmt.Errorf("error checking vector extension version: %w", err)
+	}
+
+	thisVersion, err := semver.NewVersion(version)
+	if err != nil {
+		return false, fmt.Errorf("error parsing vector extension version: %w", err)
+	}
+
+	// Compare the version numbers
+	if requiredVersion.GreaterThan(thisVersion) {
+		// The vector extension version is < 0.5.0
+		log.Infof("vector extension version is < %s. hnsw indexing not available", minVersion)
+		return false, nil
+	}
+
+	// The vector extension version is >= 0.5.0
+	log.Infof("vector extension version is >= %s. hnsw indexing available", minVersion)
+
+	return true, nil
+}
+
+type IndexStatus struct {
+	Phase       string `bun:"phase"`
+	TuplesTotal int    `bun:"tuples_total"`
+	TuplesDone  int    `bun:"tuples_done"`
+}
+
+// GetIndexStatus queries for an index's status given an index name.
+func GetIndexStatus(ctx context.Context, db *bun.DB, indexName string) (IndexStatus, error) {
+	var status IndexStatus
+	err := db.NewSelect().
+		ColumnExpr("i.phase, i.tuples_total, i.tuples_done").
+		TableExpr("pg_stat_progress_create_index AS i").
+		Join("pg_class AS c ON c.oid = i.index_relid").
+		Where("c.relname = ?", indexName).
+		Scan(ctx, &status)
+	if err != nil {
+		return IndexStatus{}, fmt.Errorf("error querying index status: %w", err)
+	}
+
+	return status, nil
 }

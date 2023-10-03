@@ -14,25 +14,40 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
-const TaskChunkSize = 150
-const PoolSize = 2
-const PoolBuffer = 10
+const DefaultTaskChunkSize = 1000
+const DefaultPoolSize = 2
+const DefaultPoolBuffer = 1000
 
-// TODO move pool size and buffer to config
+// NewDocEmbeddingProcessor creates a new DocEmbeddingProcessor
 func NewDocEmbeddingProcessor(
 	appState *models.AppState,
 	embeddingTaskCh chan []models.DocEmbeddingTask,
 	embeddingUpdateCh chan []models.DocEmbeddingUpdate,
 ) *DocEmbeddingProcessor {
+	maxProcs := DefaultPoolSize
+	if appState.Config.Extractors.Documents.Embeddings.MaxProcs > 0 {
+		maxProcs = appState.Config.Extractors.Documents.Embeddings.MaxProcs
+	}
+	taskChunkSize := DefaultTaskChunkSize
+	if appState.Config.Extractors.Documents.Embeddings.ChunkSize > 0 {
+		taskChunkSize = appState.Config.Extractors.Documents.Embeddings.ChunkSize
+	}
+	poolBuffer := DefaultPoolBuffer
+	if appState.Config.Extractors.Documents.Embeddings.BufferSize > 0 {
+		poolBuffer = appState.Config.Extractors.Documents.Embeddings.BufferSize
+	}
+
 	return &DocEmbeddingProcessor{
 		appState:          appState,
 		EmbeddingTaskCh:   embeddingTaskCh,
 		EmbeddingUpdateCh: embeddingUpdateCh,
-		PoolSize:          PoolSize,
-		PoolBuffer:        PoolBuffer,
+		PoolSize:          maxProcs,
+		PoolBuffer:        poolBuffer,
+		ChunkSize:         taskChunkSize,
 	}
 }
 
+// DocEmbeddingProcessor is a processor for embedding documents
 type DocEmbeddingProcessor struct {
 	appState          *models.AppState
 	model             *models.EmbeddingModel
@@ -42,9 +57,12 @@ type DocEmbeddingProcessor struct {
 	Pool              *pond.WorkerPool
 	PoolSize          int
 	PoolBuffer        int
+	ChunkSize         int
 	once              sync.Once
 }
 
+// Run starts the DocEmbeddingProcessor. It is safe to call this multiple times.
+// It will only start the processor once.
 func (ep *DocEmbeddingProcessor) Run(
 	ctx context.Context,
 ) error {
@@ -65,6 +83,9 @@ func (ep *DocEmbeddingProcessor) Run(
 	return nil
 }
 
+// processor is the main loop for the DocEmbeddingProcessor. It
+// receives embedding tasks, Submits them to the pool, embeds the documents,
+// and sends the updates to the document store.
 func (ep *DocEmbeddingProcessor) processor(ctx context.Context) {
 	pool := pond.New(ep.PoolSize, ep.PoolBuffer)
 	defer pool.StopAndWait()
@@ -77,7 +98,7 @@ func (ep *DocEmbeddingProcessor) processor(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case tasks := <-ep.EmbeddingTaskCh:
-			taskChunks := chunkTasks(tasks, TaskChunkSize)
+			taskChunks := chunkTasks(tasks, ep.ChunkSize)
 			for _, taskChunk := range taskChunks {
 				// Capture range variable
 				taskChunk := taskChunk
@@ -94,6 +115,8 @@ func (ep *DocEmbeddingProcessor) processor(ctx context.Context) {
 	}
 }
 
+// processEmbeddingTasks embeds the documents in the given tasks and returns
+// the updates to processor.
 func (ep *DocEmbeddingProcessor) processEmbeddingTasks(
 	ctx context.Context,
 	tasks []models.DocEmbeddingTask,
@@ -130,6 +153,7 @@ func (ep *DocEmbeddingProcessor) processEmbeddingTasks(
 	return updates, nil
 }
 
+// chunkTasks splits the given tasks into chunks of the given size.
 func chunkTasks(tasks []models.DocEmbeddingTask, chunkSize int) [][]models.DocEmbeddingTask {
 	var chunks [][]models.DocEmbeddingTask
 	for i := 0; i < len(tasks); i += chunkSize {

@@ -83,7 +83,7 @@ func (vci *VectorColIndex) CalculateProbes() error {
 	return nil
 }
 
-func (vci *VectorColIndex) CreateIndex(ctx context.Context, force bool) error {
+func (vci *VectorColIndex) CreateIndex(_ context.Context, force bool) error {
 	// Check if a mutex already exists for this collection. If not, create one.
 	if _, ok := IndexMutexMap[vci.Collection.Name]; !ok {
 		IndexMutexMap[vci.Collection.Name] = &sync.Mutex{}
