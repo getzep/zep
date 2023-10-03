@@ -329,6 +329,15 @@ func (ds *DocumentStore) CreateCollectionIndex(
 		return fmt.Errorf("failed to get collection: %w", err)
 	}
 
+	if collection.IndexType != "ivfflat" {
+		log.Warningf(
+			"collection %s is of type %s, which is not supported for manual indexing",
+			collection.Name,
+			collection.IndexType,
+		)
+		return nil
+	}
+
 	vci, err := NewVectorColIndex(ctx, ds.appState, collection.DocumentCollection)
 	if err != nil {
 		return fmt.Errorf("failed to create vector column index: %w", err)

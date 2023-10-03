@@ -57,11 +57,13 @@ var loadFixturesCmd = &cobra.Command{
 		appState := &models.AppState{
 			Config: cfg,
 		}
-		db := postgres.NewPostgresConn(appState)
+		db, err := postgres.NewPostgresConn(appState)
+		if err != nil {
+			log.Fatalf("Failed to connect to database: %v\n", err)
+		}
 		err = postgres.LoadFixtures(context.Background(), appState, db, fixturePath)
 		if err != nil {
-			fmt.Printf("Failed to load fixtures: %v\n", err)
-			os.Exit(1)
+			log.Fatalf("Failed to load fixtures: %v\n", err)
 		}
 		fmt.Println("Fixtures loaded successfully.")
 	},

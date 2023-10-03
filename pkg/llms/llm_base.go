@@ -3,6 +3,7 @@ package llms
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/getzep/zep/pkg/models"
 
@@ -14,7 +15,6 @@ import (
 )
 
 const DefaultTemperature = 0.0
-const MaxAPIRequestAttempts = 5
 const InvalidLLMModelError = "llm model is not set or is invalid"
 
 var log = internal.GetLogger()
@@ -130,10 +130,12 @@ func Float64ToFloat32Matrix(in [][]float64) [][]float32 {
 	return out
 }
 
-func NewRetryableHTTPClient() *retryablehttp.Client {
+func NewRetryableHTTPClient(retryMax int, timeout time.Duration) *retryablehttp.Client {
 	retryableHttpClient := retryablehttp.NewClient()
-	retryableHttpClient.RetryMax = MaxAPIRequestAttempts
+	retryableHttpClient.RetryMax = retryMax
+	retryableHttpClient.HTTPClient.Timeout = timeout
 	retryableHttpClient.Logger = log
+	retryableHttpClient.Backoff = retryablehttp.DefaultBackoff
 
 	return retryableHttpClient
 }

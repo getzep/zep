@@ -15,7 +15,6 @@ func NewCollectionList(
 	documentStore models.DocumentStore[*bun.DB],
 	cursor int64,
 	limit int64,
-	path string,
 ) *CollectionList {
 	return &CollectionList{
 		DocumentStore: documentStore,
@@ -32,7 +31,7 @@ type CollectionList struct {
 	Limit         int64
 }
 
-func (c *CollectionList) Get(ctx context.Context, appState *models.AppState) error {
+func (c *CollectionList) Get(ctx context.Context, _ *models.AppState) error {
 	collections, err := c.DocumentStore.GetCollectionList(ctx)
 	if err != nil {
 		return err
@@ -49,7 +48,7 @@ type CollectionDetails struct {
 func GetCollectionListHandler(appState *models.AppState) http.HandlerFunc {
 	const path = "/admin/collections"
 	return func(w http.ResponseWriter, r *http.Request) {
-		collectionList := NewCollectionList(appState.DocumentStore, 0, 0, path)
+		collectionList := NewCollectionList(appState.DocumentStore, 0, 0)
 
 		err := collectionList.Get(r.Context(), appState)
 		if err != nil {

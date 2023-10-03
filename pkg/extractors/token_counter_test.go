@@ -83,4 +83,7 @@ func TestTokenCountExtractor_Anthropic(t *testing.T) {
 	for i := range memory.Messages {
 		assert.Zero(t, memory.Messages[i].TokenCount)
 	}
+
+	// reset config
+	appState.Config = testutils.NewTestConfig()
 }

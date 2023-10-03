@@ -73,4 +73,7 @@ func TestIntentExtractor_Extract_Anthropic(t *testing.T) {
 	appState.LLMClient = llmClient
 
 	runTestIntentExtractor(t, appState)
+
+	//
+	appState.Config = testutils.NewTestConfig()
 }

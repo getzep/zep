@@ -5,7 +5,8 @@ import (
 	"html/template"
 	"reflect"
 
-	"github.com/Masterminds/sprig/v3"
+	"github.com/dustin/go-humanize"
+	"github.com/getzep/sprig/v3"
 )
 
 func percent(a, b int) int {
@@ -74,8 +75,10 @@ func HTMLEscapeStruct(data interface{}) interface{} {
 
 func TemplateFuncs() template.FuncMap {
 	funcMap := template.FuncMap{
-		"Percent": percent,
-		"ToJSON":  JSONSerializeHTML,
+		"Percent":      percent,
+		"ToJSON":       JSONSerializeHTML,
+		"CommaInt":     humanize.Comma,
+		"RelativeTime": humanize.Time,
 	}
 
 	for k, v := range sprig.FuncMap() {

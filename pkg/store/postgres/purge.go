@@ -22,7 +22,16 @@ func purgeDeleted(ctx context.Context, db *bun.DB) error {
 			return fmt.Errorf("error purging rows from %T: %w", schema, err)
 		}
 	}
-	log.Info("completed purging memory store")
+
+	// Vacuum database post-purge. This is avoids issues with HNSW indexes
+	// after deleting a large number of rows.
+	// https://github.com/pgvector/pgvector/issues/244
+	_, err := db.ExecContext(ctx, "VACUUM ANALYZE")
+	if err != nil {
+		return fmt.Errorf("error vacuuming database: %w", err)
+	}
+
+	log.Info("completed purging store")
 
 	return nil
 }
