@@ -63,7 +63,7 @@ lint:
 ## Go Watch for web development
 ## https://github.com/mitranim/gow
 gow:
-	gow -e=go,mod,html,css -i=node_modules run .
+	gow -e=go,mod,html,js,css -i=node_modules run .
 
 # Build web assets
 web:
