@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/getzep/zep/pkg/testutils"
 
@@ -65,6 +66,9 @@ func TestUserStoreDAO(t *testing.T) {
 		}
 		createdUser, err := userStore.Create(ctx, user)
 		assert.NoError(t, err)
+
+		// Wait a second
+		<-time.After(1 * time.Second)
 
 		// Update the user with zero values
 		userUpdate := &models.UpdateUserRequest{

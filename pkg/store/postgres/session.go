@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/driver/pgdriver"
 )
 
 var _ models.SessionManager = &SessionDAO{}
@@ -47,6 +49,16 @@ func (dao *SessionDAO) Create(
 		Returning("*").
 		Exec(ctx)
 	if err != nil {
+		if err, ok := err.(pgdriver.Error); ok && err.IntegrityViolation() {
+			if strings.Contains(err.Error(), "user") {
+				return nil, models.NewBadRequestError(
+					"user does not exist with user_id: " + *session.UserID,
+				)
+			}
+			return nil, models.NewBadRequestError(
+				"session already exists with session_id: " + session.SessionID,
+			)
+		}
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
