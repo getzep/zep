@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/getzep/zep/internal"
+	"github.com/getzep/zep/pkg/models"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -71,7 +72,7 @@ func RenderError(w http.ResponseWriter, err error, status int) {
 		// Don't log not found errors
 		log.Error(err)
 	}
-	if strings.Contains(err.Error(), "is deleted") {
+	if strings.Contains(err.Error(), "is deleted") || errors.Is(err, models.ErrBadRequest) {
 		status = http.StatusBadRequest
 	}
 	http.Error(w, err.Error(), status)
