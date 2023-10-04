@@ -11,6 +11,7 @@ import (
 	"github.com/getzep/zep/pkg/models"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/driver/pgdriver"
 )
 
 func NewDocumentCollectionDAO(
@@ -65,8 +66,8 @@ func (dc *DocumentCollectionDAO) Create(
 		Returning("*").
 		Exec(ctx)
 	if err != nil {
-		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
-			return fmt.Errorf("collection with name %s already exists", dc.Name)
+		if err, ok := err.(pgdriver.Error); ok && err.IntegrityViolation() {
+			return models.NewBadRequestError("collection already exists: " + dc.Name)
 		}
 		return fmt.Errorf("failed to insert collection: %w", err)
 	}
@@ -270,6 +271,9 @@ func (dc *DocumentCollectionDAO) CreateDocuments(
 		Returning("uuid").
 		Exec(ctx)
 	if err != nil {
+		if err, ok := err.(pgdriver.Error); ok && err.IntegrityViolation() {
+			return nil, models.NewBadRequestError("document_id already exists")
+		}
 		if strings.Contains(err.Error(), "different vector dimensions") {
 			return nil, store.NewEmbeddingMismatchError(err)
 		}

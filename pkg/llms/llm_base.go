@@ -3,6 +3,7 @@ package llms
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/getzep/zep/pkg/models"
@@ -131,13 +132,32 @@ func Float64ToFloat32Matrix(in [][]float64) [][]float32 {
 }
 
 func NewRetryableHTTPClient(retryMax int, timeout time.Duration) *retryablehttp.Client {
-	retryableHttpClient := retryablehttp.NewClient()
-	retryableHttpClient.RetryMax = retryMax
-	retryableHttpClient.HTTPClient.Timeout = timeout
-	retryableHttpClient.Logger = log
-	retryableHttpClient.Backoff = retryablehttp.DefaultBackoff
+	retryableHTTPClient := retryablehttp.NewClient()
+	retryableHTTPClient.RetryMax = retryMax
+	retryableHTTPClient.HTTPClient.Timeout = timeout
+	retryableHTTPClient.Logger = log
+	retryableHTTPClient.Backoff = retryablehttp.DefaultBackoff
+	retryableHTTPClient.CheckRetry = retryPolicy
 
-	return retryableHttpClient
+	return retryableHTTPClient
+}
+
+// retryPolicy is a retryablehttp.CheckRetry function. It is used to determine
+// whether a request should be retried or not.
+func retryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	// do not retry on context.Canceled or context.DeadlineExceeded
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+
+	// Do not retry 400 errors as they're used by OpenAI to indicate maximum
+	// context length exceeded
+	if resp != nil && resp.StatusCode == 400 {
+		return false, err
+	}
+
+	shouldRetry, _ := retryablehttp.DefaultRetryPolicy(ctx, resp, err)
+	return shouldRetry, nil
 }
 
 // useOpenAIEmbeddings is true if OpenAI embeddings are enabled

@@ -9,6 +9,7 @@ import (
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/driver/pgdriver"
 )
 
 var _ models.UserStore = &UserStoreDAO{}
@@ -37,6 +38,11 @@ func (dao *UserStoreDAO) Create(
 	}
 	_, err := dao.db.NewInsert().Model(userDB).Returning("*").Exec(ctx)
 	if err != nil {
+		if err, ok := err.(pgdriver.Error); ok && err.IntegrityViolation() {
+			return nil, models.NewBadRequestError(
+				"user already exists with user_id: " + user.UserID,
+			)
+		}
 		return nil, err
 	}
 

@@ -316,7 +316,10 @@ func incrementalSummarizer(
 	return summary, tokensUsed, nil
 }
 
-func generateProgressiveSummarizerPrompt(appState *models.AppState, promptData SummaryPromptTemplateData) (string, error) {
+func generateProgressiveSummarizerPrompt(
+	appState *models.AppState,
+	promptData SummaryPromptTemplateData,
+) (string, error) {
 	customSummaryPromptTemplateAnthropic := appState.Config.CustomPrompts.SummarizerPrompts.Anthropic
 	customSummaryPromptTemplateOpenAI := appState.Config.CustomPrompts.SummarizerPrompts.OpenAI
 
