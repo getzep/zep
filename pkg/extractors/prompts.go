@@ -16,7 +16,7 @@ type IntentPromptTemplateData struct {
 	Input string
 }
 
-const summaryPromptTemplateAnthropic = `
+const defaultSummaryPromptTemplateAnthropic = `
 Review the Current Summary inside <current_summary></current_summary> XML tags, 
 and the New Lines of the provided conversation inside the <new_lines></new_lines> XML tags. Create a concise summary 
 of the conversation, adding from the <new_lines> to the <current_summary>.
@@ -47,7 +47,7 @@ singer and lists the founding members as Jimmy Page, John Paul Jones, and John B
 Provide a response immediately without preamble.
 `
 
-const summaryPromptTemplateOpenAI = `
+const defaultSummaryPromptTemplateOpenAI = `
 Review the Current Content, if there is one, and the New Lines of the provided conversation. Create a concise summary 
 of the conversation, adding from the New Lines to the Current summary.
 If the New Lines are meaningless, return the Current Content.
