@@ -16,15 +16,6 @@ type Config struct {
 	CustomPrompts CustomPromptsConfig `mapstructure:"custom_prompts"`
 }
 
-type CustomPromptsConfig struct {
-	SummarizerPrompts ExtractorPromptsConfig `mapstructure:"summarizer_prompts"`
-}
-
-type ExtractorPromptsConfig struct {
-	OpenAI    string `mapstructure:"openai"`
-	Anthropic string `mapstructure:"anthropic"`
-}
-
 type StoreConfig struct {
 	Type     string         `mapstructure:"type"`
 	Postgres PostgresConfig `mapstructure:"postgres"`
@@ -104,6 +95,15 @@ type DocumentExtractorsConfig struct {
 
 type SummarizerConfig struct {
 	Enabled bool `mapstructure:"enabled"`
+}
+
+type CustomPromptsConfig struct {
+	SummarizerPrompts ExtractorPromptsConfig `mapstructure:"summarizer_prompts"`
+}
+
+type ExtractorPromptsConfig struct {
+	OpenAI    string `mapstructure:"openai"`
+	Anthropic string `mapstructure:"anthropic"`
 }
 
 type EmbeddingsConfig struct {

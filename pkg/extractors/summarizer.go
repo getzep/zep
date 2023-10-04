@@ -259,7 +259,7 @@ func validateSummarizerPrompt(prompt string) error {
 
 	if !isCustomPromptValid {
 		return fmt.Errorf(
-			"Wrong summary prompt format. Please make sure it contains the identifiers %s and %s",
+			"wrong summary prompt format. please make sure it contains the identifiers %s and %s",
 			prevSummaryIdentifier, messagesJoinedIdentifier,
 		)
 	}
@@ -292,33 +292,7 @@ func incrementalSummarizer(
 		MessagesJoined: messagesJoined,
 	}
 
-	customSummaryPromptTemplateAnthropic := appState.Config.CustomPrompts.SummarizerPrompts.Anthropic
-	customSummaryPromptTemplateOpenAI := appState.Config.CustomPrompts.SummarizerPrompts.OpenAI
-
-	var summaryPromptTemplate string
-	switch appState.Config.LLM.Service {
-	case "openai":
-		if customSummaryPromptTemplateOpenAI != "" {
-			summaryPromptTemplate = customSummaryPromptTemplateOpenAI
-		} else {
-			summaryPromptTemplate = defaultSummaryPromptTemplateOpenAI
-		}
-	case "anthropic":
-		if customSummaryPromptTemplateAnthropic != "" {
-			summaryPromptTemplate = customSummaryPromptTemplateAnthropic
-		} else {
-			summaryPromptTemplate = defaultSummaryPromptTemplateAnthropic
-		}
-	default:
-		return "", 0, fmt.Errorf("unknown LLM service: %s", appState.Config.LLM.Service)
-	}
-
-	err := validateSummarizerPrompt(summaryPromptTemplate)
-	if err != nil {
-		return "", 0, err
-	}
-	
-	progressivePrompt, err := internal.ParsePrompt(summaryPromptTemplate, promptData)
+	progressivePrompt, err := generateProgressiveSummarizerPrompt(appState, promptData)
 	if err != nil {
 		return "", 0, err
 	}
@@ -340,4 +314,34 @@ func incrementalSummarizer(
 	}
 
 	return summary, tokensUsed, nil
+}
+
+func generateProgressiveSummarizerPrompt(appState *models.AppState, promptData SummaryPromptTemplateData) (string, error) {
+	customSummaryPromptTemplateAnthropic := appState.Config.CustomPrompts.SummarizerPrompts.Anthropic
+	customSummaryPromptTemplateOpenAI := appState.Config.CustomPrompts.SummarizerPrompts.OpenAI
+
+	var summaryPromptTemplate string
+	switch appState.Config.LLM.Service {
+	case "openai":
+		if customSummaryPromptTemplateOpenAI != "" {
+			summaryPromptTemplate = customSummaryPromptTemplateOpenAI
+		} else {
+			summaryPromptTemplate = defaultSummaryPromptTemplateOpenAI
+		}
+	case "anthropic":
+		if customSummaryPromptTemplateAnthropic != "" {
+			summaryPromptTemplate = customSummaryPromptTemplateAnthropic
+		} else {
+			summaryPromptTemplate = defaultSummaryPromptTemplateAnthropic
+		}
+	default:
+		return "", fmt.Errorf("unknown LLM service: %s", appState.Config.LLM.Service)
+	}
+
+	err := validateSummarizerPrompt(summaryPromptTemplate)
+	if err != nil {
+		return "", err
+	}
+
+	return internal.ParsePrompt(summaryPromptTemplate, promptData)
 }
