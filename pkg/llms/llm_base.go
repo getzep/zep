@@ -50,6 +50,11 @@ func NewLLMClient(ctx context.Context, cfg *config.Config) (models.ZepLLM, error
 			}
 			return NewOpenAILLM(ctx, cfg)
 		}
+		// if custom OpenAI Endpoint is set, do not validate model name
+		if cfg.LLM.OpenAIEndpoint != "" {
+			return NewOpenAILLM(ctx, cfg)
+		}
+		// Otherwise, validate model name
 		if _, ok := ValidOpenAILLMs[cfg.LLM.Model]; !ok {
 			return nil, fmt.Errorf(
 				"invalid llm model \"%s\" for %s",
@@ -113,6 +118,10 @@ var MaxLLMTokensMap = map[string]int{
 
 func GetLLMModelName(cfg *config.Config) (string, error) {
 	llmModel := cfg.LLM.Model
+	// only validate model name if OpenAI endpoint is not set
+	if cfg.LLM.OpenAIEndpoint != "" {
+		return llmModel, nil
+	}
 	if llmModel == "" || !ValidLLMMap[llmModel] {
 		return "", NewLLMError(InvalidLLMModelError, nil)
 	}

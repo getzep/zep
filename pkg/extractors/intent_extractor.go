@@ -125,7 +125,6 @@ func (ee *IntentExtractor) processMessage(
 	}
 
 	// Put the intent into the message metadata
-	log.Debugf("IntentExtractor: intentResponse: %+v", intentResponse)
 	err = appState.MemoryStore.PutMessageMetadata(
 		ctx,
 		appState,
