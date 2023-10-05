@@ -12,6 +12,7 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
+const MaxTokensFallback = 2048
 const SummaryMaxOutputTokens = 1024
 
 // Force compiler to validate that Extractor implements the MemoryStore interface.
@@ -146,7 +147,7 @@ func summarize(
 	}
 	maxTokens, ok := llms.MaxLLMTokensMap[modelName]
 	if !ok {
-		return &models.Summary{}, fmt.Errorf("model name not found in MaxLLMTokensMap")
+		maxTokens = MaxTokensFallback
 	}
 
 	if promptTokens == 0 {
