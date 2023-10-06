@@ -114,7 +114,7 @@ func applyMessagesMetadataFilter(
 		if err != nil {
 			return nil, store.NewStorageError("error unmarshalling metadata", err)
 		}
-		qb = parseJSONQuery(qb, &jq, false)
+		qb = parseJSONQuery(qb, &jq, false, "m")
 	}
 
 	addMessageDateFilters(&qb, metadata)
