@@ -15,21 +15,25 @@ func TestParseJSONQuery(t *testing.T) {
 		name         string
 		jsonQuery    string
 		expectedCond string
+		tablePrefix  string
 	}{
 		{
 			name:         "Test 1",
 			jsonQuery:    `{"where": {"jsonpath": "$.system.entities[*] ? (@.Label == \"DATE\")"}}`,
 			expectedCond: `WHERE (jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Label == "DATE")'))`,
+			tablePrefix:  "m",
 		},
 		{
-			name:         "Test 2",
+			name:         "Without Prefix",
 			jsonQuery:    `{"where": {"or": [{"jsonpath": "$.system.entities[*] ? (@.Label == \"DATE\")"},{"jsonpath": "$.system.entities[*] ? (@.Label == \"ORG\")"}]}}`,
-			expectedCond: `WHERE ((jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Label == "DATE")')) OR (jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Label == "ORG")')))`,
+			expectedCond: `WHERE ((jsonb_path_exists(metadata, '$.system.entities[*] ? (@.Label == "DATE")')) OR (jsonb_path_exists(metadata, '$.system.entities[*] ? (@.Label == "ORG")')))`,
+			tablePrefix:  "",
 		},
 		{
 			name:         "Test 3",
 			jsonQuery:    `{"where": {"and": [{"jsonpath": "$.system.entities[*] ? (@.Label == \"DATE\")"},{"jsonpath": "$.system.entities[*] ? (@.Label == \"ORG\")"},{"or": [{"jsonpath": "$.system.entities[*] ? (@.Name == \"Iceland\")"},{"jsonpath": "$.system.entities[*] ? (@.Name == \"Canada\")"}]}]}}`,
 			expectedCond: `WHERE ((jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Label == "DATE")')) AND (jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Label == "ORG")')) AND ((jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Name == "Iceland")')) OR (jsonb_path_exists(m.metadata, '$.system.entities[*] ? (@.Name == "Canada")'))))`,
+			tablePrefix:  "m",
 		},
 	}
 
@@ -50,7 +54,7 @@ func TestParseJSONQuery(t *testing.T) {
 			err = json.Unmarshal(query, &jsonQuery)
 			assert.NoError(t, err)
 
-			qb = parseJSONQuery(qb, &jsonQuery, false)
+			qb = parseJSONQuery(qb, &jsonQuery, false, tt.tablePrefix)
 
 			selectQuery := qb.Unwrap().(*bun.SelectQuery)
 
