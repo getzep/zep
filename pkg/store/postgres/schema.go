@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	_ "github.com/jackc/pgx/v5/stdlib" // required for pgx to work
 	"github.com/uptrace/bun/driver/pgdriver"
 
 	"github.com/getzep/zep/pkg/llms"
@@ -21,6 +22,8 @@ import (
 	"github.com/pgvector/pgvector-go"
 	"github.com/uptrace/bun"
 )
+
+var maxOpenConns = 4 * runtime.GOMAXPROCS(0)
 
 type SessionSchema struct {
 	bun.BaseModel `bun:"table:session,alias:s" yaml:"-"`
@@ -575,8 +578,6 @@ END $$;`
 func NewPostgresConn(appState *models.AppState) (*bun.DB, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
-	maxOpenConns := 4 * runtime.GOMAXPROCS(0)
 
 	// WithReadTimeout is 10 minutes to avoid timeouts when creating indexes.
 	// TODO: This is not ideal. Use separate connections for index creation?

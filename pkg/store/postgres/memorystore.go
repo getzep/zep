@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 
+	"github.com/getzep/zep/pkg/extractors"
 	"github.com/getzep/zep/pkg/store"
 
 	"github.com/getzep/zep/internal"
@@ -43,7 +44,8 @@ var _ models.MemoryStore[*bun.DB] = &PostgresMemoryStore{}
 
 type PostgresMemoryStore struct {
 	store.BaseMemoryStore[*bun.DB]
-	SessionStore *SessionDAO
+	SessionStore    *SessionDAO
+	EmbeddingRouter *extractors.EmbeddingRouter
 }
 
 func (pms *PostgresMemoryStore) OnStart(
@@ -54,6 +56,20 @@ func (pms *PostgresMemoryStore) OnStart(
 	if err != nil {
 		return store.NewStorageError("failed to ensure postgres schema setup", err)
 	}
+
+	embeddingRouter, err := extractors.NewEmbeddingRouter(pms.Client.DB)
+	if err != nil {
+		return store.NewStorageError("failed to create embedding router", err)
+	}
+	pms.EmbeddingRouter = embeddingRouter
+
+	go func() {
+		log.Info("running embedding router")
+		err := pms.EmbeddingRouter.Run(context.Background())
+		if err != nil {
+			log.Error("failed to run embedding router", err)
+		}
+	}()
 
 	return nil
 }
