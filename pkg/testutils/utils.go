@@ -60,9 +60,10 @@ func testConfigDefaults() (*config.Config, error) {
 			},
 		},
 		Server: config.ServerConfig{
-			Host:       "0.0.0.0",
-			Port:       8000,
-			WebEnabled: true,
+			Host:           "0.0.0.0",
+			Port:           8000,
+			WebEnabled:     true,
+			MaxRequestSize: 1 << 20, // 10MB
 		},
 		Auth: config.AuthConfig{
 			Secret:   "do-not-use-this-secret-in-production",

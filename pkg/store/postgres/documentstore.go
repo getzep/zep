@@ -208,7 +208,7 @@ func (ds *DocumentStore) CreateDocuments(
 		)
 	}
 	if !collection.IsAutoEmbedded && someEmpty {
-		return nil, errors.New(
+		return nil, models.NewBadRequestError(
 			"cannot create documents without embeddings in a non-auto-embedded collection",
 		)
 	}

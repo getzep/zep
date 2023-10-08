@@ -9,7 +9,12 @@ import (
 
 // parseJSONQuery recursively parses a JSONQuery and returns a bun.QueryBuilder.
 // TODO: fix the addition of extraneous parentheses in the query
-func parseJSONQuery(qb bun.QueryBuilder, jq *JSONQuery, isOr bool, tablePrefix string) bun.QueryBuilder {
+func parseJSONQuery(
+	qb bun.QueryBuilder,
+	jq *JSONQuery,
+	isOr bool,
+	tablePrefix string,
+) bun.QueryBuilder {
 	var tp string
 	if tablePrefix != "" {
 		tp = tablePrefix + "."

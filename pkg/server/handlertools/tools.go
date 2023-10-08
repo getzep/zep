@@ -68,13 +68,22 @@ func DecodeJSON(r *http.Request, data interface{}) error {
 
 // RenderError renders an error response.
 func RenderError(w http.ResponseWriter, err error, status int) {
+	if err.Error() == "http: request body too large" {
+		status = http.StatusRequestEntityTooLarge
+		err = fmt.Errorf(
+			"request body too large. if you're uploading documents, reduce the batch size or size of the document chunks",
+		)
+	}
+
 	if status != http.StatusNotFound {
 		// Don't log not found errors
 		log.Error(err)
 	}
+
 	if strings.Contains(err.Error(), "is deleted") || errors.Is(err, models.ErrBadRequest) {
 		status = http.StatusBadRequest
 	}
+
 	http.Error(w, err.Error(), status)
 }
 
