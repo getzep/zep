@@ -65,13 +65,15 @@ func TestZepOpenAILLM_TestConfigureClient(t *testing.T) {
 		}
 	})
 
-	t.Run("Test with AzureOpenAIEmbeddingModel", func(t *testing.T) {
+	t.Run("Test with AzureOpenAIEmbeddingModelAndCustomModelName", func(t *testing.T) {
 		cfg := &config.Config{
 			LLM: config.LLM{
 				OpenAIAPIKey:        "test-key",
 				AzureOpenAIEndpoint: "https://azure.openai.com",
+				Model:               "some-model",
 				AzureOpenAIModel: config.AzureOpenAIConfig{
-					EmbeddingDeployment: "test-deployment",
+					LLMDeployment:       "test-llm-deployment",
+					EmbeddingDeployment: "test-embedding-deployment",
 				},
 			},
 		}
@@ -86,11 +88,12 @@ func TestZepOpenAILLM_TestConfigureClient(t *testing.T) {
 		}
 	})
 
-	t.Run("Test with OpenAIEndpoint", func(t *testing.T) {
+	t.Run("Test with OpenAIEndpointAndCustomModelName", func(t *testing.T) {
 		cfg := &config.Config{
 			LLM: config.LLM{
 				OpenAIAPIKey:   "test-key",
 				OpenAIEndpoint: "https://openai.com",
+				Model:          "some-model",
 			},
 		}
 

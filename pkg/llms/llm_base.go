@@ -118,8 +118,8 @@ var MaxLLMTokensMap = map[string]int{
 
 func GetLLMModelName(cfg *config.Config) (string, error) {
 	llmModel := cfg.LLM.Model
-	// only validate model name if OpenAI endpoint is not set
-	if cfg.LLM.OpenAIEndpoint != "" {
+	// Don't validate if custom OpenAI endpoint or Azure OpenAI endpoint is set
+	if cfg.LLM.OpenAIEndpoint != "" || cfg.LLM.AzureOpenAIEndpoint != "" {
 		return llmModel, nil
 	}
 	if llmModel == "" || !ValidLLMMap[llmModel] {
