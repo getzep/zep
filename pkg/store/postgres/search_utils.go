@@ -28,7 +28,7 @@ func parseJSONQuery(
 			)
 		} else {
 			qb = qb.Where(
-				"jsonb_path_exists(m.metadata, ?)",
+				fmt.Sprintf("jsonb_path_exists(%smetadata, ?)", tp),
 				path,
 			)
 		}

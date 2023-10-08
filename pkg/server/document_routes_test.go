@@ -305,3 +305,74 @@ func TestCreateDocumentsHandler_MaxRequestBodySize(t *testing.T) {
 	assert.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
 	assert.Equal(t, "413 Request Entity Too Large", resp.Status)
 }
+
+// Test SearchDocumentsHandler
+func TestSearchDocumentsHandler(t *testing.T) {
+	collectionName := testutils.GenerateRandomString(10)
+	// Create a collection
+	cr := models.DocumentCollection{
+		Name:        collectionName,
+		Description: "Test collection",
+		Metadata: map[string]interface{}{
+			"key": "value",
+		},
+		EmbeddingDimensions: 10,
+		IsAutoEmbedded:      false,
+	}
+
+	err := appState.DocumentStore.CreateCollection(testCtx, cr)
+	assert.NoError(t, err)
+
+	// Create documents
+	docs := []models.Document{
+		{
+			DocumentBase: models.DocumentBase{
+				DocumentID: "doc1",
+				Content:    "This is a test document",
+				Metadata: map[string]interface{}{
+					"key": "value",
+				},
+			},
+			Embedding: []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.1, -0.2, -0.3, -0.4},
+		},
+		{
+			DocumentBase: models.DocumentBase{
+				DocumentID: "doc2",
+				Content:    "This is another test document",
+				Metadata: map[string]interface{}{
+					"key": "value",
+				},
+			},
+			Embedding: []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.1, -0.2, -0.3, -0.4},
+		},
+	}
+
+	_, err = appState.DocumentStore.CreateDocuments(testCtx, collectionName, docs)
+	assert.NoError(t, err)
+
+	q := models.DocumentSearchPayload{
+		CollectionName: collectionName,
+		Embedding:      []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.1, -0.2, -0.3, -0.4},
+		Metadata: map[string]interface{}{
+			"where": map[string]interface{}{"jsonpath": "$[*] ? (@.this_key_does == 'not exist')"},
+		},
+	}
+	p, err := json.Marshal(q)
+	assert.NoError(t, err)
+
+	// Create a new HTTP request
+	req, err := http.NewRequest(
+		"POST",
+		testServer.URL+"/api/v1/collection/"+collectionName+"/search",
+		bytes.NewBuffer(p),
+	)
+	assert.NoError(t, err)
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	assert.NoError(t, err)
+
+	// Check the status code
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
