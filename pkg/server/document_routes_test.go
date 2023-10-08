@@ -354,7 +354,7 @@ func TestSearchDocumentsHandler(t *testing.T) {
 		CollectionName: collectionName,
 		Embedding:      []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.1, -0.2, -0.3, -0.4},
 		Metadata: map[string]interface{}{
-			"where": map[string]interface{}{"jsonpath": "$[*] ? (@.this_key_does == 'not exist')"},
+			"where": map[string]interface{}{"jsonpath": "$[*] ? (@.key == 'value')"},
 		},
 	}
 	p, err := json.Marshal(q)
