@@ -48,8 +48,14 @@ func Create(appState *models.AppState) *http.Server {
 // @name						Authorization
 // @description				Type "Bearer" followed by a space and JWT token.
 func setupRouter(appState *models.AppState) *chi.Mux {
+	maxRequestSize := appState.Config.Server.MaxRequestSize
+	if maxRequestSize == 0 {
+		maxRequestSize = 5 << 20 // 5MB
+	}
+
 	router := chi.NewRouter()
 	router.Use(httpLogger.Logger("router", log))
+	router.Use(middleware.RequestSize(maxRequestSize))
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)

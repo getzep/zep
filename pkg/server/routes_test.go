@@ -67,6 +67,22 @@ func setup() {
 	testUserStore = postgres.NewUserStoreDAO(testDB)
 	appState.UserStore = testUserStore
 
+	embeddingTaskChannel := make(
+		chan []models.DocEmbeddingTask,
+		10,
+	)
+	embeddingUpdateChannel := make(chan []models.DocEmbeddingUpdate, 500)
+	documentStore, err := postgres.NewDocumentStore(
+		appState,
+		testDB,
+		embeddingUpdateChannel,
+		embeddingTaskChannel,
+	)
+	if err != nil {
+		log.Fatalf("unable to create documentStore: %v", err)
+	}
+	appState.DocumentStore = documentStore
+
 	testServer = httptest.NewServer(
 		setupRouter(appState),
 	)
