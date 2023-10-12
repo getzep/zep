@@ -246,7 +246,7 @@ func TestSessionDAO_DeleteSessionDeletesSummaryMessages(t *testing.T) {
 
 	sessionStore := NewSessionDAO(testDB)
 
-	sessionID, err := setupTestDeleteData(testCtx, testDB)
+	sessionID, err := setupSessionDeleteTestData(testCtx, testDB, "")
 	assert.NoError(t, err, "setupTestDeleteData should not return an error")
 
 	err = sessionStore.Delete(testCtx, sessionID)
@@ -268,7 +268,7 @@ func TestSessionDAO_DeleteSessionDeletesSummaryMessages(t *testing.T) {
 }
 
 func TestSessionDAO_UndeleteSession(t *testing.T) {
-	sessionID, err := setupTestDeleteData(testCtx, testDB)
+	sessionID, err := setupSessionDeleteTestData(testCtx, testDB, "")
 	assert.NoError(t, err, "setupTestDeleteData should not return an error")
 
 	sessionStore := NewSessionDAO(testDB)
@@ -292,16 +292,22 @@ func TestSessionDAO_UndeleteSession(t *testing.T) {
 	assert.Nil(t, respMessages, "getMessages should return nil")
 }
 
-func setupTestDeleteData(ctx context.Context, testDB *bun.DB) (string, error) {
+func setupSessionDeleteTestData(ctx context.Context, testDB *bun.DB, userID string) (string, error) {
 	// Test data
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	if err != nil {
 		return "", err
 	}
 
+	var userIDPtr *string
+	if userID != "" {
+		userIDPtr = &userID
+	}
+
 	dao := NewSessionDAO(testDB)
 	_, err = dao.Create(ctx, &models.CreateSessionRequest{
 		SessionID: sessionID,
+		UserID:    userIDPtr,
 	})
 	if err != nil {
 		return "", err

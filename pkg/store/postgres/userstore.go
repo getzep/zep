@@ -170,16 +170,48 @@ func (dao *UserStoreDAO) updateUser(
 
 // Delete deletes a user.
 func (dao *UserStoreDAO) Delete(ctx context.Context, userID string) error {
+	// Start a new transaction
+	tx, err := dao.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	// Delete all related sessions
+	sessions, err := dao.GetSessions(ctx, userID)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	sessionStore := NewSessionDAO(dao.db)
+	for s := range sessions {
+		err := sessionStore.Delete(ctx, sessions[s].SessionID)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	// Delete User
 	r, err := dao.db.NewDelete().Model(&models.User{}).Where("user_id = ?", userID).Exec(ctx)
 	if err != nil {
+		tx.Rollback()
 		return err
 	}
 	rowsAffected, err := r.RowsAffected()
 	if err != nil {
+		tx.Rollback()
 		return err
 	}
 	if rowsAffected == 0 {
+		tx.Rollback()
 		return models.NewNotFoundError("user " + userID)
+	}
+
+	// Commit the transaction
+	err = tx.Commit()
+	if err != nil {
+		return err
 	}
 
 	return nil

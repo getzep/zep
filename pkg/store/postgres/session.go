@@ -201,39 +201,52 @@ func (dao *SessionDAO) updateSession(
 }
 
 // Delete soft-deletes a session from the database by its sessionID.
-// It also soft-deletes all messages and message embeddings associated with the session.
+// It also soft-deletes all messages, message embeddings, and summaries associated with the session.
 func (dao *SessionDAO) Delete(ctx context.Context, sessionID string) error {
 	dbSession := &SessionSchema{}
 
-	r, err := dao.db.NewDelete().
+	tx, err := dao.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	r, err := tx.NewDelete().
 		Model(dbSession).
 		Where("session_id = ?", sessionID).
 		Exec(ctx)
 	if err != nil {
+		tx.Rollback()
 		return fmt.Errorf("failed to delete session: %w", err)
 	}
 
 	rowsAffected, err := r.RowsAffected()
 	if err != nil {
+		tx.Rollback()
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 	if rowsAffected == 0 {
+		tx.Rollback()
 		return models.NewNotFoundError("session " + sessionID)
 	}
 
-	// delete all messages and message embeddings associated with the session
+	// delete all messages, message embeddings, and summaries associated with the session
 	for _, schema := range messageTableList {
 		if _, ok := schema.(*SessionSchema); ok {
 			continue
 		}
 		log.Debugf("deleting session %s from schema %T", sessionID, schema)
-		_, err := dao.db.NewDelete().
+		_, err := tx.NewDelete().
 			Model(schema).
 			Where("session_id = ?", sessionID).
 			Exec(ctx)
 		if err != nil {
+			tx.Rollback()
 			return fmt.Errorf("error deleting rows from %T: %w", schema, err)
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil

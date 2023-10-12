@@ -7,7 +7,7 @@ import (
 )
 
 func TestPurgeDeleted(t *testing.T) {
-	sessionID, err := setupTestDeleteData(testCtx, testDB)
+	sessionID, err := setupSessionDeleteTestData(testCtx, testDB, "")
 	assert.NoError(t, err, "setupTestDeleteData should not return an error")
 
 	sessionStore := NewSessionDAO(testDB)
