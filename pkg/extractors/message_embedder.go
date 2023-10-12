@@ -1,23 +1,30 @@
 package extractors
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
 	"github.com/ThreeDotsLabs/watermill/message/router/plugin"
+	"github.com/getzep/zep/pkg/llms"
+	"github.com/getzep/zep/pkg/models"
 	wla "github.com/ma-hartma/watermill-logrus-adapter"
+	"github.com/sirupsen/logrus"
+	"github.com/sony/gobreaker"
 )
 
 const MessageEmbeddingTopic = "message_embedding"
 
-type EmbeddingRouter struct {
+type EmbeddingQueueRouter struct {
 	*message.Router
-	publisher message.Publisher
+	Publisher message.Publisher
+	Topic     string
 }
 
-func NewEmbeddingRouter(db *sql.DB) (*EmbeddingRouter, error) {
+func NewEmbeddingQueueRouter(appState *models.AppState, db *sql.DB) (*EmbeddingQueueRouter, error) {
 	var wlog = wla.NewLogrusLogger(log)
 
 	// Create a new router
@@ -44,6 +51,15 @@ func NewEmbeddingRouter(db *sql.DB) (*EmbeddingRouter, error) {
 			Logger:          wlog,
 		}.Middleware,
 
+		middleware.NewCircuitBreaker(gobreaker.Settings{
+			Name:        "message_embedding_circuit_breaker",
+			MaxRequests: 1,
+			Interval:    time.Second * 5,
+			Timeout:     time.Second * 20,
+		}).Middleware,
+
+		middleware.NewThrottle(5, time.Second).Middleware,
+
 		// Recoverer handles panics from handlers.
 		// In this case, it passes them as errors to the Retry middleware.
 		middleware.Recoverer,
@@ -59,29 +75,86 @@ func NewEmbeddingRouter(db *sql.DB) (*EmbeddingRouter, error) {
 		return nil, err
 	}
 
-	logHandler := NewLogHandler(log)
+	embeddingHandler := NewEmbeddingProcessHandler(log)
 
 	router.AddHandler(
 		MessageEmbeddingTopic,
 		MessageEmbeddingTopic,
 		subscriber,
-		MessageEmbeddingTopic,
+		"",
 		publisher,
-		logHandler.Handler,
+		embeddingHandler.Handler,
 	)
 
-	return &EmbeddingRouter{
+	return &EmbeddingQueueRouter{
 		Router:    router,
-		publisher: publisher,
+		Publisher: publisher,
+		Topic:     MessageEmbeddingTopic,
 	}, nil
 }
 
-func processEmbedMessages(messages <-chan *message.Message) {
-	for msg := range messages {
-		log.Infof("received message: %s, payload: %s", msg.UUID, string(msg.Payload))
+func NewEmbeddingProcessHandler(appState *models.AppState, logger *logrus.Logger) *EmbeddingProcessHandler {
+	return &EmbeddingProcessHandler{appState: appState, log: logger}
+}
 
-		// we need to Acknowledge that we received and processed the message,
-		// otherwise, it will be resent over and over again.
-		msg.Ack()
+type EmbeddingProcessHandler struct {
+	appState *models.AppState
+	log      *logrus.Logger
+}
+
+func (e *EmbeddingProcessHandler) Handler(msg *message.Message) ([]*message.Message, error) {
+	ctx, done := context.WithTimeout(context.Background(), time.Second*10)
+	defer done()
+
+	var msgs []models.Message
+	err := json.Unmarshal(msg.Payload, msgs)
+	if err != nil {
+		return nil, err
 	}
+
+	err = e.Process(ctx, msgs)
+	if err != nil {
+		return nil, err
+	}
+
+	msg.Ack()
+
+	// Return an empty slice of messages since we don't want to publish anything
+	return []*message.Message{}, nil
+}
+
+func (e *EmbeddingProcessHandler) Process(
+	ctx context.Context,
+	msgs []models.Message,
+) error {
+	messageType := "message"
+	texts := messageToStringSlice(msgs, false)
+
+	model, err := llms.GetEmbeddingModel(e.appState, messageType)
+	if err != nil {
+		return NewExtractorError("EmbeddingExtractor get message embedding model failed", err)
+	}
+
+	embeddings, err := llms.EmbedTexts(ctx, e.appState, model, messageType, texts)
+	if err != nil {
+		return NewExtractorError("EmbeddingExtractor embed messages failed", err)
+	}
+
+	embeddingRecords := make([]models.MessageEmbedding, len(msgs))
+	for i, r := range msgs {
+		embeddingRecords[i] = models.MessageEmbedding{
+			TextUUID:  r.UUID,
+			Embedding: embeddings[i],
+		}
+	}
+	err = e.appState.MemoryStore.PutMessageVectors(
+		ctx,
+		appState,
+		messageEvent.SessionID,
+		embeddingRecords,
+	)
+	if err != nil {
+		return NewExtractorError("EmbeddingExtractor put message vectors failed", err)
+	}
+	return nil
 }

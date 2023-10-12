@@ -5,10 +5,13 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/getzep/zep/pkg/extractors"
 	"github.com/getzep/zep/pkg/store"
+	"github.com/google/uuid"
 
 	"github.com/getzep/zep/internal"
 
@@ -45,7 +48,7 @@ var _ models.MemoryStore[*bun.DB] = &PostgresMemoryStore{}
 type PostgresMemoryStore struct {
 	store.BaseMemoryStore[*bun.DB]
 	SessionStore    *SessionDAO
-	EmbeddingRouter *extractors.EmbeddingRouter
+	EmbeddingRouter *extractors.EmbeddingQueueRouter
 }
 
 func (pms *PostgresMemoryStore) OnStart(
@@ -57,7 +60,11 @@ func (pms *PostgresMemoryStore) OnStart(
 		return store.NewStorageError("failed to ensure postgres schema setup", err)
 	}
 
-	embeddingRouter, err := extractors.NewEmbeddingRouter(pms.Client.DB)
+	dbQueue, err := NewPostgresConnForQueue(appState)
+	if err != nil {
+		return store.NewStorageError("failed to create postgres queue connection", err)
+	}
+	embeddingRouter, err := extractors.NewEmbeddingQueueRouter(dbQueue)
 	if err != nil {
 		return store.NewStorageError("failed to create embedding router", err)
 	}
@@ -261,6 +268,18 @@ func (pms *PostgresMemoryStore) PutMemory(
 
 	if skipNotify {
 		return nil
+	}
+
+	// TODO: refactor
+	p, err := json.Marshal(messageResult)
+	if err != nil {
+		return store.NewStorageError("failed to marshal message", err)
+	}
+	log.Debugf("Publishing message: %s", p)
+	m := message.NewMessage(uuid.New().String(), p)
+	err = pms.EmbeddingRouter.Publisher.Publish(pms.EmbeddingRouter.Topic, m)
+	if err != nil {
+		return store.NewStorageError("failed to publish messages to embedding router", err)
 	}
 
 	pms.NotifyExtractors(

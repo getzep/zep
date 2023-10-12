@@ -4,10 +4,9 @@ import (
 	"math"
 	"testing"
 
-	"github.com/getzep/zep/pkg/store/postgres"
-
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/pkg/store/postgres"
 	"github.com/getzep/zep/pkg/testutils"
 	"github.com/stretchr/testify/assert"
 )

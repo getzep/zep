@@ -614,6 +614,16 @@ func NewPostgresConn(appState *models.AppState) (*bun.DB, error) {
 	return db, nil
 }
 
+// TODO: Where to close this?
+func NewPostgresConnForQueue(appState *models.AppState) (*sql.DB, error) {
+	db, err := sql.Open("pgx", appState.Config.Store.Postgres.DSN)
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
 // isHNSWAvailable checks if the vector extension version is 0.5.0+.
 func isHNSWAvailable(ctx context.Context, db *bun.DB) (bool, error) {
 	const minVersion = "0.5.0"
