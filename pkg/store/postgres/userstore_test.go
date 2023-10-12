@@ -135,11 +135,40 @@ func TestUserStoreDAO(t *testing.T) {
 
 	// Test Delete
 	t.Run("Delete", func(t *testing.T) {
+		testSessions := []string{}
+		for i := 0; i < 2; i++ {
+			sessionID, err := setupSessionDeleteTestData(testCtx, testDB, user.UserID)
+			assert.NoError(t, err, "setupTestDeleteData should not return an error")
+			testSessions = append(testSessions, sessionID)
+		}
+
 		err := userStore.Delete(ctx, user.UserID)
 		assert.NoError(t, err)
 
 		_, err = userStore.Get(ctx, user.UserID)
 		assert.ErrorIs(t, err, models.ErrNotFound)
+
+		// Check that all related sessions are deleted
+		retSessions, err := userStore.GetSessions(ctx, user.UserID)
+		assert.NoError(t, err)
+		assert.Equal(t, 0, len(retSessions))
+
+		// Test that messages and summaries are deleted
+		for _, sessionID := range testSessions {
+			respMessages, err := getMessages(testCtx, testDB, sessionID, 999, nil, 999)
+			assert.NoError(t, err, "getMessages should not return an error")
+			assert.Nil(t, respMessages, "getMessages should return nil")
+
+			// Test that summary is deleted
+			respSummary, err := getSummary(testCtx, testDB, sessionID)
+			assert.NoError(t, err, "getSummary should not return an error")
+			assert.Nil(t, respSummary, "getSummary should return nil")
+
+			// check that embeddings are deleted
+			respEmbeddings, err := getMessageEmbeddings(testCtx, testDB, sessionID)
+			assert.NoError(t, err, "getMessageEmbeddings should not return an error")
+			assert.Equal(t, 0, len(respEmbeddings), "getMessageEmbeddings should return 0 results")
+		}
 	})
 
 	t.Run("Delete Non-Existant Session should result in NotFoundError", func(t *testing.T) {
