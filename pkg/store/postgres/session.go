@@ -215,17 +215,26 @@ func (dao *SessionDAO) Delete(ctx context.Context, sessionID string) error {
 		Where("session_id = ?", sessionID).
 		Exec(ctx)
 	if err != nil {
-		tx.Rollback()
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			return fmt.Errorf("failed to delete session: %v, failed to rollback transaction: %w", err, rollbackErr)
+		}
 		return fmt.Errorf("failed to delete session: %w", err)
 	}
 
 	rowsAffected, err := r.RowsAffected()
 	if err != nil {
-		tx.Rollback()
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			return fmt.Errorf("failed to delete session: %v, failed to rollback transaction: %w", err, rollbackErr)
+		}
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 	if rowsAffected == 0 {
-		tx.Rollback()
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			return fmt.Errorf("failed to delete session: %v, failed to rollback transaction: %w", err, rollbackErr)
+		}
 		return models.NewNotFoundError("session " + sessionID)
 	}
 
@@ -240,7 +249,10 @@ func (dao *SessionDAO) Delete(ctx context.Context, sessionID string) error {
 			Where("session_id = ?", sessionID).
 			Exec(ctx)
 		if err != nil {
-			tx.Rollback()
+			rollbackErr := tx.Rollback()
+			if rollbackErr != nil {
+				return fmt.Errorf("failed to delete session: %v, failed to rollback transaction: %w", err, rollbackErr)
+			}
 			return fmt.Errorf("error deleting rows from %T: %w", schema, err)
 		}
 	}
