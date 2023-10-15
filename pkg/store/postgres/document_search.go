@@ -26,7 +26,6 @@ func newDocumentSearchOperation(
 	searchPayload *models.DocumentSearchPayload,
 	collection *models.DocumentCollection,
 	limit int,
-	withMMR bool,
 ) *documentSearchOperation {
 	if limit <= 0 {
 		limit = DefaultDocumentSearchLimit
@@ -39,7 +38,6 @@ func newDocumentSearchOperation(
 		searchPayload: searchPayload,
 		collection:    collection,
 		limit:         limit,
-		withMMR:       withMMR,
 	}
 }
 

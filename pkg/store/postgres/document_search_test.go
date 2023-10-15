@@ -75,7 +75,6 @@ func TestDocumentSearchWithIndexEndToEnd(t *testing.T) {
 		ctx,
 		searchPayload,
 		limit,
-		false,
 		0,
 		0,
 	)

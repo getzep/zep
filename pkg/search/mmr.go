@@ -39,7 +39,7 @@ func pairwiseCosineSimilarity(matrix1 [][]float32, matrix2 [][]float32) ([][]flo
 // that are most relevant to the query.
 // See https://www.cs.cmu.edu/~jgc/publication/The_Use_MMR_Diversity_Based_LTMIR_1998.pdf
 // Implementation borrowed from LangChain
-// https://github.com/langchain-ai/langchain/blob/4a2f0c51a116cc3141142ea55254e270afb6acde/libs/langchain/langchain/vectorstores/utils.py#L23
+// https://github.com/langchain-ai/langchain/blob/4a2f0c51a116cc3141142ea55254e270afb6acde/libs/langchain/langchain/vectorstores/utils.py
 func MaximalMarginalRelevance(queryEmbedding []float32, embeddingList [][]float32, lambdaMult float32, k int) ([]int, error) {
 	// if either k or the length of the embedding list is 0, return an empty list
 	if min(k, len(embeddingList)) <= 0 {

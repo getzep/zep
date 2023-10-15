@@ -295,7 +295,6 @@ func (ds *DocumentStore) SearchCollection(
 	ctx context.Context,
 	query *models.DocumentSearchPayload,
 	limit int,
-	withMMR bool,
 	pageNumber int,
 	pageSize int,
 ) (*models.DocumentSearchResultPage, error) {
@@ -305,7 +304,7 @@ func (ds *DocumentStore) SearchCollection(
 		models.DocumentCollection{Name: query.CollectionName},
 	)
 
-	results, err := collectionDAO.SearchDocuments(ctx, query, limit, withMMR, pageNumber, pageSize)
+	results, err := collectionDAO.SearchDocuments(ctx, query, limit, pageNumber, pageSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search collection: %w", err)
 	}
