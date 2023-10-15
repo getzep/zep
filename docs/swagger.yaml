@@ -159,8 +159,12 @@ definitions:
       metadata:
         additionalProperties: true
         type: object
+      mmr_lambda:
+        type: number
       text:
         type: string
+      type:
+        $ref: '#/definitions/models.SearchType'
     type: object
   models.GetDocumentListRequest:
     properties:
@@ -190,13 +194,21 @@ definitions:
       metadata:
         additionalProperties: true
         type: object
+      mmr_lambda:
+        type: number
       text:
         type: string
+      type:
+        $ref: '#/definitions/models.SearchType'
     type: object
   models.MemorySearchResult:
     properties:
       dist:
         type: number
+      embedding:
+        items:
+          type: number
+        type: array
       message:
         $ref: '#/definitions/models.Message'
       metadata:
@@ -225,6 +237,14 @@ definitions:
       uuid:
         type: string
     type: object
+  models.SearchType:
+    enum:
+    - similarity
+    - mmr
+    type: string
+    x-enum-varnames:
+    - SearchTypeSimilarity
+    - SearchTypeMMR
   models.Session:
     properties:
       created_at:
@@ -910,10 +930,6 @@ paths:
         in: query
         name: limit
         type: integer
-      - description: Use MMR to rerank the search results. Not Implemented
-        in: query
-        name: mmr
-        type: boolean
       - description: Search criteria
         in: body
         name: searchPayload
