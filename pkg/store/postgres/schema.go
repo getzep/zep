@@ -401,9 +401,12 @@ func enablePgVectorExtension(ctx context.Context, db *bun.DB) error {
 
 	// if this is an upgrade, we may need to update the pgvector extension
 	// this is a no-op if the extension is already up to date
+	// if this fails, Zep may not have rights to update extensions.
+	// this is not an issue if running on a managed service.
 	_, err = db.Exec("ALTER EXTENSION vector UPDATE")
 	if err != nil {
-		return fmt.Errorf("error updating pgvector extension: %w", err)
+		log.Errorf("error updating pgvector extension: %s. this may happen if running on a managed service without rights to update extensions.", err)
+		return nil
 	}
 
 	return nil
@@ -591,8 +594,7 @@ func NewPostgresConn(appState *models.AppState) (*bun.DB, error) {
 	// Enable pgvector extension
 	err := enablePgVectorExtension(ctx, db)
 	if err != nil {
-		log.Print("error enabling pgvector extension: ", err)
-		return nil, err
+		log.Errorf("error enabling pgvector extension: %s", err)
 	}
 
 	// IVFFLAT indexes are always available
@@ -601,7 +603,7 @@ func NewPostgresConn(appState *models.AppState) (*bun.DB, error) {
 	// Check if HNSW indexes are available
 	isHNSW, err := isHNSWAvailable(ctx, db)
 	if err != nil {
-		log.Print("error checking if hnsw indexes are available: ", err)
+		log.Infof("error checking if hnsw indexes are available: %s", err)
 		return nil, err
 	}
 	if isHNSW {
