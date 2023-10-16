@@ -7,6 +7,9 @@ import (
 	"github.com/uptrace/bun"
 )
 
+const DefaultMMRMultiplier = 2
+const DefaultMMRLambda = 0.5
+
 // parseJSONQuery recursively parses a JSONQuery and returns a bun.QueryBuilder.
 // TODO: fix the addition of extraneous parentheses in the query
 func parseJSONQuery(

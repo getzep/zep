@@ -39,16 +39,18 @@ func TestMemorySearch(t *testing.T) {
 		query             string
 		limit             int
 		expectedErrorText string
+		searchType        models.SearchType
 	}{
-		{"Empty Query", "", 0, "empty query"},
-		{"Non-empty Query", "travel", 0, ""},
-		{"Limit 0", "travel", 0, ""},
-		{"Limit 5", "travel", 5, ""},
+		{"Empty Query", "", 0, "empty query", models.SearchTypeSimilarity},
+		{"Non-empty Query", "travel", 0, "", models.SearchTypeSimilarity},
+		{"Limit 0", "travel", 0, "", models.SearchTypeSimilarity},
+		{"Limit 5", "travel", 5, "", models.SearchTypeSimilarity},
+		{"MMR Query", "travel", 5, "", models.SearchTypeMMR},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			q := models.MemorySearchPayload{Text: tc.query}
+			q := models.MemorySearchPayload{Text: tc.query, Type: tc.searchType}
 			expectedLastN := tc.limit
 			if expectedLastN == 0 {
 				expectedLastN = 10 // Default value

@@ -6,10 +6,9 @@ import (
 	"errors"
 	"math"
 
-	"github.com/sirupsen/logrus"
-
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/pkg/search"
 	"github.com/getzep/zep/pkg/store"
 	"github.com/pgvector/pgvector-go"
 	"github.com/uptrace/bun"
@@ -31,8 +30,6 @@ func searchMessages(
 	query *models.MemorySearchPayload,
 	limit int,
 ) ([]models.MemorySearchResult, error) {
-	logrus.Debugf("searchMessages called for session %s", sessionID)
-
 	if query == nil || appState == nil {
 		return nil, store.NewStorageError("nil query or appState received", nil)
 	}
@@ -41,7 +38,15 @@ func searchMessages(
 		return nil, store.NewStorageError("empty query", errors.New("empty query"))
 	}
 
-	dbQuery := buildMessagesSelectQuery(ctx, appState, db, query)
+	dbQuery := buildMessagesSelectQuery(ctx, db, query)
+	var err error
+	var queryEmbedding []float32
+	if query.Text != "" {
+		dbQuery, queryEmbedding, err = addMessagesVectorColumn(ctx, appState, dbQuery, query.Text)
+		if err != nil {
+			return nil, store.NewStorageError("error adding vector column", err)
+		}
+	}
 	if len(query.Metadata) > 0 {
 		var err error
 		dbQuery, err = applyMessagesMetadataFilter(dbQuery, query.Metadata)
@@ -61,7 +66,17 @@ func searchMessages(
 	if limit == 0 {
 		limit = DefaultMemorySearchLimit
 	}
-	dbQuery = dbQuery.Limit(limit)
+
+	// If we're using MMR, we need to return more results than the limit so we can
+	// rerank them.
+	if query.Type == models.SearchTypeMMR {
+		if query.MMRLambda == 0 {
+			query.MMRLambda = DefaultMMRLambda
+		}
+		dbQuery = dbQuery.Limit(limit * DefaultMMRMultiplier)
+	} else {
+		dbQuery = dbQuery.Limit(limit)
+	}
 
 	results, err := executeMessagesSearchScan(ctx, dbQuery)
 	if err != nil {
@@ -69,14 +84,37 @@ func searchMessages(
 	}
 
 	filteredResults := filterValidMessageSearchResults(results, query.Metadata)
-	logrus.Debugf("searchMessages completed for session %s", sessionID)
+
+	// If we're using MMR, rerank the results.
+	if query.Type == models.SearchTypeMMR {
+		filteredResults, err = rerankMMR(filteredResults, queryEmbedding, query.MMRLambda, limit)
+		if err != nil {
+			return nil, store.NewStorageError("error applying mmr", err)
+		}
+	}
 
 	return filteredResults, nil
 }
 
+// rerankMMR reranks the results using the Maximal Marginal Relevance algorithm
+func rerankMMR(results []models.MemorySearchResult, queryEmbedding []float32, lambda float32, limit int) ([]models.MemorySearchResult, error) {
+	embeddingList := make([][]float32, len(results))
+	for i, result := range results {
+		embeddingList[i] = result.Embedding
+	}
+	rerankedIdxs, err := search.MaximalMarginalRelevance(queryEmbedding, embeddingList, lambda, limit)
+	if err != nil {
+		return nil, store.NewStorageError("error applying mmr", err)
+	}
+	rerankedResults := make([]models.MemorySearchResult, len(rerankedIdxs))
+	for i, idx := range rerankedIdxs {
+		rerankedResults[i] = results[idx]
+	}
+	return rerankedResults, nil
+}
+
 func buildMessagesSelectQuery(
 	ctx context.Context,
-	appState *models.AppState,
 	db *bun.DB,
 	query *models.MemorySearchPayload,
 ) *bun.SelectQuery {
@@ -90,8 +128,8 @@ func buildMessagesSelectQuery(
 		ColumnExpr("m.metadata AS message__metadata").
 		ColumnExpr("m.token_count AS message__token_count")
 
-	if query.Text != "" {
-		dbQuery, _ = addMessagesVectorColumn(ctx, appState, dbQuery, query.Text)
+	if query.Type == models.SearchTypeMMR {
+		dbQuery = dbQuery.ColumnExpr("me.embedding AS embedding")
 	}
 
 	return dbQuery
@@ -170,18 +208,18 @@ func addMessagesVectorColumn(
 	appState *models.AppState,
 	q *bun.SelectQuery,
 	queryText string,
-) (*bun.SelectQuery, error) {
+) (*bun.SelectQuery, []float32, error) {
 	documentType := "message"
 	model, err := llms.GetEmbeddingModel(appState, documentType)
 	if err != nil {
-		return nil, store.NewStorageError("failed to get message embedding model", err)
+		return nil, nil, store.NewStorageError("failed to get message embedding model", err)
 	}
 
 	e, err := llms.EmbedTexts(ctx, appState, model, documentType, []string{queryText})
 	if err != nil {
-		return nil, store.NewStorageError("failed to embed query", err)
+		return nil, nil, store.NewStorageError("failed to embed query", err)
 	}
 
 	vector := pgvector.NewVector(e[0])
-	return q.ColumnExpr("(embedding <#> ?) * -1 AS dist", vector), nil
+	return q.ColumnExpr("(embedding <#> ?) * -1 AS dist", vector), e[0], nil
 }

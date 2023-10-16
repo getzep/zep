@@ -70,7 +70,6 @@ type DocumentStore[T any] interface {
 		ctx context.Context,
 		query *DocumentSearchPayload,
 		limit int,
-		withMMR bool, // withMMR is used to enable/disable the Maximal Marginal Relevance algorithm for search results.
 		pageNumber int,
 		pageSize int,
 	) (*DocumentSearchResultPage, error)

@@ -463,7 +463,6 @@ func (dc *DocumentCollectionDAO) DeleteDocumentsByUUID(
 func (dc *DocumentCollectionDAO) SearchDocuments(ctx context.Context,
 	query *models.DocumentSearchPayload,
 	limit int,
-	withMMR bool,
 	pageNumber int,
 	pageSize int) (*models.DocumentSearchResultPage, error) {
 	// TODO: implement pagination
@@ -493,7 +492,6 @@ func (dc *DocumentCollectionDAO) SearchDocuments(ctx context.Context,
 		query,
 		&dc.DocumentCollection,
 		limit,
-		withMMR,
 	)
 
 	results, err := search.Execute()

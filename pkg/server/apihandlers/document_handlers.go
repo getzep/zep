@@ -783,7 +783,6 @@ func CreateCollectionIndexHandler(appState *models.AppState) http.HandlerFunc {
 //	@Produce		json
 //	@Param			collectionName	path		string							true	"Name of the Document Collection"
 //	@Param			limit			query		int								false	"Limit the number of returned documents"
-//	@Param			mmr				query		bool							false	"Use MMR to rerank the search results. Not Implemented"
 //	@Param			searchPayload	body		models.DocumentSearchPayload	true	"Search criteria"
 //	@Success		200				{object}	[]models.Document				"OK"
 //	@Failure		400				{object}	APIError						"Bad Request"
@@ -812,23 +811,6 @@ func SearchDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		// disabled for now
-		withMMRStr := r.URL.Query().Get("mmr")
-		withMMR := false
-		if withMMRStr != "" {
-			_, err = strconv.ParseBool(withMMRStr)
-			if err != nil {
-				handlertools.RenderError(w, err, http.StatusBadRequest)
-				return
-			}
-			handlertools.RenderError(
-				w,
-				errors.New("MMR not yet implemented"),
-				http.StatusBadRequest,
-			)
-			return
-		}
-
 		var searchPayload models.DocumentSearchPayload
 		if err := json.NewDecoder(r.Body).Decode(&searchPayload); err != nil {
 			handlertools.RenderError(w, err, http.StatusBadRequest)
@@ -837,7 +819,7 @@ func SearchDocumentsHandler(appState *models.AppState) http.HandlerFunc {
 
 		searchPayload.CollectionName = collectionName
 
-		results, err := store.SearchCollection(r.Context(), &searchPayload, limit, withMMR, 0, 0)
+		results, err := store.SearchCollection(r.Context(), &searchPayload, limit, 0, 0)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
 				handlertools.RenderError(w, err, http.StatusNotFound)

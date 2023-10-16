@@ -345,34 +345,59 @@ func TestSearchDocumentsHandler(t *testing.T) {
 			},
 			Embedding: []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.1, -0.2, -0.3, -0.4},
 		},
+		{
+			DocumentBase: models.DocumentBase{
+				DocumentID: "doc3",
+				Content:    "This is a third test document",
+				Metadata: map[string]interface{}{
+					"key": "value",
+				},
+			},
+			Embedding: []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.1, -0.2, -0.3, -0.5},
+		},
 	}
 
 	_, err = appState.DocumentStore.CreateDocuments(testCtx, collectionName, docs)
 	assert.NoError(t, err)
 
-	q := models.DocumentSearchPayload{
-		CollectionName: collectionName,
-		Embedding:      []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.1, -0.2, -0.3, -0.4},
-		Metadata: map[string]interface{}{
-			"where": map[string]interface{}{"jsonpath": "$[*] ? (@.key == 'value')"},
-		},
+	// Test cases for different search types
+	testCases := []models.SearchType{models.SearchTypeSimilarity, models.SearchTypeMMR}
+
+	for _, searchType := range testCases {
+		q := models.DocumentSearchPayload{
+			CollectionName: collectionName,
+			Embedding:      []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.1, -0.2, -0.3, -0.4},
+			Metadata: map[string]interface{}{
+				"where": map[string]interface{}{"jsonpath": "$[*] ? (@.key == 'value')"},
+			},
+			Type: searchType,
+		}
+		p, err := json.Marshal(q)
+		assert.NoError(t, err)
+
+		limit := "2"
+
+		// Create a new HTTP request
+		req, err := http.NewRequest(
+			"POST",
+			testServer.URL+"/api/v1/collection/"+collectionName+"/search?limit="+limit,
+			bytes.NewBuffer(p),
+		)
+		assert.NoError(t, err)
+
+		// Send the request
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		assert.NoError(t, err)
+
+		// Check the status code
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		// Check the response body
+		var searchResults models.DocumentSearchResultPage
+		err = json.NewDecoder(resp.Body).Decode(&searchResults)
+		assert.NoError(t, err)
+
+		assert.Equal(t, 2, len(searchResults.Results))
 	}
-	p, err := json.Marshal(q)
-	assert.NoError(t, err)
-
-	// Create a new HTTP request
-	req, err := http.NewRequest(
-		"POST",
-		testServer.URL+"/api/v1/collection/"+collectionName+"/search",
-		bytes.NewBuffer(p),
-	)
-	assert.NoError(t, err)
-
-	// Send the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	assert.NoError(t, err)
-
-	// Check the status code
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
