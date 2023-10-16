@@ -15,8 +15,6 @@ import (
 )
 
 const DefaultMemorySearchLimit = 10
-const DefaultMMRMultiplier = 2
-const DefaultMMRLambda = 0.5
 
 type JSONQuery struct {
 	JSONPath string       `json:"jsonpath"`

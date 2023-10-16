@@ -15,7 +15,6 @@ import (
 // TODO: Test non-happy paths
 
 // End to end with local embedding
-// won't pass if NLP service is running via docker-compose
 func TestDocumentSearchWithIndexEndToEnd(t *testing.T) {
 	gofakeit.Seed(0)
 	ctx, done := context.WithCancel(testCtx)
@@ -42,28 +41,6 @@ func TestDocumentSearchWithIndexEndToEnd(t *testing.T) {
 	docCollection, err := newDocumentCollectionWithDocs(ctx, collectionName,
 		500, false, true, 1536)
 	assert.NoError(t, err)
-
-	// TODO: Test without HNSW
-	// collection := docCollection.collection.DocumentCollection
-	// // create index
-	// vci, err := NewVectorColIndex(
-	// 	ctx,
-	// 	appState,
-	// 	collection,
-	// )
-	// assert.NoError(t, err)
-
-	// err = vci.CreateIndex(context.Background(), true)
-	// assert.NoError(t, err)
-
-	// pollIndexCreation(documentStore, collectionName, ctx, t)
-
-	// // Set Collection's IsIndexed flag to true
-	// col, err := documentStore.GetCollection(ctx, vci.Collection.Name)
-	// assert.NoError(t, err)
-	// assert.Equal(t, true, col.IsIndexed)
-	// assert.True(t, col.ProbeCount > 0)
-	// assert.True(t, col.ListCount > 0)
 
 	limit := 5
 	searchPayload := &models.DocumentSearchPayload{
@@ -95,4 +72,67 @@ func TestDocumentSearchWithIndexEndToEnd(t *testing.T) {
 	assert.NoError(t, err)
 
 	done()
+}
+
+func TestReRankMMR(t *testing.T) {
+	// Initialize a documentSearchOperation with a searchPayload of type MMR
+	dso := &documentSearchOperation{
+		searchPayload: &models.DocumentSearchPayload{
+			Type:      models.SearchTypeMMR,
+			MMRLambda: 0.5,
+		},
+		queryVector: []float32{0.1, 0.2, 0.3},
+		limit:       2,
+	}
+
+	// Create a slice of SearchDocumentResult
+	results := []models.SearchDocumentResult{
+		{
+			Document: &models.Document{
+				DocumentBase: models.DocumentBase{
+					DocumentID: "doc1",
+				},
+				Embedding: []float32{0.1, 0.2, 0.3},
+			},
+			Score: 1.0,
+		},
+		{
+			Document: &models.Document{
+				DocumentBase: models.DocumentBase{
+					DocumentID: "doc2",
+				},
+				Embedding: []float32{0.4, 0.5, 0.6},
+			},
+			Score: 0.4,
+		},
+		{
+			Document: &models.Document{
+				DocumentBase: models.DocumentBase{
+					DocumentID: "doc3",
+				},
+				Embedding: []float32{0.7, 0.8, 0.9},
+			},
+			Score: 0.2,
+		},
+		{
+			Document: &models.Document{
+				DocumentBase: models.DocumentBase{
+					DocumentID: "doc4",
+				},
+				Embedding: []float32{0.1, 0.2, 0.4},
+			},
+			Score: 0.8,
+		},
+	}
+
+	// Call reRankMMR method
+	rankedResults, err := dso.reRankMMR(results)
+
+	// Assert no error was returned
+	assert.NoError(t, err)
+
+	// Assert that the results have been reranked correctly
+	assert.Equal(t, 2, len(rankedResults))
+	assert.Equal(t, "doc1", rankedResults[0].Document.DocumentID)
+	assert.Equal(t, "doc2", rankedResults[1].Document.DocumentID)
 }

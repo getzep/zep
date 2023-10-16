@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/getzep/zep/pkg/llms"
+	"github.com/getzep/zep/pkg/search"
 	"github.com/getzep/zep/pkg/store"
 	"github.com/pgvector/pgvector-go"
 	"github.com/uptrace/bun"
@@ -49,11 +50,10 @@ type documentSearchOperation struct {
 	collection    *models.DocumentCollection
 	queryVector   []float32
 	limit         int
-	withMMR       bool
 }
 
 func (dso *documentSearchOperation) Execute() (*models.DocumentSearchResultPage, error) {
-	var results []models.SearchDocumentQuery
+	var results []models.SearchDocumentResult
 
 	var count int
 	var err error
@@ -91,6 +91,13 @@ func (dso *documentSearchOperation) Execute() (*models.DocumentSearchResultPage,
 		return nil, fmt.Errorf("error executing search: %w", err)
 	}
 
+	if dso.searchPayload.Type == models.SearchTypeMMR {
+		results, err = dso.reRankMMR(results)
+		if err != nil {
+			return nil, fmt.Errorf("error reranking results: %w", err)
+		}
+	}
+
 	resultPage := &models.DocumentSearchResultPage{
 		Results:     searchResultsFromSearchQueries(results),
 		QueryVector: dso.queryVector,
@@ -100,10 +107,42 @@ func (dso *documentSearchOperation) Execute() (*models.DocumentSearchResultPage,
 	return resultPage, nil
 }
 
+// reRankMMR reranks the results using the MMR algorithm.
+func (dso *documentSearchOperation) reRankMMR(
+	results []models.SearchDocumentResult,
+) ([]models.SearchDocumentResult, error) {
+	lambda := dso.searchPayload.MMRLambda
+	if lambda == 0 {
+		lambda = DefaultMMRLambda
+	}
+
+	k := dso.limit
+	if k == 0 {
+		k = DefaultDocumentSearchLimit
+	}
+
+	resultVectors := make([][]float32, len(results))
+	for i := range results {
+		resultVectors[i] = results[i].Embedding
+	}
+
+	rankedIndices, err := search.MaximalMarginalRelevance(dso.queryVector, resultVectors, lambda, k)
+	if err != nil {
+		return nil, fmt.Errorf("error reranking results: %w", err)
+	}
+
+	rankedResults := make([]models.SearchDocumentResult, len(rankedIndices))
+	for i := range rankedIndices {
+		rankedResults[i] = results[rankedIndices[i]]
+	}
+
+	return rankedResults, nil
+}
+
 // execQuery executes the query and scans the results into the provided results slice. It accepts a bun DB or Tx.
 func (dso *documentSearchOperation) execQuery(
 	db bun.IDB,
-	results *[]models.SearchDocumentQuery,
+	results *[]models.SearchDocumentResult,
 ) (int, error) {
 	query, err := dso.buildQuery(db)
 	if err != nil {
@@ -120,15 +159,11 @@ func (dso *documentSearchOperation) execQuery(
 
 	count := len(*results)
 
-	if count == 0 {
-		return 0, models.NewNotFoundError("no results found")
-	}
-
 	return count, nil
 }
 
 func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, error) {
-	m := &[]models.SearchDocumentQuery{}
+	m := &[]models.SearchDocumentResult{}
 	query := db.NewSelect().Model(m).
 		ModelTableExpr("?", bun.Ident(dso.collection.TableName)).
 		Column("*").
@@ -165,8 +200,8 @@ func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, er
 	// If we're using MMR, we need to add a limit of 2x the requested limit to allow for the MMR
 	// algorithm to rerank and filter out results.
 	limit := dso.limit
-	if dso.withMMR {
-		limit *= 2
+	if dso.searchPayload.Type == models.SearchTypeMMR {
+		limit *= DefaultMMRMultiplier
 	}
 	query = query.Limit(limit)
 
@@ -223,7 +258,7 @@ func (dso *documentSearchOperation) applyDocsMetadataFilter(
 	return query, nil
 }
 
-func searchResultsFromSearchQueries(s []models.SearchDocumentQuery) []models.DocumentSearchResult {
+func searchResultsFromSearchQueries(s []models.SearchDocumentResult) []models.DocumentSearchResult {
 	result := make([]models.DocumentSearchResult, len(s))
 
 	for i := range s {
