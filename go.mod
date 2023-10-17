@@ -2,7 +2,7 @@ module github.com/getzep/zep
 
 go 1.21
 
-toolchain go1.21.2
+toolchain go1.21.3
 
 require (
 	dario.cat/mergo v1.0.0
