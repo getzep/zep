@@ -886,12 +886,6 @@
                         "in": "query"
                     },
                     {
-                        "type": "boolean",
-                        "description": "Use MMR to rerank the search results. Not Implemented",
-                        "name": "mmr",
-                        "in": "query"
-                    },
-                    {
                         "description": "Search criteria",
                         "name": "searchPayload",
                         "in": "body",
@@ -1920,6 +1914,12 @@
                     "type": "object",
                     "additionalProperties": true
                 },
+                "mmr_lambda": {
+                    "type": "number"
+                },
+                "search_type": {
+                    "$ref": "#/definitions/models.SearchType"
+                },
                 "text": {
                     "type": "string"
                 }
@@ -1967,6 +1967,12 @@
                     "type": "object",
                     "additionalProperties": true
                 },
+                "mmr_lambda": {
+                    "type": "number"
+                },
+                "search_type": {
+                    "$ref": "#/definitions/models.SearchType"
+                },
                 "text": {
                     "type": "string"
                 }
@@ -1977,6 +1983,12 @@
             "properties": {
                 "dist": {
                     "type": "number"
+                },
+                "embedding": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
                 },
                 "message": {
                     "$ref": "#/definitions/models.Message"
@@ -2021,6 +2033,17 @@
                     "type": "string"
                 }
             }
+        },
+        "models.SearchType": {
+            "type": "string",
+            "enum": [
+                "similarity",
+                "mmr"
+            ],
+            "x-enum-varnames": [
+                "SearchTypeSimilarity",
+                "SearchTypeMMR"
+            ]
         },
         "models.Session": {
             "type": "object",
