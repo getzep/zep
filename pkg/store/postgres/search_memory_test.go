@@ -50,7 +50,7 @@ func TestMemorySearch(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			q := models.MemorySearchPayload{Text: tc.query, Type: tc.searchType}
+			q := models.MemorySearchPayload{Text: tc.query, SearchType: tc.searchType}
 			expectedLastN := tc.limit
 			if expectedLastN == 0 {
 				expectedLastN = 10 // Default value

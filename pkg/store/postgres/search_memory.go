@@ -69,11 +69,15 @@ func searchMessages(
 
 	// If we're using MMR, we need to return more results than the limit so we can
 	// rerank them.
-	if query.Type == models.SearchTypeMMR {
+	if query.SearchType == models.SearchTypeMMR {
 		if query.MMRLambda == 0 {
 			query.MMRLambda = DefaultMMRLambda
 		}
-		dbQuery = dbQuery.Limit(limit * DefaultMMRMultiplier)
+		tmpLimit := limit * DefaultMMRMultiplier
+		if tmpLimit < 10 {
+			tmpLimit = 10
+		}
+		dbQuery = dbQuery.Limit(tmpLimit)
 	} else {
 		dbQuery = dbQuery.Limit(limit)
 	}
@@ -86,7 +90,7 @@ func searchMessages(
 	filteredResults := filterValidMessageSearchResults(results, query.Metadata)
 
 	// If we're using MMR, rerank the results.
-	if query.Type == models.SearchTypeMMR {
+	if query.SearchType == models.SearchTypeMMR {
 		filteredResults, err = rerankMMR(filteredResults, queryEmbedding, query.MMRLambda, limit)
 		if err != nil {
 			return nil, store.NewStorageError("error applying mmr", err)
@@ -128,7 +132,7 @@ func buildMessagesSelectQuery(
 		ColumnExpr("m.metadata AS message__metadata").
 		ColumnExpr("m.token_count AS message__token_count")
 
-	if query.Type == models.SearchTypeMMR {
+	if query.SearchType == models.SearchTypeMMR {
 		dbQuery = dbQuery.ColumnExpr("me.embedding AS embedding")
 	}
 
