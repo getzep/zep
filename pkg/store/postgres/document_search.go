@@ -91,7 +91,7 @@ func (dso *documentSearchOperation) Execute() (*models.DocumentSearchResultPage,
 		return nil, fmt.Errorf("error executing search: %w", err)
 	}
 
-	if dso.searchPayload.Type == models.SearchTypeMMR {
+	if dso.searchPayload.SearchType == models.SearchTypeMMR {
 		results, err = dso.reRankMMR(results)
 		if err != nil {
 			return nil, fmt.Errorf("error reranking results: %w", err)
@@ -200,8 +200,11 @@ func (dso *documentSearchOperation) buildQuery(db bun.IDB) (*bun.SelectQuery, er
 	// If we're using MMR, we need to add a limit of 2x the requested limit to allow for the MMR
 	// algorithm to rerank and filter out results.
 	limit := dso.limit
-	if dso.searchPayload.Type == models.SearchTypeMMR {
+	if dso.searchPayload.SearchType == models.SearchTypeMMR {
 		limit *= DefaultMMRMultiplier
+		if limit < 10 {
+			limit = 10
+		}
 	}
 	query = query.Limit(limit)
 

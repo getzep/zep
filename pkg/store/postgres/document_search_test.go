@@ -78,8 +78,8 @@ func TestReRankMMR(t *testing.T) {
 	// Initialize a documentSearchOperation with a searchPayload of type MMR
 	dso := &documentSearchOperation{
 		searchPayload: &models.DocumentSearchPayload{
-			Type:      models.SearchTypeMMR,
-			MMRLambda: 0.5,
+			SearchType: models.SearchTypeMMR,
+			MMRLambda:  0.5,
 		},
 		queryVector: []float32{0.1, 0.2, 0.3},
 		limit:       2,

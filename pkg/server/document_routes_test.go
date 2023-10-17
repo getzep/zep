@@ -370,7 +370,7 @@ func TestSearchDocumentsHandler(t *testing.T) {
 			Metadata: map[string]interface{}{
 				"where": map[string]interface{}{"jsonpath": "$[*] ? (@.key == 'value')"},
 			},
-			Type: searchType,
+			SearchType: searchType,
 		}
 		p, err := json.Marshal(q)
 		assert.NoError(t, err)
