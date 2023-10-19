@@ -242,10 +242,10 @@ func TestGetMessages(t *testing.T) {
 		withSummary    bool
 	}{
 		{
-			name:           "Get all messages",
+			name:           "Get all messages within messageWindow",
 			sessionID:      sessionID,
 			lastNMessages:  0,
-			expectedLength: len(messages),
+			expectedLength: messageWindow,
 			withSummary:    false,
 		},
 		{

@@ -176,7 +176,7 @@ func getMessages(
 	if lastNMessages > 0 {
 		messages, err = fetchLastNMessages(ctx, db, sessionID, lastNMessages)
 	} else {
-		messages, err = fetchMessagesAfterSummaryPoint(ctx, db, sessionID, summary)
+		messages, err = fetchMessagesAfterSummaryPoint(ctx, db, sessionID, summary, memoryWindow)
 	}
 	if err != nil {
 		return nil, store.NewStorageError("failed to get messages", err)
@@ -201,6 +201,7 @@ func fetchMessagesAfterSummaryPoint(
 	db *bun.DB,
 	sessionID string,
 	summary *models.Summary,
+	memoryWindow int,
 ) ([]MessageStoreSchema, error) {
 	var summaryPointIndex int64
 	var err error
@@ -220,6 +221,9 @@ func fetchMessagesAfterSummaryPoint(
 	if summaryPointIndex > 0 {
 		query.Where("id > ?", summaryPointIndex)
 	}
+
+	// Always limit to the memory window
+	query.Limit(memoryWindow)
 
 	return messages, query.Scan(ctx)
 }
