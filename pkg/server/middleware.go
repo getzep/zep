@@ -37,7 +37,7 @@ func (middleware *zepCustomMiddleware) SendVersion(next http.Handler) http.Handl
 }
 
 // CustomHeader will take any configured custom headers in the configuration file or 
-// ZEP_CUSTOM_HEADER_SECRET environment variable and add them to requests
+// ZEP_SECRET_CUSTOM_HEADER and  ZEP_SECRET_CUSTOM_HEADER_VALUE environment variables and add them to requests
 func (middleware *zepCustomMiddleware)  CustomHeader(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
