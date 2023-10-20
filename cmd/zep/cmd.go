@@ -70,11 +70,11 @@ var loadFixturesCmd = &cobra.Command{
 }
 
 var dumpJsonSchemaCmd = &cobra.Command{
-	Use: "json-schema",
-	Short: "Generates JSON Schema for Zep's configuration file",
+	Use:     "json-schema",
+	Short:   "Generates JSON Schema for Zep's configuration file",
 	Example: "zep json-schema > zep_config_schema.json",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		schema, err := config.JsonSchema()
+		schema, err := config.JSONSchema()
 		if err != nil {
 			return err
 		}

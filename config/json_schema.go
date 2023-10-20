@@ -10,7 +10,7 @@ var (
 	ErrGeneratedSchemaIsNil = errors.New("generated JSON Schema is nil")
 )
 
-func JsonSchema() ([]byte, error) {
+func JSONSchema() ([]byte, error) {
 	schema := jsonschema.Reflect(&Config{})
 
 	if schema == nil {

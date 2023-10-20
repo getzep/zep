@@ -3,16 +3,16 @@ package config
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/invopop/jsonschema"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestJsonSchema(t *testing.T) {
-	schemaJson, err := JsonSchema()
-
+func TestJSONSchema(t *testing.T) {
+	schemaJSON, err := JSONSchema()
 	assert.NoError(t, err)
-	assert.NotNil(t, schemaJson)
+	assert.NotNil(t, schemaJSON)
+
 	unmarshalledSchema := &jsonschema.Schema{}
-	err = unmarshalledSchema.UnmarshalJSON(schemaJson)
+	err = unmarshalledSchema.UnmarshalJSON(schemaJSON)
 	assert.NoError(t, err)
 }
