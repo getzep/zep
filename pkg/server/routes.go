@@ -23,10 +23,14 @@ import (
 
 const ReadHeaderTimeout = 5 * time.Second
 
-var log = internal.GetLogger()
+var (
+	log = internal.GetLogger()
+	zepMiddleware *zepCustomMiddleware
+)
 
 // Create creates a new HTTP server with the given app state
 func Create(appState *models.AppState) *http.Server {
+	zepMiddleware = newZepCustomMiddleware(appState)
 	host := appState.Config.Server.Host
 	port := appState.Config.Server.Port
 	router := setupRouter(appState)
@@ -60,7 +64,8 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
 	router.Use(middleware.CleanPath)
-	router.Use(SendVersion)
+	router.Use(zepMiddleware.SendVersion)
+	router.Use(zepMiddleware.CustomHeader)
 	router.Use(middleware.Heartbeat("/healthz"))
 
 	// Only setup web routes if enabled

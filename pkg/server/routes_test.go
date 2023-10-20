@@ -141,8 +141,9 @@ func TestAuthMiddleware(t *testing.T) {
 
 func TestSendVersion(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	zepMiddleware := newZepCustomMiddleware(nil) // SendVersion does not use the appState
 
-	handler := SendVersion(nextHandler)
+	handler := zepMiddleware.SendVersion(nextHandler)
 
 	req, err := http.NewRequest("GET", "/api", nil)
 	if err != nil {
@@ -155,5 +156,46 @@ func TestSendVersion(t *testing.T) {
 	if rr.Header().Get(versionHeader) != config.VersionString {
 		t.Errorf("handler returned wrong version header: got %v want %v",
 			rr.Header().Get(versionHeader), config.VersionString)
+	}
+}
+
+func TestCustomHeader(t *testing.T) {
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	appState := &models.AppState{
+		Config: &config.Config{
+			Server: config.ServerConfig{
+				CustomHeaders:       map[string]string{
+					"custom-header-1": "custom-header-1-value",
+					"custom-header-2": "custom-header-2-value",
+				},
+				SecretCustomHeaders: map[string]string{
+					"secret-custom-header-1": "secret-custom-header-1-value",
+				},
+			},
+		},
+	}
+	zepMiddleware := newZepCustomMiddleware(appState)
+
+	handler := zepMiddleware.CustomHeader(nextHandler)
+
+	req, err := http.NewRequest("GET", "/api", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	for header, value := range zepMiddleware.appState.Config.Server.CustomHeaders {
+		if rr.Header().Get(header) != value {
+			t.Errorf("handler returned wrong custom header: got %v want %v",
+				rr.Header().Get(header), value)
+		}
+	}
+	for header, value := range zepMiddleware.appState.Config.Server.SecretCustomHeaders {
+		if rr.Header().Get(header) != value {
+			t.Errorf("handler returned wrong secret custom header: got %v want %v",
+				rr.Header().Get(header), value)
+		}
 	}
 }
