@@ -45,9 +45,12 @@ func (middleware *zepCustomMiddleware)  CustomHeader(next http.Handler) http.Han
 		for header, value := range middleware.appState.Config.Server.CustomHeaders {
 			w.Header().Add(header, value)
 		}
-		// Add each secret custom header
-		for header, value := range middleware.appState.Config.Server.SecretCustomHeaders {
-			w.Header().Add(header, value)
+		// Add the secret custom header if provided
+		if zepMiddleware.appState.Config.Server.SecretCustomHeader != "" && zepMiddleware.appState.Config.Server.SecretCustomHeaderValue != "" {
+			w.Header().Add(
+				zepMiddleware.appState.Config.Server.SecretCustomHeader,
+				zepMiddleware.appState.Config.Server.SecretCustomHeaderValue,
+			)
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}

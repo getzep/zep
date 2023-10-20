@@ -164,13 +164,12 @@ func TestCustomHeader(t *testing.T) {
 	appState := &models.AppState{
 		Config: &config.Config{
 			Server: config.ServerConfig{
-				CustomHeaders:       map[string]string{
+				CustomHeaders: map[string]string{
 					"custom-header-1": "custom-header-1-value",
 					"custom-header-2": "custom-header-2-value",
 				},
-				SecretCustomHeaders: map[string]string{
-					"secret-custom-header-1": "secret-custom-header-1-value",
-				},
+				SecretCustomHeader:      "secret-custom-header-1",
+				SecretCustomHeaderValue: "secret-custom-header-1-value",
 			},
 		},
 	}
@@ -192,10 +191,43 @@ func TestCustomHeader(t *testing.T) {
 				rr.Header().Get(header), value)
 		}
 	}
-	for header, value := range zepMiddleware.appState.Config.Server.SecretCustomHeaders {
-		if rr.Header().Get(header) != value {
-			t.Errorf("handler returned wrong secret custom header: got %v want %v",
-				rr.Header().Get(header), value)
-		}
+	if rr.Header().Get(zepMiddleware.appState.Config.Server.SecretCustomHeader) != zepMiddleware.appState.Config.Server.SecretCustomHeaderValue {
+		t.Errorf(
+			"handler returned wrong secret custom header: got %v want %v",
+			rr.Header().Get(zepMiddleware.appState.Config.Server.SecretCustomHeader),
+			zepMiddleware.appState.Config.Server.SecretCustomHeaderValue,
+		)
+	}
+}
+
+func TestCustomHeader_NilCustomHeaders(t *testing.T) {
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	appState := &models.AppState{
+		Config: &config.Config{
+			Server: config.ServerConfig{
+				CustomHeaders:           nil,
+				SecretCustomHeader:      "secret-custom-header-1",
+				SecretCustomHeaderValue: "secret-custom-header-1-value",
+			},
+		},
+	}
+	zepMiddleware := newZepCustomMiddleware(appState)
+
+	handler := zepMiddleware.CustomHeader(nextHandler)
+
+	req, err := http.NewRequest("GET", "/api", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Header().Get(zepMiddleware.appState.Config.Server.SecretCustomHeader) != zepMiddleware.appState.Config.Server.SecretCustomHeaderValue {
+		t.Errorf(
+			"handler returned wrong secret custom header: got %v want %v",
+			rr.Header().Get(zepMiddleware.appState.Config.Server.SecretCustomHeader),
+			zepMiddleware.appState.Config.Server.SecretCustomHeaderValue,
+		)
 	}
 }

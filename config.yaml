@@ -62,7 +62,8 @@ server:
   max_request_size: 5242880
   # Custom Headers Configuration
   # Allows customization of additional headers to be sent with requetss
-  # DO NOT STORE SECRETS HERE. Use environment variable ZEP_CUSTOM_HEADER_SECRET
+  # Do not store secrets here in production. The ZEP_SECRET_CUSTOM_HEADER=header_name environment variables
+  # and ZEP_SECRET_CUSTOM_HEADER_VALUE=header_value used instead.
   custom_headers:
     # Example format:
     # header_name: header_value
