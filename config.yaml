@@ -67,6 +67,8 @@ server:
   custom_headers:
     # Example format:
     # header_name: header_value
+    x-zep-custom-header-1: 12345
+    x-zep-custom-header-2: abcde
 auth:
   # Set to true to enable authentication
   required: false
