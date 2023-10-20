@@ -36,6 +36,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/getzep/sprig/v3 v3.0.0-20230930153539-1d7fce7d845e
 	github.com/hashicorp/go-retryablehttp v0.7.4
+	github.com/invopop/jsonschema v0.12.0
 	github.com/tmc/langchaingo v0.0.0-20230929160525-e16b77704b8d
 	github.com/uptrace/bun/dbfixture v1.1.16
 	github.com/uptrace/bun/extra/bundebug v1.1.16
@@ -46,6 +47,8 @@ require (
 require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
+	github.com/bahlo/generic-list-go v0.2.0 // indirect
+	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/chewxy/math32 v1.10.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
@@ -96,6 +99,7 @@ require (
 	github.com/viterin/partial v1.1.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
+	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	golang.org/x/crypto v0.14.0 // indirect
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
 	golang.org/x/net v0.17.0 // indirect

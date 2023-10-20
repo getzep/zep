@@ -69,10 +69,25 @@ var loadFixturesCmd = &cobra.Command{
 	},
 }
 
+var dumpJsonSchemaCmd = &cobra.Command{
+	Use:     "json-schema",
+	Short:   "Generates JSON Schema for Zep's configuration file",
+	Example: "zep json-schema > zep_config_schema.json",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		schema, err := config.JSONSchema()
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(schema))
+		return nil
+	},
+}
+
 func init() {
 	testCmd.AddCommand(createFixturesCmd)
 	testCmd.AddCommand(loadFixturesCmd)
 	cmd.AddCommand(testCmd)
+	cmd.AddCommand(dumpJsonSchemaCmd)
 
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default config.yaml)")
 	cmd.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "print version number")
