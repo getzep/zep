@@ -23,14 +23,10 @@ import (
 
 const ReadHeaderTimeout = 5 * time.Second
 
-var (
-	log = internal.GetLogger()
-	zepMiddleware *zepCustomMiddleware
-)
+var log = internal.GetLogger()
 
 // Create creates a new HTTP server with the given app state
 func Create(appState *models.AppState) *http.Server {
-	zepMiddleware = newZepCustomMiddleware(appState)
 	host := appState.Config.Server.Host
 	port := appState.Config.Server.Port
 	router := setupRouter(appState)
@@ -41,16 +37,16 @@ func Create(appState *models.AppState) *http.Server {
 	}
 }
 
-//	@title						Zep REST-like API
-//	@version					0.x
-//	@license.name				Apache 2.0
-//	@license.url				http://www.apache.org/licenses/LICENSE-2.0.html
-//	@BasePath					/api/v1
-//	@schemes					http https
-//	@securityDefinitions.apikey	Bearer
-//	@in							header
-//	@name						Authorization
-//	@description				Type "Bearer" followed by a space and JWT token.
+// @title						Zep REST-like API
+// @version					0.x
+// @license.name				Apache 2.0
+// @license.url				http://www.apache.org/licenses/LICENSE-2.0.html
+// @BasePath					/api/v1
+// @schemes					http https
+// @securityDefinitions.apikey	Bearer
+// @in							header
+// @name						Authorization
+// @description				Type "Bearer" followed by a space and JWT token.
 func setupRouter(appState *models.AppState) *chi.Mux {
 	maxRequestSize := appState.Config.Server.MaxRequestSize
 	if maxRequestSize == 0 {
@@ -64,8 +60,8 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
 	router.Use(middleware.CleanPath)
-	router.Use(zepMiddleware.SendVersion)
-	router.Use(zepMiddleware.CustomHeader)
+	router.Use(SendVersion)
+	router.Use(CustomHeader(appState))
 	router.Use(middleware.Heartbeat("/healthz"))
 
 	// Only setup web routes if enabled

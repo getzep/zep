@@ -141,9 +141,8 @@ func TestAuthMiddleware(t *testing.T) {
 
 func TestSendVersion(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
-	zepMiddleware := newZepCustomMiddleware(nil) // SendVersion does not use the appState
 
-	handler := zepMiddleware.SendVersion(nextHandler)
+	handler := SendVersion(nextHandler)
 
 	req, err := http.NewRequest("GET", "/api", nil)
 	if err != nil {
@@ -173,9 +172,8 @@ func TestCustomHeader(t *testing.T) {
 			},
 		},
 	}
-	zepMiddleware := newZepCustomMiddleware(appState)
 
-	handler := zepMiddleware.CustomHeader(nextHandler)
+	handler := CustomHeader(appState)(nextHandler)
 
 	req, err := http.NewRequest("GET", "/api", nil)
 	if err != nil {
@@ -185,17 +183,17 @@ func TestCustomHeader(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	for header, value := range zepMiddleware.appState.Config.Server.CustomHeaders {
+	for header, value := range appState.Config.Server.CustomHeaders {
 		if rr.Header().Get(header) != value {
 			t.Errorf("handler returned wrong custom header: got %v want %v",
 				rr.Header().Get(header), value)
 		}
 	}
-	if rr.Header().Get(zepMiddleware.appState.Config.Server.SecretCustomHeader) != zepMiddleware.appState.Config.Server.SecretCustomHeaderValue {
+	if rr.Header().Get(appState.Config.Server.SecretCustomHeader) != appState.Config.Server.SecretCustomHeaderValue {
 		t.Errorf(
 			"handler returned wrong secret custom header: got %v want %v",
-			rr.Header().Get(zepMiddleware.appState.Config.Server.SecretCustomHeader),
-			zepMiddleware.appState.Config.Server.SecretCustomHeaderValue,
+			rr.Header().Get(appState.Config.Server.SecretCustomHeader),
+			appState.Config.Server.SecretCustomHeaderValue,
 		)
 	}
 }
@@ -211,9 +209,8 @@ func TestCustomHeader_NilCustomHeaders(t *testing.T) {
 			},
 		},
 	}
-	zepMiddleware := newZepCustomMiddleware(appState)
 
-	handler := zepMiddleware.CustomHeader(nextHandler)
+	handler := CustomHeader(appState)(nextHandler)
 
 	req, err := http.NewRequest("GET", "/api", nil)
 	if err != nil {
@@ -223,11 +220,11 @@ func TestCustomHeader_NilCustomHeaders(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	if rr.Header().Get(zepMiddleware.appState.Config.Server.SecretCustomHeader) != zepMiddleware.appState.Config.Server.SecretCustomHeaderValue {
+	if rr.Header().Get(appState.Config.Server.SecretCustomHeader) != appState.Config.Server.SecretCustomHeaderValue {
 		t.Errorf(
 			"handler returned wrong secret custom header: got %v want %v",
-			rr.Header().Get(zepMiddleware.appState.Config.Server.SecretCustomHeader),
-			zepMiddleware.appState.Config.Server.SecretCustomHeaderValue,
+			rr.Header().Get(appState.Config.Server.SecretCustomHeader),
+			appState.Config.Server.SecretCustomHeaderValue,
 		)
 	}
 }
