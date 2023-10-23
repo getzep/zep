@@ -51,4 +51,13 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 		appState.Config.Extractors.Messages.Intent.Enabled,
 		func() models.Task { return &MessageIntentTask{appState: appState} },
 	)
+
+	addTask(
+		ctx,
+		"message_token_count",
+		"message_token_count",
+		true, // Always enabled
+		func() models.Task { return &MessageTokenCountTask{appState: appState} },
+	)
+
 }
