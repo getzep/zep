@@ -19,5 +19,6 @@ type TaskRouter interface {
 
 type TaskPublisher interface {
 	Publish(taskType string, metadata map[string]string, payload any) error
+	PublishMessage(metadata map[string]string, payload []Message) error
 	Close() error
 }

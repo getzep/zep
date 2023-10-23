@@ -248,7 +248,7 @@ func (pms *PostgresMemoryStore) PutMemory(
 	}
 
 	// Send new messages to the message router
-	err = appState.TaskPublisher.Publish("new_messages", map[string]string{"session_id": sessionID}, messageResult)
+	err = appState.TaskPublisher.PublishMessage(map[string]string{"session_id": sessionID}, messageResult)
 	if err != nil {
 		return store.NewStorageError("failed to publish new messages", err)
 	}

@@ -80,6 +80,10 @@ func (t *MessageEmbedderTask) Process(
 	return nil
 }
 
+func (t *MessageEmbedderTask) HandleError(err error) {
+	log.Errorf("MessageEmbedderTask error: %s", err)
+}
+
 // messageToStringSlice converts a slice of MessageEmbedding to a slice of strings.
 // If enrich is true, the text slice will include the prior and subsequent
 // messages text to the slice item.
@@ -106,8 +110,4 @@ func messageToStringSlice(messages []models.Message, enrich bool) []string {
 		texts[i] = strings.Join(parts, " ")
 	}
 	return texts
-}
-
-func (t *MessageEmbedderTask) HandleError(err error) {
-	log.Errorf("MessageEmbedderTask error: %s", err)
 }

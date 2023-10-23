@@ -23,7 +23,7 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 	addTask(
 		ctx,
 		"message_summarizer",
-		"new_messages",
+		"message_summarizer",
 		appState.Config.Extractors.Messages.Summarizer.Enabled,
 		func() models.Task { return &MessageSummaryTask{appState: appState} },
 	)
@@ -31,8 +31,16 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 	addTask(
 		ctx,
 		"message_embedder",
-		"new_messages",
+		"message_embedder",
 		appState.Config.Extractors.Messages.Embeddings.Enabled,
 		func() models.Task { return &MessageEmbedderTask{appState: appState} },
+	)
+
+	addTask(
+		ctx,
+		"message_ner",
+		"message_ner",
+		appState.Config.Extractors.Messages.Entities.Enabled,
+		func() models.Task { return &NERTask{appState: appState} },
 	)
 }
