@@ -5,13 +5,9 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 
-	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/getzep/zep/pkg/extractors"
 	"github.com/getzep/zep/pkg/store"
-	"github.com/google/uuid"
 
 	"github.com/getzep/zep/internal"
 
@@ -47,8 +43,7 @@ var _ models.MemoryStore[*bun.DB] = &PostgresMemoryStore{}
 
 type PostgresMemoryStore struct {
 	store.BaseMemoryStore[*bun.DB]
-	SessionStore    *SessionDAO
-	EmbeddingRouter *extractors.EmbeddingQueueRouter
+	SessionStore *SessionDAO
 }
 
 func (pms *PostgresMemoryStore) OnStart(
@@ -59,24 +54,6 @@ func (pms *PostgresMemoryStore) OnStart(
 	if err != nil {
 		return store.NewStorageError("failed to ensure postgres schema setup", err)
 	}
-
-	dbQueue, err := NewPostgresConnForQueue(appState)
-	if err != nil {
-		return store.NewStorageError("failed to create postgres queue connection", err)
-	}
-	embeddingRouter, err := extractors.NewEmbeddingQueueRouter(dbQueue)
-	if err != nil {
-		return store.NewStorageError("failed to create embedding router", err)
-	}
-	pms.EmbeddingRouter = embeddingRouter
-
-	go func() {
-		log.Info("running embedding router")
-		err := pms.EmbeddingRouter.Run(context.Background())
-		if err != nil {
-			log.Error("failed to run embedding router", err)
-		}
-	}()
 
 	return nil
 }
@@ -146,7 +123,7 @@ func (pms *PostgresMemoryStore) ListSessionsOrdered(
 //   - the lastNMessages messages, if lastNMessages > 0
 //   - all messages since the last SummaryPoint, if lastNMessages == 0
 //   - if no Summary (and no SummaryPoint) exists and lastNMessages == 0, returns
-//     all undeleted messages
+//     all undeleted messages up to the configured message window
 func (pms *PostgresMemoryStore) GetMemory(
 	ctx context.Context,
 	appState *models.AppState,
@@ -270,24 +247,11 @@ func (pms *PostgresMemoryStore) PutMemory(
 		return nil
 	}
 
-	// TODO: refactor
-	p, err := json.Marshal(messageResult)
+	// Send new messages to the message router
+	err = appState.TaskPublisher.Publish("new_messages", map[string]string{"session_id": sessionID}, messageResult)
 	if err != nil {
-		return store.NewStorageError("failed to marshal message", err)
+		return store.NewStorageError("failed to publish new messages", err)
 	}
-	log.Debugf("Publishing message: %s", p)
-	m := message.NewMessage(uuid.New().String(), p)
-	err = pms.EmbeddingRouter.Publisher.Publish(pms.EmbeddingRouter.Topic, m)
-	if err != nil {
-		return store.NewStorageError("failed to publish messages to embedding router", err)
-	}
-
-	pms.NotifyExtractors(
-		context.Background(),
-		appState,
-		&models.MessageEvent{SessionID: sessionID,
-			Messages: messageResult},
-	)
 
 	return nil
 }

@@ -20,12 +20,11 @@ func Initialize(appState *models.AppState) {
 		appState.Config.Extractors.Messages.Summarizer.Enabled,
 		func() models.Extractor { return NewSummaryExtractor() },
 	)
-	// TODO: Remove this
-	// attach(
-	// 	"EmbeddingExtractor",
-	// 	appState.Config.Extractors.Messages.Embeddings.Enabled,
-	// 	func() models.Extractor { return NewEmbeddingExtractor() },
-	// )
+	attach(
+		"EmbeddingExtractor",
+		appState.Config.Extractors.Messages.Embeddings.Enabled,
+		func() models.Extractor { return NewEmbeddingExtractor() },
+	)
 	attach(
 		"TokenCountExtractor",
 		true, // TokenCounter always operates

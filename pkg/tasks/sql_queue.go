@@ -1,4 +1,4 @@
-package extractors
+package tasks
 
 import (
 	"database/sql"

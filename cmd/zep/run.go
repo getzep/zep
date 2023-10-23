@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/getzep/zep/pkg/store/postgres"
+	"github.com/getzep/zep/pkg/tasks"
 
 	"github.com/getzep/zep/pkg/auth"
 
@@ -72,12 +73,11 @@ func NewAppState(cfg *config.Config) *models.AppState {
 		Config:    cfg,
 	}
 
-	initializeStores(appState)
+	initializeStores(ctx, appState)
 
-	// Init the extractors, which will register themselves with the MemoryStore
-	extractors.Initialize(appState)
+	setupTaskRouter(ctx, appState)
 
-	setupSignalHandler(appState)
+	setupSignalHandler(ctx, appState)
 
 	setupPurgeProcessor(ctx, appState)
 
@@ -100,7 +100,7 @@ func handleCLIOptions(cfg *config.Config) {
 }
 
 // initializeStores initializes the memory and document stores based on the config file / ENV
-func initializeStores(appState *models.AppState) {
+func initializeStores(ctx context.Context, appState *models.AppState) {
 	if appState.Config.Store.Type == "" {
 		log.Fatal(ErrStoreTypeNotSet)
 	}
@@ -148,7 +148,7 @@ func initializeStores(appState *models.AppState) {
 			embeddingTaskChannel,
 			embeddingUpdateChannel,
 		)
-		err = embeddingProcessor.Run(context.Background())
+		err = embeddingProcessor.Run(ctx)
 		if err != nil {
 			log.Fatalf("unable to start embeddingProcessor: %v", err)
 		}
@@ -185,7 +185,7 @@ func pgDebugLogging(db *bun.DB) {
 }
 
 // setupSignalHandler sets up a signal handler to close the store connections and channels on termination
-func setupSignalHandler(appState *models.AppState) {
+func setupSignalHandler(ctx context.Context, appState *models.AppState) {
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -193,10 +193,35 @@ func setupSignalHandler(appState *models.AppState) {
 		if err := appState.MemoryStore.Close(); err != nil {
 			log.Errorf("Error closing MemoryStore connection: %v", err)
 		}
-		if err := appState.DocumentStore.Shutdown(context.Background()); err != nil {
+		if err := appState.DocumentStore.Shutdown(ctx); err != nil {
 			log.Errorf("Error shutting down DocumentStore: %v", err)
 		}
 		os.Exit(0)
+	}()
+}
+
+func setupTaskRouter(ctx context.Context, appState *models.AppState) {
+	db, err := postgres.NewPostgresConnForQueue(appState)
+	if err != nil {
+		log.Fatalf("failed to create postgres queue connection %v", err)
+	}
+	router, err := tasks.NewTaskRouter(appState, db)
+	if err != nil {
+		log.Fatalf("failed to create task router: %v", err)
+	}
+
+	publisher := tasks.NewTaskPublisher(db)
+	tasks.Initialize(ctx, appState, router)
+
+	appState.TaskRouter = router
+	appState.TaskPublisher = publisher
+
+	go func() {
+		log.Info("running task router")
+		err := router.Run(ctx)
+		if err != nil {
+			log.Error("failed to run task router", err)
+		}
 	}()
 }
 
