@@ -41,6 +41,14 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 		"message_ner",
 		"message_ner",
 		appState.Config.Extractors.Messages.Entities.Enabled,
-		func() models.Task { return &NERTask{appState: appState} },
+		func() models.Task { return &MessageNERTask{appState: appState} },
+	)
+
+	addTask(
+		ctx,
+		"message_intent",
+		"message_intent",
+		appState.Config.Extractors.Messages.Intent.Enabled,
+		func() models.Task { return &MessageIntentTask{appState: appState} },
 	)
 }

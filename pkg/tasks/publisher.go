@@ -50,6 +50,7 @@ func (t *TaskPublisher) PublishMessage(metadata map[string]string, payload []mod
 		"message_summarizer",
 		"message_embedder",
 		"message_ner",
+		"message_intent",
 	}
 
 	for _, topic := range messageTopics {

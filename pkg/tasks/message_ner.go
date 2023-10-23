@@ -20,22 +20,22 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
-var _ models.Task = &NERTask{}
+var _ models.Task = &MessageNERTask{}
 
-type NERTask struct {
+type MessageNERTask struct {
 	appState *models.AppState
 }
 
-func (n *NERTask) Execute(
+func (n *MessageNERTask) Execute(
 	ctx context.Context,
 	msg *message.Message,
 ) error {
 	sessionID := msg.Metadata.Get("session_id")
 	if sessionID == "" {
-		return errors.New("NERTask session_id is empty")
+		return errors.New("MessageNERTask session_id is empty")
 	}
 
-	log.Debugf("NERTask called for session %s", sessionID)
+	log.Debugf("MessageNERTask called for session %s", sessionID)
 
 	var msgs []models.Message
 	err := json.Unmarshal(msg.Payload, &msgs)
@@ -45,14 +45,14 @@ func (n *NERTask) Execute(
 
 	nerResponse, err := callNERTask(ctx, n.appState, msgs)
 	if err != nil {
-		return fmt.Errorf("NERTask extract entities call failed: %w", err)
+		return fmt.Errorf("MessageNERTask extract entities call failed: %w", err)
 	}
 
 	messages := make([]models.Message, len(nerResponse.Texts))
 	for i, r := range nerResponse.Texts {
 		msgUUID, err := uuid.Parse(r.UUID)
 		if err != nil {
-			return fmt.Errorf("NERTask failed to parse message UUID: %w", err)
+			return fmt.Errorf("MessageNERTask failed to parse message UUID: %w", err)
 		}
 		entityList := extractEntities(r.Entities)
 
@@ -70,14 +70,16 @@ func (n *NERTask) Execute(
 
 	err = n.appState.MemoryStore.PutMessageMetadata(ctx, n.appState, sessionID, messages, true)
 	if err != nil {
-		return fmt.Errorf("NERTask failed to put message metadata: %w", err)
+		return fmt.Errorf("MessageNERTask failed to put message metadata: %w", err)
 	}
+
+	msg.Ack()
 
 	return nil
 }
 
-func (n *NERTask) HandleError(err error) {
-	log.Errorf("NERTask error: %s", err)
+func (n *MessageNERTask) HandleError(err error) {
+	log.Errorf("MessageNERTask error: %s", err)
 }
 
 func extractEntities(entities interface{}) []map[string]interface{} {
