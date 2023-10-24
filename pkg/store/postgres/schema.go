@@ -408,7 +408,10 @@ func enablePgVectorExtension(ctx context.Context, db *bun.DB) error {
 	// this is not an issue if running on a managed service.
 	_, err = db.Exec("ALTER EXTENSION vector UPDATE")
 	if err != nil {
-		log.Errorf("error updating pgvector extension: %s. this may happen if running on a managed service without rights to update extensions.", err)
+		log.Errorf(
+			"error updating pgvector extension: %s. this may happen if running on a managed service without rights to update extensions.",
+			err,
+		)
 		return nil
 	}
 

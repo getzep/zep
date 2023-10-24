@@ -127,9 +127,8 @@ type DocumentResponse struct {
 }
 
 type DocEmbeddingTask struct {
-	UUID           uuid.UUID `json:"uuid"`
-	CollectionName string    `json:"collection_name"`
-	Content        string    `json:"content"`
+	UUID    uuid.UUID `json:"uuid"`
+	Content string    `json:"content"`
 }
 
 type DocEmbeddingUpdate struct {

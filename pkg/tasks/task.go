@@ -60,4 +60,11 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 		func() models.Task { return &MessageTokenCountTask{appState: appState} },
 	)
 
+	addTask(
+		ctx,
+		"document_embedder",
+		"document_embedder",
+		appState.Config.Extractors.Documents.Embeddings.Enabled,
+		func() models.Task { return &DocumentEmbedderTask{appState: appState} },
+	)
 }

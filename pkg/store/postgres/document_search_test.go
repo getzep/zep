@@ -25,13 +25,10 @@ func TestDocumentSearchWithIndexEndToEnd(t *testing.T) {
 	collectionName := testutils.GenerateRandomString(16)
 
 	// Create channels
-	docEmbeddingUpdateTaskCh := make(chan []models.DocEmbeddingUpdate, 5)
-	docEmbeddingTaskCh := make(chan []models.DocEmbeddingTask, 5)
 	documentStore, err := NewDocumentStore(
+		ctx,
 		appState,
 		testDB,
-		docEmbeddingUpdateTaskCh,
-		docEmbeddingTaskCh,
 	)
 	assert.NoError(t, err)
 

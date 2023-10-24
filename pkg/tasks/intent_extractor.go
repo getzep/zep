@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/tmc/langchaingo/llms"
@@ -30,6 +31,9 @@ func (mt *MessageIntentTask) Execute(
 	ctx context.Context,
 	msg *message.Message,
 ) error {
+	ctx, done := context.WithTimeout(ctx, TaskTimeout*time.Second)
+	defer done()
+
 	sessionID := msg.Metadata.Get("session_id")
 	if sessionID == "" {
 		return errors.New("NERTask session_id is empty")
@@ -145,6 +149,11 @@ func (mt *MessageIntentTask) processMessage(
 		true,
 	)
 	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			log.Warnf("MessageIntentTask PutMessageMetadata not found. Were the records deleted?")
+			// Don't error out
+			return
+		}
 		errs <- fmt.Errorf("MessageIntentTask failed to put message metadata: %w", err)
 	}
 }

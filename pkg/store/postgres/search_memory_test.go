@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/getzep/zep/pkg/extractors"
 
 	"github.com/uptrace/bun"
 
 	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/pkg/tasks"
 	"github.com/getzep/zep/pkg/testutils"
 	"github.com/stretchr/testify/assert"
 )
@@ -25,13 +23,10 @@ func TestMemorySearch(t *testing.T) {
 	msgs, err := putMessages(testCtx, testDB, sessionID, testutils.TestMessages)
 	assert.NoError(t, err, "putMessages should not return an error")
 
-	e := extractors.NewEmbeddingExtractor()
-	err = e.Extract(testCtx, appState, &models.MessageEvent{SessionID: sessionID, Messages: msgs})
-	assert.NoError(t, err, "EmbeddingExtractor.Extract should not return an error")
+	e := tasks.NewMessageEmbedderTask(appState)
 
-	// enrichment runs async. Wait for it to finish
-	// This is hacky but I'd prefer not to add a WaitGroup to the putMessages function just for testing purposes
-	time.Sleep(time.Second * 2)
+	err = e.Process(testCtx, sessionID, msgs)
+	assert.NoError(t, err, "EmbeddingExtractor.Extract should not return an error")
 
 	// Test cases
 	testCases := []struct {

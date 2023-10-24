@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/getzep/zep/pkg/models"
@@ -21,6 +22,9 @@ func (mt *MessageTokenCountTask) Execute(
 	ctx context.Context,
 	msg *message.Message,
 ) error {
+	ctx, done := context.WithTimeout(ctx, TaskTimeout*time.Second)
+	defer done()
+
 	sessionID := msg.Metadata.Get("session_id")
 	if sessionID == "" {
 		return errors.New("MessageTokenCountTask session_id is empty")
@@ -51,6 +55,12 @@ func (mt *MessageTokenCountTask) Execute(
 		true,
 	)
 	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			log.Warnf("MessageTokenCountTask PutMemory not found. Were the records deleted?")
+			// Don't error out
+			msg.Ack()
+			return nil
+		}
 		return fmt.Errorf("TokenCountExtractor update messages failed:  %w", err)
 	}
 

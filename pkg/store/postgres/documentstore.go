@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/getzep/zep/pkg/store"
 
@@ -15,26 +14,21 @@ import (
 	"github.com/uptrace/bun"
 )
 
+const DefaultDocEmbeddingChunkSize = 1000
+
 // NewDocumentStore returns a new DocumentStore. Use this to correctly initialize the store.
 func NewDocumentStore(
+	ctx context.Context,
 	appState *models.AppState,
 	client *bun.DB,
-	docEmbeddingUpdateTaskCh chan []models.DocEmbeddingUpdate,
-	docEmbeddingTaskCh chan<- []models.DocEmbeddingTask,
 ) (*DocumentStore, error) {
 	if appState == nil {
 		return nil, errors.New("nil appState received")
 	}
 
-	// Create context that we'll use to shut down the document embedding updater
-	ctx, done := context.WithCancel(context.Background())
 	ds := &DocumentStore{
 		store.BaseDocumentStore[*bun.DB]{Client: client},
 		appState,
-		docEmbeddingUpdateTaskCh,
-		docEmbeddingTaskCh,
-		done,
-		sync.Once{},
 	}
 
 	err := ds.OnStart(ctx)
@@ -45,36 +39,20 @@ func NewDocumentStore(
 	return ds, nil
 }
 
-// Force compiler to validate that DocumentStore implements the DocumentStore interface.
 var _ models.DocumentStore[*bun.DB] = &DocumentStore{}
 
 type DocumentStore struct {
 	store.BaseDocumentStore[*bun.DB]
-	appState                 *models.AppState
-	DocEmbeddingUpdateTaskCh chan []models.DocEmbeddingUpdate
-	DocEmbeddingTaskCh       chan<- []models.DocEmbeddingTask
-	done                     context.CancelFunc
-	startOnce                sync.Once
+	appState *models.AppState
 }
 
 func (ds *DocumentStore) OnStart(
-	ctx context.Context,
+	_ context.Context,
 ) error {
-	// start the document embedding updater in a goroutine
-	ds.startOnce.Do(func() {
-		go func() {
-			log.Info("starting document embedding updater")
-			err := ds.documentEmbeddingUpdater(ctx)
-			if err != nil {
-				log.Errorf("Error from document embedding updater: %v", err)
-			}
-		}()
-	})
 	return nil
 }
 
 func (ds *DocumentStore) Shutdown(_ context.Context) error {
-	ds.done()
 	return nil
 }
 
@@ -358,60 +336,42 @@ func (ds *DocumentStore) documentEmbeddingTasker(
 	tasks := make([]models.DocEmbeddingTask, len(documents))
 	for i := range documents {
 		tasks[i] = models.DocEmbeddingTask{
-			UUID:           documents[i].UUID,
-			Content:        documents[i].Content,
-			CollectionName: collectionName,
+			UUID:    documents[i].UUID,
+			Content: documents[i].Content,
 		}
 	}
 
-	log.Infof("sending %d documents to document embedding updater", len(tasks))
-	ds.DocEmbeddingTaskCh <- tasks
-}
-
-func (ds *DocumentStore) documentEmbeddingUpdater(
-	ctx context.Context,
-) error {
-	defer close(ds.DocEmbeddingUpdateTaskCh)
-	log.Info("started document embedding updater")
-	for {
-		select {
-		case <-ctx.Done():
-			log.Info("document embedding updater shutting down")
-			return nil
-		case updates := <-ds.DocEmbeddingUpdateTaskCh:
-			log.Debug("document embedding updater received update task")
-			if len(updates) == 0 {
-				log.Warning("document embedding updater received empty update list")
-			}
-			log.Debugf("document embedding updater received %d updates", len(updates))
-			dbCollection := NewDocumentCollectionDAO(
-				ds.appState,
-				ds.Client,
-				// TODO: this assumption is hacky. Fix this.
-				models.DocumentCollection{Name: updates[0].CollectionName},
-			)
-			docs := documentsFromEmbeddingUpdates(updates)
-			err := dbCollection.UpdateDocuments(ctx, docs)
-			if err != nil {
-				log.Errorf("failed to update document embedding: %s", err)
-			}
-
-			log.Debugf("Document embedding updater updated %d documents", len(updates))
-		}
+	// chunk the tasks into groups of taskChunkSize
+	taskChunkSize := DefaultDocEmbeddingChunkSize
+	tmpChunkSize := ds.appState.Config.Extractors.Documents.Embeddings.ChunkSize
+	if tmpChunkSize > 0 {
+		taskChunkSize = tmpChunkSize
 	}
-}
+	taskChunks := chunkTasks(tasks, taskChunkSize)
 
-func documentsFromEmbeddingUpdates(updates []models.DocEmbeddingUpdate) []models.Document {
-	docs := make([]models.Document, len(updates))
-	for i := range updates {
-		d := models.Document{
-			DocumentBase: models.DocumentBase{
-				UUID:       updates[i].UUID,
-				IsEmbedded: true,
+	for _, taskChunk := range taskChunks {
+		err := ds.appState.TaskPublisher.Publish(
+			"document_embedder",
+			map[string]string{
+				"collection_name": collectionName,
 			},
-			Embedding: updates[i].Embedding,
+			taskChunk,
+		)
+		if err != nil {
+			log.Errorf("failed to publish document embedding task: %v", err)
 		}
-		docs[i] = d
 	}
-	return docs
+}
+
+// chunkTasks splits the given tasks into chunks of the given size.
+func chunkTasks(tasks []models.DocEmbeddingTask, chunkSize int) [][]models.DocEmbeddingTask {
+	var chunks [][]models.DocEmbeddingTask
+	for i := 0; i < len(tasks); i += chunkSize {
+		end := i + chunkSize
+		if end > len(tasks) {
+			end = len(tasks)
+		}
+		chunks = append(chunks, tasks[i:end])
+	}
+	return chunks
 }

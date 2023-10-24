@@ -6,7 +6,6 @@ toolchain go1.21.3
 
 require (
 	dario.cat/mergo v1.0.0
-	github.com/alitto/pond v1.8.3
 	github.com/avast/retry-go/v4 v4.5.0
 	github.com/brianvoe/gofakeit/v6 v6.23.2
 	github.com/chi-middleware/logrus-logger v0.2.0

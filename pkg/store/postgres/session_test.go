@@ -292,7 +292,11 @@ func TestSessionDAO_UndeleteSession(t *testing.T) {
 	assert.Nil(t, respMessages, "getMessages should return nil")
 }
 
-func setupSessionDeleteTestData(ctx context.Context, testDB *bun.DB, userID string) (string, error) {
+func setupSessionDeleteTestData(
+	ctx context.Context,
+	testDB *bun.DB,
+	userID string,
+) (string, error) {
 	// Test data
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	if err != nil {

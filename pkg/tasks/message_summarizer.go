@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	llms2 "github.com/tmc/langchaingo/llms"
@@ -37,6 +38,9 @@ func (t *MessageSummaryTask) Execute(
 	ctx context.Context,
 	msg *message.Message,
 ) error {
+	ctx, done := context.WithTimeout(ctx, TaskTimeout*time.Second)
+	defer done()
+
 	sessionID := msg.Metadata.Get("session_id")
 	if sessionID == "" {
 		return errors.New("SummaryTask session_id is empty")
@@ -84,6 +88,12 @@ func (t *MessageSummaryTask) Execute(
 		newSummary,
 	)
 	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			log.Warnf("MessageSummaryTask PutSummary not found. Were the records deleted?")
+			// Don't error out
+			msg.Ack()
+			return nil
+		}
 		return fmt.Errorf("SummaryTask put summary failed: %w", err)
 	}
 

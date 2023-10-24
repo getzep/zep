@@ -16,6 +16,8 @@ func runTestSummarize(t *testing.T, llmClient models.ZepLLM) {
 	appState.LLMClient = llmClient
 
 	windowSize := 10
+	appState.Config.Memory.MessageWindow = windowSize
+
 	newMessageCountAfterSummary := windowSize / 2
 
 	messages := make([]models.Message, len(testutils.TestMessages))

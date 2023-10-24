@@ -101,12 +101,22 @@ func searchMessages(
 }
 
 // rerankMMR reranks the results using the Maximal Marginal Relevance algorithm
-func rerankMMR(results []models.MemorySearchResult, queryEmbedding []float32, lambda float32, limit int) ([]models.MemorySearchResult, error) {
+func rerankMMR(
+	results []models.MemorySearchResult,
+	queryEmbedding []float32,
+	lambda float32,
+	limit int,
+) ([]models.MemorySearchResult, error) {
 	embeddingList := make([][]float32, len(results))
 	for i, result := range results {
 		embeddingList[i] = result.Embedding
 	}
-	rerankedIdxs, err := search.MaximalMarginalRelevance(queryEmbedding, embeddingList, lambda, limit)
+	rerankedIdxs, err := search.MaximalMarginalRelevance(
+		queryEmbedding,
+		embeddingList,
+		lambda,
+		limit,
+	)
 	if err != nil {
 		return nil, store.NewStorageError("error applying mmr", err)
 	}

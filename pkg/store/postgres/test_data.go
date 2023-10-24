@@ -279,7 +279,7 @@ func addTestDocuments(
 	tableName string,
 ) error {
 	source := &CustomRandSource{rand.NewSource(time.Now().UnixNano())}
-	r := rand.New(source)
+	r := rand.New(source) // nolint:gosec
 	// 90% prob to return 1 (true), 10% to return 0 (false)
 	boolFaker := gofakeit.NewCustom(r)
 

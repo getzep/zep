@@ -30,6 +30,9 @@ func (n *MessageNERTask) Execute(
 	ctx context.Context,
 	msg *message.Message,
 ) error {
+	ctx, done := context.WithTimeout(ctx, TaskTimeout*time.Second)
+	defer done()
+
 	sessionID := msg.Metadata.Get("session_id")
 	if sessionID == "" {
 		return errors.New("MessageNERTask session_id is empty")
@@ -70,6 +73,12 @@ func (n *MessageNERTask) Execute(
 
 	err = n.appState.MemoryStore.PutMessageMetadata(ctx, n.appState, sessionID, messages, true)
 	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			log.Warnf("MessageNERTask PutMessageMetadata not found. Were the records deleted?")
+			// Don't error out
+			msg.Ack()
+			return nil
+		}
 		return fmt.Errorf("MessageNERTask failed to put message metadata: %w", err)
 	}
 

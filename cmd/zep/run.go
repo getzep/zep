@@ -19,7 +19,6 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/getzep/zep/config"
-	"github.com/getzep/zep/pkg/extractors"
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/server"
@@ -123,36 +122,15 @@ func initializeStores(ctx context.Context, appState *models.AppState) {
 		}
 		log.Debug("memoryStore created")
 
-		// create channels for the document embedding processor
-		embeddingTaskChannel := make(
-			chan []models.DocEmbeddingTask,
-			// We use the Pool's buffer, so this doesn't need to be large
-			10,
-		)
-		// TODO: Make channel size configurable
-		embeddingUpdateChannel := make(chan []models.DocEmbeddingUpdate, 500)
 		documentStore, err := postgres.NewDocumentStore(
+			ctx,
 			appState,
 			db,
-			embeddingUpdateChannel,
-			embeddingTaskChannel,
 		)
 		if err != nil {
 			log.Fatalf("unable to create documentStore: %v", err)
 		}
 		log.Debug("documentStore created")
-
-		// start the document embedding processor
-		embeddingProcessor := extractors.NewDocEmbeddingProcessor(
-			appState,
-			embeddingTaskChannel,
-			embeddingUpdateChannel,
-		)
-		err = embeddingProcessor.Run(ctx)
-		if err != nil {
-			log.Fatalf("unable to start embeddingProcessor: %v", err)
-		}
-		log.Debug("embeddingProcessor started")
 
 		userStore := postgres.NewUserStoreDAO(db)
 		log.Debug("userStore created")
@@ -200,29 +178,13 @@ func setupSignalHandler(ctx context.Context, appState *models.AppState) {
 	}()
 }
 
+// setupTaskRouter runs the Watermill task router
 func setupTaskRouter(ctx context.Context, appState *models.AppState) {
 	db, err := postgres.NewPostgresConnForQueue(appState)
 	if err != nil {
 		log.Fatalf("failed to create postgres queue connection %v", err)
 	}
-	router, err := tasks.NewTaskRouter(appState, db)
-	if err != nil {
-		log.Fatalf("failed to create task router: %v", err)
-	}
-
-	publisher := tasks.NewTaskPublisher(db)
-	tasks.Initialize(ctx, appState, router)
-
-	appState.TaskRouter = router
-	appState.TaskPublisher = publisher
-
-	go func() {
-		log.Info("running task router")
-		err := router.Run(ctx)
-		if err != nil {
-			log.Error("failed to run task router", err)
-		}
-	}()
+	tasks.RunTaskRouter(ctx, appState, db)
 }
 
 // setupPurgeProcessor sets up a go routine to purge deleted records from the MemoryStore

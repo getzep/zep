@@ -3,45 +3,22 @@ package postgres
 import (
 	"testing"
 
-	"github.com/google/uuid"
-
 	"github.com/getzep/zep/pkg/models"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDocumentsFromEmbeddingUpdates(t *testing.T) {
-	uuid1 := uuid.New()
-	uuid2 := uuid.New()
-
-	updates := []models.DocEmbeddingUpdate{
-		{
-			UUID:      uuid1,
-			Embedding: []float32{0.1, 0.2, 0.3},
-		},
-		{
-			UUID:      uuid2,
-			Embedding: []float32{0.4, 0.5, 0.6},
-		},
+func TestChunkTasks(t *testing.T) {
+	tasks := []models.DocEmbeddingTask{
+		{UUID: uuid.New(), Content: "doc1"},
+		{UUID: uuid.New(), Content: "doc2"},
+		{UUID: uuid.New(), Content: "doc3"},
+		{UUID: uuid.New(), Content: "doc4"},
 	}
 
-	expectedDocs := []models.Document{
-		{
-			DocumentBase: models.DocumentBase{
-				UUID:       uuid1,
-				IsEmbedded: true,
-			},
-			Embedding: []float32{0.1, 0.2, 0.3},
-		},
-		{
-			DocumentBase: models.DocumentBase{
-				UUID:       uuid2,
-				IsEmbedded: true,
-			},
-			Embedding: []float32{0.4, 0.5, 0.6},
-		},
-	}
+	chunks := chunkTasks(tasks, 2)
 
-	docs := documentsFromEmbeddingUpdates(updates)
-
-	assert.Equal(t, expectedDocs, docs)
+	assert.Equal(t, 2, len(chunks))
+	assert.Equal(t, 2, len(chunks[0]))
+	assert.Equal(t, 2, len(chunks[1]))
 }

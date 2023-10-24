@@ -3,8 +3,10 @@ package tasks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/getzep/zep/pkg/llms"
@@ -12,6 +14,12 @@ import (
 )
 
 var _ models.Task = &MessageEmbedderTask{}
+
+func NewMessageEmbedderTask(appState *models.AppState) *MessageEmbedderTask {
+	return &MessageEmbedderTask{
+		appState: appState,
+	}
+}
 
 type MessageEmbedderTask struct {
 	appState *models.AppState
@@ -21,6 +29,9 @@ func (t *MessageEmbedderTask) Execute(
 	ctx context.Context,
 	msg *message.Message,
 ) error {
+	ctx, done := context.WithTimeout(ctx, TaskTimeout*time.Second)
+	defer done()
+
 	sessionID := msg.Metadata.Get("session_id")
 	if sessionID == "" {
 		return fmt.Errorf("MessageEmbedderTask session_id is empty")
@@ -75,6 +86,11 @@ func (t *MessageEmbedderTask) Process(
 		embeddingRecords,
 	)
 	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			log.Warnf("MessageEmbedderTask PutMessageVectors not found. Were the records deleted? %v", err)
+			// Don't error out
+			return nil
+		}
 		return fmt.Errorf("MessageEmbedderTask put message vectors failed: %w", err)
 	}
 	return nil
