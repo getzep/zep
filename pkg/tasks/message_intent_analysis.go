@@ -36,10 +36,10 @@ func (mt *MessageIntentTask) Execute(
 
 	sessionID := msg.Metadata.Get("session_id")
 	if sessionID == "" {
-		return errors.New("NERTask session_id is empty")
+		return errors.New("MessageIntentTask session_id is empty")
 	}
 
-	log.Debugf("NERTask called for session %s", sessionID)
+	log.Debugf("MessageIntentTask called for session %s", sessionID)
 
 	var msgs []models.Message
 	err := json.Unmarshal(msg.Payload, &msgs)
@@ -54,7 +54,7 @@ func (mt *MessageIntentTask) Execute(
 		wg.Add(1)
 		go func(message models.Message) {
 			defer wg.Done()
-			mt.processMessage(ctx, message, mt.appState, sessionID, errs)
+			mt.processMessage(ctx, mt.appState, message, sessionID, errs)
 		}(message)
 	}
 
@@ -92,8 +92,8 @@ func (mt *MessageIntentTask) Execute(
 
 func (mt *MessageIntentTask) processMessage(
 	ctx context.Context,
-	message models.Message,
 	appState *models.AppState,
+	message models.Message,
 	sessionID string,
 	errs chan error,
 ) {
