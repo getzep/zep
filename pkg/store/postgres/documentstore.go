@@ -336,8 +336,7 @@ func (ds *DocumentStore) documentEmbeddingTasker(
 	tasks := make([]models.DocEmbeddingTask, len(documents))
 	for i := range documents {
 		tasks[i] = models.DocEmbeddingTask{
-			UUID:    documents[i].UUID,
-			Content: documents[i].Content,
+			UUID: documents[i].UUID,
 		}
 	}
 

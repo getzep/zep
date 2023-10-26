@@ -57,6 +57,12 @@ func setup() {
 		panic(err)
 	}
 	appState.MemoryStore = memoryStore
+
+	documentStore, err := postgres.NewDocumentStore(testCtx, appState, testDB)
+	if err != nil {
+		panic(err)
+	}
+	appState.DocumentStore = documentStore
 }
 
 func tearDown() {

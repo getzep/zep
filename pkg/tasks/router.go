@@ -16,6 +16,7 @@ import (
 	wla "github.com/ma-hartma/watermill-logrus-adapter"
 )
 
+// TODO: Add these to config
 const TaskCountThrottle = 50 // messages per second
 const MaxQueueRetries = 5
 const TaskTimeout = 60 // seconds

@@ -87,7 +87,10 @@ func (t *MessageEmbedderTask) Process(
 	)
 	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {
-			log.Warnf("MessageEmbedderTask PutMessageVectors not found. Were the records deleted? %v", err)
+			log.Warnf(
+				"MessageEmbedderTask PutMessageVectors not found. Were the records deleted? %v",
+				err,
+			)
 			// Don't error out
 			return nil
 		}

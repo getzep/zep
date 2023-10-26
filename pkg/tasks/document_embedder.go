@@ -10,6 +10,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
+	"github.com/google/uuid"
 )
 
 var _ models.Task = &DocumentEmbedderTask{}
@@ -31,13 +32,13 @@ func (dt *DocumentEmbedderTask) Execute(
 	}
 	log.Debugf("DocumentEmbedderTask called for collection %s", collectionName)
 
-	var t []models.DocEmbeddingTask
-	err := json.Unmarshal(msg.Payload, &t)
+	var tasks []models.DocEmbeddingTask
+	err := json.Unmarshal(msg.Payload, &tasks)
 	if err != nil {
 		return err
 	}
 
-	err = dt.Process(ctx, collectionName, t)
+	err = dt.Process(ctx, collectionName, tasks)
 	if err != nil {
 		return err
 	}
@@ -54,8 +55,18 @@ func (dt *DocumentEmbedderTask) Process(
 ) error {
 	docType := "document"
 
-	texts := make([]string, len(docTasks))
+	uuids := make([]uuid.UUID, len(docTasks))
 	for i, r := range docTasks {
+		uuids[i] = r.UUID
+	}
+
+	docs, err := dt.appState.DocumentStore.GetDocuments(ctx, collectionName, uuids, nil)
+	if err != nil {
+		return fmt.Errorf("DocumentEmbedderTask retrieve documents failed: %w", err)
+	}
+
+	texts := make([]string, len(docs))
+	for i, r := range docs {
 		texts[i] = r.Content
 	}
 
@@ -69,8 +80,7 @@ func (dt *DocumentEmbedderTask) Process(
 		return fmt.Errorf("DocumentEmbedderTask embed failed: %w", err)
 	}
 
-	docs := make([]models.Document, len(docTasks))
-	for i := range docTasks {
+	for i := range docs {
 		d := models.Document{
 			DocumentBase: models.DocumentBase{
 				UUID:       docTasks[i].UUID,
@@ -87,7 +97,10 @@ func (dt *DocumentEmbedderTask) Process(
 	)
 	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {
-			log.Warnf("DocumentEmbedderTask UpdateDocuments not found. Were the records deleted? %v", err)
+			log.Warnf(
+				"DocumentEmbedderTask UpdateDocuments not found. Were the records deleted? %v",
+				err,
+			)
 			// Don't error out
 			return nil
 		}

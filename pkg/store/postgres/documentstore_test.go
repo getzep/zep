@@ -10,10 +10,10 @@ import (
 
 func TestChunkTasks(t *testing.T) {
 	tasks := []models.DocEmbeddingTask{
-		{UUID: uuid.New(), Content: "doc1"},
-		{UUID: uuid.New(), Content: "doc2"},
-		{UUID: uuid.New(), Content: "doc3"},
-		{UUID: uuid.New(), Content: "doc4"},
+		{UUID: uuid.New()},
+		{UUID: uuid.New()},
+		{UUID: uuid.New()},
+		{UUID: uuid.New()},
 	}
 
 	chunks := chunkTasks(tasks, 2)
