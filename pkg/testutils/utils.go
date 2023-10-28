@@ -45,6 +45,11 @@ func testConfigDefaults() (*config.Config, error) {
 			Messages: config.MessageExtractorsConfig{
 				Summarizer: config.SummarizerConfig{
 					Enabled: true,
+					Embeddings: config.EmbeddingsConfig{
+						Enabled:    true,
+						Dimensions: 1536,
+						Service:    "openai",
+					},
 				},
 				Embeddings: config.EmbeddingsConfig{
 					Enabled:    true,

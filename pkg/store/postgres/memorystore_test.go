@@ -418,7 +418,7 @@ func TestPutEmbeddingsLocal(t *testing.T) {
 	err := CreateSchema(testCtx, appState, testDB)
 	assert.NoError(t, err)
 
-	err = MigrateMessageEmbeddingDims(testCtx, testDB, embeddingModel.Dimensions)
+	err = MigrateEmbeddingDims(testCtx, testDB, "message_embedding", embeddingModel.Dimensions)
 	assert.NoError(t, err)
 
 	sessionID, err := testutils.GenerateRandomSessionID(16)

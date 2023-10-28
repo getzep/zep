@@ -48,10 +48,10 @@ type PostgresMemoryStore struct {
 }
 
 func (pms *PostgresMemoryStore) OnStart(
-	_ context.Context,
+	ctx context.Context,
 	appState *models.AppState,
 ) error {
-	err := CreateSchema(context.Background(), appState, pms.Client)
+	err := CreateSchema(ctx, appState, pms.Client)
 	if err != nil {
 		return store.NewStorageError("failed to ensure postgres schema setup", err)
 	}

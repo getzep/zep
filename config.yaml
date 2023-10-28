@@ -34,6 +34,10 @@ extractors:
   messages:
     summarizer:
       enabled: true
+      embeddings:
+        enabled: true
+        dimensions: 384
+        service: "local"
     entities:
       enabled: true
     intent:
