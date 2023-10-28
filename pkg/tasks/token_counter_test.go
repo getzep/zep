@@ -46,14 +46,14 @@ func runTestTokenCountExtractor(
 	p, err := json.Marshal(messages)
 	assert.NoError(t, err)
 
-	message := &message.Message{
+	m := &message.Message{
 		Metadata: message.Metadata{
 			"session_id": sessionID,
 		},
 		Payload: p,
 	}
 
-	err = tokenCountExtractor.Execute(testCtx, message)
+	err = tokenCountExtractor.Execute(testCtx, m)
 	assert.NoError(t, err)
 
 	memory, err := appState.MemoryStore.GetMemory(testCtx, appState, sessionID, 0)

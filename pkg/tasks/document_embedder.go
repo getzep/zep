@@ -62,7 +62,19 @@ func (dt *DocumentEmbedderTask) Process(
 
 	docs, err := dt.appState.DocumentStore.GetDocuments(ctx, collectionName, uuids, nil)
 	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			log.Warnf(
+				"DocumentEmbedderTask GetDocuments not found. Were the records deleted? %v",
+				err,
+			)
+			// Don't error out
+			return nil
+		}
 		return fmt.Errorf("DocumentEmbedderTask retrieve documents failed: %w", err)
+	}
+
+	if len(docs) == 0 {
+		return fmt.Errorf("DocumentEmbedderTask no documents found for given uuids")
 	}
 
 	texts := make([]string, len(docs))

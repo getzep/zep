@@ -40,18 +40,21 @@ func (n *MessageNERTask) Execute(
 
 	log.Debugf("MessageNERTask called for session %s", sessionID)
 
-	var msgs []models.Message
-	err := json.Unmarshal(msg.Payload, &msgs)
+	messages, err := messageTaskPayloadToMessages(ctx, n.appState, msg)
 	if err != nil {
-		return err
+		return fmt.Errorf("MessageEmbedderTask messageTaskPayloadToMessages failed: %w", err)
 	}
 
-	nerResponse, err := callNERTask(ctx, n.appState, msgs)
+	if len(messages) == 0 {
+		return fmt.Errorf("MessageNERTask messageTaskPayloadToMessages returned no messages")
+	}
+
+	nerResponse, err := callNERTask(ctx, n.appState, messages)
 	if err != nil {
 		return fmt.Errorf("MessageNERTask extract entities call failed: %w", err)
 	}
 
-	messages := make([]models.Message, len(nerResponse.Texts))
+	nerMessages := make([]models.Message, len(nerResponse.Texts))
 	for i, r := range nerResponse.Texts {
 		msgUUID, err := uuid.Parse(r.UUID)
 		if err != nil {
@@ -63,7 +66,7 @@ func (n *MessageNERTask) Execute(
 			continue
 		}
 
-		messages[i] = models.Message{
+		nerMessages[i] = models.Message{
 			UUID: msgUUID,
 			Metadata: map[string]interface{}{
 				"system": map[string]interface{}{"entities": entityList},
@@ -71,7 +74,7 @@ func (n *MessageNERTask) Execute(
 		}
 	}
 
-	err = n.appState.MemoryStore.PutMessageMetadata(ctx, n.appState, sessionID, messages, true)
+	err = n.appState.MemoryStore.PutMessageMetadata(ctx, n.appState, sessionID, nerMessages, true)
 	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {
 			log.Warnf("MessageNERTask PutMessageMetadata not found. Were the records deleted?")

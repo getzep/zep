@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/getzep/zep/internal"
 	"github.com/google/uuid"
@@ -155,7 +156,47 @@ func getMessageList(
 	return r, nil
 }
 
-// getMessages retrieves messages from the memory store. If lastNMessages is 0, the last SummaryPoint is retrieved.
+func getMessagesByUUID(
+	ctx context.Context,
+	db *bun.DB,
+	sessionID string,
+	uuids []uuid.UUID,
+) ([]models.Message, error) {
+	if sessionID == "" {
+		return nil, errors.New("sessionID cannot be empty")
+	}
+
+	if len(uuids) == 0 {
+		return nil, nil
+	}
+
+	var messages []MessageStoreSchema
+	err := db.NewSelect().
+		Model(&messages).
+		Where("session_id = ?", sessionID).
+		Where("uuid IN (?)", bun.In(uuids)).
+		Scan(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to retrieve messages %w", err)
+	}
+
+	messageList := make([]models.Message, len(messages))
+	for i, msg := range messages {
+		messageList[i] = models.Message{
+			UUID:       msg.UUID,
+			CreatedAt:  msg.CreatedAt,
+			Role:       msg.Role,
+			Content:    msg.Content,
+			TokenCount: msg.TokenCount,
+			Metadata:   msg.Metadata,
+		}
+	}
+
+	return messageList, nil
+}
+
+// getMessages retrieves recent messages from the memory store. If lastNMessages is 0, the last SummaryPoint is retrieved.
 func getMessages(
 	ctx context.Context,
 	db *bun.DB,

@@ -2,7 +2,6 @@ package tasks
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -41,21 +40,24 @@ func (mt *MessageIntentTask) Execute(
 
 	log.Debugf("MessageIntentTask called for session %s", sessionID)
 
-	var msgs []models.Message
-	err := json.Unmarshal(msg.Payload, &msgs)
+	messages, err := messageTaskPayloadToMessages(ctx, mt.appState, msg)
 	if err != nil {
-		return err
+		return fmt.Errorf("MessageEmbedderTask messageTaskPayloadToMessages failed: %w", err)
 	}
 
-	errs := make(chan error, len(msgs))
+	if len(messages) == 0 {
+		return fmt.Errorf("MessageIntentTask messageTaskPayloadToMessages returned no messages")
+	}
+
+	errs := make(chan error, len(messages))
 	var wg sync.WaitGroup
 
-	for _, message := range msgs {
+	for _, m := range messages {
 		wg.Add(1)
 		go func(message models.Message) {
 			defer wg.Done()
 			mt.processMessage(ctx, mt.appState, message, sessionID, errs)
-		}(message)
+		}(m)
 	}
 
 	// Create a goroutine to close errs after wg is done

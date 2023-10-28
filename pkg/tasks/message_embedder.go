@@ -2,7 +2,6 @@ package tasks
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -38,13 +37,16 @@ func (t *MessageEmbedderTask) Execute(
 	}
 	log.Debugf("MessageEmbedderTask called for session %s", sessionID)
 
-	var msgs []models.Message
-	err := json.Unmarshal(msg.Payload, &msgs)
+	messages, err := messageTaskPayloadToMessages(ctx, t.appState, msg)
 	if err != nil {
-		return err
+		return fmt.Errorf("MessageEmbedderTask messageTaskPayloadToMessages failed: %w", err)
 	}
 
-	err = t.Process(ctx, sessionID, msgs)
+	if len(messages) == 0 {
+		return fmt.Errorf("MessageEmbedderTask messageTaskPayloadToMessages returned no messages")
+	}
+
+	err = t.Process(ctx, sessionID, messages)
 	if err != nil {
 		return err
 	}

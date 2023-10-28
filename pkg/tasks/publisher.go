@@ -34,7 +34,7 @@ func (t *TaskPublisher) Publish(taskType string, metadata map[string]string, pay
 	}
 	log.Debugf("Publishing message: %s", p)
 	m := message.NewMessage(watermill.NewUUID(), p)
-	m.Metadata = message.Metadata(metadata)
+	m.Metadata = metadata
 
 	err = t.publisher.Publish(taskType, m)
 	if err != nil {
@@ -45,13 +45,16 @@ func (t *TaskPublisher) Publish(taskType string, metadata map[string]string, pay
 }
 
 // PublishMessage publishes a slice of Messages to all Message topics.
-func (t *TaskPublisher) PublishMessage(metadata map[string]string, payload []models.Message) error {
+func (t *TaskPublisher) PublishMessage(
+	metadata map[string]string,
+	payload []models.MessageTask,
+) error {
 	var messageTopics = []string{
-		"message_summarizer",
-		"message_embedder",
-		"message_ner",
-		"message_intent",
-		"message_token_count",
+		MessageSummarizerTopic,
+		MessageEmbedderTopic,
+		MessageNerTopic,
+		MessageIntentTopic,
+		MessageTokenCountTopic,
 	}
 
 	for _, topic := range messageTopics {

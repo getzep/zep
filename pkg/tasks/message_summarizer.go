@@ -204,8 +204,8 @@ func (t *MessageSummaryTask) processOverLimitMessages(
 		return nil
 	}
 
-	for _, message := range messages {
-		messageText := fmt.Sprintf("%s: %s", message.Role, message.Content)
+	for _, m := range messages {
+		messageText := fmt.Sprintf("%s: %s", m.Role, m.Content)
 		messageTokens, err := t.appState.LLMClient.GetTokenCount(messageText)
 		if err != nil {
 			return nil, err

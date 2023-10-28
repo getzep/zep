@@ -8,6 +8,7 @@ import (
 	"errors"
 
 	"github.com/getzep/zep/pkg/store"
+	"github.com/google/uuid"
 
 	"github.com/getzep/zep/internal"
 
@@ -190,6 +191,20 @@ func (pms *PostgresMemoryStore) GetMessageList(
 	return messages, nil
 }
 
+func (pms *PostgresMemoryStore) GetMessagesByUUID(
+	ctx context.Context,
+	_ *models.AppState,
+	sessionID string,
+	uuids []uuid.UUID,
+) ([]models.Message, error) {
+	messages, err := getMessagesByUUID(ctx, pms.Client, sessionID, uuids)
+	if err != nil {
+		return nil, store.NewStorageError("failed to get messages", err)
+	}
+
+	return messages, nil
+}
+
 func (pms *PostgresMemoryStore) GetSummary(
 	ctx context.Context,
 	_ *models.AppState,
@@ -243,14 +258,20 @@ func (pms *PostgresMemoryStore) PutMemory(
 		return store.NewStorageError("failed to Create messages", err)
 	}
 
+	// If we are skipping pushing new messages to the message router, return early
 	if skipNotify {
 		return nil
+	}
+
+	mt := make([]models.MessageTask, len(messageResult))
+	for i, message := range messageResult {
+		mt[i] = models.MessageTask{UUID: message.UUID}
 	}
 
 	// Send new messages to the message router
 	err = appState.TaskPublisher.PublishMessage(
 		map[string]string{"session_id": sessionID},
-		messageResult,
+		mt,
 	)
 	if err != nil {
 		return store.NewStorageError("failed to publish new messages", err)

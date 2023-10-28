@@ -174,6 +174,9 @@ func setupSignalHandler(ctx context.Context, appState *models.AppState) {
 		if err := appState.DocumentStore.Shutdown(ctx); err != nil {
 			log.Errorf("Error shutting down DocumentStore: %v", err)
 		}
+		if err := appState.TaskRouter.Close(); err != nil {
+			log.Errorf("Error closing LLMClient connection: %v", err)
+		}
 		os.Exit(0)
 	}()
 }

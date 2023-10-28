@@ -6,13 +6,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sony/gobreaker"
+
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
-	"github.com/ThreeDotsLabs/watermill/message/router/plugin"
 	"github.com/getzep/zep/pkg/models"
-	"github.com/sony/gobreaker"
-
 	wla "github.com/ma-hartma/watermill-logrus-adapter"
 )
 
@@ -46,10 +45,6 @@ func NewTaskRouter(appState *models.AppState, db *sql.DB) (*TaskRouter, error) {
 		return nil, err
 	}
 
-	// SignalsHandler will gracefully shutdown Router when SIGTERM is received.
-	// You can also close the router by just calling `r.Close()`.
-	router.AddPlugin(plugin.SignalsHandler)
-
 	// Router level middleware are executed for every message sent to the router
 	router.AddMiddleware(
 		// CorrelationID will copy the correlation id from the incoming message's metadata to the produced messages
@@ -63,7 +58,7 @@ func NewTaskRouter(appState *models.AppState, db *sql.DB) (*TaskRouter, error) {
 			Logger:          wlog,
 		}.Middleware,
 
-		// CircuitBreaker will stop processing messages if the handler returns an error.
+		//// CircuitBreaker will stop processing messages if the handler returns an error.
 		middleware.NewCircuitBreaker(gobreaker.Settings{
 			Name:        "task_router_circuit_breaker",
 			MaxRequests: 5,
@@ -99,6 +94,20 @@ func (tr *TaskRouter) AddTask(_ context.Context, name, taskType string, task mod
 		subscriber,
 		TaskHandler(task),
 	)
+}
+
+func (tr *TaskRouter) Close() (err error) {
+	routerErr := tr.Router.Close()
+	defer func() {
+		dbErr := tr.db.Close()
+		if err == nil {
+			err = dbErr
+		}
+	}()
+	if routerErr != nil {
+		err = routerErr
+	}
+	return err
 }
 
 // TaskHandler returns a message handler function for the given task.

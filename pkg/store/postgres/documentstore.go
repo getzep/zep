@@ -242,7 +242,7 @@ func (ds *DocumentStore) GetDocuments(
 	)
 	documents, err := dbCollection.GetDocuments(ctx, 0, uuids, documentIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get document: %w", err)
+		return nil, fmt.Errorf("failed to get documents: %w", err)
 	}
 
 	return documents, nil

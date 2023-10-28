@@ -40,6 +40,7 @@ require (
 	github.com/invopop/jsonschema v0.12.0
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/ma-hartma/watermill-logrus-adapter v0.0.0-20220319171828-0856b297f1c2
+	github.com/sony/gobreaker v0.5.0
 	github.com/tmc/langchaingo v0.0.0-20230929160525-e16b77704b8d
 	github.com/uptrace/bun/dbfixture v1.1.16
 	github.com/uptrace/bun/extra/bundebug v1.1.16
@@ -98,7 +99,6 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect
-	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.10.0 // indirect
 	github.com/spf13/cast v1.5.1 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
