@@ -1,10 +1,13 @@
-package extractors
+package tasks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	llms2 "github.com/tmc/langchaingo/llms"
 
 	"github.com/getzep/zep/internal"
@@ -15,14 +18,9 @@ import (
 const MaxTokensFallback = 2048
 const SummaryMaxOutputTokens = 1024
 
-// Force compiler to validate that Extractor implements the MemoryStore interface.
-var _ models.Extractor = &SummaryExtractor{}
+var _ models.Task = &MessageSummaryTask{}
 
-type SummaryExtractor struct {
-	BaseExtractor
-}
-
-// Extract gets a list of messages created since the last SummaryPoint,
+// MessageSummaryTask gets a list of messages created since the last SummaryPoint,
 // determines if the message count exceeds the configured message window, and if
 // so:
 // - determines the new SummaryPoint index, which will one message older than
@@ -32,100 +30,90 @@ type SummaryExtractor struct {
 //
 // When summarizing, it adds context from these messages to an existing summary
 // if there is one.
-func (se *SummaryExtractor) Extract(
+type MessageSummaryTask struct {
+	appState *models.AppState
+}
+
+func (t *MessageSummaryTask) Execute(
 	ctx context.Context,
-	appState *models.AppState,
-	messageEvent *models.MessageEvent,
+	msg *message.Message,
 ) error {
-	sessionID := messageEvent.SessionID
-	sessionMutex := se.getSessionMutex(sessionID)
-	sessionMutex.Lock()
-	defer sessionMutex.Unlock()
+	ctx, done := context.WithTimeout(ctx, TaskTimeout*time.Second)
+	defer done()
 
-	log.Debugf("SummaryExtractor called for session %s", sessionID)
-
-	messageWindow := appState.Config.Memory.MessageWindow
-
-	if messageWindow == 0 {
-		return NewExtractorError("SummaryExtractor message window is 0", nil)
+	sessionID := msg.Metadata.Get("session_id")
+	if sessionID == "" {
+		return errors.New("SummaryTask session_id is empty")
 	}
 
-	// if no summary exists yet, we'll get all messages
-	messagesSummary, err := appState.MemoryStore.GetMemory(
+	log.Debugf("SummaryTask called for session %s", sessionID)
+
+	messageWindow := t.appState.Config.Memory.MessageWindow
+	if messageWindow == 0 {
+		return errors.New("SummaryTask message window is 0")
+	}
+
+	// if no summary exists yet, we'll get all messages up to the message window
+	messagesSummary, err := t.appState.MemoryStore.GetMemory(
 		ctx,
-		appState,
+		t.appState,
 		sessionID,
 		0,
 	)
 	if err != nil {
-		return NewExtractorError("SummaryExtractor get memory failed", err)
+		return fmt.Errorf("SummaryTask get memory failed: %w", err)
 	}
 
 	messages := messagesSummary.Messages
 	if messages == nil {
-		log.Warningf("SummaryExtractor GetMemory returned no messages for session %s", sessionID)
+		log.Warningf("SummaryTask GetMemory returned no messages for session %s", sessionID)
 		return nil
 	}
 	// If we're still under the message window, we don't need to summarize.
-	if len(messages) < appState.Config.Memory.MessageWindow {
+	if len(messages) < t.appState.Config.Memory.MessageWindow {
 		return nil
 	}
 
-	newSummary, err := summarize(
-		ctx, appState, appState.Config.Memory.MessageWindow, messages, messagesSummary.Summary, 0,
+	newSummary, err := t.summarize(
+		ctx, messages, messagesSummary.Summary, 0,
 	)
 	if err != nil {
-		return NewExtractorError("SummaryExtractor summarize failed", err)
+		return fmt.Errorf("SummaryTask summarize failed %w", err)
 	}
 
-	err = appState.MemoryStore.PutSummary(
+	err = t.appState.MemoryStore.PutSummary(
 		ctx,
-		appState,
+		t.appState,
 		sessionID,
 		newSummary,
 	)
 	if err != nil {
-		return NewExtractorError("SummaryExtractor put summary failed", err)
-	}
-
-	log.Debugf("SummaryExtractor completed for session %s", sessionID)
-
-	return nil
-}
-
-func (se *SummaryExtractor) Notify(
-	ctx context.Context,
-	appState *models.AppState,
-	messageEvents *models.MessageEvent,
-) error {
-	if messageEvents == nil {
-		return NewExtractorError(
-			"SummaryExtractor message events is nil at Notify",
-			nil,
-		)
-	}
-	log.Debugf("SummaryExtractor notify: %d messages", len(messageEvents.Messages))
-	go func() {
-		err := se.Extract(ctx, appState, messageEvents)
-		if err != nil {
-			log.Error(fmt.Sprintf("SummaryExtractor extract failed: %v", err))
+		if errors.Is(err, models.ErrNotFound) {
+			log.Warnf("MessageSummaryTask PutSummary not found. Were the records deleted?")
+			// Don't error out
+			msg.Ack()
+			return nil
 		}
-	}()
+		return fmt.Errorf("SummaryTask put summary failed: %w", err)
+	}
+
+	log.Debugf("SummaryTask completed for session %s", sessionID)
+
+	msg.Ack()
+
 	return nil
 }
 
-func NewSummaryExtractor() *SummaryExtractor {
-	return &SummaryExtractor{}
+func (t *MessageSummaryTask) HandleError(err error) {
+	log.Errorf("SummaryExtractor failed: %v", err)
 }
 
 // summarize takes a slice of messages and a summary and returns a slice of messages that,
 // if larger than the window size, results in the messages slice being halved. If the slice of messages is larger than
 // the window size, the summary is updated to reflect the oldest messages that are removed. Expects messages to be in
 // chronological order, with the oldest first.
-func summarize(
+func (t *MessageSummaryTask) summarize(
 	ctx context.Context,
-	appState *models.AppState,
-	windowSize int,
 	messages []models.Message,
 	summary *models.Summary,
 	promptTokens int,
@@ -135,13 +123,13 @@ func summarize(
 		currentSummaryContent = summary.Content
 	}
 
-	// New messages reduced to Half the windowSize to minimize the need to summarize new messages in the future.
-	newMessageCount := windowSize / 2
+	// New messages reduced to Half the MessageWindow to minimize the need to summarize new messages in the future.
+	newMessageCount := t.appState.Config.Memory.MessageWindow / 2
 
 	// Oldest messages that are over the newMessageCount
 	messagesToSummarize := messages[:len(messages)-newMessageCount]
 
-	modelName, err := llms.GetLLMModelName(appState.Config)
+	modelName, err := llms.GetLLMModelName(t.appState.Config)
 	if err != nil {
 		return &models.Summary{}, err
 	}
@@ -160,9 +148,8 @@ func summarize(
 	summarizerMaxInputTokens := maxTokens - SummaryMaxOutputTokens - promptTokens
 
 	// Take the oldest messages that are over newMessageCount and summarize them.
-	newSummary, err := processOverLimitMessages(
+	newSummary, err := t.processOverLimitMessages(
 		ctx,
-		appState,
 		messagesToSummarize,
 		summarizerMaxInputTokens,
 		currentSummaryContent,
@@ -183,9 +170,8 @@ func summarize(
 // processOverLimitMessages takes a slice of messages and a summary and enriches
 // the summary with the messages content. Summary can an empty string. Returns a
 // Summary model with enriched summary and the number of tokens in the summary.
-func processOverLimitMessages(
+func (t *MessageSummaryTask) processOverLimitMessages(
 	ctx context.Context,
-	appState *models.AppState,
 	messages []models.Message,
 	summarizerMaxInputTokens int,
 	summary string,
@@ -204,9 +190,8 @@ func processOverLimitMessages(
 	newSummaryPointUUID := messages[len(messages)-1].UUID
 
 	processSummary := func() error {
-		newSummary, newSummaryTokens, err = incrementalSummarizer(
+		newSummary, newSummaryTokens, err = t.incrementalSummarizer(
 			ctx,
-			appState,
 			summary,
 			tempMessageText,
 			SummaryMaxOutputTokens,
@@ -219,9 +204,9 @@ func processOverLimitMessages(
 		return nil
 	}
 
-	for _, message := range messages {
-		messageText := fmt.Sprintf("%s: %s", message.Role, message.Content)
-		messageTokens, err := appState.LLMClient.GetTokenCount(messageText)
+	for _, m := range messages {
+		messageText := fmt.Sprintf("%s: %s", m.Role, m.Content)
+		messageTokens, err := t.appState.LLMClient.GetTokenCount(messageText)
 		if err != nil {
 			return nil, err
 		}
@@ -251,7 +236,7 @@ func processOverLimitMessages(
 	}, nil
 }
 
-func validateSummarizerPrompt(prompt string) error {
+func (t *MessageSummaryTask) validateSummarizerPrompt(prompt string) error {
 	prevSummaryIdentifier := "{{.PrevSummary}}"
 	messagesJoinedIdentifier := "{{.MessagesJoined}}"
 
@@ -271,15 +256,14 @@ func validateSummarizerPrompt(prompt string) error {
 // and returns a new summary enriched with the messages content. Summary can be
 // an empty string. Returns a string with the new summary and the number of
 // tokens in the summary.
-func incrementalSummarizer(
+func (t *MessageSummaryTask) incrementalSummarizer(
 	ctx context.Context,
-	appState *models.AppState,
 	currentSummary string,
 	messages []string,
 	summaryMaxTokens int,
 ) (string, int, error) {
 	if len(messages) < 1 {
-		return "", 0, NewExtractorError("No messages provided", nil)
+		return "", 0, errors.New("no messages provided")
 	}
 
 	messagesJoined := strings.Join(messages, "\n")
@@ -293,12 +277,12 @@ func incrementalSummarizer(
 		MessagesJoined: messagesJoined,
 	}
 
-	progressivePrompt, err := generateProgressiveSummarizerPrompt(appState, promptData)
+	progressivePrompt, err := t.generateProgressiveSummarizerPrompt(promptData)
 	if err != nil {
 		return "", 0, err
 	}
 
-	summary, err := appState.LLMClient.Call(
+	summary, err := t.appState.LLMClient.Call(
 		ctx,
 		progressivePrompt,
 		llms2.WithMaxTokens(summaryMaxTokens),
@@ -309,7 +293,7 @@ func incrementalSummarizer(
 
 	summary = strings.TrimSpace(summary)
 
-	tokensUsed, err := appState.LLMClient.GetTokenCount(summary)
+	tokensUsed, err := t.appState.LLMClient.GetTokenCount(summary)
 	if err != nil {
 		return "", 0, err
 	}
@@ -317,15 +301,14 @@ func incrementalSummarizer(
 	return summary, tokensUsed, nil
 }
 
-func generateProgressiveSummarizerPrompt(
-	appState *models.AppState,
+func (t *MessageSummaryTask) generateProgressiveSummarizerPrompt(
 	promptData SummaryPromptTemplateData,
 ) (string, error) {
-	customSummaryPromptTemplateAnthropic := appState.Config.CustomPrompts.SummarizerPrompts.Anthropic
-	customSummaryPromptTemplateOpenAI := appState.Config.CustomPrompts.SummarizerPrompts.OpenAI
+	customSummaryPromptTemplateAnthropic := t.appState.Config.CustomPrompts.SummarizerPrompts.Anthropic
+	customSummaryPromptTemplateOpenAI := t.appState.Config.CustomPrompts.SummarizerPrompts.OpenAI
 
 	var summaryPromptTemplate string
-	switch appState.Config.LLM.Service {
+	switch t.appState.Config.LLM.Service {
 	case "openai":
 		if customSummaryPromptTemplateOpenAI != "" {
 			summaryPromptTemplate = customSummaryPromptTemplateOpenAI
@@ -339,10 +322,10 @@ func generateProgressiveSummarizerPrompt(
 			summaryPromptTemplate = defaultSummaryPromptTemplateAnthropic
 		}
 	default:
-		return "", fmt.Errorf("unknown LLM service: %s", appState.Config.LLM.Service)
+		return "", fmt.Errorf("unknown LLM service: %s", t.appState.Config.LLM.Service)
 	}
 
-	err := validateSummarizerPrompt(summaryPromptTemplate)
+	err := t.validateSummarizerPrompt(summaryPromptTemplate)
 	if err != nil {
 		return "", err
 	}

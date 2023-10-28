@@ -1,47 +1,63 @@
-package extractors
+package tasks
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/tmc/langchaingo/llms"
 
 	"github.com/getzep/zep/internal"
 	"github.com/getzep/zep/pkg/models"
 )
 
-var _ models.Extractor = &IntentExtractor{}
+var _ models.Task = &MessageIntentTask{}
+
+type MessageIntentTask struct {
+	appState *models.AppState
+}
 
 const intentMaxTokens = 512
 
 var IntentStringRegex = regexp.MustCompile(`(?i)^\s*intent\W+\s+`)
 
-type IntentExtractor struct {
-	BaseExtractor
-}
-
-func (ee *IntentExtractor) Extract(
+func (mt *MessageIntentTask) Execute(
 	ctx context.Context,
-	appState *models.AppState,
-	messageEvent *models.MessageEvent,
+	msg *message.Message,
 ) error {
-	sessionID := messageEvent.SessionID
-	sessionMutex := ee.getSessionMutex(sessionID)
-	sessionMutex.Lock()
-	defer sessionMutex.Unlock()
+	ctx, done := context.WithTimeout(ctx, TaskTimeout*time.Second)
+	defer done()
 
-	errs := make(chan error, len(messageEvent.Messages))
+	sessionID := msg.Metadata.Get("session_id")
+	if sessionID == "" {
+		return errors.New("MessageIntentTask session_id is empty")
+	}
+
+	log.Debugf("MessageIntentTask called for session %s", sessionID)
+
+	messages, err := messageTaskPayloadToMessages(ctx, mt.appState, msg)
+	if err != nil {
+		return fmt.Errorf("MessageEmbedderTask messageTaskPayloadToMessages failed: %w", err)
+	}
+
+	if len(messages) == 0 {
+		return fmt.Errorf("MessageIntentTask messageTaskPayloadToMessages returned no messages")
+	}
+
+	errs := make(chan error, len(messages))
 	var wg sync.WaitGroup
 
-	for _, message := range messageEvent.Messages {
+	for _, m := range messages {
 		wg.Add(1)
 		go func(message models.Message) {
 			defer wg.Done()
-			ee.processMessage(ctx, message, appState, sessionID, errs)
-		}(message)
+			mt.processMessage(ctx, mt.appState, message, sessionID, errs)
+		}(m)
 	}
 
 	// Create a goroutine to close errs after wg is done
@@ -65,19 +81,21 @@ func (ee *IntentExtractor) Extract(
 
 	// Return combined errors strings if hasErrors is set to true
 	if hasErrors {
-		return NewExtractorError(
-			"IntentExtractor: Extract Failed",
+		return fmt.Errorf(
+			"MessageIntentTask: Extract Failed %w",
 			errors.New(strings.Join(errStrings, "; ")),
 		)
 	}
 
+	msg.Ack()
+
 	return nil
 }
 
-func (ee *IntentExtractor) processMessage(
+func (mt *MessageIntentTask) processMessage(
 	ctx context.Context,
-	message models.Message,
 	appState *models.AppState,
+	message models.Message,
 	sessionID string,
 	errs chan error,
 ) {
@@ -89,7 +107,7 @@ func (ee *IntentExtractor) processMessage(
 	// Create a prompt with the Message input that needs to be classified
 	prompt, err := internal.ParsePrompt(intentPromptTemplate, data)
 	if err != nil {
-		errs <- NewExtractorError("IntentExtractor: "+err.Error(), err)
+		errs <- fmt.Errorf("MessageIntentTask: %w", err)
 		return
 	}
 
@@ -100,7 +118,7 @@ func (ee *IntentExtractor) processMessage(
 		llms.WithMaxTokens(intentMaxTokens),
 	)
 	if err != nil {
-		errs <- NewExtractorError("IntentExtractor: "+err.Error(), err)
+		errs <- fmt.Errorf("MessageIntentTask: %w", err)
 		return
 	}
 
@@ -133,30 +151,15 @@ func (ee *IntentExtractor) processMessage(
 		true,
 	)
 	if err != nil {
-		errs <- NewExtractorError(
-			"IntentExtractor failed to put message metadata: "+err.Error(),
-			err,
-		)
+		if errors.Is(err, models.ErrNotFound) {
+			log.Warnf("MessageIntentTask PutMessageMetadata not found. Were the records deleted?")
+			// Don't error out
+			return
+		}
+		errs <- fmt.Errorf("MessageIntentTask failed to put message metadata: %w", err)
 	}
 }
 
-func (ee *IntentExtractor) Notify(
-	ctx context.Context,
-	appState *models.AppState,
-	messageEvent *models.MessageEvent,
-) error {
-	if messageEvent == nil {
-		return NewExtractorError("IntentExtractor: messageEvent is nil at Notify", nil)
-	}
-
-	// Call Extract with the entire message event
-	if err := ee.Extract(ctx, appState, messageEvent); err != nil {
-		return NewExtractorError("IntentExtractor: Extract Failed", err)
-	}
-
-	return nil
-}
-
-func NewIntentExtractor() *IntentExtractor {
-	return &IntentExtractor{}
+func (mt *MessageIntentTask) HandleError(err error) {
+	log.Errorf("MessageIntentTask error: %v", err)
 }

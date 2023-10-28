@@ -3,12 +3,14 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	_ "github.com/jackc/pgx/v5/stdlib" // required for pgx to work
 	"github.com/uptrace/bun/driver/pgdriver"
 
 	"github.com/getzep/zep/pkg/llms"
@@ -21,6 +23,8 @@ import (
 	"github.com/pgvector/pgvector-go"
 	"github.com/uptrace/bun"
 )
+
+var maxOpenConns = 4 * runtime.GOMAXPROCS(0)
 
 type SessionSchema struct {
 	bun.BaseModel `bun:"table:session,alias:s" yaml:"-"`
@@ -392,7 +396,7 @@ func createDocumentTable(
 }
 
 // enablePgVectorExtension creates the pgvector extension if it does not exist and updates it if it is out of date.
-func enablePgVectorExtension(ctx context.Context, db *bun.DB) error {
+func enablePgVectorExtension(_ context.Context, db *bun.DB) error {
 	// Create pgvector extension if it does not exist
 	_, err := db.Exec("CREATE EXTENSION IF NOT EXISTS vector")
 	if err != nil {
@@ -405,7 +409,10 @@ func enablePgVectorExtension(ctx context.Context, db *bun.DB) error {
 	// this is not an issue if running on a managed service.
 	_, err = db.Exec("ALTER EXTENSION vector UPDATE")
 	if err != nil {
-		log.Errorf("error updating pgvector extension: %s. this may happen if running on a managed service without rights to update extensions.", err)
+		log.Errorf(
+			"error updating pgvector extension: %s. this may happen if running on a managed service without rights to update extensions.",
+			err,
+		)
 		return nil
 	}
 
@@ -576,8 +583,6 @@ func NewPostgresConn(appState *models.AppState) (*bun.DB, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	maxOpenConns := 4 * runtime.GOMAXPROCS(0)
-
 	// WithReadTimeout is 10 minutes to avoid timeouts when creating indexes.
 	// TODO: This is not ideal. Use separate connections for index creation?
 	sqldb := sql.OpenDB(
@@ -613,6 +618,17 @@ func NewPostgresConn(appState *models.AppState) (*bun.DB, error) {
 	return db, nil
 }
 
+// NewPostgresConnForQueue creates a new pgx connection to a postgres database using the provided DSN.
+// This connection is intended to be used for queueing tasks.
+func NewPostgresConnForQueue(appState *models.AppState) (*sql.DB, error) {
+	db, err := sql.Open("pgx", appState.Config.Store.Postgres.DSN)
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
 // isHNSWAvailable checks if the vector extension version is 0.5.0+.
 func isHNSWAvailable(ctx context.Context, db *bun.DB) (bool, error) {
 	const minVersion = "0.5.0"
@@ -628,7 +644,7 @@ func isHNSWAvailable(ctx context.Context, db *bun.DB) (bool, error) {
 		Where("extname = 'vector'").
 		Scan(ctx, &version)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			// The vector extension is not installed
 			log.Debug("vector extension not installed")
 			return false, nil

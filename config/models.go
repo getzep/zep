@@ -111,12 +111,8 @@ type EmbeddingsConfig struct {
 	Enabled    bool   `mapstructure:"enabled"`
 	Dimensions int    `mapstructure:"dimensions"`
 	Service    string `mapstructure:"service"`
-	// MaxProcs is the maximum number of concurrent processes to use for embedding tasks.
-	MaxProcs int `mapstructure:"max_procs"`
 	// ChunkSize is the number of documents to embed in a single task.
 	ChunkSize int `mapstructure:"chunk_size"`
-	// BufferSize is the size of the channel buffer for embedding tasks.
-	BufferSize int `mapstructure:"buffer_size"`
 }
 
 type EntityExtractorConfig struct {

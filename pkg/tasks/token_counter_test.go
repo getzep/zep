@@ -1,8 +1,10 @@
-package extractors
+package tasks
 
 import (
+	"encoding/json"
 	"testing"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/getzep/zep/pkg/llms"
 
 	"github.com/getzep/zep/internal"
@@ -37,17 +39,24 @@ func runTestTokenCountExtractor(
 
 	messages := memories.Messages
 
-	messageEvent := &models.MessageEvent{
-		SessionID: sessionID,
-		Messages:  messages,
+	tokenCountExtractor := MessageTokenCountTask{
+		appState: appState,
 	}
 
-	tokenCountExtractor := NewTokenCountExtractor()
-
-	err = tokenCountExtractor.Extract(testCtx, appState, messageEvent)
+	p, err := json.Marshal(messages)
 	assert.NoError(t, err)
 
-	memory, err := appState.MemoryStore.GetMemory(testCtx, appState, messageEvent.SessionID, 0)
+	m := &message.Message{
+		Metadata: message.Metadata{
+			"session_id": sessionID,
+		},
+		Payload: p,
+	}
+
+	err = tokenCountExtractor.Execute(testCtx, m)
+	assert.NoError(t, err)
+
+	memory, err := appState.MemoryStore.GetMemory(testCtx, appState, sessionID, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, len(memory.Messages), len(messages))
 

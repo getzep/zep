@@ -25,7 +25,11 @@ func pairwiseCosineSimilarity(matrix1 [][]float32, matrix2 [][]float32) ([][]flo
 		result[i] = make([]float32, len(matrix2))
 		for j, vec2 := range matrix2 {
 			if len(vec1) != len(vec2) {
-				return nil, fmt.Errorf("vector lengths do not match: %d != %d", len(vec1), len(vec2))
+				return nil, fmt.Errorf(
+					"vector lengths do not match: %d != %d",
+					len(vec1),
+					len(vec2),
+				)
 			}
 			result[i][j] = vek32.CosineSimilarity(vec1, vec2)
 		}
@@ -40,7 +44,12 @@ func pairwiseCosineSimilarity(matrix1 [][]float32, matrix2 [][]float32) ([][]flo
 // See https://www.cs.cmu.edu/~jgc/publication/The_Use_MMR_Diversity_Based_LTMIR_1998.pdf
 // Implementation borrowed from LangChain
 // https://github.com/langchain-ai/langchain/blob/4a2f0c51a116cc3141142ea55254e270afb6acde/libs/langchain/langchain/vectorstores/utils.py
-func MaximalMarginalRelevance(queryEmbedding []float32, embeddingList [][]float32, lambdaMult float32, k int) ([]int, error) {
+func MaximalMarginalRelevance(
+	queryEmbedding []float32,
+	embeddingList [][]float32,
+	lambdaMult float32,
+	k int,
+) ([]int, error) {
 	// if either k or the length of the embedding list is 0, return an empty list
 	if min(k, len(embeddingList)) <= 0 {
 		return []int{}, nil
@@ -51,7 +60,10 @@ func MaximalMarginalRelevance(queryEmbedding []float32, embeddingList [][]float3
 		return []int{}, errors.New("query embedding width does not match embedding vector width")
 	}
 
-	similarityToQueryMatrix, err := pairwiseCosineSimilarity([][]float32{queryEmbedding}, embeddingList)
+	similarityToQueryMatrix, err := pairwiseCosineSimilarity(
+		[][]float32{queryEmbedding},
+		embeddingList,
+	)
 	if err != nil {
 		return nil, err
 	}

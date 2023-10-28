@@ -8,8 +8,7 @@ import (
 	"time"
 
 	"github.com/getzep/zep/pkg/llms"
-
-	"github.com/getzep/zep/pkg/extractors"
+	"github.com/getzep/zep/pkg/tasks"
 
 	"github.com/getzep/zep/internal"
 	"github.com/sirupsen/logrus"
@@ -66,7 +65,13 @@ func setup() {
 		panic(err)
 	}
 	appState.MemoryStore = memoryStore
-	extractors.Initialize(appState)
+
+	// Set up the task router
+	db, err := NewPostgresConnForQueue(appState)
+	if err != nil {
+		panic(err)
+	}
+	tasks.RunTaskRouter(testCtx, appState, db)
 
 	err = CreateSchema(testCtx, appState, testDB)
 	if err != nil {

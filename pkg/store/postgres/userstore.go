@@ -181,7 +181,11 @@ func (dao *UserStoreDAO) Delete(ctx context.Context, userID string) error {
 	if err != nil {
 		rollbackErr := tx.Rollback()
 		if rollbackErr != nil {
-			return fmt.Errorf("failed to delete user: %v, failed to rollback transaction: %w", err, rollbackErr)
+			return fmt.Errorf(
+				"failed to delete user: %v, failed to rollback transaction: %w",
+				err,
+				rollbackErr,
+			)
 		}
 		return err
 	}
@@ -192,7 +196,11 @@ func (dao *UserStoreDAO) Delete(ctx context.Context, userID string) error {
 		if err != nil {
 			rollbackErr := tx.Rollback()
 			if rollbackErr != nil {
-				return fmt.Errorf("failed to delete user: %v, failed to rollback transaction: %w", err, rollbackErr)
+				return fmt.Errorf(
+					"failed to delete user: %v, failed to rollback transaction: %w",
+					err,
+					rollbackErr,
+				)
 			}
 			return err
 		}
@@ -203,7 +211,11 @@ func (dao *UserStoreDAO) Delete(ctx context.Context, userID string) error {
 	if err != nil {
 		rollbackErr := tx.Rollback()
 		if rollbackErr != nil {
-			return fmt.Errorf("failed to delete user: %v, failed to rollback transaction: %w", err, rollbackErr)
+			return fmt.Errorf(
+				"failed to delete user: %v, failed to rollback transaction: %w",
+				err,
+				rollbackErr,
+			)
 		}
 		return err
 	}
@@ -211,14 +223,22 @@ func (dao *UserStoreDAO) Delete(ctx context.Context, userID string) error {
 	if err != nil {
 		rollbackErr := tx.Rollback()
 		if rollbackErr != nil {
-			return fmt.Errorf("failed to delete user: %v, failed to rollback transaction: %w", err, rollbackErr)
+			return fmt.Errorf(
+				"failed to delete user: %v, failed to rollback transaction: %w",
+				err,
+				rollbackErr,
+			)
 		}
 		return err
 	}
 	if rowsAffected == 0 {
 		rollbackErr := tx.Rollback()
 		if rollbackErr != nil {
-			return fmt.Errorf("failed to delete user: %v, failed to rollback transaction: %w", err, rollbackErr)
+			return fmt.Errorf(
+				"failed to delete user: %v, failed to rollback transaction: %w",
+				err,
+				rollbackErr,
+			)
 		}
 		return models.NewNotFoundError("user " + userID)
 	}

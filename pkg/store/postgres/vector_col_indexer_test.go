@@ -58,14 +58,10 @@ func TestCreateIndex(t *testing.T) {
 
 	collection := docCollection.collection.DocumentCollection
 
-	// Create channels
-	docEmbeddingUpdateTaskCh := make(chan []models.DocEmbeddingUpdate, 5)
-	docEmbeddingTaskCh := make(chan []models.DocEmbeddingTask, 5)
 	documentStore, err := NewDocumentStore(
+		ctx,
 		appState,
 		testDB,
-		docEmbeddingUpdateTaskCh,
-		docEmbeddingTaskCh,
 	)
 	assert.NoError(t, err)
 
@@ -82,7 +78,7 @@ func TestCreateIndex(t *testing.T) {
 	err = vci.CreateIndex(context.Background(), true)
 	assert.NoError(t, err)
 
-	pollIndexCreation(documentStore, collectionName, ctx, t)
+	pollIndexCreation(ctx, documentStore, collectionName, t)
 
 	col, err := documentStore.GetCollection(ctx, vci.Collection.Name)
 	assert.NoError(t, err)
@@ -163,9 +159,9 @@ func generateRandomEmbeddings(embeddingCount int, embeddingWidth int) [][]float3
 }
 
 func pollIndexCreation(
+	ctx context.Context,
 	documentStore *DocumentStore,
 	collectionName string,
-	ctx context.Context,
 	t *testing.T,
 ) {
 	timeout := time.After(10 * time.Minute)

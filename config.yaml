@@ -26,9 +26,7 @@ extractors:
   documents:
     embeddings:
       enabled: true
-      max_procs: 2
       chunk_size: 1000
-      buffer_size: 1000
       dimensions: 384
       service: "local"
 #      dimensions: 1536

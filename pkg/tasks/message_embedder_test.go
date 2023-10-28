@@ -1,10 +1,8 @@
-package extractors
+package tasks
 
 import (
 	"math"
 	"testing"
-
-	"github.com/getzep/zep/pkg/store/postgres"
 
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
@@ -16,9 +14,6 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 	llmClient, err := llms.NewOpenAILLM(testCtx, appState.Config)
 	assert.NoError(t, err)
 	appState.LLMClient = llmClient
-
-	err = postgres.MigrateMessageEmbeddingDims(testCtx, testDB, 1536)
-	assert.NoError(t, err)
 
 	store := appState.MemoryStore
 
@@ -45,11 +40,6 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 	assert.True(t, len(memories.Messages) == len(testMessages))
 
 	unembeddedMessages := memories.Messages
-	// Create messageEvent. We only need to pass the sessionID
-	messageEvent := &models.MessageEvent{
-		SessionID: sessionID,
-		Messages:  unembeddedMessages,
-	}
 
 	texts := make([]string, len(unembeddedMessages))
 	for i, r := range unembeddedMessages {
@@ -72,14 +62,16 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 		}
 	}
 
-	embeddingExtractor := NewEmbeddingExtractor()
-	err = embeddingExtractor.Extract(testCtx, appState, messageEvent)
+	task := MessageEmbedderTask{
+		appState: appState,
+	}
+	err = task.Process(testCtx, sessionID, unembeddedMessages)
 	assert.NoError(t, err)
 
 	embeddedMessages, err := store.GetMessageVectors(
 		testCtx,
 		appState,
-		messageEvent.SessionID,
+		sessionID,
 	)
 	assert.NoError(t, err)
 

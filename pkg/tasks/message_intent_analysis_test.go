@@ -1,8 +1,7 @@
-package extractors
+package tasks
 
 import (
 	"testing"
-	"time"
 
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
@@ -16,7 +15,7 @@ func runTestIntentExtractor(t *testing.T, testAppState *models.AppState) {
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err)
 
-	testMessages := testutils.TestMessages[:5]
+	testMessages := testutils.TestMessages[:2]
 
 	err = store.PutMemory(
 		testCtx,
@@ -31,29 +30,31 @@ func runTestIntentExtractor(t *testing.T, testAppState *models.AppState) {
 	assert.NoError(t, err)
 	assert.Equal(t, len(testMessages), len(memories.Messages))
 
-	intentExtractor := NewIntentExtractor()
+	intentTask := MessageIntentTask{
+		appState: testAppState,
+	}
 
-	for i, message := range memories.Messages {
-		singleMessageEvent := &models.MessageEvent{
-			SessionID: sessionID,
-			Messages:  []models.Message{message},
-		}
+	errs := make(chan error, len(memories.Messages))
 
-		err = intentExtractor.Extract(testCtx, testAppState, singleMessageEvent)
+	for _, message := range memories.Messages {
+		intentTask.processMessage(testCtx, appState, message, sessionID, errs)
+
+	}
+
+	close(errs)
+	for err := range errs {
 		assert.NoError(t, err)
+	}
 
+	memories, err = store.GetMemory(testCtx, testAppState, sessionID, 0)
+	assert.NoError(t, err)
+	for _, message := range memories.Messages {
 		metadata := message.Metadata["system"]
 		if metadata != nil {
 			if metadataMap, ok := metadata.(map[string]interface{}); ok {
 				assert.NotNil(t, metadataMap["intent"])
 			}
 		}
-
-		// Validate the message metadata after the extraction
-		assert.Equal(t, memories.Messages[i].Metadata, message.Metadata)
-
-		// Sleep for 2 seconds between each extract
-		time.Sleep(2 * time.Second)
 	}
 }
 

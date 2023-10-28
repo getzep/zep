@@ -1,4 +1,4 @@
-package extractors
+package tasks
 
 import (
 	"context"
@@ -30,7 +30,7 @@ func TestCallNERService(t *testing.T) {
 	messages := createMessages(texts)
 
 	// Call the NER service
-	response, err := callEntityExtractor(context.Background(), appState, messages)
+	response, err := callNERTask(context.Background(), appState, messages)
 	assert.NoError(t, err)
 
 	// Check the response

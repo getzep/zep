@@ -1,4 +1,4 @@
-package extractors
+package tasks
 
 import (
 	"testing"
@@ -16,6 +16,8 @@ func runTestSummarize(t *testing.T, llmClient models.ZepLLM) {
 	appState.LLMClient = llmClient
 
 	windowSize := 10
+	appState.Config.Memory.MessageWindow = windowSize
+
 	newMessageCountAfterSummary := windowSize / 2
 
 	messages := make([]models.Message, len(testutils.TestMessages))
@@ -52,9 +54,13 @@ func runTestSummarize(t *testing.T, llmClient models.ZepLLM) {
 		},
 	}
 
+	task := &MessageSummaryTask{
+		appState: appState,
+	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			newSummary, err := summarize(testCtx, appState, windowSize, tt.messages, tt.summary, 0)
+			newSummary, err := task.summarize(testCtx, tt.messages, tt.summary, 0)
 			assert.NoError(t, err)
 
 			assert.Equal(t, newSummaryPointUUID, newSummary.SummaryPointUUID)
@@ -83,6 +89,10 @@ func TestSummarize_Anthropic(t *testing.T) {
 }
 
 func TestValidateSummarizerPrompt(t *testing.T) {
+	task := &MessageSummaryTask{
+		appState: appState,
+	}
+
 	testCases := []struct {
 		name    string
 		prompt  string
@@ -102,7 +112,7 @@ func TestValidateSummarizerPrompt(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateSummarizerPrompt(tc.prompt)
+			err := task.validateSummarizerPrompt(tc.prompt)
 			if tc.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -173,7 +183,11 @@ func TestGenerateProgressiveSummarizerPrompt(t *testing.T) {
 				MessagesJoined: "joined messages",
 			}
 
-			prompt, err := generateProgressiveSummarizerPrompt(appState, promptData)
+			task := &MessageSummaryTask{
+				appState: appState,
+			}
+
+			prompt, err := task.generateProgressiveSummarizerPrompt(promptData)
 			assert.NoError(t, err)
 			if !tc.defaultPrompt {
 				assert.Equal(t, tc.expectedPrompt, prompt)

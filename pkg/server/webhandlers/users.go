@@ -159,7 +159,7 @@ func GetUserDetailsHandler(appState *models.AppState) http.HandlerFunc {
 
 		userData := UserFormData{
 			User:           *user,
-			MetadataString: string(metadataString),
+			MetadataString: metadataString,
 			SessionList:    sl,
 		}
 

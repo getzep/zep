@@ -9,7 +9,7 @@ import (
 	"github.com/getzep/zep/config"
 )
 
-const JWT_ALG = "HS256"
+const JwtAlg = "HS256"
 
 // GenerateJWT generates a JWT token using the given config.
 // Requires that ZEP_AUTH_SECRET is set in the environment.
@@ -19,7 +19,7 @@ func GenerateJWT(cfg *config.Config) string {
 		log.Fatal("Auth secret not set. Ensure ZEP_AUTH_SECRET is set in your environment.")
 	}
 
-	tokenAuth := jwtauth.New(JWT_ALG, secret, nil)
+	tokenAuth := jwtauth.New(JwtAlg, secret, nil)
 	_, tokenString, err := tokenAuth.Encode(nil)
 	if err != nil {
 		log.Fatal("Error generating auth token: ", err)
@@ -33,6 +33,6 @@ func JWTVerifier(cfg *config.Config) func(http.Handler) http.Handler {
 	if len(secret) == 0 {
 		log.Fatal("Auth secret not set. Ensure ZEP_AUTH_SECRET is set in your environment.")
 	}
-	tokenAuth := jwtauth.New(JWT_ALG, secret, nil)
+	tokenAuth := jwtauth.New(JwtAlg, secret, nil)
 	return jwtauth.Verifier(tokenAuth)
 }

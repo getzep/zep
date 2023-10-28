@@ -8,8 +8,6 @@ import (
 	"github.com/alecthomas/chroma/styles"
 )
 
-const HighlightTheme = "github"
-
 type CustomPreWrapper struct{}
 
 // Start is called to write a start <pre> element.
@@ -31,7 +29,7 @@ func (p *CustomPreWrapper) End(code bool) string {
 	return "</pre>"
 }
 
-// codeHighlight takes a string of code and a lexer name and returns a highlighted
+// CodeHighlight takes a string of code and a lexer name and returns a highlighted
 // HTML string.
 func CodeHighlight(code string, lexer string) (string, error) {
 	// Create a preWrapper that implements the PreWrapper interface

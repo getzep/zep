@@ -1,14 +1,16 @@
-package extractors
+package tasks
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/avast/retry-go/v4"
 
 	"github.com/getzep/zep/internal"
@@ -18,37 +20,45 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
-// Force compiler to validate that the Extractor implements the Extractor interface.
-var _ models.Extractor = &EntityExtractor{}
+var _ models.Task = &MessageNERTask{}
 
-type EntityExtractor struct {
-	BaseExtractor
+type MessageNERTask struct {
+	appState *models.AppState
 }
 
-func NewEntityExtractor() *EntityExtractor {
-	return &EntityExtractor{}
-}
-
-func (ee *EntityExtractor) Extract(
+func (n *MessageNERTask) Execute(
 	ctx context.Context,
-	appState *models.AppState,
-	messageEvent *models.MessageEvent,
+	msg *message.Message,
 ) error {
-	sessionID := messageEvent.SessionID
-	sessionMutex := ee.getSessionMutex(sessionID)
-	sessionMutex.Lock()
-	defer sessionMutex.Unlock()
+	ctx, done := context.WithTimeout(ctx, TaskTimeout*time.Second)
+	defer done()
 
-	nerResponse, err := callEntityExtractor(ctx, appState, messageEvent.Messages)
-	if err != nil {
-		return NewExtractorError("EntityExtractor extract entities call failed", err)
+	sessionID := msg.Metadata.Get("session_id")
+	if sessionID == "" {
+		return errors.New("MessageNERTask session_id is empty")
 	}
 
-	messages := make([]models.Message, len(nerResponse.Texts))
+	log.Debugf("MessageNERTask called for session %s", sessionID)
+
+	messages, err := messageTaskPayloadToMessages(ctx, n.appState, msg)
+	if err != nil {
+		return fmt.Errorf("MessageEmbedderTask messageTaskPayloadToMessages failed: %w", err)
+	}
+
+	if len(messages) == 0 {
+		return fmt.Errorf("MessageNERTask messageTaskPayloadToMessages returned no messages")
+	}
+
+	nerResponse, err := callNERTask(ctx, n.appState, messages)
+	if err != nil {
+		return fmt.Errorf("MessageNERTask extract entities call failed: %w", err)
+	}
+
+	nerMessages := make([]models.Message, len(nerResponse.Texts))
 	for i, r := range nerResponse.Texts {
 		msgUUID, err := uuid.Parse(r.UUID)
 		if err != nil {
-			return NewExtractorError("EntityExtractor failed to parse message UUID", err)
+			return fmt.Errorf("MessageNERTask failed to parse message UUID: %w", err)
 		}
 		entityList := extractEntities(r.Entities)
 
@@ -56,7 +66,7 @@ func (ee *EntityExtractor) Extract(
 			continue
 		}
 
-		messages[i] = models.Message{
+		nerMessages[i] = models.Message{
 			UUID: msgUUID,
 			Metadata: map[string]interface{}{
 				"system": map[string]interface{}{"entities": entityList},
@@ -64,33 +74,24 @@ func (ee *EntityExtractor) Extract(
 		}
 	}
 
-	err = appState.MemoryStore.PutMessageMetadata(ctx, appState, sessionID, messages, true)
+	err = n.appState.MemoryStore.PutMessageMetadata(ctx, n.appState, sessionID, nerMessages, true)
 	if err != nil {
-		return NewExtractorError("EntityExtractor failed to put message metadata", err)
+		if errors.Is(err, models.ErrNotFound) {
+			log.Warnf("MessageNERTask PutMessageMetadata not found. Were the records deleted?")
+			// Don't error out
+			msg.Ack()
+			return nil
+		}
+		return fmt.Errorf("MessageNERTask failed to put message metadata: %w", err)
 	}
+
+	msg.Ack()
 
 	return nil
 }
 
-func (ee *EntityExtractor) Notify(
-	ctx context.Context,
-	appState *models.AppState,
-	messageEvents *models.MessageEvent,
-) error {
-	if messageEvents == nil {
-		return NewExtractorError(
-			"EntityExtractor message events is nil at Notify",
-			nil,
-		)
-	}
-	log.Debugf("EntityExtractor notify: %d messages", len(messageEvents.Messages))
-	go func() {
-		err := ee.Extract(ctx, appState, messageEvents)
-		if err != nil {
-			log.Error(fmt.Sprintf("EntityExtractor extract failed: %v", err))
-		}
-	}()
-	return nil
+func (n *MessageNERTask) HandleError(err error) {
+	log.Errorf("MessageNERTask error: %s", err)
 }
 
 func extractEntities(entities interface{}) []map[string]interface{} {
@@ -107,7 +108,7 @@ func extractEntities(entities interface{}) []map[string]interface{} {
 	return nil
 }
 
-func callEntityExtractor(
+func callNERTask(
 	_ context.Context,
 	appState *models.AppState,
 	messages []models.Message,

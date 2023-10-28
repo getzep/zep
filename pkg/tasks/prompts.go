@@ -1,4 +1,4 @@
-package extractors
+package tasks
 
 const intentPromptTemplate = `
 Identify the intent of the subject's statement or question below.
