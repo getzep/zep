@@ -52,7 +52,7 @@ func TestJWTVerifier(t *testing.T) {
 	router.Handle("/", testHandler)
 
 	t.Run("valid JWT token", func(t *testing.T) {
-		tokenAuth := jwtauth.New(JWT_ALG, []byte(cfg.Auth.Secret), nil)
+		tokenAuth := jwtauth.New(JwtAlg, []byte(cfg.Auth.Secret), nil)
 		_, tokenString, _ := tokenAuth.Encode(nil)
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set("Authorization", "Bearer "+tokenString)

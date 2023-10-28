@@ -290,7 +290,7 @@ func addTestDocuments(
 	isFullyEmbedded := boolFaker.Bool()
 
 	for i := 0; i < documentCount; i++ {
-		var embedded bool = true
+		var embedded = true
 		if !isFullyEmbedded {
 			embedded = boolFaker.Bool()
 		}

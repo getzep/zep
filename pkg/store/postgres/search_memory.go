@@ -128,7 +128,7 @@ func rerankMMR(
 }
 
 func buildMessagesSelectQuery(
-	ctx context.Context,
+	_ context.Context,
 	db *bun.DB,
 	query *models.MemorySearchPayload,
 ) *bun.SelectQuery {

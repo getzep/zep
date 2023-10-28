@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"runtime"
 	"strings"
@@ -395,7 +396,7 @@ func createDocumentTable(
 }
 
 // enablePgVectorExtension creates the pgvector extension if it does not exist and updates it if it is out of date.
-func enablePgVectorExtension(ctx context.Context, db *bun.DB) error {
+func enablePgVectorExtension(_ context.Context, db *bun.DB) error {
 	// Create pgvector extension if it does not exist
 	_, err := db.Exec("CREATE EXTENSION IF NOT EXISTS vector")
 	if err != nil {
@@ -617,7 +618,8 @@ func NewPostgresConn(appState *models.AppState) (*bun.DB, error) {
 	return db, nil
 }
 
-// TODO: Where to close this?
+// NewPostgresConnForQueue creates a new pgx connection to a postgres database using the provided DSN.
+// This connection is intended to be used for queueing tasks.
 func NewPostgresConnForQueue(appState *models.AppState) (*sql.DB, error) {
 	db, err := sql.Open("pgx", appState.Config.Store.Postgres.DSN)
 	if err != nil {
@@ -642,7 +644,7 @@ func isHNSWAvailable(ctx context.Context, db *bun.DB) (bool, error) {
 		Where("extname = 'vector'").
 		Scan(ctx, &version)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			// The vector extension is not installed
 			log.Debug("vector extension not installed")
 			return false, nil

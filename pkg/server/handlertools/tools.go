@@ -47,7 +47,7 @@ func IntFromQuery[T ~int | int32 | int64](
 	return 0, nil
 }
 
-// boolFromQuery extracts a query string value and converts it to a bool
+// BoolFromQuery extracts a query string value and converts it to a bool
 func BoolFromQuery(r *http.Request, param string) (bool, error) {
 	p := r.URL.Query().Get(param)
 	if p != "" {

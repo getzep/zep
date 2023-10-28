@@ -20,11 +20,6 @@ const EmbeddingColName = "embedding"
 // recommend creating the index after a representative sample of data is loaded. This is a guesstimate.
 const MinRowsForIndex = 10000
 
-// DefaultDistanceFunction is the default distance function to use for indexing. Using cosine distance
-// function by default in order to support both normalized and non-normalized embeddings.
-// A future improvement would be to use a the inner product distance function for normalized embeddings.
-const DefaultDistanceFunction = "cosine"
-
 // IndexMutexMap stores a mutex for each collection.
 var IndexMutexMap = make(map[string]*sync.Mutex)
 

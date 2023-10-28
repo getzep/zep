@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/getzep/zep/pkg/models"
@@ -78,8 +79,8 @@ func TestPutSummary(t *testing.T) {
 
 			if tt.wantErr {
 				assert.Error(t, err)
-				storageErr, ok := err.(*store.StorageError)
-				if ok {
+				var storageErr *store.StorageError
+				if ok := errors.As(err, &storageErr); ok {
 					assert.Equal(t, tt.errMessage, storageErr.Message)
 				}
 			} else {
