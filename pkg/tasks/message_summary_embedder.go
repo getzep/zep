@@ -13,12 +13,6 @@ import (
 
 var _ models.Task = &MessageSummaryEmbedderTask{}
 
-func NewMessageSummaryEmbedderTask(appState *models.AppState) *MessageSummaryEmbedderTask {
-	return &MessageSummaryEmbedderTask{
-		appState: appState,
-	}
-}
-
 type MessageSummaryEmbedderTask struct {
 	appState *models.AppState
 }
