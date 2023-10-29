@@ -5,8 +5,11 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/pgvector/pgvector-go"
+
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/store"
+	"github.com/google/uuid"
 	"github.com/jinzhu/copier"
 	"github.com/uptrace/bun"
 )
@@ -69,6 +72,62 @@ func getSummary(ctx context.Context, db *bun.DB, sessionID string) (*models.Summ
 		return nil, store.NewStorageError("failed to copy summary", err)
 	}
 	return &respSummary, nil
+}
+
+func getSummaryByUUID(ctx context.Context,
+	_ *models.AppState,
+	db *bun.DB,
+	sessionID string,
+	uuid uuid.UUID) (*models.Summary, error) {
+	if sessionID == "" {
+		return nil, store.NewStorageError("sessionID cannot be empty", nil)
+	}
+
+	summary := SummaryStoreSchema{}
+	err := db.NewSelect().
+		Model(&summary).
+		Where("session_id = ?", sessionID).
+		Where("uuid = ?", uuid).
+		Scan(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, models.NewNotFoundError("summary " + uuid.String())
+		}
+		return &models.Summary{}, store.NewStorageError("failed to get session", err)
+	}
+
+	return &models.Summary{
+		UUID:             summary.UUID,
+		CreatedAt:        summary.CreatedAt,
+		Content:          summary.Content,
+		SummaryPointUUID: summary.SummaryPointUUID,
+		Metadata:         summary.Metadata,
+		TokenCount:       summary.TokenCount,
+	}, nil
+}
+
+func putSummaryEmbedding(
+	ctx context.Context,
+	db *bun.DB,
+	sessionID string,
+	embedding *models.TextEmbedding,
+) error {
+	if sessionID == "" {
+		return store.NewStorageError("sessionID cannot be empty", nil)
+	}
+
+	record := SummaryVectorStoreSchema{
+		SessionID:   sessionID,
+		Embedding:   pgvector.NewVector(embedding.Embedding),
+		SummaryUUID: embedding.TextUUID,
+		IsEmbedded:  true,
+	}
+	_, err := db.NewInsert().Model(&record).Exec(ctx)
+	if err != nil {
+		return store.NewStorageError("failed to insert summary embedding", err)
+	}
+
+	return nil
 }
 
 // GetSummaryList returns a list of summaries for a session

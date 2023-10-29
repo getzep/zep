@@ -444,7 +444,7 @@ func TestPutEmbeddingsLocal(t *testing.T) {
 	}
 
 	// Create embeddings
-	embeddings := []models.MessageEmbedding{
+	embeddings := []models.TextEmbedding{
 		{
 			TextUUID:  resultMessages[0].UUID,
 			Text:      resultMessages[0].Content,

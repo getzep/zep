@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sony/gobreaker"
-
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
@@ -45,26 +43,19 @@ func NewTaskRouter(appState *models.AppState, db *sql.DB) (*TaskRouter, error) {
 		return nil, err
 	}
 
-	// Router level middleware are executed for every message sent to the router
+	// Set up a poison queue
+	// publisher, err := NewSQLQueuePublisher(db, wlog)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// poisonQueueHandler, err := middleware.PoisonQueue(publisher, "poison_queue")
+	// if err != nil {
+	// 	return nil, err
+	// }
+
 	router.AddMiddleware(
 		// CorrelationID will copy the correlation id from the incoming message's metadata to the produced messages
 		middleware.CorrelationID,
-
-		// The handler function is retried if it returns an error.
-		// After MaxRetries, the message is Nacked and it's up to the PubSub to resend it.
-		middleware.Retry{
-			MaxRetries:      MaxQueueRetries,
-			InitialInterval: time.Millisecond * 100,
-			Logger:          wlog,
-		}.Middleware,
-
-		//// CircuitBreaker will stop processing messages if the handler returns an error.
-		middleware.NewCircuitBreaker(gobreaker.Settings{
-			Name:        "task_router_circuit_breaker",
-			MaxRequests: 5,
-			Interval:    time.Second * 5,
-			Timeout:     time.Second * 20,
-		}).Middleware,
 
 		// Throttle limits the number of messages processed per second.
 		middleware.NewThrottle(TaskCountThrottle, time.Second).Middleware,
@@ -72,6 +63,18 @@ func NewTaskRouter(appState *models.AppState, db *sql.DB) (*TaskRouter, error) {
 		// Recoverer handles panics from handlers.
 		// In this case, it passes them as errors to the Retry middleware.
 		middleware.Recoverer,
+
+		// The handler function is retried if it returns an error.
+		// After MaxRetries, the message is Nacked and it's up to the PubSub to resend it.
+		middleware.Retry{
+			MaxRetries:      MaxQueueRetries,
+			InitialInterval: 1 * time.Second,
+			Multiplier:      0.5,
+			Logger:          wlog,
+		}.Middleware,
+
+		// PoisonQueue will publish messages that failed to process after MaxRetries to the poison queue.
+		// poisonQueueHandler,
 	)
 
 	return &TaskRouter{

@@ -84,15 +84,15 @@ type MessageStorer interface {
 		sessionID string,
 		messages []Message,
 		isPrivileged bool) error
-	// PutMessageVectors stores a collection of MessageEmbedding for a given sessionID.
-	PutMessageVectors(ctx context.Context,
+	// PutMessageEmbeddings stores a collection of TextEmbedding for a given sessionID.
+	PutMessageEmbeddings(ctx context.Context,
 		appState *AppState,
 		sessionID string,
-		embeddings []MessageEmbedding) error
-	// GetMessageVectors retrieves a collection of MessageEmbedding for a given sessionID.
-	GetMessageVectors(ctx context.Context,
+		embeddings []TextEmbedding) error
+	// GetMessageEmbeddings retrieves a collection of TextEmbedding for a given sessionID.
+	GetMessageEmbeddings(ctx context.Context,
 		appState *AppState,
-		sessionID string) ([]MessageEmbedding, error)
+		sessionID string) ([]TextEmbedding, error)
 }
 
 type MemoryStorer interface {
@@ -129,6 +129,10 @@ type SummaryStorer interface {
 	GetSummary(ctx context.Context,
 		appState *AppState,
 		sessionID string) (*Summary, error)
+	GetSummaryByUUID(ctx context.Context,
+		appState *AppState,
+		sessionID string,
+		uuid uuid.UUID) (*Summary, error)
 	// GetSummaryList retrieves a list of Summary for a given sessionID. Paginated by cursor and limit.
 	GetSummaryList(ctx context.Context,
 		appState *AppState,
@@ -141,4 +145,9 @@ type SummaryStorer interface {
 		appState *AppState,
 		sessionID string,
 		summary *Summary) error
+	// PutSummaryEmbedding stores a TextEmbedding for a given sessionID and Summary UUID.
+	PutSummaryEmbedding(ctx context.Context,
+		appState *AppState,
+		sessionID string,
+		embedding *TextEmbedding) error
 }

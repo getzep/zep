@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/getzep/zep/pkg/store"
 	"github.com/google/uuid"
@@ -218,6 +219,18 @@ func (pms *PostgresMemoryStore) GetSummary(
 	return summary, nil
 }
 
+func (pms *PostgresMemoryStore) GetSummaryByUUID(ctx context.Context,
+	appState *models.AppState,
+	sessionID string,
+	uuid uuid.UUID) (*models.Summary, error) {
+	summary, err := getSummaryByUUID(ctx, appState, pms.Client, sessionID, uuid)
+	if err != nil {
+		return nil, store.NewStorageError("failed to get summary", err)
+	}
+
+	return summary, nil
+}
+
 func (pms *PostgresMemoryStore) GetSummaryList(
 	ctx context.Context,
 	appState *models.AppState,
@@ -235,6 +248,20 @@ func (pms *PostgresMemoryStore) GetSummaryList(
 	}
 
 	return summaries, nil
+}
+
+func (pms *PostgresMemoryStore) PutSummaryEmbedding(
+	ctx context.Context,
+	_ *models.AppState,
+	sessionID string,
+	embedding *models.TextEmbedding,
+) error {
+	err := putSummaryEmbedding(ctx, pms.Client, sessionID, embedding)
+	if err != nil {
+		return store.NewStorageError("failed to Create summary embedding", err)
+	}
+
+	return nil
 }
 
 func (pms *PostgresMemoryStore) PutMemory(
@@ -282,13 +309,28 @@ func (pms *PostgresMemoryStore) PutMemory(
 
 func (pms *PostgresMemoryStore) PutSummary(
 	ctx context.Context,
-	_ *models.AppState,
+	appState *models.AppState,
 	sessionID string,
 	summary *models.Summary,
 ) error {
-	_, err := putSummary(ctx, pms.Client, sessionID, summary)
+	retSummary, err := putSummary(ctx, pms.Client, sessionID, summary)
 	if err != nil {
 		return store.NewStorageError("failed to Create summary", err)
+	}
+
+	// Publish a message to the message summary embeddings topic
+	task := models.MessageSummaryEmbeddingTask{
+		UUID: retSummary.UUID,
+	}
+	err = appState.TaskPublisher.Publish(
+		"message_summary_embedder",
+		map[string]string{
+			"session_id": sessionID,
+		},
+		task,
+	)
+	if err != nil {
+		return fmt.Errorf("MessageSummaryEmbeddingTask publish failed: %w", err)
 	}
 
 	return nil
@@ -326,10 +368,10 @@ func (pms *PostgresMemoryStore) Close() error {
 	return nil
 }
 
-func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
+func (pms *PostgresMemoryStore) PutMessageEmbeddings(ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
-	embeddings []models.MessageEmbedding,
+	embeddings []models.TextEmbedding,
 ) error {
 	if embeddings == nil {
 		return store.NewStorageError("nil embeddings received", nil)
@@ -346,13 +388,13 @@ func (pms *PostgresMemoryStore) PutMessageVectors(ctx context.Context,
 	return nil
 }
 
-func (pms *PostgresMemoryStore) GetMessageVectors(ctx context.Context,
+func (pms *PostgresMemoryStore) GetMessageEmbeddings(ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
-) ([]models.MessageEmbedding, error) {
+) ([]models.TextEmbedding, error) {
 	embeddings, err := getMessageEmbeddings(ctx, pms.Client, sessionID)
 	if err != nil {
-		return nil, store.NewStorageError("GetMessageVectors failed to get embeddings", err)
+		return nil, store.NewStorageError("GetMessageEmbeddings failed to get embeddings", err)
 	}
 
 	return embeddings, nil

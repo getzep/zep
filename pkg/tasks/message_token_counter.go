@@ -2,7 +2,6 @@ package tasks
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -32,10 +31,9 @@ func (mt *MessageTokenCountTask) Execute(
 
 	log.Debugf("MessageTokenCountTask called for session %s", sessionID)
 
-	var msgs []models.Message
-	err := json.Unmarshal(msg.Payload, &msgs)
+	msgs, err := messageTaskPayloadToMessages(ctx, mt.appState, msg)
 	if err != nil {
-		return err
+		return fmt.Errorf("TokenCountExtractor messageTaskPayloadToMessages failed: %w", err)
 	}
 
 	countResult, err := mt.updateTokenCounts(msgs)

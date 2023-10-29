@@ -28,3 +28,7 @@ type TaskPublisher interface {
 type MessageTask struct {
 	UUID uuid.UUID `json:"uuid"`
 }
+
+type MessageSummaryEmbeddingTask struct {
+	UUID uuid.UUID `json:"uuid"`
+}

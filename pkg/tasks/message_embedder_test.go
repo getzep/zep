@@ -34,7 +34,7 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	// Get messages that are missing embeddings using appState.MemoryStore.GetMessageVectors
+	// Get messages that are missing embeddings using appState.MemoryStore.GetMessageEmbeddings
 	memories, err := store.GetMemory(testCtx, appState, sessionID, 0)
 	assert.NoError(t, err)
 	assert.True(t, len(memories.Messages) == len(testMessages))
@@ -53,9 +53,9 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 	embeddings, err := llms.EmbedTexts(testCtx, appState, model, documentType, texts)
 	assert.NoError(t, err)
 
-	expectedEmbeddingRecords := make([]models.MessageEmbedding, len(unembeddedMessages))
+	expectedEmbeddingRecords := make([]models.TextEmbedding, len(unembeddedMessages))
 	for i, r := range unembeddedMessages {
-		expectedEmbeddingRecords[i] = models.MessageEmbedding{
+		expectedEmbeddingRecords[i] = models.TextEmbedding{
 			TextUUID:  r.UUID,
 			Text:      r.Content,
 			Embedding: embeddings[i],
@@ -68,7 +68,7 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 	err = task.Process(testCtx, sessionID, unembeddedMessages)
 	assert.NoError(t, err)
 
-	embeddedMessages, err := store.GetMessageVectors(
+	embeddedMessages, err := store.GetMessageEmbeddings(
 		testCtx,
 		appState,
 		sessionID,
@@ -77,12 +77,12 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 
 	assert.Equal(t, len(expectedEmbeddingRecords), len(embeddedMessages))
 
-	expectedEmbeddingRecordsMap := make(map[string]models.MessageEmbedding)
+	expectedEmbeddingRecordsMap := make(map[string]models.TextEmbedding)
 	for _, r := range expectedEmbeddingRecords {
 		expectedEmbeddingRecordsMap[r.TextUUID.String()] = r
 	}
 
-	embeddedMessagesMap := make(map[string]models.MessageEmbedding)
+	embeddedMessagesMap := make(map[string]models.TextEmbedding)
 	for _, r := range embeddedMessages {
 		embeddedMessagesMap[r.TextUUID.String()] = r
 	}

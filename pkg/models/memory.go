@@ -42,9 +42,3 @@ type Memory struct {
 	Summary  *Summary               `json:"summary,omitempty"`
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
-
-type MessageEvent struct {
-	SessionID string                 `json:"sessionId"`
-	Messages  []Message              `json:"messages"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
-}
