@@ -70,20 +70,16 @@ func (mt *MessageTokenCountTask) Execute(
 func (mt *MessageTokenCountTask) updateTokenCounts(
 	messages []models.Message,
 ) ([]models.Message, error) {
-	var countResult []models.Message //nolint:prealloc
-
-	for _, m := range messages {
-		if m.TokenCount != 0 {
-			continue
-		}
-		t, err := mt.appState.LLMClient.GetTokenCount(fmt.Sprintf("%s: %s", m.Role, m.Content))
+	for i := range messages {
+		t, err := mt.appState.LLMClient.GetTokenCount(
+			fmt.Sprintf("%s: %s", messages[i].Role, messages[i].Content),
+		)
 		if err != nil {
 			return nil, err
 		}
-		m.TokenCount = t
-		countResult = append(countResult, m)
+		messages[i].TokenCount = t
 	}
-	return countResult, nil
+	return messages, nil
 }
 
 func (mt *MessageTokenCountTask) HandleError(err error) {
