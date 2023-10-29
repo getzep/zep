@@ -58,8 +58,6 @@ func putMessages(
 		pgMessages[i] = MessageStoreSchema{
 			UUID:       msg.UUID,
 			SessionID:  sessionID,
-			CreatedAt:  msg.CreatedAt,
-			UpdatedAt:  msg.UpdatedAt,
 			Role:       msg.Role,
 			Content:    msg.Content,
 			TokenCount: msg.TokenCount,
@@ -70,7 +68,7 @@ func putMessages(
 	// Insert messages
 	_, err = db.NewInsert().
 		Model(&pgMessages).
-		Column("id", "created_at", "uuid", "session_id", "role", "content", "token_count", "updated_at").
+		Column("uuid", "session_id", "role", "content", "token_count", "updated_at").
 		On("CONFLICT (uuid) DO UPDATE").
 		Exec(ctx)
 	if err != nil {
