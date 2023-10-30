@@ -186,6 +186,138 @@ func TestGetSummary(t *testing.T) {
 	}
 }
 
+func TestPostgresMemoryStore_GetSummaryByUUID(t *testing.T) {
+	sessionID := createSession(t)
+
+	messages := []models.Message{
+		{
+			Role:     "user",
+			Content:  "Hello",
+			Metadata: map[string]interface{}{"timestamp": "1629462540"},
+		},
+		{
+			Role:     "bot",
+			Content:  "Hi there!",
+			Metadata: map[string]interface{}{"timestamp": 1629462551},
+		},
+	}
+
+	// Call putMessages function
+	resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
+	assert.NoError(t, err, "putMessages should not return an error")
+
+	summary := models.Summary{
+		Content: "Test content",
+		Metadata: map[string]interface{}{
+			"key": "value",
+		},
+		SummaryPointUUID: resultMessages[0].UUID,
+	}
+
+	// Call putSummary function
+	resultSummary, err := putSummary(testCtx, testDB, sessionID, &summary)
+	assert.NoError(t, err, "putSummary should not return an error")
+
+	tests := []struct {
+		name          string
+		sessionID     string
+		uuid          uuid.UUID
+		expectedFound bool
+	}{
+		{
+			name:          "Existing summary",
+			sessionID:     sessionID,
+			uuid:          resultSummary.UUID,
+			expectedFound: true,
+		},
+		{
+			name:          "Non-existent summary",
+			sessionID:     sessionID,
+			uuid:          uuid.New(),
+			expectedFound: false,
+		},
+		{
+			name:          "Non-existent session",
+			sessionID:     "nonexistent",
+			uuid:          uuid.New(),
+			expectedFound: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := getSummaryByUUID(
+				testCtx,
+				appState,
+				testDB,
+				tt.sessionID,
+				tt.uuid,
+			)
+
+			if tt.expectedFound {
+				assert.NoError(t, err)
+				assert.NotNil(t, result)
+				assert.Equal(t, resultSummary.UUID, result.UUID)
+				assert.False(t, result.CreatedAt.IsZero())
+				assert.Equal(t, resultSummary.Content, result.Content)
+				assert.Equal(t, resultSummary.Metadata, result.Metadata)
+			} else {
+				assert.Nil(t, result)
+				assert.ErrorIs(t, err, models.ErrNotFound)
+			}
+		})
+	}
+}
+
+func TestPostgresMemoryStore_PutSummaryEmbedding(t *testing.T) {
+	sessionID := createSession(t)
+
+	messages := []models.Message{
+		{
+			Role:     "user",
+			Content:  "Hello",
+			Metadata: map[string]interface{}{"timestamp": "1629462540"},
+		},
+		{
+			Role:     "bot",
+			Content:  "Hi there!",
+			Metadata: map[string]interface{}{"timestamp": 1629462551},
+		},
+	}
+
+	// Call putMessages function
+	resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
+	assert.NoError(t, err, "putMessages should not return an error")
+
+	summary := models.Summary{
+		Content: "Test content",
+		Metadata: map[string]interface{}{
+			"key": "value",
+		},
+		SummaryPointUUID: resultMessages[0].UUID,
+	}
+
+	// Call putSummary function
+	resultSummary, err := putSummary(testCtx, testDB, sessionID, &summary)
+	assert.NoError(t, err, "putSummary should not return an error")
+
+	v := make([]float32, appState.Config.Extractors.Messages.Summarizer.Embeddings.Dimensions)
+
+	embedding := models.TextEmbedding{
+		Embedding: v,
+		TextUUID:  resultSummary.UUID,
+		Text:      resultSummary.Content,
+	}
+
+	err = putSummaryEmbedding(
+		testCtx,
+		testDB,
+		sessionID,
+		&embedding,
+	)
+	assert.NoError(t, err, "putSummaryEmbedding should not return an error")
+}
+
 func TestGetSummaryList(t *testing.T) {
 	// Create a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)

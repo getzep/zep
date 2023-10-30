@@ -77,6 +77,8 @@ func TestTokenCountExtractor_OpenAI(t *testing.T) {
 
 	for i := range memory.Messages {
 		assert.True(t, memory.Messages[i].TokenCount > 0)
+		assert.NotEmpty(t, memory.Messages[i].Content)
+		assert.NotEmpty(t, memory.Messages[i].Role)
 	}
 }
 
@@ -91,6 +93,8 @@ func TestTokenCountExtractor_Anthropic(t *testing.T) {
 
 	for i := range memory.Messages {
 		assert.Zero(t, memory.Messages[i].TokenCount)
+		assert.NotEmpty(t, memory.Messages[i].Content)
+		assert.NotEmpty(t, memory.Messages[i].Role)
 	}
 
 	// reset config

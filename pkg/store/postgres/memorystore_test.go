@@ -60,6 +60,11 @@ func setup() {
 	// Initialize the test context
 	testCtx = context.Background()
 
+	err = CreateSchema(testCtx, appState, testDB)
+	if err != nil {
+		panic(err)
+	}
+
 	memoryStore, err := NewPostgresMemoryStore(appState, testDB)
 	if err != nil {
 		panic(err)
@@ -72,11 +77,6 @@ func setup() {
 		panic(err)
 	}
 	tasks.RunTaskRouter(testCtx, appState, db)
-
-	err = CreateSchema(testCtx, appState, testDB)
-	if err != nil {
-		panic(err)
-	}
 
 	embeddingModel = &models.EmbeddingModel{
 		Service:    "local",
@@ -418,7 +418,7 @@ func TestPutEmbeddingsLocal(t *testing.T) {
 	err := CreateSchema(testCtx, appState, testDB)
 	assert.NoError(t, err)
 
-	err = MigrateMessageEmbeddingDims(testCtx, testDB, embeddingModel.Dimensions)
+	err = MigrateEmbeddingDims(testCtx, testDB, "message_embedding", embeddingModel.Dimensions)
 	assert.NoError(t, err)
 
 	sessionID, err := testutils.GenerateRandomSessionID(16)
@@ -444,7 +444,7 @@ func TestPutEmbeddingsLocal(t *testing.T) {
 	}
 
 	// Create embeddings
-	embeddings := []models.MessageEmbedding{
+	embeddings := []models.TextEmbedding{
 		{
 			TextUUID:  resultMessages[0].UUID,
 			Text:      resultMessages[0].Content,

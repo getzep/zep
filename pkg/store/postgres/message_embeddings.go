@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/store"
@@ -11,7 +12,10 @@ import (
 
 func getMessageEmbeddings(ctx context.Context,
 	db *bun.DB,
-	sessionID string) ([]models.MessageEmbedding, error) {
+	sessionID string) ([]models.TextEmbedding, error) {
+	if sessionID == "" {
+		return nil, errors.New("sessionID cannot be empty")
+	}
 	var results []struct {
 		MessageStoreSchema
 		MessageVectorStoreSchema
@@ -29,9 +33,9 @@ func getMessageEmbeddings(ctx context.Context,
 		return nil, store.NewStorageError("failed to get message vectors", err)
 	}
 
-	embeddings := make([]models.MessageEmbedding, len(results))
+	embeddings := make([]models.TextEmbedding, len(results))
 	for i, vectorStoreRecord := range results {
-		embeddings[i] = models.MessageEmbedding{
+		embeddings[i] = models.TextEmbedding{
 			Embedding: vectorStoreRecord.Embedding.Slice(),
 			TextUUID:  vectorStoreRecord.MessageUUID,
 			Text:      vectorStoreRecord.Content,
@@ -45,7 +49,7 @@ func putMessageEmbeddings(
 	ctx context.Context,
 	db *bun.DB,
 	sessionID string,
-	embeddings []models.MessageEmbedding,
+	embeddings []models.TextEmbedding,
 ) error {
 	if embeddings == nil {
 		return store.NewStorageError("nil embeddings received", nil)

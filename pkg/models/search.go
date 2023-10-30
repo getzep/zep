@@ -7,19 +7,27 @@ const (
 	SearchTypeMMR        SearchType = "mmr"
 )
 
+type SearchScope string
+
+const (
+	SearchScopeMessages SearchScope = "messages"
+	SearchScopeSummary  SearchScope = "summary"
+)
+
 type MemorySearchResult struct {
 	Message   *Message               `json:"message"`
-	Summary   *Summary               `json:"summary"` // reserved for future use
+	Summary   *Summary               `json:"summary"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 	Dist      float64                `json:"dist"`
 	Embedding []float32              `json:"embedding"`
 }
 
 type MemorySearchPayload struct {
-	Text       string                 `json:"text"`
-	Metadata   map[string]interface{} `json:"metadata,omitempty"`
-	SearchType SearchType             `json:"search_type"`
-	MMRLambda  float32                `json:"mmr_lambda,omitempty"`
+	Text        string                 `json:"text"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	SearchScope SearchScope            `json:"search_scope,omitempty"`
+	SearchType  SearchType             `json:"search_type,omitempty"`
+	MMRLambda   float32                `json:"mmr_lambda,omitempty"`
 }
 
 type DocumentSearchPayload struct {

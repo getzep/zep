@@ -74,14 +74,14 @@ func (t *MessageEmbedderTask) Process(
 		return fmt.Errorf("MessageEmbedderTask embed messages failed: %w", err)
 	}
 
-	embeddingRecords := make([]models.MessageEmbedding, len(msgs))
+	embeddingRecords := make([]models.TextEmbedding, len(msgs))
 	for i, r := range msgs {
-		embeddingRecords[i] = models.MessageEmbedding{
+		embeddingRecords[i] = models.TextEmbedding{
 			TextUUID:  r.UUID,
 			Embedding: embeddings[i],
 		}
 	}
-	err = t.appState.MemoryStore.PutMessageVectors(
+	err = t.appState.MemoryStore.PutMessageEmbeddings(
 		ctx,
 		t.appState,
 		sessionID,
@@ -90,7 +90,7 @@ func (t *MessageEmbedderTask) Process(
 	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {
 			log.Warnf(
-				"MessageEmbedderTask PutMessageVectors not found. Were the records deleted? %v",
+				"MessageEmbedderTask PutMessageEmbeddings not found. Were the records deleted? %v",
 				err,
 			)
 			// Don't error out
@@ -105,7 +105,7 @@ func (t *MessageEmbedderTask) HandleError(err error) {
 	log.Errorf("MessageEmbedderTask error: %s", err)
 }
 
-// messageToStringSlice converts a slice of MessageEmbedding to a slice of strings.
+// messageToStringSlice converts a slice of TextEmbedding to a slice of strings.
 // If enrich is true, the text slice will include the prior and subsequent
 // messages text to the slice item.
 func messageToStringSlice(messages []models.Message, enrich bool) []string {

@@ -28,13 +28,16 @@ func TestMain(m *testing.M) {
 }
 
 func setup() {
+	// Initialize the test context
+	testCtx = context.Background()
+
 	logger := internal.GetLogger()
 	internal.SetLogLevel(logrus.DebugLevel)
 
 	appState = &models.AppState{}
 	cfg := testutils.NewTestConfig()
 
-	llmClient, err := llms.NewLLMClient(context.Background(), cfg)
+	llmClient, err := llms.NewLLMClient(testCtx, cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -48,9 +51,6 @@ func setup() {
 		panic(err)
 	}
 	testutils.SetUpDBLogging(testDB, logger)
-
-	// Initialize the test context
-	testCtx = context.Background()
 
 	memoryStore, err := postgres.NewPostgresMemoryStore(appState, testDB)
 	if err != nil {

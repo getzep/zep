@@ -18,10 +18,9 @@ func TestEnsurePostgresSchemaSetup(t *testing.T) {
 		err := CreateSchema(testCtx, appState, testDB)
 		assert.NoError(t, err)
 
-		checkForTable(t, testDB, &SessionSchema{})
-		checkForTable(t, testDB, &MessageStoreSchema{})
-		checkForTable(t, testDB, &SummaryStoreSchema{})
-		checkForTable(t, testDB, &MessageVectorStoreSchema{})
+		for _, schema := range messageTableList {
+			checkForTable(t, testDB, schema)
+		}
 	})
 	t.Run("should not fail on second run", func(t *testing.T) {
 		err := CreateSchema(testCtx, appState, testDB)
@@ -78,29 +77,39 @@ func TestUpdatedAtIsSetAfterUpdate(t *testing.T) {
 	}
 }
 
-func TestCheckMessageEmbeddingDims(t *testing.T) {
-	// Create a new DB
-	CleanDB(t, testDB)
-	err := CreateSchema(testCtx, appState, testDB)
-	assert.NoError(t, err)
+func TestCheckEmbeddingDims(t *testing.T) {
+	testCases := []struct {
+		documentType string
+		tableName    string
+	}{
+		{"message", "message_embedding"},
+		{"summary", "summary_embedding"},
+	}
 
-	// Get the embedding model
-	model, err := llms.GetEmbeddingModel(appState, "message")
-	assert.NoError(t, err)
+	for _, tc := range testCases {
+		// Clean the DB
+		CleanDB(t, testDB)
+		err := CreateSchema(testCtx, appState, testDB)
+		assert.NoError(t, err)
 
-	testWidth := model.Dimensions + 1
-	// Set the embedding column to a specific width
-	err = MigrateMessageEmbeddingDims(testCtx, testDB, testWidth)
-	assert.NoError(t, err)
+		// Get the embedding model
+		model, err := llms.GetEmbeddingModel(appState, tc.documentType)
+		assert.NoError(t, err)
 
-	width, err := getEmbeddingColumnWidth(testCtx, "message_embedding", testDB)
-	assert.NoError(t, err)
+		testWidth := model.Dimensions + 1
 
-	assert.Equal(t, width, testWidth)
+		// Set the embedding column to a specific width
+		err = MigrateEmbeddingDims(testCtx, testDB, tc.tableName, testWidth)
+		assert.NoError(t, err)
 
-	// Clean the DB
-	CleanDB(t, testDB)
-	err = CreateSchema(testCtx, appState, testDB)
-	assert.NoError(t, err)
+		width, err := getEmbeddingColumnWidth(testCtx, tc.tableName, testDB)
+		assert.NoError(t, err)
 
+		assert.Equal(t, width, testWidth)
+
+		// Clean the DB
+		CleanDB(t, testDB)
+		err = CreateSchema(testCtx, appState, testDB)
+		assert.NoError(t, err)
+	}
 }

@@ -16,6 +16,7 @@ type TaskRouter interface {
 	Run(ctx context.Context) error
 	AddTask(ctx context.Context, name, taskType string, task Task)
 	RunHandlers(ctx context.Context) error
+	IsRunning() bool
 	Close() error
 }
 
@@ -26,5 +27,9 @@ type TaskPublisher interface {
 }
 
 type MessageTask struct {
+	UUID uuid.UUID `json:"uuid"`
+}
+
+type MessageSummaryEmbeddingTask struct {
 	UUID uuid.UUID `json:"uuid"`
 }

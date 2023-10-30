@@ -28,17 +28,25 @@ func embedTextsLocal(
 		return nil, nil
 	}
 
-	if documentType != "message" && documentType != "document" {
+	var endpoint string
+	switch documentType {
+	case "message":
+		endpoint = "/embeddings/message"
+	case "summary":
+		endpoint = "/embeddings/message"
+	case "document":
+		endpoint = "/embeddings/document"
+	default:
 		return nil, fmt.Errorf("invalid document type: %s", documentType)
 	}
 
-	url := appState.Config.NLP.ServerURL + "/embeddings/" + documentType
+	url := appState.Config.NLP.ServerURL + endpoint
 
-	documents := make([]models.MessageEmbedding, len(texts))
+	documents := make([]models.TextEmbedding, len(texts))
 	for i, text := range texts {
-		documents[i] = models.MessageEmbedding{Text: text}
+		documents[i] = models.TextEmbedding{Text: text}
 	}
-	collection := models.MessageEmbeddingCollection{
+	collection := models.TextEmbeddingCollection{
 		Embeddings: documents,
 	}
 	jsonBody, err := json.Marshal(collection)

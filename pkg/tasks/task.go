@@ -12,11 +12,13 @@ import (
 )
 
 const (
-	MessageSummarizerTopic = "message_summarizer"
-	MessageEmbedderTopic   = "message_embedder"
-	MessageNerTopic        = "message_ner"
-	MessageIntentTopic     = "message_intent"
-	MessageTokenCountTopic = "message_token_count"
+	MessageSummarizerTopic      = "message_summarizer"
+	MessageEmbedderTopic        = "message_embedder"
+	MessageNerTopic             = "message_ner"
+	MessageIntentTopic          = "message_intent"
+	MessageTokenCountTopic      = "message_token_count"
+	DocumentEmbedderTopic       = "document_embedder"
+	MessageSummaryEmbedderTopic = "message_summary_embedder"
 )
 
 var log = internal.GetLogger()
@@ -74,11 +76,20 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 
 	addTask(
 		ctx,
-		"document_embedder",
-		"document_embedder",
+		DocumentEmbedderTopic,
+		DocumentEmbedderTopic,
 		appState.Config.Extractors.Documents.Embeddings.Enabled,
 		func() models.Task { return &DocumentEmbedderTask{appState: appState} },
 	)
+
+	addTask(
+		ctx,
+		MessageSummaryEmbedderTopic,
+		MessageSummaryEmbedderTopic,
+		appState.Config.Extractors.Messages.Summarizer.Embeddings.Enabled,
+		func() models.Task { return &MessageSummaryEmbedderTask{appState: appState} },
+	)
+
 }
 
 func messageTaskPayloadToMessages(
