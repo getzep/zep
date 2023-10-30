@@ -44,19 +44,16 @@ func NewTaskRouter(appState *models.AppState, db *sql.DB) (*TaskRouter, error) {
 	}
 
 	// Set up a poison queue
-	// publisher, err := NewSQLQueuePublisher(db, wlog)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// poisonQueueHandler, err := middleware.PoisonQueue(publisher, "poison_queue")
-	// if err != nil {
-	// 	return nil, err
-	// }
+	publisher, err := NewSQLQueuePublisher(db, wlog)
+	if err != nil {
+		return nil, err
+	}
+	poisonQueueHandler, err := middleware.PoisonQueue(publisher, "poison_queue")
+	if err != nil {
+		return nil, err
+	}
 
 	router.AddMiddleware(
-		// CorrelationID will copy the correlation id from the incoming message's metadata to the produced messages
-		middleware.CorrelationID,
-
 		// Throttle limits the number of messages processed per second.
 		middleware.NewThrottle(TaskCountThrottle, time.Second).Middleware,
 
@@ -64,17 +61,19 @@ func NewTaskRouter(appState *models.AppState, db *sql.DB) (*TaskRouter, error) {
 		// In this case, it passes them as errors to the Retry middleware.
 		middleware.Recoverer,
 
+		// PoisonQueue will publish messages that failed to process after MaxRetries to the poison queue.
+		poisonQueueHandler,
+
 		// The handler function is retried if it returns an error.
 		// After MaxRetries, the message is Nacked and it's up to the PubSub to resend it.
 		middleware.Retry{
-			MaxRetries:      MaxQueueRetries,
-			InitialInterval: 1 * time.Second,
-			Multiplier:      0.5,
-			Logger:          wlog,
+			MaxRetries:          MaxQueueRetries,
+			InitialInterval:     1 * time.Second,
+			MaxInterval:         5 * time.Second,
+			Multiplier:          1.5,
+			RandomizationFactor: 0.5,
+			Logger:              wlog,
 		}.Middleware,
-
-		// PoisonQueue will publish messages that failed to process after MaxRetries to the poison queue.
-		// poisonQueueHandler,
 	)
 
 	return &TaskRouter{
@@ -100,16 +99,20 @@ func (tr *TaskRouter) AddTask(_ context.Context, name, taskType string, task mod
 }
 
 func (tr *TaskRouter) Close() (err error) {
-	routerErr := tr.Router.Close()
 	defer func() {
-		dbErr := tr.db.Close()
-		if err == nil {
+		if dbErr := tr.db.Close(); dbErr != nil && err == nil {
 			err = dbErr
 		}
 	}()
-	if routerErr != nil {
+
+	if publisherErr := tr.appState.TaskPublisher.Close(); publisherErr != nil {
+		err = publisherErr
+	}
+
+	if routerErr := tr.Router.Close(); routerErr != nil && err == nil {
 		err = routerErr
 	}
+
 	return err
 }
 
@@ -117,17 +120,20 @@ func (tr *TaskRouter) Close() (err error) {
 // Handlers are NoPublishHandlerFuncs i.e. do not publish messages.
 func TaskHandler(task models.Task) message.NoPublishHandlerFunc {
 	return func(msg *message.Message) error {
+		log.Debugf("Handling task: %s", msg.UUID)
 		err := task.Execute(msg.Context(), msg)
 		if err != nil {
 			task.HandleError(err)
 			return err
 		}
+		log.Debugf("Handled task: %s", msg.UUID)
 		return nil
 	}
 }
 
 func RunTaskRouter(ctx context.Context, appState *models.AppState, db *sql.DB) {
 	// Run once to avoid test situations where the router is initialized multiple times
+	log.Debug("RunTaskRouter called")
 	onceRouter.Do(func() {
 		router, err := NewTaskRouter(appState, db)
 		if err != nil {

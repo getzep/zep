@@ -16,6 +16,7 @@ type TaskRouter interface {
 	Run(ctx context.Context) error
 	AddTask(ctx context.Context, name, taskType string, task Task)
 	RunHandlers(ctx context.Context) error
+	IsRunning() bool
 	Close() error
 }
 

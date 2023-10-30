@@ -28,6 +28,7 @@ func NewTaskPublisher(db *sql.DB) *TaskPublisher {
 
 // Publish publishes a message to the given topic. Payload must be a struct that can be marshalled to JSON.
 func (t *TaskPublisher) Publish(taskType string, metadata map[string]string, payload any) error {
+	log.Debugf("Publishing task: %s", taskType)
 	p, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
@@ -40,6 +41,8 @@ func (t *TaskPublisher) Publish(taskType string, metadata map[string]string, pay
 	if err != nil {
 		return fmt.Errorf("failed to publish task message: %w", err)
 	}
+
+	log.Debugf("Published task: %s", taskType)
 
 	return nil
 }
@@ -72,6 +75,8 @@ func (t *TaskPublisher) Close() error {
 	if err != nil {
 		return fmt.Errorf("failed to close task publisher: %w", err)
 	}
+
+	log.Debug("Closed task publisher")
 
 	return nil
 }
