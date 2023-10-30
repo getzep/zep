@@ -13,13 +13,13 @@ services:
       dockerfile: Dockerfile.postgres
     networks:
       - zep-network
-    volumes:
-      - zep-db:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD", "pg_isready", "-q", "-d", "postgres", "-U", "postgres" ]
       interval: 5s
       timeout: 5s
       retries: 5
+    ports:
+      - "5432:5432"
   nlp:
     image: ghcr.io/getzep/zep-nlp-server:latest
     container_name: zep-nlp
@@ -33,7 +33,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 45s
+      start_period: 30s
+    ports:
+      - "5557:5557"
   zep:
     image: ghcr.io/getzep/zep:latest
     container_name: zep
@@ -64,11 +66,9 @@ services:
       interval: 5s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 10s
     networks:
       - zep-network
 networks:
   zep-network:
     driver: bridge
-volumes:
-  zep-db:
