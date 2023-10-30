@@ -76,6 +76,14 @@ DONE:
 			models.SearchScopeSummary,
 			models.SearchTypeSimilarity,
 		},
+		{
+			"SearchScope Summary MMR",
+			"travel",
+			1,
+			"",
+			models.SearchScopeSummary,
+			models.SearchTypeMMR,
+		},
 	}
 
 	for _, tc := range testCases {
