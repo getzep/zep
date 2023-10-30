@@ -101,13 +101,6 @@ func GetBaseOpenAIClientOptions(apiKey, validModel string) []openai.Option {
 }
 
 func ConfigureOpenAIClientOptions(options []openai.Option, cfg *config.Config, clientType ClientType) []openai.Option {
-	applyOption := func(cond bool, opts ...openai.Option) []openai.Option {
-		if cond {
-			return append(options, opts...)
-		}
-		return options
-	}
-
 	var openAIEndpoint string
 	var openAIOrgID string
 
@@ -118,31 +111,47 @@ func ConfigureOpenAIClientOptions(options []openai.Option, cfg *config.Config, c
 		// Check configuration for AzureOpenAIEndpoint; if it's set, use the DefaultAzureConfig
 		// and provided endpoint Path.
 		// WithEmbeddings is always required in case of embeddings client
-		options = applyOption(cfg.EmbeddingsClient.AzureOpenAIEndpoint != "",
-			openai.WithAPIType(openai.APITypeAzure),
-			openai.WithBaseURL(cfg.EmbeddingsClient.AzureOpenAIEndpoint),
-			openai.WithEmbeddingModel(cfg.EmbeddingsClient.AzureOpenAIModel.EmbeddingDeployment),
-		)
+		if cfg.EmbeddingsClient.AzureOpenAIEndpoint != "" {
+			options = append(
+				options,
+				openai.WithAPIType(openai.APITypeAzure),
+				openai.WithBaseURL(cfg.EmbeddingsClient.AzureOpenAIEndpoint),
+				openai.WithEmbeddingModel(cfg.EmbeddingsClient.AzureOpenAIModel.EmbeddingDeployment),
+			)
+		}
 	} else {
 		openAIEndpoint = cfg.LLM.OpenAIEndpoint
 		openAIOrgID = cfg.LLM.OpenAIOrgID
 
-		options = applyOption(cfg.LLM.AzureOpenAIEndpoint != "",
-			openai.WithAPIType(openai.APITypeAzure),
-			openai.WithBaseURL(cfg.LLM.AzureOpenAIEndpoint),
-		)
-		options = applyOption(cfg.LLM.AzureOpenAIModel.EmbeddingDeployment != "",
-			openai.WithEmbeddingModel(cfg.LLM.AzureOpenAIModel.EmbeddingDeployment),
+		if cfg.LLM.AzureOpenAIEndpoint != "" {
+			options = append(
+				options,
+				openai.WithAPIType(openai.APITypeAzure),
+				openai.WithBaseURL(cfg.LLM.AzureOpenAIEndpoint),
+			)
+
+			if cfg.LLM.AzureOpenAIModel.EmbeddingDeployment != "" {
+				options = append(
+					options,
+					openai.WithEmbeddingModel(cfg.LLM.AzureOpenAIModel.EmbeddingDeployment),
+				)
+			}
+		}
+	}
+
+	if openAIEndpoint != "" {
+		options = append(
+			options,
+			openai.WithBaseURL(openAIEndpoint),
 		)
 	}
 
-	options = applyOption(openAIEndpoint != "",
-		openai.WithBaseURL(openAIEndpoint),
-	)
-
-	options = applyOption(openAIOrgID != "",
-		openai.WithOrganization(openAIOrgID),
-	)
+	if openAIOrgID != "" {
+		options = append(
+			options,
+			openai.WithBaseURL(openAIOrgID),
+		)
+	}
 
 	return options
 }
