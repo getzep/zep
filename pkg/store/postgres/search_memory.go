@@ -22,7 +22,7 @@ type JSONQuery struct {
 	Or       []*JSONQuery `json:"or,omitempty"`
 }
 
-func searchMessages(
+func searchMemory(
 	ctx context.Context,
 	appState *models.AppState,
 	db *bun.DB,
@@ -35,33 +35,46 @@ func searchMessages(
 	}
 
 	if query.Text == "" && len(query.Metadata) == 0 {
-		return nil, store.NewStorageError("empty query", errors.New("empty query"))
+		return nil, errors.New("empty query")
 	}
 
-	dbQuery := buildMessagesSelectQuery(ctx, db, query)
+	var dbQuery *bun.SelectQuery
+	var tablePrefix string
+
+	switch query.SearchScope {
+	case models.SearchScopeMessages, "":
+		dbQuery = buildMessageSearchQuery(ctx, db, query)
+		tablePrefix = "m"
+	case models.SearchScopeSummary:
+		dbQuery = buildSummarySearchQuery(ctx, db, query)
+		tablePrefix = "s"
+	default:
+		return nil, errors.New("invalid search scope")
+	}
+
 	var err error
 	var queryEmbedding []float32
 	if query.Text != "" {
-		dbQuery, queryEmbedding, err = addMessagesVectorColumn(ctx, appState, dbQuery, query.Text)
+		dbQuery, queryEmbedding, err = addMemoryVectorColumn(ctx, appState, dbQuery, query.Text)
 		if err != nil {
 			return nil, store.NewStorageError("error adding vector column", err)
 		}
 	}
 	if len(query.Metadata) > 0 {
 		var err error
-		dbQuery, err = applyMessagesMetadataFilter(dbQuery, query.Metadata)
+		dbQuery, err = applyMemoryMetadataFilter(dbQuery, query.Metadata, tablePrefix)
 		if err != nil {
 			return nil, store.NewStorageError("error applying metadata filter", err)
 		}
 	}
 
-	dbQuery = dbQuery.Where("m.session_id = ?", sessionID)
+	dbQuery = dbQuery.Where("?.session_id = ?", bun.Safe(tablePrefix), sessionID)
 
 	// Ensure we don't return deleted records.
-	dbQuery = dbQuery.Where("m.deleted_at IS NULL")
+	dbQuery = dbQuery.Where("?.deleted_at IS NULL", bun.Safe(tablePrefix))
 
 	// Add sort and limit.
-	addMessagesSortQuery(query.Text, dbQuery)
+	addMessagesSortQuery(query.Text, dbQuery, tablePrefix)
 
 	if limit == 0 {
 		limit = DefaultMemorySearchLimit
@@ -84,7 +97,7 @@ func searchMessages(
 
 	results, err := executeMessagesSearchScan(ctx, dbQuery)
 	if err != nil {
-		return nil, store.NewStorageError("memory searchMessages failed", err)
+		return nil, store.NewStorageError("memory searchMemory failed", err)
 	}
 
 	filteredResults := filterValidMessageSearchResults(results, query.Metadata)
@@ -127,7 +140,7 @@ func rerankMMR(
 	return rerankedResults, nil
 }
 
-func buildMessagesSelectQuery(
+func buildMessageSearchQuery(
 	_ context.Context,
 	db *bun.DB,
 	query *models.MemorySearchPayload,
@@ -149,9 +162,31 @@ func buildMessagesSelectQuery(
 	return dbQuery
 }
 
-func applyMessagesMetadataFilter(
+func buildSummarySearchQuery(
+	_ context.Context,
+	db *bun.DB,
+	query *models.MemorySearchPayload,
+) *bun.SelectQuery {
+	dbQuery := db.NewSelect().TableExpr("summary_embedding AS se").
+		Join("JOIN summary AS s").
+		JoinOn("se.summary_uuid = s.uuid").
+		ColumnExpr("s.uuid AS summary__uuid").
+		ColumnExpr("s.created_at AS summary__created_at").
+		ColumnExpr("s.content AS summary__content").
+		ColumnExpr("s.metadata AS summary__metadata").
+		ColumnExpr("s.token_count AS summary__token_count")
+
+	if query.SearchType == models.SearchTypeMMR {
+		dbQuery = dbQuery.ColumnExpr("se.embedding AS embedding")
+	}
+
+	return dbQuery
+}
+
+func applyMemoryMetadataFilter(
 	dbQuery *bun.SelectQuery,
-	metadata map[string]interface{},
+	metadata map[string]any,
+	tablePrefix string,
 ) (*bun.SelectQuery, error) {
 	qb := dbQuery.QueryBuilder()
 
@@ -166,21 +201,21 @@ func applyMessagesMetadataFilter(
 		if err != nil {
 			return nil, store.NewStorageError("error unmarshalling metadata", err)
 		}
-		qb = parseJSONQuery(qb, &jq, false, "m")
+		qb = parseJSONQuery(qb, &jq, false, tablePrefix)
 	}
 
-	addMessageDateFilters(&qb, metadata)
+	addMessageDateFilters(&qb, metadata, tablePrefix)
 
 	dbQuery = qb.Unwrap().(*bun.SelectQuery)
 
 	return dbQuery, nil
 }
 
-func addMessagesSortQuery(searchText string, dbQuery *bun.SelectQuery) {
+func addMessagesSortQuery(searchText string, dbQuery *bun.SelectQuery, tablePrefix string) {
 	if searchText != "" {
 		dbQuery.Order("dist DESC")
 	} else {
-		dbQuery.Order("m.created_at DESC")
+		dbQuery.Order(tablePrefix + ".created_at DESC")
 	}
 }
 
@@ -207,17 +242,17 @@ func filterValidMessageSearchResults(
 }
 
 // addMessageDateFilters adds date filters to the query
-func addMessageDateFilters(qb *bun.QueryBuilder, m map[string]interface{}) {
+func addMessageDateFilters(qb *bun.QueryBuilder, m map[string]any, tablePrefix string) {
 	if startDate, ok := m["start_date"]; ok {
-		*qb = (*qb).Where("m.created_at >= ?", startDate)
+		*qb = (*qb).Where("?.created_at >= ?", bun.Safe(tablePrefix), startDate)
 	}
 	if endDate, ok := m["end_date"]; ok {
-		*qb = (*qb).Where("m.created_at <= ?", endDate)
+		*qb = (*qb).Where("?.created_at <= ?", bun.Safe(tablePrefix), endDate)
 	}
 }
 
-// addMessagesVectorColumn adds a column to the query that calculates the distance between the query text and the message embedding
-func addMessagesVectorColumn(
+// addMemoryVectorColumn adds a column to the query that calculates the distance between the query text and the message embedding
+func addMemoryVectorColumn(
 	ctx context.Context,
 	appState *models.AppState,
 	q *bun.SelectQuery,

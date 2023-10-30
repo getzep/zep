@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/pgvector/pgvector-go"
 
@@ -128,6 +129,37 @@ func putSummaryEmbedding(
 	}
 
 	return nil
+}
+
+// Retrieves all summary embeddings for a session. Note: Does not return the summary content.
+func getSummaryEmbeddings(
+	ctx context.Context,
+	db *bun.DB,
+	sessionID string,
+) ([]models.TextEmbedding, error) {
+	if sessionID == "" {
+		return nil, errors.New("sessionID cannot be empty")
+	}
+
+	embeddings := make([]SummaryVectorStoreSchema, 0)
+	err := db.NewSelect().
+		Model(&embeddings).
+		Where("session_id = ?", sessionID).
+		Where("is_embedded = ?", true).
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get summary embeddings %w", err)
+	}
+
+	retEmbeddings := make([]models.TextEmbedding, len(embeddings))
+	for i, embedding := range embeddings {
+		retEmbeddings[i] = models.TextEmbedding{
+			TextUUID:  embedding.SummaryUUID,
+			Embedding: embedding.Embedding.Slice(),
+		}
+	}
+
+	return retEmbeddings, nil
 }
 
 // GetSummaryList returns a list of summaries for a session

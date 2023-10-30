@@ -34,6 +34,12 @@ type MessageSummaryTask struct {
 	appState *models.AppState
 }
 
+func NewMessageSummaryTask(appState *models.AppState) *MessageSummaryTask {
+	return &MessageSummaryTask{
+		appState: appState,
+	}
+}
+
 func (t *MessageSummaryTask) Execute(
 	ctx context.Context,
 	msg *message.Message,

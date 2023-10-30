@@ -42,6 +42,12 @@ func CleanDB(t *testing.T, db *bun.DB) {
 		Exec(context.Background())
 	require.NoError(t, err)
 	_, err = db.NewDropTable().
+		Model(&SummaryVectorStoreSchema{}).
+		IfExists().
+		Cascade().
+		Exec(context.Background())
+	require.NoError(t, err)
+	_, err = db.NewDropTable().
 		Model(&DocumentCollectionSchema{}).
 		Cascade().
 		IfExists().

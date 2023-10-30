@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/store"
@@ -12,6 +13,9 @@ import (
 func getMessageEmbeddings(ctx context.Context,
 	db *bun.DB,
 	sessionID string) ([]models.TextEmbedding, error) {
+	if sessionID == "" {
+		return nil, errors.New("sessionID cannot be empty")
+	}
 	var results []struct {
 		MessageStoreSchema
 		MessageVectorStoreSchema

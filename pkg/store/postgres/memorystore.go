@@ -357,7 +357,7 @@ func (pms *PostgresMemoryStore) SearchMemory(
 	query *models.MemorySearchPayload,
 	limit int,
 ) ([]models.MemorySearchResult, error) {
-	searchResults, err := searchMessages(ctx, appState, pms.Client, sessionID, query, limit)
+	searchResults, err := searchMemory(ctx, appState, pms.Client, sessionID, query, limit)
 	return searchResults, err
 }
 

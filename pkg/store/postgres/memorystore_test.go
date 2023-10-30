@@ -60,6 +60,11 @@ func setup() {
 	// Initialize the test context
 	testCtx = context.Background()
 
+	err = CreateSchema(testCtx, appState, testDB)
+	if err != nil {
+		panic(err)
+	}
+
 	memoryStore, err := NewPostgresMemoryStore(appState, testDB)
 	if err != nil {
 		panic(err)
@@ -72,11 +77,6 @@ func setup() {
 		panic(err)
 	}
 	tasks.RunTaskRouter(testCtx, appState, db)
-
-	err = CreateSchema(testCtx, appState, testDB)
-	if err != nil {
-		panic(err)
-	}
 
 	embeddingModel = &models.EmbeddingModel{
 		Service:    "local",
