@@ -67,9 +67,20 @@ func NewAppState(cfg *config.Config) *models.AppState {
 		log.Fatal(err)
 	}
 
+	var embeddingsClient models.ZepEmbeddingsClient = nil
+
+	if cfg.EmbeddingsClient.Enabled {
+		embeddingsClient, err = llms.NewEmbeddingsClient(ctx, cfg)
+	}
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	appState := &models.AppState{
-		LLMClient: llmClient,
-		Config:    cfg,
+		LLMClient:        llmClient,
+		EmbeddingsClient: embeddingsClient,
+		Config:           cfg,
 	}
 
 	initializeStores(ctx, appState)

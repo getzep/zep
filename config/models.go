@@ -3,17 +3,18 @@ package config
 // Config holds the configuration of the application
 // Use cmd.NewConfig to create a new instance
 type Config struct {
-	LLM           LLM                 `mapstructure:"llm"`
-	NLP           NLP                 `mapstructure:"nlp"`
-	Memory        MemoryConfig        `mapstructure:"memory"`
-	Extractors    ExtractorsConfig    `mapstructure:"extractors"`
-	Store         StoreConfig         `mapstructure:"store"`
-	Server        ServerConfig        `mapstructure:"server"`
-	Log           LogConfig           `mapstructure:"log"`
-	Auth          AuthConfig          `mapstructure:"auth"`
-	DataConfig    DataConfig          `mapstructure:"data"`
-	Development   bool                `mapstructure:"development"`
-	CustomPrompts CustomPromptsConfig `mapstructure:"custom_prompts"`
+	LLM              LLM                 `mapstructure:"llm"`
+	EmbeddingsClient EmbeddingsClient    `mapstructure:"embeddings_client"`
+	NLP              NLP                 `mapstructure:"nlp"`
+	Memory           MemoryConfig        `mapstructure:"memory"`
+	Extractors       ExtractorsConfig    `mapstructure:"extractors"`
+	Store            StoreConfig         `mapstructure:"store"`
+	Server           ServerConfig        `mapstructure:"server"`
+	Log              LogConfig           `mapstructure:"log"`
+	Auth             AuthConfig          `mapstructure:"auth"`
+	DataConfig       DataConfig          `mapstructure:"data"`
+	Development      bool                `mapstructure:"development"`
+	CustomPrompts    CustomPromptsConfig `mapstructure:"custom_prompts"`
 }
 
 type StoreConfig struct {
@@ -25,6 +26,16 @@ type LLM struct {
 	Service             string            `mapstructure:"service"`
 	Model               string            `mapstructure:"model"`
 	AnthropicAPIKey     string            `mapstructure:"anthropic_api_key"`
+	OpenAIAPIKey        string            `mapstructure:"openai_api_key"`
+	AzureOpenAIEndpoint string            `mapstructure:"azure_openai_endpoint"`
+	AzureOpenAIModel    AzureOpenAIConfig `mapstructure:"azure_openai"`
+	OpenAIEndpoint      string            `mapstructure:"openai_endpoint"`
+	OpenAIOrgID         string            `mapstructure:"openai_org_id"`
+}
+
+type EmbeddingsClient struct {
+	Enabled             bool              `mapstructure:"enabled"`
+	Service             string            `mapstructure:"service"`
 	OpenAIAPIKey        string            `mapstructure:"openai_api_key"`
 	AzureOpenAIEndpoint string            `mapstructure:"azure_openai_endpoint"`
 	AzureOpenAIModel    AzureOpenAIConfig `mapstructure:"azure_openai"`

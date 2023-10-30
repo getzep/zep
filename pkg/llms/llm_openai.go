@@ -49,10 +49,7 @@ func (zllm *ZepOpenAILLM) Init(_ context.Context, cfg *config.Config) error {
 	}
 
 	// Create a new client instance with options
-	llm, err := openai.NewChat(options...)
-	if err != nil {
-		return err
-	}
+	llm, err := NewOpenAIChatClient(options...)
 	zllm.llm = llm
 
 	return nil
@@ -85,20 +82,7 @@ func (zllm *ZepOpenAILLM) Call(ctx context.Context,
 }
 
 func (zllm *ZepOpenAILLM) EmbedTexts(ctx context.Context, texts []string) ([][]float32, error) {
-	// If the LLM is not initialized, return an error
-	if zllm.llm == nil {
-		return nil, NewLLMError(InvalidLLMModelError, nil)
-	}
-
-	thisCtx, cancel := context.WithTimeout(ctx, OpenAIAPITimeout)
-	defer cancel()
-
-	embeddings, err := zllm.llm.CreateEmbedding(thisCtx, texts)
-	if err != nil {
-		return nil, NewLLMError("error while creating embedding", err)
-	}
-
-	return embeddings, nil
+	return EmbedTextsWithOpenAIClient(ctx, texts, zllm.llm)
 }
 
 // GetTokenCount returns the number of tokens in the text
@@ -108,24 +92,13 @@ func (zllm *ZepOpenAILLM) GetTokenCount(text string) (int, error) {
 
 func (zllm *ZepOpenAILLM) configureClient(cfg *config.Config) ([]openai.Option, error) {
 	// Retrieve the OpenAIAPIKey from configuration
-	apiKey := cfg.LLM.OpenAIAPIKey
-	// If the key is not set, log a fatal error and exit
-	if apiKey == "" {
-		log.Fatal(OpenAIAPIKeyNotSetError)
-	}
+	apiKey := GetOpenAIAPIKey(cfg, "llm")
+
 	if cfg.LLM.AzureOpenAIEndpoint != "" && cfg.LLM.OpenAIEndpoint != "" {
 		log.Fatal("only one of AzureOpenAIEndpoint or OpenAIEndpoint can be set")
 	}
 
-	retryableHTTPClient := NewRetryableHTTPClient(MaxOpenAIAPIRequestAttempts, OpenAIAPITimeout)
-
-	options := make([]openai.Option, 0)
-	options = append(
-		options,
-		openai.WithHTTPClient(retryableHTTPClient.StandardClient()),
-		openai.WithModel(cfg.LLM.Model),
-		openai.WithToken(apiKey),
-	)
+	options := GetBaseOpenAIClientOptions(apiKey, cfg.LLM.Model)
 
 	switch {
 	case cfg.LLM.AzureOpenAIEndpoint != "":

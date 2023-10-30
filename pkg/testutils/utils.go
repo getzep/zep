@@ -100,6 +100,8 @@ func testConfigDefaults() (*config.Config, error) {
 			testConfig.LLM.AnthropicAPIKey = os.Getenv(envVar)
 		case "llm.openai_api_key":
 			testConfig.LLM.OpenAIAPIKey = os.Getenv(envVar)
+		case "embeddings_client.openai_api_key":
+			testConfig.EmbeddingsClient.OpenAIAPIKey = os.Getenv(envVar)
 		case "auth.secret":
 			testConfig.Auth.Secret = os.Getenv(envVar)
 		case "development":

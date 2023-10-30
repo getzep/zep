@@ -23,6 +23,7 @@ func redactHTMLEncodeConfig(cfg *config.Config) (*config.Config, error) {
 	redactedConfig := *cfg
 	redactedConfig.LLM.AnthropicAPIKey = "**redacted**"
 	redactedConfig.LLM.OpenAIAPIKey = "**redacted**"
+	redactedConfig.EmbeddingsClient.OpenAIAPIKey = "**redacted**"
 	redactedConfig.Auth.Secret = "**redacted**"
 
 	re := regexp.MustCompile(`(?i:postgres://[^:]+:)([^@]+)`)

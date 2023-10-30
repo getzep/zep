@@ -18,6 +18,18 @@ llm:
   # Use only with an alternate OpenAI-compatible API endpoint
   openai_endpoint:
   openai_org_id:
+embeddings_client:
+  # Enable if, when not using local embeddings, you want to use distinct clients for your llm and embeddings.
+  # For now, only OpenAI embeddings are available as external embeddings client.
+  enabled: false
+  # When enabled, please make sure to have your ZEP_EMBEDDINGS_OPENAI_API_KEY environment variable set
+  service: "openai"
+  azure_openai_endpoint:
+  azure_openai:
+  #embeddings deployment is required when using azure deployment for embeddings
+    embedding_deployment: "text-embedding-ada-002-customname"
+  openai_endpoint:
+  openai_org_id:
 nlp:
   server_url: "http://localhost:5557"
 memory:
@@ -95,6 +107,9 @@ custom_prompts:
     #   <current_summary>{{.PrevSummary}}</current_summary>
     #   <new_lines>{{.MessagesJoined}}</new_lines>
     #   Response without preamble.
+    #
+    # For Open Source models compatible with the OpenAI client,
+    # follow the prompt guidelines provided by the model owners.
     #
     # If left empty, the default Anthropic summary prompt from zep/pkg/extractors/prompts.go will be used.
     anthropic: |
