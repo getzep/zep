@@ -91,7 +91,7 @@ func (zllm *ZepOpenAILLM) configureClient(cfg *config.Config) ([]openai.Option, 
 	// Retrieve the OpenAIAPIKey from configuration
 	apiKey := GetOpenAIAPIKey(cfg, LLMClientType)
 
-	validateOpenAIConfig(cfg, LLMClientType)
+	ValidateOpenAIConfig(cfg, LLMClientType)
 
 	options := GetBaseOpenAIClientOptions(apiKey, cfg.LLM.Model)
 

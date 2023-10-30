@@ -22,8 +22,7 @@ func TestZepOpenAILLM_Init(t *testing.T) {
 	zllm := &ZepOpenAILLM{}
 
 	err := zllm.Init(context.Background(), cfg)
-	assert.NoError(t, err, "Expected no error from Init")
-	assert.NotNil(t, zllm.llm, "Expected llm to be initialized")
+	TestOpenAIClient_Init(t, err, zllm.llm, LLMClientType)
 	assert.NotNil(t, zllm.tkm, "Expected tkm to be initialized")
 }
 
@@ -38,13 +37,7 @@ func TestZepOpenAILLM_TestConfigureClient(t *testing.T) {
 		}
 
 		options, err := zllm.configureClient(cfg)
-		if err != nil {
-			t.Errorf("Unexpected error: %v", err)
-		}
-
-		if len(options) != 3 {
-			t.Errorf("Expected 2 options, got %d", len(options))
-		}
+		TestOpenAIClient_ConfigureClient(t, options, err, OpenAIAPIKeyTestCase)
 	})
 
 	t.Run("Test with AzureOpenAIEndpoint", func(t *testing.T) {
@@ -79,13 +72,7 @@ func TestZepOpenAILLM_TestConfigureClient(t *testing.T) {
 		}
 
 		options, err := zllm.configureClient(cfg)
-		if err != nil {
-			t.Errorf("Unexpected error: %v", err)
-		}
-
-		if len(options) != 6 {
-			t.Errorf("Expected 6 options, got %d", len(options))
-		}
+		TestOpenAIClient_ConfigureClient(t, options, err, AzureOpenAIEmbeddingModelTestCase)
 	})
 
 	t.Run("Test with OpenAIEndpointAndCustomModelName", func(t *testing.T) {
@@ -98,13 +85,7 @@ func TestZepOpenAILLM_TestConfigureClient(t *testing.T) {
 		}
 
 		options, err := zllm.configureClient(cfg)
-		if err != nil {
-			t.Errorf("Unexpected error: %v", err)
-		}
-
-		if len(options) != 4 {
-			t.Errorf("Expected 3 options, got %d", len(options))
-		}
+		TestOpenAIClient_ConfigureClient(t, options, err, OpenAIEndpointTestCase)
 	})
 
 	t.Run("Test with OpenAIOrgID", func(t *testing.T) {
@@ -116,13 +97,7 @@ func TestZepOpenAILLM_TestConfigureClient(t *testing.T) {
 		}
 
 		options, err := zllm.configureClient(cfg)
-		if err != nil {
-			t.Errorf("Unexpected error: %v", err)
-		}
-
-		if len(options) != 4 {
-			t.Errorf("Expected 3 options, got %d", len(options))
-		}
+		TestOpenAIClient_ConfigureClient(t, options, err, OpenAIOrgIDTestCase)
 	})
 }
 
@@ -146,12 +121,8 @@ func TestZepOpenAILLM_EmbedTexts(t *testing.T) {
 	zllm, err := NewOpenAILLM(context.Background(), cfg)
 	assert.NoError(t, err, "Expected no error from NewOpenAILLM")
 
-	texts := []string{"Hello, world!", "Another text"}
-	embeddings, err := zllm.EmbedTexts(context.Background(), texts)
-	assert.NoError(t, err, "Expected no error from EmbedTexts")
-	assert.Equal(t, len(texts), len(embeddings), "Expected embeddings to have same length as texts")
-	assert.NotZero(t, embeddings[0], "Expected embeddings to be non-zero")
-	assert.NotZero(t, embeddings[1], "Expected embeddings to be non-zero")
+	embeddings, err := zllm.EmbedTexts(context.Background(), EmbeddingsTestTexts)
+	TestOpenAIClient_EmbedText(t, embeddings, err)
 }
 
 func TestZepOpenAILLM_GetTokenCount(t *testing.T) {

@@ -44,7 +44,7 @@ func GetOpenAIAPIKey(cfg *config.Config, clientType ClientType) string {
 	return apiKey
 }
 
-func validateOpenAIConfig(cfg *config.Config, clientType ClientType) {
+func ValidateOpenAIConfig(cfg *config.Config, clientType ClientType) {
 
 	var azureEndpoint string
 	var openAIEndpoint string

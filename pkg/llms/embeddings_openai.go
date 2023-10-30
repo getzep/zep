@@ -55,7 +55,7 @@ func (zembeddings *ZepOpenAIEmbeddingsClient) configureClient(cfg *config.Config
 	// Retrieve the OpenAIAPIKey from configuration
 	apiKey := GetOpenAIAPIKey(cfg, EmbeddingsClientType)
 
-	validateOpenAIConfig(cfg, EmbeddingsClientType)
+	ValidateOpenAIConfig(cfg, EmbeddingsClientType)
 
 	// Even if it will only be used for embeddings, we should pass a valid openai llm model
 	// to avoid any errors

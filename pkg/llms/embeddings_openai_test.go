@@ -21,8 +21,7 @@ func TestZepOpenAIEmbeddings_Init(t *testing.T) {
 	zembeddings := &ZepOpenAIEmbeddingsClient{}
 
 	err := zembeddings.Init(context.Background(), cfg)
-	assert.NoError(t, err, "Expected no error from Init")
-	assert.NotNil(t, zembeddings.client, "Expected client to be initialized")
+	TestOpenAIClient_Init(t, err, zembeddings.client, EmbeddingsClientType)
 }
 
 func TestZepOpenAIEmbeddings_TestConfigureClient(t *testing.T) {
@@ -36,13 +35,7 @@ func TestZepOpenAIEmbeddings_TestConfigureClient(t *testing.T) {
 		}
 
 		options, err := zembeddings.configureClient(cfg)
-		if err != nil {
-			t.Errorf("Unexpected error: %v", err)
-		}
-
-		if len(options) != 3 {
-			t.Errorf("Expected 2 options, got %d", len(options))
-		}
+		TestOpenAIClient_ConfigureClient(t, options, err, OpenAIAPIKeyTestCase)
 	})
 
 	t.Run("Test with AzureOpenAIEmbeddingModel", func(t *testing.T) {
@@ -57,13 +50,7 @@ func TestZepOpenAIEmbeddings_TestConfigureClient(t *testing.T) {
 		}
 
 		options, err := zembeddings.configureClient(cfg)
-		if err != nil {
-			t.Errorf("Unexpected error: %v", err)
-		}
-
-		if len(options) != 6 {
-			t.Errorf("Expected 6 options, got %d", len(options))
-		}
+		TestOpenAIClient_ConfigureClient(t, options, err, AzureOpenAIEmbeddingModelTestCase)
 	})
 
 	t.Run("Test with OpenAIEndpoint", func(t *testing.T) {
@@ -75,13 +62,7 @@ func TestZepOpenAIEmbeddings_TestConfigureClient(t *testing.T) {
 		}
 
 		options, err := zembeddings.configureClient(cfg)
-		if err != nil {
-			t.Errorf("Unexpected error: %v", err)
-		}
-
-		if len(options) != 4 {
-			t.Errorf("Expected 3 options, got %d", len(options))
-		}
+		TestOpenAIClient_ConfigureClient(t, options, err, OpenAIEndpointTestCase)
 	})
 
 	t.Run("Test with OpenAIOrgID", func(t *testing.T) {
@@ -93,13 +74,7 @@ func TestZepOpenAIEmbeddings_TestConfigureClient(t *testing.T) {
 		}
 
 		options, err := zembeddings.configureClient(cfg)
-		if err != nil {
-			t.Errorf("Unexpected error: %v", err)
-		}
-
-		if len(options) != 4 {
-			t.Errorf("Expected 3 options, got %d", len(options))
-		}
+		TestOpenAIClient_ConfigureClient(t, options, err, OpenAIOrgIDTestCase)
 	})
 }
 
@@ -109,10 +84,6 @@ func TestZepOpenAIEmbeddings_EmbedTexts(t *testing.T) {
 	zembeddings, err := NewOpenAIEmbeddingsClient(context.Background(), cfg)
 	assert.NoError(t, err, "Expected no error from NewOpenAIEmbeddingsClient")
 
-	texts := []string{"Hello, world!", "Another text"}
-	embeddings, err := zembeddings.EmbedTexts(context.Background(), texts)
-	assert.NoError(t, err, "Expected no error from EmbedTexts")
-	assert.Equal(t, len(texts), len(embeddings), "Expected embeddings to have same length as texts")
-	assert.NotZero(t, embeddings[0], "Expected embeddings to be non-zero")
-	assert.NotZero(t, embeddings[1], "Expected embeddings to be non-zero")
+	embeddings, err := zembeddings.EmbedTexts(context.Background(), EmbeddingsTestTexts)
+	TestOpenAIClient_EmbedText(t, embeddings, err)
 }
