@@ -108,9 +108,6 @@ custom_prompts:
     #   <new_lines>{{.MessagesJoined}}</new_lines>
     #   Response without preamble.
     #
-    # For Open Source models compatible with the OpenAI client,
-    # follow the prompt guidelines provided by the model owners.
-    #
     # If left empty, the default Anthropic summary prompt from zep/pkg/extractors/prompts.go will be used.
     anthropic: |
 
@@ -127,6 +124,9 @@ custom_prompts:
     #   Current summary: {{.PrevSummary}}
     #   New lines of conversation: {{.MessagesJoined}}
     #   New summary:`
+    # 
+    # For Open Source models compatible with the OpenAI client,
+    # follow the prompt guidelines provided by the model owners.
     #
     # If left empty, the default OpenAI summary prompt from zep/pkg/extractors/prompts.go will be used.
     openai: |

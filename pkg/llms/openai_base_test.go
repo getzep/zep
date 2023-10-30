@@ -19,7 +19,8 @@ const (
 
 var EmbeddingsTestTexts = []string{"Hello, world!", "Another text"}
 
-func TestOpenAIClient_Init(t *testing.T, err error, openAIClient *openai.Chat, clientType ClientType) {
+func assertInit(t *testing.T, err error, openAIClient *openai.Chat, clientType ClientType) {
+	t.Helper()
 	assert.NoError(t, err, "Expected no error from Init")
 	switch clientType {
 	case EmbeddingsClientType:
@@ -29,7 +30,8 @@ func TestOpenAIClient_Init(t *testing.T, err error, openAIClient *openai.Chat, c
 	}
 }
 
-func TestOpenAIClient_ConfigureClient(t *testing.T, options []openai.Option, err error, testCase TestCaseType) {
+func assertConfigureClient(t *testing.T, options []openai.Option, err error, testCase TestCaseType) {
+	t.Helper()
 	assert.NoError(t, err, "Unexpected error")
 	expectedOptions := map[TestCaseType]int{
 		OpenAIAPIKeyTestCase:              3,
@@ -44,11 +46,12 @@ func TestOpenAIClient_ConfigureClient(t *testing.T, options []openai.Option, err
 	}
 	//? assert.Len(t, options, expected, "Unexpected number of options")
 	if len(options) != expected {
-		t.Errorf("Expected %e options, got %d", expected, len(options))
+		t.Errorf("Expected %d options, got %d", expected, len(options))
 	}
 }
 
-func TestOpenAIClient_EmbedText(t *testing.T, embeddings [][]float32, err error) {
+func assertEmbeddings(t *testing.T, embeddings [][]float32, err error) {
+	t.Helper()
 	assert.NoError(t, err, "Expected no error from EmbedTexts")
 	assert.Equal(t, len(EmbeddingsTestTexts), len(embeddings), "Expected embeddings to have same length as texts")
 	assert.NotZero(t, embeddings[0], "Expected embeddings to be non-zero")

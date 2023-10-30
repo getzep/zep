@@ -21,7 +21,7 @@ func TestZepOpenAIEmbeddings_Init(t *testing.T) {
 	zembeddings := &ZepOpenAIEmbeddingsClient{}
 
 	err := zembeddings.Init(context.Background(), cfg)
-	TestOpenAIClient_Init(t, err, zembeddings.client, EmbeddingsClientType)
+	assertInit(t, err, zembeddings.client, EmbeddingsClientType)
 }
 
 func TestZepOpenAIEmbeddings_TestConfigureClient(t *testing.T) {
@@ -35,7 +35,7 @@ func TestZepOpenAIEmbeddings_TestConfigureClient(t *testing.T) {
 		}
 
 		options, err := zembeddings.configureClient(cfg)
-		TestOpenAIClient_ConfigureClient(t, options, err, OpenAIAPIKeyTestCase)
+		assertConfigureClient(t, options, err, OpenAIAPIKeyTestCase)
 	})
 
 	t.Run("Test with AzureOpenAIEmbeddingModel", func(t *testing.T) {
@@ -50,7 +50,7 @@ func TestZepOpenAIEmbeddings_TestConfigureClient(t *testing.T) {
 		}
 
 		options, err := zembeddings.configureClient(cfg)
-		TestOpenAIClient_ConfigureClient(t, options, err, AzureOpenAIEmbeddingModelTestCase)
+		assertConfigureClient(t, options, err, AzureOpenAIEmbeddingModelTestCase)
 	})
 
 	t.Run("Test with OpenAIEndpoint", func(t *testing.T) {
@@ -62,7 +62,7 @@ func TestZepOpenAIEmbeddings_TestConfigureClient(t *testing.T) {
 		}
 
 		options, err := zembeddings.configureClient(cfg)
-		TestOpenAIClient_ConfigureClient(t, options, err, OpenAIEndpointTestCase)
+		assertConfigureClient(t, options, err, OpenAIEndpointTestCase)
 	})
 
 	t.Run("Test with OpenAIOrgID", func(t *testing.T) {
@@ -74,7 +74,7 @@ func TestZepOpenAIEmbeddings_TestConfigureClient(t *testing.T) {
 		}
 
 		options, err := zembeddings.configureClient(cfg)
-		TestOpenAIClient_ConfigureClient(t, options, err, OpenAIOrgIDTestCase)
+		assertConfigureClient(t, options, err, OpenAIOrgIDTestCase)
 	})
 }
 
@@ -85,5 +85,5 @@ func TestZepOpenAIEmbeddings_EmbedTexts(t *testing.T) {
 	assert.NoError(t, err, "Expected no error from NewOpenAIEmbeddingsClient")
 
 	embeddings, err := zembeddings.EmbedTexts(context.Background(), EmbeddingsTestTexts)
-	TestOpenAIClient_EmbedText(t, embeddings, err)
+	assertEmbeddings(t, embeddings, err)
 }

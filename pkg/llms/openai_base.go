@@ -127,18 +127,13 @@ func ConfigureOpenAIClientOptions(options []openai.Option, cfg *config.Config, c
 		openAIEndpoint = cfg.LLM.OpenAIEndpoint
 		openAIOrgID = cfg.LLM.OpenAIOrgID
 
-		options = append(
-			options,
+		options = applyOption(cfg.LLM.AzureOpenAIEndpoint != "",
 			openai.WithAPIType(openai.APITypeAzure),
 			openai.WithBaseURL(cfg.LLM.AzureOpenAIEndpoint),
 		)
-		if cfg.LLM.AzureOpenAIModel.EmbeddingDeployment != "" {
-			options = append(
-				options,
-				openai.WithEmbeddingModel(cfg.LLM.AzureOpenAIModel.EmbeddingDeployment),
-			)
-		}
-
+		options = applyOption(cfg.LLM.AzureOpenAIModel.EmbeddingDeployment != "",
+			openai.WithEmbeddingModel(cfg.LLM.AzureOpenAIModel.EmbeddingDeployment),
+		)
 	}
 
 	options = applyOption(openAIEndpoint != "",
