@@ -42,9 +42,7 @@ func TestDocumentEmbedderTask_Process(t *testing.T) {
 		}
 	}
 
-	task := DocumentEmbedderTask{
-		appState: appState,
-	}
+	task := NewDocumentEmbedderTask(appState)
 	err = task.Process(testCtx, collectionName, docTasks)
 	assert.NoError(t, err)
 

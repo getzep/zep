@@ -16,12 +16,14 @@ var _ models.Task = &MessageEmbedderTask{}
 
 func NewMessageEmbedderTask(appState *models.AppState) *MessageEmbedderTask {
 	return &MessageEmbedderTask{
-		appState: appState,
+		BaseTask: BaseTask{
+			appState: appState,
+		},
 	}
 }
 
 type MessageEmbedderTask struct {
-	appState *models.AppState
+	BaseTask
 }
 
 func (t *MessageEmbedderTask) Execute(
@@ -99,10 +101,6 @@ func (t *MessageEmbedderTask) Process(
 		return fmt.Errorf("MessageEmbedderTask put message vectors failed: %w", err)
 	}
 	return nil
-}
-
-func (t *MessageEmbedderTask) HandleError(err error) {
-	log.Errorf("MessageEmbedderTask error: %s", err)
 }
 
 // messageToStringSlice converts a slice of TextEmbedding to a slice of strings.

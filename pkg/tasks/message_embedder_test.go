@@ -62,9 +62,7 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 		}
 	}
 
-	task := MessageEmbedderTask{
-		appState: appState,
-	}
+	task := NewMessageEmbedderTask(appState)
 	err = task.Process(testCtx, sessionID, unembeddedMessages)
 	assert.NoError(t, err)
 

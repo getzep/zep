@@ -30,10 +30,7 @@ func runTestIntentExtractor(t *testing.T, testAppState *models.AppState) {
 	assert.NoError(t, err)
 	assert.Equal(t, len(testMessages), len(memories.Messages))
 
-	intentTask := MessageIntentTask{
-		appState: testAppState,
-	}
-
+	intentTask := NewMessageIntentTask(testAppState)
 	errs := make(chan error, len(memories.Messages))
 
 	for _, message := range memories.Messages {

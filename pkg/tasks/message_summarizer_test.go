@@ -54,10 +54,7 @@ func runTestSummarize(t *testing.T, llmClient models.ZepLLM) {
 		},
 	}
 
-	task := &MessageSummaryTask{
-		appState: appState,
-	}
-
+	task := NewMessageSummaryTask(appState)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			newSummary, err := task.summarize(testCtx, tt.messages, tt.summary, 0)
@@ -89,9 +86,7 @@ func TestSummarize_Anthropic(t *testing.T) {
 }
 
 func TestValidateSummarizerPrompt(t *testing.T) {
-	task := &MessageSummaryTask{
-		appState: appState,
-	}
+	task := NewMessageSummaryTask(appState)
 
 	testCases := []struct {
 		name    string
@@ -183,9 +178,7 @@ func TestGenerateProgressiveSummarizerPrompt(t *testing.T) {
 				MessagesJoined: "joined messages",
 			}
 
-			task := &MessageSummaryTask{
-				appState: appState,
-			}
+			task := NewMessageSummaryTask(appState)
 
 			prompt, err := task.generateProgressiveSummarizerPrompt(promptData)
 			assert.NoError(t, err)

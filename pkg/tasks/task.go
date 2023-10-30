@@ -23,6 +23,21 @@ const (
 
 var log = internal.GetLogger()
 
+type BaseTask struct {
+	appState *models.AppState // nolint: unused
+}
+
+func (b *BaseTask) Execute(
+	ctx context.Context, // nolint: revive
+	msg *message.Message, // nolint: revive
+) error {
+	return nil
+}
+
+func (b *BaseTask) HandleError(err error) {
+	log.Errorf("Task HandleError error: %s", err)
+}
+
 func Initialize(ctx context.Context, appState *models.AppState, router models.TaskRouter) {
 	log.Info("Initializing tasks")
 
@@ -39,7 +54,7 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 		MessageSummarizerTopic,
 		MessageSummarizerTopic,
 		appState.Config.Extractors.Messages.Summarizer.Enabled,
-		func() models.Task { return &MessageSummaryTask{appState: appState} },
+		func() models.Task { return NewMessageSummaryTask(appState) },
 	)
 
 	addTask(
@@ -47,7 +62,7 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 		MessageEmbedderTopic,
 		MessageEmbedderTopic,
 		appState.Config.Extractors.Messages.Embeddings.Enabled,
-		func() models.Task { return &MessageEmbedderTask{appState: appState} },
+		func() models.Task { return NewMessageEmbedderTask(appState) },
 	)
 
 	addTask(
@@ -55,7 +70,7 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 		MessageNerTopic,
 		MessageNerTopic,
 		appState.Config.Extractors.Messages.Entities.Enabled,
-		func() models.Task { return &MessageNERTask{appState: appState} },
+		func() models.Task { return NewMessageNERTask(appState) },
 	)
 
 	addTask(
@@ -63,7 +78,7 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 		MessageIntentTopic,
 		MessageIntentTopic,
 		appState.Config.Extractors.Messages.Intent.Enabled,
-		func() models.Task { return &MessageIntentTask{appState: appState} },
+		func() models.Task { return NewMessageIntentTask(appState) },
 	)
 
 	addTask(
@@ -71,7 +86,7 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 		MessageTokenCountTopic,
 		MessageTokenCountTopic,
 		true, // Always enabled
-		func() models.Task { return &MessageTokenCountTask{appState: appState} },
+		func() models.Task { return NewMessageTokenCountTask(appState) },
 	)
 
 	addTask(
@@ -79,7 +94,7 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 		DocumentEmbedderTopic,
 		DocumentEmbedderTopic,
 		appState.Config.Extractors.Documents.Embeddings.Enabled,
-		func() models.Task { return &DocumentEmbedderTask{appState: appState} },
+		func() models.Task { return NewDocumentEmbedderTask(appState) },
 	)
 
 	addTask(
@@ -87,7 +102,7 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 		MessageSummaryEmbedderTopic,
 		MessageSummaryEmbedderTopic,
 		appState.Config.Extractors.Messages.Summarizer.Embeddings.Enabled,
-		func() models.Task { return &MessageSummaryEmbedderTask{appState: appState} },
+		func() models.Task { return NewMessageSummaryEmbedderTask(appState) },
 	)
 
 }

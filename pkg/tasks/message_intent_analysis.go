@@ -16,15 +16,23 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
-var _ models.Task = &MessageIntentTask{}
-
-type MessageIntentTask struct {
-	appState *models.AppState
-}
-
 const intentMaxTokens = 512
 
 var IntentStringRegex = regexp.MustCompile(`(?i)^\s*intent\W+\s+`)
+
+var _ models.Task = &MessageIntentTask{}
+
+func NewMessageIntentTask(appState *models.AppState) *MessageIntentTask {
+	return &MessageIntentTask{
+		BaseTask{
+			appState: appState,
+		},
+	}
+}
+
+type MessageIntentTask struct {
+	BaseTask
+}
 
 func (mt *MessageIntentTask) Execute(
 	ctx context.Context,
@@ -158,8 +166,4 @@ func (mt *MessageIntentTask) processMessage(
 		}
 		errs <- fmt.Errorf("MessageIntentTask failed to put message metadata: %w", err)
 	}
-}
-
-func (mt *MessageIntentTask) HandleError(err error) {
-	log.Errorf("MessageIntentTask error: %v", err)
 }

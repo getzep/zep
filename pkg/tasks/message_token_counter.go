@@ -13,8 +13,16 @@ import (
 // Force compiler to validate that our Extractor implements the Extractor interface.
 var _ models.Task = &MessageTokenCountTask{}
 
+func NewMessageTokenCountTask(appState *models.AppState) *MessageTokenCountTask {
+	return &MessageTokenCountTask{
+		BaseTask{
+			appState: appState,
+		},
+	}
+}
+
 type MessageTokenCountTask struct {
-	appState *models.AppState
+	BaseTask
 }
 
 func (mt *MessageTokenCountTask) Execute(

@@ -22,8 +22,14 @@ import (
 
 var _ models.Task = &MessageNERTask{}
 
+func NewMessageNERTask(appState *models.AppState) models.Task {
+	return &MessageNERTask{
+		BaseTask: BaseTask{appState: appState},
+	}
+}
+
 type MessageNERTask struct {
-	appState *models.AppState
+	BaseTask
 }
 
 func (n *MessageNERTask) Execute(
@@ -88,10 +94,6 @@ func (n *MessageNERTask) Execute(
 	msg.Ack()
 
 	return nil
-}
-
-func (n *MessageNERTask) HandleError(err error) {
-	log.Errorf("MessageNERTask error: %s", err)
 }
 
 func extractEntities(entities interface{}) []map[string]interface{} {
