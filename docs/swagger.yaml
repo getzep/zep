@@ -161,10 +161,10 @@ definitions:
         type: object
       mmr_lambda:
         type: number
+      search_type:
+        $ref: '#/definitions/models.SearchType'
       text:
         type: string
-      type:
-        $ref: '#/definitions/models.SearchType'
     type: object
   models.GetDocumentListRequest:
     properties:
@@ -196,10 +196,12 @@ definitions:
         type: object
       mmr_lambda:
         type: number
+      search_scope:
+        $ref: '#/definitions/models.SearchScope'
+      search_type:
+        $ref: '#/definitions/models.SearchType'
       text:
         type: string
-      type:
-        $ref: '#/definitions/models.SearchType'
     type: object
   models.MemorySearchResult:
     properties:
@@ -215,9 +217,7 @@ definitions:
         additionalProperties: true
         type: object
       summary:
-        allOf:
-        - $ref: '#/definitions/models.Summary'
-        description: reserved for future use
+        $ref: '#/definitions/models.Summary'
     type: object
   models.Message:
     properties:
@@ -237,6 +237,14 @@ definitions:
       uuid:
         type: string
     type: object
+  models.SearchScope:
+    enum:
+    - messages
+    - summary
+    type: string
+    x-enum-varnames:
+    - SearchScopeMessages
+    - SearchScopeSummary
   models.SearchType:
     enum:
     - similarity
