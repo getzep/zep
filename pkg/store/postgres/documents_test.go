@@ -384,7 +384,7 @@ func TestDocumentCollectionUpdateDocuments(t *testing.T) {
 			t,
 			updatedDoc.Embedding,
 			returnedDoc.Embedding,
-			"Metadata mismatch for TextEmbedding %s",
+			"Metadata mismatch for TextData %s",
 			i,
 		)
 	}

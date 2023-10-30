@@ -166,7 +166,7 @@ func (s *DocumentCollectionSchema) BeforeAppendModel(_ context.Context, query bu
 }
 
 // DocumentSchemaTemplate represents the schema template for Document tables.
-// TextEmbedding is manually added when createDocumentTable is run in order to set the correct dimensions.
+// TextData is manually added when createDocumentTable is run in order to set the correct dimensions.
 // This means the embedding is not returned when querying using bun.
 type DocumentSchemaTemplate struct {
 	bun.BaseModel `bun:"table:document,alias:d"`

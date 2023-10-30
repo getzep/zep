@@ -76,9 +76,9 @@ func (t *MessageEmbedderTask) Process(
 		return fmt.Errorf("MessageEmbedderTask embed messages failed: %w", err)
 	}
 
-	embeddingRecords := make([]models.TextEmbedding, len(msgs))
+	embeddingRecords := make([]models.TextData, len(msgs))
 	for i, r := range msgs {
-		embeddingRecords[i] = models.TextEmbedding{
+		embeddingRecords[i] = models.TextData{
 			TextUUID:  r.UUID,
 			Embedding: embeddings[i],
 		}
@@ -103,7 +103,7 @@ func (t *MessageEmbedderTask) Process(
 	return nil
 }
 
-// messageToStringSlice converts a slice of TextEmbedding to a slice of strings.
+// messageToStringSlice converts a slice of TextData to a slice of strings.
 // If enrich is true, the text slice will include the prior and subsequent
 // messages text to the slice item.
 func messageToStringSlice(messages []models.Message, enrich bool) []string {

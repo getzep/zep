@@ -95,8 +95,9 @@ type DocumentExtractorsConfig struct {
 }
 
 type SummarizerConfig struct {
-	Enabled    bool             `mapstructure:"enabled"`
-	Embeddings EmbeddingsConfig `mapstructure:"embeddings"`
+	Enabled    bool                  `mapstructure:"enabled"`
+	Embeddings EmbeddingsConfig      `mapstructure:"embeddings"`
+	Entities   EntityExtractorConfig `mapstructure:"entities"`
 }
 
 type CustomPromptsConfig struct {

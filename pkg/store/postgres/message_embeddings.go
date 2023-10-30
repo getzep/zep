@@ -12,7 +12,7 @@ import (
 
 func getMessageEmbeddings(ctx context.Context,
 	db *bun.DB,
-	sessionID string) ([]models.TextEmbedding, error) {
+	sessionID string) ([]models.TextData, error) {
 	if sessionID == "" {
 		return nil, errors.New("sessionID cannot be empty")
 	}
@@ -33,9 +33,9 @@ func getMessageEmbeddings(ctx context.Context,
 		return nil, store.NewStorageError("failed to get message vectors", err)
 	}
 
-	embeddings := make([]models.TextEmbedding, len(results))
+	embeddings := make([]models.TextData, len(results))
 	for i, vectorStoreRecord := range results {
-		embeddings[i] = models.TextEmbedding{
+		embeddings[i] = models.TextData{
 			Embedding: vectorStoreRecord.Embedding.Slice(),
 			TextUUID:  vectorStoreRecord.MessageUUID,
 			Text:      vectorStoreRecord.Content,
@@ -49,7 +49,7 @@ func putMessageEmbeddings(
 	ctx context.Context,
 	db *bun.DB,
 	sessionID string,
-	embeddings []models.TextEmbedding,
+	embeddings []models.TextData,
 ) error {
 	if embeddings == nil {
 		return store.NewStorageError("nil embeddings received", nil)

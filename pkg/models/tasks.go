@@ -30,6 +30,6 @@ type MessageTask struct {
 	UUID uuid.UUID `json:"uuid"`
 }
 
-type MessageSummaryEmbeddingTask struct {
+type MessageSummaryTask struct {
 	UUID uuid.UUID `json:"uuid"`
 }

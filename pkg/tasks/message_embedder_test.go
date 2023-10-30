@@ -53,9 +53,9 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 	embeddings, err := llms.EmbedTexts(testCtx, appState, model, documentType, texts)
 	assert.NoError(t, err)
 
-	expectedEmbeddingRecords := make([]models.TextEmbedding, len(unembeddedMessages))
+	expectedEmbeddingRecords := make([]models.TextData, len(unembeddedMessages))
 	for i, r := range unembeddedMessages {
-		expectedEmbeddingRecords[i] = models.TextEmbedding{
+		expectedEmbeddingRecords[i] = models.TextData{
 			TextUUID:  r.UUID,
 			Text:      r.Content,
 			Embedding: embeddings[i],
@@ -75,12 +75,12 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 
 	assert.Equal(t, len(expectedEmbeddingRecords), len(embeddedMessages))
 
-	expectedEmbeddingRecordsMap := make(map[string]models.TextEmbedding)
+	expectedEmbeddingRecordsMap := make(map[string]models.TextData)
 	for _, r := range expectedEmbeddingRecords {
 		expectedEmbeddingRecordsMap[r.TextUUID.String()] = r
 	}
 
-	embeddedMessagesMap := make(map[string]models.TextEmbedding)
+	embeddedMessagesMap := make(map[string]models.TextData)
 	for _, r := range embeddedMessages {
 		embeddedMessagesMap[r.TextUUID.String()] = r
 	}

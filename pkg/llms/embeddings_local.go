@@ -42,9 +42,9 @@ func embedTextsLocal(
 
 	url := appState.Config.NLP.ServerURL + endpoint
 
-	documents := make([]models.TextEmbedding, len(texts))
+	documents := make([]models.TextData, len(texts))
 	for i, text := range texts {
-		documents[i] = models.TextEmbedding{Text: text}
+		documents[i] = models.TextData{Text: text}
 	}
 	collection := models.TextEmbeddingCollection{
 		Embeddings: documents,

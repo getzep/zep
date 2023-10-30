@@ -34,6 +34,8 @@ extractors:
   messages:
     summarizer:
       enabled: true
+      entities:
+        enabled: true
       embeddings:
         enabled: true
         dimensions: 384
