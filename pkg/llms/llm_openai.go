@@ -2,7 +2,6 @@ package llms
 
 import (
 	"context"
-	"time"
 
 	"github.com/tmc/langchaingo/schema"
 
@@ -14,9 +13,7 @@ import (
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
-const OpenAIAPITimeout = 90 * time.Second
 const OpenAIAPIKeyNotSetError = "ZEP_OPENAI_API_KEY is not set" //nolint:gosec
-const MaxOpenAIAPIRequestAttempts = 5
 
 var _ models.ZepLLM = &ZepOpenAILLM{}
 
@@ -82,7 +79,7 @@ func (zllm *ZepOpenAILLM) Call(ctx context.Context,
 }
 
 func (zllm *ZepOpenAILLM) EmbedTexts(ctx context.Context, texts []string) ([][]float32, error) {
-	return EmbedTextsWithOpenAIClient(ctx, texts, zllm.llm)
+	return EmbedTextsWithOpenAIClient(ctx, texts, zllm.llm, LLMClientType)
 }
 
 // GetTokenCount returns the number of tokens in the text
@@ -92,38 +89,13 @@ func (zllm *ZepOpenAILLM) GetTokenCount(text string) (int, error) {
 
 func (zllm *ZepOpenAILLM) configureClient(cfg *config.Config) ([]openai.Option, error) {
 	// Retrieve the OpenAIAPIKey from configuration
-	apiKey := GetOpenAIAPIKey(cfg, "llm")
+	apiKey := GetOpenAIAPIKey(cfg, LLMClientType)
 
-	if cfg.LLM.AzureOpenAIEndpoint != "" && cfg.LLM.OpenAIEndpoint != "" {
-		log.Fatal("only one of AzureOpenAIEndpoint or OpenAIEndpoint can be set")
-	}
+	validateOpenAIConfig(cfg, LLMClientType)
 
 	options := GetBaseOpenAIClientOptions(apiKey, cfg.LLM.Model)
 
-	switch {
-	case cfg.LLM.AzureOpenAIEndpoint != "":
-		// Check configuration for AzureOpenAIEndpoint; if it's set, use the DefaultAzureConfig
-		// and provided endpoint Path
-		options = append(
-			options,
-			openai.WithAPIType(openai.APITypeAzure),
-			openai.WithBaseURL(cfg.LLM.AzureOpenAIEndpoint),
-		)
-		if cfg.LLM.AzureOpenAIModel.EmbeddingDeployment != "" {
-			options = append(
-				options,
-				openai.WithEmbeddingModel(cfg.LLM.AzureOpenAIModel.EmbeddingDeployment),
-			)
-		}
-	case cfg.LLM.OpenAIEndpoint != "":
-		// If an alternate OpenAI-compatible endpoint Path is set, use this as the base Path for requests
-		options = append(
-			options,
-			openai.WithBaseURL(cfg.LLM.OpenAIEndpoint),
-		)
-	case cfg.LLM.OpenAIOrgID != "":
-		options = append(options, openai.WithOrganization(cfg.LLM.OpenAIOrgID))
-	}
+	options = ConfigureOpenAIClientOptions(options, cfg, LLMClientType)
 
 	return options, nil
 }

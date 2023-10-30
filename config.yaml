@@ -26,7 +26,7 @@ embeddings_client:
   service: "openai"
   azure_openai_endpoint:
   azure_openai:
-  #embeddings deployment is required when using azure deployment for embeddings
+  # embeddings deployment is required when using azure deployment for embeddings
     embedding_deployment: "text-embedding-ada-002-customname"
   openai_endpoint:
   openai_org_id:

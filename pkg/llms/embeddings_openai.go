@@ -26,7 +26,6 @@ type ZepOpenAIEmbeddingsClient struct {
 }
 
 func (zembeddings *ZepOpenAIEmbeddingsClient) Init(_ context.Context, cfg *config.Config) error {
-
 	options, err := zembeddings.configureClient(cfg)
 	if err != nil {
 		return err
@@ -42,7 +41,7 @@ func (zembeddings *ZepOpenAIEmbeddingsClient) Init(_ context.Context, cfg *confi
 }
 
 func (zembeddings *ZepOpenAIEmbeddingsClient) EmbedTexts(ctx context.Context, texts []string) ([][]float32, error) {
-	return EmbedTextsWithOpenAIClient(ctx, texts, zembeddings.client)
+	return EmbedTextsWithOpenAIClient(ctx, texts, zembeddings.client, EmbeddingsClientType)
 }
 
 func getValidOpenAIModel() string {
@@ -54,11 +53,9 @@ func getValidOpenAIModel() string {
 
 func (zembeddings *ZepOpenAIEmbeddingsClient) configureClient(cfg *config.Config) ([]openai.Option, error) {
 	// Retrieve the OpenAIAPIKey from configuration
-	apiKey := GetOpenAIAPIKey(cfg, "embeddings")
+	apiKey := GetOpenAIAPIKey(cfg, EmbeddingsClientType)
 
-	if cfg.EmbeddingsClient.AzureOpenAIEndpoint != "" && cfg.EmbeddingsClient.OpenAIEndpoint != "" {
-		log.Fatal("only one of AzureOpenAIEndpoint or OpenAIEndpoint can be set")
-	}
+	validateOpenAIConfig(cfg, EmbeddingsClientType)
 
 	// Even if it will only be used for embeddings, we should pass a valid openai llm model
 	// to avoid any errors
@@ -66,23 +63,7 @@ func (zembeddings *ZepOpenAIEmbeddingsClient) configureClient(cfg *config.Config
 
 	options := GetBaseOpenAIClientOptions(apiKey, validOpenaiLLMModel)
 
-	switch {
-	case cfg.EmbeddingsClient.AzureOpenAIEndpoint != "":
-		options = append(
-			options,
-			openai.WithAPIType(openai.APITypeAzure),
-			openai.WithBaseURL(cfg.EmbeddingsClient.AzureOpenAIEndpoint),
-			openai.WithEmbeddingModel(cfg.EmbeddingsClient.AzureOpenAIModel.EmbeddingDeployment),
-		)
-	case cfg.EmbeddingsClient.OpenAIEndpoint != "":
-		// If an alternate OpenAI-compatible endpoint Path is set, use this as the base Path for requests
-		options = append(
-			options,
-			openai.WithBaseURL(cfg.EmbeddingsClient.OpenAIEndpoint),
-		)
-	case cfg.EmbeddingsClient.OpenAIOrgID != "":
-		options = append(options, openai.WithOrganization(cfg.EmbeddingsClient.OpenAIOrgID))
-	}
+	options = ConfigureOpenAIClientOptions(options, cfg, EmbeddingsClientType)
 
 	return options, nil
 }

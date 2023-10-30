@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/getzep/zep/pkg/models"
-	"github.com/tmc/langchaingo/llms/openai"
 
 	"github.com/hashicorp/go-retryablehttp"
 
@@ -18,7 +17,6 @@ import (
 
 const DefaultTemperature = 0.0
 const InvalidLLMModelError = "llm model is not set or is invalid"
-const InvalidEmbeddingsClientError = "embeddings client is not set or is invalid"
 
 var InvalidEmbeddingsDeploymentError = func(service string) error {
 	return fmt.Errorf("invalid embeddings deployment for %s, deployment name is required", service)
@@ -81,25 +79,6 @@ func NewLLMClient(ctx context.Context, cfg *config.Config) (models.ZepLLM, error
 		return NewOpenAILLM(ctx, cfg)
 	default:
 		return nil, fmt.Errorf("invalid LLM service: %s", cfg.LLM.Service)
-	}
-}
-
-func NewEmbeddingsClient(ctx context.Context, cfg *config.Config) (models.ZepEmbeddingsClient, error) {
-	switch cfg.EmbeddingsClient.Service {
-	// For now we only support OpenAI embeddings
-	case "openai":
-		// EmbeddingsDeployment is required if using external embeddings with AzureOpenAI
-		if cfg.EmbeddingsClient.AzureOpenAIEndpoint != "" && cfg.EmbeddingsClient.AzureOpenAIModel.EmbeddingDeployment == "" {
-			err := InvalidEmbeddingsDeploymentError(cfg.EmbeddingsClient.Service)
-			return nil, err
-		}
-		// The logic is the same if custom OpenAI Endpoint is set or not
-		// since the model name will be set automatically in this case
-		return NewOpenAIEmbeddingsClient(ctx, cfg)
-	case "":
-		return NewOpenAIEmbeddingsClient(ctx, cfg)
-	default:
-		return nil, fmt.Errorf("invalid embeddings service: %s", cfg.EmbeddingsClient.Service)
 	}
 }
 
@@ -202,61 +181,4 @@ func useOpenAIEmbeddings(cfg *config.Config) bool {
 	}
 
 	return false
-}
-
-func NewOpenAIChatClient(options ...openai.Option) (*openai.Chat, error) {
-	client, err := openai.NewChat(options...)
-	if err != nil {
-		return nil, err
-	}
-	return client, nil
-}
-
-func GetOpenAIAPIKey(cfg *config.Config, clientType string) string {
-	var apiKey string
-
-	if clientType == "embeddings" {
-		apiKey = cfg.EmbeddingsClient.OpenAIAPIKey
-		// If the key is not set, log a fatal error and exit
-		if apiKey == "" {
-			log.Fatal(EmbeddingsOpenAIAPIKeyNotSetError)
-		}
-	} else {
-		apiKey = cfg.LLM.OpenAIAPIKey
-		if apiKey == "" {
-			log.Fatal(EmbeddingsOpenAIAPIKeyNotSetError)
-		}
-	}
-	return apiKey
-}
-
-func EmbedTextsWithOpenAIClient(ctx context.Context, texts []string, openAIClient *openai.Chat) ([][]float32, error) {
-	// If the LLM is not initialized, return an error
-	if openAIClient == nil {
-		return nil, NewLLMError(InvalidLLMModelError, nil)
-	}
-
-	thisCtx, cancel := context.WithTimeout(ctx, OpenAIAPITimeout)
-	defer cancel()
-
-	embeddings, err := openAIClient.CreateEmbedding(thisCtx, texts)
-	if err != nil {
-		return nil, NewLLMError("error while creating embedding", err)
-	}
-
-	return embeddings, nil
-}
-
-func GetBaseOpenAIClientOptions(apiKey, validModel string) []openai.Option {
-	retryableHTTPClient := NewRetryableHTTPClient(MaxOpenAIAPIRequestAttempts, OpenAIAPITimeout)
-
-	options := make([]openai.Option, 0)
-	options = append(
-		options,
-		openai.WithHTTPClient(retryableHTTPClient.StandardClient()),
-		openai.WithModel(validModel),
-		openai.WithToken(apiKey),
-	)
-
-	return options
 }
