@@ -250,11 +250,62 @@ func (pms *PostgresMemoryStore) GetSummaryList(
 	return summaries, nil
 }
 
+func (pms *PostgresMemoryStore) PutSummary(
+	ctx context.Context,
+	appState *models.AppState,
+	sessionID string,
+	summary *models.Summary,
+) error {
+	retSummary, err := putSummary(ctx, pms.Client, sessionID, summary)
+	if err != nil {
+		return store.NewStorageError("failed to Create summary", err)
+	}
+
+	// Publish a message to the message summary embeddings topic
+	task := models.MessageSummaryTask{
+		UUID: retSummary.UUID,
+	}
+	err = appState.TaskPublisher.Publish(
+		models.MessageSummaryEmbedderTopic,
+		map[string]string{
+			"session_id": sessionID,
+		},
+		task,
+	)
+	if err != nil {
+		return fmt.Errorf("MessageSummaryTask publish failed: %w", err)
+	}
+
+	err = appState.TaskPublisher.Publish(
+		models.MessageSummaryNERTopic,
+		map[string]string{
+			"session_id": sessionID,
+		},
+		task,
+	)
+	if err != nil {
+		return fmt.Errorf("MessageSummaryTask publish failed: %w", err)
+	}
+
+	return nil
+}
+
+func (pms *PostgresMemoryStore) UpdateSummaryMetadata(ctx context.Context,
+	_ *models.AppState,
+	summary *models.Summary) error {
+	_, err := updateSummaryMetadata(ctx, pms.Client, summary)
+	if err != nil {
+		return fmt.Errorf("failed to update summary metadata %w", err)
+	}
+
+	return nil
+}
+
 func (pms *PostgresMemoryStore) PutSummaryEmbedding(
 	ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
-	embedding *models.TextEmbedding,
+	embedding *models.TextData,
 ) error {
 	err := putSummaryEmbedding(ctx, pms.Client, sessionID, embedding)
 	if err != nil {
@@ -307,35 +358,6 @@ func (pms *PostgresMemoryStore) PutMemory(
 	return nil
 }
 
-func (pms *PostgresMemoryStore) PutSummary(
-	ctx context.Context,
-	appState *models.AppState,
-	sessionID string,
-	summary *models.Summary,
-) error {
-	retSummary, err := putSummary(ctx, pms.Client, sessionID, summary)
-	if err != nil {
-		return store.NewStorageError("failed to Create summary", err)
-	}
-
-	// Publish a message to the message summary embeddings topic
-	task := models.MessageSummaryEmbeddingTask{
-		UUID: retSummary.UUID,
-	}
-	err = appState.TaskPublisher.Publish(
-		"message_summary_embedder",
-		map[string]string{
-			"session_id": sessionID,
-		},
-		task,
-	)
-	if err != nil {
-		return fmt.Errorf("MessageSummaryEmbeddingTask publish failed: %w", err)
-	}
-
-	return nil
-}
-
 func (pms *PostgresMemoryStore) PutMessageMetadata(
 	ctx context.Context,
 	_ *models.AppState,
@@ -371,7 +393,7 @@ func (pms *PostgresMemoryStore) Close() error {
 func (pms *PostgresMemoryStore) PutMessageEmbeddings(ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
-	embeddings []models.TextEmbedding,
+	embeddings []models.TextData,
 ) error {
 	if embeddings == nil {
 		return store.NewStorageError("nil embeddings received", nil)
@@ -391,7 +413,7 @@ func (pms *PostgresMemoryStore) PutMessageEmbeddings(ctx context.Context,
 func (pms *PostgresMemoryStore) GetMessageEmbeddings(ctx context.Context,
 	_ *models.AppState,
 	sessionID string,
-) ([]models.TextEmbedding, error) {
+) ([]models.TextData, error) {
 	embeddings, err := getMessageEmbeddings(ctx, pms.Client, sessionID)
 	if err != nil {
 		return nil, store.NewStorageError("GetMessageEmbeddings failed to get embeddings", err)

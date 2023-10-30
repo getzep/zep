@@ -49,6 +49,56 @@ func putSummary(
 	return &retSummary, nil
 }
 
+func updateSummaryMetadata(
+	ctx context.Context,
+	db *bun.DB,
+	summary *models.Summary,
+) (*models.Summary, error) {
+	if summary.UUID == uuid.Nil {
+		return nil, errors.New("summary UUID cannot be empty")
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer rollbackOnError(tx)
+
+	metadata, err := mergeMetadata(
+		ctx,
+		tx,
+		"uuid",
+		summary.UUID.String(),
+		"summary",
+		summary.Metadata,
+		true,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update summary metadata: %w", err)
+	}
+
+	pgSummary := &SummaryStoreSchema{
+		UUID:     summary.UUID,
+		Metadata: metadata,
+	}
+
+	_, err = tx.NewUpdate().
+		Model(pgSummary).
+		Column("metadata").
+		Where("uuid = ?", summary.UUID).
+		Exec(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update summary metadata: %w", err)
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return summary, nil
+}
+
 // getSummary returns the most recent summary for a session
 func getSummary(ctx context.Context, db *bun.DB, sessionID string) (*models.Summary, error) {
 	summary := SummaryStoreSchema{}
@@ -111,7 +161,7 @@ func putSummaryEmbedding(
 	ctx context.Context,
 	db *bun.DB,
 	sessionID string,
-	embedding *models.TextEmbedding,
+	embedding *models.TextData,
 ) error {
 	if sessionID == "" {
 		return store.NewStorageError("sessionID cannot be empty", nil)
@@ -136,7 +186,7 @@ func getSummaryEmbeddings(
 	ctx context.Context,
 	db *bun.DB,
 	sessionID string,
-) ([]models.TextEmbedding, error) {
+) ([]models.TextData, error) {
 	if sessionID == "" {
 		return nil, errors.New("sessionID cannot be empty")
 	}
@@ -151,9 +201,9 @@ func getSummaryEmbeddings(
 		return nil, fmt.Errorf("failed to get summary embeddings %w", err)
 	}
 
-	retEmbeddings := make([]models.TextEmbedding, len(embeddings))
+	retEmbeddings := make([]models.TextData, len(embeddings))
 	for i, embedding := range embeddings {
-		retEmbeddings[i] = models.TextEmbedding{
+		retEmbeddings[i] = models.TextData{
 			TextUUID:  embedding.SummaryUUID,
 			Embedding: embedding.Embedding.Slice(),
 		}

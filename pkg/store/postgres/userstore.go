@@ -175,18 +175,11 @@ func (dao *UserStoreDAO) Delete(ctx context.Context, userID string) error {
 	if err != nil {
 		return err
 	}
+	defer rollbackOnError(tx)
 
 	// Delete all related sessions
 	sessions, err := dao.GetSessions(ctx, userID)
 	if err != nil {
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			return fmt.Errorf(
-				"failed to delete user: %v, failed to rollback transaction: %w",
-				err,
-				rollbackErr,
-			)
-		}
 		return err
 	}
 
@@ -194,14 +187,6 @@ func (dao *UserStoreDAO) Delete(ctx context.Context, userID string) error {
 	for s := range sessions {
 		err := sessionStore.Delete(ctx, sessions[s].SessionID)
 		if err != nil {
-			rollbackErr := tx.Rollback()
-			if rollbackErr != nil {
-				return fmt.Errorf(
-					"failed to delete user: %v, failed to rollback transaction: %w",
-					err,
-					rollbackErr,
-				)
-			}
 			return err
 		}
 	}
@@ -209,37 +194,13 @@ func (dao *UserStoreDAO) Delete(ctx context.Context, userID string) error {
 	// Delete User
 	r, err := dao.db.NewDelete().Model(&models.User{}).Where("user_id = ?", userID).Exec(ctx)
 	if err != nil {
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			return fmt.Errorf(
-				"failed to delete user: %v, failed to rollback transaction: %w",
-				err,
-				rollbackErr,
-			)
-		}
 		return err
 	}
 	rowsAffected, err := r.RowsAffected()
 	if err != nil {
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			return fmt.Errorf(
-				"failed to delete user: %v, failed to rollback transaction: %w",
-				err,
-				rollbackErr,
-			)
-		}
 		return err
 	}
 	if rowsAffected == 0 {
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			return fmt.Errorf(
-				"failed to delete user: %v, failed to rollback transaction: %w",
-				err,
-				rollbackErr,
-			)
-		}
 		return models.NewNotFoundError("user " + userID)
 	}
 

@@ -31,12 +31,14 @@ var _ models.Task = &MessageSummaryTask{}
 // When summarizing, it adds context from these messages to an existing summary
 // if there is one.
 type MessageSummaryTask struct {
-	appState *models.AppState
+	BaseTask
 }
 
 func NewMessageSummaryTask(appState *models.AppState) *MessageSummaryTask {
 	return &MessageSummaryTask{
-		appState: appState,
+		BaseTask: BaseTask{
+			appState: appState,
+		},
 	}
 }
 

@@ -27,7 +27,11 @@ func NewTaskPublisher(db *sql.DB) *TaskPublisher {
 }
 
 // Publish publishes a message to the given topic. Payload must be a struct that can be marshalled to JSON.
-func (t *TaskPublisher) Publish(taskType string, metadata map[string]string, payload any) error {
+func (t *TaskPublisher) Publish(
+	taskType models.TaskTopic,
+	metadata map[string]string,
+	payload any,
+) error {
 	log.Debugf("Publishing task: %s", taskType)
 	p, err := json.Marshal(payload)
 	if err != nil {
@@ -37,7 +41,7 @@ func (t *TaskPublisher) Publish(taskType string, metadata map[string]string, pay
 	m := message.NewMessage(watermill.NewUUID(), p)
 	m.Metadata = metadata
 
-	err = t.publisher.Publish(taskType, m)
+	err = t.publisher.Publish(string(taskType), m)
 	if err != nil {
 		return fmt.Errorf("failed to publish task message: %w", err)
 	}
@@ -52,12 +56,12 @@ func (t *TaskPublisher) PublishMessage(
 	metadata map[string]string,
 	payload []models.MessageTask,
 ) error {
-	var messageTopics = []string{
-		MessageSummarizerTopic,
-		MessageEmbedderTopic,
-		MessageNerTopic,
-		MessageIntentTopic,
-		MessageTokenCountTopic,
+	var messageTopics = []models.TaskTopic{
+		models.MessageSummarizerTopic,
+		models.MessageEmbedderTopic,
+		models.MessageNerTopic,
+		models.MessageIntentTopic,
+		models.MessageTokenCountTopic,
 	}
 
 	for _, topic := range messageTopics {

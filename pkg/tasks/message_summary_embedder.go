@@ -2,7 +2,6 @@ package tasks
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -13,8 +12,16 @@ import (
 
 var _ models.Task = &MessageSummaryEmbedderTask{}
 
+func NewMessageSummaryEmbedderTask(appState *models.AppState) *MessageSummaryEmbedderTask {
+	return &MessageSummaryEmbedderTask{
+		BaseTask{
+			appState: appState,
+		},
+	}
+}
+
 type MessageSummaryEmbedderTask struct {
-	appState *models.AppState
+	BaseTask
 }
 
 func (t *MessageSummaryEmbedderTask) Execute(
@@ -30,15 +37,9 @@ func (t *MessageSummaryEmbedderTask) Execute(
 	}
 	log.Debugf("MessageSummaryEmbedderTask called for session %s", sessionID)
 
-	var task models.MessageSummaryEmbeddingTask
-	err := json.Unmarshal(msg.Payload, &task)
+	summary, err := summaryTaskPayloadToSummary(ctx, t.appState, msg)
 	if err != nil {
-		return fmt.Errorf("MessageSummaryEmbeddingTask unmarshal failed: %w", err)
-	}
-
-	summary, err := t.appState.MemoryStore.GetSummaryByUUID(ctx, t.appState, sessionID, task.UUID)
-	if err != nil {
-		return fmt.Errorf("MessageSummaryEmbeddingTask get summary failed: %w", err)
+		return fmt.Errorf("MessageSummaryTask get summary failed: %w", err)
 	}
 
 	err = t.Process(ctx, sessionID, summary)
@@ -81,7 +82,7 @@ func (t *MessageSummaryEmbedderTask) Process(
 		return fmt.Errorf("MessageSummaryEmbedderTask embed messages failed: %w", err)
 	}
 
-	record := &models.TextEmbedding{
+	record := &models.TextData{
 		Embedding: embeddings[0],
 		TextUUID:  summary.UUID,
 		Text:      summary.Content,

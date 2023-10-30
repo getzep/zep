@@ -14,7 +14,7 @@ import (
 // mergeMetadata merges the received metadata map with the existing metadata map in DB,
 // creating keys and values if they don't exist, and overwriting others.
 func mergeMetadata(ctx context.Context,
-	db *bun.DB,
+	db bun.IDB,
 	entityField string,
 	entityID string,
 	table string,

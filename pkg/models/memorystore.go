@@ -84,15 +84,15 @@ type MessageStorer interface {
 		sessionID string,
 		messages []Message,
 		isPrivileged bool) error
-	// PutMessageEmbeddings stores a collection of TextEmbedding for a given sessionID.
+	// PutMessageEmbeddings stores a collection of TextData for a given sessionID.
 	PutMessageEmbeddings(ctx context.Context,
 		appState *AppState,
 		sessionID string,
-		embeddings []TextEmbedding) error
-	// GetMessageEmbeddings retrieves a collection of TextEmbedding for a given sessionID.
+		embeddings []TextData) error
+	// GetMessageEmbeddings retrieves a collection of TextData for a given sessionID.
 	GetMessageEmbeddings(ctx context.Context,
 		appState *AppState,
-		sessionID string) ([]TextEmbedding, error)
+		sessionID string) ([]TextData, error)
 }
 
 type MemoryStorer interface {
@@ -145,9 +145,13 @@ type SummaryStorer interface {
 		appState *AppState,
 		sessionID string,
 		summary *Summary) error
-	// PutSummaryEmbedding stores a TextEmbedding for a given sessionID and Summary UUID.
+	// UpdateSummaryMetadata updates the metadata for a given Summary. The Summary UUID must be set.
+	UpdateSummaryMetadata(ctx context.Context,
+		appState *AppState,
+		summary *Summary) error
+	// PutSummaryEmbedding stores a TextData for a given sessionID and Summary UUID.
 	PutSummaryEmbedding(ctx context.Context,
 		appState *AppState,
 		sessionID string,
-		embedding *TextEmbedding) error
+		embedding *TextData) error
 }

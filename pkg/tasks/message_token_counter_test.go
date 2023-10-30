@@ -39,9 +39,7 @@ func runTestTokenCountExtractor(
 
 	messages := memories.Messages
 
-	tokenCountExtractor := MessageTokenCountTask{
-		appState: appState,
-	}
+	tokenCountExtractor := NewMessageTokenCountTask(appState)
 
 	p, err := json.Marshal(messages)
 	assert.NoError(t, err)

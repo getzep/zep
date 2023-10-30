@@ -111,7 +111,7 @@ func TestPutMessages(t *testing.T) {
 		resultMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 		assert.NoError(t, err, "putMessages should not return an error")
 
-		verifyMessagesInDB(t, messages, resultMessages)
+		verifyMessagesInDB(t, messages, resultMessages, false)
 	})
 
 	t.Run("upsert messages with updated TokenCount", func(t *testing.T) {
@@ -128,7 +128,7 @@ func TestPutMessages(t *testing.T) {
 		upsertedMessages, err := putMessages(testCtx, testDB, sessionID, insertedMessages)
 		assert.NoError(t, err, "putMessages should not return an error")
 
-		verifyMessagesInDB(t, insertedMessages, upsertedMessages)
+		verifyMessagesInDB(t, insertedMessages, upsertedMessages, true)
 	})
 
 	t.Run(
@@ -174,6 +174,7 @@ func verifyMessagesInDB(
 	t *testing.T,
 	expectedMessages,
 	resultMessages []models.Message,
+	verifyUpdatedAt bool,
 ) {
 	assert.Equal(
 		t,
@@ -214,12 +215,14 @@ func verifyMessagesInDB(
 			resultMessages[i].Metadata,
 			"Expected Metadata to be equal",
 		)
-		assert.Less(
-			t,
-			resultMessages[i].CreatedAt,
-			resultMessages[i].UpdatedAt,
-			"CreatedAt should be less than UpdatedAt",
-		)
+		if verifyUpdatedAt {
+			assert.Less(
+				t,
+				resultMessages[i].CreatedAt,
+				resultMessages[i].UpdatedAt,
+				"CreatedAt should be less than UpdatedAt",
+			)
+		}
 	}
 }
 
@@ -444,7 +447,7 @@ func TestPutEmbeddingsLocal(t *testing.T) {
 	}
 
 	// Create embeddings
-	embeddings := []models.TextEmbedding{
+	embeddings := []models.TextData{
 		{
 			TextUUID:  resultMessages[0].UUID,
 			Text:      resultMessages[0].Content,

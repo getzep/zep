@@ -8,7 +8,7 @@ type EmbeddingModel struct {
 	IsNormalized bool   `json:"normalized"`
 }
 
-type TextEmbedding struct {
+type TextData struct {
 	TextUUID  uuid.UUID `json:"uuid,omitempty"` // MemoryStore's unique ID associated with this text.
 	Text      string    `json:"text"`
 	Embedding []float32 `json:"embedding,omitempty"`
@@ -16,7 +16,7 @@ type TextEmbedding struct {
 }
 
 type TextEmbeddingCollection struct {
-	UUID       uuid.UUID       `json:"uuid,omitempty"`
-	Name       string          `json:"name,omitempty"`
-	Embeddings []TextEmbedding `json:"documents"`
+	UUID       uuid.UUID  `json:"uuid,omitempty"`
+	Name       string     `json:"name,omitempty"`
+	Embeddings []TextData `json:"documents"`
 }

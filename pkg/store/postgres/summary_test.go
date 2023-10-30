@@ -303,7 +303,7 @@ func TestPostgresMemoryStore_PutSummaryEmbedding(t *testing.T) {
 
 	v := make([]float32, appState.Config.Extractors.Messages.Summarizer.Embeddings.Dimensions)
 
-	embedding := models.TextEmbedding{
+	embedding := models.TextData{
 		Embedding: v,
 		TextUUID:  resultSummary.UUID,
 		Text:      resultSummary.Content,
@@ -386,4 +386,48 @@ func TestGetSummaryList(t *testing.T) {
 			assert.Equal(t, tt.expectedCount, len(summaries.Summaries))
 		})
 	}
+}
+
+func TestUpdateSummaryMetadata(t *testing.T) {
+	// Step 1: Create a session
+	sessionID := createSession(t)
+
+	// Step 2: Put test messages
+	messages := []models.Message{
+		{
+			Role:    "user",
+			Content: "Hello",
+		},
+		{
+			Role:    "bot",
+			Content: "Hi there!",
+		},
+	}
+	returnedMessages, err := putMessages(testCtx, testDB, sessionID, messages)
+	assert.NoError(t, err, "putMessages should not return an error")
+
+	// Step 3: Use putSummary to add a new test summary
+	summary := models.Summary{
+		SummaryPointUUID: returnedMessages[0].UUID,
+		Metadata: map[string]interface{}{
+			"key1": "value1",
+			"key2": "value2",
+		},
+	}
+	returnedSummary, err := putSummary(testCtx, testDB, sessionID, &summary)
+	assert.NoError(t, err, "putSummary should not return an error")
+
+	// Step 4: UpdateSummaryMetadata to update the metadata
+	newMetadata := map[string]interface{}{
+		"key1": "new value1",
+		"key2": "new value2",
+	}
+	returnedSummary.Metadata = newMetadata
+	_, err = updateSummaryMetadata(testCtx, testDB, returnedSummary)
+	assert.NoError(t, err, "updateSummaryMetadata should not return an error")
+
+	// Step 5: GetSummary to test that the metadata was correctly updated
+	resultSummary, err := getSummary(testCtx, testDB, sessionID)
+	assert.NoError(t, err, "getSummary should not return an error")
+	assert.Equal(t, newMetadata, resultSummary.Metadata)
 }

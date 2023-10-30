@@ -27,18 +27,18 @@ func TestCallNERService(t *testing.T) {
     considering whether to lift sanctions on Chinese Defense Minister Li Shangfu.`,
 	}
 	// Create messages with the texts
-	messages := createMessages(texts)
+	textData := createMessages(texts)
 
 	// Call the NER service
-	response, err := callNERTask(context.Background(), appState, messages)
+	response, err := callNERTask(context.Background(), appState, textData)
 	assert.NoError(t, err)
 
 	// Check the response
 	assert.Equal(t, len(response.Texts), len(texts))
 
 	// Check the uuids
-	for i := range messages {
-		validateUUID(t, response.Texts[i].UUID, messages[i].UUID)
+	for i := range textData {
+		validateUUID(t, response.Texts[i].UUID, textData[i].TextUUID)
 	}
 
 	expectedEntities := [][]models.Entity{{
@@ -303,15 +303,16 @@ func TestCallNERService(t *testing.T) {
 	}
 }
 
-func createMessages(texts []string) []models.Message {
-	messages := make([]models.Message, len(texts))
+func createMessages(texts []string) []models.TextData {
+	td := make([]models.TextData, len(texts))
 	for i, text := range texts {
-		messages[i] = models.Message{
-			UUID:    uuid.New(),
-			Content: text,
+		td[i] = models.TextData{
+			TextUUID: uuid.New(),
+			Text:     text,
+			Language: "en",
 		}
 	}
-	return messages
+	return td
 }
 
 func validateUUID(t *testing.T, got string, want uuid.UUID) {
@@ -326,5 +327,54 @@ func validateEntities(t *testing.T, got []models.Entity, want []models.Entity) {
 		if !reflect.DeepEqual(got[i], want[i]) {
 			t.Errorf("Entities do not match: got %+v want %+v", got[i], want[i])
 		}
+	}
+}
+
+func TestExtractEntities(t *testing.T) {
+	testCases := []struct {
+		name     string
+		entities interface{}
+		want     []map[string]interface{}
+	}{
+		{
+			name: "With Data",
+			entities: []models.Entity{{
+				Name:  "Google",
+				Label: "ORG",
+				Matches: []models.EntityMatch{
+					{
+						Start: 4,
+						End:   10,
+						Text:  "Google",
+					},
+				},
+			},
+			},
+			want: []map[string]interface{}{
+				{
+					"Label": "ORG",
+					"Name":  "Google",
+					"Matches": []interface{}{
+						map[string]interface{}{
+							"Start": 4,
+							"End":   10,
+							"Text":  "Google",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "No Data",
+			entities: []models.Entity{},
+			want:     []map[string]interface{}{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := extractEntities(tc.entities)
+			assert.Equal(t, tc.want, got)
+		})
 	}
 }

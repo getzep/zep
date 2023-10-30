@@ -15,8 +15,18 @@ import (
 
 var _ models.Task = &DocumentEmbedderTask{}
 
+func NewDocumentEmbedderTask(
+	appState *models.AppState,
+) *DocumentEmbedderTask {
+	return &DocumentEmbedderTask{
+		BaseTask: BaseTask{
+			appState: appState,
+		},
+	}
+}
+
 type DocumentEmbedderTask struct {
-	appState *models.AppState
+	BaseTask
 }
 
 func (dt *DocumentEmbedderTask) Execute(
@@ -119,8 +129,4 @@ func (dt *DocumentEmbedderTask) Process(
 		return fmt.Errorf("DocumentEmbedderTask save embeddings failed: %w", err)
 	}
 	return nil
-}
-
-func (dt *DocumentEmbedderTask) HandleError(err error) {
-	log.Errorf("DocumentEmbedderTask error: %s", err)
 }
