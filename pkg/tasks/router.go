@@ -85,14 +85,19 @@ func NewTaskRouter(appState *models.AppState, db *sql.DB) (*TaskRouter, error) {
 }
 
 // AddTask adds a task handler to the router.
-func (tr *TaskRouter) AddTask(_ context.Context, name, taskType string, task models.Task) {
+func (tr *TaskRouter) AddTask(
+	_ context.Context,
+	name string,
+	taskType models.TaskTopic,
+	task models.Task,
+) {
 	subscriber, err := NewSQLQueueSubscriber(tr.db, tr.logger)
 	if err != nil {
 		log.Fatalf("Failed to create subscriber for task %s: %v", taskType, err)
 	}
 	tr.AddNoPublisherHandler(
 		name,
-		taskType,
+		string(taskType),
 		subscriber,
 		TaskHandler(task),
 	)

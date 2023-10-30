@@ -8,17 +8,6 @@ import (
 	"github.com/getzep/zep/pkg/models"
 )
 
-const (
-	MessageSummarizerTopic      = "message_summarizer"
-	MessageEmbedderTopic        = "message_embedder"
-	MessageNerTopic             = "message_ner"
-	MessageIntentTopic          = "message_intent"
-	MessageTokenCountTopic      = "message_token_count"
-	DocumentEmbedderTopic       = "document_embedder"
-	MessageSummaryEmbedderTopic = "message_summary_embedder"
-	MessageSummaryNERTopic      = "message_summary_ner"
-)
-
 var log = internal.GetLogger()
 
 type BaseTask struct {
@@ -39,7 +28,7 @@ func (b *BaseTask) HandleError(err error) {
 func Initialize(ctx context.Context, appState *models.AppState, router models.TaskRouter) {
 	log.Info("Initializing tasks")
 
-	addTask := func(ctx context.Context, name, taskType string, enabled bool, newTask func() models.Task) {
+	addTask := func(ctx context.Context, name string, taskType models.TaskTopic, enabled bool, newTask func() models.Task) {
 		if enabled {
 			task := newTask()
 			router.AddTask(ctx, name, taskType, task)
@@ -49,64 +38,64 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 
 	addTask(
 		ctx,
-		MessageSummarizerTopic,
-		MessageSummarizerTopic,
+		string(models.MessageSummarizerTopic),
+		models.MessageSummarizerTopic,
 		appState.Config.Extractors.Messages.Summarizer.Enabled,
 		func() models.Task { return NewMessageSummaryTask(appState) },
 	)
 
 	addTask(
 		ctx,
-		MessageEmbedderTopic,
-		MessageEmbedderTopic,
+		string(models.MessageEmbedderTopic),
+		models.MessageEmbedderTopic,
 		appState.Config.Extractors.Messages.Embeddings.Enabled,
 		func() models.Task { return NewMessageEmbedderTask(appState) },
 	)
 
 	addTask(
 		ctx,
-		MessageNerTopic,
-		MessageNerTopic,
+		string(models.MessageNerTopic),
+		models.MessageNerTopic,
 		appState.Config.Extractors.Messages.Entities.Enabled,
 		func() models.Task { return NewMessageNERTask(appState) },
 	)
 
 	addTask(
 		ctx,
-		MessageIntentTopic,
-		MessageIntentTopic,
+		string(models.MessageIntentTopic),
+		models.MessageIntentTopic,
 		appState.Config.Extractors.Messages.Intent.Enabled,
 		func() models.Task { return NewMessageIntentTask(appState) },
 	)
 
 	addTask(
 		ctx,
-		MessageTokenCountTopic,
-		MessageTokenCountTopic,
+		string(models.MessageTokenCountTopic),
+		models.MessageTokenCountTopic,
 		true, // Always enabled
 		func() models.Task { return NewMessageTokenCountTask(appState) },
 	)
 
 	addTask(
 		ctx,
-		DocumentEmbedderTopic,
-		DocumentEmbedderTopic,
+		string(models.DocumentEmbedderTopic),
+		models.DocumentEmbedderTopic,
 		appState.Config.Extractors.Documents.Embeddings.Enabled,
 		func() models.Task { return NewDocumentEmbedderTask(appState) },
 	)
 
 	addTask(
 		ctx,
-		MessageSummaryEmbedderTopic,
-		MessageSummaryEmbedderTopic,
+		string(models.MessageSummaryEmbedderTopic),
+		models.MessageSummaryEmbedderTopic,
 		appState.Config.Extractors.Messages.Summarizer.Embeddings.Enabled,
 		func() models.Task { return NewMessageSummaryEmbedderTask(appState) },
 	)
 
 	addTask(
 		ctx,
-		MessageSummaryNERTopic,
-		MessageSummaryNERTopic,
+		string(models.MessageSummaryNERTopic),
+		models.MessageSummaryNERTopic,
 		appState.Config.Extractors.Messages.Summarizer.Entities.Enabled,
 		func() models.Task { return NewMessageSummaryNERTask(appState) },
 	)

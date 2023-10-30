@@ -266,7 +266,7 @@ func (pms *PostgresMemoryStore) PutSummary(
 		UUID: retSummary.UUID,
 	}
 	err = appState.TaskPublisher.Publish(
-		"message_summary_embedder",
+		models.MessageSummaryEmbedderTopic,
 		map[string]string{
 			"session_id": sessionID,
 		},
@@ -277,7 +277,7 @@ func (pms *PostgresMemoryStore) PutSummary(
 	}
 
 	err = appState.TaskPublisher.Publish(
-		"message_summary_ner",
+		models.MessageSummaryNERTopic,
 		map[string]string{
 			"session_id": sessionID,
 		},
