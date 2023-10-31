@@ -1970,6 +1970,9 @@
                 "mmr_lambda": {
                     "type": "number"
                 },
+                "search_scope": {
+                    "$ref": "#/definitions/models.SearchScope"
+                },
                 "search_type": {
                     "$ref": "#/definitions/models.SearchType"
                 },
@@ -1998,12 +2001,7 @@
                     "additionalProperties": true
                 },
                 "summary": {
-                    "description": "reserved for future use",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/models.Summary"
-                        }
-                    ]
+                    "$ref": "#/definitions/models.Summary"
                 }
             }
         },
@@ -2033,6 +2031,17 @@
                     "type": "string"
                 }
             }
+        },
+        "models.SearchScope": {
+            "type": "string",
+            "enum": [
+                "messages",
+                "summary"
+            ],
+            "x-enum-varnames": [
+                "SearchScopeMessages",
+                "SearchScopeSummary"
+            ]
         },
         "models.SearchType": {
             "type": "string",
