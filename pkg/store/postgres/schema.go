@@ -25,6 +25,8 @@ import (
 	"github.com/uptrace/bun"
 )
 
+const defaultEmbeddingDims = 1536
+
 var maxOpenConns = 4 * runtime.GOMAXPROCS(0)
 
 type SessionSchema struct {
@@ -603,6 +605,11 @@ func MigrateEmbeddingDims(
 	tableName string,
 	dimensions int,
 ) error {
+	// we may be missing a config key, so use the default dimensions if none are provided
+	if dimensions == 0 {
+		dimensions = defaultEmbeddingDims
+	}
+
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("MigrateEmbeddingDims error starting transaction: %w", err)
