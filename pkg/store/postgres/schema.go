@@ -548,9 +548,50 @@ func getEmbeddingColumnWidth(ctx context.Context, tableName string, db *bun.DB) 
 		Where("attname = 'embedding'").
 		Scan(ctx, &width)
 	if err != nil {
-		return 0, fmt.Errorf("error getting embedding column width: %w", err)
+		// Something strange has happened. Debug the schema.
+		schema, dumpErr := dumpTableSchema(ctx, db, tableName)
+		if dumpErr != nil {
+			return 0, fmt.Errorf(
+				"error getting embedding column width for %s: %w. Original error: %w",
+				tableName,
+				dumpErr,
+				err,
+			)
+		}
+		return 0, fmt.Errorf(
+			"error getting embedding column width for %s. Schema: %s: %w",
+			tableName,
+			schema,
+			err,
+		)
 	}
 	return width, nil
+}
+
+// dumpTableSchema enables debugging of schema issues
+func dumpTableSchema(ctx context.Context, db *bun.DB, tableName string) (string, error) {
+	type ColumnInfo struct {
+		bun.BaseModel `bun:"table:information_schema.columns" yaml:"-"`
+		ColumnName    string         `bun:"column_name"`
+		DataType      string         `bun:"data_type"`
+		CharMaxLength sql.NullInt32  `bun:"character_maximum_length"`
+		ColumnDefault sql.NullString `bun:"column_default"`
+		IsNullable    string         `bun:"is_nullable"`
+	}
+
+	var columns []ColumnInfo
+	err := db.NewSelect().
+		Model(&columns).
+		Where("table_name = ?", tableName).
+		Order("ordinal_position").
+		Scan(ctx)
+	if err != nil {
+		return "", fmt.Errorf("error getting table schema for %s: %w", tableName, err)
+	}
+
+	tableSchema := fmt.Sprintf("%+v", columns)
+
+	return tableSchema, nil
 }
 
 // MigrateEmbeddingDims drops the old embedding column and creates a new one with the
@@ -561,18 +602,30 @@ func MigrateEmbeddingDims(
 	tableName string,
 	dimensions int,
 ) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("MigrateEmbeddingDims error starting transaction: %w", err)
+	}
+	defer rollbackOnError(tx)
+
 	// bun doesn't appear to support IF EXISTS for dropping columns
-	columnQuery := `ALTER TABLE ? DROP COLUMN IF EXISTS embedding;`
-	_, err := db.ExecContext(ctx, columnQuery, bun.Ident(tableName))
+	columnQuery := `ALTER TABLE ? DROP COLUMN IF EXISTS embedding;
+	ALTER TABLE ? ADD COLUMN embedding vector(?);
+`
+	_, err = tx.ExecContext(
+		ctx,
+		columnQuery,
+		bun.Ident(tableName),
+		bun.Ident(tableName),
+		dimensions,
+	)
 	if err != nil {
 		return fmt.Errorf("MigrateEmbeddingDims error dropping column embedding: %w", err)
 	}
-	_, err = db.NewAddColumn().
-		ModelTableExpr(tableName).
-		ColumnExpr(fmt.Sprintf("embedding vector(%d)", dimensions)).
-		Exec(ctx)
+
+	err = tx.Commit()
 	if err != nil {
-		return fmt.Errorf("MigrateEmbeddingDims error adding column: %w", err)
+		return fmt.Errorf("MigrateEmbeddingDims error committing transaction: %w", err)
 	}
 
 	return nil
