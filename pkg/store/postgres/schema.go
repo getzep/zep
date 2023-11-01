@@ -9,12 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getzep/zep/pkg/store/postgres/migrations"
+
 	"github.com/Masterminds/semver/v3"
 	_ "github.com/jackc/pgx/v5/stdlib" // required for pgx to work
 	"github.com/uptrace/bun/driver/pgdriver"
 
 	"github.com/getzep/zep/pkg/llms"
-	"github.com/getzep/zep/pkg/store/postgres/migrations"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"github.com/getzep/zep/pkg/models"
@@ -444,6 +445,11 @@ func CreateSchema(
 		}
 	}
 
+	// apply migrations
+	if err := migrations.Migrate(ctx, db); err != nil {
+		return fmt.Errorf("failed to apply migrations: %w", err)
+	}
+
 	// check that the message and summary embedding dimensions match the configured model
 	if err := checkEmbeddingDims(ctx, appState, db, "message", "message_embedding"); err != nil {
 		return fmt.Errorf("error checking message embedding dimensions: %w", err)
@@ -462,11 +468,6 @@ func CreateSchema(
 		if err := createHNSWIndex(ctx, db, "summary_embedding", c); err != nil {
 			return fmt.Errorf("error creating hnsw index: %w", err)
 		}
-	}
-
-	// apply migrations
-	if err := migrations.Migrate(ctx, db); err != nil {
-		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
 	return nil
