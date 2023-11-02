@@ -73,9 +73,10 @@ func NewAppState(cfg *config.Config) *models.AppState {
 	// If enabled, create a new Embeddings client
 	if cfg.EmbeddingsClient.Enabled {
 		embeddingsClient, embeddingsClientClientErr = llms.NewEmbeddingsClient(ctx, cfg)
-		if embeddingsClientClientErr != nil {
-			log.Fatal(embeddingsClientClientErr)
-		}
+	}
+
+	if embeddingsClientClientErr != nil {
+		log.Fatal(embeddingsClientClientErr)
 	}
 
 	appState := &models.AppState{

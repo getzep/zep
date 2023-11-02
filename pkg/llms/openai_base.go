@@ -18,14 +18,6 @@ const (
 	LLMClientType        ClientType = "llm"
 )
 
-func NewOpenAIChatClient(options ...openai.Option) (*openai.Chat, error) {
-	client, err := openai.NewChat(options...)
-	if err != nil {
-		return nil, err
-	}
-	return client, nil
-}
-
 func GetOpenAIAPIKey(cfg *config.Config, clientType ClientType) string {
 	var apiKey string
 

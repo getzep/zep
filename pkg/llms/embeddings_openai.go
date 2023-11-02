@@ -34,7 +34,11 @@ func (zembeddings *ZepOpenAIEmbeddingsClient) Init(_ context.Context, cfg *confi
 	// Create a new client instance with options.
 	// Even if it will just used for embeddings,
 	// it uses the same langchain openai chat client builder
-	client, err := NewOpenAIChatClient(options...)
+	client, err := openai.NewChat(options...)
+	if err != nil {
+		return err
+	}
+
 	zembeddings.client = client
 
 	return nil

@@ -46,7 +46,11 @@ func (zllm *ZepOpenAILLM) Init(_ context.Context, cfg *config.Config) error {
 	}
 
 	// Create a new client instance with options
-	llm, err := NewOpenAIChatClient(options...)
+	llm, err := openai.NewChat(options...)
+	if err != nil {
+		return err
+	}
+
 	zllm.llm = llm
 
 	return nil
