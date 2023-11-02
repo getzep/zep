@@ -62,19 +62,20 @@ func NewAppState(cfg *config.Config) *models.AppState {
 	ctx := context.Background()
 
 	// Create a new LLM client
-	llmClient, err := llms.NewLLMClient(ctx, cfg)
-	if err != nil {
-		log.Fatal(err)
+	llmClient, llmClientErr := llms.NewLLMClient(ctx, cfg)
+	if llmClientErr != nil {
+		log.Fatal(llmClientErr)
 	}
 
 	var embeddingsClient models.ZepEmbeddingsClient = nil
+	var embeddingsClientClientErr error = nil
 
+	// If enabled, create a new Embeddings client
 	if cfg.EmbeddingsClient.Enabled {
-		embeddingsClient, err = llms.NewEmbeddingsClient(ctx, cfg)
-	}
-
-	if err != nil {
-		log.Fatal(err)
+		embeddingsClient, embeddingsClientClientErr = llms.NewEmbeddingsClient(ctx, cfg)
+		if embeddingsClientClientErr != nil {
+			log.Fatal(embeddingsClientClientErr)
+		}
 	}
 
 	appState := &models.AppState{
