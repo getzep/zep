@@ -2,11 +2,14 @@ package tasks
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	wsql "github.com/ThreeDotsLabs/watermill-sql/v2/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 )
+
+const SQLSubscriberPollInterval = 500 * time.Millisecond
 
 type SQLSchema struct {
 	wsql.DefaultPostgreSQLSchema
@@ -36,6 +39,7 @@ func NewSQLQueueSubscriber(db *sql.DB, logger watermill.LoggerAdapter) (message.
 			SchemaAdapter:    SQLSchema{},
 			OffsetsAdapter:   &wsql.DefaultPostgreSQLOffsetsAdapter{},
 			InitializeSchema: true,
+			PollInterval:     SQLSubscriberPollInterval,
 		},
 		logger,
 	)
