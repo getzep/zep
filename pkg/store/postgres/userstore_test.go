@@ -40,6 +40,15 @@ func TestUserStoreDAO(t *testing.T) {
 		assert.NotEmpty(t, createdUser.ID)
 	})
 
+	// Test Create
+	t.Run("Create with no user_id", func(t *testing.T) {
+		userNoId := &models.CreateUserRequest{
+			UserID: "",
+		}
+		_, err := userStore.Create(ctx, userNoId)
+		assert.ErrorIs(t, err, models.ErrBadRequest)
+	})
+
 	// Test Get
 	t.Run("Get", func(t *testing.T) {
 		retrievedUser, err := userStore.Get(ctx, user.UserID)

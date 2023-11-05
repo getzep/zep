@@ -29,6 +29,9 @@ func (dao *UserStoreDAO) Create(
 	ctx context.Context,
 	user *models.CreateUserRequest,
 ) (*models.User, error) {
+	if user.UserID == "" {
+		return nil, models.NewBadRequestError("UserID cannot be empty")
+	}
 	userDB := &UserSchema{
 		UserID:    user.UserID,
 		Email:     user.Email,
