@@ -26,7 +26,7 @@ func testConfigDefaults() (*config.Config, error) {
 	testConfig := &config.Config{
 		LLM: config.LLM{
 			Service: "openai",
-			Model:   "gpt-3.5-turbo",
+			Model:   "gpt-3.5-turbo-1106",
 		},
 		NLP: config.NLP{
 			ServerURL: "http://localhost:5557",
