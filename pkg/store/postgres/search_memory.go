@@ -59,6 +59,9 @@ func searchMemory(
 		if err != nil {
 			return nil, store.NewStorageError("error adding vector column", err)
 		}
+		// If we're using MMR outside this function, we need to return the embedding
+		// so we can rerank the results.
+		query.Embedding = queryEmbedding
 	}
 	if len(query.Metadata) > 0 {
 		var err error
@@ -108,7 +111,7 @@ func searchMemory(
 	filteredResults := filterValidMessageSearchResults(results, query.Metadata)
 
 	// If we're using MMR, rerank the results.
-	if query.SearchType == models.SearchTypeMMR {
+	if query.SearchType == models.SearchTypeMMR && query.Text != "" {
 		filteredResults, err = rerankMMR(filteredResults, queryEmbedding, query.MMRLambda, limit)
 		if err != nil {
 			return nil, store.NewStorageError("error applying mmr", err)

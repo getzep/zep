@@ -24,6 +24,7 @@ type MemorySearchResult struct {
 
 type MemorySearchPayload struct {
 	Text        string                 `json:"text"`
+	Embedding   []float32              `json:"embedding,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 	SearchScope SearchScope            `json:"search_scope,omitempty"`
 	SearchType  SearchType             `json:"search_type,omitempty"`
