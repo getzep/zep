@@ -26,7 +26,13 @@ func runTestIntentExtractor(t *testing.T, testAppState *models.AppState) {
 	)
 	assert.NoError(t, err)
 
-	memories, err := store.GetMemory(testCtx, testAppState, sessionID, 0)
+	memoryConfig := &models.MemoryConfig{
+		SessionID:     sessionID,
+		LastNMessages: 0,
+		Type:          models.SimpleMemoryType,
+	}
+
+	memories, err := store.GetMemory(testCtx, testAppState, memoryConfig)
 	assert.NoError(t, err)
 	assert.Equal(t, len(testMessages), len(memories.Messages))
 
@@ -43,7 +49,7 @@ func runTestIntentExtractor(t *testing.T, testAppState *models.AppState) {
 		assert.NoError(t, err)
 	}
 
-	memories, err = store.GetMemory(testCtx, testAppState, sessionID, 0)
+	memories, err = store.GetMemory(testCtx, testAppState, memoryConfig)
 	assert.NoError(t, err)
 	for _, message := range memories.Messages {
 		metadata := message.Metadata["system"]

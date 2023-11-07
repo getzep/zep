@@ -119,57 +119,30 @@ func (pms *PostgresMemoryStore) ListSessionsOrdered(
 	return pms.SessionStore.ListAllOrdered(ctx, pageNumber, pageSize, orderedBy, asc)
 }
 
-// GetMemory returns the most recent Summary and a list of messages for a given sessionID.
-// GetMemory returns:
-//   - the most recent Summary, if one exists
-//   - the lastNMessages messages, if lastNMessages > 0
-//   - all messages since the last SummaryPoint, if lastNMessages == 0
-//   - if no Summary (and no SummaryPoint) exists and lastNMessages == 0, returns
-//     all undeleted messages up to the configured message window
+// GetMemory returns memory for a given sessionID.
+// If config.Type is SimpleMemoryType, returns the most recent Summary and a list of messages.
+// If config.Type is PerpetualMemoryType, returns the last X messages, optionally the most recent summary
+// and a list of summaries semantically similar to the most recent messages.
 func (pms *PostgresMemoryStore) GetMemory(
 	ctx context.Context,
 	appState *models.AppState,
-	sessionID string,
-	lastNMessages int,
+	config *models.MemoryConfig,
 ) (*models.Memory, error) {
 	if appState == nil {
-		return nil, store.NewStorageError("nil appState received", nil)
+		return nil, errors.New("nil appState received")
+	}
+	if config == nil {
+		return nil, errors.New("nil config received")
 	}
 
-	if lastNMessages < 0 {
-		return nil, store.NewStorageError("cannot specify negative lastNMessages", nil)
+	switch config.Type {
+	case models.SimpleMemoryType:
+		return getSimpleMemory(ctx, pms.Client, appState, config)
+	case models.PerpetualMemoryType:
+		return getPerpetualMemory(ctx, pms.Client, appState, config)
+	default:
+		return nil, errors.New("invalid memory type")
 	}
-
-	// Get the most recent summary
-	summary, err := getSummary(ctx, pms.Client, sessionID)
-	if err != nil {
-		return nil, store.NewStorageError("failed to get summary", err)
-	}
-	if summary != nil {
-		log.Debugf("Got summary for %s: %s", sessionID, summary.UUID)
-	}
-
-	messages, err := getMessages(
-		ctx,
-		pms.Client,
-		sessionID,
-		appState.Config.Memory.MessageWindow,
-		summary,
-		lastNMessages,
-	)
-	if err != nil {
-		return nil, store.NewStorageError("failed to get messages", err)
-	}
-	if messages != nil {
-		log.Debugf("Got messages for %s: %d", sessionID, len(messages))
-	}
-
-	memory := models.Memory{
-		Messages: messages,
-		Summary:  summary,
-	}
-
-	return &memory, nil
 }
 
 // GetMessageList retrieves a list of messages for a given sessionID. Paginated by cursor and limit.

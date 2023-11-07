@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -57,6 +58,13 @@ func messageTaskPayloadToMessages(
 
 	messages, err := appState.MemoryStore.GetMessagesByUUID(ctx, appState, sessionID, uuids)
 	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			log.Warnf(
+				"task failed to get messages by uuid. were the records deleted? %s",
+				err,
+			)
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to get messages by uuid: %w", err)
 	}
 

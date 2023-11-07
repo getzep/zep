@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
 
 	"github.com/getzep/zep/pkg/llms"
@@ -96,7 +95,7 @@ func searchMemory(
 		dbQuery = dbQuery.Limit(limit)
 	}
 
-	results, err := executeMessagesSearchScan(ctx, dbQuery)
+	results, err := executeMessagesSearchScan(ctx, query, dbQuery)
 	if err != nil {
 		return nil, store.NewStorageError("memory searchMemory failed", err)
 	}
@@ -227,16 +226,26 @@ func addMessagesSortQuery(searchText string, dbQuery *bun.SelectQuery, tablePref
 
 func executeMessagesSearchScan(
 	ctx context.Context,
+	query *models.MemorySearchPayload,
 	dbQuery *bun.SelectQuery,
 ) ([]models.MemorySearchResult, error) {
 	var results []models.MemorySearchResult
-	if err := dbQuery.Scan(ctx, &results); err != nil {
-		return nil, fmt.Errorf("error scanning: %w", err)
+
+	// if MinScore is not set, we can just scan the results
+	// If query.Text is empty, MinScore is meaningless
+	if query.MinScore == 0 || query.Text == "" {
+		err := dbQuery.Scan(ctx, &results)
+		return results, err
 	}
-	if len(results) == 0 {
-		return []models.MemorySearchResult{}, nil
-	}
-	return results, nil
+
+	// if MinScore is set, we need to use a CTE and filter the CTE results
+	// because we can't filter on the dist column in the query
+	q := dbQuery.DB().NewSelect().
+		With("cte", dbQuery).
+		Table("cte").
+		Where("\"dist\" >= ?", query.MinScore)
+	err := q.Scan(ctx, &results)
+	return results, err
 }
 
 func filterValidMessageSearchResults(

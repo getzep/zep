@@ -34,7 +34,13 @@ func runTestTokenCountExtractor(
 	)
 	assert.NoError(t, err)
 
-	memories, err := store.GetMemory(testCtx, appState, sessionID, 0)
+	memoryConfig := &models.MemoryConfig{
+		SessionID:     sessionID,
+		LastNMessages: 0,
+		Type:          models.SimpleMemoryType,
+	}
+
+	memories, err := store.GetMemory(testCtx, appState, memoryConfig)
 	assert.NoError(t, err)
 
 	messages := memories.Messages
@@ -54,7 +60,7 @@ func runTestTokenCountExtractor(
 	err = tokenCountExtractor.Execute(testCtx, m)
 	assert.NoError(t, err)
 
-	memory, err := appState.MemoryStore.GetMemory(testCtx, appState, sessionID, 0)
+	memory, err := appState.MemoryStore.GetMemory(testCtx, appState, memoryConfig)
 	assert.NoError(t, err)
 	assert.Equal(t, len(memory.Messages), len(messages))
 

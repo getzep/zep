@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -191,4 +192,41 @@ func TestGetSessionListRoute(t *testing.T) {
 
 	// Check the number of sessions returned
 	assert.Equal(t, numSessions, len(sessions))
+}
+
+// TestGetMemoryHandler tests a simple memory request
+func TestGetMemoryHandler(t *testing.T) {
+	// Create a session
+	sessionID := testutils.GenerateRandomString(10)
+	// Call putMessages function
+	err := appState.MemoryStore.PutMemory(testCtx, appState, sessionID,
+		&models.Memory{
+			Messages: testutils.TestMessages,
+		}, false,
+	)
+	assert.NoError(t, err, "PutMemory should not return an error")
+
+	lastn := 10
+
+	url := testServer.URL + "/api/v1/sessions/" + sessionID + "/memory?lastn=" + fmt.Sprint(lastn)
+
+	// Create a request
+	req, err := http.NewRequest("GET", url, nil)
+	assert.NoError(t, err)
+
+	// Create a client and do the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	assert.NoError(t, err)
+
+	// Check the status code
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Check the response body
+	var memories models.Memory
+	err = json.NewDecoder(resp.Body).Decode(&memories)
+	assert.NoError(t, err)
+
+	// Check the number of memories returned
+	assert.Equal(t, lastn, len(memories.Messages))
 }

@@ -53,8 +53,10 @@ func (mt *MessageIntentTask) Execute(
 		return fmt.Errorf("MessageEmbedderTask messageTaskPayloadToMessages failed: %w", err)
 	}
 
+	// this can happen if the messages were deleted
 	if len(messages) == 0 {
-		return fmt.Errorf("MessageIntentTask messageTaskPayloadToMessages returned no messages")
+		log.Warnf("MessageIntentTask messageTaskPayloadToMessages returned no messages")
+		return nil
 	}
 
 	errs := make(chan error, len(messages))

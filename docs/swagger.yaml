@@ -159,6 +159,9 @@ definitions:
       metadata:
         additionalProperties: true
         type: object
+      min_score:
+        description: 'TODO: implement for documents'
+        type: number
       mmr_lambda:
         type: number
       search_type:
@@ -186,6 +189,10 @@ definitions:
       metadata:
         additionalProperties: true
         type: object
+      summaries:
+        items:
+          $ref: '#/definitions/models.Summary'
+        type: array
       summary:
         $ref: '#/definitions/models.Summary'
     type: object
@@ -194,6 +201,8 @@ definitions:
       metadata:
         additionalProperties: true
         type: object
+      min_score:
+        type: number
       mmr_lambda:
         type: number
       search_scope:
@@ -1155,6 +1164,13 @@ paths:
         in: query
         name: lastn
         type: integer
+      - description: Memory type. Default is 'simple'
+        enum:
+        - simple
+        - perpetual
+        in: query
+        name: type
+        type: string
       produces:
       - application/json
       responses:
@@ -1174,8 +1190,7 @@ paths:
             $ref: '#/definitions/apihandlers.APIError'
       security:
       - Bearer: []
-      summary: Returns a memory (latest summary and list of messages) for a given
-        session
+      summary: Returns a memory for a given session
       tags:
       - memory
     post:

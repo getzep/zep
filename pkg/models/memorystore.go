@@ -96,17 +96,13 @@ type MessageStorer interface {
 }
 
 type MemoryStorer interface {
-	// GetMemory returns the most recent Summary and a list of messages for a given sessionID.
-	// GetMemory returns:
-	//   - the most recent Summary, if one exists
-	//   - the lastNMessages messages, if lastNMessages > 0
-	//   - all messages since the last SummaryPoint, if lastNMessages == 0
-	//   - if no Summary (and no SummaryPoint) exists and lastNMessages == 0, returns
-	//     all undeleted messages
+	// GetMemory returns memory for a given sessionID.
+	// If config.Type is SimpleMemoryType, returns the most recent Summary and a list of messages.
+	// If config.Type is PerpetualMemoryType, returns the last X messages, optionally the most recent summary
+	// and a list of summaries semantically similar to the most recent messages.
 	GetMemory(ctx context.Context,
 		appState *AppState,
-		sessionID string,
-		lastNMessages int) (*Memory, error)
+		config *MemoryConfig) (*Memory, error)
 	// PutMemory stores a Memory for a given sessionID. If the SessionID doesn't exist, a new one is created.
 	PutMemory(ctx context.Context,
 		appState *AppState,

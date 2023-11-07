@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TODO: Add test for setting MinScore
+
 func TestMemorySearch(t *testing.T) {
 	// Test data
 	sessionID, err := testutils.GenerateRandomSessionID(16)
@@ -49,40 +51,56 @@ DONE:
 	testCases := []struct {
 		name              string
 		query             string
+		filter            map[string]interface{}
 		limit             int
 		expectedErrorText string
 		SearchScope       models.SearchScope
 		searchType        models.SearchType
+		emptyResults      bool
 	}{
-		{"Empty Query", "", 0, "empty query",
-			models.SearchScopeMessages, models.SearchTypeSimilarity},
+		{"Empty Query", "", nil, 0, "empty query",
+			models.SearchScopeMessages, models.SearchTypeSimilarity, false},
+		{"No results (missed filter condition)", "",
+			map[string]interface{}{"where": map[string]interface{}{"jsonpath": "$.system.entities[*] ? (@.Label == \"DATE\")"}},
+			0, "",
+			models.SearchScopeMessages, models.SearchTypeSimilarity, true},
+		{"Filter condition", "",
+			map[string]interface{}{"where": map[string]interface{}{"jsonpath": "$[*] ? (@.bar == \"foo\")"}},
+			1, "",
+			models.SearchScopeMessages, models.SearchTypeSimilarity, false},
 		{
 			"Non-empty Query",
 			"travel",
+			nil,
 			0,
 			"",
 			models.SearchScopeMessages,
 			models.SearchTypeSimilarity,
+			false,
 		},
-		{"Limit 0", "travel", 0, "", models.SearchScopeMessages, models.SearchTypeSimilarity},
-		{"Limit 5", "travel", 5, "", models.SearchScopeMessages, models.SearchTypeSimilarity},
-		{"Limit 5 Empty SearchScope", "travel", 5, "", "", models.SearchTypeSimilarity},
-		{"MMR Query", "travel", 5, "", models.SearchScopeMessages, models.SearchTypeMMR},
+		{"Limit 0", "travel", nil, 0, "", models.SearchScopeMessages, models.SearchTypeSimilarity, false},
+		{"Limit 5", "travel", nil, 5, "", models.SearchScopeMessages, models.SearchTypeSimilarity, false},
+		{"Limit 5 Empty SearchScope", "travel", nil, 5, "", "", models.SearchTypeSimilarity, false},
+		{"MMR Query", "travel", nil, 5, "", models.SearchScopeMessages, models.SearchTypeMMR, false},
 		{
 			"SearchScope Summary",
 			"travel",
+			nil,
 			1,
 			"",
 			models.SearchScopeSummary,
 			models.SearchTypeSimilarity,
+			false,
 		},
 		{
 			"SearchScope Summary MMR",
 			"travel",
+			nil,
 			1,
 			"",
 			models.SearchScopeSummary,
 			models.SearchTypeMMR,
+			false,
 		},
 	}
 
@@ -90,6 +108,7 @@ DONE:
 		t.Run(tc.name, func(t *testing.T) {
 			q := models.MemorySearchPayload{
 				Text:        tc.query,
+				Metadata:    tc.filter,
 				SearchType:  tc.searchType,
 				SearchScope: tc.SearchScope,
 			}
@@ -109,6 +128,10 @@ DONE:
 				)
 			} else {
 				assert.NoError(t, err, "searchMemory should not return an error")
+				if tc.emptyResults {
+					assert.Len(t, s, 0, "Expected 0 messages to be returned")
+					return
+				}
 				assert.Len(t, s, expectedLastN, fmt.Sprintf("Expected %d messages to be returned", expectedLastN))
 
 				if tc.SearchScope == models.SearchScopeSummary {

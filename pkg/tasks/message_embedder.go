@@ -44,8 +44,10 @@ func (t *MessageEmbedderTask) Execute(
 		return fmt.Errorf("MessageEmbedderTask messageTaskPayloadToMessages failed: %w", err)
 	}
 
+	// this can happen if the messages were deleted
 	if len(messages) == 0 {
-		return fmt.Errorf("MessageEmbedderTask messageTaskPayloadToMessages returned no messages")
+		log.Warnf("MessageEmbedderTask messageTaskPayloadToMessages returned no messages")
+		return nil
 	}
 
 	err = t.Process(ctx, sessionID, messages)

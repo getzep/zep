@@ -22,6 +22,16 @@ nlp:
   server_url: "http://localhost:5557"
 memory:
   message_window: 12
+  perpetual:
+    # The number of messages to return alongside the summaries
+    last_n: 8
+    # Return the most recent summary alongside the search results?
+    include_current_summary: false
+    # The maximum number of summaries to return from search
+    max_summary_count: 2
+    # Determines whether MMR should be used to rank the summaries
+    # returned from search
+    use_mmr: true
 extractors:
   documents:
     embeddings:

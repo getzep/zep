@@ -43,7 +43,19 @@ type NLP struct {
 }
 
 type MemoryConfig struct {
-	MessageWindow int `mapstructure:"message_window"`
+	MessageWindow int                   `mapstructure:"message_window"`
+	Perpetual     PerpetualMemoryConfig `mapstructure:"perpetual"`
+}
+
+type PerpetualMemoryConfig struct {
+	// LastN is the number of messages to return alongside the summaries
+	LastN int `mapstructure:"last_n"`
+	// IncludeCurrentSummary determines whether the current summary should be included in the response
+	IncludeCurrentSummary bool `mapstructure:"include_current_summary"`
+	// MaxSummaryCount is the maximum number of summaries to return via search
+	MaxSummaryCount int `mapstructure:"max_summary_count"`
+	// UseMMR determines whether MMR should be used to rank the summaries
+	UseMMR bool `mapstructure:"use_mmr"`
 }
 
 type PostgresConfig struct {

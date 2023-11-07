@@ -44,7 +44,6 @@ func Create(appState *models.AppState) *http.Server {
 // @version					0.x
 // @license.name				Apache 2.0
 // @license.url				http://www.apache.org/licenses/LICENSE-2.0.html
-// @BasePath					/api/v1
 // @schemes					http https
 // @securityDefinitions.apikey	Bearer
 // @in							header

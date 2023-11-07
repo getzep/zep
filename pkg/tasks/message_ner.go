@@ -43,8 +43,10 @@ func (n *MessageNERTask) Execute(
 		return fmt.Errorf("MessageEmbedderTask messageTaskPayloadToMessages failed: %w", err)
 	}
 
+	// this can happen if the messages were deleted
 	if len(messages) == 0 {
-		return fmt.Errorf("MessageNERTask messageTaskPayloadToMessages returned no messages")
+		log.Warnf("MessageNERTask messageTaskPayloadToMessages returned no messages")
+		return nil
 	}
 
 	var textData = make([]models.TextData, len(messages))

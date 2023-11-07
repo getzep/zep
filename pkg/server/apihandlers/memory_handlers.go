@@ -15,13 +15,14 @@ const OKResponse = "OK"
 
 // GetMemoryHandler godoc
 //
-//	@Summary		Returns a memory (latest summary and list of messages) for a given session
+//	@Summary		Returns a memory for a given session
 //	@Description	get memory by session id
 //	@Tags			memory
 //	@Accept			json
 //	@Produce		json
-//	@Param			sessionId	path		string	true	"Session ID"
-//	@Param			lastn		query		integer	false	"Last N messages. Overrides memory_window configuration"
+//	@Param			sessionId	path		string				true	"Session ID"
+//	@Param			lastn		query		integer				false	"Last N messages. Overrides memory_window configuration"
+//	@Param			type		query		models.MemoryType	false	"Memory type. Default is 'simple'"
 //	@Success		200			{object}	[]models.Memory
 //	@Failure		404			{object}	APIError	"Not Found"
 //	@Failure		500			{object}	APIError	"Internal Server Error"
@@ -30,19 +31,41 @@ const OKResponse = "OK"
 func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
+		memoryTypeStr := r.URL.Query().Get("memory_type")
 		lastN, err := handlertools.IntFromQuery[int](r, "lastn")
 		if err != nil {
 			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
 
-		sessionMemory, err := appState.MemoryStore.GetMemory(r.Context(), appState,
-			sessionID, lastN)
+		var memoryType models.MemoryType
+		switch memoryTypeStr {
+		case "simple":
+			memoryType = models.SimpleMemoryType
+		case "perpetual":
+			memoryType = models.PerpetualMemoryType
+			// override lastN if it was set
+			lastN = appState.Config.Memory.Perpetual.LastN
+		case "":
+			memoryType = models.SimpleMemoryType
+		}
+
+		memoryConfig := &models.MemoryConfig{
+			SessionID:                sessionID,
+			LastNMessages:            lastN,
+			Type:                     memoryType,
+			IncludeCurrentSummary:    appState.Config.Memory.Perpetual.IncludeCurrentSummary,
+			MaxPerpetualSummaryCount: appState.Config.Memory.Perpetual.MaxSummaryCount,
+			UseMMR:                   appState.Config.Memory.Perpetual.UseMMR,
+		}
+
+		sessionMemory, err := appState.MemoryStore.GetMemory(r.Context(), appState, memoryConfig)
 		if err != nil {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
-		if sessionMemory == nil || sessionMemory.Messages == nil {
+		if sessionMemory == nil ||
+			(sessionMemory.Messages == nil && sessionMemory.Summaries == nil) {
 			handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 			return
 		}

@@ -33,6 +33,12 @@ func testConfigDefaults() (*config.Config, error) {
 		},
 		Memory: config.MemoryConfig{
 			MessageWindow: 12,
+			Perpetual: config.PerpetualMemoryConfig{
+				LastN:                 2,
+				IncludeCurrentSummary: true,
+				MaxSummaryCount:       2,
+				UseMMR:                true,
+			},
 		},
 		Extractors: config.ExtractorsConfig{
 			Documents: config.DocumentExtractorsConfig{

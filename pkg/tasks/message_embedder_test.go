@@ -34,8 +34,14 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
+	memoryConfig := &models.MemoryConfig{
+		SessionID:     sessionID,
+		LastNMessages: 0,
+		Type:          models.SimpleMemoryType,
+	}
+
 	// Get messages that are missing embeddings using appState.MemoryStore.GetMessageEmbeddings
-	memories, err := store.GetMemory(testCtx, appState, sessionID, 0)
+	memories, err := store.GetMemory(testCtx, appState, memoryConfig)
 	assert.NoError(t, err)
 	assert.True(t, len(memories.Messages) == len(testMessages))
 

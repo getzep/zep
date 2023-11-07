@@ -44,6 +44,12 @@ func (mt *MessageTokenCountTask) Execute(
 		return fmt.Errorf("TokenCountExtractor messageTaskPayloadToMessages failed: %w", err)
 	}
 
+	// this can happen if the messages were deleted
+	if len(msgs) == 0 {
+		log.Warnf("TokenCountExtractor messageTaskPayloadToMessages returned no messages")
+		return nil
+	}
+
 	countResult, err := mt.updateTokenCounts(msgs)
 	if err != nil {
 		return fmt.Errorf("TokenCountExtractor failed to get token count: %w", err)

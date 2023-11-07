@@ -61,12 +61,17 @@ func (t *MessageSummaryTask) Execute(
 		return errors.New("SummaryTask message window is 0")
 	}
 
+	memoryConfig := &models.MemoryConfig{
+		SessionID:     sessionID,
+		LastNMessages: 0,
+		Type:          models.SimpleMemoryType,
+	}
+
 	// if no summary exists yet, we'll get all messages up to the message window
 	messagesSummary, err := t.appState.MemoryStore.GetMemory(
 		ctx,
 		t.appState,
-		sessionID,
-		0,
+		memoryConfig,
 	)
 	if err != nil {
 		return fmt.Errorf("SummaryTask get memory failed: %w", err)

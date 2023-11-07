@@ -28,6 +28,7 @@ type MemorySearchPayload struct {
 	SearchScope SearchScope            `json:"search_scope,omitempty"`
 	SearchType  SearchType             `json:"search_type,omitempty"`
 	MMRLambda   float32                `json:"mmr_lambda,omitempty"`
+	MinScore    float32                `json:"min_score,omitempty"`
 }
 
 type DocumentSearchPayload struct {
@@ -37,6 +38,8 @@ type DocumentSearchPayload struct {
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 	SearchType     SearchType             `json:"search_type"`
 	MMRLambda      float32                `json:"mmr_lambda,omitempty"`
+	// TODO: implement for documents
+	MinScore float32 `json:"min_score,omitempty"`
 }
 
 type DocumentSearchResult struct {
