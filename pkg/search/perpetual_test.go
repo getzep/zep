@@ -8,7 +8,7 @@ import (
 )
 
 func TestGenerateHistoryString(t *testing.T) {
-	m := &MultiQuestionRetriever{
+	m := &MultiQuestionSummaryRetriever{
 		HistoryMessages: []models.Message{
 			{
 				Role:    "user",
@@ -27,7 +27,7 @@ func TestGenerateHistoryString(t *testing.T) {
 }
 
 func TestExtractQuestions(t *testing.T) {
-	m := &MultiQuestionRetriever{}
+	m := &MultiQuestionSummaryRetriever{}
 
 	xmlData := "<questions>Question 1\nQuestion 2</questions>"
 	expected := []string{"Question 1", "Question 2"}

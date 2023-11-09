@@ -9,10 +9,8 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/getzep/zep/pkg/models"
+	"github.com/getzep/zep/pkg/search"
 )
-
-const PerpetualMemoryMinScore = 0.7
-const PerpetualMemoryMMRLambda = 0.5
 
 // getSimpleMemory returns the most recent Summary and a list of messages for a given sessionID.
 // getSimpleMemory returns:
@@ -114,34 +112,19 @@ func getPerpetualMemory(
 		return nil, fmt.Errorf("failed to get messages: %w", err)
 	}
 
-	messageText := messagesToText(messages)
-
-	searchType := models.SearchTypeSimilarity
-	if config.UseMMR {
-		searchType = models.SearchTypeMMR
-	}
-
 	// Search summaries
-	summarySearchPayload := &models.MemorySearchPayload{
-		Text:        messageText,
-		SearchScope: models.SearchScopeSummary,
-		SearchType:  searchType,
-		MMRLambda:   PerpetualMemoryMMRLambda,
-		MinScore:    PerpetualMemoryMinScore,
-	}
-
-	summarySearchResults, err := appState.MemoryStore.SearchMemory(
-		ctx,
+	retriever := search.NewMultiQuestionSummaryRetriever(
 		appState,
 		config.SessionID,
-		summarySearchPayload,
-		config.MaxPerpetualSummaryCount,
+		3, // amke this a constant
+		messages,
+		appState.Config.LLM.Service,
 	)
+
+	summaries, err := retriever.Run(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to search summaries: %w", err)
+		return nil, fmt.Errorf("failed to retrieve summaries: %w", err)
 	}
-	// Wait to get current summary, if necessary
-	wg.Wait()
 
 	if currentSummaryErr != nil {
 		return nil, currentSummaryErr
@@ -150,22 +133,6 @@ func getPerpetualMemory(
 	return &models.Memory{
 		Messages:  messages,
 		Summary:   currentSummary,
-		Summaries: memorySearchResultsToSummaries(summarySearchResults),
+		Summaries: summaries,
 	}, nil
-}
-
-func messagesToText(messages []models.Message) string {
-	var text string
-	for _, msg := range messages {
-		text += msg.Content + " "
-	}
-	return text
-}
-
-func memorySearchResultsToSummaries(results []models.MemorySearchResult) []models.Summary {
-	summaries := make([]models.Summary, len(results))
-	for i, result := range results {
-		summaries[i] = *result.Summary
-	}
-	return summaries
 }
