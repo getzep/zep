@@ -141,7 +141,7 @@ func ConfigureOpenAIClientOptions(options []openai.Option, cfg *config.Config, c
 	if openAIOrgID != "" {
 		options = append(
 			options,
-			openai.WithBaseURL(openAIOrgID),
+			openai.WithOrganization(openAIOrgID),
 		)
 	}
 
