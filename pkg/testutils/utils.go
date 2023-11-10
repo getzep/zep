@@ -36,8 +36,6 @@ func testConfigDefaults() (*config.Config, error) {
 			Perpetual: config.PerpetualMemoryConfig{
 				LastN:                 2,
 				IncludeCurrentSummary: true,
-				MaxSummaryCount:       2,
-				UseMMR:                true,
 			},
 		},
 		Extractors: config.ExtractorsConfig{

@@ -39,7 +39,7 @@ func TestGetPerpetualMemory(t *testing.T) {
 				len(testutils.TestMessages),
 				len(se),
 			)
-			if len(me) == len(testutils.TestMessages) && len(se) >= 2 {
+			if len(me) == len(testutils.TestMessages) && len(se) >= 1 {
 				goto DONE
 			}
 		}
@@ -48,26 +48,22 @@ func TestGetPerpetualMemory(t *testing.T) {
 DONE:
 
 	testCases := []struct {
-		name                     string
-		lastNMessages            int
-		includeCurrentSummary    bool
-		maxPerpetualSummaryCount int
+		name                  string
+		lastNMessages         int
+		includeCurrentSummary bool
 	}{
-		{"LastNMessages 2, IncludeCurrentSummary true, MaxPerpetualSummaryCount 1", 2, true, 1},
-		{"LastNMessages 2, IncludeCurrentSummary false, MaxPerpetualSummaryCount 1", 2, false, 1},
-		{"LastNMessages 5, IncludeCurrentSummary true, MaxPerpetualSummaryCount 1", 5, true, 1},
-		{"LastNMessages 5, IncludeCurrentSummary false, MaxPerpetualSummaryCount 2", 5, false, 2},
+		{"LastNMessages 2, IncludeCurrentSummary true", 2, true},
+		{"LastNMessages 2, IncludeCurrentSummary false", 2, false},
+		{"LastNMessages 5, IncludeCurrentSummary true", 5, true},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			config := &models.MemoryConfig{
-				SessionID:                sessionID,
-				Type:                     models.PerpetualMemoryType,
-				LastNMessages:            tc.lastNMessages,
-				IncludeCurrentSummary:    tc.includeCurrentSummary,
-				MaxPerpetualSummaryCount: tc.maxPerpetualSummaryCount,
-				UseMMR:                   true,
+				SessionID:             sessionID,
+				Type:                  models.PerpetualMemoryType,
+				LastNMessages:         tc.lastNMessages,
+				IncludeCurrentSummary: tc.includeCurrentSummary,
 			}
 
 			memory, err := getPerpetualMemory(testCtx, testDB, appState, config)
@@ -86,7 +82,7 @@ DONE:
 			assert.Equal(t, tc.lastNMessages, len(memory.Messages))
 
 			// Check the summary count
-			assert.Equal(t, tc.maxPerpetualSummaryCount, len(memory.Summaries))
+			assert.Equal(t, 1, len(memory.Summaries))
 		})
 	}
 }

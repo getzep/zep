@@ -49,6 +49,9 @@ func NewMultiQuestionSummaryRetriever(
 }
 
 func (m *MultiQuestionSummaryRetriever) Run(ctx context.Context) ([]models.Summary, error) {
+	ctx, cancel := context.WithTimeout(ctx, PerpetualMemoryLLMTimeOut)
+	defer cancel()
+
 	questions, err := m.generateQuestions(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate questions: %w", err)
@@ -57,11 +60,13 @@ func (m *MultiQuestionSummaryRetriever) Run(ctx context.Context) ([]models.Summa
 	return m.search(ctx, questions)
 }
 
-func (m *MultiQuestionSummaryRetriever) search(ctx context.Context, questions []string) ([]models.Summary, error) {
-	ctx, cancel := context.WithTimeout(ctx, PerpetualMemoryLLMTimeOut)
-	defer cancel()
-
-	pool := pool.NewWithResults[[]models.MemorySearchResult]().WithContext(ctx).WithCancelOnError().WithFirstError()
+func (m *MultiQuestionSummaryRetriever) search(
+	ctx context.Context,
+	questions []string,
+) ([]models.Summary, error) {
+	pool := pool.NewWithResults[[]models.MemorySearchResult]().WithContext(ctx).
+		WithCancelOnError().
+		WithFirstError()
 
 	searchQuestion := func(question string) ([]models.MemorySearchResult, error) {
 		p := &models.MemorySearchPayload{
@@ -145,10 +150,10 @@ func (m *MultiQuestionSummaryRetriever) generateQuestions(ctx context.Context) (
 	return nil, errors.New("unsupported service")
 }
 
-func (m *MultiQuestionSummaryRetriever) reduce(ctx context.Context, summaries []models.Summary) (models.Summary, error) {
-	ctx, cancel := context.WithTimeout(ctx, PerpetualMemoryLLMTimeOut)
-	defer cancel()
-
+func (m *MultiQuestionSummaryRetriever) reduce(
+	ctx context.Context,
+	summaries []models.Summary,
+) (models.Summary, error) {
 	if len(summaries) == 0 {
 		return models.Summary{}, errors.New("no summaries provided")
 	}
@@ -163,7 +168,10 @@ func (m *MultiQuestionSummaryRetriever) reduce(ctx context.Context, summaries []
 	return models.Summary{}, errors.New("unsupported service")
 }
 
-func (m *MultiQuestionSummaryRetriever) reduceOpenAI(ctx context.Context, summaries []models.Summary) (models.Summary, error) {
+func (m *MultiQuestionSummaryRetriever) reduceOpenAI(
+	ctx context.Context,
+	summaries []models.Summary,
+) (models.Summary, error) {
 	prompt, err := internal.ParsePrompt(defaultMultiRetrieverReduceTemplateOpenAI, summaries)
 	if err != nil {
 		return models.Summary{}, fmt.Errorf("reduceOpenAI failed: %w", err)
@@ -185,7 +193,9 @@ func (m *MultiQuestionSummaryRetriever) reduceOpenAI(ctx context.Context, summar
 	return summary, nil
 }
 
-func (m *MultiQuestionSummaryRetriever) generateQuestionsOpenAI(ctx context.Context) ([]string, error) {
+func (m *MultiQuestionSummaryRetriever) generateQuestionsOpenAI(
+	ctx context.Context,
+) ([]string, error) {
 	// Create a prompt with the Message input that needs to be classified
 	prompt, err := internal.ParsePrompt(defaultMultiRetrieverQuestionsTemplateOpenAI, m)
 	if err != nil {

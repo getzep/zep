@@ -51,12 +51,10 @@ func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 		}
 
 		memoryConfig := &models.MemoryConfig{
-			SessionID:                sessionID,
-			LastNMessages:            lastN,
-			Type:                     memoryType,
-			IncludeCurrentSummary:    appState.Config.Memory.Perpetual.IncludeCurrentSummary,
-			MaxPerpetualSummaryCount: appState.Config.Memory.Perpetual.MaxSummaryCount,
-			UseMMR:                   appState.Config.Memory.Perpetual.UseMMR,
+			SessionID:             sessionID,
+			LastNMessages:         lastN,
+			Type:                  memoryType,
+			IncludeCurrentSummary: appState.Config.Memory.Perpetual.IncludeCurrentSummary,
 		}
 
 		sessionMemory, err := appState.MemoryStore.GetMemory(r.Context(), appState, memoryConfig)
