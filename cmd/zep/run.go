@@ -31,9 +31,10 @@ import (
 )
 
 const (
-	ErrStoreTypeNotSet   = "store.type must be set"
-	ErrPostgresDSNNotSet = "store.postgres.dsn must be set"
-	StoreTypePostgres    = "postgres"
+	ErrStoreTypeNotSet             = "store.type must be set"
+	ErrPostgresDSNNotSet           = "store.postgres.dsn must be set"
+	ErrOtelEnabledButExporterEmpty = "OpenTelemtry is enabled but OTEL_EXPORTER_OTLP_ENDPOINT is not set"
+	StoreTypePostgres              = "postgres"
 )
 
 // run is the entrypoint for the zep server
@@ -244,6 +245,9 @@ func dumpConfigToJSON(cfg *config.Config) string {
 }
 
 func initTracer() func(context.Context) error {
+	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" {
+		log.Fatal(ErrOtelEnabledButExporterEmpty)
+	}
 	exporter, err := otlptrace.New(
 		context.Background(),
 		otlptracehttp.NewClient(),
