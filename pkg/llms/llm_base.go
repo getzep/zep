@@ -6,7 +6,11 @@ import (
 	"net/http"
 	"time"
 
+	"go.opentelemetry.io/otel"
+
 	"github.com/getzep/zep/pkg/models"
+	"github.com/tmc/langchaingo/llms"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/hashicorp/go-retryablehttp"
 
@@ -17,6 +21,7 @@ import (
 
 const DefaultTemperature = 0.0
 const InvalidLLMModelError = "llm model is not set or is invalid"
+const OtelLLMTracerName = "llm"
 
 var log = internal.GetLogger()
 
@@ -78,6 +83,56 @@ func NewLLMClient(ctx context.Context, cfg *config.Config) (models.ZepLLM, error
 	default:
 		return nil, fmt.Errorf("invalid LLM service: %s", cfg.LLM.Service)
 	}
+}
+
+var _ models.ZepLLM = &ZepLLM{}
+
+// ZepLLM is a wrapper around the Zep LLM implementations that implements the
+// ZepLLM interface and adds OpenTelemetry tracing
+type ZepLLM struct {
+	llm    models.ZepLLM
+	tracer trace.Tracer
+}
+
+func (zllm *ZepLLM) Call(ctx context.Context,
+	prompt string,
+	options ...llms.CallOption,
+) (string, error) {
+	ctx, span := zllm.tracer.Start(ctx, "llm.Call")
+	defer span.End()
+
+	result, err := zllm.llm.Call(ctx, prompt, options...)
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
+
+	return result, err
+}
+
+func (zllm *ZepLLM) EmbedTexts(ctx context.Context, texts []string) ([][]float32, error) {
+	ctx, span := zllm.tracer.Start(ctx, "llm.EmbedTexts")
+	defer span.End()
+
+	result, err := zllm.llm.EmbedTexts(ctx, texts)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	return result, err
+}
+
+func (zllm *ZepLLM) GetTokenCount(text string) (int, error) {
+	return zllm.llm.GetTokenCount(text)
+}
+
+func (zllm *ZepLLM) Init(ctx context.Context, cfg *config.Config) error {
+	// set up tracing
+	tracer := otel.Tracer(OtelLLMTracerName)
+	zllm.tracer = tracer
+
+	return zllm.llm.Init(ctx, cfg)
 }
 
 type LLMError struct {

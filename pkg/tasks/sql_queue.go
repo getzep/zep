@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"time"
 
+	wotel "github.com/voi-oss/watermill-opentelemetry/pkg/opentelemetry"
+
 	"github.com/ThreeDotsLabs/watermill"
 	wsql "github.com/ThreeDotsLabs/watermill-sql/v2/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -22,7 +24,7 @@ func (s SQLSchema) SubscribeIsolationLevel() sql.IsolationLevel {
 }
 
 func NewSQLQueuePublisher(db *sql.DB, logger watermill.LoggerAdapter) (message.Publisher, error) {
-	return wsql.NewPublisher(
+	p, err := wsql.NewPublisher(
 		db,
 		wsql.PublisherConfig{
 			SchemaAdapter:        SQLSchema{},
@@ -30,6 +32,10 @@ func NewSQLQueuePublisher(db *sql.DB, logger watermill.LoggerAdapter) (message.P
 		},
 		logger,
 	)
+	if err != nil {
+		return nil, err
+	}
+	return wotel.NewPublisherDecorator(p), nil
 }
 
 func NewSQLQueueSubscriber(db *sql.DB, logger watermill.LoggerAdapter) (message.Subscriber, error) {

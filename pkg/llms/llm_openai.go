@@ -2,7 +2,12 @@ package llms
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptrace"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/tmc/langchaingo/schema"
 
@@ -14,14 +19,22 @@ import (
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
-const OpenAIAPITimeout = 90 * time.Second
+// OpenAICallTimeout is the Call timeout
+const OpenAICallTimeout = 60 * time.Second
+
+// OpenAIAPITimeout is the timeout for ReytrableHTTPRequest requests
+const OpenAIAPITimeout = 20 * time.Second
 const OpenAIAPIKeyNotSetError = "ZEP_OPENAI_API_KEY is not set" //nolint:gosec
 const MaxOpenAIAPIRequestAttempts = 5
 
 var _ models.ZepLLM = &ZepOpenAILLM{}
 
-func NewOpenAILLM(ctx context.Context, cfg *config.Config) (*ZepOpenAILLM, error) {
-	zllm := &ZepOpenAILLM{}
+func NewOpenAILLM(ctx context.Context, cfg *config.Config) (models.ZepLLM, error) {
+	zllm := &ZepLLM{
+		llm: &ZepOpenAILLM{
+			cfg: cfg,
+		},
+	}
 	err := zllm.Init(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -30,8 +43,9 @@ func NewOpenAILLM(ctx context.Context, cfg *config.Config) (*ZepOpenAILLM, error
 }
 
 type ZepOpenAILLM struct {
-	llm *openai.Chat
-	tkm *tiktoken.Tiktoken
+	client *openai.Chat
+	cfg    *config.Config
+	tkm    *tiktoken.Tiktoken
 }
 
 func (zllm *ZepOpenAILLM) Init(_ context.Context, cfg *config.Config) error {
@@ -53,7 +67,7 @@ func (zllm *ZepOpenAILLM) Init(_ context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	zllm.llm = llm
+	zllm.client = llm
 
 	return nil
 }
@@ -63,7 +77,7 @@ func (zllm *ZepOpenAILLM) Call(ctx context.Context,
 	options ...llms.CallOption,
 ) (string, error) {
 	// If the LLM is not initialized, return an error
-	if zllm.llm == nil {
+	if zllm.client == nil {
 		return "", NewLLMError(InvalidLLMModelError, nil)
 	}
 
@@ -71,12 +85,12 @@ func (zllm *ZepOpenAILLM) Call(ctx context.Context,
 		options = append(options, llms.WithTemperature(DefaultTemperature))
 	}
 
-	thisCtx, cancel := context.WithTimeout(ctx, OpenAIAPITimeout)
+	thisCtx, cancel := context.WithTimeout(ctx, OpenAICallTimeout)
 	defer cancel()
 
 	messages := []schema.ChatMessage{schema.SystemChatMessage{Content: prompt}}
 
-	completion, err := zllm.llm.Call(thisCtx, messages, options...)
+	completion, err := zllm.client.Call(thisCtx, messages, options...)
 	if err != nil {
 		return "", err
 	}
@@ -86,14 +100,14 @@ func (zllm *ZepOpenAILLM) Call(ctx context.Context,
 
 func (zllm *ZepOpenAILLM) EmbedTexts(ctx context.Context, texts []string) ([][]float32, error) {
 	// If the LLM is not initialized, return an error
-	if zllm.llm == nil {
+	if zllm.client == nil {
 		return nil, NewLLMError(InvalidLLMModelError, nil)
 	}
 
-	thisCtx, cancel := context.WithTimeout(ctx, OpenAIAPITimeout)
+	thisCtx, cancel := context.WithTimeout(ctx, OpenAICallTimeout)
 	defer cancel()
 
-	embeddings, err := zllm.llm.CreateEmbedding(thisCtx, texts)
+	embeddings, err := zllm.client.CreateEmbedding(thisCtx, texts)
 	if err != nil {
 		return nil, NewLLMError("error while creating embedding", err)
 	}
@@ -117,12 +131,21 @@ func (zllm *ZepOpenAILLM) configureClient(cfg *config.Config) ([]openai.Option, 
 		log.Fatal("only one of AzureOpenAIEndpoint or OpenAIEndpoint can be set")
 	}
 
+	// Set up the HTTP client and config OpenTelemetry wrapper
 	retryableHTTPClient := NewRetryableHTTPClient(MaxOpenAIAPIRequestAttempts, OpenAIAPITimeout)
+	httpClient := &http.Client{
+		Transport: otelhttp.NewTransport(
+			retryableHTTPClient.StandardClient().Transport,
+			otelhttp.WithClientTrace(func(ctx context.Context) *httptrace.ClientTrace {
+				return otelhttptrace.NewClientTrace(ctx)
+			}),
+		),
+	}
 
 	options := make([]openai.Option, 0)
 	options = append(
 		options,
-		openai.WithHTTPClient(retryableHTTPClient.StandardClient()),
+		openai.WithHTTPClient(httpClient),
 		openai.WithModel(cfg.LLM.Model),
 		openai.WithToken(apiKey),
 	)

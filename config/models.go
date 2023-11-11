@@ -11,6 +11,7 @@ type Config struct {
 	Server        ServerConfig        `mapstructure:"server"`
 	Log           LogConfig           `mapstructure:"log"`
 	Auth          AuthConfig          `mapstructure:"auth"`
+	OpenTelemetry OpenTelemetryConfig `mapstructure:"opentelemetry"`
 	DataConfig    DataConfig          `mapstructure:"data"`
 	Development   bool                `mapstructure:"development"`
 	CustomPrompts CustomPromptsConfig `mapstructure:"custom_prompts"`
@@ -64,6 +65,10 @@ type ServerConfig struct {
 
 type LogConfig struct {
 	Level string `mapstructure:"level"`
+}
+
+type OpenTelemetryConfig struct {
+	Enabled bool `mapstructure:"enabled"`
 }
 
 type AuthConfig struct {

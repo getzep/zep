@@ -22,6 +22,12 @@ import (
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/server"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 const (
@@ -44,6 +50,16 @@ func run() {
 	config.SetLogLevel(cfg)
 	appState := NewAppState(cfg)
 
+	if cfg.OpenTelemetry.Enabled {
+		cleanup := initTracer()
+		defer func() {
+			err := cleanup(context.Background())
+			if err != nil {
+				log.Errorf("Failed to cleanup tracer: %v", err)
+			}
+		}()
+	}
+
 	srv := server.Create(appState)
 
 	log.Infof("Listening on: %s", srv.Addr)
@@ -52,7 +68,7 @@ func run() {
 	}
 	err = srv.ListenAndServe()
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
 
@@ -225,4 +241,34 @@ func dumpConfigToJSON(cfg *config.Config) string {
 	}
 
 	return string(b)
+}
+
+func initTracer() func(context.Context) error {
+	exporter, err := otlptrace.New(
+		context.Background(),
+		otlptracehttp.NewClient(),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resources, err := resource.New(context.Background(),
+		resource.WithFromEnv(),
+		resource.WithProcess(),
+		resource.WithOS(),
+		resource.WithContainer(),
+		resource.WithHost(),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	otel.SetTracerProvider(
+		sdktrace.NewTracerProvider(
+			sdktrace.WithSampler(sdktrace.AlwaysSample()),
+			sdktrace.WithBatcher(exporter),
+			sdktrace.WithResource(resources),
+		),
+	)
+	return exporter.Shutdown
 }

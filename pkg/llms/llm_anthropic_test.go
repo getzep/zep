@@ -21,7 +21,7 @@ func TestZepAnthropicLLM_Init(t *testing.T) {
 
 	zllm, err := NewAnthropicLLM(context.Background(), cfg)
 	assert.NoError(t, err, "Expected no error from NewAnthropicLLM")
-	assert.NotNil(t, zllm.llm, "Expected llm to be initialized")
+	assert.NotNil(t, zllm.client, "Expected llm to be initialized")
 }
 
 func TestZepAnthropicLLM_Call(t *testing.T) {
