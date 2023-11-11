@@ -2,12 +2,7 @@ package llms
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptrace"
 	"time"
-
-	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/tmc/langchaingo/schema"
 
@@ -132,15 +127,7 @@ func (zllm *ZepOpenAILLM) configureClient(cfg *config.Config) ([]openai.Option, 
 	}
 
 	// Set up the HTTP client and config OpenTelemetry wrapper
-	retryableHTTPClient := NewRetryableHTTPClient(MaxOpenAIAPIRequestAttempts, OpenAIAPITimeout)
-	httpClient := &http.Client{
-		Transport: otelhttp.NewTransport(
-			retryableHTTPClient.StandardClient().Transport,
-			otelhttp.WithClientTrace(func(ctx context.Context) *httptrace.ClientTrace {
-				return otelhttptrace.NewClientTrace(ctx)
-			}),
-		),
-	}
+	httpClient := NewRetryableHTTPClient(MaxOpenAIAPIRequestAttempts, OpenAIAPITimeout)
 
 	options := make([]openai.Option, 0)
 	options = append(

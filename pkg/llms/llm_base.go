@@ -4,7 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptrace"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"go.opentelemetry.io/otel"
 
@@ -199,7 +203,7 @@ func Float64ToFloat32Matrix(in [][]float64) [][]float32 {
 	return out
 }
 
-func NewRetryableHTTPClient(retryMax int, timeout time.Duration) *retryablehttp.Client {
+func NewRetryableHTTPClient(retryMax int, timeout time.Duration) *http.Client {
 	retryableHTTPClient := retryablehttp.NewClient()
 	retryableHTTPClient.RetryMax = retryMax
 	retryableHTTPClient.HTTPClient.Timeout = timeout
@@ -207,7 +211,16 @@ func NewRetryableHTTPClient(retryMax int, timeout time.Duration) *retryablehttp.
 	retryableHTTPClient.Backoff = retryablehttp.DefaultBackoff
 	retryableHTTPClient.CheckRetry = retryPolicy
 
-	return retryableHTTPClient
+	httpClient := &http.Client{
+		Transport: otelhttp.NewTransport(
+			retryableHTTPClient.StandardClient().Transport,
+			otelhttp.WithClientTrace(func(ctx context.Context) *httptrace.ClientTrace {
+				return otelhttptrace.NewClientTrace(ctx)
+			}),
+		),
+	}
+
+	return httpClient
 }
 
 // retryPolicy is a retryablehttp.CheckRetry function. It is used to determine
