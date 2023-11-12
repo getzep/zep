@@ -14,11 +14,7 @@ import (
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
-// OpenAICallTimeout is the Call timeout
-const OpenAICallTimeout = 60 * time.Second
-
-// OpenAIAPITimeout is the timeout for ReytrableHTTPRequest requests
-const OpenAIAPITimeout = 20 * time.Second
+const OpenAIAPITimeout = 90 * time.Second
 const OpenAIAPIKeyNotSetError = "ZEP_OPENAI_API_KEY is not set" //nolint:gosec
 const MaxOpenAIAPIRequestAttempts = 5
 
@@ -80,7 +76,7 @@ func (zllm *ZepOpenAILLM) Call(ctx context.Context,
 		options = append(options, llms.WithTemperature(DefaultTemperature))
 	}
 
-	thisCtx, cancel := context.WithTimeout(ctx, OpenAICallTimeout)
+	thisCtx, cancel := context.WithTimeout(ctx, OpenAIAPITimeout)
 	defer cancel()
 
 	messages := []schema.ChatMessage{schema.SystemChatMessage{Content: prompt}}
@@ -99,7 +95,7 @@ func (zllm *ZepOpenAILLM) EmbedTexts(ctx context.Context, texts []string) ([][]f
 		return nil, NewLLMError(InvalidLLMModelError, nil)
 	}
 
-	thisCtx, cancel := context.WithTimeout(ctx, OpenAICallTimeout)
+	thisCtx, cancel := context.WithTimeout(ctx, OpenAIAPITimeout)
 	defer cancel()
 
 	embeddings, err := zllm.client.CreateEmbedding(thisCtx, texts)
