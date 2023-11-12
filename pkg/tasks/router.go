@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	wotel "github.com/voi-oss/watermill-opentelemetry/pkg/opentelemetry"
+
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
@@ -54,6 +56,9 @@ func NewTaskRouter(appState *models.AppState, db *sql.DB) (*TaskRouter, error) {
 	}
 
 	router.AddMiddleware(
+		// Watermill opentelemetry middleware
+		wotel.Trace(),
+
 		// Throttle limits the number of messages processed per second.
 		middleware.NewThrottle(TaskCountThrottle, time.Second).Middleware,
 

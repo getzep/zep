@@ -22,12 +22,19 @@ import (
 	"github.com/getzep/zep/pkg/llms"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/server"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 const (
-	ErrStoreTypeNotSet   = "store.type must be set"
-	ErrPostgresDSNNotSet = "store.postgres.dsn must be set"
-	StoreTypePostgres    = "postgres"
+	ErrStoreTypeNotSet             = "store.type must be set"
+	ErrPostgresDSNNotSet           = "store.postgres.dsn must be set"
+	ErrOtelEnabledButExporterEmpty = "OpenTelemtry is enabled but OTEL_EXPORTER_OTLP_ENDPOINT is not set"
+	StoreTypePostgres              = "postgres"
 )
 
 // run is the entrypoint for the zep server
@@ -44,6 +51,16 @@ func run() {
 	config.SetLogLevel(cfg)
 	appState := NewAppState(cfg)
 
+	if cfg.OpenTelemetry.Enabled {
+		cleanup := initTracer()
+		defer func() {
+			err := cleanup(context.Background())
+			if err != nil {
+				log.Errorf("Failed to cleanup tracer: %v", err)
+			}
+		}()
+	}
+
 	srv := server.Create(appState)
 
 	log.Infof("Listening on: %s", srv.Addr)
@@ -52,7 +69,7 @@ func run() {
 	}
 	err = srv.ListenAndServe()
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
 
@@ -225,4 +242,37 @@ func dumpConfigToJSON(cfg *config.Config) string {
 	}
 
 	return string(b)
+}
+
+func initTracer() func(context.Context) error {
+	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" {
+		log.Fatal(ErrOtelEnabledButExporterEmpty)
+	}
+	exporter, err := otlptrace.New(
+		context.Background(),
+		otlptracehttp.NewClient(),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resources, err := resource.New(context.Background(),
+		resource.WithFromEnv(),
+		resource.WithProcess(),
+		resource.WithOS(),
+		resource.WithContainer(),
+		resource.WithHost(),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	otel.SetTracerProvider(
+		sdktrace.NewTracerProvider(
+			sdktrace.WithSampler(sdktrace.AlwaysSample()),
+			sdktrace.WithBatcher(exporter),
+			sdktrace.WithResource(resources),
+		),
+	)
+	return exporter.Shutdown
 }

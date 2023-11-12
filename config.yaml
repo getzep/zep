@@ -76,6 +76,10 @@ data:
   purge_every: 60
 log:
   level: "info"
+opentelemetry:
+  enabled: false
+  endpoint:
+  attributes: {}
 # Custom Prompts Configuration
 # Allows customization of extractor prompts.
 custom_prompts:

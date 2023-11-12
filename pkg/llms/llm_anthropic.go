@@ -18,8 +18,12 @@ const AnthropicAPIKeyNotSetError = "ZEP_ANTHROPIC_API_KEY is not set" //nolint:g
 
 var _ models.ZepLLM = &ZepAnthropicLLM{}
 
-func NewAnthropicLLM(ctx context.Context, cfg *config.Config) (*ZepAnthropicLLM, error) {
-	zllm := &ZepAnthropicLLM{}
+func NewAnthropicLLM(ctx context.Context, cfg *config.Config) (models.ZepLLM, error) {
+	zllm := &ZepLLM{
+		llm: &ZepAnthropicLLM{
+			cfg: cfg,
+		},
+	}
 	err := zllm.Init(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -28,7 +32,8 @@ func NewAnthropicLLM(ctx context.Context, cfg *config.Config) (*ZepAnthropicLLM,
 }
 
 type ZepAnthropicLLM struct {
-	llm *anthropic.LLM
+	client *anthropic.LLM
+	cfg    *config.Config
 }
 
 func (zllm *ZepAnthropicLLM) Init(_ context.Context, cfg *config.Config) error {
@@ -42,7 +47,7 @@ func (zllm *ZepAnthropicLLM) Init(_ context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	zllm.llm = llm
+	zllm.client = llm
 
 	return nil
 }
@@ -52,7 +57,7 @@ func (zllm *ZepAnthropicLLM) Call(ctx context.Context,
 	options ...llms.CallOption,
 ) (string, error) {
 	// If the LLM is not initialized, return an error
-	if zllm.llm == nil {
+	if zllm.client == nil {
 		return "", NewLLMError(InvalidLLMModelError, nil)
 	}
 
@@ -65,7 +70,7 @@ func (zllm *ZepAnthropicLLM) Call(ctx context.Context,
 
 	prompt = "Human: " + prompt + "\nAssistant:"
 
-	completion, err := zllm.llm.Call(thisCtx, prompt, options...)
+	completion, err := zllm.client.Call(thisCtx, prompt, options...)
 	if err != nil {
 		return "", err
 	}

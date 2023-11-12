@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/uptrace/bun/extra/bunotel"
+
 	"github.com/getzep/zep/pkg/store/postgres/migrations"
 
 	"github.com/Masterminds/semver/v3"
@@ -657,6 +659,7 @@ func NewPostgresConn(appState *models.AppState) (*bun.DB, error) {
 	sqldb.SetMaxIdleConns(maxOpenConns)
 
 	db := bun.NewDB(sqldb, pgdialect.New())
+	db.AddQueryHook(bunotel.NewQueryHook(bunotel.WithDBName("zep")))
 
 	// Enable pgvector extension
 	err := enablePgVectorExtension(ctx, db)

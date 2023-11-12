@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hashicorp/go-retryablehttp"
-
 	"github.com/getzep/zep/pkg/models"
 )
 
@@ -84,12 +82,12 @@ func makeEmbedRequest(ctx context.Context, url string, jsonBody []byte) ([]byte,
 	ctx, cancel := context.WithTimeout(ctx, LocalEmbedderTimeout)
 	defer cancel()
 
-	retryableHTTPClient := NewRetryableHTTPClient(
+	httpClient := NewRetryableHTTPClient(
 		MaxLocalEmbedderRetryAttempts,
 		LocalEmbedderTimeout,
 	)
 
-	req, err := retryablehttp.NewRequestWithContext(
+	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
 		url,
@@ -100,7 +98,7 @@ func makeEmbedRequest(ctx context.Context, url string, jsonBody []byte) ([]byte,
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := retryableHTTPClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		log.Error("Error making POST request:", err)
 		return nil, err

@@ -19,12 +19,21 @@ func TestZepOpenAILLM_Init(t *testing.T) {
 		},
 	}
 
-	zllm := &ZepOpenAILLM{}
+	zllm, err := NewOpenAILLM(context.Background(), cfg)
+	assert.NoError(t, err, "Expected no error from NewOpenAILLM")
 
-	err := zllm.Init(context.Background(), cfg)
+	err = zllm.Init(context.Background(), cfg)
 	assert.NoError(t, err, "Expected no error from Init")
-	assert.NotNil(t, zllm.llm, "Expected llm to be initialized")
-	assert.NotNil(t, zllm.tkm, "Expected tkm to be initialized")
+
+	z, ok := zllm.(*ZepLLM)
+	assert.True(t, ok, "Expected ZepLLM")
+
+	assert.NotNil(t, z.llm, "Expected client to be initialized")
+
+	o, ok := z.llm.(*ZepOpenAILLM)
+	assert.True(t, ok, "Expected ZepOpenAILLM")
+	assert.NotNil(t, o.client, "Expected tkm to be initialized")
+	assert.NotNil(t, o.tkm, "Expected tkm to be initialized")
 }
 
 func TestZepOpenAILLM_TestConfigureClient(t *testing.T) {

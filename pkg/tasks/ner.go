@@ -9,13 +9,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/avast/retry-go/v4"
 	"github.com/getzep/zep/internal"
 	"github.com/getzep/zep/pkg/models"
 )
 
+const NerRetryMax = 3
+const NerTimeout = 10 * time.Second
+
 func callNERTask(
-	_ context.Context,
+	ctx context.Context,
 	appState *models.AppState,
 	texts []models.TextData,
 ) (models.EntityResponse, error) {
@@ -38,38 +40,43 @@ func callNERTask(
 		return models.EntityResponse{}, err
 	}
 
-	var resp *http.Response
 	var bodyBytes []byte
 	var response models.EntityResponse
 
-	// Retry POST request to entity extractor 3 times with 1 second delay.
-	err = retry.Do(
-		func() error {
-			var err error
-			resp, err = http.Post(url, "application/json", bytes.NewBuffer(jsonBody)) //nolint:gosec
-			if err != nil {
-				log.Error("Error making POST request:", err)
-				return err
-			}
-			defer resp.Body.Close()
+	client := NewRetryableHTTPClient(NerRetryMax, NerTimeout)
 
-			bodyBytes, err = io.ReadAll(resp.Body)
-			if err != nil {
-				log.Error("Error reading response body:", err)
-				return err
-			}
-
-			err = json.Unmarshal(bodyBytes, &response)
-			if err != nil {
-				fmt.Println("Error unmarshaling response body:", err)
-				return err
-			}
-			return nil
-		},
-		retry.Attempts(3),
-		retry.Delay(time.Second),
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		url,
+		bytes.NewBuffer(jsonBody),
 	)
+	if err != nil {
+		return models.EntityResponse{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
 
+	resp, err := client.Do(req)
+	if err != nil {
+		return models.EntityResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errorString := fmt.Sprintf(
+			"Error making POST request: %d - %s",
+			resp.StatusCode,
+			resp.Status,
+		)
+		return models.EntityResponse{}, fmt.Errorf(errorString)
+	}
+
+	bodyBytes, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return models.EntityResponse{}, err
+	}
+
+	err = json.Unmarshal(bodyBytes, &response)
 	if err != nil {
 		return models.EntityResponse{}, err
 	}
