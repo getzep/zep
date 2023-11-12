@@ -110,7 +110,7 @@ func getPerpetualMemory(
 		config.SessionID,
 		appState.Config.Memory.MessageWindow,
 		nil,
-		config.LastNMessages,
+		lastNMessages,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get messages: %w", err)

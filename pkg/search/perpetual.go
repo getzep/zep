@@ -52,6 +52,10 @@ func (m *MultiQuestionSummaryRetriever) Run(ctx context.Context) ([]models.Summa
 	ctx, cancel := context.WithTimeout(ctx, PerpetualMemoryTimeOut)
 	defer cancel()
 
+	if m.Service != "openai" {
+		return nil, errors.New("PerpetualMemory only supports OpenAI at this time")
+	}
+
 	questions, err := m.generateQuestions(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate questions: %w", err)
@@ -64,7 +68,7 @@ func (m *MultiQuestionSummaryRetriever) search(
 	ctx context.Context,
 	questions []string,
 ) ([]models.Summary, error) {
-	pool := pool.NewWithResults[[]models.MemorySearchResult]().WithContext(ctx).
+	searchPool := pool.NewWithResults[[]models.MemorySearchResult]().WithContext(ctx).
 		WithCancelOnError().
 		WithFirstError()
 
@@ -93,11 +97,11 @@ func (m *MultiQuestionSummaryRetriever) search(
 
 	for _, question := range questions {
 		question := question
-		pool.Go(func(ctx context.Context) ([]models.MemorySearchResult, error) {
+		searchPool.Go(func(ctx context.Context) ([]models.MemorySearchResult, error) {
 			return searchQuestion(question)
 		})
 	}
-	results, err := pool.Wait()
+	results, err := searchPool.Wait()
 	if err != nil {
 		return nil, fmt.Errorf("failed to search summaries: %w", err)
 	}
@@ -137,14 +141,7 @@ func (m *MultiQuestionSummaryRetriever) generateQuestions(ctx context.Context) (
 	}
 	m.History = m.generateHistoryString()
 
-	switch m.Service {
-	case "openai":
-		return m.generateQuestionsOpenAI(ctx)
-		//case "anthropic":
-		//	return m.generateQuestionsAnthropic()
-	}
-
-	return nil, errors.New("unsupported service")
+	return m.generateQuestionsOpenAI(ctx)
 }
 
 func (m *MultiQuestionSummaryRetriever) generateQuestionsOpenAI(
@@ -203,14 +200,7 @@ func (m *MultiQuestionSummaryRetriever) reduce(
 		return models.Summary{}, errors.New("no summaries provided")
 	}
 
-	switch m.Service {
-	case "openai":
-		return m.reduceOpenAI(ctx, summaries)
-		//case "anthropic":
-		//	return m.reduceAnthropic(summaries)
-	}
-
-	return models.Summary{}, errors.New("unsupported service")
+	return m.reduceOpenAI(ctx, summaries)
 }
 
 func (m *MultiQuestionSummaryRetriever) reduceOpenAI(

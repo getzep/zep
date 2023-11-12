@@ -23,7 +23,6 @@ import (
 )
 
 const ReadHeaderTimeout = 5 * time.Second
-const OtelTracerNamer = "chi-server"
 const RouterName = "router"
 
 var log = internal.GetLogger()
