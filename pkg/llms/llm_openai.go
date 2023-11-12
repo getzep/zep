@@ -14,7 +14,8 @@ import (
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
-const OpenAIAPITimeout = 90 * time.Second
+const OpenAICallTimeout = 60 * time.Second
+const OpenAIAPITimeout = 20 * time.Second
 const OpenAIAPIKeyNotSetError = "ZEP_OPENAI_API_KEY is not set" //nolint:gosec
 const MaxOpenAIAPIRequestAttempts = 5
 
@@ -76,12 +77,12 @@ func (zllm *ZepOpenAILLM) Call(ctx context.Context,
 		options = append(options, llms.WithTemperature(DefaultTemperature))
 	}
 
-	thisCtx, cancel := context.WithTimeout(ctx, OpenAIAPITimeout)
+	ctx, cancel := context.WithTimeout(ctx, OpenAICallTimeout)
 	defer cancel()
 
 	messages := []schema.ChatMessage{schema.SystemChatMessage{Content: prompt}}
 
-	completion, err := zllm.client.Call(thisCtx, messages, options...)
+	completion, err := zllm.client.Call(ctx, messages, options...)
 	if err != nil {
 		return "", err
 	}
@@ -95,10 +96,10 @@ func (zllm *ZepOpenAILLM) EmbedTexts(ctx context.Context, texts []string) ([][]f
 		return nil, NewLLMError(InvalidLLMModelError, nil)
 	}
 
-	thisCtx, cancel := context.WithTimeout(ctx, OpenAIAPITimeout)
+	ctx, cancel := context.WithTimeout(ctx, OpenAICallTimeout)
 	defer cancel()
 
-	embeddings, err := zllm.client.CreateEmbedding(thisCtx, texts)
+	embeddings, err := zllm.client.CreateEmbedding(ctx, texts)
 	if err != nil {
 		return nil, NewLLMError("error while creating embedding", err)
 	}
