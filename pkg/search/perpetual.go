@@ -17,7 +17,7 @@ import (
 const PerpetualMemoryMinScore = 0.7
 const PerpetualMemoryMMRLambda = 0.5
 const PerpetualMemorySummaryCount = 3
-const PerpetualMemoryLLMTimeOut = 20 * time.Second
+const PerpetualMemoryTimeOut = 10 * time.Second
 
 var questionExtractRe = regexp.MustCompile(`(?s)<questions>\s*(.*?)\s*</questions>`)
 
@@ -49,7 +49,7 @@ func NewMultiQuestionSummaryRetriever(
 }
 
 func (m *MultiQuestionSummaryRetriever) Run(ctx context.Context) ([]models.Summary, error) {
-	ctx, cancel := context.WithTimeout(ctx, PerpetualMemoryLLMTimeOut)
+	ctx, cancel := context.WithTimeout(ctx, PerpetualMemoryTimeOut)
 	defer cancel()
 
 	questions, err := m.generateQuestions(ctx)
@@ -132,9 +132,6 @@ func (m *MultiQuestionSummaryRetriever) search(
 }
 
 func (m *MultiQuestionSummaryRetriever) generateQuestions(ctx context.Context) ([]string, error) {
-	ctx, cancel := context.WithTimeout(ctx, PerpetualMemoryLLMTimeOut)
-	defer cancel()
-
 	if len(m.HistoryMessages) == 0 {
 		return nil, errors.New("no messages provided")
 	}
@@ -148,49 +145,6 @@ func (m *MultiQuestionSummaryRetriever) generateQuestions(ctx context.Context) (
 	}
 
 	return nil, errors.New("unsupported service")
-}
-
-func (m *MultiQuestionSummaryRetriever) reduce(
-	ctx context.Context,
-	summaries []models.Summary,
-) (models.Summary, error) {
-	if len(summaries) == 0 {
-		return models.Summary{}, errors.New("no summaries provided")
-	}
-
-	switch m.Service {
-	case "openai":
-		return m.reduceOpenAI(ctx, summaries)
-		//case "anthropic":
-		//	return m.reduceAnthropic(summaries)
-	}
-
-	return models.Summary{}, errors.New("unsupported service")
-}
-
-func (m *MultiQuestionSummaryRetriever) reduceOpenAI(
-	ctx context.Context,
-	summaries []models.Summary,
-) (models.Summary, error) {
-	prompt, err := internal.ParsePrompt(defaultMultiRetrieverReduceTemplateOpenAI, summaries)
-	if err != nil {
-		return models.Summary{}, fmt.Errorf("reduceOpenAI failed: %w", err)
-	}
-
-	// Send the populated prompt to the language model
-	summaryText, err := m.appState.LLMClient.Call(
-		ctx,
-		prompt,
-	)
-	if err != nil {
-		return models.Summary{}, fmt.Errorf("reduceOpenAI failed: %w", err)
-	}
-
-	summary := models.Summary{
-		Content: summaryText,
-	}
-
-	return summary, nil
 }
 
 func (m *MultiQuestionSummaryRetriever) generateQuestionsOpenAI(
@@ -239,6 +193,49 @@ func (m *MultiQuestionSummaryRetriever) extractQuestions(xmlData string) []strin
 	}
 
 	return nonEmptyQuestions
+}
+
+func (m *MultiQuestionSummaryRetriever) reduce(
+	ctx context.Context,
+	summaries []models.Summary,
+) (models.Summary, error) {
+	if len(summaries) == 0 {
+		return models.Summary{}, errors.New("no summaries provided")
+	}
+
+	switch m.Service {
+	case "openai":
+		return m.reduceOpenAI(ctx, summaries)
+		//case "anthropic":
+		//	return m.reduceAnthropic(summaries)
+	}
+
+	return models.Summary{}, errors.New("unsupported service")
+}
+
+func (m *MultiQuestionSummaryRetriever) reduceOpenAI(
+	ctx context.Context,
+	summaries []models.Summary,
+) (models.Summary, error) {
+	prompt, err := internal.ParsePrompt(defaultMultiRetrieverReduceTemplateOpenAI, summaries)
+	if err != nil {
+		return models.Summary{}, fmt.Errorf("reduceOpenAI failed: %w", err)
+	}
+
+	// Send the populated prompt to the language model
+	summaryText, err := m.appState.LLMClient.Call(
+		ctx,
+		prompt,
+	)
+	if err != nil {
+		return models.Summary{}, fmt.Errorf("reduceOpenAI failed: %w", err)
+	}
+
+	summary := models.Summary{
+		Content: summaryText,
+	}
+
+	return summary, nil
 }
 
 // generateHistoryString generates a chat history string from the Message slice pasted to it.

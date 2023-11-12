@@ -24,7 +24,7 @@ memory:
   message_window: 12
   perpetual:
     # The number of messages to return alongside the summaries
-    last_n: 8
+    last_n: 4
     # Return the most recent summary alongside the search results?
     include_current_summary: false
 extractors:

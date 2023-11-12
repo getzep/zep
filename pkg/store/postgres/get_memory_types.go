@@ -12,6 +12,9 @@ import (
 	"github.com/getzep/zep/pkg/search"
 )
 
+const DefaultPerpetualLastNMessages = 4
+const DefaultPerpetualQuestionCount = 3
+
 // getSimpleMemory returns the most recent Summary and a list of messages for a given sessionID.
 // getSimpleMemory returns:
 //   - the most recent Summary, if one exists
@@ -78,8 +81,9 @@ func getPerpetualMemory(
 		return nil, errors.New("sessionID cannot be empty")
 	}
 
-	if config.LastNMessages < 1 {
-		return nil, errors.New("lastNMessages must be greater than 0")
+	lastNMessages := config.LastNMessages
+	if lastNMessages < 1 {
+		lastNMessages = DefaultPerpetualLastNMessages
 	}
 
 	// Get current summary in the background
@@ -116,7 +120,7 @@ func getPerpetualMemory(
 	retriever := search.NewMultiQuestionSummaryRetriever(
 		appState,
 		config.SessionID,
-		3, // amke this a constant
+		DefaultPerpetualQuestionCount,
 		messages,
 		appState.Config.LLM.Service,
 	)
