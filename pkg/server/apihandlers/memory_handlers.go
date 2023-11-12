@@ -309,10 +309,6 @@ func SearchMemoryHandler(appState *models.AppState) http.HandlerFunc {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
-		if searchResult == nil {
-			handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
-			return
-		}
 		if err := handlertools.EncodeJSON(w, searchResult); err != nil {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 
 	"github.com/getzep/zep/pkg/llms"
@@ -98,6 +99,11 @@ func searchMemory(
 	results, err := executeMessagesSearchScan(ctx, dbQuery)
 	if err != nil {
 		return nil, store.NewStorageError("memory searchMemory failed", err)
+	}
+
+	// If we didn't find any results, return early.
+	if len(results) == 0 {
+		return []models.MemorySearchResult{}, nil
 	}
 
 	filteredResults := filterValidMessageSearchResults(results, query.Metadata)
@@ -224,8 +230,13 @@ func executeMessagesSearchScan(
 	dbQuery *bun.SelectQuery,
 ) ([]models.MemorySearchResult, error) {
 	var results []models.MemorySearchResult
-	err := dbQuery.Scan(ctx, &results)
-	return results, err
+	if err := dbQuery.Scan(ctx, &results); err != nil {
+		return nil, fmt.Errorf("error scanning: %w", err)
+	}
+	if len(results) == 0 {
+		return []models.MemorySearchResult{}, nil
+	}
+	return results, nil
 }
 
 func filterValidMessageSearchResults(
