@@ -203,10 +203,12 @@ func Float64ToFloat32Matrix(in [][]float64) [][]float32 {
 }
 
 func NewRetryableHTTPClient(retryMax int, timeout time.Duration) *http.Client {
+	leveledLogger := internal.NewLeveledLogrus(log)
+
 	client := retryablehttp.NewClient()
 	client.RetryMax = retryMax
 	client.HTTPClient.Timeout = timeout
-	client.Logger = log
+	client.Logger = leveledLogger
 	client.Backoff = retryablehttp.DefaultBackoff
 	client.CheckRetry = retryPolicy
 
