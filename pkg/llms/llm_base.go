@@ -9,7 +9,6 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-
 	"go.opentelemetry.io/otel"
 
 	"github.com/getzep/zep/pkg/models"
@@ -204,16 +203,16 @@ func Float64ToFloat32Matrix(in [][]float64) [][]float32 {
 }
 
 func NewRetryableHTTPClient(retryMax int, timeout time.Duration) *http.Client {
-	retryableHTTPClient := retryablehttp.NewClient()
-	retryableHTTPClient.RetryMax = retryMax
-	retryableHTTPClient.HTTPClient.Timeout = timeout
-	retryableHTTPClient.Logger = log
-	retryableHTTPClient.Backoff = retryablehttp.DefaultBackoff
-	retryableHTTPClient.CheckRetry = retryPolicy
+	client := retryablehttp.NewClient()
+	client.RetryMax = retryMax
+	client.HTTPClient.Timeout = timeout
+	client.Logger = log
+	client.Backoff = retryablehttp.DefaultBackoff
+	client.CheckRetry = retryPolicy
 
 	httpClient := &http.Client{
 		Transport: otelhttp.NewTransport(
-			retryableHTTPClient.StandardClient().Transport,
+			client.StandardClient().Transport,
 			otelhttp.WithClientTrace(func(ctx context.Context) *httptrace.ClientTrace {
 				return otelhttptrace.NewClientTrace(ctx)
 			}),
