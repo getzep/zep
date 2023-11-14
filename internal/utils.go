@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"reflect"
 	"text/template"
+
+	"github.com/getzep/sprig/v3"
 )
 
 func ParsePrompt(promptTemplate string, data any) (string, error) {
-	tmpl, err := template.New("prompt").Parse(promptTemplate)
+	tmpl, err := template.New("prompt").Funcs(sprig.FuncMap()).Parse(promptTemplate)
 	if err != nil {
 		return "", err
 	}

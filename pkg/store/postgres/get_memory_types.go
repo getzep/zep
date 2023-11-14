@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/uptrace/bun"
 
@@ -13,7 +12,7 @@ import (
 )
 
 const DefaultPerpetualLastNMessages = 4
-const DefaultPerpetualQuestionCount = 3
+const DefaultPerpetualQuestionCount = 1
 
 // getSimpleMemory returns the most recent Summary and a list of messages for a given sessionID.
 // getSimpleMemory returns:
@@ -72,11 +71,6 @@ func getPerpetualMemory(
 	db *bun.DB,
 	appState *models.AppState,
 	config *models.MemoryConfig) (*models.Memory, error) {
-	var currentSummary *models.Summary
-	var currentSummaryErr error
-
-	wg := &sync.WaitGroup{}
-
 	if config.SessionID == "" {
 		return nil, errors.New("sessionID cannot be empty")
 	}
@@ -84,23 +78,6 @@ func getPerpetualMemory(
 	lastNMessages := config.LastNMessages
 	if lastNMessages < 1 {
 		lastNMessages = DefaultPerpetualLastNMessages
-	}
-
-	// Get current summary in the background
-	if config.IncludeCurrentSummary {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			var err error
-			currentSummary, err = getSummary(ctx, db, config.SessionID)
-			if err != nil {
-				currentSummaryErr = fmt.Errorf("failed to get summary %w", err)
-			}
-			if currentSummary != nil {
-				log.Debugf("Got summary for %s: %s", config.SessionID, currentSummary.UUID)
-			}
-		}()
 	}
 
 	// Get the last N messages
@@ -125,18 +102,13 @@ func getPerpetualMemory(
 		appState.Config.LLM.Service,
 	)
 
-	summaries, err := retriever.Run(ctx)
+	summary, err := retriever.Run(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve summaries: %w", err)
 	}
 
-	if currentSummaryErr != nil {
-		return nil, currentSummaryErr
-	}
-
 	return &models.Memory{
-		Messages:  messages,
-		Summary:   currentSummary,
-		Summaries: summaries,
+		Messages: messages,
+		Summary:  summary,
 	}, nil
 }

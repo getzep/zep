@@ -25,9 +25,10 @@ type MultiQuestionSummaryRetriever struct {
 	appState        *models.AppState
 	SessionID       string
 	LastN           int
-	QuestionCount   int
 	HistoryMessages []models.Message
-	History         string
+	QuestionCount   int
+	Questions       []string
+	SearchResults   []models.Summary
 	Service         string
 }
 
@@ -48,7 +49,7 @@ func NewMultiQuestionSummaryRetriever(
 	}
 }
 
-func (m *MultiQuestionSummaryRetriever) Run(ctx context.Context) ([]models.Summary, error) {
+func (m *MultiQuestionSummaryRetriever) Run(ctx context.Context) (*models.Summary, error) {
 	ctx, cancel := context.WithTimeout(ctx, PerpetualMemoryTimeOut)
 	defer cancel()
 
@@ -61,13 +62,15 @@ func (m *MultiQuestionSummaryRetriever) Run(ctx context.Context) ([]models.Summa
 		return nil, fmt.Errorf("failed to generate questions: %w", err)
 	}
 
+	m.Questions = questions
+
 	return m.search(ctx, questions)
 }
 
 func (m *MultiQuestionSummaryRetriever) search(
 	ctx context.Context,
 	questions []string,
-) ([]models.Summary, error) {
+) (*models.Summary, error) {
 	searchPool := pool.NewWithResults[[]models.MemorySearchResult]().WithContext(ctx).
 		WithCancelOnError().
 		WithFirstError()
@@ -120,26 +123,30 @@ func (m *MultiQuestionSummaryRetriever) search(
 		i++
 	}
 
+	m.SearchResults = summaries
+
 	log.Debugf("Found %d unique summaries", len(summaries))
 	log.Debugf("Summaries: %+v", summaries)
 
+	var summary *models.Summary
 	if len(summaries) > 1 {
-		summary, err := m.reduce(ctx, summaries)
+		var err error
+		summary, err = m.reduce(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to reduce summaries: %w", err)
 		}
-
-		summaries = []models.Summary{summary}
+	} else {
+		summary = &summaries[0]
 	}
 
-	return summaries, nil
+	return summary, nil
 }
 
 func (m *MultiQuestionSummaryRetriever) generateQuestions(ctx context.Context) ([]string, error) {
 	if len(m.HistoryMessages) == 0 {
 		return nil, errors.New("no messages provided")
 	}
-	m.History = m.generateHistoryString()
+	//m.History = m.generateHistoryString()
 
 	return m.generateQuestionsOpenAI(ctx)
 }
@@ -152,6 +159,7 @@ func (m *MultiQuestionSummaryRetriever) generateQuestionsOpenAI(
 	if err != nil {
 		return nil, fmt.Errorf("generateQuestionsOpenAI failed: %w", err)
 	}
+	log.Debugf("Prompt: %s", prompt)
 
 	// Send the populated prompt to the language model
 	questionText, err := m.appState.LLMClient.Call(
@@ -194,22 +202,20 @@ func (m *MultiQuestionSummaryRetriever) extractQuestions(xmlData string) []strin
 
 func (m *MultiQuestionSummaryRetriever) reduce(
 	ctx context.Context,
-	summaries []models.Summary,
-) (models.Summary, error) {
-	if len(summaries) == 0 {
-		return models.Summary{}, errors.New("no summaries provided")
+) (*models.Summary, error) {
+	if len(m.SearchResults) == 0 {
+		return nil, errors.New("no summaries provided")
 	}
 
-	return m.reduceOpenAI(ctx, summaries)
+	return m.reduceOpenAI(ctx)
 }
 
 func (m *MultiQuestionSummaryRetriever) reduceOpenAI(
 	ctx context.Context,
-	summaries []models.Summary,
-) (models.Summary, error) {
-	prompt, err := internal.ParsePrompt(defaultMultiRetrieverReduceTemplateOpenAI, summaries)
+) (*models.Summary, error) {
+	prompt, err := internal.ParsePrompt(defaultMultiRetrieverReduceTemplateOpenAI, m)
 	if err != nil {
-		return models.Summary{}, fmt.Errorf("reduceOpenAI failed: %w", err)
+		return nil, fmt.Errorf("reduceOpenAI failed: %w", err)
 	}
 
 	// Send the populated prompt to the language model
@@ -218,57 +224,112 @@ func (m *MultiQuestionSummaryRetriever) reduceOpenAI(
 		prompt,
 	)
 	if err != nil {
-		return models.Summary{}, fmt.Errorf("reduceOpenAI failed: %w", err)
+		return nil, fmt.Errorf("reduceOpenAI failed: %w", err)
 	}
 
 	summary := models.Summary{
 		Content: summaryText,
 	}
 
-	return summary, nil
+	return &summary, nil
 }
 
-// generateHistoryString generates a chat history string from the Message slice pasted to it.
-func (m *MultiQuestionSummaryRetriever) generateHistoryString() string {
-	var builder strings.Builder
+const defaultMultiRetrieverQuestionsTemplateOpenAI = `The last {{.LastN}} messages between an AI and a human may be found below. 
+Your task is to generate {{if eq .QuestionCount 1}}a question{{else}}{{.QuestionCount}} different questions{{end}} 
+directly related to the most recent message. Use the Historical chat messages as additional context.
 
-	for _, m := range m.HistoryMessages {
-		messageText := fmt.Sprintf("%s: %s", m.Role, m.Content)
-		builder.WriteString(messageText + "\n")
-	}
+We will use these questions to retrieve relevant past conversations from a vector database. By generating multiple 
+perspectives on the chat history, your goal is to help the user overcome some of the limitations of 
+distance-based similarity search.
 
-	return builder.String()
-}
-
-const defaultMultiRetrieverQuestionsTemplateOpenAI = `
-The last {{.LastN}} messages between an AI and a human may be found below. 
-Your task is to generate {{.QuestionCount}} different questions directly related to the chat message history. 
-We will use these questions to retrieve relevant past conversations from a vector database.
-By generating multiple perspectives on the chat history, your goal is to help the user overcome some of the 
-limitations of distance-based similarity search.
-
-Provide these alternative questions separated by newlines between XML tags. For example:
+Provide {{if eq .QuestionCount 1}}this question{{else}}these alternative questions separated by newlines{{end}} 
+between XML tags. For example:
 
 <questions>
 Question 1
+{{if ne .QuestionCount 1}}
 Question 2
 Question 3
+{{end}}
 </questions>
 
 Historical chat messages:
-{{.History}}
+{{ $chatHistory := mustInitial .HistoryMessages }}
+{{ $lastMessage := mustLast .HistoryMessages }}
+{{range $chatHistory}}
+{{.Role}}: {{.Content}}
+{{end}}
+
+Most recent message: 
+{{ $lastMessage.Role }}: {{ $lastMessage.Content }}
+
+Questions:
 `
 
-const defaultMultiRetrieverReduceTemplateOpenAI = `
-Below are several summaries generated from the chat history between a human and an AI.
-Create a single, consolidated summary from these summaries. Ensure that it is concise, but don't remove any
-important information.
+const defaultMultiRetrieverReduceTemplateOpenAI = `Below are several summaries generated from the chat history between a human and an AI.
+Create a single, concise, consolidated summary from these summaries. Only include information relevant to the questions below. 
 
-START SUMMARIES
-{{range .}}
+<questions>
+{{range .Questions}}
+{{.}}
+{{end}}
+</questions>
+
+<summaries>
+{{range .SearchResults}}
 {{.Content}}
 {{end}}
-END SUMMARIES
+</summaries>
+
+New Summary:
+`
+
+const defaultMultiRetrieverQuestionsTemplateAnthropic = `The last {{.LastN}} messages between an AI and a human may be found below. 
+Your task is to generate {{if eq .QuestionCount 1}}a question{{else}}{{.QuestionCount}} different questions{{end}} 
+directly related to the most recent message. Use the Historical chat messages as additional context.
+
+We will use these questions to retrieve relevant past conversations from a vector database. By generating multiple 
+perspectives on the chat history, your goal is to help the user overcome some of the limitations of 
+distance-based similarity search.
+
+Provide {{if eq .QuestionCount 1}}this question{{else}}these alternative questions separated by newlines{{end}} 
+between XML tags. For example:
+
+<questions>
+Question 1
+{{if ne .QuestionCount 1}}
+Question 2
+Question 3
+{{end}}
+</questions>
+
+Historical chat messages:
+{{ $chatHistory := mustInitial .HistoryMessages }}
+{{ $lastMessage := mustLast .HistoryMessages }}
+{{range $chatHistory}}
+{{.Role}}: {{.Content}}
+{{end}}
+
+Most recent message: 
+{{ $lastMessage.Role }}: {{ $lastMessage.Content }}
+
+Questions:
+`
+
+const defaultMultiRetrieverReduceTemplateAnthropic = `Below are several summaries generated from the chat history between a human and an AI.
+Create a single, concise, consolidated summary from these summaries. Only include information relevant to the questions below. 
+
+<questions>
+{{range .Questions}}
+{{.}}
+{{end}}
+</questions>
+
+<summaries>
+{{range .SearchResults}}
+{{.Content}}
+{{end}}
+</summaries>
 
 New Summary:
 `

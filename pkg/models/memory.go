@@ -38,17 +38,15 @@ type Summary struct {
 }
 
 type Memory struct {
-	Messages  []Message              `json:"messages"`
-	Summary   *Summary               `json:"summary,omitempty"`
-	Summaries []Summary              `json:"summaries,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	Messages []Message              `json:"messages"`
+	Summary  *Summary               `json:"summary,omitempty"`
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type MemoryConfig struct {
-	SessionID             string     `json:"session_id"`
-	LastNMessages         int        `json:"last_n"`
-	Type                  MemoryType `json:"type"`
-	IncludeCurrentSummary bool       `json:"include_current_summary"`
+	SessionID     string     `json:"session_id"`
+	LastNMessages int        `json:"last_n"`
+	Type          MemoryType `json:"type"`
 }
 
 type MemoryType string

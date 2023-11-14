@@ -50,8 +50,6 @@ type MemoryConfig struct {
 type PerpetualMemoryConfig struct {
 	// LastN is the number of messages to return alongside the summaries
 	LastN int `mapstructure:"last_n"`
-	// IncludeCurrentSummary determines whether the current summary should be included in the response
-	IncludeCurrentSummary bool `mapstructure:"include_current_summary"`
 }
 
 type PostgresConfig struct {

@@ -51,10 +51,9 @@ func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 		}
 
 		memoryConfig := &models.MemoryConfig{
-			SessionID:             sessionID,
-			LastNMessages:         lastN,
-			Type:                  memoryType,
-			IncludeCurrentSummary: appState.Config.Memory.Perpetual.IncludeCurrentSummary,
+			SessionID:     sessionID,
+			LastNMessages: lastN,
+			Type:          memoryType,
 		}
 
 		sessionMemory, err := appState.MemoryStore.GetMemory(r.Context(), appState, memoryConfig)
@@ -63,7 +62,7 @@ func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 		if sessionMemory == nil ||
-			(sessionMemory.Messages == nil && sessionMemory.Summaries == nil) {
+			(sessionMemory.Messages == nil && sessionMemory.Summary == nil) {
 			handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 			return
 		}
