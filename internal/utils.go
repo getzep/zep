@@ -3,6 +3,7 @@ package internal
 import (
 	"bytes"
 	"reflect"
+	"strings"
 	"text/template"
 
 	"github.com/getzep/sprig/v3"
@@ -20,7 +21,7 @@ func ParsePrompt(promptTemplate string, data any) (string, error) {
 		return "", err
 	}
 
-	return buf.String(), nil
+	return strings.TrimSpace(buf.String()), nil
 }
 
 func ReverseSlice[T any](slice []T) {
