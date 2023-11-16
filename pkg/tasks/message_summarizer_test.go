@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/getzep/zep/config"
@@ -145,7 +146,7 @@ func TestGenerateProgressiveSummarizerPrompt(t *testing.T) {
 			service:               "openai",
 			customPromptOpenAI:    "",
 			customPromptAnthropic: "",
-			expectedPrompt:        defaultSummaryPromptTemplateOpenAI,
+			expectedPrompt:        strings.TrimSpace(defaultSummaryPromptTemplateOpenAI),
 			defaultPrompt:         true,
 		},
 		{
@@ -153,7 +154,7 @@ func TestGenerateProgressiveSummarizerPrompt(t *testing.T) {
 			service:               "anthropic",
 			customPromptOpenAI:    "",
 			customPromptAnthropic: "",
-			expectedPrompt:        defaultSummaryPromptTemplateAnthropic,
+			expectedPrompt:        strings.TrimSpace(defaultSummaryPromptTemplateAnthropic),
 			defaultPrompt:         true,
 		},
 	}
