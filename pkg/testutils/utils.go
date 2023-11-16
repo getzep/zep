@@ -34,8 +34,7 @@ func testConfigDefaults() (*config.Config, error) {
 		Memory: config.MemoryConfig{
 			MessageWindow: 12,
 			Perpetual: config.PerpetualMemoryConfig{
-				LastN:                 2,
-				IncludeCurrentSummary: true,
+				LastN: 2,
 			},
 		},
 		Extractors: config.ExtractorsConfig{

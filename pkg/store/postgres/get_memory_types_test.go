@@ -48,41 +48,30 @@ func TestGetPerpetualMemory(t *testing.T) {
 DONE:
 
 	testCases := []struct {
-		name                  string
-		lastNMessages         int
-		includeCurrentSummary bool
+		name          string
+		lastNMessages int
 	}{
-		{"LastNMessages 2, IncludeCurrentSummary true", 2, true},
-		{"LastNMessages 2, IncludeCurrentSummary false", 2, false},
-		{"LastNMessages 5, IncludeCurrentSummary true", 5, true},
+		{"LastNMessages 2", 2},
+		{"LastNMessages 5", 5},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			config := &models.MemoryConfig{
-				SessionID:             sessionID,
-				Type:                  models.PerpetualMemoryType,
-				LastNMessages:         tc.lastNMessages,
-				IncludeCurrentSummary: tc.includeCurrentSummary,
+				SessionID:     sessionID,
+				Type:          models.PerpetualMemoryType,
+				LastNMessages: tc.lastNMessages,
 			}
 
 			memory, err := getPerpetualMemory(testCtx, testDB, appState, config)
 			assert.NoError(t, err)
 			assert.NotNil(t, memory)
 
-			// Check the current summary
-			if tc.includeCurrentSummary {
-				assert.NotNil(t, memory.Summary)
-				assert.NotEmpty(t, memory.Summary.Content)
-			} else {
-				assert.Nil(t, memory.Summary)
-			}
-
 			// Check the messages
 			assert.Equal(t, tc.lastNMessages, len(memory.Messages))
 
-			// Check the summary count
-			assert.Equal(t, 1, len(memory.Summaries))
+			// Check the summary is present
+			assert.NotEmpty(t, memory.Summary.Content)
 		})
 	}
 }
