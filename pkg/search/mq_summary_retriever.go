@@ -53,10 +53,6 @@ func (m *MultiQuestionSummaryRetriever) Run(ctx context.Context) (*models.Summar
 	ctx, cancel := context.WithTimeout(ctx, PerpetualMemoryTimeOut)
 	defer cancel()
 
-	if m.Service != "openai" {
-		return nil, errors.New("PerpetualMemory only supports OpenAI at this time")
-	}
-
 	questions, err := m.generateQuestions(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate questions: %w", err)
@@ -129,14 +125,16 @@ func (m *MultiQuestionSummaryRetriever) search(
 	log.Debugf("Summaries: %+v", summaries)
 
 	var summary *models.Summary
-	if len(summaries) > 1 {
-		var err error
+	switch len(summaries) {
+	case 0:
+		return nil, nil
+	case 1:
+		summary = &summaries[0]
+	default:
 		summary, err = m.reduce(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to reduce summaries: %w", err)
 		}
-	} else {
-		summary = &summaries[0]
 	}
 
 	return summary, nil
@@ -146,20 +144,22 @@ func (m *MultiQuestionSummaryRetriever) generateQuestions(ctx context.Context) (
 	if len(m.HistoryMessages) == 0 {
 		return nil, errors.New("no messages provided")
 	}
-	//m.History = m.generateHistoryString()
 
-	return m.generateQuestionsOpenAI(ctx)
-}
-
-func (m *MultiQuestionSummaryRetriever) generateQuestionsOpenAI(
-	ctx context.Context,
-) ([]string, error) {
-	// Create a prompt with the Message input that needs to be classified
-	prompt, err := internal.ParsePrompt(defaultMultiRetrieverQuestionsTemplateOpenAI, m)
-	if err != nil {
-		return nil, fmt.Errorf("generateQuestionsOpenAI failed: %w", err)
+	var prompt string
+	var err error
+	switch m.Service {
+	case "openai":
+		prompt, err = internal.ParsePrompt(defaultMultiRetrieverQuestionsTemplateOpenAI, m)
+	case "anthropic":
+		prompt, err = internal.ParsePrompt(defaultMultiRetrieverQuestionsTemplateAnthropic, m)
+	default:
+		return nil, fmt.Errorf("unknown service: %s", m.Service)
 	}
-	log.Debugf("Prompt: %s", prompt)
+	if err != nil {
+		return nil, fmt.Errorf("generateQuestions failed: %w", err)
+	}
+
+	log.Debugf("generateQuestions prompt: %s", prompt)
 
 	// Send the populated prompt to the language model
 	questionText, err := m.appState.LLMClient.Call(
@@ -207,18 +207,22 @@ func (m *MultiQuestionSummaryRetriever) reduce(
 		return nil, errors.New("no summaries provided")
 	}
 
-	return m.reduceOpenAI(ctx)
-}
-
-func (m *MultiQuestionSummaryRetriever) reduceOpenAI(
-	ctx context.Context,
-) (*models.Summary, error) {
-	prompt, err := internal.ParsePrompt(defaultMultiRetrieverReduceTemplateOpenAI, m)
+	var prompt string
+	var err error
+	switch m.Service {
+	case "openai":
+		prompt, err = internal.ParsePrompt(defaultMultiRetrieverReduceTemplateOpenAI, m)
+	case "anthropic":
+		prompt, err = internal.ParsePrompt(defaultMultiRetrieverReduceTemplateAnthropic, m)
+	default:
+		return nil, fmt.Errorf("unknown service: %s", m.Service)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("reduceOpenAI failed: %w", err)
+		return nil, fmt.Errorf("reduce failed: %w", err)
 	}
 
-	// Send the populated prompt to the language model
+	log.Debugf("reduce prompt: %s", prompt)
+
 	summaryText, err := m.appState.LLMClient.Call(
 		ctx,
 		prompt,
@@ -267,7 +271,8 @@ Questions:
 `
 
 const defaultMultiRetrieverReduceTemplateOpenAI = `Below are several summaries generated from the chat history between a human and an AI.
-Create a single, concise, consolidated summary from these summaries. Only include information relevant to the questions below. 
+Create a single, concise, consolidated summary from these summaries. Only include information directly relevant to the questions below. Do not include any
+information not in the summaries below.
 
 <questions>
 {{range .Questions}}
@@ -284,16 +289,17 @@ Create a single, concise, consolidated summary from these summaries. Only includ
 New Summary:
 `
 
-const defaultMultiRetrieverQuestionsTemplateAnthropic = `The last {{.LastN}} messages between an AI and a human may be found below. 
+const defaultMultiRetrieverQuestionsTemplateAnthropic = `The last {{.LastN}} messages between an AI and a human may be found 
+between the <chat_history> tags below. 
 Your task is to generate {{if eq .QuestionCount 1}}a question{{else}}{{.QuestionCount}} different questions{{end}} 
-directly related to the most recent message. Use the Historical chat messages as additional context.
+directly related to the very last message between the <last_message> tags. Use the <chat_history> as additional context.
 
 We will use these questions to retrieve relevant past conversations from a vector database. By generating multiple 
 perspectives on the chat history, your goal is to help the user overcome some of the limitations of 
 distance-based similarity search.
 
 Provide {{if eq .QuestionCount 1}}this question{{else}}these alternative questions separated by newlines{{end}} 
-between XML tags. For example:
+between <questions></questions> tags. For example:
 
 <questions>
 Question 1
@@ -303,21 +309,25 @@ Question 3
 {{end}}
 </questions>
 
-Historical chat messages:
+<chat_history>
 {{ $chatHistory := mustInitial .HistoryMessages }}
 {{ $lastMessage := mustLast .HistoryMessages }}
 {{range $chatHistory}}
 {{.Role}}: {{.Content}}
 {{end}}
+</chat_history>
 
-Most recent message: 
+<last_message>
 {{ $lastMessage.Role }}: {{ $lastMessage.Content }}
-
-Questions:
+</last_message>
 `
 
-const defaultMultiRetrieverReduceTemplateAnthropic = `Below are several summaries generated from the chat history between a human and an AI.
-Create a single, concise, consolidated summary from these summaries. Only include information relevant to the questions below. 
+const defaultMultiRetrieverReduceTemplateAnthropic = `Between the <summaries> tags below are several summaries 
+generated from the chat history between a human and an AI.
+Create a single, concise, consolidated summary from these summaries. Create a single, concise, consolidated summary from these summaries. Do not enclose the answer in tags.
+
+IMPORTANT: Only include information relevant to the questions between the <questions> tags below. Do not include any
+information not in the <summaries>.
 
 <questions>
 {{range .Questions}}
@@ -330,6 +340,4 @@ Create a single, concise, consolidated summary from these summaries. Only includ
 {{.Content}}
 {{end}}
 </summaries>
-
-New Summary:
 `
