@@ -50,6 +50,10 @@ func NewMultiQuestionSummaryRetriever(
 }
 
 func (m *MultiQuestionSummaryRetriever) Run(ctx context.Context) (*models.Summary, error) {
+	// if no messages were provided, return an empty summary
+	if len(m.HistoryMessages) == 0 {
+		return nil, nil
+	}
 	ctx, cancel := context.WithTimeout(ctx, PerpetualMemoryTimeOut)
 	defer cancel()
 
