@@ -1,3 +1,5 @@
+//go:build testutils
+
 package testutils
 
 import "github.com/getzep/zep/pkg/models"

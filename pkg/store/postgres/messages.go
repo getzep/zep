@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 
@@ -245,7 +244,7 @@ func fetchMessagesAfterSummaryPoint(
 	var summaryPointIndex int64
 	var err error
 	if summary != nil {
-		summaryPointIndex, err = getSummaryPointIndex(ctx, db, sessionID, summary.SummaryPointUUID)
+		summaryPointIndex, err = getMessageIndex(ctx, db, sessionID, summary.SummaryPointUUID)
 		if err != nil {
 			return nil, store.NewStorageError("unable to retrieve summary", nil)
 		}
@@ -289,38 +288,4 @@ func fetchLastNMessages(
 	}
 
 	return messages, err
-}
-
-// getSummaryPointIndex retrieves the index of the last summary point for a session
-// This is a bit of a hack since UUIDs are not sortable.
-// If the SummaryPoint does not exist (for e.g. if it was deleted), returns 0.
-func getSummaryPointIndex(
-	ctx context.Context,
-	db *bun.DB,
-	sessionID string,
-	summaryPointUUID uuid.UUID,
-) (int64, error) {
-	var message MessageStoreSchema
-
-	err := db.NewSelect().
-		Model(&message).
-		Column("id").
-		Where("session_id = ? AND uuid = ?", sessionID, summaryPointUUID).
-		Scan(ctx)
-
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			log.Warningf(
-				"unable to retrieve last summary point for %s: %s",
-				summaryPointUUID,
-				err,
-			)
-		} else {
-			return 0, store.NewStorageError("unable to retrieve last summary point for %s", err)
-		}
-
-		return 0, nil
-	}
-
-	return message.ID, nil
 }
