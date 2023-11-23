@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/getzep/zep/internal"
 	"github.com/getzep/zep/pkg/store"
+	"github.com/pgvector/pgvector-go"
 	"sync"
 
 	"github.com/getzep/zep/pkg/models"
@@ -111,12 +112,12 @@ func (dao *MessageDAO) CreateMany(
 }
 
 // Get retrieves a message by its UUID.
-func (dao *MessageDAO) Get(ctx context.Context, uuid uuid.UUID) (*models.Message, error) {
+func (dao *MessageDAO) Get(ctx context.Context, messageUUID uuid.UUID) (*models.Message, error) {
 	var messages MessageStoreSchema
 	err := dao.db.NewSelect().
 		Model(&messages).
 		Where("session_id = ?", dao.sessionID).
-		Where("uuid = ?", uuid).
+		Where("uuid = ?", messageUUID).
 		Scan(ctx)
 
 	if err != nil {
@@ -219,9 +220,9 @@ func (dao *MessageDAO) GetSinceLastSummary(
 // GetListByUUID retrieves a list of messages by their UUIDs.
 func (dao *MessageDAO) GetListByUUID(
 	ctx context.Context,
-	uuids []uuid.UUID,
+	messageUUIDs []uuid.UUID,
 ) ([]models.Message, error) {
-	if len(uuids) == 0 {
+	if len(messageUUIDs) == 0 {
 		return nil, nil
 	}
 
@@ -229,7 +230,7 @@ func (dao *MessageDAO) GetListByUUID(
 	err := dao.db.NewSelect().
 		Model(&messages).
 		Where("session_id = ?", dao.sessionID).
-		Where("uuid IN (?)", bun.In(uuids)).
+		Where("uuid IN (?)", bun.In(messageUUIDs)).
 		Scan(ctx)
 
 	if err != nil {
@@ -408,14 +409,14 @@ func (dao *MessageDAO) UpdateMany(ctx context.Context,
 
 func (dao *MessageDAO) updateMetadata(
 	ctx context.Context,
-	tx bun.IDB, // use bun.IDB to make it easier to test
-	uuid uuid.UUID,
+	tx bun.IDB, // use bun.IDB interface to make it easier to test
+	messageUUID uuid.UUID,
 	metadata map[string]interface{},
 	isPrivileged bool,
 ) error {
 	// Acquire a lock for this Message UUID. This is to prevent concurrent updates
 	// to the message metadata.
-	lockID, err := acquireAdvisoryLock(ctx, dao.db, uuid.String())
+	lockID, err := acquireAdvisoryLock(ctx, tx, messageUUID.String())
 	if err != nil {
 		return fmt.Errorf("failed to acquire advisory lock: %w", err)
 	}
@@ -424,13 +425,13 @@ func (dao *MessageDAO) updateMetadata(
 		if err != nil {
 			log.Errorf("failed to release advisory lock: %v", err)
 		}
-	}(ctx, dao.db, lockID)
+	}(ctx, tx, lockID)
 
 	mergedMetadata, err := mergeMetadata(
 		ctx,
-		dao.db,
-		"uuid",
-		uuid.String(),
+		tx,
+		"messageUUID",
+		messageUUID.String(),
 		"message",
 		metadata,
 		isPrivileged,
@@ -443,7 +444,7 @@ func (dao *MessageDAO) updateMetadata(
 		Model(&MessageStoreSchema{}).
 		Column("metadata").
 		Where("session_id = ?", dao.sessionID).
-		Where("uuid = ?", uuid).
+		Where("messageUUID = ?", messageUUID).
 		Set("metadata = ?", mergedMetadata).
 		Exec(ctx)
 	if err != nil {
@@ -453,9 +454,138 @@ func (dao *MessageDAO) updateMetadata(
 	return nil
 }
 
-func (dao *MessageDAO) Delete(ctx context.Context, uuid uuid.UUID) error {
-	// Implement the deletion of a message by its UUID
+func (dao *MessageDAO) Delete(ctx context.Context, messageUUID uuid.UUID) error {
+	if messageUUID == uuid.Nil {
+		return fmt.Errorf("message UUID cannot be nil")
+	}
+
+	tx, err := dao.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer rollbackOnError(tx)
+
+	// Delete the message
+	r, err := tx.NewDelete().
+		Model(&MessageStoreSchema{}).
+		Where("session_id = ?", dao.sessionID).
+		Where("uuid = ?", messageUUID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to delete message: %w", err)
+	}
+
+	rows, err := r.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get affected rows: %w", err)
+	}
+
+	if rows == 0 {
+		return models.NewNotFoundError(fmt.Sprintf("message %s not found", messageUUID))
+	}
+
+	// Delete embeddings
+	_, err = tx.NewDelete().
+		Model(&MessageVectorStoreSchema{}).
+		Where("session_id = ?", dao.sessionID).
+		Where("message_uuid = ?", messageUUID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to delete message embeddings: %w", err)
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
 	return nil
+}
+
+// CreateEmbeddings saves message embeddings for a set of given messages
+func (dao *MessageDAO) CreateEmbeddings(
+	ctx context.Context,
+	embeddings []models.TextData,
+) error {
+	if len(embeddings) == 0 {
+		return errors.New("no embeddings received")
+	}
+
+	embeddingVectors := make([]MessageVectorStoreSchema, len(embeddings))
+	for i, e := range embeddings {
+		embeddingVectors[i] = MessageVectorStoreSchema{
+			SessionID:   dao.sessionID,
+			Embedding:   pgvector.NewVector(e.Embedding),
+			MessageUUID: e.TextUUID,
+			IsEmbedded:  true,
+		}
+	}
+
+	_, err := dao.db.NewInsert().
+		Model(&embeddingVectors).
+		Exec(ctx)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert message vectors %w", err)
+	}
+
+	return nil
+}
+
+func (dao *MessageDAO) GetEmbedding(ctx context.Context, messageUUID uuid.UUID) (*models.TextData, error) {
+	var result struct {
+		MessageStoreSchema
+		MessageVectorStoreSchema
+	}
+	_, err := dao.db.NewSelect().
+		Table("message_embedding").
+		Join("JOIN message").
+		JoinOn("message_embedding.message_uuid = message.uuid").
+		ColumnExpr("message.content").
+		ColumnExpr("message_embedding.*").
+		Where("message_embedding.session_id = ?", dao.sessionID).
+		Where("message_embedding.message_uuid = ?", messageUUID).
+		Where("message.deleted_at IS NULL").
+		Exec(ctx, &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get message vectors %w", err)
+	}
+
+	return &models.TextData{
+		Embedding: result.Embedding.Slice(),
+		TextUUID:  result.MessageUUID,
+		Text:      result.Content,
+	}, nil
+}
+
+// GetEmbeddingListBySession retrieves all message embeddings for a session.
+func (dao *MessageDAO) GetEmbeddingListBySession(ctx context.Context) ([]models.TextData, error) {
+	var results []struct {
+		MessageStoreSchema
+		MessageVectorStoreSchema
+	}
+	_, err := dao.db.NewSelect().
+		Table("message_embedding").
+		Join("JOIN message").
+		JoinOn("message_embedding.message_uuid = message.uuid").
+		ColumnExpr("message.content").
+		ColumnExpr("message_embedding.*").
+		Where("message_embedding.session_id = ?", dao.sessionID).
+		Where("message.deleted_at IS NULL").
+		Exec(ctx, &results)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get message vectors %w", err)
+	}
+
+	embeddings := make([]models.TextData, len(results))
+	for i, vectorStoreRecord := range results {
+		embeddings[i] = models.TextData{
+			Embedding: vectorStoreRecord.Embedding.Slice(),
+			TextUUID:  vectorStoreRecord.MessageUUID,
+			Text:      vectorStoreRecord.Content,
+		}
+	}
+
+	return embeddings, nil
 }
 
 // getMessageIndex retrieves the index of the last summary point for a session
