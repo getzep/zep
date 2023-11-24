@@ -34,7 +34,7 @@ func NewMessageDAO(db *bun.DB, sessionID string) (*MessageDAO, error) {
 func (dao *MessageDAO) Create(
 	ctx context.Context,
 	message *models.Message,
-) error {
+) (*models.Message, error) {
 	// Create a new MessageStoreSchema from the provided message
 	pgMessage := MessageStoreSchema{
 		UUID:       message.UUID,
@@ -48,49 +48,38 @@ func (dao *MessageDAO) Create(
 	// Insert the new message into the database
 	_, err := dao.db.NewInsert().
 		Model(&pgMessage).
+		Returning("*").
 		Exec(ctx)
 
 	if err != nil {
-		return fmt.Errorf("failed to create message: %w", err)
+		return nil, fmt.Errorf("failed to create message: %w", err)
 	}
 
-	return nil
+	return &models.Message{
+		UUID:       pgMessage.UUID,
+		CreatedAt:  pgMessage.CreatedAt,
+		UpdatedAt:  pgMessage.UpdatedAt,
+		Role:       pgMessage.Role,
+		Content:    pgMessage.Content,
+		TokenCount: pgMessage.TokenCount,
+		Metadata:   pgMessage.Metadata,
+	}, nil
 }
 
-// CreateMany creates a batch of messages for a session. A session is created if it does not exist.
-// If the session is deleted, the session will be recreated
+// CreateMany creates a batch of messages for a session.
 func (dao *MessageDAO) CreateMany(
 	ctx context.Context,
-	sessionID string,
 	messages []models.Message,
 ) ([]models.Message, error) {
 	if len(messages) == 0 {
 		return nil, nil
 	}
 
-	// Try Update the session first. If no rows are affected, create a new session.
-	sessionStore := NewSessionDAO(dao.db)
-	_, err := sessionStore.Update(ctx, &models.UpdateSessionRequest{
-		SessionID: sessionID,
-	}, false)
-	if err != nil {
-		if errors.Is(err, models.ErrNotFound) {
-			_, err = sessionStore.Create(ctx, &models.CreateSessionRequest{
-				SessionID: sessionID,
-			})
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, err
-		}
-	}
-
 	pgMessages := make([]MessageStoreSchema, len(messages))
 	for i, msg := range messages {
 		pgMessages[i] = MessageStoreSchema{
 			UUID:       msg.UUID,
-			SessionID:  sessionID,
+			SessionID:  dao.sessionID,
 			Role:       msg.Role,
 			Content:    msg.Content,
 			TokenCount: msg.TokenCount,
@@ -98,7 +87,7 @@ func (dao *MessageDAO) CreateMany(
 		}
 	}
 
-	_, err = dao.db.NewInsert().
+	_, err := dao.db.NewInsert().
 		Model(&pgMessages).
 		Returning("*").
 		Exec(ctx)
@@ -167,6 +156,7 @@ func (dao *MessageDAO) GetLastN(
 		return nil, fmt.Errorf("unable to retrieve messages %w", err)
 	}
 
+	// Reverse the slice so that the messages are in ascending order
 	if len(messagesDB) > 0 {
 		internal.ReverseSlice(messagesDB)
 	}
