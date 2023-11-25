@@ -108,8 +108,10 @@ func (dao *MessageDAO) Get(ctx context.Context, messageUUID uuid.UUID) (*models.
 		Where("session_id = ?", dao.sessionID).
 		Where("uuid = ?", messageUUID).
 		Scan(ctx)
-
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, models.NewNotFoundError(fmt.Sprintf("message %s not found", messageUUID))
+		}
 		return nil, fmt.Errorf("unable to retrieve messages %w", err)
 	}
 
@@ -123,7 +125,8 @@ func (dao *MessageDAO) Get(ctx context.Context, messageUUID uuid.UUID) (*models.
 }
 
 // GetLastN retrieves the last N messages for a session. If uuid is provided, it will get the
-// last N messages before and including the provided beforeUUID.
+// last N messages before and including the provided beforeUUID. // Results are returned in
+// ascending order of creation
 func (dao *MessageDAO) GetLastN(
 	ctx context.Context,
 	lastNMessages int,
@@ -168,6 +171,7 @@ func (dao *MessageDAO) GetLastN(
 
 // GetSinceLastSummary retrieves messages since the last summary point, limited by the memory window.
 // If there is no last summary point, all messages are returned, limited by the memory window.
+// Results are returned in ascending order of creation
 func (dao *MessageDAO) GetSinceLastSummary(
 	ctx context.Context,
 	memoryWindow int,
@@ -180,7 +184,8 @@ func (dao *MessageDAO) GetSinceLastSummary(
 		Order("created_at DESC").
 		Limit(1).
 		Scan(ctx)
-	if err != nil {
+	// Don't error on no summary
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("unable to retrieve last summary %w", err)
 	}
 
@@ -195,7 +200,7 @@ func (dao *MessageDAO) GetSinceLastSummary(
 		Model(&messages).
 		Where("session_id = ?", dao.sessionID).
 		Where("id > ?", lastMessageID).
-		Order("id ASC").
+		Order("id DESC").
 		Limit(memoryWindow).
 		Scan(ctx)
 	if err != nil {
@@ -203,6 +208,11 @@ func (dao *MessageDAO) GetSinceLastSummary(
 	}
 
 	messageList := messagesFromStoreSchema(messages)
+
+	// Reverse the slice so that the messages are in ascending order
+	if len(messageList) > 0 {
+		internal.ReverseSlice(messageList)
+	}
 
 	return messageList, nil
 }
@@ -239,7 +249,7 @@ func (dao *MessageDAO) GetListBySession(
 	currentPage int,
 	pageSize int) (*models.MessageListResponse, error) {
 	if pageSize < 1 {
-		return nil, store.NewStorageError("pageSize must be greater than 0", nil)
+		return nil, errors.New("pageSize must be greater than 0")
 	}
 
 	var wg sync.WaitGroup
@@ -268,7 +278,11 @@ func (dao *MessageDAO) GetListBySession(
 		return nil, fmt.Errorf("failed to get messages %w", err)
 	}
 	if len(messages) == 0 {
-		return nil, nil
+		return &models.MessageListResponse{
+			Messages:   []models.Message{},
+			TotalCount: 0,
+			RowCount:   0,
+		}, nil
 	}
 
 	messageList := make([]models.Message, len(messages))
@@ -467,6 +481,16 @@ func (dao *MessageDAO) Delete(ctx context.Context, messageUUID uuid.UUID) error 
 	}
 	defer rollbackOnError(tx)
 
+	// Delete embeddings, if any
+	_, err = tx.NewDelete().
+		Model(&MessageVectorStoreSchema{}).
+		Where("session_id = ?", dao.sessionID).
+		Where("message_uuid = ?", messageUUID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to delete message embeddings: %w", err)
+	}
+
 	// Delete the message
 	r, err := tx.NewDelete().
 		Model(&MessageStoreSchema{}).
@@ -484,16 +508,6 @@ func (dao *MessageDAO) Delete(ctx context.Context, messageUUID uuid.UUID) error 
 
 	if rows == 0 {
 		return models.NewNotFoundError(fmt.Sprintf("message %s not found", messageUUID))
-	}
-
-	// Delete embeddings
-	_, err = tx.NewDelete().
-		Model(&MessageVectorStoreSchema{}).
-		Where("session_id = ?", dao.sessionID).
-		Where("message_uuid = ?", messageUUID).
-		Exec(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to delete message embeddings: %w", err)
 	}
 
 	err = tx.Commit()

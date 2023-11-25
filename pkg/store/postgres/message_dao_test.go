@@ -134,17 +134,25 @@ func TestGet(t *testing.T) {
 	createdMessage, err := messageDAO.Create(testCtx, message)
 	assert.NoError(t, err)
 
-	// Call the Get function
-	retrievedMessage, err := messageDAO.Get(testCtx, createdMessage.UUID)
-	assert.NoError(t, err)
-	assert.NotNil(t, retrievedMessage)
+	t.Run("Get should return existing message", func(t *testing.T) {
+		// Call the Get function
+		retrievedMessage, err := messageDAO.Get(testCtx, createdMessage.UUID)
+		assert.NoError(t, err)
+		assert.NotNil(t, retrievedMessage)
 
-	// Assert that the returned Message matches the original Message object
-	assert.Equal(t, createdMessage.UUID, retrievedMessage.UUID)
-	assert.Equal(t, createdMessage.Role, retrievedMessage.Role)
-	assert.Equal(t, createdMessage.Content, retrievedMessage.Content)
-	assert.Equal(t, createdMessage.TokenCount, retrievedMessage.TokenCount)
-	assert.Equal(t, createdMessage.Metadata, retrievedMessage.Metadata)
+		// Assert that the returned Message matches the original Message object
+		assert.Equal(t, createdMessage.UUID, retrievedMessage.UUID)
+		assert.Equal(t, createdMessage.Role, retrievedMessage.Role)
+		assert.Equal(t, createdMessage.Content, retrievedMessage.Content)
+		assert.Equal(t, createdMessage.TokenCount, retrievedMessage.TokenCount)
+		assert.Equal(t, createdMessage.Metadata, retrievedMessage.Metadata)
+	})
+
+	t.Run("Get should return ErrNotFound for non-existant message", func(t *testing.T) {
+		retrievedMessage, err := messageDAO.Get(testCtx, uuid.New())
+		assert.ErrorIs(t, err, models.ErrNotFound)
+		assert.Nil(t, retrievedMessage)
+	})
 }
 
 func TestGetLastN(t *testing.T) {
@@ -217,6 +225,15 @@ func TestGetLastN(t *testing.T) {
 		assert.Equal(t, messages[1].UUID, lastMessages[1].UUID)
 	})
 
+	// Test for non-existant session
+	t.Run("GetLastN with non-existent session should return empty slice", func(t *testing.T) {
+		// Call the GetLastN function
+		messageDAO := &MessageDAO{db: testDB, sessionID: "non-existent-session"}
+		lastMessages, err := messageDAO.GetLastN(testCtx, 2, uuid.Nil)
+
+		assert.NoError(t, err)
+		assert.Empty(t, lastMessages)
+	})
 }
 
 func TestGetSinceLastSummary(t *testing.T) {
@@ -249,21 +266,40 @@ func TestGetSinceLastSummary(t *testing.T) {
 	_, err = messageDAO.CreateMany(testCtx, messages)
 	assert.NoError(t, err)
 
-	// insert a summary using the UUID of the windowSize-th message
-	summaryUUID := messages[windowSize-1].UUID
-	summary := SummaryStoreSchema{
-		SessionID:        sessionID,
-		SummaryPointUUID: summaryUUID,
-		Content:          "testContent",
-	}
-	_, err = testDB.NewInsert().Model(&summary).Exec(testCtx)
-	assert.NoError(t, err)
+	t.Run("GetSinceLastSummary without Summary", func(t *testing.T) {
+		returnedMessages, err := messageDAO.GetSinceLastSummary(testCtx, windowSize)
+		assert.NoError(t, err)
+		assert.Equal(t, windowSize, len(returnedMessages))
+		// the last message returned should be the most recent
+		assert.Equal(t, messages[len(messages)-1].UUID, returnedMessages[windowSize-1].UUID)
+	})
 
-	// Call GetSinceLastSummary
-	returnedMessages, err := messageDAO.GetSinceLastSummary(testCtx, windowSize)
-	assert.NoError(t, err)
-	assert.Equal(t, windowSize, len(returnedMessages))
-	assert.Equal(t, messages[windowSize].UUID, returnedMessages[0].UUID)
+	t.Run("GetSinceLastSummary with Summary", func(t *testing.T) {
+		// insert a summary using the UUID of the windowSize-th message
+		summaryPointID := 15
+		summaryUUID := messages[summaryPointID-1].UUID
+		summary := SummaryStoreSchema{
+			SessionID:        sessionID,
+			SummaryPointUUID: summaryUUID,
+			Content:          "testContent",
+		}
+		_, err = testDB.NewInsert().Model(&summary).Exec(testCtx)
+		assert.NoError(t, err)
+
+		returnedMessages, err := messageDAO.GetSinceLastSummary(testCtx, windowSize)
+		assert.NoError(t, err)
+		assert.Equal(t, len(messages)-summaryPointID, len(returnedMessages))
+		assert.Equal(t, messages[summaryPointID].UUID, returnedMessages[0].UUID)
+	})
+
+	t.Run("GetSinceLastSummary with non-existent session should return empty slice", func(t *testing.T) {
+		// Call the GetSinceLastSummary function
+		messageDAO := &MessageDAO{db: testDB, sessionID: "non-existent-session"}
+		lastMessages, err := messageDAO.GetSinceLastSummary(testCtx, 2)
+
+		assert.NoError(t, err)
+		assert.Empty(t, lastMessages)
+	})
 }
 
 func TestGetListByUUID(t *testing.T) {
@@ -358,6 +394,19 @@ func TestGetListBySession(t *testing.T) {
 			assert.Equal(t, messages[i*pageSize-1].UUID, retrievedMessages.Messages[pageSize-1].UUID)
 		})
 	}
+}
+
+func TestGetListBySession_Nonexistant_Session(t *testing.T) {
+	sessionID := testutils.GenerateRandomString(10)
+	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	assert.NoError(t, err)
+
+	retrievedMessages, err := messageDAO.GetListBySession(testCtx, 0, 10)
+	assert.NoError(t, err)
+	assert.NotNil(t, retrievedMessages)
+	assert.Empty(t, 0, retrievedMessages.Messages)
+	assert.Equal(t, 0, retrievedMessages.RowCount)
+	assert.Equal(t, 0, retrievedMessages.TotalCount)
 }
 
 func runSubTest(t *testing.T, messageDAO *MessageDAO, privileged bool, expectedMetadata map[string]interface{}, updatedMessage *models.Message) {
@@ -494,11 +543,35 @@ func TestUpdateMany(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	// TODO: Initialize a MessageDAO and a message UUID
+	sessionID := testutils.GenerateRandomString(10)
 
-	// TODO: Call Delete with the message UUID
+	sessionStore := NewSessionDAO(testDB)
+	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
+		SessionID: sessionID,
+	})
+	assert.NoError(t, err)
 
-	// TODO: Assert that no error is returned
+	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	assert.NoError(t, err)
+
+	messageUUID := uuid.New()
+	message := models.Message{
+		UUID:       messageUUID,
+		Role:       "user",
+		Content:    "testContent",
+		TokenCount: 1,
+		Metadata:   map[string]interface{}{"key": "value"},
+	}
+
+	_, err = messageDAO.Create(testCtx, &message)
+	assert.NoError(t, err)
+
+	err = messageDAO.Delete(testCtx, messageUUID)
+	assert.NoError(t, err)
+
+	retrievedMessage, err := messageDAO.Get(testCtx, messageUUID)
+	assert.ErrorIs(t, err, models.ErrNotFound)
+	assert.Nil(t, retrievedMessage)
 }
 
 func TestCreateEmbeddings(t *testing.T) {
