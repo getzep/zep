@@ -177,7 +177,7 @@ func (dao *MessageDAO) GetSinceLastSummary(
 	err := dao.db.NewSelect().
 		Model(&lastSummary).
 		Where("session_id = ?", dao.sessionID).
-		Order("id DESC").
+		Order("created_at DESC").
 		Limit(1).
 		Scan(ctx)
 	if err != nil {
@@ -208,6 +208,7 @@ func (dao *MessageDAO) GetSinceLastSummary(
 }
 
 // GetListByUUID retrieves a list of messages by their UUIDs.
+// Does not reorder the messages.
 func (dao *MessageDAO) GetListByUUID(
 	ctx context.Context,
 	messageUUIDs []uuid.UUID,
@@ -316,6 +317,7 @@ func (dao *MessageDAO) Update(ctx context.Context,
 
 	r, err := tx.NewUpdate().
 		Model(&messageDB).
+		Column("role", "content", "token_count").
 		Where("session_id = ?", dao.sessionID).
 		Where("uuid = ?", message.UUID).
 		Exec(ctx)
@@ -420,7 +422,7 @@ func (dao *MessageDAO) updateMetadata(
 	mergedMetadata, err := mergeMetadata(
 		ctx,
 		tx,
-		"messageUUID",
+		"uuid",
 		messageUUID.String(),
 		"message",
 		metadata,
@@ -434,7 +436,7 @@ func (dao *MessageDAO) updateMetadata(
 		Model(&MessageStoreSchema{}).
 		Column("metadata").
 		Where("session_id = ?", dao.sessionID).
-		Where("messageUUID = ?", messageUUID).
+		Where("uuid = ?", messageUUID).
 		Set("metadata = ?", mergedMetadata).
 		Exec(ctx)
 	if err != nil {

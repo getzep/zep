@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"fmt"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/getzep/zep/pkg/testutils"
 	"github.com/google/uuid"
@@ -219,35 +220,234 @@ func TestGetLastN(t *testing.T) {
 }
 
 func TestGetSinceLastSummary(t *testing.T) {
-	// TODO: Initialize a MessageDAO and a memory window
+	// Initialize the database connection and session ID
+	sessionID := testutils.GenerateRandomString(10)
 
-	// TODO: Call GetSinceLastSummary with the memory window
+	// Try Update the session first. If no rows are affected, create a new session.
+	sessionStore := NewSessionDAO(testDB)
+	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
+		SessionID: sessionID,
+	})
+	assert.NoError(t, err)
 
-	// TODO: Assert that the returned slice of messages is not nil and no error is returned
+	// Initialize a MessageDAO
+	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	assert.NoError(t, err)
+
+	// Insert messages in the DAO to test GetSinceLastSummary
+	windowSize := 10 // You can define the windowSize as per your requirement
+	var messages = make([]models.Message, windowSize*2)
+	for i := 0; i < windowSize*2; i++ {
+		messages[i] = models.Message{
+			UUID:       uuid.New(),
+			Role:       "user",
+			Content:    fmt.Sprintf("testContent%d", i),
+			TokenCount: 1,
+			Metadata:   map[string]interface{}{"key": "value"},
+		}
+	}
+	_, err = messageDAO.CreateMany(testCtx, messages)
+	assert.NoError(t, err)
+
+	// insert a summary using the UUID of the windowSize-th message
+	summaryUUID := messages[windowSize-1].UUID
+	summary := SummaryStoreSchema{
+		SessionID:        sessionID,
+		SummaryPointUUID: summaryUUID,
+		Content:          "testContent",
+	}
+	_, err = testDB.NewInsert().Model(&summary).Exec(testCtx)
+	assert.NoError(t, err)
+
+	// Call GetSinceLastSummary
+	returnedMessages, err := messageDAO.GetSinceLastSummary(testCtx, windowSize)
+	assert.NoError(t, err)
+	assert.Equal(t, windowSize, len(returnedMessages))
+	assert.Equal(t, messages[windowSize].UUID, returnedMessages[0].UUID)
 }
 
 func TestGetListByUUID(t *testing.T) {
-	// TODO: Initialize a MessageDAO and a slice of message UUIDs
+	// Initialize the database connection and session ID
+	sessionID := testutils.GenerateRandomString(10)
 
-	// TODO: Call GetListByUUID with the slice of UUIDs
+	// Try Update the session first. If no rows are affected, create a new session.
+	sessionStore := NewSessionDAO(testDB)
+	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
+		SessionID: sessionID,
+	})
+	assert.NoError(t, err)
 
-	// TODO: Assert that the returned slice of messages is not nil and no error is returned
+	// Initialize a MessageDAO
+	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	assert.NoError(t, err)
+
+	// Create a list of UUIDs and corresponding messages
+	var uuids []uuid.UUID
+	var messages []models.Message
+	for i := 0; i < 5; i++ {
+		uuid := uuid.New()
+		uuids = append(uuids, uuid)
+		message := models.Message{
+			UUID:       uuid,
+			Role:       "user",
+			Content:    fmt.Sprintf("testContent%d", i),
+			TokenCount: 1,
+			Metadata:   map[string]interface{}{"key": "value"},
+		}
+		messages = append(messages, message)
+	}
+
+	// Store messages using CreateMany
+	_, err = messageDAO.CreateMany(testCtx, messages)
+	assert.NoError(t, err)
+
+	// Test GetListByUUID method with only first 3 UUIDs
+	uuidsToRetrieve := uuids[:3]
+	retrievedMessages, err := messageDAO.GetListByUUID(testCtx, uuidsToRetrieve)
+	assert.NoError(t, err)
+	// Assert that length of retrieved messages is same as the length of uuidsToRetrieve
+	assert.Equal(t, len(uuidsToRetrieve), len(retrievedMessages))
+
+	// Assert retrieved messages match original messages (only for those we retrieved)
+	for i, retrievedMessage := range retrievedMessages {
+		assert.Equal(t, uuidsToRetrieve[i], retrievedMessage.UUID)
+		assert.Equal(t, messages[i].Content, retrievedMessage.Content)
+		assert.Equal(t, messages[i].TokenCount, retrievedMessage.TokenCount)
+		assert.Equal(t, messages[i].Metadata, retrievedMessage.Metadata)
+	}
 }
 
 func TestGetListBySession(t *testing.T) {
-	// TODO: Initialize a MessageDAO, a current page, and a page size
+	// Initialize the database connection and session ID
+	sessionID := testutils.GenerateRandomString(10)
 
-	// TODO: Call GetListBySession with the current page and page size
+	// Try Update the session first. If no rows are affected, create a new session.
+	sessionStore := NewSessionDAO(testDB)
+	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
+		SessionID: sessionID,
+	})
+	assert.NoError(t, err)
 
-	// TODO: Assert that the returned MessageListResponse is not nil and no error is returned
+	// Initialize a MessageDAO
+	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	assert.NoError(t, err)
+
+	var messages []models.Message
+	totalMessages := 30
+	pageSize := 10
+	for i := 0; i < totalMessages; i++ {
+		uuid := uuid.New()
+		message := models.Message{
+			UUID:       uuid,
+			Role:       "user",
+			Content:    fmt.Sprintf("testContent%d", i),
+			TokenCount: 1,
+			Metadata:   map[string]interface{}{"key": "value"},
+		}
+		messages = append(messages, message)
+	}
+
+	// Store messages using CreateMany
+	_, err = messageDAO.CreateMany(testCtx, messages)
+	assert.NoError(t, err)
+
+	t.Run("First page", func(t *testing.T) {
+		retrievedMessages, err := messageDAO.GetListBySession(testCtx, 1, pageSize)
+		assert.NoError(t, err)
+		// Assert that length of retrieved messages is same as the length of uuidsToRetrieve
+		assert.Equal(t, pageSize, retrievedMessages.RowCount, "Row count should be equal to pageSize")
+		assert.Equal(t, pageSize, len(retrievedMessages.Messages), "Length of retrieved messages should be equal to pageSize")
+		assert.Equal(t, totalMessages, retrievedMessages.TotalCount, "Total count should be equal to total messages")
+		assert.Equal(t, messages[0].UUID, retrievedMessages.Messages[0].UUID, "First message should be the first message created")
+		assert.Equal(t, messages[pageSize-1].UUID, retrievedMessages.Messages[pageSize-1].UUID, "Last message should be the pageSize-th message created")
+	})
+
+	t.Run("Second page", func(t *testing.T) {
+		retrievedMessages, err := messageDAO.GetListBySession(testCtx, 2, pageSize)
+		assert.NoError(t, err)
+		// Assert that length of retrieved messages is same as the length of uuidsToRetrieve
+		assert.Equal(t, pageSize, retrievedMessages.RowCount, "Row count should be equal to pageSize")
+		assert.Equal(t, pageSize, len(retrievedMessages.Messages), "Length of retrieved messages should be equal to pageSize")
+		assert.Equal(t, totalMessages, retrievedMessages.TotalCount, "Total count should be equal to total messages")
+		assert.Equal(t, messages[pageSize].UUID, retrievedMessages.Messages[0].UUID, "First message should be the pageSize+1-th message created")
+		assert.Equal(t, messages[pageSize*2-1].UUID, retrievedMessages.Messages[pageSize-1].UUID, "Last message should be the pageSize*2-th message created")
+	})
+}
+
+func runSubTest(t *testing.T, messageDAO *MessageDAO, privileged bool, expectedMetadata map[string]interface{}, updatedMessage *models.Message) {
+	t.Helper()
+	err := messageDAO.Update(testCtx, updatedMessage, privileged)
+	assert.NoError(t, err)
+	retrievedMessage, err := messageDAO.Get(testCtx, updatedMessage.UUID)
+	assert.NoError(t, err)
+	assert.Equal(t, updatedMessage.UUID, retrievedMessage.UUID)
+	assert.Equal(t, updatedMessage.Content, retrievedMessage.Content)
+	assert.Equal(t, updatedMessage.TokenCount, retrievedMessage.TokenCount)
+	assert.Equal(t, expectedMetadata, retrievedMessage.Metadata)
 }
 
 func TestUpdate(t *testing.T) {
-	// TODO: Initialize a MessageDAO, a message, and a boolean for isPrivileged
+	// Initialize the database connection and session ID
+	sessionID := testutils.GenerateRandomString(10)
 
-	// TODO: Call Update with the message and isPrivileged
+	// Try Update the session first. If no rows are affected, create a new session.
+	sessionStore := NewSessionDAO(testDB)
+	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
+		SessionID: sessionID,
+	})
+	assert.NoError(t, err)
 
-	// TODO: Assert that no error is returned
+	// Initialize a MessageDAO
+	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	assert.NoError(t, err)
+
+	// Create a message and store it
+	uuid := uuid.New()
+	message := models.Message{
+		UUID:       uuid,
+		Role:       "user",
+		Content:    "testContent",
+		TokenCount: 1,
+		Metadata:   map[string]interface{}{"key1": "value1", "keyOther": "valueOther"},
+	}
+
+	// Store messages
+	_, err = messageDAO.Create(testCtx, &message)
+	assert.NoError(t, err)
+
+	t.Run("Update with unprivileged", func(t *testing.T) {
+		updatedMessage := models.Message{
+			UUID:       uuid,
+			Role:       "user",
+			Content:    "testContentUpdated",
+			TokenCount: 2,
+			Metadata:   map[string]interface{}{"key1": "value1Updated", "key2": "value2", "system": "privileged"},
+		}
+		// expectedMetadata should not contain the `system` key
+		expectedMetadata := map[string]interface{}{
+			"key1":     "value1Updated",
+			"key2":     "value2",
+			"keyOther": "valueOther",
+		}
+		runSubTest(t, messageDAO, false, expectedMetadata, &updatedMessage)
+	})
+
+	t.Run("Update with privileged", func(t *testing.T) {
+		updatedMessage := models.Message{
+			UUID:       uuid,
+			Role:       "user",
+			Content:    "testContentUpdated",
+			TokenCount: 2,
+			Metadata:   map[string]interface{}{"key1": "value1Updated", "key2": "value2", "system": "privileged"},
+		}
+		expectedMetadata := map[string]interface{}{
+			"key1":     "value1Updated",
+			"key2":     "value2",
+			"keyOther": "valueOther",
+			"system":   "privileged",
+		}
+		runSubTest(t, messageDAO, true, expectedMetadata, &updatedMessage)
+	})
 }
 
 func TestUpdateMany(t *testing.T) {
