@@ -373,9 +373,17 @@ func (dao *MessageDAO) UpdateMany(ctx context.Context,
 		}
 	}
 
-	_, err = tx.NewUpdate().
+	updatedValues := dao.db.NewValues(&messagesDB)
+
+	_, err = dao.db.NewUpdate().
+		With("_data", updatedValues).
 		Model(&messagesDB).
-		Where("session_id = ?", dao.sessionID).
+		TableExpr("_data").
+		Set("role = _data.role").
+		Set("content = _data.content").
+		Set("token_count = _data.token_count").
+		Where("m.uuid = _data.uuid").
+		Where("m.session_id = ?", dao.sessionID).
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to update messages: %w", err)
@@ -399,6 +407,8 @@ func (dao *MessageDAO) UpdateMany(ctx context.Context,
 	return nil
 }
 
+// updateMetadata updates the metadata for a message by its UUID. Metadata is updated via a merge.
+// An advisory lock is acquired on the message UUID to prevent concurrent updates to the metadata.
 func (dao *MessageDAO) updateMetadata(
 	ctx context.Context,
 	tx bun.IDB, // use bun.IDB interface to make it easier to test
