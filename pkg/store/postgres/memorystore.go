@@ -30,9 +30,10 @@ func NewPostgresMemoryStore(
 	pms := &PostgresMemoryStore{
 		BaseMemoryStore: store.BaseMemoryStore[*bun.DB]{Client: client},
 		SessionStore:    NewSessionDAO(client),
+		appState:        appState,
 	}
 
-	err := pms.OnStart(context.Background(), appState)
+	err := pms.OnStart(context.Background())
 	if err != nil {
 		return nil, store.NewStorageError("failed to run OnInit", err)
 	}
@@ -45,13 +46,13 @@ var _ models.MemoryStore[*bun.DB] = &PostgresMemoryStore{}
 type PostgresMemoryStore struct {
 	store.BaseMemoryStore[*bun.DB]
 	SessionStore *SessionDAO
+	appState     *models.AppState
 }
 
 func (pms *PostgresMemoryStore) OnStart(
 	ctx context.Context,
-	appState *models.AppState,
 ) error {
-	err := CreateSchema(ctx, appState, pms.Client)
+	err := CreateSchema(ctx, pms.appState, pms.Client)
 	if err != nil {
 		return store.NewStorageError("failed to ensure postgres schema setup", err)
 	}
@@ -66,7 +67,6 @@ func (pms *PostgresMemoryStore) GetClient() *bun.DB {
 // GetSession retrieves a Session for a given sessionID.
 func (pms *PostgresMemoryStore) GetSession(
 	ctx context.Context,
-	_ *models.AppState,
 	sessionID string,
 ) (*models.Session, error) {
 	return pms.SessionStore.Get(ctx, sessionID)
@@ -75,7 +75,6 @@ func (pms *PostgresMemoryStore) GetSession(
 // CreateSession creates or updates a Session for a given sessionID.
 func (pms *PostgresMemoryStore) CreateSession(
 	ctx context.Context,
-	_ *models.AppState,
 	session *models.CreateSessionRequest,
 ) (*models.Session, error) {
 	return pms.SessionStore.Create(ctx, session)
@@ -84,7 +83,6 @@ func (pms *PostgresMemoryStore) CreateSession(
 // UpdateSession creates or updates a Session for a given sessionID.
 func (pms *PostgresMemoryStore) UpdateSession(
 	ctx context.Context,
-	_ *models.AppState,
 	session *models.UpdateSessionRequest,
 ) (*models.Session, error) {
 	return pms.SessionStore.Update(ctx, session, false)
@@ -98,7 +96,6 @@ func (pms *PostgresMemoryStore) DeleteSession(ctx context.Context, sessionID str
 // ListSessions returns a list of all Sessions.
 func (pms *PostgresMemoryStore) ListSessions(
 	ctx context.Context,
-	_ *models.AppState,
 	cursor int64,
 	limit int,
 ) ([]*models.Session, error) {
@@ -109,7 +106,6 @@ func (pms *PostgresMemoryStore) ListSessions(
 // orderedBy is the column to order by. asc is a boolean indicating whether to order ascending or descending.
 func (pms *PostgresMemoryStore) ListSessionsOrdered(
 	ctx context.Context,
-	_ *models.AppState,
 	pageNumber int,
 	pageSize int,
 	orderedBy string,
@@ -127,14 +123,9 @@ func (pms *PostgresMemoryStore) ListSessionsOrdered(
 //     all undeleted messages up to the configured message window
 func (pms *PostgresMemoryStore) GetMemory(
 	ctx context.Context,
-	appState *models.AppState,
 	sessionID string,
 	lastNMessages int,
 ) (*models.Memory, error) {
-	if appState == nil {
-		return nil, errors.New("nil appState received")
-	}
-
 	if lastNMessages < 0 {
 		return nil, errors.New("cannot specify negative lastNMessages")
 	}
@@ -165,15 +156,10 @@ func (pms *PostgresMemoryStore) GetMemory(
 // GetMessageList retrieves a list of messages for a given sessionID. Paginated by cursor and limit.
 func (pms *PostgresMemoryStore) GetMessageList(
 	ctx context.Context,
-	appState *models.AppState,
 	sessionID string,
 	pageNumber int,
 	pageSize int,
 ) (*models.MessageListResponse, error) {
-	if appState == nil {
-		return nil, errors.New("nil appState received")
-	}
-
 	messageDAO, err := NewMessageDAO(pms.Client, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create messageDAO: %w", err)
@@ -184,7 +170,6 @@ func (pms *PostgresMemoryStore) GetMessageList(
 
 func (pms *PostgresMemoryStore) GetMessagesByUUID(
 	ctx context.Context,
-	_ *models.AppState,
 	sessionID string,
 	uuids []uuid.UUID,
 ) ([]models.Message, error) {
@@ -198,7 +183,6 @@ func (pms *PostgresMemoryStore) GetMessagesByUUID(
 
 func (pms *PostgresMemoryStore) GetSummary(
 	ctx context.Context,
-	_ *models.AppState,
 	sessionID string,
 ) (*models.Summary, error) {
 	summary, err := getSummary(ctx, pms.Client, sessionID)
@@ -209,11 +193,11 @@ func (pms *PostgresMemoryStore) GetSummary(
 	return summary, nil
 }
 
-func (pms *PostgresMemoryStore) GetSummaryByUUID(ctx context.Context,
-	appState *models.AppState,
+func (pms *PostgresMemoryStore) GetSummaryByUUID(
+	ctx context.Context,
 	sessionID string,
 	uuid uuid.UUID) (*models.Summary, error) {
-	summary, err := getSummaryByUUID(ctx, appState, pms.Client, sessionID, uuid)
+	summary, err := getSummaryByUUID(ctx, pms.appState, pms.Client, sessionID, uuid)
 	if err != nil {
 		return nil, store.NewStorageError("failed to get summary", err)
 	}
@@ -223,15 +207,10 @@ func (pms *PostgresMemoryStore) GetSummaryByUUID(ctx context.Context,
 
 func (pms *PostgresMemoryStore) GetSummaryList(
 	ctx context.Context,
-	appState *models.AppState,
 	sessionID string,
 	pageNumber int,
 	pageSize int,
 ) (*models.SummaryListResponse, error) {
-	if appState == nil {
-		return nil, store.NewStorageError("nil appState received", nil)
-	}
-
 	summaries, err := getSummaryList(ctx, pms.Client, sessionID, pageNumber, pageSize)
 	if err != nil {
 		return nil, store.NewStorageError("failed to get summaries", err)
@@ -242,7 +221,6 @@ func (pms *PostgresMemoryStore) GetSummaryList(
 
 func (pms *PostgresMemoryStore) PutSummary(
 	ctx context.Context,
-	appState *models.AppState,
 	sessionID string,
 	summary *models.Summary,
 ) error {
@@ -255,7 +233,7 @@ func (pms *PostgresMemoryStore) PutSummary(
 	task := models.MessageSummaryTask{
 		UUID: retSummary.UUID,
 	}
-	err = appState.TaskPublisher.Publish(
+	err = pms.appState.TaskPublisher.Publish(
 		models.MessageSummaryEmbedderTopic,
 		map[string]string{
 			"session_id": sessionID,
@@ -266,7 +244,7 @@ func (pms *PostgresMemoryStore) PutSummary(
 		return fmt.Errorf("MessageSummaryTask publish failed: %w", err)
 	}
 
-	err = appState.TaskPublisher.Publish(
+	err = pms.appState.TaskPublisher.Publish(
 		models.MessageSummaryNERTopic,
 		map[string]string{
 			"session_id": sessionID,
@@ -281,7 +259,6 @@ func (pms *PostgresMemoryStore) PutSummary(
 }
 
 func (pms *PostgresMemoryStore) UpdateSummaryMetadata(ctx context.Context,
-	_ *models.AppState,
 	summary *models.Summary) error {
 	_, err := updateSummaryMetadata(ctx, pms.Client, summary)
 	if err != nil {
@@ -293,7 +270,6 @@ func (pms *PostgresMemoryStore) UpdateSummaryMetadata(ctx context.Context,
 
 func (pms *PostgresMemoryStore) PutSummaryEmbedding(
 	ctx context.Context,
-	_ *models.AppState,
 	sessionID string,
 	embedding *models.TextData,
 ) error {
@@ -307,15 +283,10 @@ func (pms *PostgresMemoryStore) PutSummaryEmbedding(
 
 func (pms *PostgresMemoryStore) PutMemory(
 	ctx context.Context,
-	appState *models.AppState,
 	sessionID string,
 	memoryMessages *models.Memory,
 	skipNotify bool,
 ) error {
-	if appState == nil {
-		return errors.New("nil appState received")
-	}
-
 	// Try Update the session first. If no rows are affected, create a new session.
 	sessionStore := NewSessionDAO(pms.Client)
 	_, err := sessionStore.Update(ctx, &models.UpdateSessionRequest{
@@ -355,7 +326,7 @@ func (pms *PostgresMemoryStore) PutMemory(
 	}
 
 	// Send new messages to the message router
-	err = appState.TaskPublisher.PublishMessage(
+	err = pms.appState.TaskPublisher.PublishMessage(
 		map[string]string{"session_id": sessionID},
 		mt,
 	)
@@ -368,7 +339,6 @@ func (pms *PostgresMemoryStore) PutMemory(
 
 func (pms *PostgresMemoryStore) PutMessageMetadata(
 	ctx context.Context,
-	_ *models.AppState,
 	sessionID string,
 	messages []models.Message,
 	isPrivileged bool,
@@ -383,12 +353,11 @@ func (pms *PostgresMemoryStore) PutMessageMetadata(
 
 func (pms *PostgresMemoryStore) SearchMemory(
 	ctx context.Context,
-	appState *models.AppState,
 	sessionID string,
 	query *models.MemorySearchPayload,
 	limit int,
 ) ([]models.MemorySearchResult, error) {
-	searchResults, err := searchMemory(ctx, appState, pms.Client, sessionID, query, limit)
+	searchResults, err := searchMemory(ctx, pms.appState, pms.Client, sessionID, query, limit)
 	return searchResults, err
 }
 
@@ -400,7 +369,6 @@ func (pms *PostgresMemoryStore) Close() error {
 }
 
 func (pms *PostgresMemoryStore) PutMessageEmbeddings(ctx context.Context,
-	_ *models.AppState,
 	sessionID string,
 	embeddings []models.TextData,
 ) error {
@@ -413,7 +381,6 @@ func (pms *PostgresMemoryStore) PutMessageEmbeddings(ctx context.Context,
 }
 
 func (pms *PostgresMemoryStore) GetMessageEmbeddings(ctx context.Context,
-	_ *models.AppState,
 	sessionID string,
 ) ([]models.TextData, error) {
 	messageDAO, err := NewMessageDAO(pms.Client, sessionID)
