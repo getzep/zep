@@ -157,6 +157,7 @@ func TestPutMessages(t *testing.T) {
 }
 
 func createSession(t *testing.T) string {
+	t.Helper()
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 

@@ -6,36 +6,30 @@ import (
 	"github.com/getzep/zep/pkg/testutils"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"math/rand"
 	"testing"
 )
 
 func TestNewMessageDAO(t *testing.T) {
 	sessionID := "testSessionID"
 
-	// Call the NewMessageDAO function
-	messageDAO, err := NewMessageDAO(testDB, sessionID)
-	assert.NoError(t, err)
-	assert.NotNil(t, messageDAO)
+	t.Run("NewMessageDAO should return a MessageDAO object", func(t *testing.T) {
+		messageDAO, err := NewMessageDAO(testDB, sessionID)
+		assert.NoError(t, err)
+		assert.NotNil(t, messageDAO)
+	})
 
-	// New test case for empty sessionID
-	emptySessionID := ""
-	messageDAO, err = NewMessageDAO(testDB, emptySessionID)
-	assert.Error(t, err)
-	assert.Nil(t, messageDAO)
+	t.Run("NewMessageDAO should return an error for empty sessionID", func(t *testing.T) {
+		emptySessionID := ""
+		messageDAO, err := NewMessageDAO(testDB, emptySessionID)
+		assert.Error(t, err)
+		assert.Nil(t, messageDAO)
+	})
 }
 
 func TestCreate(t *testing.T) {
-	// Initialize the database connection and session ID
-	sessionID := testutils.GenerateRandomString(10)
+	sessionID := createSession(t)
 
-	// Try Update the session first. If no rows are affected, create a new session.
-	sessionStore := NewSessionDAO(testDB)
-	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
-		SessionID: sessionID,
-	})
-	assert.NoError(t, err)
-
-	// Initialize a Message object with test data
 	message := &models.Message{
 		UUID:       uuid.New(),
 		Role:       "testRole",
@@ -44,13 +38,11 @@ func TestCreate(t *testing.T) {
 		Metadata:   map[string]interface{}{"key": "value"},
 	}
 
-	// Call the Create function
 	messageDAO, err := NewMessageDAO(testDB, sessionID)
 	assert.NoError(t, err)
 	createdMessage, err := messageDAO.Create(testCtx, message)
 	assert.NoError(t, err)
 
-	// Assert that the created message matches the original Message object
 	assert.NoError(t, err)
 	assert.Equal(t, message.UUID, createdMessage.UUID)
 	assert.Equal(t, message.Role, createdMessage.Role)
@@ -60,15 +52,7 @@ func TestCreate(t *testing.T) {
 }
 
 func TestCreateMany(t *testing.T) {
-	// Initialize the database connection and session ID
-	sessionID := testutils.GenerateRandomString(10)
-
-	// Try Update the session first. If no rows are affected, create a new session.
-	sessionStore := NewSessionDAO(testDB)
-	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
-		SessionID: sessionID,
-	})
-	assert.NoError(t, err)
+	sessionID := createSession(t)
 
 	// Initialize a slice of Message objects with test data
 	messages := []models.Message{
@@ -109,15 +93,7 @@ func TestCreateMany(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	// Initialize the database connection and session ID
-	sessionID := testutils.GenerateRandomString(10)
-
-	// Try Update the session first. If no rows are affected, create a new session.
-	sessionStore := NewSessionDAO(testDB)
-	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
-		SessionID: sessionID,
-	})
-	assert.NoError(t, err)
+	sessionID := createSession(t)
 
 	// Initialize a Message object with test data
 	message := &models.Message{
@@ -156,15 +132,7 @@ func TestGet(t *testing.T) {
 }
 
 func TestGetLastN(t *testing.T) {
-	// Initialize the database connection and session ID
-	sessionID := testutils.GenerateRandomString(10)
-
-	// Try Update the session first. If no rows are affected, create a new session.
-	sessionStore := NewSessionDAO(testDB)
-	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
-		SessionID: sessionID,
-	})
-	assert.NoError(t, err)
+	sessionID := createSession(t)
 
 	// Initialize a few Message objects with test data
 	messages := []models.Message{
@@ -237,21 +205,11 @@ func TestGetLastN(t *testing.T) {
 }
 
 func TestGetSinceLastSummary(t *testing.T) {
-	// Initialize the database connection and session ID
-	sessionID := testutils.GenerateRandomString(10)
+	sessionID := createSession(t)
 
-	// Try Update the session first. If no rows are affected, create a new session.
-	sessionStore := NewSessionDAO(testDB)
-	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
-		SessionID: sessionID,
-	})
-	assert.NoError(t, err)
-
-	// Initialize a MessageDAO
 	messageDAO, err := NewMessageDAO(testDB, sessionID)
 	assert.NoError(t, err)
 
-	// Insert messages in the DAO to test GetSinceLastSummary
 	windowSize := 10 // You can define the windowSize as per your requirement
 	var messages = make([]models.Message, windowSize*2)
 	for i := 0; i < windowSize*2; i++ {
@@ -303,64 +261,58 @@ func TestGetSinceLastSummary(t *testing.T) {
 }
 
 func TestGetListByUUID(t *testing.T) {
-	// Initialize the database connection and session ID
-	sessionID := testutils.GenerateRandomString(10)
-
-	// Try Update the session first. If no rows are affected, create a new session.
-	sessionStore := NewSessionDAO(testDB)
-	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
-		SessionID: sessionID,
-	})
-	assert.NoError(t, err)
+	sessionID := createSession(t)
 
 	// Initialize a MessageDAO
 	messageDAO, err := NewMessageDAO(testDB, sessionID)
 	assert.NoError(t, err)
 
-	// Create a list of UUIDs and corresponding messages
-	var uuids []uuid.UUID
-	var messages []models.Message
-	for i := 0; i < 5; i++ {
-		uuid := uuid.New()
-		uuids = append(uuids, uuid)
-		message := models.Message{
-			UUID:       uuid,
-			Role:       "user",
-			Content:    fmt.Sprintf("testContent%d", i),
-			TokenCount: 1,
-			Metadata:   map[string]interface{}{"key": "value"},
+	t.Run("No valid message UUIDs should return empty list", func(t *testing.T) {
+		retrievedMessages, err := messageDAO.GetListByUUID(testCtx, []uuid.UUID{uuid.New()})
+		assert.NoError(t, err)
+		assert.Empty(t, retrievedMessages)
+	})
+
+	t.Run("GetListByUUID with valid message UUIDs", func(t *testing.T) {
+		// Create a list of UUIDs and corresponding messages
+		var uuids []uuid.UUID
+		var messages []models.Message
+		for i := 0; i < 5; i++ {
+			uuid := uuid.New()
+			uuids = append(uuids, uuid)
+			message := models.Message{
+				UUID:       uuid,
+				Role:       "user",
+				Content:    fmt.Sprintf("testContent%d", i),
+				TokenCount: 1,
+				Metadata:   map[string]interface{}{"key": "value"},
+			}
+			messages = append(messages, message)
 		}
-		messages = append(messages, message)
-	}
 
-	// Store messages using CreateMany
-	_, err = messageDAO.CreateMany(testCtx, messages)
-	assert.NoError(t, err)
+		// Store messages using CreateMany
+		_, err = messageDAO.CreateMany(testCtx, messages)
+		assert.NoError(t, err)
 
-	// Test GetListByUUID method with only first 3 UUIDs
-	uuidsToRetrieve := uuids[:3]
-	retrievedMessages, err := messageDAO.GetListByUUID(testCtx, uuidsToRetrieve)
-	assert.NoError(t, err)
-	// Assert that length of retrieved messages is same as the length of uuidsToRetrieve
-	assert.Equal(t, len(uuidsToRetrieve), len(retrievedMessages))
+		// Test GetListByUUID method with only first 3 UUIDs
+		uuidsToRetrieve := uuids[:3]
+		retrievedMessages, err := messageDAO.GetListByUUID(testCtx, uuidsToRetrieve)
+		assert.NoError(t, err)
+		// Assert that length of retrieved messages is same as the length of uuidsToRetrieve
+		assert.Equal(t, len(uuidsToRetrieve), len(retrievedMessages))
 
-	// Assert retrieved messages match original messages (only for those we retrieved)
-	for i, retrievedMessage := range retrievedMessages {
-		assert.Equal(t, uuidsToRetrieve[i], retrievedMessage.UUID)
-		assert.Equal(t, messages[i].Content, retrievedMessage.Content)
-		assert.Equal(t, messages[i].TokenCount, retrievedMessage.TokenCount)
-		assert.Equal(t, messages[i].Metadata, retrievedMessage.Metadata)
-	}
+		// Assert retrieved messages match original messages (only for those we retrieved)
+		for i, retrievedMessage := range retrievedMessages {
+			assert.Equal(t, uuidsToRetrieve[i], retrievedMessage.UUID)
+			assert.Equal(t, messages[i].Content, retrievedMessage.Content)
+			assert.Equal(t, messages[i].TokenCount, retrievedMessage.TokenCount)
+			assert.Equal(t, messages[i].Metadata, retrievedMessage.Metadata)
+		}
+	})
 }
 
 func TestGetListBySession(t *testing.T) {
-	sessionID := testutils.GenerateRandomString(10)
-
-	sessionStore := NewSessionDAO(testDB)
-	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
-		SessionID: sessionID,
-	})
-	assert.NoError(t, err)
+	sessionID := createSession(t)
 
 	messageDAO, err := NewMessageDAO(testDB, sessionID)
 	assert.NoError(t, err)
@@ -422,15 +374,7 @@ func runSubTest(t *testing.T, messageDAO *MessageDAO, privileged bool, expectedM
 }
 
 func TestUpdate(t *testing.T) {
-	// Initialize the database connection and session ID
-	sessionID := testutils.GenerateRandomString(10)
-
-	// Try Update the session first. If no rows are affected, create a new session.
-	sessionStore := NewSessionDAO(testDB)
-	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
-		SessionID: sessionID,
-	})
-	assert.NoError(t, err)
+	sessionID := createSession(t)
 
 	// Initialize a MessageDAO
 	messageDAO, err := NewMessageDAO(testDB, sessionID)
@@ -486,13 +430,7 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestUpdateMany(t *testing.T) {
-	sessionID := testutils.GenerateRandomString(10)
-
-	sessionStore := NewSessionDAO(testDB)
-	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
-		SessionID: sessionID,
-	})
-	assert.NoError(t, err)
+	sessionID := createSession(t)
 
 	messageDAO, err := NewMessageDAO(testDB, sessionID)
 	assert.NoError(t, err)
@@ -543,13 +481,7 @@ func TestUpdateMany(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	sessionID := testutils.GenerateRandomString(10)
-
-	sessionStore := NewSessionDAO(testDB)
-	_, err := sessionStore.Create(testCtx, &models.CreateSessionRequest{
-		SessionID: sessionID,
-	})
-	assert.NoError(t, err)
+	sessionID := createSession(t)
 
 	messageDAO, err := NewMessageDAO(testDB, sessionID)
 	assert.NoError(t, err)
@@ -563,37 +495,158 @@ func TestDelete(t *testing.T) {
 		Metadata:   map[string]interface{}{"key": "value"},
 	}
 
-	_, err = messageDAO.Create(testCtx, &message)
+	m, err := messageDAO.Create(testCtx, &message)
+	assert.NoError(t, err)
+
+	embeddings := []models.TextData{
+		{
+			TextUUID:  m.UUID,
+			Text:      "testText",
+			Embedding: genTestVector(t, 1536),
+		},
+	}
+	err = messageDAO.CreateEmbeddings(testCtx, embeddings)
 	assert.NoError(t, err)
 
 	err = messageDAO.Delete(testCtx, messageUUID)
 	assert.NoError(t, err)
 
-	retrievedMessage, err := messageDAO.Get(testCtx, messageUUID)
+	_, err = messageDAO.GetEmbedding(testCtx, messageUUID)
 	assert.ErrorIs(t, err, models.ErrNotFound)
-	assert.Nil(t, retrievedMessage)
+
+	_, err = messageDAO.Get(testCtx, messageUUID)
+	assert.ErrorIs(t, err, models.ErrNotFound)
+}
+
+func genTestVector(t *testing.T, width int) []float32 {
+	t.Helper()
+	vector := make([]float32, width)
+	for i := range vector {
+		vector[i] = rand.Float32()
+	}
+	return vector
 }
 
 func TestCreateEmbeddings(t *testing.T) {
-	// TODO: Initialize a MessageDAO and a slice of TextData
+	sessionID := createSession(t)
 
-	// TODO: Call CreateEmbeddings with the slice of TextData
+	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	assert.NoError(t, err)
 
-	// TODO: Assert that no error is returned
+	messages := make([]models.Message, 5)
+	for i := 0; i < 5; i++ {
+		message := models.Message{
+			UUID:       uuid.New(),
+			Role:       "user",
+			Content:    fmt.Sprintf("testContent%d", i),
+			TokenCount: 1,
+			Metadata:   map[string]interface{}{fmt.Sprintf("key%d", i): fmt.Sprintf("value%d", i)},
+		}
+		messages[i] = message
+	}
+
+	_, err = messageDAO.CreateMany(testCtx, messages)
+	assert.NoError(t, err)
+
+	embeddings := []models.TextData{
+		{
+			TextUUID:  messages[0].UUID,
+			Text:      "testText1",
+			Embedding: genTestVector(t, 1536),
+		},
+		{
+			TextUUID:  messages[1].UUID,
+			Text:      "testText2",
+			Embedding: genTestVector(t, 1536),
+		},
+	}
+
+	err = messageDAO.CreateEmbeddings(testCtx, embeddings)
+	assert.NoError(t, err)
+
+	for _, message := range embeddings {
+		textData, err := messageDAO.GetEmbedding(testCtx, message.TextUUID)
+		assert.NoError(t, err)
+		assert.NotNil(t, textData)
+		assert.Equal(t, message.Embedding, textData.Embedding)
+	}
 }
 
 func TestGetEmbedding(t *testing.T) {
-	// TODO: Initialize a MessageDAO and a message UUID
+	sessionID := createSession(t)
 
-	// TODO: Call GetEmbedding with the message UUID
+	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	assert.NoError(t, err)
 
-	// TODO: Assert that the returned TextData is not nil and no error is returned
+	messageUUID := uuid.New()
+	message := models.Message{
+		UUID:       messageUUID,
+		Role:       "user",
+		Content:    "testContent",
+		TokenCount: 1,
+		Metadata:   map[string]interface{}{"key": "value"},
+	}
+
+	m, err := messageDAO.Create(testCtx, &message)
+	assert.NoError(t, err)
+
+	embeddings := []models.TextData{
+		{
+			TextUUID:  m.UUID,
+			Text:      "testText",
+			Embedding: genTestVector(t, 1536),
+		},
+	}
+	err = messageDAO.CreateEmbeddings(testCtx, embeddings)
+	assert.NoError(t, err)
+
+	textData, err := messageDAO.GetEmbedding(testCtx, messageUUID)
+	assert.NoError(t, err)
+	assert.NotNil(t, textData)
+	assert.Equal(t, embeddings[0].Embedding, textData.Embedding)
 }
 
 func TestGetEmbeddingListBySession(t *testing.T) {
-	// TODO: Initialize a MessageDAO
+	sessionID := createSession(t)
 
-	// TODO: Call GetEmbeddingListBySession
+	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	assert.NoError(t, err)
 
-	// TODO: Assert that the returned slice of TextData is not nil and no error is returned
+	messages := make([]models.Message, 5)
+	for i := 0; i < 5; i++ {
+		message := models.Message{
+			UUID:       uuid.New(),
+			Role:       "user",
+			Content:    fmt.Sprintf("testContent%d", i),
+			TokenCount: 1,
+			Metadata:   map[string]interface{}{fmt.Sprintf("key%d", i): fmt.Sprintf("value%d", i)},
+		}
+		messages[i] = message
+	}
+
+	_, err = messageDAO.CreateMany(testCtx, messages)
+	assert.NoError(t, err)
+
+	embeddings := []models.TextData{
+		{
+			TextUUID:  messages[0].UUID,
+			Text:      "testText1",
+			Embedding: genTestVector(t, 1536),
+		},
+		{
+			TextUUID:  messages[1].UUID,
+			Text:      "testText2",
+			Embedding: genTestVector(t, 1536),
+		},
+	}
+
+	err = messageDAO.CreateEmbeddings(testCtx, embeddings)
+	assert.NoError(t, err)
+
+	textDataList, err := messageDAO.GetEmbeddingListBySession(testCtx)
+	assert.NoError(t, err)
+	assert.NotNil(t, textDataList)
+	assert.Equal(t, len(embeddings), len(textDataList))
+	assert.Equal(t, embeddings[0].Embedding, textDataList[0].Embedding)
+	assert.Equal(t, embeddings[1].Embedding, textDataList[1].Embedding)
 }

@@ -224,7 +224,7 @@ func (dao *MessageDAO) GetListByUUID(
 	messageUUIDs []uuid.UUID,
 ) ([]models.Message, error) {
 	if len(messageUUIDs) == 0 {
-		return nil, nil
+		return []models.Message{}, nil
 	}
 
 	var messages []MessageStoreSchema
@@ -563,6 +563,9 @@ func (dao *MessageDAO) GetEmbedding(ctx context.Context, messageUUID uuid.UUID) 
 		Where("message.deleted_at IS NULL").
 		Exec(ctx, &result)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, models.NewNotFoundError(fmt.Sprintf("embedding for message %s not found", messageUUID))
+		}
 		return nil, fmt.Errorf("failed to get message vectors %w", err)
 	}
 
