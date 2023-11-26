@@ -363,7 +363,7 @@ func TestGetListBySession_Nonexistant_Session(t *testing.T) {
 
 func runSubTest(t *testing.T, messageDAO *MessageDAO, privileged bool, expectedMetadata map[string]interface{}, updatedMessage *models.Message) {
 	t.Helper()
-	err := messageDAO.Update(testCtx, updatedMessage, privileged)
+	err := messageDAO.Update(testCtx, updatedMessage, false, privileged)
 	assert.NoError(t, err)
 	retrievedMessage, err := messageDAO.Get(testCtx, updatedMessage.UUID)
 	assert.NoError(t, err)
@@ -463,7 +463,7 @@ func TestUpdateMany(t *testing.T) {
 		updatedMessages[i] = updatedMessage
 	}
 
-	err = messageDAO.UpdateMany(testCtx, updatedMessages, false)
+	err = messageDAO.UpdateMany(testCtx, updatedMessages, false, false)
 	assert.NoError(t, err)
 
 	for _, updatedMessage := range updatedMessages {

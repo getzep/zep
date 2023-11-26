@@ -64,7 +64,8 @@ func Test_mergeMetadata(t *testing.T) {
 			"B": map[string]interface{}{
 				"C": 2,
 			},
-			"Z": 3,
+			"Z":  3,
+			"YY": "this should be removed",
 		},
 	}
 	_, err = dao.Create(testCtx, session)
@@ -89,6 +90,7 @@ func Test_mergeMetadata(t *testing.T) {
 						"F": 5, // Test deeply nested map
 					},
 				},
+				"YY": nil,
 			},
 			privileged: false,
 			expectedMetadata: map[string]interface{}{
@@ -100,7 +102,8 @@ func Test_mergeMetadata(t *testing.T) {
 						"F": 5, // New value from deeply nested map
 					},
 				},
-				"Z": 3, // Initial value
+				"Z":  3, // Initial value
+				"YY": nil,
 			},
 		},
 		{
@@ -114,6 +117,7 @@ func Test_mergeMetadata(t *testing.T) {
 				"system": map[string]interface{}{
 					"foo": "bar", // This should be ignored
 				},
+				"YY": nil,
 			},
 			privileged: false,
 			expectedMetadata: map[string]interface{}{
@@ -121,7 +125,8 @@ func Test_mergeMetadata(t *testing.T) {
 				"B": map[string]interface{}{
 					"C": 2,
 				},
-				"Z": 3, // Initial value
+				"Z":  3, // Initial value
+				"YY": nil,
 			},
 		},
 		{
@@ -135,6 +140,7 @@ func Test_mergeMetadata(t *testing.T) {
 				"system": map[string]interface{}{
 					"foo": "bar", // This should NOT be ignored
 				},
+				"YY": nil,
 			},
 			privileged: true,
 			expectedMetadata: map[string]interface{}{
@@ -146,6 +152,7 @@ func Test_mergeMetadata(t *testing.T) {
 				"system": map[string]interface{}{
 					"foo": "bar",
 				},
+				"YY": nil,
 			},
 		},
 	}
@@ -177,6 +184,7 @@ func Test_mergeMetadata(t *testing.T) {
 
 // assertEqualMaps asserts that two maps are equal, ignoring the type of float / int values.
 func assertEqualMaps(t *testing.T, expected, actual map[string]interface{}) {
+	t.Helper()
 	assert.Equal(t, len(expected), len(actual))
 
 	for k, v := range expected {

@@ -312,6 +312,7 @@ func (dao *MessageDAO) GetListBySession(
 // Update updates a message by its UUID. Metadata is updated via a merge.
 func (dao *MessageDAO) Update(ctx context.Context,
 	message *models.Message,
+	metadataOnly bool,
 	isPrivileged bool) error {
 	if message.UUID == uuid.Nil {
 		return fmt.Errorf("message UUID cannot be nil")
@@ -322,30 +323,31 @@ func (dao *MessageDAO) Update(ctx context.Context,
 	}
 	defer rollbackOnError(tx)
 
-	// Don't update the Metadata field here. We do this via a merge below.
-	messageDB := MessageStoreSchema{
-		Role:       message.Role,
-		Content:    message.Content,
-		TokenCount: message.TokenCount,
-	}
+	if !metadataOnly {
+		// Don't update the Metadata field here. We do this via a merge below.
+		messageDB := MessageStoreSchema{
+			Role:       message.Role,
+			Content:    message.Content,
+			TokenCount: message.TokenCount,
+		}
 
-	r, err := tx.NewUpdate().
-		Model(&messageDB).
-		Column("role", "content", "token_count").
-		Where("session_id = ?", dao.sessionID).
-		Where("uuid = ?", message.UUID).
-		Exec(ctx)
+		r, err := tx.NewUpdate().
+			Model(&messageDB).
+			Column("role", "content", "token_count").
+			Where("session_id = ?", dao.sessionID).
+			Where("uuid = ?", message.UUID).
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to update message: %w", err)
+		}
 
-	if err != nil {
-		return fmt.Errorf("failed to update message: %w", err)
-	}
-
-	rows, err := r.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get affected rows: %w", err)
-	}
-	if rows == 0 {
-		return models.NewNotFoundError(fmt.Sprintf("message %s not found", message.UUID))
+		rows, err := r.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to get affected rows: %w", err)
+		}
+		if rows == 0 {
+			return models.NewNotFoundError(fmt.Sprintf("message %s not found", message.UUID))
+		}
 	}
 
 	// Update metadata
@@ -367,6 +369,7 @@ func (dao *MessageDAO) Update(ctx context.Context,
 // UpdateMany updates a batch of messages by their UUIDs. Metadata is updated via a merge.
 func (dao *MessageDAO) UpdateMany(ctx context.Context,
 	messages []models.Message,
+	metadataOnly bool,
 	isPrivileged bool) error {
 	tx, err := dao.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -374,33 +377,35 @@ func (dao *MessageDAO) UpdateMany(ctx context.Context,
 	}
 	defer rollbackOnError(tx)
 
-	messagesDB := make([]MessageStoreSchema, len(messages))
-	for i, msg := range messages {
-		if msg.UUID == uuid.Nil {
-			return fmt.Errorf("message UUID cannot be nil")
+	if !metadataOnly {
+		messagesDB := make([]MessageStoreSchema, len(messages))
+		for i, msg := range messages {
+			if msg.UUID == uuid.Nil {
+				return fmt.Errorf("message UUID cannot be nil")
+			}
+			messagesDB[i] = MessageStoreSchema{
+				UUID:       msg.UUID,
+				Role:       msg.Role,
+				Content:    msg.Content,
+				TokenCount: msg.TokenCount,
+			}
 		}
-		messagesDB[i] = MessageStoreSchema{
-			UUID:       msg.UUID,
-			Role:       msg.Role,
-			Content:    msg.Content,
-			TokenCount: msg.TokenCount,
+
+		updatedValues := dao.db.NewValues(&messagesDB)
+
+		_, err = dao.db.NewUpdate().
+			With("_data", updatedValues).
+			Model(&messagesDB).
+			TableExpr("_data").
+			Set("role = _data.role").
+			Set("content = _data.content").
+			Set("token_count = _data.token_count").
+			Where("m.uuid = _data.uuid").
+			Where("m.session_id = ?", dao.sessionID).
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to update messages: %w", err)
 		}
-	}
-
-	updatedValues := dao.db.NewValues(&messagesDB)
-
-	_, err = dao.db.NewUpdate().
-		With("_data", updatedValues).
-		Model(&messagesDB).
-		TableExpr("_data").
-		Set("role = _data.role").
-		Set("content = _data.content").
-		Set("token_count = _data.token_count").
-		Where("m.uuid = _data.uuid").
-		Where("m.session_id = ?", dao.sessionID).
-		Exec(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to update messages: %w", err)
 	}
 
 	// Update metadata
