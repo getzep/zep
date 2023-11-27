@@ -27,7 +27,7 @@ func TestMemorySearch(t *testing.T) {
 	)
 	assert.NoError(t, err, "PutMemory should not return an error")
 
-	messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 	summaryDAO, err := NewSummaryDAO(testDB, appState, sessionID)
 	assert.NoError(t, err, "NewSummaryDAO should not return an error")

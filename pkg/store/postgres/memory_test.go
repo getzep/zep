@@ -84,8 +84,6 @@ func TestMemoryDAO_Create(t *testing.T) {
 func TestMemoryDAO_Get(t *testing.T) {
 	// Create a test session
 	sessionID := createSession(t)
-	memoryDAO, err := NewMemoryDAO(testDB, appState, sessionID)
-	assert.NoError(t, err, "NewMemoryDAO should not return an error")
 
 	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
@@ -97,8 +95,8 @@ func TestMemoryDAO_Get(t *testing.T) {
 	expectedMessages := make([]models.Message, len(testutils.TestMessages))
 	copy(expectedMessages, messages)
 
-	// Explicitly set the message window to 10
-	messageWindow := 10
+	// messageWindow in test defaults to 12
+	messageWindow := appState.Config.Memory.MessageWindow
 	// Get the index for the last message in the summary
 	summaryPointIndex := len(messages) - messageWindow/2 - 1
 
@@ -120,7 +118,7 @@ func TestMemoryDAO_Get(t *testing.T) {
 			name:           "Get all messages up to SummaryPoint",
 			sessionID:      sessionID,
 			lastNMessages:  0,
-			expectedLength: 5,
+			expectedLength: len(expectedMessages) - summaryPointIndex - 1,
 			withSummary:    true,
 		},
 		{
@@ -139,25 +137,38 @@ func TestMemoryDAO_Get(t *testing.T) {
 		},
 	}
 
-	summaryDAO, err := NewSummaryDAO(testDB, appState, sessionID)
-	assert.NoError(t, err, "NewSummaryDAO should not return an error")
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			memoryDAO, err := NewMemoryDAO(testDB, appState, tt.sessionID)
+			assert.NoError(t, err, "NewMemoryDAO should not return an error")
+
 			if tt.withSummary {
+				summaryDAO, err := NewSummaryDAO(testDB, appState, sessionID)
+				assert.NoError(t, err, "NewSummaryDAO should not return an error")
+
 				// Create a summary using the test messages. The SummaryPointUUID should be at messageWindow - 2
-				_, err := summaryDAO.Create(
+				_, err = summaryDAO.Create(
 					testCtx,
 					&models.Summary{Content: "Test summary",
 						SummaryPointUUID: messages[summaryPointIndex].UUID},
 				)
 				assert.NoError(t, err)
 
+			}
+
+			switch {
+			case tt.expectedLength == 0:
+				expectedMessages = []models.Message{}
+			case tt.withSummary:
 				expectedMessages = expectedMessages[len(expectedMessages)-(messageWindow/2):]
-			}
-			if tt.lastNMessages > 0 {
+			case tt.lastNMessages == 0:
+				expectedMessages = expectedMessages[len(expectedMessages)-messageWindow:]
+			case tt.lastNMessages > 0:
 				expectedMessages = expectedMessages[len(expectedMessages)-tt.lastNMessages:]
+			default:
+				expectedMessages = []models.Message{}
 			}
+
 			result, err := memoryDAO.Get(
 				testCtx,
 				tt.lastNMessages,
@@ -183,7 +194,8 @@ func TestMemoryDAO_Get(t *testing.T) {
 					)
 				}
 			} else {
-				assert.Empty(t, result)
+				assert.Empty(t, result.Summary)
+				assert.Empty(t, result.Messages)
 			}
 		})
 	}

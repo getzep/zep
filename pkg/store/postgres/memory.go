@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/getzep/zep/pkg/models"
+	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
 
@@ -57,7 +58,14 @@ func (m *MemoryDAO) Get(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create messageDAO: %w", err)
 	}
-	messages, err := messageDAO.GetLastN(ctx, lastNMessages, summary.SummaryPointUUID)
+
+	var messages []models.Message
+	if lastNMessages > 0 {
+		messages, err = messageDAO.GetLastN(ctx, lastNMessages, uuid.Nil)
+	} else {
+		memoryWindow := m.appState.Config.Memory.MessageWindow
+		messages, err = messageDAO.GetSinceLastSummary(ctx, summary, memoryWindow)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get messages: %w", err)
 	}

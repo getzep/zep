@@ -163,16 +163,11 @@ func (dao *MessageDAO) GetLastN(
 	query = query.Order("id DESC")
 
 	// If lastNMessages is provided, limit the query to the last N messages
-	// Otherwise, limit the query to the memory window
 	if lastNMessages > 0 {
 		query = query.Limit(lastNMessages)
-	} else {
-		query = query.Limit(dao.appState.Config.Memory.MessageWindow)
 	}
 
-	err = query.
-		Limit(lastNMessages).
-		Scan(ctx)
+	err = query.Scan(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve messages %w", err)
 	}
@@ -192,23 +187,15 @@ func (dao *MessageDAO) GetLastN(
 // Results are returned in ascending order of creation
 func (dao *MessageDAO) GetSinceLastSummary(
 	ctx context.Context,
+	lastSummary *models.Summary,
 	memoryWindow int,
 ) ([]models.Message, error) {
-	var lastSummary SummaryStoreSchema
-
-	err := dao.db.NewSelect().
-		Model(&lastSummary).
-		Where("session_id = ?", dao.sessionID).
-		Order("created_at DESC").
-		Limit(1).
-		Scan(ctx)
-	// Don't error on no summary
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("unable to retrieve last summary %w", err)
+	summaryPointUUID := uuid.Nil
+	if lastSummary != nil {
+		summaryPointUUID = lastSummary.SummaryPointUUID
 	}
-
 	// If there is no last summary, returns ID of 0
-	lastMessageID, err := getMessageIndex(ctx, dao.db, dao.sessionID, lastSummary.SummaryPointUUID)
+	lastMessageID, err := getMessageIndex(ctx, dao.db, dao.sessionID, summaryPointUUID)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve summary point index %w", err)
 	}

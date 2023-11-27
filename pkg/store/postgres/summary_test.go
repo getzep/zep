@@ -25,7 +25,7 @@ func TestCreateSummary(t *testing.T) {
 		},
 	}
 
-	messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 	resultMessages, err := messageDAO.CreateMany(testCtx, messages)
@@ -97,7 +97,7 @@ func TestGetSummary(t *testing.T) {
 		},
 	}
 
-	messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 	resultMessages, err := messageDAO.CreateMany(testCtx, messages)
@@ -147,7 +147,7 @@ func TestGetSummary(t *testing.T) {
 				assert.Equal(t, putSummaryResultTwo.Content, result.Content)
 				assert.Equal(t, putSummaryResultTwo.Metadata, result.Metadata)
 			} else {
-				assert.Nil(t, result)
+				assert.Equal(t, uuid.Nil, result.UUID)
 			}
 		})
 	}
@@ -169,7 +169,7 @@ func TestPostgresMemoryStore_GetSummaryByUUID(t *testing.T) {
 		},
 	}
 
-	messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 	resultMessages, err := messageDAO.CreateMany(testCtx, messages)
@@ -254,7 +254,7 @@ func TestPostgresMemoryStore_PutSummaryEmbedding(t *testing.T) {
 		},
 	}
 
-	messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 	resultMessages, err := messageDAO.CreateMany(testCtx, messages)
@@ -292,10 +292,9 @@ func TestPostgresMemoryStore_PutSummaryEmbedding(t *testing.T) {
 
 func TestGetSummaryList(t *testing.T) {
 	// CreateMessages a test session
-	sessionID, err := testutils.GenerateRandomSessionID(16)
-	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
+	sessionID := createSession(t)
 
-	messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 	msgs, err := messageDAO.CreateMany(testCtx, testutils.TestMessages)
@@ -350,6 +349,8 @@ func TestGetSummaryList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			summaryDAO, err = NewSummaryDAO(testDB, appState, tt.sessionID)
+			assert.NoError(t, err, "NewSummaryDAO should not return an error")
 			summaries, err := summaryDAO.GetList(
 				testCtx,
 				tt.pageNumber,
@@ -379,7 +380,7 @@ func TestUpdateSummary(t *testing.T) {
 		},
 	}
 
-	messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 	returnedMessages, err := messageDAO.CreateMany(testCtx, messages)
