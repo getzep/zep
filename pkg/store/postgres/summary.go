@@ -45,7 +45,7 @@ func (s *SummaryDAO) Create(
 		TokenCount:       summary.TokenCount,
 	}
 
-	_, err := s.db.NewInsert().Model(&pgSummary).Exec(ctx)
+	_, err := s.db.NewInsert().Model(pgSummary).Exec(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to CreateMessages summary %w", err)
 	}
@@ -60,9 +60,10 @@ func (s *SummaryDAO) Create(
 	}, nil
 }
 
-func (s *SummaryDAO) UpdateMetadata(
+func (s *SummaryDAO) Update(
 	ctx context.Context,
 	summary *models.Summary,
+	metadataOnly bool,
 ) (*models.Summary, error) {
 	if summary.UUID == uuid.Nil {
 		return nil, errors.New("summary UUID cannot be empty")
@@ -88,13 +89,19 @@ func (s *SummaryDAO) UpdateMetadata(
 	}
 
 	pgSummary := &SummaryStoreSchema{
-		UUID:     summary.UUID,
-		Metadata: metadata,
+		UUID:       summary.UUID,
+		Content:    summary.Content,
+		Metadata:   metadata,
+		TokenCount: summary.TokenCount,
 	}
 
+	columns := []string{"content", "metadata", "token_count"}
+	if metadataOnly {
+		columns = []string{"metadata"}
+	}
 	_, err = tx.NewUpdate().
 		Model(pgSummary).
-		Column("metadata").
+		Column(columns...).
 		Where("uuid = ?", summary.UUID).
 		Exec(ctx)
 	if err != nil {
@@ -122,7 +129,7 @@ func (s *SummaryDAO) Get(ctx context.Context) (*models.Summary, error) {
 		Scan(ctx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return &models.Summary{}, nil
 		}
 		return &models.Summary{}, fmt.Errorf("failed to get session %w", err)
 	}

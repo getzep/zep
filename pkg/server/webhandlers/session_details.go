@@ -67,9 +67,8 @@ func mergeMessagesSummaries(
 }
 
 func (m *SessionDetails) Get(ctx context.Context, appState *models.AppState) error {
-	messages, err := m.MemoryStore.GetMessagesList(
+	messages, err := m.MemoryStore.GetMessageList(
 		ctx,
-		appState,
 		m.SessionID,
 		m.CurrentPage,
 		m.PageSize,
@@ -88,7 +87,6 @@ func (m *SessionDetails) Get(ctx context.Context, appState *models.AppState) err
 	// Hacky solution: set the page offset to 0 and the limit to a large number
 	summaries, err := m.MemoryStore.GetSummaryList(
 		ctx,
-		appState,
 		m.SessionID,
 		0,
 		9999,
@@ -132,7 +130,7 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 		}
 
 		// Get Session Details
-		session, err := appState.MemoryStore.GetSession(r.Context(), appState, sessionID)
+		session, err := appState.MemoryStore.GetSession(r.Context(), sessionID)
 		if err != nil {
 			handleError(w, err, "failed to get session")
 			return

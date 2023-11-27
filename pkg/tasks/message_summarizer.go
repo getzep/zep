@@ -64,7 +64,6 @@ func (t *MessageSummaryTask) Execute(
 	// if no summary exists yet, we'll get all messages up to the message window
 	messagesSummary, err := t.appState.MemoryStore.GetMemory(
 		ctx,
-		t.appState,
 		sessionID,
 		0,
 	)
@@ -91,7 +90,6 @@ func (t *MessageSummaryTask) Execute(
 
 	err = t.appState.MemoryStore.PutSummary(
 		ctx,
-		t.appState,
 		sessionID,
 		newSummary,
 	)

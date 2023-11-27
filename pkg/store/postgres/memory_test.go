@@ -87,11 +87,12 @@ func TestMemoryDAO_Get(t *testing.T) {
 	memoryDAO, err := NewMemoryDAO(testDB, appState, sessionID)
 	assert.NoError(t, err, "NewMemoryDAO should not return an error")
 
-	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 	// Create a bunch of messages
 	messages, err := messageDAO.CreateMany(testCtx, testutils.TestMessages)
+	assert.NoError(t, err, "CreateMany should not return an error")
 
 	expectedMessages := make([]models.Message, len(testutils.TestMessages))
 	copy(expectedMessages, messages)
@@ -138,14 +139,15 @@ func TestMemoryDAO_Get(t *testing.T) {
 		},
 	}
 
+	summaryDAO, err := NewSummaryDAO(testDB, appState, sessionID)
+	assert.NoError(t, err, "NewSummaryDAO should not return an error")
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.withSummary {
 				// Create a summary using the test messages. The SummaryPointUUID should be at messageWindow - 2
-				_, err := putSummary(
+				_, err := summaryDAO.Create(
 					testCtx,
-					testDB,
-					sessionID,
 					&models.Summary{Content: "Test summary",
 						SummaryPointUUID: messages[summaryPointIndex].UUID},
 				)

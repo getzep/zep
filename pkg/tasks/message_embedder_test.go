@@ -27,7 +27,6 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 	// Add new messages using appState.MemoryStore.PutMemory
 	err = store.PutMemory(
 		testCtx,
-		appState,
 		sessionID,
 		&models.Memory{Messages: testMessages},
 		true,
@@ -35,7 +34,7 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Get messages that are missing embeddings using appState.MemoryStore.GetMessageEmbeddings
-	memories, err := store.GetMemory(testCtx, appState, sessionID, 0)
+	memories, err := store.GetMemory(testCtx, sessionID, 0)
 	assert.NoError(t, err)
 	assert.True(t, len(memories.Messages) == len(testMessages))
 
@@ -68,7 +67,6 @@ func TestEmbeddingExtractor_Extract_OpenAI(t *testing.T) {
 
 	embeddedMessages, err := store.GetMessageEmbeddings(
 		testCtx,
-		appState,
 		sessionID,
 	)
 	assert.NoError(t, err)

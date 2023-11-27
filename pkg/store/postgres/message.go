@@ -17,17 +17,25 @@ import (
 
 type MessageDAO struct {
 	db        *bun.DB
+	appState  *models.AppState
 	sessionID string
 }
 
-func NewMessageDAO(db *bun.DB, sessionID string) (*MessageDAO, error) {
+func NewMessageDAO(db *bun.DB, appState *models.AppState, sessionID string) (*MessageDAO, error) {
 	if db == nil {
 		return nil, errors.New("db cannot be nil")
+	}
+	if appState == nil {
+		return nil, errors.New("appState cannot be nil")
 	}
 	if sessionID == "" {
 		return nil, errors.New("sessionID cannot be empty")
 	}
-	return &MessageDAO{db: db, sessionID: sessionID}, nil
+	return &MessageDAO{
+		db:        db,
+		appState:  appState,
+		sessionID: sessionID,
+	}, nil
 }
 
 // Create creates a new message for a session. Create does not create a session if it does not exist.
@@ -152,7 +160,17 @@ func (dao *MessageDAO) GetLastN(
 		query = query.Where("id <= ?", index)
 	}
 
-	err = query.Order("id DESC").
+	query = query.Order("id DESC")
+
+	// If lastNMessages is provided, limit the query to the last N messages
+	// Otherwise, limit the query to the memory window
+	if lastNMessages > 0 {
+		query = query.Limit(lastNMessages)
+	} else {
+		query = query.Limit(dao.appState.Config.Memory.MessageWindow)
+	}
+
+	err = query.
 		Limit(lastNMessages).
 		Scan(ctx)
 	if err != nil {

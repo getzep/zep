@@ -53,7 +53,7 @@ func (m *MemoryDAO) Get(
 		return nil, fmt.Errorf("failed to get summary: %w", err)
 	}
 
-	messageDAO, err := NewMessageDAO(m.db, m.sessionID)
+	messageDAO, err := NewMessageDAO(m.db, m.appState, m.sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create messageDAO: %w", err)
 	}
@@ -95,7 +95,7 @@ func (m *MemoryDAO) Create(
 		}
 	}
 
-	messageDAO, err := NewMessageDAO(m.db, m.sessionID)
+	messageDAO, err := NewMessageDAO(m.db, m.appState, m.sessionID)
 	if err != nil {
 		return fmt.Errorf("failed to create messageDAO: %w", err)
 	}

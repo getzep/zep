@@ -151,11 +151,11 @@ func (mt *MessageIntentTask) processMessage(
 	}
 
 	// Create the intent into the message metadata
-	err = appState.MemoryStore.PutMessageMetadata(
+	err = appState.MemoryStore.UpdateMessages(
 		ctx,
-		appState,
 		sessionID,
 		intentResponse,
+		true,
 		true,
 	)
 	if err != nil {

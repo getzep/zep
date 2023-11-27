@@ -1,17 +1,15 @@
 package postgres
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/getzep/zep/pkg/models"
-	"github.com/getzep/zep/pkg/store"
 	"github.com/getzep/zep/pkg/testutils"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestPutSummary(t *testing.T) {
+func TestCreateSummary(t *testing.T) {
 	sessionID := createSession(t)
 
 	messages := []models.Message{
@@ -27,7 +25,7 @@ func TestPutSummary(t *testing.T) {
 		},
 	}
 
-	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 	resultMessages, err := messageDAO.CreateMany(testCtx, messages)
@@ -36,66 +34,25 @@ func TestPutSummary(t *testing.T) {
 	summaryDAO, err := NewSummaryDAO(testDB, appState, sessionID)
 	assert.NoError(t, err, "NewSummaryDAO should not return an error")
 
-	tests := []struct {
-		name             string
-		sessionID        string
-		summary          models.Summary
-		SummaryPointUUID uuid.UUID
-		wantErr          bool
-		errMessage       string
-	}{
-		{
-			name:      "Valid summary",
-			sessionID: sessionID,
-			summary: models.Summary{
-				Content: "Test content",
-				Metadata: map[string]interface{}{
-					"key": "value",
-				},
-				SummaryPointUUID: resultMessages[0].UUID,
-			},
-
-			wantErr: false,
+	summary := &models.Summary{
+		Content: "Test content",
+		Metadata: map[string]interface{}{
+			"key": "value",
 		},
-		{
-			name:      "Empty session ID",
-			sessionID: "",
-			summary: models.Summary{
-				Content: "Test content",
-				Metadata: map[string]interface{}{
-					"key": "value",
-				},
-				SummaryPointUUID: resultMessages[1].UUID,
-			},
-
-			wantErr:    true,
-			errMessage: "sessionID cannot be empty",
-		},
+		SummaryPointUUID: resultMessages[0].UUID,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resultSummary, err := summaryDAO.Create(
-				testCtx,
-				&tt.summary,
-			)
+	resultSummary, err := summaryDAO.Create(
+		testCtx,
+		summary,
+	)
 
-			if tt.wantErr {
-				assert.Error(t, err)
-				var storageErr *store.StorageError
-				if ok := errors.As(err, &storageErr); ok {
-					assert.Equal(t, tt.errMessage, storageErr.Message)
-				}
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, resultSummary)
-				assert.NotEmpty(t, resultSummary.UUID)
-				assert.False(t, resultSummary.CreatedAt.IsZero())
-				assert.Equal(t, tt.summary.Content, resultSummary.Content)
-				assert.Equal(t, tt.summary.Metadata, resultSummary.Metadata)
-			}
-		})
-	}
+	assert.NoError(t, err)
+	assert.NotNil(t, resultSummary)
+	assert.NotEmpty(t, resultSummary.UUID)
+	assert.False(t, resultSummary.CreatedAt.IsZero())
+	assert.Equal(t, summary.Content, resultSummary.Content)
+	assert.Equal(t, summary.Metadata, resultSummary.Metadata)
 }
 
 func TestGetSummary(t *testing.T) {
@@ -140,7 +97,7 @@ func TestGetSummary(t *testing.T) {
 		},
 	}
 
-	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 	resultMessages, err := messageDAO.CreateMany(testCtx, messages)
@@ -172,11 +129,13 @@ func TestGetSummary(t *testing.T) {
 			sessionID:     "nonexistent",
 			expectedFound: false,
 		},
-		// Add more test cases as needed
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			summaryDAO, err := NewSummaryDAO(testDB, appState, tt.sessionID)
+			assert.NoError(t, err, "NewSummaryDAO should not return an error")
+
 			result, err := summaryDAO.Get(testCtx)
 			assert.NoError(t, err)
 
@@ -210,7 +169,7 @@ func TestPostgresMemoryStore_GetSummaryByUUID(t *testing.T) {
 		},
 	}
 
-	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 	resultMessages, err := messageDAO.CreateMany(testCtx, messages)
@@ -295,7 +254,7 @@ func TestPostgresMemoryStore_PutSummaryEmbedding(t *testing.T) {
 		},
 	}
 
-	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 	resultMessages, err := messageDAO.CreateMany(testCtx, messages)
@@ -336,7 +295,7 @@ func TestGetSummaryList(t *testing.T) {
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
-	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 	msgs, err := messageDAO.CreateMany(testCtx, testutils.TestMessages)
@@ -404,7 +363,7 @@ func TestGetSummaryList(t *testing.T) {
 	}
 }
 
-func TestUpdateSummaryMetadata(t *testing.T) {
+func TestUpdateSummary(t *testing.T) {
 	// Step 1: CreateMessages a session
 	sessionID := createSession(t)
 
@@ -420,7 +379,7 @@ func TestUpdateSummaryMetadata(t *testing.T) {
 		},
 	}
 
-	messageDAO, err := NewMessageDAO(testDB, sessionID)
+	messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 	returnedMessages, err := messageDAO.CreateMany(testCtx, messages)
@@ -428,6 +387,7 @@ func TestUpdateSummaryMetadata(t *testing.T) {
 
 	// Step 3: Use putSummary to add a new test summary
 	summary := models.Summary{
+		Content:          "Test content",
 		SummaryPointUUID: returnedMessages[0].UUID,
 		Metadata: map[string]interface{}{
 			"key1": "value1",
@@ -441,17 +401,36 @@ func TestUpdateSummaryMetadata(t *testing.T) {
 	returnedSummary, err := summaryDAO.Create(testCtx, &summary)
 	assert.NoError(t, err, "putSummary should not return an error")
 
-	// Step 4: UpdateSummaryMetadata to update the metadata
-	newMetadata := map[string]interface{}{
-		"key1": "new value1",
-		"key2": "new value2",
-	}
-	returnedSummary.Metadata = newMetadata
-	_, err = summaryDAO.UpdateMetadata(testCtx, returnedSummary)
-	assert.NoError(t, err, "updateSummaryMetadata should not return an error")
+	t.Run("UpdateSummaryMetadata only", func(t *testing.T) {
+		// Step 4: UpdateSummary to update the metadata
+		newMetadata := map[string]interface{}{
+			"key1": "new value1",
+			"key2": "new value2",
+		}
+		returnedSummary.Metadata = newMetadata
+		returnedSummary.Content = "new content"
 
-	// Step 5: GetSummary to test that the metadata was correctly updated
-	resultSummary, err := summaryDAO.Get(testCtx)
-	assert.NoError(t, err, "GetSummary should not return an error")
-	assert.Equal(t, newMetadata, resultSummary.Metadata)
+		_, err = summaryDAO.Update(testCtx, returnedSummary, true)
+		assert.NoError(t, err, "updateSummaryMetadata should not return an error")
+
+		// Step 5: GetSummary to test that the metadata was correctly updated
+		resultSummary, err := summaryDAO.Get(testCtx)
+		assert.NoError(t, err, "GetSummary should not return an error")
+		assert.Equal(t, newMetadata, resultSummary.Metadata)
+		assert.Equal(t, summary.Content, resultSummary.Content)
+	})
+
+	t.Run("UpdateSummaryContent only", func(t *testing.T) {
+		// Step 4: UpdateSummary to update the metadata
+		newContent := "new content"
+		returnedSummary.Content = newContent
+
+		_, err = summaryDAO.Update(testCtx, returnedSummary, false)
+		assert.NoError(t, err, "updateSummaryMetadata should not return an error")
+
+		// Step 5: GetSummary to test that the metadata was correctly updated
+		resultSummary, err := summaryDAO.Get(testCtx)
+		assert.NoError(t, err, "GetSummary should not return an error")
+		assert.Equal(t, newContent, resultSummary.Content)
+	})
 }

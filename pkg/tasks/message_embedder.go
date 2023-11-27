@@ -85,7 +85,6 @@ func (t *MessageEmbedderTask) Process(
 	}
 	err = t.appState.MemoryStore.CreateMessageEmbeddings(
 		ctx,
-		t.appState,
 		sessionID,
 		embeddingRecords,
 	)
