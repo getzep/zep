@@ -55,7 +55,6 @@ func (mt *MessageTokenCountTask) Execute(
 
 	err = mt.appState.MemoryStore.PutMemory(
 		ctx,
-		mt.appState,
 		sessionID,
 		&models.Memory{Messages: countResult},
 		true,

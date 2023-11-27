@@ -130,27 +130,26 @@ func (pms *PostgresMemoryStore) GetMemory(
 		return nil, errors.New("cannot specify negative lastNMessages")
 	}
 
-	summary, err := GetSummary(ctx, pms.Client, sessionID)
+	memoryDAO, err := NewMemoryDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get summary: %w", err)
+		return nil, fmt.Errorf("failed to create memoryDAO: %w", err)
 	}
 
-	messageDAO, err := NewMessageDAO(pms.Client, sessionID)
+	return memoryDAO.Get(ctx, lastNMessages)
+}
+
+func (pms *PostgresMemoryStore) PutMemory(
+	ctx context.Context,
+	sessionID string,
+	memoryMessages *models.Memory,
+	skipNotify bool,
+) error {
+	memoryDAO, err := NewMemoryDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create messageDAO: %w", err)
+		return fmt.Errorf("failed to create memoryDAO: %w", err)
 	}
 
-	messages, err := messageDAO.GetLastN(ctx, lastNMessages, summary.SummaryPointUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get messages: %w", err)
-	}
-
-	memory := models.Memory{
-		Messages: messages,
-		Summary:  summary,
-	}
-
-	return &memory, nil
+	return memoryDAO.Create(ctx, memoryMessages, skipNotify)
 }
 
 // GetMessageList retrieves a list of messages for a given sessionID. Paginated by cursor and limit.
@@ -281,62 +280,6 @@ func (pms *PostgresMemoryStore) PutSummaryEmbedding(
 	return nil
 }
 
-func (pms *PostgresMemoryStore) PutMemory(
-	ctx context.Context,
-	sessionID string,
-	memoryMessages *models.Memory,
-	skipNotify bool,
-) error {
-	// Try UpdateMessages the session first. If no rows are affected, create a new session.
-	sessionStore := NewSessionDAO(pms.Client)
-	_, err := sessionStore.Update(ctx, &models.UpdateSessionRequest{
-		SessionID: sessionID,
-	}, false)
-	if err != nil {
-		if errors.Is(err, models.ErrNotFound) {
-			_, err = sessionStore.Create(ctx, &models.CreateSessionRequest{
-				SessionID: sessionID,
-			})
-			if err != nil {
-				return err
-			}
-		} else {
-			return err
-		}
-	}
-
-	messageDAO, err := NewMessageDAO(pms.Client, sessionID)
-	if err != nil {
-		return fmt.Errorf("failed to create messageDAO: %w", err)
-	}
-
-	messageResult, err := messageDAO.CreateMany(ctx, memoryMessages.Messages)
-	if err != nil {
-		return fmt.Errorf("failed to put messages: %w", err)
-	}
-
-	// If we are skipping pushing new messages to the message router, return early
-	if skipNotify {
-		return nil
-	}
-
-	mt := make([]models.MessageTask, len(messageResult))
-	for i, message := range messageResult {
-		mt[i] = models.MessageTask{UUID: message.UUID}
-	}
-
-	// Send new messages to the message router
-	err = pms.appState.TaskPublisher.PublishMessage(
-		map[string]string{"session_id": sessionID},
-		mt,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to publish new messages %w", err)
-	}
-
-	return nil
-}
-
 func (pms *PostgresMemoryStore) PutMessageMetadata(
 	ctx context.Context,
 	sessionID string,
@@ -357,8 +300,11 @@ func (pms *PostgresMemoryStore) SearchMemory(
 	query *models.MemorySearchPayload,
 	limit int,
 ) ([]models.MemorySearchResult, error) {
-	searchResults, err := searchMemory(ctx, pms.appState, pms.Client, sessionID, query, limit)
-	return searchResults, err
+	memoryDAO, err := NewMemoryDAO(pms.Client, pms.appState, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create memoryDAO: %w", err)
+	}
+	return memoryDAO.Search(ctx, query, limit)
 }
 
 func (pms *PostgresMemoryStore) Close() error {
