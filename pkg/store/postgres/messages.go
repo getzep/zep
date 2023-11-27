@@ -34,7 +34,7 @@ func putMessages(
 		len(messages),
 	)
 
-	// Try Update the session first. If no rows are affected, create a new session.
+	// Try UpdateMessages the session first. If no rows are affected, create a new session.
 	sessionStore := NewSessionDAO(db)
 	_, err := sessionStore.Update(ctx, &models.UpdateSessionRequest{
 		SessionID: sessionID,
@@ -71,7 +71,7 @@ func putMessages(
 		On("CONFLICT (uuid) DO UPDATE").
 		Exec(ctx)
 	if err != nil {
-		return nil, store.NewStorageError("failed to Create messages", err)
+		return nil, store.NewStorageError("failed to CreateMessages messages", err)
 	}
 
 	// copy the UUIDs back into the original messages

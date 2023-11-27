@@ -109,7 +109,7 @@ func TestGetSummary(t *testing.T) {
 
 	sessionManager := NewSessionDAO(testDB)
 	_, err = sessionManager.Create(testCtx, session)
-	assert.NoError(t, err, "Create should not return an error")
+	assert.NoError(t, err, "CreateMessages should not return an error")
 
 	summary := models.Summary{
 		Content: "Test content",
@@ -169,7 +169,7 @@ func TestGetSummary(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := getSummary(testCtx, testDB, tt.sessionID)
+			result, err := GetSummary(testCtx, testDB, tt.sessionID)
 			assert.NoError(t, err)
 
 			if tt.expectedFound {
@@ -319,7 +319,7 @@ func TestPostgresMemoryStore_PutSummaryEmbedding(t *testing.T) {
 }
 
 func TestGetSummaryList(t *testing.T) {
-	// Create a test session
+	// CreateMessages a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -389,7 +389,7 @@ func TestGetSummaryList(t *testing.T) {
 }
 
 func TestUpdateSummaryMetadata(t *testing.T) {
-	// Step 1: Create a session
+	// Step 1: CreateMessages a session
 	sessionID := createSession(t)
 
 	// Step 2: Put test messages
@@ -427,7 +427,7 @@ func TestUpdateSummaryMetadata(t *testing.T) {
 	assert.NoError(t, err, "updateSummaryMetadata should not return an error")
 
 	// Step 5: GetSummary to test that the metadata was correctly updated
-	resultSummary, err := getSummary(testCtx, testDB, sessionID)
-	assert.NoError(t, err, "getSummary should not return an error")
+	resultSummary, err := GetSummary(testCtx, testDB, sessionID)
+	assert.NoError(t, err, "GetSummary should not return an error")
 	assert.Equal(t, newMetadata, resultSummary.Metadata)
 }

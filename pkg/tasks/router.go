@@ -38,7 +38,7 @@ type TaskRouter struct {
 func NewTaskRouter(appState *models.AppState, db *sql.DB) (*TaskRouter, error) {
 	var wlog = wla.NewLogrusLogger(log)
 
-	// Create a new router
+	// CreateMessages a new router
 	cfg := message.RouterConfig{}
 	router, err := message.NewRouter(cfg, wlog)
 	if err != nil {

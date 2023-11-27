@@ -104,7 +104,7 @@ func TestGet(t *testing.T) {
 		Metadata:   map[string]interface{}{"key": "value"},
 	}
 
-	// Call the Create function
+	// Call the CreateMessages function
 	messageDAO, err := NewMessageDAO(testDB, sessionID)
 	assert.NoError(t, err)
 	createdMessage, err := messageDAO.Create(testCtx, message)
@@ -274,7 +274,7 @@ func TestGetListByUUID(t *testing.T) {
 	})
 
 	t.Run("GetListByUUID with valid message UUIDs", func(t *testing.T) {
-		// Create a list of UUIDs and corresponding messages
+		// CreateMessages a list of UUIDs and corresponding messages
 		var uuids []uuid.UUID
 		var messages []models.Message
 		for i := 0; i < 5; i++ {
@@ -380,7 +380,7 @@ func TestUpdate(t *testing.T) {
 	messageDAO, err := NewMessageDAO(testDB, sessionID)
 	assert.NoError(t, err)
 
-	// Create a message and store it
+	// CreateMessages a message and store it
 	uuid := uuid.New()
 	message := models.Message{
 		UUID:       uuid,
@@ -394,7 +394,7 @@ func TestUpdate(t *testing.T) {
 	_, err = messageDAO.Create(testCtx, &message)
 	assert.NoError(t, err)
 
-	t.Run("Update with unprivileged", func(t *testing.T) {
+	t.Run("UpdateMessages with unprivileged", func(t *testing.T) {
 		updatedMessage := models.Message{
 			UUID:       uuid,
 			Role:       "user",
@@ -411,7 +411,7 @@ func TestUpdate(t *testing.T) {
 		runSubTest(t, messageDAO, false, expectedMetadata, &updatedMessage)
 	})
 
-	t.Run("Update with privileged", func(t *testing.T) {
+	t.Run("UpdateMessages with privileged", func(t *testing.T) {
 		updatedMessage := models.Message{
 			UUID:       uuid,
 			Role:       "user",
@@ -450,7 +450,7 @@ func TestUpdateMany(t *testing.T) {
 	_, err = messageDAO.CreateMany(testCtx, messages)
 	assert.NoError(t, err)
 
-	// Create updated versions of the first 3 messages
+	// CreateMessages updated versions of the first 3 messages
 	updatedMessages := make([]models.Message, 3)
 	for i := 0; i < 3; i++ {
 		updatedMessage := models.Message{

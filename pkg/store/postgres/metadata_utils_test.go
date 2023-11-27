@@ -10,7 +10,7 @@ import (
 )
 
 func TestMergeMetadata_SessionDeleted(t *testing.T) {
-	// Create a test session
+	// CreateMessages a test session
 	sessionID := testutils.GenerateRandomString(16)
 	metadata := map[string]interface{}{
 		"key1": "value1",
@@ -53,7 +53,7 @@ func Test_mergeMetadata(t *testing.T) {
 	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
 
-	// Create a test session
+	// CreateMessages a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -80,7 +80,7 @@ func Test_mergeMetadata(t *testing.T) {
 		expectedMetadata map[string]interface{}
 	}{
 		{
-			name:      "Update metadata",
+			name:      "UpdateMessages metadata",
 			sessionID: sessionID,
 			metadata: map[string]interface{}{
 				"A": 3, // Should override initial value of "A"

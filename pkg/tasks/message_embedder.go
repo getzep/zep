@@ -83,7 +83,7 @@ func (t *MessageEmbedderTask) Process(
 			Embedding: embeddings[i],
 		}
 	}
-	err = t.appState.MemoryStore.PutMessageEmbeddings(
+	err = t.appState.MemoryStore.CreateMessageEmbeddings(
 		ctx,
 		t.appState,
 		sessionID,
@@ -92,7 +92,7 @@ func (t *MessageEmbedderTask) Process(
 	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {
 			log.Warnf(
-				"MessageEmbedderTask PutMessageEmbeddings not found. Were the records deleted? %v",
+				"MessageEmbedderTask CreateMessageEmbeddings not found. Were the records deleted? %v",
 				err,
 			)
 			// Don't error out

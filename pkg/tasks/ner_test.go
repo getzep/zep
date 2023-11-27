@@ -26,7 +26,7 @@ func TestCallNERService(t *testing.T) {
     after a Group-of-Seven summit in Japan. He added that his administration was 
     considering whether to lift sanctions on Chinese Defense Minister Li Shangfu.`,
 	}
-	// Create messages with the texts
+	// CreateMessages messages with the texts
 	textData := createMessages(texts)
 
 	// Call the NER service

@@ -70,7 +70,7 @@ func TestSessionDAO_Get(t *testing.T) {
 	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
 
-	// Create a test session
+	// CreateMessages a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -124,7 +124,7 @@ func TestSessionDAO_Update(t *testing.T) {
 	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
 
-	// Create a test session
+	// CreateMessages a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -137,7 +137,7 @@ func TestSessionDAO_Update(t *testing.T) {
 	createdSession, err := dao.Create(testCtx, session)
 	assert.NoError(t, err)
 
-	// Update the session
+	// UpdateMessages the session
 	updateSession := &models.UpdateSessionRequest{
 		SessionID: sessionID,
 		Metadata: map[string]interface{}{
@@ -160,7 +160,7 @@ func TestSessionDAO_UpdateWithNilMetadata(t *testing.T) {
 	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
 
-	// Create a test session
+	// CreateMessages a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -173,7 +173,7 @@ func TestSessionDAO_UpdateWithNilMetadata(t *testing.T) {
 	createdSession, err := dao.Create(testCtx, session)
 	assert.NoError(t, err)
 
-	// Update the session
+	// UpdateMessages the session
 	updateSession := &models.UpdateSessionRequest{
 		SessionID: sessionID,
 	}
@@ -192,7 +192,7 @@ func TestSessionDAO_Delete(t *testing.T) {
 	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
 
-	// Create a test session
+	// CreateMessages a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -262,9 +262,9 @@ func TestSessionDAO_DeleteSessionDeletesSummaryMessages(t *testing.T) {
 	assert.Nil(t, respMessages, "getMessages should return nil")
 
 	// Test that summary is deleted
-	respSummary, err := getSummary(testCtx, testDB, sessionID)
-	assert.NoError(t, err, "getSummary should not return an error")
-	assert.Nil(t, respSummary, "getSummary should return nil")
+	respSummary, err := GetSummary(testCtx, testDB, sessionID)
+	assert.NoError(t, err, "GetSummary should not return an error")
+	assert.Nil(t, respSummary, "GetSummary should return nil")
 }
 
 func TestSessionDAO_UndeleteSession(t *testing.T) {
@@ -280,11 +280,11 @@ func TestSessionDAO_UndeleteSession(t *testing.T) {
 		SessionID: sessionID,
 	}
 	updatesSession, err := sessionStore.Update(testCtx, session, false)
-	assert.NoError(t, err, "Update should not return an error")
+	assert.NoError(t, err, "UpdateMessages should not return an error")
 
 	assert.NoError(t, err, "Get should not return an error")
-	assert.NotNil(t, updatesSession, "Update should return a session")
-	assert.Emptyf(t, updatesSession.DeletedAt, "Update should not have a DeletedAt value")
+	assert.NotNil(t, updatesSession, "UpdateMessages should return a session")
+	assert.Emptyf(t, updatesSession.DeletedAt, "UpdateMessages should not have a DeletedAt value")
 
 	// Test that messages remain deleted
 	respMessages, err := getMessages(testCtx, testDB, sessionID, 2, nil, 0)
@@ -379,7 +379,7 @@ func TestSessionDAO_ListAll(t *testing.T) {
 	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
 
-	// Create a few test sessions
+	// CreateMessages a few test sessions
 	sessions := createTestSessions(t, dao, 5)
 	lastID := sessions[len(sessions)-1].ID
 
@@ -429,7 +429,7 @@ func TestSessionDAO_ListAllOrdered(t *testing.T) {
 	totalCount := 5
 	pageSize := 5
 
-	// Create a few test sessions
+	// CreateMessages a few test sessions
 	sessions := createTestSessions(t, dao, totalCount)
 
 	tests := []struct {

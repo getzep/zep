@@ -42,7 +42,7 @@ func (zllm *ZepAnthropicLLM) Init(_ context.Context, cfg *config.Config) error {
 		return err
 	}
 
-	// Create a new client instance with options
+	// CreateMessages a new client instance with options
 	llm, err := anthropic.New(options...)
 	if err != nil {
 		return err

@@ -51,7 +51,7 @@ func TestUpdatedAtIsSetAfterUpdate(t *testing.T) {
 
 	// Iterate over all schemas
 	for _, schema := range schemas {
-		// Create a new instance of the schema
+		// CreateMessages a new instance of the schema
 		instance := reflect.New(reflect.TypeOf(schema).Elem()).Interface().(bun.BeforeAppendModelHook)
 
 		// Set the UpdatedAt field to a time far in the past
@@ -60,7 +60,7 @@ func TestUpdatedAtIsSetAfterUpdate(t *testing.T) {
 			FieldByName("UpdatedAt").
 			Set(reflect.ValueOf(time.Unix(0, 0)))
 
-		// Create a dummy UpdateQuery
+		// CreateMessages a dummy UpdateQuery
 		updateQuery := &bun.UpdateQuery{}
 
 		// Call the BeforeAppendModel method, which should update the UpdatedAt field

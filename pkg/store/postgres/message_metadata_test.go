@@ -121,7 +121,7 @@ func TestPutMetadata(t *testing.T) {
 
 	sessionStore := NewSessionDAO(testDB)
 	_, err = sessionStore.Create(testCtx, session)
-	assert.NoError(t, err, "sessionStore.Create should not return an error")
+	assert.NoError(t, err, "sessionStore.CreateMessages should not return an error")
 
 	testMessages := []MessageStoreSchema{
 		{

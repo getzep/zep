@@ -37,7 +37,7 @@ func putSummary(
 
 	_, err = db.NewInsert().Model(&pgSummary).Exec(ctx)
 	if err != nil {
-		return nil, store.NewStorageError("failed to Create summary", err)
+		return nil, store.NewStorageError("failed to CreateMessages summary", err)
 	}
 
 	retSummary := models.Summary{}
@@ -99,8 +99,8 @@ func updateSummaryMetadata(
 	return summary, nil
 }
 
-// getSummary returns the most recent summary for a session
-func getSummary(ctx context.Context, db *bun.DB, sessionID string) (*models.Summary, error) {
+// GetSummary returns the most recent summary for a session
+func GetSummary(ctx context.Context, db *bun.DB, sessionID string) (*models.Summary, error) {
 	summary := SummaryStoreSchema{}
 	err := db.NewSelect().
 		Model(&summary).

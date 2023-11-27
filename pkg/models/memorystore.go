@@ -57,6 +57,18 @@ type SessionStorer interface {
 }
 
 type MessageStorer interface {
+	CreateMessages(
+		ctx context.Context,
+		sessionID string,
+		messages []Message) ([]Message, error)
+	// UpdateMessages updates a collection of Messages for a given sessionID. If metadataOnly is true, only the
+	// metadata is updated. If isPrivileged is true, the `system` key may be updated.
+	UpdateMessages(
+		ctx context.Context,
+		sessionID string,
+		messages []Message,
+		isPrivileged bool,
+		metadataOnly bool) error
 	// GetMessagesByUUID retrieves messages for a given sessionID and UUID slice.
 	GetMessagesByUUID(
 		ctx context.Context,
@@ -69,15 +81,20 @@ type MessageStorer interface {
 		pageNumber int,
 		pageSize int,
 	) (*MessageListResponse, error)
-	// PutMessageMetadata creates, updates, or deletes metadata for a given message, and does not
-	// update the message itself.
-	// isPrivileged indicates whether the caller is privileged to add or update system metadata.
-	PutMessageMetadata(ctx context.Context,
+	// GetLastNMessages retrieves the last N messages for a session. If uuid is provided, it will get the
+	// last N messages before and including the provided beforeUUID. Results are returned in
+	// ascending order of creation
+	GetLastNMessages(ctx context.Context,
 		sessionID string,
-		messages []Message,
-		isPrivileged bool) error
-	// PutMessageEmbeddings stores a collection of TextData for a given sessionID.
-	PutMessageEmbeddings(ctx context.Context,
+		lastNMessages int,
+		beforeUUID uuid.UUID,
+	) ([]Message, error)
+	// DeleteMessage deletes a Message. This is a soft delete.
+	DeleteMessage(ctx context.Context,
+		sessionID string,
+		messageUUID uuid.UUID) error
+	// CreateMessageEmbeddings stores a collection of TextData for a given sessionID.
+	CreateMessageEmbeddings(ctx context.Context,
 		sessionID string,
 		embeddings []TextData) error
 	// GetMessageEmbeddings retrieves a collection of TextData for a given sessionID.
@@ -102,7 +119,7 @@ type MemoryStorer interface {
 		memoryMessages *Memory,
 		skipNotify bool) error // skipNotify is used to prevent loops when calling NotifyExtractors.
 	// SearchMemory retrieves a collection of SearchResults for a given sessionID and query. Currently, The
-	// MemorySearchResult structure can include both Messages and Summaries. Currently, we only search Messages.
+	// MemorySearchResult structure can include both Messages and Summaries.
 	SearchMemory(
 		ctx context.Context,
 		sessionID string,

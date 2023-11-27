@@ -130,7 +130,7 @@ func (pms *PostgresMemoryStore) GetMemory(
 		return nil, errors.New("cannot specify negative lastNMessages")
 	}
 
-	summary, err := getSummary(ctx, pms.Client, sessionID)
+	summary, err := GetSummary(ctx, pms.Client, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get summary: %w", err)
 	}
@@ -185,7 +185,7 @@ func (pms *PostgresMemoryStore) GetSummary(
 	ctx context.Context,
 	sessionID string,
 ) (*models.Summary, error) {
-	summary, err := getSummary(ctx, pms.Client, sessionID)
+	summary, err := GetSummary(ctx, pms.Client, sessionID)
 	if err != nil {
 		return nil, store.NewStorageError("failed to get summary", err)
 	}
@@ -226,7 +226,7 @@ func (pms *PostgresMemoryStore) PutSummary(
 ) error {
 	retSummary, err := putSummary(ctx, pms.Client, sessionID, summary)
 	if err != nil {
-		return store.NewStorageError("failed to Create summary", err)
+		return store.NewStorageError("failed to CreateMessages summary", err)
 	}
 
 	// Publish a message to the message summary embeddings topic
@@ -275,7 +275,7 @@ func (pms *PostgresMemoryStore) PutSummaryEmbedding(
 ) error {
 	err := putSummaryEmbedding(ctx, pms.Client, sessionID, embedding)
 	if err != nil {
-		return store.NewStorageError("failed to Create summary embedding", err)
+		return store.NewStorageError("failed to CreateMessages summary embedding", err)
 	}
 
 	return nil
@@ -287,7 +287,7 @@ func (pms *PostgresMemoryStore) PutMemory(
 	memoryMessages *models.Memory,
 	skipNotify bool,
 ) error {
-	// Try Update the session first. If no rows are affected, create a new session.
+	// Try UpdateMessages the session first. If no rows are affected, create a new session.
 	sessionStore := NewSessionDAO(pms.Client)
 	_, err := sessionStore.Update(ctx, &models.UpdateSessionRequest{
 		SessionID: sessionID,

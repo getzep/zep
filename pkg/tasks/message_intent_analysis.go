@@ -68,7 +68,7 @@ func (mt *MessageIntentTask) Execute(
 		}(m)
 	}
 
-	// Create a goroutine to close errs after wg is done
+	// CreateMessages a goroutine to close errs after wg is done
 	go func() {
 		wg.Wait()
 		close(errs)
@@ -112,7 +112,7 @@ func (mt *MessageIntentTask) processMessage(
 		Input: message.Content,
 	}
 
-	// Create a prompt with the Message input that needs to be classified
+	// CreateMessages a prompt with the Message input that needs to be classified
 	prompt, err := internal.ParsePrompt(intentPromptTemplate, data)
 	if err != nil {
 		errs <- fmt.Errorf("MessageIntentTask: %w", err)

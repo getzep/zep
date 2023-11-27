@@ -19,7 +19,7 @@ func TestUserStoreDAO(t *testing.T) {
 	// Initialize the UserStoreDAO
 	userStore := NewUserStoreDAO(testDB)
 
-	// Create a user
+	// CreateMessages a user
 	user := &models.CreateUserRequest{
 		UserID: userID,
 		Metadata: map[string]interface{}{
@@ -27,8 +27,8 @@ func TestUserStoreDAO(t *testing.T) {
 		},
 	}
 
-	// Test Create
-	t.Run("Create", func(t *testing.T) {
+	// Test CreateMessages
+	t.Run("CreateMessages", func(t *testing.T) {
 		_, err := userStore.Create(ctx, user)
 		assert.NoError(t, err)
 
@@ -40,8 +40,8 @@ func TestUserStoreDAO(t *testing.T) {
 		assert.NotEmpty(t, createdUser.ID)
 	})
 
-	// Test Create
-	t.Run("Create with no user_id", func(t *testing.T) {
+	// Test CreateMessages
+	t.Run("CreateMessages with no user_id", func(t *testing.T) {
 		userNoId := &models.CreateUserRequest{
 			UserID: "",
 		}
@@ -62,9 +62,9 @@ func TestUserStoreDAO(t *testing.T) {
 		assert.ErrorIs(t, err, models.ErrNotFound)
 	})
 
-	// Test Update
-	t.Run("Update", func(t *testing.T) {
-		// Create a user with non-zero values
+	// Test UpdateMessages
+	t.Run("UpdateMessages", func(t *testing.T) {
+		// CreateMessages a user with non-zero values
 		userID := testutils.GenerateRandomString(16)
 		user := &models.CreateUserRequest{
 			UserID: userID,
@@ -79,7 +79,7 @@ func TestUserStoreDAO(t *testing.T) {
 		// Wait a second
 		<-time.After(1 * time.Second)
 
-		// Update the user with zero values
+		// UpdateMessages the user with zero values
 		userUpdate := &models.UpdateUserRequest{
 			UserID:    user.UserID,
 			Metadata:  nil,
@@ -97,7 +97,7 @@ func TestUserStoreDAO(t *testing.T) {
 		assert.Less(t, createdUser.UpdatedAt, updatedUser.UpdatedAt)
 	})
 
-	t.Run("Update Non-Existant User should result in NotFoundError", func(t *testing.T) {
+	t.Run("UpdateMessages Non-Existant User should result in NotFoundError", func(t *testing.T) {
 		userUpdate := &models.UpdateUserRequest{
 			UserID: "non-existant-user-id",
 			Email:  "email",
@@ -111,7 +111,7 @@ func TestUserStoreDAO(t *testing.T) {
 		returnedUser, err := userStore.Get(ctx, user.UserID)
 		assert.NoError(t, err)
 
-		// Create some sessions for the user
+		// CreateMessages some sessions for the user
 		session1, err := testutils.GenerateRandomSessionID(16)
 		assert.NoError(t, err)
 		session2, err := testutils.GenerateRandomSessionID(16)
@@ -169,9 +169,9 @@ func TestUserStoreDAO(t *testing.T) {
 			assert.Nil(t, respMessages, "getMessages should return nil")
 
 			// Test that summary is deleted
-			respSummary, err := getSummary(testCtx, testDB, sessionID)
-			assert.NoError(t, err, "getSummary should not return an error")
-			assert.Nil(t, respSummary, "getSummary should return nil")
+			respSummary, err := GetSummary(testCtx, testDB, sessionID)
+			assert.NoError(t, err, "GetSummary should not return an error")
+			assert.Nil(t, respSummary, "GetSummary should return nil")
 
 			// check that embeddings are deleted
 			respEmbeddings, err := getMessageEmbeddings(testCtx, testDB, sessionID)
@@ -195,7 +195,7 @@ func TestUserStoreDAO_ListAll(t *testing.T) {
 	// Initialize UserStoreDAO
 	dao := NewUserStoreDAO(testDB)
 
-	// Create a few test users
+	// CreateMessages a few test users
 	var lastID int64
 	for i := 0; i < 5; i++ {
 		userID := testutils.GenerateRandomString(16)
@@ -256,7 +256,7 @@ func TestUserStoreDAO_ListAllOrdered(t *testing.T) {
 	// Initialize UserStoreDAO
 	dao := NewUserStoreDAO(testDB)
 
-	// Create a few test users
+	// CreateMessages a few test users
 	for i := 0; i < 5; i++ {
 		userID := testutils.GenerateRandomString(16)
 		assert.NoError(t, err, "GenerateRandomString should not return an error")

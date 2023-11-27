@@ -74,7 +74,7 @@ func TestCollectionUpdate(t *testing.T) {
 	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
-	// Update the collection
+	// UpdateMessages the collection
 	expectedDimensions := 20
 	collection.EmbeddingDimensions = expectedDimensions
 	err = collection.Update(ctx)
@@ -272,13 +272,13 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 		expectedError string
 	}{
 		{
-			name:          "test Create documents into an existing collection",
+			name:          "test CreateMessages documents into an existing collection",
 			collection:    collection,
 			documents:     documents,
 			expectedError: "",
 		},
 		{
-			name:          "test Create documents into a non-existent collection",
+			name:          "test CreateMessages documents into a non-existent collection",
 			collection:    NewTestCollectionDAO(3),
 			documents:     documents,
 			expectedError: "failed to get collection",

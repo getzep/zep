@@ -37,7 +37,7 @@ var testCmd = &cobra.Command{
 
 var createFixturesCmd = &cobra.Command{
 	Use:   "create-fixtures",
-	Short: "Create fixtures for testing",
+	Short: "CreateMessages fixtures for testing",
 	Run: func(cmd *cobra.Command, args []string) {
 		fixtureCount, _ := cmd.Flags().GetInt("count")
 		outputDir, _ := cmd.Flags().GetString("outputDir")

@@ -82,7 +82,7 @@ func GetUserHandler(appState *models.AppState) http.HandlerFunc {
 
 // UpdateUserHandler godoc
 //
-//	@Summary		Update a user
+//	@Summary		UpdateMessages a user
 //	@Description	update user by id
 //	@Tags			user
 //	@Accept			json

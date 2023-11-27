@@ -74,7 +74,7 @@ func (dc *DocumentCollectionDAO) Create(
 		return fmt.Errorf("failed to insert collection: %w", err)
 	}
 
-	// Create the document table for the collection. It will only be created if
+	// CreateMessages the document table for the collection. It will only be created if
 	// it doesn't already exist.
 	err = createDocumentTable(ctx, dc.appState, dc.db, dc.TableName, dc.EmbeddingDimensions)
 	if err != nil {

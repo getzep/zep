@@ -119,7 +119,7 @@ func TestPutMessages(t *testing.T) {
 		insertedMessages, err := putMessages(testCtx, testDB, sessionID, messages)
 		assert.NoError(t, err, "putMessages should not return an error")
 
-		// Update TokenCount values for the returned messages
+		// UpdateMessages TokenCount values for the returned messages
 		for i := range insertedMessages {
 			insertedMessages[i].TokenCount = i + 1
 		}
@@ -228,7 +228,7 @@ func verifyMessagesInDB(
 }
 
 func TestGetMessages(t *testing.T) {
-	// Create a test session
+	// CreateMessages a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -284,7 +284,7 @@ func TestGetMessages(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var summary *models.Summary
 			if tt.withSummary {
-				// Create a summary using the test messages. The SummaryPointUUID should be at messageWindow - 2
+				// CreateMessages a summary using the test messages. The SummaryPointUUID should be at messageWindow - 2
 				summary, err = putSummary(
 					testCtx,
 					testDB,
@@ -335,7 +335,7 @@ func TestGetMessages(t *testing.T) {
 }
 
 func TestGetMessageList(t *testing.T) {
-	// Create a test session
+	// CreateMessages a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -447,7 +447,7 @@ func TestPutEmbeddingsLocal(t *testing.T) {
 		vector[i] = r.Float32()
 	}
 
-	// Create embeddings
+	// CreateMessages embeddings
 	embeddings := []models.TextData{
 		{
 			TextUUID:  resultMessages[0].UUID,

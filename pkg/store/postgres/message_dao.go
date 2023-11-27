@@ -35,7 +35,7 @@ func (dao *MessageDAO) Create(
 	ctx context.Context,
 	message *models.Message,
 ) (*models.Message, error) {
-	// Create a new MessageStoreSchema from the provided message
+	// CreateMessages a new MessageStoreSchema from the provided message
 	pgMessage := MessageStoreSchema{
 		UUID:       message.UUID,
 		SessionID:  dao.sessionID,
@@ -92,7 +92,7 @@ func (dao *MessageDAO) CreateMany(
 		Returning("*").
 		Exec(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to Create messages %w", err)
+		return nil, fmt.Errorf("failed to CreateMessages messages %w", err)
 	}
 
 	messages = messagesFromStoreSchema(pgMessages)
@@ -125,7 +125,7 @@ func (dao *MessageDAO) Get(ctx context.Context, messageUUID uuid.UUID) (*models.
 }
 
 // GetLastN retrieves the last N messages for a session. If uuid is provided, it will get the
-// last N messages before and including the provided beforeUUID. // Results are returned in
+// last N messages before and including the provided beforeUUID. Results are returned in
 // ascending order of creation
 func (dao *MessageDAO) GetLastN(
 	ctx context.Context,
@@ -350,7 +350,7 @@ func (dao *MessageDAO) Update(ctx context.Context,
 		}
 	}
 
-	// Update metadata
+	// UpdateMessages metadata
 	if message.Metadata != nil {
 		err = dao.updateMetadata(ctx, tx, message.UUID, message.Metadata, isPrivileged)
 		if err != nil {
@@ -408,7 +408,7 @@ func (dao *MessageDAO) UpdateMany(ctx context.Context,
 		}
 	}
 
-	// Update metadata
+	// UpdateMessages metadata
 	for _, msg := range messages {
 		if msg.Metadata != nil {
 			err = dao.updateMetadata(ctx, tx, msg.UUID, msg.Metadata, isPrivileged)

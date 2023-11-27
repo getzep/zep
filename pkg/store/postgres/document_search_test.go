@@ -24,7 +24,7 @@ func TestDocumentSearchWithIndexEndToEnd(t *testing.T) {
 
 	collectionName := testutils.GenerateRandomString(16)
 
-	// Create channels
+	// CreateMessages channels
 	documentStore, err := NewDocumentStore(
 		ctx,
 		appState,
@@ -82,7 +82,7 @@ func TestReRankMMR(t *testing.T) {
 		limit:       2,
 	}
 
-	// Create a slice of SearchDocumentResult
+	// CreateMessages a slice of SearchDocumentResult
 	results := []models.SearchDocumentResult{
 		{
 			Document: &models.Document{

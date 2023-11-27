@@ -188,7 +188,7 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 	if outputDir == "" {
 		outputDir = "./"
 	} else {
-		// Create output directory if it doesn't exist
+		// CreateMessages output directory if it doesn't exist
 		if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 			err = os.Mkdir(outputDir, 0755)
 			if err != nil {
@@ -198,7 +198,7 @@ func GenerateFixtureData(fixtureCount int, outputDir string) {
 		}
 	}
 
-	// Create document table directory if it doesn't exist
+	// CreateMessages document table directory if it doesn't exist
 	documentTablePath := filepath.Join(outputDir, "document_tables")
 	if _, err := os.Stat(documentTablePath); os.IsNotExist(err) {
 		err = os.Mkdir(documentTablePath, 0755)
@@ -257,7 +257,7 @@ func createTestDocumentTables(ctx context.Context, appState *models.AppState, db
 		return fmt.Errorf("failed to query DocumentCollections: %w", err)
 	}
 
-	// Create tables for each DocumentCollection
+	// CreateMessages tables for each DocumentCollection
 	for _, table := range results {
 		err = createDocumentTable(ctx, appState, db, table.TableName, table.EmbeddingDimensions)
 		if err != nil {
