@@ -402,7 +402,7 @@ func TestUpdateSummary(t *testing.T) {
 	returnedSummary, err := summaryDAO.Create(testCtx, &summary)
 	assert.NoError(t, err, "putSummary should not return an error")
 
-	t.Run("UpdateSummaryMetadata only", func(t *testing.T) {
+	t.Run("includeContent false", func(t *testing.T) {
 		// Step 4: UpdateSummary to update the metadata
 		newMetadata := map[string]interface{}{
 			"key1": "new value1",
@@ -411,7 +411,7 @@ func TestUpdateSummary(t *testing.T) {
 		returnedSummary.Metadata = newMetadata
 		returnedSummary.Content = "new content"
 
-		_, err = summaryDAO.Update(testCtx, returnedSummary, true)
+		_, err = summaryDAO.Update(testCtx, returnedSummary, false)
 		assert.NoError(t, err, "updateSummaryMetadata should not return an error")
 
 		// Step 5: GetSummary to test that the metadata was correctly updated
@@ -421,12 +421,12 @@ func TestUpdateSummary(t *testing.T) {
 		assert.Equal(t, summary.Content, resultSummary.Content)
 	})
 
-	t.Run("UpdateSummaryContent only", func(t *testing.T) {
+	t.Run("includeContent true", func(t *testing.T) {
 		// Step 4: UpdateSummary to update the metadata
 		newContent := "new content"
 		returnedSummary.Content = newContent
 
-		_, err = summaryDAO.Update(testCtx, returnedSummary, false)
+		_, err = summaryDAO.Update(testCtx, returnedSummary, true)
 		assert.NoError(t, err, "updateSummaryMetadata should not return an error")
 
 		// Step 5: GetSummary to test that the metadata was correctly updated

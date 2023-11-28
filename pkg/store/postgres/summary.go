@@ -63,7 +63,7 @@ func (s *SummaryDAO) Create(
 func (s *SummaryDAO) Update(
 	ctx context.Context,
 	summary *models.Summary,
-	metadataOnly bool,
+	includeContent bool,
 ) (*models.Summary, error) {
 	if summary.UUID == uuid.Nil {
 		return nil, errors.New("summary UUID cannot be empty")
@@ -95,9 +95,9 @@ func (s *SummaryDAO) Update(
 		TokenCount: summary.TokenCount,
 	}
 
-	columns := []string{"content", "metadata", "token_count"}
-	if metadataOnly {
-		columns = []string{"metadata"}
+	columns := []string{"metadata", "token_count"}
+	if includeContent {
+		columns = append(columns, "content")
 	}
 	_, err = tx.NewUpdate().
 		Model(pgSummary).

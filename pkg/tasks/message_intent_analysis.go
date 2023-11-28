@@ -156,7 +156,7 @@ func (mt *MessageIntentTask) processMessage(
 		sessionID,
 		intentResponse,
 		true,
-		true,
+		false,
 	)
 	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {

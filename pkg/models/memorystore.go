@@ -61,14 +61,15 @@ type MessageStorer interface {
 	//	ctx context.Context,
 	//	sessionID string,
 	//	messages []Message) ([]Message, error)
-	// UpdateMessages updates a collection of Messages for a given sessionID. If metadataOnly is true, only the
-	// metadata is updated. If isPrivileged is true, the `system` key may be updated.
+
+	// UpdateMessages updates a collection of Messages for a given sessionID. If includeContent is true, the
+	// role and content fields are updated, too. If isPrivileged is true, the `system` key may be updated.
 	UpdateMessages(
 		ctx context.Context,
 		sessionID string,
 		messages []Message,
 		isPrivileged bool,
-		metadataOnly bool) error
+		includeContent bool) error
 	// GetMessagesByUUID retrieves messages for a given sessionID and UUID slice.
 	GetMessagesByUUID(
 		ctx context.Context,
@@ -143,14 +144,14 @@ type SummaryStorer interface {
 		pageSize int,
 	) (*SummaryListResponse, error)
 	// PutSummary stores a new Summary for a given sessionID.
-	PutSummary(ctx context.Context,
+	CreateSummary(ctx context.Context,
 		sessionID string,
 		summary *Summary) error
 	// UpdateSummary updates the metadata for a given Summary. The Summary UUID must be set.
 	UpdateSummary(ctx context.Context,
 		sessionID string,
 		summary *Summary,
-		metadataOnly bool,
+		includeContent bool,
 	) error
 	// PutSummaryEmbedding stores a TextData for a given sessionID and Summary UUID.
 	PutSummaryEmbedding(ctx context.Context,

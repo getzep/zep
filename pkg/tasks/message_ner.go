@@ -81,7 +81,7 @@ func (n *MessageNERTask) Execute(
 		}
 	}
 
-	err = n.appState.MemoryStore.UpdateMessages(ctx, sessionID, nerMessages, true, true)
+	err = n.appState.MemoryStore.UpdateMessages(ctx, sessionID, nerMessages, true, false)
 	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {
 			log.Warnf("MessageNERTask PutMessageMetadata not found. Were the records deleted?")

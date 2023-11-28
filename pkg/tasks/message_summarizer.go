@@ -88,14 +88,14 @@ func (t *MessageSummaryTask) Execute(
 		return fmt.Errorf("SummaryTask summarize failed %w", err)
 	}
 
-	err = t.appState.MemoryStore.PutSummary(
+	err = t.appState.MemoryStore.CreateSummary(
 		ctx,
 		sessionID,
 		newSummary,
 	)
 	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {
-			log.Warnf("MessageSummaryTask PutSummary not found. Were the records deleted?")
+			log.Warnf("MessageSummaryTask CreateSummary not found. Were the records deleted?")
 			// Don't error out
 			msg.Ack()
 			return nil

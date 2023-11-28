@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"testing"
 	"time"
 
@@ -164,7 +165,7 @@ func TestUserStoreDAO(t *testing.T) {
 
 		// Test that messages and summaries are deleted
 		for _, sessionID := range testSessions {
-			messageDAO, err := NewMessageDAO(testDB, nil, sessionID)
+			messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
 			assert.NoError(t, err, "NewMessageDAO should not return an error")
 
 			summaryDAO, err := NewSummaryDAO(testDB, appState, sessionID)
@@ -172,12 +173,12 @@ func TestUserStoreDAO(t *testing.T) {
 
 			respMessages, err := messageDAO.GetListBySession(testCtx, 0, 10)
 			assert.NoError(t, err, "getMessages should not return an error")
-			assert.Nil(t, respMessages, "getMessages should return nil")
+			assert.Empty(t, respMessages.Messages, "getMessages should return nil")
 
 			// Test that summary is deleted
 			respSummary, err := summaryDAO.Get(testCtx)
 			assert.NoError(t, err, "GetSummary should not return an error")
-			assert.Nil(t, respSummary, "GetSummary should return nil")
+			assert.Equal(t, uuid.Nil, respSummary.UUID, "GetSummary should return nil")
 
 			// check that embeddings are deleted
 			respEmbeddings, err := messageDAO.GetEmbeddingListBySession(testCtx)

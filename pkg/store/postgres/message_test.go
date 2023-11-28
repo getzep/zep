@@ -364,16 +364,17 @@ func TestGetListBySession_Nonexistant_Session(t *testing.T) {
 	assert.Equal(t, 0, retrievedMessages.TotalCount)
 }
 
-func runSubTest(t *testing.T, messageDAO *MessageDAO, privileged bool, expectedMetadata map[string]interface{}, updatedMessage *models.Message) {
+func runSubTest(t *testing.T, messageDAO *MessageDAO,
+	includeContent, privileged bool, expectedMessage *models.Message, updatedMessage *models.Message) {
 	t.Helper()
-	err := messageDAO.Update(testCtx, updatedMessage, false, privileged)
+	err := messageDAO.Update(testCtx, updatedMessage, includeContent, privileged)
 	assert.NoError(t, err)
 	retrievedMessage, err := messageDAO.Get(testCtx, updatedMessage.UUID)
 	assert.NoError(t, err)
-	assert.Equal(t, updatedMessage.UUID, retrievedMessage.UUID)
-	assert.Equal(t, updatedMessage.Content, retrievedMessage.Content)
-	assert.Equal(t, updatedMessage.TokenCount, retrievedMessage.TokenCount)
-	assert.Equal(t, expectedMetadata, retrievedMessage.Metadata)
+	assert.Equal(t, expectedMessage.UUID, retrievedMessage.UUID)
+	assert.Equal(t, expectedMessage.Content, retrievedMessage.Content)
+	assert.Equal(t, expectedMessage.TokenCount, retrievedMessage.TokenCount)
+	assert.Equal(t, expectedMessage.Metadata, retrievedMessage.Metadata)
 }
 
 func TestUpdate(t *testing.T) {
@@ -383,53 +384,84 @@ func TestUpdate(t *testing.T) {
 	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
 	assert.NoError(t, err)
 
-	// CreateMessages a message and store it
-	uuid := uuid.New()
 	message := models.Message{
-		UUID:       uuid,
 		Role:       "user",
 		Content:    "testContent",
 		TokenCount: 1,
 		Metadata:   map[string]interface{}{"key1": "value1", "keyOther": "valueOther"},
 	}
 
-	// Store messages
-	_, err = messageDAO.Create(testCtx, &message)
-	assert.NoError(t, err)
+	testCases := []struct {
+		name            string
+		updatedMessage  models.Message
+		expectedMessage models.Message
+		includeContent  bool
+		privileged      bool
+	}{
+		{
+			name: "UpdateMessages with unprivileged & includeContent",
+			updatedMessage: models.Message{
+				Role:       "user2",
+				Content:    "testContentUpdated",
+				TokenCount: 2,
+				Metadata:   map[string]interface{}{"key1": "value1Updated", "key2": "value2", "system": "privileged"},
+			},
+			expectedMessage: models.Message{
+				Role:       "user2",
+				Content:    "testContentUpdated",
+				TokenCount: 2,
+				Metadata:   map[string]interface{}{"key1": "value1Updated", "key2": "value2", "keyOther": "valueOther"},
+			},
+			includeContent: true,
+			privileged:     false,
+		},
+		{
+			name: "UpdateMessages with privileged",
+			updatedMessage: models.Message{
+				Role:       "user2",
+				Content:    "testContentUpdated",
+				TokenCount: 2,
+				Metadata:   map[string]interface{}{"key1": "value1Updated", "key2": "value2", "system": "privileged"},
+			},
+			expectedMessage: models.Message{
+				Role:       "user2",
+				Content:    "testContentUpdated",
+				TokenCount: 2,
+				Metadata:   map[string]interface{}{"key1": "value1Updated", "key2": "value2", "keyOther": "valueOther", "system": "privileged"},
+			},
+			includeContent: true,
+			privileged:     true,
+		},
+		{
+			name: "UpdateMessages with includeContent false",
+			updatedMessage: models.Message{
+				Role:       "user2",
+				Content:    "testContentUpdated",
+				TokenCount: 2,
+				Metadata:   map[string]interface{}{"key1": "value1Updated", "key2": "value2", "system": "privileged"},
+			},
+			expectedMessage: models.Message{
+				Role:       "user",
+				Content:    "testContent",
+				TokenCount: 2,
+				Metadata:   map[string]interface{}{"key1": "value1Updated", "key2": "value2", "keyOther": "valueOther", "system": "privileged"},
+			},
+			includeContent: false,
+			privileged:     true,
+		},
+	}
 
-	t.Run("UpdateMessages with unprivileged", func(t *testing.T) {
-		updatedMessage := models.Message{
-			UUID:       uuid,
-			Role:       "user",
-			Content:    "testContentUpdated",
-			TokenCount: 2,
-			Metadata:   map[string]interface{}{"key1": "value1Updated", "key2": "value2", "system": "privileged"},
-		}
-		// expectedMetadata should not contain the `system` key
-		expectedMetadata := map[string]interface{}{
-			"key1":     "value1Updated",
-			"key2":     "value2",
-			"keyOther": "valueOther",
-		}
-		runSubTest(t, messageDAO, false, expectedMetadata, &updatedMessage)
-	})
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			createdMessage, err := messageDAO.Create(testCtx, &message)
+			assert.NoError(t, err)
 
-	t.Run("UpdateMessages with privileged", func(t *testing.T) {
-		updatedMessage := models.Message{
-			UUID:       uuid,
-			Role:       "user",
-			Content:    "testContentUpdated",
-			TokenCount: 2,
-			Metadata:   map[string]interface{}{"key1": "value1Updated", "key2": "value2", "system": "privileged"},
-		}
-		expectedMetadata := map[string]interface{}{
-			"key1":     "value1Updated",
-			"key2":     "value2",
-			"keyOther": "valueOther",
-			"system":   "privileged",
-		}
-		runSubTest(t, messageDAO, true, expectedMetadata, &updatedMessage)
-	})
+			tc.updatedMessage.UUID = createdMessage.UUID
+			tc.expectedMessage.UUID = createdMessage.UUID
+
+			runSubTest(t, messageDAO, tc.includeContent, tc.privileged, &tc.expectedMessage, &tc.updatedMessage)
+		})
+	}
 }
 
 func TestUpdateMany(t *testing.T) {
@@ -441,7 +473,6 @@ func TestUpdateMany(t *testing.T) {
 	messages := make([]models.Message, 5)
 	for i := 0; i < 5; i++ {
 		message := models.Message{
-			UUID:       uuid.New(),
 			Role:       "user",
 			Content:    fmt.Sprintf("testContent%d", i),
 			TokenCount: 1,
@@ -450,37 +481,65 @@ func TestUpdateMany(t *testing.T) {
 		messages[i] = message
 	}
 
-	_, err = messageDAO.CreateMany(testCtx, messages)
-	assert.NoError(t, err)
-
-	// CreateMessages updated versions of the first 3 messages
-	updatedMessages := make([]models.Message, 3)
-	for i := 0; i < 3; i++ {
-		updatedMessage := models.Message{
-			UUID:       messages[i].UUID,
-			Role:       "user",
-			Content:    fmt.Sprintf("updatedContent%d", i),
-			TokenCount: messages[i].TokenCount + 1,
-			Metadata:   map[string]interface{}{fmt.Sprintf("key%d", i): fmt.Sprintf("updatedValue%d", i), "newKey": "newValue"},
+	updateMessages := func(messages []models.Message) []models.Message {
+		updatedMessages := make([]models.Message, 3)
+		for i := 0; i < 3; i++ {
+			updatedMessage := models.Message{
+				UUID:       messages[i].UUID,
+				Role:       "user",
+				Content:    fmt.Sprintf("updatedContent%d", i),
+				TokenCount: messages[i].TokenCount + 1,
+				Metadata:   map[string]interface{}{fmt.Sprintf("key%d", i): fmt.Sprintf("updatedValue%d", i), "newKey": "newValue"},
+			}
+			updatedMessages[i] = updatedMessage
 		}
-		updatedMessages[i] = updatedMessage
+		return updatedMessages
 	}
 
-	err = messageDAO.UpdateMany(testCtx, updatedMessages, false, false)
-	assert.NoError(t, err)
-
-	for _, updatedMessage := range updatedMessages {
-		retrievedMessage, err := messageDAO.Get(testCtx, updatedMessage.UUID)
+	t.Run("UpdateMany with unprivileged & includeContent", func(t *testing.T) {
+		createdMessages, err := messageDAO.CreateMany(testCtx, messages)
 		assert.NoError(t, err)
 
-		assert.Equal(t, updatedMessage.UUID, retrievedMessage.UUID)
-		assert.Equal(t, updatedMessage.Content, retrievedMessage.Content)
-		assert.Equal(t, updatedMessage.TokenCount, retrievedMessage.TokenCount)
-		assert.Equal(t, updatedMessage.Metadata, retrievedMessage.Metadata)
-		for key, value := range updatedMessage.Metadata {
-			assert.Equal(t, value, retrievedMessage.Metadata[key])
+		updatedMessages := updateMessages(createdMessages)
+		err = messageDAO.UpdateMany(testCtx, updatedMessages, true, false)
+		assert.NoError(t, err)
+
+		for _, updatedMessage := range updatedMessages {
+			retrievedMessage, err := messageDAO.Get(testCtx, updatedMessage.UUID)
+			assert.NoError(t, err)
+
+			assert.Equal(t, updatedMessage.UUID, retrievedMessage.UUID)
+			assert.Equal(t, updatedMessage.Content, retrievedMessage.Content)
+			assert.Equal(t, updatedMessage.TokenCount, retrievedMessage.TokenCount)
+			assert.Equal(t, updatedMessage.Metadata, retrievedMessage.Metadata)
+			for key, value := range updatedMessage.Metadata {
+				assert.Equal(t, value, retrievedMessage.Metadata[key])
+			}
 		}
-	}
+	})
+
+	t.Run("UpdateMany with includedContent false", func(t *testing.T) {
+		createdMessages, err := messageDAO.CreateMany(testCtx, messages)
+		assert.NoError(t, err)
+
+		updatedMessages := updateMessages(createdMessages)
+		err = messageDAO.UpdateMany(testCtx, updatedMessages, false, false)
+		assert.NoError(t, err)
+
+		for i, updatedMessage := range updatedMessages {
+			retrievedMessage, err := messageDAO.Get(testCtx, updatedMessage.UUID)
+			assert.NoError(t, err)
+
+			assert.Equal(t, updatedMessage.UUID, retrievedMessage.UUID)
+			assert.Equal(t, messages[i].Role, retrievedMessage.Role)       // same as original
+			assert.Equal(t, messages[i].Content, retrievedMessage.Content) // same as original
+			assert.Equal(t, updatedMessage.TokenCount, retrievedMessage.TokenCount)
+			assert.Equal(t, updatedMessage.Metadata, retrievedMessage.Metadata)
+			for key, value := range updatedMessage.Metadata {
+				assert.Equal(t, value, retrievedMessage.Metadata[key])
+			}
+		}
+	})
 }
 
 func TestDelete(t *testing.T) {

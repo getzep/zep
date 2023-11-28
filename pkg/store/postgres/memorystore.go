@@ -218,7 +218,7 @@ func (pms *PostgresMemoryStore) GetSummaryList(
 	return summaryDAO.GetList(ctx, pageNumber, pageSize)
 }
 
-func (pms *PostgresMemoryStore) PutSummary(
+func (pms *PostgresMemoryStore) CreateSummary(
 	ctx context.Context,
 	sessionID string,
 	summary *models.Summary,
@@ -298,14 +298,14 @@ func (pms *PostgresMemoryStore) UpdateMessages(
 	sessionID string,
 	messages []models.Message,
 	isPrivileged bool,
-	metadataOnly bool,
+	includeContent bool,
 ) error {
 	messageDAO, err := NewMessageDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
 		return fmt.Errorf("failed to create messageDAO: %w", err)
 	}
 
-	return messageDAO.UpdateMany(ctx, messages, metadataOnly, isPrivileged)
+	return messageDAO.UpdateMany(ctx, messages, includeContent, isPrivileged)
 }
 
 func (pms *PostgresMemoryStore) SearchMemory(
