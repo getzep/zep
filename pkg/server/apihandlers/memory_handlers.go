@@ -35,9 +35,12 @@ func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
+		if lastN == 0 {
+			handlertools.RenderError(w, fmt.Errorf("lastn must be greater than 0"), http.StatusBadRequest)
+			return
+		}
 
-		sessionMemory, err := appState.MemoryStore.GetMemory(r.Context(), appState,
-			sessionID, lastN)
+		sessionMemory, err := appState.MemoryStore.GetMemory(r.Context(), sessionID, lastN)
 		if err != nil {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
@@ -71,7 +74,7 @@ func GetSessionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
 
-		session, err := appState.MemoryStore.GetSession(r.Context(), appState, sessionID)
+		session, err := appState.MemoryStore.GetSession(r.Context(), sessionID)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
 				handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
@@ -109,7 +112,7 @@ func CreateSessionHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		newSession, err := appState.MemoryStore.CreateSession(r.Context(), appState, &session)
+		newSession, err := appState.MemoryStore.CreateSession(r.Context(), &session)
 		if err != nil {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
@@ -148,7 +151,7 @@ func UpdateSessionHandler(appState *models.AppState) http.HandlerFunc {
 		}
 		session.SessionID = sessionID
 
-		updatedSession, err := appState.MemoryStore.UpdateSession(r.Context(), appState, &session)
+		updatedSession, err := appState.MemoryStore.UpdateSession(r.Context(), &session)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
 				handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
@@ -172,7 +175,7 @@ func UpdateSessionHandler(appState *models.AppState) http.HandlerFunc {
 //	@Accept			json
 //	@Produce		json
 //	@Param			limit	query		integer	false	"Limit the number of results returned"
-//	@Param			cursor	query		int64	false	"Cursor for pagination)"
+//	@Param			cursor	query		int64	false	"Cursor for pagination"
 //	@Success		200		{array}		[]models.Session
 //	@Failure		400		{object}	APIError	"Bad Request"
 //	@Failure		500		{object}	APIError	"Internal Server Error"
@@ -193,7 +196,7 @@ func GetSessionListHandler(appState *models.AppState) http.HandlerFunc {
 			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
-		sessions, err := appState.MemoryStore.ListSessions(r.Context(), appState, cursor, limit)
+		sessions, err := appState.MemoryStore.ListSessions(r.Context(), cursor, limit)
 		if err != nil {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
@@ -229,7 +232,6 @@ func PostMemoryHandler(appState *models.AppState) http.HandlerFunc {
 
 		if err := appState.MemoryStore.PutMemory(
 			r.Context(),
-			appState,
 			sessionID,
 			&memoryMessages,
 			false,
@@ -300,7 +302,6 @@ func SearchMemoryHandler(appState *models.AppState) http.HandlerFunc {
 		}
 		searchResult, err := appState.MemoryStore.SearchMemory(
 			r.Context(),
-			appState,
 			sessionID,
 			&payload,
 			limit,

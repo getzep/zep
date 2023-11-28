@@ -26,7 +26,7 @@ func summaryTaskPayloadToSummary(
 		return nil, fmt.Errorf("summaryTaskPayloadToSummary unmarshal failed: %w", err)
 	}
 
-	summary, err := appState.MemoryStore.GetSummaryByUUID(ctx, appState, sessionID, task.UUID)
+	summary, err := appState.MemoryStore.GetSummaryByUUID(ctx, sessionID, task.UUID)
 	if err != nil {
 		return nil, fmt.Errorf("summaryTaskPayloadToSummary get summary failed: %w", err)
 	}
@@ -55,7 +55,7 @@ func messageTaskPayloadToMessages(
 		uuids[i] = m.UUID
 	}
 
-	messages, err := appState.MemoryStore.GetMessagesByUUID(ctx, appState, sessionID, uuids)
+	messages, err := appState.MemoryStore.GetMessagesByUUID(ctx, sessionID, uuids)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get messages by uuid: %w", err)
 	}

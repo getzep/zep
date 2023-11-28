@@ -59,7 +59,6 @@ func (sl *SessionList) Get(ctx context.Context, appState *models.AppState) error
 		var err error
 		sr, err = sl.MemoryStore.ListSessionsOrdered(
 			ctx,
-			appState,
 			sl.CurrentPage,
 			sl.PageSize,
 			sl.OrderBy,

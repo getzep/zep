@@ -71,7 +71,7 @@ func (n *MessageSummaryNERTask) Execute(
 			"system": map[string]interface{}{"entities": nerSummary},
 		},
 	}
-	err = n.appState.MemoryStore.UpdateSummaryMetadata(ctx, n.appState, summaryMetadataUpdate)
+	err = n.appState.MemoryStore.UpdateSummary(ctx, sessionID, summaryMetadataUpdate, false)
 	if err != nil {
 		return fmt.Errorf("MessageSummaryNERTask failed to put summary metadata: %w", err)
 	}

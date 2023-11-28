@@ -39,12 +39,12 @@ func (mt *MessageTokenCountTask) Execute(
 
 	log.Debugf("MessageTokenCountTask called for session %s", sessionID)
 
-	msgs, err := messageTaskPayloadToMessages(ctx, mt.appState, msg)
+	messages, err := messageTaskPayloadToMessages(ctx, mt.appState, msg)
 	if err != nil {
 		return fmt.Errorf("TokenCountExtractor messageTaskPayloadToMessages failed: %w", err)
 	}
 
-	countResult, err := mt.updateTokenCounts(msgs)
+	countResult, err := mt.updateTokenCounts(messages)
 	if err != nil {
 		return fmt.Errorf("TokenCountExtractor failed to get token count: %w", err)
 	}
@@ -53,12 +53,12 @@ func (mt *MessageTokenCountTask) Execute(
 		return nil
 	}
 
-	err = mt.appState.MemoryStore.PutMemory(
+	err = mt.appState.MemoryStore.UpdateMessages(
 		ctx,
-		mt.appState,
 		sessionID,
-		&models.Memory{Messages: countResult},
+		countResult,
 		true,
+		false,
 	)
 	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {

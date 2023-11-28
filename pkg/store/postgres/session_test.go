@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"testing"
 
 	"github.com/getzep/zep/pkg/models"
@@ -246,7 +247,7 @@ func TestSessionDAO_DeleteSessionDeletesSummaryMessages(t *testing.T) {
 
 	sessionStore := NewSessionDAO(testDB)
 
-	sessionID, err := setupSessionDeleteTestData(testCtx, testDB, "")
+	sessionID, err := setupSessionDeleteTestData(t, testCtx, testDB, "")
 	assert.NoError(t, err, "setupTestDeleteData should not return an error")
 
 	err = sessionStore.Delete(testCtx, sessionID)
@@ -256,19 +257,25 @@ func TestSessionDAO_DeleteSessionDeletesSummaryMessages(t *testing.T) {
 	_, err = sessionStore.Get(testCtx, sessionID)
 	assert.ErrorIs(t, err, models.ErrNotFound)
 
+	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
+	assert.NoError(t, err, "NewMessageDAO should not return an error")
+
 	// Test that messages are deleted
-	respMessages, err := getMessages(testCtx, testDB, sessionID, memoryWindow, nil, 0)
-	assert.NoError(t, err, "getMessages should not return an error")
-	assert.Nil(t, respMessages, "getMessages should return nil")
+	respMessages, err := messageDAO.GetListBySession(testCtx, 0, 10)
+	assert.NoError(t, err, "GetListBySession should not return an error")
+	assert.Empty(t, respMessages.Messages, "GetListBySession should return 0 messages")
+
+	summaryDAO, err := NewSummaryDAO(testDB, appState, sessionID)
+	assert.NoError(t, err, "NewSummaryDAO should not return an error")
 
 	// Test that summary is deleted
-	respSummary, err := getSummary(testCtx, testDB, sessionID)
-	assert.NoError(t, err, "getSummary should not return an error")
-	assert.Nil(t, respSummary, "getSummary should return nil")
+	respSummary, err := summaryDAO.Get(testCtx)
+	assert.NoError(t, err, "GetSummary should not return an error")
+	assert.Equal(t, uuid.Nil, respSummary.UUID, "GetSummary should return nil")
 }
 
 func TestSessionDAO_UndeleteSession(t *testing.T) {
-	sessionID, err := setupSessionDeleteTestData(testCtx, testDB, "")
+	sessionID, err := setupSessionDeleteTestData(t, testCtx, testDB, "")
 	assert.NoError(t, err, "setupTestDeleteData should not return an error")
 
 	sessionStore := NewSessionDAO(testDB)
@@ -286,22 +293,26 @@ func TestSessionDAO_UndeleteSession(t *testing.T) {
 	assert.NotNil(t, updatesSession, "Update should return a session")
 	assert.Emptyf(t, updatesSession.DeletedAt, "Update should not have a DeletedAt value")
 
+	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
+	assert.NoError(t, err, "NewMessageDAO should not return an error")
+
 	// Test that messages remain deleted
-	respMessages, err := getMessages(testCtx, testDB, sessionID, 2, nil, 0)
-	assert.NoError(t, err, "getMessages should not return an error")
-	assert.Nil(t, respMessages, "getMessages should return nil")
+	respMessages, err := messageDAO.GetListBySession(testCtx, 0, 10)
+	assert.NoError(t, err, "GetListBySession should not return an error")
+	assert.Empty(t, respMessages.Messages, "GetListBySession should return 0 messages")
 }
 
 func setupSessionDeleteTestData(
+	t *testing.T,
 	ctx context.Context,
 	testDB *bun.DB,
 	userID string,
 ) (string, error) {
+	t.Helper()
+
 	// Test data
 	sessionID, err := testutils.GenerateRandomSessionID(16)
-	if err != nil {
-		return "", err
-	}
+	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
 	var userIDPtr *string
 	if userID != "" {
@@ -313,9 +324,7 @@ func setupSessionDeleteTestData(
 		SessionID: sessionID,
 		UserID:    userIDPtr,
 	})
-	if err != nil {
-		return "", err
-	}
+	assert.NoError(t, err, "Create should not return an error")
 
 	messages := []models.Message{
 		{
@@ -330,8 +339,11 @@ func setupSessionDeleteTestData(
 		},
 	}
 
+	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
+	assert.NoError(t, err, "NewMessageDAO should not return an error")
+
 	// Call putMessages function
-	resultMessages, err := putMessages(ctx, testDB, sessionID, messages)
+	resultMessages, err := messageDAO.CreateMany(ctx, messages)
 	if err != nil {
 		return "", err
 	}
@@ -343,7 +355,10 @@ func setupSessionDeleteTestData(
 		},
 		SummaryPointUUID: resultMessages[0].UUID,
 	}
-	_, err = putSummary(ctx, testDB, sessionID, &summary)
+
+	summaryDAO, err := NewSummaryDAO(testDB, appState, sessionID)
+	assert.NoError(t, err, "NewSummaryDAO should not return an error")
+	_, err = summaryDAO.Create(ctx, &summary)
 	if err != nil {
 		return "", err
 	}

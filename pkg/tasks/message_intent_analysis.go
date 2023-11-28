@@ -140,7 +140,7 @@ func (mt *MessageIntentTask) processMessage(
 		return
 	}
 
-	// Put the intent into the message metadata
+	// Create the intent into the message metadata
 	intentResponse := []models.Message{
 		{
 			UUID: message.UUID,
@@ -150,13 +150,13 @@ func (mt *MessageIntentTask) processMessage(
 		},
 	}
 
-	// Put the intent into the message metadata
-	err = appState.MemoryStore.PutMessageMetadata(
+	// Create the intent into the message metadata
+	err = appState.MemoryStore.UpdateMessages(
 		ctx,
-		appState,
 		sessionID,
 		intentResponse,
 		true,
+		false,
 	)
 	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {

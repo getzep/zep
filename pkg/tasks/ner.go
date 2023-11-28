@@ -60,7 +60,12 @@ func callNERTask(
 	if err != nil {
 		return models.EntityResponse{}, err
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Errorf("Error closing response body: %s", err)
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		errorString := fmt.Sprintf(

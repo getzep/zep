@@ -9,56 +9,67 @@ import (
 	"github.com/pgvector/pgvector-go"
 
 	"github.com/getzep/zep/pkg/models"
-	"github.com/getzep/zep/pkg/store"
 	"github.com/google/uuid"
-	"github.com/jinzhu/copier"
 	"github.com/uptrace/bun"
 )
 
-// putSummary stores a new summary for a session. The recentMessageID is the UUID of the most recent
-// message in the session when the summary was created.
-func putSummary(
-	ctx context.Context,
-	db *bun.DB,
-	sessionID string,
-	summary *models.Summary,
-) (*models.Summary, error) {
+// NewSummaryDAO creates a new SummaryDAO.
+func NewSummaryDAO(db *bun.DB, appState *models.AppState, sessionID string) (*SummaryDAO, error) {
 	if sessionID == "" {
-		return nil, store.NewStorageError("sessionID cannot be empty", nil)
+		return nil, errors.New("sessionID cannot be empty")
 	}
-
-	pgSummary := SummaryStoreSchema{}
-	err := copier.Copy(&pgSummary, summary)
-	if err != nil {
-		return nil, store.NewStorageError("failed to copy summary", err)
-	}
-
-	pgSummary.SessionID = sessionID
-
-	_, err = db.NewInsert().Model(&pgSummary).Exec(ctx)
-	if err != nil {
-		return nil, store.NewStorageError("failed to Create summary", err)
-	}
-
-	retSummary := models.Summary{}
-	err = copier.Copy(&retSummary, &pgSummary)
-	if err != nil {
-		return nil, store.NewStorageError("failed to copy summary", err)
-	}
-
-	return &retSummary, nil
+	return &SummaryDAO{
+		db:        db,
+		appState:  appState,
+		sessionID: sessionID,
+	}, nil
 }
 
-func updateSummaryMetadata(
+type SummaryDAO struct {
+	db        *bun.DB
+	appState  *models.AppState
+	sessionID string
+}
+
+// Create stores a new summary for a session. The SummaryPointUUID is the UUID of the most recent
+// message in the session when the summary was created.
+func (s *SummaryDAO) Create(
 	ctx context.Context,
-	db *bun.DB,
 	summary *models.Summary,
+) (*models.Summary, error) {
+	pgSummary := &SummaryStoreSchema{
+		SessionID:        s.sessionID,
+		Content:          summary.Content,
+		Metadata:         summary.Metadata,
+		SummaryPointUUID: summary.SummaryPointUUID,
+		TokenCount:       summary.TokenCount,
+	}
+
+	_, err := s.db.NewInsert().Model(pgSummary).Exec(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create summary %w", err)
+	}
+
+	return &models.Summary{
+		UUID:             pgSummary.UUID,
+		CreatedAt:        pgSummary.CreatedAt,
+		Content:          pgSummary.Content,
+		SummaryPointUUID: pgSummary.SummaryPointUUID,
+		Metadata:         pgSummary.Metadata,
+		TokenCount:       pgSummary.TokenCount,
+	}, nil
+}
+
+func (s *SummaryDAO) Update(
+	ctx context.Context,
+	summary *models.Summary,
+	includeContent bool,
 ) (*models.Summary, error) {
 	if summary.UUID == uuid.Nil {
 		return nil, errors.New("summary UUID cannot be empty")
 	}
 
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
@@ -78,13 +89,19 @@ func updateSummaryMetadata(
 	}
 
 	pgSummary := &SummaryStoreSchema{
-		UUID:     summary.UUID,
-		Metadata: metadata,
+		UUID:       summary.UUID,
+		Content:    summary.Content,
+		Metadata:   metadata,
+		TokenCount: summary.TokenCount,
 	}
 
+	columns := []string{"metadata", "token_count"}
+	if includeContent {
+		columns = append(columns, "content")
+	}
 	_, err = tx.NewUpdate().
 		Model(pgSummary).
-		Column("metadata").
+		Column(columns...).
 		Where("uuid = ?", summary.UUID).
 		Exec(ctx)
 	if err != nil {
@@ -99,12 +116,12 @@ func updateSummaryMetadata(
 	return summary, nil
 }
 
-// getSummary returns the most recent summary for a session
-func getSummary(ctx context.Context, db *bun.DB, sessionID string) (*models.Summary, error) {
+// Get returns the most recent summary for a session
+func (s *SummaryDAO) Get(ctx context.Context) (*models.Summary, error) {
 	summary := SummaryStoreSchema{}
-	err := db.NewSelect().
+	err := s.db.NewSelect().
 		Model(&summary).
-		Where("session_id = ?", sessionID).
+		Where("session_id = ?", s.sessionID).
 		Where("deleted_at IS NULL").
 		// Get the most recent summary
 		Order("created_at DESC").
@@ -112,39 +129,9 @@ func getSummary(ctx context.Context, db *bun.DB, sessionID string) (*models.Summ
 		Scan(ctx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return &models.Summary{}, nil
 		}
-		return &models.Summary{}, store.NewStorageError("failed to get session", err)
-	}
-
-	respSummary := models.Summary{}
-	err = copier.Copy(&respSummary, &summary)
-	if err != nil {
-		return nil, store.NewStorageError("failed to copy summary", err)
-	}
-	return &respSummary, nil
-}
-
-func getSummaryByUUID(ctx context.Context,
-	_ *models.AppState,
-	db *bun.DB,
-	sessionID string,
-	uuid uuid.UUID) (*models.Summary, error) {
-	if sessionID == "" {
-		return nil, store.NewStorageError("sessionID cannot be empty", nil)
-	}
-
-	summary := SummaryStoreSchema{}
-	err := db.NewSelect().
-		Model(&summary).
-		Where("session_id = ?", sessionID).
-		Where("uuid = ?", uuid).
-		Scan(ctx)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, models.NewNotFoundError("summary " + uuid.String())
-		}
-		return &models.Summary{}, store.NewStorageError("failed to get session", err)
+		return &models.Summary{}, fmt.Errorf("failed to get session %w", err)
 	}
 
 	return &models.Summary{
@@ -157,44 +144,60 @@ func getSummaryByUUID(ctx context.Context,
 	}, nil
 }
 
-func putSummaryEmbedding(
+// GetByUUID returns a summary by UUID
+func (s *SummaryDAO) GetByUUID(
 	ctx context.Context,
-	db *bun.DB,
-	sessionID string,
-	embedding *models.TextData,
-) error {
-	if sessionID == "" {
-		return store.NewStorageError("sessionID cannot be empty", nil)
+	uuid uuid.UUID) (*models.Summary, error) {
+	summary := SummaryStoreSchema{}
+	err := s.db.NewSelect().
+		Model(&summary).
+		Where("session_id = ?", s.sessionID).
+		Where("uuid = ?", uuid).
+		Scan(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, models.NewNotFoundError("summary " + uuid.String())
+		}
+		return &models.Summary{}, fmt.Errorf("failed to get session %w", err)
 	}
 
+	return &models.Summary{
+		UUID:             summary.UUID,
+		CreatedAt:        summary.CreatedAt,
+		Content:          summary.Content,
+		SummaryPointUUID: summary.SummaryPointUUID,
+		Metadata:         summary.Metadata,
+		TokenCount:       summary.TokenCount,
+	}, nil
+}
+
+// PutEmbedding stores a summary embedding
+func (s *SummaryDAO) PutEmbedding(
+	ctx context.Context,
+	embedding *models.TextData,
+) error {
 	record := SummaryVectorStoreSchema{
-		SessionID:   sessionID,
+		SessionID:   s.sessionID,
 		Embedding:   pgvector.NewVector(embedding.Embedding),
 		SummaryUUID: embedding.TextUUID,
 		IsEmbedded:  true,
 	}
-	_, err := db.NewInsert().Model(&record).Exec(ctx)
+	_, err := s.db.NewInsert().Model(&record).Exec(ctx)
 	if err != nil {
-		return store.NewStorageError("failed to insert summary embedding", err)
+		return fmt.Errorf("failed to insert summary embedding %w", err)
 	}
 
 	return nil
 }
 
-// Retrieves all summary embeddings for a session. Note: Does not return the summary content.
-func getSummaryEmbeddings(
+// GetEmbeddings all summary embeddings for a session. Note: Does not return the summary content.
+func (s *SummaryDAO) GetEmbeddings(
 	ctx context.Context,
-	db *bun.DB,
-	sessionID string,
 ) ([]models.TextData, error) {
-	if sessionID == "" {
-		return nil, errors.New("sessionID cannot be empty")
-	}
-
-	embeddings := make([]SummaryVectorStoreSchema, 0)
-	err := db.NewSelect().
+	var embeddings []SummaryVectorStoreSchema
+	err := s.db.NewSelect().
 		Model(&embeddings).
-		Where("session_id = ?", sessionID).
+		Where("session_id = ?", s.sessionID).
 		Where("is_embedded = ?", true).
 		Scan(ctx)
 	if err != nil {
@@ -212,21 +215,15 @@ func getSummaryEmbeddings(
 	return retEmbeddings, nil
 }
 
-// GetSummaryList returns a list of summaries for a session
-func getSummaryList(ctx context.Context,
-	db *bun.DB,
-	sessionID string,
+// GetList returns a list of summaries for a session
+func (s *SummaryDAO) GetList(ctx context.Context,
 	currentPage int,
 	pageSize int,
 ) (*models.SummaryListResponse, error) {
-	if sessionID == "" {
-		return nil, store.NewStorageError("sessionID cannot be empty", nil)
-	}
-
-	summariesDB := make([]SummaryStoreSchema, 0)
-	err := db.NewSelect().
+	var summariesDB []SummaryStoreSchema
+	err := s.db.NewSelect().
 		Model(&summariesDB).
-		Where("session_id = ?", sessionID).
+		Where("session_id = ?", s.sessionID).
 		Where("deleted_at IS NULL").
 		Order("created_at ASC").
 		Offset((currentPage - 1) * pageSize).
@@ -236,7 +233,7 @@ func getSummaryList(ctx context.Context,
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, store.NewStorageError("failed to get sessions", err)
+		return nil, fmt.Errorf("failed to get sessions %w", err)
 	}
 
 	summaries := make([]models.Summary, len(summariesDB))

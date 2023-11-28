@@ -15,8 +15,8 @@ type BaseTask struct {
 }
 
 func (b *BaseTask) Execute(
-	ctx context.Context, // nolint: revive
-	msg *message.Message, // nolint: revive
+	_ context.Context,
+	_ *message.Message,
 ) error {
 	return nil
 }

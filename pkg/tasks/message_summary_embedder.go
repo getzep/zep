@@ -89,7 +89,6 @@ func (t *MessageSummaryEmbedderTask) Process(
 	}
 	err = t.appState.MemoryStore.PutSummaryEmbedding(
 		ctx,
-		t.appState,
 		sessionID,
 		record,
 	)

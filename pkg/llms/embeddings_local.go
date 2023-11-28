@@ -103,7 +103,12 @@ func makeEmbedRequest(ctx context.Context, url string, jsonBody []byte) ([]byte,
 		log.Error("Error making POST request:", err)
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Error("Error closing response body:", err)
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		errorString := fmt.Sprintf(

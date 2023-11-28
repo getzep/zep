@@ -17,27 +17,27 @@ import (
 func runTestTokenCountExtractor(
 	t *testing.T,
 	llmClient models.ZepLLM,
-) *models.Memory {
+) []models.Message {
+	t.Helper()
+
 	appState.LLMClient = llmClient
 
 	store := appState.MemoryStore
 
-	sessionID, err := testutils.GenerateRandomSessionID(16)
-	assert.NoError(t, err)
+	sessionID := testutils.GenerateRandomString(16)
 
-	err = store.PutMemory(
+	err := store.PutMemory(
 		testCtx,
-		appState,
 		sessionID,
 		&models.Memory{Messages: testutils.TestMessages[:5]},
 		true,
 	)
 	assert.NoError(t, err)
 
-	memories, err := store.GetMemory(testCtx, appState, sessionID, 0)
+	messageList, err := store.GetMessageList(testCtx, sessionID, 0, 999)
 	assert.NoError(t, err)
 
-	messages := memories.Messages
+	messages := messageList.Messages
 
 	tokenCountExtractor := NewMessageTokenCountTask(appState)
 
@@ -54,14 +54,14 @@ func runTestTokenCountExtractor(
 	err = tokenCountExtractor.Execute(testCtx, m)
 	assert.NoError(t, err)
 
-	memory, err := appState.MemoryStore.GetMemory(testCtx, appState, sessionID, 0)
+	memoryResult, err := store.GetMessageList(testCtx, sessionID, 0, 999)
 	assert.NoError(t, err)
-	assert.Equal(t, len(memory.Messages), len(messages))
+	assert.Equal(t, len(memoryResult.Messages), len(messages))
 
 	// reverse order since select orders LIFO
-	internal.ReverseSlice(memory.Messages)
+	internal.ReverseSlice(memoryResult.Messages)
 
-	return memory
+	return memoryResult.Messages
 }
 
 func TestTokenCountExtractor_OpenAI(t *testing.T) {
@@ -71,12 +71,12 @@ func TestTokenCountExtractor_OpenAI(t *testing.T) {
 	assert.NoError(t, err)
 	appState.LLMClient = llmClient
 
-	memory := runTestTokenCountExtractor(t, llmClient)
+	messages := runTestTokenCountExtractor(t, llmClient)
 
-	for i := range memory.Messages {
-		assert.True(t, memory.Messages[i].TokenCount > 0)
-		assert.NotEmpty(t, memory.Messages[i].Content)
-		assert.NotEmpty(t, memory.Messages[i].Role)
+	for i := range messages {
+		assert.True(t, messages[i].TokenCount > 0)
+		assert.NotEmpty(t, messages[i].Content)
+		assert.NotEmpty(t, messages[i].Role)
 	}
 }
 
@@ -87,12 +87,12 @@ func TestTokenCountExtractor_Anthropic(t *testing.T) {
 	assert.NoError(t, err)
 	appState.LLMClient = llmClient
 
-	memory := runTestTokenCountExtractor(t, llmClient)
+	messages := runTestTokenCountExtractor(t, llmClient)
 
-	for i := range memory.Messages {
-		assert.Zero(t, memory.Messages[i].TokenCount)
-		assert.NotEmpty(t, memory.Messages[i].Content)
-		assert.NotEmpty(t, memory.Messages[i].Role)
+	for i := range messages {
+		assert.Zero(t, messages[i].TokenCount)
+		assert.NotEmpty(t, messages[i].Content)
+		assert.NotEmpty(t, messages[i].Role)
 	}
 
 	// reset config

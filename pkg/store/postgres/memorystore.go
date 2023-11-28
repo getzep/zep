@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-
 	"github.com/getzep/zep/pkg/store"
 	"github.com/google/uuid"
 
@@ -31,9 +30,10 @@ func NewPostgresMemoryStore(
 	pms := &PostgresMemoryStore{
 		BaseMemoryStore: store.BaseMemoryStore[*bun.DB]{Client: client},
 		SessionStore:    NewSessionDAO(client),
+		appState:        appState,
 	}
 
-	err := pms.OnStart(context.Background(), appState)
+	err := pms.OnStart(context.Background())
 	if err != nil {
 		return nil, store.NewStorageError("failed to run OnInit", err)
 	}
@@ -46,13 +46,13 @@ var _ models.MemoryStore[*bun.DB] = &PostgresMemoryStore{}
 type PostgresMemoryStore struct {
 	store.BaseMemoryStore[*bun.DB]
 	SessionStore *SessionDAO
+	appState     *models.AppState
 }
 
 func (pms *PostgresMemoryStore) OnStart(
 	ctx context.Context,
-	appState *models.AppState,
 ) error {
-	err := CreateSchema(ctx, appState, pms.Client)
+	err := CreateSchema(ctx, pms.appState, pms.Client)
 	if err != nil {
 		return store.NewStorageError("failed to ensure postgres schema setup", err)
 	}
@@ -67,7 +67,6 @@ func (pms *PostgresMemoryStore) GetClient() *bun.DB {
 // GetSession retrieves a Session for a given sessionID.
 func (pms *PostgresMemoryStore) GetSession(
 	ctx context.Context,
-	_ *models.AppState,
 	sessionID string,
 ) (*models.Session, error) {
 	return pms.SessionStore.Get(ctx, sessionID)
@@ -76,7 +75,6 @@ func (pms *PostgresMemoryStore) GetSession(
 // CreateSession creates or updates a Session for a given sessionID.
 func (pms *PostgresMemoryStore) CreateSession(
 	ctx context.Context,
-	_ *models.AppState,
 	session *models.CreateSessionRequest,
 ) (*models.Session, error) {
 	return pms.SessionStore.Create(ctx, session)
@@ -85,7 +83,6 @@ func (pms *PostgresMemoryStore) CreateSession(
 // UpdateSession creates or updates a Session for a given sessionID.
 func (pms *PostgresMemoryStore) UpdateSession(
 	ctx context.Context,
-	_ *models.AppState,
 	session *models.UpdateSessionRequest,
 ) (*models.Session, error) {
 	return pms.SessionStore.Update(ctx, session, false)
@@ -99,7 +96,6 @@ func (pms *PostgresMemoryStore) DeleteSession(ctx context.Context, sessionID str
 // ListSessions returns a list of all Sessions.
 func (pms *PostgresMemoryStore) ListSessions(
 	ctx context.Context,
-	_ *models.AppState,
 	cursor int64,
 	limit int,
 ) ([]*models.Session, error) {
@@ -110,7 +106,6 @@ func (pms *PostgresMemoryStore) ListSessions(
 // orderedBy is the column to order by. asc is a boolean indicating whether to order ascending or descending.
 func (pms *PostgresMemoryStore) ListSessionsOrdered(
 	ctx context.Context,
-	_ *models.AppState,
 	pageNumber int,
 	pageSize int,
 	orderedBy string,
@@ -128,144 +123,121 @@ func (pms *PostgresMemoryStore) ListSessionsOrdered(
 //     all undeleted messages up to the configured message window
 func (pms *PostgresMemoryStore) GetMemory(
 	ctx context.Context,
-	appState *models.AppState,
 	sessionID string,
 	lastNMessages int,
 ) (*models.Memory, error) {
-	if appState == nil {
-		return nil, store.NewStorageError("nil appState received", nil)
-	}
-
 	if lastNMessages < 0 {
-		return nil, store.NewStorageError("cannot specify negative lastNMessages", nil)
+		return nil, errors.New("cannot specify negative lastNMessages")
 	}
 
-	// Get the most recent summary
-	summary, err := getSummary(ctx, pms.Client, sessionID)
+	memoryDAO, err := NewMemoryDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return nil, store.NewStorageError("failed to get summary", err)
-	}
-	if summary != nil {
-		log.Debugf("Got summary for %s: %s", sessionID, summary.UUID)
+		return nil, fmt.Errorf("failed to create memoryDAO: %w", err)
 	}
 
-	messages, err := getMessages(
-		ctx,
-		pms.Client,
-		sessionID,
-		appState.Config.Memory.MessageWindow,
-		summary,
-		lastNMessages,
-	)
+	return memoryDAO.Get(ctx, lastNMessages)
+}
+
+func (pms *PostgresMemoryStore) PutMemory(
+	ctx context.Context,
+	sessionID string,
+	memoryMessages *models.Memory,
+	skipNotify bool,
+) error {
+	memoryDAO, err := NewMemoryDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return nil, store.NewStorageError("failed to get messages", err)
-	}
-	if messages != nil {
-		log.Debugf("Got messages for %s: %d", sessionID, len(messages))
+		return fmt.Errorf("failed to create memoryDAO: %w", err)
 	}
 
-	memory := models.Memory{
-		Messages: messages,
-		Summary:  summary,
-	}
-
-	return &memory, nil
+	return memoryDAO.Create(ctx, memoryMessages, skipNotify)
 }
 
 // GetMessageList retrieves a list of messages for a given sessionID. Paginated by cursor and limit.
 func (pms *PostgresMemoryStore) GetMessageList(
 	ctx context.Context,
-	appState *models.AppState,
 	sessionID string,
 	pageNumber int,
 	pageSize int,
 ) (*models.MessageListResponse, error) {
-	if appState == nil {
-		return nil, store.NewStorageError("nil appState received", nil)
-	}
-
-	messages, err := getMessageList(ctx, pms.Client, sessionID, pageNumber, pageSize)
+	messageDAO, err := NewMessageDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return nil, store.NewStorageError("failed to get messages", err)
+		return nil, fmt.Errorf("failed to create messageDAO: %w", err)
 	}
 
-	return messages, nil
+	return messageDAO.GetListBySession(ctx, pageNumber, pageSize)
 }
 
 func (pms *PostgresMemoryStore) GetMessagesByUUID(
 	ctx context.Context,
-	_ *models.AppState,
 	sessionID string,
 	uuids []uuid.UUID,
 ) ([]models.Message, error) {
-	messages, err := getMessagesByUUID(ctx, pms.Client, sessionID, uuids)
+	messageDAO, err := NewMessageDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return nil, store.NewStorageError("failed to get messages", err)
+		return nil, fmt.Errorf("failed to create messageDAO: %w", err)
 	}
 
-	return messages, nil
+	return messageDAO.GetListByUUID(ctx, uuids)
 }
 
 func (pms *PostgresMemoryStore) GetSummary(
 	ctx context.Context,
-	_ *models.AppState,
 	sessionID string,
 ) (*models.Summary, error) {
-	summary, err := getSummary(ctx, pms.Client, sessionID)
+	summaryDAO, err := NewSummaryDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return nil, store.NewStorageError("failed to get summary", err)
+		return nil, fmt.Errorf("failed to create summaryDAO: %w", err)
 	}
 
-	return summary, nil
+	return summaryDAO.Get(ctx)
 }
 
-func (pms *PostgresMemoryStore) GetSummaryByUUID(ctx context.Context,
-	appState *models.AppState,
+func (pms *PostgresMemoryStore) GetSummaryByUUID(
+	ctx context.Context,
 	sessionID string,
 	uuid uuid.UUID) (*models.Summary, error) {
-	summary, err := getSummaryByUUID(ctx, appState, pms.Client, sessionID, uuid)
+	summaryDAO, err := NewSummaryDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return nil, store.NewStorageError("failed to get summary", err)
+		return nil, fmt.Errorf("failed to create summaryDAO: %w", err)
 	}
 
-	return summary, nil
+	return summaryDAO.GetByUUID(ctx, uuid)
 }
 
 func (pms *PostgresMemoryStore) GetSummaryList(
 	ctx context.Context,
-	appState *models.AppState,
 	sessionID string,
 	pageNumber int,
 	pageSize int,
 ) (*models.SummaryListResponse, error) {
-	if appState == nil {
-		return nil, store.NewStorageError("nil appState received", nil)
-	}
-
-	summaries, err := getSummaryList(ctx, pms.Client, sessionID, pageNumber, pageSize)
+	summaryDAO, err := NewSummaryDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return nil, store.NewStorageError("failed to get summaries", err)
+		return nil, fmt.Errorf("failed to create summaryDAO: %w", err)
 	}
 
-	return summaries, nil
+	return summaryDAO.GetList(ctx, pageNumber, pageSize)
 }
 
-func (pms *PostgresMemoryStore) PutSummary(
+func (pms *PostgresMemoryStore) CreateSummary(
 	ctx context.Context,
-	appState *models.AppState,
 	sessionID string,
 	summary *models.Summary,
 ) error {
-	retSummary, err := putSummary(ctx, pms.Client, sessionID, summary)
+	summaryDAO, err := NewSummaryDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return store.NewStorageError("failed to Create summary", err)
+		return fmt.Errorf("failed to create summaryDAO: %w", err)
+	}
+
+	retSummary, err := summaryDAO.Create(ctx, summary)
+	if err != nil {
+		return store.NewStorageError("failed to create summary", err)
 	}
 
 	// Publish a message to the message summary embeddings topic
 	task := models.MessageSummaryTask{
 		UUID: retSummary.UUID,
 	}
-	err = appState.TaskPublisher.Publish(
+	err = pms.appState.TaskPublisher.Publish(
 		models.MessageSummaryEmbedderTopic,
 		map[string]string{
 			"session_id": sessionID,
@@ -276,7 +248,7 @@ func (pms *PostgresMemoryStore) PutSummary(
 		return fmt.Errorf("MessageSummaryTask publish failed: %w", err)
 	}
 
-	err = appState.TaskPublisher.Publish(
+	err = pms.appState.TaskPublisher.Publish(
 		models.MessageSummaryNERTopic,
 		map[string]string{
 			"session_id": sessionID,
@@ -290,10 +262,17 @@ func (pms *PostgresMemoryStore) PutSummary(
 	return nil
 }
 
-func (pms *PostgresMemoryStore) UpdateSummaryMetadata(ctx context.Context,
-	_ *models.AppState,
-	summary *models.Summary) error {
-	_, err := updateSummaryMetadata(ctx, pms.Client, summary)
+func (pms *PostgresMemoryStore) UpdateSummary(ctx context.Context,
+	sessionID string,
+	summary *models.Summary,
+	metadataOnly bool,
+) error {
+	summaryDAO, err := NewSummaryDAO(pms.Client, pms.appState, sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to create summaryDAO: %w", err)
+	}
+
+	_, err = summaryDAO.Update(ctx, summary, metadataOnly)
 	if err != nil {
 		return fmt.Errorf("failed to update summary metadata %w", err)
 	}
@@ -303,84 +282,43 @@ func (pms *PostgresMemoryStore) UpdateSummaryMetadata(ctx context.Context,
 
 func (pms *PostgresMemoryStore) PutSummaryEmbedding(
 	ctx context.Context,
-	_ *models.AppState,
 	sessionID string,
 	embedding *models.TextData,
 ) error {
-	err := putSummaryEmbedding(ctx, pms.Client, sessionID, embedding)
+	summaryDAO, err := NewSummaryDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return store.NewStorageError("failed to Create summary embedding", err)
+		return fmt.Errorf("failed to create summaryDAO: %w", err)
 	}
 
-	return nil
+	return summaryDAO.PutEmbedding(ctx, embedding)
 }
 
-func (pms *PostgresMemoryStore) PutMemory(
+func (pms *PostgresMemoryStore) UpdateMessages(
 	ctx context.Context,
-	appState *models.AppState,
-	sessionID string,
-	memoryMessages *models.Memory,
-	skipNotify bool,
-) error {
-	if appState == nil {
-		return store.NewStorageError("nil appState received", nil)
-	}
-
-	messageResult, err := putMessages(
-		ctx,
-		pms.Client,
-		sessionID,
-		memoryMessages.Messages,
-	)
-	if err != nil {
-		return store.NewStorageError("failed to Create messages", err)
-	}
-
-	// If we are skipping pushing new messages to the message router, return early
-	if skipNotify {
-		return nil
-	}
-
-	mt := make([]models.MessageTask, len(messageResult))
-	for i, message := range messageResult {
-		mt[i] = models.MessageTask{UUID: message.UUID}
-	}
-
-	// Send new messages to the message router
-	err = appState.TaskPublisher.PublishMessage(
-		map[string]string{"session_id": sessionID},
-		mt,
-	)
-	if err != nil {
-		return store.NewStorageError("failed to publish new messages", err)
-	}
-
-	return nil
-}
-
-func (pms *PostgresMemoryStore) PutMessageMetadata(
-	ctx context.Context,
-	_ *models.AppState,
 	sessionID string,
 	messages []models.Message,
 	isPrivileged bool,
+	includeContent bool,
 ) error {
-	_, err := putMessageMetadata(ctx, pms.Client, sessionID, messages, isPrivileged)
+	messageDAO, err := NewMessageDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return store.NewStorageError("failed to Create message metadata", err)
+		return fmt.Errorf("failed to create messageDAO: %w", err)
 	}
-	return nil
+
+	return messageDAO.UpdateMany(ctx, messages, includeContent, isPrivileged)
 }
 
 func (pms *PostgresMemoryStore) SearchMemory(
 	ctx context.Context,
-	appState *models.AppState,
 	sessionID string,
 	query *models.MemorySearchPayload,
 	limit int,
 ) ([]models.MemorySearchResult, error) {
-	searchResults, err := searchMemory(ctx, appState, pms.Client, sessionID, query, limit)
-	return searchResults, err
+	memoryDAO, err := NewMemoryDAO(pms.Client, pms.appState, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create memoryDAO: %w", err)
+	}
+	return memoryDAO.Search(ctx, query, limit)
 }
 
 func (pms *PostgresMemoryStore) Close() error {
@@ -390,59 +328,33 @@ func (pms *PostgresMemoryStore) Close() error {
 	return nil
 }
 
-func (pms *PostgresMemoryStore) PutMessageEmbeddings(ctx context.Context,
-	_ *models.AppState,
+func (pms *PostgresMemoryStore) CreateMessageEmbeddings(ctx context.Context,
 	sessionID string,
 	embeddings []models.TextData,
 ) error {
-	if embeddings == nil {
-		return store.NewStorageError("nil embeddings received", nil)
-	}
-	if len(embeddings) == 0 {
-		return store.NewStorageError("no embeddings received", nil)
-	}
-
-	err := putMessageEmbeddings(ctx, pms.Client, sessionID, embeddings)
+	messageDAO, err := NewMessageDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return store.NewStorageError("failed to Create embeddings", err)
+		return fmt.Errorf("failed to create messageDAO: %w", err)
 	}
 
-	return nil
+	return messageDAO.CreateEmbeddings(ctx, embeddings)
 }
 
 func (pms *PostgresMemoryStore) GetMessageEmbeddings(ctx context.Context,
-	_ *models.AppState,
 	sessionID string,
 ) ([]models.TextData, error) {
-	embeddings, err := getMessageEmbeddings(ctx, pms.Client, sessionID)
+	messageDAO, err := NewMessageDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
-		return nil, store.NewStorageError("GetMessageEmbeddings failed to get embeddings", err)
+		return nil, fmt.Errorf("failed to create messageDAO: %w", err)
 	}
 
-	return embeddings, nil
+	return messageDAO.GetEmbeddingListBySession(ctx)
 }
 
 func (pms *PostgresMemoryStore) PurgeDeleted(ctx context.Context) error {
 	err := purgeDeleted(ctx, pms.Client)
 	if err != nil {
 		return store.NewStorageError("failed to purge deleted", err)
-	}
-
-	return nil
-}
-
-// acquireAdvisoryXactLock acquires a PostgreSQL advisory lock for the given key.
-// Expects a transaction to be open in tx.
-// `pg_advisory_xact_lock` will wait until the lock is available. The lock is released
-// when the transaction is committed or rolled back.
-func acquireAdvisoryXactLock(ctx context.Context, tx bun.Tx, key string) error {
-	hasher := sha256.New()
-	hasher.Write([]byte(key))
-	hash := hasher.Sum(nil)
-	lockID := binary.BigEndian.Uint64(hash[:8])
-
-	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(?)", lockID); err != nil {
-		return store.NewStorageError("failed to acquire advisory lock", err)
 	}
 
 	return nil

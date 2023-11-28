@@ -20,12 +20,17 @@ func TestMemorySearch(t *testing.T) {
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
 	// Call putMessages function
-	err = appState.MemoryStore.PutMemory(testCtx, appState, sessionID,
+	err = appState.MemoryStore.PutMemory(testCtx, sessionID,
 		&models.Memory{
 			Messages: testutils.TestMessages,
 		}, false,
 	)
 	assert.NoError(t, err, "PutMemory should not return an error")
+
+	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
+	assert.NoError(t, err, "NewMessageDAO should not return an error")
+	summaryDAO, err := NewSummaryDAO(testDB, appState, sessionID)
+	assert.NoError(t, err, "NewSummaryDAO should not return an error")
 
 	timeout := time.After(10 * time.Second)
 	tick := time.Tick(500 * time.Millisecond)
@@ -34,10 +39,10 @@ func TestMemorySearch(t *testing.T) {
 		case <-timeout:
 			t.Fatal("timed out waiting for messages to be indexed")
 		case <-tick:
-			me, err := getMessageEmbeddings(testCtx, testDB, sessionID)
-			assert.NoError(t, err, "getMessageEmbeddings should not return an error")
-			se, err := getSummaryEmbeddings(testCtx, testDB, sessionID)
-			assert.NoError(t, err, "getSummaryEmbeddings should not return an error")
+			me, err := messageDAO.GetEmbeddingListBySession(testCtx)
+			assert.NoError(t, err, "GetEmbeddingListBySession should not return an error")
+			se, err := summaryDAO.GetEmbeddings(testCtx)
+			assert.NoError(t, err, "GetEmbeddings should not return an error")
 			if len(me) != 0 && len(se) != 0 {
 				goto DONE
 			}
