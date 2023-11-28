@@ -19,7 +19,7 @@ func TestCreateCollectionRoute(t *testing.T) {
 
 	autoEmbeded := false
 
-	// CreateMessages a collection
+	// Create a collection
 	collection := &models.CreateDocumentCollectionRequest{
 		Name:        collectionName,
 		Description: "Test collection",
@@ -34,7 +34,7 @@ func TestCreateCollectionRoute(t *testing.T) {
 	collectionJSON, err := json.Marshal(collection)
 	assert.NoError(t, err)
 
-	// CreateMessages a request
+	// Create a request
 	req, err := http.NewRequest(
 		"POST",
 		testServer.URL+"/api/v1/collection/"+collectionName,
@@ -42,7 +42,7 @@ func TestCreateCollectionRoute(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	// CreateMessages a client and do the request
+	// Create a client and do the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)
@@ -88,7 +88,7 @@ func TestUpdateCollectionHandler(t *testing.T) {
 	collectionJSON, err := json.Marshal(collection)
 	assert.NoError(t, err)
 
-	// CreateMessages a request
+	// Create a request
 	req, err := http.NewRequest(
 		"PATCH",
 		testServer.URL+"/api/v1/collection/"+collectionName,
@@ -96,7 +96,7 @@ func TestUpdateCollectionHandler(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	// CreateMessages a client and do the request
+	// Create a client and do the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)
@@ -114,7 +114,7 @@ func TestUpdateCollectionHandler(t *testing.T) {
 
 func TestDeleteCollectionHandler(t *testing.T) {
 	collectionName := testutils.GenerateRandomString(10)
-	// CreateMessages a collection
+	// Create a collection
 	cr := models.DocumentCollection{
 		Name:        collectionName,
 		Description: "Test collection",
@@ -150,7 +150,7 @@ func TestDeleteCollectionHandler(t *testing.T) {
 
 func TestGetCollectionHandler(t *testing.T) {
 	collectionName := testutils.GenerateRandomString(10)
-	// CreateMessages a collection
+	// Create a collection
 	cr := models.DocumentCollection{
 		Name:        collectionName,
 		Description: "Test collection",
@@ -189,7 +189,7 @@ func TestGetCollectionHandler(t *testing.T) {
 
 func TestCreateDocumentsHandler(t *testing.T) {
 	collectionName := testutils.GenerateRandomString(10)
-	// CreateMessages a collection
+	// Create a collection
 	cr := models.DocumentCollection{
 		Name:        collectionName,
 		Description: "Test collection",
@@ -203,7 +203,7 @@ func TestCreateDocumentsHandler(t *testing.T) {
 	err := appState.DocumentStore.CreateCollection(testCtx, cr)
 	assert.NoError(t, err)
 
-	// CreateMessages documents
+	// Create documents
 	docs := []models.CreateDocumentRequest{
 		{
 			DocumentID: "doc1",
@@ -256,7 +256,7 @@ func TestCreateDocumentsHandler(t *testing.T) {
 // TestCreateDocumentsHandler with request body size greater than appState.Config.Server.MaxRequestSize
 func TestCreateDocumentsHandler_MaxRequestBodySize(t *testing.T) {
 	collectionName := testutils.GenerateRandomString(10)
-	// CreateMessages a collection
+	// Create a collection
 	cr := models.DocumentCollection{
 		Name:        collectionName,
 		Description: "Test collection",
@@ -270,10 +270,10 @@ func TestCreateDocumentsHandler_MaxRequestBodySize(t *testing.T) {
 	err := appState.DocumentStore.CreateCollection(testCtx, cr)
 	assert.NoError(t, err)
 
-	// CreateMessages a large document
+	// Create a large document
 	largeDoc := strings.Repeat("a", int(appState.Config.Server.MaxRequestSize+1))
 
-	// CreateMessages a document request with the large document
+	// Create a document request with the large document
 	docReq := []models.CreateDocumentRequest{
 		{
 			DocumentID: "largeDoc",
@@ -288,7 +288,7 @@ func TestCreateDocumentsHandler_MaxRequestBodySize(t *testing.T) {
 	j, err := json.Marshal(docReq)
 	assert.NoError(t, err)
 
-	// CreateMessages a new HTTP request
+	// Create a new HTTP request
 	req, err := http.NewRequest(
 		"POST",
 		testServer.URL+"/api/v1/collection/"+collectionName+"/document",
@@ -309,7 +309,7 @@ func TestCreateDocumentsHandler_MaxRequestBodySize(t *testing.T) {
 // Test SearchDocumentsHandler
 func TestSearchDocumentsHandler(t *testing.T) {
 	collectionName := testutils.GenerateRandomString(10)
-	// CreateMessages a collection
+	// Create a collection
 	cr := models.DocumentCollection{
 		Name:        collectionName,
 		Description: "Test collection",
@@ -323,7 +323,7 @@ func TestSearchDocumentsHandler(t *testing.T) {
 	err := appState.DocumentStore.CreateCollection(testCtx, cr)
 	assert.NoError(t, err)
 
-	// CreateMessages documents
+	// Create documents
 	docs := []models.Document{
 		{
 			DocumentBase: models.DocumentBase{
@@ -377,7 +377,7 @@ func TestSearchDocumentsHandler(t *testing.T) {
 
 		limit := "2"
 
-		// CreateMessages a new HTTP request
+		// Create a new HTTP request
 		req, err := http.NewRequest(
 			"POST",
 			testServer.URL+"/api/v1/collection/"+collectionName+"/search?limit="+limit,

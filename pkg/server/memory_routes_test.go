@@ -17,7 +17,7 @@ func TestGetSessionRoute(t *testing.T) {
 	// Initialize the SessionStoreDAO
 	sessionStore := postgres.NewSessionDAO(testDB)
 
-	// CreateMessages a session
+	// Create a session
 	sessionID := testutils.GenerateRandomString(10)
 	session := &models.CreateSessionRequest{
 		SessionID: sessionID,
@@ -26,15 +26,15 @@ func TestGetSessionRoute(t *testing.T) {
 		},
 	}
 
-	// CreateMessages the session in the store
+	// Create the session in the store
 	_, err := sessionStore.Create(testCtx, session)
 	assert.NoError(t, err)
 
-	// CreateMessages a request
+	// Create a request
 	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/sessions/"+sessionID, nil)
 	assert.NoError(t, err)
 
-	// CreateMessages a client and do the request
+	// Create a client and do the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)
@@ -55,7 +55,7 @@ func TestGetSessionRoute(t *testing.T) {
 func TestCreateSessionRoute(t *testing.T) {
 	sessionStore := postgres.NewSessionDAO(testDB)
 
-	// CreateMessages a session
+	// Create a session
 	sessionID := testutils.GenerateRandomString(10)
 	session := &models.CreateSessionRequest{
 		SessionID: sessionID,
@@ -68,7 +68,7 @@ func TestCreateSessionRoute(t *testing.T) {
 	sessionJSON, err := json.Marshal(session)
 	assert.NoError(t, err)
 
-	// CreateMessages a request
+	// Create a request
 	req, err := http.NewRequest(
 		"POST",
 		testServer.URL+"/api/v1/sessions",
@@ -76,7 +76,7 @@ func TestCreateSessionRoute(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	// CreateMessages a client and do the request
+	// Create a client and do the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)
@@ -98,7 +98,7 @@ func TestUpdateSessionRoute(t *testing.T) {
 	// Initialize the SessionStoreDAO
 	sessionStore := postgres.NewSessionDAO(testDB)
 
-	// CreateMessages a session
+	// Create a session
 	sessionID := testutils.GenerateRandomString(10)
 	session := &models.CreateSessionRequest{
 		SessionID: sessionID,
@@ -107,7 +107,7 @@ func TestUpdateSessionRoute(t *testing.T) {
 		},
 	}
 
-	// CreateMessages the session in the store
+	// Create the session in the store
 	_, err := sessionStore.Create(testCtx, session)
 	assert.NoError(t, err)
 
@@ -123,7 +123,7 @@ func TestUpdateSessionRoute(t *testing.T) {
 	updateSessionJSON, err := json.Marshal(updateSession)
 	assert.NoError(t, err)
 
-	// CreateMessages a request
+	// Create a request
 	req, err := http.NewRequest(
 		"PATCH",
 		testServer.URL+"/api/v1/sessions/"+sessionID, // Use the server Path here
@@ -131,7 +131,7 @@ func TestUpdateSessionRoute(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	// CreateMessages a client and do the request
+	// Create a client and do the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)
@@ -156,7 +156,7 @@ func TestGetSessionListRoute(t *testing.T) {
 	// Initialize the SessionStoreDAO
 	sessionStore := postgres.NewSessionDAO(testDB)
 
-	// CreateMessages multiple sessions
+	// Create multiple sessions
 	numSessions := 5
 	for i := 0; i < numSessions; i++ {
 		sessionID := testutils.GenerateRandomString(10)
@@ -167,16 +167,16 @@ func TestGetSessionListRoute(t *testing.T) {
 			},
 		}
 
-		// CreateMessages the session in the store
+		// Create the session in the store
 		_, err := sessionStore.Create(testCtx, session)
 		assert.NoError(t, err)
 	}
 
-	// CreateMessages a request
+	// Create a request
 	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/sessions", nil)
 	assert.NoError(t, err)
 
-	// CreateMessages a client and do the request
+	// Create a client and do the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)

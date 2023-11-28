@@ -28,8 +28,8 @@ func TestUserStoreDAO(t *testing.T) {
 		},
 	}
 
-	// Test CreateMessages
-	t.Run("CreateMessages", func(t *testing.T) {
+	// Test Create
+	t.Run("Create", func(t *testing.T) {
 		_, err := userStore.Create(ctx, user)
 		assert.NoError(t, err)
 
@@ -41,8 +41,8 @@ func TestUserStoreDAO(t *testing.T) {
 		assert.NotEmpty(t, createdUser.ID)
 	})
 
-	// Test CreateMessages
-	t.Run("CreateMessages with no user_id", func(t *testing.T) {
+	// Test Create
+	t.Run("Create with no user_id", func(t *testing.T) {
 		userNoId := &models.CreateUserRequest{
 			UserID: "",
 		}

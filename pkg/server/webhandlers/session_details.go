@@ -39,7 +39,7 @@ func mergeMessagesSummaries(
 	messages []models.Message,
 	summaries []models.Summary,
 ) []models.Message {
-	// CreateMessages a map to hold the summaries with the MessagePointUUID as the key
+	// Create a map to hold the summaries with the MessagePointUUID as the key
 	summariesMap := make(map[uuid.UUID]models.Summary)
 	for _, summary := range summaries {
 		summariesMap[summary.SummaryPointUUID] = summary

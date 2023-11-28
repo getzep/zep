@@ -32,7 +32,7 @@ func (p *CustomPreWrapper) End(code bool) string {
 // CodeHighlight takes a string of code and a lexer name and returns a highlighted
 // HTML string.
 func CodeHighlight(code string, lexer string) (string, error) {
-	// CreateMessages a preWrapper that implements the PreWrapper interface
+	// Create a preWrapper that implements the PreWrapper interface
 	preWrapper := &CustomPreWrapper{}
 
 	var buf bytes.Buffer

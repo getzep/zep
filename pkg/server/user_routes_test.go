@@ -16,7 +16,7 @@ import (
 func TestCreateUserRoute(t *testing.T) {
 	userID := testutils.GenerateRandomString(10)
 
-	// CreateMessages a user
+	// Create a user
 	user := &models.CreateUserRequest{
 		UserID: userID,
 		Metadata: map[string]interface{}{
@@ -28,11 +28,11 @@ func TestCreateUserRoute(t *testing.T) {
 	userJSON, err := json.Marshal(user)
 	assert.NoError(t, err)
 
-	// CreateMessages a request
+	// Create a request
 	req, err := http.NewRequest("POST", testServer.URL+"/api/v1/user", bytes.NewBuffer(userJSON))
 	assert.NoError(t, err)
 
-	// CreateMessages a client and do the request
+	// Create a client and do the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)
@@ -53,7 +53,7 @@ func TestCreateUserRoute(t *testing.T) {
 func TestGetUserRoute(t *testing.T) {
 	userID := testutils.GenerateRandomString(10)
 
-	// CreateMessages a user
+	// Create a user
 	user := &models.CreateUserRequest{
 		UserID: userID,
 		Metadata: map[string]interface{}{
@@ -61,15 +61,15 @@ func TestGetUserRoute(t *testing.T) {
 		},
 	}
 
-	// CreateMessages the user in the store
+	// Create the user in the store
 	_, err := testUserStore.Create(testCtx, user)
 	assert.NoError(t, err)
 
-	// CreateMessages a request
+	// Create a request
 	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/user/"+userID, nil)
 	assert.NoError(t, err)
 
-	// CreateMessages a client and do the request
+	// Create a client and do the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)
@@ -88,7 +88,7 @@ func TestGetUserRoute(t *testing.T) {
 }
 
 func TestUpdateUserRoute(t *testing.T) {
-	// CreateMessages a user
+	// Create a user
 	userID := testutils.GenerateRandomString(10)
 	user := &models.CreateUserRequest{
 		UserID: userID,
@@ -97,7 +97,7 @@ func TestUpdateUserRoute(t *testing.T) {
 		},
 	}
 
-	// CreateMessages the user in the store
+	// Create the user in the store
 	_, err := testUserStore.Create(testCtx, user)
 	assert.NoError(t, err)
 
@@ -114,7 +114,7 @@ func TestUpdateUserRoute(t *testing.T) {
 	updateUserJSON, err := json.Marshal(updateUser)
 	assert.NoError(t, err)
 
-	// CreateMessages a request
+	// Create a request
 	req, err := http.NewRequest(
 		"PATCH",
 		testServer.URL+"/api/v1/user/"+userID,
@@ -122,7 +122,7 @@ func TestUpdateUserRoute(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	// CreateMessages a client and do the request
+	// Create a client and do the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)
@@ -142,7 +142,7 @@ func TestUpdateUserRoute(t *testing.T) {
 }
 
 func TestDeleteUserRoute(t *testing.T) {
-	// CreateMessages a user
+	// Create a user
 	userID := testutils.GenerateRandomString(10)
 	user := &models.CreateUserRequest{
 		UserID: userID,
@@ -151,15 +151,15 @@ func TestDeleteUserRoute(t *testing.T) {
 		},
 	}
 
-	// CreateMessages the user in the store
+	// Create the user in the store
 	_, err := testUserStore.Create(testCtx, user)
 	assert.NoError(t, err)
 
-	// CreateMessages a request to delete the user
+	// Create a request to delete the user
 	req, err := http.NewRequest("DELETE", testServer.URL+"/api/v1/user/"+userID, nil)
 	assert.NoError(t, err)
 
-	// CreateMessages a client and do the request
+	// Create a client and do the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)
@@ -176,7 +176,7 @@ func TestListAllUsersRoute(t *testing.T) {
 	postgres.CleanDB(t, testDB)
 	err := postgres.CreateSchema(testCtx, appState, testDB)
 	assert.NoError(t, err)
-	// CreateMessages a few users
+	// Create a few users
 	for i := 0; i < 5; i++ {
 		userID := testutils.GenerateRandomString(10)
 		user := &models.CreateUserRequest{
@@ -186,16 +186,16 @@ func TestListAllUsersRoute(t *testing.T) {
 			},
 		}
 
-		// CreateMessages the user in the store
+		// Create the user in the store
 		_, err := testUserStore.Create(testCtx, user)
 		assert.NoError(t, err)
 	}
 
-	// CreateMessages a request to list the users
+	// Create a request to list the users
 	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/user?cursor=0&limit=10", nil)
 	assert.NoError(t, err)
 
-	// CreateMessages a client and do the request
+	// Create a client and do the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)
@@ -217,7 +217,7 @@ func TestListUserSessionsRoute(t *testing.T) {
 	userStore := postgres.NewUserStoreDAO(testDB)
 	sessionStore := postgres.NewSessionDAO(testDB)
 
-	// CreateMessages a user
+	// Create a user
 	userID := testutils.GenerateRandomString(10)
 	user := &models.CreateUserRequest{
 		UserID: userID,
@@ -226,11 +226,11 @@ func TestListUserSessionsRoute(t *testing.T) {
 		},
 	}
 
-	// CreateMessages the user in the store
+	// Create the user in the store
 	createdUser, err := userStore.Create(testCtx, user)
 	assert.NoError(t, err)
 
-	// CreateMessages a few sessions for the user
+	// Create a few sessions for the user
 	for i := 0; i < 3; i++ {
 		sessionID := testutils.GenerateRandomString(10)
 		session := &models.CreateSessionRequest{
@@ -241,16 +241,16 @@ func TestListUserSessionsRoute(t *testing.T) {
 			},
 		}
 
-		// CreateMessages the session in the store
+		// Create the session in the store
 		_, err := sessionStore.Create(testCtx, session)
 		assert.NoError(t, err)
 	}
 
-	// CreateMessages a request to list the sessions
+	// Create a request to list the sessions
 	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/user/"+userID+"/sessions", nil)
 	assert.NoError(t, err)
 
-	// CreateMessages a client and do the request
+	// Create a client and do the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)
