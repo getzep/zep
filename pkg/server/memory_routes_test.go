@@ -111,7 +111,7 @@ func TestUpdateSessionRoute(t *testing.T) {
 	_, err := sessionStore.Create(testCtx, session)
 	assert.NoError(t, err)
 
-	// UpdateMessages the session
+	// Update the session
 	updateSession := &models.UpdateSessionRequest{
 		SessionID: sessionID,
 		Metadata: map[string]interface{}{

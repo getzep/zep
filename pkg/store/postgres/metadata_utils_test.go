@@ -80,7 +80,7 @@ func Test_mergeMetadata(t *testing.T) {
 		expectedMetadata map[string]interface{}
 	}{
 		{
-			name:      "UpdateMessages metadata",
+			name:      "Update metadata",
 			sessionID: sessionID,
 			metadata: map[string]interface{}{
 				"A": 3, // Should override initial value of "A"

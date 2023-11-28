@@ -76,7 +76,7 @@ func TestUpdateCollectionHandler(t *testing.T) {
 	err := appState.DocumentStore.CreateCollection(testCtx, collectionCreateRequest)
 	assert.NoError(t, err)
 
-	// UpdateMessages a collection
+	// Update a collection
 	collection := &models.UpdateDocumentCollectionRequest{
 		Description: "Updated Test collection",
 		Metadata: map[string]interface{}{

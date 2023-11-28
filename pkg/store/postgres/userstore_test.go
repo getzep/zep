@@ -63,8 +63,8 @@ func TestUserStoreDAO(t *testing.T) {
 		assert.ErrorIs(t, err, models.ErrNotFound)
 	})
 
-	// Test UpdateMessages
-	t.Run("UpdateMessages", func(t *testing.T) {
+	// Test Update
+	t.Run("Update", func(t *testing.T) {
 		// Create a user with non-zero values
 		userID := testutils.GenerateRandomString(16)
 		user := &models.CreateUserRequest{
@@ -80,7 +80,7 @@ func TestUserStoreDAO(t *testing.T) {
 		// Wait a second
 		<-time.After(1 * time.Second)
 
-		// UpdateMessages the user with zero values
+		// Update the user with zero values
 		userUpdate := &models.UpdateUserRequest{
 			UserID:    user.UserID,
 			Metadata:  nil,
@@ -98,7 +98,7 @@ func TestUserStoreDAO(t *testing.T) {
 		assert.Less(t, createdUser.UpdatedAt, updatedUser.UpdatedAt)
 	})
 
-	t.Run("UpdateMessages Non-Existant User should result in NotFoundError", func(t *testing.T) {
+	t.Run("Update Non-Existant User should result in NotFoundError", func(t *testing.T) {
 		userUpdate := &models.UpdateUserRequest{
 			UserID: "non-existant-user-id",
 			Email:  "email",

@@ -74,7 +74,7 @@ func TestCollectionUpdate(t *testing.T) {
 	err = collection.Create(ctx)
 	assert.NoError(t, err)
 
-	// UpdateMessages the collection
+	// Update the collection
 	expectedDimensions := 20
 	collection.EmbeddingDimensions = expectedDimensions
 	err = collection.Update(ctx)

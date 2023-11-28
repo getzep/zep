@@ -84,7 +84,7 @@ func (ds *DocumentStore) UpdateCollection(
 	dbCollection := NewDocumentCollectionDAO(ds.appState, ds.Client, collection)
 	err := dbCollection.Update(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to UpdateMessages collection: %w", err)
+		return fmt.Errorf("failed to update collection: %w", err)
 	}
 	return nil
 }
@@ -220,7 +220,7 @@ func (ds *DocumentStore) UpdateDocuments(
 	)
 	err := dbCollection.UpdateDocuments(ctx, documents)
 	if err != nil {
-		return fmt.Errorf("failed to UpdateMessages documents: %w", err)
+		return fmt.Errorf("failed to Update documents: %w", err)
 	}
 
 	return nil

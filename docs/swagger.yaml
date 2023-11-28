@@ -980,7 +980,7 @@ paths:
         in: query
         name: limit
         type: integer
-      - description: Cursor for pagination)
+      - description: Cursor for pagination
         in: query
         name: cursor
         type: integer

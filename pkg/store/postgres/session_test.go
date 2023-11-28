@@ -138,7 +138,7 @@ func TestSessionDAO_Update(t *testing.T) {
 	createdSession, err := dao.Create(testCtx, session)
 	assert.NoError(t, err)
 
-	// UpdateMessages the session
+	// Update the session
 	updateSession := &models.UpdateSessionRequest{
 		SessionID: sessionID,
 		Metadata: map[string]interface{}{
@@ -174,7 +174,7 @@ func TestSessionDAO_UpdateWithNilMetadata(t *testing.T) {
 	createdSession, err := dao.Create(testCtx, session)
 	assert.NoError(t, err)
 
-	// UpdateMessages the session
+	// Update the session
 	updateSession := &models.UpdateSessionRequest{
 		SessionID: sessionID,
 	}
@@ -287,11 +287,11 @@ func TestSessionDAO_UndeleteSession(t *testing.T) {
 		SessionID: sessionID,
 	}
 	updatesSession, err := sessionStore.Update(testCtx, session, false)
-	assert.NoError(t, err, "UpdateMessages should not return an error")
+	assert.NoError(t, err, "Update should not return an error")
 
 	assert.NoError(t, err, "Get should not return an error")
-	assert.NotNil(t, updatesSession, "UpdateMessages should return a session")
-	assert.Emptyf(t, updatesSession.DeletedAt, "UpdateMessages should not have a DeletedAt value")
+	assert.NotNil(t, updatesSession, "Update should return a session")
+	assert.Emptyf(t, updatesSession.DeletedAt, "Update should not have a DeletedAt value")
 
 	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
 	assert.NoError(t, err, "NewMessageDAO should not return an error")

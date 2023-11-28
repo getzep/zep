@@ -101,7 +101,7 @@ func TestUpdateUserRoute(t *testing.T) {
 	_, err := testUserStore.Create(testCtx, user)
 	assert.NoError(t, err)
 
-	// UpdateMessages the user
+	// Update the user
 	updateUser := &models.UpdateUserRequest{
 		UserID: userID,
 		Email:  "test@example.com",

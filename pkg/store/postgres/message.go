@@ -359,7 +359,7 @@ func (dao *MessageDAO) Update(ctx context.Context,
 		return models.NewNotFoundError(fmt.Sprintf("message %s not found", message.UUID))
 	}
 
-	// UpdateMessages metadata
+	// Update metadata
 	if message.Metadata != nil {
 		err = dao.updateMetadata(ctx, tx, message.UUID, message.Metadata, isPrivileged)
 		if err != nil {
@@ -420,7 +420,7 @@ func (dao *MessageDAO) UpdateMany(ctx context.Context,
 		return fmt.Errorf("failed to update messages: %w", err)
 	}
 
-	// UpdateMessages metadata
+	// Update metadata
 	for _, msg := range messages {
 		if msg.Metadata != nil {
 			err = dao.updateMetadata(ctx, tx, msg.UUID, msg.Metadata, isPrivileged)
