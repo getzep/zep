@@ -393,10 +393,8 @@ github.com/stretchr/testify v1.8.4 h1:CcVxjf3Q8PM0mHUKJCdn+eZZtm5yQwehR5yeSVQQcU
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/subosito/gotenv v1.6.0 h1:9NlTDc1FTs4qu0DDq7AEtTPNw6SVm7uBMsUCUjABIf8=
 github.com/subosito/gotenv v1.6.0/go.mod h1:Dk4QP5c2W3ibzajGcXpNraDfq2IrhjMIvMSWPKKo0FU=
-github.com/sv-tools/openapi v0.2.2 h1:kiwdyucusLIBMpm7V+e/McwQEsdUbUKEaVsbsPXCyus=
-github.com/sv-tools/openapi v0.2.2/go.mod h1:Lj9d5LR2E0YFEw7BsT/zuGAW41TnnES6zHY23oc7qzE=
-github.com/swaggo/swag/v2 v2.0.0-rc3 h1:cIkbddJ9ftgRenDaDzyvg+2TUDLFCDffZ40yZE1r0vU=
-github.com/swaggo/swag/v2 v2.0.0-rc3/go.mod h1:mfTZJmxpXWA3JQ9V381+cRlutUCo7OXd/VyIRcMhByc=
+github.com/swaggo/swag v1.16.2 h1:28Pp+8DkQoV+HLzLx8RGJZXNGKbFqnuvSbAAtoxiY04=
+github.com/swaggo/swag v1.16.2/go.mod h1:6YzXnDcpr0767iOejs318CwYkCQqyGer6BizOg03f+E=
 github.com/tmc/langchaingo v0.0.0-20230929160525-e16b77704b8d h1:i4+wYULVM2/3Yb/aDE7Z4s2v7vqtQERQWh5lopBEuig=
 github.com/tmc/langchaingo v0.0.0-20230929160525-e16b77704b8d/go.mod h1:R+a8fqt6nmKyYj7KSpr/m9oxqE6OJLbLyO9pxeHpjLU=
 github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc h1:9lRDQMhESg+zvGYmW5DyG0UqvY96Bu5QYsTLvCHdrgo=

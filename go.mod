@@ -22,7 +22,6 @@ require (
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.16.0
 	github.com/stretchr/testify v1.8.4
-	github.com/swaggo/swag/v2 v2.0.0-rc3
 	github.com/uptrace/bun v1.1.16
 	github.com/uptrace/bun/dialect/pgdialect v1.1.16
 	github.com/uptrace/bun/driver/pgdriver v1.1.16
@@ -40,6 +39,7 @@ require (
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/ma-hartma/watermill-logrus-adapter v0.0.0-20220319171828-0856b297f1c2
 	github.com/riandyrn/otelchi v0.5.1
+	github.com/swaggo/swag v1.16.2
 	github.com/tmc/langchaingo v0.0.0-20230929160525-e16b77704b8d
 	github.com/uptrace/bun/dbfixture v1.1.16
 	github.com/uptrace/bun/extra/bundebug v1.1.16
@@ -119,7 +119,6 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/sv-tools/openapi v0.2.2 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelsql v0.2.2 // indirect
 	github.com/viterin/partial v1.1.0 // indirect
@@ -140,6 +139,5 @@ require (
 	google.golang.org/grpc v1.58.3 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	mellium.im/sasl v0.3.1 // indirect
 )
