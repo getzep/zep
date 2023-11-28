@@ -49,7 +49,7 @@ type CustomRandSource struct {
 	rand.Source
 }
 
-// Override Intn method
+// Intn Override
 func (s *CustomRandSource) Intn(n int) int { //nolint:revive
 	// 98% prob to return 1 (true)
 	if rand.Float32() < 0.98 { //nolint:gosec
@@ -229,7 +229,13 @@ func writeFixtureToYAML[T Row](fixtures Fixtures[T], outputDir, filename string)
 		fmt.Printf("error: %v", err)
 		return
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			fmt.Printf("error: %v", err)
+			return
+		}
+	}(file)
 
 	_, err = file.Write(data)
 	if err != nil {

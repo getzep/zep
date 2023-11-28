@@ -57,11 +57,6 @@ type SessionStorer interface {
 }
 
 type MessageStorer interface {
-	//CreateMessages(
-	//	ctx context.Context,
-	//	sessionID string,
-	//	messages []Message) ([]Message, error)
-
 	// UpdateMessages updates a collection of Messages for a given sessionID. If includeContent is true, the
 	// role and content fields are updated, too. If isPrivileged is true, the `system` key may be updated.
 	UpdateMessages(
@@ -82,19 +77,6 @@ type MessageStorer interface {
 		pageNumber int,
 		pageSize int,
 	) (*MessageListResponse, error)
-	//// GetLastNMessages retrieves the last N messages for a session. If uuid is provided, it will get the
-	//// last N messages before and including the provided beforeUUID. Results are returned in
-	//// ascending order of creation
-	//GetLastNMessages(ctx context.Context,
-	//	sessionID string,
-	//	lastNMessages int,
-	//	beforeUUID uuid.UUID,
-	//) ([]Message, error)
-	//// DeleteMessage deletes a Message. This is a soft delete.
-	//DeleteMessage(ctx context.Context,
-	//	sessionID string,
-	//	messageUUID uuid.UUID) error
-
 	// CreateMessageEmbeddings stores a collection of TextData for a given sessionID.
 	CreateMessageEmbeddings(ctx context.Context,
 		sessionID string,
@@ -143,7 +125,7 @@ type SummaryStorer interface {
 		pageNumber int,
 		pageSize int,
 	) (*SummaryListResponse, error)
-	// PutSummary stores a new Summary for a given sessionID.
+	// CreateSummary stores a new Summary for a given sessionID.
 	CreateSummary(ctx context.Context,
 		sessionID string,
 		summary *Summary) error

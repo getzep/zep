@@ -31,11 +31,21 @@ func Migrate(ctx context.Context, db *bun.DB) error {
 	if err := migrator.Lock(ctx); err != nil {
 		return fmt.Errorf("failed to lock migrator: %w", err)
 	}
-	defer migrator.Unlock(ctx) //nolint:errcheck
+	defer func(migrator *migrate.Migrator, ctx context.Context) {
+		err := migrator.Unlock(ctx)
+		if err != nil {
+			panic(fmt.Errorf("failed to unlock migrator: %w", err))
+		}
+	}(migrator, ctx)
 
 	group, err := migrator.Migrate(ctx)
 	if err != nil {
-		defer migrator.Unlock(ctx) //nolint:errcheck
+		defer func(migrator *migrate.Migrator, ctx context.Context) {
+			err := migrator.Unlock(ctx)
+			if err != nil {
+				panic(fmt.Errorf("failed to unlock migrator: %w", err))
+			}
+		}(migrator, ctx)
 		_, err := migrator.Rollback(ctx)
 		if err != nil {
 			panic(fmt.Errorf("failed to apply migrations and rollback was unsuccessful: %w", err))

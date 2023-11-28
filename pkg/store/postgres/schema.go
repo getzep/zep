@@ -741,19 +741,3 @@ type IndexStatus struct {
 	TuplesTotal int    `bun:"tuples_total"`
 	TuplesDone  int    `bun:"tuples_done"`
 }
-
-// GetIndexStatus queries for an index's status given an index name.
-func GetIndexStatus(ctx context.Context, db *bun.DB, indexName string) (IndexStatus, error) {
-	var status IndexStatus
-	err := db.NewSelect().
-		ColumnExpr("i.phase, i.tuples_total, i.tuples_done").
-		TableExpr("pg_stat_progress_create_index AS i").
-		Join("pg_class AS c ON c.oid = i.index_relid").
-		Where("c.relname = ?", indexName).
-		Scan(ctx, &status)
-	if err != nil {
-		return IndexStatus{}, fmt.Errorf("error querying index status: %w", err)
-	}
-
-	return status, nil
-}

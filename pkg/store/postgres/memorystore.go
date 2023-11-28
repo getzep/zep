@@ -360,23 +360,6 @@ func (pms *PostgresMemoryStore) PurgeDeleted(ctx context.Context) error {
 	return nil
 }
 
-// acquireAdvisoryXactLock acquires a PostgreSQL advisory lock for the given key.
-// Expects a transaction to be open in tx.
-// `pg_advisory_xact_lock` will wait until the lock is available. The lock is released
-// when the transaction is committed or rolled back.
-func acquireAdvisoryXactLock(ctx context.Context, tx bun.Tx, key string) error {
-	hasher := sha256.New()
-	hasher.Write([]byte(key))
-	hash := hasher.Sum(nil)
-	lockID := binary.BigEndian.Uint64(hash[:8])
-
-	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(?)", lockID); err != nil {
-		return store.NewStorageError("failed to acquire advisory lock", err)
-	}
-
-	return nil
-}
-
 // acquireAdvisoryLock acquires a PostgreSQL advisory lock for the given key.
 // The lock needs to be released manually by calling releaseAdvisoryLock.
 // Accepts a bun.IDB, which can be either a *bun.DB or *bun.Tx.

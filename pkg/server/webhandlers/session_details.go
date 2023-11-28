@@ -66,7 +66,7 @@ func mergeMessagesSummaries(
 	return merged
 }
 
-func (m *SessionDetails) Get(ctx context.Context, appState *models.AppState) error {
+func (m *SessionDetails) Get(ctx context.Context, _ *models.AppState) error {
 	messages, err := m.MemoryStore.GetMessageList(
 		ctx,
 		m.SessionID,
