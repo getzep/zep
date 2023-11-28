@@ -10,7 +10,7 @@ import (
 )
 
 func TestMergeMetadata_SessionDeleted(t *testing.T) {
-	// CreateMessages a test session
+	// Create a test session
 	sessionID := testutils.GenerateRandomString(16)
 	metadata := map[string]interface{}{
 		"key1": "value1",
@@ -53,7 +53,7 @@ func Test_mergeMetadata(t *testing.T) {
 	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
 
-	// CreateMessages a test session
+	// Create a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 

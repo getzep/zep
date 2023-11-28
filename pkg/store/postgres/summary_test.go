@@ -69,7 +69,7 @@ func TestGetSummary(t *testing.T) {
 
 	sessionManager := NewSessionDAO(testDB)
 	_, err = sessionManager.Create(testCtx, session)
-	assert.NoError(t, err, "CreateMessages should not return an error")
+	assert.NoError(t, err, "create should not return an error")
 
 	summary := models.Summary{
 		Content: "Test content",
@@ -291,7 +291,7 @@ func TestPostgresMemoryStore_PutSummaryEmbedding(t *testing.T) {
 }
 
 func TestGetSummaryList(t *testing.T) {
-	// CreateMessages a test session
+	// create a test session
 	sessionID := createSession(t)
 
 	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
@@ -365,7 +365,7 @@ func TestGetSummaryList(t *testing.T) {
 }
 
 func TestUpdateSummary(t *testing.T) {
-	// Step 1: CreateMessages a session
+	// Step 1: Create a session
 	sessionID := createSession(t)
 
 	// Step 2: Create test messages

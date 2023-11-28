@@ -272,13 +272,13 @@ func TestDocumentCollectionCreateDocuments(t *testing.T) {
 		expectedError string
 	}{
 		{
-			name:          "test CreateMessages documents into an existing collection",
+			name:          "test Create documents into an existing collection",
 			collection:    collection,
 			documents:     documents,
 			expectedError: "",
 		},
 		{
-			name:          "test CreateMessages documents into a non-existent collection",
+			name:          "test Create documents into a non-existent collection",
 			collection:    NewTestCollectionDAO(3),
 			documents:     documents,
 			expectedError: "failed to get collection",

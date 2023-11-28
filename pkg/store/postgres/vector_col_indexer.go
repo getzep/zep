@@ -105,7 +105,7 @@ func (vci *VectorColIndex) CreateIndex(_ context.Context, force bool) error {
 	// run index creation in a goroutine with IndexTimeout
 	go func() {
 		defer IndexMutexMap[vci.Collection.Name].Unlock()
-		// CreateMessages a new context with a timeout
+		// Create a new context with a timeout
 		ctx, cancel := context.WithTimeout(context.Background(), IndexTimeout)
 		defer cancel()
 

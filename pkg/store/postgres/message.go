@@ -43,7 +43,7 @@ func (dao *MessageDAO) Create(
 	ctx context.Context,
 	message *models.Message,
 ) (*models.Message, error) {
-	// CreateMessages a new MessageStoreSchema from the provided message
+	// Create a new MessageStoreSchema from the provided message
 	pgMessage := MessageStoreSchema{
 		UUID:       message.UUID,
 		SessionID:  dao.sessionID,
@@ -100,7 +100,7 @@ func (dao *MessageDAO) CreateMany(
 		Returning("*").
 		Exec(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to CreateMessages messages %w", err)
+		return nil, fmt.Errorf("failed to create messages %w", err)
 	}
 
 	messages = messagesFromStoreSchema(pgMessages)

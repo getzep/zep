@@ -47,7 +47,7 @@ func (s *SummaryDAO) Create(
 
 	_, err := s.db.NewInsert().Model(pgSummary).Exec(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to CreateMessages summary %w", err)
+		return nil, fmt.Errorf("failed to create summary %w", err)
 	}
 
 	return &models.Summary{

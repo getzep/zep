@@ -78,7 +78,7 @@ func run() {
 func NewAppState(cfg *config.Config) *models.AppState {
 	ctx := context.Background()
 
-	// CreateMessages a new LLM client
+	// Create a new LLM client
 	llmClient, err := llms.NewLLMClient(ctx, cfg)
 	if err != nil {
 		log.Fatal(err)

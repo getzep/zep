@@ -71,7 +71,7 @@ func TestSessionDAO_Get(t *testing.T) {
 	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
 
-	// CreateMessages a test session
+	// Create a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -125,7 +125,7 @@ func TestSessionDAO_Update(t *testing.T) {
 	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
 
-	// CreateMessages a test session
+	// Create a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -161,7 +161,7 @@ func TestSessionDAO_UpdateWithNilMetadata(t *testing.T) {
 	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
 
-	// CreateMessages a test session
+	// Create a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -193,7 +193,7 @@ func TestSessionDAO_Delete(t *testing.T) {
 	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
 
-	// CreateMessages a test session
+	// Create a test session
 	sessionID, err := testutils.GenerateRandomSessionID(16)
 	assert.NoError(t, err, "GenerateRandomSessionID should not return an error")
 
@@ -394,7 +394,7 @@ func TestSessionDAO_ListAll(t *testing.T) {
 	// Initialize SessionDAO
 	dao := NewSessionDAO(testDB)
 
-	// CreateMessages a few test sessions
+	// Create a few test sessions
 	sessions := createTestSessions(t, dao, 5)
 	lastID := sessions[len(sessions)-1].ID
 
@@ -444,7 +444,7 @@ func TestSessionDAO_ListAllOrdered(t *testing.T) {
 	totalCount := 5
 	pageSize := 5
 
-	// CreateMessages a few test sessions
+	// Create a few test sessions
 	sessions := createTestSessions(t, dao, totalCount)
 
 	tests := []struct {

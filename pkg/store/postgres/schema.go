@@ -202,7 +202,7 @@ func (u *UserSchema) BeforeAppendModel(_ context.Context, query bun.Query) error
 	return nil
 }
 
-// CreateMessages session_id indexes after table creation
+// Create session_id indexes after table creation
 var _ bun.AfterCreateTableHook = (*SessionSchema)(nil)
 var _ bun.AfterCreateTableHook = (*MessageStoreSchema)(nil)
 var _ bun.AfterCreateTableHook = (*MessageVectorStoreSchema)(nil)
@@ -210,7 +210,7 @@ var _ bun.AfterCreateTableHook = (*SummaryStoreSchema)(nil)
 var _ bun.AfterCreateTableHook = (*SummaryVectorStoreSchema)(nil)
 var _ bun.AfterCreateTableHook = (*UserSchema)(nil)
 
-// CreateMessages Collection Name index after table creation
+// Create Collection Name index after table creation
 var _ bun.AfterCreateTableHook = (*DocumentCollectionSchema)(nil)
 
 func (*SessionSchema) AfterCreateTable(
@@ -373,7 +373,7 @@ func createDocumentTable(
 		return fmt.Errorf("error creating document table: %w", err)
 	}
 
-	// CreateMessages document_id index
+	// Create document_id index
 	_, err = db.NewCreateIndex().
 		Model(schema).
 		// override default table name
@@ -398,7 +398,7 @@ func createDocumentTable(
 
 // enablePgVectorExtension creates the pgvector extension if it does not exist and updates it if it is out of date.
 func enablePgVectorExtension(_ context.Context, db *bun.DB) error {
-	// CreateMessages pgvector extension if it does not exist
+	// Create pgvector extension if it does not exist
 	_, err := db.Exec("CREATE EXTENSION IF NOT EXISTS vector")
 	if err != nil {
 		return fmt.Errorf("error creating pgvector extension: %w", err)
@@ -426,7 +426,7 @@ func CreateSchema(
 	appState *models.AppState,
 	db *bun.DB,
 ) error {
-	// CreateMessages new tableList slice and append DocumentCollectionSchema to it
+	// Create new tableList slice and append DocumentCollectionSchema to it
 	tableList := append( //nolint:gocritic
 		messageTableList,
 		&UserSchema{},
@@ -462,7 +462,7 @@ func CreateSchema(
 		return fmt.Errorf("error checking summary embedding dimensions: %w", err)
 	}
 
-	// CreateMessages HNSW index on message and summary embeddings if available
+	// Create HNSW index on message and summary embeddings if available
 	if appState.Config.Store.Postgres.AvailableIndexes.HSNW {
 		c := "embedding"
 		if err := createHNSWIndex(ctx, db, "message_embedding", c); err != nil {

@@ -104,7 +104,7 @@ func TestGet(t *testing.T) {
 		Metadata:   map[string]interface{}{"key": "value"},
 	}
 
-	// Call the CreateMessages function
+	// Call the Create function
 	messageDAO, err := NewMessageDAO(testDB, appState, sessionID)
 	assert.NoError(t, err)
 	createdMessage, err := messageDAO.Create(testCtx, message)
@@ -277,7 +277,7 @@ func TestGetListByUUID(t *testing.T) {
 	})
 
 	t.Run("GetListByUUID with valid message UUIDs", func(t *testing.T) {
-		// CreateMessages a list of UUIDs and corresponding messages
+		// Create a list of UUIDs and corresponding messages
 		var uuids []uuid.UUID
 		var messages []models.Message
 		for i := 0; i < 5; i++ {

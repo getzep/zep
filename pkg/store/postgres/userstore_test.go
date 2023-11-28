@@ -20,7 +20,7 @@ func TestUserStoreDAO(t *testing.T) {
 	// Initialize the UserStoreDAO
 	userStore := NewUserStoreDAO(testDB)
 
-	// CreateMessages a user
+	// Create a user
 	user := &models.CreateUserRequest{
 		UserID: userID,
 		Metadata: map[string]interface{}{
@@ -65,7 +65,7 @@ func TestUserStoreDAO(t *testing.T) {
 
 	// Test UpdateMessages
 	t.Run("UpdateMessages", func(t *testing.T) {
-		// CreateMessages a user with non-zero values
+		// Create a user with non-zero values
 		userID := testutils.GenerateRandomString(16)
 		user := &models.CreateUserRequest{
 			UserID: userID,
@@ -112,7 +112,7 @@ func TestUserStoreDAO(t *testing.T) {
 		returnedUser, err := userStore.Get(ctx, user.UserID)
 		assert.NoError(t, err)
 
-		// CreateMessages some sessions for the user
+		// Create some sessions for the user
 		session1, err := testutils.GenerateRandomSessionID(16)
 		assert.NoError(t, err)
 		session2, err := testutils.GenerateRandomSessionID(16)
@@ -202,7 +202,7 @@ func TestUserStoreDAO_ListAll(t *testing.T) {
 	// Initialize UserStoreDAO
 	dao := NewUserStoreDAO(testDB)
 
-	// CreateMessages a few test users
+	// Create a few test users
 	var lastID int64
 	for i := 0; i < 5; i++ {
 		userID := testutils.GenerateRandomString(16)
@@ -263,7 +263,7 @@ func TestUserStoreDAO_ListAllOrdered(t *testing.T) {
 	// Initialize UserStoreDAO
 	dao := NewUserStoreDAO(testDB)
 
-	// CreateMessages a few test users
+	// Create a few test users
 	for i := 0; i < 5; i++ {
 		userID := testutils.GenerateRandomString(16)
 		assert.NoError(t, err, "GenerateRandomString should not return an error")

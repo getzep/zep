@@ -69,7 +69,7 @@ func (ds *DocumentStore) CreateCollection(
 	dbCollection.db = ds.Client
 	err := dbCollection.Create(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to CreateMessages collection: %w", err)
+		return fmt.Errorf("failed to create collection: %w", err)
 	}
 	return nil
 }
@@ -193,7 +193,7 @@ func (ds *DocumentStore) CreateDocuments(
 
 	uuids, err := collection.CreateDocuments(ctx, documents)
 	if err != nil {
-		return nil, fmt.Errorf("failed to CreateMessages documents: %w", err)
+		return nil, fmt.Errorf("failed to create documents: %w", err)
 	}
 
 	// if the collection is configured to auto-embed, send the documents

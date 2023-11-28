@@ -230,7 +230,7 @@ func (pms *PostgresMemoryStore) CreateSummary(
 
 	retSummary, err := summaryDAO.Create(ctx, summary)
 	if err != nil {
-		return store.NewStorageError("failed to CreateMessages summary", err)
+		return store.NewStorageError("failed to create summary", err)
 	}
 
 	// Publish a message to the message summary embeddings topic
