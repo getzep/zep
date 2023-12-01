@@ -35,10 +35,6 @@ func GetMemoryHandler(appState *models.AppState) http.HandlerFunc {
 			handlertools.RenderError(w, err, http.StatusBadRequest)
 			return
 		}
-		if lastN == 0 {
-			handlertools.RenderError(w, fmt.Errorf("lastn must be greater than 0"), http.StatusBadRequest)
-			return
-		}
 
 		sessionMemory, err := appState.MemoryStore.GetMemory(r.Context(), sessionID, lastN)
 		if err != nil {
