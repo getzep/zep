@@ -69,10 +69,6 @@ func (n *MessageNERTask) Execute(
 		}
 		entityList := extractEntities(r.Entities)
 
-		if len(entityList) == 0 {
-			continue
-		}
-
 		nerMessages[i] = models.Message{
 			UUID: msgUUID,
 			Metadata: map[string]interface{}{
