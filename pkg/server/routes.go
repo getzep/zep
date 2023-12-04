@@ -174,6 +174,16 @@ func setupSessionRoutes(router chi.Router, appState *models.AppState) {
 			r.Post("/", apihandlers.PostMemoryHandler(appState))
 			r.Delete("/", apihandlers.DeleteMemoryHandler(appState))
 		})
+
+		r.Route("/messages", func(r chi.Router) {
+			r.Get("/", apihandlers.GetMessagesForSessionHandler(appState))
+			r.Route("/{messageId}", func(r chi.Router) {
+				r.Get("/", apihandlers.GetMessageHandler(appState))
+				r.Patch("/", apihandlers.UpdateMessageMetadataHandler(appState))
+			})
+
+		})
+
 		// Memory search-related routes
 		r.Route("/search", func(r chi.Router) {
 			r.Post("/", apihandlers.SearchMemoryHandler(appState))
