@@ -76,6 +76,10 @@ func (t *MessageSummaryTask) Execute(
 		log.Warningf("SummaryTask GetMemory returned no messages for session %s", sessionID)
 		return nil
 	}
+
+	// drop empty messages
+	messages = dropEmptyMessages(messages)
+
 	// If we're still under the message window, we don't need to summarize.
 	if len(messages) < t.appState.Config.Memory.MessageWindow {
 		return nil

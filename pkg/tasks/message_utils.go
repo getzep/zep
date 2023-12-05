@@ -4,11 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/google/uuid"
 )
+
+func dropEmptyMessages(messages []models.Message) []models.Message {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if strings.TrimSpace(messages[i].Content) == "" {
+			messages = append(messages[:i], messages[i+1:]...)
+		}
+	}
+	return messages
+}
 
 func summaryTaskPayloadToSummary(
 	ctx context.Context,
