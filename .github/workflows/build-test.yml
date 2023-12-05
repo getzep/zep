@@ -8,7 +8,7 @@ on:
      branches: [ "main" ]
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-4c-16GB-150GB
     container: debian:bullseye-slim
     environment: build-test
     services:
@@ -55,6 +55,7 @@ jobs:
       - name: Test
         run: CGO_ENABLED=1 go test -tags=testutils -race -p 1 -v ./...
         env:
+          ZEP_LOG_LEVEL: 'info'
           ZEP_OPENAI_API_KEY: ${{ secrets.ZEP_OPENAI_API_KEY }}
           ZEP_ANTHROPIC_API_KEY: ${{ secrets.ZEP_ANTHROPIC_API_KEY }}
           ZEP_STORE_POSTGRES_DSN: 'postgres://postgres:postgres@postgres:5432/?sslmode=disable'
