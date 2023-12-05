@@ -953,7 +953,7 @@
                     },
                     {
                         "type": "integer",
-                        "description": "Cursor for pagination)",
+                        "description": "Cursor for pagination",
                         "name": "cursor",
                         "in": "query"
                     }
