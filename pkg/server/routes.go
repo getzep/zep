@@ -182,7 +182,6 @@ func setupSessionRoutes(router chi.Router, appState *models.AppState) {
 				r.Get("/", apihandlers.GetMessageHandler(appState))
 				r.Patch("/", apihandlers.UpdateMessageMetadataHandler(appState))
 			})
-
 		})
 
 		// Memory search-related routes
