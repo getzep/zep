@@ -52,7 +52,11 @@ func UpdateMessageMetadataHandler(appState *models.AppState) http.HandlerFunc {
 			return
 		}
 
-		appState.MemoryStore.UpdateMessages(r.Context(), sessionID, []models.Message{message}, false, false)
+		err = appState.MemoryStore.UpdateMessages(r.Context(), sessionID, []models.Message{message}, false, false)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 
 		messages, err := appState.MemoryStore.GetMessagesByUUID(r.Context(), sessionID, []uuid.UUID{messageUUID})
 		if err != nil {
