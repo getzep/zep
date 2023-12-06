@@ -22,8 +22,6 @@ import (
 //
 // The function updates the message's metadata with the new metadata and saves the updated message back to the database.
 // It then responds with the updated message as a JSON object.
-// If the session ID or message ID does not exist, the function responds with a 404 Not Found status code.
-// If there is an error while updating the message, the function responds with a 500 Internal Server Error status code.
 //
 // @Summary Updates the metadata of a specific message
 // @Description update message metadata by session id and message id
@@ -54,6 +52,7 @@ func UpdateMessageMetadataHandler(appState *models.AppState) http.HandlerFunc {
 
 		err = appState.MemoryStore.UpdateMessages(r.Context(), sessionID, []models.Message{message}, false, false)
 		if err != nil {
+			// would this be better as a 500?
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
