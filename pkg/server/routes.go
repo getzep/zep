@@ -175,6 +175,7 @@ func setupSessionRoutes(router chi.Router, appState *models.AppState) {
 			r.Delete("/", apihandlers.DeleteMemoryHandler(appState))
 		})
 
+		// Message-related routes
 		r.Route("/messages", func(r chi.Router) {
 			r.Get("/", apihandlers.GetMessagesForSessionHandler(appState))
 			r.Route("/{messageId}", func(r chi.Router) {
