@@ -108,8 +108,16 @@ func GetMessageHandler(appState *models.AppState) http.HandlerFunc {
 		log.Debugf("GetMessageHandler: sessionID: %s, messageID: %s", sessionID, messageUUID)
 
 		messageIDs := []uuid.UUID{messageUUID}
-		messages, _ := appState.MemoryStore.GetMessagesByUUID(r.Context(), sessionID, messageIDs)
-
+		messages, err := appState.MemoryStore.GetMessagesByUUID(r.Context(), sessionID, messageIDs)
+		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+				return
+			} else {
+				handlertools.RenderError(w, err, http.StatusInternalServerError)
+				return
+			}
+		}
 		if len(messages) == 0 {
 			handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
 			return
