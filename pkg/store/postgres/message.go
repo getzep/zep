@@ -5,10 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
+
 	"github.com/getzep/zep/internal"
 	"github.com/getzep/zep/pkg/store"
 	"github.com/pgvector/pgvector-go"
-	"sync"
 
 	"github.com/getzep/zep/pkg/models"
 	"github.com/google/uuid"
@@ -253,6 +254,7 @@ func (dao *MessageDAO) GetListBySession(
 	ctx context.Context,
 	currentPage int,
 	pageSize int) (*models.MessageListResponse, error) {
+	// can we remove this?
 	if pageSize < 1 {
 		return nil, errors.New("pageSize must be greater than 0")
 	}

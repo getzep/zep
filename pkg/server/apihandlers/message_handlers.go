@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	log "github.com/sirupsen/logrus"
 
@@ -138,31 +137,27 @@ func GetMessageHandler(appState *models.AppState) http.HandlerFunc {
 func GetMessagesForSessionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
-		limitStr := r.URL.Query().Get("limit")
-		offsetStr := r.URL.Query().Get("offset")
-		limit, offset := 10, 0
+		//		limit, cursor := 10, 0
 
 		log.Infof("GetMessagesForSessionHandler - SessionId %s", sessionID)
-
-		if limitStr != "" {
-			var err error
-			limit, err = strconv.Atoi(limitStr)
-			if err != nil {
-				handlertools.RenderError(w, fmt.Errorf("invalid page size number"), http.StatusBadRequest)
-				return
-			}
+		var limit int
+		var err error
+		if limit, err = handlertools.IntFromQuery[int](r, "limit"); err != nil {
+			limit = 100
+		}
+		// This is very not ideal. We are inconsistent with what 0 means for limit
+		// TODO: Fix this
+		if limit < 1 {
+			limit = 100
+		}
+		var cursor int
+		if cursor, err = handlertools.IntFromQuery[int](r, "cursor"); err != nil {
+			cursor = 1
 		}
 
-		if offsetStr != "" {
-			var err error
-			offset, err = strconv.Atoi(offsetStr)
-			if err != nil {
-				handlertools.RenderError(w, fmt.Errorf("invalid page number"), http.StatusBadRequest)
-				return
-			}
-		}
+		log.Infof("limit %d and cursor %d", limit, cursor)
 
-		messages, err := appState.MemoryStore.GetMessageList(r.Context(), sessionID, offset, limit)
+		messages, err := appState.MemoryStore.GetMessageList(r.Context(), sessionID, cursor, limit)
 		if err != nil {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
