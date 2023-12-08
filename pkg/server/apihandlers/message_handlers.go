@@ -158,11 +158,7 @@ func GetMessagesForSessionHandler(appState *models.AppState) http.HandlerFunc {
 		if limit, err = handlertools.IntFromQuery[int](r, "limit"); err != nil {
 			limit = MessageLimit
 		}
-		// This is very not ideal. We are inconsistent with what 0 means for limit
-		// TODO: Fix this
-		if limit < 1 {
-			limit = MessageLimit
-		}
+
 		var cursor int
 		if cursor, err = handlertools.IntFromQuery[int](r, "cursor"); err != nil {
 			cursor = 1
