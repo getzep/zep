@@ -2,6 +2,7 @@ package apihandlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
+
+const MessageLimit = 100
 
 // UpdateMessageMetadataHandler updates the metadata of a specific message.
 //
@@ -39,7 +42,7 @@ func UpdateMessageMetadataHandler(appState *models.AppState) http.HandlerFunc {
 		sessionID := chi.URLParam(r, "sessionId")
 		messageUUID := handlertools.UUIDFromURL(r, w, "messageId")
 
-		log.Infof("UpdateMessageMetadataHandler - SessionId %s - MessageUUID %s", sessionID, messageUUID)
+		log.Debugf("UpdateMessageMetadataHandler - SessionId %s - MessageUUID %s", sessionID, messageUUID)
 
 		message := models.Message{}
 		message.UUID = messageUUID
@@ -51,19 +54,24 @@ func UpdateMessageMetadataHandler(appState *models.AppState) http.HandlerFunc {
 
 		err = appState.MemoryStore.UpdateMessages(r.Context(), sessionID, []models.Message{message}, false, false)
 		if err != nil {
-			// would this be better as a 500?
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
+			if errors.Is(err, models.ErrNotFound) {
+				handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+				return
+			} else {
+				handlertools.RenderError(w, err, http.StatusInternalServerError)
+				return
+			}
 		}
 
 		messages, err := appState.MemoryStore.GetMessagesByUUID(r.Context(), sessionID, []uuid.UUID{messageUUID})
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		if len(messages) == 0 {
-			handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
-			return
+			if errors.Is(err, models.ErrNotFound) {
+				handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
+				return
+			} else {
+				handlertools.RenderError(w, err, http.StatusInternalServerError)
+				return
+			}
 		}
 
 		if err := handlertools.EncodeJSON(w, messages[0]); err != nil {
@@ -96,8 +104,8 @@ func UpdateMessageMetadataHandler(appState *models.AppState) http.HandlerFunc {
 func GetMessageHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
-		messageUUID := handlertools.UUIDFromURL(r, w, "messageId") //
-		log.Infof("GetMessageHandler: sessionID: %s, messageID: %s", sessionID, messageUUID)
+		messageUUID := handlertools.UUIDFromURL(r, w, "messageId")
+		log.Debugf("GetMessageHandler: sessionID: %s, messageID: %s", sessionID, messageUUID)
 
 		messageIDs := []uuid.UUID{messageUUID}
 		messages, _ := appState.MemoryStore.GetMessagesByUUID(r.Context(), sessionID, messageIDs)
@@ -111,7 +119,6 @@ func GetMessageHandler(appState *models.AppState) http.HandlerFunc {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
-
 	}
 }
 
@@ -137,33 +144,29 @@ func GetMessageHandler(appState *models.AppState) http.HandlerFunc {
 func GetMessagesForSessionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
-		//		limit, cursor := 10, 0
 
-		log.Infof("GetMessagesForSessionHandler - SessionId %s", sessionID)
 		var limit int
 		var err error
 		if limit, err = handlertools.IntFromQuery[int](r, "limit"); err != nil {
-			limit = 100
+			limit = MessageLimit
 		}
 		// This is very not ideal. We are inconsistent with what 0 means for limit
 		// TODO: Fix this
 		if limit < 1 {
-			limit = 100
+			limit = MessageLimit
 		}
 		var cursor int
 		if cursor, err = handlertools.IntFromQuery[int](r, "cursor"); err != nil {
 			cursor = 1
 		}
 
-		log.Infof("limit %d and cursor %d", limit, cursor)
+		log.Debugf("GetMessagesForSessionHandler - SessionId %s Limit %d Cursor %d", sessionID, limit, cursor)
 
-		messages, err := appState.MemoryStore.GetMessageList(r.Context(), sessionID, cursor, limit)
+		messages, err := appState.MemoryStore.GetMessageList(r.Context(), sessionID, 1, 2)
 		if err != nil {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
-
-		log.Infof("GetMessagesForSessionHandler - SessionId %s - Found %d messages", sessionID, len(messages.Messages))
 
 		if err := handlertools.EncodeJSON(w, messages); err != nil {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
