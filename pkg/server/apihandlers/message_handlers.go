@@ -138,35 +138,37 @@ func GetMessageHandler(appState *models.AppState) http.HandlerFunc {
 func GetMessagesForSessionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
-		pageSizeStr := r.URL.Query().Get("pageSize")
-		pageNumberStr := r.URL.Query().Get("pageNumber")
-		pageSize, pageNumber := 10, 0
+		limitStr := r.URL.Query().Get("limit")
+		offsetStr := r.URL.Query().Get("offset")
+		limit, offset := 10, 0
 
 		log.Infof("GetMessagesForSessionHandler - SessionId %s", sessionID)
 
-		if pageSizeStr != "" {
+		if limitStr != "" {
 			var err error
-			pageSize, err = strconv.Atoi(pageSizeStr)
+			limit, err = strconv.Atoi(limitStr)
 			if err != nil {
 				handlertools.RenderError(w, fmt.Errorf("invalid page size number"), http.StatusBadRequest)
 				return
 			}
 		}
 
-		if pageNumberStr != "" {
+		if offsetStr != "" {
 			var err error
-			pageNumber, err = strconv.Atoi(pageNumberStr)
+			offset, err = strconv.Atoi(offsetStr)
 			if err != nil {
 				handlertools.RenderError(w, fmt.Errorf("invalid page number"), http.StatusBadRequest)
 				return
 			}
 		}
 
-		messages, err := appState.MemoryStore.GetMessageList(r.Context(), sessionID, pageNumber, pageSize)
+		messages, err := appState.MemoryStore.GetMessageList(r.Context(), sessionID, offset, limit)
 		if err != nil {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
 		}
+
+		log.Infof("GetMessagesForSessionHandler - SessionId %s - Found %d messages", sessionID, len(messages.Messages))
 
 		if err := handlertools.EncodeJSON(w, messages); err != nil {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
