@@ -32,7 +32,7 @@ const DefaultMessageLimit = 100
 // @Produce json
 // @Param sessionId path string true "Session ID"
 // @Param messageId path string true "Message ID"
-// @Param body body map[string]interface{} true "New Metadata"
+// @Param body body models.Message true "New Metadata"
 // @Success 200 {object} Message
 // @Failure 404 {object} APIError "Not Found"
 // @Failure 500 {object} APIError "Internal Server Error"
