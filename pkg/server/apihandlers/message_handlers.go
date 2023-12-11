@@ -162,7 +162,7 @@ func GetMessagesForSessionHandler(appState *models.AppState) http.HandlerFunc {
 
 		log.Debugf("GetMessagesForSessionHandler - SessionId %s Limit %d Cursor %d", sessionID, limit, cursor)
 
-		messages, err := appState.MemoryStore.GetMessageList(r.Context(), sessionID, 1, 2)
+		messages, err := appState.MemoryStore.GetMessageList(r.Context(), sessionID, cursor, limit)
 		if err != nil {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
 			return
