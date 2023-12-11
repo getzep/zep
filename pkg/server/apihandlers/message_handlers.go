@@ -14,7 +14,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const MessageLimit = 100
+const DefaultMessageLimit = 100
 
 // UpdateMessageMetadataHandler updates the metadata of a specific message.
 //
@@ -118,10 +118,6 @@ func GetMessageHandler(appState *models.AppState) http.HandlerFunc {
 				return
 			}
 		}
-		if len(messages) == 0 {
-			handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
-			return
-		}
 
 		if err := handlertools.EncodeJSON(w, messages[0]); err != nil {
 			handlertools.RenderError(w, err, http.StatusInternalServerError)
@@ -156,7 +152,7 @@ func GetMessagesForSessionHandler(appState *models.AppState) http.HandlerFunc {
 		var limit int
 		var err error
 		if limit, err = handlertools.IntFromQuery[int](r, "limit"); err != nil {
-			limit = MessageLimit
+			limit = DefaultMessageLimit
 		}
 
 		var cursor int
