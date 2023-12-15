@@ -25,18 +25,18 @@ const DefaultMessageLimit = 100
 // The function updates the message's metadata with the new metadata and saves the updated message back to the database.
 // It then responds with the updated message as a JSON object.
 //
-// @Summary Updates the metadata of a specific message
-// @Description update message metadata by session id and message id
-// @Tags messages
-// @Accept json
-// @Produce json
-// @Param sessionId path string true "Session ID"
-// @Param messageId path string true "Message ID"
-// @Param body body models.Message true "New Metadata"
-// @Success 200 {object} Message
-// @Failure 404 {object} APIError "Not Found"
-// @Failure 500 {object} APIError "Internal Server Error"
-// @Router /api/v1/session/{sessionId}/message/{messageId} [patch]
+//	@Summary		Updates the metadata of a specific message
+//	@Description	update message metadata by session id and message id
+//	@Tags			messages
+//	@Accept			json
+//	@Produce		json
+//	@Param			sessionId	path		string			true	"Session ID"
+//	@Param			messageId	path		string			true	"Message ID"
+//	@Param			body		body		models.Message	true	"New Metadata"
+//	@Success		200			{object}	models.Message
+//	@Failure		404			{object}	APIError	"Not Found"
+//	@Failure		500			{object}	APIError	"Internal Server Error"
+//	@Router			/api/v1/session/{sessionId}/message/{messageId} [patch]
 func UpdateMessageMetadataHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
@@ -90,17 +90,17 @@ func UpdateMessageMetadataHandler(appState *models.AppState) http.HandlerFunc {
 // If the session ID or message ID does not exist, the function responds with a 404 Not Found status code.
 // If there is an error while fetching the message, the function responds with a 500 Internal Server Error status code.
 //
-// @Summary Retrieves a specific message
-// @Description get message by session id and message id
-// @Tags messages
-// @Accept json
-// @Produce json
-// @Param sessionId path string true "Session ID"
-// @Param messageId path string true "Message ID"
-// @Success 200 {object} Message
-// @Failure 404 {object} APIError "Not Found"
-// @Failure 500 {object} APIError "Internal Server Error"
-// @Router /api/v1/session/{sessionId}/message/{messageId} [get]
+//	@Summary		Retrieves a specific message
+//	@Description	get message by session id and message id
+//	@Tags			messages
+//	@Accept			json
+//	@Produce		json
+//	@Param			sessionId	path		string	true	"Session ID"
+//	@Param			messageId	path		string	true	"Message ID"
+//	@Success		200			{object}	models.Message
+//	@Failure		404			{object}	APIError	"Not Found"
+//	@Failure		500			{object}	APIError	"Internal Server Error"
+//	@Router			/api/v1/session/{sessionId}/message/{messageId} [get]
 func GetMessageHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
@@ -135,16 +135,16 @@ func GetMessageHandler(appState *models.AppState) http.HandlerFunc {
 // If the session ID does not exist, the function responds with a 404 Not Found status code.
 // If there is an error while fetching the messages, the function responds with a 500 Internal Server Error status code.
 //
-// @Summary Retrieves all messages for a specific session
-// @Description get messages by session id
-// @Tags messages
-// @Accept json
-// @Produce json
-// @Param sessionId path string true "Session ID"
-// @Success 200 {array} Message
-// @Failure 404 {object} APIError "Not Found"
-// @Failure 500 {object} APIError "Internal Server Error"
-// @Router /api/v1/session/{sessionId}/messages [get]
+//	@Summary		Retrieves all messages for a specific session
+//	@Description	get messages by session id
+//	@Tags			messages
+//	@Accept			json
+//	@Produce		json
+//	@Param			sessionId	path		string	true	"Session ID"
+//	@Success		200			{array}		models.Message
+//	@Failure		404			{object}	APIError	"Not Found"
+//	@Failure		500			{object}	APIError	"Internal Server Error"
+//	@Router			/api/v1/session/{sessionId}/messages [get]
 func GetMessagesForSessionHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionId")
