@@ -138,7 +138,7 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 		sessionDetails.Session = session
 
 		var breadCrumbs []web.BreadCrumb
-		if len(userID) == 0 {
+		if userID == "" {
 			breadCrumbs = []web.BreadCrumb{
 				{
 					Title: "Sessions",
@@ -167,7 +167,7 @@ func GetSessionDetailsHandler(appState *models.AppState) http.HandlerFunc {
 		}
 
 		var path string
-		if len(userID) == 0 {
+		if userID == "" {
 			path = sessionDetails.GetTablePath("/admin/sessions/" + sessionID)
 		} else {
 			path = "/admin/users/" + userID + "/session/" + sessionID
@@ -206,11 +206,10 @@ func DeleteSessionHandler(appState *models.AppState) http.HandlerFunc {
 		}
 
 		userID := chi.URLParam(r, "userID")
-		if len(userID) == 0 {
+		if userID == "" {
 			GetSessionListHandler(appState)(w, r)
 		} else {
 			GetUserDetailsHandler(appState)(w, r)
 		}
-
 	}
 }

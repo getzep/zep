@@ -54,7 +54,7 @@ func TestJWTVerifier(t *testing.T) {
 	t.Run("valid JWT token", func(t *testing.T) {
 		tokenAuth := jwtauth.New(JwtAlg, []byte(cfg.Auth.Secret), nil)
 		_, tokenString, _ := tokenAuth.Encode(nil)
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req.Header.Set("Authorization", "Bearer "+tokenString)
 		res := httptest.NewRecorder()
 
@@ -64,7 +64,7 @@ func TestJWTVerifier(t *testing.T) {
 	})
 
 	t.Run("missing JWT token", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		res := httptest.NewRecorder()
 
 		router.ServeHTTP(res, req)
@@ -73,7 +73,7 @@ func TestJWTVerifier(t *testing.T) {
 	})
 
 	t.Run("invalid JWT token", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req.Header.Set("Authorization", "Bearer invalid-token")
 		res := httptest.NewRecorder()
 

@@ -195,13 +195,13 @@ func (pms *PostgresMemoryStore) GetSummary(
 func (pms *PostgresMemoryStore) GetSummaryByUUID(
 	ctx context.Context,
 	sessionID string,
-	uuid uuid.UUID) (*models.Summary, error) {
+	id uuid.UUID) (*models.Summary, error) {
 	summaryDAO, err := NewSummaryDAO(pms.Client, pms.appState, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create summaryDAO: %w", err)
 	}
 
-	return summaryDAO.GetByUUID(ctx, uuid)
+	return summaryDAO.GetByUUID(ctx, id)
 }
 
 func (pms *PostgresMemoryStore) GetSummaryList(

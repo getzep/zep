@@ -153,7 +153,6 @@ func TestMemoryDAO_Get(t *testing.T) {
 						SummaryPointUUID: messages[summaryPointIndex].UUID},
 				)
 				assert.NoError(t, err)
-
 			}
 
 			switch {

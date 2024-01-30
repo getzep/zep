@@ -41,7 +41,7 @@ func (n *MessageSummaryNERTask) Execute(
 		return fmt.Errorf("MessageEmbedderTask summaryTaskPayloadToSummary failed: %w", err)
 	}
 
-	if len(summary.Content) == 0 {
+	if summary.Content == "" {
 		log.Warnf("MessageSummaryNERTask summary content is empty for session %s", sessionID)
 		return nil
 	}

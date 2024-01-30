@@ -12,7 +12,7 @@ import (
 )
 
 func TestExtractQueryStringValueToInt(t *testing.T) {
-	req := httptest.NewRequest("GET", "/?param=123", nil)
+	req := httptest.NewRequest("GET", "/?param=123", http.NoBody)
 	got, err := IntFromQuery[int](req, "param")
 	assert.NoError(t, err, "extractQueryStringValueToInt() error = %v", err)
 	assert.Equal(t, 123, got, "extractQueryStringValueToInt() = %v, want %v", got, 123)

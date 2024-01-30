@@ -43,10 +43,10 @@ func TestUserStoreDAO(t *testing.T) {
 
 	// Test Create
 	t.Run("Create with no user_id", func(t *testing.T) {
-		userNoId := &models.CreateUserRequest{
+		userNoID := &models.CreateUserRequest{
 			UserID: "",
 		}
-		_, err := userStore.Create(ctx, userNoId)
+		_, err := userStore.Create(ctx, userNoID)
 		assert.ErrorIs(t, err, models.ErrBadRequest)
 	})
 
@@ -58,8 +58,8 @@ func TestUserStoreDAO(t *testing.T) {
 		assert.Equal(t, user.Metadata, retrievedUser.Metadata)
 	})
 
-	t.Run("Get Non-Existant Session should result in NotFoundError", func(t *testing.T) {
-		_, err := userStore.Get(ctx, "non-existant-user-id")
+	t.Run("Get Non-Existent Session should result in NotFoundError", func(t *testing.T) {
+		_, err := userStore.Get(ctx, "non-existent-user-id")
 		assert.ErrorIs(t, err, models.ErrNotFound)
 	})
 
@@ -98,9 +98,9 @@ func TestUserStoreDAO(t *testing.T) {
 		assert.Less(t, createdUser.UpdatedAt, updatedUser.UpdatedAt)
 	})
 
-	t.Run("Update Non-Existant User should result in NotFoundError", func(t *testing.T) {
+	t.Run("Update Non-Existent User should result in NotFoundError", func(t *testing.T) {
 		userUpdate := &models.UpdateUserRequest{
-			UserID: "non-existant-user-id",
+			UserID: "non-existent-user-id",
 			Email:  "email",
 		}
 		_, err := userStore.Update(ctx, userUpdate, false)
@@ -188,10 +188,9 @@ func TestUserStoreDAO(t *testing.T) {
 	})
 
 	t.Run("Delete Non-Existent Session should result in NotFoundError", func(t *testing.T) {
-		err := userStore.Delete(ctx, "non-existant-user-id")
+		err := userStore.Delete(ctx, "non-existent-user-id")
 		assert.ErrorIs(t, err, models.ErrNotFound)
 	})
-
 }
 
 func TestUserStoreDAO_ListAll(t *testing.T) {

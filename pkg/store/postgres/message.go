@@ -254,7 +254,6 @@ func (dao *MessageDAO) GetListBySession(
 	ctx context.Context,
 	currentPage int,
 	pageSize int) (*models.MessageListResponse, error) {
-
 	var wg sync.WaitGroup
 	var countErr error
 	var count int

@@ -66,7 +66,7 @@ func TestGetUserRoute(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create a request
-	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/user/"+userID, nil)
+	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/user/"+userID, http.NoBody)
 	assert.NoError(t, err)
 
 	// Create a client and do the request
@@ -156,7 +156,7 @@ func TestDeleteUserRoute(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create a request to delete the user
-	req, err := http.NewRequest("DELETE", testServer.URL+"/api/v1/user/"+userID, nil)
+	req, err := http.NewRequest("DELETE", testServer.URL+"/api/v1/user/"+userID, http.NoBody)
 	assert.NoError(t, err)
 
 	// Create a client and do the request
@@ -192,7 +192,7 @@ func TestListAllUsersRoute(t *testing.T) {
 	}
 
 	// Create a request to list the users
-	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/user?cursor=0&limit=10", nil)
+	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/user?cursor=0&limit=10", http.NoBody)
 	assert.NoError(t, err)
 
 	// Create a client and do the request
@@ -247,7 +247,7 @@ func TestListUserSessionsRoute(t *testing.T) {
 	}
 
 	// Create a request to list the sessions
-	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/user/"+userID+"/sessions", nil)
+	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/user/"+userID+"/sessions", http.NoBody)
 	assert.NoError(t, err)
 
 	// Create a client and do the request

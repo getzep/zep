@@ -473,7 +473,7 @@ func (dc *DocumentCollectionDAO) SearchDocuments(ctx context.Context,
 		return nil, errors.New("collection name cannot be empty")
 	}
 
-	if len(query.Text) == 0 && len(query.Metadata) == 0 && len(query.Embedding) == 0 {
+	if query.Text == "" && len(query.Metadata) == 0 && len(query.Embedding) == 0 {
 		return nil, errors.New("at least one of text, metadata, or embedding must be specified")
 	}
 

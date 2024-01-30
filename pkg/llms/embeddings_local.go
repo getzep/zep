@@ -117,7 +117,7 @@ func makeEmbedRequest(ctx context.Context, url string, jsonBody []byte) ([]byte,
 			resp.Status,
 		)
 		log.Error(errorString)
-		return nil, fmt.Errorf(errorString)
+		return nil, fmt.Errorf("%s", errorString)
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)

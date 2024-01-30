@@ -73,7 +73,7 @@ func callNERTask(
 			resp.StatusCode,
 			resp.Status,
 		)
-		return models.EntityResponse{}, fmt.Errorf(errorString)
+		return models.EntityResponse{}, fmt.Errorf("%s", errorString)
 	}
 
 	bodyBytes, err = io.ReadAll(resp.Body)

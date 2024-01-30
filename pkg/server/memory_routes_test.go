@@ -31,7 +31,7 @@ func TestGetSessionRoute(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create a request
-	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/sessions/"+sessionID, nil)
+	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/sessions/"+sessionID, http.NoBody)
 	assert.NoError(t, err)
 
 	// Create a client and do the request
@@ -173,7 +173,7 @@ func TestGetSessionListRoute(t *testing.T) {
 	}
 
 	// Create a request
-	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/sessions", nil)
+	req, err := http.NewRequest("GET", testServer.URL+"/api/v1/sessions", http.NoBody)
 	assert.NoError(t, err)
 
 	// Create a client and do the request

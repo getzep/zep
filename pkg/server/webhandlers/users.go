@@ -210,7 +210,7 @@ func PostUserDetailsHandler(appState *models.AppState) http.HandlerFunc {
 		}
 
 		var metadata map[string]interface{}
-		if len(r.PostForm.Get("metadata")) != 0 {
+		if r.PostForm.Get("metadata") != "" {
 			if err := json.Unmarshal([]byte(r.FormValue("metadata")), &metadata); err != nil {
 				handleError(w, err, "failed to unmarshal metadata")
 				return

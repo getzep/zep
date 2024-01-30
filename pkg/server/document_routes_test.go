@@ -132,7 +132,7 @@ func TestDeleteCollectionHandler(t *testing.T) {
 	req, err := http.NewRequest(
 		"DELETE",
 		testServer.URL+"/api/v1/collection/"+collectionName,
-		nil,
+		http.NoBody,
 	)
 	assert.NoError(t, err)
 
@@ -168,7 +168,7 @@ func TestGetCollectionHandler(t *testing.T) {
 	req, err := http.NewRequest(
 		"GET",
 		testServer.URL+"/api/v1/collection/"+collectionName,
-		nil,
+		http.NoBody,
 	)
 	assert.NoError(t, err)
 

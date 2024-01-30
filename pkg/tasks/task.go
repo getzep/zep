@@ -99,5 +99,4 @@ func Initialize(ctx context.Context, appState *models.AppState, router models.Ta
 		appState.Config.Extractors.Messages.Summarizer.Entities.Enabled,
 		func() models.Task { return NewMessageSummaryNERTask(appState) },
 	)
-
 }

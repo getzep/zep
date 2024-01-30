@@ -124,7 +124,7 @@ func TestGet(t *testing.T) {
 		assert.Equal(t, createdMessage.Metadata, retrievedMessage.Metadata)
 	})
 
-	t.Run("Get should return ErrNotFound for non-existant message", func(t *testing.T) {
+	t.Run("Get should return ErrNotFound for non-existent message", func(t *testing.T) {
 		retrievedMessage, err := messageDAO.Get(testCtx, uuid.New())
 		assert.ErrorIs(t, err, models.ErrNotFound)
 		assert.Nil(t, retrievedMessage)
@@ -193,7 +193,7 @@ func TestGetLastN(t *testing.T) {
 		assert.Equal(t, messages[1].UUID, lastMessages[1].UUID)
 	})
 
-	// Test for non-existant session
+	// Test for non-existent session
 	t.Run("GetLastN with non-existent session should return empty slice", func(t *testing.T) {
 		// Call the GetLastN function
 		messageDAO := &MessageDAO{db: testDB, sessionID: "non-existent-session"}
@@ -281,10 +281,10 @@ func TestGetListByUUID(t *testing.T) {
 		var uuids []uuid.UUID
 		var messages []models.Message
 		for i := 0; i < 5; i++ {
-			uuid := uuid.New()
-			uuids = append(uuids, uuid)
+			id := uuid.New()
+			uuids = append(uuids, id)
 			message := models.Message{
-				UUID:       uuid,
+				UUID:       id,
 				Role:       "user",
 				Content:    fmt.Sprintf("testContent%d", i),
 				TokenCount: 1,
@@ -324,9 +324,9 @@ func TestGetListBySession(t *testing.T) {
 	totalMessages := 30
 	pageSize := 10
 	for i := 0; i < totalMessages; i++ {
-		uuid := uuid.New()
+		id := uuid.New()
 		message := models.Message{
-			UUID:       uuid,
+			UUID:       id,
 			Role:       "user",
 			Content:    fmt.Sprintf("testContent%d", i),
 			TokenCount: 1,

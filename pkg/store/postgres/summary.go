@@ -147,16 +147,16 @@ func (s *SummaryDAO) Get(ctx context.Context) (*models.Summary, error) {
 // GetByUUID returns a summary by UUID
 func (s *SummaryDAO) GetByUUID(
 	ctx context.Context,
-	uuid uuid.UUID) (*models.Summary, error) {
+	id uuid.UUID) (*models.Summary, error) {
 	summary := SummaryStoreSchema{}
 	err := s.db.NewSelect().
 		Model(&summary).
 		Where("session_id = ?", s.sessionID).
-		Where("uuid = ?", uuid).
+		Where("uuid = ?", id).
 		Scan(ctx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, models.NewNotFoundError("summary " + uuid.String())
+			return nil, models.NewNotFoundError("summary " + id.String())
 		}
 		return &models.Summary{}, fmt.Errorf("failed to get session %w", err)
 	}

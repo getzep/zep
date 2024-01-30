@@ -34,7 +34,6 @@ func runTestIntentExtractor(t *testing.T, testAppState *models.AppState) {
 
 	for _, message := range memories.Messages {
 		intentTask.processMessage(testCtx, appState, message, sessionID, errs)
-
 	}
 
 	close(errs)

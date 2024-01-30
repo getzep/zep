@@ -103,13 +103,13 @@ func (mt *MessageIntentTask) Execute(
 func (mt *MessageIntentTask) processMessage(
 	ctx context.Context,
 	appState *models.AppState,
-	message models.Message,
+	msg models.Message,
 	sessionID string,
 	errs chan error,
 ) {
 	// Populate the template with the message
 	data := IntentPromptTemplateData{
-		Input: message.Content,
+		Input: msg.Content,
 	}
 
 	// Create a prompt with the Message input that needs to be classified
@@ -143,7 +143,7 @@ func (mt *MessageIntentTask) processMessage(
 	// Create the intent into the message metadata
 	intentResponse := []models.Message{
 		{
-			UUID: message.UUID,
+			UUID: msg.UUID,
 			Metadata: map[string]interface{}{"system": map[string]interface{}{
 				"intent": intentContent},
 			},

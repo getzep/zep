@@ -114,7 +114,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 		router := setupRouter(appState)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1", http.NoBody)
 		res := httptest.NewRecorder()
 
 		router.ServeHTTP(res, req)
@@ -133,7 +133,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 		router := setupRouter(appState)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1", http.NoBody)
 		res := httptest.NewRecorder()
 
 		router.ServeHTTP(res, req)
@@ -146,7 +146,7 @@ func TestSendVersion(t *testing.T) {
 
 	handler := SendVersion(nextHandler)
 
-	req, err := http.NewRequest("GET", "/api", nil)
+	req, err := http.NewRequest("GET", "/api", http.NoBody)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -61,9 +61,9 @@ func CreateUserHandler(appState *models.AppState) http.HandlerFunc {
 //	@Router			/api/v1/user/{userId} [get]
 func GetUserHandler(appState *models.AppState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userId := chi.URLParam(r, "userId")
+		userID := chi.URLParam(r, "userId")
 
-		user, err := appState.UserStore.Get(r.Context(), userId)
+		user, err := appState.UserStore.Get(r.Context(), userID)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
 				handlertools.RenderError(w, fmt.Errorf("not found"), http.StatusNotFound)
