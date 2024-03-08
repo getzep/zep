@@ -25,7 +25,7 @@ func redactHTMLEncodeConfig(cfg *config.Config) (*config.Config, error) {
 	redactedConfig.LLM.OpenAIAPIKey = "**redacted**"
 	redactedConfig.Auth.Secret = "**redacted**"
 
-	re := regexp.MustCompile(`(?i:postgres://[^:]+:)([^@]+)`)
+	re := regexp.MustCompile(`(?i)(postgres://[^:]+:)([^@]+)`)
 	redactedConfig.Store.Postgres.DSN = re.ReplaceAllString(
 		redactedConfig.Store.Postgres.DSN,
 		"$1:**redacted**",
