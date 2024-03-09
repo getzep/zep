@@ -28,7 +28,7 @@ func redactHTMLEncodeConfig(cfg *config.Config) (*config.Config, error) {
 	re := regexp.MustCompile(`(?i)(postgres://[^:]+:)([^@]+)`)
 	redactedConfig.Store.Postgres.DSN = re.ReplaceAllString(
 		redactedConfig.Store.Postgres.DSN,
-		"$1:**redacted**",
+		"$1**redacted**",
 	)
 
 	escapedConfig := web.HTMLEscapeStruct(redactedConfig)
