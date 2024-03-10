@@ -1,6 +1,6 @@
-FROM postgres:15.4-bullseye
+FROM postgres:15.5-bookworm
 # Set the pgvector version
-ARG PGVECTOR_VERSION=0.5.0
+ARG PGVECTOR_VERSION=0.5.1
 
 # Install build dependencies
 RUN apt-get update && \
