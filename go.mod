@@ -36,7 +36,7 @@ require (
 	github.com/getzep/sprig/v3 v3.0.0-20230930153539-1d7fce7d845e
 	github.com/hashicorp/go-retryablehttp v0.7.4
 	github.com/invopop/jsonschema v0.12.0
-	github.com/jackc/pgx/v5 v5.4.3
+	github.com/jackc/pgx/v5 v5.5.4
 	github.com/ma-hartma/watermill-logrus-adapter v0.0.0-20220319171828-0856b297f1c2
 	github.com/riandyrn/otelchi v0.5.1
 	github.com/swaggo/swag v1.16.2
@@ -90,6 +90,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
+	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
@@ -131,6 +132,7 @@ require (
 	golang.org/x/crypto v0.21.0 // indirect
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
 	golang.org/x/net v0.21.0 // indirect
+	golang.org/x/sync v0.4.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/tools v0.14.0 // indirect
