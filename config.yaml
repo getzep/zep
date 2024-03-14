@@ -64,6 +64,12 @@ server:
   web_enabled: true
   # The maximum size of a request body, in bytes. Defaults to 5MB.
   max_request_size: 5242880
+  # Custom headers to be included in the server responses. Define each header as a key-value pair.
+  # This feature allows you to specify additional headers for compliance, security, or other purposes.
+  # DO NOT hard-code secrets in this file: use the ZEP_CUSTOM_AUTH_HEADER environment variable instead.
+  # custom_headers:
+  #   X-Frame-Options: "DENY"
+  #   X-XSS-Protection: "1; mode=block"
 auth:
   # Set to true to enable authentication
   required: false
