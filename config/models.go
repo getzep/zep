@@ -62,6 +62,7 @@ type ServerConfig struct {
 	WebEnabled     bool              `mapstructure:"web_enabled"`
 	MaxRequestSize int64             `mapstructure:"max_request_size"`
 	CustomHeaders  map[string]string `mapstructure:"custom_headers"`
+	UseCustomAuth  bool              `mapstructure:"use_custom_auth"`
 }
 
 type LogConfig struct {

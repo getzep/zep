@@ -69,6 +69,7 @@ func setupRouter(appState *models.AppState) *chi.Mux {
 		middleware.RealIP,
 		middleware.CleanPath,
 		SendVersion,
+		ApplyCustomHeaders(appState.Config.Server.CustomHeaders),
 		middleware.Heartbeat("/healthz"),
 	)
 

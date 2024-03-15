@@ -22,3 +22,16 @@ func SendVersion(next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(fn)
 }
+
+func ApplyCustomHeaders(customHeaders map[string]string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			for key, value := range customHeaders {
+				if w.Header().Get(key) == "" {
+					w.Header().Add(key, value)
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
