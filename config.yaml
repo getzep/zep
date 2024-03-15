@@ -66,13 +66,10 @@ server:
   max_request_size: 5242880
   # Custom headers to be included in the server responses. Define each header as a key-value pair.
   # This feature allows you to specify additional headers for compliance, security, or other purposes.
-  # DO NOT hard-code secrets in this file.
+  # For sensitive headers, use a placeholder and fetch the value from an environment variable in your application logic.
   # custom_headers:
-  #   X-Frame-Options: "DENY"
-  #   X-XSS-Protection: "1; mode=block"
-  # use_custom_auth: true
-  # Indicates whether to use custom authentication. If true, the application expects a custom auth header.
-  # The actual header should be provided through the ZEP_CUSTOM_AUTH_HEADER environment variable.
+  #   Example-Header: "Value"
+  #   Sensitive-Header: "env:MY_SENSITIVE_HEADER"
 auth:
   # Set to true to enable authentication
   required: false
