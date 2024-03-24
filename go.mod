@@ -33,6 +33,7 @@ require (
 	github.com/ThreeDotsLabs/watermill-sql/v2 v2.0.0
 	github.com/alecthomas/chroma v0.10.0
 	github.com/dustin/go-humanize v1.0.1
+	github.com/failsafe-go/failsafe-go v0.6.1
 	github.com/getzep/sprig/v3 v3.0.0-20230930153539-1d7fce7d845e
 	github.com/hashicorp/go-retryablehttp v0.7.4
 	github.com/invopop/jsonschema v0.12.0
@@ -132,7 +133,7 @@ require (
 	golang.org/x/crypto v0.21.0 // indirect
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
 	golang.org/x/net v0.21.0 // indirect
-	golang.org/x/sync v0.4.0 // indirect
+	golang.org/x/sync v0.6.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/tools v0.14.0 // indirect

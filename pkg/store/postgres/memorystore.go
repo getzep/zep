@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+
 	"github.com/getzep/zep/pkg/store"
 	"github.com/google/uuid"
 
@@ -360,15 +361,33 @@ func (pms *PostgresMemoryStore) PurgeDeleted(ctx context.Context) error {
 	return nil
 }
 
-// acquireAdvisoryLock acquires a PostgreSQL advisory lock for the given key.
-// The lock needs to be released manually by calling releaseAdvisoryLock.
-// Accepts a bun.IDB, which can be either a *bun.DB or *bun.Tx.
-// Returns the lock ID.
-func acquireAdvisoryLock(ctx context.Context, db bun.IDB, key string) (uint64, error) {
+func generateLockID(key string) uint64 {
 	hasher := sha256.New()
 	hasher.Write([]byte(key))
 	hash := hasher.Sum(nil)
-	lockID := binary.BigEndian.Uint64(hash[:8])
+	return binary.BigEndian.Uint64(hash[:8])
+}
+
+// tryAcquireAdvisoryLock attempts to acquire a PostgreSQL advisory lock using pg_try_advisory_lock.
+// This function will fail if it's unable to immediately acquire a lock.
+// Accepts a bun.IDB, which can be either a *bun.DB or *bun.Tx.
+// Returns the lock ID and a boolean indicating if the lock was successfully acquired.
+func tryAcquireAdvisoryLock(ctx context.Context, db bun.IDB, key string) (uint64, error) {
+	lockID := generateLockID(key)
+
+	var acquired bool
+	if err := db.QueryRowContext(ctx, "SELECT pg_try_advisory_lock(?)", lockID).Scan(&acquired); err != nil {
+		return 0, fmt.Errorf("tryAcquireAdvisoryLock: %w", err)
+	}
+	if !acquired {
+		return 0, models.NewAdvisoryLockError(fmt.Errorf("failed to acquire advisory lock for %s", key))
+	}
+	return lockID, nil
+}
+
+// acquireAdvisoryLock acquires a PostgreSQL advisory lock for the given key.
+func acquireAdvisoryLock(ctx context.Context, db bun.IDB, key string) (uint64, error) {
+	lockID := generateLockID(key)
 
 	if _, err := db.ExecContext(ctx, "SELECT pg_advisory_lock(?)", lockID); err != nil {
 		return 0, store.NewStorageError("failed to acquire advisory lock", err)
