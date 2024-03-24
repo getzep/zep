@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
+	"github.com/failsafe-go/failsafe-go"
+	"github.com/failsafe-go/failsafe-go/retrypolicy"
 	"github.com/getzep/zep/pkg/models"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/driver/pgdriver"
@@ -94,10 +97,24 @@ func (dao *UserStoreDAO) Update(
 
 	// Acquire a lock for this UserID. This is to prevent concurrent updates
 	// to the session metadata.
-	lockID, err := acquireAdvisoryLock(ctx, dao.db, user.UserID)
+	lockRetryPolicy := retrypolicy.Builder[any]().
+		HandleErrors(models.ErrLockAcquisitionFailed).
+		WithDelay(200 * time.Millisecond).
+		WithMaxRetries(3).
+		Build()
+
+	lockIDVal, err := failsafe.Get(func() (any, error) {
+		return tryAcquireAdvisoryLock(ctx, dao.db, user.UserID)
+	}, lockRetryPolicy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire advisory lock: %w", err)
 	}
+
+	lockID, ok := lockIDVal.(uint64)
+	if !ok {
+		return nil, fmt.Errorf("failed to acquire advisory lock: %w", models.ErrLockAcquisitionFailed)
+	}
+
 	defer func(ctx context.Context, db bun.IDB, lockID uint64) {
 		err := releaseAdvisoryLock(ctx, db, lockID)
 		if err != nil {

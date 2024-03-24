@@ -44,3 +44,24 @@ func (e *BadRequestError) Unwrap() error {
 func NewBadRequestError(message string) error {
 	return &BadRequestError{Message: message}
 }
+
+var ErrLockAcquisitionFailed = errors.New("failed to acquire advisory lock")
+
+type AdvisoryLockError struct {
+	Err error
+}
+
+func (e AdvisoryLockError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("failed to acquire advisory lock: %v", e.Err)
+	}
+	return ErrLockAcquisitionFailed.Error()
+}
+
+func (e AdvisoryLockError) Unwrap() error {
+	return ErrLockAcquisitionFailed
+}
+
+func NewAdvisoryLockError(err error) error {
+	return &AdvisoryLockError{Err: err}
+}
