@@ -99,8 +99,8 @@ func (dao *UserStoreDAO) Update(
 	// to the session metadata.
 	lockRetryPolicy := retrypolicy.Builder[any]().
 		HandleErrors(models.ErrLockAcquisitionFailed).
-		WithDelay(200 * time.Millisecond).
-		WithMaxRetries(3).
+		WithBackoff(200*time.Millisecond, 10*time.Second).
+		WithMaxRetries(7).
 		Build()
 
 	lockIDVal, err := failsafe.Get(func() (any, error) {
