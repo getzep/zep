@@ -57,10 +57,11 @@ type AvailableIndexes struct {
 }
 
 type ServerConfig struct {
-	Host           string `mapstructure:"host"`
-	Port           int    `mapstructure:"port"`
-	WebEnabled     bool   `mapstructure:"web_enabled"`
-	MaxRequestSize int64  `mapstructure:"max_request_size"`
+	Host           string            `mapstructure:"host"`
+	Port           int               `mapstructure:"port"`
+	WebEnabled     bool              `mapstructure:"web_enabled"`
+	MaxRequestSize int64             `mapstructure:"max_request_size"`
+	CustomHeaders  map[string]string `mapstructure:"custom_headers"`
 }
 
 type LogConfig struct {

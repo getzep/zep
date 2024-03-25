@@ -64,6 +64,12 @@ server:
   web_enabled: true
   # The maximum size of a request body, in bytes. Defaults to 5MB.
   max_request_size: 5242880
+  # Custom headers to be included in the server responses. Define each header as a key-value pair.
+  # This feature allows you to specify additional headers for compliance, security, or other purposes.
+  # For sensitive headers, use a placeholder and fetch the value from an environment variable in your application logic.
+  # custom_headers:
+  #   Example-Header: "Value"
+  #   Sensitive-Header: "env:MY_SENSITIVE_HEADER"
 auth:
   # Set to true to enable authentication
   required: false
