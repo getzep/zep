@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://www.getzep.com/">
-    <img src="https://github.com/getzep/zep/blob/main/assets/zep-logo-icon-gradient-rgb.svg?raw=true" width="150" alt="Zep Logo">
+    <img src="https://raw.githubusercontent.com/getzep/zep/main/assets/zep-logo-icon-gradient-rgb.svg" width="150" alt="Zep Logo">
   </a>
 </p>
 
