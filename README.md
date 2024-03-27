@@ -1,13 +1,13 @@
 <p align="center">
-  <a href="https://squidfunk.github.io/mkdocs-material/">
-    <img src="https://github.com/getzep/zep/blob/main/assets/zep-bot-square-200x200.png?raw=true" width="150" alt="Zep Logo">
+  <a href="https://www.getzep.com/">
+    <img src="https://raw.githubusercontent.com/getzep/zep/main/assets/zep-logo-icon-gradient-rgb.svg" width="150" alt="Zep Logo">
   </a>
 </p>
 
 <h1 align="center">
-Zep: Fast, scalable building blocks for LLM apps
+Zep: Long-Term Memory for ‍AI Assistants.
 </h1>
-<h2 align="center">Chat history memory, embedding, vector search, data enrichment, and more.</h2>
+<h2 align="center">Recall, understand, and extract data from chat histories. Power personalized AI experiences.</h2>
 <br />
 <p align="center">
   <a href="https://discord.gg/W8Kw6bsgXQ"><img
@@ -33,38 +33,64 @@ Zep: Fast, scalable building blocks for LLM apps
 <a href="https://www.getzep.com">www.getzep.com</a>
 </p>
 
-## What is Zep?
-Zep is an open source platform for productionizing LLM apps. Zep summarizes, embeds, and enriches chat histories and documents asynchronously, ensuring these operations don't impact your user's chat experience. Data is persisted to database, allowing you to scale out when growth demands. As drop-in replacements for popular LangChain components, you can get to production in minutes without rewriting code.
+## What is Zep? 💬 
+Zep is a long-term memory service for AI Assistant apps. With Zep, you can provide AI assistants with the ability to recall past conversations, no matter how distant, while also reducing hallucinations, latency, and cost. 
 
-[![Zep Demo Video](https://img.youtube.com/vi/d6ryNEvMXno/maxresdefault.jpg)](https://vimeo.com/865785086?share=copy)
+### How Zep works
+
+Zep persists and recalls chat histories, and automatically generates summaries and other artifacts from these chat histories. It also embeds messages and summaries, enabling you to search Zep for relevant context from past conversations. Zep does all of this asyncronously, ensuring these operations don't impact your user's chat experience. Data is persisted to database, allowing you to scale out when growth demands. 
+
+Zep also provides a simple, easy to use abstraction for document vector search called Document Collections. This is designed to complement Zep's core memory features, but is not designed to be a general purpose vector database.
+
+Zep allows you to be more intentional about constructing your prompt: 
+1. automatically adding a few recent messages, with the number customized for your app;
+2. a summary of recent conversations prior to the messages above;
+3. and/or contextually relevant summaries or messages surfaced from the entire chat session.
+4. and/or relevant Business data from Zep Document Collections.
+
+## What is Zep Cloud? ⚡️ 
+
+[Zep Cloud](https://www.getzep.com/) is a managed service with Zep Open Source at its core. In addition to Zep Open Source's memory management features, Zep Cloud offers:
+- **Fact Extraction:** Automatically build fact tables from conversations, without having to define a data schema upfront.
+- **Dialog Classification:** Instantly and accurately classify chat dialog. Understand user intent and emotion, segment users, and more. Route chains based on semantic context, and trigger events. 
+- **Structured Data Extraction:** Quickly extract business data from chat conversations using a schema you define. Understand what your Assistant should ask for next in order to complete its task.
+
+## Why use Zep for long-term memory?
+
+### Why not just include the entire chat history in the prompt? 
+
+With increased LLM context lengths, it may be tempting to include entire an chat history in a prompt, alongside RAG results, and other instructions. Unfortunately, we've seen poor recall, hallucinations, and slow and expensive inference as a result. 
+
+### Why not use Redis, Postgres, a Vector Database, or ... to persist chat histories?
+
+Our goal with Zep is to elevate the layer of abstraction for memory management. We believe developer productivity is best served by infrastructure with well-designed abstractions, rather than building peristence, summarization, extraction, embedding management, and search from the ground up.
+
+### Is Zep a vector database?
+
+No. Zep uses embeddings and vector database capaiblities under the hood to power many of its features, but is not designed to be a general purpose vector database. 
+
+### Zep is purpose-built for Assistant applications
+
+Users, Sessions, and Chat Messages are first-class abstractions in Zep. This allows simple and flexible management of chat memory, including the execution of Right To Be Forgetten requests and other privacy compliance-related tasks with single-API call. 
+
+## Zep Language Support and Ecosystem
+
+### Does Zep have Python and TypeScript support?
+
+Yes - Zep offers Python & TypeScript/JS SDKs for easy integration with your Assistant app. We also have examples of using Zep with popular frameworks - see below.
 
 
-## ⭐️ Core Features
-### 💬 Designed for building conversational LLM applications
-- Manage users, sessions, chat messages, chat roles, and more, not just texts and embeddings.
-- Build autopilots, agents, Q&A over docs apps, chatbots, and more. 
+### Can I use Zep with LangChain, LlamaIndex, Vercel AI, n8n, FlowWise, ...?
 
-### ⚡️ Fast, scalable, low-latency APIs and stateless deployments
-- Zep’s local embedding models and async enrichment ensure a snappy user experience. 
-- Storing documents and history in Zep and not in memory enables stateless deployment. 
+Yes - the Zep team and community contributors have built integrations with Zep, making it simple to, for example, drop Zep's memory components into a LangChain app. Please see the [Zep Documentation](https://docs.getzep.com/) and your favorite framework's documentation for more.
 
-### 🛠️ Use as drop-in replacements for LangChain or LlamaIndex components, or with a frameworkless app.
-- Zep Memory and VectorStore implementations are shipped with LangChain, LangChain.js, and LlamaIndex.
-- Python & TypeScript/JS SDKs for easy integration with your LLM app.
-- TypeScript/JS SDK supports edge deployment.
+## Zep Open Source LLM Service Dependencies
 
-### 🔎 Vector Database with Hybrid Search
-- Populate your prompts with relevant documents and chat history.
-- Rich metadata and JSONPath query filters offer a powerful hybrid search over texts.
-
-### 🔋 Batteries Included Embedding & Enrichment
-- Automatically embed texts and messages using state-of-the-art open source models, OpenAI, or bring your own vectors. 
-- Enrichment of chat histories with summaries, named entities, token counts. Use these as search filters.
-- Associate your own metadata with sessions, documents & chat histories.
+Zep Open Source relies on an external LLM API service to function. OpenAI, Azure OpenAI, Anthropic, and OpenAI-compatible APIs are all supported. 
 
 
 ## Learn more
-- 🏎️ **[Quick Start Guide](https://docs.getzep.com/deployment/quickstart/)**: Docker or cloud deployment, and coding, in < 5 minutes.
+- 🏎️ **[Quick Start Guide](https://docs.getzep.com/deployment/quickstart/)**: Docker deployment, and coding, in < 5 minutes.
 - 📚 **[Zep By Example](https://docs.getzep.com/sdk/examples/)**: Learn how to use Zep by example.
 - 🦙 **[Building Apps with LlamaIndex](https://docs.getzep.com/sdk/llamaindex/)**
 - 🦜⛓️ **[Building Apps with LangChain](https://docs.getzep.com/sdk/langchain/)**
