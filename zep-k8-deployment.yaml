@@ -31,11 +31,11 @@ spec:
               value: postgres
           resources:
             requests:
-              memory: "1Gi"
-              cpu: "500m"
+              memory: "512Mi"
+              cpu: "250m"
             limits:
               memory: "1Gi"
-              cpu: "2"
+              cpu: "500m"
           readinessProbe:
             exec:
               command:
@@ -84,7 +84,7 @@ spec:
               cpu: "500m"
             limits:
               memory: "2Gi"
-              cpu: "2"
+              cpu: "1"
           ports:
             - containerPort: 5557
 ---
@@ -117,27 +117,27 @@ spec:
           # kubectl create configmap dotenv --from-file=.env -n zep
             - configMapRef:
                 name: dotenv
-          # Uncomment to enable pulling config from the configmap
-          # env:
-          #   - name: ZEP_STORE_POSTGRES_DSN
-          #     value: postgres://postgres:postgres@zep-postgres:5432/postgres?sslmode=disable
-          #   - name: ZEP_NLP_SERVER_URL
-          #     value: http://zep-nlp:5557
-          #   - name: ZEP_OPENAI_API_KEY
-          #     valueFrom:
-          #       secretKeyRef:
-          #         name: zep-openai-api-key
-          #         key: ZEP_OPENAI_API_KEY
-          #   - name: AZURE_OPENAI_SUBSCRIPTION_KEY
-          #     valueFrom:
-          #       secretKeyRef:
-          #         name: azure-openai-secret
-          #         key: subscription-key
-          #   - name: AZURE_OPENAI_ENDPOINT
-          #     valueFrom:
-          #       secretKeyRef:
-          #         name: azure-openai-secret
-          #         key: endpoint
+           Uncomment to enable pulling config from the configmap
+           env:
+             - name: ZEP_STORE_POSTGRES_DSN
+              value: postgres://postgres:postgres@zep-postgres:5432/postgres?sslmode=disable
+             - name: ZEP_NLP_SERVER_URL
+               value: http://zep-nlp:5557
+             - name: ZEP_OPENAI_API_KEY
+               valueFrom:
+                 secretKeyRef:
+                   name: zep-openai-api-key
+                 key: ZEP_OPENAI_API_KEY
+            - name: AZURE_OPENAI_SUBSCRIPTION_KEY
+              valueFrom:
+                 secretKeyRef:
+                  name: azure-openai-secret
+                   key: subscription-key
+            - name: AZURE_OPENAI_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                   name: azure-openai-secret
+                   key: endpoint
           readinessProbe:
             httpGet:
               port: 8000
@@ -149,11 +149,11 @@ spec:
             failureThreshold: 3
           resources:
             requests:
-              memory: "1Gi"
-              cpu: "500m"
+              memory: "512Mi"
+              cpu: "250m"
             limits:
               memory: "1Gi"
-              cpu: "1"
+              cpu: "500m"
 ---
 apiVersion: v1
 kind: Service
