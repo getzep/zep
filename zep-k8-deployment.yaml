@@ -119,7 +119,26 @@ spec:
                 name: dotenv
            Uncomment to enable pulling config from the configmap
            env:
+           env:
              - name: ZEP_STORE_POSTGRES_DSN
+               value: postgres://postgres:postgres@zep-postgres:5432/postgres?sslmode=disable
+             - name: ZEP_NLP_SERVER_URL
+               value: http://zep-nlp:5557
+             - name: ZEP_OPENAI_API_KEY
+               valueFrom:
+                 secretKeyRef:
+                   name: zep-openai-api-key
+                   key: ZEP_OPENAI_API_KEY
+             - name: AZURE_OPENAI_SUBSCRIPTION_KEY
+               valueFrom:
+                 secretKeyRef:
+                   name: azure-openai-secret
+                   key: subscription-key
+             - name: AZURE_OPENAI_ENDPOINT
+               valueFrom:
+                 secretKeyRef:
+                   name: azure-openai-secret
+                   key: endpoint
               value: postgres://postgres:postgres@zep-postgres:5432/postgres?sslmode=disable
              - name: ZEP_NLP_SERVER_URL
                value: http://zep-nlp:5557
