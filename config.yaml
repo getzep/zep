@@ -66,7 +66,7 @@ server:
   max_request_size: 5242880
 auth:
   # Set to true to enable authentication
-  required: false
+  required: true
   # Do not use this secret in production. The ZEP_AUTH_SECRET environment variable should be
   # set to a cryptographically secure secret. See the Zep docs for details.
   secret: "do-not-use-this-secret-in-production"
