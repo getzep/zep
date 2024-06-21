@@ -163,23 +163,31 @@ var ValidOpenAILLMs = map[string]bool{
 }
 
 var ValidAnthropicLLMs = map[string]bool{
-	"claude-instant-1": true,
-	"claude-2":         true,
+	"claude-instant-1":           true,
+	"claude-2":                   true,
+	"claude-3-5-sonnet-20240620": true,
+	"claude-3-opus-20240229":     true,
+	"claude-3-sonnet-20240229":   true,
+	"claude-3-haiku-20240307":    true,
 }
 
 var ValidLLMMap = internal.MergeMaps(ValidOpenAILLMs, ValidAnthropicLLMs)
 
 var MaxLLMTokensMap = map[string]int{
-	"gpt-3.5-turbo":      4096,
-	"gpt-3.5-turbo-16k":  16_385,
-	"gpt-3.5-turbo-1106": 16_385,
-	"gpt-4":              8192,
-	"gpt-4-32k":          32_768,
-	"gpt-4-1106-preview": 128_000,
-	"gpt-4-turbo":        128_000,
-	"gpt-4o":             128_000,
-	"claude-instant-1":   100_000,
-	"claude-2":           100_000,
+	"gpt-3.5-turbo":              4096,
+	"gpt-3.5-turbo-16k":          16_385,
+	"gpt-3.5-turbo-1106":         16_385,
+	"gpt-4":                      8192,
+	"gpt-4-32k":                  32_768,
+	"gpt-4-1106-preview":         128_000,
+	"gpt-4-turbo":                128_000,
+	"gpt-4o":                     128_000,
+	"claude-instant-1":           100_000,
+	"claude-2":                   100_000,
+	"claude-3-5-sonnet-20240620": 200_000,
+	"claude-3-haiku-20240307":    200_000,
+	"claude-3-opus-20240229":     200_000,
+	"claude-3-sonnet-20240229":   200_000,
 }
 
 func GetLLMModelName(cfg *config.Config) (string, error) {
