@@ -160,7 +160,7 @@ var ValidOpenAILLMs = map[string]bool{
 	"gpt-4-1106-preview":     true,
 	"gpt-4-turbo":            true,
 	"gpt-4o":                 true,
-	"gto-4o-mini":            true,
+	"gpt-4o-mini":            true,
 	"gpt-4o-mini-2024-07-18": true,
 }
 
