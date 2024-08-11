@@ -152,14 +152,16 @@ func NewLLMError(message string, originalError error) *LLMError {
 }
 
 var ValidOpenAILLMs = map[string]bool{
-	"gpt-3.5-turbo":      true,
-	"gpt-4":              true,
-	"gpt-3.5-turbo-16k":  true,
-	"gpt-3.5-turbo-1106": true,
-	"gpt-4-32k":          true,
-	"gpt-4-1106-preview": true,
-	"gpt-4-turbo":        true,
-	"gpt-4o":             true,
+	"gpt-3.5-turbo":          true,
+	"gpt-4":                  true,
+	"gpt-3.5-turbo-16k":      true,
+	"gpt-3.5-turbo-1106":     true,
+	"gpt-4-32k":              true,
+	"gpt-4-1106-preview":     true,
+	"gpt-4-turbo":            true,
+	"gpt-4o":                 true,
+	"gto-4o-mini":            true,
+	"gpt-4o-mini-2024-07-18": true,
 }
 
 var ValidAnthropicLLMs = map[string]bool{
