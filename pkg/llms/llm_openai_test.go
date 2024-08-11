@@ -14,7 +14,7 @@ import (
 func TestZepOpenAILLM_Init(t *testing.T) {
 	cfg := &config.Config{
 		LLM: config.LLM{
-			Model:        "gpt-3.5-turbo",
+			Model:        "gpt-4o-mini",
 			OpenAIAPIKey: "test-key",
 		},
 	}
@@ -137,7 +137,7 @@ func TestZepOpenAILLM_TestConfigureClient(t *testing.T) {
 
 func TestZepOpenAILLM_Call(t *testing.T) {
 	cfg := testutils.NewTestConfig()
-	cfg.LLM.Model = "gpt-3.5-turbo"
+	cfg.LLM.Model = "gpt-4o-mini"
 
 	zllm, err := NewOpenAILLM(context.Background(), cfg)
 	assert.NoError(t, err, "Expected no error from NewOpenAILLM")

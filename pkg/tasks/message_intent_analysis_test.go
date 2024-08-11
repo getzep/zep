@@ -55,7 +55,7 @@ func runTestIntentExtractor(t *testing.T, testAppState *models.AppState) {
 }
 
 func TestIntentExtractor_Extract_OpenAI(t *testing.T) {
-	appState.Config.LLM.Model = "gpt-3.5-turbo"
+	appState.Config.LLM.Model = "gpt-4o-mini"
 	llmClient, err := llms.NewOpenAILLM(testCtx, appState.Config)
 	assert.NoError(t, err)
 	appState.LLMClient = llmClient
