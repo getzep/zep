@@ -2,7 +2,7 @@ llm:
   # openai or anthropic
   service: "openai"
   # OpenAI: gpt-3.5-turbo, gpt-4, gpt-3.5-turbo-1106, gpt-3.5-turbo-16k, gpt-4-32k, gpt-4o-mini, gpt-4o-mini-2024-07-18; Anthropic: claude-instant-1 or claude-2
-  model: "gpt-3.5-turbo-1106"
+  model: "gpt-4o-mini"
   ## OpenAI-specific settings
   # Only used for Azure OpenAI API
   azure_openai_endpoint:
