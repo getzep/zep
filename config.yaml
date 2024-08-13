@@ -12,7 +12,7 @@ llm:
   azure_openai:
   # llm.model name is used as deployment name as reasonable default if not set
   # assuming base model is deployed with deployment name matching model name
-  #   llm_deployment: "gpt-4.0-mini-customname"
+  #   llm_deployment: "gpt-4o-mini-customname"
   # embeddings deployment is required when Zep is configured to use OpenAI embeddings
   #   embedding_deployment: "text-embedding-ada-002-customname"
   # Use only with an alternate OpenAI-compatible API endpoint
