@@ -68,7 +68,7 @@ func runTestSummarize(t *testing.T, llmClient models.ZepLLM) {
 
 func TestSummarize_OpenAI(t *testing.T) {
 	appState.Config.LLM.Service = "openai"
-	appState.Config.LLM.Model = "gpt-3.5-turbo"
+	appState.Config.LLM.Model = "gpt-4o-mini"
 	llmClient, err := llms.NewOpenAILLM(testCtx, appState.Config)
 	assert.NoError(t, err)
 	runTestSummarize(t, llmClient)
