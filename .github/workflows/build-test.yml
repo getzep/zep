@@ -12,18 +12,18 @@ jobs:
     container: debian:bullseye-slim
     environment: build-test
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: install certs and build-essential (required by CGO)
         run: apt-get update && apt-get install -y ca-certificates build-essential
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: '^1.23'
+          go-version: '^1.22'
 
       - name: Cache Go modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
