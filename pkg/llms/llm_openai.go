@@ -122,6 +122,9 @@ func (zllm *ZepOpenAILLM) configureClient(cfg *config.Config) ([]openai.Option, 
 	if cfg.LLM.AzureOpenAIEndpoint != "" && cfg.LLM.OpenAIEndpoint != "" {
 		log.Fatal("only one of AzureOpenAIEndpoint or OpenAIEndpoint can be set")
 	}
+	if cfg.LLM.AzureOpenAIModel.EmbeddingDeployment != "" && cfg.LLM.OpenAIEmbedding != "" {
+		log.Fatal("only one of AzureOpenAIModel.EmbeddingDeployment or OpenAIEmbedding can be set")
+	}
 
 	// Set up the HTTP client and config OpenTelemetry wrapper
 	httpClient := NewRetryableHTTPClient(MaxOpenAIAPIRequestAttempts, OpenAIAPITimeout)
@@ -133,6 +136,13 @@ func (zllm *ZepOpenAILLM) configureClient(cfg *config.Config) ([]openai.Option, 
 		openai.WithModel(cfg.LLM.Model),
 		openai.WithToken(apiKey),
 	)
+
+	if cfg.LLM.OpenAIEmbedding != "" {
+		options = append(
+			options,
+			openai.WithEmbeddingModel(cfg.LLM.OpenAIEmbedding),
+		)
+	}
 
 	switch {
 	case cfg.LLM.AzureOpenAIEndpoint != "":

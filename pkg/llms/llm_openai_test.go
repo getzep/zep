@@ -100,9 +100,10 @@ func TestZepOpenAILLM_TestConfigureClient(t *testing.T) {
 	t.Run("Test with OpenAIEndpointAndCustomModelName", func(t *testing.T) {
 		cfg := &config.Config{
 			LLM: config.LLM{
-				OpenAIAPIKey:   "test-key",
-				OpenAIEndpoint: "https://openai.com",
-				Model:          "some-model",
+				OpenAIAPIKey:    "test-key",
+				OpenAIEndpoint:  "https://openai.com",
+				Model:           "some-model",
+				OpenAIEmbedding: "text-embedding-3-small",
 			},
 		}
 

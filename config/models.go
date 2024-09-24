@@ -31,6 +31,7 @@ type LLM struct {
 	AzureOpenAIModel    AzureOpenAIConfig `mapstructure:"azure_openai"`
 	OpenAIEndpoint      string            `mapstructure:"openai_endpoint"`
 	OpenAIOrgID         string            `mapstructure:"openai_org_id"`
+	OpenAIEmbedding     string            `mapstructure:"openai_embedding"`
 }
 
 type AzureOpenAIConfig struct {
