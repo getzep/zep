@@ -25,8 +25,8 @@ Zep: The Memory Foundation For Your AI Stack
 </p>
 
 <p align="center">
-<a href="https://help.getzep.com/ce/quickstart">Quick Start</a> |
-<a href="https://help.getzep.com/memory">Documentation</a> |
+<a href="https://help.getzep.com/ce/quickstart">Quick Start</a> | 
+<a href="https://help.getzep.com/memory">Documentation</a> | 
 <a href="https://help.getzep.com">Zep Cloud Docs</a>
 </p>
 
@@ -55,8 +55,8 @@ Please see the [Zep Quick Start Guide](https://help.getzep.com/ce/quickstart) fo
 ./zep docker up
 ```
 > [!NOTE]
-> Make sure to set the `secret` value in the `zep.yaml` configuration file.
->
+> Make sure to set the `secret` value in the `zep.yaml` configuration file. 
+> 
 > Additionally, make sure that you expose an `OPENAI_API_KEY` environment variable either in a local .env file or by running
 > ```bash
 > export OPENAI_API_KEY=your_openai_api_key
