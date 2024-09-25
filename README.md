@@ -25,8 +25,8 @@ Zep: The Memory Foundation For Your AI Stack
 </p>
 
 <p align="center">
-<a href="https://help.getzep.com/ce/quickstart">Quick Start</a> | 
-<a href="https://help.getzep.com/memory">Documentation</a> | 
+<a href="https://help.getzep.com/ce/quickstart">Quick Start</a> |
+<a href="https://help.getzep.com/memory">Documentation</a> |
 <a href="https://help.getzep.com">Zep Cloud Docs</a>
 </p>
 
@@ -43,6 +43,35 @@ Zep supports:
 - Adding chat history messages.
 - Ingestion of JSON and unstructured text.
 - Session, user, and group-level graphs. Group graphs allow for capturing organizational knowledge.
+
+## Getting Started
+
+### Install Server
+
+Please see the [Zep Quick Start Guide](https://help.getzep.com/ce/quickstart) for important configuration information.
+
+```bash
+./zep docker pull
+./zep docker up
+```
+> [!NOTE]
+> Make sure to set the `secret` value in the `zep.yaml` configuration file.
+>
+> Additionally, make sure that you expose an `OPENAI_API_KEY` environment variable either in a local .env file or by running
+> ```bash
+> export OPENAI_API_KEY=your_openai_api_key
+> ```
+
+### Install SDK
+```bash
+pip install zep-python
+```
+
+**or**
+
+```bash
+npm i @getzep/zep-js
+```
 
 ## Simple APIs with SDKs for Python, TypeScript, and Go
 
@@ -231,33 +260,6 @@ const searchQuery: SessionSearchQuery = {
 };
 const searchResponse = await client.memory.searchSessions(searchQuery);
 const facts = searchResponse.results?.map(result => result.fact);
-```
-
-## Get Started
-
-### Install Server
-
-Please see the [Zep Quick Start Guide](https://help.getzep.com/ce/quickstart) for important configuration information.
-
-```bash
-docker compose -f docker-compose.ce.yaml pull
-docker compose -f docker-compose.ce.yaml up
-```
-
-Looking for <a href="https://docs.getzep.com/deployment">other deployment options</a>?
-
-### Install SDK
-
-Please see the Zep [Development Guide](https://docs.getzep.com/sdk/) for important beta information and usage instructions.
-
-```bash
-pip install zep-python
-```
-
-**or**
-
-```bash
-npm i @getzep/zep-js
 ```
 
 ## How does Zep Community Edition differ from Zep Open Source v0.x?
