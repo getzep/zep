@@ -24,11 +24,11 @@ jobs:
       name: release
     runs-on: ubuntu-latest
     steps:
-#      - name: Checkout repo for tag push
-#        if: github.event_name == 'push'
-#        uses: actions/checkout@v4
-#        with:
-#          ref: ${{ github.ref }}
+      - name: Checkout repo for tag push
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
 
       - name: Checkout repo for manual trigger
         if: github.event_name == 'workflow_dispatch'
@@ -66,7 +66,6 @@ jobs:
       - name: Build and push
         uses: depot/build-push-action@v1
         with:
-          token: ${{ secrets.DEPOT_PROJECT_TOKEN }}
           context: ${{ github.workspace }}
           push: true
           platforms: linux/amd64,linux/arm64

@@ -13,15 +13,12 @@ jobs:
     environment: build-test
     steps:
       - uses: actions/checkout@v4
-
       - name: install certs and build-essential (required by CGO)
         run: apt-get update && apt-get install -y ca-certificates build-essential
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '^1.22'
-
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
@@ -29,6 +26,5 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
-
       - name: Build
         run: go build -v ./src/...
