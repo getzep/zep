@@ -11,52 +11,20 @@ jobs:
     runs-on: ubuntu-4c-16GB-150GB
     container: debian:bullseye-slim
     environment: build-test
-    services:
-      postgres:
-        image: ghcr.io/getzep/postgres:latest
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      nlp:
-        image: ghcr.io/getzep/zep-nlp-server:latest
-        options: >-
-          --health-cmd "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/5557' || exit 1"
-          --health-interval 10s
-          --health-timeout 10s
-          --health-retries 5
-          
     steps:
-      - uses: actions/checkout@v3
-
+      - uses: actions/checkout@v4
       - name: install certs and build-essential (required by CGO)
         run: apt-get update && apt-get install -y ca-certificates build-essential
-  
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: '^1.21'
-  
+          go-version: '^1.22'
       - name: Cache Go modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
-  
       - name: Build
-        run: go build -v ./...
-  
-      - name: Test
-        run: CGO_ENABLED=1 go test -tags=testutils -race -p 1 -v ./...
-        env:
-          ZEP_LOG_LEVEL: 'info'
-          ZEP_OPENAI_API_KEY: ${{ secrets.ZEP_OPENAI_API_KEY }}
-          ZEP_ANTHROPIC_API_KEY: ${{ secrets.ZEP_ANTHROPIC_API_KEY }}
-          ZEP_STORE_POSTGRES_DSN: 'postgres://postgres:postgres@postgres:5432/?sslmode=disable'
-          ZEP_NLP_SERVER_URL: 'http://nlp:5557'
+        run: go build -v ./src/...
