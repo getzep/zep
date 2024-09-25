@@ -18,9 +18,6 @@ jobs:
           go-version: '1.22'
           cache: false
       - uses: actions/checkout@v4
-        with:
-          submodules: true
-          token: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
