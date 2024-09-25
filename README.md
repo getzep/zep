@@ -51,8 +51,8 @@ Zep supports:
 Please see the [Zep Quick Start Guide](https://help.getzep.com/ce/quickstart) for important configuration information.
 
 ```bash
-./zep docker pull
-./zep docker up
+./zep pull
+./zep up
 ```
 > [!NOTE]
 > Make sure to set the `secret` value in the `zep.yaml` configuration file. 
