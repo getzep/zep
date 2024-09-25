@@ -50,7 +50,8 @@ services:
       timeout: 5s
       retries: 3
     depends_on:
-      - neo4j
+      neo4j:
+        condition: service_healthy
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - MODEL_NAME=gpt-4o-mini
@@ -62,6 +63,12 @@ services:
     image: neo4j:5.22.0
     networks:
       - zep-network
+    healthcheck:
+      test: wget http://localhost:7474 || exit 1
+      interval: 1s
+      timeout: 10s
+      retries: 20
+      start_period: 3s
     ports:
       - "7474:7474"  # HTTP
       - "${NEO4J_PORT}:${NEO4J_PORT}"  # Bolt
