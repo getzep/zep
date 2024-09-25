@@ -240,8 +240,8 @@ const facts = searchResponse.results?.map(result => result.fact);
 Please see the [Zep Quick Start Guide](https://help.getzep.com/ce/quickstart) for important configuration information.
 
 ```bash
-docker compose -f docker-compose.ce.yml pull
-docker compose -f docker-compose.ce.yml up
+docker compose -f docker-compose.ce.yaml pull
+docker compose -f docker-compose.ce.yaml up
 ```
 
 Looking for <a href="https://docs.getzep.com/deployment">other deployment options</a>?
