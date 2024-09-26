@@ -211,7 +211,7 @@ import type { CreateUserRequest, CreateSessionRequest, SessionSearchQuery } from
 
 const client = new ZepClient({
     apiKey: API_KEY,
-    environment: BASE_URL,
+    baseUrl: BASE_URL,
 });
 
 // A new user identifier
