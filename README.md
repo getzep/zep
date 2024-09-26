@@ -32,17 +32,28 @@ Zep: The Memory Foundation For Your AI Stack
 
 ## What is Zep? 💬
 
-Zep continually learns from user interactions, improving your AI agent's knowledge over time. With Zep, you can personalize user experiences and significantly improve agent accuracy.
+Zep enhances your AI agent's knowledge through continuous learning from user interactions, enabling personalized experiences and improved accuracy.
 
-Zep is powered by a temporal Knowledge Graph. As your user's conversation with an agent progresses, new facts are added to the graph. Zep maintains historical context, helping your agent reason with state change and offering data provenance insights.
+### How Zep works
 
-Retrieving facts is simple and very fast. Both semantic and graph search are used to ensure facts are relevant to the current conversation. Fact retrieval does not require LLM inference; the slowest activity is embedding the search query.
+1. Add chat messages or data artifacts to Zep during each user interaction or agent event.
+2. Zep intelligently integrates new information into the user's Knowledge Graph, updating existing context as needed.
+3. Retrieve relevant facts from Zep for subsequent interactions or events.
 
-Zep supports:
+Zep's temporal Knowledge Graph maintains contextual information about facts, enabling reasoning about state changes and providing data provenance insights. Each fact includes valid_at and invalid_at dates, allowing agents to track changes in user preferences, traits, or environment.
 
+### Zep is fast
+
+Retrieving facts is simple and very fast. Unlike other memory solutions, Zep does not use agents to ensure facts are relevant. It precomputes facts, entity summaries, and other artifacts asynchronously. Retrieval speed primarily depends on the embedding service's performance.
+
+### Zep supports many types of data
+
+You can add a variety of data artifacts to Zep:
 - Adding chat history messages.
-- Ingestion of JSON and unstructured text.
-- Session, user, and group-level graphs. Group graphs allow for capturing organizational knowledge.
+- Ingestion of JSON and unstructured text. (Coming soon)
+
+
+Zep supports chat session, user, and group-level graphs. Group graphs allow for capturing organizational knowledge.
 
 ## Getting Started
 
