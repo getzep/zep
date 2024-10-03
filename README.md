@@ -280,6 +280,7 @@ Zep Open Source is an older version of Zep that did not use a Knowledge Graph to
 Some additional changes:
 
 - The Zep OSS web UI has been deprecated in favor of significantly expanded SDK support.
+- Zep CE no longer offers Document Collections. We suggest using one of many hosted or local vector databases.
 - Zep CE supports many LLM services and local servers that offer OpenAI-compatible APIs. Other services may be used with an LLM proxy.
 - Zep CE no longer ships with a local embedding service and named entity extractor.
 
