@@ -142,7 +142,7 @@ As discussed above, providing just the chat history to an LLM can often result i
 
 ### Zep is purpose-built for Agent and Assistant applications
 
-Users, Sessions, and Chat Messages are first-class abstractions in Zep. This allows simple and flexible management of chat memory, including the execution of Right To Be Forgetten requests and other privacy compliance-related tasks with single-API call.
+Users, Sessions, and Chat Messages are first-class abstractions in Zep. This allows simple and flexible management of chat memory, including the execution of Right To Be Forgotten requests and other privacy compliance-related tasks with single-API call.
 
 ## Zep Language Support and Ecosystem
 
