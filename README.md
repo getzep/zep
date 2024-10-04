@@ -159,7 +159,7 @@ Yes - the Zep team and community contributors have built integrations with Zep, 
 Zep Community Edition relies on an external LLM API service to function. Any OpenAI-compatible LLM API is supported. Providers such as Anthropic can be used via a proxy such as LiteLLM. You will also need to configure LiteLLM with an embedding service.
 
 ## Does Zep collect telemetry?
-In order to better understand how Zep is used, we can collect telemetry data. This is optional and can be disabled by by modifying the `zep.yaml` config file as below.
+In order to better understand how Zep is used, we can collect telemetry data. This is optional and can be disabled by modifying the `zep.yaml` config file as below.
 
 We do not collect any PII or any of your data, other than the `org_name` you may optionally set in the `telemetry` config. We only collect anonymized data about how Zep is used. 
 
