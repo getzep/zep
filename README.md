@@ -40,7 +40,7 @@ Zep enhances your AI agent's knowledge through continuous learning from user int
 2. Zep intelligently integrates new information into the user's Knowledge Graph, updating existing context as needed.
 3. Retrieve relevant facts from Zep for subsequent interactions or events.
 
-Zep's temporal Knowledge Graph maintains contextual information about facts, enabling reasoning about state changes and providing data provenance insights. Each fact includes valid_at and invalid_at dates, allowing agents to track changes in user preferences, traits, or environment.
+Zep's temporal Knowledge Graph maintains contextual information about facts, enabling reasoning about state changes and providing data provenance insights. Each fact includes `valid_at` and `invalid_at` dates, allowing agents to track changes in user preferences, traits, or environment.
 
 ### Zep is fast
 
@@ -66,8 +66,8 @@ Please see the [Zep Quick Start Guide](https://help.getzep.com/ce/quickstart) fo
 ./zep up
 ```
 > [!NOTE]
-> Make sure to set the `secret` value in the `zep.yaml` configuration file. 
-> 
+> Make sure to set the `secret` value in the `zep.yaml` configuration file.
+>
 > Additionally, make sure that you expose an `OPENAI_API_KEY` environment variable either in a local .env file or by running
 > ```bash
 > export OPENAI_API_KEY=your_openai_api_key

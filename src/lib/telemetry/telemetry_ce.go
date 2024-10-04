@@ -55,6 +55,10 @@ func (s *service) TrackEvent(req Request, event Event, metadata ...map[string]an
 		return
 	}
 
+	if !isCEEvent(event) {
+		return
+	}
+
 	ev := CEEvent{
 		Event: event,
 	}
@@ -126,4 +130,8 @@ func createInstallID() string {
 	}
 
 	return id
+}
+
+func isCEEvent(event Event) bool {
+	return event == Event_CEStart || event == Event_CEStop
 }

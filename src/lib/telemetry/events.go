@@ -15,4 +15,7 @@ const (
 	Event_CreateSession       Event = "session_create"
 	Event_DeleteSession       Event = "session_delete"
 	Event_SearchSessions      Event = "sessions_search"
+
+	Event_CEStart Event = "ce_start"
+	Event_CEStop  Event = "ce_stop"
 )
