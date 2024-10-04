@@ -27,6 +27,11 @@ func Load() {
 		panic(fmt.Errorf("config file could not be read: %w", err))
 	}
 
+	data, err = parseConfigTemplate(data)
+	if err != nil {
+		panic(fmt.Errorf("error processing config file: %w", err))
+	}
+
 	config := defaultConfig
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		panic(fmt.Errorf("config file contains invalid yaml: %w", err))
