@@ -68,7 +68,7 @@ func (c postgresConfigCommon) DSN() string {
         "postgres://%s:%s@%s:%d/%s?sslmode=disable",
         url.QueryEscape(c.User),
         url.QueryEscape(c.Password),
-        url.QueryEscape(c.Host),
+        c.Host,
         c.Port,
         url.QueryEscape(c.Database),
     )
