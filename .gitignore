@@ -28,3 +28,6 @@ test_data
 # Go workspace file
 .idea
 .vscode
+
+# VSCode local history
+.history
