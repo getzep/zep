@@ -1,6 +1,9 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+)
 
 // this is a pointer so that if someone attempts to use it before loading it will
 // panic and force them to load it first.
@@ -63,12 +66,12 @@ type postgresConfigCommon struct {
 func (c postgresConfigCommon) DSN() string {
 	return fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s?sslmode=disable",
-		c.User,
-		c.Password,
-		c.Host,
-		c.Port,
-		c.Database,
-	)
+        	url.QueryEscape(c.User),
+        	url.QueryEscape(c.Password),
+        	c.Host,
+        	c.Port,
+        	url.QueryEscape(c.Database),
+    	)
 }
 
 type carbonConfig struct {
