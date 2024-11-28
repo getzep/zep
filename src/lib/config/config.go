@@ -64,14 +64,14 @@ type postgresConfigCommon struct {
 }
 
 func (c postgresConfigCommon) DSN() string {
-    return fmt.Sprintf(
-        "postgres://%s:%s@%s:%d/%s?sslmode=disable",
-        url.QueryEscape(c.User),
-        url.QueryEscape(c.Password),
-        c.Host,
-        c.Port,
-        url.QueryEscape(c.Database),
-    )
+	return fmt.Sprintf(
+		"postgres://%s:%s@%s:%d/%s?sslmode=disable",
+        	url.QueryEscape(c.User),
+        	url.QueryEscape(c.Password),
+        	c.Host,
+        	c.Port,
+        	url.QueryEscape(c.Database),
+    	)
 }
 
 type carbonConfig struct {
