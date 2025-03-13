@@ -31,6 +31,9 @@ var defaultConfig = Config{
 		Carbon: carbonConfig{
 			Locale: "en",
 		},
+        Postgres: postgresConfig{
+		    SSLMode: "disable",
+		},
 	},
 }
 
@@ -58,6 +61,7 @@ type postgresConfigCommon struct {
 	Host               string `yaml:"host"`
 	Port               int    `yaml:"port"`
 	Database           string `yaml:"database"`
+	SSLMode            string `yaml:"ssl_mode"`
 	ReadTimeout        int    `yaml:"read_timeout"`
 	WriteTimeout       int    `yaml:"write_timeout"`
 	MaxOpenConnections int    `yaml:"max_open_connections"`
@@ -65,12 +69,13 @@ type postgresConfigCommon struct {
 
 func (c postgresConfigCommon) DSN() string {
 	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s?sslmode=disable",
+		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
         	url.QueryEscape(c.User),
         	url.QueryEscape(c.Password),
         	c.Host,
         	c.Port,
         	url.QueryEscape(c.Database),
+        	url.QueryEscape(c.SSLMode),
     	)
 }
 
