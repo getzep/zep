@@ -17,7 +17,7 @@ postgres:
   port: 5432
   database: postgres
   schema_name: public
-  ssl_mode: require
+  ssl_mode: disable
   read_timeout: 30
   write_timeout: 30
   max_open_connections: 10
