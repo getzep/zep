@@ -61,13 +61,12 @@ type postgresConfigCommon struct {
 	Host               string `yaml:"host"`
 	Port               int    `yaml:"port"`
 	Database           string `yaml:"database"`
-	SSLMode            string `yaml:"ssl_mode"`
 	ReadTimeout        int    `yaml:"read_timeout"`
 	WriteTimeout       int    `yaml:"write_timeout"`
 	MaxOpenConnections int    `yaml:"max_open_connections"`
 }
 
-func (c postgresConfigCommon) DSN() string {
+func (c postgresConfig) DSN() string {
 	return fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
         	url.QueryEscape(c.User),
