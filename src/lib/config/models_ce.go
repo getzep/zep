@@ -14,6 +14,7 @@ type Config struct {
 type postgresConfig struct {
 	postgresConfigCommon `yaml:",inline"`
 
+	SSLMode string `yaml:"ssl_mode"`
 	SchemaName string `yaml:"schema_name"`
 }
 
