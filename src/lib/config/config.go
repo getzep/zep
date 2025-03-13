@@ -31,7 +31,7 @@ var defaultConfig = Config{
 		Carbon: carbonConfig{
 			Locale: "en",
 		},
-        Postgres: postgresConfig{
+		Postgres: postgresConfig{
 		    SSLMode: "disable",
 		},
 	},
