@@ -1,3 +1,13 @@
+<h2>Zep Community Edition is Deprecated.</h2>
+
+Zep Community Edition is no longer maintained and supported. 
+
+Read more in our announcement: [Announcing a New Direction for Zep's Open Source Strategy](https://blog.getzep.com/announcing-a-new-direction-for-zeps-open-source-strategy/)
+
+Looking for Zep's Graphiti Knowledge Graph Framework? Visit the [repo here](https://github.com/getzep/graphiti).
+
+<hr />
+
 <p align="center">
   <a href="https://www.getzep.com/">
     <img src="https://github.com/user-attachments/assets/119c5682-9654-4257-8922-56b7cb8ffd73" width="150" alt="Zep Logo">
