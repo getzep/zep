@@ -1,0 +1,103 @@
+GOCMD=go
+
+VERSION?=0.0.0
+SERVICE_PORT?=
+DOCKER_REGISTRY?=
+BINARY_NAME?=zep
+EXPORT_RESULT?=false # for CI please set EXPORT_RESULT to true
+BINARY_DEST=./out/bin
+BINARY=$(BINARY_DEST)/zep
+GOTEST_CMD=$(GOCMD) test
+GOVET_CMD=$(GOCMD) vet
+GORUN_CMD=$(GOCMD) run
+GOBUILD_CMD=$(GOCMD) build
+
+WD=$(shell pwd)
+
+SRC_DIR=$(WD)/src
+APP_DIR=$(SRC_DIR)
+
+RUN_ARGS=-r
+
+PACKAGE := github.com/getzep/zep/lib/config
+VERSION := $(shell git describe --tags --always --abbrev=0 --match='v[0-9]*.[0-9]*.[0-9]*' 2> /dev/null | sed 's/^.//')
+COMMIT_HASH := $(shell git rev-parse --short HEAD)
+BUILD_TIMESTAMP := $(shell date '+%Y-%m-%dT%H:%M:%S%z')
+
+LDFLAGS = -X '${PACKAGE}.Version=${VERSION}' \
+          -X '${PACKAGE}.CommitHash=${COMMIT_HASH}' \
+          -X '${PACKAGE}.BuildTime=${BUILD_TIMESTAMP}'
+
+GREEN  := $(shell tput -Txterm setaf 2)
+YELLOW := $(shell tput -Txterm setaf 3)
+WHITE  := $(shell tput -Txterm setaf 7)
+CYAN   := $(shell tput -Txterm setaf 6)
+RESET  := $(shell tput -Txterm sgr0)
+
+.PHONY: all test build dev-dump restore-db-from-dump help
+
+all: test build
+
+run:
+	$(GORUN_CMD) -ldflags="${LDFLAGS}" $(APP_DIR)/... $(RUN_ARGS)
+
+build:
+	mkdir -p $(BINARY_DEST)
+	$(GOBUILD_CMD) -ldflags="${LDFLAGS}" -o $(BINARY) $(APP_DIR)
+
+build-run: build
+	$(BINARY) $(RUN_ARGS)
+
+## Go Watch to run server and restart on changes
+## https://github.com/mitranim/gow
+watch:
+	gow run $(APP_DIR)/... $(RUN_ARGS)
+
+test: ## Run project tests
+	$(GOTEST_CMD) -shuffle on -race $(SRC_DIR)/... -p 1
+
+clean: ## Remove build related file
+	rm -f $(BINARY)
+	rm -f ./junit-report.xml checkstyle-report.xml ./coverage.xml ./profile.cov yamllint-checkstyle.xml
+
+coverage: ## Run the tests of the project and export the coverage
+	$(GOTEST) -cover -covermode=count -coverprofile=profile.cov $(SRC_DIR)/...
+	$(GOCMD) tool cover -func profile.cov
+ifeq ($(EXPORT_RESULT), true)
+	GO111MODULE=off go get -u github.com/AlekSi/gocov-xml
+	GO111MODULE=off go get -u github.com/axw/gocov/gocov
+	gocov convert profile.cov | gocov-xml > coverage.xml
+endif
+
+## Lint:
+lint:
+	cd src && golangci-lint run --sort-results -c golangci.yaml
+
+## Run the dev stack docker compose setup. This exposes DB and NLP services
+## for local development. This does not start the Zep service.
+dev:
+	docker compose up -d
+
+## Docker:
+docker-build: ## Use the dockerfile to build the container
+	DOCKER_BUILDKIT=1 docker build --rm --tag $(BINARY_NAME) .
+
+docker-release: ## Release the container with tag latest and version
+	docker tag $(BINARY_NAME) $(DOCKER_REGISTRY)$(BINARY_NAME):latest
+	docker tag $(BINARY_NAME) $(DOCKER_REGISTRY)$(BINARY_NAME):$(VERSION)
+	# Push the docker images
+	docker push $(DOCKER_REGISTRY)$(BINARY_NAME):latest
+	docker push $(DOCKER_REGISTRY)$(BINARY_NAME):$(VERSION)
+
+
+## Help:
+help: ## Show this help.
+	@echo ''
+	@echo 'Usage:'
+	@echo '  ${YELLOW}make${RESET} ${GREEN}<target>${RESET}'
+	@echo ''
+	@echo 'Targets:'
+	@awk 'BEGIN {FS = ":.*?## "} { \
+		if (/^[a-zA-Z_-]+:.*?##.*$$/) {printf "    ${YELLOW}%-20s${GREEN}%s${RESET}\n", $$1, $$2} \
+		else if (/^## .*$$/) {printf "  ${CYAN}%s${RESET}\n", substr($$1,4)} \
+		}' $(MAKEFILE_LIST)
