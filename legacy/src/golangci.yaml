@@ -1,0 +1,171 @@
+run:
+  go: '1.21'
+linters:
+  enable:
+  - gocritic
+  - revive
+  - gosimple
+  - govet
+  - ineffassign
+  - staticcheck
+  - typecheck
+  - unused
+  - gosec
+  - forbidigo
+  - errcheck
+
+linters-settings:
+  revive:
+    ignore-generated-header: true
+    severity: warning
+    enable-all-rules: true
+    confidence: 0.8
+    rules:
+      - name: flag-parameter
+        severity: warning
+        disabled: true
+      - name: line-length-limit
+        severity: warning
+        disabled: true
+      - name: max-public-structs
+        severity: warning
+        disabled: true
+      - name: var-naming
+        severity: warning
+        disabled: true
+      - name: cyclomatic
+        severity: warning
+        disabled: true
+      - name: cognitive-complexity
+        severity: warning
+        disabled: true
+        arguments: [15]
+      - name: add-constant
+        severity: warning
+        disabled: false
+        arguments:
+          - maxLitCount: "5"
+            allowStrs: '"","OK"'
+            allowInts: "0,1"
+      - name: function-length
+        severity: warning
+        disabled: true
+      - name: flag-parameter
+        severity: warning
+        disabled: false
+      - name: unexported-return
+        disabled: true
+      - name: import-alias-naming
+        severity: warning
+        disabled: false
+        exclude: [""]
+        arguments:
+          - "^[a-z][a-zA-Z0-9]{0,}$"
+      - name: unused-parameter
+        disabled: true
+      - name: unused-receiver
+        disabled: true
+      - name: unhandled-error
+        severity: warning
+        disabled: false
+        arguments:
+          - "io.Closer.Close"
+          - "os.Setenv"
+          - "strings.Builder.WriteString"
+          - "net/http.Server.Shutdown"
+  gocritic:
+    enabled-tags: [diagnostic, style, performance, opinionated]
+    disabled-checks:
+    - rangeValCopy
+    - unnamedResult
+    settings:
+      hugeParam:
+        sizeThreshold: 5120 # 5kb
+  forbidigo:
+    # Forbid the following identifiers (list of regexp).
+    # Default: ["^(fmt\\.Print(|f|ln)|print|println)$"]
+    forbid:
+      - p: ^fmt\.Print.*$
+        msg: Do not commit print statements.
+      # Optional message that gets included in error reports.
+      - p: ^log\.Println.*$
+        msg: Do not commit log.Println statements.
+    # Exclude godoc examples from forbidigo checks.
+    # Default: true
+    exclude-godoc-examples: false
+    # Instead of matching the literal source code,
+    # use type information to replace expressions with strings that contain the package name
+    # and (for methods and fields) the type name.
+    # This makes it possible to handle import renaming and forbid struct fields and methods.
+    # Default: false
+    analyze-types: true
+  errcheck:
+    check-type-assertions: true
+    exclude-functions:
+      - (*net/http.Server).Shutdown
+  # output:
+  # Format: colored-line-number|line-number|json|colored-tab|tab|checkstyle|code-climate|junit-xml|github-actions|teamcity
+  #
+  # Multiple can be specified by separating them by comma, output can be provided
+  # for each of them by separating format name and path by colon symbol.
+  # Output path can be either `stdout`, `stderr` or path to the file to write to.
+  # Example: "checkstyle:report.xml,json:stdout,colored-line-number"
+  #
+  # Default: colored-line-number
+  # format: json
+
+severity:
+  # Set the default severity for issues.
+  #
+  # If severity rules are defined and the issues do not match or no severity is provided to the rule
+  # this will be the default severity applied.
+  # Severities should match the supported severity names of the selected out format.
+  # - Code climate: https://docs.codeclimate.com/docs/issues#issue-severity
+  # - Checkstyle: https://checkstyle.sourceforge.io/property_types.html#SeverityLevel
+  # - GitHub: https://help.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-an-error-message
+  # - TeamCity: https://www.jetbrains.com/help/teamcity/service-messages.html#Inspection+Instance
+  #
+  # Default value is an empty string.
+  default-severity: error
+  # If set to true `severity-rules` regular expressions become case-sensitive.
+  # Default: false
+  case-sensitive: true
+issues:
+  exclude-dirs:
+    - deploy
+    - test_data
+    - pkg/triton_grpc_client
+  exclude-rules:
+    - path: ".*\\.go"
+      text: "flag-parameter"  # seems to be a bug in revive and this doesn't disable in the revive config
+      linters:
+        - revive
+    - path: ".*\\.go"
+      text: "add-constant: string literal"  # ignore repeated string literals
+      linters:
+        - revive
+    - path: "tasks/.*\\.go"
+      text: "deep-exit"
+      linters:
+        - revive
+    - path: "lib/util/testutil/.*\\.go"
+      text: "deep-exit"
+      linters:
+        - revive
+    # Exclude some linters from running on tests files.
+    - path: ".*test_.*\\.go"
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+        - varnamelen
+        - revive
+    - path: ".*_test\\.go"
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+        - varnamelen
+        - revive
