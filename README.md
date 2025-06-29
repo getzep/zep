@@ -42,9 +42,9 @@ Visit [www.getzep.com](https://www.getzep.com/) to sign up for Zep Cloud, our ma
 
 Zep offers comprehensive SDKs for multiple languages:
 
-- **Python**: `pip install zep-python`
-- **TypeScript/JavaScript**: `npm i @getzep/zep-js`
-- **Go**: Available on GitHub
+- **Python**: `pip install zep-cloud`
+- **TypeScript/JavaScript**: `npm install @getzep/zep-cloud`
+- **Go**: `go get github.com/getzep/zep-go/v2`
 
 ### Get Help
 
@@ -84,16 +84,6 @@ What makes Graphiti unique is its ability to autonomously build a knowledge grap
 
 Visit the [Graphiti repository](https://github.com/getzep/graphiti) to learn more about the knowledge graph framework that powers Zep's memory capabilities.
 
-## Framework Integration
-
-Zep is framework agnostic and works seamlessly with:
-
-- LangChain
-- LangGraph
-- LlamaIndex
-- Chainlit
-- Microsoft Autogen
-- And many more
 
 ## Community Edition (Legacy)
 
