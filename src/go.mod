@@ -6,7 +6,7 @@ require (
 	dario.cat/mergo v1.0.1
 	github.com/ThreeDotsLabs/watermill v1.3.7
 	github.com/failsafe-go/failsafe-go v0.6.8
-	github.com/go-chi/chi/v5 v5.1.0
+	github.com/go-chi/chi/v5 v5.2.2
 	github.com/go-chi/cors v1.2.1
 	github.com/go-playground/validator/v10 v10.22.1
 	github.com/google/uuid v1.6.0
