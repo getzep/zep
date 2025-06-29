@@ -8,7 +8,7 @@
 Zep: The Memory Foundation For Your AI Stack
 </h1>
 
-<h2 align="center">Build AI agents that continually learn. Power personalized experiences.</h2>
+<h2 align="center">Examples, Integrations, & More</h2>
 
 <br />
 
