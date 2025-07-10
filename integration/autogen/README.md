@@ -5,7 +5,11 @@ This package provides integration between Zep and AutoGen frameworks, enabling p
 ## Features
 
 - **ZepMemory**: A memory implementation that integrates with Zep for persistent storage and retrieval of conversation context
+- **Dual Storage Modes**:
+  - **Message Storage**: When `user_id` is present in metadata, stores as messages in Zep sessions with `role_type="user"`
+  - **Graph Storage**: When `user_id` is missing from metadata, stores as data in Zep's knowledge graph
 - **AutoGen Compatibility**: Fully compatible with AutoGen's memory interface
+- **Mime Type Validation**: Only accepts TEXT, MARKDOWN, and JSON content types
 - **Persistent Storage**: Store and retrieve agent memories across sessions
 
 ## Installation

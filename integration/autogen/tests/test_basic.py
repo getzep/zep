@@ -85,8 +85,8 @@ class TestZepMemoryMock:
             ZepMemory(client="not_a_client", session_id="test-session")
 
     @pytest.mark.asyncio
-    async def test_zep_memory_add_with_mock(self):
-        """Test adding memory with a mock client."""
+    async def test_zep_memory_add_message_with_mock(self):
+        """Test adding memory as message (with user_id) with a mock client."""
         try:
             from zep_cloud.client import AsyncZep
             
@@ -99,18 +99,76 @@ class TestZepMemoryMock:
                 session_id="test-session"
             )
             
-            # Test adding memory content
+            # Test adding memory content with user_id (should store as message)
             content = MemoryContent(
                 content="Test message",
                 mime_type=MemoryMimeType.TEXT,
-                metadata={"role": "user"}
+                metadata={"user_id": "user123", "category": "conversation"}
             )
             
             await memory.add(content)
             
-            # Verify the mock was called
+            # Verify the message.add mock was called
             mock_client.memory.add.assert_called_once()
             
+        except ImportError:
+            pytest.skip("zep_cloud not available")
+
+    @pytest.mark.asyncio
+    async def test_zep_memory_add_graph_data_with_mock(self):
+        """Test adding memory as graph data (without user_id) with a mock client."""
+        try:
+            from zep_cloud.client import AsyncZep
+            
+            mock_client = MagicMock(spec=AsyncZep)
+            mock_client.graph = MagicMock()
+            mock_client.graph.add = AsyncMock()
+            
+            memory = ZepMemory(
+                client=mock_client,
+                session_id="test-session",
+                user_id="test-user"  # Required for graph data
+            )
+            
+            # Test adding memory content without user_id (should store as graph data)
+            content = MemoryContent(
+                content="Test data for graph",
+                mime_type=MemoryMimeType.TEXT,
+                metadata={"category": "facts"}  # No user_id
+            )
+            
+            await memory.add(content)
+            
+            # Verify the graph.add mock was called
+            mock_client.graph.add.assert_called_once()
+            
+        except ImportError:
+            pytest.skip("zep_cloud not available")
+
+    @pytest.mark.asyncio
+    async def test_zep_memory_add_graph_data_requires_user_id(self):
+        """Test that adding graph data requires user_id."""
+        try:
+            from zep_cloud.client import AsyncZep
+            
+            mock_client = MagicMock(spec=AsyncZep)
+            
+            memory = ZepMemory(
+                client=mock_client,
+                session_id="test-session"
+                # No user_id provided
+            )
+            
+            # Test adding memory content without user_id in metadata (should require user_id)
+            content = MemoryContent(
+                content="Test data for graph",
+                mime_type=MemoryMimeType.TEXT,
+                metadata={"category": "facts"}  # No user_id
+            )
+            
+            with pytest.raises(ValueError, match="user_id is required when storing graph data"):
+                await memory.add(content)
+                
         except ImportError:
             pytest.skip("zep_cloud not available")
 
@@ -156,7 +214,7 @@ class TestZepMemoryMock:
                 session_id="test-session"
             )
             
-            # Test supported mime types - these should work
+            # Test supported mime types - these should work (with user_id for message storage)
             supported_types = [
                 MemoryMimeType.TEXT,
                 MemoryMimeType.MARKDOWN,
@@ -169,7 +227,8 @@ class TestZepMemoryMock:
             for mime_type in supported_types:
                 content = MemoryContent(
                     content="Test content",
-                    mime_type=mime_type
+                    mime_type=mime_type,
+                    metadata={"user_id": "user123", "category": "test"}  # Add user_id for message storage
                 )
                 # Should not raise an exception
                 await memory.add(content)
@@ -183,7 +242,8 @@ class TestZepMemoryMock:
             for mime_type in unsupported_types:
                 unsupported_content = MemoryContent(
                     content="Test content",
-                    mime_type=mime_type
+                    mime_type=mime_type,
+                    metadata={"user_id": "user123", "category": "test"}  # Add user_id
                 )
                 
                 with pytest.raises(ValueError, match="Unsupported mime type"):
