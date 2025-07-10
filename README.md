@@ -67,6 +67,66 @@ The repository includes:
 - Additional tools and utilities
 - Legacy code (see Community Edition section below)
 
+## Development Setup
+
+This project uses [UV](https://github.com/astral-sh/uv) for Python package management with workspace features.
+
+### Prerequisites
+
+- Python 3.13+
+- UV package manager
+
+### Getting Started
+
+1. **Install UV** (if not already installed):
+   ```bash
+   # On macOS and Linux
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   
+   # On Windows
+   powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```
+
+2. **Sync the workspace**:
+   ```bash
+   uv sync
+   ```
+
+3. **Activate the virtual environment**:
+   ```bash
+   # On Unix/macOS
+   source .venv/bin/activate
+   
+   # On Windows
+   .venv\Scripts\activate
+   ```
+
+### Workspace Structure
+
+This project is configured as a UV workspace with the following packages:
+
+- **Main package** (`zep`): Core Zep functionality
+- **Autogen integration** (`integration/autogen/`): Integration package for Autogen framework
+
+### Working with the Workspace
+
+- **Install dependencies**: `uv sync`
+- **Add dependencies to main package**: `uv add <package>`
+- **Add dependencies to autogen integration**: `uv add --project integration/autogen <package>`
+- **Run tests for autogen integration**: `uv run --project integration/autogen pytest`
+- **Build packages**: `uv build`
+
+### Integration Development
+
+The autogen integration package is located in `integration/autogen/` with the following structure:
+
+```
+integration/autogen/
+├── src/zep_autogen/     # Package source code
+├── tests/               # Test files
+└── pyproject.toml       # Package configuration
+```
+
 ## Contributing
 
 We welcome contributions to help improve Zep and its ecosystem. Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines on how to contribute, including:
