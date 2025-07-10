@@ -111,17 +111,6 @@ if __name__ == "__main__":
 - **Memory Persistence**: Agent remembers information across interactions
 - **Proper Cleanup**: Client resources are properly closed
 
-### Storage Behavior
-
-The example demonstrates both storage modes:
-
-```python
-# When adding messages with user_id in metadata -> stored as messages
-# When adding facts without user_id -> stored in knowledge graph
-
-# The agent automatically handles this based on the content type
-```
-
 ## Development
 
 Run tests:
