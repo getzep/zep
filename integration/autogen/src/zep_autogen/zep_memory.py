@@ -4,6 +4,7 @@ Zep Memory integration for AutoGen.
 This module provides memory classes that integrate Zep with AutoGen's memory system.
 """
 
+import logging
 from collections.abc import Sequence
 from typing import Any
 
@@ -38,11 +39,8 @@ class ZepMemory(Memory):
             user_id: Optional user ID for user-level memory
             **kwargs: Additional configuration options
         """
-        if AsyncZep is None:
-            raise ImportError(
-                "zep_cloud package is required. Install it with: pip install zep-cloud"
-            )
-
+        # Set up module logger
+        self._logger = logging.getLogger(__name__)
         if not isinstance(client, AsyncZep):
             raise TypeError("client must be an instance of AsyncZep")
 
@@ -83,8 +81,6 @@ class ZepMemory(Memory):
 
         if message_user_id:
             # Store as message in session (we have user_id)
-            if Message is None:
-                raise ImportError("zep_cloud.types.Message is not available")
 
             message = Message(
                 role=message_user_id,  # Use user_id as role
@@ -175,7 +171,7 @@ class ZepMemory(Memory):
 
         except Exception as e:
             # Log error but don't fail completely
-            print(f"Error querying Zep memory: {e}")
+            self._logger.error(f"Error querying Zep memory: {e}")
 
         return results
 
@@ -233,7 +229,7 @@ class ZepMemory(Memory):
 
         except Exception as e:
             # Log error but don't fail completely
-            print(f"Error updating context with Zep memory: {e}")
+            self._logger.error(f"Error updating context with Zep memory: {e}")
             return UpdateContextResult(memories=MemoryQueryResult(results=[]))
 
     async def clear(self) -> None:
@@ -248,7 +244,7 @@ class ZepMemory(Memory):
             await self._client.memory.delete_session(session_id=self._session_id)
 
         except Exception as e:
-            print(f"Error clearing Zep memory: {e}")
+            self._logger.error(f"Error clearing Zep memory: {e}")
             raise
 
     async def close(self) -> None:
