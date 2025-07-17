@@ -1,0 +1,28 @@
+[project]
+name = "locomo-eval"
+version = "0.1.0"
+description = "LOCOMO evaluation framework for Zep agent memory"
+authors = [
+    {name = "Zep", email = "info@getzep.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "zep-cloud",
+    "openai",
+    "gdown",
+    "pandas",
+    "scipy",
+    "python-dotenv",
+    "pydantic",
+    "requests"
+]
+
+[tool.uv]
+dev-dependencies = [
+    "jupyter",
+    "ipykernel"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

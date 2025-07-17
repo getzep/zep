@@ -1,0 +1,30 @@
+[project]
+name = "longmemeval"
+version = "0.1.0"
+description = "LongMemEval framework for Zep agent memory evaluation"
+authors = [
+    {name = "Zep", email = "info@getzep.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "zep-cloud",
+    "openai",
+    "gdown",
+    "pandas",
+    "scipy",
+    "python-dotenv",
+    "pydantic",
+    "requests"
+]
+
+[tool.uv]
+dev-dependencies = [
+    "jupyter",
+    "ipykernel",
+    "nbconvert",
+    "ruff>=0.12.4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
