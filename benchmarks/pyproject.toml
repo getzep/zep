@@ -1,0 +1,5 @@
+[tool.uv.workspace]
+members = [
+    "locomo_eval",
+    "longmemeval"
+]
