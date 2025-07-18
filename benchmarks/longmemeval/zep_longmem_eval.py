@@ -27,6 +27,8 @@ from zep_cloud.client import AsyncZep
 RESPONSE_MODEL = "gpt-4o"
 GRADER_MODEL = "gpt-4o"
 
+DATA_PATH = "data"
+
 
 class Grade(BaseModel):
     is_correct: str = Field(description="yes or no")
@@ -37,8 +39,8 @@ class LongMemEvalRunner:
         load_dotenv()
         if zep_dev_environment:
             self.zep = AsyncZep(
-                api_key=os.getenv("ZEP_API_KEY"), 
-                base_url="https://api.development.getzep.com/api/v2"
+                api_key=os.getenv("ZEP_API_KEY"),
+                base_url="https://api.development.getzep.com/api/v2",
             )
         else:
             self.zep = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
@@ -59,10 +61,15 @@ FACTS and ENTITIES represent relevant context to the current conversation.
 </ENTITIES>
 """
 
-    async def download_dataset(self, file_path: str = "longmemeval_data.tar.gz"):
+    async def download_dataset(
+        self, file_path: str = os.path.join(DATA_PATH, "longmemeval_data.tar.gz")
+    ):
         """Download and extract the LongMemEval dataset"""
         file_id = "1zJgtYRFhOh5zDQzzatiddfjYhFSnyQ80"
         url = f"https://drive.google.com/uc?id={file_id}"
+
+        if not os.path.exists(DATA_PATH):
+            os.makedirs(DATA_PATH)
 
         if not os.path.exists(file_path):
             print(f"Downloading dataset to {file_path}...")
@@ -70,10 +77,10 @@ FACTS and ENTITIES represent relevant context to the current conversation.
         else:
             print(f"'{file_path}' already exists, skipping download.")
 
-        if not os.path.exists("./longmemeval_oracle.json"):
+        if not os.path.exists(os.path.join(DATA_PATH, "longmemeval_oracle.json")):
             print("Extracting dataset...")
             with tarfile.open(file_path, "r:gz") as tar:
-                tar.extractall()
+                tar.extractall(path=DATA_PATH, filter="data")
         else:
             print("'longmemeval_oracle.json' already exists, skipping extraction.")
 
@@ -82,13 +89,25 @@ FACTS and ENTITIES represent relevant context to the current conversation.
     ) -> pd.DataFrame:
         """Load the LongMemEval dataset"""
         print(f"Loading dataset from {dataset_option}")
+        # Check if file exists in current directory, otherwise check parent directory
+        if os.path.exists(dataset_option):
+            return pd.read_json(dataset_option)
+        else:
+            parent_path = os.path.join("..", os.path.basename(dataset_option))
+            if os.path.exists(parent_path):
+                print(f"Using dataset from parent directory: {parent_path}")
+                return pd.read_json(parent_path)
+            else:
+                raise FileNotFoundError(
+                    f"Dataset not found at {dataset_option} or {parent_path}"
+                )
         return pd.read_json(dataset_option)
 
     async def ingest_data(
         self,
         df: pd.DataFrame,
         num_sessions: int = 500,
-        question_type_filter: str = "single-session-assistant",
+        question_type_filter: str = "single-session-user",
     ):
         """Ingest conversation data into Zep knowledge graph"""
         print(
@@ -122,6 +141,11 @@ FACTS and ENTITIES represent relevant context to the current conversation.
                         date_string = datetime.strptime(date, date_format).replace(
                             tzinfo=timezone.utc
                         )
+
+                        if len(msg["content"]) > 8000:
+                            print(
+                                f"Warning: Message is over 8000 characters:\n{msg['content']}"
+                            )
 
                         await self.zep.memory.add(
                             session_id=session_id,
@@ -505,7 +529,7 @@ async def main():
         if not args.baseline:
             print(f"Average retrieval duration: {avg_retrieval_duration:.3f}s")
         print(f"Results saved to: {args.output}")
-    
+
     if args.ingest:
         print("Data ingestion completed successfully")
 
