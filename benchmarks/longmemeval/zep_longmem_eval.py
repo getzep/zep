@@ -186,6 +186,7 @@ class LongMemEvalRunner:
         df: pd.DataFrame,
         num_sessions: int = 500,
         question_type_filter: Optional[str] = None,
+        start_index: int = 0,
     ):
         """Ingest conversation data into Zep knowledge graph"""
         filter_msg = (
@@ -193,9 +194,16 @@ class LongMemEvalRunner:
             if question_type_filter
             else "all question types"
         )
-        self.logger.info(f"Ingesting {num_sessions} sessions with {filter_msg}")
+        # Ensure we don't exceed dataset bounds
+        max_sessions = len(df)
+        end_index = min(start_index + num_sessions, max_sessions)
+        actual_sessions = end_index - start_index
 
-        for multi_session_idx in range(num_sessions):
+        self.logger.info(
+            f"Ingesting {actual_sessions} sessions (indices {start_index}-{end_index - 1}) with {filter_msg}"
+        )
+
+        for multi_session_idx in range(start_index, end_index):
             # Get session data
             multi_session = df["haystack_sessions"].iloc[multi_session_idx]
             multi_session_dates = df["haystack_dates"].iloc[multi_session_idx]
@@ -532,6 +540,12 @@ async def main():
         default=None,
         help="Filter by question type (default: None - ingest all types)",
     )
+    parser.add_argument(
+        "--start-index",
+        type=int,
+        default=0,
+        help="Start ingestion from this index (default: 0)",
+    )
 
     args = parser.parse_args()
 
@@ -562,7 +576,9 @@ async def main():
 
     # Ingest data
     if args.ingest and not args.baseline:
-        await runner.ingest_data(df, args.num_sessions, args.question_type)
+        await runner.ingest_data(
+            df, args.num_sessions, args.question_type, args.start_index
+        )
 
     # Run evaluation
     if args.eval:
