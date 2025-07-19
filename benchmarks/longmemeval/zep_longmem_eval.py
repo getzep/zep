@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """
-LongMemEval standalone script - refactored from zep_longmem_eval.ipynb
-
-This script evaluates agent memory capabilities using the LongMemEval dataset
-with Zep's temporal knowledge graph architecture.
+LongMemEval Benchmark Ingestion and Evaluation Script
 """
 
 import asyncio
 import argparse
 import json
+import logging
 import os
 import tarfile
 from datetime import datetime, timezone
 from time import time
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 import gdown
 import pandas as pd
@@ -35,16 +33,35 @@ class Grade(BaseModel):
 
 
 class LongMemEvalRunner:
-    def __init__(self, zep_dev_environment: bool = False):
+    def __init__(self, zep_dev_environment: bool = False, dry_run: bool = False, log_level: str = "INFO"):
         load_dotenv()
-        if zep_dev_environment:
-            self.zep = AsyncZep(
-                api_key=os.getenv("ZEP_API_KEY"),
-                base_url="https://api.development.getzep.com/api/v2",
+        self.dry_run = dry_run
+        
+        # Setup logging
+        self.logger = logging.getLogger(__name__)
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             )
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+        
+        self.logger.setLevel(getattr(logging, log_level.upper()))
+        
+        if not dry_run:
+            if zep_dev_environment:
+                self.zep = AsyncZep(
+                    api_key=os.getenv("ZEP_API_KEY"),
+                    base_url="https://api.development.getzep.com/api/v2",
+                )
+            else:
+                self.zep = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
+            self.oai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         else:
-            self.zep = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
-        self.oai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            self.logger.info("DRY RUN MODE: Zep and OpenAI clients not initialized")
+            self.zep = None
+            self.oai_client = None
         self.template = """
 FACTS and ENTITIES represent relevant context to the current conversation.
 
@@ -65,6 +82,14 @@ FACTS and ENTITIES represent relevant context to the current conversation.
         self, file_path: str = os.path.join(DATA_PATH, "longmemeval_data.tar.gz")
     ):
         """Download and extract the LongMemEval dataset"""
+        if self.dry_run:
+            self.logger.info("DRY RUN: Would download and extract dataset")
+            self.logger.info(f"DRY RUN: Target file: {file_path}")
+            self.logger.info(f"DRY RUN: Would create directory: {DATA_PATH}")
+            self.logger.info("DRY RUN: Would download from Google Drive")
+            self.logger.info("DRY RUN: Would extract to longmemeval_oracle.json")
+            return
+            
         file_id = "1zJgtYRFhOh5zDQzzatiddfjYhFSnyQ80"
         url = f"https://drive.google.com/uc?id={file_id}"
 
@@ -72,30 +97,30 @@ FACTS and ENTITIES represent relevant context to the current conversation.
             os.makedirs(DATA_PATH)
 
         if not os.path.exists(file_path):
-            print(f"Downloading dataset to {file_path}...")
+            self.logger.info(f"Downloading dataset to {file_path}...")
             gdown.download(url, file_path, quiet=False)
         else:
-            print(f"'{file_path}' already exists, skipping download.")
+            self.logger.info(f"'{file_path}' already exists, skipping download.")
 
         if not os.path.exists(os.path.join(DATA_PATH, "longmemeval_oracle.json")):
-            print("Extracting dataset...")
+            self.logger.info("Extracting dataset...")
             with tarfile.open(file_path, "r:gz") as tar:
                 tar.extractall(path=DATA_PATH, filter="data")
         else:
-            print("'longmemeval_oracle.json' already exists, skipping extraction.")
+            self.logger.info("'longmemeval_oracle.json' already exists, skipping extraction.")
 
     def load_dataset(
         self, dataset_option: str = "data/longmemeval_s.json"
     ) -> pd.DataFrame:
         """Load the LongMemEval dataset"""
-        print(f"Loading dataset from {dataset_option}")
+        self.logger.info(f"Loading dataset from {dataset_option}")
         # Check if file exists in current directory, otherwise check parent directory
         if os.path.exists(dataset_option):
             return pd.read_json(dataset_option)
         else:
             parent_path = os.path.join("..", os.path.basename(dataset_option))
             if os.path.exists(parent_path):
-                print(f"Using dataset from parent directory: {parent_path}")
+                self.logger.info(f"Using dataset from parent directory: {parent_path}")
                 return pd.read_json(parent_path)
             else:
                 raise FileNotFoundError(
@@ -103,15 +128,17 @@ FACTS and ENTITIES represent relevant context to the current conversation.
                 )
         return pd.read_json(dataset_option)
 
+
     async def ingest_data(
         self,
         df: pd.DataFrame,
         num_sessions: int = 500,
-        question_type_filter: str = "single-session-user",
+        question_type_filter: Optional[str] = None,
     ):
         """Ingest conversation data into Zep knowledge graph"""
-        print(
-            f"Ingesting {num_sessions} sessions with question type: {question_type_filter}"
+        filter_msg = f"question type: {question_type_filter}" if question_type_filter else "all question types"
+        self.logger.info(
+            f"Ingesting {num_sessions} sessions with {filter_msg}"
         )
 
         for multi_session_idx in range(num_sessions):
@@ -119,47 +146,62 @@ FACTS and ENTITIES represent relevant context to the current conversation.
             multi_session_dates = df["haystack_dates"].iloc[multi_session_idx]
             question_type = df["question_type"][multi_session_idx]
 
-            if question_type != question_type_filter:
+            if question_type_filter and question_type != question_type_filter:
                 continue
 
-            print(f"Processing session {multi_session_idx}: {question_type}")
+            self.logger.info(f"Processing session {multi_session_idx}: {question_type}")
 
             user_id = f"lme_s_experiment_user_{multi_session_idx}"
-            session_id = f"lme_s_experiment_session_{multi_session_idx}"
 
             try:
-                await self.zep.user.add(user_id=user_id)
-                await self.zep.memory.add_session(
-                    user_id=user_id,
-                    session_id=session_id,
-                )
+                if self.dry_run:
+                    self.logger.info(f"DRY RUN: Would create user: {user_id}")
+                else:
+                    await self.zep.user.add(user_id=user_id)
 
                 for session_idx, session in enumerate(multi_session):
+                    session_id = f"lme_s_experiment_session_{multi_session_idx}_{session_idx}"
+                    
+                    if self.dry_run:
+                        self.logger.info(f"DRY RUN: Would create session: user_id={user_id}, session_id={session_id}")
+                    else:
+                        await self.zep.memory.add_session(
+                            user_id=user_id,
+                            session_id=session_id,
+                        )
                     for msg in session:
                         date = multi_session_dates[session_idx] + " UTC"
                         date_format = "%Y/%m/%d (%a) %H:%M UTC"
                         date_string = datetime.strptime(date, date_format).replace(
                             tzinfo=timezone.utc
                         )
-
+                        
                         if len(msg["content"]) > 8000:
-                            print(
-                                f"Warning: Message is over 8000 characters:\n{msg['content']}"
+                            self.logger.warning(
+                                f"Message is over 8000 characters, truncating: {msg['content'][:100]}..."
                             )
 
-                        await self.zep.memory.add(
-                            session_id=session_id,
-                            messages=[
-                                Message(
-                                    role=msg["role"],
-                                    role_type=msg["role"],
-                                    content=msg["content"][:8000],
-                                    created_at=date_string.isoformat(),
-                                )
-                            ],
+                        message_payload = Message(
+                            role=msg["role"],
+                            role_type=msg["role"],
+                            content=msg["content"][:8000],
+                            created_at=date_string.isoformat(),
                         )
+                        
+                        if self.dry_run:
+                            self.logger.debug(f"DRY RUN: Would add message to session {session_id}:")
+                            self.logger.debug(f"  Role: {msg['role']}")
+                            self.logger.debug(f"  Role Type: {msg['role']}")
+                            self.logger.debug(f"  Content: {msg['content'][:100]}{'...' if len(msg['content']) > 100 else ''}")
+                            self.logger.debug(f"  Created At: {date_string.isoformat()}")
+                            self.logger.debug(f"  Session ID: {session_id}")
+                        else:
+                            await self.zep.memory.add(
+                                session_id=session_id,
+                                messages=[message_payload],
+                            )
             except Exception as e:
-                print(f"Error processing session {multi_session_idx}: {e}")
+                self.logger.error(f"Error processing session {multi_session_idx}: {e}")
 
     async def lme_response(self, context: str, question: str) -> str:
         """Generate response using LLM with context"""
@@ -394,7 +436,7 @@ FACTS and ENTITIES represent relevant context to the current conversation.
 
         idx_start = 0
         while idx_start < min(num_sessions, len(df)) - 1:
-            print(f"Processing batch starting at index {idx_start}")
+            self.logger.info(f"Processing batch starting at index {idx_start}")
 
             if use_baseline:
                 batch_results = await asyncio.gather(
@@ -480,16 +522,44 @@ async def main():
         default=False,
         help="Use Zep development environment (default: production)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Dry run mode: print what would be done instead of executing",
+    )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set the logging level (default: INFO)",
+    )
+    parser.add_argument(
+        "--question-type",
+        default=None,
+        help="Filter by question type (default: None - ingest all types)",
+    )
 
     args = parser.parse_args()
 
+    # Setup basic logging for main function
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper()),
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
+    
     # Check if at least one action is specified
     if not args.ingest and not args.eval:
         parser.print_help()
-        print("\nError: You must specify at least one action: --ingest or --eval")
+        logger.error("Error: You must specify at least one action: --ingest or --eval")
         return
 
-    runner = LongMemEvalRunner(zep_dev_environment=args.zep_dev_environment)
+    runner = LongMemEvalRunner(
+        zep_dev_environment=args.zep_dev_environment, 
+        dry_run=args.dry_run,
+        log_level=args.log_level
+    )
 
     # Download dataset
     if not args.skip_download:
@@ -500,7 +570,7 @@ async def main():
 
     # Ingest data
     if args.ingest and not args.baseline:
-        await runner.ingest_data(df, args.num_sessions)
+        await runner.ingest_data(df, args.num_sessions, args.question_type)
 
     # Run evaluation
     if args.eval:
@@ -521,17 +591,17 @@ async def main():
             else 0
         )
 
-        print("\nEvaluation Results:")
-        print(f"Total questions: {len(grades)}")
-        print(f"Correct answers: {sum(grades)}")
-        print(f"Accuracy: {accuracy:.3f}")
-        print(f"Average duration: {avg_duration:.3f}s")
+        logger.info("Evaluation Results:")
+        logger.info(f"Total questions: {len(grades)}")
+        logger.info(f"Correct answers: {sum(grades)}")
+        logger.info(f"Accuracy: {accuracy:.3f}")
+        logger.info(f"Average duration: {avg_duration:.3f}s")
         if not args.baseline:
-            print(f"Average retrieval duration: {avg_retrieval_duration:.3f}s")
-        print(f"Results saved to: {args.output}")
+            logger.info(f"Average retrieval duration: {avg_retrieval_duration:.3f}s")
+        logger.info(f"Results saved to: {args.output}")
 
     if args.ingest:
-        print("Data ingestion completed successfully")
+        logger.info("Data ingestion completed successfully")
 
 
 if __name__ == "__main__":

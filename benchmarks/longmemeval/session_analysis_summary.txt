@@ -1,0 +1,60 @@
+LongMemEval Dataset Session Analysis Summary
+==================================================
+Analysis performed: 2025-07-19 09:46:33
+
+Overall Statistics:
+  Total entries: 500
+  Total non-empty sessions: 23882
+  Total messages: 246930
+  Average messages per session: 10.34
+
+Session Types:
+  Mixed user/assistant sessions: 23810
+  User-only sessions: 1
+  Assistant-only sessions: 71
+
+Anomalies:
+  Sessions with consecutive same roles: 14
+
+Sessions by Question Type:
+  temporal-reasoning: 6648
+  multi-session: 6604
+  knowledge-update: 3900
+  single-session-user: 3596
+  single-session-assistant: 2868
+  single-session-preference: 1496
+
+Most Common Role Patterns (top 20):
+  user->assistant->user->assistant->user->assistant->user->assistant->user->assistant->user->assistant: 12832
+  user->assistant->user->assistant->user->assistant->user->assistant: 1757
+  user->assistant->user->assistant->user->assistant->user->assistant->user->assistant: 1705
+  user->assistant->user->assistant->user->assistant: 1678
+  user->assistant: 1474
+  user->assistant->user->assistant->user->assistant->user->assistant->user->assistant->user->assist...: 1454
+  user->assistant->user->assistant: 676
+  assistant->user->assistant->user->assistant: 346
+  assistant->user->assistant->user->assistant->user->assistant: 320
+  assistant->user->assistant->user->assistant->user->assistant->user->assistant: 275
+  assistant->user->assistant: 242
+  assistant->user->assistant->user->assistant->user->assistant->user->assistant->user->assistant: 215
+  assistant->user->assistant->user->assistant->user->assistant->user->assistant->user->assistant->u...: 180
+  user->assistant->user->assistant->user->assistant->user->assistant->user->assistant->user->assist...: 125
+  assistant->user->assistant->user->assistant->user->assistant->user->assistant->user->assistant->u...: 106
+  assistant: 65
+  user->assistant->user->assistant->user->assistant->user->assistant->user->assistant->user->assist...: 59
+  assistant->user->assistant->user->assistant->user->assistant->user->assistant->user->assistant->u...: 55
+  user->assistant->user->assistant->user->assistant->user->assistant->user->assistant->user->assist...: 43
+  user->assistant->user->assistant->user->assistant->user->assistant->user->assistant->user->assist...: 35
+
+Anomalous Sessions (consecutive same roles):
+  Entry 9, Session 0 (single-session-user): assistant->assistant->assistant
+  Entry 92, Session 42 (multi-session): user->assistant->user->user->user->assistant->user->user->user->assistant
+  Entry 96, Session 34 (multi-session): assistant->assistant->assistant
+  Entry 182, Session 46 (multi-session): user->user->assistant->user->assistant->user->assistant->user->assistant
+  Entry 273, Session 16 (temporal-reasoning): assistant->assistant
+  Entry 291, Session 36 (temporal-reasoning): assistant->assistant
+  Entry 313, Session 52 (temporal-reasoning): user->assistant->user->assistant->user->user->assistant->user->assistant
+  Entry 323, Session 1 (temporal-reasoning): assistant->user->assistant->user->assistant->user->assistant->user->assistant->user->assistant->user->assistant->user->user->user->user->user
+  Entry 400, Session 48 (knowledge-update): assistant->assistant
+  Entry 408, Session 4 (knowledge-update): assistant->user->assistant->user->user->assistant->user->assistant->user->assistant->user->assistant
+  ... and 4 more
