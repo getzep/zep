@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LongMemEval Benchmark Ingestion and Evaluation Script - Refactored
+LongMemEval Benchmark Ingestion and Evaluation Script
 """
 
 import asyncio
@@ -25,7 +25,6 @@ from zep_cloud.client import AsyncZep
 RESPONSE_MODEL = "gpt-4o"
 GRADER_MODEL = "gpt-4o"
 DATA_PATH = "data"
-GOOGLE_DRIVE_FILE_ID = "1zJgtYRFhOh5zDQzzatiddfjYhFSnyQ80"
 
 # Context template for search results
 CONTEXT_TEMPLATE = """
@@ -182,6 +181,10 @@ class LongMemEvalRunner:
 
         raise FileNotFoundError(f"Dataset not found at {dataset_path} or {parent_path}")
 
+    async def ingest_data(self, df: pd.DataFrame, num_sessions: int = 500, question_type_filter: Optional[str] = None):
+        """Ingest conversation data into Zep knowledge graph"""
+        filter_msg = f"question type: {question_type_filter}" if question_type_filter else "all question types"
+        self.logger.info(f"Ingesting {num_sessions} sessions with {filter_msg}")
 
     async def ingest_data(
         self,
@@ -349,7 +352,7 @@ class SearchContextComposer:
         ]
         entities = [f"  - {node.name}: {node.summary}" for node in nodes]
         
-        return SEARCH_CONTEXT_TEMPLATE.format(
+        return CONTEXT_TEMPLATE.format(
             facts="\n".join(facts), 
             entities="\n".join(entities)
         )
@@ -441,17 +444,14 @@ class LongMemEvaluator:
 
         # Search Zep for relevant context
         start_retrieval = time()
-        edges_results = await self.zep.graph.search(
-            user_id=user_id, query=question, limit=20
-        )
-        nodes_results = await self.zep.graph.search(
-            user_id=user_id, query=question, search_scope="nodes", limit=20
-        )
+        edges_results = await self.zep.graph.search(user_id=user_id, query=question, limit=20)
+        nodes_results = await self.zep.graph.search(user_id=user_id, query=question, search_scope="nodes", limit=20)
         retrieval_duration = time() - start_retrieval
 
         # Compose context from search results
         context = self.compose_search_context(
-            edges_results.edges or [], nodes_results.nodes or []
+            edges_results.edges or [], 
+            nodes_results.nodes or []
         )
 
         # Generate response
@@ -474,9 +474,7 @@ class LongMemEvaluator:
 
         return result, (1 if grade else 0), duration, retrieval_duration
 
-    async def evaluate_conversation_baseline(
-        self, df: pd.DataFrame, multi_session_idx: int
-    ) -> Tuple[dict, int, float]:
+    async def evaluate_conversation_baseline(self, df: pd.DataFrame, multi_session_idx: int) -> Tuple[dict, int, float]:
         """Evaluate a single conversation with baseline (full context)"""
         # Extract question data
         question_id = df["question_id"][multi_session_idx]
@@ -488,7 +486,15 @@ class LongMemEvaluator:
         multi_session = df["haystack_sessions"].iloc[multi_session_idx]
         multi_session_dates = df["haystack_dates"].iloc[multi_session_idx]
 
-        context = self._build_baseline_context(multi_session, multi_session_dates)
+        context = ""
+        for session_idx, session in enumerate(multi_session):
+            for msg in session:
+                date = multi_session_dates[session_idx] + " UTC"
+                date_format = "%Y/%m/%d (%a) %H:%M UTC"
+                date_string = datetime.strptime(date, date_format).replace(
+                    tzinfo=timezone.utc
+                )
+                context += f"{msg['role']} (date: {date_string}): {msg['content']}\n"
 
         # Generate response
         start = time()
@@ -509,19 +515,6 @@ class LongMemEvaluator:
         }
 
         return result, (1 if grade else 0), duration
-    
-    def _build_baseline_context(self, multi_session: list, multi_session_dates: list) -> str:
-        """Build context from full conversation history for baseline evaluation"""
-        context = ""
-        for session_idx, session in enumerate(multi_session):
-            for msg in session:
-                date = multi_session_dates[session_idx] + " UTC"
-                date_format = "%Y/%m/%d (%a) %H:%M UTC"
-                date_string = datetime.strptime(date, date_format).replace(
-                    tzinfo=timezone.utc
-                )
-                context += f"{msg['role']} (date: {date_string}): {msg['content']}\n"
-        return context
 
     async def run_evaluation(
         self,
@@ -675,10 +668,10 @@ async def main():
 
     # Download dataset
     if not args.skip_download:
-        await evaluator.download_dataset()
+        await runner.download_dataset()
 
     # Load dataset
-    df = evaluator.load_dataset(args.dataset)
+    df = runner.load_dataset(args.dataset)
 
     # Ingest data
     if args.ingest and not args.baseline:
