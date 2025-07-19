@@ -181,9 +181,18 @@ class LongMemEvalRunner:
 
         raise FileNotFoundError(f"Dataset not found at {dataset_path} or {parent_path}")
 
-    async def ingest_data(self, df: pd.DataFrame, num_sessions: int = 500, question_type_filter: Optional[str] = None):
+    async def ingest_data(
+        self,
+        df: pd.DataFrame,
+        num_sessions: int = 500,
+        question_type_filter: Optional[str] = None,
+    ):
         """Ingest conversation data into Zep knowledge graph"""
-        filter_msg = f"question type: {question_type_filter}" if question_type_filter else "all question types"
+        filter_msg = (
+            f"question type: {question_type_filter}"
+            if question_type_filter
+            else "all question types"
+        )
         self.logger.info(f"Ingesting {num_sessions} sessions with {filter_msg}")
 
     async def ingest_data(
@@ -353,8 +362,7 @@ class SearchContextComposer:
         entities = [f"  - {node.name}: {node.summary}" for node in nodes]
         
         return CONTEXT_TEMPLATE.format(
-            facts="\n".join(facts), 
-            entities="\n".join(entities)
+            facts="\n".join(facts), entities="\n".join(entities)
         )
 
 
@@ -444,14 +452,17 @@ class LongMemEvaluator:
 
         # Search Zep for relevant context
         start_retrieval = time()
-        edges_results = await self.zep.graph.search(user_id=user_id, query=question, limit=20)
-        nodes_results = await self.zep.graph.search(user_id=user_id, query=question, search_scope="nodes", limit=20)
+        edges_results = await self.zep.graph.search(
+            user_id=user_id, query=question, limit=20
+        )
+        nodes_results = await self.zep.graph.search(
+            user_id=user_id, query=question, search_scope="nodes", limit=20
+        )
         retrieval_duration = time() - start_retrieval
 
         # Compose context from search results
         context = self.compose_search_context(
-            edges_results.edges or [], 
-            nodes_results.nodes or []
+            edges_results.edges or [], nodes_results.nodes or []
         )
 
         # Generate response
@@ -474,7 +485,9 @@ class LongMemEvaluator:
 
         return result, (1 if grade else 0), duration, retrieval_duration
 
-    async def evaluate_conversation_baseline(self, df: pd.DataFrame, multi_session_idx: int) -> Tuple[dict, int, float]:
+    async def evaluate_conversation_baseline(
+        self, df: pd.DataFrame, multi_session_idx: int
+    ) -> Tuple[dict, int, float]:
         """Evaluate a single conversation with baseline (full context)"""
         # Extract question data
         question_id = df["question_id"][multi_session_idx]
