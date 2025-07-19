@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LongMemEval Benchmark Ingestion and Evaluation Script
+LongMemEval Benchmark Ingestion and Evaluation Script - Refactored
 """
 
 import asyncio
@@ -25,6 +25,7 @@ from zep_cloud.client import AsyncZep
 RESPONSE_MODEL = "gpt-4o"
 GRADER_MODEL = "gpt-4o"
 DATA_PATH = "data"
+GOOGLE_DRIVE_FILE_ID = "1zJgtYRFhOh5zDQzzatiddfjYhFSnyQ80"
 
 # Context template for search results
 CONTEXT_TEMPLATE = """
@@ -281,8 +282,8 @@ class LongMemEvalRunner:
             temperature=0,
         )
         return response.choices[0].message.content or ""
-
-    async def lme_grader(
+    
+    async def grade_response(
         self, question: str, gold_answer: str, response: str, question_type: str
     ) -> bool:
         """Grade the response against gold standard using LLM"""
@@ -328,6 +329,105 @@ class LongMemEvalRunner:
             facts="\n".join(facts), entities="\n".join(entities)
         )
 
+
+class SearchContextComposer:
+    """Handles search context composition from Zep results"""
+    
+    @staticmethod
+    def format_edge_date_range(edge: EntityEdge) -> str:
+        """Format date range for edge display"""
+        start_date = edge.valid_at if edge.valid_at else "date unknown"
+        end_date = edge.invalid_at if edge.invalid_at else "present"
+        return f"{start_date} - {end_date}"
+    
+    @staticmethod
+    def compose_context(edges: List[EntityEdge], nodes: List[EntityNode]) -> str:
+        """Compose search context from edges and nodes"""
+        facts = [
+            f"  - {edge.fact} ({SearchContextComposer.format_edge_date_range(edge)})" 
+            for edge in edges
+        ]
+        entities = [f"  - {node.name}: {node.summary}" for node in nodes]
+        
+        return SEARCH_CONTEXT_TEMPLATE.format(
+            facts="\n".join(facts), 
+            entities="\n".join(entities)
+        )
+
+
+class LongMemEvaluator:
+    """Main orchestrator for LongMemEval benchmark evaluation"""
+    
+    def __init__(self, zep_dev_environment: bool = False, log_level: str = "INFO"):
+        load_dotenv()
+        
+        self.logger = self._setup_logger(log_level)
+        
+        # Initialize clients
+        zep_client = self._create_zep_client(zep_dev_environment)
+        openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        # Initialize components
+        self.dataset_manager = DatasetManager(self.logger)
+        self.zep_ingester = ZepIngester(zep_client, self.logger)
+        self.llm_evaluator = LLMEvaluator(openai_client, self.logger)
+        self.context_composer = SearchContextComposer()
+        
+        # Keep direct access to clients for backward compatibility
+        self.zep = zep_client
+    
+    def _setup_logger(self, log_level: str) -> logging.Logger:
+        """Setup and configure logger"""
+        logger = logging.getLogger(__name__)
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+        
+        logger.setLevel(getattr(logging, log_level.upper()))
+        return logger
+    
+    def _create_zep_client(self, zep_dev_environment: bool) -> AsyncZep:
+        """Create and configure Zep client"""
+        if zep_dev_environment:
+            return AsyncZep(
+                api_key=os.getenv("ZEP_API_KEY"),
+                base_url="https://api.development.getzep.com/api/v2",
+            )
+        return AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
+    
+    # Delegation methods for backward compatibility
+    async def download_dataset(self, file_path: str = os.path.join(DATA_PATH, "longmemeval_data.tar.gz")) -> None:
+        """Download and extract the LongMemEval dataset"""
+        await self.dataset_manager.download_dataset(file_path)
+    
+    def load_dataset(self, dataset_path: str = "data/longmemeval_s.json") -> pd.DataFrame:
+        """Load dataset from file"""
+        return self.dataset_manager.load_dataset(dataset_path)
+    
+    async def ingest_data(
+        self, df: pd.DataFrame, num_sessions: int = 500, question_type_filter: Optional[str] = None
+    ) -> None:
+        """Ingest conversation data into Zep knowledge graph"""
+        await self.zep_ingester.ingest_dataset(df, num_sessions, question_type_filter)
+    
+    async def lme_response(self, context: str, question: str) -> str:
+        """Generate response using LLM with context"""
+        return await self.llm_evaluator.generate_response(context, question)
+    
+    async def lme_grader(
+        self, question: str, gold_answer: str, response: str, question_type: str
+    ) -> bool:
+        """Grade the response against gold standard"""
+        return await self.llm_evaluator.grade_response(question, gold_answer, response, question_type)
+    
+    def compose_search_context(self, edges: List[EntityEdge], nodes: List[EntityNode]) -> str:
+        """Compose search context from edges and nodes"""
+        return self.context_composer.compose_context(edges, nodes)
+    
     async def evaluate_conversation(
         self, df: pd.DataFrame, multi_session_idx: int
     ) -> Tuple[dict, int, float, float]:
@@ -388,15 +488,7 @@ class LongMemEvalRunner:
         multi_session = df["haystack_sessions"].iloc[multi_session_idx]
         multi_session_dates = df["haystack_dates"].iloc[multi_session_idx]
 
-        context = ""
-        for session_idx, session in enumerate(multi_session):
-            for msg in session:
-                date = multi_session_dates[session_idx] + " UTC"
-                date_format = "%Y/%m/%d (%a) %H:%M UTC"
-                date_string = datetime.strptime(date, date_format).replace(
-                    tzinfo=timezone.utc
-                )
-                context += f"{msg['role']} (date: {date_string}): {msg['content']}\n"
+        context = self._build_baseline_context(multi_session, multi_session_dates)
 
         # Generate response
         start = time()
@@ -417,6 +509,19 @@ class LongMemEvalRunner:
         }
 
         return result, (1 if grade else 0), duration
+    
+    def _build_baseline_context(self, multi_session: list, multi_session_dates: list) -> str:
+        """Build context from full conversation history for baseline evaluation"""
+        context = ""
+        for session_idx, session in enumerate(multi_session):
+            for msg in session:
+                date = multi_session_dates[session_idx] + " UTC"
+                date_format = "%Y/%m/%d (%a) %H:%M UTC"
+                date_string = datetime.strptime(date, date_format).replace(
+                    tzinfo=timezone.utc
+                )
+                context += f"{msg['role']} (date: {date_string}): {msg['content']}\n"
+        return context
 
     async def run_evaluation(
         self,
@@ -570,10 +675,10 @@ async def main():
 
     # Download dataset
     if not args.skip_download:
-        await runner.download_dataset()
+        await evaluator.download_dataset()
 
     # Load dataset
-    df = runner.load_dataset(args.dataset)
+    df = evaluator.load_dataset(args.dataset)
 
     # Ingest data
     if args.ingest and not args.baseline:
