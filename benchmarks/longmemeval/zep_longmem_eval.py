@@ -33,9 +33,8 @@ class Grade(BaseModel):
 
 
 class LongMemEvalRunner:
-    def __init__(self, zep_dev_environment: bool = False, dry_run: bool = False, log_level: str = "INFO"):
+    def __init__(self, zep_dev_environment: bool = False, log_level: str = "INFO"):
         load_dotenv()
-        self.dry_run = dry_run
         
         # Setup logging
         self.logger = logging.getLogger(__name__)
@@ -49,19 +48,14 @@ class LongMemEvalRunner:
         
         self.logger.setLevel(getattr(logging, log_level.upper()))
         
-        if not dry_run:
-            if zep_dev_environment:
-                self.zep = AsyncZep(
-                    api_key=os.getenv("ZEP_API_KEY"),
-                    base_url="https://api.development.getzep.com/api/v2",
-                )
-            else:
-                self.zep = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
-            self.oai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        if zep_dev_environment:
+            self.zep = AsyncZep(
+                api_key=os.getenv("ZEP_API_KEY"),
+                base_url="https://api.development.getzep.com/api/v2",
+            )
         else:
-            self.logger.info("DRY RUN MODE: Zep and OpenAI clients not initialized")
-            self.zep = None
-            self.oai_client = None
+            self.zep = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
+        self.oai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.template = """
 FACTS and ENTITIES represent relevant context to the current conversation.
 
@@ -82,14 +76,6 @@ FACTS and ENTITIES represent relevant context to the current conversation.
         self, file_path: str = os.path.join(DATA_PATH, "longmemeval_data.tar.gz")
     ):
         """Download and extract the LongMemEval dataset"""
-        if self.dry_run:
-            self.logger.info("DRY RUN: Would download and extract dataset")
-            self.logger.info(f"DRY RUN: Target file: {file_path}")
-            self.logger.info(f"DRY RUN: Would create directory: {DATA_PATH}")
-            self.logger.info("DRY RUN: Would download from Google Drive")
-            self.logger.info("DRY RUN: Would extract to longmemeval_oracle.json")
-            return
-            
         file_id = "1zJgtYRFhOh5zDQzzatiddfjYhFSnyQ80"
         url = f"https://drive.google.com/uc?id={file_id}"
 
@@ -154,21 +140,15 @@ FACTS and ENTITIES represent relevant context to the current conversation.
             user_id = f"lme_s_experiment_user_{multi_session_idx}"
 
             try:
-                if self.dry_run:
-                    self.logger.info(f"DRY RUN: Would create user: {user_id}")
-                else:
-                    await self.zep.user.add(user_id=user_id)
+                await self.zep.user.add(user_id=user_id)
 
                 for session_idx, session in enumerate(multi_session):
                     session_id = f"lme_s_experiment_session_{multi_session_idx}_{session_idx}"
                     
-                    if self.dry_run:
-                        self.logger.info(f"DRY RUN: Would create session: user_id={user_id}, session_id={session_id}")
-                    else:
-                        await self.zep.memory.add_session(
-                            user_id=user_id,
-                            session_id=session_id,
-                        )
+                    await self.zep.memory.add_session(
+                        user_id=user_id,
+                        session_id=session_id,
+                    )
                     for msg in session:
                         date = multi_session_dates[session_idx] + " UTC"
                         date_format = "%Y/%m/%d (%a) %H:%M UTC"
@@ -188,18 +168,10 @@ FACTS and ENTITIES represent relevant context to the current conversation.
                             created_at=date_string.isoformat(),
                         )
                         
-                        if self.dry_run:
-                            self.logger.debug(f"DRY RUN: Would add message to session {session_id}:")
-                            self.logger.debug(f"  Role: {msg['role']}")
-                            self.logger.debug(f"  Role Type: {msg['role']}")
-                            self.logger.debug(f"  Content: {msg['content'][:100]}{'...' if len(msg['content']) > 100 else ''}")
-                            self.logger.debug(f"  Created At: {date_string.isoformat()}")
-                            self.logger.debug(f"  Session ID: {session_id}")
-                        else:
-                            await self.zep.memory.add(
-                                session_id=session_id,
-                                messages=[message_payload],
-                            )
+                        await self.zep.memory.add(
+                            session_id=session_id,
+                            messages=[message_payload],
+                        )
             except Exception as e:
                 self.logger.error(f"Error processing session {multi_session_idx}: {e}")
 
@@ -523,12 +495,6 @@ async def main():
         help="Use Zep development environment (default: production)",
     )
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        default=False,
-        help="Dry run mode: print what would be done instead of executing",
-    )
-    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
@@ -557,7 +523,6 @@ async def main():
 
     runner = LongMemEvalRunner(
         zep_dev_environment=args.zep_dev_environment, 
-        dry_run=args.dry_run,
         log_level=args.log_level
     )
 
