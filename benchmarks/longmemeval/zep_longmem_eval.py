@@ -186,6 +186,7 @@ class LongMemEvalRunner:
         df: pd.DataFrame,
         num_sessions: int = 500,
         question_type_filter: Optional[str] = None,
+        start_index: int = 0,
     ):
         """Ingest conversation data into Zep knowledge graph"""
         filter_msg = (
@@ -193,7 +194,10 @@ class LongMemEvalRunner:
             if question_type_filter
             else "all question types"
         )
-        self.logger.info(f"Ingesting {num_sessions} sessions with {filter_msg}")
+        # Ensure we don't exceed dataset bounds
+        max_sessions = len(df)
+        end_index = min(start_index + num_sessions, max_sessions)
+        actual_sessions = end_index - start_index
 
     async def ingest_data(
         self,
