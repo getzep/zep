@@ -21,6 +21,9 @@ from pydantic import BaseModel, Field
 from zep_cloud import EntityEdge, EntityNode, Message
 from zep_cloud.client import AsyncZep
 
+
+question_max = 0
+
 # Configuration Constants
 RESPONSE_MODEL = "gpt-4o"
 GRADER_MODEL = "gpt-4o"
@@ -30,8 +33,11 @@ DATA_PATH = "data"
 CONTEXT_TEMPLATE = """
 FACTS and ENTITIES represent relevant context to the current conversation.
 
-# These are the most relevant facts and their valid date ranges. If the fact is about an event, the event takes place during this time.
-# format: FACT (Date range: from - to)
+# These are the most relevant facts for the conversation along with the datetime of the event that the fact refers to.
+If a fact mentions something happening a week ago, then the datetime will be the date time of last week and not the datetime
+of when the fact was stated.
+Timestamps in memories represent the actual time the event occurred, not the time the event was mentioned in a message.
+    
 <FACTS>
 {facts}
 </FACTS>
@@ -199,6 +205,24 @@ class LongMemEvalRunner:
         end_index = min(start_index + num_sessions, max_sessions)
         actual_sessions = end_index - start_index
 
+    async def ingest_data(
+        self,
+        df: pd.DataFrame,
+        num_sessions: int = 500,
+        question_type_filter: Optional[str] = None,
+        start_index: int = 0,
+    ):
+        """Ingest conversation data into Zep knowledge graph"""
+        filter_msg = (
+            f"question type: {question_type_filter}"
+            if question_type_filter
+            else "all question types"
+        )
+        # Ensure we don't exceed dataset bounds
+        max_sessions = len(df)
+        end_index = min(start_index + num_sessions, max_sessions)
+        actual_sessions = end_index - start_index
+
         self.logger.info(
             f"Ingesting {actual_sessions} sessions (indices {start_index}-{end_index - 1}) with {filter_msg}"
         )
@@ -280,8 +304,8 @@ class LongMemEvalRunner:
             temperature=0,
         )
         return response.choices[0].message.content or ""
-
-    async def lme_grader(
+    
+    async def grade_response(
         self, question: str, gold_answer: str, response: str, question_type: str
     ) -> bool:
         """Grade the response against gold standard using LLM"""
@@ -327,6 +351,104 @@ class LongMemEvalRunner:
             facts="\n".join(facts), entities="\n".join(entities)
         )
 
+
+class SearchContextComposer:
+    """Handles search context composition from Zep results"""
+    
+    @staticmethod
+    def format_edge_date_range(edge: EntityEdge) -> str:
+        """Format date range for edge display"""
+        start_date = edge.valid_at if edge.valid_at else "date unknown"
+        end_date = edge.invalid_at if edge.invalid_at else "present"
+        return f"{start_date} - {end_date}"
+    
+    @staticmethod
+    def compose_context(edges: List[EntityEdge], nodes: List[EntityNode]) -> str:
+        """Compose search context from edges and nodes"""
+        facts = [
+            f"  - {edge.fact} ({SearchContextComposer.format_edge_date_range(edge)})" 
+            for edge in edges
+        ]
+        entities = [f"  - {node.name}: {node.summary}" for node in nodes]
+        
+        return CONTEXT_TEMPLATE.format(
+            facts="\n".join(facts), entities="\n".join(entities)
+        )
+
+
+class LongMemEvaluator:
+    """Main orchestrator for LongMemEval benchmark evaluation"""
+    
+    def __init__(self, zep_dev_environment: bool = False, log_level: str = "INFO"):
+        load_dotenv()
+        
+        self.logger = self._setup_logger(log_level)
+        
+        # Initialize clients
+        zep_client = self._create_zep_client(zep_dev_environment)
+        openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        # Initialize components
+        self.dataset_manager = DatasetManager(self.logger)
+        self.zep_ingester = ZepIngester(zep_client, self.logger)
+        self.llm_evaluator = LLMEvaluator(openai_client, self.logger)
+        self.context_composer = SearchContextComposer()
+        
+        # Keep direct access to clients for backward compatibility
+        self.zep = zep_client
+    
+    def _setup_logger(self, log_level: str) -> logging.Logger:
+        """Setup and configure logger"""
+        logger = logging.getLogger(__name__)
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+        
+        logger.setLevel(getattr(logging, log_level.upper()))
+        return logger
+    
+    def _create_zep_client(self, zep_dev_environment: bool) -> AsyncZep:
+        """Create and configure Zep client"""
+        if zep_dev_environment:
+            return AsyncZep(
+                api_key=os.getenv("ZEP_API_KEY"),
+                base_url="https://api.development.getzep.com/api/v2",
+            )
+        return AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
+    
+    # Delegation methods for backward compatibility
+    async def download_dataset(self, file_path: str = os.path.join(DATA_PATH, "longmemeval_data.tar.gz")) -> None:
+        """Download and extract the LongMemEval dataset"""
+        await self.dataset_manager.download_dataset(file_path)
+    
+    def load_dataset(self, dataset_path: str = "data/longmemeval_s.json") -> pd.DataFrame:
+        """Load dataset from file"""
+        return self.dataset_manager.load_dataset(dataset_path)
+    
+    async def ingest_data(
+        self, df: pd.DataFrame, num_sessions: int = 500, question_type_filter: Optional[str] = None
+    ) -> None:
+        """Ingest conversation data into Zep knowledge graph"""
+        await self.zep_ingester.ingest_dataset(df, num_sessions, question_type_filter)
+    
+    async def lme_response(self, context: str, question: str) -> str:
+        """Generate response using LLM with context"""
+        return await self.llm_evaluator.generate_response(context, question)
+    
+    async def lme_grader(
+        self, question: str, gold_answer: str, response: str, question_type: str
+    ) -> bool:
+        """Grade the response against gold standard"""
+        return await self.llm_evaluator.grade_response(question, gold_answer, response, question_type)
+    
+    def compose_search_context(self, edges: List[EntityEdge], nodes: List[EntityNode]) -> str:
+        """Compose search context from edges and nodes"""
+        return self.context_composer.compose_context(edges, nodes)
+    
     async def evaluate_conversation(
         self, df: pd.DataFrame, multi_session_idx: int
     ) -> Tuple[dict, int, float, float]:
@@ -335,16 +457,31 @@ class LongMemEvalRunner:
         question_id = df["question_id"][multi_session_idx]
         question_type = df["question_type"][multi_session_idx]
         question = f"(date: {df['question_date'][multi_session_idx]}) {df['question'][multi_session_idx]}"
+
         gold_answer = df["answer"][multi_session_idx]
         user_id = f"lme_s_experiment_user_{multi_session_idx}"
 
+        global question_max
+        question_max = max(question_max, len(question))
+
+        print(f"Question max: {question_max}")
+
         # Search Zep for relevant context
         start_retrieval = time()
-        edges_results = await self.zep.graph.search(
-            user_id=user_id, query=question, limit=20
-        )
-        nodes_results = await self.zep.graph.search(
-            user_id=user_id, query=question, search_scope="nodes", limit=20
+        edges_results, nodes_results = await asyncio.gather(
+            self.zep.graph.search(
+                user_id=user_id,
+                query=question,
+                limit=20,
+                # reranker="cross_encoder"
+            ),
+            self.zep.graph.search(
+                user_id=user_id,
+                query=question,
+                scope="nodes",
+                limit=20,
+                # reranker="cross_encoder",
+            ),
         )
         retrieval_duration = time() - start_retrieval
 
