@@ -31,7 +31,7 @@ CONTEXT_TEMPLATE = """
 FACTS and ENTITIES represent relevant context to the current conversation.
 
 # These are the most relevant facts for the conversation along with the datetime of the event that the fact refers to.
-If a fact mentions something happening a week ago, then the datetime will be the date time of last week and not the datetime
+If a fact mentions something happening a week ago, then the datetime will be the datetime of last week and not the datetime
 of when the fact was stated.
 Timestamps in memories represent the actual time the event occurred, not the time the event was mentioned in a message.
     
