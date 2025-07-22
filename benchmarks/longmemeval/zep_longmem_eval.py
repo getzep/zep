@@ -30,8 +30,11 @@ DATA_PATH = "data"
 CONTEXT_TEMPLATE = """
 FACTS and ENTITIES represent relevant context to the current conversation.
 
-# These are the most relevant facts and their valid date ranges. If the fact is about an event, the event takes place during this time.
-# format: FACT (Date range: from - to)
+# These are the most relevant facts for the conversation along with the datetime of the event that the fact refers to.
+If a fact mentions something happening a week ago, then the datetime will be the date time of last week and not the datetime
+of when the fact was stated.
+Timestamps in memories represent the actual time the event occurred, not the time the event was mentioned in a message.
+    
 <FACTS>
 {facts}
 </FACTS>
@@ -341,10 +344,10 @@ class LongMemEvalRunner:
         # Search Zep for relevant context
         start_retrieval = time()
         edges_results = await self.zep.graph.search(
-            user_id=user_id, query=question, limit=20
+            user_id=user_id, query=question, limit=20, reranker="cross_encoder"
         )
         nodes_results = await self.zep.graph.search(
-            user_id=user_id, query=question, search_scope="nodes", limit=20
+            user_id=user_id, query=question, scope="nodes", limit=20, reranker="rrf"
         )
         retrieval_duration = time() - start_retrieval
 
