@@ -21,6 +21,9 @@ from pydantic import BaseModel, Field
 from zep_cloud import EntityEdge, EntityNode, Message
 from zep_cloud.client import AsyncZep
 
+
+question_max = 0
+
 # Configuration Constants
 RESPONSE_MODEL = "gpt-4o"
 GRADER_MODEL = "gpt-4o"
@@ -30,8 +33,11 @@ DATA_PATH = "data"
 CONTEXT_TEMPLATE = """
 FACTS and ENTITIES represent relevant context to the current conversation.
 
-# These are the most relevant facts and their valid date ranges. If the fact is about an event, the event takes place during this time.
-# format: FACT (Date range: from - to)
+# These are the most relevant facts for the conversation along with the datetime of the event that the fact refers to.
+If a fact mentions something happening a week ago, then the datetime will be the date time of last week and not the datetime
+of when the fact was stated.
+Timestamps in memories represent the actual time the event occurred, not the time the event was mentioned in a message.
+    
 <FACTS>
 {facts}
 </FACTS>
@@ -451,16 +457,31 @@ class LongMemEvaluator:
         question_id = df["question_id"][multi_session_idx]
         question_type = df["question_type"][multi_session_idx]
         question = f"(date: {df['question_date'][multi_session_idx]}) {df['question'][multi_session_idx]}"
+
         gold_answer = df["answer"][multi_session_idx]
         user_id = f"lme_s_experiment_user_{multi_session_idx}"
 
+        global question_max
+        question_max = max(question_max, len(question))
+
+        print(f"Question max: {question_max}")
+
         # Search Zep for relevant context
         start_retrieval = time()
-        edges_results = await self.zep.graph.search(
-            user_id=user_id, query=question, limit=20
-        )
-        nodes_results = await self.zep.graph.search(
-            user_id=user_id, query=question, search_scope="nodes", limit=20
+        edges_results, nodes_results = await asyncio.gather(
+            self.zep.graph.search(
+                user_id=user_id,
+                query=question,
+                limit=20,
+                # reranker="cross_encoder"
+            ),
+            self.zep.graph.search(
+                user_id=user_id,
+                query=question,
+                scope="nodes",
+                limit=20,
+                # reranker="cross_encoder",
+            ),
         )
         retrieval_duration = time() - start_retrieval
 
