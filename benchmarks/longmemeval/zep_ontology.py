@@ -5,9 +5,6 @@ Zep Knowledge Graph Ontology for Domain-Agnostic Memory Systems
 This module defines custom entity and edge types for Zep knowledge graphs, designed to 
 complement the default types (User, Preference, Procedure) while avoiding domain overfitting.
 
-Based on analysis of the LongMemEval dataset, these types focus on the most critical 
-missing pieces for effective memory systems across all domains.
-
 Usage:
     from zep_ontology import setup_zep_ontology
     setup_zep_ontology(client)
@@ -20,7 +17,7 @@ from typing import Dict, List, Tuple, Any
 
 
 # =============================================================================
-# CUSTOM ENTITY TYPES (6 types - staying well under 10 limit)
+# CUSTOM ENTITY TYPES 
 # =============================================================================
 
 class Location(EntityModel):
@@ -130,7 +127,7 @@ class Document(EntityModel):
 
 
 # =============================================================================
-# CUSTOM EDGE TYPES (8 types - staying under 10 limit)
+# CUSTOM EDGE TYPES 
 # =============================================================================
 
 class LocatedAt(EdgeModel):
@@ -147,10 +144,6 @@ class OccurredAt(EdgeModel):
     """
     Represents that an event happened at a specific time or location.
     """
-    time_context: EntityText = Field(
-        description="When this occurred: specific date, time period, or temporal reference",
-        default=None
-    )
     frequency: EntityText = Field(
         description="How often this occurs: once, daily, weekly, occasionally, etc.",
         default=None
@@ -205,10 +198,6 @@ class WorksFor(EdgeModel):
     """
     position: EntityText = Field(
         description="The user's job title or role in the organization",
-        default=None
-    )
-    start_date: EntityText = Field(
-        description="When the user started this relationship with the organization",
         default=None
     )
     employment_type: EntityText = Field(
@@ -352,76 +341,7 @@ def setup_zep_ontology(zep_client) -> None:
     entities = get_entity_definitions()
     edges = get_edge_definitions()
     
-    try:
-        zep_client.graph.set_ontology(
-            entities=entities,
-            edges=edges
-        )
-        print("✅ Zep ontology configured successfully!")
-        print(f"📊 Custom entity types: {len(entities)}")
-        print(f"🔗 Custom edge types: {len(edges)}")
-        
-    except Exception as e:
-        print(f"❌ Failed to configure Zep ontology: {e}")
-        raise
-
-
-def print_ontology_summary() -> None:
-    """
-    Print a summary of the defined ontology for documentation purposes.
-    """
-    entities = get_entity_definitions()
-    edges = get_edge_definitions()
-    
-    print("=" * 80)
-    print("ZEP KNOWLEDGE GRAPH ONTOLOGY SUMMARY")
-    print("=" * 80)
-    
-    print(f"\n📋 TOTAL TYPES: {len(entities)} custom entities + {len(edges)} custom edges")
-    print("   (Plus 3 default entities: User, Preference, Procedure)")
-    
-    print(f"\n🏷️  CUSTOM ENTITY TYPES ({len(entities)}/10):")
-    print("-" * 40)
-    for name, entity_class in entities.items():
-        doc = entity_class.__doc__.strip().split('\n')[0] if entity_class.__doc__ else "No description"
-        print(f"• {name}: {doc}")
-    
-    print(f"\n🔗 CUSTOM EDGE TYPES ({len(edges)}/10):")
-    print("-" * 40)
-    for name, (edge_class, constraints) in edges.items():
-        doc = edge_class.__doc__.strip().split('\n')[0] if edge_class.__doc__ else "No description"
-        print(f"• {name}: {doc}")
-        if constraints:
-            constraint_strs = []
-            for constraint in constraints:
-                if hasattr(constraint, 'source') and hasattr(constraint, 'target'):
-                    if constraint.source and constraint.target:
-                        constraint_strs.append(f"{constraint.source} → {constraint.target}")
-                    elif constraint.source:
-                        constraint_strs.append(f"{constraint.source} → any")
-                    else:
-                        constraint_strs.append("any → any")
-            if constraint_strs:
-                print(f"    Sources/Targets: {', '.join(constraint_strs)}")
-    
-    print(f"\n🎯 DESIGN PRINCIPLES:")
-    print("-" * 40)
-    print("• Domain-agnostic: Works across all conversation topics")
-    print("• Complementary: Builds on default User/Preference/Procedure types")  
-    print("• Strategic: Focuses on highest-value relationships for memory")
-    print("• Scalable: Room for expansion within Zep's 10-type limits")
-    print("• LongMemEval-informed: Addresses root causes of benchmark failures")
-    
-    print(f"\n💡 USAGE EXAMPLES:")
-    print("-" * 40)
-    print("• User WORKS_FOR Organization (Google)")
-    print("• User OWNS Object (Tesla Model 3)")
-    print("• Event OCCURRED_AT Location (Meeting at Office)")
-    print("• User PARTICIPATED_IN Event (Attended Conference)")
-    print("• User DISCUSSES Topic (Interested in AI)")
-    print("• Document RELATES_TO Topic (Python tutorial about programming)")
-
-
-if __name__ == "__main__":
-    # Print ontology summary when run directly
-    print_ontology_summary()
+    zep_client.graph.set_ontology(
+        entities=entities,
+        edges=edges
+    )
