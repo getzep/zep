@@ -75,7 +75,7 @@ Each integration package is released independently:
 
 ## Support
 
-- [Zep Documentation](https://docs.getzep.com)
+- [Zep Documentation](https://help.getzep.com)
 - [GitHub Issues](https://github.com/getzep/zep/issues)
 - [Community Discord](https://discord.gg/zep)
 
