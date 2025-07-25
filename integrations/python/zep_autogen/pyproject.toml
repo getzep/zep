@@ -28,6 +28,7 @@ dev = [
     "pytest-cov",
     "pytest-asyncio",
     "ruff>=0.1.0",
+    "mypy>=1.0.0",
 ]
 
 [build-system]
@@ -74,3 +75,20 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "autogen_core.*",
+    "autogen_agentchat.*", 
+    "autogen_ext.*",
+    "zep_cloud.*",
+]
+ignore_missing_imports = true

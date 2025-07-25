@@ -194,7 +194,8 @@ class TestZepMemoryMock:
 
             # Verify the mock was called and results returned
             mock_client.graph.search.assert_called_once()
-            assert len(results) >= 0  # Should return some results
+            assert hasattr(results, 'results')  # Should be a MemoryQueryResult
+            assert len(results.results) >= 0  # Should return some results
 
         except ImportError:
             pytest.skip("zep_cloud not available")

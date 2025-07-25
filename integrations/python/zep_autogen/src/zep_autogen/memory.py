@@ -17,6 +17,7 @@ from autogen_core.memory import (
     UpdateContextResult,
 )
 from autogen_core.model_context import ChatCompletionContext
+from autogen_core import CancellationToken
 from autogen_core.models import SystemMessage
 from zep_cloud.client import AsyncZep
 from zep_cloud.types import Message
@@ -60,7 +61,7 @@ class ZepMemory(Memory):
         # Set up module logger
         self._logger = logging.getLogger(__name__)
 
-    async def add(self, entry: MemoryContent) -> None:
+    async def add(self, content: MemoryContent, cancellation_token: CancellationToken | None = None) -> None:
         """
         Add a memory entry to Zep storage.
 
@@ -77,14 +78,14 @@ class ZepMemory(Memory):
         # Validate mime type - only support TEXT, MARKDOWN, and JSON
         supported_mime_types = {MemoryMimeType.TEXT, MemoryMimeType.MARKDOWN, MemoryMimeType.JSON}
 
-        if entry.mime_type not in supported_mime_types:
+        if content.mime_type not in supported_mime_types:
             raise ValueError(
-                f"Unsupported mime type: {entry.mime_type}. "
+                f"Unsupported mime type: {content.mime_type}. "
                 f"ZepMemory only supports: {', '.join(str(mt) for mt in supported_mime_types)}"
             )
 
         # Extract metadata
-        metadata_copy = entry.metadata.copy() if entry.metadata else {}
+        metadata_copy = content.metadata.copy() if content.metadata else {}
         content_type = metadata_copy.get("type", "data")  # Default to "data" if no type specified
 
         if content_type == "message":
@@ -99,23 +100,27 @@ class ZepMemory(Memory):
             role = metadata_copy.get("role", "user")
             name = metadata_copy.get("name")
 
-            message = Message(name=name, content=entry.content, role=role)
+            message = Message(name=name, content=str(content.content), role=role)
 
             # Add message to user's thread in Zep
             await self._client.thread.add_messages(thread_id=self._thread_id, messages=[message])
 
         elif content_type == "data":
             # Store as data in the user's graph - map mime type to Zep data type
-            mime_to_data_type = {
+            mime_to_data_type: dict[MemoryMimeType, str] = {
                 MemoryMimeType.TEXT: "text",
                 MemoryMimeType.MARKDOWN: "text",
                 MemoryMimeType.JSON: "json",
             }
 
-            data_type = mime_to_data_type.get(entry.mime_type, "text")
+            # Safely get the data type, handling both MemoryMimeType and string
+            if isinstance(content.mime_type, MemoryMimeType):
+                data_type = mime_to_data_type.get(content.mime_type, "text")
+            else:
+                data_type = "text"  # Default for string or unknown types
 
             # Add data to user's graph
-            await self._client.graph.add(user_id=self._user_id, type=data_type, data=entry.content)
+            await self._client.graph.add(user_id=self._user_id, type=data_type, data=str(content.content))
 
         else:
             raise ValueError(
@@ -123,25 +128,34 @@ class ZepMemory(Memory):
             )
 
     async def query(
-        self, query: str, limit: int | None = None, **kwargs: Any
-    ) -> Sequence[MemoryContent]:
+        self, query: str | MemoryContent, cancellation_token: CancellationToken | None = None, **kwargs: Any
+    ) -> MemoryQueryResult:
         """
         Query memories from Zep storage using graph.search.
 
         Args:
-            query: Search query string
-            limit: Maximum number of results to return
+            query: Search query string or MemoryContent
+            cancellation_token: Optional cancellation token
             **kwargs: Additional query parameters
 
         Returns:
-            Sequence of matching memory content from user's graph
+            MemoryQueryResult containing matching memories
         """
+        # Convert query to string if it's MemoryContent
+        if isinstance(query, MemoryContent):
+            query_str = str(query.content)
+        else:
+            query_str = query
+            
+        # Extract limit from kwargs for backward compatibility
+        limit = kwargs.pop("limit", 5)
+        
         results = []
 
         try:
             # Search the user's graph
             graph_results = await self._client.graph.search(
-                user_id=self._user_id, query=query, limit=limit or 5, **kwargs
+                user_id=self._user_id, query=query_str, limit=limit, **kwargs
             )
 
             # Add graph search results
@@ -195,7 +209,7 @@ class ZepMemory(Memory):
             # Log error but don't fail completely
             self._logger.error(f"Error querying Zep memory: {e}")
 
-        return results
+        return MemoryQueryResult(results=results)
 
     async def update_context(self, model_context: ChatCompletionContext) -> UpdateContextResult:
         """
@@ -217,6 +231,8 @@ class ZepMemory(Memory):
                 return UpdateContextResult(memories=MemoryQueryResult(results=[]))
 
             # Get memory from Zep session
+            if not self._thread_id:
+                return UpdateContextResult(memories=MemoryQueryResult(results=[]))
             memory_result = await self._client.thread.get_user_context(thread_id=self._thread_id)
 
             memory_contents = []
@@ -263,7 +279,8 @@ class ZepMemory(Memory):
         """
         try:
             # Delete the session - this clears all messages and memory for this session
-            await self._client.thread.delete(thread_id=self._thread_id)
+            if self._thread_id:
+                await self._client.thread.delete(thread_id=self._thread_id)
 
         except Exception as e:
             self._logger.error(f"Error clearing Zep memory: {e}")
