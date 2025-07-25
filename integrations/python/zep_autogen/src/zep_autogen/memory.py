@@ -5,6 +5,7 @@ This module provides memory classes that integrate Zep with AutoGen's memory sys
 """
 
 import logging
+import uuid
 from collections.abc import Sequence
 from typing import Any
 
@@ -25,46 +26,53 @@ class ZepMemory(Memory):
     """
     A memory implementation that integrates with Zep for persistent storage
     and retrieval of conversation context and agent memories.
+    
+    This class implements AutoGen's Memory interface and provides:
+    - Automatic context injection via update_context()
+    - Manual memory queries via query()  
+    - Message storage in Zep threads
+    - Data storage in Zep user graphs
     """
 
     def __init__(
-        self, client: AsyncZep, session_id: str, user_id: str | None = None, **kwargs: Any
+        self, client: AsyncZep, user_id: str, thread_id: str | None = None, **kwargs: Any
     ) -> None:
         """
         Initialize ZepMemory with an AsyncZep client instance.
 
         Args:
             client: An initialized AsyncZep instance
-            session_id: Session ID for memory isolation (required)
-            user_id: Optional user ID for user-level memory
+            user_id: User ID for memory isolation (required)
+            thread_id: Optional thread ID. If not provided, will be created automatically
             **kwargs: Additional configuration options
         """
-        # Set up module logger
-        self._logger = logging.getLogger(__name__)
         if not isinstance(client, AsyncZep):
             raise TypeError("client must be an instance of AsyncZep")
-
-        if not session_id:
-            raise ValueError("session_id is required")
-
+        
+        if not user_id:
+            raise ValueError("user_id is required")
+        
         self._client = client
-        self._session_id = session_id
         self._user_id = user_id
+        self._thread_id = thread_id
         self._config = kwargs
+        
+        # Set up module logger
+        self._logger = logging.getLogger(__name__)
 
     async def add(self, entry: MemoryContent) -> None:
         """
         Add a memory entry to Zep storage.
 
-        If role_type is present in metadata, stores as a message in the session.
-        If role_type is not present, stores as data in the user's graph.
+        Uses metadata.type to determine storage method:
+        - type="message": stores as message in thread using thread.add_messages
+        - type="data": stores as data in user's graph using graph.add (maps mime type to data type)
 
         Args:
             entry: The memory content to store
 
         Raises:
-            ImportError: If zep_cloud.types.Message is not available
-            ValueError: If the memory content mime type is not supported
+            ValueError: If the memory content mime type or metadata type is not supported
         """
         # Validate mime type - only support TEXT, MARKDOWN, and JSON
         supported_mime_types = {MemoryMimeType.TEXT, MemoryMimeType.MARKDOWN, MemoryMimeType.JSON}
@@ -75,42 +83,55 @@ class ZepMemory(Memory):
                 f"ZepMemory only supports: {', '.join(str(mt) for mt in supported_mime_types)}"
             )
 
-        # Extract user_id from metadata using pop (removes it from metadata)
+        # Extract metadata
         metadata_copy = entry.metadata.copy() if entry.metadata else {}
-        message_user_id = metadata_copy.pop("user_id", None)
+        content_type = metadata_copy.get("type", "data")  # Default to "data" if no type specified
+        
+        if content_type == "message":
+            if self._thread_id:
+                # Ensure thread exists
+                await self._client.thread.get(self._thread_id)
 
-        if message_user_id:
-            # Store as message in session (we have user_id)
-
-            message = Message(
-                role=message_user_id,  # Use user_id as role
-                content=entry.content,
-                role_type="user",  # Always "user" when user_id is present
-            )
-
-            # Add message to Zep session
-            await self._client.memory.add(session_id=self._session_id, messages=[message])
-        else:
-            # Store as data in the graph (no user_id in metadata)
-            if not self._user_id:
-                raise ValueError(
-                    "user_id is required when storing graph data (no user_id in metadata)"
+            if not self._thread_id:
+                self._thread_id = f"thread_{uuid.uuid4().hex[:16]}"
+                await self._client.thread.create(
+                    thread_id=self._thread_id,
+                    user_id=self._user_id
                 )
-
-            # Determine data type based on mime type
-            if entry.mime_type == MemoryMimeType.JSON:
-                data_type = "json"
-            else:
-                data_type = "text"  # Both TEXT and MARKDOWN are stored as text
-
+            # Store as message in thread session
+            role = metadata_copy.get("role", "user")
+            name = metadata_copy.get("name")
+            
+            message = Message(
+                name=name,
+                content=entry.content,
+                role=role
+            )
+            
+            # Add message to user's thread in Zep
+            await self._client.thread.add_messages(thread_id=self._thread_id, messages=[message])
+        
+        elif content_type == "data":
+            # Store as data in the user's graph - map mime type to Zep data type
+            mime_to_data_type = {
+                MemoryMimeType.TEXT: "text",
+                MemoryMimeType.MARKDOWN: "text", 
+                MemoryMimeType.JSON: "json"
+            }
+            
+            data_type = mime_to_data_type.get(entry.mime_type, "text")
+            
             # Add data to user's graph
             await self._client.graph.add(user_id=self._user_id, type=data_type, data=entry.content)
+        
+        else:
+            raise ValueError(f"Unsupported metadata type: {content_type}. Supported types: 'message', 'data'")
 
     async def query(
         self, query: str, limit: int | None = None, **kwargs: Any
     ) -> Sequence[MemoryContent]:
         """
-        Query memories from Zep storage using memory.get and graph.search.
+        Query memories from Zep storage using graph.search.
 
         Args:
             query: Search query string
@@ -118,45 +139,18 @@ class ZepMemory(Memory):
             **kwargs: Additional query parameters
 
         Returns:
-            Sequence of matching memory content
+            Sequence of matching memory content from user's graph
         """
         results = []
 
         try:
-            # Get memory context from session
-            memory_result = await self._client.memory.get(session_id=self._session_id)
+            # Search the user's graph
+            graph_results = await self._client.graph.search(
+                user_id=self._user_id, query=query, limit=limit or 5, **kwargs
+            )
 
-            if memory_result.context:
-                results.append(
-                    MemoryContent(
-                        content=memory_result.context,
-                        mime_type=MemoryMimeType.TEXT,
-                        metadata={"source": "session_context"},
-                    )
-                )
-
-            # Get recent messages
-            if memory_result.messages:
-                for msg in memory_result.messages[:limit] if limit else memory_result.messages:
-                    results.append(
-                        MemoryContent(
-                            content=msg.content,
-                            mime_type=MemoryMimeType.TEXT,
-                            metadata={
-                                "role": msg.role,
-                                "role_type": msg.role_type,
-                                "source": "session_messages",
-                            },
-                        )
-                    )
-
-            # If we have a user_id, also search the user's graph
-            if self._user_id:
-                graph_results = await self._client.graph.search(
-                    user_id=self._user_id, query=query, limit=limit or 5, **kwargs
-                )
-
-                # Add graph search results
+            # Add graph search results
+            if graph_results.edges:
                 for edge in graph_results.edges:
                     results.append(
                         MemoryContent(
@@ -164,11 +158,44 @@ class ZepMemory(Memory):
                             mime_type=MemoryMimeType.TEXT,
                             metadata={
                                 "source": "user_graph",
-                                "score": getattr(edge, "score", None),
+                                "edge_name": edge.name,
+                                "edge_attributes": edge.attributes or {},
+                                "created_at": edge.created_at,
+                                "expired_at": edge.expired_at,
+                                "valid_at": edge.valid_at,
+                                "invalid_at": edge.invalid_at,
                             },
                         )
                     )
-
+            if graph_results.nodes:
+                for node in graph_results.nodes:
+                    results.append(
+                        MemoryContent(
+                            content=f"{node.name}:\n {node.summary}",
+                            mime_type=MemoryMimeType.TEXT,
+                            metadata={
+                                "source": "user_graph",
+                                "node_name": node.name,
+                                "node_attributes": node.attributes or {},
+                                "created_at": node.created_at,
+                            },
+                        )
+                    )
+            if graph_results.episodes:
+                for episode in graph_results.episodes:
+                    results.append(
+                        MemoryContent(
+                            content=episode.content,
+                            mime_type=MemoryMimeType.TEXT,
+                            metadata={
+                                "source": "user_graph",
+                                "episode_type": episode.source,
+                                "episode_role": episode.role_type,
+                                "episode_name": episode.role,
+                                "created_at": episode.created_at,
+                            },
+                        )
+                    )
         except Exception as e:
             # Log error but don't fail completely
             self._logger.error(f"Error querying Zep memory: {e}")
@@ -195,7 +222,7 @@ class ZepMemory(Memory):
                 return UpdateContextResult(memories=MemoryQueryResult(results=[]))
 
             # Get memory from Zep session
-            memory_result = await self._client.memory.get(session_id=self._session_id)
+            memory_result = await self._client.thread.get_user_context(thread_id=self._thread_id)
 
             memory_contents = []
             memory_parts = []
@@ -206,7 +233,7 @@ class ZepMemory(Memory):
                     MemoryContent(
                         content=memory_result.context,
                         mime_type=MemoryMimeType.TEXT,
-                        metadata={"source": "session_context"},
+                        metadata={"source": "thread_context"},
                     )
                 )
                 memory_parts.append(f"Memory context: {memory_result.context}")
@@ -241,7 +268,7 @@ class ZepMemory(Memory):
         """
         try:
             # Delete the session - this clears all messages and memory for this session
-            await self._client.memory.delete_session(session_id=self._session_id)
+            await self._client.thread.delete(thread_id=self._thread_id)
 
         except Exception as e:
             self._logger.error(f"Error clearing Zep memory: {e}")
@@ -257,6 +284,3 @@ class ZepMemory(Memory):
         # The client was provided externally, so we don't close it here
         # The caller is responsible for closing the client when appropriate
         pass
-
-
-__all__ = ["ZepMemory"]

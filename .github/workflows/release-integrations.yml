@@ -1,0 +1,118 @@
+name: Release Integration Packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Which package to release'
+        required: true
+        type: choice
+        options:
+          - autogen
+
+jobs:
+  detect-package:
+    runs-on: ubuntu-latest
+    outputs:
+      package: ${{ steps.detect.outputs.package }}
+    steps:
+      - name: Detect package from release or input
+        id: detect
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "package=${{ github.event.inputs.package }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            # Extract package name from release tag (e.g., zep-autogen-v0.1.0 -> autogen)
+            TAG="${{ github.event.release.tag_name }}"
+            if [[ $TAG =~ ^zep-([^-]+)-v.*$ ]]; then
+              PACKAGE="${BASH_REMATCH[1]}"
+              echo "package=$PACKAGE" >> $GITHUB_OUTPUT
+            else
+              echo "Could not extract package from tag: $TAG"
+              exit 1
+            fi
+          fi
+
+  test:
+    runs-on: ubuntu-latest
+    needs: detect-package
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if package exists
+        run: |
+          if [ ! -d "integrations/python/${{ needs.detect-package.outputs.package }}" ]; then
+            echo "Package ${{ needs.detect-package.outputs.package }} does not exist"
+            exit 1
+          fi
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        working-directory: integrations/python/${{ needs.detect-package.outputs.package }}
+        run: uv sync --extra dev
+
+      - name: Run tests
+        working-directory: integrations/python/${{ needs.detect-package.outputs.package }}
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src/
+          uv run pytest tests/ -v
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [detect-package, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Build package
+        working-directory: integrations/python/${{ needs.detect-package.outputs.package }}
+        run: uv build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.detect-package.outputs.package }}-dist
+          path: integrations/python/${{ needs.detect-package.outputs.package }}/dist/
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [detect-package, test, build]
+    environment: 
+      name: pypi
+      url: https://pypi.org/p/zep-${{ needs.detect-package.outputs.package }}
+    permissions:
+      id-token: write  # Required for trusted publishing
+    
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.detect-package.outputs.package }}-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

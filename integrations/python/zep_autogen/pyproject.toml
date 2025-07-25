@@ -12,8 +12,15 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-slugify>=8.0.4",
     "rich>=14.0.0",
-    "zep-cloud>=2.15.0",
+    "zep-cloud>=3.0.0rc1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/getzep/zep"
+Documentation = "https://docs.getzep.com/integrations/autogen"
+Repository = "https://github.com/getzep/zep"
+"Bug Tracker" = "https://github.com/getzep/zep/issues"
+Changelog = "https://github.com/getzep/zep/blob/main/integrations/python/autogen/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
