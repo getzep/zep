@@ -6,9 +6,9 @@ This module provides memory classes that integrate Zep with AutoGen's memory sys
 
 import logging
 import uuid
-from collections.abc import Sequence
 from typing import Any
 
+from autogen_core import CancellationToken
 from autogen_core.memory import (
     Memory,
     MemoryContent,
@@ -17,7 +17,6 @@ from autogen_core.memory import (
     UpdateContextResult,
 )
 from autogen_core.model_context import ChatCompletionContext
-from autogen_core import CancellationToken
 from autogen_core.models import SystemMessage
 from zep_cloud.client import AsyncZep
 from zep_cloud.types import Message
@@ -61,7 +60,9 @@ class ZepMemory(Memory):
         # Set up module logger
         self._logger = logging.getLogger(__name__)
 
-    async def add(self, content: MemoryContent, cancellation_token: CancellationToken | None = None) -> None:
+    async def add(
+        self, content: MemoryContent, cancellation_token: CancellationToken | None = None
+    ) -> None:
         """
         Add a memory entry to Zep storage.
 
@@ -120,7 +121,9 @@ class ZepMemory(Memory):
                 data_type = "text"  # Default for string or unknown types
 
             # Add data to user's graph
-            await self._client.graph.add(user_id=self._user_id, type=data_type, data=str(content.content))
+            await self._client.graph.add(
+                user_id=self._user_id, type=data_type, data=str(content.content)
+            )
 
         else:
             raise ValueError(
@@ -128,7 +131,10 @@ class ZepMemory(Memory):
             )
 
     async def query(
-        self, query: str | MemoryContent, cancellation_token: CancellationToken | None = None, **kwargs: Any
+        self,
+        query: str | MemoryContent,
+        cancellation_token: CancellationToken | None = None,
+        **kwargs: Any,
     ) -> MemoryQueryResult:
         """
         Query memories from Zep storage using graph.search.
@@ -146,10 +152,10 @@ class ZepMemory(Memory):
             query_str = str(query.content)
         else:
             query_str = query
-            
+
         # Extract limit from kwargs for backward compatibility
         limit = kwargs.pop("limit", 5)
-        
+
         results = []
 
         try:

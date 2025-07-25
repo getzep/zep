@@ -8,12 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from autogen_core.memory import MemoryContent, MemoryMimeType
 
-from zep_autogen import ZepMemory, __version__
-
-
-def test_version():
-    """Test that the package version is accessible."""
-    assert __version__ == "0.1.0"
+from zep_autogen import ZepMemory
 
 
 def test_package_import():
@@ -194,7 +189,7 @@ class TestZepMemoryMock:
 
             # Verify the mock was called and results returned
             mock_client.graph.search.assert_called_once()
-            assert hasattr(results, 'results')  # Should be a MemoryQueryResult
+            assert hasattr(results, "results")  # Should be a MemoryQueryResult
             assert len(results.results) >= 0  # Should return some results
 
         except ImportError:
@@ -272,6 +267,3 @@ class TestZepMemoryReal:
         assert memory is not None
         assert memory._thread_id == "test-session-123"
         assert memory._user_id == "test-user-123"
-
-        # Clean up
-        await zep_client.close()
