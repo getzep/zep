@@ -8,8 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from autogen_core.memory import MemoryContent, MemoryMimeType
 
-from zep_community.autogen import ZepMemory
-from zep_community import __version__
+from zep_autogen import ZepMemory, __version__
 
 
 def test_version():
@@ -19,9 +18,9 @@ def test_version():
 
 def test_package_import():
     """Test that the package can be imported successfully."""
-    import zep_community
+    import zep_autogen
 
-    assert zep_community is not None
+    assert zep_autogen is not None
 
 
 def test_zep_memory_import():
@@ -34,11 +33,11 @@ class TestBasicFunctionality:
 
     def test_package_structure(self):
         """Test that the package has the expected structure."""
-        import zep_community
+        import zep_autogen
 
-        assert hasattr(zep_community, "__version__")
-        assert hasattr(zep_community, "__author__")
-        assert hasattr(zep_community, "__description__")
+        assert hasattr(zep_autogen, "__version__")
+        assert hasattr(zep_autogen, "__author__")
+        assert hasattr(zep_autogen, "__description__")
 
 
 class TestZepMemoryMock:
@@ -268,9 +267,7 @@ class TestZepMemoryReal:
     @pytest.mark.asyncio
     async def test_zep_memory_real_client_initialization(self, zep_client):
         """Test ZepMemory with a real Zep client."""
-        memory = ZepMemory(
-            client=zep_client, thread_id="test-session-123", user_id="test-user-123"
-        )
+        memory = ZepMemory(client=zep_client, thread_id="test-session-123", user_id="test-user-123")
         assert memory is not None
         assert memory._thread_id == "test-session-123"
         assert memory._user_id == "test-user-123"

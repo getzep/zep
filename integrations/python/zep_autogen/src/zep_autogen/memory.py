@@ -26,10 +26,10 @@ class ZepMemory(Memory):
     """
     A memory implementation that integrates with Zep for persistent storage
     and retrieval of conversation context and agent memories.
-    
+
     This class implements AutoGen's Memory interface and provides:
     - Automatic context injection via update_context()
-    - Manual memory queries via query()  
+    - Manual memory queries via query()
     - Message storage in Zep threads
     - Data storage in Zep user graphs
     """
@@ -48,15 +48,15 @@ class ZepMemory(Memory):
         """
         if not isinstance(client, AsyncZep):
             raise TypeError("client must be an instance of AsyncZep")
-        
+
         if not user_id:
             raise ValueError("user_id is required")
-        
+
         self._client = client
         self._user_id = user_id
         self._thread_id = thread_id
         self._config = kwargs
-        
+
         # Set up module logger
         self._logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ class ZepMemory(Memory):
         # Extract metadata
         metadata_copy = entry.metadata.copy() if entry.metadata else {}
         content_type = metadata_copy.get("type", "data")  # Default to "data" if no type specified
-        
+
         if content_type == "message":
             if self._thread_id:
                 # Ensure thread exists
@@ -94,38 +94,33 @@ class ZepMemory(Memory):
 
             if not self._thread_id:
                 self._thread_id = f"thread_{uuid.uuid4().hex[:16]}"
-                await self._client.thread.create(
-                    thread_id=self._thread_id,
-                    user_id=self._user_id
-                )
+                await self._client.thread.create(thread_id=self._thread_id, user_id=self._user_id)
             # Store as message in thread session
             role = metadata_copy.get("role", "user")
             name = metadata_copy.get("name")
-            
-            message = Message(
-                name=name,
-                content=entry.content,
-                role=role
-            )
-            
+
+            message = Message(name=name, content=entry.content, role=role)
+
             # Add message to user's thread in Zep
             await self._client.thread.add_messages(thread_id=self._thread_id, messages=[message])
-        
+
         elif content_type == "data":
             # Store as data in the user's graph - map mime type to Zep data type
             mime_to_data_type = {
                 MemoryMimeType.TEXT: "text",
-                MemoryMimeType.MARKDOWN: "text", 
-                MemoryMimeType.JSON: "json"
+                MemoryMimeType.MARKDOWN: "text",
+                MemoryMimeType.JSON: "json",
             }
-            
+
             data_type = mime_to_data_type.get(entry.mime_type, "text")
-            
+
             # Add data to user's graph
             await self._client.graph.add(user_id=self._user_id, type=data_type, data=entry.content)
-        
+
         else:
-            raise ValueError(f"Unsupported metadata type: {content_type}. Supported types: 'message', 'data'")
+            raise ValueError(
+                f"Unsupported metadata type: {content_type}. Supported types: 'message', 'data'"
+            )
 
     async def query(
         self, query: str, limit: int | None = None, **kwargs: Any
