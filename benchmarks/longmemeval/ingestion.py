@@ -3,6 +3,7 @@
 Data ingestion module for LongMemEval benchmark
 """
 
+import asyncio
 import csv
 import gdown
 import logging
@@ -21,7 +22,12 @@ from zep_ontology import setup_zep_ontology
 
 
 class IngestionRunner:
-    def __init__(self, zep_dev_environment: bool = False, log_level: str = "INFO", use_custom_ontology: bool = False):
+    def __init__(
+        self,
+        zep_dev_environment: bool = False,
+        log_level: str = "INFO",
+        use_custom_ontology: bool = False,
+    ):
         load_dotenv()
 
         self.logger = self._setup_logging(log_level)
@@ -35,10 +41,10 @@ class IngestionRunner:
             )
         else:
             self.zep = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
-        
-        # Setup custom ontology if requested
-        if self.use_custom_ontology:
-            self._setup_ontology()
+
+        # Concurrency controls
+        self._csv_lock = asyncio.Lock()
+        self._semaphore = asyncio.Semaphore(2)  # Limit to 2 concurrent users
 
     def _setup_logging(self, log_level: str) -> logging.Logger:
         """Configure logging with proper formatting"""
@@ -54,28 +60,176 @@ class IngestionRunner:
         logger.setLevel(getattr(logging, log_level.upper()))
         return logger
 
-    def _setup_ontology(self):
-        """Setup custom Zep ontology for improved knowledge graph structure"""
-        try:
-            # Note: setup_zep_ontology expects a synchronous client
-            # We'll need to create a sync client for ontology setup
-            from zep_cloud.client import Zep
-            
-            # Create synchronous client for ontology setup
-            if hasattr(self.zep, 'base_url') and 'development' in str(self.zep.base_url):
-                sync_client = Zep(
-                    api_key=os.getenv("ZEP_API_KEY"),
-                    base_url="https://api.development.getzep.com/api/v2",
+    async def _process_user(
+        self,
+        multi_session_idx: int,
+        df: pd.DataFrame,
+        question_type_filter: Optional[str],
+        writer: csv.DictWriter,
+        log_file,
+    ):
+        """Process a single user's data with all their sessions"""
+        async with self._semaphore:  # Limit concurrent users
+            # Get session data
+            multi_session = df["haystack_sessions"].iloc[multi_session_idx]
+            multi_session_dates = df["haystack_dates"].iloc[multi_session_idx]
+            question_type = df["question_type"][multi_session_idx]
+
+            # Apply question type filter
+            if question_type_filter and question_type != question_type_filter:
+                return
+
+            self.logger.info(f"Processing session {multi_session_idx}: {question_type}")
+
+            # Initialize user-level tracking
+            user_id = f"lme_s_experiment_user_{multi_session_idx}"
+            user_creation_status = "unknown"
+            user_error = ""
+
+            # Attempt user creation
+            try:
+                await self.zep.user.add(user_id=user_id)
+                user_creation_status = "success"
+                self.logger.debug(f"User {user_id} created successfully")
+            except Exception as e:
+                user_creation_status = "failure"
+                user_error = str(e)
+                self.logger.error(f"Failed to create user {user_id}: {e}")
+
+            # Process each session for this user, even if user creation failed
+            # (in case user already exists)
+            for session_idx, session in enumerate(multi_session):
+                session_id = (
+                    f"lme_s_experiment_session_{multi_session_idx}_{session_idx}"
                 )
-            else:
-                sync_client = Zep(api_key=os.getenv("ZEP_API_KEY"))
-            
-            setup_zep_ontology(sync_client)
-            self.logger.info("✅ Custom ontology configured successfully for improved knowledge graph structure")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Failed to configure custom ontology: {e}")
-            self.logger.warning("Continuing with default Zep ontology...")
+                session_creation_status = "unknown"
+                session_error = ""
+                messages_attempted = len(session)
+                messages_added = 0
+                message_addition_status = "unknown"
+                message_error = ""
+
+                # Attempt session creation
+                try:
+                    await self.zep.memory.add_session(
+                        user_id=user_id, session_id=session_id
+                    )
+                    session_creation_status = "success"
+                    self.logger.debug(f"Session {session_id} created successfully")
+                except Exception as e:
+                    session_creation_status = "failure"
+                    session_error = str(e)
+                    self.logger.error(f"Failed to create session {session_id}: {e}")
+
+                # Attempt to add messages to session
+                if session_creation_status == "success" and messages_attempted > 0:
+                    try:
+                        # Validate data structure consistency
+                        if session_idx >= len(multi_session_dates):
+                            raise IndexError(
+                                f"session_idx {session_idx} exceeds multi_session_dates length {len(multi_session_dates)}"
+                            )
+
+                        # Parse and format timestamp (same for all messages in this session)
+                        date = multi_session_dates[session_idx] + " UTC"
+                        date_format = "%Y/%m/%d (%a) %H:%M UTC"
+                        date_string = datetime.strptime(date, date_format).replace(
+                            tzinfo=timezone.utc
+                        )
+
+                        # Process messages in batches of 15
+                        batch_size = 15
+                        for batch_start in range(0, len(session), batch_size):
+                            batch_end = min(batch_start + batch_size, len(session))
+                            batch_messages = []
+
+                            # Create message payloads for this batch
+                            for msg_idx in range(batch_start, batch_end):
+                                msg = session[msg_idx]
+                                message_payload = Message(
+                                    role=msg["role"],
+                                    role_type=msg["role"],
+                                    content=msg["content"],
+                                    created_at=date_string.isoformat(),
+                                )
+                                batch_messages.append(message_payload)
+
+                            try:
+                                # Add batch to Zep
+                                await self.zep.memory.add(
+                                    session_id=session_id,
+                                    messages=batch_messages,
+                                )
+                                messages_added += len(batch_messages)
+                                self.logger.debug(
+                                    f"Added batch of {len(batch_messages)} messages to session {session_id}"
+                                )
+
+                            except Exception as batch_e:
+                                message_error = f"Batch {batch_start}-{batch_end - 1} failed: {str(batch_e)}"
+                                self.logger.warning(
+                                    f"Failed to add batch {batch_start}-{batch_end - 1} to session {session_id}: {batch_e}"
+                                )
+                                break  # Stop processing remaining batches for this session
+
+                        # Determine overall message addition status
+                        if messages_added == messages_attempted:
+                            message_addition_status = "success"
+                        elif messages_added > 0:
+                            message_addition_status = "partial"
+                        else:
+                            message_addition_status = "failure"
+                            if not message_error:
+                                message_error = "No messages were added successfully"
+
+                    except Exception as e:
+                        message_addition_status = "failure"
+                        message_error = str(e)
+                        self.logger.error(
+                            f"Failed to process messages for session {session_id}: {e}"
+                        )
+
+                elif messages_attempted == 0:
+                    message_addition_status = "empty_session"
+                    message_error = "Session has no messages"
+                    self.logger.warning(f"Session {session_id} has no messages to add")
+
+                else:
+                    message_addition_status = "skipped"
+                    message_error = "Session creation failed"
+
+                # Log this session's results with concurrency safety
+                log_entry = {
+                    "multi_session_idx": multi_session_idx,
+                    "user_id": user_id,
+                    "user_creation_status": user_creation_status,
+                    "user_error": user_error,
+                    "session_idx": session_idx,
+                    "session_id": session_id,
+                    "session_creation_status": session_creation_status,
+                    "session_error": session_error,
+                    "messages_attempted": messages_attempted,
+                    "messages_added": messages_added,
+                    "message_addition_status": message_addition_status,
+                    "message_error": message_error,
+                    "question_type": question_type,
+                }
+
+                # Thread-safe CSV writing
+                async with self._csv_lock:
+                    writer.writerow(log_entry)
+                    log_file.flush()  # Ensure data is written immediately
+
+                # Log summary for this session
+                status_summary = f"Session {session_id}: {session_creation_status}"
+                if session_creation_status == "success":
+                    status_summary += f", messages: {messages_added}/{messages_attempted} ({message_addition_status})"
+                self.logger.info(status_summary)
+
+            # Log summary for this multi-session
+            self.logger.info(
+                f"Completed processing multi-session {multi_session_idx} with {len(multi_session)} sessions"
+            )
 
     async def download_dataset(
         self, file_path: str = os.path.join(DATA_PATH, "longmemeval_data.tar.gz")
@@ -106,7 +260,6 @@ class IngestionRunner:
                 "'longmemeval_oracle.json' already exists, skipping extraction."
             )
 
-
     async def ingest_data(
         self,
         df: pd.DataFrame,
@@ -114,6 +267,10 @@ class IngestionRunner:
         question_type_filter: Optional[str] = None,
         start_index: int = 0,
     ):
+        # Setup custom ontology if requested
+        if self.use_custom_ontology:
+            await setup_zep_ontology(self.zep)
+
         """Ingest conversation data into Zep knowledge graph with detailed logging"""
         filter_msg = (
             f"question type: {question_type_filter}"
@@ -132,159 +289,51 @@ class IngestionRunner:
         # Set up CSV logging
         log_filename = f"ingestion_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         log_filepath = os.path.join(DATA_PATH, log_filename)
-        
+
         # Ensure data directory exists
         if not os.path.exists(DATA_PATH):
             os.makedirs(DATA_PATH)
-        
-        with open(log_filepath, 'w', newline='', encoding='utf-8') as log_file:
-            fieldnames = ['multi_session_idx', 'user_id', 'user_creation_status', 'user_error', 
-                         'session_idx', 'session_id', 'session_creation_status', 'session_error',
-                         'messages_attempted', 'messages_added', 'message_addition_status', 
-                         'message_error', 'question_type']
+
+        with open(log_filepath, "w", newline="", encoding="utf-8") as log_file:
+            fieldnames = [
+                "multi_session_idx",
+                "user_id",
+                "user_creation_status",
+                "user_error",
+                "session_idx",
+                "session_id",
+                "session_creation_status",
+                "session_error",
+                "messages_attempted",
+                "messages_added",
+                "message_addition_status",
+                "message_error",
+                "question_type",
+            ]
             writer = csv.DictWriter(log_file, fieldnames=fieldnames)
             writer.writeheader()
-            
+
             self.logger.info(f"Logging ingestion details to: {log_filepath}")
 
+            # Create tasks for concurrent user processing (5 at a time)
+            self.logger.info(
+                "Starting concurrent processing with up to 5 users at a time"
+            )
+
+            tasks = []
             for multi_session_idx in range(start_index, end_index):
-                # Get session data
-                multi_session = df["haystack_sessions"].iloc[multi_session_idx]
-                multi_session_dates = df["haystack_dates"].iloc[multi_session_idx]
-                question_type = df["question_type"][multi_session_idx]
+                task = self._process_user(
+                    multi_session_idx=multi_session_idx,
+                    df=df,
+                    question_type_filter=question_type_filter,
+                    writer=writer,
+                    log_file=log_file,
+                )
+                tasks.append(task)
 
-                # Apply question type filter
-                if question_type_filter and question_type != question_type_filter:
-                    continue
+            # Execute all user processing tasks concurrently
+            await asyncio.gather(*tasks)
 
-                self.logger.info(f"Processing session {multi_session_idx}: {question_type}")
-
-                # Initialize user-level tracking
-                user_id = f"lme_s_experiment_user_{multi_session_idx}"
-                user_creation_status = "unknown"
-                user_error = ""
-                
-                # Attempt user creation
-                try:
-                    await self.zep.user.add(user_id=user_id)
-                    user_creation_status = "success"
-                    self.logger.debug(f"User {user_id} created successfully")
-                except Exception as e:
-                    user_creation_status = "failure"
-                    user_error = str(e)
-                    self.logger.error(f"Failed to create user {user_id}: {e}")
-                
-                # Process each session for this user, even if user creation failed
-                # (in case user already exists)
-                for session_idx, session in enumerate(multi_session):
-                    session_id = f"lme_s_experiment_session_{multi_session_idx}_{session_idx}"
-                    session_creation_status = "unknown"
-                    session_error = ""
-                    messages_attempted = len(session)
-                    messages_added = 0
-                    message_addition_status = "unknown"
-                    message_error = ""
-                    
-                    # Attempt session creation
-                    try:
-                        await self.zep.memory.add_session(
-                            user_id=user_id, session_id=session_id
-                        )
-                        session_creation_status = "success"
-                        self.logger.debug(f"Session {session_id} created successfully")
-                    except Exception as e:
-                        session_creation_status = "failure"
-                        session_error = str(e)
-                        self.logger.error(f"Failed to create session {session_id}: {e}")
-                    
-                    # Attempt to add messages to session
-                    if session_creation_status == "success" and messages_attempted > 0:
-                        try:
-                            # Validate data structure consistency
-                            if session_idx >= len(multi_session_dates):
-                                raise IndexError(f"session_idx {session_idx} exceeds multi_session_dates length {len(multi_session_dates)}")
-                            
-                            # Add messages to session
-                            for msg_idx, msg in enumerate(session):
-                                try:
-                                    # Parse and format timestamp
-                                    date = multi_session_dates[session_idx] + " UTC"
-                                    date_format = "%Y/%m/%d (%a) %H:%M UTC"
-                                    date_string = datetime.strptime(date, date_format).replace(
-                                        tzinfo=timezone.utc
-                                    )
-
-                                    # Create message payload
-                                    message_payload = Message(
-                                        role=msg["role"],
-                                        role_type=msg["role"],
-                                        content=msg["content"],
-                                        created_at=date_string.isoformat(),
-                                    )
-
-                                    # Add to Zep
-                                    await self.zep.memory.add(
-                                        session_id=session_id,
-                                        messages=[message_payload],
-                                    )
-                                    messages_added += 1
-                                    
-                                except Exception as msg_e:
-                                    message_error = f"Message {msg_idx} failed: {str(msg_e)}"
-                                    self.logger.warning(f"Failed to add message {msg_idx} to session {session_id}: {msg_e}")
-                                    break  # Stop processing remaining messages for this session
-                            
-                            # Determine overall message addition status
-                            if messages_added == messages_attempted:
-                                message_addition_status = "success"
-                            elif messages_added > 0:
-                                message_addition_status = "partial"
-                            else:
-                                message_addition_status = "failure"
-                                if not message_error:
-                                    message_error = "No messages were added successfully"
-                                    
-                        except Exception as e:
-                            message_addition_status = "failure"
-                            message_error = str(e)
-                            self.logger.error(f"Failed to process messages for session {session_id}: {e}")
-                    
-                    elif messages_attempted == 0:
-                        message_addition_status = "empty_session"
-                        message_error = "Session has no messages"
-                        self.logger.warning(f"Session {session_id} has no messages to add")
-                    
-                    else:
-                        message_addition_status = "skipped"
-                        message_error = "Session creation failed"
-                    
-                    # Log this session's results
-                    log_entry = {
-                        'multi_session_idx': multi_session_idx,
-                        'user_id': user_id,
-                        'user_creation_status': user_creation_status,
-                        'user_error': user_error,
-                        'session_idx': session_idx,
-                        'session_id': session_id,
-                        'session_creation_status': session_creation_status,
-                        'session_error': session_error,
-                        'messages_attempted': messages_attempted,
-                        'messages_added': messages_added,
-                        'message_addition_status': message_addition_status,
-                        'message_error': message_error,
-                        'question_type': question_type
-                    }
-                    
-                    writer.writerow(log_entry)
-                    log_file.flush()  # Ensure data is written immediately
-                    
-                    # Log summary for this session
-                    status_summary = f"Session {session_id}: {session_creation_status}"
-                    if session_creation_status == "success":
-                        status_summary += f", messages: {messages_added}/{messages_attempted} ({message_addition_status})"
-                    self.logger.info(status_summary)
-                
-                # Log summary for this multi-session
-                self.logger.info(f"Completed processing multi-session {multi_session_idx} with {len(multi_session)} sessions")
-
-        self.logger.info(f"Ingestion completed. Detailed log available at: {log_filepath}")
+        self.logger.info(
+            f"Ingestion completed. Detailed log available at: {log_filepath}"
+        )
