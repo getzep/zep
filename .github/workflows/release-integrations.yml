@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [detect-package, test, build]
     environment: 
-      name: pypi
+      name: release
       url: https://pypi.org/p/zep-${{ needs.detect-package.outputs.package }}
     permissions:
       id-token: write  # Required for trusted publishing
