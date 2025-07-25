@@ -1,6 +1,6 @@
 [project]
 name = "zep-autogen"
-version = "0.1.0"
+version = "0.1.1"
 description = "Autogen integration for Zep"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,7 +17,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/getzep/zep"
-Documentation = "https://docs.getzep.com/integrations/autogen"
+Documentation = "https://help.getzep.com/integrations/autogen"
 Repository = "https://github.com/getzep/zep"
 "Bug Tracker" = "https://github.com/getzep/zep/issues"
 Changelog = "https://github.com/getzep/zep/blob/main/integrations/python/autogen/CHANGELOG.md"

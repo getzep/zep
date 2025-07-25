@@ -109,7 +109,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Support
 
-- [Zep Documentation](https://docs.getzep.com)
+- [Zep Documentation](https://help.getzep.com)
 - [AutoGen Documentation](https://microsoft.github.io/autogen/)
 - [GitHub Issues](https://github.com/getzep/zep/issues)
 
