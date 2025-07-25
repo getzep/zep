@@ -11,14 +11,20 @@ import os
 import pandas as pd
 import tarfile
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from dotenv import load_dotenv
+from openai import AsyncOpenAI
 from zep_cloud import Message
 from zep_cloud.client import AsyncZep
 
 from common import DATA_PATH
 from zep_ontology import setup_zep_ontology
+
+# Constants for large message handling
+MAX_MESSAGE_SIZE = 14000  # Zep memory.add limit
+CHUNK_SIZE = 8500  # Target chunk size (allowing room for context)
+CHUNK_OVERLAP = 200  # Character overlap between chunks
 
 
 class IngestionRunner:
@@ -42,6 +48,9 @@ class IngestionRunner:
         else:
             self.zep = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
 
+        # Initialize OpenAI client for contextualization
+        self.oai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
         # Concurrency controls
         self._csv_lock = asyncio.Lock()
         self._semaphore = asyncio.Semaphore(2)  # Limit to 2 concurrent users
@@ -59,6 +68,135 @@ class IngestionRunner:
 
         logger.setLevel(getattr(logging, log_level.upper()))
         return logger
+
+    async def _chunk_large_message(self, content: str) -> List[str]:
+        """Split large content into overlapping chunks using paragraph-aware strategy"""
+        if len(content) <= CHUNK_SIZE:
+            return [content]
+        
+        chunks = []
+        start = 0
+        
+        while start < len(content):
+            # Calculate chunk end position
+            end = min(start + CHUNK_SIZE, len(content))
+            
+            # If this is the last chunk, take everything remaining
+            if end >= len(content):
+                chunks.append(content[start:])
+                break
+            
+            # Try to find a good break point near the end to avoid cutting mid-sentence/paragraph
+            chunk_text = content[start:end]
+            
+            # Look for paragraph break (ideal)
+            last_para_break = chunk_text.rfind('\n\n')
+            if last_para_break > len(chunk_text) // 2:  # Only if it's past halfway point
+                end = start + last_para_break + 2
+            else:
+                # Look for sentence break (good)
+                last_sentence_break = chunk_text.rfind('. ')
+                if last_sentence_break > len(chunk_text) // 2:
+                    end = start + last_sentence_break + 2
+                else:
+                    # Look for line break (acceptable)
+                    last_line_break = chunk_text.rfind('\n')
+                    if last_line_break > len(chunk_text) // 2:
+                        end = start + last_line_break + 1
+                    # Otherwise use hard boundary at CHUNK_SIZE
+            
+            # Add the chunk
+            chunks.append(content[start:end])
+            
+            # Next chunk starts with overlap
+            start = max(end - CHUNK_OVERLAP, start + 1)  # Ensure progress
+        
+        return chunks
+
+    async def _contextualize_chunk(self, full_document: str, chunk: str) -> str:
+        """Generate context sentence using OpenAI for chunk relationship to document"""
+        try:
+            prompt = f"""Given this full document and a specific chunk from it, generate a single sentence that:
+1. Briefly describes what the overall document is about
+2. Explains how this specific chunk relates to or fits within the larger document
+
+Full document (first 2000 chars): {full_document[:2000]}...
+
+Specific chunk: {chunk[:1000]}...
+
+Respond with only a single sentence that provides context for this chunk within the larger document."""
+
+            response = await self.oai_client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0,
+                max_tokens=100
+            )
+            
+            context_sentence = response.choices[0].message.content or ""
+            return context_sentence.strip()
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to contextualize chunk: {e}")
+            return "This chunk is part of a larger document."
+
+    async def _process_large_message(
+        self, 
+        msg: dict, 
+        session_id: str, 
+        user_id: str, 
+        date_string: str, 
+        msg_idx: int
+    ) -> dict:
+        """Handle large messages via chunking → contextualization → graph.add"""
+        result = {
+            "original_size": len(msg["content"]),
+            "chunks_created": 0,
+            "chunks_succeeded": 0,
+            "chunking_status": "unknown",
+            "chunking_error": ""
+        }
+        
+        try:
+            # Chunk the large message
+            chunks = await self._chunk_large_message(msg["content"])
+            result["chunks_created"] = len(chunks)
+            result["chunking_status"] = "success"
+            
+            self.logger.debug(f"Split message {msg_idx} into {len(chunks)} chunks")
+            
+            # Process each chunk
+            for chunk_idx, chunk in enumerate(chunks):
+                try:
+                    # Generate context for this chunk
+                    context = await self._contextualize_chunk(msg["content"], chunk)
+                    
+                    # Format as message with context
+                    contextualized_content = f"Context: {context} Content: {chunk}"
+                    
+                    # Add to graph using graph.add API
+                    await self.zep.graph.add(
+                        user_id=user_id,
+                        type="message",
+                        data=f"{msg['role']} ({date_string}): {contextualized_content}"
+                    )
+                    
+                    result["chunks_succeeded"] += 1
+                    self.logger.debug(f"Successfully added chunk {chunk_idx + 1}/{len(chunks)} for message {msg_idx}")
+                    
+                except Exception as chunk_e:
+                    self.logger.warning(f"Failed to process chunk {chunk_idx + 1}/{len(chunks)} for message {msg_idx}: {chunk_e}")
+                    if not result["chunking_error"]:
+                        result["chunking_error"] = f"Chunk {chunk_idx + 1} failed: {str(chunk_e)}"
+            
+        except Exception as e:
+            result["chunking_status"] = "failure"
+            result["chunking_error"] = str(e)
+            self.logger.error(f"Failed to chunk message {msg_idx}: {e}")
+        
+        return result
 
     async def _process_user(
         self,
@@ -137,8 +275,10 @@ class IngestionRunner:
                             tzinfo=timezone.utc
                         )
 
-                        # Process messages in batches of 15
+                        # Process messages in batches of 15, handling large messages separately
                         batch_size = 15
+                        large_message_results = {}  # Track chunking results for large messages
+                        
                         for batch_start in range(0, len(session), batch_size):
                             batch_end = min(batch_start + batch_size, len(session))
                             batch_messages = []
@@ -146,31 +286,58 @@ class IngestionRunner:
                             # Create message payloads for this batch
                             for msg_idx in range(batch_start, batch_end):
                                 msg = session[msg_idx]
-                                message_payload = Message(
-                                    role=msg["role"],
-                                    role_type=msg["role"],
-                                    content=msg["content"],
-                                    created_at=date_string.isoformat(),
-                                )
-                                batch_messages.append(message_payload)
+                                
+                                # Check if message is too large for memory.add
+                                if len(msg["content"]) > MAX_MESSAGE_SIZE:
+                                    # Process large message via chunking pipeline
+                                    try:
+                                        chunk_result = await self._process_large_message(
+                                            msg, session_id, user_id, date_string.isoformat(), msg_idx
+                                        )
+                                        large_message_results[msg_idx] = chunk_result
+                                        messages_added += 1  # Count as one logical message
+                                        self.logger.debug(
+                                            f"Processed large message {msg_idx} ({chunk_result['original_size']} chars) "
+                                            f"into {chunk_result['chunks_created']} chunks, "
+                                            f"{chunk_result['chunks_succeeded']} succeeded"
+                                        )
+                                    except Exception as large_msg_e:
+                                        large_message_results[msg_idx] = {
+                                            "original_size": len(msg["content"]),
+                                            "chunks_created": 0,
+                                            "chunks_succeeded": 0,
+                                            "chunking_status": "failure",
+                                            "chunking_error": str(large_msg_e)
+                                        }
+                                        self.logger.error(f"Failed to process large message {msg_idx}: {large_msg_e}")
+                                else:
+                                    # Normal message processing
+                                    message_payload = Message(
+                                        role=msg["role"],
+                                        role_type=msg["role"],
+                                        content=msg["content"],
+                                        created_at=date_string.isoformat(),
+                                    )
+                                    batch_messages.append(message_payload)
 
-                            try:
-                                # Add batch to Zep
-                                await self.zep.memory.add(
-                                    session_id=session_id,
-                                    messages=batch_messages,
-                                )
-                                messages_added += len(batch_messages)
-                                self.logger.debug(
-                                    f"Added batch of {len(batch_messages)} messages to session {session_id}"
-                                )
+                            # Add normal-sized messages to Zep memory if any
+                            if batch_messages:
+                                try:
+                                    await self.zep.memory.add(
+                                        session_id=session_id,
+                                        messages=batch_messages,
+                                    )
+                                    messages_added += len(batch_messages)
+                                    self.logger.debug(
+                                        f"Added batch of {len(batch_messages)} normal messages to session {session_id}"
+                                    )
 
-                            except Exception as batch_e:
-                                message_error = f"Batch {batch_start}-{batch_end - 1} failed: {str(batch_e)}"
-                                self.logger.warning(
-                                    f"Failed to add batch {batch_start}-{batch_end - 1} to session {session_id}: {batch_e}"
-                                )
-                                break  # Stop processing remaining batches for this session
+                                except Exception as batch_e:
+                                    message_error = f"Batch {batch_start}-{batch_end - 1} failed: {str(batch_e)}"
+                                    self.logger.warning(
+                                        f"Failed to add batch {batch_start}-{batch_end - 1} to session {session_id}: {batch_e}"
+                                    )
+                                    break  # Stop processing remaining batches for this session
 
                         # Determine overall message addition status
                         if messages_added == messages_attempted:
@@ -198,6 +365,12 @@ class IngestionRunner:
                     message_addition_status = "skipped"
                     message_error = "Session creation failed"
 
+                # Calculate large message processing summary
+                large_messages_count = len(large_message_results)
+                large_messages_chunks_total = sum(result["chunks_created"] for result in large_message_results.values())
+                large_messages_chunks_succeeded = sum(result["chunks_succeeded"] for result in large_message_results.values())
+                large_messages_details = str(large_message_results) if large_message_results else ""
+
                 # Log this session's results with concurrency safety
                 log_entry = {
                     "multi_session_idx": multi_session_idx,
@@ -213,6 +386,10 @@ class IngestionRunner:
                     "message_addition_status": message_addition_status,
                     "message_error": message_error,
                     "question_type": question_type,
+                    "large_messages_count": large_messages_count,
+                    "large_messages_chunks_total": large_messages_chunks_total,
+                    "large_messages_chunks_succeeded": large_messages_chunks_succeeded,
+                    "large_messages_details": large_messages_details,
                 }
 
                 # Thread-safe CSV writing
@@ -309,6 +486,10 @@ class IngestionRunner:
                 "message_addition_status",
                 "message_error",
                 "question_type",
+                "large_messages_count",
+                "large_messages_chunks_total",
+                "large_messages_chunks_succeeded",
+                "large_messages_details",
             ]
             writer = csv.DictWriter(log_file, fieldnames=fieldnames)
             writer.writeheader()
