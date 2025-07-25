@@ -3,7 +3,7 @@ name = "zep-autogen"
 version = "0.1.0"
 description = "Autogen integration for Zep"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
     "autogen-agentchat>=0.6.1",
     "autogen-ext[azure,openai]>=0.6.1",
@@ -12,8 +12,15 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-slugify>=8.0.4",
     "rich>=14.0.0",
-    "zep-cloud>=2.15.0",
+    "zep-cloud>=3.0.0rc1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/getzep/zep"
+Documentation = "https://docs.getzep.com/integrations/autogen"
+Repository = "https://github.com/getzep/zep"
+"Bug Tracker" = "https://github.com/getzep/zep/issues"
+Changelog = "https://github.com/getzep/zep/blob/main/integrations/python/autogen/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
@@ -21,6 +28,7 @@ dev = [
     "pytest-cov",
     "pytest-asyncio",
     "ruff>=0.1.0",
+    "mypy>=1.0.0",
 ]
 
 [build-system]
@@ -40,7 +48,7 @@ markers = [
 ]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]
@@ -67,3 +75,20 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "autogen_core.*",
+    "autogen_agentchat.*", 
+    "autogen_ext.*",
+    "zep_cloud.*",
+]
+ignore_missing_imports = true

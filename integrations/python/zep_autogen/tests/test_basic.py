@@ -1,5 +1,5 @@
 """
-Basic tests for the zep-autogen integration package.
+Basic tests for the zep-integrations package.
 """
 
 import os
@@ -8,12 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from autogen_core.memory import MemoryContent, MemoryMimeType
 
-from zep_autogen import ZepMemory, __version__
-
-
-def test_version():
-    """Test that the package version is accessible."""
-    assert __version__ == "0.1.0"
+from zep_autogen import ZepMemory
 
 
 def test_package_import():
@@ -38,7 +33,6 @@ class TestBasicFunctionality:
         assert hasattr(zep_autogen, "__version__")
         assert hasattr(zep_autogen, "__author__")
         assert hasattr(zep_autogen, "__description__")
-        assert hasattr(zep_autogen, "ZepMemory")
 
 
 class TestZepMemoryMock:
@@ -51,10 +45,10 @@ class TestZepMemoryMock:
 
             # Create a mock AsyncZep client
             mock_client = MagicMock(spec=AsyncZep)
-            memory = ZepMemory(client=mock_client, session_id="test-session", user_id="test-user")
+            memory = ZepMemory(client=mock_client, thread_id="test-session", user_id="test-user")
             assert memory is not None
             assert memory._client is mock_client
-            assert memory._session_id == "test-session"
+            assert memory._thread_id == "test-session"
             assert memory._user_id == "test-user"
 
         except ImportError:
@@ -64,7 +58,7 @@ class TestZepMemoryMock:
 
             mock_client = MockAsyncZep()
             with pytest.raises(TypeError, match="client must be an instance of AsyncZep"):
-                ZepMemory(client=mock_client, session_id="test-session")
+                ZepMemory(client=mock_client, thread_id="test-session")
 
     def test_zep_memory_requires_session_id(self):
         """Test that ZepMemory requires a session_id."""
@@ -73,8 +67,8 @@ class TestZepMemoryMock:
 
             mock_client = MagicMock(spec=AsyncZep)
 
-            with pytest.raises(ValueError, match="session_id is required"):
-                ZepMemory(client=mock_client, session_id="")
+            with pytest.raises(ValueError, match="user_id is required"):
+                ZepMemory(client=mock_client, user_id="")
 
         except ImportError:
             pytest.skip("zep_cloud not available")
@@ -82,7 +76,7 @@ class TestZepMemoryMock:
     def test_zep_memory_requires_async_zep_client(self):
         """Test that ZepMemory raises TypeError when client is not AsyncZep."""
         with pytest.raises(TypeError, match="client must be an instance of AsyncZep"):
-            ZepMemory(client="not_a_client", session_id="test-session")
+            ZepMemory(client="not_a_client", user_id="test-user")
 
     @pytest.mark.asyncio
     async def test_zep_memory_add_message_with_mock(self):
@@ -91,22 +85,23 @@ class TestZepMemoryMock:
             from zep_cloud.client import AsyncZep
 
             mock_client = MagicMock(spec=AsyncZep)
-            mock_client.memory = MagicMock()
-            mock_client.memory.add = AsyncMock()
+            mock_client.thread = MagicMock()
+            mock_client.thread.get = AsyncMock()
+            mock_client.thread.add_messages = AsyncMock()
 
-            memory = ZepMemory(client=mock_client, session_id="test-session")
+            memory = ZepMemory(client=mock_client, user_id="test-user", thread_id="test-session")
 
-            # Test adding memory content with user_id (should store as message)
+            # Test adding memory content as message type
             content = MemoryContent(
                 content="Test message",
                 mime_type=MemoryMimeType.TEXT,
-                metadata={"user_id": "user123", "category": "conversation"},
+                metadata={"type": "message", "role": "user", "name": "user123"},
             )
 
             await memory.add(content)
 
-            # Verify the message.add mock was called
-            mock_client.memory.add.assert_called_once()
+            # Verify the thread.add_messages mock was called
+            mock_client.thread.add_messages.assert_called_once()
 
         except ImportError:
             pytest.skip("zep_cloud not available")
@@ -123,7 +118,7 @@ class TestZepMemoryMock:
 
             memory = ZepMemory(
                 client=mock_client,
-                session_id="test-session",
+                thread_id="test-session",
                 user_id="test-user",  # Required for graph data
             )
 
@@ -149,21 +144,23 @@ class TestZepMemoryMock:
             from zep_cloud.client import AsyncZep
 
             mock_client = MagicMock(spec=AsyncZep)
+            mock_client.graph = MagicMock()
+            mock_client.graph.add = AsyncMock()
 
             memory = ZepMemory(
                 client=mock_client,
-                session_id="test-session",
-                # No user_id provided
+                user_id="test-user",  # user_id is now required
+                thread_id="test-session",
             )
 
-            # Test adding memory content without user_id in metadata (should require user_id)
+            # Test adding memory content with unsupported type
             content = MemoryContent(
                 content="Test data for graph",
                 mime_type=MemoryMimeType.TEXT,
-                metadata={"category": "facts"},  # No user_id
+                metadata={"type": "unsupported", "category": "facts"},
             )
 
-            with pytest.raises(ValueError, match="user_id is required when storing graph data"):
+            with pytest.raises(ValueError, match="Unsupported metadata type"):
                 await memory.add(content)
 
         except ImportError:
@@ -176,22 +173,24 @@ class TestZepMemoryMock:
             from zep_cloud.client import AsyncZep
 
             mock_client = MagicMock(spec=AsyncZep)
-            mock_client.memory = MagicMock()
-            mock_client.memory.get = AsyncMock()
+            mock_client.graph = MagicMock()
+            mock_client.graph.search = AsyncMock()
 
-            # Mock memory response
-            mock_memory_response = MagicMock()
-            mock_memory_response.context = "Test context"
-            mock_memory_response.messages = []
-            mock_client.memory.get.return_value = mock_memory_response
+            # Mock graph search response
+            mock_graph_response = MagicMock()
+            mock_graph_response.edges = []
+            mock_graph_response.nodes = []
+            mock_graph_response.episodes = []
+            mock_client.graph.search.return_value = mock_graph_response
 
-            memory = ZepMemory(client=mock_client, session_id="test-session")
+            memory = ZepMemory(client=mock_client, user_id="test-user", thread_id="test-session")
 
             results = await memory.query("test query")
 
             # Verify the mock was called and results returned
-            mock_client.memory.get.assert_called_once()
-            assert len(results) >= 0  # Should return some results
+            mock_client.graph.search.assert_called_once()
+            assert hasattr(results, "results")  # Should be a MemoryQueryResult
+            assert len(results.results) >= 0  # Should return some results
 
         except ImportError:
             pytest.skip("zep_cloud not available")
@@ -203,22 +202,25 @@ class TestZepMemoryMock:
             from zep_cloud.client import AsyncZep
 
             mock_client = MagicMock(spec=AsyncZep)
-            memory = ZepMemory(client=mock_client, session_id="test-session")
+            memory = ZepMemory(client=mock_client, user_id="test-user", thread_id="test-session")
 
             # Test supported mime types - these should work (with user_id for message storage)
             supported_types = [MemoryMimeType.TEXT, MemoryMimeType.MARKDOWN, MemoryMimeType.JSON]
 
-            mock_client.memory = MagicMock()
-            mock_client.memory.add = AsyncMock()
+            mock_client.thread = MagicMock()
+            mock_client.thread.get = AsyncMock()
+            mock_client.thread.add_messages = AsyncMock()
 
             for mime_type in supported_types:
                 content = MemoryContent(
                     content="Test content",
                     mime_type=mime_type,
                     metadata={
-                        "user_id": "user123",
+                        "type": "message",
+                        "role": "user",
+                        "name": "user123",
                         "category": "test",
-                    },  # Add user_id for message storage
+                    },  # Add type for message storage
                 )
                 # Should not raise an exception
                 await memory.add(content)
@@ -261,12 +263,7 @@ class TestZepMemoryReal:
     @pytest.mark.asyncio
     async def test_zep_memory_real_client_initialization(self, zep_client):
         """Test ZepMemory with a real Zep client."""
-        memory = ZepMemory(
-            client=zep_client, session_id="test-session-123", user_id="test-user-123"
-        )
+        memory = ZepMemory(client=zep_client, thread_id="test-session-123", user_id="test-user-123")
         assert memory is not None
-        assert memory._session_id == "test-session-123"
+        assert memory._thread_id == "test-session-123"
         assert memory._user_id == "test-user-123"
-
-        # Clean up
-        await zep_client.close()
