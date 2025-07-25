@@ -14,7 +14,6 @@ from zep_cloud.external_clients.ontology import (
     EntityModel,
     EntityText,
     EdgeModel,
-    EntityBoolean,
 )
 from zep_cloud import EntityEdgeSourceTarget
 from pydantic import Field

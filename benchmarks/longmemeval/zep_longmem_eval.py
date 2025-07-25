@@ -79,6 +79,11 @@ async def main():
         action="store_true",
         help="Setup custom ontology for improved knowledge graph structure (default: False)",
     )
+    parser.add_argument(
+        "--replay",
+        action="store_true",
+        help="Replay failed users (delete and re-ingest) instead of normal ingestion (default: False)",
+    )
 
     args = parser.parse_args()
 
@@ -98,19 +103,20 @@ async def main():
     # Initialize runners
     ingestion_runner = None
     evaluation_runner = None
-    
+
     if args.ingest:
         ingestion_runner = IngestionRunner(
-            zep_dev_environment=args.zep_dev_environment, 
+            zep_dev_environment=args.zep_dev_environment,
             log_level=args.log_level,
-            use_custom_ontology=args.use_custom_ontology
+            use_custom_ontology=args.use_custom_ontology,
+            replay_mode=args.replay,
         )
-    
+
     if args.eval:
         evaluation_runner = EvaluationRunner(
-            zep_dev_environment=args.zep_dev_environment, 
+            zep_dev_environment=args.zep_dev_environment,
             log_level=args.log_level,
-            use_summarization=args.use_summarization
+            use_summarization=args.use_summarization,
         )
 
     # Download dataset if needed

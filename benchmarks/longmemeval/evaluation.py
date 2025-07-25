@@ -28,7 +28,12 @@ from summarization import SummarizationService
 
 
 class EvaluationRunner:
-    def __init__(self, zep_dev_environment: bool = False, log_level: str = "INFO", use_summarization: bool = False):
+    def __init__(
+        self,
+        zep_dev_environment: bool = False,
+        log_level: str = "INFO",
+        use_summarization: bool = False,
+    ):
         load_dotenv()
 
         self.logger = self._setup_logging(log_level)
@@ -43,7 +48,7 @@ class EvaluationRunner:
             self.zep = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
 
         self.oai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        
+
         # Initialize summarization service
         self.summarization_service = SummarizationService(self.zep, self.oai_client)
         self.use_summarization = use_summarization
@@ -69,12 +74,42 @@ class EvaluationRunner:
         """
 
         prompt = f"""
-        Your task is to briefly answer the question. You are given the following context from the previous conversation. If you don't know how to answer the question, abstain from answering.
+        You have access to facts and entities from a conversation.
+
+        # INSTRUCTIONS:
+        1. Carefully analyze all provided memories
+        2. Pay special attention to the timestamps to determine the answer
+        3. If the question asks about a specific event or fact, look for direct evidence in the memories
+        4. If the memories contain contradictory information, prioritize the most recent memory
+        5. Always convert relative time references to specific dates, months, or years.
+        6. Be as specific as possible when talking about people, places, and events
+        7. Timestamps in memories represent the actual time the event occurred, not the time the event was mentioned in a message.
         
-        # Context
+        Clarification:
+        When interpreting memories, use the timestamp to determine when the described event happened, not when someone talked about the event.
+        
+        Example:
+        
+        Memory: (2023-03-15T16:33:00Z) I went to the vet yesterday.
+        Question: What day did I go to the vet?
+        Correct Answer: March 15, 2023
+        Explanation:
+        Even though the phrase says "yesterday," the timestamp shows the event was recorded as happening on March 15th. Therefore, the actual vet visit happened on that date, regardless of the word "yesterday" in the text.
+
+
+        # APPROACH (Think step by step):
+        1. First, examine all memories that contain information related to the question
+        2. Examine the timestamps and content of these memories carefully
+        3. Look for explicit mentions of dates, times, locations, or events that answer the question
+        4. If the answer requires calculation (e.g., converting relative time references), show your work
+        5. Formulate a precise, concise answer based solely on the evidence in the memories
+        6. Double-check that your answer directly addresses the question asked
+        7. Ensure your final answer is specific and avoids vague time references
+        
+        CONTEXT:
         {context}
         
-        # Question 
+        QUESTION:
         {question}
         """
 
@@ -84,7 +119,7 @@ class EvaluationRunner:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0,
+            temperature=1 if RESPONSE_MODEL == "o4-mini" else 0,
         )
         return response.choices[0].message.content or ""
 
@@ -117,8 +152,7 @@ class EvaluationRunner:
         return result.is_correct.strip().lower() == "yes"
 
     def compose_search_context(
-        self, 
-        edges: List[EntityEdge], nodes: List[EntityNode]
+        self, edges: List[EntityEdge], nodes: List[EntityNode]
     ) -> str:
         """Compose context from Zep search results"""
         # Format facts with date ranges
@@ -126,20 +160,20 @@ class EvaluationRunner:
         for edge in edges:
             start_date = edge.valid_at if edge.valid_at else "date unknown"
             end_date = edge.invalid_at if edge.invalid_at else "present"
-            facts.append(f"  - {edge.fact} ({start_date} - {end_date})")
+            facts.append(f"({start_date}) {edge.fact}")
 
         # Format entities
-        entities = [f"  - {node.name}: {node.summary}" for node in nodes]
+        entities = [
+            f"{node.name} ({', '.join(node.labels) if node.labels else ''}): {node.summary} ({node.attributes})"
+            for node in nodes
+        ]
 
         return CONTEXT_TEMPLATE.format(
             facts="\n".join(facts), entities="\n".join(entities)
         )
 
     async def compose_search_context_with_summary(
-        self, 
-        question: str,
-        edges: List[EntityEdge], 
-        nodes: List[EntityNode]
+        self, question: str, edges: List[EntityEdge], nodes: List[EntityNode]
     ) -> str:
         """Compose context from Zep search results with AI summarization"""
         return await self.summarization_service.compose_search_context_with_summary(
@@ -184,6 +218,8 @@ class EvaluationRunner:
             context = self.compose_search_context(
                 edges_results.edges or [], nodes_results.nodes or []
             )
+
+        self.logger.info(f"{question_id} - Context: {context}")
 
         # Generate response
         start = time()

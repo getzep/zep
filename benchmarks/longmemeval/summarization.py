@@ -24,7 +24,7 @@ class SummarizationService:
         self.zep = zep_client
         self.oai_client = oai_client
         self.logger = logging.getLogger(__name__)
-        
+
         # Cache for node UUID to name mappings
         self._node_uuid_cache = {}
         # Cache for in-flight requests to prevent duplicate API calls
@@ -35,11 +35,11 @@ class SummarizationService:
         # Check if result is already cached
         if node_uuid in self._node_uuid_cache:
             return self._node_uuid_cache[node_uuid]
-        
+
         # Check if there's already a task in flight for this UUID
         if node_uuid in self._node_uuid_tasks:
             return await self._node_uuid_tasks[node_uuid]
-        
+
         # Create and cache the task for this UUID
         async def fetch_node_name():
             try:
@@ -51,20 +51,20 @@ class SummarizationService:
             finally:
                 # Clean up the task cache
                 self._node_uuid_tasks.pop(node_uuid, None)
-        
+
         # Store the task and await it
         task = asyncio.create_task(fetch_node_name())
         self._node_uuid_tasks[node_uuid] = task
-        
+
         return await task
-    
+
     async def summarize_context(self, question: str, facts: str, entities: str) -> str:
         """Summarize the context using LLM"""
-        
+
         prompt = SUMMARIZE_THREAD_CONTEXT_PROMPT_USER.format(
             question=question, facts=facts, entities=entities
         )
-        
+
         response = await self.oai_client.chat.completions.create(
             model=SUMMARY_MODEL,
             messages=[
@@ -73,14 +73,11 @@ class SummarizationService:
             ],
             temperature=0,
         )
-        
+
         return response.choices[0].message.content or ""
 
     async def compose_search_context_with_summary(
-        self, 
-        question: str, 
-        edges: List[EntityEdge], 
-        nodes: List[EntityNode]
+        self, question: str, edges: List[EntityEdge], nodes: List[EntityNode]
     ) -> str:
         """Compose context from Zep search results with summarization"""
         # Format facts with date ranges
@@ -98,6 +95,8 @@ class SummarizationService:
         entities = [f"  - {node.name}: {node.summary}" for node in nodes]
 
         # Summarize context
-        summary = await self.summarize_context(question, "\n".join(facts), "\n".join(entities))
+        summary = await self.summarize_context(
+            question, "\n".join(facts), "\n".join(entities)
+        )
 
         return CONTEXT_TEMPLATE_SUMMARY.format(summary=summary)
