@@ -21,7 +21,7 @@ jobs:
         with:
           filters: |
             autogen:
-              - 'integrations/python/autogen/**'
+              - 'integrations/python/zep_autogen/**'
 
   test:
     runs-on: ubuntu-latest
@@ -44,27 +44,27 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        working-directory: integrations/python/${{ matrix.package }}
+        working-directory: integrations/python/zep_${{ matrix.package }}
         run: uv sync --extra dev
 
       - name: Run linting
-        working-directory: integrations/python/${{ matrix.package }}
+        working-directory: integrations/python/zep_${{ matrix.package }}
         run: |
           uv run ruff check .
           uv run ruff format --check .
 
       - name: Run type checking
-        working-directory: integrations/python/${{ matrix.package }}
+        working-directory: integrations/python/zep_${{ matrix.package }}
         run: uv run mypy src/
 
       - name: Run tests
-        working-directory: integrations/python/${{ matrix.package }}
+        working-directory: integrations/python/zep_${{ matrix.package }}
         run: uv run pytest tests/ -v --cov=zep_${{ matrix.package }} --cov-report=xml
 
       - name: Upload coverage
         if: matrix.python-version == '3.11'
         uses: codecov/codecov-action@v4
         with:
-          file: integrations/python/${{ matrix.package }}/coverage.xml
+          file: integrations/python/zep_${{ matrix.package }}/coverage.xml
           flags: ${{ matrix.package }}
           name: ${{ matrix.package }}-coverage
