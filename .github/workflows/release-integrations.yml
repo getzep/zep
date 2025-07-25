@@ -47,30 +47,16 @@ jobs:
 
       - name: Check if package exists
         run: |
-          if [ ! -d "integrations/python/${{ needs.detect-package.outputs.package }}" ]; then
-            echo "Package ${{ needs.detect-package.outputs.package }} does not exist"
+          if [ ! -d "integrations/python/zep_${{ needs.detect-package.outputs.package }}" ]; then
+            echo "Package zep_${{ needs.detect-package.outputs.package }} does not exist"
             exit 1
           fi
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
+      - name: Test integration package
+        uses: ./.github/actions/test-integration
         with:
-          version: "latest"
-
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        working-directory: integrations/python/${{ needs.detect-package.outputs.package }}
-        run: uv sync --extra dev
-
-      - name: Run tests
-        working-directory: integrations/python/${{ needs.detect-package.outputs.package }}
-        run: |
-          uv run ruff check .
-          uv run ruff format --check .
-          uv run mypy src/
-          uv run pytest tests/ -v
+          package: ${{ needs.detect-package.outputs.package }}
+          python-version: ${{ matrix.python-version }}
 
   build:
     runs-on: ubuntu-latest
@@ -87,14 +73,14 @@ jobs:
         run: uv python install 3.11
 
       - name: Build package
-        working-directory: integrations/python/${{ needs.detect-package.outputs.package }}
+        working-directory: integrations/python/zep_${{ needs.detect-package.outputs.package }}
         run: uv build
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ needs.detect-package.outputs.package }}-dist
-          path: integrations/python/${{ needs.detect-package.outputs.package }}/dist/
+          path: integrations/python/zep_${{ needs.detect-package.outputs.package }}/dist/
 
   publish:
     runs-on: ubuntu-latest
