@@ -81,3 +81,8 @@ venv.bak/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# UV (Python package manager)
+uv.lock
+.uv_cache/
+__pypackages__/
