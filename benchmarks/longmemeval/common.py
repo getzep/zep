@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 # Configuration Constants
 RESPONSE_MODEL = "gpt-4o"
 GRADER_MODEL = "gpt-4o"
-SUMMARY_MODEL = "gpt-4.1-mini"
+SUMMARY_MODEL = "gpt-4.1"
 DATA_PATH = "data"
 
 # Summarization Prompt Templates
@@ -25,6 +25,7 @@ Instructions:
 - Prioritize currently relevant information over outdated facts, and note when timeframes have passed or are approaching
 - If multiple options were discussed or recommended, include all of them with the progression of how decisions were made
 - Include specific details like dates, preferences, requirements, and constraints
+- Include specific counts of items, people, or other entities, if they're relevant to the question
 - Write as a single, clear paragraph in third person (refer to the user by name, not as "you")
 - Keep summary concise, aiming for 60-90 words while including the most important details
 - Use the same language as the conversation (English, Spanish, French, etc.)
@@ -43,6 +44,9 @@ SUMMARIZE_THREAD_CONTEXT_PROMPT_USER = """
 
 # Entities: 
 {entities}
+
+# Messages: 
+{messages}
 </Context>
 """
 
@@ -55,7 +59,7 @@ CONTEXT_TEMPLATE_SUMMARY = """
 
 # Context template for search results
 CONTEXT_TEMPLATE = """
-FACTS and ENTITIES represent relevant context to the current conversation.
+FACTS, ENTITIES, and MESSAGES represent relevant context to the current conversation.
 
 # These are the most relevant facts for the conversation along with the datetime of the event that the fact refers to.
 If a fact mentions something happening a week ago, then the datetime will be the datetime of last week and not the datetime
@@ -71,6 +75,11 @@ Timestamps in memories represent the actual time the event occurred, not the tim
 <ENTITIES>
 {entities}
 </ENTITIES>
+
+# These are the most relevant messages from the conversation
+<MESSAGES>
+{messages}
+</MESSAGES>
 """
 
 # Grading prompts by question type

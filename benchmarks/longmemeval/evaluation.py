@@ -27,11 +27,13 @@ import httpx
 from common import (
     RESPONSE_MODEL,
     GRADER_MODEL,
+    SUMMARY_MODEL,
     GRADING_PROMPTS,
     Grade,
     CONTEXT_TEMPLATE,
 )
 from summarization import SummarizationService
+from reranker import RerankerFactory
 
 
 class EvaluationRunner:
@@ -39,7 +41,7 @@ class EvaluationRunner:
         self,
         zep_dev_environment: bool = False,
         log_level: str = "INFO",
-        use_summarization: bool = False,
+        config: dict = None,
     ):
         load_dotenv()
 
@@ -56,9 +58,39 @@ class EvaluationRunner:
 
         self.oai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-        # Initialize summarization service
-        self.summarization_service = SummarizationService(self.zep, self.oai_client)
-        self.use_summarization = use_summarization
+        # Set up configuration with defaults
+        self.config = config or {}
+        
+        # Search parameters (with defaults matching current behavior)
+        self.edge_limit = self.config.get('edge_limit', 30)
+        self.node_limit = self.config.get('node_limit', 30) 
+        self.episode_limit = self.config.get('episode_limit', 20)
+        self.edge_reranker = self.config.get('edge_reranker', 'cross_encoder')
+        self.node_reranker = self.config.get('node_reranker', None)
+        self.episode_reranker = self.config.get('episode_reranker', None)
+        
+        # Model configurations
+        self.response_model = self.config.get('response_model', RESPONSE_MODEL)
+        self.grader_model = self.config.get('grader_model', GRADER_MODEL)
+        self.summary_model = self.config.get('summary_model', SUMMARY_MODEL)
+        
+        # Initialize summarization service with configurable model
+        self.summarization_service = SummarizationService(
+            self.zep, self.oai_client, summary_model=self.summary_model
+        )
+        self.use_summarization = self.config.get('use_summarization', False)
+        
+        # Initialize reranker service if needed
+        self.reranker_service = None
+        reranker_types = [self.edge_reranker, self.node_reranker, self.episode_reranker]
+        if any(rt == "mxbai_rerank" for rt in reranker_types):
+            try:
+                self.reranker_service = RerankerFactory.create_reranker("mxbai_rerank")
+                self.logger.info("Initialized MxbaiRerank service")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize MxbaiRerank service: {e}")
+                # Fall back to None - will disable mxbai reranking
+                self.reranker_service = None
 
     def _setup_logging(self, log_level: str) -> logging.Logger:
         """Configure logging with proper formatting"""
@@ -142,12 +174,12 @@ class EvaluationRunner:
         """
 
         response = await self.oai_client.chat.completions.create(
-            model=RESPONSE_MODEL,
+            model=self.response_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
-            temperature=1 if RESPONSE_MODEL == "o4-mini" else 0,
+            temperature=1 if self.response_model == "o4-mini" else 0,
         )
         return response.choices[0].message.content or ""
 
@@ -167,7 +199,7 @@ class EvaluationRunner:
 
         # Get structured response
         completion = await self.oai_client.beta.chat.completions.parse(
-            model=GRADER_MODEL,
+            model=self.grader_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
@@ -233,41 +265,116 @@ class EvaluationRunner:
 
         # Search Zep for relevant context
         start_retrieval = time()
-        edges_results, nodes_results, episodes_results = await asyncio.gather(
-            self._search_zep_with_retry(
-                user_id=user_id,
-                query=question,
-                limit=30,
-                reranker="cross_encoder",
-            ),
-            self._search_zep_with_retry(
-                user_id=user_id,
-                query=question,
-                scope="nodes",
-                limit=30,
-            ),
-            self._search_zep_with_retry(
-                user_id=user_id,
-                query=question,
-                scope="episodes",
-                limit=20,
-            ),
-        )
+        
+        # Prepare search tasks based on configuration
+        search_tasks = []
+        
+        # Edge search
+        edge_kwargs = {
+            "user_id": user_id,
+            "query": question,
+        }
+        # Handle mxbai_rerank: fetch 3x results without Zep reranker (max 50)
+        if self.edge_reranker == "mxbai_rerank":
+            desired_limit = self.edge_limit * 3
+            actual_limit = min(desired_limit, 50)
+            if desired_limit > 50:
+                self.logger.warning(f"Edge mxbai_rerank: wanted {desired_limit} results, capped at 50 due to Zep API limit")
+            edge_kwargs["limit"] = actual_limit
+            # Don't pass reranker parameter to Zep
+        else:
+            edge_kwargs["limit"] = min(self.edge_limit, 50)
+            if self.edge_reranker:
+                edge_kwargs["reranker"] = self.edge_reranker
+        search_tasks.append(self._search_zep_with_retry(**edge_kwargs))
+        
+        # Node search
+        node_kwargs = {
+            "user_id": user_id,
+            "query": question,
+            "scope": "nodes",
+        }
+        # Handle mxbai_rerank: fetch 3x results without Zep reranker (max 50)
+        if self.node_reranker == "mxbai_rerank":
+            desired_limit = self.node_limit * 3
+            actual_limit = min(desired_limit, 50)
+            if desired_limit > 50:
+                self.logger.warning(f"Node mxbai_rerank: wanted {desired_limit} results, capped at 50 due to Zep API limit")
+            node_kwargs["limit"] = actual_limit
+            # Don't pass reranker parameter to Zep
+        else:
+            node_kwargs["limit"] = min(self.node_limit, 50)
+            if self.node_reranker:
+                node_kwargs["reranker"] = self.node_reranker
+        search_tasks.append(self._search_zep_with_retry(**node_kwargs))
+        
+        # Episode search (only if limit > 0)
+        if self.episode_limit > 0:
+            episode_kwargs = {
+                "user_id": user_id,
+                "query": question,
+                "scope": "episodes",
+            }
+            # Handle mxbai_rerank: fetch 3x results without Zep reranker (max 50)
+            if self.episode_reranker == "mxbai_rerank":
+                desired_limit = self.episode_limit * 3
+                actual_limit = min(desired_limit, 50)
+                if desired_limit > 50:
+                    self.logger.warning(f"Episode mxbai_rerank: wanted {desired_limit} results, capped at 50 due to Zep API limit")
+                episode_kwargs["limit"] = actual_limit
+                # Don't pass reranker parameter to Zep
+            else:
+                episode_kwargs["limit"] = min(self.episode_limit, 50)
+                if self.episode_reranker:
+                    episode_kwargs["reranker"] = self.episode_reranker
+            search_tasks.append(self._search_zep_with_retry(**episode_kwargs))
+        else:
+            # Create empty episode result when disabled
+            async def empty_episodes():
+                from types import SimpleNamespace
+                return SimpleNamespace(episodes=[])
+            search_tasks.append(empty_episodes())
+        
+        edges_results, nodes_results, episodes_results = await asyncio.gather(*search_tasks)
         retrieval_duration = time() - start_retrieval
+        
+        # Apply secondary reranking if mxbai_rerank is configured and extract results
+        final_edges = edges_results.edges or []
+        final_nodes = nodes_results.nodes or []
+        final_episodes = episodes_results.episodes if hasattr(episodes_results, 'episodes') else []
+        
+        if self.reranker_service:
+            # Rerank edges if needed
+            if self.edge_reranker == "mxbai_rerank" and final_edges:
+                final_edges = self.reranker_service.rerank_edges(
+                    question, final_edges, self.edge_limit
+                )
+            
+            # Rerank nodes if needed
+            if self.node_reranker == "mxbai_rerank" and final_nodes:
+                final_nodes = self.reranker_service.rerank_nodes(
+                    question, final_nodes, self.node_limit
+                )
+            
+            # Rerank episodes if needed
+            if self.episode_reranker == "mxbai_rerank" and final_episodes:
+                final_episodes = self.reranker_service.rerank_episodes(
+                    question, final_episodes, self.episode_limit
+                )
 
         # Compose context from search results
         if self.use_summarization:
             context = await self.compose_search_context_with_summary(
                 question,
-                edges_results.edges or [],
-                nodes_results.nodes or [],
-                episodes_results.episodes or [],
+                final_edges,
+                final_nodes,
+                final_episodes,
             )
         else:
             context = self.compose_search_context(
-                edges_results.edges or [],
-                nodes_results.nodes or [],
-                episodes_results.episodes or [],
+                final_edges,
+                final_nodes,
+                final_episodes,
             )
 
         # Generate response
@@ -288,6 +395,7 @@ class EvaluationRunner:
             "question_type": question_type,
             "duration": duration,
             "grade": grade,
+            "evaluation_type": "zep",  # Mark as Zep evaluation
         }
 
         return result, (1 if grade else 0), duration, retrieval_duration
@@ -301,6 +409,7 @@ class EvaluationRunner:
         question_type = df["question_type"][multi_session_idx]
         question = f"(date: {df['question_date'][multi_session_idx]}) {df['question'][multi_session_idx]}"
         gold_answer = df["answer"][multi_session_idx]
+        user_id = f"lme_s_experiment_user_{multi_session_idx}"
 
         # Build full context from all sessions
         multi_session = df["haystack_sessions"].iloc[multi_session_idx]
@@ -316,94 +425,27 @@ class EvaluationRunner:
                 )
                 context += f"{msg['role']} (date: {date_string}): {msg['content']}\n"
 
-        # Generate response
+        # Generate response using configured models
         start = time()
         hypothesis = await self.lme_response(context, question)
         duration = time() - start
 
-        # Grade response
+        # Grade response using configured models
         grade = await self.lme_grader(question, gold_answer, hypothesis, question_type)
 
         result = {
+            "user_id": user_id,
             "question_id": question_id,
             "hypothesis": hypothesis,
-            "question": question,
             "gold_answer": gold_answer,
             "context": context,
+            "question": question,
             "question_type": question_type,
             "duration": duration,
             "grade": grade,
+            "evaluation_type": "baseline",  # Mark as baseline evaluation
         }
 
         return result, (1 if grade else 0), duration
 
-    async def run_evaluation(
-        self,
-        df: pd.DataFrame,
-        num_sessions: int = 500,
-        batch_size: int = 5,
-        baseline: bool = False,
-        output_file: str = "longmemeval_results.jsonl",
-    ):
-        """Run the full evaluation pipeline with batched processing"""
-        results = []
-        correct_count = 0
-        total_duration = 0
-        total_retrieval_duration = 0
 
-        eval_type = "baseline" if baseline else "Zep"
-        self.logger.info(f"Starting {eval_type} evaluation")
-        self.logger.info(
-            f"Processing {num_sessions} sessions in batches of {batch_size}"
-        )
-
-        # Process in batches for efficiency
-        for i in range(0, num_sessions, batch_size):
-            batch_end = min(i + batch_size, num_sessions)
-            batch_tasks = []
-
-            # Create batch of evaluation tasks
-            for j in range(i, batch_end):
-                if baseline:
-                    task = self.evaluate_conversation_baseline(df, j)
-                else:
-                    task = self.evaluate_conversation(df, j)
-                batch_tasks.append(task)
-
-            # Execute batch concurrently
-            batch_results = await asyncio.gather(*batch_tasks)
-
-            # Process results
-            for result_data in batch_results:
-                if baseline:
-                    result, correct, duration = result_data
-                    retrieval_duration = 0
-                else:
-                    result, correct, duration, retrieval_duration = result_data
-
-                results.append(result)
-                correct_count += correct
-                total_duration += duration
-                total_retrieval_duration += retrieval_duration
-
-            self.logger.info(
-                f"Processed batch {i // batch_size + 1}/{(num_sessions + batch_size - 1) // batch_size}"
-            )
-
-        # Save results
-        with open(output_file, "w") as f:
-            for result in results:
-                f.write(json.dumps(result) + "\n")
-        self.logger.info(f"Results saved to {output_file}")
-
-        # Log summary
-        accuracy = correct_count / num_sessions
-        avg_duration = total_duration / num_sessions
-
-        self.logger.info("Evaluation completed:")
-        self.logger.info(f"  Accuracy: {accuracy:.2%} ({correct_count}/{num_sessions})")
-        self.logger.info(f"  Average response time: {avg_duration:.2f}s")
-
-        if not baseline:
-            avg_retrieval_duration = total_retrieval_duration / num_sessions
-            self.logger.info(f"  Average retrieval time: {avg_retrieval_duration:.2f}s")

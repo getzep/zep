@@ -15,7 +15,10 @@ dependencies = [
     "scipy",
     "python-dotenv",
     "pydantic",
-    "requests"
+    "requests",
+    "tenacity>=9.1.2",
+    "mxbai-rerank>=0.1.6",
+    "optuna>=4.4.0",
 ]
 
 [tool.uv]

@@ -1,0 +1,41 @@
+# LongMemEval Grid Search Configuration
+# This file defines the parameter grid for running systematic evaluations
+
+# Search parameters for Zep graph retrieval
+search_params:
+  edge_limit: [10, 20, 30]  # Number of edge results to return
+  node_limit: [10, 20, 30]  # Number of node results to return
+  episode_limit: [0, 10, 20]  # Number of episode results (0 = disabled)
+  edge_reranker: [null, "cross_encoder", "mxbai_rerank"]  # Rerankers for edge search
+  node_reranker: [null, "cross_encoder", "mxbai_rerank"]  # Rerankers for node search  
+  episode_reranker: [null, "cross_encoder", "mxbai_rerank"]  # Rerankers for episode search
+  # Note: mxbai_rerank fetches 3x results without Zep reranker, then applies MxbaiRerankV2 secondary reranking
+
+# Evaluation settings
+evaluation_type:
+  baseline: [false]  # false=Zep retrieval, true=full context baseline
+
+# Summarization settings
+summarization:
+  use_summarization: [true, false]  # Whether to use AI summarization
+
+# Model configurations
+models:
+  response_model: ["gpt-4o"]
+  grader_model: ["gpt-4o"]
+  summary_model: ["gpt-4.1-mini"]
+
+# Evaluation settings
+evaluation:
+  num_sessions: 500  # Number of sessions to evaluate 
+  batch_size: 15      # Batch size for processing 
+
+# Output settings
+output:
+  base_dir: "grid_search_results"  # Base directory for results
+  include_timestamp: true          # Include timestamp in folder names
+  include_config_hash: true        # Include config hash for uniqueness
+
+# Grid search execution
+execution:
+  max_concurrent_runs: 1  # Maximum number of concurrent grid search runs

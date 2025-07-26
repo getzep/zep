@@ -8,7 +8,7 @@ import logging
 from typing import List
 
 from openai import AsyncOpenAI
-from zep_cloud import EntityEdge, EntityNode
+from zep_cloud import EntityEdge, EntityNode, Episode
 from zep_cloud.client import AsyncZep
 
 from common import (
@@ -20,9 +20,10 @@ from common import (
 
 
 class SummarizationService:
-    def __init__(self, zep_client: AsyncZep, oai_client: AsyncOpenAI):
+    def __init__(self, zep_client: AsyncZep, oai_client: AsyncOpenAI, summary_model: str = None):
         self.zep = zep_client
         self.oai_client = oai_client
+        self.summary_model = summary_model or SUMMARY_MODEL
         self.logger = logging.getLogger(__name__)
 
         # Cache for node UUID to name mappings
@@ -58,15 +59,17 @@ class SummarizationService:
 
         return await task
 
-    async def summarize_context(self, question: str, facts: str, entities: str) -> str:
+    async def summarize_context(
+        self, question: str, facts: str, entities: str, messages: str
+    ) -> str:
         """Summarize the context using LLM"""
 
         prompt = SUMMARIZE_THREAD_CONTEXT_PROMPT_USER.format(
-            question=question, facts=facts, entities=entities
+            question=question, facts=facts, entities=entities, messages=messages
         )
 
         response = await self.oai_client.chat.completions.create(
-            model=SUMMARY_MODEL,
+            model=self.summary_model,
             messages=[
                 {"role": "system", "content": SUMMARIZE_THREAD_CONTEXT_PROMPT_SYSTEM},
                 {"role": "user", "content": prompt},
@@ -77,7 +80,11 @@ class SummarizationService:
         return response.choices[0].message.content or ""
 
     async def compose_search_context_with_summary(
-        self, question: str, edges: List[EntityEdge], nodes: List[EntityNode]
+        self,
+        question: str,
+        edges: List[EntityEdge],
+        nodes: List[EntityNode],
+        episodes: List[Episode],
     ) -> str:
         """Compose context from Zep search results with summarization"""
         # Format facts with date ranges
@@ -89,14 +96,16 @@ class SummarizationService:
             # source_node_name = await self.resolve_node_uuid_to_name(edge.source_node_uuid)
             # target_node_name = await self.resolve_node_uuid_to_name(edge.target_node_uuid)
             # facts.append(f"  - ({source_node_name} -> {target_node_name}): {edge.fact} ({start_date} - {end_date})")
-            facts.append(f"  - {edge.fact} ({start_date} - {end_date})")
+            facts.append(f"  - {edge.fact} (from: {start_date} - to: {end_date})")
 
         # Format entities
         entities = [f"  - {node.name}: {node.summary}" for node in nodes]
 
+        messages = [f"({episode.content}\n" for episode in episodes]
+
         # Summarize context
         summary = await self.summarize_context(
-            question, "\n".join(facts), "\n".join(entities)
+            question, "\n".join(facts), "\n".join(entities), "\n".join(messages)
         )
 
         return CONTEXT_TEMPLATE_SUMMARY.format(summary=summary)
