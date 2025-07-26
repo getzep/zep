@@ -14,8 +14,15 @@ from typing import List, Tuple
 
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
-from zep_cloud import EntityEdge, EntityNode
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
+from zep_cloud import EntityEdge, EntityNode, Episode
 from zep_cloud.client import AsyncZep
+import httpx
 
 from common import (
     RESPONSE_MODEL,
@@ -66,6 +73,27 @@ class EvaluationRunner:
 
         logger.setLevel(getattr(logging, log_level.upper()))
         return logger
+
+    @retry(
+        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(
+            (
+                httpx.HTTPStatusError,
+                httpx.ConnectError,
+                httpx.TimeoutException,
+                httpx.RequestError,
+                Exception,  # Catch any other API-related exceptions
+            )
+        ),
+    )
+    async def _search_zep_with_retry(self, **kwargs):
+        """Wrapper for Zep graph search with retry logic"""
+        try:
+            return await self.zep.graph.search(**kwargs)
+        except Exception as e:
+            self.logger.warning(f"Zep search failed, will retry: {e}")
+            raise
 
     async def lme_response(self, context: str, question: str) -> str:
         """Generate response using LLM with provided context"""
@@ -152,7 +180,10 @@ class EvaluationRunner:
         return result.is_correct.strip().lower() == "yes"
 
     def compose_search_context(
-        self, edges: List[EntityEdge], nodes: List[EntityNode]
+        self,
+        edges: List[EntityEdge],
+        nodes: List[EntityNode],
+        episodes: List[Episode],
     ) -> str:
         """Compose context from Zep search results"""
         # Format facts with date ranges
@@ -168,16 +199,25 @@ class EvaluationRunner:
             for node in nodes
         ]
 
+        # Format episodes
+        episodes_content = [episode.content for episode in episodes]
+
         return CONTEXT_TEMPLATE.format(
-            facts="\n".join(facts), entities="\n".join(entities)
+            facts="\n".join(facts),
+            entities="\n".join(entities),
+            messages="\n".join(episodes_content),
         )
 
     async def compose_search_context_with_summary(
-        self, question: str, edges: List[EntityEdge], nodes: List[EntityNode]
+        self,
+        question: str,
+        edges: List[EntityEdge],
+        nodes: List[EntityNode],
+        episodes: List[Episode],
     ) -> str:
         """Compose context from Zep search results with AI summarization"""
         return await self.summarization_service.compose_search_context_with_summary(
-            question, edges, nodes
+            question, edges, nodes, episodes
         )
 
     async def evaluate_conversation(
@@ -193,18 +233,24 @@ class EvaluationRunner:
 
         # Search Zep for relevant context
         start_retrieval = time()
-        edges_results, nodes_results = await asyncio.gather(
-            self.zep.graph.search(
+        edges_results, nodes_results, episodes_results = await asyncio.gather(
+            self._search_zep_with_retry(
                 user_id=user_id,
                 query=question,
                 limit=30,
                 reranker="cross_encoder",
             ),
-            self.zep.graph.search(
+            self._search_zep_with_retry(
                 user_id=user_id,
                 query=question,
                 scope="nodes",
                 limit=30,
+            ),
+            self._search_zep_with_retry(
+                user_id=user_id,
+                query=question,
+                scope="episodes",
+                limit=20,
             ),
         )
         retrieval_duration = time() - start_retrieval
@@ -212,14 +258,17 @@ class EvaluationRunner:
         # Compose context from search results
         if self.use_summarization:
             context = await self.compose_search_context_with_summary(
-                question, edges_results.edges or [], nodes_results.nodes or []
+                question,
+                edges_results.edges or [],
+                nodes_results.nodes or [],
+                episodes_results.episodes or [],
             )
         else:
             context = self.compose_search_context(
-                edges_results.edges or [], nodes_results.nodes or []
+                edges_results.edges or [],
+                nodes_results.nodes or [],
+                episodes_results.episodes or [],
             )
-
-        self.logger.info(f"{question_id} - Context: {context}")
 
         # Generate response
         start = time()
