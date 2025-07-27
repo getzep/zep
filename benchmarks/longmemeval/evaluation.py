@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import pandas as pd
+import tiktoken
 from datetime import datetime, timezone
 from time import time
 from typing import List, Tuple
@@ -99,6 +100,13 @@ class EvaluationRunner:
                 # Fall back to None - will disable secondary reranking
                 self.reranker_service = None
 
+        # Initialize tokenizer for context length measurement
+        try:
+            self.tokenizer = tiktoken.encoding_for_model(self.response_model)
+        except Exception:
+            # Fallback to cl100k_base encoding if model-specific encoding not available
+            self.tokenizer = tiktoken.get_encoding("cl100k_base")
+
     def _setup_logging(self, log_level: str) -> logging.Logger:
         """Configure logging with proper formatting"""
         logger = logging.getLogger(__name__)
@@ -112,6 +120,14 @@ class EvaluationRunner:
 
         logger.setLevel(getattr(logging, log_level.upper()))
         return logger
+
+    def _count_tokens(self, text: str) -> int:
+        """Count tokens in text using the configured tokenizer"""
+        try:
+            return len(self.tokenizer.encode(text))
+        except Exception as e:
+            self.logger.warning(f"Token counting failed: {e}")
+            return 0
 
     @retry(
         stop=stop_after_attempt(4),
@@ -413,12 +429,18 @@ class EvaluationRunner:
         # Grade response
         grade = await self.lme_grader(question, gold_answer, hypothesis, question_type)
 
+        # Count context tokens and characters
+        context_tokens = self._count_tokens(context)
+        context_chars = len(context)
+
         result = {
             "user_id": user_id,
             "question_id": question_id,
             "hypothesis": hypothesis,
             "gold_answer": gold_answer,
             "context": context,
+            "context_tokens": context_tokens,
+            "context_chars": context_chars,
             "question": question,
             "question_type": question_type,
             "duration": duration,
@@ -461,12 +483,18 @@ class EvaluationRunner:
         # Grade response using configured models
         grade = await self.lme_grader(question, gold_answer, hypothesis, question_type)
 
+        # Count context tokens and characters
+        context_tokens = self._count_tokens(context)
+        context_chars = len(context)
+
         result = {
             "user_id": user_id,
             "question_id": question_id,
             "hypothesis": hypothesis,
             "gold_answer": gold_answer,
             "context": context,
+            "context_tokens": context_tokens,
+            "context_chars": context_chars,
             "question": question,
             "question_type": question_type,
             "duration": duration,

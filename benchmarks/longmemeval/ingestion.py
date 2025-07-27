@@ -26,7 +26,6 @@ MAX_MESSAGE_SIZE = 14000  # Zep memory.add limit
 CHUNK_SIZE = 8500  # Target chunk size (allowing room for context)
 CHUNK_OVERLAP = 200  # Character overlap between chunks
 
-
 # Failed multi_session_idx values that need replay (from ingestion_log_20250724_214000.csv analysis)
 FAILED_MULTI_SESSION_INDICES = [
     3,
