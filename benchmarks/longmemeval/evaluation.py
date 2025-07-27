@@ -31,6 +31,7 @@ from common import (
     GRADING_PROMPTS,
     Grade,
     CONTEXT_TEMPLATE,
+    get_summarization_prompts,
 )
 from summarization import SummarizationService
 from reranker import RerankerFactory
@@ -60,36 +61,42 @@ class EvaluationRunner:
 
         # Set up configuration with defaults
         self.config = config or {}
-        
+
         # Search parameters (with defaults matching current behavior)
-        self.edge_limit = self.config.get('edge_limit', 30)
-        self.node_limit = self.config.get('node_limit', 30) 
-        self.episode_limit = self.config.get('episode_limit', 20)
-        self.edge_reranker = self.config.get('edge_reranker', 'cross_encoder')
-        self.node_reranker = self.config.get('node_reranker', None)
-        self.episode_reranker = self.config.get('episode_reranker', None)
-        
+        self.edge_limit = self.config.get("edge_limit", 30)
+        self.node_limit = self.config.get("node_limit", 30)
+        self.episode_limit = self.config.get("episode_limit", 20)
+        self.edge_reranker = self.config.get("edge_reranker", "cross_encoder")
+        self.node_reranker = self.config.get("node_reranker", None)
+        self.episode_reranker = self.config.get("episode_reranker", None)
+
         # Model configurations
-        self.response_model = self.config.get('response_model', RESPONSE_MODEL)
-        self.grader_model = self.config.get('grader_model', GRADER_MODEL)
-        self.summary_model = self.config.get('summary_model', SUMMARY_MODEL)
-        
+        self.response_model = self.config.get("response_model", RESPONSE_MODEL)
+        self.grader_model = self.config.get("grader_model", GRADER_MODEL)
+        self.summary_model = self.config.get("summary_model", SUMMARY_MODEL)
+
         # Initialize summarization service with configurable model
         self.summarization_service = SummarizationService(
             self.zep, self.oai_client, summary_model=self.summary_model
         )
-        self.use_summarization = self.config.get('use_summarization', False)
-        
+        self.summarization_strategy = self.config.get("strategy", None)
+
         # Initialize reranker service if needed
         self.reranker_service = None
         reranker_types = [self.edge_reranker, self.node_reranker, self.episode_reranker]
-        if any(rt == "mxbai_rerank" for rt in reranker_types):
+        secondary_rerankers = [
+            rt for rt in reranker_types if RerankerFactory.is_secondary_reranker(rt)
+        ]
+
+        if secondary_rerankers:
+            # Use the first secondary reranker found (they should all be the same)
+            reranker_type = secondary_rerankers[0]
             try:
-                self.reranker_service = RerankerFactory.create_reranker("mxbai_rerank")
-                self.logger.info("Initialized MxbaiRerank service")
+                self.reranker_service = RerankerFactory.create_reranker(reranker_type)
+                self.logger.info(f"Initialized {reranker_type} service")
             except Exception as e:
-                self.logger.error(f"Failed to initialize MxbaiRerank service: {e}")
-                # Fall back to None - will disable mxbai reranking
+                self.logger.error(f"Failed to initialize {reranker_type} service: {e}")
+                # Fall back to None - will disable secondary reranking
                 self.reranker_service = None
 
     def _setup_logging(self, log_level: str) -> logging.Logger:
@@ -227,7 +234,7 @@ class EvaluationRunner:
 
         # Format entities
         entities = [
-            f"{node.name} ({', '.join(node.labels) if node.labels else ''}): {node.summary} ({node.attributes})"
+            f"{node.name} ({', '.join(node.labels) if node.labels else ''}): {node.summary} ({node.attributes if node.attributes else ''})"
             for node in nodes
         ]
 
@@ -249,7 +256,7 @@ class EvaluationRunner:
     ) -> str:
         """Compose context from Zep search results with AI summarization"""
         return await self.summarization_service.compose_search_context_with_summary(
-            question, edges, nodes, episodes
+            question, edges, nodes, episodes, strategy=self.summarization_strategy
         )
 
     async def evaluate_conversation(
@@ -265,21 +272,23 @@ class EvaluationRunner:
 
         # Search Zep for relevant context
         start_retrieval = time()
-        
+
         # Prepare search tasks based on configuration
         search_tasks = []
-        
+
         # Edge search
         edge_kwargs = {
             "user_id": user_id,
             "query": question,
         }
-        # Handle mxbai_rerank: fetch 3x results without Zep reranker (max 50)
-        if self.edge_reranker == "mxbai_rerank":
+        # Handle secondary rerankers: fetch 3x results without Zep reranker (max 50)
+        if RerankerFactory.is_secondary_reranker(self.edge_reranker):
             desired_limit = self.edge_limit * 3
             actual_limit = min(desired_limit, 50)
             if desired_limit > 50:
-                self.logger.warning(f"Edge mxbai_rerank: wanted {desired_limit} results, capped at 50 due to Zep API limit")
+                self.logger.warning(
+                    f"Edge {self.edge_reranker}: wanted {desired_limit} results, capped at 50 due to Zep API limit"
+                )
             edge_kwargs["limit"] = actual_limit
             # Don't pass reranker parameter to Zep
         else:
@@ -287,19 +296,21 @@ class EvaluationRunner:
             if self.edge_reranker:
                 edge_kwargs["reranker"] = self.edge_reranker
         search_tasks.append(self._search_zep_with_retry(**edge_kwargs))
-        
+
         # Node search
         node_kwargs = {
             "user_id": user_id,
             "query": question,
             "scope": "nodes",
         }
-        # Handle mxbai_rerank: fetch 3x results without Zep reranker (max 50)
-        if self.node_reranker == "mxbai_rerank":
+        # Handle secondary rerankers: fetch 3x results without Zep reranker (max 50)
+        if RerankerFactory.is_secondary_reranker(self.node_reranker):
             desired_limit = self.node_limit * 3
             actual_limit = min(desired_limit, 50)
             if desired_limit > 50:
-                self.logger.warning(f"Node mxbai_rerank: wanted {desired_limit} results, capped at 50 due to Zep API limit")
+                self.logger.warning(
+                    f"Node {self.node_reranker}: wanted {desired_limit} results, capped at 50 due to Zep API limit"
+                )
             node_kwargs["limit"] = actual_limit
             # Don't pass reranker parameter to Zep
         else:
@@ -307,7 +318,7 @@ class EvaluationRunner:
             if self.node_reranker:
                 node_kwargs["reranker"] = self.node_reranker
         search_tasks.append(self._search_zep_with_retry(**node_kwargs))
-        
+
         # Episode search (only if limit > 0)
         if self.episode_limit > 0:
             episode_kwargs = {
@@ -315,12 +326,14 @@ class EvaluationRunner:
                 "query": question,
                 "scope": "episodes",
             }
-            # Handle mxbai_rerank: fetch 3x results without Zep reranker (max 50)
-            if self.episode_reranker == "mxbai_rerank":
+            # Handle secondary rerankers: fetch 3x results without Zep reranker (max 50)
+            if RerankerFactory.is_secondary_reranker(self.episode_reranker):
                 desired_limit = self.episode_limit * 3
                 actual_limit = min(desired_limit, 50)
                 if desired_limit > 50:
-                    self.logger.warning(f"Episode mxbai_rerank: wanted {desired_limit} results, capped at 50 due to Zep API limit")
+                    self.logger.warning(
+                        f"Episode {self.episode_reranker}: wanted {desired_limit} results, capped at 50 due to Zep API limit"
+                    )
                 episode_kwargs["limit"] = actual_limit
                 # Don't pass reranker parameter to Zep
             else:
@@ -332,38 +345,53 @@ class EvaluationRunner:
             # Create empty episode result when disabled
             async def empty_episodes():
                 from types import SimpleNamespace
+
                 return SimpleNamespace(episodes=[])
+
             search_tasks.append(empty_episodes())
-        
-        edges_results, nodes_results, episodes_results = await asyncio.gather(*search_tasks)
+
+        edges_results, nodes_results, episodes_results = await asyncio.gather(
+            *search_tasks
+        )
         retrieval_duration = time() - start_retrieval
-        
-        # Apply secondary reranking if mxbai_rerank is configured and extract results
+
+        # Apply secondary reranking if configured and extract results
         final_edges = edges_results.edges or []
         final_nodes = nodes_results.nodes or []
-        final_episodes = episodes_results.episodes if hasattr(episodes_results, 'episodes') else []
-        
+        final_episodes = (
+            episodes_results.episodes if hasattr(episodes_results, "episodes") else []
+        )
+
         if self.reranker_service:
             # Rerank edges if needed
-            if self.edge_reranker == "mxbai_rerank" and final_edges:
+            if (
+                RerankerFactory.is_secondary_reranker(self.edge_reranker)
+                and final_edges
+            ):
                 final_edges = self.reranker_service.rerank_edges(
                     question, final_edges, self.edge_limit
                 )
-            
+
             # Rerank nodes if needed
-            if self.node_reranker == "mxbai_rerank" and final_nodes:
+            if (
+                RerankerFactory.is_secondary_reranker(self.node_reranker)
+                and final_nodes
+            ):
                 final_nodes = self.reranker_service.rerank_nodes(
                     question, final_nodes, self.node_limit
                 )
-            
+
             # Rerank episodes if needed
-            if self.episode_reranker == "mxbai_rerank" and final_episodes:
+            if (
+                RerankerFactory.is_secondary_reranker(self.episode_reranker)
+                and final_episodes
+            ):
                 final_episodes = self.reranker_service.rerank_episodes(
                     question, final_episodes, self.episode_limit
                 )
 
         # Compose context from search results
-        if self.use_summarization:
+        if self.summarization_strategy:
             context = await self.compose_search_context_with_summary(
                 question,
                 final_edges,
@@ -447,5 +475,3 @@ class EvaluationRunner:
         }
 
         return result, (1 if grade else 0), duration
-
-

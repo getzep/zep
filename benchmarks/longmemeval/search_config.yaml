@@ -1,0 +1,56 @@
+# LongMemEval Search Configuration
+# This file defines the parameter grid for running systematic evaluations
+
+# Search parameters for Zep graph retrieval
+search_params:
+  edge_limit: [5, 10, 30]  # Number of edge results to return
+  node_limit: [5, 10, 30]  # Number of node results to return
+  episode_limit: [0, 5, 10]  # Number of episode results (0 = disabled)
+  edge_reranker: [null, "cross_encoder",  "voyage_rerank"]  # Rerankers for edge search
+  node_reranker: [null, "cross_encoder", "voyage_rerank"]  # Rerankers for node search  
+  episode_reranker: [null, "cross_encoder", "voyage_rerank"]  # Rerankers for episode search
+  # Note: mxbai_rerank and voyage_rerank fetch 3x results without Zep reranker, then apply secondary reranking
+
+# Evaluation settings
+evaluation_type:
+  baseline: [false]  # false=Zep retrieval, true=full context baseline
+
+# Summarization settings
+summarization:
+  strategy: [null, "list", "qa"]  # null=no summarization, list=bullet facts, qa=question-focused
+
+# Model configurations
+models:
+  response_model: ["gpt-4o"]
+  grader_model: ["gpt-4o"]
+  summary_model: ["gpt-4.1-mini", "gpt-4.1-nano"]
+
+# Evaluation settings
+evaluation:
+  num_sessions: 250  # Number of sessions to evaluate 
+  batch_size: 20      # Batch size for processing 
+
+# Output settings
+output:
+  base_dir: "grid_search_results"  # Base directory for results
+  include_timestamp: true          # Include timestamp in folder names
+  include_config_hash: true        # Include config hash for uniqueness
+
+# Search method configuration - determines which search approach to use
+search_method:
+  type: "bayesian"  # "grid" or "bayesian" - controls which search method runs
+  
+  # Bayesian optimization settings
+  bayesian:
+    n_trials: 80              # Number of optimization trials
+    timeout: null             # Timeout in seconds (null = no timeout) 
+    sampler: "GP"             # GP (Gaussian Process), TPE (Tree-structured Parzen Estimator), or Random
+    pruner: "MedianPruner"    # MedianPruner or NopPruner (no pruning)
+    pruner_config:
+      n_startup_trials: 10    # Number of trials before pruning starts
+      n_warmup_steps: 5       # Number of steps before pruning consideration
+    seed: 42                  # Random seed for reproducibility
+  
+  # Grid search settings  
+  grid:
+    max_concurrent_runs: 1    # Maximum number of concurrent grid search runs

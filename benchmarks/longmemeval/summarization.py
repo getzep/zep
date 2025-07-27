@@ -13,17 +13,21 @@ from zep_cloud.client import AsyncZep
 
 from common import (
     SUMMARY_MODEL,
-    SUMMARIZE_THREAD_CONTEXT_PROMPT_SYSTEM,
-    SUMMARIZE_THREAD_CONTEXT_PROMPT_USER,
     CONTEXT_TEMPLATE_SUMMARY,
+    get_summarization_prompts,
 )
 
 
 class SummarizationService:
-    def __init__(self, zep_client: AsyncZep, oai_client: AsyncOpenAI, summary_model: str = None):
+    def __init__(
+        self,
+        zep_client: AsyncZep,
+        oai_client: AsyncOpenAI,
+        summary_model: str = SUMMARY_MODEL,
+    ):
         self.zep = zep_client
         self.oai_client = oai_client
-        self.summary_model = summary_model or SUMMARY_MODEL
+        self.summary_model = summary_model
         self.logger = logging.getLogger(__name__)
 
         # Cache for node UUID to name mappings
@@ -60,18 +64,31 @@ class SummarizationService:
         return await task
 
     async def summarize_context(
-        self, question: str, facts: str, entities: str, messages: str
+        self, question: str, facts: str, entities: str, messages: str, strategy: str = "list"
     ) -> str:
-        """Summarize the context using LLM"""
-
-        prompt = SUMMARIZE_THREAD_CONTEXT_PROMPT_USER.format(
-            question=question, facts=facts, entities=entities, messages=messages
-        )
+        """Summarize the context using LLM with specified strategy"""
+        
+        # Get the appropriate prompts for the strategy
+        system_prompt, user_prompt_template = get_summarization_prompts(strategy, question)
+        
+        if system_prompt is None or user_prompt_template is None:
+            # No summarization requested
+            return ""
+        
+        # Format the user prompt
+        if strategy == "qa":
+            prompt = user_prompt_template.format(
+                question=question, facts=facts, entities=entities, messages=messages
+            )
+        else:  # strategy == "list"
+            prompt = user_prompt_template.format(
+                facts=facts, entities=entities, messages=messages
+            )
 
         response = await self.oai_client.chat.completions.create(
             model=self.summary_model,
             messages=[
-                {"role": "system", "content": SUMMARIZE_THREAD_CONTEXT_PROMPT_SYSTEM},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
             temperature=0,
@@ -85,6 +102,7 @@ class SummarizationService:
         edges: List[EntityEdge],
         nodes: List[EntityNode],
         episodes: List[Episode],
+        strategy: str = "list",
     ) -> str:
         """Compose context from Zep search results with summarization"""
         # Format facts with date ranges
@@ -105,7 +123,7 @@ class SummarizationService:
 
         # Summarize context
         summary = await self.summarize_context(
-            question, "\n".join(facts), "\n".join(entities), "\n".join(messages)
+            question, "\n".join(facts), "\n".join(entities), "\n".join(messages), strategy
         )
 
         return CONTEXT_TEMPLATE_SUMMARY.format(summary=summary)

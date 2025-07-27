@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import random
 import yaml
 from datetime import datetime
 from itertools import product
@@ -42,6 +43,9 @@ class GridSearchRunner:
         
         # Setup file logging for this grid search run
         self._setup_file_logging()
+        
+        # Set random seed for reproducible session sampling
+        random.seed(42)
 
     def _setup_logging(self) -> logging.Logger:
         """Configure logging"""
@@ -94,7 +98,7 @@ class GridSearchRunner:
             "node_reranker": search_params["node_reranker"],
             "episode_reranker": search_params["episode_reranker"],
             "baseline": evaluation_type["baseline"],
-            "use_summarization": summarization["use_summarization"],
+            "strategy": summarization["strategy"],
             "response_model": models["response_model"],
             "grader_model": models["grader_model"],
             "summary_model": models["summary_model"],
@@ -131,7 +135,7 @@ class GridSearchRunner:
         key_params = [
             f"{'baseline' if config['baseline'] else 'zep'}",
             f"e{config['edge_limit']}n{config['node_limit']}ep{config['episode_limit']}",
-            f"sum{1 if config['use_summarization'] else 0}",
+            f"sum_{config['strategy'] or 'none'}",
             f"resp_{config['response_model'].replace('gpt-', '').replace('.', '_')}",
         ]
         folder_parts.extend(key_params)
@@ -177,6 +181,15 @@ class GridSearchRunner:
 
         self.logger.info(f"Saved config and summary to {output_dir}")
 
+    def _get_random_session_indices(self, total_sessions: int, num_sessions: int) -> List[int]:
+        """Get random session indices for sampling"""
+        if num_sessions >= total_sessions:
+            # Use all sessions if requesting more than available
+            return list(range(total_sessions))
+        else:
+            # Randomly sample without replacement
+            return sorted(random.sample(range(total_sessions), num_sessions))
+
     async def run_single_configuration(
         self, config: Dict[str, Any], df, num_sessions: int, batch_size: int
     ) -> Dict[str, Any]:
@@ -194,6 +207,13 @@ class GridSearchRunner:
             config=config,
         )
 
+        # Get random session indices for sampling
+        total_sessions = len(df)
+        session_indices = self._get_random_session_indices(total_sessions, num_sessions)
+        actual_num_sessions = len(session_indices)
+        
+        self.logger.info(f"Randomly sampling {actual_num_sessions} sessions from {total_sessions} total")
+        
         # Run evaluation
         start_time = datetime.now()
         
@@ -206,19 +226,20 @@ class GridSearchRunner:
         is_baseline = config.get('baseline', False)
         eval_type = "baseline" if is_baseline else "Zep"
         self.logger.info(f"Starting {eval_type} evaluation")
-        self.logger.info(f"Processing {num_sessions} sessions in batches of {batch_size}")
+        self.logger.info(f"Processing {actual_num_sessions} sessions in batches of {batch_size}")
         
-        # Process in batches for efficiency
-        for i in range(0, num_sessions, batch_size):
-            batch_end = min(i + batch_size, num_sessions)
+        # Process in batches for efficiency using random session indices
+        for i in range(0, actual_num_sessions, batch_size):
+            batch_end = min(i + batch_size, actual_num_sessions)
             batch_tasks = []
             
-            # Create batch of evaluation tasks
-            for j in range(i, batch_end):
+            # Create batch of evaluation tasks using random indices
+            for idx in range(i, batch_end):
+                session_idx = session_indices[idx]  # Use random session index
                 if is_baseline:
-                    task = evaluation_runner.evaluate_conversation_baseline(df, j)
+                    task = evaluation_runner.evaluate_conversation_baseline(df, session_idx)
                 else:
-                    task = evaluation_runner.evaluate_conversation(df, j)
+                    task = evaluation_runner.evaluate_conversation(df, session_idx)
                 batch_tasks.append(task)
             
             # Execute batch concurrently
@@ -238,7 +259,7 @@ class GridSearchRunner:
                 total_retrieval_duration += retrieval_duration
             
             self.logger.info(
-                f"Processed batch {i // batch_size + 1}/{(num_sessions + batch_size - 1) // batch_size}"
+                f"Processed batch {i // batch_size + 1}/{(actual_num_sessions + batch_size - 1) // batch_size}"
             )
         
         # Save results
@@ -286,8 +307,8 @@ class GridSearchRunner:
         df = load_dataset(dataset_file)
 
         # Use config defaults if not specified
-        num_sessions = num_sessions or self.config["evaluation"]["num_sessions"]
-        batch_size = batch_size or self.config["evaluation"]["batch_size"]
+        num_sessions = num_sessions if num_sessions is not None else self.config["evaluation"]["num_sessions"]
+        batch_size = batch_size if batch_size is not None else self.config["evaluation"]["batch_size"]
 
         # Generate parameter combinations
         combinations = self._generate_parameter_combinations()
@@ -356,8 +377,8 @@ async def main():
     parser = argparse.ArgumentParser(description="Run LongMemEval grid search")
     parser.add_argument(
         "--config",
-        default="grid_search_config.yaml",
-        help="Grid search configuration file",
+        default="search_config.yaml",
+        help="Search configuration file",
     )
     parser.add_argument(
         "--dataset", default="data/longmemeval_s.json", help="Dataset file path"

@@ -6,9 +6,11 @@ LongMemEval Benchmark - Main orchestration script
 import asyncio
 import argparse
 import logging
+import yaml
 
 from ingestion import IngestionRunner
-from evaluation import EvaluationRunner
+from grid_search import GridSearchRunner
+from bayesian_search import BayesianSearchRunner
 from common import load_dataset
 
 
@@ -19,32 +21,10 @@ async def main():
         default="data/longmemeval_s.json",
         help="Dataset file path (default: data/longmemeval_s.json)",
     )
-    parser.add_argument(
-        "--num-sessions",
-        type=int,
-        default=500,
-        help="Number of sessions to process (default: 500)",
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=5,
-        help="Batch size for processing (default: 5)",
-    )
     parser.add_argument("--ingest", action="store_true", help="Run data ingestion")
     parser.add_argument("--eval", action="store_true", help="Run evaluation")
     parser.add_argument(
-        "--baseline",
-        action="store_true",
-        help="Run baseline evaluation instead of Zep evaluation",
-    )
-    parser.add_argument(
         "--skip-download", action="store_true", help="Skip dataset download"
-    )
-    parser.add_argument(
-        "--output",
-        default="longmemeval_results.jsonl",
-        help="Output file path (default: longmemeval_results.jsonl)",
     )
     parser.add_argument(
         "--zep-dev-environment",
@@ -70,11 +50,6 @@ async def main():
         help="Start ingestion from this index (default: 0)",
     )
     parser.add_argument(
-        "--use-summarization",
-        action="store_true",
-        help="Use AI summarization for context composition (default: False)",
-    )
-    parser.add_argument(
         "--use-custom-ontology",
         action="store_true",
         help="Setup custom ontology for improved knowledge graph structure (default: False)",
@@ -83,6 +58,23 @@ async def main():
         "--replay",
         action="store_true",
         help="Replay failed users (delete and re-ingest) instead of normal ingestion (default: False)",
+    )
+    parser.add_argument(
+        "--config",
+        default="search_config.yaml",
+        help="Search configuration file (default: search_config.yaml)",
+    )
+    parser.add_argument(
+        "--num-sessions",
+        type=int,
+        default=500,
+        help="Number of sessions to evaluate per trial/config (default: 500)",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=15,
+        help="Batch size for processing (default: 15)",
     )
 
     args = parser.parse_args()
@@ -100,23 +92,14 @@ async def main():
         logger.error("Error: You must specify at least one action: --ingest or --eval")
         return
 
-    # Initialize runners
+    # Initialize ingestion runner if needed
     ingestion_runner = None
-    evaluation_runner = None
-
     if args.ingest:
         ingestion_runner = IngestionRunner(
             zep_dev_environment=args.zep_dev_environment,
             log_level=args.log_level,
             use_custom_ontology=args.use_custom_ontology,
             replay_mode=args.replay,
-        )
-
-    if args.eval:
-        evaluation_runner = EvaluationRunner(
-            zep_dev_environment=args.zep_dev_environment,
-            log_level=args.log_level,
-            use_summarization=args.use_summarization,
         )
 
     # Download dataset if needed
@@ -127,16 +110,47 @@ async def main():
     df = load_dataset(args.dataset)
 
     # Ingest data
-    if args.ingest and not args.baseline:
+    if args.ingest and ingestion_runner:
         await ingestion_runner.ingest_data(
-            df, args.num_sessions, args.question_type, args.start_index
+            df, 500, args.question_type, args.start_index  # Use default session count for ingestion
         )
 
     # Run evaluation
     if args.eval:
-        await evaluation_runner.run_evaluation(
-            df, args.num_sessions, args.batch_size, args.baseline, args.output
-        )
+        # Read config file to determine search method
+        with open(args.config, "r") as f:
+            config = yaml.safe_load(f)
+        
+        search_method = config["search_method"]["type"]
+        logger.info(f"Search method from config: {search_method}")
+        
+        if search_method == "grid":
+            logger.info("Running grid search evaluation")
+            grid_runner = GridSearchRunner(
+                config_file=args.config,
+                zep_dev_environment=args.zep_dev_environment,
+                log_level=args.log_level,
+            )
+            await grid_runner.run_grid_search(
+                dataset_file=args.dataset,
+                num_sessions=args.num_sessions if args.num_sessions != 500 else None,  # Use config values if default
+                batch_size=args.batch_size if args.batch_size != 15 else None,      # Use config values if default
+            )
+        elif search_method == "bayesian":
+            logger.info("Running Bayesian optimization evaluation")
+            bayesian_runner = BayesianSearchRunner(
+                config_file=args.config,
+                zep_dev_environment=args.zep_dev_environment,
+                log_level=args.log_level,
+            )
+            await bayesian_runner.run_bayesian_search(
+                dataset_file=args.dataset,
+                num_sessions=args.num_sessions if args.num_sessions != 500 else None,  # Use config values if default
+                batch_size=args.batch_size if args.batch_size != 15 else None,      # Use config values if default
+            )
+        else:
+            logger.error(f"Unknown search method '{search_method}' in config. Must be 'grid' or 'bayesian'")
+            return
 
 
 if __name__ == "__main__":
