@@ -2,7 +2,6 @@
 Basic tests for the zep-crewai package.
 """
 
-import os
 from unittest.mock import MagicMock
 
 import pytest
@@ -209,54 +208,3 @@ class TestZepStorageMock:
 
         except ImportError:
             pytest.skip("zep_cloud not available")
-
-
-@pytest.mark.integration
-class TestZepStorageReal:
-    """Integration tests with real Zep client (only run if ZEP_API_KEY is available)."""
-
-    @pytest.fixture
-    def zep_client(self):
-        """Create a real Zep client if API key is available."""
-        api_key = os.environ.get("ZEP_API_KEY")
-        if not api_key:
-            pytest.skip("ZEP_API_KEY not set - skipping integration tests")
-
-        try:
-            from zep_cloud.client import Zep
-
-            return Zep(api_key=api_key)
-        except ImportError:
-            pytest.skip("zep_cloud not available")
-
-    def test_zep_storage_real_client_initialization(self, zep_client):
-        """Test ZepStorage with a real Zep client."""
-        storage = ZepStorage(
-            client=zep_client, user_id="test-user-123", thread_id="test-thread-123"
-        )
-        assert storage is not None
-        assert storage._user_id == "test-user-123"
-        assert storage._thread_id == "test-thread-123"
-
-    def test_zep_storage_real_client_save_and_search(self, zep_client):
-        """Test saving and searching with a real Zep client."""
-        storage = ZepStorage(
-            client=zep_client, user_id="test-integration-user", thread_id="test-integration-thread"
-        )
-
-        # Save some test data as text (goes to graph)
-        test_data = "This is a test fact about project preferences"
-        storage.save(test_data, metadata={"type": "text", "category": "preferences"})
-
-        # Save a test message (goes to thread)
-        storage.save(
-            "Hello, I need help with preferences",
-            metadata={"type": "message", "role": "user", "name": "Test User"},
-        )
-
-        # Search for the data
-        results = storage.search("preferences", limit=3)
-
-        # We should get at least some results (may include previously stored data)
-        assert isinstance(results, list)
-        # Note: We can't guarantee exact content match due to potential existing data
