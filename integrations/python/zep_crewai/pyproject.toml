@@ -1,0 +1,89 @@
+[project]
+name = "zep-crewai"
+version = "0.1.0"
+description = "CrewAI integration for Zep"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "crewai>=0.80.0",
+    "aiohttp>=3.8.0",
+    "python-dotenv>=1.0.0",
+    "python-slugify>=8.0.4",
+    "rich>=14.0.0",
+    "zep-cloud>=3.0.0rc1",
+]
+
+[project.urls]
+Homepage = "https://github.com/getzep/zep"
+Documentation = "https://help.getzep.com"
+Repository = "https://github.com/getzep/zep"
+"Bug Tracker" = "https://github.com/getzep/zep/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov",
+    "pytest-asyncio",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zep_crewai"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')"
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501", # line too long, handled by formatter
+    "B008", # do not perform function calls in argument defaults
+    "C901", # too complex
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["zep_crewai"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "crewai.*",
+    "zep_cloud.*",
+]
+ignore_missing_imports = true
