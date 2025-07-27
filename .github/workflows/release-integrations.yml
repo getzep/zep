@@ -11,6 +11,7 @@ on:
         type: choice
         options:
           - autogen
+          - crewai
 
 jobs:
   detect-package:
