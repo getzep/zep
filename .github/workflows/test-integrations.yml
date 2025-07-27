@@ -22,6 +22,8 @@ jobs:
           filters: |
             autogen:
               - 'integrations/python/zep_autogen/**'
+            crewai:
+              - 'integrations/python/zep_crewai/**'
 
   test:
     runs-on: ubuntu-latest

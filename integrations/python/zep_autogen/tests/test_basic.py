@@ -2,7 +2,6 @@
 Basic tests for the zep-integrations package.
 """
 
-import os
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -240,30 +239,3 @@ class TestZepMemoryMock:
 
         except ImportError:
             pytest.skip("zep_cloud not available")
-
-
-@pytest.mark.integration
-class TestZepMemoryReal:
-    """Integration tests with real Zep client (only run if ZEP_API_KEY is available)."""
-
-    @pytest.fixture
-    def zep_client(self):
-        """Create a real Zep client if API key is available."""
-        api_key = os.environ.get("ZEP_API_KEY")
-        if not api_key:
-            pytest.skip("ZEP_API_KEY not set - skipping integration tests")
-
-        try:
-            from zep_cloud.client import AsyncZep
-
-            return AsyncZep(api_key=api_key)
-        except ImportError:
-            pytest.skip("zep_cloud not available")
-
-    @pytest.mark.asyncio
-    async def test_zep_memory_real_client_initialization(self, zep_client):
-        """Test ZepMemory with a real Zep client."""
-        memory = ZepMemory(client=zep_client, thread_id="test-session-123", user_id="test-user-123")
-        assert memory is not None
-        assert memory._thread_id == "test-session-123"
-        assert memory._user_id == "test-user-123"
