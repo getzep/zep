@@ -5,8 +5,8 @@ This module provides memory storage that integrates Zep with CrewAI's memory sys
 """
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional, Union
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from crewai.memory.storage.interface import Storage
 from zep_cloud.client import Zep
@@ -19,13 +19,7 @@ class ZepStorage(Storage):
     and retrieval of CrewAI agent memories.
     """
 
-    def __init__(
-        self,
-        client: Zep,
-        user_id: str,
-        thread_id: str,
-        **kwargs: Any
-    ) -> None:
+    def __init__(self, client: Zep, user_id: str, thread_id: str, **kwargs: Any) -> None:
         """
         Initialize ZepStorage with a Zep client instance.
 
@@ -40,7 +34,7 @@ class ZepStorage(Storage):
 
         if not user_id:
             raise ValueError("user_id is required")
-            
+
         if not thread_id:
             raise ValueError("thread_id is required")
 
@@ -51,7 +45,7 @@ class ZepStorage(Storage):
 
         self._logger = logging.getLogger(__name__)
 
-    def save(self, value: Any, metadata: Optional[Dict[str, Any]] = None) -> None:
+    def save(self, value: Any, metadata: dict[str, Any] | None = None) -> None:
         """
         Save a memory entry to Zep using metadata-based routing.
 
@@ -64,50 +58,46 @@ class ZepStorage(Storage):
             metadata: Metadata including type, role, name, etc.
         """
         metadata = metadata or {}
-            
+
         content_str = str(value)
         content_type = metadata.get("type", "text")
         if content_type not in ["message", "json", "text"]:
             content_type = "text"
-        
+
         try:
             if content_type == "message":
                 message_metadata = metadata.copy()
                 role = message_metadata.get("role", "norole")
                 name = message_metadata.get("name")
-                
+
                 message = Message(
                     role=role,
                     name=name,
                     content=content_str,
                 )
-                
-                self._client.thread.add_messages(
-                    thread_id=self._thread_id,
-                    messages=[message]  
+
+                self._client.thread.add_messages(thread_id=self._thread_id, messages=[message])
+
+                self._logger.debug(
+                    f"Saved message from {metadata.get('name', 'unknown')}: {content_str[:100]}..."
                 )
-                
-                self._logger.debug(f"Saved message from {metadata.get('name', 'unknown')}: {content_str[:100]}...")
-                
+
             else:
                 self._client.graph.add(
                     user_id=self._user_id,
                     data=content_str,
                     type=content_type,
                 )
-                
+
                 self._logger.debug(f"Saved {content_type} data: {content_str[:100]}...")
-            
+
         except Exception as e:
             self._logger.error(f"Error saving to Zep: {e}")
             raise
 
     def search(
-        self,
-        query: str,
-        limit: int = 5,
-        score_threshold: float = 0.5
-    ) -> Union[Dict[str, Any], List[Any]]:
+        self, query: str, limit: int = 5, score_threshold: float = 0.5
+    ) -> dict[str, Any] | list[Any]:
         """
         Search Zep user graph.
 
@@ -121,30 +111,27 @@ class ZepStorage(Storage):
         Returns:
             List of matching memory entries from both thread context and graph search
         """
-        results = []
+        results: list[dict[str, Any]] = []
 
         # Truncate query to max 400 characters to avoid API errors
         truncated_query = query[:400] if len(query) > 400 else query
 
         # Define search functions for concurrent execution
-        def get_thread_context():
+        def get_thread_context() -> Any:
             try:
                 return self._client.thread.get_user_context(thread_id=self._thread_id)
             except Exception as e:
                 self._logger.debug(f"Thread context not available: {e}")
                 return None
 
-        def search_graph_edges() -> List[str]:
+        def search_graph_edges() -> list[str]:
             try:
                 if not query:
                     return []
                 results: GraphSearchResults = self._client.graph.search(
-                    user_id=self._user_id,
-                    query=truncated_query,
-                    limit=limit,
-                    scope="edges"
+                    user_id=self._user_id, query=truncated_query, limit=limit, scope="edges"
                 )
-                edges: List[str] = []
+                edges: list[str] = []
                 if results.edges:
                     for edge in results.edges:
                         edge_str = f"{edge.fact} (valid_at: {edge.valid_at}, invalid_at: {edge.invalid_at or 'current'})"
@@ -152,23 +139,23 @@ class ZepStorage(Storage):
                 return edges
             except Exception as e:
                 self._logger.debug(f"Graph search not available: {e}")
-                return None
+                return []
 
         thread_context = None
-        edges_search_results = None
+        edges_search_results: list[str] = []
 
         try:
             with ThreadPoolExecutor(max_workers=2) as executor:
                 future_thread = executor.submit(get_thread_context)
                 future_edges = executor.submit(search_graph_edges)
-                
+
                 thread_context = future_thread.result()
-                edges_search_results = future_edges.result()
+                edges_search_results = future_edges.result() or []
 
         except Exception as e:
             self._logger.debug(f"Failed to search user memories: {e}")
 
-        if thread_context and hasattr(thread_context, 'context') and thread_context.context:
+        if thread_context and hasattr(thread_context, "context") and thread_context.context:
             results.append({"memory": thread_context.context})
 
         for result in edges_search_results:
@@ -183,7 +170,7 @@ class ZepStorage(Storage):
     def user_id(self) -> str:
         """Get the user ID."""
         return self._user_id
-        
+
     @property
     def thread_id(self) -> str:
         """Get the thread ID."""

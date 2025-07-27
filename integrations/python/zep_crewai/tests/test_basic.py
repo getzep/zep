@@ -68,7 +68,7 @@ class TestZepStorageMock:
 
             with pytest.raises(ValueError, match="user_id is required"):
                 ZepStorage(client=mock_client, user_id="", thread_id="test-thread")
-                
+
             with pytest.raises(ValueError, match="thread_id is required"):
                 ZepStorage(client=mock_client, user_id="test-user", thread_id="")
 
@@ -93,18 +93,18 @@ class TestZepStorageMock:
 
             # Test saving message content to thread
             storage.save(
-                "Test message content", 
-                metadata={"type": "message", "role": "user", "name": "John Doe"}
+                "Test message content",
+                metadata={"type": "message", "role": "user", "name": "John Doe"},
             )
 
             # Verify the thread add_messages was called
             mock_client.thread.add_messages.assert_called_once()
-            
+
             # Check the call arguments
             call_args = mock_client.thread.add_messages.call_args
             assert call_args[1]["thread_id"] == "test-thread"
             assert len(call_args[1]["messages"]) == 1
-            
+
             message = call_args[1]["messages"][0]
             assert message.content == "Test message content"
             assert message.role == "user"
@@ -125,14 +125,11 @@ class TestZepStorageMock:
             storage = ZepStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
 
             # Test saving text content to graph
-            storage.save(
-                "Test text content", 
-                metadata={"type": "text", "category": "facts"}
-            )
+            storage.save("Test text content", metadata={"type": "text", "category": "facts"})
 
             # Verify the graph add was called
             mock_client.graph.add.assert_called_once()
-            
+
             # Check the call arguments
             call_args = mock_client.graph.add.call_args
             assert call_args[1]["user_id"] == "test-user"
@@ -142,12 +139,11 @@ class TestZepStorageMock:
         except ImportError:
             pytest.skip("zep_cloud not available")
 
-
     def test_zep_storage_search_sync(self):
         """Test searching memory using sync interface."""
         try:
             from zep_cloud.client import Zep
-            from zep_cloud.types import GraphSearchResults, EntityEdge
+            from zep_cloud.types import EntityEdge, GraphSearchResults
 
             mock_client = MagicMock(spec=Zep)
             mock_client.thread = MagicMock()
@@ -165,7 +161,7 @@ class TestZepStorageMock:
             mock_edge.fact = "Mock fact from graph"
             mock_edge.valid_at = "2023-01-01"
             mock_edge.invalid_at = None
-            
+
             mock_graph_results = MagicMock(spec=GraphSearchResults)
             mock_graph_results.edges = [mock_edge]
             mock_client.graph.search.return_value = mock_graph_results
@@ -177,11 +173,9 @@ class TestZepStorageMock:
             # Should return a list of results
             assert isinstance(results, list)
             assert len(results) >= 1  # At least thread context
-            
+
             # Verify both thread context and graph search were called
-            mock_client.thread.get_user_context.assert_called_once_with(
-                thread_id="test-thread"
-            )
+            mock_client.thread.get_user_context.assert_called_once_with(thread_id="test-thread")
             mock_client.graph.search.assert_called_once()
 
         except ImportError:
@@ -208,19 +202,13 @@ class TestZepStorageMock:
             from zep_cloud.client import Zep
 
             mock_client = MagicMock(spec=Zep)
-            storage = ZepStorage(
-                client=mock_client, 
-                user_id="test-user",
-                thread_id="test-thread"
-            )
+            storage = ZepStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
 
             assert storage.user_id == "test-user"
             assert storage.thread_id == "test-thread"
 
         except ImportError:
             pytest.skip("zep_cloud not available")
-
-
 
 
 @pytest.mark.integration
@@ -243,25 +231,32 @@ class TestZepStorageReal:
 
     def test_zep_storage_real_client_initialization(self, zep_client):
         """Test ZepStorage with a real Zep client."""
-        storage = ZepStorage(client=zep_client, user_id="test-user-123", thread_id="test-thread-123")
+        storage = ZepStorage(
+            client=zep_client, user_id="test-user-123", thread_id="test-thread-123"
+        )
         assert storage is not None
         assert storage._user_id == "test-user-123"
         assert storage._thread_id == "test-thread-123"
 
     def test_zep_storage_real_client_save_and_search(self, zep_client):
         """Test saving and searching with a real Zep client."""
-        storage = ZepStorage(client=zep_client, user_id="test-integration-user", thread_id="test-integration-thread")
+        storage = ZepStorage(
+            client=zep_client, user_id="test-integration-user", thread_id="test-integration-thread"
+        )
 
         # Save some test data as text (goes to graph)
         test_data = "This is a test fact about project preferences"
         storage.save(test_data, metadata={"type": "text", "category": "preferences"})
 
         # Save a test message (goes to thread)
-        storage.save("Hello, I need help with preferences", metadata={"type": "message", "role": "user", "name": "Test User"})
+        storage.save(
+            "Hello, I need help with preferences",
+            metadata={"type": "message", "role": "user", "name": "Test User"},
+        )
 
         # Search for the data
         results = storage.search("preferences", limit=3)
-        
+
         # We should get at least some results (may include previously stored data)
         assert isinstance(results, list)
         # Note: We can't guarantee exact content match due to potential existing data
