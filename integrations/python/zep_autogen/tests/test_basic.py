@@ -2,7 +2,6 @@
 Basic tests for the zep-integrations package.
 """
 
-import os
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -240,4 +239,3 @@ class TestZepMemoryMock:
 
         except ImportError:
             pytest.skip("zep_cloud not available")
-
