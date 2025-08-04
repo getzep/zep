@@ -27,30 +27,30 @@ client.user.add(
     email=email
 )
 
-sessions = [
+threads = [
     [
-        {"role": zep_user_role, "role_type": "user", "content": "Help me find some new running shoes. Adidas are my favorite"},
-        {"role": zep_assistant_role, "role_type": "assistant", "content": "Can do! How about the Adidas Ultra Boost 21 for $100?"},
-        {"role": zep_user_role, "role_type": "user", "content": "Sounds good to me."},
+        {"name": zep_user_role, "role": "user", "content": "Help me find some new running shoes. Adidas are my favorite"},
+        {"name": zep_assistant_role, "role": "assistant", "content": "Can do! How about the Adidas Ultra Boost 21 for $100?"},
+        {"name": zep_user_role, "role": "user", "content": "Sounds good to me."},
     ],
     [
-        {"role": zep_user_role, "role_type": "user", "content": "I tried the Adidas ultra boost, and I no longer like Adidas. I want Puma."},
-        {"role": zep_assistant_role, "role_type": "assistant", "content": "I see. Do you want to try the Puma Velocity Nitro 2?"},
-        {"role": zep_user_role, "role_type": "user", "content": "I used to own the Velocity Nitro 2. What's another Puma Shoe I can try?"},
-        {"role": zep_assistant_role, "role_type": "assistant", "content": "I see. Do you want to try the Puma Deviate Nitro Elite?"},
-        {"role": zep_user_role, "role_type": "user", "content": "Sure"},
+        {"name": zep_user_role, "role": "user", "content": "I tried the Adidas ultra boost, and I no longer like Adidas. I want Puma."},
+        {"name": zep_assistant_role, "role": "assistant", "content": "I see. Do you want to try the Puma Velocity Nitro 2?"},
+        {"name": zep_user_role, "role": "user", "content": "I used to own the Velocity Nitro 2. What's another Puma Shoe I can try?"},
+        {"name": zep_assistant_role, "role": "assistant", "content": "I see. Do you want to try the Puma Deviate Nitro Elite?"},
+        {"name": zep_user_role, "role": "user", "content": "Sure"},
     ]
 ]
 
-for session in sessions:
+for thread in threads:
     uuid_value = uuid.uuid4().hex[:4]
-    session_id = "session-" + uuid_value
+    thread_id = "thread-" + uuid_value
     
-    client.memory.add_session(
-        session_id=session_id,
+    client.thread.create(
+        thread_id=thread_id,
         user_id=user_id
     )
     
-    for m in session:
-        client.memory.add(session_id=session_id, messages=[Message(**m)], ignore_roles=ignore_roles)
+    for m in thread:
+        client.thread.add_messages(thread_id=thread_id, messages=[Message(**m)])
 
