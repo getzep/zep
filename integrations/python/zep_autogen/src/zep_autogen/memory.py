@@ -255,14 +255,18 @@ class ZepMemory(Memory):
                 )
                 memory_parts.append(f"Memory context: {memory_result.context}")
 
-                # Only include recent messages if we have memory
-                if memory_result.messages:
-                    recent_messages = memory_result.messages[-10:]  # Get last 10 messages
-                    if recent_messages:
+                # Get recent messages from thread (separate API call needed)
+                try:
+                    thread_response = await self._client.thread.get(thread_id=self._thread_id, limit=10)
+                    if thread_response.messages:
+                        recent_messages = thread_response.messages
                         message_history = []
                         for msg in recent_messages:
                             message_history.append(f"{msg.role}: {msg.content}")
                         memory_parts.append("Recent conversation:\n" + "\n".join(message_history))
+                except Exception as e:
+                    # Log warning but don't fail if we can't get messages
+                    self._logger.warning(f"Could not retrieve recent messages: {e}")
 
             # If we have memory parts, add them to the context as a system message
             if memory_parts:
