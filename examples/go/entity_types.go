@@ -25,8 +25,8 @@ func entityTypes() {
 
 	type TravelingTo struct {
 		zep.BaseEdge `name:"TRAVELING_TO" description:"A traveling to edge is an edge that connects two nodes"`
-		TravelDate   string `description:"The destination of the travel" json:"travel_date,omitempty"`
-		Purpose      string `description:"The distance of the travel" json:"purpose,omitempty"`
+		TravelDate   string `description:"The date of the travel" json:"travel_date,omitempty"`
+		Purpose      string `description:"The purpose of the travel" json:"purpose,omitempty"`
 	}
 
 	type BookedFlight struct {

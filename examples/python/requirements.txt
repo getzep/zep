@@ -27,7 +27,6 @@ backoff==2.2.1
 beautifulsoup4==4.13.4
 bidict==0.23.1
 bs4==0.0.2
-chainlit==2.6.5
 charset-normalizer==3.4.2
 chevron==0.14.0
 click==8.2.1

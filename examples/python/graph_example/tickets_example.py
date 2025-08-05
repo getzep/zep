@@ -45,7 +45,7 @@ async def create_ticket_playground() -> None:
         },
         {
             "type": "message",
-            "data": "TickerSalesBot (assistant): Hi Sarah, welcome to the TicketSales.  I found 2 Taylor Swift concerts at Madison Square Garden on July 15 and 16, 2024. Tickets start at $199."
+            "data": "TicketSalesBot (assistant): Hi Sarah, welcome to the TicketSales.  I found 2 Taylor Swift concerts at Madison Square Garden on July 15 and 16, 2024. Tickets start at $199."
         },
         {
             "type": "message",
@@ -84,7 +84,7 @@ async def create_ticket_playground() -> None:
         },
         {
             "type": "message",
-            "data": "TickerSalesBot (assistant): Yes! Arctic Monkeys are playing at Barclays Center on August 5th, 2024."
+            "data": "TicketSalesBot (assistant): Yes! Arctic Monkeys are playing at Barclays Center on August 5th, 2024."
         },
         {
             "type": "message",
