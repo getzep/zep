@@ -44,7 +44,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+lib/**/*.py
+lib/**/*.pyc
+lib/**/__pycache__/
+lib/**/site-packages/
 lib64/
 parts/
 sdist/
