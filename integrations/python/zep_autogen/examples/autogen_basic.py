@@ -63,7 +63,7 @@ async def main():
         # First interaction
         user_msg1 = "My name is Alice and I love hiking in the mountains."
         print(f"User: {user_msg1}")
-        await add_message(user_msg1, "user")
+        await add_message(user_msg1, "user", "Alice")
         response1 = await agent.run(task=user_msg1)
         agent_msg1 = response1.messages[-1].content
         print(f"Agent: {agent_msg1}")
