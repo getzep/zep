@@ -36,9 +36,10 @@ try:
     import autogen_core.model_context  # noqa: F401
 
     # Import our integration
-    from .memory import ZepMemory
+    from .memory import ZepUserMemory
+    from .graph_memory import ZepGraphMemory
 
-    __all__ = ["ZepMemory", "ZepDependencyError"]
+    __all__ = ["ZepUserMemory", "ZepGraphMemory", "ZepDependencyError"]
 
 except ImportError as e:
     raise ZepDependencyError(framework="AutoGen", install_command="pip install zep-autogen") from e

@@ -13,32 +13,34 @@ pip install zep-autogen
 ```python
 import asyncio
 from zep_cloud.client import AsyncZep
-from zep_autogen import ZepMemory
+from zep_autogen import ZepUserMemory
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient
+
 
 async def main():
     # Initialize Zep client
     zep_client = AsyncZep(api_key="your-zep-api-key")
-    
+
     # Create Zep memory for your agent
-    memory = ZepMemory(
+    memory = ZepUserMemory(
         client=zep_client,
         user_id="user_123",
         thread_id="conversation_456"
     )
-    
+
     # Create AutoGen agent with Zep memory
     agent = AssistantAgent(
         name="MemoryAwareAssistant",
         model_client=OpenAIChatCompletionClient(model="gpt-4.1-mini"),
         memory=[memory]  # Add Zep memory to the agent
     )
-    
+
     # Your agent now has persistent memory across conversations!
     response = await agent.run(task="What's my name again?")
     print(response.messages[-1].content)
-    
+
+
 asyncio.run(main())
 ```
 
