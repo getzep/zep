@@ -6,7 +6,7 @@ This module provides memory classes that integrate Zep with AutoGen's memory sys
 
 import logging
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from autogen_core import CancellationToken
 from autogen_core.memory import (
@@ -22,7 +22,7 @@ from zep_cloud.client import AsyncZep
 from zep_cloud.types import Message
 
 
-class ZepMemory(Memory):
+class ZepUserMemory(Memory):
     """
     A memory implementation that integrates with Zep for persistent storage
     and retrieval of conversation context and agent memories.
@@ -35,7 +35,12 @@ class ZepMemory(Memory):
     """
 
     def __init__(
-        self, client: AsyncZep, user_id: str, thread_id: str | None = None, **kwargs: Any
+        self,
+        client: AsyncZep,
+        user_id: str,
+        thread_id: str | None = None,
+        thread_context_mode: Literal["basic", "summary"] = "summary",
+        **kwargs: Any,
     ) -> None:
         """
         Initialize ZepMemory with an AsyncZep client instance.
@@ -55,6 +60,7 @@ class ZepMemory(Memory):
         self._client = client
         self._user_id = user_id
         self._thread_id = thread_id
+        self._thread_context_mode = thread_context_mode
         self._config = kwargs
 
         # Set up module logger
@@ -71,7 +77,7 @@ class ZepMemory(Memory):
         - type="data": stores as data in user's graph using graph.add (maps mime type to data type)
 
         Args:
-            entry: The memory content to store
+            content: The memory content to store
 
         Raises:
             ValueError: If the memory content mime type or metadata type is not supported
@@ -239,7 +245,10 @@ class ZepMemory(Memory):
             # Get memory from Zep session
             if not self._thread_id:
                 return UpdateContextResult(memories=MemoryQueryResult(results=[]))
-            memory_result = await self._client.thread.get_user_context(thread_id=self._thread_id)
+            memory_result = await self._client.thread.get_user_context(
+                thread_id=self._thread_id,
+                mode=self._thread_context_mode,
+            )
             thread = await self._client.thread.get(thread_id=self._thread_id, lastn=10)
 
             memory_contents = []
