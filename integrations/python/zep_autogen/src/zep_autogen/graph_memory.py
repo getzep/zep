@@ -3,10 +3,10 @@ Zep Memory integration for AutoGen.
 
 This module provides memory classes that integrate Zep with AutoGen's memory system.
 """
+
 import asyncio
 import logging
-import uuid
-from typing import Any, Literal
+from typing import Any
 
 from autogen_core import CancellationToken
 from autogen_core.memory import (
@@ -21,6 +21,7 @@ from autogen_core.models import SystemMessage
 from zep_cloud import GraphSearchResults, SearchFilters
 from zep_cloud.client import AsyncZep
 from zep_cloud.graph.utils import compose_context_string
+
 
 class ZepGraphMemory(Memory):
     """
@@ -41,7 +42,7 @@ class ZepGraphMemory(Memory):
         search_filters: SearchFilters | None = None,
         facts_limit: int = 20,
         entity_limit: int = 5,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> None:
         """
         Initialize ZepGraphMemory with an AsyncZep client instance.
@@ -115,7 +116,9 @@ class ZepGraphMemory(Memory):
             graph_id=self._graph_id, type=data_type, data=str(content.content)
         )
 
-    def _graph_results_to_memory_content(self, graph_results: GraphSearchResults) -> list[MemoryContent]:
+    def _graph_results_to_memory_content(
+        self, graph_results: GraphSearchResults
+    ) -> list[MemoryContent]:
         """
         Helper method to convert graph search results to MemoryContent.
         """
@@ -205,7 +208,7 @@ class ZepGraphMemory(Memory):
                 query=query_str,
                 limit=limit,
                 search_filters=self._search_filters,
-                **kwargs
+                **kwargs,
             )
             results = self._graph_results_to_memory_content(graph_results)
 
@@ -216,7 +219,9 @@ class ZepGraphMemory(Memory):
         return MemoryQueryResult(results=results)
 
     async def _retrieve_graph_context(self) -> MemoryContent | None:
-        recent_messages = await self._client.graph.episode.get_by_graph_id(graph_id=self._graph_id, lastn=2)
+        recent_messages = await self._client.graph.episode.get_by_graph_id(
+            graph_id=self._graph_id, lastn=2
+        )
         if not recent_messages.episodes:
             return None
         query = ""
@@ -224,20 +229,24 @@ class ZepGraphMemory(Memory):
             query += f"{msg.content}\n"
         search_functions = []
 
-        search_functions.append(self._client.graph.search(
-            graph_id=self._graph_id,
-            query=query,
-            limit=self._facts_limit,
-            scope="edges",
-            search_filters=self._search_filters,
-        ))
-        search_functions.append(self._client.graph.search(
-            graph_id=self._graph_id,
-            query=query,
-            limit=self._entity_limit,
-            scope="nodes",
-            search_filters=self._search_filters,
-        ))
+        search_functions.append(
+            self._client.graph.search(
+                graph_id=self._graph_id,
+                query=query,
+                limit=self._facts_limit,
+                scope="edges",
+                search_filters=self._search_filters,
+            )
+        )
+        search_functions.append(
+            self._client.graph.search(
+                graph_id=self._graph_id,
+                query=query,
+                limit=self._entity_limit,
+                scope="nodes",
+                search_filters=self._search_filters,
+            )
+        )
 
         results: list[GraphSearchResults] = await asyncio.gather(*search_functions)
 
@@ -280,7 +289,7 @@ class ZepGraphMemory(Memory):
             print("graph_context", graph_context)
             if not graph_context:
                 return UpdateContextResult(memories=MemoryQueryResult(results=[]))
-            await model_context.add_message(SystemMessage(content=graph_context.content))
+            await model_context.add_message(SystemMessage(content=str(graph_context.content)))
             return UpdateContextResult(memories=MemoryQueryResult(results=[graph_context]))
 
         except Exception as e:

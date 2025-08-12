@@ -21,6 +21,7 @@ from autogen_core.models import SystemMessage
 from zep_cloud.client import AsyncZep
 from zep_cloud.types import Message
 
+
 class ZepUserMemory(Memory):
     """
     A memory implementation that integrates with Zep for persistent storage
@@ -39,7 +40,7 @@ class ZepUserMemory(Memory):
         user_id: str,
         thread_id: str | None = None,
         thread_context_mode: Literal["basic", "summary"] = "summary",
-        **kwargs: Any
+        **kwargs: Any,
     ) -> None:
         """
         Initialize ZepMemory with an AsyncZep client instance.

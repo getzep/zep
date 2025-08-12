@@ -12,44 +12,41 @@ from zep_cloud.external_clients.ontology import EntityModel, EntityText
 
 from zep_autogen.graph_memory import ZepGraphMemory
 
+
 class ProgrammingLanguage(EntityModel):
     """
     A programming language entity.
     """
+
     paradigm: EntityText = Field(
-        description="programming paradigm (e.g., object-oriented, functional)",
-        default=None
+        description="programming paradigm (e.g., object-oriented, functional)", default=None
     )
-    use_case: EntityText = Field(
-        description="primary use cases for this language",
-        default=None
-    )
+    use_case: EntityText = Field(description="primary use cases for this language", default=None)
+
 
 class Framework(EntityModel):
     """
     A software framework or library.
     """
+
     language: EntityText = Field(
-        description="the programming language this framework is built for",
-        default=None
+        description="the programming language this framework is built for", default=None
     )
-    purpose: EntityText = Field(
-        description="primary purpose of this framework",
-        default=None
-    )
+    purpose: EntityText = Field(description="primary purpose of this framework", default=None)
+
 
 class Concept(EntityModel):
     """
     A programming concept or technique.
     """
+
     category: EntityText = Field(
-        description="category of concept (e.g., design pattern, algorithm)",
-        default=None
+        description="category of concept (e.g., design pattern, algorithm)", default=None
     )
     difficulty: EntityText = Field(
-        description="difficulty level (beginner, intermediate, advanced)",
-        default=None
+        description="difficulty level (beginner, intermediate, advanced)", default=None
     )
+
 
 async def main():
     # Initialize AsyncZep client
@@ -112,34 +109,42 @@ async def main():
         user_msg1 = "Tell me about Python and machine learning."
         print(f"\nUser: {user_msg1}")
         await memory.add(
-            MemoryContent(content=user_msg1, mime_type=MemoryMimeType.TEXT, metadata={"type": "message"})
+            MemoryContent(
+                content=user_msg1, mime_type=MemoryMimeType.TEXT, metadata={"type": "message"}
+            )
         )
-        
+
         response1 = await agent.run(task=user_msg1)
         agent_msg1 = response1.messages[-1].content
         print(f"Agent: {agent_msg1}")
-        
+
         await memory.add(
-            MemoryContent(content=agent_msg1, mime_type=MemoryMimeType.TEXT, metadata={"type": "message"})
+            MemoryContent(
+                content=agent_msg1, mime_type=MemoryMimeType.TEXT, metadata={"type": "message"}
+            )
         )
 
         # Second interaction - agent should use graph context
         user_msg2 = "What can you tell me about building AI agents?"
         print(f"\nUser: {user_msg2}")
         await memory.add(
-            MemoryContent(content=user_msg2, mime_type=MemoryMimeType.TEXT, metadata={"type": "message"})
+            MemoryContent(
+                content=user_msg2, mime_type=MemoryMimeType.TEXT, metadata={"type": "message"}
+            )
         )
-        
+
         response2 = await agent.run(task=user_msg2)
         agent_msg2 = response2.messages[-1].content
         print(f"Agent: {agent_msg2}")
-        
+
         await memory.add(
-            MemoryContent(content=agent_msg2, mime_type=MemoryMimeType.TEXT, metadata={"type": "message"})
+            MemoryContent(
+                content=agent_msg2, mime_type=MemoryMimeType.TEXT, metadata={"type": "message"}
+            )
         )
 
         # Test querying graph memory directly
-        print(f"\n=== Querying graph memory directly ===")
+        print("\n=== Querying graph memory directly ===")
         query_result = await memory.query("What technologies are useful for AI?", limit=5)
         print(f"Query results ({len(query_result.results)} items):")
         for i, result in enumerate(query_result.results[:3], 1):

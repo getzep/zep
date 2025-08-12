@@ -44,7 +44,9 @@ class TestZepMemoryMock:
 
             # Create a mock AsyncZep client
             mock_client = MagicMock(spec=AsyncZep)
-            memory = ZepUserMemory(client=mock_client, thread_id="test-session", user_id="test-user")
+            memory = ZepUserMemory(
+                client=mock_client, thread_id="test-session", user_id="test-user"
+            )
             assert memory is not None
             assert memory._client is mock_client
             assert memory._thread_id == "test-session"
@@ -88,7 +90,9 @@ class TestZepMemoryMock:
             mock_client.thread.get = AsyncMock()
             mock_client.thread.add_messages = AsyncMock()
 
-            memory = ZepUserMemory(client=mock_client, user_id="test-user", thread_id="test-session")
+            memory = ZepUserMemory(
+                client=mock_client, user_id="test-user", thread_id="test-session"
+            )
 
             # Test adding memory content as message type
             content = MemoryContent(
@@ -182,7 +186,9 @@ class TestZepMemoryMock:
             mock_graph_response.episodes = []
             mock_client.graph.search.return_value = mock_graph_response
 
-            memory = ZepUserMemory(client=mock_client, user_id="test-user", thread_id="test-session")
+            memory = ZepUserMemory(
+                client=mock_client, user_id="test-user", thread_id="test-session"
+            )
 
             results = await memory.query("test query")
 
@@ -201,7 +207,9 @@ class TestZepMemoryMock:
             from zep_cloud.client import AsyncZep
 
             mock_client = MagicMock(spec=AsyncZep)
-            memory = ZepUserMemory(client=mock_client, user_id="test-user", thread_id="test-session")
+            memory = ZepUserMemory(
+                client=mock_client, user_id="test-user", thread_id="test-session"
+            )
 
             # Test supported mime types - these should work (with user_id for message storage)
             supported_types = [MemoryMimeType.TEXT, MemoryMimeType.MARKDOWN, MemoryMimeType.JSON]
