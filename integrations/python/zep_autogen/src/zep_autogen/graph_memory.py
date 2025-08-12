@@ -227,6 +227,9 @@ class ZepGraphMemory(Memory):
         query = ""
         for msg in recent_messages.episodes:
             query += f"{msg.content}\n"
+
+        # trim query to 400 chars
+        query = query[-400:]
         search_functions = []
 
         search_functions.append(
@@ -260,7 +263,7 @@ class ZepGraphMemory(Memory):
                 nodes.extend(result.nodes)
         if not edges and not nodes:
             return None
-        context = compose_context_string(edges, nodes)
+        context = compose_context_string(edges, nodes, [])
         return MemoryContent(
             content=context,
             mime_type=MemoryMimeType.TEXT,
