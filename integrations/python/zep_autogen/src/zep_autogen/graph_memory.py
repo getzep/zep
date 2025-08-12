@@ -75,7 +75,7 @@ class ZepGraphMemory(Memory):
         cancellation_token: CancellationToken | None = None,
     ) -> None:
         """
-        Add a data to Zep graph.
+        Add data to Zep graph.
 
         Uses metadata.type to determine the data type:
 
@@ -286,7 +286,6 @@ class ZepGraphMemory(Memory):
             if not messages:
                 return UpdateContextResult(memories=MemoryQueryResult(results=[]))
             graph_context = await self._retrieve_graph_context()
-            print("graph_context", graph_context)
             if not graph_context:
                 return UpdateContextResult(memories=MemoryQueryResult(results=[]))
             await model_context.add_message(SystemMessage(content=str(graph_context.content)))

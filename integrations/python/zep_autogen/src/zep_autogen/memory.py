@@ -77,7 +77,7 @@ class ZepUserMemory(Memory):
         - type="data": stores as data in user's graph using graph.add (maps mime type to data type)
 
         Args:
-            entry: The memory content to store
+            content: The memory content to store
 
         Raises:
             ValueError: If the memory content mime type or metadata type is not supported

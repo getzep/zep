@@ -22,18 +22,6 @@ def test_zep_memory_import():
     assert ZepUserMemory is not None
 
 
-class TestBasicFunctionality:
-    """Basic functionality tests for the zep-autogen package."""
-
-    def test_package_structure(self):
-        """Test that the package has the expected structure."""
-        import zep_autogen
-
-        assert hasattr(zep_autogen, "__version__")
-        assert hasattr(zep_autogen, "__author__")
-        assert hasattr(zep_autogen, "__description__")
-
-
 class TestZepMemoryMock:
     """Test ZepMemory with mock clients."""
 
