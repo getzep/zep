@@ -165,6 +165,31 @@ class ZepUserStorage(Storage):
         self._logger.info(f"No results found for query: {query}")
         return []
 
+    def get_context(self) -> str | None:
+        """
+        Get context from the thread using get_user_context.
+        
+        Returns:
+            The context string if available, None otherwise.
+        """
+        if not self._thread_id:
+            return None
+            
+        try:
+            context = self._client.thread.get_user_context(
+                thread_id=self._thread_id,
+                mode=self._mode
+            )
+            
+            # Return the context string if available
+            if context and hasattr(context, 'context'):
+                return context.context
+            return None
+            
+        except Exception as e:
+            self._logger.error(f"Error getting context from thread: {e}")
+            return None
+
     def reset(self) -> None:
         """Reset is not implemented for user storage as it should persist."""
         pass
