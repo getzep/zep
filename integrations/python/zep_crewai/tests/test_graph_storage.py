@@ -100,85 +100,20 @@ class TestZepGraphStorage:
             graph_id="test-graph", data="Default content", type="text"
         )
 
-    @patch("zep_crewai.graph_storage.ThreadPoolExecutor")
-    def test_search_with_results(self, mock_executor):
-        """Test search with successful results from all scopes."""
+    @patch("zep_crewai.graph_storage.search_graph_and_compose_context")
+    def test_search_with_results(self, mock_search_compose):
+        """Test search returns composed context from graph."""
         from zep_cloud.client import Zep
-        from zep_cloud.types import EntityEdge, EntityNode, Episode, GraphSearchResults
 
         mock_client = MagicMock(spec=Zep)
         mock_client.graph = MagicMock()
 
-        # Create mock results for different scopes
-        mock_edge = MagicMock(spec=EntityEdge)
-        mock_edge.fact = "Python is used for AI"
-        mock_edge.name = "python_ai_fact"
-        mock_edge.attributes = {"confidence": "high"}
-        mock_edge.created_at = "2024-01-01"
-        mock_edge.valid_at = "2024-01-01"
-        mock_edge.invalid_at = None
-
-        mock_node = MagicMock(spec=EntityNode)
-        mock_node.name = "Python"
-        mock_node.summary = "A programming language"
-        mock_node.attributes = {"type": "language"}
-        mock_node.created_at = "2024-01-01"
-
-        mock_episode = MagicMock(spec=Episode)
-        mock_episode.content = "Discussion about Python"
-        mock_episode.source = "conversation"
-        mock_episode.role = "assistant"
-        mock_episode.created_at = "2024-01-01"
-
-        # Setup mock executor for parallel execution
-        mock_executor_instance = MagicMock()
-        mock_executor.return_value.__enter__.return_value = mock_executor_instance
-
-        # Mock futures for parallel execution
-        future_edges = MagicMock()
-        future_nodes = MagicMock()
-        future_episodes = MagicMock()
-
-        # Set up return values for futures
-        edge_results = MagicMock(spec=GraphSearchResults)
-        edge_results.edges = [mock_edge]
-        future_edges.result.return_value = [
-            {
-                "memory": mock_edge.fact,
-                "type": "edge",
-                "name": mock_edge.name,
-                "attributes": mock_edge.attributes,
-                "created_at": mock_edge.created_at,
-                "valid_at": mock_edge.valid_at,
-                "invalid_at": mock_edge.invalid_at,
-            }
-        ]
-
-        node_results = MagicMock(spec=GraphSearchResults)
-        node_results.nodes = [mock_node]
-        future_nodes.result.return_value = [
-            {
-                "memory": f"{mock_node.name}: {mock_node.summary}",
-                "type": "node",
-                "name": mock_node.name,
-                "attributes": mock_node.attributes,
-                "created_at": mock_node.created_at,
-            }
-        ]
-
-        episode_results = MagicMock(spec=GraphSearchResults)
-        episode_results.episodes = [mock_episode]
-        future_episodes.result.return_value = [
-            {
-                "memory": mock_episode.content,
-                "type": "episode",
-                "source": mock_episode.source,
-                "role": mock_episode.role,
-                "created_at": mock_episode.created_at,
-            }
-        ]
-
-        mock_executor_instance.submit.side_effect = [future_edges, future_nodes, future_episodes]
+        # Mock the search_graph_and_compose_context to return composed context
+        mock_search_compose.return_value = (
+            "Facts:\n- Python is used for AI\n\n"
+            "Entities:\n- Python: A programming language\n\n"
+            "Episodes:\n- Discussion about Python"
+        )
 
         storage = ZepGraphStorage(client=mock_client, graph_id="test-graph")
 
@@ -187,170 +122,88 @@ class TestZepGraphStorage:
 
         # Verify results
         assert isinstance(results, list)
-        assert len(results) == 3  # One from each scope
+        assert len(results) == 1  # Single composed result
 
-        # Check edge result
-        assert results[0]["type"] == "edge"
-        assert results[0]["memory"] == "Python is used for AI"
+        # Check the composed result
+        assert results[0]["context"] == (
+            "Facts:\n- Python is used for AI\n\n"
+            "Entities:\n- Python: A programming language\n\n"
+            "Episodes:\n- Discussion about Python"
+        )
+        assert results[0]["type"] == "graph_context"
+        assert results[0]["source"] == "graph"
+        assert results[0]["query"] == "Python"
 
-        # Check node result
-        assert results[1]["type"] == "node"
-        assert "Python" in results[1]["memory"]
+        # Verify search_graph_and_compose_context was called with correct args
+        mock_search_compose.assert_called_once_with(
+            client=mock_client,
+            query="Python",
+            graph_id="test-graph",
+            facts_limit=20,
+            entity_limit=5,
+            episodes_limit=5,
+            search_filters=None,
+        )
 
-        # Check episode result
-        assert results[2]["type"] == "episode"
-        assert results[2]["memory"] == "Discussion about Python"
-
-    @patch("zep_crewai.graph_storage.compose_context_string")
-    @patch("zep_crewai.graph_storage.ThreadPoolExecutor")
-    def test_get_context(self, mock_executor, mock_compose):
-        """Test get_context method with compose_context_string."""
+    @patch("zep_crewai.graph_storage.search_graph_and_compose_context")
+    def test_search_with_no_results(self, mock_search_compose):
+        """Test search returns empty list when no results found."""
         from zep_cloud.client import Zep
-        from zep_cloud.types import EntityEdge, EntityNode, GraphSearchResults
 
         mock_client = MagicMock(spec=Zep)
         mock_client.graph = MagicMock()
 
-        # Create mock edge and node
-        mock_edge = MagicMock(spec=EntityEdge)
-        mock_edge.fact = "Python is used for AI"
+        # Mock the search to return None (no results)
+        mock_search_compose.return_value = None
 
-        mock_node = MagicMock(spec=EntityNode)
-        mock_node.name = "Python"
-        mock_node.summary = "A programming language"
+        storage = ZepGraphStorage(client=mock_client, graph_id="test-graph")
 
-        # Setup mock executor
-        mock_executor_instance = MagicMock()
-        mock_executor.return_value.__enter__.return_value = mock_executor_instance
+        # Perform search
+        results = storage.search("NonExistent", limit=5)
 
-        # Mock futures
-        future_edges = MagicMock()
-        future_nodes = MagicMock()
+        # Verify empty results
+        assert isinstance(results, list)
+        assert len(results) == 0
 
-        edge_results = MagicMock(spec=GraphSearchResults)
-        edge_results.edges = [mock_edge]
-        future_edges.result.return_value = edge_results
+    @patch("zep_crewai.graph_storage.search_graph_and_compose_context")
+    def test_search_with_custom_limits(self, mock_search_compose):
+        """Test search passes custom limits to search function."""
+        from zep_cloud.client import Zep
 
-        node_results = MagicMock(spec=GraphSearchResults)
-        node_results.nodes = [mock_node]
-        future_nodes.result.return_value = node_results
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
 
-        mock_executor_instance.submit.side_effect = [future_edges, future_nodes]
-
-        # Mock compose_context_string
-        mock_compose.return_value = (
-            "Facts:\n- Python is used for AI\n\nEntities:\n- Python: A programming language"
-        )
+        # Mock the search to return composed context
+        mock_search_compose.return_value = "Context with custom limits"
 
         storage = ZepGraphStorage(
-            client=mock_client, graph_id="test-graph", facts_limit=20, entity_limit=5
+            client=mock_client, graph_id="test-graph", facts_limit=30, entity_limit=10
         )
 
-        # Get context
-        context = storage.get_context("Python programming")
+        # Perform search
+        storage.search("test", limit=15)
 
-        # Verify compose_context_string was called with correct arguments
-        mock_compose.assert_called_once_with([mock_edge], [mock_node], [])
-
-        # Verify context is returned correctly
-        assert (
-            context
-            == "Facts:\n- Python is used for AI\n\nEntities:\n- Python: A programming language"
+        # Verify search_graph_and_compose_context was called with custom limits
+        mock_search_compose.assert_called_once_with(
+            client=mock_client,
+            query="test",
+            graph_id="test-graph",
+            facts_limit=30,
+            entity_limit=10,
+            episodes_limit=15,  # Uses the limit parameter for episodes
+            search_filters=None,
         )
 
-    @patch("zep_crewai.graph_storage.compose_context_string")
-    @patch("zep_crewai.graph_storage.ThreadPoolExecutor")
-    def test_get_context_with_recent_episodes(self, mock_executor, mock_compose):
-        """Test get_context retrieves recent episodes when no query provided."""
-        from zep_cloud.client import Zep
-        from zep_cloud.types import Episode
-
-        mock_client = MagicMock(spec=Zep)
-        mock_client.graph = MagicMock()
-        mock_client.graph.episode = MagicMock()
-
-        # Mock recent episodes
-        mock_episode1 = MagicMock(spec=Episode)
-        mock_episode1.content = "First episode content"
-
-        mock_episode2 = MagicMock(spec=Episode)
-        mock_episode2.content = "Second episode content"
-
-        mock_episodes_response = MagicMock()
-        mock_episodes_response.episodes = [mock_episode1, mock_episode2]
-
-        mock_client.graph.episode.get_by_graph_id.return_value = mock_episodes_response
-
-        # Setup mock executor for search
-        mock_executor_instance = MagicMock()
-        mock_executor.return_value.__enter__.return_value = mock_executor_instance
-
-        future_edges = MagicMock()
-        future_nodes = MagicMock()
-
-        from zep_cloud.types import GraphSearchResults
-
-        edge_results = MagicMock(spec=GraphSearchResults)
-        edge_results.edges = []
-        future_edges.result.return_value = edge_results
-
-        node_results = MagicMock(spec=GraphSearchResults)
-        node_results.nodes = []
-        future_nodes.result.return_value = node_results
-
-        mock_executor_instance.submit.side_effect = [future_edges, future_nodes]
-
-        mock_compose.return_value = "Context from recent episodes"
-
-        storage = ZepGraphStorage(client=mock_client, graph_id="test-graph")
-
-        # Get context without query
-        storage.get_context()
-
-        # Verify recent episodes were retrieved
-        mock_client.graph.episode.get_by_graph_id.assert_called_once_with(
-            graph_id="test-graph", lastn=2
-        )
-
-        # Verify search was called with episode content
-        assert mock_executor_instance.submit.call_count == 2
-
-    def test_get_context_returns_none_when_no_results(self):
-        """Test get_context returns None when no results found."""
+    @patch("zep_crewai.graph_storage.search_graph_and_compose_context")
+    def test_search_with_filters(self, mock_search_compose):
+        """Test that search filters are passed correctly."""
         from zep_cloud.client import Zep
 
         mock_client = MagicMock(spec=Zep)
         mock_client.graph = MagicMock()
-        mock_client.graph.episode = MagicMock()
 
-        # Mock empty episodes response
-        mock_episodes_response = MagicMock()
-        mock_episodes_response.episodes = []
-        mock_client.graph.episode.get_by_graph_id.return_value = mock_episodes_response
-
-        storage = ZepGraphStorage(client=mock_client, graph_id="test-graph")
-
-        # Get context without query and no episodes
-        context = storage.get_context()
-
-        # Should return None
-        assert context is None
-
-    def test_search_with_filters(self):
-        """Test that search filters are applied correctly."""
-        from zep_cloud.client import Zep
-        from zep_cloud.types import GraphSearchResults
-
-        mock_client = MagicMock(spec=Zep)
-        mock_client.graph = MagicMock()
-        mock_client.graph.search = MagicMock()
-
-        # Mock empty results to avoid complex setup
-        mock_results = MagicMock(spec=GraphSearchResults)
-        mock_results.edges = []
-        mock_results.nodes = []
-        mock_results.episodes = []
-        mock_client.graph.search.return_value = mock_results
+        # Mock the search to return composed context
+        mock_search_compose.return_value = "Filtered context"
 
         search_filters = {"node_labels": ["Technology", "Company"]}
         storage = ZepGraphStorage(
@@ -360,10 +213,16 @@ class TestZepGraphStorage:
         # Perform search to trigger filter usage
         storage.search("test query", limit=5)
 
-        # Verify search was called with filters
-        calls = mock_client.graph.search.call_args_list
-        for call in calls:
-            assert call[1].get("search_filters") == search_filters
+        # Verify search_graph_and_compose_context was called with filters
+        mock_search_compose.assert_called_once_with(
+            client=mock_client,
+            query="test query",
+            graph_id="test-graph",
+            facts_limit=20,
+            entity_limit=5,
+            episodes_limit=5,
+            search_filters=search_filters,
+        )
 
     def test_reset_does_nothing(self):
         """Test that reset method exists but does nothing."""

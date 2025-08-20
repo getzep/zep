@@ -166,7 +166,7 @@ class ZepSearchTool(BaseTool):
             # Format results for agent consumption
             formatted = f"Found {len(results)} relevant memories:\n\n"
             for i, result in enumerate(results, 1):
-                result_type = result.get('type', 'unknown')
+                result_type = result.get("type", "unknown")
                 formatted += f"{i}. [{result_type.upper() if result_type else 'UNKNOWN'}] {result['content']}\n"
                 if result.get("created_at"):
                     formatted += f"   (Created: {result['created_at']})\n"
