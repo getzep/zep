@@ -1,163 +1,381 @@
-# Zep CrewAI Integration Tutorial
+# Zep CrewAI Integration
 
-Learn how to add persistent memory to your CrewAI agents using Zep's powerful memory platform.
+A comprehensive integration package that enables [CrewAI](https://github.com/joaomdmoura/crewai) agents to leverage [Zep](https://getzep.com)'s powerful memory platform for persistent storage, knowledge graphs, and intelligent tool usage.
 
 ## Installation
-
-Install the Zep CrewAI integration package:
 
 ```bash
 pip install zep-crewai
 ```
 
-## Setup
+## Quick Start
 
-### 1. Get Your API Key
-
-Sign up at [Zep Cloud](https://app.getzep.com) and get your API key.
-
-### 2. Set Environment Variable
-
-```bash
-export ZEP_API_KEY="your-zep-api-key"
-```
-
-## Basic Usage
-
-### 1. Initialize Zep Client
+### User Storage with Conversation Memory
 
 ```python
 import os
 from zep_cloud.client import Zep
+from zep_crewai import ZepUserStorage
+from crewai import Agent, Crew, Task
+from crewai.memory.external.external_memory import ExternalMemory
 
 # Initialize Zep client
 zep_client = Zep(api_key=os.getenv("ZEP_API_KEY"))
-```
 
-### 2. Create User and Thread
+# Create user and thread
+zep_client.user.add(user_id="alice_123", first_name="Alice")
+zep_client.thread.create(user_id="alice_123", thread_id="project_456")
 
-**Important**: You must create a user and thread in Zep before using ZepStorage.
-
-```python
-# Create a user 
-user_id = "john_doe_123"
-zep_client.user.add(
-    user_id=user_id,
-    first_name="John",
-    last_name="Doe",
-    email="john.doe@example.com"
-)
-
-# Create a thread 
-thread_id = "project_alpha_456"
-zep_client.thread.create(
-    user_id=user_id,
-    thread_id=thread_id
-)
-```
-
-### 3. Initialize ZepStorage
-
-```python
-from zep_crewai import ZepStorage
-from crewai.memory.external.external_memory import ExternalMemory
-
-# Create storage for your project
-zep_storage = ZepStorage(
+# Create user storage
+user_storage = ZepUserStorage(
     client=zep_client,
-    user_id=user_id,   
-    thread_id=thread_id
+    user_id="alice_123",
+    thread_id="project_456",  # Optional: for conversation context
+    mode="summary"  # "summary" or "raw_messages" for thread context
 )
 
-# Wrap in CrewAI's external memory
-external_memory = ExternalMemory(storage=zep_storage)
-```
-
-### 4. Create Crew with Persistent Memory
-
-```python
-from crewai import Agent, Crew, Task, Process
-
-# Create your agents
-research_agent = Agent(
-    role='Research Analyst',
-    goal='Analyze market trends and provide insights',
-    backstory='You are an expert at finding and analyzing market data...',
-)
-
-# Create crew with Zep memory
+# Create crew with user memory
 crew = Crew(
-    agents=[research_agent],
+    agents=[...],
     tasks=[...],
-    external_memory=external_memory,  # This enables the crew to search Zep
-    process=Process.sequential,
-)
-
-# Run your crew - memories will be automatically saved and retrieved
-result = crew.kickoff()
-```
-
-## How Memory Works
-
-Zep stores different types of content using metadata-based routing.
-
-### Messages (Conversation Context)
-Stored in Zep threads for conversation history:
-
-```python
-external_memory.save(
-    "I need help planning a business trip to New York",
-    metadata={"type": "message", "role": "user", "name": "John Doe"}
-)
-
-external_memory.save(
-    "I'd be happy to help you plan your trip!",
-    metadata={"type": "message", "role": "assistant", "name": "Travel Agent"}
+    external_memory=ExternalMemory(storage=user_storage)
 )
 ```
 
-### Structured Data
-Added as episodes to the user knowledge graph in Zep:
+### Knowledge Graph Storage
 
 ```python
-# JSON data
+from zep_crewai import ZepGraphStorage
+
+# Create graph storage for shared knowledge
+graph_storage = ZepGraphStorage(
+    client=zep_client,
+    graph_id="company_knowledge",
+    search_filters={"node_labels": ["Technology", "Project"]}
+)
+
+# Create crew with graph memory
+crew = Crew(
+    agents=[...],
+    tasks=[...],
+    external_memory=ExternalMemory(storage=graph_storage)
+)
+```
+
+### Tool-Equipped Agents
+
+```python
+from zep_crewai import create_search_tool, create_add_data_tool
+
+# Create tools for user or graph
+search_tool = create_search_tool(zep_client, user_id="alice_123")
+add_tool = create_add_data_tool(zep_client, graph_id="knowledge_base")
+
+# Create agent with Zep tools
+agent = Agent(
+    role="Knowledge Assistant",
+    goal="Manage and retrieve information efficiently",
+    tools=[search_tool, add_tool],
+    llm="gpt-4o-mini"
+)
+```
+
+## Features
+
+### Storage Classes
+
+#### ZepUserStorage
+Manages user-specific memories and conversations:
+- **Thread Messages**: Conversation history with role-based storage
+- **User Graph**: Personal knowledge, preferences, and context
+- **Parallel Search**: Simultaneous search across threads and graphs
+- **Search Filters**: Target specific node types and relationships
+- **Thread Context**: Uses `thread.get_user_context` with configurable mode (summary/raw_messages)
+
+#### ZepGraphStorage  
+Manages generic knowledge graphs for shared information:
+- **Structured Knowledge**: Store entities with defined ontologies
+- **Multi-scope Search**: Search edges (facts), nodes (entities), and episodes
+- **Search Filters**: Filter by node labels and attributes
+- **Persistent Storage**: Knowledge persists across sessions
+- **Context Composition**: Uses `compose_context_string` for formatted context
+
+### Tool Integration
+
+#### Search Tool
+```python
+search_tool = create_search_tool(
+    zep_client,
+    user_id="user_123"  # OR graph_id="knowledge_base"
+)
+```
+- Search across edges, nodes, and episodes
+- Configurable result limits
+- Scope filtering (edges, nodes, episodes, or all)
+- Natural language queries
+
+#### Add Data Tool
+```python
+add_tool = create_add_data_tool(
+    zep_client,
+    graph_id="knowledge_base"  # OR user_id="user_123"
+)
+```
+- Add text, JSON, or message data
+- Automatic type detection
+- Structured data support
+- Metadata preservation
+
+## Advanced Usage
+
+### Graph Storage with Ontology
+
+Define structured entities for better organization:
+
+```python
+from zep_cloud.external_clients.ontology import EntityModel, EntityText
+from pydantic import Field
+
+class ProjectEntity(EntityModel):
+    status: EntityText = Field(description="project status")
+    priority: EntityText = Field(description="priority level")
+    team_size: EntityText = Field(description="team size")
+
+# Set ontology
+zep_client.graph.set_ontology(
+    graph_id="projects",
+    entities={"Project": ProjectEntity},
+    edges={}
+)
+
+# Use with filtered search and context limits
+graph_storage = ZepGraphStorage(
+    client=zep_client,
+    graph_id="projects",
+    search_filters={"node_labels": ["Project"]},
+    facts_limit=20,  # Max facts for context
+    entity_limit=5   # Max entities for context
+)
+
+# Get formatted context
+context = graph_storage.get_context("project status")
+print(context)  # Formatted string with facts and entities
+```
+
+### Multi-Agent with Mixed Storage
+
+```python
+# User-specific storage for personal agent
+personal_storage = ZepUserStorage(
+    client=zep_client,
+    user_id="user_123",
+    thread_id="thread_456",
+    facts_limit=20,  # Max facts for context
+    entity_limit=5,  # Max entities for context
+    mode="summary"  # Or "raw_messages" for full conversation history
+)
+
+# Get formatted context from thread
+context = personal_storage.get_context()
+print(context)  # Thread context based on configured mode
+
+# Shared knowledge graph for team agent
+team_storage = ZepGraphStorage(
+    client=zep_client,
+    graph_id="team_knowledge"
+)
+
+# Create agents with different storage
+personal_agent = Agent(
+    name="Personal Assistant",
+    tools=[create_search_tool(zep_client, user_id="user_123")]
+)
+
+team_agent = Agent(
+    name="Team Coordinator",
+    tools=[create_search_tool(zep_client, graph_id="team_knowledge")]
+)
+```
+
+### Storage Routing
+
+Different data types are automatically routed:
+
+```python
+# Messages go to thread (if thread_id is set)
 external_memory.save(
-    '{"destination": "New York", "duration": "3 days", "budget": 2000}',
+    "How can I help you today?",
+    metadata={"type": "message", "role": "assistant", "name": "Helper"}
+)
+
+# JSON data goes to graph
+external_memory.save(
+    '{"project": "Alpha", "status": "active", "budget": 50000}',
     metadata={"type": "json"}
 )
 
-# Text facts and insights
+# Text data goes to graph
 external_memory.save(
-    "User prefers mid-range hotels with business amenities",
+    "Project Alpha requires Python and React expertise",
     metadata={"type": "text"}
 )
 ```
 
-### Automatic Memory Retrieval
+## Examples
 
-CrewAI automatically searches your memories when agents need context:
+### Complete Examples
 
+- **[User Storage](examples/crewai_user.py)**: Personal assistant with conversation memory
+- **[Graph Storage](examples/crewai_graph.py)**: Knowledge graph with ontology
+- **[Tools Usage](examples/crewai_tools.py)**: Agents using search and add tools
+- **[Simple Example](examples/simple_example.py)**: Basic setup and usage
+
+### Common Patterns
+
+#### Personal Assistant
 ```python
-# When agents run, they automatically get relevant context from Zep
-results = crew.kickoff()
+# Store user preferences and context
+user_storage = ZepUserStorage(client=zep_client, user_id="user_123")
+external_memory = ExternalMemory(storage=user_storage)
 
-# You can also search manually
-memory_results = zep_storage.search("hotel preferences", limit=5)
-for result in memory_results:
-    print(result['memory'])
+# Agent automatically retrieves relevant context
+personal_assistant = Agent(
+    role="Personal Assistant",
+    backstory="You know the user's preferences and history"
+)
 ```
 
-## Complete Example
+#### Knowledge Base Management
+```python
+# Shared knowledge with search tools
+knowledge_tools = [
+    create_search_tool(zep_client, graph_id="knowledge"),
+    create_add_data_tool(zep_client, graph_id="knowledge")
+]
 
-For a full working example, check out [`examples/simple_example.py`](examples/simple_example.py) in this repository. This example demonstrates:
+curator = Agent(
+    role="Knowledge Curator",
+    tools=knowledge_tools,
+    backstory="You maintain the organization's knowledge base"
+)
+```
 
-- Setting up Zep user and thread
-- Saving different types of memory (messages, JSON data, text)
-- Creating CrewAI agents with access to Zep memory
-- Automatic context retrieval during agent execution
+#### Multi-Modal Memory
+```python
+# Combine user and graph storage with tools
+research_agent = Agent(
+    role="Research Analyst",
+    tools=[
+        create_search_tool(zep_client, user_id="user_123"),
+        create_search_tool(zep_client, graph_id="research_data")
+    ],
+    backstory="You analyze both personal and organizational data"
+)
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Required: Your Zep Cloud API key
+export ZEP_API_KEY="your-zep-api-key"
+```
+
+### Storage Parameters
+
+#### ZepUserStorage
+- `client`: Zep client instance (required)
+- `user_id`: User identifier (required)
+- `thread_id`: Thread identifier (optional)
+- `search_filters`: Search filters (optional)
+- `facts_limit`: Maximum facts for context (default: 20)
+- `entity_limit`: Maximum entities for context (default: 5)
+- `mode`: Context retrieval mode - "summary" or "raw_messages" (default: "summary")
+
+#### ZepGraphStorage
+- `client`: Zep client instance (required)
+- `graph_id`: Graph identifier (required)
+- `search_filters`: Search filters (optional)
+- `facts_limit`: Maximum facts for context (default: 20)
+- `entity_limit`: Maximum entities for context (default: 5)
+
+### Tool Parameters
+
+#### Search Tool
+- `query`: Search query string
+- `limit`: Maximum results (default: 10)
+- `scope`: Search scope - "edges", "nodes", "episodes", or "all"
+
+#### Add Data Tool
+- `data`: Content to store
+- `data_type`: Type - "text", "json", or "message"
+
+## Development
+
+### Setup
+```bash
+# Clone the repository
+git clone https://github.com/getzep/zep.git
+cd integrations/python/zep_crewai
+
+# Install dependencies
+pip install -e .
+pip install -r requirements-dev.txt
+```
+
+### Testing
+```bash
+# Run tests
+pytest tests/
+
+# Run with coverage
+pytest --cov=zep_crewai tests/
+```
+
+### Type Checking
+```bash
+mypy src/zep_crewai
+```
 
 ## Requirements
 
 - Python 3.10+
-- `zep-cloud>=3.0.0rc1`
+- `zep-cloud>=3.0.0`
 - `crewai>=0.80.0`
+- `pydantic>=2.0.0`
+
+## Best Practices
+
+1. **Storage Selection**
+   - Use `ZepUserStorage` for user-specific, personal data
+   - Use `ZepGraphStorage` for shared, organizational knowledge
+
+2. **Tool Usage**
+   - Bind tools to specific users or graphs at creation
+   - Use search scope "all" sparingly (more expensive)
+   - Add data with appropriate types for better organization
+
+3. **Memory Management**
+   - Set up ontologies for structured data
+   - Use search filters to improve relevance
+   - Combine storage types for comprehensive memory
+
+4. **Performance**
+   - Allow 10-20 seconds for data indexing after additions
+   - Use parallel search for better performance
+   - Limit search results appropriately
+
+## Support
+
+- [Zep Documentation](https://help.getzep.com)
+- [CrewAI Documentation](https://docs.crewai.com)
+- [GitHub Issues](https://github.com/getzep/zep/issues)
+
+## License
+
+Apache 2.0 - see [LICENSE](LICENSE) for details.
+
+## Contributing
+
+Contributions are welcome! Please see our [Contributing Guide](../../../CONTRIBUTING.md) for details.
