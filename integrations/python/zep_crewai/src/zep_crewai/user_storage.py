@@ -18,7 +18,7 @@ from .utils import search_graph_and_compose_context
 class ZepUserStorage(Storage):
     """
     Storage implementation for Zep's user-specific graphs and threads.
-    
+
     This class provides persistent storage and retrieval of user-specific memories
     and conversations using Zep's user graph and thread capabilities.
     """
@@ -52,7 +52,7 @@ class ZepUserStorage(Storage):
 
         if not user_id:
             raise ValueError("user_id is required")
-        
+
         if not thread_id:
             raise ValueError("thread_id is required")
 
@@ -100,10 +100,7 @@ class ZepUserStorage(Storage):
                     content=content_str,
                 )
 
-                self._client.thread.add_messages(
-                    thread_id=self._thread_id,
-                    messages=[message]
-                )
+                self._client.thread.add_messages(thread_id=self._thread_id, messages=[message])
 
                 self._logger.debug(
                     f"Saved message to thread {self._thread_id} from {name or role}: {content_str[:100]}..."
@@ -150,42 +147,43 @@ class ZepUserStorage(Storage):
             facts_limit=self._facts_limit,
             entity_limit=self._entity_limit,
             episodes_limit=limit,
-            search_filters=self._search_filters
+            search_filters=self._search_filters,
         )
-        
+
         if context:
             self._logger.info(f"Composed context for query: {query}")
-            return [{
-                "context": context,
-                "type": "user_graph_context",
-                "source": "user_graph",
-                "query": query
-            }]
-        
+            return [
+                {
+                    "context": context,
+                    "type": "user_graph_context",
+                    "source": "user_graph",
+                    "query": query,
+                }
+            ]
+
         self._logger.info(f"No results found for query: {query}")
         return []
 
     def get_context(self) -> str | None:
         """
         Get context from the thread using get_user_context.
-        
+
         Returns:
             The context string if available, None otherwise.
         """
         if not self._thread_id:
             return None
-            
+
         try:
             context = self._client.thread.get_user_context(
-                thread_id=self._thread_id,
-                mode=self._mode
+                thread_id=self._thread_id, mode=self._mode
             )
-            
+
             # Return the context string if available
-            if context and hasattr(context, 'context'):
+            if context and hasattr(context, "context"):
                 return context.context
             return None
-            
+
         except Exception as e:
             self._logger.error(f"Error getting context from thread: {e}")
             return None
@@ -199,7 +197,6 @@ class ZepUserStorage(Storage):
         """Get the user ID."""
         return self._user_id
 
-    
     @property
     def thread_id(self) -> str:
         """Get the thread ID."""

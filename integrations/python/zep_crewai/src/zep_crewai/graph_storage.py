@@ -18,7 +18,7 @@ from .utils import search_graph_and_compose_context
 class ZepGraphStorage(Storage):
     """
     Storage implementation for Zep's generic knowledge graphs.
-    
+
     This class provides persistent storage and retrieval of structured knowledge
     using Zep's graph capabilities for non-user-specific data.
     """
@@ -120,18 +120,15 @@ class ZepGraphStorage(Storage):
             facts_limit=self._facts_limit,
             entity_limit=self._entity_limit,
             episodes_limit=limit,
-            search_filters=self._search_filters
+            search_filters=self._search_filters,
         )
-        
+
         if context:
             self._logger.info(f"Composed context for query: {query}")
-            return [{
-                "context": context,
-                "type": "graph_context",
-                "source": "graph",
-                "query": query
-            }]
-        
+            return [
+                {"context": context, "type": "graph_context", "source": "graph", "query": query}
+            ]
+
         self._logger.info(f"No results found for query: {query}")
         return []
 
@@ -139,7 +136,6 @@ class ZepGraphStorage(Storage):
         """Reset is not implemented for graph storage as graphs should persist."""
         pass
 
-    
     @property
     def graph_id(self) -> str:
         """Get the graph ID."""

@@ -49,7 +49,7 @@ def main():
                 "role": "Data Scientist",
                 "department": "Analytics",
                 "skills": ["Python", "SQL", "Machine Learning"],
-            }
+            },
         )
         print("✅ User created")
     except Exception as e:
@@ -111,7 +111,7 @@ def main():
         3. Current learning goal: Deep learning with PyTorch
         4. Team members: Alice (PM), Charlie (Engineer), Diana (Designer)
         5. Upcoming deadline: Model deployment by end of month
-        
+
         Use the add data tool to store each piece of information appropriately.""",
         expected_output="Confirmation that all personal information has been stored",
         agent=personal_assistant,
@@ -125,7 +125,7 @@ def main():
         3. Data science best practices: Always version control models, document assumptions, peer review code
         4. Standard tech stack: Python, Snowflake, Tableau, Git
         5. Meeting protocol: All meetings require agenda and action items
-        
+
         Store this as structured data in the company knowledge graph.""",
         expected_output="Confirmation that company information has been added to the knowledge base",
         agent=knowledge_curator,
@@ -156,7 +156,7 @@ def main():
         1. Search Bob's personal knowledge for his current project and team
         2. Search the company knowledge base for best practices
         3. Based on both searches, provide recommendations for Bob's project
-        
+
         Make sure to clearly indicate which information comes from personal vs company knowledge.""",
         expected_output="A comprehensive analysis combining personal and company information",
         agent=research_analyst,
@@ -168,7 +168,7 @@ def main():
         1. Add a note to Bob's personal knowledge about recommended next steps
         2. Search for any gaps in Bob's knowledge that could help with his project
         3. Store any new insights discovered during the analysis
-        
+
         This demonstrates the full cycle of search, analyze, and store.""",
         expected_output="Summary of new insights added to Bob's knowledge base",
         agent=personal_assistant,
@@ -194,11 +194,11 @@ def main():
 
         # Demonstrate direct tool usage
         print("\n🔧 Direct tool demonstration...")
-        
+
         print("\n1. Searching Bob's personal knowledge:")
         personal_results = user_search_tool._run("project", limit=3)
         print(personal_results)
-        
+
         print("\n2. Searching company knowledge:")
         company_results = graph_search_tool._run("best practices", limit=3, scope="all")
         print(company_results)

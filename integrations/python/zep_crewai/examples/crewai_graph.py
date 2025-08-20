@@ -21,13 +21,17 @@ from zep_crewai import ZepGraphStorage
 
 class TechnologyEntity(EntityModel):
     """Define a technology entity for our knowledge graph."""
-    category: EntityText = Field(description="technology category (e.g., programming, framework, tool)")
+
+    category: EntityText = Field(
+        description="technology category (e.g., programming, framework, tool)"
+    )
     use_case: EntityText = Field(description="primary use cases")
     difficulty: EntityText = Field(description="learning difficulty level")
 
 
 class CompanyEntity(EntityModel):
     """Define a company entity for our knowledge graph."""
+
     industry: EntityText = Field(description="company industry")
     size: EntityText = Field(description="company size (startup, mid-size, enterprise)")
     tech_stack: EntityText = Field(description="technologies used by the company")
@@ -60,7 +64,7 @@ def main():
                 "Technology": TechnologyEntity,
                 "Company": CompanyEntity,
             },
-            edges={}
+            edges={},
         )
         print("✅ Ontology configured with Technology and Company entities")
     except Exception as e:
@@ -70,7 +74,7 @@ def main():
     graph_storage = ZepGraphStorage(
         client=zep_client,
         graph_id=graph_id,
-        search_filters={"node_labels": ["Technology", "Company"]}
+        search_filters={"node_labels": ["Technology", "Company"]},
     )
     external_memory = ExternalMemory(storage=graph_storage)
 
@@ -81,23 +85,23 @@ def main():
     tech_data = [
         {
             "data": '{"name": "Python", "category": "programming language", "use_case": "AI/ML, web development, data science", "difficulty": "beginner-friendly"}',
-            "type": "json"
+            "type": "json",
         },
         {
             "data": '{"name": "React", "category": "frontend framework", "use_case": "building interactive UIs, single-page applications", "difficulty": "moderate"}',
-            "type": "json"
+            "type": "json",
         },
         {
             "data": '{"name": "Docker", "category": "containerization tool", "use_case": "application deployment, microservices", "difficulty": "moderate to advanced"}',
-            "type": "json"
+            "type": "json",
         },
         {
             "data": "Python is widely used at tech companies for machine learning and backend development",
-            "type": "text"
+            "type": "text",
         },
         {
             "data": "React powers many modern web applications and is maintained by Meta",
-            "type": "text"
+            "type": "text",
         },
     ]
 
@@ -108,19 +112,19 @@ def main():
     company_data = [
         {
             "data": '{"name": "TechCorp", "industry": "Software", "size": "enterprise", "tech_stack": "Python, React, Docker, Kubernetes"}',
-            "type": "json"
+            "type": "json",
         },
         {
             "data": '{"name": "StartupAI", "industry": "Artificial Intelligence", "size": "startup", "tech_stack": "Python, PyTorch, FastAPI"}',
-            "type": "json"
+            "type": "json",
         },
         {
             "data": "TechCorp recently migrated their entire infrastructure to Kubernetes for better scalability",
-            "type": "text"
+            "type": "text",
         },
         {
             "data": "StartupAI focuses on developing cutting-edge NLP models using transformer architectures",
-            "type": "text"
+            "type": "text",
         },
     ]
 
@@ -198,10 +202,7 @@ def main():
         print("=" * 60)
 
         # Save analysis results back to the graph
-        external_memory.save(
-            f"Analysis completed: {str(result)[:500]}",
-            metadata={"type": "text"}
-        )
+        external_memory.save(f"Analysis completed: {str(result)[:500]}", metadata={"type": "text"})
         print("\n💾 Analysis results saved to graph for future reference")
 
         # Demonstrate direct graph search

@@ -15,16 +15,16 @@ Usage:
 
     # Initialize Zep client
     zep_client = Zep(api_key="your-api-key")
-    
+
     # For user-specific storage
     user_storage = ZepUserStorage(client=zep_client, user_id="user123", thread_id="thread123")
-    
+
     # For generic knowledge graphs
     graph_storage = ZepGraphStorage(client=zep_client, graph_id="knowledge_base")
-    
+
     # Create tools
     search_tool = create_search_tool(zep_client, user_id="user123")
-    
+
     # Create agent with tools
     agent = Agent(
         role="Assistant",

@@ -51,7 +51,7 @@ def main():
                 "department": "Product Development",
                 "location": "San Francisco",
                 "years_experience": 8,
-            }
+            },
         )
         print("✅ User profile created")
     except Exception as e:
@@ -72,7 +72,7 @@ def main():
         client=zep_client,
         user_id=user_id,
         thread_id=thread_id,
-        mode="summary"  # Use summary mode for concise context (or "raw_messages" for full history)
+        mode="summary",  # Use summary mode for concise context (or "raw_messages" for full history)
     )
     external_memory = ExternalMemory(storage=user_storage)
 
@@ -84,56 +84,55 @@ def main():
         {
             "content": "Hi team, I'd like to discuss our Q4 product roadmap. We need to prioritize features based on customer feedback.",
             "role": "user",
-            "name": "Alice Johnson"
+            "name": "Alice Johnson",
         },
         {
             "content": "Great idea, Alice. I've compiled the top customer requests from our support tickets.",
             "role": "assistant",
-            "name": "Support Lead"
+            "name": "Support Lead",
         },
         {
             "content": "Our main priorities should be: 1) Mobile app improvements, 2) API rate limiting, 3) Advanced analytics dashboard",
             "role": "user",
-            "name": "Alice Johnson"
+            "name": "Alice Johnson",
         },
         {
             "content": "I agree. The mobile app has been our most requested feature. We should allocate 40% of our resources there.",
             "role": "assistant",
-            "name": "Engineering Lead"
+            "name": "Engineering Lead",
         },
     ]
 
     for msg in conversation_history:
         external_memory.save(
-            msg["content"],
-            metadata={"type": "message", "role": msg["role"], "name": msg["name"]}
+            msg["content"], metadata={"type": "message", "role": msg["role"], "name": msg["name"]}
         )
 
     # Save user preferences and context (go to user graph)
     user_context = [
         {
             "data": '{"preference": "data-driven decision making", "communication_style": "direct and concise", "meeting_preference": "morning slots"}',
-            "type": "json"
+            "type": "json",
         },
         {
             "data": "Alice prefers using Slack for quick updates and email for formal documentation",
-            "type": "text"
+            "type": "text",
         },
         {
             "data": "Alice's team consists of 12 engineers, 3 designers, and 2 QA specialists",
-            "type": "text"
+            "type": "text",
         },
         {
             "data": '{"current_projects": ["Mobile App v2.0", "API Gateway", "Analytics Dashboard"], "budget": "$2M", "deadline": "Q4 2024"}',
-            "type": "json"
+            "type": "json",
         },
         {
             "data": "Alice has expertise in agile methodologies, particularly Scrum and Kanban",
-            "type": "text"
+            "type": "text",
         },
         {
             "data": "Previous successful launches: Customer Portal (Q1 2024), Integration Hub (Q2 2024)",
-            "type": "text"
+            "type": "text",
         },
     ]
 
@@ -214,8 +213,7 @@ def main():
 
         # Save recommendations back to user's memory
         external_memory.save(
-            str(result),
-            metadata={"type": "message", "role": "assistant", "name": "Planning Crew"}
+            str(result), metadata={"type": "message", "role": "assistant", "name": "Planning Crew"}
         )
         print("\n💾 Recommendations saved to Alice's memory for future reference")
 
