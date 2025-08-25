@@ -180,7 +180,7 @@ class TestZepUserStorage:
         assert isinstance(results, list)
         assert len(results) == 1
         assert results[0]["type"] == "user_graph_context"
-        assert results[0]["context"] == "Context: User likes Python"
+        assert results[0]["memory"] == "Context: User likes Python"
 
     @patch("zep_crewai.utils.compose_context_string")
     @patch("zep_crewai.utils.ThreadPoolExecutor")
@@ -256,8 +256,8 @@ class TestZepUserStorage:
         # Verify results
         assert len(results) == 1
         assert results[0]["type"] == "user_graph_context"
-        assert "User prefers Python" in results[0]["context"]
-        assert "UserPreference" in results[0]["context"]
+        assert "User prefers Python" in results[0]["memory"]
+        assert "UserPreference" in results[0]["memory"]
 
     def test_get_context_with_thread(self):
         """Test get_context retrieves context using thread.get_user_context."""

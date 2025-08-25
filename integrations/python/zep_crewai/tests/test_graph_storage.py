@@ -125,7 +125,7 @@ class TestZepGraphStorage:
         assert len(results) == 1  # Single composed result
 
         # Check the composed result
-        assert results[0]["context"] == (
+        assert results[0]["memory"] == (
             "Facts:\n- Python is used for AI\n\n"
             "Entities:\n- Python: A programming language\n\n"
             "Episodes:\n- Discussion about Python"

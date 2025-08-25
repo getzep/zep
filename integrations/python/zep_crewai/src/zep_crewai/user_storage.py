@@ -139,30 +139,35 @@ class ZepUserStorage(Storage):
         Returns:
             List with context results from user storage
         """
-        # Use the shared utility function for graph search and context composition
-        context = search_graph_and_compose_context(
-            client=self._client,
-            query=query,
-            user_id=self._user_id,
-            facts_limit=self._facts_limit,
-            entity_limit=self._entity_limit,
-            episodes_limit=limit,
-            search_filters=self._search_filters,
-        )
+        try:
+            # Use the shared utility function for graph search and context composition
+            context = search_graph_and_compose_context(
+                client=self._client,
+                query=query,
+                user_id=self._user_id,
+                facts_limit=self._facts_limit,
+                entity_limit=self._entity_limit,
+                episodes_limit=limit,
+                search_filters=self._search_filters,
+            )
 
-        if context:
-            self._logger.info(f"Composed context for query: {query}")
-            return [
-                {
-                    "context": context,
-                    "type": "user_graph_context",
-                    "source": "user_graph",
-                    "query": query,
-                }
-            ]
+            if context:
+                self._logger.info(f"Composed context for query: {query}")
+                return [
+                    {
+                        "memory": context,
+                        "type": "user_graph_context",
+                        "source": "user_graph",
+                        "query": query,
+                    }
+                ]
 
-        self._logger.info(f"No results found for query: {query}")
-        return []
+            self._logger.info(f"No results found for query: {query}")
+            return []
+
+        except Exception as e:
+            self._logger.error(f"Error searching user graph: {e}")
+            return []
 
     def get_context(self) -> str | None:
         """

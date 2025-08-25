@@ -13,6 +13,7 @@ import uuid
 from crewai import Agent, Crew, Process, Task
 from crewai.memory.external.external_memory import ExternalMemory
 from pydantic import Field
+from zep_cloud import SearchFilters
 from zep_cloud.client import Zep
 from zep_cloud.external_clients.ontology import EntityModel, EntityText
 
@@ -53,13 +54,16 @@ def main():
 
     # Create a unique graph ID for this example
     graph_id = f"tech_knowledge_{uuid.uuid4().hex[:8]}"
+    zep_client.graph.create(
+        graph_id=graph_id,
+    )
     print(f"📊 Graph ID: {graph_id}")
 
     # Set up ontology for the graph
     print("\n📚 Setting up graph ontology...")
     try:
         zep_client.graph.set_ontology(
-            graph_id=graph_id,
+            graph_ids=[graph_id],
             entities={
                 "Technology": TechnologyEntity,
                 "Company": CompanyEntity,
@@ -74,7 +78,7 @@ def main():
     graph_storage = ZepGraphStorage(
         client=zep_client,
         graph_id=graph_id,
-        search_filters={"node_labels": ["Technology", "Company"]},
+        search_filters=SearchFilters(node_labels=["Technology", "Company"]),
     )
     external_memory = ExternalMemory(storage=graph_storage)
 
@@ -135,7 +139,7 @@ def main():
     print("   • Technology entities with categories and use cases")
     print("   • Company entities with industry and tech stack")
     print("   • Relationships and facts about technologies and companies")
-    print("   (Waiting 20 seconds for data indexing...)")
+    print("   (Waiting 20 seconds for data processing...)")
     time.sleep(20)
 
     # Create specialized agents

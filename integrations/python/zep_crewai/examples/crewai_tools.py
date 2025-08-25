@@ -37,26 +37,18 @@ def main():
     print(f"👤 User ID: {user_id}")
     print(f"📊 Graph ID: {graph_id}")
 
-    # Create user
-    print("\n👥 Setting up user...")
-    try:
-        zep_client.user.add(
-            user_id=user_id,
-            first_name="Bob",
-            last_name="Smith",
-            email="bob.smith@example.com",
-            metadata={
-                "role": "Data Scientist",
-                "department": "Analytics",
-                "skills": ["Python", "SQL", "Machine Learning"],
-            },
-        )
-        print("✅ User created")
-    except Exception as e:
-        if "already exists" in str(e).lower():
-            print("✅ User already exists")
-        else:
-            print(f"⚠️  User creation issue: {e}")
+    zep_client.user.add(
+        user_id=user_id,
+        first_name="Bob",
+        last_name="Smith",
+        email="bob.smith@example.com",
+    )
+    print("✅ User created")
+
+    zep_client.graph.create(
+        graph_id=graph_id,
+    )
+    print("✅ Graph created")
 
     # Create tools for user-specific storage
     user_search_tool = create_search_tool(zep_client, user_id=user_id)
@@ -147,7 +139,7 @@ def main():
         print(f"Setup failed: {e}")
         return
 
-    print("\n⏳ Waiting 20 seconds for data indexing...")
+    print("\n⏳ Waiting 20 seconds for data processing...")
     time.sleep(20)
 
     # Task 3: Search and analyze
