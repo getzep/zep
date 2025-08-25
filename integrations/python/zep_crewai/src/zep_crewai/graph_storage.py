@@ -112,25 +112,30 @@ class ZepGraphStorage(Storage):
         Returns:
             List with a single dict containing the composed context string
         """
-        # Use the shared utility function for graph search and context composition
-        context = search_graph_and_compose_context(
-            client=self._client,
-            query=query,
-            graph_id=self._graph_id,
-            facts_limit=self._facts_limit,
-            entity_limit=self._entity_limit,
-            episodes_limit=limit,
-            search_filters=self._search_filters,
-        )
+        try:
+            # Use the shared utility function for graph search and context composition
+            context = search_graph_and_compose_context(
+                client=self._client,
+                query=query,
+                graph_id=self._graph_id,
+                facts_limit=self._facts_limit,
+                entity_limit=self._entity_limit,
+                episodes_limit=limit,
+                search_filters=self._search_filters,
+            )
 
-        if context:
-            self._logger.info(f"Composed context for query: {query}")
-            return [
-                {"context": context, "type": "graph_context", "source": "graph", "query": query}
-            ]
+            if context:
+                self._logger.info(f"Composed context for query: {query}")
+                return [
+                    {"memory": context, "type": "graph_context", "source": "graph", "query": query}
+                ]
 
-        self._logger.info(f"No results found for query: {query}")
-        return []
+            self._logger.info(f"No results found for query: {query}")
+            return []
+
+        except Exception as e:
+            self._logger.error(f"Error searching graph: {e}")
+            return []
 
     def reset(self) -> None:
         """Reset is not implemented for graph storage as graphs should persist."""
