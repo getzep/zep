@@ -139,7 +139,7 @@ def main():
         print(f"Setup failed: {e}")
         return
 
-    print("\n⏳ Waiting 20 seconds for data indexing...")
+    print("\n⏳ Waiting 20 seconds for data processing...")
     time.sleep(20)
 
     # Task 3: Search and analyze

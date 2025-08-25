@@ -139,7 +139,7 @@ def main():
     print("   • Technology entities with categories and use cases")
     print("   • Company entities with industry and tech stack")
     print("   • Relationships and facts about technologies and companies")
-    print("   (Waiting 20 seconds for data indexing...)")
+    print("   (Waiting 20 seconds for data processing...)")
     time.sleep(20)
 
     # Create specialized agents

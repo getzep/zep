@@ -143,7 +143,7 @@ def main():
     print("   • Conversation history → Thread API")
     print("   • User preferences → User Graph")
     print("   • Project information → User Graph")
-    print("   (Waiting 20 seconds for data indexing...)")
+    print("   (Waiting 20 seconds for data processing...)")
     time.sleep(20)
 
     # Create specialized agents

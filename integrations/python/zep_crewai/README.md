@@ -362,7 +362,7 @@ mypy src/zep_crewai
    - Combine storage types for comprehensive memory
 
 4. **Performance**
-   - Allow 10-20 seconds for data indexing after additions
+   - Allow 10-20 seconds for data processing after additions
    - Use parallel search for better performance
    - Limit search results appropriately
 
