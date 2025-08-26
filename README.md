@@ -14,7 +14,7 @@ Zep: The Memory Foundation For Your AI Stack
 
 <p align="center">
   <a href="https://discord.gg/W8Kw6bsgXQ"><img
-    src="https://dcbadge.vercel.app/api/server/W8Kw6bsgXQ?style=flat"
+    src="https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white"
     alt="Chat on Discord"
   /></a>
   <a href="https://twitter.com/intent/follow?screen_name=zep_ai" target="_new"><img alt="Twitter Follow" src="https://img.shields.io/twitter/follow/zep_ai"></a>

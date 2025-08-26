@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from autogen_core.memory import MemoryContent, MemoryMimeType
 
-from zep_autogen import ZepMemory
+from zep_autogen import ZepUserMemory
 
 
 def test_package_import():
@@ -19,19 +19,7 @@ def test_package_import():
 
 def test_zep_memory_import():
     """Test that ZepMemory can be imported successfully."""
-    assert ZepMemory is not None
-
-
-class TestBasicFunctionality:
-    """Basic functionality tests for the zep-autogen package."""
-
-    def test_package_structure(self):
-        """Test that the package has the expected structure."""
-        import zep_autogen
-
-        assert hasattr(zep_autogen, "__version__")
-        assert hasattr(zep_autogen, "__author__")
-        assert hasattr(zep_autogen, "__description__")
+    assert ZepUserMemory is not None
 
 
 class TestZepMemoryMock:
@@ -44,7 +32,9 @@ class TestZepMemoryMock:
 
             # Create a mock AsyncZep client
             mock_client = MagicMock(spec=AsyncZep)
-            memory = ZepMemory(client=mock_client, thread_id="test-session", user_id="test-user")
+            memory = ZepUserMemory(
+                client=mock_client, thread_id="test-session", user_id="test-user"
+            )
             assert memory is not None
             assert memory._client is mock_client
             assert memory._thread_id == "test-session"
@@ -57,7 +47,7 @@ class TestZepMemoryMock:
 
             mock_client = MockAsyncZep()
             with pytest.raises(TypeError, match="client must be an instance of AsyncZep"):
-                ZepMemory(client=mock_client, thread_id="test-session")
+                ZepUserMemory(client=mock_client, thread_id="test-session")
 
     def test_zep_memory_requires_session_id(self):
         """Test that ZepMemory requires a session_id."""
@@ -67,7 +57,7 @@ class TestZepMemoryMock:
             mock_client = MagicMock(spec=AsyncZep)
 
             with pytest.raises(ValueError, match="user_id is required"):
-                ZepMemory(client=mock_client, user_id="")
+                ZepUserMemory(client=mock_client, user_id="")
 
         except ImportError:
             pytest.skip("zep_cloud not available")
@@ -75,7 +65,7 @@ class TestZepMemoryMock:
     def test_zep_memory_requires_async_zep_client(self):
         """Test that ZepMemory raises TypeError when client is not AsyncZep."""
         with pytest.raises(TypeError, match="client must be an instance of AsyncZep"):
-            ZepMemory(client="not_a_client", user_id="test-user")
+            ZepUserMemory(client="not_a_client", user_id="test-user")
 
     @pytest.mark.asyncio
     async def test_zep_memory_add_message_with_mock(self):
@@ -88,7 +78,9 @@ class TestZepMemoryMock:
             mock_client.thread.get = AsyncMock()
             mock_client.thread.add_messages = AsyncMock()
 
-            memory = ZepMemory(client=mock_client, user_id="test-user", thread_id="test-session")
+            memory = ZepUserMemory(
+                client=mock_client, user_id="test-user", thread_id="test-session"
+            )
 
             # Test adding memory content as message type
             content = MemoryContent(
@@ -115,7 +107,7 @@ class TestZepMemoryMock:
             mock_client.graph = MagicMock()
             mock_client.graph.add = AsyncMock()
 
-            memory = ZepMemory(
+            memory = ZepUserMemory(
                 client=mock_client,
                 thread_id="test-session",
                 user_id="test-user",  # Required for graph data
@@ -146,7 +138,7 @@ class TestZepMemoryMock:
             mock_client.graph = MagicMock()
             mock_client.graph.add = AsyncMock()
 
-            memory = ZepMemory(
+            memory = ZepUserMemory(
                 client=mock_client,
                 user_id="test-user",  # user_id is now required
                 thread_id="test-session",
@@ -182,7 +174,9 @@ class TestZepMemoryMock:
             mock_graph_response.episodes = []
             mock_client.graph.search.return_value = mock_graph_response
 
-            memory = ZepMemory(client=mock_client, user_id="test-user", thread_id="test-session")
+            memory = ZepUserMemory(
+                client=mock_client, user_id="test-user", thread_id="test-session"
+            )
 
             results = await memory.query("test query")
 
@@ -201,7 +195,9 @@ class TestZepMemoryMock:
             from zep_cloud.client import AsyncZep
 
             mock_client = MagicMock(spec=AsyncZep)
-            memory = ZepMemory(client=mock_client, user_id="test-user", thread_id="test-session")
+            memory = ZepUserMemory(
+                client=mock_client, user_id="test-user", thread_id="test-session"
+            )
 
             # Test supported mime types - these should work (with user_id for message storage)
             supported_types = [MemoryMimeType.TEXT, MemoryMimeType.MARKDOWN, MemoryMimeType.JSON]

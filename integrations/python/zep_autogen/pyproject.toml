@@ -1,6 +1,6 @@
 [project]
 name = "zep-autogen"
-version = "0.1.1"
+version = "1.1.0"
 description = "Autogen integration for Zep"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +12,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-slugify>=8.0.4",
     "rich>=14.0.0",
-    "zep-cloud>=3.0.0rc1",
+    "zep-cloud>=3.3.0",
 ]
 
 [project.urls]

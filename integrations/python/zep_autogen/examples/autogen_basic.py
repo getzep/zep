@@ -7,7 +7,7 @@ from autogen_core.memory import MemoryContent, MemoryMimeType
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from zep_cloud.client import AsyncZep
 
-from zep_autogen import ZepMemory
+from zep_autogen import ZepUserMemory
 
 
 async def main():
@@ -36,7 +36,7 @@ async def main():
         print(f"Thread creation failed: {e}")
 
     # Initialize Zep memory bound to the assistant
-    memory = ZepMemory(client=zep_client, thread_id=thread_id, user_id=user_id)
+    memory = ZepUserMemory(client=zep_client, thread_id=thread_id, user_id=user_id)
 
     # Create assistant agent with Zep memory
     agent = AssistantAgent(
@@ -63,7 +63,7 @@ async def main():
         # First interaction
         user_msg1 = "My name is Alice and I love hiking in the mountains."
         print(f"User: {user_msg1}")
-        await add_message(user_msg1, "user")
+        await add_message(user_msg1, "user", "Alice")
         response1 = await agent.run(task=user_msg1)
         agent_msg1 = response1.messages[-1].content
         print(f"Agent: {agent_msg1}")
