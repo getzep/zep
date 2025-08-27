@@ -16,31 +16,31 @@ Usage:
 
 import logging
 import os
-
 import uuid
+
 from livekit import agents
 from livekit.plugins import openai, silero
 from zep_cloud.client import AsyncZep
 
-from zep_livekit import ZepMemoryAgent
+from zep_livekit import ZepUserAgent
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configuration
-ZEP_USER_ID = "paul_traveler1"
+ZEP_USER_ID = "mark_traveler"
 ZEP_THREAD_ID = f"travel_chat_session_{uuid.uuid4().hex[:8]}"
 
 
 async def entrypoint(ctx: agents.JobContext):
     """Main entrypoint for the LiveKit agent job."""
-    
+
     logger.info(f"Starting Zep memory-enabled agent for user: {ZEP_USER_ID}")
-    
+
     # Initialize Zep client
     zep_client = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
-    
+
     # Ensure user and thread exist
     try:
         await zep_client.user.get(user_id=ZEP_USER_ID)
@@ -49,7 +49,7 @@ async def entrypoint(ctx: agents.JobContext):
         # Create user if doesn't exist
         await zep_client.user.add(
             user_id=ZEP_USER_ID,
-            first_name="Paul",
+            first_name="Mark",
         )
         logger.info(f"✅ Created user {ZEP_USER_ID}")
 
@@ -57,10 +57,10 @@ async def entrypoint(ctx: agents.JobContext):
         thread_id=ZEP_THREAD_ID,
         user_id=ZEP_USER_ID,
     )
-    
+
     # Connect to room
     await ctx.connect()
-    
+
     # Create AgentSession with providers
     session = agents.AgentSession(
         stt=openai.STT(),
@@ -68,31 +68,26 @@ async def entrypoint(ctx: agents.JobContext):
         tts=openai.TTS(),
         vad=silero.VAD.load(),
     )
-    
+
     # Create the memory-enabled agent
-    agent = ZepMemoryAgent(
+    agent = ZepUserAgent(
         zep_client=zep_client,
         user_id=ZEP_USER_ID,
         thread_id=ZEP_THREAD_ID,
-        instructions="""
-            You are a helpful voice assistant with memory.
-            You are a travel guide named George and will help the user to plan travel trips.
-            You should help the user plan for various adventures like work retreats, family vacations or solo backpacking trips.
-            You should be careful to not suggest anything that would be dangerous, illegal or inappropriate.
-            You can remember past interactions and use them to inform your answers.
-            Use the context provided in system messages to give personalized responses.
-        """,
+        user_message_name="Mark the traveler",
+        assistant_message_name="TravelBot",
+        instructions="You are a helpful travel assistant with persistent memory. Rely user context to provide personalized travel recommendations and planning advice.",
     )
-    
+
     logger.info("Starting session with memory-enabled agent...")
-    
+
     # Start the session with the agent
     await session.start(agent=agent, room=ctx.room)
-    
+
     # Initial greeting
     await session.generate_reply(
-        instructions="Greet the user warmly as George the travel guide and ask how you can help them plan their next adventure.",
-        allow_interruptions=True
+        instructions="Greet the user warmly as a travel assistant and ask how you can help them plan their next trip.",
+        allow_interruptions=True,
     )
 
 
@@ -103,7 +98,7 @@ if __name__ == "__main__":
     if missing_vars:
         logger.error(f"Missing required environment variables: {missing_vars}")
         exit(1)
-    
+
     # Start the LiveKit agent
     agents.cli.run_app(
         agents.WorkerOptions(

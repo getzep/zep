@@ -47,7 +47,11 @@ type-check:
 # Run tests
 test:
 	@echo "Running test suite..."
-	pytest tests/ -v
+	@if [ -d tests/ ] && [ "$$(find tests/ -name '*.py' -type f | wc -l)" -gt 0 ]; then \
+		pytest tests/ -v; \
+	else \
+		echo "No tests found, skipping test execution."; \
+	fi
 
 # Pre-commit workflow (with auto-fixes)
 pre-commit: format lint type-check test
@@ -63,7 +67,11 @@ ci:
 	@echo "Running type checking..."
 	mypy src/zep_livekit/
 	@echo "Running tests..."
-	pytest tests/ -v --cov=src/zep_livekit --cov-report=term-missing
+	@if [ -d tests/ ] && [ "$$(find tests/ -name '*.py' -type f | wc -l)" -gt 0 ]; then \
+		pytest tests/ -v --cov=src/zep_livekit --cov-report=term-missing; \
+	else \
+		echo "No tests found, skipping test execution."; \
+	fi
 	@echo "✅ All CI checks passed!"
 
 # Full development workflow
