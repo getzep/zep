@@ -25,25 +25,27 @@ export LIVEKIT_API_KEY="your-livekit-api-key"
 export LIVEKIT_API_SECRET="your-livekit-api-secret"
 ```
 
-## Memory Types
+## Memory Architecture
 
-The LiveKit integration offers two complementary memory approaches:
+Zep uses a unified temporal knowledge graph where all conversation data contributes to a single, dynamic graph structure. The LiveKit integration provides two complementary approaches to interact with this unified memory:
 
-### User Memory (Thread-based)
-- **Purpose**: Personal conversation history and context
-- **Storage**: Zep threads for individual user sessions
-- **Use Case**: Personal assistants, customer support, tutoring
-- **Retrieval**: Recent conversation context and user preferences
+### Thread-Based Memory Access (ZepUserAgent)
+- **Purpose**: Structured conversation history and contextual retrieval
+- **Storage**: Messages stored in threads that automatically contribute to the user's unified graph
+- **Retrieval**: Context blocks assembled with temporal information from the graph
+- **Use Case**: Personal assistants, customer support, tutoring sessions
 
-### Knowledge Graph Memory  
-- **Purpose**: Shared knowledge across all conversations
-- **Storage**: Zep knowledge graphs with facts, entities, and relationships
+### Direct Graph Memory Access (ZepGraphAgent)  
+- **Purpose**: Direct interaction with the knowledge graph for shared information
+- **Storage**: Information stored directly as facts, entities, and relationships in the graph
+- **Retrieval**: Semantic search across the entire temporal knowledge graph
 - **Use Case**: Knowledge bases, collaborative assistants, information systems
-- **Retrieval**: Semantic search across facts, entities, and episodes
 
-## User Memory
+Both approaches work with the same underlying temporal knowledge graph - threads automatically enrich the graph with entities, relationships, and facts, while direct graph access allows for explicit knowledge management.
 
-For personal conversation memory that persists across sessions:
+## Thread-Based Memory Access
+
+Using structured conversation threads that automatically contribute to your unified graph:
 
 ### Basic Setup
 
@@ -107,9 +109,9 @@ agent = ZepUserAgent(
 )
 ```
 
-## Knowledge Graph Memory
+## Direct Graph Memory Access
 
-For shared knowledge that accumulates across all conversations:
+For explicit control over what gets stored as facts, entities, and relationships in your unified graph:
 
 ### Basic Setup
 
@@ -161,27 +163,27 @@ async def entrypoint(ctx: agents.JobContext):
 ```
 
 
-## Query Memory
+## Querying Your Unified Graph
 
-### Thread Context Retrieval
+### Thread-Based Context Retrieval
 
 ```python
-# Get conversation context for user
+# Get conversation context assembled from the unified graph
 memory_result = await zep_client.thread.get_user_context(
     thread_id="conversation_123",
     mode="basic"  # or "summary"
 )
 
 if memory_result and memory_result.context:
-    print(f"User context: {memory_result.context}")
+    print(f"Context from unified graph: {memory_result.context}")
 ```
 
-### Knowledge Graph Search
+### Direct Graph Search
 
 ```python
-# Search knowledge graph
+# Search directly across the temporal knowledge graph
 search_results = await zep_client.graph.search(
-    graph_id="knowledge_base",
+    graph_id="user_graph",
     query="Python programming best practices",
     limit=10,
     scope="edges"  # facts, or "nodes" (entities), "episodes"
@@ -198,24 +200,24 @@ context = compose_context_string(
 
 ## Agent Comparison
 
-| Agent Type | Best For | Memory Storage | Use Cases |
-|------------|----------|----------------|-----------|
-| **ZepUserAgent** | Personal assistants | User threads | Conversation continuity, customer support, tutoring |
-| **ZepGraphAgent** | Knowledge systems | Knowledge graphs | Shared information, collaborative assistants, knowledge bases |
+| Agent Type | Best For | Memory Access Method | Use Cases |
+|------------|----------|-------------------|-----------|
+| **ZepUserAgent** | Personal assistants | Thread-based access to unified graph | Conversation continuity, customer support, tutoring |
+| **ZepGraphAgent** | Knowledge systems | Direct graph access to unified graph | Shared information, collaborative assistants, knowledge bases |
 
 ### When to Use Each
 
 **Use ZepUserAgent when:**
-- Building personal assistants
-- Need conversation history across sessions
-- Want automatic memory without configuration
-- Users have individual conversation contexts
+- Building personal assistants with structured conversation flow
+- Need conversation history and context retrieval across sessions
+- Want automatic thread-to-graph ingestion without manual management
+- Prefer working with conversation-based memory access patterns
 
 **Use ZepGraphAgent when:**  
-- Building knowledge management systems
-- Information should be shared across users
-- Need semantic search across facts and entities
-- Want to accumulate organizational knowledge
+- Building knowledge management systems with explicit fact storage
+- Need direct semantic search across the temporal knowledge graph
+- Want to manually control what information gets stored as facts
+- Building systems where information should be immediately searchable across entities
 
 ## Complete Examples
 
@@ -289,31 +291,6 @@ make type-check  # Run MyPy type checking
 make test        # Run test suite
 make pre-commit  # Full pre-commit workflow
 make ci          # Strict CI-style checks
-```
-
-## Production Deployment
-
-### LiveKit Cloud
-```bash
-livekit-cli deploy --name zep-agent agent_worker.py
-```
-
-### Docker Container
-```dockerfile
-FROM python:3.11-slim
-COPY . /app
-WORKDIR /app
-RUN pip install -r requirements.txt
-CMD ["python", "agent_worker.py"]
-```
-
-### FastAPI Integration
-```python
-# Web layer generates tokens, agent workers handle conversations
-@app.post("/create-room/{user_id}")
-async def create_voice_session(user_id: str):
-    # Generate access token for user-specific room
-    # Agent worker instantiates ZepUserAgent per user
 ```
 
 ## Support
