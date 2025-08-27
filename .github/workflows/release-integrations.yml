@@ -12,6 +12,7 @@ on:
         options:
           - autogen
           - crewai
+          - livekit
 
 jobs:
   detect-package:
