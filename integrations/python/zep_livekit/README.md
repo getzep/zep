@@ -303,9 +303,6 @@ make ci          # Strict CI-style checks
 
 ### LiveKit Resources  
 - 📖 [LiveKit Documentation](https://docs.livekit.io)
-- 🏗️ [LiveKit Platform](https://cloud.livekit.io)
-- 👥 [LiveKit Community](https://livekit.io/community)
-- 📚 [LiveKit Agents Guide](https://docs.livekit.io/agents)
 
 ---
 
