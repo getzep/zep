@@ -183,7 +183,7 @@ if memory_result and memory_result.context:
 ```python
 # Search directly across the temporal knowledge graph
 search_results = await zep_client.graph.search(
-    graph_id="user_graph",
+    graph_id="company_knowledge_base",
     query="Python programming best practices",
     limit=10,
     scope="edges"  # facts, or "nodes" (entities), "episodes"
