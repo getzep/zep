@@ -2,7 +2,7 @@
 Voice Assistant Example with Zep Memory
 
 This example demonstrates how to create a memory-enabled voice assistant using
-Zep and LiveKit with OpenAI providers.
+Zep and LiveKit.
 
 Before running:
 1. Install dependencies: pip install zep-livekit
@@ -14,91 +14,86 @@ Usage:
     python voice_assistant.py
 """
 
-import asyncio
 import logging
 import os
+
 import uuid
-from typing import Optional
-
 from livekit import agents
-from zep_cloud.client import AsyncZep
 from livekit.plugins import openai, silero
+from zep_cloud.client import AsyncZep
 
-from zep_livekit import ZepMemoryAgent, ZepAgentSession
+from zep_livekit import ZepMemoryAgent
 
-
+# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Configuration
+ZEP_USER_ID = "paul_traveler1"
+ZEP_THREAD_ID = f"travel_chat_session_{uuid.uuid4().hex[:8]}"
 
 
 async def entrypoint(ctx: agents.JobContext):
     """Main entrypoint for the LiveKit agent job."""
     
-    # Use hardcoded user and thread with existing memories
-    user_id = "paul_traveler1"
-    thread_id = f"travel_chat_{uuid.uuid4().hex[:8]}"
-
-    logger.info(f"Using existing user: {user_id}")
-    logger.info(f"Using existing thread: {thread_id}")
+    logger.info(f"Starting Zep memory-enabled agent for user: {ZEP_USER_ID}")
     
     # Initialize Zep client
     zep_client = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
-
-    # await zep_client.user.add(
-    #     user_id=user_id,
-    #     first_name="Paul",
-    # )
+    
+    # Ensure user and thread exist
+    try:
+        await zep_client.user.get(user_id=ZEP_USER_ID)
+        logger.info(f"✅ User {ZEP_USER_ID} exists")
+    except Exception:
+        # Create user if doesn't exist
+        await zep_client.user.add(
+            user_id=ZEP_USER_ID,
+            first_name="Paul",
+        )
+        logger.info(f"✅ Created user {ZEP_USER_ID}")
 
     await zep_client.thread.create(
-        thread_id=thread_id,
-        user_id=user_id,
+        thread_id=ZEP_THREAD_ID,
+        user_id=ZEP_USER_ID,
     )
     
-    # Verify user exists in Zep (don't create, just verify)
-    try:
-        await zep_client.user.get(user_id)
-        logger.info(f"✅ Confirmed user exists: {user_id}")
-    except Exception as e:
-        logger.error(f"❌ User {user_id} not found in Zep: {e}")
-        logger.error("Please ensure the user exists before running")
-        return
-    
-    # Verify thread exists in Zep (don't create, just verify)
-    try:
-        await zep_client.thread.get(thread_id)
-        logger.info(f"✅ Confirmed thread exists: {thread_id}")
-    except Exception as e:
-        logger.error(f"❌ Thread {thread_id} not found in Zep: {e}")
-        logger.error("Please ensure the thread exists before running")
-        return
-    
-    # Connect to the room
+    # Connect to room
     await ctx.connect()
     
-    # Create memory-enabled agent (no providers, just instructions)
-    agent = ZepMemoryAgent(
-        zep_client=zep_client,
-        user_id=user_id,
-        thread_id=thread_id,
-        instructions="You are a helpful voice assistant with memory (provided as a system message on each chat turn). Always respond to user messages. Keep responses brief and conversational.",
-    )
-    
-    logger.info(f"Created agent for user {user_id}, thread {thread_id}")
-    
-    # Create Zep-enabled session that captures conversation events
-    session = ZepAgentSession(
-        zep_client=zep_client,
-        user_id=user_id,
-        thread_id=thread_id,
-        # Standard LiveKit providers
+    # Create AgentSession with providers
+    session = agents.AgentSession(
         stt=openai.STT(),
         llm=openai.LLM(model="gpt-4.1-mini"),
         tts=openai.TTS(),
-        vad=silero.VAD.load(),  # Add VAD for streaming support
+        vad=silero.VAD.load(),
     )
     
-    # Start the session with our memory-enabled agent using keyword argument
+    # Create the memory-enabled agent
+    agent = ZepMemoryAgent(
+        zep_client=zep_client,
+        user_id=ZEP_USER_ID,
+        thread_id=ZEP_THREAD_ID,
+        instructions="""
+            You are a helpful voice assistant with memory.
+            You are a travel guide named George and will help the user to plan travel trips.
+            You should help the user plan for various adventures like work retreats, family vacations or solo backpacking trips.
+            You should be careful to not suggest anything that would be dangerous, illegal or inappropriate.
+            You can remember past interactions and use them to inform your answers.
+            Use the context provided in system messages to give personalized responses.
+        """,
+    )
+    
+    logger.info("Starting session with memory-enabled agent...")
+    
+    # Start the session with the agent
     await session.start(agent=agent, room=ctx.room)
+    
+    # Initial greeting
+    await session.generate_reply(
+        instructions="Greet the user warmly as George the travel guide and ask how you can help them plan their next adventure.",
+        allow_interruptions=True
+    )
 
 
 if __name__ == "__main__":

@@ -1,69 +1,39 @@
 """
 Zep Memory integration for LiveKit agents.
 
-This module provides the ZepMemoryAgent class that integrates Zep's memory retrieval
-capabilities with LiveKit's voice AI agent framework.
+This module provides the ZepMemoryAgent class that integrates Zep's memory capabilities 
+with LiveKit's voice AI agent framework
 """
 
 import asyncio
 import logging
-from typing import Any, TYPE_CHECKING
-from typing_extensions import NotRequired, TypedDict, Unpack
+from typing import Any, Literal
 
 from livekit import agents
-from livekit.agents import llm, stt, tts, vad
-from livekit.agents.types import NotGivenOr
+from livekit.agents.llm.chat_context import ChatContext, ChatMessage
 from zep_cloud.client import AsyncZep
+from zep_cloud.types import Message
 
-from .exceptions import AgentConfigurationError, MemoryRetrievalError, MemoryStorageError
+from .exceptions import AgentConfigurationError
 
-if TYPE_CHECKING:
-    from livekit.agents.llm import mcp
-    from livekit.agents.voice.agent_session import TurnDetectionMode
-
-
-class AgentKwargs(TypedDict, total=False):
-    """TypedDict for LiveKit Agent constructor parameters."""
-    
-    # Required parameter - must be present in kwargs
-    instructions: str
-    
-    # Optional parameters with proper LiveKit types
-    chat_ctx: NotRequired[NotGivenOr[llm.ChatContext | None]]
-    tools: NotRequired[list[llm.FunctionTool | llm.RawFunctionTool] | None]
-    turn_detection: NotRequired[NotGivenOr["TurnDetectionMode | None"]]
-    stt: NotRequired[NotGivenOr[stt.STT | None]]
-    vad: NotRequired[NotGivenOr[vad.VAD | None]]
-    llm: NotRequired[NotGivenOr[llm.LLM | llm.RealtimeModel | None]]
-    tts: NotRequired[NotGivenOr[tts.TTS | None]]
-    mcp_servers: NotRequired[NotGivenOr[list["mcp.MCPServer"] | None]]
-    allow_interruptions: NotRequired[NotGivenOr[bool]]
-    min_consecutive_speech_delay: NotRequired[NotGivenOr[float]]
-    use_tts_aligned_transcript: NotRequired[NotGivenOr[bool]]
+logger = logging.getLogger(__name__)
 
 
 class ZepMemoryAgent(agents.Agent):
     """
-    LiveKit agent with Zep memory retrieval and context injection.
+    LiveKit agent with Zep memory capabilities.
     
-    This agent integrates with Zep's persistent memory system to provide context-aware
-    conversations by retrieving and injecting relevant memories into agent prompts.
-    
-    ## Memory Responsibilities
-    - **Context Retrieval**: Fetch conversation history and relevant memories from Zep
-    - **Memory Injection**: Add memory context to agent prompts for personalized responses
-    - **Read Operations**: Handle all Zep read operations (ZepAgentSession handles writes)
-    
-    ## Memory Flow
-    1. User message arrives → Retrieve relevant context from Zep
-    2. Inject memory context as system message → Agent generates informed response
-    3. Memory-aware response considers conversation history and user knowledge
+    A drop-in replacement for LiveKit's Agent that adds persistent memory:
+    - Stores user and assistant messages in Zep threads
+    - Retrieves relevant context and injects it for personalized responses
+    - Accepts all standard LiveKit Agent parameters
     
     Args:
         zep_client: Initialized AsyncZep client for memory operations
         user_id: User identifier for memory isolation and personalization
         thread_id: Thread identifier for conversation continuity
-        **kwargs: All LiveKit Agent parameters (instructions, llm, stt, tts, etc.)
+        instructions: Instructions for the agent behavior
+        **kwargs: All other LiveKit Agent parameters (chat_ctx, tools, stt, llm, tts, etc.)
     """
 
     def __init__(
@@ -72,100 +42,79 @@ class ZepMemoryAgent(agents.Agent):
         zep_client: AsyncZep,
         user_id: str,
         thread_id: str,
-        **kwargs: Unpack[AgentKwargs],
+        context_mode: Literal["basic", "summary"] | None,
+        **kwargs: Any
     ) -> None:
-        """Initialize ZepMemoryAgent with memory retrieval capabilities."""
-        # Validate required parameters
-        if not isinstance(zep_client, AsyncZep):
-            raise AgentConfigurationError("zep_client must be an instance of AsyncZep")
-        if not user_id or not isinstance(user_id, str):  
+
+        if not user_id:
             raise AgentConfigurationError("user_id must be a non-empty string")
-        if not thread_id or not isinstance(thread_id, str):
+        if not thread_id:
             raise AgentConfigurationError("thread_id must be a non-empty string")
 
+        # Initialize base Agent with all parameters passed through
         super().__init__(**kwargs)
-
+        
         self._zep_client = zep_client
         self._user_id = user_id
         self._thread_id = thread_id
-
-        self._logger = logging.getLogger(__name__)
-        self._logger.info(f"ZepMemoryAgent initialized for user {user_id}, thread {thread_id}")
-
-    @property
-    def user_id(self) -> str:
-        """Get the user ID for this agent."""
-        return self._user_id
-
-    @property
-    def thread_id(self) -> str:
-        """Get the thread ID for this agent."""
-        return self._thread_id
+        self._context_mode = context_mode or "basic"
+        
+        logger.info(f"ZepMemoryAgent initialized for user {user_id}, thread {thread_id}")
 
     async def on_enter(self) -> None:
-        """
-        Called when the agent enters a conversation.
-        """
+        """Called when the agent enters a conversation."""
         await super().on_enter()
-        self._logger.info(f"Agent entered conversation for user {self._user_id}, thread {self._thread_id}")
+        logger.info(f"Agent entered conversation for user {self._user_id}")
+        
+        # Hook into session events to capture assistant messages
+        if hasattr(self, 'session'):
+            self._setup_session_handlers()
 
-    async def on_user_turn_completed(self, chat_ctx: agents.ChatContext, **kwargs: Any) -> None:
-        """
-        Handle user turn completion and inject memory context.
+    def _setup_session_handlers(self) -> None:
+        """Set up event handlers on the session to capture assistant responses."""
+        logger.debug("Setting up session event handlers for assistant message capture")
         
-        Called after each user turn completes. Retrieves relevant memory context
-        from Zep and injects it into the conversation for personalized responses.
-        
-        Note: Message storage is handled by ZepAgentSession.
+        @self.session.on("conversation_item_added")
+        def on_conversation_item_added(event) -> None:
+            """Handle conversation item addition events to capture assistant responses."""
+            logger.debug(f"🗨️ Conversation item added: {type(event)}")
+            # Schedule async storage to avoid blocking event processing
+            asyncio.create_task(self._handle_conversation_item(event))
 
-        Args:
-            chat_ctx: Current chat context for memory injection
-            **kwargs: Additional parameters including 'new_message' from LiveKit
-        """
-        await super().on_user_turn_completed(chat_ctx, **kwargs)
-        
+    async def _handle_conversation_item(self, event) -> None:
+        """Handle conversation item from session event."""
         try:
-            self._logger.info("🔄 Processing user turn for memory injection")
+            logger.debug(f"Processing conversation item event: {type(event)}")
             
-            # Extract user message from LiveKit's new_message parameter
-            new_message = kwargs.get('new_message')
-            if not new_message:
-                self._logger.debug("No new_message in kwargs, skipping memory injection")
-                return
-            self._logger.info(f"new_message {new_message}")
-            # Only process user messages (assistant messages don't trigger memory retrieval)
-            if not (hasattr(new_message, 'role') and new_message.role == 'user'):
-                self._logger.debug(f"Skipping non-user message: {getattr(new_message, 'role', 'unknown')}")
+            # Extract conversation item from event
+            if not hasattr(event, 'item'):
+                logger.debug("Event missing 'item' attribute")
                 return
                 
-            # Extract text content for memory search
-            user_text = self._extract_message_text(new_message)
-            if not user_text.strip():
-                self._logger.debug("Empty user message, skipping memory injection")
+            item = event.item
+            logger.debug(f"Found conversation item: {type(item)}")
+            
+            # Validate item has required message attributes
+            if not (hasattr(item, 'role') and hasattr(item, 'content')):
+                logger.debug("Item missing role/content attributes")
                 return
                 
-            self._logger.info(f"🔍 Injecting memory for user message: {user_text[:50]}...")
-            await self._inject_memory_context(chat_ctx, user_text)
+            role = item.role
+            content = item.content
             
+            # Only store assistant messages (user messages handled in on_user_turn_completed)
+            if role == "assistant":
+                content_text = self._extract_text_content(content)
+                if content_text.strip():
+                    await self._store_assistant_message(content_text.strip(), item)
+            else:
+                logger.debug(f"Skipping {role} message in conversation item handler")
+                
         except Exception as e:
-            self._logger.error(f"Memory injection failed: {e}")
-            # Don't raise to avoid breaking conversation flow
-            
-    def _extract_message_text(self, message) -> str:
-        """
-        Extract text content from LiveKit message formats.
-        
-        Args:
-            message: LiveKit message object with content attribute
-            
-        Returns:
-            Extracted text content as string
-        """
-        if not hasattr(message, 'content'):
-            return ""
-            
-        content = message.content
-        
+            logger.error(f"Failed to handle conversation item: {e}")
+
+    def _extract_text_content(self, content) -> str:
+        """Extract text content from various LiveKit content formats."""
         if isinstance(content, str):
             return content
             
@@ -180,93 +129,84 @@ class ZepMemoryAgent(agents.Agent):
             
         return str(content)
 
-    async def _inject_memory_context(self, chat_ctx: agents.ChatContext, user_text: str) -> None:
-        """
-        Inject memory context into chat conversation.
-        
-        Retrieves relevant memories from Zep and injects them as system messages
-        to provide context-aware responses.
-        
-        Args:
-            chat_ctx: LiveKit chat context for message injection
-            user_text: User message text for contextual memory search
-        """
+    async def _store_assistant_message(self, content_text: str, item) -> None:
+        """Store assistant message in Zep thread memory."""
         try:
-            self._logger.info(f"🧠 Retrieving memory context for user message: {user_text[:50]}...")
+            logger.info(f"Storing assistant response in Zep: {content_text[:100]}...")
             
-            zep_user_context = ""
-
-            try:
-                memory_result = await self._zep_client.thread.get_user_context(thread_id=self._thread_id, mode='summary')
-                if memory_result.context:
-                    zep_user_context = memory_result.context
-
-            except asyncio.TimeoutError:
-                self._logger.warning(f"Timeout retrieving memory from thread {self._thread_id}")
-            except Exception as e:
-                self._logger.warning(f"Failed to retrieve thread context from {self._thread_id}: {e}")
-                # Add more detail if it's a 404 or similar
-                if hasattr(e, 'status_code'):
-                    self._logger.debug(f"HTTP status: {e.status_code}")
-                if hasattr(e, 'body'):
-                    self._logger.debug(f"Response body: {e.body}")
-
-            # Inject memory context if available
-            if zep_user_context:
-                try:
-                    chat_ctx.add_message(
-                        role="system",
-                        content=f"User context for this conversation turn:\n{zep_user_context}"
-                    )
-                except Exception as inject_error:
-                    self._logger.error(f"Failed to inject memory context: {inject_error}")
-            else:
-                self._logger.debug("No memory context available to inject")
-
+            zep_message = Message(
+                content=content_text,
+                role="assistant",
+                name=getattr(item, 'name', None)
+            )
+            
+            await self._zep_client.thread.add_messages(
+                thread_id=self._thread_id,
+                messages=[zep_message]
+            )
+            
+            logger.info("✅ Assistant response stored in Zep")
+            
         except Exception as e:
-            self._logger.error(f"Memory injection error: {e}")
+            logger.warning(f"Failed to store assistant response: {e}")
 
+    async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage) -> None:
+        """
+        Handle user turn completion - store message and inject memory context.
+        
+        1. Store user message in Zep
+        2. Retrieve relevant context from Zep
+        3. Inject context into conversation
+        """
+        await super().on_user_turn_completed(turn_ctx, new_message)
+        
+        user_text = new_message.text_content
+        if not user_text.strip():
+            logger.debug("Empty user message, skipping")
+            return
+            
+        logger.info(f"Processing user message: {user_text[:100]}...")
 
-    async def update_chat_ctx(self, chat_ctx: agents.ChatContext) -> None:
-        """
-        Update chat context with Zep memory before agent responses.
-        
-        Called by LiveKit right before LLM generation. This is an alternative
-        injection point if on_user_turn_completed doesn't fire reliably.
-        
-        Args:
-            chat_ctx: Chat context to update with memory
-        """
-        await super().update_chat_ctx(chat_ctx)
-        
-        # Note: Memory injection is primarily handled in on_user_turn_completed
-        # This method is kept as backup for edge cases
-        self._logger.debug("update_chat_ctx called - memory injection handled elsewhere")
+        try:
+            logger.info(f"Adding user message to Zep thread {self._thread_id}")
+            zep_message = Message(
+                content=user_text.strip(),
+                role="user"
+            )
+            
+            await self._zep_client.thread.add_messages(
+                thread_id=self._thread_id,
+                messages=[zep_message]
+            )
+            logger.info("✅ User message stored in Zep")
+            
+        except Exception as e:
+            logger.warning(f"Failed to store user message in Zep: {e}")
+
+        try:
+            logger.info("Retrieving relevant context from Zep")
+            memory_result = await self._zep_client.thread.get_user_context(
+                thread_id=self._thread_id, 
+                mode=self._context_mode
+            )
+            
+            if memory_result and memory_result.context:
+                context = memory_result.context
+                logger.info(f"Retrieved context: {context[:200]}...")
+                
+                turn_ctx.add_message(
+                    role="system",
+                    content=f"Relevant user context:\n{context}"
+                )
+                logger.info("✅ Context injected into conversation")
+            else:
+                logger.info("No relevant context found")
+                
+        except Exception as e:
+            logger.warning(f"Failed to retrieve context from Zep: {e}")
 
 
     async def on_exit(self) -> None:
-        """
-        Called when the agent exits a conversation.
-        
-        Performs any cleanup needed for memory storage.
-        """
+        """Called when the agent exits a conversation."""
         await super().on_exit()
-        self._logger.info(f"Agent exiting for user {self._user_id}, thread {self._thread_id}")
-
-    async def clear_memory(self) -> None:
-        """
-        Clear all memory for this thread.
-        
-        This will delete the entire thread and all its messages.
-        Note: This operation cannot be undone.
-        
-        Raises:
-            MemoryStorageError: If memory clearing fails
-        """
-        try:
-            await self._zep_client.thread.delete(thread_id=self._thread_id)
-            self._logger.info(f"Cleared memory for thread {self._thread_id}")
-        except Exception as e:
-            self._logger.error(f"Error clearing memory: {e}")
-            raise MemoryStorageError(f"Failed to clear memory: {e}")
-
+        logger.info(f"Agent exiting for user {self._user_id}")
