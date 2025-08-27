@@ -15,7 +15,7 @@ from livekit.agents import llm, stt, tts, vad
 from livekit.agents.types import NotGivenOr
 from zep_cloud.client import AsyncZep
 
-from .exceptions import AgentConfigurationError, MemoryRetrievalError
+from .exceptions import AgentConfigurationError, MemoryRetrievalError, MemoryStorageError
 
 if TYPE_CHECKING:
     from livekit.agents.llm import mcp
@@ -194,35 +194,13 @@ class ZepMemoryAgent(agents.Agent):
         try:
             self._logger.info(f"🧠 Retrieving memory context for user message: {user_text[:50]}...")
             
-            memory_parts = []
+            zep_user_context = ""
 
-            # Retrieve thread context and recent conversation history
             try:
-                self._logger.debug(f"Requesting memory from thread: {self._thread_id}")
-                memory_result = await asyncio.wait_for(
-                    self._zep_client.thread.get_user_context(thread_id=self._thread_id, fast=True),
-                    timeout=5.0
-                )
-                
-                self._logger.info("✅ Retrieved thread context from Zep")
-                
-                # Add thread context if available
+                memory_result = await self._zep_client.thread.get_user_context(thread_id=self._thread_id, mode='summary')
                 if memory_result.context:
-                    memory_parts.append(f"Context: {memory_result.context}")
-                    self._logger.debug("Added thread context to memory")
-                
-                # Add recent conversation history
-                if memory_result.messages:
-                    recent_messages = memory_result.messages[-5:]  # Last 5 messages
-                    if recent_messages:
-                        history_lines = [
-                            f"{msg.role}: {msg.content}" for msg in recent_messages
-                        ]
-                        memory_parts.append("Recent history:\n" + "\n".join(history_lines))
-                        self._logger.debug(f"Added {len(recent_messages)} recent messages")
-                else:
-                    self._logger.debug("No messages found in thread context")
-                self._logger.info(f"memory_parts {memory_parts}")
+                    zep_user_context = memory_result.context
+
             except asyncio.TimeoutError:
                 self._logger.warning(f"Timeout retrieving memory from thread {self._thread_id}")
             except Exception as e:
@@ -234,19 +212,12 @@ class ZepMemoryAgent(agents.Agent):
                     self._logger.debug(f"Response body: {e.body}")
 
             # Inject memory context if available
-            if memory_parts:
-                memory_context = "\n\n".join(memory_parts)
-                self._logger.info(f"💾 Injecting memory context: {memory_context[:100]}...")
-                
-                # Add memory context as system message using correct LiveKit API
+            if zep_user_context:
                 try:
-                    memory_msg = chat_ctx.add_message(
+                    chat_ctx.add_message(
                         role="system",
-                        content=f"Memory context for this conversation:\n\n{memory_context}"
+                        content=f"User context for this conversation turn:\n{zep_user_context}"
                     )
-                    self._logger.info(f"✅ Injected memory context with {len(memory_parts)} parts")
-                    self._logger.debug(f"Memory message ID: {getattr(memory_msg, 'id', 'unknown')}")
-                    
                 except Exception as inject_error:
                     self._logger.error(f"Failed to inject memory context: {inject_error}")
             else:
@@ -254,10 +225,9 @@ class ZepMemoryAgent(agents.Agent):
 
         except Exception as e:
             self._logger.error(f"Memory injection error: {e}")
-            # Don't raise to avoid breaking conversation flow
 
 
-    async def update_chat_ctx(self, chat_ctx: agents.ChatContext, **kwargs: Any) -> None:
+    async def update_chat_ctx(self, chat_ctx: agents.ChatContext) -> None:
         """
         Update chat context with Zep memory before agent responses.
         
@@ -266,9 +236,8 @@ class ZepMemoryAgent(agents.Agent):
         
         Args:
             chat_ctx: Chat context to update with memory
-            **kwargs: Additional parameters
         """
-        await super().update_chat_ctx(chat_ctx, **kwargs)
+        await super().update_chat_ctx(chat_ctx)
         
         # Note: Memory injection is primarily handled in on_user_turn_completed
         # This method is kept as backup for edge cases

@@ -27,7 +27,6 @@ from livekit.plugins import openai, silero
 from zep_livekit import ZepMemoryAgent, ZepAgentSession
 
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -36,14 +35,24 @@ async def entrypoint(ctx: agents.JobContext):
     """Main entrypoint for the LiveKit agent job."""
     
     # Use hardcoded user and thread with existing memories
-    user_id = "paul_traveler"
-    thread_id = "travel_chat_20250725_213323_e99d34"
-    
+    user_id = "paul_traveler1"
+    thread_id = f"travel_chat_{uuid.uuid4().hex[:8]}"
+
     logger.info(f"Using existing user: {user_id}")
     logger.info(f"Using existing thread: {thread_id}")
     
     # Initialize Zep client
     zep_client = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
+
+    # await zep_client.user.add(
+    #     user_id=user_id,
+    #     first_name="Paul",
+    # )
+
+    await zep_client.thread.create(
+        thread_id=thread_id,
+        user_id=user_id,
+    )
     
     # Verify user exists in Zep (don't create, just verify)
     try:
@@ -71,7 +80,7 @@ async def entrypoint(ctx: agents.JobContext):
         zep_client=zep_client,
         user_id=user_id,
         thread_id=thread_id,
-        instructions="You are Zep, a helpful voice assistant with memory. Always respond to user messages. Keep responses brief and conversational.",
+        instructions="You are a helpful voice assistant with memory (provided as a system message on each chat turn). Always respond to user messages. Keep responses brief and conversational.",
     )
     
     logger.info(f"Created agent for user {user_id}, thread {thread_id}")
@@ -83,7 +92,7 @@ async def entrypoint(ctx: agents.JobContext):
         thread_id=thread_id,
         # Standard LiveKit providers
         stt=openai.STT(),
-        llm=openai.LLM(model="gpt-4o-mini"),  
+        llm=openai.LLM(model="gpt-4.1-mini"),
         tts=openai.TTS(),
         vad=silero.VAD.load(),  # Add VAD for streaming support
     )
