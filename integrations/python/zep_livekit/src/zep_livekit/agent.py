@@ -1,7 +1,7 @@
 """
-Zep Memory integration for LiveKit agents.
+Zep user memory integration for LiveKit agents.
 
-This module provides the ZepMemoryAgent class that integrates Zep's memory capabilities
+This module provides the ZepUserAgent class that integrates Zep's memory capabilities
 with LiveKit's voice AI agent framework
 """
 
@@ -128,10 +128,8 @@ class ZepUserAgent(agents.Agent):
         try:
             # Use custom assistant name if provided, otherwise fallback to item name
             message_name = self._assistant_message_name or getattr(item, "name", None)
-            
-            zep_message = Message(
-                content=content_text, role="assistant", name=message_name
-            )
+
+            zep_message = Message(content=content_text, role="assistant", name=message_name)
 
             await self._zep_client.thread.add_messages(
                 thread_id=self._thread_id, messages=[zep_message]

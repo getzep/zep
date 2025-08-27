@@ -1,215 +1,274 @@
 # Zep LiveKit Integration
 
-A memory-enabled voice AI agent integration that combines [Zep's](https://www.getzep.com) persistent memory capabilities with [LiveKit's](https://livekit.io) realtime voice AI framework.
-
-## Features
-
-🧠 **Persistent Memory**: Remember conversations across sessions using Zep's graph-based memory
-🎙️ **Voice AI**: Production-ready voice agents with LiveKit's realtime framework  
-🤖 **OpenAI Integration**: Seamless STT, LLM, and TTS using OpenAI providers
-👤 **User & Thread Isolation**: Separate memory spaces for different users and conversations
-📊 **Graph Knowledge**: Extract entities and relationships from voice interactions
-🔄 **Context Injection**: Automatically enhance conversations with relevant memories
+Add persistent memory to your LiveKit voice agents with [Zep's](https://www.getzep.com) memory capabilities. This integration provides both conversational memory for user sessions and shared knowledge graphs for cross-session information storage.
 
 ## Quick Start
 
-### Installation
+### Install Dependencies
 
 ```bash
 pip install zep-livekit
 ```
 
-### Basic Usage
+### Environment Setup
+
+Configure your environment with the required API keys and LiveKit connection details:
+
+```bash
+# Required API keys
+export OPENAI_API_KEY="your-openai-api-key"
+export ZEP_API_KEY="your-zep-cloud-api-key"
+
+# LiveKit configuration
+export LIVEKIT_URL="your-livekit-url"
+export LIVEKIT_API_KEY="your-livekit-api-key" 
+export LIVEKIT_API_SECRET="your-livekit-api-secret"
+```
+
+## Memory Types
+
+The LiveKit integration offers two complementary memory approaches:
+
+### User Memory (Thread-based)
+- **Purpose**: Personal conversation history and context
+- **Storage**: Zep threads for individual user sessions
+- **Use Case**: Personal assistants, customer support, tutoring
+- **Retrieval**: Recent conversation context and user preferences
+
+### Knowledge Graph Memory  
+- **Purpose**: Shared knowledge across all conversations
+- **Storage**: Zep knowledge graphs with facts, entities, and relationships
+- **Use Case**: Knowledge bases, collaborative assistants, information systems
+- **Retrieval**: Semantic search across facts, entities, and episodes
+
+## User Memory
+
+For personal conversation memory that persists across sessions:
+
+### Basic Setup
 
 ```python
-import asyncio
-from zep_cloud.client import AsyncZep
-from livekit.plugins import openai, silero
+import os
 from livekit import agents
-from zep_livekit import ZepMemoryAgent, ZepAgentSession
+from livekit.plugins import openai, silero
+from zep_cloud.client import AsyncZep
+from zep_livekit import ZepUserAgent
 
-async def main():
+async def entrypoint(ctx: agents.JobContext):
     # Initialize Zep client
-    zep_client = AsyncZep(api_key="your-zep-api-key")
+    zep_client = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
     
-    # Ensure user exists (create it if needed)
-    user_id = "user123"
+    # Create user and thread
+    user_id = "user_123"
+    thread_id = f"conversation_{user_id}"
+    
     try:
-        await zep_client.user.get(user_id)
+        await zep_client.user.get(user_id=user_id)
     except:
-        await zep_client.user.add(user_id=user_id, metadata={})
+        await zep_client.user.add(user_id=user_id, first_name="Alice")
     
-    # Ensure thread exists (create it if needed)
-    thread_id = "conversation456"
-    try:
-        await zep_client.thread.get(thread_id)
-    except:
-        await zep_client.thread.create(thread_id=thread_id, user_id=user_id)
+    await zep_client.thread.create(thread_id=thread_id, user_id=user_id)
     
-    # Create memory-enabled agent
-    agent = ZepMemoryAgent(
-        zep_client=zep_client,
-        user_id=user_id,
-        thread_id=thread_id,
-        instructions="You are a helpful assistant with memory."
-    )
+    # Connect to room
+    await ctx.connect()
     
-    # Create Zep-enabled session that automatically captures conversations
-    session = ZepAgentSession(
-        zep_client=zep_client,
-        user_id=user_id,
-        thread_id=thread_id,
-        # Standard LiveKit providers
+    # Create session with providers
+    session = agents.AgentSession(
         stt=openai.STT(),
         llm=openai.LLM(model="gpt-4o-mini"),
         tts=openai.TTS(),
         vad=silero.VAD.load(),
     )
     
-    # Session automatically captures and stores conversations in Zep
-    # See examples/voice_assistant.py for complete setup
-
-asyncio.run(main())
+    # Create memory-enabled agent
+    agent = ZepUserAgent(
+        zep_client=zep_client,
+        user_id=user_id,
+        thread_id=thread_id,
+        instructions="You are a helpful assistant with persistent memory."
+    )
+    
+    # Start conversation with memory
+    await session.start(agent=agent, room=ctx.room)
 ```
 
-### Environment Setup
+### Advanced Configuration
 
-Set the following environment variables:
-
-```bash
-# Required
-export OPENAI_API_KEY="your-openai-api-key"
-export ZEP_API_KEY="your-zep-api-key" 
-export LIVEKIT_URL="wss://your-livekit-server.com"
-export LIVEKIT_API_KEY="your-livekit-api-key"
-export LIVEKIT_API_SECRET="your-livekit-api-secret"
+```python
+# Enhanced user agent with message attribution
+agent = ZepUserAgent(
+    zep_client=zep_client,
+    user_id="user_123",
+    thread_id="conversation_456", 
+    context_mode="summary",  # or "basic"
+    user_message_name="Alice",  # Name for user messages in Zep
+    assistant_message_name="Assistant",  # Name for assistant messages
+    instructions="You remember our previous conversations and preferences."
+)
 ```
 
-## Complete Example
+## Knowledge Graph Memory
 
-See `examples/voice_assistant.py` for a full working voice assistant:
+For shared knowledge that accumulates across all conversations:
 
+### Basic Setup
+
+```python
+from zep_livekit import ZepGraphAgent
+
+async def entrypoint(ctx: agents.JobContext):
+    # Initialize Zep client
+    zep_client = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
+    
+    # Create or get knowledge graph
+    graph_id = "company_knowledge_base"
+    try:
+        await zep_client.graph.get(graph_id)
+    except:
+        await zep_client.graph.create(
+            graph_id=graph_id,
+            name="Company Knowledge Base",
+            description="Shared knowledge across all conversations"
+        )
+    
+    # Connect to room
+    await ctx.connect()
+    
+    # Create session
+    session = agents.AgentSession(
+        stt=openai.STT(),
+        llm=openai.LLM(model="gpt-4o-mini"),
+        tts=openai.TTS(),
+        vad=silero.VAD.load(),
+    )
+    
+    # Create knowledge-enabled agent
+    agent = ZepGraphAgent(
+        zep_client=zep_client,
+        graph_id=graph_id,
+        user_name="Alice",  # Optional: for message attribution
+        facts_limit=15,     # Max facts to retrieve
+        entity_limit=5,     # Max entities to retrieve
+        episode_limit=3,    # Max episodes to retrieve
+        instructions="""
+            You have access to a shared knowledge graph. 
+            Store important facts for future reference and 
+            search your knowledge to answer questions accurately.
+        """
+    )
+    
+    await session.start(agent=agent, room=ctx.room)
+```
+
+
+## Query Memory
+
+### Thread Context Retrieval
+
+```python
+# Get conversation context for user
+memory_result = await zep_client.thread.get_user_context(
+    thread_id="conversation_123",
+    mode="basic"  # or "summary"
+)
+
+if memory_result and memory_result.context:
+    print(f"User context: {memory_result.context}")
+```
+
+### Knowledge Graph Search
+
+```python
+# Search knowledge graph
+search_results = await zep_client.graph.search(
+    graph_id="knowledge_base",
+    query="Python programming best practices",
+    limit=10,
+    scope="edges"  # facts, or "nodes" (entities), "episodes"
+)
+
+# Use Zep's utility to compose context
+from zep_cloud.graph.utils import compose_context_string
+context = compose_context_string(
+    search_results.edges,
+    search_results.nodes, 
+    search_results.episodes
+)
+```
+
+## Agent Comparison
+
+| Agent Type | Best For | Memory Storage | Use Cases |
+|------------|----------|----------------|-----------|
+| **ZepUserAgent** | Personal assistants | User threads | Conversation continuity, customer support, tutoring |
+| **ZepGraphAgent** | Knowledge systems | Knowledge graphs | Shared information, collaborative assistants, knowledge bases |
+
+### When to Use Each
+
+**Use ZepUserAgent when:**
+- Building personal assistants
+- Need conversation history across sessions
+- Want automatic memory without configuration
+- Users have individual conversation contexts
+
+**Use ZepGraphAgent when:**  
+- Building knowledge management systems
+- Information should be shared across users
+- Need semantic search across facts and entities
+- Want to accumulate organizational knowledge
+
+## Complete Examples
+
+### Personal Assistant
 ```bash
-# Run with default settings
+# examples/voice_assistant.py
 python examples/voice_assistant.py
-
-# Custom room and user
-python examples/voice_assistant.py my-room user123
-
-# Resume existing conversation
-python examples/voice_assistant.py my-room user123 thread_abc123
 ```
 
-## How Memory Works
-
-### Dual Storage Strategy
-
-The integration uses both **user-focused** and **graph-focused** memory:
-
-1. **Thread Memory**: Stores conversation history in user threads
-   - Maintains conversational context
-   - Preserves message ordering and timing
-   - Enables conversation resumption
-
-2. **Graph Memory**: Extracts knowledge into user graphs  
-   - Builds entity relationships
-   - Enables semantic search
-   - Creates long-term knowledge base
-
-### Memory Lifecycle
-
-1. **Storage** (`on_user_turn_completed`):
-   - Save messages to thread history
-   - Extract facts for graph storage
-   - Build entity relationships
-
-2. **Retrieval** (`update_chat_ctx`):
-   - Search graph for relevant context
-   - Get recent thread history
-   - Inject memory into conversation
-
-3. **Context Enhancement**:
-   - Automatically adds relevant memories as system messages
-   - Provides conversation continuity
-   - Enables personalized responses
+### Knowledge Assistant  
+```bash
+# examples/graph_voice_assistant.py
+python examples/graph_voice_assistant.py
+```
 
 ## API Reference
 
-### ZepMemoryAgent
-
-Main agent class that extends LiveKit's Agent with Zep memory capabilities.
+### ZepUserAgent
 
 ```python
-class ZepMemoryAgent(Agent):
-    def __init__(
-        self,
-        zep_client: AsyncZep,
-        user_id: str,
-        thread_id: str,
-        instructions: str = "You are a helpful assistant with memory."
-    )
-```
-
-**Parameters:**
-- `zep_client`: Initialized AsyncZep client instance
-- `user_id`: User ID for memory isolation (required)
-- `thread_id`: Thread ID for conversation continuity (required)
-- `instructions`: System instructions for the agent
-
-**Key Methods:**
-- `clear_memory()`: Clear all memory for current thread
-- `user_id`: Property to get current user ID
-- `thread_id`: Property to get current thread ID
-
-### ZepAgentSession
-
-Session wrapper that automatically captures conversation events for Zep memory storage.
-
-```python
-class ZepAgentSession(AgentSession):
+class ZepUserAgent(agents.Agent):
     def __init__(
         self,
         *,
         zep_client: AsyncZep,
         user_id: str,
         thread_id: str,
-        **kwargs
+        context_mode: Literal["basic", "summary"] = "basic",
+        user_message_name: str | None = None,
+        assistant_message_name: str | None = None,
+        **kwargs: Any  # All LiveKit Agent parameters
     )
 ```
 
-**Parameters:**
-- `zep_client`: Initialized AsyncZep client instance
-- `user_id`: User ID for memory isolation (required)
-- `thread_id`: Thread ID for conversation continuity (required)
-- `**kwargs`: Standard AgentSession arguments (stt, llm, tts, vad, etc.)
-
-**Features:**
-- Automatically captures user and assistant messages through LiveKit's event system
-- Stores conversations in Zep memory without manual intervention
-- Maintains full compatibility with standard AgentSession API
-
-**Note:** You must create the thread in Zep before instantiating the session.
-
-### Memory Utilities
-
-Additional utilities in `zep_livekit.memory`:
+### ZepGraphAgent
 
 ```python
-from zep_livekit.memory import MemoryManager
-
-# Advanced memory operations
-memory_manager = MemoryManager(zep_client, user_id)
-await memory_manager.search_relevant_memories("query", limit=5)
+class ZepGraphAgent(agents.Agent):
+    def __init__(
+        self,
+        *,
+        zep_client: AsyncZep,
+        graph_id: str,
+        user_name: str | None = None,
+        facts_limit: int = 15,
+        entity_limit: int = 5, 
+        episode_limit: int = 2,
+        search_filters: SearchFilters | None = None,
+        reranker: Reranker | None = "rrf",
+        **kwargs: Any  # All LiveKit Agent parameters
+    )
 ```
 
-### Use Cases
-
-**Perfect for:**
-- 🎯 Voice assistants that remember user preferences
-- 📞 Customer support with interaction history  
-- 🎓 Educational agents tracking student progress
-- 💼 Sales agents maintaining relationship context
-- 🤖 Any conversational AI requiring memory continuity
 
 ## Development
 
@@ -224,41 +283,52 @@ make install
 ### Development Workflow
 
 ```bash
-make format      # Format code
-make lint        # Run linting
-make type-check  # Run MyPy
-make test        # Run tests
-make pre-commit  # Full pre-commit checks
+make format      # Format code with ruff
+make lint        # Run linting checks  
+make type-check  # Run MyPy type checking
+make test        # Run test suite
+make pre-commit  # Full pre-commit workflow
+make ci          # Strict CI-style checks
 ```
 
-### Running Tests
+## Production Deployment
 
+### LiveKit Cloud
 ```bash
-# All tests
-make test
-
-# Skip integration tests (no API keys needed)
-pytest -m "not integration"
+livekit-cli deploy --name zep-agent agent_worker.py
 ```
 
-## Contributing
+### Docker Container
+```dockerfile
+FROM python:3.11-slim
+COPY . /app
+WORKDIR /app
+RUN pip install -r requirements.txt
+CMD ["python", "agent_worker.py"]
+```
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run `make pre-commit` to ensure code quality
-5. Submit a pull request
-
-## License
-
-This project is licensed under the same terms as the main Zep project.
+### FastAPI Integration
+```python
+# Web layer generates tokens, agent workers handle conversations
+@app.post("/create-room/{user_id}")
+async def create_voice_session(user_id: str):
+    # Generate access token for user-specific room
+    # Agent worker instantiates ZepUserAgent per user
+```
 
 ## Support
 
-- 📖 [Documentation](https://help.getzep.com/integrations/livekit)
-- 💬 [Discord Community](https://discord.gg/W8xaHrqWVc)
-- 🐛 [Issue Tracker](https://github.com/getzep/zep/issues)
+### Zep Resources
+- 📖 [Zep Documentation](https://help.getzep.com)
+- 💬 [Zep Discord Community](https://discord.gg/W8xaHrqWVc)  
+- 🐛 [GitHub Issues](https://github.com/getzep/zep/issues)
 - 📧 [Email Support](mailto:support@getzep.com)
+
+### LiveKit Resources  
+- 📖 [LiveKit Documentation](https://docs.livekit.io)
+- 🏗️ [LiveKit Platform](https://cloud.livekit.io)
+- 👥 [LiveKit Community](https://livekit.io/community)
+- 📚 [LiveKit Agents Guide](https://docs.livekit.io/agents)
 
 ---
 

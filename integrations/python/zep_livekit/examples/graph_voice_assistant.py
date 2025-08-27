@@ -75,7 +75,7 @@ async def entrypoint(ctx: agents.JobContext):
         user_name="Mark",
         facts_limit=15,  # Number of facts to retrieve
         entity_limit=5,  # Number of entities to retrieve
-        episode_limit=2, # Number of episodes to retrieve
+        episode_limit=2,  # Number of episodes to retrieve
         instructions="""
             You are a knowledgeable assistant with access to a persistent knowledge graph.
             You can learn and remember facts, relationships, and concepts from our conversations.
