@@ -31,7 +31,7 @@ class ZepUserStorage(Storage):
         search_filters: SearchFilters | None = None,
         facts_limit: int = 20,
         entity_limit: int = 5,
-        mode: Literal["summary", "raw_messages"] = "summary",
+        mode: Literal["summary", "basic"] = "summary",
         **kwargs: Any,
     ) -> None:
         """
@@ -44,7 +44,7 @@ class ZepUserStorage(Storage):
             search_filters: Optional filters for search operations
             facts_limit: Maximum number of facts (edges) to retrieve for context
             entity_limit: Maximum number of entities (nodes) to retrieve for context
-            mode: Mode for thread context retrieval ("summary" or "raw_messages")
+            mode: Mode for thread context retrieval ("summary" or "basic")
             **kwargs: Additional configuration options
         """
         if not isinstance(client, Zep):

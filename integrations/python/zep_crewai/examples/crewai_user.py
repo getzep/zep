@@ -72,7 +72,7 @@ def main():
         client=zep_client,
         user_id=user_id,
         thread_id=thread_id,
-        mode="summary",  # Use summary mode for concise context (or "raw_messages" for full history)
+        mode="summary",  # Use summary mode for concise context (or "basic" for raw context)
     )
     external_memory = ExternalMemory(storage=user_storage)
 

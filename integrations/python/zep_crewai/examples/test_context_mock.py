@@ -62,8 +62,8 @@ Key Facts:
     logger.info("Context that CrewAI agent receives:")
     logger.info(context)
 
-    # Example 2: Raw messages mode
-    logger.info("\n2. RAW MESSAGES MODE - thread.get_user_context(mode='raw_messages')")
+    # Example 2: basic mode
+    logger.info("\n2. basic MODE - thread.get_user_context(mode='basic')")
     logger.info("-" * 60)
 
     mock_context_raw = MagicMock()
@@ -82,7 +82,7 @@ Key Facts:
     mock_zep.thread.get_user_context = MagicMock(return_value=mock_context_raw)
 
     storage_raw = ZepUserStorage(
-        client=mock_zep, user_id="user_123", thread_id="thread_456", mode="raw_messages"
+        client=mock_zep, user_id="user_123", thread_id="thread_456", mode="basic"
     )
 
     context = storage_raw.get_context()
@@ -227,7 +227,7 @@ CrewAI agents receive context from Zep in these ways:
 
 1. User Storage (ZepUserStorage):
    - Retrieves user-specific context from conversation threads
-   - Two modes: 'summary' (default) or 'raw_messages'
+   - Two modes: 'summary' (default) or 'basic'
    - Context includes user profile, preferences, conversation history
    - Directly uses thread.get_user_context() from Zep SDK
 
