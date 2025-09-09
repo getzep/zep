@@ -285,8 +285,8 @@ class TestZepUserStorage:
 
         assert context == "User's conversation context with summary"
 
-    def test_get_context_with_raw_messages_mode(self):
-        """Test get_context with raw_messages mode."""
+    def test_get_context_with_basic_mode(self):
+        """Test get_context with basic mode."""
         from zep_cloud.client import Zep
 
         mock_client = MagicMock(spec=Zep)
@@ -298,15 +298,15 @@ class TestZepUserStorage:
         mock_client.thread.get_user_context.return_value = mock_context
 
         storage = ZepUserStorage(
-            client=mock_client, user_id="test-user", thread_id="test-thread", mode="raw_messages"
+            client=mock_client, user_id="test-user", thread_id="test-thread", mode="basic"
         )
 
         # Get context
         context = storage.get_context()
 
-        # Verify thread.get_user_context was called with raw_messages mode
+        # Verify thread.get_user_context was called with basic mode
         mock_client.thread.get_user_context.assert_called_once_with(
-            thread_id="test-thread", mode="raw_messages"
+            thread_id="test-thread", mode="basic"
         )
 
         assert context == "User: Hello\nAssistant: Hi there!\nUser: How are you?"
