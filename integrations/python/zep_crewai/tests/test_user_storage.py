@@ -292,7 +292,7 @@ class TestZepUserStorage:
         mock_client = MagicMock(spec=Zep)
         mock_client.thread = MagicMock()
 
-        # Mock thread context response with raw messages
+        # Mock thread context response with basic
         mock_context = MagicMock()
         mock_context.context = "User: Hello\nAssistant: Hi there!\nUser: How are you?"
         mock_client.thread.get_user_context.return_value = mock_context

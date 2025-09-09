@@ -62,8 +62,8 @@ Key Facts:
     logger.info("Context that CrewAI agent receives:")
     logger.info(context)
 
-    # Example 2: Raw messages mode
-    logger.info("\n2. RAW MESSAGES MODE - thread.get_user_context(mode='basic')")
+    # Example 2: basic mode
+    logger.info("\n2. basic MODE - thread.get_user_context(mode='basic')")
     logger.info("-" * 60)
 
     mock_context_raw = MagicMock()
