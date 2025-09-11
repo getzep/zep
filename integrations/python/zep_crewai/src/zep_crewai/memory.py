@@ -156,10 +156,10 @@ class ZepStorage(Storage):
             self._logger.debug(f"Failed to search user memories: {e}")
 
         if thread_context and hasattr(thread_context, "context") and thread_context.context:
-            results.append({"memory": thread_context.context})
+            results.append({"context": thread_context.context})
 
         for result in edges_search_results:
-            results.append({"memory": result})
+            results.append({"context": result})
 
         return results
 

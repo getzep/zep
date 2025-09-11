@@ -214,7 +214,7 @@ def main():
         search_results = graph_storage.search("Python", limit=5)
         print(f"Found {len(search_results)} results about Python:")
         for idx, result in enumerate(search_results[:3], 1):
-            print(f"  {idx}. {result.get('memory', '')[:100]}...")
+            print(f"  {idx}. {result.get('context', '')[:100]}...")
 
     except Exception as e:
         print(f"\n❌ Execution failed: {e}")
