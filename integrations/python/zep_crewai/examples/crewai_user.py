@@ -223,7 +223,7 @@ def main():
         print(f"Found {len(search_results)} relevant memories about mobile app:")
         for idx, result in enumerate(search_results[:3], 1):
             memory_type = result.get("type", "unknown")
-            content = result.get("memory", "")[:100]
+            content = result.get("context", "")[:100]
             print(f"  {idx}. [{memory_type}] {content}...")
 
     except Exception as e:

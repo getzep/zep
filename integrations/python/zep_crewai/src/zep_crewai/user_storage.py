@@ -155,7 +155,7 @@ class ZepUserStorage(Storage):
                 self._logger.info(f"Composed context for query: {query}")
                 return [
                     {
-                        "memory": context,
+                        "context": context,
                         "type": "user_graph_context",
                         "source": "user_graph",
                         "query": query,

@@ -127,7 +127,7 @@ class ZepGraphStorage(Storage):
             if context:
                 self._logger.info(f"Composed context for query: {query}")
                 return [
-                    {"memory": context, "type": "graph_context", "source": "graph", "query": query}
+                    {"context": context, "type": "graph_context", "source": "graph", "query": query}
                 ]
 
             self._logger.info(f"No results found for query: {query}")
