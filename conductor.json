@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "setup": "cp /Users/jackryan/Desktop/Projects-active/smokeV3/.env $CONDUCTOR_WORKSPACE_PATH"
+  },
+  "runScriptMode": "concurrent"
+}
