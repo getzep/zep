@@ -1,0 +1,3 @@
+zep-livekit
+livekit-agents[openai,silero]>=1.0.0
+python-dotenv

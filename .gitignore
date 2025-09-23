@@ -89,3 +89,6 @@ dmypy.json
 uv.lock
 .uv_cache/
 __pypackages__/
+
+# macOS
+.DS_Store
