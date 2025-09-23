@@ -1,4 +1,4 @@
-# Travel Assistant with Zep Memory Integration
+# Zep Livekit Integration Full Working Example
 
 Voice agent that demonstrates LiveKit + Zep integration with persistent memory.
 
