@@ -50,7 +50,7 @@ Run the following to add coversations from `conversations.json` to the user grap
 python populate_memory.py
 ```
 
-## Optional: Try the most customizable ZepGraphAgent
+## Optional: Try the more customizable ZepGraphAgent
 
 1. Run the agent:
 ```bash
