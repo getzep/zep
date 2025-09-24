@@ -46,7 +46,7 @@ async def entrypoint(ctx: agents.JobContext):
     # Step 5: Create agent session with OpenAI components
     session = agents.AgentSession(
         stt=openai.STT(),
-        llm=openai.LLM(model="gpt-4o-mini"),
+        llm=openai.LLM(model="gpt-5-nano-2025-08-07"),
         tts=openai.TTS(voice="alloy"),
         vad=silero.VAD.load(),
     )
