@@ -1,0 +1,23 @@
+{
+  "user": {
+    "name": "John Doe",
+    "preferred_name": "Johnny",
+    "language": "en-US",
+    "timezone": "America/Los_Angeles",
+    "home_location": "123 Tech Lane, San Francisco, CA"
+  },
+  "user_health_info": {
+    "daily_step_goal": 10000,
+    "dietary_restrictions": ["gluten-free"],
+    "emergency_contact": "+1-555-0123",
+    "preferred_workout_time": "6:00 PM"
+  },
+  "user_device_settings": {
+    "dark_mode": true,
+    "notification_preferences": {
+      "calls": "priority",
+      "messages": "normal",
+      "email": "silent"
+    }
+  }
+}
