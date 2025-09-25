@@ -12,9 +12,9 @@ load_dotenv()
 USER_ID = "John-1234"
 USER_FULL_NAME = "John Doe"
 
-def load_conversations():
-    """Load conversations from JSON file."""
-    with open("conversations.json", "r") as f:
+def load_json_file(filename):
+    """Load data from a JSON file."""
+    with open(filename, "r") as f:
         return json.load(f)
 
 def populate_user_memory():
@@ -23,8 +23,9 @@ def populate_user_memory():
     # Initialize Zep client
     zep_client = Zep(api_key=os.getenv("ZEP_API_KEY"))
     
-    # Load conversation data
-    conversations = load_conversations()
+    # Load conversation and user data
+    user_data = load_json_file("user_data.json")
+    conversations = load_json_file("conversations.json")
     
     # Get user, if it doesn't exist, throw error
     try:
@@ -34,6 +35,14 @@ def populate_user_memory():
         print(f"❌ User with ID {USER_ID} does not exist. Please create the user before populating memory.")
         return
     
+    # Add user JSON data to graph in pieces
+    for key, value in user_data.items():
+        zep_client.graph.add(
+            user_id=USER_ID,
+            data=json.dumps({key: value}),
+            type="json"
+        )
+
     # Process each conversation thread
     for conversation in conversations:
         thread_id = f"conversation-{uuid.uuid4().hex[:8]}"
