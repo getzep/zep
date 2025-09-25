@@ -1,4 +1,4 @@
-# Zep Livekit Integration Full Working Example
+# Zep LiveKit Integration Full Working Example
 
 Voice agent that demonstrates LiveKit + Zep integration with persistent memory.
 
