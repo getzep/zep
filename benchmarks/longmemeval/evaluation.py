@@ -4,101 +4,138 @@ Evaluation module for LongMemEval benchmark
 """
 
 import asyncio
-import json
 import logging
-import os
+from time import time
+
 import pandas as pd
 import tiktoken
-from datetime import datetime, timezone
-from time import time
-from typing import List, Tuple
-
-from dotenv import load_dotenv
-from openai import AsyncOpenAI
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-)
 from zep_cloud import EntityEdge, EntityNode, Episode
-from zep_cloud.client import AsyncZep
-import httpx
 
-from common import (
-    RESPONSE_MODEL,
-    GRADER_MODEL,
-    SUMMARY_MODEL,
-    GRADING_PROMPTS,
-    Grade,
-    CONTEXT_TEMPLATE,
-    get_summarization_prompts,
-)
-from summarization import SummarizationService
-from reranker import RerankerFactory
+from clients import create_openai_client, create_zep_client
+from common import EvaluationResult, Grade
+from config import BenchmarkConfig
+
+# Configuration Constants
+RESPONSE_MODEL = "gpt-4o"
+GRADER_MODEL = "gpt-4o"
+
+# Grading prompts
+GRADING_PROMPTS = {
+    "temporal-reasoning": """
+I will give you a question, a correct answer, and a response from a model. Please answer yes if the response contains the correct answer. Otherwise, answer no. If the response is equivalent to the correct answer or contains all the intermediate steps to get the correct answer, you should also answer yes. If the response only contains a subset of the information required by the answer, answer no. In addition, do not penalize off-by-one errors for the number of days. If the question asks for the number of days/weeks/months, etc., and the model makes off-by-one errors (e.g., predicting 19 days when the answer is 18), the model's response is still correct.
+
+<QUESTION>
+{question}
+</QUESTION>
+<CORRECT ANSWER>
+{gold_answer}
+</CORRECT ANSWER>
+<RESPONSE>
+{response}
+</RESPONSE>
+""",
+    "knowledge-update": """
+I will give you a question, a correct answer, and a response from a model. Please answer yes if the response contains the correct answer. Otherwise, answer no. If the response contains some previous information along with an updated answer, the response should be considered as correct as long as the updated answer is the required answer.
+
+<QUESTION>
+{question}
+</QUESTION>
+<CORRECT ANSWER>
+{gold_answer}
+</CORRECT ANSWER>
+<RESPONSE>
+{response}
+</RESPONSE>
+""",
+    "single-session-preference": """
+I will give you a question, a rubric for desired personalized response, and a response from a model. Please answer yes if the response satisfies the desired response. Otherwise, answer no. The model does not need to reflect all the points in the rubric. The response is correct as long as it recalls and utilizes the user's personal information correctly.
+
+<QUESTION>
+{question}
+</QUESTION>
+<RUBRIC>
+{gold_answer}
+</RUBRIC>
+<RESPONSE>
+{response}
+</RESPONSE>
+""",
+    "default": """
+I will give you a question, a correct answer, and a response from a model. Please answer yes if the response contains the correct answer. Otherwise, answer no. If the response is equivalent to the correct answer or contains all the intermediate steps to get the correct answer, you should also answer yes. If the response only contains a subset of the information required by the answer, answer no.
+
+<QUESTION>
+{question}
+</QUESTION>
+<CORRECT ANSWER>
+{gold_answer}
+</CORRECT ANSWER>
+<RESPONSE>
+{response}
+</RESPONSE>
+""",
+}
+
+CONTEXT_TEMPLATE = """
+The following sections contain relevant information for the current conversation.
+
+<FACTS>
+# Timestamped Facts
+These facts include datetime stamps that indicate WHEN the actual event occurred.
+
+{facts}
+</FACTS>
+
+<ENTITIES>
+# Key People, Places, and Things
+These are important entities referenced in the conversation.
+
+{entities}
+</ENTITIES>
+
+<MESSAGES>
+# Relevant Historical Messages
+These are the most relevant messages from the user's interaction history.
+
+{messages}
+</MESSAGES>
+"""
 
 
 class EvaluationRunner:
     def __init__(
         self,
-        zep_dev_environment: bool = False,
-        log_level: str = "INFO",
-        config: dict = None,
+        log_level: str = "WARNING",
+        config: BenchmarkConfig | None = None,
     ):
-        load_dotenv()
-
         self.logger = self._setup_logging(log_level)
 
-        # Initialize Zep client
-        if zep_dev_environment:
-            self.zep = AsyncZep(
-                api_key=os.getenv("ZEP_API_KEY"),
-                base_url="https://api.development.getzep.com/api/v2",
-            )
-        else:
-            self.zep = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
-
-        self.oai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # Initialize clients using factory functions
+        self.zep = create_zep_client()
+        self.oai_client = create_openai_client()
 
         # Set up configuration with defaults
-        self.config = config or {}
+        if config is None:
+            from config import GraphParams, ModelConfig
 
-        # Search parameters (with defaults matching current behavior)
-        self.edge_limit = self.config.get("edge_limit", 30)
-        self.node_limit = self.config.get("node_limit", 30)
-        self.episode_limit = self.config.get("episode_limit", 20)
-        self.edge_reranker = self.config.get("edge_reranker", "cross_encoder")
-        self.node_reranker = self.config.get("node_reranker", None)
-        self.episode_reranker = self.config.get("episode_reranker", None)
+            config = BenchmarkConfig(graph_params=GraphParams(), models=ModelConfig())
+
+        # Graph retrieval parameters
+        self.edge_limit = config.graph_params.edge_limit
+        self.node_limit = config.graph_params.node_limit
+        self.episode_limit = config.graph_params.episode_limit
+        self.edge_reranker = config.graph_params.edge_reranker
+        self.node_reranker = config.graph_params.node_reranker
+        self.episode_reranker = config.graph_params.episode_reranker
 
         # Model configurations
-        self.response_model = self.config.get("response_model", RESPONSE_MODEL)
-        self.grader_model = self.config.get("grader_model", GRADER_MODEL)
-        self.summary_model = self.config.get("summary_model", SUMMARY_MODEL)
+        self.response_model = config.models.response_model
+        self.grader_model = config.models.grader_model
 
-        # Initialize summarization service with configurable model
-        self.summarization_service = SummarizationService(
-            self.zep, self.oai_client, summary_model=self.summary_model
-        )
-        self.summarization_strategy = self.config.get("strategy", None)
-
-        # Initialize reranker service if needed
-        self.reranker_service = None
-        reranker_types = [self.edge_reranker, self.node_reranker, self.episode_reranker]
-        secondary_rerankers = [
-            rt for rt in reranker_types if RerankerFactory.is_secondary_reranker(rt)
-        ]
-
-        if secondary_rerankers:
-            # Use the first secondary reranker found (they should all be the same)
-            reranker_type = secondary_rerankers[0]
-            try:
-                self.reranker_service = RerankerFactory.create_reranker(reranker_type)
-                self.logger.info(f"Initialized {reranker_type} service")
-            except Exception as e:
-                self.logger.error(f"Failed to initialize {reranker_type} service: {e}")
-                # Fall back to None - will disable secondary reranking
-                self.reranker_service = None
+        # Model parameters
+        self.temperature = config.models.temperature
+        self.max_tokens = config.models.max_tokens
+        self.reasoning_effort = config.models.reasoning_effort
+        self.max_completion_tokens = config.models.max_completion_tokens
 
         # Initialize tokenizer for context length measurement
         try:
@@ -129,26 +166,31 @@ class EvaluationRunner:
             self.logger.warning(f"Token counting failed: {e}")
             return 0
 
-    @retry(
-        stop=stop_after_attempt(4),
-        wait=wait_exponential(multiplier=1, min=2, max=30),
-        retry=retry_if_exception_type(
-            (
-                httpx.HTTPStatusError,
-                httpx.ConnectError,
-                httpx.TimeoutException,
-                httpx.RequestError,
-                Exception,  # Catch any other API-related exceptions
-            )
-        ),
-    )
-    async def _search_zep_with_retry(self, **kwargs):
-        """Wrapper for Zep graph search with retry logic"""
-        try:
-            return await self.zep.graph.search(**kwargs)
-        except Exception as e:
-            self.logger.warning(f"Zep search failed, will retry: {e}")
-            raise
+    def _is_reasoning_model(self, model: str) -> bool:
+        """Check if a model is a reasoning model (GPT-5, o1, o3)"""
+        model_lower = model.lower()
+        return any(prefix in model_lower for prefix in ["gpt-5", "o1", "o3"])
+
+    def _build_completion_params(self, model: str, messages: list) -> dict:
+        """Build API parameters based on model type"""
+        params = {
+            "model": model,
+            "messages": messages,
+        }
+
+        if self._is_reasoning_model(model):
+            # Reasoning models use different parameters
+            if self.reasoning_effort:
+                params["reasoning_effort"] = self.reasoning_effort
+            if self.max_completion_tokens:
+                params["max_completion_tokens"] = self.max_completion_tokens
+        else:
+            # Traditional models
+            params["temperature"] = self.temperature
+            if self.max_tokens:
+                params["max_tokens"] = self.max_tokens
+
+        return params
 
     async def lme_response(self, context: str, question: str) -> str:
         """Generate response using LLM with provided context"""
@@ -167,43 +209,21 @@ class EvaluationRunner:
         5. Always convert relative time references to specific dates, months, or years.
         6. Be as specific as possible when talking about people, places, and events
         7. Timestamps in memories represent the actual time the event occurred, not the time the event was mentioned in a message.
-        
-        Clarification:
-        When interpreting memories, use the timestamp to determine when the described event happened, not when someone talked about the event.
-        
-        Example:
-        
-        Memory: (2023-03-15T16:33:00Z) I went to the vet yesterday.
-        Question: What day did I go to the vet?
-        Correct Answer: March 15, 2023
-        Explanation:
-        Even though the phrase says "yesterday," the timestamp shows the event was recorded as happening on March 15th. Therefore, the actual vet visit happened on that date, regardless of the word "yesterday" in the text.
 
-
-        # APPROACH (Think step by step):
-        1. First, examine all memories that contain information related to the question
-        2. Examine the timestamps and content of these memories carefully
-        3. Look for explicit mentions of dates, times, locations, or events that answer the question
-        4. If the answer requires calculation (e.g., converting relative time references), show your work
-        5. Formulate a precise, concise answer based solely on the evidence in the memories
-        6. Double-check that your answer directly addresses the question asked
-        7. Ensure your final answer is specific and avoids vague time references
-        
         CONTEXT:
         {context}
-        
+
         QUESTION:
         {question}
         """
 
-        response = await self.oai_client.chat.completions.create(
-            model=self.response_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=1 if self.response_model == "o4-mini" else 0,
-        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+
+        params = self._build_completion_params(self.response_model, messages)
+        response = await self.oai_client.chat.completions.create(**params)
         return response.choices[0].message.content or ""
 
     async def lme_grader(
@@ -221,36 +241,38 @@ class EvaluationRunner:
         )
 
         # Get structured response
-        completion = await self.oai_client.beta.chat.completions.parse(
-            model=self.grader_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            response_format=Grade,
-            temperature=0,
-        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+
+        # Build base parameters
+        params = self._build_completion_params(self.grader_model, messages)
+        params["response_format"] = Grade
+
+        completion = await self.oai_client.beta.chat.completions.parse(**params)
 
         result = completion.choices[0].message.parsed
+        if result is None:
+            return False
         return result.is_correct.strip().lower() == "yes"
 
-    def compose_search_context(
+    def compose_context(
         self,
-        edges: List[EntityEdge],
-        nodes: List[EntityNode],
-        episodes: List[Episode],
+        edges: list[EntityEdge],
+        nodes: list[EntityNode],
+        episodes: list[Episode],
     ) -> str:
-        """Compose context from Zep search results"""
+        """Compose context from Zep graph retrieval results"""
         # Format facts with date ranges
         facts = []
         for edge in edges:
             start_date = edge.valid_at if edge.valid_at else "date unknown"
-            end_date = edge.invalid_at if edge.invalid_at else "present"
             facts.append(f"({start_date}) {edge.fact}")
 
         # Format entities
         entities = [
-            f"{node.name} ({', '.join(node.labels) if node.labels else ''}): {node.summary} ({node.attributes if node.attributes else ''})"
+            f"{node.name} ({', '.join(node.labels) if node.labels else ''}): {node.summary}"
             for node in nodes
         ]
 
@@ -263,100 +285,52 @@ class EvaluationRunner:
             messages="\n".join(episodes_content),
         )
 
-    async def compose_search_context_with_summary(
-        self,
-        question: str,
-        edges: List[EntityEdge],
-        nodes: List[EntityNode],
-        episodes: List[Episode],
-    ) -> str:
-        """Compose context from Zep search results with AI summarization"""
-        return await self.summarization_service.compose_search_context_with_summary(
-            question, edges, nodes, episodes, strategy=self.summarization_strategy
-        )
-
     async def evaluate_conversation(
-        self, df: pd.DataFrame, multi_session_idx: int
-    ) -> Tuple[dict, int, float, float]:
+        self, df: pd.DataFrame, user_idx: int
+    ) -> tuple[EvaluationResult, int, float, float]:
         """Evaluate a single conversation using Zep context retrieval"""
         # Extract question data
-        question_id = df["question_id"][multi_session_idx]
-        question_type = df["question_type"][multi_session_idx]
-        question = f"(date: {df['question_date'][multi_session_idx]}) {df['question'][multi_session_idx]}"
-        gold_answer = df["answer"][multi_session_idx]
-        user_id = f"lme_s_experiment_user_{multi_session_idx}"
+        question_id = str(df["question_id"][user_idx])
+        question_type = str(df["question_type"][user_idx])
+        question = f"(date: {df['question_date'][user_idx]}) {df['question'][user_idx]}"
+        gold_answer = str(df["answer"][user_idx])
+        user_id = f"lme_s_experiment_user_{user_idx}"
 
-        # Search Zep for relevant context
+        # Retrieve relevant context from Zep graph
         start_retrieval = time()
 
-        # Prepare search tasks based on configuration
-        search_tasks = []
+        # Prepare retrieval tasks
+        retrieval_tasks = []
 
-        # Edge search
+        # Edge retrieval
         edge_kwargs = {
             "user_id": user_id,
             "query": question,
+            "limit": self.edge_limit,
+            "reranker": self.edge_reranker,
         }
-        # Handle secondary rerankers: fetch 3x results without Zep reranker (max 50)
-        if RerankerFactory.is_secondary_reranker(self.edge_reranker):
-            desired_limit = self.edge_limit * 3
-            actual_limit = min(desired_limit, 50)
-            if desired_limit > 50:
-                self.logger.warning(
-                    f"Edge {self.edge_reranker}: wanted {desired_limit} results, capped at 50 due to Zep API limit"
-                )
-            edge_kwargs["limit"] = actual_limit
-            # Don't pass reranker parameter to Zep
-        else:
-            edge_kwargs["limit"] = min(self.edge_limit, 50)
-            if self.edge_reranker:
-                edge_kwargs["reranker"] = self.edge_reranker
-        search_tasks.append(self._search_zep_with_retry(**edge_kwargs))
+        retrieval_tasks.append(self.zep.graph.search(**edge_kwargs))
 
-        # Node search
+        # Node retrieval
         node_kwargs = {
             "user_id": user_id,
             "query": question,
             "scope": "nodes",
+            "limit": self.node_limit,
+            "reranker": self.node_reranker,
         }
-        # Handle secondary rerankers: fetch 3x results without Zep reranker (max 50)
-        if RerankerFactory.is_secondary_reranker(self.node_reranker):
-            desired_limit = self.node_limit * 3
-            actual_limit = min(desired_limit, 50)
-            if desired_limit > 50:
-                self.logger.warning(
-                    f"Node {self.node_reranker}: wanted {desired_limit} results, capped at 50 due to Zep API limit"
-                )
-            node_kwargs["limit"] = actual_limit
-            # Don't pass reranker parameter to Zep
-        else:
-            node_kwargs["limit"] = min(self.node_limit, 50)
-            if self.node_reranker:
-                node_kwargs["reranker"] = self.node_reranker
-        search_tasks.append(self._search_zep_with_retry(**node_kwargs))
+        retrieval_tasks.append(self.zep.graph.search(**node_kwargs))
 
-        # Episode search (only if limit > 0)
+        # Episode retrieval (only if limit > 0)
         if self.episode_limit > 0:
             episode_kwargs = {
                 "user_id": user_id,
                 "query": question,
                 "scope": "episodes",
+                "limit": self.episode_limit,
+                "reranker": self.episode_reranker,
             }
-            # Handle secondary rerankers: fetch 3x results without Zep reranker (max 50)
-            if RerankerFactory.is_secondary_reranker(self.episode_reranker):
-                desired_limit = self.episode_limit * 3
-                actual_limit = min(desired_limit, 50)
-                if desired_limit > 50:
-                    self.logger.warning(
-                        f"Episode {self.episode_reranker}: wanted {desired_limit} results, capped at 50 due to Zep API limit"
-                    )
-                episode_kwargs["limit"] = actual_limit
-                # Don't pass reranker parameter to Zep
-            else:
-                episode_kwargs["limit"] = min(self.episode_limit, 50)
-                if self.episode_reranker:
-                    episode_kwargs["reranker"] = self.episode_reranker
-            search_tasks.append(self._search_zep_with_retry(**episode_kwargs))
+            retrieval_tasks.append(self.zep.graph.search(**episode_kwargs))
         else:
             # Create empty episode result when disabled
             async def empty_episodes():
@@ -364,62 +338,22 @@ class EvaluationRunner:
 
                 return SimpleNamespace(episodes=[])
 
-            search_tasks.append(empty_episodes())
+            retrieval_tasks.append(empty_episodes())
 
         edges_results, nodes_results, episodes_results = await asyncio.gather(
-            *search_tasks
+            *retrieval_tasks
         )
         retrieval_duration = time() - start_retrieval
 
-        # Apply secondary reranking if configured and extract results
+        # Extract results
         final_edges = edges_results.edges or []
         final_nodes = nodes_results.nodes or []
         final_episodes = (
             episodes_results.episodes if hasattr(episodes_results, "episodes") else []
         )
 
-        if self.reranker_service:
-            # Rerank edges if needed
-            if (
-                RerankerFactory.is_secondary_reranker(self.edge_reranker)
-                and final_edges
-            ):
-                final_edges = self.reranker_service.rerank_edges(
-                    question, final_edges, self.edge_limit
-                )
-
-            # Rerank nodes if needed
-            if (
-                RerankerFactory.is_secondary_reranker(self.node_reranker)
-                and final_nodes
-            ):
-                final_nodes = self.reranker_service.rerank_nodes(
-                    question, final_nodes, self.node_limit
-                )
-
-            # Rerank episodes if needed
-            if (
-                RerankerFactory.is_secondary_reranker(self.episode_reranker)
-                and final_episodes
-            ):
-                final_episodes = self.reranker_service.rerank_episodes(
-                    question, final_episodes, self.episode_limit
-                )
-
-        # Compose context from search results
-        if self.summarization_strategy:
-            context = await self.compose_search_context_with_summary(
-                question,
-                final_edges,
-                final_nodes,
-                final_episodes,
-            )
-        else:
-            context = self.compose_search_context(
-                final_edges,
-                final_nodes,
-                final_episodes,
-            )
+        # Compose context from retrieval results
+        context = self.compose_context(final_edges, final_nodes, final_episodes)
 
         # Generate response
         start = time()
@@ -433,73 +367,18 @@ class EvaluationRunner:
         context_tokens = self._count_tokens(context)
         context_chars = len(context)
 
-        result = {
-            "user_id": user_id,
-            "question_id": question_id,
-            "hypothesis": hypothesis,
-            "gold_answer": gold_answer,
-            "context": context,
-            "context_tokens": context_tokens,
-            "context_chars": context_chars,
-            "question": question,
-            "question_type": question_type,
-            "duration": duration,
-            "grade": grade,
-            "evaluation_type": "zep",  # Mark as Zep evaluation
-        }
+        result = EvaluationResult(
+            user_id=user_id,
+            question_id=question_id,
+            question=question,
+            question_type=question_type,
+            hypothesis=hypothesis,
+            gold_answer=gold_answer,
+            context=context,
+            context_tokens=context_tokens,
+            context_chars=context_chars,
+            duration=duration,
+            grade=grade,
+        )
 
         return result, (1 if grade else 0), duration, retrieval_duration
-
-    async def evaluate_conversation_baseline(
-        self, df: pd.DataFrame, multi_session_idx: int
-    ) -> Tuple[dict, int, float]:
-        """Evaluate a single conversation with baseline (full context)"""
-        # Extract question data
-        question_id = df["question_id"][multi_session_idx]
-        question_type = df["question_type"][multi_session_idx]
-        question = f"(date: {df['question_date'][multi_session_idx]}) {df['question'][multi_session_idx]}"
-        gold_answer = df["answer"][multi_session_idx]
-        user_id = f"lme_s_experiment_user_{multi_session_idx}"
-
-        # Build full context from all sessions
-        multi_session = df["haystack_sessions"].iloc[multi_session_idx]
-        multi_session_dates = df["haystack_dates"].iloc[multi_session_idx]
-
-        context = ""
-        for session_idx, session in enumerate(multi_session):
-            for msg in session:
-                date = multi_session_dates[session_idx] + " UTC"
-                date_format = "%Y/%m/%d (%a) %H:%M UTC"
-                date_string = datetime.strptime(date, date_format).replace(
-                    tzinfo=timezone.utc
-                )
-                context += f"{msg['role']} (date: {date_string}): {msg['content']}\n"
-
-        # Generate response using configured models
-        start = time()
-        hypothesis = await self.lme_response(context, question)
-        duration = time() - start
-
-        # Grade response using configured models
-        grade = await self.lme_grader(question, gold_answer, hypothesis, question_type)
-
-        # Count context tokens and characters
-        context_tokens = self._count_tokens(context)
-        context_chars = len(context)
-
-        result = {
-            "user_id": user_id,
-            "question_id": question_id,
-            "hypothesis": hypothesis,
-            "gold_answer": gold_answer,
-            "context": context,
-            "context_tokens": context_tokens,
-            "context_chars": context_chars,
-            "question": question,
-            "question_type": question_type,
-            "duration": duration,
-            "grade": grade,
-            "evaluation_type": "baseline",  # Mark as baseline evaluation
-        }
-
-        return result, (1 if grade else 0), duration

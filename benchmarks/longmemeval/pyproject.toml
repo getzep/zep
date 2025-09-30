@@ -1,35 +1,90 @@
 [project]
 name = "longmemeval"
 version = "0.1.0"
-description = "LongMemEval framework for Zep agent memory evaluation"
-authors = [
-    {name = "Zep", email = "info@getzep.com"}
-]
+description = "LongMemEval benchmark for Zep's context engineering platform"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "zep-cloud",
-    "openai",
-    "gdown",
-    "pandas",
-    "scipy",
-    "python-dotenv",
-    "pydantic",
-    "requests",
-    "tenacity>=9.1.2",
-    "mxbai-rerank>=0.1.6",
-    "optuna>=4.4.0",
-    "voyageai>=0.3.4",
-    "tiktoken>=0.9.0",
+    "zep-cloud>=3.0.0",
+    "openai>=1.0.0",
+    "pandas>=2.0.0",
+    "pydantic>=2.0.0",
+    "tiktoken>=0.5.0",
+    "gdown>=4.7.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.0",
 ]
 
-[tool.uv]
-dev-dependencies = [
-    "jupyter",
-    "ipykernel",
-    "nbconvert",
-    "ruff>=0.12.4",
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=.",
+    "--cov-report=term-missing",
+    "--cov-report=html",
 ]
 
-[tool.hatch.build.targets.wheel]
-packages = ["."]
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    ".venv/*",
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportUnusedImport = true
+reportUnusedVariable = true
+reportDuplicateImport = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-mock>=3.12.0",
+    "pytest-cov>=4.1.0",
+    "pyright>=1.1.405",
+    "ruff>=0.1.0",
+]

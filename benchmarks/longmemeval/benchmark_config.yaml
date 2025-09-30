@@ -1,0 +1,43 @@
+# LongMemEval Benchmark Configuration
+# Configuration for running LongMemEval evaluation against Zep's knowledge graph
+
+# Graph retrieval parameters
+graph_params:
+  edge_limit:
+    - 20
+    # Number of edge results to return
+  node_limit:
+    - 5
+    # Number of node results to return
+  episode_limit:
+    - 5
+    # Number of episode results (0 = disabled)
+  edge_reranker:
+    - cross_encoder
+    # Reranker for edge retrieval
+  node_reranker:
+    - cross_encoder
+    # Reranker for node retrieval
+  episode_reranker:
+    - cross_encoder
+    # Reranker for episode retrieval
+
+# Model configurations
+models:
+  response_model:
+    - gpt-4.1
+  grader_model:
+    - gpt-4.1
+
+  # Traditional model parameters (for non-reasoning models like gpt-4o, gpt-4.1)
+  temperature:
+    - 0.0  # 0.0 = deterministic, 2.0 = maximum creativity
+  # max_tokens:
+  #   - 2000  # Optional: maximum tokens in completion
+
+  # Reasoning model parameters (for gpt-5, o1, o3 models only)
+  # Note: reasoning models do NOT support temperature or max_tokens
+  # reasoning_effort:
+  #   - medium  # Options: minimal, low, medium, high
+  # max_completion_tokens:
+  #   - 10000  # Maximum tokens for reasoning model completion
