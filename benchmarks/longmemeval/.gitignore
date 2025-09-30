@@ -1,23 +1,46 @@
-# Dataset and result files
-*.tar
-*.tar.gz
-*.json
-*.jsonl
-*.csv
-
-# Python cache
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
 
 # Virtual environments
-.env
-.venv
-env/
+.venv/
 venv/
+ENV/
+env/
 
-# IDE
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
+
+# Environment variables
+.env
+.env.local
+
+# Project specific
+experiments/
+data/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Ruff cache
+.ruff_cache/
+
+# MyPy/Pyright
+.mypy_cache/
+.pytype/
+pyrightconfig.json
