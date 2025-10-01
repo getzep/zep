@@ -171,3 +171,41 @@ models:
         assert config.models.reasoning_effort == "high"
         assert config.models.max_completion_tokens == 10000
         assert config.models.is_reasoning_model() is True
+
+    def test_concurrency_default(self):
+        """Test default concurrency value"""
+        config = BenchmarkConfig(
+            graph_params=GraphParams(),
+            models=ModelConfig(),
+        )
+        assert config.concurrency == 2
+
+    def test_concurrency_custom(self, tmp_path):
+        """Test custom concurrency value from YAML"""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+concurrency: 5
+graph_params:
+  edge_limit: [20]
+models:
+  response_model: [gpt-4o]
+""")
+
+        config = BenchmarkConfig.from_yaml(config_file)
+        assert config.concurrency == 5
+
+    def test_concurrency_validation(self):
+        """Test concurrency bounds validation"""
+        with pytest.raises(ValidationError):
+            BenchmarkConfig(
+                graph_params=GraphParams(),
+                models=ModelConfig(),
+                concurrency=0,  # Below minimum
+            )
+
+        with pytest.raises(ValidationError):
+            BenchmarkConfig(
+                graph_params=GraphParams(),
+                models=ModelConfig(),
+                concurrency=11,  # Above maximum
+            )

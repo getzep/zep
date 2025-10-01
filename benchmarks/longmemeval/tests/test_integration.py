@@ -38,11 +38,13 @@ class TestEvaluationIntegration:
             ]
         )
 
-        client.graph.search = AsyncMock(side_effect=[
-            edges_response,
-            nodes_response,
-            episodes_response,
-        ])
+        client.graph.search = AsyncMock(
+            side_effect=[
+                edges_response,
+                nodes_response,
+                episodes_response,
+            ]
+        )
 
         return client
 
@@ -53,16 +55,12 @@ class TestEvaluationIntegration:
 
         # Mock response generation
         response_completion = MagicMock()
-        response_completion.choices = [
-            MagicMock(message=MagicMock(content="Pizza is delicious"))
-        ]
+        response_completion.choices = [MagicMock(message=MagicMock(content="Pizza is delicious"))]
         client.chat.completions.create = AsyncMock(return_value=response_completion)
 
         # Mock grading
         grade_result = MagicMock()
-        grade_result.choices = [
-            MagicMock(message=MagicMock(parsed=MagicMock(is_correct="yes")))
-        ]
+        grade_result.choices = [MagicMock(message=MagicMock(parsed=MagicMock(is_correct="yes")))]
         client.beta.chat.completions.parse = AsyncMock(return_value=grade_result)
 
         return client
@@ -70,13 +68,15 @@ class TestEvaluationIntegration:
     @pytest.fixture
     def sample_dataframe(self):
         """Create a sample evaluation dataframe"""
-        return pd.DataFrame({
-            "question_id": ["q1"],
-            "question_type": ["temporal-reasoning"],
-            "question": ["What does the user like?"],
-            "question_date": ["2024-01-15"],
-            "answer": ["Pizza"],
-        })
+        return pd.DataFrame(
+            {
+                "question_id": ["q1"],
+                "question_type": ["temporal-reasoning"],
+                "question": ["What does the user like?"],
+                "question_date": ["2024-01-15"],
+                "answer": ["Pizza"],
+            }
+        )
 
     @pytest.mark.asyncio
     async def test_evaluate_conversation_flow(

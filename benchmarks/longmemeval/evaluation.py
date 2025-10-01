@@ -4,7 +4,6 @@ Evaluation module for LongMemEval benchmark
 """
 
 import asyncio
-import logging
 from time import time
 
 import pandas as pd
@@ -14,10 +13,7 @@ from zep_cloud import EntityEdge, EntityNode, Episode
 from clients import create_openai_client, create_zep_client
 from common import EvaluationResult, Grade
 from config import BenchmarkConfig
-
-# Configuration Constants
-RESPONSE_MODEL = "gpt-4o"
-GRADER_MODEL = "gpt-4o"
+from utils import setup_logging
 
 # Grading prompts
 GRADING_PROMPTS = {
@@ -107,7 +103,7 @@ class EvaluationRunner:
         log_level: str = "WARNING",
         config: BenchmarkConfig | None = None,
     ):
-        self.logger = self._setup_logging(log_level)
+        self.logger = setup_logging(log_level, __name__)
 
         # Initialize clients using factory functions
         self.zep = create_zep_client()
@@ -143,20 +139,6 @@ class EvaluationRunner:
         except Exception:
             # Fallback to cl100k_base encoding if model-specific encoding not available
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
-
-    def _setup_logging(self, log_level: str) -> logging.Logger:
-        """Configure logging with proper formatting"""
-        logger = logging.getLogger(__name__)
-        if not logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-
-        logger.setLevel(getattr(logging, log_level.upper()))
-        return logger
 
     def _count_tokens(self, text: str) -> int:
         """Count tokens in text using the configured tokenizer"""
@@ -306,6 +288,7 @@ class EvaluationRunner:
         edge_kwargs = {
             "user_id": user_id,
             "query": question,
+            "scope": "edges",
             "limit": self.edge_limit,
             "reranker": self.edge_reranker,
         }
@@ -340,17 +323,13 @@ class EvaluationRunner:
 
             retrieval_tasks.append(empty_episodes())
 
-        edges_results, nodes_results, episodes_results = await asyncio.gather(
-            *retrieval_tasks
-        )
+        edges_results, nodes_results, episodes_results = await asyncio.gather(*retrieval_tasks)
         retrieval_duration = time() - start_retrieval
 
         # Extract results
         final_edges = edges_results.edges or []
         final_nodes = nodes_results.nodes or []
-        final_episodes = (
-            episodes_results.episodes if hasattr(episodes_results, "episodes") else []
-        )
+        final_episodes = episodes_results.episodes if hasattr(episodes_results, "episodes") else []
 
         # Compose context from retrieval results
         context = self.compose_context(final_edges, final_nodes, final_episodes)

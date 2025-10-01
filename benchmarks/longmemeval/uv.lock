@@ -320,6 +320,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "tiktoken" },
+    { name = "tqdm" },
     { name = "zep-cloud" },
 ]
 
@@ -342,6 +343,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "tiktoken", specifier = ">=0.5.0" },
+    { name = "tqdm", specifier = ">=4.67.1" },
     { name = "zep-cloud", specifier = ">=3.0.0" },
 ]
 

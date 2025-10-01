@@ -1,6 +1,9 @@
 # LongMemEval Benchmark Configuration
 # Configuration for running LongMemEval evaluation against Zep's knowledge graph
 
+# Concurrency control
+concurrency: 2  # Max concurrent users during ingestion (1-10)
+
 # Graph retrieval parameters
 graph_params:
   edge_limit:

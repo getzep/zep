@@ -8,6 +8,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
+from constants import DEFAULT_CONCURRENCY
+
 
 class GraphParams(BaseModel):
     """Parameters for Zep graph retrieval"""
@@ -37,12 +39,10 @@ class ModelConfig(BaseModel):
     # GPT-5 / reasoning model specific parameters
     reasoning_effort: str | None = Field(
         default=None,
-        description="For reasoning models (gpt-5, o1, o3): minimal, low, medium, or high"
+        description="For reasoning models (gpt-5, o1, o3): minimal, low, medium, or high",
     )
     max_completion_tokens: int | None = Field(
-        default=None,
-        ge=1,
-        description="For reasoning models: max tokens in completion"
+        default=None, ge=1, description="For reasoning models: max tokens in completion"
     )
 
     # Traditional model parameters (not used for reasoning models)
@@ -55,9 +55,7 @@ class ModelConfig(BaseModel):
         if v is not None:
             valid_efforts = {"minimal", "low", "medium", "high"}
             if v not in valid_efforts:
-                raise ValueError(
-                    f"reasoning_effort must be one of {valid_efforts}, got: {v}"
-                )
+                raise ValueError(f"reasoning_effort must be one of {valid_efforts}, got: {v}")
         return v
 
     def is_reasoning_model(self) -> bool:
@@ -76,6 +74,12 @@ class BenchmarkConfig(BaseModel):
 
     graph_params: GraphParams
     models: ModelConfig
+    concurrency: int = Field(
+        default=DEFAULT_CONCURRENCY,
+        ge=1,
+        le=10,
+        description="Max concurrent users during ingestion",
+    )
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "BenchmarkConfig":
@@ -96,7 +100,11 @@ class BenchmarkConfig(BaseModel):
         for key, value in data.get("models", {}).items():
             models_data[key] = value[0] if isinstance(value, list) else value
 
+        # Get concurrency if specified
+        concurrency = data.get("concurrency", DEFAULT_CONCURRENCY)
+
         return cls(
             graph_params=GraphParams(**graph_params_data),
             models=ModelConfig(**models_data),
+            concurrency=concurrency,
         )

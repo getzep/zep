@@ -5,28 +5,21 @@ LongMemEval Benchmark - Ingestion and evaluation script
 
 import argparse
 import asyncio
-import logging
 from pathlib import Path
 
 import pandas as pd
+from tqdm import tqdm
 
 from common import BenchmarkMetrics, EvaluationResult
 from config import BenchmarkConfig
+from constants import DEFAULT_CONCURRENCY
 from evaluation import EvaluationRunner
 from ingestion import IngestionRunner
 from persistence import ResultsPersistence
+from utils import setup_logging
 
 
-def setup_logging(log_level: str) -> logging.Logger:
-    """Configure logging"""
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
-    return logging.getLogger(__name__)
-
-
-def load_dataset(dataset_path: str, logger: logging.Logger) -> pd.DataFrame:
+def load_dataset(dataset_path: str, logger) -> pd.DataFrame:
     """Load the LongMemEval dataset"""
     logger.info(f"Loading dataset from {dataset_path}")
     path = Path(dataset_path)
@@ -42,34 +35,51 @@ def load_dataset(dataset_path: str, logger: logging.Logger) -> pd.DataFrame:
     raise FileNotFoundError(f"Dataset not found at {dataset_path} or {parent_path}")
 
 
-async def run_ingestion(args, logger: logging.Logger):
+async def run_ingestion(args, logger):
     """Run data ingestion"""
-    logger.info("Starting data ingestion")
+    print("Starting data ingestion")
 
-    runner = IngestionRunner(log_level=args.log_level)
+    # Load configuration for concurrency setting
+    config_path = "benchmark_config.yaml"
+    try:
+        benchmark_config = BenchmarkConfig.from_yaml(config_path)
+        concurrency = benchmark_config.concurrency
+    except FileNotFoundError:
+        logger.warning(f"Configuration file {config_path} not found, using default concurrency")
+        concurrency = DEFAULT_CONCURRENCY
+    except Exception as e:
+        logger.warning(f"Error loading configuration: {e}, using default concurrency")
+        concurrency = DEFAULT_CONCURRENCY
+
+    runner = IngestionRunner(log_level=args.log_level, concurrency=concurrency)
 
     if not args.skip_download:
+        print("Downloading dataset...")
         await runner.download_dataset()
 
+    print("Loading dataset...")
     df = load_dataset(args.dataset, logger)
-    await runner.ingest_data(df, args.num_users)
 
-    logger.info(f"Ingestion completed: {args.num_users} users")
+    await runner.ingest_data(
+        df,
+        args.num_users,
+        continue_from_checkpoint=args.continue_ingestion,
+    )
 
 
-async def run_evaluation(args, logger: logging.Logger):
+async def run_evaluation(args, logger):
     """Run evaluation"""
-    logger.info("Starting evaluation")
+    print("Starting evaluation")
 
     # Load configuration
     config_path = "benchmark_config.yaml"
     try:
         benchmark_config = BenchmarkConfig.from_yaml(config_path)
     except FileNotFoundError:
-        logger.error(f"Configuration file {config_path} not found")
+        print(f"Error: Configuration file {config_path} not found")
         return
     except Exception as e:
-        logger.error(f"Invalid configuration: {e}")
+        print(f"Error: Invalid configuration: {e}")
         return
 
     # Initialize runner
@@ -87,24 +97,29 @@ async def run_evaluation(args, logger: logging.Logger):
     total_duration = 0.0
     total_retrieval_duration = 0.0
 
-    logger.info(f"Evaluating {args.num_users} users")
+    num_users = min(args.num_users, len(df))
+    print(f"Evaluating {num_users} users")
 
-    for i in range(min(args.num_users, len(df))):
-        try:
-            result, correct, duration, retrieval_duration = (
-                await runner.evaluate_conversation(df, i)
-            )
-            results.append(result)
-            correct_count += correct
-            total_duration += duration
-            total_retrieval_duration += retrieval_duration
+    with tqdm(total=num_users, desc="Evaluating", unit="user") as pbar:
+        for i in range(num_users):
+            try:
+                result, correct, duration, retrieval_duration = await runner.evaluate_conversation(
+                    df, i
+                )
+                results.append(result)
+                correct_count += correct
+                total_duration += duration
+                total_retrieval_duration += retrieval_duration
 
-            if (i + 1) % 50 == 0:
-                logger.info(f"Processed {i + 1} users")
+                # Update progress bar with current accuracy
+                current_accuracy = correct_count / len(results) if results else 0
+                pbar.set_postfix({"accuracy": f"{current_accuracy:.3f}", "correct": correct_count})
+                pbar.update(1)
 
-        except Exception as e:
-            logger.error(f"Error processing user {i}: {e}")
-            continue
+            except Exception as e:
+                logger.error(f"Error processing user {i}: {e}")
+                pbar.update(1)
+                continue
 
     # Calculate metrics
     metrics = BenchmarkMetrics(
@@ -112,23 +127,19 @@ async def run_evaluation(args, logger: logging.Logger):
         correct_count=correct_count,
         total_count=len(results),
         avg_response_duration=total_duration / len(results) if results else 0,
-        avg_retrieval_duration=(
-            total_retrieval_duration / len(results) if results else 0
-        ),
+        avg_retrieval_duration=(total_retrieval_duration / len(results) if results else 0),
     )
 
     # Save results
     persistence = ResultsPersistence(args.experiments_dir)
     run_dir = persistence.save_run(benchmark_config, metrics, results, config_path)
 
-    # Log summary
-    logger.info("Evaluation completed:")
-    logger.info(
-        f"  Accuracy: {metrics.accuracy:.3f} ({metrics.correct_count}/{metrics.total_count})"
-    )
-    logger.info(f"  Avg response time: {metrics.avg_response_duration:.3f}s")
-    logger.info(f"  Avg retrieval time: {metrics.avg_retrieval_duration:.3f}s")
-    logger.info(f"  Results saved to: {run_dir}")
+    # Print summary
+    print("\nEvaluation completed:")
+    print(f"  Accuracy: {metrics.accuracy:.3f} ({metrics.correct_count}/{metrics.total_count})")
+    print(f"  Avg response time: {metrics.avg_response_duration:.3f}s")
+    print(f"  Avg retrieval time: {metrics.avg_retrieval_duration:.3f}s")
+    print(f"  Results saved to: {run_dir}")
 
 
 async def main():
@@ -139,6 +150,7 @@ async def main():
 
     # Mode selection (mutually exclusive)
     mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--download", action="store_true", help="Download dataset only")
     mode.add_argument("--ingest", action="store_true", help="Run data ingestion")
     mode.add_argument("--eval", action="store_true", help="Run evaluation")
 
@@ -167,6 +179,12 @@ async def main():
         action="store_true",
         help="Skip dataset download (ingestion only)",
     )
+    parser.add_argument(
+        "--continue",
+        dest="continue_ingestion",
+        action="store_true",
+        help="Continue from previous checkpoint (ingestion only)",
+    )
 
     # Evaluation-specific arguments
     parser.add_argument(
@@ -179,7 +197,12 @@ async def main():
     logger = setup_logging(args.log_level)
 
     # Run selected mode
-    if args.ingest:
+    if args.download:
+        logger.info("Starting dataset download")
+        runner = IngestionRunner(log_level=args.log_level, concurrency=DEFAULT_CONCURRENCY)
+        await runner.download_dataset()
+        logger.info("Dataset download completed")
+    elif args.ingest:
         await run_ingestion(args, logger)
     elif args.eval:
         await run_evaluation(args, logger)
