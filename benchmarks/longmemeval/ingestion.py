@@ -3,12 +3,10 @@
 Ingestion module for LongMemEval benchmark
 """
 
-import asyncio
 import json
 import os
 import tarfile
 from datetime import UTC, datetime
-from typing import List
 
 import gdown
 import pandas as pd
@@ -22,7 +20,6 @@ from constants import (
     CHUNK_SIZE,
     CONTEXTUALIZATION_MODEL,
     DATA_PATH,
-    DEFAULT_CONCURRENCY,
     MAX_BATCH_SIZE,
     MAX_MESSAGE_SIZE,
 )
@@ -33,7 +30,6 @@ class IngestionRunner:
     def __init__(
         self,
         log_level: str = "INFO",
-        concurrency: int = DEFAULT_CONCURRENCY,
         checkpoint_file: str = CHECKPOINT_FILE,
     ):
         self.logger = setup_logging(log_level, __name__)
@@ -41,9 +37,6 @@ class IngestionRunner:
         # Initialize clients using factories
         self.zep = create_zep_client()
         self.oai_client = create_openai_client()
-
-        # Concurrency controls
-        self._semaphore = asyncio.Semaphore(concurrency)
 
         # Checkpoint tracking
         self.checkpoint_file = checkpoint_file
@@ -86,120 +79,111 @@ class IngestionRunner:
         Returns:
             bool: True if successful, False if failed
         """
-        async with self._semaphore:  # Limit concurrent users
-            # Get thread data from dataset
-            user_threads = df["haystack_sessions"].iloc[user_idx]
-            thread_dates = df["haystack_dates"].iloc[user_idx]
-            question_type = df["question_type"][user_idx]
+        # Get thread data from dataset
+        user_threads = df["haystack_sessions"].iloc[user_idx]
+        thread_dates = df["haystack_dates"].iloc[user_idx]
+        question_type = df["question_type"][user_idx]
 
-            self.logger.info(f"Processing user {user_idx}: {question_type}")
+        self.logger.info(f"Processing user {user_idx}: {question_type}")
 
-            # Initialize user
-            user_id = f"lme_s_experiment_user_{user_idx}"
+        # Initialize user
+        user_id = f"lme_s_experiment_user_{user_idx}"
 
-            # Attempt user creation
+        # Attempt user creation
+        try:
+            await self.zep.user.add(user_id=user_id)
+            self.logger.debug(f"User {user_id} created successfully")
+        except Exception as e:
+            self.logger.warning(f"User creation failed (may already exist): {e}")
+
+        # Process each thread for this user
+        for thread_idx, thread_messages in enumerate(user_threads):
+            thread_id = f"lme_s_experiment_thread_{user_idx}_{thread_idx}"
+
+            # Attempt thread creation
             try:
-                await self.zep.user.add(user_id=user_id)
-                self.logger.debug(f"User {user_id} created successfully")
+                await self.zep.thread.create(user_id=user_id, thread_id=thread_id)
+                self.logger.debug(f"Thread {thread_id} created successfully")
             except Exception as e:
-                self.logger.warning(f"User creation failed (may already exist): {e}")
+                self.logger.error(f"Thread creation failed for {thread_id}: {e}")
+                # Delete user and mark as failed
+                await self._delete_user(user_id)
+                return False
 
-            # Process each thread for this user
-            for thread_idx, thread_messages in enumerate(user_threads):
-                thread_id = f"lme_s_experiment_thread_{user_idx}_{thread_idx}"
-
-                # Attempt thread creation
+            # Process messages in the thread
+            if thread_messages:
                 try:
-                    await self.zep.thread.create(user_id=user_id, thread_id=thread_id)
-                    self.logger.debug(f"Thread {thread_id} created successfully")
+                    # Parse and format timestamp (same for all messages in this thread)
+                    date = thread_dates[thread_idx] + " UTC"
+                    date_format = "%Y/%m/%d (%a) %H:%M UTC"
+                    date_string = datetime.strptime(date, date_format).replace(tzinfo=UTC)
+
+                    # Process messages with size checking
+                    messages = []
+                    large_message_count = 0
+
+                    for msg_idx, msg in enumerate(thread_messages):
+                        # Check if message exceeds size limit
+                        if len(msg["content"]) > MAX_MESSAGE_SIZE:
+                            # Process large message via chunking pipeline
+                            try:
+                                chunk_result = await self._process_large_message(
+                                    msg,
+                                    user_id,
+                                    date_string.isoformat(),
+                                    msg_idx,
+                                )
+                                large_message_count += 1
+                                self.logger.info(
+                                    f"Processed large message {msg_idx} ({chunk_result['original_size']} chars) "
+                                    f"into {chunk_result['chunks_created']} chunks, "
+                                    f"{chunk_result['chunks_succeeded']} succeeded"
+                                )
+                            except Exception as large_msg_e:
+                                self.logger.error(
+                                    f"Failed to process large message {msg_idx}: {large_msg_e}"
+                                )
+                                raise  # Propagate to outer handler
+                        else:
+                            # Normal message processing
+                            message_payload = Message(
+                                role=msg["role"],
+                                name=msg["role"],
+                                content=msg["content"],
+                                created_at=date_string.isoformat(),
+                            )
+                            messages.append(message_payload)
+
+                    # Add normal-sized messages to Zep thread in batches
+                    if messages:
+                        for batch_start in range(0, len(messages), MAX_BATCH_SIZE):
+                            batch_end = min(batch_start + MAX_BATCH_SIZE, len(messages))
+                            batch = messages[batch_start:batch_end]
+
+                            await self.zep.thread.add_messages(
+                                thread_id=thread_id,
+                                messages=batch,
+                            )
+                            self.logger.debug(
+                                f"Added batch {batch_start}-{batch_end} ({len(batch)} messages) to thread {thread_id}"
+                            )
+
+                    if large_message_count > 0:
+                        self.logger.info(
+                            f"Thread {thread_id}: {len(messages)} normal messages, "
+                            f"{large_message_count} large messages processed via graph.add"
+                        )
+
                 except Exception as e:
-                    self.logger.error(f"Thread creation failed for {thread_id}: {e}")
+                    self.logger.error(f"Failed to process messages for thread {thread_id}: {e}")
                     # Delete user and mark as failed
                     await self._delete_user(user_id)
                     return False
 
-                # Process messages in the thread
-                if thread_messages:
-                    try:
-                        # Parse and format timestamp (same for all messages in this thread)
-                        date = thread_dates[thread_idx] + " UTC"
-                        date_format = "%Y/%m/%d (%a) %H:%M UTC"
-                        date_string = datetime.strptime(date, date_format).replace(
-                            tzinfo=UTC
-                        )
+        self.logger.info(f"Completed processing user {user_idx} ({len(user_threads)} threads)")
+        return True
 
-                        # Process messages with size checking
-                        messages = []
-                        large_message_count = 0
-
-                        for msg_idx, msg in enumerate(thread_messages):
-                            # Check if message exceeds size limit
-                            if len(msg["content"]) > MAX_MESSAGE_SIZE:
-                                # Process large message via chunking pipeline
-                                try:
-                                    chunk_result = await self._process_large_message(
-                                        msg,
-                                        user_id,
-                                        date_string.isoformat(),
-                                        msg_idx,
-                                    )
-                                    large_message_count += 1
-                                    self.logger.info(
-                                        f"Processed large message {msg_idx} ({chunk_result['original_size']} chars) "
-                                        f"into {chunk_result['chunks_created']} chunks, "
-                                        f"{chunk_result['chunks_succeeded']} succeeded"
-                                    )
-                                except Exception as large_msg_e:
-                                    self.logger.error(
-                                        f"Failed to process large message {msg_idx}: {large_msg_e}"
-                                    )
-                                    raise  # Propagate to outer handler
-                            else:
-                                # Normal message processing
-                                message_payload = Message(
-                                    role=msg["role"],
-                                    name=msg["role"],
-                                    content=msg["content"],
-                                    created_at=date_string.isoformat(),
-                                )
-                                messages.append(message_payload)
-
-                        # Add normal-sized messages to Zep thread in batches
-                        if messages:
-                            for batch_start in range(0, len(messages), MAX_BATCH_SIZE):
-                                batch_end = min(
-                                    batch_start + MAX_BATCH_SIZE, len(messages)
-                                )
-                                batch = messages[batch_start:batch_end]
-
-                                await self.zep.thread.add_messages(
-                                    thread_id=thread_id,
-                                    messages=batch,
-                                )
-                                self.logger.debug(
-                                    f"Added batch {batch_start}-{batch_end} ({len(batch)} messages) to thread {thread_id}"
-                                )
-
-                        if large_message_count > 0:
-                            self.logger.info(
-                                f"Thread {thread_id}: {len(messages)} normal messages, "
-                                f"{large_message_count} large messages processed via graph.add"
-                            )
-
-                    except Exception as e:
-                        self.logger.error(
-                            f"Failed to process messages for thread {thread_id}: {e}"
-                        )
-                        # Delete user and mark as failed
-                        await self._delete_user(user_id)
-                        return False
-
-            self.logger.info(
-                f"Completed processing user {user_idx} ({len(user_threads)} threads)"
-            )
-            return True
-
-    async def _chunk_large_message(self, content: str) -> List[str]:
+    async def _chunk_large_message(self, content: str) -> list[str]:
         """Split large content into overlapping chunks using paragraph-aware strategy"""
         if len(content) <= CHUNK_SIZE:
             return [content]
@@ -221,9 +205,7 @@ class IngestionRunner:
 
             # Look for paragraph break (ideal)
             last_para_break = chunk_text.rfind("\n\n")
-            if (
-                last_para_break > len(chunk_text) // 2
-            ):  # Only if it's past halfway point
+            if last_para_break > len(chunk_text) // 2:  # Only if it's past halfway point
                 end = start + last_para_break + 2
             else:
                 # Look for sentence break (good)
@@ -300,9 +282,7 @@ Respond with only a single sentence that provides context for this chunk within 
                     contextualized_content = f"Context: {context}\nContent: {chunk}"
 
                     # Create the final graph data
-                    graph_data = (
-                        f"{msg['role']} ({date_string}): {contextualized_content}"
-                    )
+                    graph_data = f"{msg['role']} ({date_string}): {contextualized_content}"
 
                     # Add to graph using graph.add API
                     await self.zep.graph.add(
@@ -322,9 +302,7 @@ Respond with only a single sentence that provides context for this chunk within 
                         f"Failed to process chunk {chunk_idx + 1}/{len(chunks)} for message {msg_idx}: {chunk_e}"
                     )
                     if not result["chunking_error"]:
-                        result["chunking_error"] = (
-                            f"Chunk {chunk_idx + 1} failed: {str(chunk_e)}"
-                        )
+                        result["chunking_error"] = f"Chunk {chunk_idx + 1} failed: {str(chunk_e)}"
 
         except Exception as e:
             result["chunking_error"] = str(e)
@@ -415,10 +393,8 @@ Respond with only a single sentence that provides context for this chunk within 
             print("No users to process (all already completed or failed)")
             return
 
-        # Process users with progress bar
-        with tqdm(
-            total=len(users_to_process), desc="Ingesting users", unit="user"
-        ) as pbar:
+        # Process users sequentially with progress bar
+        with tqdm(total=len(users_to_process), desc="Ingesting users", unit="user") as pbar:
             for user_idx in users_to_process:
                 # Process user
                 success = await self._process_user(user_idx, df)

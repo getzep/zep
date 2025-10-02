@@ -3,9 +3,6 @@
 Constants for LongMemEval benchmark
 """
 
-# Concurrency
-DEFAULT_CONCURRENCY = 2
-
 # Models
 RESPONSE_MODEL = "gpt-4o"
 GRADER_MODEL = "gpt-4o"

@@ -8,8 +8,6 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
-from constants import DEFAULT_CONCURRENCY
-
 
 class GraphParams(BaseModel):
     """Parameters for Zep graph retrieval"""
@@ -74,12 +72,6 @@ class BenchmarkConfig(BaseModel):
 
     graph_params: GraphParams
     models: ModelConfig
-    concurrency: int = Field(
-        default=DEFAULT_CONCURRENCY,
-        ge=1,
-        le=10,
-        description="Max concurrent users during ingestion",
-    )
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "BenchmarkConfig":
@@ -100,11 +92,7 @@ class BenchmarkConfig(BaseModel):
         for key, value in data.get("models", {}).items():
             models_data[key] = value[0] if isinstance(value, list) else value
 
-        # Get concurrency if specified
-        concurrency = data.get("concurrency", DEFAULT_CONCURRENCY)
-
         return cls(
             graph_params=GraphParams(**graph_params_data),
             models=ModelConfig(**models_data),
-            concurrency=concurrency,
         )

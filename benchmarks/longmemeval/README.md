@@ -42,8 +42,6 @@ This design allows you to:
 Edit `benchmark_config.yaml`:
 
 ```yaml
-concurrency: 2  # Max concurrent users during ingestion (1-10)
-
 graph_params:
   edge_limit: [20]        # Number of fact edges to retrieve
   node_limit: [5]         # Number of entity nodes to retrieve

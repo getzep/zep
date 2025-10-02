@@ -12,7 +12,6 @@ from tqdm import tqdm
 
 from common import BenchmarkMetrics, EvaluationResult
 from config import BenchmarkConfig
-from constants import DEFAULT_CONCURRENCY
 from evaluation import EvaluationRunner
 from ingestion import IngestionRunner
 from persistence import ResultsPersistence
@@ -39,19 +38,7 @@ async def run_ingestion(args, logger):
     """Run data ingestion"""
     print("Starting data ingestion")
 
-    # Load configuration for concurrency setting
-    config_path = "benchmark_config.yaml"
-    try:
-        benchmark_config = BenchmarkConfig.from_yaml(config_path)
-        concurrency = benchmark_config.concurrency
-    except FileNotFoundError:
-        logger.warning(f"Configuration file {config_path} not found, using default concurrency")
-        concurrency = DEFAULT_CONCURRENCY
-    except Exception as e:
-        logger.warning(f"Error loading configuration: {e}, using default concurrency")
-        concurrency = DEFAULT_CONCURRENCY
-
-    runner = IngestionRunner(log_level=args.log_level, concurrency=concurrency)
+    runner = IngestionRunner(log_level=args.log_level)
 
     if not args.skip_download:
         print("Downloading dataset...")
@@ -199,7 +186,7 @@ async def main():
     # Run selected mode
     if args.download:
         logger.info("Starting dataset download")
-        runner = IngestionRunner(log_level=args.log_level, concurrency=DEFAULT_CONCURRENCY)
+        runner = IngestionRunner(log_level=args.log_level)
         await runner.download_dataset()
         logger.info("Dataset download completed")
     elif args.ingest:
