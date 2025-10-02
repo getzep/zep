@@ -2,7 +2,7 @@
 # Configuration for running LongMemEval evaluation against Zep's knowledge graph
 
 # Concurrency control
-concurrency: 2  # Max concurrent users during ingestion (1-10)
+concurrency: 2 # Max concurrent users during ingestion (1-10)
 
 # Graph retrieval parameters
 graph_params:
@@ -34,7 +34,7 @@ models:
 
   # Traditional model parameters (for non-reasoning models like gpt-4o, gpt-4.1)
   temperature:
-    - 0.0  # 0.0 = deterministic, 2.0 = maximum creativity
+    - 0.0 # 0.0 = deterministic, 2.0 = maximum creativity
   # max_tokens:
   #   - 2000  # Optional: maximum tokens in completion
 
