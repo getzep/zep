@@ -363,19 +363,23 @@ Respond with only a single sentence that provides context for this chunk within 
         if continue_from_checkpoint:
             completed_users = set(self.checkpoint.get("completed_users", []))
             failed_users = set(self.checkpoint.get("failed_users", []))
-            already_processed = len(completed_users) + len(failed_users)
+            already_processed = len(completed_users)  # Only count completed users
 
-            # Calculate how many more users to process
+            # Calculate how many more users to process (including retrying failed users)
             target_count = min(already_processed + num_users, max_users)
 
+            # Process users not yet completed (includes failed users for retry)
             users_to_process = [
-                idx
-                for idx in range(target_count)
-                if idx not in completed_users and idx not in failed_users
+                idx for idx in range(target_count) if idx not in completed_users
             ]
+
+            # Separate new users from retries for reporting
+            retry_users = [idx for idx in users_to_process if idx in failed_users]
+
             print(
                 f"Resuming from checkpoint: {len(completed_users)} completed, "
-                f"{len(failed_users)} failed, {len(users_to_process)} to process"
+                f"{len(failed_users)} failed (will retry), "
+                f"{len(users_to_process)} to process ({len(retry_users)} retries)"
             )
         else:
             # Fresh start - reset checkpoint
@@ -401,10 +405,17 @@ Respond with only a single sentence that provides context for this chunk within 
 
                 # Update checkpoint
                 if success:
-                    self.checkpoint["completed_users"].append(user_idx)
+                    # Add to completed if not already there
+                    if user_idx not in self.checkpoint["completed_users"]:
+                        self.checkpoint["completed_users"].append(user_idx)
+                    # Remove from failed if it was previously failed
+                    if user_idx in self.checkpoint["failed_users"]:
+                        self.checkpoint["failed_users"].remove(user_idx)
                     pbar.set_postfix({"status": "✓", "user": user_idx})
                 else:
-                    self.checkpoint["failed_users"].append(user_idx)
+                    # Add to failed only if not already there
+                    if user_idx not in self.checkpoint["failed_users"]:
+                        self.checkpoint["failed_users"].append(user_idx)
                     pbar.set_postfix({"status": "✗", "user": user_idx})
 
                 # Save checkpoint after each user
