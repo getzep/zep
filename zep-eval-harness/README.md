@@ -1,4 +1,4 @@
-# Zep Test Harness
+# Zep Eval Harness
 
 An end-to-end evaluation framework for testing Zep's memory retrieval and question-answering capabilities using dummy datasets.
 
