@@ -1,0 +1,5 @@
+query,golden_answer_criteria
+"What is my dog's name?","The response should identify the dog's name as 'Max'"
+"When is my vet appointment?","The response should mention that the appointment is on Friday or next Friday"
+"What training classes did I sign up for?","The response should mention puppy training classes"
+"How old is my daughter?","The response should state that the daughter is 8 years old"

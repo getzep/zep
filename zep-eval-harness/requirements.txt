@@ -1,0 +1,14 @@
+# Zep Cloud SDK for memory and knowledge graph operations
+zep-cloud>=2.0.0
+
+# OpenAI SDK for LLM responses and grading
+openai>=1.0.0
+
+# Data processing
+pandas>=2.0.0
+
+# Environment variable management
+python-dotenv>=1.0.0
+
+# Data validation for structured outputs
+pydantic>=2.0.0
