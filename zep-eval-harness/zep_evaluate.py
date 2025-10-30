@@ -22,8 +22,8 @@ USER_ID = "zep_eval_test_user_001"
 SEARCH_LIMIT = 10  # Number of results per scope
 
 # LLM Model configuration
-LLM_RESPONSE_MODEL = "gpt-4.1-mini-2025-04-14"  # Model used for generating responses
-LLM_JUDGE_MODEL = "gpt-4.1-mini-2025-04-14"      # Model used for grading responses
+LLM_RESPONSE_MODEL = "gpt-5-mini"  # Model used for generating responses
+LLM_JUDGE_MODEL = "gpt-5-mini"      # Model used for grading responses
 
 
 # ============================================================================
@@ -227,7 +227,7 @@ Answer:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
         ],
-        temperature=0,
+        reasoning_effort="minimal",
     )
 
     return response.choices[0].message.content or ''
@@ -293,7 +293,7 @@ Please provide your evaluation:
             {"role": "user", "content": grading_prompt}
         ],
         response_format=Grade,
-        temperature=0,
+        reasoning_effort="minimal",
     )
 
     result = response.choices[0].message.parsed
