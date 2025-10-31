@@ -63,3 +63,34 @@ JSON and unstructured text can also be added to user graphs, not just conversati
 
 You can test long-term retrieval by modifying the ingestion script to ingest a fixed/large amount of background data first, before adding your conversation data. This tests Zep's retrieval capabilities when there is a larger haystack to retrieve the needles from. Additionally, this large background graph can be created a single time and then cloned afterwards using the graph clone method that Zep provides, before adding the use case specific conversation data. This approach saves time when running multiple evaluations. For more information on cloning graphs, see the [Cloning Graphs documentation](https://help.getzep.com/adding-data-to-the-graph#cloning-graphs).
 
+## Best Practices for Fair Tests
+
+To ensure reliable and meaningful evaluation results, follow these best practices when designing your test questions and evaluation criteria:
+
+### 1. Ensure Answer Availability
+The answer to each test question must be present somewhere in the conversation history. Tests become unfair when they expect the AI to answer questions about information that was never discussed or provided.
+
+### 2. Align Gold Answer Criteria with Test Questions
+The gold answer criteria should only require information that directly addresses what the test question asks for. Avoid including extraneous information beyond the scope of the question.
+
+**Example:**
+- **Test Question**: "When is my appointment?"
+- **Good Gold Criteria**: Must include the date and time of the appointment
+- **Poor Gold Criteria**: Must include the date, time, and address of the appointment (address is beyond what was asked)
+
+### 3. Write Unambiguous Test Questions
+Ambiguous test questions can lead to varied or unintended responses from the AI if it cannot determine the intended meaning. Clear, specific questions produce more consistent and reliable evaluation results.
+
+**Note:** While Zep's contextual memory can often correctly interpret and answer some ambiguous questions by leveraging conversation history, there is still a point at which the responsibility falls on the user to provide a less ambiguous question to the agent. The more specific and clear the question, the more reliable the results will be.
+
+**Example of an ambiguous question:**
+- "What did I order?" (ambiguous if multiple orders were discussed across different contexts or timeframes)
+
+**Better alternatives:**
+- "What did I order for lunch today?"
+- "What items were in my last online purchase?"
+- "What did I order at the restaurant on Monday?"
+
+### 4. Consider Context and Scope
+Ensure your test questions clearly specify any necessary context such as timeframes, locations, or specific instances when multiple similar events might exist in the conversation history.
+
