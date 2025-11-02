@@ -5,35 +5,70 @@ from dotenv import load_dotenv
 from zep_cloud.client import Zep
 from zep_cloud.types import Message
 
-# Hardcoded user ID for evaluation
-USER_ID = "zep_eval_test_user_001"
-USER_FIRST_NAME = "John"
-USER_LAST_NAME = "Doe"
-USER_EMAIL = "john.doe@example.com"
+
+def load_user_metadata():
+    """Load user metadata from JSON file."""
+    metadata_file = "data/user_metadata.json"
+
+    if not os.path.exists(metadata_file):
+        raise FileNotFoundError(f"User metadata file not found: {metadata_file}")
+
+    with open(metadata_file, 'r') as f:
+        user_data = json.load(f)
+
+    print(f"✅ Loaded user metadata from {metadata_file}")
+    return user_data
 
 
-def create_user(zep_client):
-    """Create a new user. Raises error if user already exists."""
+def create_user(zep_client, user_data):
+    """Create a new user without metadata. Raises error if user already exists."""
+    user_id = user_data["user_id"]
+
     try:
-        existing_user = zep_client.user.get(user_id=USER_ID)
+        existing_user = zep_client.user.get(user_id=user_id)
         raise Exception(
-            f"Error: User {USER_ID} already exists. "
+            f"Error: User {user_id} already exists. "
             "Please delete the existing user or use a different user ID. "
             "We do not continue with the script when the user already exists."
         )
     except Exception as e:
-        if "already exists" in str(e).lower() or USER_ID in str(e):
+        if "already exists" in str(e).lower() or user_id in str(e):
             raise e
 
-        # User doesn't exist, create it
+        # User doesn't exist, create it (without metadata)
         user = zep_client.user.add(
-            user_id=USER_ID,
-            email=USER_EMAIL,
-            first_name=USER_FIRST_NAME,
-            last_name=USER_LAST_NAME,
+            user_id=user_id,
+            email=user_data["email"],
+            first_name=user_data["first_name"],
+            last_name=user_data["last_name"]
         )
-        print(f"✅ User {USER_ID} created successfully")
+        print(f"✅ User {user_id} created successfully (without metadata)")
         return user
+
+
+def add_metadata_episode(zep_client, user_data):
+    """
+    Add user metadata as a single graph episode.
+    This should only be done once per user.
+    Sends the entire user_data object as JSON to properly associate metadata with the user.
+    """
+    user_id = user_data["user_id"]
+
+    # Format the entire user_data as a JSON string for the graph episode
+    user_data_json = json.dumps(user_data)
+
+    try:
+        # Add entire user data as a graph episode (includes user_id, names, email, and metadata)
+        zep_client.graph.add(
+            user_id=user_id,
+            type="json",
+            data=user_data_json
+        )
+        print(f"✅ Added user metadata as graph episode for {user_id}")
+        print(f"   Includes: user_id, first_name, last_name, email, and metadata")
+    except Exception as e:
+        print(f"❌ Error adding metadata episode for {user_id}: {e}")
+        raise
 
 
 def load_conversations_from_json():
@@ -50,7 +85,7 @@ def load_conversations_from_json():
     return conversations
 
 
-def add_conversations_to_zep(zep_client, conversations):
+def add_conversations_to_zep(zep_client, conversations, user_id):
     """
     Add conversations to Zep as separate threads.
     Polls the last message to ensure all processing is complete.
@@ -84,10 +119,10 @@ def add_conversations_to_zep(zep_client, conversations):
 
         try:
             # Create thread for this conversation
-            thread_id = f"{USER_ID}_{conversation_id}"
+            thread_id = f"{user_id}_{conversation_id}"
             zep_client.thread.create(
                 thread_id=thread_id,
-                user_id=USER_ID
+                user_id=user_id
             )
             print(f"📝 Created thread: {thread_id}")
 
@@ -101,18 +136,22 @@ def add_conversations_to_zep(zep_client, conversations):
                 )
                 zep_messages.append(zep_message)
 
-            # Add all messages to the thread
-            response = zep_client.thread.add_messages(
-                thread_id=thread_id,
-                messages=zep_messages
-            )
+            # Add messages in batches of 30 (Zep API limit)
+            batch_size = 30
+            total_added = 0
+            for i in range(0, len(zep_messages), batch_size):
+                batch = zep_messages[i:i + batch_size]
+                response = zep_client.thread.add_messages(
+                    thread_id=thread_id,
+                    messages=batch
+                )
 
-            # Collect message UUIDs (these are episode IDs)
-            if hasattr(response, 'message_uuids') and response.message_uuids:
-                all_episode_uuids.extend(response.message_uuids)
-                print(f"✅ Added {len(zep_messages)} messages to thread {thread_id} (got {len(response.message_uuids)} episode UUIDs)")
-            else:
-                print(f"✅ Added {len(zep_messages)} messages to thread {thread_id}")
+                # Collect message UUIDs (these are episode IDs)
+                if hasattr(response, 'message_uuids') and response.message_uuids:
+                    all_episode_uuids.extend(response.message_uuids)
+                    total_added += len(batch)
+
+            print(f"✅ Added {total_added} messages to thread {thread_id} in {(len(zep_messages) + batch_size - 1) // batch_size} batch(es)")
 
         except Exception as e:
             print(f"❌ Error processing conversation {conversation_id}: {e}")
@@ -165,22 +204,30 @@ def main():
     print("=" * 80)
     print("ZEP INGESTION SCRIPT - Evaluation Test Harness")
     print("=" * 80)
-    print(f"\n🔑 User ID: {USER_ID}\n")
 
     try:
-        # Step 1: Create user (will error if already exists)
-        create_user(zep_client)
+        # Step 1: Load user metadata from JSON
+        user_data = load_user_metadata()
+        user_id = user_data["user_id"]
+        print(f"\n🔑 User ID: {user_id}\n")
 
-        # Step 2: Load conversations from JSON
+        # Step 2: Create user (will error if already exists)
+        create_user(zep_client, user_data)
+
+        # Step 3: Add user metadata as a graph episode (done once)
+        print("\n📊 Adding user metadata as graph episode...")
+        add_metadata_episode(zep_client, user_data)
+
+        # Step 4: Load conversations from JSON
         conversations = load_conversations_from_json()
 
-        # Step 3: Add conversations to Zep and poll for completion
-        add_conversations_to_zep(zep_client, conversations)
+        # Step 5: Add conversations to Zep and poll for completion
+        add_conversations_to_zep(zep_client, conversations, user_id)
 
         print("\n" + "=" * 80)
         print("INGESTION COMPLETE ✅")
         print("=" * 80)
-        print(f"\nUser {USER_ID} is ready for evaluation testing!")
+        print(f"\nUser {user_id} is ready for evaluation testing!")
         print("Next step: Run zep_evaluate.py to perform evaluation")
 
     except Exception as e:
