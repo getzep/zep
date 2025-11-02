@@ -1,12 +1,17 @@
 """
 Zep Evaluation Script
-Combines graph search, AI response generation, and evaluation into a single pipeline.
+Combines graph search and evaluation with two modes:
+1. Context evaluation (default): Judge only the retrieved context
+2. Response evaluation (--response flag): Judge the AI response given the context
 """
 
 import os
+import sys
 import json
+import csv
 import asyncio
 from time import time
+from datetime import datetime
 from typing import List, Dict, Any, Tuple
 
 import pandas as pd
@@ -15,8 +20,14 @@ from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
 from zep_cloud.client import AsyncZep
 
-# User ID from ingestion script
+# Evaluation mode - set via command line argument
+EVAL_MODE = "context"  # "context" or "response"
+
+# Hardcoded user ID for evaluation
 USER_ID = "zep_eval_test_user_001"
+USER_FIRST_NAME = "John"
+USER_LAST_NAME = "Doe"
+USER_EMAIL = "john.doe@example.com"
 
 # Search configuration
 SEARCH_LIMIT = 10  # Number of results per scope
@@ -24,6 +35,7 @@ SEARCH_LIMIT = 10  # Number of results per scope
 # LLM Model configuration
 LLM_RESPONSE_MODEL = "gpt-5-mini"  # Model used for generating responses
 LLM_JUDGE_MODEL = "gpt-5-mini"      # Model used for grading responses
+REASONING_EFFORT = "minimal"  # Reasoning effort for response generation (minimal, medium, high)
 
 
 # ============================================================================
@@ -227,14 +239,83 @@ Answer:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
         ],
-        reasoning_effort="minimal",
+        reasoning_effort=REASONING_EFFORT,
     )
 
     return response.choices[0].message.content or ''
 
 
 # ============================================================================
-# Step 4: Grade AI Response
+# Step 4a: Grade Retrieved Context
+# ============================================================================
+
+async def grade_retrieved_context(
+    openai_client: AsyncOpenAI,
+    question: str,
+    golden_answer_criteria: str,
+    context: str
+) -> Tuple[bool, str]:
+    """
+    Grade retrieved context against golden answer criteria using an LLM judge.
+
+    Args:
+        openai_client: AsyncOpenAI client instance
+        question: The original question
+        golden_answer_criteria: Criteria for what the context should contain
+        context: The retrieved context from Zep
+
+    Returns:
+        Tuple of (is_correct: bool, reasoning: str)
+    """
+    system_prompt = """
+You are an expert grader that determines if retrieved context contains the necessary information to answer questions.
+"""
+
+    grading_prompt = f"""
+I will give you a question, criteria for what information should be present, and retrieved context from a knowledge graph.
+
+Please evaluate if the retrieved context contains the information specified in the criteria. Answer "CORRECT" if the context contains the necessary information, otherwise answer "WRONG".
+
+<QUESTION>
+{question}
+</QUESTION>
+
+<GOLDEN ANSWER CRITERIA>
+The retrieved context should contain information that {golden_answer_criteria.lower()}
+</GOLDEN ANSWER CRITERIA>
+
+<RETRIEVED CONTEXT>
+{context}
+</RETRIEVED CONTEXT>
+
+Evaluation Guidelines:
+- The context must contain the key information specified in the criteria
+- The information doesn't need to be in a specific format, but the essential facts must be present
+- If the context contains the necessary information to answer the question according to the criteria, it should be marked CORRECT
+- If the context is missing critical information specified in the criteria, it should be marked WRONG
+- Focus on whether the information EXISTS in the context, not on how it's formatted
+
+Please provide your evaluation:
+"""
+
+    response = await openai_client.beta.chat.completions.parse(
+        model=LLM_JUDGE_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": grading_prompt}
+        ],
+        response_format=Grade,
+        reasoning_effort="minimal",
+    )
+
+    result = response.choices[0].message.parsed
+    is_correct = result.is_correct.strip().upper() == 'CORRECT'
+
+    return is_correct, result.reasoning
+
+
+# ============================================================================
+# Step 4b: Grade AI Response
 # ============================================================================
 
 async def grade_ai_response(
@@ -269,7 +350,7 @@ Please evaluate if the response meets the criteria. Answer "CORRECT" if the resp
 </QUESTION>
 
 <GOLDEN ANSWER CRITERIA>
-{golden_answer_criteria}
+The AI response should {golden_answer_criteria.lower()}
 </GOLDEN ANSWER CRITERIA>
 
 <AI RESPONSE>
@@ -310,17 +391,20 @@ async def process_single_query(
     zep_client: AsyncZep,
     openai_client: AsyncOpenAI,
     query: str,
-    golden_answer_criteria: str
+    golden_answer_criteria: str,
+    eval_mode: str = "context"
 ) -> Dict[str, Any]:
     """
-    Process a single query through the complete pipeline:
-    Search → Generate Response → Grade
+    Process a single query through the pipeline:
+    - Context mode: Search → Grade Context
+    - Response mode: Search → Generate Response → Grade Response
 
     Args:
         zep_client: AsyncZep client instance
         openai_client: AsyncOpenAI client instance
         query: Question to answer
         golden_answer_criteria: Criteria for evaluation
+        eval_mode: "context" or "response"
 
     Returns:
         Dictionary containing all results for this query
@@ -331,31 +415,150 @@ async def process_single_query(
     search_results = await perform_graph_search(zep_client, query)
     context = construct_context_block(search_results)
 
-    # Step 2: Generate Response
-    ai_answer = await generate_ai_response(openai_client, context, query)
+    if eval_mode == "context":
+        # Context evaluation mode: judge only the retrieved context
+        is_correct, reasoning = await grade_retrieved_context(
+            openai_client, query, golden_answer_criteria, context
+        )
 
-    # Step 3: Grade Response
-    is_correct, reasoning = await grade_ai_response(
-        openai_client, query, golden_answer_criteria, ai_answer
-    )
+        duration_ms = (time() - start_time) * 1000
 
-    duration_ms = (time() - start_time) * 1000
+        # Print result
+        status = "✅ CORRECT" if is_correct else "❌ WRONG"
+        print(f"{status}: {query}")
+        print(f"   Reasoning: {reasoning}\n")
 
-    # Print result
-    status = "✅ CORRECT" if is_correct else "❌ WRONG"
-    print(f"{status}: {query}")
-    print(f"   Answer: {ai_answer}")
-    print(f"   Reasoning: {reasoning}\n")
+        return {
+            "question": query,
+            "context": context,
+            "golden_answer_criteria": golden_answer_criteria,
+            "grade": is_correct,
+            "reasoning": reasoning,
+            "duration_ms": duration_ms
+        }
+    else:
+        # Response evaluation mode: generate response and judge it
+        # Step 2: Generate Response
+        ai_answer = await generate_ai_response(openai_client, context, query)
 
-    return {
-        "question": query,
-        "context": context,
-        "answer": ai_answer,
-        "golden_answer_criteria": golden_answer_criteria,
-        "grade": is_correct,
-        "reasoning": reasoning,
-        "duration_ms": duration_ms
-    }
+        # Step 3: Grade Response
+        is_correct, reasoning = await grade_ai_response(
+            openai_client, query, golden_answer_criteria, ai_answer
+        )
+
+        duration_ms = (time() - start_time) * 1000
+
+        # Print result
+        status = "✅ CORRECT" if is_correct else "❌ WRONG"
+        print(f"{status}: {query}")
+        print(f"   Answer: {ai_answer}")
+        print(f"   Reasoning: {reasoning}\n")
+
+        return {
+            "question": query,
+            "context": context,
+            "answer": ai_answer,
+            "golden_answer_criteria": golden_answer_criteria,
+            "grade": is_correct,
+            "reasoning": reasoning,
+            "duration_ms": duration_ms
+        }
+
+
+# ============================================================================
+# CSV Tracking
+# ============================================================================
+
+def append_to_evaluation_csv(
+    correct_count: int,
+    total_questions: int,
+    accuracy: float,
+    eval_mode: str = "context"
+) -> None:
+    """
+    Append evaluation results to the CSV tracking file.
+
+    Args:
+        correct_count: Number of correct answers
+        total_questions: Total number of questions
+        accuracy: Accuracy percentage (as float, e.g., 87.5)
+        eval_mode: "context" or "response"
+    """
+    # Different CSV files for different evaluation modes
+    if eval_mode == "context":
+        csv_file = "data/evaluations/context_evaluations/evaluation_results.csv"
+    else:
+        csv_file = "data/evaluations/response_evaluations/evaluation_results.csv"
+
+    # Check if file exists to determine if we need to write headers
+    file_exists = os.path.exists(csv_file)
+
+    # Read existing CSV to determine next run number
+    try:
+        with open(csv_file, 'r') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+
+        # Find the highest run number
+        max_run_num = 0
+        for row in rows:
+            run_name = row['Run']
+            if run_name.startswith('Run '):
+                try:
+                    run_num = int(run_name.split(' ')[1])
+                    max_run_num = max(max_run_num, run_num)
+                except (ValueError, IndexError):
+                    pass
+
+        next_run_num = max_run_num + 1
+        next_run_name = f"Run {next_run_num}"
+
+    except FileNotFoundError:
+        # If file doesn't exist, start with Run 1
+        next_run_name = "Run 1"
+        file_exists = False
+
+    # Build row data based on evaluation mode
+    if eval_mode == "context":
+        # Context evaluation CSV - no columns related to AI response
+        row_data = {
+            'Run': next_run_name,
+            'Judge Model': LLM_JUDGE_MODEL,
+            'Correct': f"{correct_count}/{total_questions}",
+            'Accuracy': f"{accuracy:.1f}%",
+            'Answer Not in Conversations': '',
+            'Failed to Retrieve Answer': '',
+            'Judge Scored Incorrectly': '',
+            'Comments': ''
+        }
+    else:
+        # Response evaluation CSV - includes AI response model and reasoning
+        reasoning_display = REASONING_EFFORT.capitalize()
+        row_data = {
+            'Run': next_run_name,
+            'Response Model': LLM_RESPONSE_MODEL,
+            'Reasoning': reasoning_display,
+            'Judge Model': LLM_JUDGE_MODEL,
+            'Correct': f"{correct_count}/{total_questions}",
+            'Accuracy': f"{accuracy:.1f}%",
+            'Answer Not in Conversations': '',
+            'Failed to Retrieve Answer': '',
+            "AI Didn't Use Context Correctly": '',
+            'Judge Scored Incorrectly': '',
+            'Comments': ''
+        }
+
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(csv_file), exist_ok=True)
+
+    # Append to CSV, writing header if this is the first run
+    with open(csv_file, 'a', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=row_data.keys())
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(row_data)
+
+    print(f"📝 Appended {next_run_name} to {csv_file}")
 
 
 # ============================================================================
@@ -364,6 +567,18 @@ async def process_single_query(
 
 async def main():
     """Main execution function - runs the complete evaluation pipeline."""
+    # Parse command line arguments
+    eval_mode = "context"  # Default mode
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--response":
+            eval_mode = "response"
+        else:
+            print(f"❌ Error: Unknown argument '{sys.argv[1]}'")
+            print("Usage: python zep_evaluate.py [--response]")
+            print("  (no flag): Context evaluation mode (default)")
+            print("  --response: Response evaluation mode")
+            exit(1)
+
     # Load environment variables
     load_dotenv()
 
@@ -384,19 +599,25 @@ async def main():
 
     print("=" * 80)
     print("ZEP EVALUATION SCRIPT")
-    print("Pipeline: Search → Generate Response → Grade")
+    if eval_mode == "context":
+        print("Mode: Context Evaluation (judging retrieved context)")
+        print("Pipeline: Search → Grade Context")
+    else:
+        print("Mode: Response Evaluation (judging AI responses)")
+        print("Pipeline: Search → Generate Response → Grade Response")
     print("=" * 80)
     print(f"\n🔑 User ID: {USER_ID}")
     print(f"🔍 Search limit per scope: {SEARCH_LIMIT}")
     print(f"🎯 Reranker: cross_encoder")
-    print(f"🤖 Response Model: {LLM_RESPONSE_MODEL}")
+    if eval_mode == "response":
+        print(f"🤖 Response Model: {LLM_RESPONSE_MODEL}")
     print(f"⚖️  Judge Model: {LLM_JUDGE_MODEL}\n")
 
     try:
         # Load test questions
         test_questions_df = await load_test_questions()
 
-        print(f"🚀 Starting evaluation for {len(test_questions_df)} queries...\n")
+        print(f"�� Starting evaluation for {len(test_questions_df)} queries...\n")
 
         # Process all queries in parallel
         tasks = [
@@ -404,7 +625,8 @@ async def main():
                 zep_client,
                 openai_client,
                 row['query'],
-                row['golden_answer_criteria']
+                row['golden_answer_criteria'],
+                eval_mode
             )
             for _, row in test_questions_df.iterrows()
         ]
@@ -414,31 +636,79 @@ async def main():
         # Calculate statistics
         total_questions = len(results)
         correct_count = sum(1 for r in results if r['grade'])
+        incorrect_count = total_questions - correct_count
         accuracy = (correct_count / total_questions * 100) if total_questions > 0 else 0
         avg_duration_ms = sum(r['duration_ms'] for r in results) / total_questions if total_questions > 0 else 0
 
-        # Save detailed results
-        os.makedirs("data", exist_ok=True)
+        # Create timestamped folder for this evaluation in the appropriate subfolder
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if eval_mode == "context":
+            eval_folder = f"data/evaluations/context_evaluations/{timestamp}"
+        else:
+            eval_folder = f"data/evaluations/response_evaluations/{timestamp}"
+        os.makedirs(eval_folder, exist_ok=True)
 
-        # Save all intermediate data for debugging
-        output_data = {
-            USER_ID: results
+        # Prepare output data with statistics at the top
+        stats = {
+            "evaluation_mode": eval_mode,
+            "timestamp": timestamp,
+            "datetime": datetime.now().isoformat(),
+            "total_questions": total_questions,
+            "correct": correct_count,
+            "incorrect": incorrect_count,
+            "accuracy_percentage": round(accuracy, 2),
+            "average_duration_ms": round(avg_duration_ms, 0),
+            "judge_model": LLM_JUDGE_MODEL
         }
 
-        with open("data/zep_evaluation_results.json", "w") as f:
+        # Add response model info only for response evaluation
+        if eval_mode == "response":
+            stats["response_model"] = LLM_RESPONSE_MODEL
+
+        output_data = {
+            "statistics": stats,
+            "results": {
+                USER_ID: results
+            }
+        }
+
+        # Save results to timestamped folder
+        results_file = f"{eval_folder}/evaluation_results.json"
+        with open(results_file, "w") as f:
             json.dump(output_data, f, indent=2)
+
+        # Append to CSV tracking file
+        append_to_evaluation_csv(correct_count, total_questions, accuracy, eval_mode)
+
+        # Determine CSV location based on mode
+        if eval_mode == "context":
+            csv_location = "data/evaluations/context_evaluations/evaluation_results.csv"
+        else:
+            csv_location = "data/evaluations/response_evaluations/evaluation_results.csv"
 
         # Print summary
         print("=" * 80)
         print("EVALUATION COMPLETE ✅")
         print("=" * 80)
         print(f"\n📊 Results:")
+        print(f"   Evaluation mode: {eval_mode}")
         print(f"   Total questions: {total_questions}")
-        print(f"   Correct answers: {correct_count}")
-        print(f"   Wrong answers: {total_questions - correct_count}")
+        print(f"   Correct: {correct_count}")
+        print(f"   Wrong: {incorrect_count}")
         print(f"   Accuracy: {accuracy:.1f}%")
         print(f"   Average time per query: {avg_duration_ms:.0f}ms")
-        print(f"\n💾 Detailed results saved to: data/zep_evaluation_results.json")
+        print(f"\n💾 Detailed results saved to: {results_file}")
+        print("\n" + "=" * 80)
+        print("📝 NEXT STEP FOR AI AGENT")
+        print("=" * 80)
+        print(f"\nA new row has been added to: {csv_location}")
+        print(f"\nIf you are aware of any changes made for this evaluation that are not")
+        print(f"automatically captured (e.g., system prompt modifications, retrieval changes,")
+        print(f"context structure changes), please add a brief comment to the 'Comments' column")
+        print(f"in the CSV file describing those changes.")
+        print(f"\nIf you are not aware of any such changes, leave the Comments column empty.")
+        print(f"\nCSV file location: {csv_location}")
+        print("=" * 80)
 
     except Exception as e:
         print(f"\n❌ Evaluation failed: {e}")
