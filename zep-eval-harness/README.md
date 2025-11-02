@@ -26,12 +26,12 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
 
 5. **Run evaluation script** (can run multiple times)
 
-   **Context evaluation (default)** - Judges whether the retrieved context contains the necessary information:
+   **Context evaluation (default)** - Judges whether the retrieved context contains the necessary information (tests Zep's end-to-end performance):
    ```bash
    python zep_evaluate.py
    ```
 
-   **Response evaluation** - Judges the AI-generated response when given the retrieved context:
+   **Response evaluation** - Judges the AI-generated response when given the retrieved context (additionally tests the AI's ability to utilize Zep context; results can be more varied here and depend on the quality of the responding model):
    ```bash
    python zep_evaluate.py --response
    ```
