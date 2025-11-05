@@ -204,7 +204,7 @@ if "no_zep_responses" not in st.session_state:
     st.session_state.no_zep_responses = {}  # {thread_id: [{"role": "assistant", "content": "...", "timestamp": ...}, ...]}
 
 if "display_mode" not in st.session_state:
-    st.session_state.display_mode = "both"  # Options: "both", "zep_only", "no_zep_only"
+    st.session_state.display_mode = "zep_only"  # Options: "both", "zep_only", "no_zep_only"
 
 if "generating_responses" not in st.session_state:
     st.session_state.generating_responses = False
