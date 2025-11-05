@@ -20,6 +20,7 @@ jsonschema==4.25.1
 jsonschema-specifications==2025.9.1
 MarkupSafe==3.0.2
 narwhals==2.5.0
+nest_asyncio==1.6.0
 numpy==2.3.3
 openai==1.109.1
 packaging==25.0
