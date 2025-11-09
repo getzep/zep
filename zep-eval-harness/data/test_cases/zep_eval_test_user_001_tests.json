@@ -1,0 +1,33 @@
+{
+  "user_id": "zep_eval_test_user_001",
+  "test_cases": [
+    {
+      "id": "test_001_dog_name",
+      "category": "basic_facts",
+      "query": "What is my dog's name?",
+      "golden_answer": "Your dog's name is Max.",
+      "requires_telemetry": false
+    },
+    {
+      "id": "test_002_vet_appointment",
+      "category": "basic_facts",
+      "query": "When is my vet appointment?",
+      "golden_answer": "Your vet appointment is next Friday at Dr. Peterson's clinic on Maple Street.",
+      "requires_telemetry": false
+    },
+    {
+      "id": "test_003_training_classes",
+      "category": "basic_facts",
+      "query": "What training classes did I sign up for?",
+      "golden_answer": "You signed up for puppy training classes at PetSmart that start on April 1st, every Saturday morning at 9am.",
+      "requires_telemetry": false
+    },
+    {
+      "id": "test_004_daughter_age",
+      "category": "basic_facts",
+      "query": "How old is my daughter?",
+      "golden_answer": "Your daughter Sarah is 8 years old. Her birthday was last month in February.",
+      "requires_telemetry": false
+    }
+  ]
+}
