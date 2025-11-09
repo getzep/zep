@@ -1,0 +1,13 @@
+[
+  {
+    "user_id": "zep_eval_test_user_001",
+    "first_name": "John",
+    "last_name": "Doe",
+    "email": "john.doe@example.com",
+    "metadata": {
+      "occupation": "Software Engineer",
+      "company": "TechCorp Solutions",
+      "date_of_birth": "1985-06-15"
+    }
+  }
+]

@@ -1,0 +1,24 @@
+{
+  "run_number": 1,
+  "timestamp": "2025-11-08T15:15:31.538995",
+  "ontology": {
+    "type": "default_zep",
+    "default_ontology_disabled": false,
+    "custom_entity_types": [],
+    "custom_edge_types": []
+  },
+  "users": [
+    {
+      "base_user_id": "zep_eval_test_user_001",
+      "zep_user_id": "zep_eval_test_user_001_6005758f",
+      "first_name": "John",
+      "last_name": "Doe",
+      "thread_ids": [
+        "conv_002_6005758f",
+        "conv_001_6005758f"
+      ],
+      "num_conversations": 2,
+      "num_telemetry_files": 0
+    }
+  ]
+}

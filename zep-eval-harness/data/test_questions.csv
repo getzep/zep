@@ -1,5 +1,0 @@
-query,golden_answer_criteria
-"What is my dog's name?","Mentions the dog's name as 'Max'"
-"When is my vet appointment?","Mentions that the appointment is on Friday or next Friday"
-"What training classes did I sign up for?","Mentions puppy training classes"
-"How old is my daughter?","States that the daughter is 8 years old"

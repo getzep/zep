@@ -1,2 +1,0 @@
-Run,Response Model,Reasoning,Judge Model,Correct,Accuracy,Answer Not in Conversations,Failed to Retrieve Answer,AI Didn't Use Context Correctly,Judge Scored Incorrectly,Comments
-Run 1,gpt-5-mini,Minimal,gpt-5-mini,4/4,100.0%,,,,,
