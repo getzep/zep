@@ -1,0 +1,17 @@
+[
+    {
+        "user_preferences": {
+            "smoothie_order": "green protein smoothie with almond butter",
+            "preferred_smoothie_shop": "Juice Press",
+            "music_genres": ["jazz", "classical", "indie_pop"]
+        }
+    },
+    {
+        "favorite_restaurant": {
+            "name": "Canlis",
+            "location": "Seattle",
+            "cuisine_type": "fine_dining",
+            "user_notes": "loved this restaurant"
+        }
+    }
+]
