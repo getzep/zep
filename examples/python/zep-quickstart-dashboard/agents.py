@@ -39,7 +39,7 @@ def get_all_agent_classes():
     return agent_classes
 
 
-class RealEstateSalesAgent:
+class ChatAgent:
     """
     A simple chat agent that handles AI interactions with OpenAI's GPT models.
     
@@ -116,7 +116,7 @@ class RealEstateSalesAgent:
         yield (context_block, {})
         # Build messages: system prompt with context, history, and current message
         system_prompt = (
-            "You are a helpful real estate sales agent that helps users find and purchase their ideal home. "
+            "You are a helpful assistant. "
             "Keep responses under 100 words. "
             "Use the context provided to personalize your recommendations and assistance.\n\n"
             f"{context_block}"

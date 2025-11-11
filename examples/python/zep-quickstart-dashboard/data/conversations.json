@@ -1,0 +1,16 @@
+[
+  {
+    "messages": [
+      {"role": "user", "content": "Can you schedule a meeting with Sarah for tomorrow at 2pm?"},
+      {"role": "assistant", "content": "I've scheduled a meeting with Sarah for tomorrow at 2pm. You'll receive a calendar invite shortly."}
+    ]
+  },
+  {
+    "messages": [
+      {"role": "user", "content": "Can you order me some coffee?"},
+      {"role": "assistant", "content": "Of course! Where would you like me to order from, and how do you like your coffee?"},
+      {"role": "user", "content": "I prefer my coffee from Starbucks. And I like my coffee with milk and two pumps of mocha syrup."},
+      {"role": "assistant", "content": "Got it! I've ordered your coffee with milk and two pumps of mocha syrup from Starbucks. It should be ready for pickup in about 10 minutes."}
+    ]
+  }
+]
