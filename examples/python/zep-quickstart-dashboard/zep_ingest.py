@@ -1,10 +1,15 @@
 
 import os
 from zep_cloud.client import Zep
-from zep_cloud.types import Message
+from zep_cloud.types import Message, EntityEdgeSourceTarget
 from dotenv import load_dotenv
 import uuid
 import json
+from ontology import (
+    Property, Neighborhood, School, Amenity, FamilyMember, Room, Showing, FinancingDetail,
+    InterestedInProperty, ViewedProperty, RejectedProperty, MadeOffer,
+    HasRequirement, PrefersNeighborhood, NeedsAmenity, HasBudgetConstraint
+)
 
 
 def create_user(zep_client):
@@ -31,17 +36,77 @@ def create_user(zep_client):
         # Continue to create the user
         pass
     
-    # Create the user
+    # Create the user with default ontology disabled
     print(f"\n👤 Creating user {user_id}...")
     user = zep_client.user.add(
         user_id=user_id,
         email=user_email,
         first_name=user_first_name,
         last_name=user_last_name,
+        disable_default_ontology=True,
     )
     print(f"✅ User {user_id} created successfully.")
-    
+
     return user_id, user_first_name, user_last_name
+
+
+def set_custom_ontology(zep_client, user_id):
+    """Set custom real estate ontology for the specific user."""
+    print(f"\n🏗️  Setting custom real estate ontology for user {user_id}...")
+
+    try:
+        zep_client.graph.set_ontology(
+            user_ids=[user_id],
+            entities={
+                "Property": Property,
+                "Neighborhood": Neighborhood,
+                "School": School,
+                "Amenity": Amenity,
+                "FamilyMember": FamilyMember,
+                "Room": Room,
+                "Showing": Showing,
+                "FinancingDetail": FinancingDetail,
+            },
+            edges={
+                "INTERESTED_IN_PROPERTY": (
+                    InterestedInProperty,
+                    [EntityEdgeSourceTarget(source="User", target="Property")]
+                ),
+                "VIEWED_PROPERTY": (
+                    ViewedProperty,
+                    [EntityEdgeSourceTarget(source="User", target="Property")]
+                ),
+                "REJECTED_PROPERTY": (
+                    RejectedProperty,
+                    [EntityEdgeSourceTarget(source="User", target="Property")]
+                ),
+                "MADE_OFFER": (
+                    MadeOffer,
+                    [EntityEdgeSourceTarget(source="User", target="Property")]
+                ),
+                "HAS_REQUIREMENT": (
+                    HasRequirement,
+                    [EntityEdgeSourceTarget(source="User")]
+                ),
+                "PREFERS_NEIGHBORHOOD": (
+                    PrefersNeighborhood,
+                    [EntityEdgeSourceTarget(source="User", target="Neighborhood")]
+                ),
+                "NEEDS_AMENITY": (
+                    NeedsAmenity,
+                    [EntityEdgeSourceTarget(source="User", target="Amenity")]
+                ),
+                "HAS_BUDGET_CONSTRAINT": (
+                    HasBudgetConstraint,
+                    [EntityEdgeSourceTarget(source="User")]
+                ),
+            }
+        )
+        print(f"✅ Custom ontology set successfully for user {user_id}")
+    except Exception as e:
+        print(f"❌ Error setting custom ontology: {e}")
+        raise
+
 
 def ingest_user_data(zep_client, user_id, user_first_name, user_last_name):
     """Ingest user data into graph, adding user_id and user_full_name to each piece."""
@@ -117,21 +182,24 @@ def ingest_conversations(zep_client, user_id, user_first_name, user_last_name):
 if __name__ == "__main__":
     # Load environment variables
     load_dotenv()
-    
+
     # Validate environment variables
     api_key = os.getenv("ZEP_API_KEY")
     if not api_key:
         print("❌ Missing ZEP_API_KEY environment variable")
         exit(1)
-    
+
     # Initialize Zep client
     zep_client = Zep(api_key=api_key)
-    
+
     # Create user
     user_id, user_first_name, user_last_name = create_user(zep_client)
-    
+
+    # Set custom ontology for this specific user
+    set_custom_ontology(zep_client, user_id)
+
     # Ingest user data
     ingest_user_data(zep_client, user_id, user_first_name, user_last_name)
-    
+
     # Ingest conversations
     ingest_conversations(zep_client, user_id, user_first_name, user_last_name)
