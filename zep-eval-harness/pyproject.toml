@@ -1,0 +1,12 @@
+[project]
+name = "zep-eval-harness"
+version = "0.1.0"
+description = "An end-to-end evaluation framework for testing Zep's memory retrieval and question-answering capabilities"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "python-dotenv",
+    "zep-cloud",
+    "openai",
+    "pydantic",
+]

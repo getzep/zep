@@ -1,4 +1,0 @@
-python-dotenv
-zep-cloud
-openai
-pydantic
