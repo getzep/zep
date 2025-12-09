@@ -1,0 +1,33 @@
+# LOCOMO Benchmark Configuration
+
+# Evaluation concurrency (number of parallel evaluations)
+evaluation_concurrency: 10
+
+# Ingestion concurrency (number of parallel user ingestions)
+ingestion_concurrency: 5
+
+# Graph search parameters
+graph_params:
+  # Edge retrieval
+  edge_limit: 15
+  edge_reranker: "cross_encoder" # cross_encoder, rrf, or mmr
+
+  # Node retrieval
+  node_limit: 5
+  node_reranker: "cross_encoder" # cross_encoder, rrf, or mmr
+
+# Model configuration
+models:
+  # Response generation model
+  response_model: "gpt-4o-mini"
+  response_temperature: 0.0
+
+  # Grader model
+  grader_model: "gpt-4o-mini"
+  grader_temperature: 0.0
+
+# LOCOMO dataset settings
+locomo:
+  num_users: 10
+  max_session_count: 35
+  data_url: "https://raw.githubusercontent.com/snap-research/locomo/refs/heads/main/data/locomo10.json"
