@@ -1,0 +1,102 @@
+[project]
+name = "locomo-eval"
+version = "0.2.0"
+description = "LOCOMO evaluation framework for Zep agent memory"
+authors = [
+    {name = "Zep", email = "info@getzep.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "zep-cloud>=0.70.0",
+    "openai>=1.0.0",
+    "pandas>=2.0.0",
+    "scipy>=1.10.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "requests>=2.31.0",
+    "tiktoken>=0.5.0",
+    "tqdm>=4.65.0",
+    "orjson>=3.11.4",
+    "tenacity>=9.1.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.1.0",
+    "pyright>=1.1.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--cov=.",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "-v"
+]
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    ".venv/*",
+    "*/__pycache__/*",
+    "*/site-packages/*"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false
+exclude = [
+    ".venv",
+    "**/__pycache__",
+    "**/node_modules",
+]

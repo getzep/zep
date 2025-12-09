@@ -1,0 +1,18 @@
+evaluation_concurrency: 20
+ingestion_concurrency: 5
+warmup_enabled: true
+warmup_concurrency: 10
+graph_params:
+  edge_limit: 30
+  edge_reranker: cross_encoder
+  node_limit: 30
+  node_reranker: cross_encoder
+models:
+  response_model: gpt-4o-mini
+  response_temperature: 0.0
+  grader_model: gpt-4o-mini
+  grader_temperature: 0.0
+locomo:
+  num_users: 10
+  max_session_count: 35
+  data_url: https://raw.githubusercontent.com/snap-research/locomo/refs/heads/main/data/locomo10.json
