@@ -1,0 +1,176 @@
+[
+    {
+        "house_search": {
+            "search_query": "4 bedroom family homes westside",
+            "filters": {
+                "bedrooms": 4,
+                "price_min": 200000,
+                "price_max": 400000,
+                "property_type": "single_family",
+                "location": "Westside"
+            },
+            "timestamp": "2025-10-01T14:23:00Z",
+            "results_viewed": 12
+        }
+    },
+    {
+        "house_search": {
+            "search_query": "homes near good schools 4+ bedrooms",
+            "filters": {
+                "bedrooms_min": 4,
+                "bathrooms_min": 2,
+                "price_min": 220000,
+                "price_max": 380000,
+                "has_backyard": true,
+                "school_rating_min": 8
+            },
+            "timestamp": "2025-10-03T09:45:00Z",
+            "results_viewed": 18
+        }
+    },
+    {
+        "house_search": {
+            "search_query": "single family home 2 car garage updated kitchen",
+            "filters": {
+                "bedrooms": 4,
+                "bathrooms_min": 2.5,
+                "price_min": 250000,
+                "price_max": 400000,
+                "has_garage": true,
+                "garage_spaces": 2,
+                "keywords": ["updated kitchen", "renovated"]
+            },
+            "timestamp": "2025-10-08T16:30:00Z",
+            "results_viewed": 15
+        }
+    },
+    {
+        "house_search": {
+            "search_query": "5 bedroom homes with office space",
+            "filters": {
+                "bedrooms": 5,
+                "bathrooms_min": 2,
+                "price_min": 280000,
+                "price_max": 420000,
+                "has_office": true,
+                "has_backyard": true,
+                "lot_size_min": 0.2
+            },
+            "timestamp": "2025-10-12T11:15:00Z",
+            "results_viewed": 9
+        }
+    },
+    {
+        "house_search": {
+            "search_query": "move-in ready homes hardwood floors",
+            "filters": {
+                "bedrooms_min": 3,
+                "bathrooms_min": 2,
+                "price_min": 200000,
+                "price_max": 380000,
+                "year_built_min": 2010,
+                "condition": "excellent",
+                "flooring_type": "hardwood"
+            },
+            "timestamp": "2025-10-16T13:50:00Z",
+            "results_viewed": 14
+        }
+    },
+    {
+        "house_search": {
+            "search_query": "updated homes central AC large master bedroom",
+            "filters": {
+                "bedrooms_min": 4,
+                "bathrooms_min": 2.5,
+                "price_min": 240000,
+                "price_max": 400000,
+                "has_central_ac": true,
+                "master_bedroom_size": "large",
+                "year_renovated_min": 2015
+            },
+            "timestamp": "2025-10-19T10:20:00Z",
+            "results_viewed": 11
+        }
+    },
+    {
+        "house_search": {
+            "search_query": "family homes walkable to school fenced yard",
+            "filters": {
+                "bedrooms_min": 3,
+                "bathrooms_min": 2,
+                "price_min": 220000,
+                "price_max": 390000,
+                "school_distance_max": 0.5,
+                "has_fenced_yard": true,
+                "lot_size_min": 0.25
+            },
+            "timestamp": "2025-10-22T15:40:00Z",
+            "results_viewed": 16
+        }
+    },
+    {
+        "house_search": {
+            "search_query": "riverside school district 4 bedroom homes",
+            "filters": {
+                "bedrooms": 4,
+                "bathrooms_min": 2,
+                "price_min": 300000,
+                "price_max": 410000,
+                "school_district": "Riverside",
+                "has_garage": true,
+                "has_backyard": true
+            },
+            "timestamp": "2025-10-25T14:10:00Z",
+            "results_viewed": 8
+        }
+    },
+    {
+        "house_search": {
+            "search_query": "homes with home office space for remote work",
+            "filters": {
+                "bedrooms_min": 3,
+                "bathrooms_min": 2,
+                "price_min": 230000,
+                "price_max": 390000,
+                "has_office": true,
+                "has_garage": true,
+                "garage_spaces": 2
+            },
+            "timestamp": "2025-10-28T09:30:00Z",
+            "results_viewed": 13
+        }
+    },
+    {
+        "house_search": {
+            "search_query": "family friendly homes with large backyard for entertaining",
+            "filters": {
+                "bedrooms_min": 3,
+                "bathrooms_min": 2,
+                "price_min": 210000,
+                "price_max": 400000,
+                "has_backyard": true,
+                "has_fenced_yard": true,
+                "lot_size_min": 0.25,
+                "outdoor_features": ["patio", "deck"]
+            },
+            "timestamp": "2025-10-29T14:55:00Z",
+            "results_viewed": 20
+        }
+    },
+    {
+        "house_search": {
+            "search_query": "energy efficient homes under 420k",
+            "filters": {
+                "bedrooms_min": 3,
+                "bathrooms_min": 2,
+                "price_min": 200000,
+                "price_max": 420000,
+                "has_central_ac": true,
+                "year_built_min": 2010,
+                "condition": "excellent"
+            },
+            "timestamp": "2025-10-30T11:45:00Z",
+            "results_viewed": 10
+        }
+    }
+]
