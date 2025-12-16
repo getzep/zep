@@ -35,7 +35,7 @@ dataclasses-json==0.6.7
 Deprecated==1.2.18
 distro==1.9.0
 fastapi==0.116.1
-filelock==3.18.0
+filelock==3.20.1
 filetype==1.2.0
 frozenlist==1.7.0
 fsspec==2025.7.0
