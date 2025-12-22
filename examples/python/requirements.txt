@@ -61,7 +61,7 @@ langsmith==0.4.10
 lazify==0.4.0
 literalai==0.1.201
 MarkupSafe==3.0.2
-marshmallow==3.26.1
+marshmallow==3.26.2
 mcp==1.12.3
 multidict==6.6.3
 mypy-extensions==1.1.0
