@@ -4,49 +4,33 @@ Document Chunking with Contextualized Retrieval for Zep
 
 This script demonstrates Anthropic's contextualized retrieval technique:
 1. Chunks a document into manageable pieces
-2. Uses OpenAI (gpt-4o-mini) to generate context for each chunk
+2. Uses OpenAI to generate context for each chunk
 3. Ingests contextualized chunks into Zep's knowledge graph
 
 The contextualization step improves retrieval accuracy by situating each
 chunk within the broader document context.
 """
 
-import argparse
 import os
 import re
-import sys
 import time
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
+from openai import OpenAI
+from zep_cloud.client import Zep
 
 # Load environment variables
 load_dotenv()
 
-
-@dataclass
-class ChunkingConfig:
-    """Configuration for document chunking."""
-    chunk_size: int = 6000  # Characters per chunk (leaves room for context within 10K limit)
-    chunk_overlap: int = 200  # Overlap between chunks for continuity
-    max_total_size: int = 10000  # Zep's maximum episode size
-
-
-@dataclass
-class ProcessingStats:
-    """Statistics for tracking processing progress."""
-    total_chunks: int = 0
-    processed_chunks: int = 0
-    failed_chunks: int = 0
-    total_characters: int = 0
-    contextualized_characters: int = 0
+# Configuration
+CHUNK_SIZE = 500  # Characters per chunk
+CHUNK_OVERLAP = 50  # Overlap between chunks for continuity
+ZEP_MAX_EPISODE_SIZE = 10000  # Zep's maximum episode size
+OPENAI_MODEL = "gpt-5-mini-2025-08-07"
 
 
 def split_into_sentences(text: str) -> list[str]:
     """Split text into sentences using common delimiters."""
-    # Split on sentence-ending punctuation followed by space or newline
     sentence_pattern = r'(?<=[.!?])\s+'
     sentences = re.split(sentence_pattern, text)
     return [s.strip() for s in sentences if s.strip()]
@@ -58,7 +42,7 @@ def split_into_paragraphs(text: str) -> list[str]:
     return [p.strip() for p in paragraphs if p.strip()]
 
 
-def chunk_document(document: str, config: ChunkingConfig) -> list[str]:
+def chunk_document(document: str) -> list[str]:
     """
     Chunk a document into smaller pieces suitable for processing.
 
@@ -70,49 +54,42 @@ def chunk_document(document: str, config: ChunkingConfig) -> list[str]:
     """
     chunks = []
     paragraphs = split_into_paragraphs(document)
-
     current_chunk = ""
 
     for paragraph in paragraphs:
-        # If paragraph is too large, split into sentences
-        if len(paragraph) > config.chunk_size:
+        if len(paragraph) > CHUNK_SIZE:
             sentences = split_into_sentences(paragraph)
             for sentence in sentences:
-                if len(current_chunk) + len(sentence) + 1 <= config.chunk_size:
+                if len(current_chunk) + len(sentence) + 1 <= CHUNK_SIZE:
                     current_chunk = f"{current_chunk} {sentence}".strip() if current_chunk else sentence
                 else:
                     if current_chunk:
                         chunks.append(current_chunk)
-                        # Create overlap from the end of the current chunk
-                        overlap_text = current_chunk[-config.chunk_overlap:] if len(current_chunk) > config.chunk_overlap else current_chunk
+                        overlap_text = current_chunk[-CHUNK_OVERLAP:] if len(current_chunk) > CHUNK_OVERLAP else current_chunk
                         current_chunk = f"{overlap_text} {sentence}".strip()
                     else:
-                        # Sentence itself is too large, truncate it
-                        chunks.append(sentence[:config.chunk_size])
+                        chunks.append(sentence[:CHUNK_SIZE])
                         current_chunk = ""
         else:
-            # Try to add paragraph to current chunk
-            if len(current_chunk) + len(paragraph) + 2 <= config.chunk_size:
+            if len(current_chunk) + len(paragraph) + 2 <= CHUNK_SIZE:
                 current_chunk = f"{current_chunk}\n\n{paragraph}".strip() if current_chunk else paragraph
             else:
                 if current_chunk:
                     chunks.append(current_chunk)
-                    # Create overlap from the end of the current chunk
-                    overlap_text = current_chunk[-config.chunk_overlap:] if len(current_chunk) > config.chunk_overlap else current_chunk
+                    overlap_text = current_chunk[-CHUNK_OVERLAP:] if len(current_chunk) > CHUNK_OVERLAP else current_chunk
                     current_chunk = f"{overlap_text}\n\n{paragraph}".strip()
                 else:
                     current_chunk = paragraph
 
-    # Don't forget the last chunk
     if current_chunk:
         chunks.append(current_chunk)
 
     return chunks
 
 
-def contextualize_chunk(openai_client, full_document: str, chunk: str, chunk_index: int, total_chunks: int) -> str:
+def contextualize_chunk(openai_client: OpenAI, full_document: str, chunk: str) -> str:
     """
-    Use gpt-4o-mini to situate a chunk within the document context.
+    Use OpenAI to situate a chunk within the document context.
 
     This implements Anthropic's contextualized retrieval technique,
     which improves search retrieval by adding contextual information
@@ -138,10 +115,9 @@ in your context. Answer only with the succinct context and nothing else."""
     for attempt in range(max_retries):
         try:
             response = openai_client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=OPENAI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=256,
-                temperature=0.0
+                max_completion_tokens=256
             )
             context = response.choices[0].message.content.strip()
             return f"{context}\n\n---\n\n{chunk}"
@@ -150,9 +126,9 @@ in your context. Answer only with the succinct context and nothing else."""
             if "rate_limit" in str(e).lower() and attempt < max_retries - 1:
                 print(f"  Rate limited, retrying in {retry_delay}s...")
                 time.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
+                retry_delay *= 2
             elif attempt < max_retries - 1:
-                print(f"  Error contextualizing chunk {chunk_index + 1}/{total_chunks}: {e}")
+                print(f"  Error contextualizing: {e}")
                 print(f"  Retrying in {retry_delay}s...")
                 time.sleep(retry_delay)
                 retry_delay *= 2
@@ -160,7 +136,7 @@ in your context. Answer only with the succinct context and nothing else."""
                 raise
 
 
-def validate_and_truncate_chunk(contextualized_chunk: str, max_size: int) -> str:
+def validate_and_truncate_chunk(contextualized_chunk: str) -> str:
     """
     Validate chunk size and truncate if necessary.
 
@@ -168,66 +144,51 @@ def validate_and_truncate_chunk(contextualized_chunk: str, max_size: int) -> str
     chunk exceeds this, we truncate the context portion while preserving
     the original chunk content.
     """
-    if len(contextualized_chunk) <= max_size:
+    if len(contextualized_chunk) <= ZEP_MAX_EPISODE_SIZE:
         return contextualized_chunk
 
-    # Find the separator between context and chunk
     separator = "\n\n---\n\n"
     separator_idx = contextualized_chunk.find(separator)
 
     if separator_idx == -1:
-        # No separator found, just truncate
-        return contextualized_chunk[:max_size]
+        return contextualized_chunk[:ZEP_MAX_EPISODE_SIZE]
 
     context = contextualized_chunk[:separator_idx]
     chunk = contextualized_chunk[separator_idx + len(separator):]
 
-    # Calculate how much we need to truncate from the context
     total_overhead = len(separator) + len(chunk)
-    max_context_size = max_size - total_overhead
+    max_context_size = ZEP_MAX_EPISODE_SIZE - total_overhead
 
     if max_context_size <= 0:
-        # Chunk itself is too large, truncate it
-        return chunk[:max_size]
+        return chunk[:ZEP_MAX_EPISODE_SIZE]
 
     truncated_context = context[:max_context_size]
     return f"{truncated_context}{separator}{chunk}"
 
 
-def ensure_user_exists(zep_client, user_id: str) -> bool:
-    """
-    Ensure a user exists in Zep, creating them if necessary.
-
-    Returns True if user exists or was created successfully.
-    """
+def ensure_user_exists(zep_client: Zep, user_id: str) -> bool:
+    """Ensure a user exists in Zep, creating them if necessary."""
     try:
-        # Try to get the user first
         zep_client.user.get(user_id)
-        print(f"  User '{user_id}' exists")
+        print(f"User '{user_id}' exists")
         return True
     except Exception as e:
         if "404" in str(e) or "not found" in str(e).lower():
-            # User doesn't exist, create them
-            print(f"  User '{user_id}' not found, creating...")
+            print(f"User '{user_id}' not found, creating...")
             try:
                 zep_client.user.add(user_id=user_id)
-                print(f"  User '{user_id}' created successfully")
+                print(f"User '{user_id}' created successfully")
                 return True
             except Exception as create_err:
-                print(f"  ERROR creating user: {create_err}")
+                print(f"ERROR creating user: {create_err}")
                 return False
         else:
-            print(f"  ERROR checking user: {e}")
+            print(f"ERROR checking user: {e}")
             return False
 
 
-def ingest_to_zep(zep_client, user_id: str, contextualized_chunk: str, chunk_index: int, total_chunks: int, wait: bool = False) -> Optional[str]:
-    """
-    Ingest a contextualized chunk into Zep's knowledge graph.
-
-    Uses the graph.add() method to add the chunk as an episode,
-    which will be processed and added to the user's knowledge graph.
-    """
+def ingest_to_zep(zep_client: Zep, user_id: str, contextualized_chunk: str) -> str | None:
+    """Ingest a contextualized chunk into Zep's knowledge graph."""
     max_retries = 3
     retry_delay = 1
 
@@ -238,20 +199,11 @@ def ingest_to_zep(zep_client, user_id: str, contextualized_chunk: str, chunk_ind
                 type="text",
                 data=contextualized_chunk
             )
-
-            episode_uuid = episode.uuid if hasattr(episode, 'uuid') else str(episode)
-
-            if wait and hasattr(episode, 'uuid'):
-                print(f"  Waiting for episode {episode_uuid} to be processed...")
-                # Poll for completion (simple implementation)
-                # In production, you might want to use webhooks or async processing
-                time.sleep(2)
-
-            return episode_uuid
+            return episode.uuid if hasattr(episode, 'uuid') else str(episode)
 
         except Exception as e:
             if attempt < max_retries - 1:
-                print(f"  Error ingesting chunk {chunk_index + 1}/{total_chunks}: {e}")
+                print(f"  Error ingesting: {e}")
                 print(f"  Retrying in {retry_delay}s...")
                 time.sleep(retry_delay)
                 retry_delay *= 2
@@ -259,13 +211,7 @@ def ingest_to_zep(zep_client, user_id: str, contextualized_chunk: str, chunk_ind
                 raise
 
 
-def process_document(
-    document_path: str,
-    user_id: str,
-    config: ChunkingConfig,
-    wait: bool = False,
-    dry_run: bool = False
-) -> ProcessingStats:
+def process_document(document_path: str, user_id: str):
     """
     Process a document through the full pipeline:
     1. Read and chunk the document
@@ -278,37 +224,27 @@ def process_document(
 
     if not openai_api_key:
         raise ValueError("OPENAI_API_KEY environment variable not set")
-    if not zep_api_key and not dry_run:
+    if not zep_api_key:
         raise ValueError("ZEP_API_KEY environment variable not set")
 
-    from openai import OpenAI
     openai_client = OpenAI(api_key=openai_api_key)
+    zep_client = Zep(api_key=zep_api_key)
 
-    zep_client = None
-    if not dry_run:
-        from zep_cloud.client import Zep
-        zep_client = Zep(api_key=zep_api_key)
-
-        # Ensure user exists before processing
-        print(f"\nChecking user: {user_id}")
-        if not ensure_user_exists(zep_client, user_id):
-            raise ValueError(f"Failed to ensure user '{user_id}' exists in Zep")
+    # Ensure user exists
+    print(f"\nChecking user: {user_id}")
+    if not ensure_user_exists(zep_client, user_id):
+        raise ValueError(f"Failed to ensure user '{user_id}' exists in Zep")
 
     # Read document
     print(f"\nReading document: {document_path}")
-    document_content = Path(document_path).read_text(encoding='utf-8')
+    with open(document_path, 'r', encoding='utf-8') as f:
+        document_content = f.read()
     print(f"Document size: {len(document_content):,} characters")
 
     # Chunk document
-    print(f"\nChunking document (chunk_size={config.chunk_size}, overlap={config.chunk_overlap})...")
-    chunks = chunk_document(document_content, config)
+    print(f"\nChunking document (chunk_size={CHUNK_SIZE}, overlap={CHUNK_OVERLAP})...")
+    chunks = chunk_document(document_content)
     print(f"Created {len(chunks)} chunks")
-
-    # Initialize stats
-    stats = ProcessingStats(
-        total_chunks=len(chunks),
-        total_characters=len(document_content)
-    )
 
     # Process each chunk
     print("\nProcessing chunks:")
@@ -320,21 +256,8 @@ def process_document(
         # Contextualize
         print("  Contextualizing with OpenAI...")
         try:
-            contextualized = contextualize_chunk(
-                openai_client,
-                document_content,
-                chunk,
-                i,
-                len(chunks)
-            )
-
-            # Validate and truncate if needed
-            original_size = len(contextualized)
-            contextualized = validate_and_truncate_chunk(contextualized, config.max_total_size)
-            if len(contextualized) < original_size:
-                print(f"  Truncated from {original_size:,} to {len(contextualized):,} chars")
-
-            stats.contextualized_characters += len(contextualized)
+            contextualized = contextualize_chunk(openai_client, document_content, chunk)
+            contextualized = validate_and_truncate_chunk(contextualized)
 
             # Preview the context
             context_end = contextualized.find("\n\n---\n\n")
@@ -344,141 +267,24 @@ def process_document(
 
         except Exception as e:
             print(f"  ERROR contextualizing: {e}")
-            stats.failed_chunks += 1
             continue
 
         # Ingest to Zep
-        if dry_run:
-            print("  [DRY RUN] Would ingest to Zep")
-            stats.processed_chunks += 1
-        else:
-            print("  Ingesting to Zep...")
-            try:
-                episode_uuid = ingest_to_zep(
-                    zep_client,
-                    user_id,
-                    contextualized,
-                    i,
-                    len(chunks),
-                    wait=wait
-                )
-                print(f"  Created episode: {episode_uuid}")
-                stats.processed_chunks += 1
-            except Exception as e:
-                print(f"  ERROR ingesting: {e}")
-                stats.failed_chunks += 1
+        print("  Ingesting to Zep...")
+        try:
+            episode_uuid = ingest_to_zep(zep_client, user_id, contextualized)
+            print(f"  Created episode: {episode_uuid}")
+        except Exception as e:
+            print(f"  ERROR ingesting: {e}")
 
-    return stats
-
-
-def print_summary(stats: ProcessingStats):
-    """Print a summary of the processing results."""
     print("\n" + "=" * 60)
-    print("PROCESSING SUMMARY")
+    print("Processing complete!")
     print("=" * 60)
-    print(f"Total chunks: {stats.total_chunks}")
-    print(f"Successfully processed: {stats.processed_chunks}")
-    print(f"Failed: {stats.failed_chunks}")
-    print(f"Original document size: {stats.total_characters:,} characters")
-    print(f"Total contextualized size: {stats.contextualized_characters:,} characters")
-    if stats.total_characters > 0:
-        expansion = (stats.contextualized_characters / stats.total_characters - 1) * 100
-        print(f"Size expansion from contextualization: {expansion:.1f}%")
-    print("=" * 60)
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Chunk and ingest documents into Zep with contextualized retrieval",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Basic usage
-  python chunk_and_ingest.py sample_document.txt --user-id user123
-
-  # Custom chunk size
-  python chunk_and_ingest.py doc.txt --user-id user123 --chunk-size 4000
-
-  # Wait for processing
-  python chunk_and_ingest.py doc.txt --user-id user123 --wait
-
-  # Dry run (test without ingesting)
-  python chunk_and_ingest.py doc.txt --user-id user123 --dry-run
-        """
-    )
-
-    parser.add_argument(
-        "document",
-        help="Path to the document to process"
-    )
-    parser.add_argument(
-        "--user-id",
-        required=True,
-        help="Zep user ID to associate the chunks with"
-    )
-    parser.add_argument(
-        "--chunk-size",
-        type=int,
-        default=6000,
-        help="Maximum characters per chunk (default: 6000)"
-    )
-    parser.add_argument(
-        "--chunk-overlap",
-        type=int,
-        default=200,
-        help="Character overlap between chunks (default: 200)"
-    )
-    parser.add_argument(
-        "--wait",
-        action="store_true",
-        help="Wait for each episode to be processed before continuing"
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Process and contextualize but don't ingest to Zep"
-    )
-
-    args = parser.parse_args()
-
-    # Validate document exists
-    if not Path(args.document).exists():
-        print(f"Error: Document not found: {args.document}", file=sys.stderr)
-        sys.exit(1)
-
-    # Create config
-    config = ChunkingConfig(
-        chunk_size=args.chunk_size,
-        chunk_overlap=args.chunk_overlap
-    )
-
-    # Process
-    print("=" * 60)
-    print("DOCUMENT CHUNKING WITH CONTEXTUALIZED RETRIEVAL")
-    print("=" * 60)
-    print(f"Document: {args.document}")
-    print(f"User ID: {args.user_id}")
-    print(f"Chunk size: {config.chunk_size}")
-    print(f"Chunk overlap: {config.chunk_overlap}")
-    print(f"Dry run: {args.dry_run}")
-
-    try:
-        stats = process_document(
-            args.document,
-            args.user_id,
-            config,
-            wait=args.wait,
-            dry_run=args.dry_run
-        )
-        print_summary(stats)
-
-        if stats.failed_chunks > 0:
-            sys.exit(1)
-
-    except Exception as e:
-        print(f"\nFatal error: {e}", file=sys.stderr)
-        sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    # Example usage - modify these values as needed
+    DOCUMENT_PATH = "sample_document.txt"
+    USER_ID = "example-user"
+
+    process_document(DOCUMENT_PATH, USER_ID)

@@ -1,0 +1,361 @@
+ACME CORPORATION EMPLOYEE HANDBOOK
+Effective Date: January 1, 2024
+Version 3.2
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+1. Introduction and Company Values
+2. Remote Work Policy
+3. Time Off and Leave Policies
+4. Professional Development
+5. Performance Management
+6. Workplace Conduct and Ethics
+7. Information Security
+8. Benefits Overview
+
+================================================================================
+1. INTRODUCTION AND COMPANY VALUES
+================================================================================
+
+Welcome to ACME Corporation. This handbook outlines our policies, procedures, and expectations for all employees. Our company was founded in 2010 with a mission to deliver innovative solutions that transform how businesses operate. We are committed to fostering a workplace culture built on integrity, collaboration, and continuous improvement.
+
+ACME Corporation's core values guide everything we do:
+
+INNOVATION: We encourage creative thinking and embrace new ideas. Every employee is empowered to propose improvements to our products, processes, and workplace environment. Our annual Innovation Challenge awards cash prizes to the best employee-submitted ideas, with the top prize being $25,000.
+
+INTEGRITY: We conduct all business with the highest ethical standards. This means being honest with customers, partners, and each other. Employees are expected to report any concerns about unethical behavior through our anonymous Ethics Hotline (1-800-ACME-ETH) or directly to the Chief Compliance Officer.
+
+INCLUSION: We believe diverse perspectives lead to better outcomes. ACME is committed to maintaining a workplace free from discrimination and harassment. Our Diversity & Inclusion Council meets quarterly to review progress on our inclusion goals and recommend new initiatives.
+
+IMPACT: We measure success not just by financial results but by the positive impact we have on our customers, communities, and the environment. Our annual Community Service Day provides all employees with paid time to volunteer at local organizations.
+
+================================================================================
+2. REMOTE WORK POLICY
+================================================================================
+
+Effective March 1, 2024, ACME Corporation has implemented a hybrid work model that balances flexibility with collaboration. This policy applies to all eligible employees whose roles can be performed remotely.
+
+ELIGIBILITY REQUIREMENTS
+
+Employees are eligible for remote work if they:
+- Have completed their 90-day probationary period
+- Have received a "Meets Expectations" or higher rating on their most recent performance review
+- Have job responsibilities that can be performed effectively from a remote location
+- Have manager approval and a signed Remote Work Agreement on file
+
+WORK ARRANGEMENT OPTIONS
+
+Full Remote: Employees may work remotely five days per week. This arrangement is available for roles that do not require regular in-person collaboration. Full remote employees must maintain a dedicated home office space and be available during core business hours (9:00 AM - 3:00 PM in their local time zone).
+
+Hybrid Schedule: Employees work a combination of remote and in-office days. The standard hybrid arrangement is three days remote and two days in-office per week. In-office days should be coordinated with your team to maximize collaboration opportunities.
+
+Office-Based: Some roles require daily in-person presence. These positions include facilities staff, security personnel, laboratory technicians, and certain customer-facing roles. Office-based employees may request occasional remote work days with manager approval.
+
+EQUIPMENT AND TECHNOLOGY
+
+ACME will provide the following equipment for approved remote workers:
+- Laptop computer with necessary software licenses
+- External monitor (up to 27 inches)
+- Keyboard and mouse
+- Headset for video conferences
+- A monthly stipend of $75 for internet and phone expenses
+
+Employees are responsible for maintaining a secure, ergonomic workspace. The company offers virtual ergonomic assessments through our partnership with ErgoWorks Inc. Contact Human Resources to schedule an assessment.
+
+HOME OFFICE REQUIREMENTS
+
+Remote workspaces must meet the following criteria:
+- Reliable high-speed internet connection (minimum 50 Mbps download speed)
+- Quiet environment suitable for video conferences and focused work
+- Secure physical space to protect company equipment and confidential information
+- Smoke detectors and fire extinguisher present
+- Adequate lighting to prevent eye strain
+
+COMMUNICATION EXPECTATIONS
+
+Remote employees are expected to:
+- Respond to emails and messages within four business hours during work hours
+- Keep their calendar updated with availability and scheduled meetings
+- Use video for team meetings and one-on-ones when possible
+- Participate actively in team channels and collaboration platforms
+- Notify their manager promptly if they experience technical issues that impact their work
+
+================================================================================
+3. TIME OFF AND LEAVE POLICIES
+================================================================================
+
+ACME Corporation provides comprehensive time off benefits to support employee wellbeing and work-life balance. All time off must be requested through the ACME Time portal and approved by your manager before being taken, except in emergencies.
+
+PAID TIME OFF (PTO)
+
+PTO accrual rates are based on years of service:
+- 0-2 years: 15 days per year (accrued at 1.25 days per month)
+- 3-5 years: 20 days per year (accrued at 1.67 days per month)
+- 6-10 years: 25 days per year (accrued at 2.08 days per month)
+- 11+ years: 30 days per year (accrued at 2.5 days per month)
+
+PTO can be used for vacation, personal appointments, or any other purpose. Employees may carry over up to 5 unused PTO days to the following year. Unused PTO above this limit will be forfeited on December 31st. Upon termination, employees will be paid for unused accrued PTO up to a maximum of 10 days.
+
+SICK LEAVE
+
+All employees receive 10 days of sick leave per year, available immediately upon hire. Sick leave may be used for:
+- Personal illness or injury
+- Medical appointments
+- Care of an immediate family member who is ill
+- Mental health days
+
+Sick leave does not carry over and is not paid out upon termination. For absences of three or more consecutive days, employees must provide documentation from a healthcare provider.
+
+HOLIDAYS
+
+ACME observes the following paid holidays in 2024:
+- New Year's Day (January 1)
+- Martin Luther King Jr. Day (January 15)
+- Presidents' Day (February 19)
+- Memorial Day (May 27)
+- Independence Day (July 4)
+- Labor Day (September 2)
+- Indigenous Peoples' Day (October 14)
+- Thanksgiving Day (November 28)
+- Day After Thanksgiving (November 29)
+- Christmas Eve (December 24)
+- Christmas Day (December 25)
+
+Additionally, employees receive two floating holidays per year to observe religious or cultural holidays of their choosing.
+
+PARENTAL LEAVE
+
+ACME provides 16 weeks of paid parental leave for all new parents, regardless of gender. This leave may be taken within 12 months of the birth, adoption, or foster placement of a child. Parental leave runs concurrently with any applicable FMLA leave. Employees may choose to take leave all at once or intermittently with manager approval.
+
+BEREAVEMENT LEAVE
+
+Employees may take up to 5 days of paid bereavement leave for the death of an immediate family member (spouse, domestic partner, child, parent, sibling, grandparent, or grandchild). Up to 3 days of paid leave is available for the death of an extended family member or close friend. Additional unpaid leave may be granted upon request.
+
+================================================================================
+4. PROFESSIONAL DEVELOPMENT
+================================================================================
+
+ACME Corporation invests in employee growth through various professional development programs. We believe that supporting your career development benefits both you and the company.
+
+EDUCATION ASSISTANCE PROGRAM
+
+The Education Assistance Program provides financial support for job-related education. Eligible expenses include:
+- Tuition for degree programs at accredited institutions
+- Professional certifications relevant to your role
+- Continuing education courses
+- Industry conferences and seminars
+
+Annual limits:
+- Undergraduate coursework: Up to $5,250 per year (tax-free per IRS limits)
+- Graduate coursework: Up to $10,000 per year
+- Professional certifications: Up to $3,000 per year
+- Conferences: Up to $2,500 per year
+
+To participate, employees must have completed one year of service and maintain satisfactory job performance. A commitment to remain employed for 12 months after completing funded coursework is required, or the benefit must be repaid on a prorated basis.
+
+INTERNAL TRAINING PROGRAMS
+
+ACME Learning offers over 500 online courses through our learning management system. Topics include:
+- Technical skills (programming, data analysis, project management)
+- Leadership development
+- Communication and presentation skills
+- Diversity, equity, and inclusion
+- Compliance and ethics training
+
+All employees have access to ACME Learning. Mandatory compliance training must be completed annually by December 31st. Managers should work with employees to identify relevant courses as part of career development planning.
+
+MENTORSHIP PROGRAM
+
+The ACME Mentorship Program pairs employees with experienced leaders for professional guidance. Mentorship relationships typically last 12 months and include:
+- Monthly one-on-one meetings
+- Goal setting and progress tracking
+- Career path exploration
+- Skill development activities
+
+Applications for the mentorship program are accepted twice per year, in January and July. Contact the Talent Development team for more information.
+
+INTERNAL MOBILITY
+
+We encourage employees to explore career opportunities across the organization. Internal candidates receive priority consideration for open positions if they meet the minimum qualifications. To be eligible for internal transfer:
+- You must have been in your current role for at least 12 months
+- You must have no active performance improvement plans
+- You must have manager approval to apply
+
+================================================================================
+5. PERFORMANCE MANAGEMENT
+================================================================================
+
+Our performance management process is designed to provide regular feedback, recognize achievements, and support professional growth. We use a continuous feedback model rather than relying solely on annual reviews.
+
+PERFORMANCE CONVERSATIONS
+
+Managers and employees should have ongoing performance conversations throughout the year. At minimum, formal check-ins should occur:
+- Weekly: Brief status updates on current projects and any immediate support needs
+- Monthly: Discussion of progress toward goals, feedback on recent work, and short-term priorities
+- Quarterly: Comprehensive review of goal progress, skills development, and career aspirations
+
+GOAL SETTING
+
+All employees set annual goals aligned with departmental and company objectives. Goals should follow the SMART framework:
+- Specific: Clearly defined outcomes
+- Measurable: Quantifiable success criteria
+- Achievable: Realistic given available resources
+- Relevant: Connected to team and company priorities
+- Time-bound: Clear deadlines and milestones
+
+Employees typically have 4-6 goals per year. Goals are entered into the ACME Performance system by January 31st and may be adjusted mid-year with manager approval.
+
+ANNUAL PERFORMANCE REVIEWS
+
+Formal performance reviews are conducted in December each year. The review process includes:
+- Self-assessment by the employee
+- Manager assessment with documentation
+- Calibration sessions to ensure consistent ratings across teams
+- One-on-one review meeting to discuss results
+- Goal setting for the upcoming year
+
+Performance ratings use a five-point scale:
+5 - Exceptional: Consistently exceeds expectations with outstanding results
+4 - Exceeds Expectations: Regularly performs above expected levels
+3 - Meets Expectations: Consistently achieves expected performance levels
+2 - Needs Improvement: Performance falls below expectations in some areas
+1 - Unsatisfactory: Performance significantly below expectations
+
+PERFORMANCE IMPROVEMENT PLANS
+
+If an employee receives a rating of 2 or below, they may be placed on a Performance Improvement Plan (PIP). A PIP is a formal document outlining:
+- Specific performance deficiencies
+- Clear expectations for improvement
+- Support and resources available
+- Timeline for improvement (typically 30-90 days)
+- Consequences if improvement is not achieved
+
+PIPs are intended to help employees succeed, not to punish. Employees on a PIP receive additional support including more frequent check-ins and access to coaching resources.
+
+================================================================================
+6. WORKPLACE CONDUCT AND ETHICS
+================================================================================
+
+ACME Corporation is committed to maintaining a professional, respectful, and ethical workplace. All employees are expected to uphold these standards.
+
+CODE OF CONDUCT
+
+All employees must:
+- Treat colleagues, customers, and partners with respect and professionalism
+- Comply with all applicable laws, regulations, and company policies
+- Protect company assets and confidential information
+- Report potential violations of laws or policies
+- Avoid conflicts of interest or situations that could create the appearance of conflict
+- Maintain accurate business records and expense reports
+
+ANTI-HARASSMENT POLICY
+
+ACME has zero tolerance for harassment of any kind. Harassment includes any unwelcome conduct based on race, color, religion, sex, national origin, age, disability, genetic information, sexual orientation, gender identity, or any other protected characteristic.
+
+Examples of prohibited conduct include:
+- Offensive jokes, slurs, or name-calling
+- Physical assault or threats
+- Unwanted sexual advances
+- Display of offensive materials
+- Intimidation or bullying
+
+Employees who experience or witness harassment should report it immediately to their manager, Human Resources, or the Ethics Hotline. All reports will be investigated promptly and confidentially. Retaliation against anyone who reports harassment is strictly prohibited.
+
+CONFLICT OF INTEREST
+
+Employees must avoid situations where personal interests could conflict with company interests. Potential conflicts include:
+- Outside employment with competitors or vendors
+- Financial interests in companies that do business with ACME
+- Personal relationships with subordinates or vendors
+- Use of company resources for personal gain
+
+All potential conflicts must be disclosed to your manager and the Compliance team. The Compliance team will determine whether the conflict can be managed or must be eliminated.
+
+================================================================================
+7. INFORMATION SECURITY
+================================================================================
+
+Protecting company and customer information is everyone's responsibility. The following policies apply to all employees, contractors, and third parties with access to ACME systems.
+
+DATA CLASSIFICATION
+
+Company data is classified into four categories:
+- Public: Information intended for public distribution
+- Internal: Information for employee use only
+- Confidential: Sensitive business information requiring protection
+- Restricted: Highly sensitive information with strict access controls (customer PII, financial data, trade secrets)
+
+PASSWORD REQUIREMENTS
+
+All ACME accounts must use strong passwords that:
+- Are at least 14 characters long
+- Include uppercase and lowercase letters, numbers, and special characters
+- Are not based on dictionary words or personal information
+- Are unique and not reused across accounts
+- Are changed every 90 days
+
+Multi-factor authentication (MFA) is required for all systems containing Confidential or Restricted data.
+
+INCIDENT REPORTING
+
+Security incidents must be reported immediately to the Security Operations Center (SOC) at security@acme.com or ext. 5555. Security incidents include:
+- Lost or stolen devices
+- Suspected phishing emails
+- Unauthorized access attempts
+- Data breaches or potential data exposure
+- Malware or suspicious software
+
+Do not attempt to investigate incidents yourself. The SOC team will provide guidance on next steps.
+
+================================================================================
+8. BENEFITS OVERVIEW
+================================================================================
+
+ACME Corporation offers a comprehensive benefits package to support employee health and financial wellbeing. Benefits are effective the first of the month following hire date.
+
+HEALTH INSURANCE
+
+We offer three medical plan options:
+- Premium PPO: Lower deductible ($500 individual/$1,000 family), higher premiums
+- Standard PPO: Moderate deductible ($1,500 individual/$3,000 family), moderate premiums
+- High-Deductible Health Plan (HDHP): Higher deductible ($2,800 individual/$5,600 family), lower premiums, eligible for HSA
+
+All plans include prescription drug coverage, preventive care at 100%, and access to telehealth services. Dental and vision insurance are also available as separate elections.
+
+RETIREMENT SAVINGS
+
+The ACME 401(k) plan includes:
+- Company match of 100% on the first 4% of salary contributed
+- Immediate vesting of company contributions
+- Pre-tax and Roth contribution options
+- Access to professional investment advice through Financial Engines
+- Auto-enrollment at 6% for new employees (can opt out or adjust)
+
+The annual contribution limit for 2024 is $23,000, with an additional $7,500 catch-up contribution allowed for employees age 50 and over.
+
+ADDITIONAL BENEFITS
+
+- Life Insurance: Company-paid coverage equal to 2x annual salary
+- Disability Insurance: Short-term (60% of salary) and long-term (50% of salary) coverage
+- Employee Assistance Program (EAP): Free confidential counseling and support services
+- Wellness Program: Gym membership subsidies, fitness tracking incentives, and health coaching
+- Commuter Benefits: Pre-tax accounts for transit and parking expenses
+- Employee Stock Purchase Plan: Purchase company stock at 15% discount
+
+For questions about benefits, contact the Benefits team at benefits@acme.com or visit the Benefits Portal on the company intranet.
+
+================================================================================
+ACKNOWLEDGMENT
+================================================================================
+
+By continuing your employment with ACME Corporation, you acknowledge that you have received this handbook and understand that it describes important information about the company's policies and expectations. You agree to read the handbook thoroughly and to abide by the policies and procedures it contains.
+
+This handbook supersedes all previous handbooks and policy statements. ACME Corporation reserves the right to modify, amend, or terminate any policy at any time, with or without notice. This handbook does not create a contract of employment.
+
+Questions about any policy in this handbook should be directed to Human Resources.
+
+Last Updated: January 1, 2024
+Approved by: Sarah Mitchell, Chief Human Resources Officer
+Document Control Number: HR-HB-2024-001
