@@ -1,0 +1,21 @@
+{
+  "name": "chunking-example-typescript",
+  "version": "1.0.0",
+  "description": "Document chunking and ingestion tool for Zep",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "@getzep/zep-cloud": "^2.0.0",
+    "dotenv": "^16.4.0",
+    "openai": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}
