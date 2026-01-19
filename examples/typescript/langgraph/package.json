@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@getzep/zep-cloud": "^2.5.0",
-    "@langchain/core": "^0.3.40",
+    "@langchain/core": "^0.3.80",
     "@langchain/langgraph": "^0.2.51",
     "@langchain/openai": "^0.4.4",
     "commander": "^12.0.0",
