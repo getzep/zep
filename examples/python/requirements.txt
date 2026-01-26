@@ -88,7 +88,7 @@ protobuf==5.29.5
 pydantic-settings==2.10.1
 PyJWT==2.10.1
 python-engineio==4.12.2
-python-multipart==0.0.18
+python-multipart==0.0.22
 python-socketio==5.14.0
 PyYAML==6.0.2
 referencing==0.36.2
