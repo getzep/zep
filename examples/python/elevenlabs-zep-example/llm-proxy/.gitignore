@@ -1,3 +1,4 @@
 .env
+.env.generated
 __pycache__/
 *.pyc
