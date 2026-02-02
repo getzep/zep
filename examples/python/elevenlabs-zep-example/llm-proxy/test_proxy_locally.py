@@ -50,7 +50,7 @@ async def test_proxy():
     print("=" * 60)
     print(f"\nSending request with user_id: {test_request['elevenlabs_extra_body']['user_id']}")
     print(f"User message: {test_request['messages'][-1]['content']}")
-    print(f"Using PROXY_API_KEY: {PROXY_API_KEY[:10]}..." if PROXY_API_KEY else "WARNING: No PROXY_API_KEY found!")
+    print("Using PROXY_API_KEY: [configured]" if PROXY_API_KEY else "WARNING: No PROXY_API_KEY found!")
     print("\n" + "-" * 60)
     print("Response from proxy (streaming):")
     print("-" * 60)

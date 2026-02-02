@@ -22,6 +22,7 @@ To use with ElevenLabs:
 import os
 import json
 import logging
+import re
 import time
 import secrets
 import uuid
@@ -44,6 +45,27 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def sanitize_for_log(value: str, max_length: int = 500) -> str:
+    """
+    Sanitize a value for safe logging to prevent log injection attacks.
+
+    Removes/replaces control characters (newlines, carriage returns, etc.)
+    that could be used to forge log entries or corrupt log files.
+    """
+    if value is None:
+        return "None"
+    if not isinstance(value, str):
+        value = str(value)
+    # Replace control characters that could be used for log injection
+    # This includes newlines, carriage returns, tabs, and other control chars
+    sanitized = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', value)
+    # Truncate if too long
+    if len(sanitized) > max_length:
+        sanitized = sanitized[:max_length] + "..."
+    return sanitized
+
+
 # Get or generate proxy API key for authentication
 # This key must be provided in requests to use the proxy
 PROXY_API_KEY = os.getenv("PROXY_API_KEY")
@@ -52,9 +74,11 @@ if not PROXY_API_KEY:
     PROXY_API_KEY = secrets.token_urlsafe(32)
     logger.warning("=" * 60)
     logger.warning("SECURITY WARNING: PROXY_API_KEY not set in .env!")
-    logger.warning(f"Generated temporary key: {PROXY_API_KEY}")
-    logger.warning("Add this to your .env file: PROXY_API_KEY=" + PROXY_API_KEY)
+    logger.warning("A temporary key has been generated. See console output.")
     logger.warning("=" * 60)
+    # Print to stdout only (not to logs) for security - user can copy from terminal
+    print(f"\n>>> Generated PROXY_API_KEY: {PROXY_API_KEY}")
+    print(f">>> Add to your .env file: PROXY_API_KEY={PROXY_API_KEY}\n")
 
 # Initialize clients
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -109,10 +133,10 @@ async def ensure_zep_user_exists(user_id: str) -> bool:
     except Exception:
         try:
             await zep_client.user.add(user_id=user_id)
-            logger.info(f"Created new Zep user: {user_id}")
+            logger.info(f"Created new Zep user: {sanitize_for_log(user_id)}")
             return True
         except Exception as e:
-            logger.error(f"Failed to create Zep user {user_id}: {e}")
+            logger.error(f"Failed to create Zep user {sanitize_for_log(user_id)}: {sanitize_for_log(e)}")
             return False
 
 
@@ -177,13 +201,13 @@ async def ensure_zep_thread_exists(thread_id: str, user_id: str) -> bool:
     except Exception:
         try:
             await zep_client.thread.create(thread_id=thread_id, user_id=user_id)
-            logger.info(f"Created new Zep thread: {thread_id} for user: {user_id}")
+            logger.info(f"Created new Zep thread: {sanitize_for_log(thread_id)} for user: {sanitize_for_log(user_id)}")
             return True
         except Exception as e:
             # Thread might already exist (race condition), that's ok
             if "already exists" in str(e).lower() or "conflict" in str(e).lower():
                 return True
-            logger.error(f"Failed to create Zep thread {thread_id}: {e}")
+            logger.error(f"Failed to create Zep thread {sanitize_for_log(thread_id)}: {sanitize_for_log(e)}")
             return False
 
 
@@ -218,7 +242,7 @@ async def persist_message_to_zep(
             thread_id=conversation_id,
             messages=[message]
         )
-        logger.info(f"Persisted {role} message to Zep thread {conversation_id}")
+        logger.info(f"Persisted {sanitize_for_log(role)} message to Zep thread {sanitize_for_log(conversation_id)}")
 
     except Exception as e:
         logger.error(f"Error persisting message to Zep thread: {e}")
@@ -297,7 +321,7 @@ async def stream_openai_response(
         if "tools" in request_body:
             openai_request["tools"] = request_body["tools"]
 
-        logger.info(f"Sending request to OpenAI with model: {openai_request['model']}")
+        logger.info(f"Sending request to OpenAI with model: {sanitize_for_log(openai_request['model'])}")
 
         # Stream from OpenAI
         response = await openai_client.chat.completions.create(**openai_request)
@@ -369,21 +393,17 @@ async def chat_completions(request: Request):
 
         logger.info("=" * 50)
         logger.info("Received request from ElevenLabs")
-        logger.info(f"Model requested: {body.get('model', 'not specified')}")
+        logger.info(f"Model requested: {sanitize_for_log(body.get('model', 'not specified'))}")
         logger.info(f"Number of messages: {len(body.get('messages', []))}")
 
         # Log all top-level keys in the request body to see what ElevenLabs sends
-        logger.info(f"Request body keys: {list(body.keys())}")
+        logger.info(f"Request body keys: {sanitize_for_log(str(list(body.keys())))}")
 
-        # Log the actual messages for debugging
+        # Log the actual messages for debugging (sanitized to prevent log injection)
         for i, msg in enumerate(body.get("messages", [])):
-            role = msg.get("role", "unknown")
-            content = msg.get("content", "")
-            # Truncate long messages but show user messages in full (they're usually short)
-            if role == "user":
-                logger.info(f"Message {i} [{role}]: {content}")
-            else:
-                logger.info(f"Message {i} [{role}]: {content[:200]}..." if len(str(content)) > 200 else f"Message {i} [{role}]: {content}")
+            role = sanitize_for_log(msg.get("role", "unknown"))
+            content = sanitize_for_log(msg.get("content", ""), max_length=200)
+            logger.info(f"Message {i} [{role}]: {content}")
 
         # ============================================================
         # DEBUG: Log full request structure to find conversation_id
@@ -393,11 +413,11 @@ async def chat_completions(request: Request):
             if key == "messages":
                 continue  # Skip messages, already logged above
             elif isinstance(value, dict):
-                logger.info(f"  {key}: {json.dumps(value, indent=4)}")
+                logger.info(f"  {sanitize_for_log(key)}: {sanitize_for_log(json.dumps(value))}")
             elif isinstance(value, list):
-                logger.info(f"  {key}: {value}")
+                logger.info(f"  {sanitize_for_log(key)}: {sanitize_for_log(str(value))}")
             else:
-                logger.info(f"  {key}: {value}")
+                logger.info(f"  {sanitize_for_log(key)}: {sanitize_for_log(value)}")
         logger.info("--- END FULL REQUEST BODY ---")
 
         # Extract from elevenlabs_extra_body (this is where customLlmExtraBody ends up)
@@ -407,12 +427,12 @@ async def chat_completions(request: Request):
 
         # Also check if conversation_id exists elsewhere in the request
         logger.info("--- SEARCHING FOR CONVERSATION_ID ---")
-        logger.info(f"  In elevenlabs_extra_body: {conversation_id}")
+        logger.info(f"  In elevenlabs_extra_body: {sanitize_for_log(conversation_id)}")
 
         possible_keys = ["conversation_id", "session_id", "call_id", "id", "conv_id"]
         for key in possible_keys:
             if key in body:
-                logger.info(f"  Found body['{key}']: {body[key]}")
+                logger.info(f"  Found body['{sanitize_for_log(key)}']: {sanitize_for_log(body[key])}")
                 if not conversation_id:
                     conversation_id = body[key]
 
@@ -425,8 +445,8 @@ async def chat_completions(request: Request):
             logger.error("ERROR: No conversation_id found anywhere in the request!")
             raise HTTPException(status_code=400, detail="conversation_id is required")
 
-        logger.info(f"✓ Using User ID: {user_id}")
-        logger.info(f"✓ Using Conversation ID: {conversation_id}")
+        logger.info(f"Using User ID: {sanitize_for_log(user_id)}")
+        logger.info(f"Using Conversation ID: {sanitize_for_log(conversation_id)}")
 
         # Ensure user exists in Zep
         await ensure_zep_user_exists(user_id)
@@ -462,7 +482,7 @@ async def chat_completions(request: Request):
         # Log the modified system prompt (truncated for readability)
         if messages and messages[0].get("role") == "system":
             system_content = messages[0]["content"]
-            logger.info(f"System prompt (first 500 chars): {system_content[:500]}...")
+            logger.info(f"System prompt (first 500 chars): {sanitize_for_log(system_content, max_length=500)}")
 
         # Stream the response back (also persists assistant response to Zep)
         return StreamingResponse(
@@ -510,7 +530,7 @@ async def warm_user_cache(request: Request):
         if not user_id:
             raise HTTPException(status_code=400, detail="user_id is required")
 
-        logger.info(f"Warming cache for user: {user_id}")
+        logger.info(f"Warming cache for user: {sanitize_for_log(user_id)}")
 
         # Ensure user exists first
         await ensure_zep_user_exists(user_id)
@@ -522,7 +542,7 @@ async def warm_user_cache(request: Request):
         try:
             await zep_client.user.warm(user_id=user_id)
             elapsed = (time.time() - start_time) * 1000
-            logger.info(f"Warmed cache for user {user_id} in {elapsed:.0f}ms")
+            logger.info(f"Warmed cache for user {sanitize_for_log(user_id)} in {elapsed:.0f}ms")
             return {
                 "status": "success",
                 "user_id": user_id,
@@ -532,7 +552,7 @@ async def warm_user_cache(request: Request):
             # Check if this is a "no graph data" error - that's expected for new users
             error_str = str(warm_error).lower()
             if "not found" in error_str or "graph data" in error_str:
-                logger.info(f"No graph data to warm for user {user_id} (new user)")
+                logger.info(f"No graph data to warm for user {sanitize_for_log(user_id)} (new user)")
                 return {
                     "status": "success",
                     "user_id": user_id,
@@ -544,8 +564,9 @@ async def warm_user_cache(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error warming cache for user: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error warming cache for user: {sanitize_for_log(e)}")
+        # Don't expose internal error details to external users
+        raise HTTPException(status_code=500, detail="Internal server error while warming cache")
 
 
 @app.get("/")
