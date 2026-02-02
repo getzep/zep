@@ -294,7 +294,10 @@ const styles = {
     height: '20px',
     background: '#4CAF50',
     borderRadius: '50%',
-    animation: 'pulse 1.5s ease-in-out infinite',
+    boxShadow: '0 0 0 0 rgba(76, 175, 80, 0.7)',
+    // Note: For a pulsing animation, add CSS keyframes to your global stylesheet:
+    // @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); } 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); } }
+    // Then uncomment: animation: 'pulse 1.5s ease-in-out infinite',
   },
   messagesContainer: {
     background: '#fff',

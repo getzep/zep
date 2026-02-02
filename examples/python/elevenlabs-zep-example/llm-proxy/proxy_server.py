@@ -26,6 +26,7 @@ import time
 import secrets
 import uuid
 import asyncio
+import traceback
 from typing import AsyncGenerator, Optional
 
 from fastapi import FastAPI, Request, HTTPException
@@ -52,7 +53,7 @@ if not PROXY_API_KEY:
     logger.warning("=" * 60)
     logger.warning("SECURITY WARNING: PROXY_API_KEY not set in .env!")
     logger.warning(f"Generated temporary key: {PROXY_API_KEY}")
-    logger.warning("Add this to your .env file: PROXY_API_KEY={PROXY_API_KEY}")
+    logger.warning("Add this to your .env file: PROXY_API_KEY=" + PROXY_API_KEY)
     logger.warning("=" * 60)
 
 # Initialize clients
@@ -222,7 +223,6 @@ async def persist_message_to_zep(
     except Exception as e:
         logger.error(f"Error persisting message to Zep thread: {e}")
         # Log more details for debugging
-        import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
 
 

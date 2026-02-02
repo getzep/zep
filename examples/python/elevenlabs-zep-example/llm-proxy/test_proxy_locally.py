@@ -38,9 +38,10 @@ async def test_proxy():
         ],
         "stream": True,
         "temperature": 0.7,
-        # This is how you'd pass the user_id from ElevenLabs
+        # This is how you'd pass the user_id and conversation_id from ElevenLabs
         "elevenlabs_extra_body": {
-            "user_id": "test-user-123"  # This matches what we created in setup_test_user.py
+            "user_id": "test-user-123",  # This matches what we created in setup_test_user.py
+            "conversation_id": "test-conv-123"  # Required for Zep thread tracking
         }
     }
 

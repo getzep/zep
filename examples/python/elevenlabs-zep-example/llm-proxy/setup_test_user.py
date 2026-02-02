@@ -61,42 +61,34 @@ async def setup_test_user():
     messages = [
         Message(
             role="user",
-            role_type="user",
             content="Hi, I'm Randy. I run a company called Talk2Me where we build voice AI agents for celebrities."
         ),
         Message(
             role="assistant",
-            role_type="assistant",
             content="Nice to meet you, Randy! Talk2Me sounds fascinating. Building voice AI for celebrities must involve some interesting challenges with authenticity and personality matching."
         ),
         Message(
             role="user",
-            role_type="user",
             content="Yes, we work with Tim Draper, Kelsey Plum, and several others. We're launching four new celebrity voices in February."
         ),
         Message(
             role="assistant",
-            role_type="assistant",
             content="That's impressive! Tim Draper and Kelsey Plum are quite different personalities. The February launch sounds exciting - four new voices is ambitious but shows great momentum."
         ),
         Message(
             role="user",
-            role_type="user",
             content="I used to work at NeXT with Steve Jobs. Back when there were only 11 people at the company."
         ),
         Message(
             role="assistant",
-            role_type="assistant",
             content="Wow, that's incredible history! Working alongside Steve Jobs in the early NeXT days must have been an extraordinary experience. That perspective probably gives you unique insights into building innovative technology products."
         ),
         Message(
             role="user",
-            role_type="user",
             content="We're concerned about latency in our voice agents. Two seconds is too long for a response."
         ),
         Message(
             role="assistant",
-            role_type="assistant",
             content="Latency is critical for voice - two seconds definitely breaks the natural flow of conversation. Most successful voice AI aims for under 500ms response time. Are you seeing the delay in the LLM, TTS, or somewhere else in the pipeline?"
         ),
     ]

@@ -88,13 +88,11 @@ To identify which user's context to fetch, you need to pass the `user_id` when s
 ```javascript
 const conversation = await Conversation.startSession({
     agentId: 'your_agent_id',
-    // Pass user_id via overrides that reach elevenlabs_extra_body
-    overrides: {
-        llm: {
-            extra_body: {
-                user_id: 'your-zep-session-id'
-            }
-        }
+    // Pass user_id and conversation_id via customLlmExtraBody
+    // This gets forwarded as "elevenlabs_extra_body" to your proxy
+    customLlmExtraBody: {
+        user_id: 'your-zep-user-id',
+        conversation_id: 'your-zep-conversation-id'
     }
 });
 ```
