@@ -42,17 +42,14 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Get or generate proxy API key for authentication
+# Get proxy API key for authentication
 # This key must be provided in requests to use the proxy
 PROXY_API_KEY = os.getenv("PROXY_API_KEY")
 if not PROXY_API_KEY:
-    # Generate a secure random key if not set
-    PROXY_API_KEY = secrets.token_urlsafe(32)
-    logger.warning("SECURITY WARNING: PROXY_API_KEY not set in .env!")
-    logger.warning("A temporary key has been generated and written to .env.generated")
-    # Write to a file instead of logging/printing the secret
-    with open(".env.generated", "w") as f:
-        f.write(f"PROXY_API_KEY={PROXY_API_KEY}\n")
+    raise ValueError(
+        "PROXY_API_KEY environment variable is required. "
+        "Set it in your .env file (e.g., PROXY_API_KEY=your-secret-key-here)"
+    )
 
 # Initialize clients
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
