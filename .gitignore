@@ -90,6 +90,9 @@ uv.lock
 .uv_cache/
 __pypackages__/
 
+# Log files
+*.log
+
 # macOS
 .DS_Store
 
