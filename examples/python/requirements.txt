@@ -84,7 +84,7 @@ orjson==3.11.1
 packaging==25.0
 posthog==3.25.0
 propcache==0.3.2
-protobuf==5.29.5
+protobuf==5.29.6
 pydantic-settings==2.10.1
 PyJWT==2.10.1
 python-engineio==4.12.2
