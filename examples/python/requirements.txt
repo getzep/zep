@@ -57,7 +57,7 @@ langchain==0.3.27
 langchain-community==0.3.27
 langchain-core==0.3.80
 langchain-text-splitters==1.0.0a1
-langsmith==0.4.10
+langsmith==0.6.3
 lazify==0.4.0
 literalai==0.1.201
 MarkupSafe==3.0.2
