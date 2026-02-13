@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  zep-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: zep-mcp-server:latest
+    container_name: zep-mcp-server
+    restart: unless-stopped
+
+    environment:
+      # Zep API Configuration
+      - ZEP_API_KEY=${ZEP_API_KEY}
+      # Optional: Override default log level
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+    ports:
+      - "8080:8080"
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 128M
+        reservations:
+          cpus: '0.5'
+          memory: 64M
+
+    # Security
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
