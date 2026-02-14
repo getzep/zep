@@ -9,6 +9,9 @@ on:
     paths:
       - 'integrations/python/**'
 
+permissions:
+  contents: read
+
 jobs:
   detect-changes:
     runs-on: ubuntu-latest
