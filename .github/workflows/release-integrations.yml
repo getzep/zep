@@ -14,6 +14,10 @@ on:
           - crewai
           - livekit
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   detect-package:
     runs-on: ubuntu-latest
@@ -90,8 +94,6 @@ jobs:
     environment: 
       name: release
       url: https://pypi.org/p/zep-${{ needs.detect-package.outputs.package }}
-    permissions:
-      id-token: write  # Required for trusted publishing
     
     steps:
       - name: Download build artifacts
