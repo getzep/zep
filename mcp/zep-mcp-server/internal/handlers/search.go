@@ -37,13 +37,31 @@ func HandleSearchGraph(client *zepclient.Client) mcp.ToolHandlerFor[SearchGraphI
 		searchReq.Scope = &searchScope
 
 		if input.Reranker != "" {
-			// Reranker is a Reranker type (string), not *string
 			rerankerType := zep.Reranker(input.Reranker)
 			searchReq.Reranker = &rerankerType
 		}
 
-		if input.MinScore > 0.0 {
-			searchReq.MinScore = &input.MinScore
+		if input.MinFactRating > 0.0 {
+			searchReq.MinFactRating = &input.MinFactRating
+		}
+
+		if input.MmrLambda > 0.0 {
+			searchReq.MmrLambda = &input.MmrLambda
+		}
+
+		if input.CenterNodeUUID != "" {
+			searchReq.CenterNodeUUID = &input.CenterNodeUUID
+		}
+
+		if len(input.NodeLabels) > 0 || len(input.EdgeTypes) > 0 {
+			filters := &zep.SearchFilters{}
+			if len(input.NodeLabels) > 0 {
+				filters.NodeLabels = input.NodeLabels
+			}
+			if len(input.EdgeTypes) > 0 {
+				filters.EdgeTypes = input.EdgeTypes
+			}
+			searchReq.SearchFilters = filters
 		}
 
 		// Execute search

@@ -11,6 +11,12 @@ Complete reference for all tools provided by the Zep MCP Server.
 - [get_user_nodes](#get_user_nodes)
 - [get_user_edges](#get_user_edges)
 - [get_episodes](#get_episodes)
+- [get_thread_messages](#get_thread_messages)
+- [get_node](#get_node)
+- [get_edge](#get_edge)
+- [get_episode](#get_episode)
+- [get_node_edges](#get_node_edges)
+- [get_episode_mentions](#get_episode_mentions)
 
 ---
 
@@ -27,11 +33,15 @@ Search the Zep knowledge graph for relevant information about a user.
 | `scope` | string | No | Search scope: `edges`, `nodes`, or `episodes` (default: `edges`) |
 | `limit` | integer | No | Maximum results (default: 10, max: 50) |
 | `reranker` | string | No | Reranking strategy: `rrf`, `mmr`, `node_distance`, `episode_mentions`, `cross_encoder` |
-| `min_score` | number | No | Minimum relevance score threshold (0.0-1.0) |
+| `min_fact_rating` | number | No | Minimum fact rating threshold for filtering results |
+| `mmr_lambda` | number | No | Weighting for maximal marginal relevance reranking |
+| `center_node_uuid` | string | No | Node UUID to rerank around for `node_distance` reranking |
+| `node_labels` | array[string] | No | Filter results by node labels |
+| `edge_types` | array[string] | No | Filter results by edge types |
 
 ### Returns
 
-JSON array of search results containing facts/summaries, nodes, edges, and relevance scores.
+JSON object containing edges, nodes, and/or episodes depending on the search scope.
 
 ### Example
 
@@ -41,7 +51,8 @@ JSON array of search results containing facts/summaries, nodes, edges, and relev
   "query": "What are Alice's dietary preferences?",
   "scope": "edges",
   "limit": 5,
-  "reranker": "cross_encoder"
+  "reranker": "cross_encoder",
+  "edge_types": ["PREFERS", "LIKES"]
 }
 ```
 
@@ -51,6 +62,7 @@ JSON array of search results containing facts/summaries, nodes, edges, and relev
 - Retrieving relationship information
 - Discovering relevant entities
 - Building context for conversations
+- Filtering by entity or relationship type
 
 ---
 
@@ -63,20 +75,19 @@ Retrieve formatted context string for a conversation thread. Returns facts and e
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `thread_id` | string | Yes | Thread (conversation) identifier |
-| `mode` | string | No | Context mode: `summary` (detailed) or `basic` (faster, default: `summary`) |
+| `template_id` | string | No | Context template ID for custom context rendering |
 
 ### Returns
 
 JSON object containing:
 - `context`: Formatted context string with facts and entities
-- `relevant_facts`: Array of facts with ratings and temporal information
 
 ### Example
 
 ```javascript
 {
   "thread_id": "conversation_456",
-  "mode": "summary"
+  "template_id": "my_custom_template"
 }
 ```
 
@@ -84,12 +95,7 @@ JSON object containing:
 
 - Getting conversation-relevant context for prompts
 - Building context-aware AI responses
-- Understanding user preferences in context
-
-### Performance Tips
-
-- Use `mode: "basic"` for faster retrieval (P95 < 200ms)
-- Use `mode: "summary"` for more detailed context
+- Using custom templates for structured context output
 
 ---
 
@@ -105,12 +111,7 @@ Retrieve user information and metadata from Zep.
 
 ### Returns
 
-JSON object containing:
-- `user_id`: The user identifier
-- `created_at`: Timestamp of user creation
-- `updated_at`: Timestamp of last update
-- `metadata`: Custom metadata object
-- Additional user properties
+JSON object containing user properties including `user_id`, `email`, `first_name`, `last_name`, `created_at`, and associated metadata.
 
 ### Example
 
@@ -130,30 +131,23 @@ JSON object containing:
 
 ## list_threads
 
-List conversation threads for a specific user.
+List all conversation threads for a specific user.
 
 ### Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `user_id` | string | Yes | User identifier |
-| `limit` | integer | No | Maximum threads to return (default: 20, max: 100) |
 
 ### Returns
 
-JSON array of thread objects containing:
-- `thread_id`: Thread identifier
-- `user_id`: Associated user
-- `created_at`: Thread creation timestamp
-- `updated_at`: Last update timestamp
-- `metadata`: Custom metadata
+JSON array of thread objects containing `thread_id`, `user_id`, `created_at`, `updated_at`, and metadata.
 
 ### Example
 
 ```javascript
 {
-  "user_id": "alice_123",
-  "limit": 10
+  "user_id": "alice_123"
 }
 ```
 
@@ -174,25 +168,17 @@ Retrieve entity nodes from a user's knowledge graph. Nodes represent people, pla
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `user_id` | string | Yes | User identifier |
-| `labels` | array[string] | No | Filter by node labels (entity types) |
-| `limit` | integer | No | Maximum nodes to return (default: 20, max: 100) |
+| `limit` | integer | No | Maximum nodes to return (default: 20) |
 
 ### Returns
 
-JSON array of node objects containing:
-- `uuid`: Node identifier
-- `name`: Entity name
-- `labels`: Node type labels
-- `summary`: Entity summary
-- `created_at`: Creation timestamp
-- Additional node properties
+JSON array of node objects containing `uuid`, `name`, `labels`, `summary`, `created_at`, and additional properties.
 
 ### Example
 
 ```javascript
 {
   "user_id": "alice_123",
-  "labels": ["Person", "Organization"],
   "limit": 10
 }
 ```
@@ -207,33 +193,24 @@ JSON array of node objects containing:
 
 ## get_user_edges
 
-Retrieve edges (relationships) from a user's knowledge graph. Edges represent facts and connections between entities.
+Retrieve edges (relationships/facts) from a user's knowledge graph.
 
 ### Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `user_id` | string | Yes | User identifier |
-| `edge_types` | array[string] | No | Filter by edge types (relationship types) |
-| `limit` | integer | No | Maximum edges to return (default: 20, max: 100) |
+| `limit` | integer | No | Maximum edges to return (default: 20) |
 
 ### Returns
 
-JSON array of edge objects containing:
-- `uuid`: Edge identifier
-- `source_node_uuid`: Source entity
-- `target_node_uuid`: Target entity
-- `edge_type`: Relationship type
-- `fact`: The fact/relationship description
-- `valid_at`: Temporal validity information
-- `created_at`: Creation timestamp
+JSON array of edge objects containing `uuid`, `source_node_uuid`, `target_node_uuid`, `edge_type`, `fact`, `valid_at`, and `created_at`.
 
 ### Example
 
 ```javascript
 {
   "user_id": "alice_123",
-  "edge_types": ["KNOWS", "WORKS_AT", "LIKES"],
   "limit": 10
 }
 ```
@@ -243,29 +220,23 @@ JSON array of edge objects containing:
 - Examining relationships between entities
 - Understanding fact provenance
 - Temporal fact analysis
-- Building relationship graphs
 
 ---
 
 ## get_episodes
 
-Retrieve episode nodes (data ingestion events) for a user. Episodes represent conversation history and other temporal data.
+Retrieve temporal episodes (events) from a user's knowledge graph history.
 
 ### Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `user_id` | string | Yes | User identifier |
-| `lastn` | integer | No | Return the last N episodes (default: 10, max: 100) |
+| `lastn` | integer | No | Return the last N episodes (default: 10) |
 
 ### Returns
 
-JSON array of episode objects containing:
-- `uuid`: Episode identifier
-- `content`: Episode content/data
-- `source`: Data source
-- `created_at`: Ingestion timestamp
-- `metadata`: Episode metadata
+JSON array of episode objects containing `uuid`, `content`, `source`, `created_at`, and metadata.
 
 ### Example
 
@@ -281,7 +252,186 @@ JSON array of episode objects containing:
 - Accessing temporal data ingestion events
 - Understanding conversation history context
 - Analyzing data provenance
-- Debugging data ingestion
+
+---
+
+## get_thread_messages
+
+Retrieve messages from a conversation thread.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `thread_id` | string | Yes | Thread identifier |
+| `lastn` | integer | No | Number of most recent messages to return (overrides limit) |
+| `limit` | integer | No | Maximum number of messages to return |
+
+### Returns
+
+JSON object containing messages with `role`, `content`, `uuid`, and timestamps.
+
+### Example
+
+```javascript
+{
+  "thread_id": "conversation_456",
+  "lastn": 10
+}
+```
+
+### Use Cases
+
+- Reading conversation history
+- Retrieving recent messages for context
+- Auditing conversation content
+
+---
+
+## get_node
+
+Retrieve a specific knowledge graph node (entity) by its UUID.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `uuid` | string | Yes | The UUID of the node to retrieve |
+
+### Returns
+
+JSON object containing the full node details including `uuid`, `name`, `labels`, `summary`, and properties.
+
+### Example
+
+```javascript
+{
+  "uuid": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+### Use Cases
+
+- Getting full details of a node discovered via search
+- Following up on entities returned by other tools
+
+---
+
+## get_edge
+
+Retrieve a specific knowledge graph edge (relationship/fact) by its UUID.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `uuid` | string | Yes | The UUID of the edge to retrieve |
+
+### Returns
+
+JSON object containing the full edge details including `uuid`, `source_node_uuid`, `target_node_uuid`, `edge_type`, `fact`, and temporal data.
+
+### Example
+
+```javascript
+{
+  "uuid": "550e8400-e29b-41d4-a716-446655440001"
+}
+```
+
+### Use Cases
+
+- Getting full details of an edge discovered via search
+- Understanding a specific relationship or fact
+
+---
+
+## get_episode
+
+Retrieve a specific episode by its UUID.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `uuid` | string | Yes | The UUID of the episode to retrieve |
+
+### Returns
+
+JSON object containing the full episode details including `uuid`, `content`, `source`, and metadata.
+
+### Example
+
+```javascript
+{
+  "uuid": "550e8400-e29b-41d4-a716-446655440002"
+}
+```
+
+### Use Cases
+
+- Getting full details of a specific episode
+- Examining episode content and metadata
+
+---
+
+## get_node_edges
+
+Retrieve all edges (relationships/facts) connected to a specific node.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `node_uuid` | string | Yes | The UUID of the node to get edges for |
+
+### Returns
+
+JSON array of edge objects connected to the specified node.
+
+### Example
+
+```javascript
+{
+  "node_uuid": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+### Use Cases
+
+- Exploring all relationships of a specific entity
+- Graph traversal from a node
+- Understanding an entity's connections
+
+---
+
+## get_episode_mentions
+
+Retrieve nodes and edges mentioned in a specific episode.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `uuid` | string | Yes | The UUID of the episode |
+
+### Returns
+
+JSON object containing `nodes` and `edges` arrays — the entities and relationships mentioned in the episode.
+
+### Example
+
+```javascript
+{
+  "uuid": "550e8400-e29b-41d4-a716-446655440002"
+}
+```
+
+### Use Cases
+
+- Understanding what entities and facts were extracted from an episode
+- Tracing data provenance from episodes to graph elements
+- Auditing knowledge graph construction
 
 ---
 
@@ -306,6 +456,16 @@ const preferences = await tools.search_graph({
   query: "dietary preferences",
   scope: "edges"
 });
+
+// 4. Drill into a specific node
+const node = await tools.get_node({
+  uuid: preferences.nodes[0].uuid
+});
+
+// 5. Get all relationships for that node
+const relationships = await tools.get_node_edges({
+  node_uuid: node.uuid
+});
 ```
 
 ### Error Handling
@@ -319,10 +479,9 @@ All tools return standard MCP errors:
 
 ### Performance Optimization
 
-- Use `basic` mode in `get_user_context` for faster retrieval
-- Limit results with `limit` parameters
-- Use specific filters (`labels`, `edge_types`) to reduce result size
-- Cache frequently accessed data in your application
+- Limit results with `limit` and `lastn` parameters
+- Use search filters (`node_labels`, `edge_types`) to narrow results
+- Use specific UUIDs when you know the exact entity you need
 
 ### Temporal Queries
 

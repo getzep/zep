@@ -82,30 +82,13 @@ func TestGetUserInputValidation(t *testing.T) {
 	}
 }
 
-// TestListThreadsInputLimits verifies limit bounds
-func TestListThreadsInputLimits(t *testing.T) {
-	tests := []struct {
-		name  string
-		limit int
-		valid bool
-	}{
-		{"default limit", 0, true},
-		{"valid limit", 20, true},
-		{"max limit", 100, true},
-		{"negative limit", -1, false},
+// TestListThreadsInput verifies ListThreadsInput struct
+func TestListThreadsInput(t *testing.T) {
+	input := ListThreadsInput{
+		UserID: "user123",
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			input := ListThreadsInput{
-				UserID: "user123",
-				Limit:  tt.limit,
-			}
-
-			isValid := input.Limit >= 0
-			if isValid != tt.valid {
-				t.Errorf("Expected valid=%v for limit=%d, got valid=%v", tt.valid, tt.limit, isValid)
-			}
-		})
+	if input.UserID != "user123" {
+		t.Errorf("Expected UserID 'user123', got '%s'", input.UserID)
 	}
 }

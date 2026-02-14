@@ -78,7 +78,15 @@ func (s *Server) registerTools() {
 	mcp.AddTool[handlers.GetUserEdgesInput, any](s.mcp, GetUserEdgesTool, handlers.HandleGetUserEdges(s.zepClient))
 	mcp.AddTool[handlers.GetEpisodesInput, any](s.mcp, GetEpisodesTool, handlers.HandleGetEpisodes(s.zepClient))
 
-	s.logger.Info("Registered 7 tools")
+	// Phase 3: Detail retrieval tools
+	mcp.AddTool[handlers.GetThreadMessagesInput, any](s.mcp, GetThreadMessagesTool, handlers.HandleGetThreadMessages(s.zepClient))
+	mcp.AddTool[handlers.GetNodeInput, any](s.mcp, GetNodeTool, handlers.HandleGetNode(s.zepClient))
+	mcp.AddTool[handlers.GetEdgeInput, any](s.mcp, GetEdgeTool, handlers.HandleGetEdge(s.zepClient))
+	mcp.AddTool[handlers.GetEpisodeInput, any](s.mcp, GetEpisodeTool, handlers.HandleGetEpisode(s.zepClient))
+	mcp.AddTool[handlers.GetNodeEdgesInput, any](s.mcp, GetNodeEdgesTool, handlers.HandleGetNodeEdges(s.zepClient))
+	mcp.AddTool[handlers.GetEpisodeMentionsInput, any](s.mcp, GetEpisodeMentionsTool, handlers.HandleGetEpisodeMentions(s.zepClient))
+
+	s.logger.Info("Registered 13 tools")
 }
 
 // Run starts the MCP server

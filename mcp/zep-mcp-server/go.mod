@@ -3,7 +3,7 @@ module github.com/getzep/zep/mcp/zep-mcp-server
 go 1.23.0
 
 require (
-	github.com/getzep/zep-go/v3 v3.2.0
+	github.com/getzep/zep-go/v3 v3.16.0
 	github.com/joho/godotenv v1.5.1
 	github.com/modelcontextprotocol/go-sdk v1.1.0
 )

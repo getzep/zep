@@ -39,3 +39,33 @@ var GetEpisodesTool = &mcp.Tool{
 	Name:        "get_episodes",
 	Description: "Retrieve temporal episodes (events) from a user's knowledge graph history.",
 }
+
+var GetThreadMessagesTool = &mcp.Tool{
+	Name:        "get_thread_messages",
+	Description: "Retrieve messages from a conversation thread.",
+}
+
+var GetNodeTool = &mcp.Tool{
+	Name:        "get_node",
+	Description: "Retrieve a specific knowledge graph node (entity) by its UUID.",
+}
+
+var GetEdgeTool = &mcp.Tool{
+	Name:        "get_edge",
+	Description: "Retrieve a specific knowledge graph edge (relationship/fact) by its UUID.",
+}
+
+var GetEpisodeTool = &mcp.Tool{
+	Name:        "get_episode",
+	Description: "Retrieve a specific episode by its UUID.",
+}
+
+var GetNodeEdgesTool = &mcp.Tool{
+	Name:        "get_node_edges",
+	Description: "Retrieve all edges (relationships/facts) connected to a specific node.",
+}
+
+var GetEpisodeMentionsTool = &mcp.Tool{
+	Name:        "get_episode_mentions",
+	Description: "Retrieve nodes and edges mentioned in a specific episode.",
+}

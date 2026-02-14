@@ -14,14 +14,11 @@ import (
 // HandleGetUserContext handles the get_user_context tool
 func HandleGetUserContext(client *zepclient.Client) mcp.ToolHandlerFor[GetUserContextInput, any] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input GetUserContextInput) (*mcp.CallToolResult, any, error) {
-		// Apply defaults
-		if input.Mode == "" {
-			input.Mode = "summary"
-		}
-
 		// Build request
-		contextReq := &zep.ThreadGetUserContextRequest{
-			Mode: (*zep.ThreadGetUserContextRequestMode)(&input.Mode),
+		contextReq := &zep.ThreadGetUserContextRequest{}
+
+		if input.TemplateID != "" {
+			contextReq.TemplateID = &input.TemplateID
 		}
 
 		// Get user context

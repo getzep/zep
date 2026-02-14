@@ -12,20 +12,29 @@ A Model Context Protocol (MCP) server for [Zep Cloud](https://www.getzep.com/), 
 
 ## Tools
 
-The server provides 7 read-only tools:
+The server provides 13 read-only tools:
 
-### Phase 1: Core Search & Retrieval
+### Core Search & Retrieval
 
-1. **`search_graph`** - Search the knowledge graph for facts and relationships
-2. **`get_user_context`** - Retrieve formatted context for a conversation thread
+1. **`search_graph`** - Search the knowledge graph with filters, reranking, and scoped search
+2. **`get_user_context`** - Retrieve formatted context for a thread (supports custom templates)
 3. **`get_user`** - Get user information and metadata
 4. **`list_threads`** - List conversation threads for a user
 
-### Phase 2: Advanced Graph Query
+### Graph Query
 
-5. **`get_user_nodes`** - Retrieve entity nodes from the knowledge graph
-6. **`get_user_edges`** - Retrieve relationship edges from the knowledge graph
+5. **`get_user_nodes`** - Retrieve entity nodes from a user's knowledge graph
+6. **`get_user_edges`** - Retrieve relationship edges from a user's knowledge graph
 7. **`get_episodes`** - Get episode nodes (temporal data ingestion events)
+
+### Detail Retrieval
+
+8. **`get_thread_messages`** - Retrieve messages from a conversation thread
+9. **`get_node`** - Get a specific node by UUID
+10. **`get_edge`** - Get a specific edge by UUID
+11. **`get_episode`** - Get a specific episode by UUID
+12. **`get_node_edges`** - Get all edges connected to a specific node
+13. **`get_episode_mentions`** - Get nodes and edges mentioned in an episode
 
 ## Installation
 
@@ -212,7 +221,7 @@ tools.search_graph({
 // Retrieve context for a conversation
 tools.get_user_context({
   thread_id: "thread_456",
-  mode: "summary"  // summary or basic
+  template_id: "my_template"  // optional custom template
 })
 ```
 
@@ -221,8 +230,7 @@ tools.get_user_context({
 ```javascript
 // Get all threads for a user
 tools.list_threads({
-  user_id: "user_123",
-  limit: 20
+  user_id: "user_123"
 })
 ```
 
@@ -232,7 +240,6 @@ tools.list_threads({
 // Get entity nodes from the graph
 tools.get_user_nodes({
   user_id: "user_123",
-  labels: ["Person", "Organization"],
   limit: 10
 })
 ```
@@ -243,7 +250,6 @@ tools.get_user_nodes({
 // Get relationship edges
 tools.get_user_edges({
   user_id: "user_123",
-  edge_types: ["KNOWS", "WORKS_AT"],
   limit: 10
 })
 ```
@@ -335,8 +341,8 @@ curl -H "Authorization: Bearer $ZEP_API_KEY" https://api.getzep.com/api/v2/users
 **Problem:** Tool calls take a long time
 
 **Solution:**
-- Use `mode: "basic"` in `get_user_context` for faster retrieval
 - Reduce `limit` parameters in search queries
+- Use search filters (`node_labels`, `edge_types`) to narrow results
 - Check your network latency to Zep Cloud
 
 ## Documentation
