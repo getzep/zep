@@ -25,8 +25,8 @@ numpy==2.3.3
 openai==1.109.1
 packaging==25.0
 pandas==2.3.2
-pillow==11.3.0
-protobuf==6.32.1
+pillow==12.1.1
+protobuf==6.33.5
 pyarrow==21.0.0
 pydantic==2.11.9
 pydantic_core==2.33.2
@@ -48,6 +48,6 @@ tqdm==4.67.1
 typing-inspection==0.4.1
 typing_extensions==4.15.0
 tzdata==2025.2
-urllib3==2.5.0
+urllib3==2.6.3
 watchdog==6.0.0
 zep-cloud==3.4.3

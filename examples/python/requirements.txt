@@ -17,7 +17,7 @@ zep-cloud==3.0.5
 # Additional dependencies for examples
 aiofiles==24.1.0
 aiohappyeyeballs==2.6.1
-aiohttp==3.12.15
+aiohttp==3.13.3
 aiosignal==1.4.0
 anthropic==0.60.0
 asyncer==0.0.8
@@ -35,7 +35,7 @@ dataclasses-json==0.6.7
 Deprecated==1.2.18
 distro==1.9.0
 fastapi==0.116.1
-filelock==3.18.0
+filelock==3.20.3
 filetype==1.2.0
 frozenlist==1.7.0
 fsspec==2025.7.0
@@ -55,14 +55,14 @@ jsonschema==4.25.0
 jsonschema-specifications==2025.4.1
 langchain==0.3.27
 langchain-community==0.3.27
-langchain-core==0.3.80
+langchain-core==0.3.83
 langchain-text-splitters==1.0.0a1
-langsmith==0.4.10
+langsmith==0.6.3
 lazify==0.4.0
 literalai==0.1.201
 MarkupSafe==3.0.2
-marshmallow==3.26.1
-mcp==1.12.3
+marshmallow==3.26.2
+mcp==1.23.0
 multidict==6.6.3
 mypy-extensions==1.1.0
 nest-asyncio==1.6.0
@@ -80,15 +80,15 @@ opentelemetry-sdk==1.34.1
 opentelemetry-semantic-conventions==0.50b0
 opentelemetry-semantic-conventions-ai==0.4.11
 opentelemetry-util-http==0.50b0
-orjson==3.11.1
+orjson==3.11.7
 packaging==25.0
 posthog==3.25.0
 propcache==0.3.2
-protobuf==5.29.5
+protobuf==5.29.6
 pydantic-settings==2.10.1
 PyJWT==2.10.1
 python-engineio==4.12.2
-python-multipart==0.0.18
+python-multipart==0.0.22
 python-socketio==5.14.0
 PyYAML==6.0.2
 referencing==0.36.2
@@ -108,7 +108,7 @@ tqdm==4.67.1
 traceloop-sdk==0.44.1
 types-requests==2.32.4.20250611
 typing-inspect==0.9.0
-urllib3==2.5.0
+urllib3==2.6.3
 uvicorn==0.35.0
 watchfiles==0.20.0
 wrapt==1.17.2
