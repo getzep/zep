@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "zep": {
+      "command": "/path/to/zep-mcp-server",
+      "env": {
+        "ZEP_API_KEY": "your-zep-api-key-here"
+      }
+    }
+  }
+}

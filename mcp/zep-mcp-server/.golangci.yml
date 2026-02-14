@@ -1,0 +1,17 @@
+# golangci-lint configuration for Zep MCP Server
+version: 2
+
+run:
+  timeout: 5m
+  tests: true
+  skip-dirs:
+    - test  # Test harness needs MCP SDK update
+
+# Use default linters - they work well out of the box
+linters:
+  enable-all: false
+  disable-all: false
+
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 3
