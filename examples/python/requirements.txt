@@ -55,7 +55,7 @@ jsonschema==4.25.0
 jsonschema-specifications==2025.4.1
 langchain==0.3.27
 langchain-community==0.3.27
-langchain-core==0.3.83
+langchain-core==1.2.11
 langchain-text-splitters==1.0.0a1
 langsmith==0.6.3
 lazify==0.4.0
