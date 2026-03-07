@@ -6,4 +6,4 @@ services:
     env_file:
       - .env
     ports:
-      - "${ZEP_MCP_HOST_PORT:-8080}:8080"
+      - "${ZEP_MCP_HOST_PORT:-8081}:8080"

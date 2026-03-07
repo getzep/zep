@@ -129,10 +129,10 @@ make docker-run
 Or manually:
 ```bash
 cp .env.example .env
-# Optional: change ZEP_MCP_HOST_PORT in .env if 8080 is taken
+# Optional: change ZEP_MCP_HOST_PORT in .env if you do not want the default 8081
 docker build -t zep-mcp-server:latest .
 # If you changed ZEP_MCP_HOST_PORT, use the same host port here
-docker run --env-file .env -p 8080:8080 zep-mcp-server:latest
+docker run --env-file .env -p 8081:8080 zep-mcp-server:latest
 ```
 
 ### MCP Client Configuration
@@ -197,11 +197,11 @@ Claude Code uses HTTP transport to connect to MCP servers. Configure it using th
 **Using Docker:**
 ```bash
 # Edit .env file with your ZEP_API_KEY
-# Optional: set ZEP_MCP_HOST_PORT=8081 if 8080 is already in use
+# Optional: set ZEP_MCP_HOST_PORT if you do not want the default 8081
 docker compose up -d
 
 # Add to Claude Code
-claude mcp add --transport http zep http://localhost:8080
+claude mcp add --transport http zep http://localhost:8081
 ```
 
 The HTTP transport supports both stateless JSON requests and streaming responses, allowing Claude Code and other HTTP-based MCP clients to interact with the Zep knowledge graph.
