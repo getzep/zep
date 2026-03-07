@@ -129,7 +129,9 @@ make docker-run
 Or manually:
 ```bash
 cp .env.example .env
+# Optional: change ZEP_MCP_HOST_PORT in .env if 8080 is taken
 docker build -t zep-mcp-server:latest .
+# If you changed ZEP_MCP_HOST_PORT, use the same host port here
 docker run --env-file .env -p 8080:8080 zep-mcp-server:latest
 ```
 
@@ -195,6 +197,7 @@ Claude Code uses HTTP transport to connect to MCP servers. Configure it using th
 **Using Docker:**
 ```bash
 # Edit .env file with your ZEP_API_KEY
+# Optional: set ZEP_MCP_HOST_PORT=8081 if 8080 is already in use
 docker compose up -d
 
 # Add to Claude Code

@@ -17,6 +17,7 @@ cp .env.example .env
 ```
 
 2. Set `ZEP_API_KEY` in `.env`.
+   If port `8080` is already in use, also change `ZEP_MCP_HOST_PORT` in `.env`.
 
 3. Start the server:
 
@@ -24,7 +25,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The server listens on `http://localhost:8080`.
+By default the server listens on `http://localhost:8080`.
 
 ## Compose Environment Loading
 
@@ -35,7 +36,7 @@ env_file:
   - .env
 ```
 
-That means `docker compose` loads `ZEP_API_KEY` and `LOG_LEVEL` from the local `.env` file and passes them into the container environment.
+That means `docker compose` loads `ZEP_API_KEY` and `LOG_LEVEL` from the local `.env` file and passes them into the container environment. The same `.env` file also provides `ZEP_MCP_HOST_PORT` for the host-side port mapping.
 
 ## Build and Run Manually
 
@@ -48,6 +49,7 @@ docker build -t zep-mcp-server:latest .
 Run it with the same `.env` file:
 
 ```bash
+# If you changed ZEP_MCP_HOST_PORT in .env, use the same host port here
 docker run --rm \
   --env-file .env \
   -p 8080:8080 \
@@ -83,5 +85,6 @@ docker compose config
 ## Notes
 
 - The server defaults to HTTP mode on port `8080`.
+- Change `ZEP_MCP_HOST_PORT` in `.env` if `8080` is already allocated on the host.
 - The application itself still supports reading a `.env` file when run directly outside Docker.
 - For Docker, the standard path is `env_file: .env` in Compose or `--env-file .env` with `docker run`.
