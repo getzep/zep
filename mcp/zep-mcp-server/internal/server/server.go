@@ -69,6 +69,7 @@ func (s *Server) registerTools() {
 
 	// Phase 1: Core search and retrieval tools
 	mcp.AddTool[handlers.SearchGraphInput, any](s.mcp, SearchGraphTool, handlers.HandleSearchGraph(s.zepClient))
+	mcp.AddTool[handlers.DetectPatternsInput, any](s.mcp, DetectPatternsTool, handlers.HandleDetectPatterns(s.zepClient))
 	mcp.AddTool[handlers.GetUserContextInput, any](s.mcp, GetUserContextTool, handlers.HandleGetUserContext(s.zepClient))
 	mcp.AddTool[handlers.GetUserInput, any](s.mcp, GetUserTool, handlers.HandleGetUser(s.zepClient))
 	mcp.AddTool[handlers.ListThreadsInput, any](s.mcp, ListThreadsTool, handlers.HandleListThreads(s.zepClient))
@@ -86,7 +87,7 @@ func (s *Server) registerTools() {
 	mcp.AddTool[handlers.GetNodeEdgesInput, any](s.mcp, GetNodeEdgesTool, handlers.HandleGetNodeEdges(s.zepClient))
 	mcp.AddTool[handlers.GetEpisodeMentionsInput, any](s.mcp, GetEpisodeMentionsTool, handlers.HandleGetEpisodeMentions(s.zepClient))
 
-	s.logger.Info("Registered 13 tools")
+	s.logger.Info("Registered 14 tools")
 }
 
 // Run starts the MCP server

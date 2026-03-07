@@ -11,6 +11,7 @@ func TestInputTypes(t *testing.T) {
 		input interface{}
 	}{
 		{"SearchGraphInput", SearchGraphInput{}},
+		{"DetectPatternsInput", DetectPatternsInput{}},
 		{"GetUserContextInput", GetUserContextInput{}},
 		{"GetUserInput", GetUserInput{}},
 		{"ListThreadsInput", ListThreadsInput{}},
