@@ -65,7 +65,6 @@ class TestZepContextToolInit:
         assert len(tool._created_resources) == 0
 
 
-
 class TestIdentityResolution:
     """Test _resolve_identity from session state."""
 
@@ -223,11 +222,7 @@ class TestZepContextToolProcessLlmRequest:
 
         mock_tc = MagicMock()
         mock_tc.user_content = mock_content
-        mock_tc.state = (
-            state
-            if state is not None
-            else {"zep_thread_id": "test-thread"}
-        )
+        mock_tc.state = state if state is not None else {"zep_thread_id": "test-thread"}
         mock_tc._invocation_context.session.id = session_id
         mock_tc._invocation_context.session.user_id = session_user_id
         return mock_tc
@@ -762,9 +757,7 @@ class TestOnUserCreatedHook:
         mock_content.parts = [mock_part]
         mock_tc = MagicMock()
         mock_tc.user_content = mock_content
-        mock_tc.state = (
-            state if state is not None else {"zep_thread_id": "test-thread"}
-        )
+        mock_tc.state = state if state is not None else {"zep_thread_id": "test-thread"}
         mock_tc._invocation_context.session.id = "test-session"
         mock_tc._invocation_context.session.user_id = session_user_id
         return mock_tc
@@ -1164,18 +1157,14 @@ class TestGraphSearchToolInit:
         from zep_adk import ZepGraphSearchTool
 
         filters = {"node_labels": ["Person"]}
-        tool = ZepGraphSearchTool(
-            zep_client=MagicMock(), search_filters=filters
-        )
+        tool = ZepGraphSearchTool(zep_client=MagicMock(), search_filters=filters)
         assert tool._pinned["search_filters"] == filters
 
     def test_bfs_origin_stored_as_pinned(self) -> None:
         from zep_adk import ZepGraphSearchTool
 
         uuids = ["uuid-1", "uuid-2"]
-        tool = ZepGraphSearchTool(
-            zep_client=MagicMock(), bfs_origin_node_uuids=uuids
-        )
+        tool = ZepGraphSearchTool(zep_client=MagicMock(), bfs_origin_node_uuids=uuids)
         assert tool._pinned["bfs_origin_node_uuids"] == uuids
 
     def test_rejects_user_id_pinning(self) -> None:
@@ -1282,9 +1271,7 @@ class TestGraphSearchToolExecution:
         from zep_adk import ZepGraphSearchTool
 
         mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(
-            return_value=self._make_search_result()
-        )
+        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
 
         tool = ZepGraphSearchTool(zep_client=mock_client)
         tc = self._make_tool_context(session_user_id="user-42")
@@ -1300,9 +1287,7 @@ class TestGraphSearchToolExecution:
         from zep_adk import ZepGraphSearchTool
 
         mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(
-            return_value=self._make_search_result()
-        )
+        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
 
         tool = ZepGraphSearchTool(zep_client=mock_client)
         tc = self._make_tool_context(
@@ -1320,9 +1305,7 @@ class TestGraphSearchToolExecution:
         from zep_adk import ZepGraphSearchTool
 
         mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(
-            return_value=self._make_search_result()
-        )
+        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
 
         tool = ZepGraphSearchTool(zep_client=mock_client, graph_id="docs-123")
         tc = self._make_tool_context(session_user_id="user-42")
@@ -1338,13 +1321,9 @@ class TestGraphSearchToolExecution:
         from zep_adk import ZepGraphSearchTool
 
         mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(
-            return_value=self._make_search_result()
-        )
+        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
 
-        tool = ZepGraphSearchTool(
-            zep_client=mock_client, scope="nodes", limit=5
-        )
+        tool = ZepGraphSearchTool(zep_client=mock_client, scope="nodes", limit=5)
         tc = self._make_tool_context()
 
         # Model tries to set scope and limit, but they're pinned
@@ -1362,9 +1341,7 @@ class TestGraphSearchToolExecution:
         from zep_adk import ZepGraphSearchTool
 
         mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(
-            return_value=self._make_search_result()
-        )
+        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
 
         tool = ZepGraphSearchTool(zep_client=mock_client)
         tc = self._make_tool_context()
@@ -1381,9 +1358,7 @@ class TestGraphSearchToolExecution:
         from zep_adk import ZepGraphSearchTool
 
         mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(
-            return_value=self._make_search_result()
-        )
+        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
 
         tool = ZepGraphSearchTool(zep_client=mock_client)
         tc = self._make_tool_context()
@@ -1402,14 +1377,10 @@ class TestGraphSearchToolExecution:
         from zep_adk import ZepGraphSearchTool
 
         mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(
-            return_value=self._make_search_result()
-        )
+        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
 
         filters = {"node_labels": ["Person"]}
-        tool = ZepGraphSearchTool(
-            zep_client=mock_client, search_filters=filters
-        )
+        tool = ZepGraphSearchTool(zep_client=mock_client, search_filters=filters)
         tc = self._make_tool_context()
 
         await tool.run_async(args={"query": "test"}, tool_context=tc)

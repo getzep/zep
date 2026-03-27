@@ -296,7 +296,9 @@ async def main() -> None:
         try:
             user = await zep_client.user.get(user_id=USER_ID)
             print(f"  User found: {user.user_id}")
-            passed &= check("first_name matches", user.first_name == FIRST_NAME, f"{user.first_name}")
+            passed &= check(
+                "first_name matches", user.first_name == FIRST_NAME, f"{user.first_name}"
+            )
             passed &= check("last_name matches", user.last_name == LAST_NAME, f"{user.last_name}")
             passed &= check("email matches", user.email == EMAIL, f"{user.email}")
         except Exception as e:

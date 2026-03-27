@@ -254,9 +254,7 @@ class ZepContextTool(BaseTool):
                 logger.debug("Zep user %s already exists", identity.user_id)
                 user_ok = True
             else:
-                logger.warning(
-                    "Failed to create Zep user %s: %s", identity.user_id, exc
-                )
+                logger.warning("Failed to create Zep user %s: %s", identity.user_id, exc)
                 return False
 
         # Create thread (ignore if already exists)
@@ -271,9 +269,7 @@ class ZepContextTool(BaseTool):
                 logger.debug("Zep thread %s already exists", identity.thread_id)
                 thread_ok = True
             else:
-                logger.warning(
-                    "Failed to create Zep thread %s: %s", identity.thread_id, exc
-                )
+                logger.warning("Failed to create Zep thread %s: %s", identity.thread_id, exc)
                 return False
 
         # Only cache as created if both succeeded or already existed
@@ -341,9 +337,7 @@ class ZepContextTool(BaseTool):
         try:
             if self._context_builder is not None:
                 # Custom builder: persist + build context in parallel
-                context_text = await self._persist_and_build_context(
-                    identity, zep_msg, user_text
-                )
+                context_text = await self._persist_and_build_context(identity, zep_msg, user_text)
             else:
                 # Default: single round-trip
                 response = await self._zep.thread.add_messages(

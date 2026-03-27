@@ -77,12 +77,14 @@ async def custom_context_builder(
     This simulates what Zscaler might do: pull context from the user's
     knowledge graph AND inject additional hard-coded business context.
     """
-    builder_call_log.append({
-        "user_id": user_id,
-        "thread_id": thread_id,
-        "user_message": user_message,
-        "timestamp": time.monotonic(),
-    })
+    builder_call_log.append(
+        {
+            "user_id": user_id,
+            "thread_id": thread_id,
+            "user_message": user_message,
+            "timestamp": time.monotonic(),
+        }
+    )
 
     logger.info("Custom context builder called for user=%s, thread=%s", user_id, thread_id)
 
@@ -193,8 +195,7 @@ async def main() -> None:
 
         builder_call_log.clear()
         response = await send_message(
-            runner, SESSION_ID, USER_ID,
-            "Who is the CEO and how many PTO days do employees get?"
+            runner, SESSION_ID, USER_ID, "Who is the CEO and how many PTO days do employees get?"
         )
         print(f"  Agent: {response}\n")
 
@@ -268,8 +269,7 @@ async def main() -> None:
 
         call_count_before = len(builder_call_log)
         response2 = await send_message(
-            runner, SESSION_ID, USER_ID,
-            "Where is the company headquartered?"
+            runner, SESSION_ID, USER_ID, "Where is the company headquartered?"
         )
         print(f"  Agent: {response2}\n")
 

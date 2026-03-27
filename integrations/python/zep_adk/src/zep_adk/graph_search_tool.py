@@ -72,8 +72,7 @@ _SEARCH_PARAMS: dict[str, dict[str, Any]] = {
     "mmr_lambda": {
         "type": "NUMBER",
         "description": (
-            "Balance between diversity (0.0) and relevance (1.0). "
-            "Only used when reranker is 'mmr'."
+            "Balance between diversity (0.0) and relevance (1.0). Only used when reranker is 'mmr'."
         ),
     },
     "center_node_uuid": {
@@ -159,8 +158,7 @@ class ZepGraphSearchTool(BaseTool):
         unknown = set(pinned.keys()) - allowed_pinned
         if unknown:
             raise ValueError(
-                f"Unknown pinned parameters: {unknown}. "
-                f"Allowed: {sorted(allowed_pinned)}"
+                f"Unknown pinned parameters: {unknown}. Allowed: {sorted(allowed_pinned)}"
             )
 
         # Store pinned search params
@@ -217,9 +215,7 @@ class ZepGraphSearchTool(BaseTool):
     # ------------------------------------------------------------------
 
     @override
-    async def run_async(
-        self, *, args: dict[str, Any], tool_context: ToolContext
-    ) -> Any:
+    async def run_async(self, *, args: dict[str, Any], tool_context: ToolContext) -> Any:
         """Execute the graph search with merged parameters."""
         # --- Resolve search target ------------------------------------
         search_kwargs: dict[str, Any] = {}
