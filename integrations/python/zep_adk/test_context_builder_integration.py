@@ -30,7 +30,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from zep_cloud.client import AsyncZep
 
-from zep_adk import ContextBuilder, ZepContextTool, create_after_model_callback
+from zep_adk import ZepContextTool, create_after_model_callback
 
 # ---------------------------------------------------------------------------
 # Configuration

@@ -285,7 +285,7 @@ async def main() -> None:
                 f"properties={prop_names}",
             )
         else:
-            print(f"  FAIL: Company entity type not found or has no properties")
+            print("  FAIL: Company entity type not found or has no properties")
             passed = False
 
         # ==================================================================
