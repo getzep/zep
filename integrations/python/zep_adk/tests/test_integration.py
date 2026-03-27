@@ -29,28 +29,29 @@ import sys
 import time
 from uuid import uuid4
 
-from google.adk.agents import Agent
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-from google.genai import types
-from pydantic import Field
-from zep_cloud.client import AsyncZep
-from zep_cloud.external_clients.ontology import EntityModel, EntityText
-
-from zep_adk import ZepContextTool, ZepGraphSearchTool, create_after_model_callback
+import pytest
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration — skip entire module when API keys are not available
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 
-if not ZEP_API_KEY:
-    print("ERROR: ZEP_API_KEY is not set.")
-    sys.exit(1)
-if not GOOGLE_API_KEY:
-    print("ERROR: GOOGLE_API_KEY is not set.")
-    sys.exit(1)
+if not ZEP_API_KEY or not GOOGLE_API_KEY:
+    pytest.skip(
+        "ZEP_API_KEY and GOOGLE_API_KEY required for integration tests",
+        allow_module_level=True,
+    )
+
+from google.adk.agents import Agent  # noqa: E402
+from google.adk.runners import Runner  # noqa: E402
+from google.adk.sessions import InMemorySessionService  # noqa: E402
+from google.genai import types  # noqa: E402
+from pydantic import Field  # noqa: E402
+from zep_cloud.client import AsyncZep  # noqa: E402
+from zep_cloud.external_clients.ontology import EntityModel, EntityText  # noqa: E402
+
+from zep_adk import ZepContextTool, ZepGraphSearchTool, create_after_model_callback  # noqa: E402
 
 # Unique IDs per run to avoid collisions
 _suffix = uuid4().hex[:8]
