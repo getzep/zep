@@ -388,6 +388,7 @@ class ZepContextTool(BaseTool):
         minimise latency.
         """
         assert self._context_builder is not None  # noqa: S101
+        context_builder = self._context_builder
 
         async def _persist() -> None:
             await self._zep.thread.add_messages(
@@ -397,7 +398,7 @@ class ZepContextTool(BaseTool):
             )
 
         async def _build_context() -> str | None:
-            return await self._context_builder(
+            return await context_builder(
                 self._zep,
                 identity.user_id,
                 identity.thread_id,

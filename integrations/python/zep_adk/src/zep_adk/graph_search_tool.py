@@ -268,7 +268,7 @@ class ZepGraphSearchTool(BaseTool):
         if state is not None:
             user_id = state.get("zep_user_id")
             if user_id:
-                return user_id
+                return str(user_id)
         try:
             return tool_context._invocation_context.session.user_id  # type: ignore[union-attr]
         except AttributeError:
