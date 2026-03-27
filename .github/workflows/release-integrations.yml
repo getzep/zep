@@ -10,6 +10,7 @@ on:
         required: true
         type: choice
         options:
+          - adk
           - autogen
           - crewai
           - livekit
