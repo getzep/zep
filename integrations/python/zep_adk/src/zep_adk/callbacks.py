@@ -54,6 +54,7 @@ def create_after_model_callback(
         An async callback function compatible with ADK's ``after_model_callback``
         interface.
     """
+
     async def after_model_callback(
         callback_context: CallbackContext,
         llm_response: LlmResponse,
