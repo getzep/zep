@@ -23,10 +23,14 @@ jobs:
         id: changes
         with:
           filters: |
+            adk:
+              - 'integrations/python/zep_adk/**'
             autogen:
               - 'integrations/python/zep_autogen/**'
             crewai:
               - 'integrations/python/zep_crewai/**'
+            livekit:
+              - 'integrations/python/zep_livekit/**'
 
   test:
     runs-on: ubuntu-latest
