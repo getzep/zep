@@ -54,9 +54,6 @@ def create_after_model_callback(
         An async callback function compatible with ADK's ``after_model_callback``
         interface.
     """
-    # Per-thread dedup: {thread_id: set(message_texts)}
-    persisted: dict[str, set[str]] = {}
-
     async def after_model_callback(
         callback_context: CallbackContext,
         llm_response: LlmResponse,
@@ -83,13 +80,6 @@ def create_after_model_callback(
             except AttributeError:
                 logger.warning("Cannot resolve Zep thread_id — skipping persist")
                 return None
-
-        # Deduplicate per thread -- ADK may call the callback multiple times
-        # per turn if there are tool-use cycles.
-        thread_msgs = persisted.setdefault(thread_id, set())
-        if full_text in thread_msgs:
-            return None
-        thread_msgs.add(full_text)
 
         try:
             await zep_client.thread.add_messages(

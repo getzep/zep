@@ -61,7 +61,7 @@ class TestZepContextToolInit:
         tool = ZepContextTool(zep_client=mock_client)
         assert tool is not None
         assert tool._zep is mock_client
-        assert len(tool._persisted_messages) == 0
+        assert len(tool._last_persisted_content_id) == 0
         assert len(tool._created_resources) == 0
 
 
@@ -374,7 +374,10 @@ class TestZepContextToolProcessLlmRequest:
         llm_request.append_instructions.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_deduplicates_messages_per_thread(self) -> None:
+    async def test_same_turn_skips_repersist(self) -> None:
+        """Within one ADK turn, process_llm_request fires multiple times
+        with the same user_content object (tool-use loops).  The second
+        call should be skipped."""
         mock_client = self._make_mock_client()
         mock_response = MagicMock()
         mock_response.context = "context"
@@ -383,41 +386,61 @@ class TestZepContextToolProcessLlmRequest:
         tool = self._make_tool(mock_client)
         llm_request = self._make_llm_request()
 
-        # Send the same message twice on the same thread
-        tc1 = self._make_tool_context("Same message")
-        tc2 = self._make_tool_context("Same message")
+        # Same user_content OBJECT passed twice (simulates intra-turn loop)
+        tc = self._make_tool_context("Hello")
+        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
 
-        await tool.process_llm_request(tool_context=tc1, llm_request=llm_request)
-        await tool.process_llm_request(tool_context=tc2, llm_request=llm_request)
-
-        # add_messages should only be called once (deduplicated)
+        # add_messages should only be called once
         assert mock_client.thread.add_messages.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_dedup_is_per_thread_not_global(self) -> None:
-        """Same message text on different threads should persist to both."""
+    async def test_repeated_text_different_turns_persisted(self) -> None:
+        """Same text sent in separate turns (different user_content objects)
+        should be persisted both times — not silently dropped."""
         mock_client = self._make_mock_client()
         mock_response = MagicMock()
-        mock_response.context = None
+        mock_response.context = "context"
         mock_client.thread.add_messages.return_value = mock_response
 
         tool = self._make_tool(mock_client)
         llm_request = self._make_llm_request()
 
-        # Same message, different threads
-        tc_thread_a = self._make_tool_context(
-            "Same message",
-            state={"zep_user_id": "user-1", "zep_thread_id": "thread-A"},
-        )
-        tc_thread_b = self._make_tool_context(
-            "Same message",
-            state={"zep_user_id": "user-1", "zep_thread_id": "thread-B"},
-        )
+        # Two calls with the same text but different user_content objects
+        tc1 = self._make_tool_context("yes")
+        tc2 = self._make_tool_context("yes")
 
-        await tool.process_llm_request(tool_context=tc_thread_a, llm_request=llm_request)
-        await tool.process_llm_request(tool_context=tc_thread_b, llm_request=llm_request)
+        await tool.process_llm_request(tool_context=tc1, llm_request=llm_request)
+        await tool.process_llm_request(tool_context=tc2, llm_request=llm_request)
 
-        # Should have persisted to both threads
+        # Both should be persisted (different turns)
+        assert mock_client.thread.add_messages.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_failed_persist_allows_retry(self) -> None:
+        """If the API call fails, the message should NOT be marked as
+        persisted, so the next invocation can retry."""
+        mock_client = self._make_mock_client()
+        # First call fails, second succeeds
+        mock_response = MagicMock()
+        mock_response.context = "context"
+        mock_client.thread.add_messages.side_effect = [
+            RuntimeError("transient error"),
+            mock_response,
+        ]
+
+        tool = self._make_tool(mock_client)
+        llm_request = self._make_llm_request()
+
+        # Same object — first call fails
+        tc = self._make_tool_context("Hello")
+        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+
+        # New turn with a new user_content object carrying the same text
+        tc_retry = self._make_tool_context("Hello")
+        await tool.process_llm_request(tool_context=tc_retry, llm_request=llm_request)
+
+        # Should have attempted twice (first failed, second succeeded)
         assert mock_client.thread.add_messages.call_count == 2
 
     @pytest.mark.asyncio
@@ -998,7 +1021,9 @@ class TestAfterModelCallback:
         mock_client.thread.add_messages.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_deduplicates_responses_per_thread(self) -> None:
+    async def test_persists_every_response_no_dedup(self) -> None:
+        """The callback has no dedup — every LLM response is persisted,
+        even if the text is identical (each is a genuine model turn)."""
         from zep_adk import create_after_model_callback
 
         mock_client = self._make_mock_client()
@@ -1010,25 +1035,7 @@ class TestAfterModelCallback:
         await callback(callback_context, llm_response)
         await callback(callback_context, llm_response)
 
-        # Should only persist once
-        assert mock_client.thread.add_messages.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_dedup_is_per_thread_not_global(self) -> None:
-        """Same response on different threads should persist to both."""
-        from zep_adk import create_after_model_callback
-
-        mock_client = self._make_mock_client()
-        callback = create_after_model_callback(zep_client=mock_client)
-
-        llm_response = self._make_llm_response("Same response text")
-
-        ctx_a = self._make_callback_context(state={"zep_thread_id": "thread-A"})
-        ctx_b = self._make_callback_context(state={"zep_thread_id": "thread-B"})
-
-        await callback(ctx_a, llm_response)
-        await callback(ctx_b, llm_response)
-
+        # Both should be persisted
         assert mock_client.thread.add_messages.call_count == 2
 
     @pytest.mark.asyncio

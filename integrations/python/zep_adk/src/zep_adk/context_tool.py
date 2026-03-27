@@ -129,8 +129,13 @@ class ZepContextTool(BaseTool):
         self._ignore_roles: list[str] | None = ignore_roles
         self._on_user_created: UserSetupHook | None = on_user_created
 
-        # Per-thread dedup tracking: {thread_id: set(message_texts)}
-        self._persisted_messages: dict[str, set[str]] = {}
+        # Same-turn guard: maps thread_id → id() of the last user_content
+        # object we successfully persisted.  Within a single ADK turn,
+        # process_llm_request fires N times with the *same* user_content
+        # Python object (tool-use loops).  Comparing id() lets us skip the
+        # re-invocations without blocking legitimately repeated user text
+        # in a later turn (which will be a different object).
+        self._last_persisted_content_id: dict[str, int] = {}
 
         # Track which (user_id, thread_id) pairs have been lazily created
         self._created_resources: set[tuple[str, str]] = set()
@@ -315,12 +320,15 @@ class ZepContextTool(BaseTool):
             )
             return
 
-        # --- 3. Deduplicate per thread ------------------------------------
-        thread_msgs = self._persisted_messages.setdefault(identity.thread_id, set())
-        if user_text in thread_msgs:
-            logger.debug("Skipping already-persisted message: %s", user_text[:60])
+        # --- 3. Same-turn guard -------------------------------------------
+        # Within one ADK turn, process_llm_request fires multiple times
+        # (tool-use loops) with the *same* user_content Python object.
+        # Comparing id() skips re-invocations without blocking legitimately
+        # repeated user text in later turns (which will be a new object).
+        content_id = id(user_content)
+        if self._last_persisted_content_id.get(identity.thread_id) == content_id:
+            logger.debug("Skipping same-turn re-invocation for thread %s", identity.thread_id)
             return
-        thread_msgs.add(user_text)
 
         # --- 4. Ensure Zep resources exist --------------------------------
         if not await self._ensure_resources(identity):
@@ -358,6 +366,10 @@ class ZepContextTool(BaseTool):
                 exc_info=True,
             )
             return
+
+        # Mark as persisted only AFTER the API call succeeded, so that a
+        # transient failure does not permanently suppress the message.
+        self._last_persisted_content_id[identity.thread_id] = content_id
 
         # --- 6. Inject context into the LLM prompt -----------------------
         if context_text:
