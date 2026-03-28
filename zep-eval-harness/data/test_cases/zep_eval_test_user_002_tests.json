@@ -1,0 +1,33 @@
+{
+  "user_id": "zep_eval_test_user_002",
+  "test_cases": [
+    {
+      "id": "test_002_location",
+      "category": "basic_facts",
+      "query": "What city am I looking to buy a home in?",
+      "golden_answer": "You are looking to buy a home in the Denver, Colorado area.",
+      "needles": [
+        {
+          "description": "Marcus states he's looking for a home in the Denver area",
+          "source_file": "data/conversations/zep_eval_test_user_002_conv_001.json",
+          "source_line": 7,
+          "excerpt": "My wife and I are looking for a 4-bedroom home in the Denver area."
+        }
+      ]
+    },
+    {
+      "id": "test_002_hoa",
+      "category": "basic_facts",
+      "query": "How much are the HOA fees for the property I visited?",
+      "golden_answer": "The HOA fees are $180 per month.",
+      "needles": [
+        {
+          "description": "Marcus mentions the HOA fees are $180/month for the Aspen Court property",
+          "source_file": "data/conversations/zep_eval_test_user_002_conv_002.json",
+          "source_line": 7,
+          "excerpt": "They said it's $180 per month."
+        }
+      ]
+    }
+  ]
+}

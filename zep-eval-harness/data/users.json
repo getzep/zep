@@ -1,13 +1,24 @@
 [
   {
     "user_id": "zep_eval_test_user_001",
-    "first_name": "John",
-    "last_name": "Doe",
-    "email": "john.doe@example.com",
+    "first_name": "Sarah",
+    "last_name": "Chen",
+    "email": "sarah.chen@example.com",
     "metadata": {
-      "occupation": "Software Engineer",
-      "company": "TechCorp Solutions",
-      "date_of_birth": "1985-06-15"
+      "occupation": "Product Manager",
+      "company": "Rivian",
+      "date_of_birth": "1990-03-22"
+    }
+  },
+  {
+    "user_id": "zep_eval_test_user_002",
+    "first_name": "Marcus",
+    "last_name": "Rivera",
+    "email": "marcus.rivera@example.com",
+    "metadata": {
+      "occupation": "High School Teacher",
+      "company": "Lincoln High School",
+      "date_of_birth": "1985-11-08"
     }
   }
 ]

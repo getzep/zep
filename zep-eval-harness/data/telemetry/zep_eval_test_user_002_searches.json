@@ -1,0 +1,28 @@
+{
+  "user_id": "zep_eval_test_user_002",
+  "events": [
+    {
+      "type": "property_search",
+      "timestamp": "2025-01-12T10:15:00Z",
+      "filters": {
+        "location": "Denver, CO",
+        "bedrooms": 4,
+        "max_price": 650000,
+        "features": ["good schools", "family-friendly"]
+      },
+      "results_count": 22
+    },
+    {
+      "type": "property_view",
+      "timestamp": "2025-01-16T13:00:00Z",
+      "property": {
+        "address": "7742 Aspen Court, Highlands Ranch, CO",
+        "price": 625000,
+        "bedrooms": 4,
+        "bathrooms": 3,
+        "sqft": 2800,
+        "neighborhood": "Highlands Ranch"
+      }
+    }
+  ]
+}
