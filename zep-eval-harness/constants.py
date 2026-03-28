@@ -17,6 +17,11 @@ LLM_RESPONSE_MODEL = "gemini-2.5-flash-lite"  # Model used for generating respon
 LLM_JUDGE_MODEL = "gemini-2.5-flash-lite"  # Model used for grading responses
 LLM_CONTEXTUALIZATION_MODEL = "gemini-2.5-flash-lite"  # Model used for document chunk contextualization
 
+# Maximum number of documents to ingest from data/documents/.
+# Documents are sorted alphabetically by filename, so the selection is deterministic.
+# Set to None to ingest all documents.
+DOCUMENT_INGEST_LIMIT = None
+
 # Document chunking
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50

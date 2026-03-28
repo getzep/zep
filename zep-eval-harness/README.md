@@ -254,6 +254,7 @@ The evaluation script uses `cross_encoder` reranker by default for best accuracy
 - `LLM_RESPONSE_MODEL`: Model for generating responses (default: `gpt-5-mini`)
 - `LLM_JUDGE_MODEL`: Model for grading answers (default: `gpt-4.1`)
 - `LLM_CONTEXTUALIZATION_MODEL`: Model for document chunk contextualization (default: `gpt-4.1-mini`)
+- `DOCUMENT_INGEST_LIMIT`: Maximum number of documents to ingest from `data/documents/`. Documents are sorted alphabetically by filename, so the selection is deterministic. Set to `None` to ingest all documents (default). Set to an integer (e.g. `1`) to ingest only the first N documents.
 
 You can experiment with different rerankers by modifying the `reranker` parameter in `perform_graph_search()`:
 - `cross_encoder`: Best accuracy, slower (default)

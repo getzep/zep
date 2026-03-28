@@ -17,6 +17,7 @@ from zep_cloud.types import Message
 from constants import (
     CHUNK_OVERLAP,
     CHUNK_SIZE,
+    DOCUMENT_INGEST_LIMIT,
     DOCUMENTS_GRAPH_ID,
     GEMINI_BASE_URL,
     LLM_CONTEXTUALIZATION_MODEL,
@@ -110,17 +111,29 @@ def load_documents() -> list[tuple[str, str]]:
     if not os.path.isdir(docs_dir):
         return []
 
+    all_files = sorted(
+        f for f in glob.glob(os.path.join(docs_dir, "*")) if os.path.isfile(f)
+    )
+
+    # Apply DOCUMENT_INGEST_LIMIT (None = all)
+    if DOCUMENT_INGEST_LIMIT is not None:
+        selected_files = all_files[:DOCUMENT_INGEST_LIMIT]
+    else:
+        selected_files = all_files
+
     documents = []
-    for file_path in sorted(glob.glob(os.path.join(docs_dir, "*"))):
-        if not os.path.isfile(file_path):
-            continue
+    for file_path in selected_files:
         with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
         if content.strip():
             documents.append((os.path.basename(file_path), content))
 
     if documents:
-        print(f"✓ Loaded {len(documents)} document(s) from {docs_dir}")
+        total = len(all_files)
+        if DOCUMENT_INGEST_LIMIT is not None and DOCUMENT_INGEST_LIMIT < total:
+            print(f"✓ Loaded {len(documents)} of {total} document(s) from {docs_dir} (limit: {DOCUMENT_INGEST_LIMIT})")
+        else:
+            print(f"✓ Loaded {len(documents)} document(s) from {docs_dir}")
     return documents
 
 
