@@ -8,6 +8,7 @@ import sys
 import json
 import glob
 import asyncio
+import argparse
 import statistics
 from time import time
 from datetime import datetime
@@ -18,14 +19,17 @@ from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
 from zep_cloud.client import AsyncZep
 
-# Search configuration
-FACTS_LIMIT = 20  # Number of facts (edges) to return
-ENTITIES_LIMIT = 10  # Number of entities (nodes) to return
-EPISODES_LIMIT = 0  # Number of episodes to return (when enabled)
-
-# LLM Model configuration
-LLM_RESPONSE_MODEL = "gpt-5-mini"  # Model used for generating responses
-LLM_JUDGE_MODEL = "gpt-4.1"  # Model used for grading responses
+from constants import (
+    DOC_ENTITIES_LIMIT,
+    DOC_EPISODES_LIMIT,
+    DOC_FACTS_LIMIT,
+    GEMINI_BASE_URL,
+    LLM_JUDGE_MODEL,
+    LLM_RESPONSE_MODEL,
+    USER_ENTITIES_LIMIT,
+    USER_EPISODES_LIMIT,
+    USER_FACTS_LIMIT,
+)
 
 
 # ============================================================================
@@ -159,94 +163,100 @@ async def load_all_test_cases() -> Dict[str, List[Dict[str, Any]]]:
 
 
 async def perform_graph_search(
-    zep_client: AsyncZep, user_id: str, query: str, include_episodes: bool = False
+    zep_client: AsyncZep,
+    user_id: str,
+    query: str,
+    include_episodes: bool = False,
+    doc_graph_id: str | None = None,
 ) -> Dict[str, Any]:
     """
-    Perform parallel graph search across nodes and edges, optionally including episodes.
-    Uses cross-encoder reranker for best accuracy.
+    Perform parallel graph search across the user graph and optionally a
+    standalone document graph. All searches run concurrently.
 
     Args:
         zep_client: AsyncZep client instance
-        user_id: User ID for graph search
+        user_id: User ID for user graph search
         query: Search query string
         include_episodes: Whether to search episodes (default: False)
+        doc_graph_id: If provided, also search this standalone graph
 
     Returns:
         Dictionary containing search results for all scopes
     """
     print(f"Searching [{user_id}]: '{query}'")
 
-    # Search nodes and edges (facts and entities)
-    nodes_task = zep_client.graph.search(
+    # Build all search tasks for maximum parallelism
+    tasks: dict[str, asyncio.Task] = {}
+
+    # User graph searches
+    tasks["user_nodes"] = zep_client.graph.search(
         user_id=user_id,
         query=query,
         scope="nodes",
-        limit=ENTITIES_LIMIT,
+        limit=USER_ENTITIES_LIMIT,
         reranker="cross_encoder",
     )
-
-    edges_task = zep_client.graph.search(
+    tasks["user_edges"] = zep_client.graph.search(
         user_id=user_id,
         query=query,
         scope="edges",
-        limit=FACTS_LIMIT,
+        limit=USER_FACTS_LIMIT,
         reranker="cross_encoder",
     )
-
-    # Optionally search episodes
     if include_episodes:
-        episodes_task = zep_client.graph.search(
+        tasks["user_episodes"] = zep_client.graph.search(
             user_id=user_id,
             query=query,
             scope="episodes",
-            limit=EPISODES_LIMIT,
+            limit=USER_EPISODES_LIMIT,
             reranker="cross_encoder",
         )
-        nodes_result, edges_result, episodes_result = await asyncio.gather(
-            nodes_task, edges_task, episodes_task
+
+    # Standalone document graph searches (if enabled)
+    if doc_graph_id:
+        tasks["doc_nodes"] = zep_client.graph.search(
+            graph_id=doc_graph_id,
+            query=query,
+            scope="nodes",
+            limit=DOC_ENTITIES_LIMIT,
+            reranker="cross_encoder",
         )
-        return {
-            "episodes": episodes_result,
-            "nodes": nodes_result,
-            "edges": edges_result,
-        }
-    else:
-        nodes_result, edges_result = await asyncio.gather(nodes_task, edges_task)
-        return {"episodes": None, "nodes": nodes_result, "edges": edges_result}
-
-
-def construct_context_block(search_results: Dict[str, Any]) -> str:
-    """
-    Construct a custom context block from graph search results.
-    Follows the template format with facts, entities, and optionally episodes.
-
-    Args:
-        search_results: Dictionary containing episodes, nodes, and edges
-
-    Returns:
-        Formatted context block string for LLM consumption
-    """
-    context_parts = []
-
-    has_episodes = search_results.get("episodes") is not None
-
-    # Header
-    if has_episodes:
-        context_parts.append(
-            "FACTS, ENTITIES, and EPISODES represent relevant context to the current conversation.\n"
+        tasks["doc_edges"] = zep_client.graph.search(
+            graph_id=doc_graph_id,
+            query=query,
+            scope="edges",
+            limit=DOC_FACTS_LIMIT,
+            reranker="cross_encoder",
         )
-    else:
-        context_parts.append(
-            "FACTS and ENTITIES represent relevant context to the current conversation.\n"
-        )
+        if include_episodes:
+            tasks["doc_episodes"] = zep_client.graph.search(
+                graph_id=doc_graph_id,
+                query=query,
+                scope="episodes",
+                limit=DOC_EPISODES_LIMIT,
+                reranker="cross_encoder",
+            )
 
-    # Facts section (edges with temporal validity, labels, and attributes)
-    context_parts.append("# These are the most relevant facts")
-    context_parts.append('# Facts ending in "present" are currently valid')
-    context_parts.append("# Facts with a past end date are NO LONGER VALID.")
-    context_parts.append("<FACTS>")
+    # Execute all searches in parallel
+    keys = list(tasks.keys())
+    results_list = await asyncio.gather(*tasks.values())
+    results = dict(zip(keys, results_list))
 
-    edges = getattr(search_results["edges"], "edges", [])
+    return {
+        # User graph results
+        "nodes": results["user_nodes"],
+        "edges": results["user_edges"],
+        "episodes": results.get("user_episodes"),
+        # Document graph results (None if not searched)
+        "doc_nodes": results.get("doc_nodes"),
+        "doc_edges": results.get("doc_edges"),
+        "doc_episodes": results.get("doc_episodes"),
+    }
+
+
+def _format_edges(edges) -> list[str]:
+    """Format a list of edge results into context lines."""
+    parts = []
     if edges:
         for edge in edges:
             fact = getattr(edge, "fact", "No fact available")
@@ -255,37 +265,30 @@ def construct_context_block(search_results: Dict[str, Any]) -> str:
             labels = getattr(edge, "labels", None)
             attributes = getattr(edge, "attributes", None)
 
-            # Format temporal validity
             valid_at_str = valid_at if valid_at else "unknown"
             invalid_at_str = invalid_at if invalid_at else "present"
 
-            context_parts.append(
+            parts.append(
                 f"{fact} (Date range: {valid_at_str} - {invalid_at_str})"
             )
 
-            # Add labels if present
             if labels and len(labels) > 0:
-                context_parts.append(f"  Labels: {', '.join(labels)}")
+                parts.append(f"  Labels: {', '.join(labels)}")
 
-            # Add attributes if present
             if attributes and isinstance(attributes, dict) and len(attributes) > 0:
-                context_parts.append(f"  Attributes:")
+                parts.append(f"  Attributes:")
                 for attr_name, attr_value in attributes.items():
-                    context_parts.append(f"    {attr_name}: {attr_value}")
+                    parts.append(f"    {attr_name}: {attr_value}")
 
-            context_parts.append("")  # Blank line between facts
+            parts.append("")
     else:
-        context_parts.append("No relevant facts found")
+        parts.append("No relevant facts found")
+    return parts
 
-    context_parts.append("</FACTS>\n")
 
-    # Entities section (nodes with labels and attributes)
-    context_parts.append(
-        "# These are the most relevant entities (people, locations, organizations, items, and more)."
-    )
-    context_parts.append("<ENTITIES>")
-
-    nodes = getattr(search_results["nodes"], "nodes", [])
+def _format_nodes(nodes) -> list[str]:
+    """Format a list of node results into context lines."""
+    parts = []
     if nodes:
         for node in nodes:
             name = getattr(node, "name", "Unknown")
@@ -293,44 +296,127 @@ def construct_context_block(search_results: Dict[str, Any]) -> str:
             attributes = getattr(node, "attributes", None)
             summary = getattr(node, "summary", "No summary available")
 
-            context_parts.append(f"Name: {name}")
+            parts.append(f"Name: {name}")
 
-            # Add labels if present, filtering out generic "Entity" label when multiple labels exist
             if labels and len(labels) > 0:
                 filtered_labels = (
                     [l for l in labels if l != "Entity"] if len(labels) > 1 else labels
                 )
                 if filtered_labels:
-                    context_parts.append(f"Labels: {', '.join(filtered_labels)}")
+                    parts.append(f"Labels: {', '.join(filtered_labels)}")
 
-            # Add attributes if present
             if attributes and isinstance(attributes, dict) and len(attributes) > 0:
-                context_parts.append(f"Attributes:")
+                parts.append(f"Attributes:")
                 for attr_name, attr_value in attributes.items():
-                    context_parts.append(f"  {attr_name}: {attr_value}")
+                    parts.append(f"  {attr_name}: {attr_value}")
 
-            context_parts.append(f"Summary: {summary}")
-            context_parts.append("")  # Blank line between entities
+            parts.append(f"Summary: {summary}")
+            parts.append("")
     else:
-        context_parts.append("No relevant entities found")
+        parts.append("No relevant entities found")
+    return parts
 
+
+def _format_episodes(episodes) -> list[str]:
+    """Format a list of episode results into context lines."""
+    parts = []
+    if episodes:
+        for episode in episodes:
+            content = getattr(episode, "content", "No content available")
+            created_at = getattr(episode, "created_at", "Unknown date")
+            parts.append(f"({created_at}) {content}")
+    else:
+        parts.append("No relevant episodes found")
+    return parts
+
+
+def construct_context_block(
+    search_results: Dict[str, Any],
+    user_summary: str | None = None,
+) -> str:
+    """
+    Construct a context block from graph search results.
+    Includes user summary, user graph results, and optionally document graph results.
+
+    Args:
+        search_results: Dictionary containing user and document graph results
+        user_summary: Optional user summary from the user node
+
+    Returns:
+        Formatted context block string for LLM consumption
+    """
+    context_parts = []
+
+    has_episodes = search_results.get("episodes") is not None
+    has_doc_results = search_results.get("doc_edges") is not None
+
+    # User summary
+    if user_summary:
+        context_parts.append("# High-level summary of the user")
+        context_parts.append("<USER_SUMMARY>")
+        context_parts.append(user_summary)
+        context_parts.append("</USER_SUMMARY>\n")
+
+    # --- User graph results ---
+    context_parts.append(
+        "FACTS, ENTITIES,"
+        + (" and EPISODES " if has_episodes else " ")
+        + "represent relevant context from the user's knowledge graph.\n"
+    )
+
+    # Facts
+    context_parts.append("# These are the most relevant facts about the user")
+    context_parts.append('# Facts ending in "present" are currently valid')
+    context_parts.append("# Facts with a past end date are NO LONGER VALID.")
+    context_parts.append("<FACTS>")
+    edges = getattr(search_results["edges"], "edges", [])
+    context_parts.extend(_format_edges(edges))
+    context_parts.append("</FACTS>\n")
+
+    # Entities
+    context_parts.append(
+        "# These are the most relevant entities (people, locations, organizations, items, and more)."
+    )
+    context_parts.append("<ENTITIES>")
+    nodes = getattr(search_results["nodes"], "nodes", [])
+    context_parts.extend(_format_nodes(nodes))
     context_parts.append("</ENTITIES>")
 
-    # Episodes section (optional)
+    # Episodes (optional)
     if has_episodes:
         context_parts.append("\n# These are the most relevant episodes")
         context_parts.append("<EPISODES>")
-
         episodes = getattr(search_results["episodes"], "episodes", [])
-        if episodes:
-            for episode in episodes:
-                content = getattr(episode, "content", "No content available")
-                created_at = getattr(episode, "created_at", "Unknown date")
-                context_parts.append(f"({created_at}) {content}")
-        else:
-            context_parts.append("No relevant episodes found")
-
+        context_parts.extend(_format_episodes(episodes))
         context_parts.append("</EPISODES>")
+
+    # --- Document graph results (optional) ---
+    if has_doc_results:
+        has_doc_episodes = search_results.get("doc_episodes") is not None
+
+        context_parts.append("\n")
+        context_parts.append(
+            "The following FACTS and ENTITIES are from shared reference documents.\n"
+        )
+
+        context_parts.append("# Reference document facts")
+        context_parts.append("<DOCUMENT_FACTS>")
+        doc_edges = getattr(search_results["doc_edges"], "edges", [])
+        context_parts.extend(_format_edges(doc_edges))
+        context_parts.append("</DOCUMENT_FACTS>\n")
+
+        context_parts.append("# Reference document entities")
+        context_parts.append("<DOCUMENT_ENTITIES>")
+        doc_nodes = getattr(search_results["doc_nodes"], "nodes", [])
+        context_parts.extend(_format_nodes(doc_nodes))
+        context_parts.append("</DOCUMENT_ENTITIES>")
+
+        if has_doc_episodes:
+            context_parts.append("\n# Reference document episodes")
+            context_parts.append("<DOCUMENT_EPISODES>")
+            doc_episodes = getattr(search_results["doc_episodes"], "episodes", [])
+            context_parts.extend(_format_episodes(doc_episodes))
+            context_parts.append("</DOCUMENT_EPISODES>")
 
     return "\n".join(context_parts)
 
@@ -340,23 +426,14 @@ def construct_context_block(search_results: Dict[str, Any]) -> str:
 # ============================================================================
 
 
-def extract_assistant_answer(response) -> str:
-    texts = []
-    for item in getattr(response, "output", []) or []:
-        for block in getattr(item, "content", []) or []:
-            if getattr(block, "type", None) == "output_text":
-                texts.append(getattr(block, "text", ""))
-    return "\n".join(filter(None, texts)).strip()
-
-
 async def generate_ai_response(
-    openai_client: AsyncOpenAI, context: str, question: str
+    llm_client: AsyncOpenAI, context: str, question: str
 ) -> Tuple[str, int]:
     """
     Generate an answer to a question using the provided Zep context.
 
     Args:
-        openai_client: AsyncOpenAI client instance
+        llm_client: AsyncOpenAI client instance (pointed at Gemini)
         context: Retrieved context from Zep graph search
         question: Question to answer
 
@@ -375,22 +452,19 @@ You have access to the user's conversation history and relevant information in t
 Using only the information in the CONTEXT, answer the user's questions. Keep responses SHORT - one sentence when possible.
 """
 
-    response = await openai_client.responses.create(
+    response = await llm_client.chat.completions.create(
         model=LLM_RESPONSE_MODEL,
-        input=[
+        messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": question},
         ],
-        reasoning=(
-            {"effort": "medium"} if LLM_RESPONSE_MODEL.startswith("gpt-5") else None
-        ),
-        temperature=0.0 if not LLM_RESPONSE_MODEL.startswith("gpt-5") else None,
+        temperature=0.0,
     )
 
-    # Extract token usage
-    prompt_tokens = response.usage.input_tokens if response.usage else 0
+    answer = response.choices[0].message.content.strip() if response.choices else ""
+    prompt_tokens = response.usage.prompt_tokens if response.usage else 0
 
-    return extract_assistant_answer(response) or "", prompt_tokens
+    return answer, prompt_tokens
 
 
 # ============================================================================
@@ -399,13 +473,13 @@ Using only the information in the CONTEXT, answer the user's questions. Keep res
 
 
 async def grade_ai_response(
-    openai_client: AsyncOpenAI, question: str, golden_answer: str, ai_response: str
+    llm_client: AsyncOpenAI, question: str, golden_answer: str, ai_response: str
 ) -> Tuple[bool, str]:
     """
     Grade an AI response against golden answer using an LLM judge.
 
     Args:
-        openai_client: AsyncOpenAI client instance
+        llm_client: AsyncOpenAI client instance (pointed at Gemini)
         question: The original question
         golden_answer: The expected correct answer
         ai_response: The AI-generated response to evaluate
@@ -454,23 +528,22 @@ Examples of CORRECT responses:
 - Golden and response have same key information with different, but commonly acceptable names e.g. NYC or New York may be used to refer to New York City
 - Response adds conversational elements but preserves all essential details from golden answer
 
-Please provide your evaluation:
+Please provide your evaluation as JSON with keys "correct" (boolean) and "reasoning" (string).
 """
 
-    response = await openai_client.responses.parse(
+    response = await llm_client.chat.completions.create(
         model=LLM_JUDGE_MODEL,
-        input=[
+        messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": grading_prompt},
         ],
-        text_format=Grade,
-        reasoning=({"effort": "low"} if LLM_JUDGE_MODEL.startswith("gpt-5") else None),
-        temperature=0.0 if not LLM_JUDGE_MODEL.startswith("gpt-5") else None,
+        response_format={"type": "json_object"},
+        temperature=0.0,
     )
 
-    result = response.output_parsed
+    result = json.loads(response.choices[0].message.content)
 
-    return result.correct, result.reasoning
+    return bool(result["correct"]), result["reasoning"]
 
 
 # ============================================================================
@@ -479,7 +552,7 @@ Please provide your evaluation:
 
 
 async def evaluate_context_completeness(
-    openai_client: AsyncOpenAI, question: str, golden_answer: str, context: str
+    llm_client: AsyncOpenAI, question: str, golden_answer: str, context: str
 ) -> Tuple[str, str, List[str], List[str]]:
     """
     Evaluate whether the retrieved context contains adequate information to answer the question.
@@ -533,6 +606,11 @@ Evaluation Guidelines:
    - Context is off-topic or irrelevant
    - No reasonable answer could be constructed from this context
 
+IMPORTANT section equivalence:
+- ALL sections of the context are equally valid sources of information (USER_SUMMARY, FACTS, ENTITIES, EPISODES, DOCUMENT_FACTS, DOCUMENT_ENTITIES, etc.)
+- Information found in ANY section counts as present — do not penalize information for appearing in one section versus another
+- If an element from the golden answer appears anywhere in the context, it is PRESENT
+
 IMPORTANT temporal interpretation:
 - Facts with date ranges (e.g., "2025-10-01 - 2025-10-07") represent WHEN events occurred
 - These historical facts remain VALID context even if dated in the past
@@ -546,28 +624,27 @@ For your evaluation:
 - Historical facts (past date ranges) count as present information
 - Provide clear reasoning explaining your completeness assessment
 
-Please evaluate the context completeness:
+Please evaluate the context completeness as JSON with keys "completeness" (one of "COMPLETE", "PARTIAL", or "INSUFFICIENT"), "reasoning" (string), "missing_elements" (list of strings), and "present_elements" (list of strings).
 """
 
-    response = await openai_client.responses.parse(
+    response = await llm_client.chat.completions.create(
         model=LLM_JUDGE_MODEL,
-        input=[
+        messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": completeness_prompt},
         ],
-        text_format=CompletenessGrade,
-        reasoning=({"effort": "low"} if LLM_JUDGE_MODEL.startswith("gpt-5") else None),
-        temperature=0.0 if not LLM_JUDGE_MODEL.startswith("gpt-5") else None,
+        response_format={"type": "json_object"},
+        temperature=0.0,
     )
 
-    result = response.output_parsed
-    completeness_grade = result.completeness.strip().upper()
+    result = json.loads(response.choices[0].message.content)
+    completeness_grade = result["completeness"].strip().upper()
 
     return (
         completeness_grade,
-        result.reasoning,
-        result.missing_elements,
-        result.present_elements,
+        result["reasoning"],
+        result.get("missing_elements", []),
+        result.get("present_elements", []),
     )
 
 
@@ -578,10 +655,12 @@ Please evaluate the context completeness:
 
 async def process_single_query(
     zep_client: AsyncZep,
-    openai_client: AsyncOpenAI,
+    llm_client: AsyncOpenAI,
     user_id: str,
     query: str,
     golden_answer: str,
+    doc_graph_id: str | None = None,
+    user_summary: str | None = None,
 ) -> Dict[str, Any]:
     """
     Process a single query through the complete pipeline:
@@ -593,15 +672,19 @@ async def process_single_query(
         user_id: User ID for graph search
         query: Question to answer
         golden_answer: Expected answer for evaluation
+        doc_graph_id: Optional standalone document graph to also search
+        user_summary: Optional user summary from the user node
 
     Returns:
         Dictionary containing all results for this query
     """
     start_time = time()
 
-    # Step 1: Search
-    search_results = await perform_graph_search(zep_client, user_id, query)
-    context = construct_context_block(search_results)
+    # Step 1: Search (user graph + optionally document graph, all in parallel)
+    search_results = await perform_graph_search(
+        zep_client, user_id, query, doc_graph_id=doc_graph_id
+    )
+    context = construct_context_block(search_results, user_summary=user_summary)
     search_duration_ms = (time() - start_time) * 1000
 
     # Steps 2 & 3: Run completeness evaluation and response generation in parallel
@@ -610,9 +693,9 @@ async def process_single_query(
 
     # Create coroutines for parallel execution
     completeness_task = evaluate_context_completeness(
-        openai_client, query, golden_answer, context
+        llm_client, query, golden_answer, context
     )
-    response_task = generate_ai_response(openai_client, context, query)
+    response_task = generate_ai_response(llm_client, context, query)
 
     # Execute in parallel
     (completeness_grade, completeness_reasoning, missing_elements, present_elements), (
@@ -626,7 +709,7 @@ async def process_single_query(
     # Step 4: Grade Response (SECONDARY METRIC) - must wait for AI answer
     grading_start = time()
     answer_grade, answer_reasoning = await grade_ai_response(
-        openai_client, query, golden_answer, ai_answer
+        llm_client, query, golden_answer, ai_answer
     )
     grading_duration_ms = (time() - grading_start) * 1000
 
@@ -682,12 +765,16 @@ async def process_single_query(
 
 async def evaluate_all_questions(
     zep_client: AsyncZep,
-    openai_client: AsyncOpenAI,
+    llm_client: AsyncOpenAI,
     manifest: Dict[str, Any],
     test_cases_by_user: Dict[str, List[Dict[str, Any]]],
+    doc_graph_id: str | None = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Run the complete evaluation pipeline for all users and their test cases.
+
+    Args:
+        doc_graph_id: If provided, also search this standalone document graph
 
     Returns:
         Dictionary mapping user_id to list of evaluation results
@@ -701,6 +788,16 @@ async def evaluate_all_questions(
         zep_id = user_data["zep_user_id"]
         user_mapping[base_id] = zep_id
 
+    # Warm the document graph by running a simple search (no warm method for
+    # standalone graphs, so a lightweight search primes the cache)
+    if doc_graph_id:
+        print(f"Warming document graph {doc_graph_id}...")
+        await zep_client.graph.search(
+            graph_id=doc_graph_id, query=".", scope="edges", limit=1,
+            reranker="cross_encoder",
+        )
+        print(f"✓ Document graph warmed\n")
+
     # Process each user
     for base_user_id, test_cases in test_cases_by_user.items():
         if base_user_id not in user_mapping:
@@ -711,9 +808,30 @@ async def evaluate_all_questions(
         print(f"\n{'='*80}")
         print(f"Evaluating user: {base_user_id} → {zep_user_id}")
         print(f"Test cases: {len(test_cases)}")
+        if doc_graph_id:
+            print(f"Document graph: {doc_graph_id}")
         print(f"{'='*80}\n")
 
-        # Process queries in batches of 5 to avoid overwhelming the API
+        # Warm the user's graph cache for low-latency search
+        print(f"Warming graph cache for user {zep_user_id}...")
+        await zep_client.user.warm(user_id=zep_user_id)
+        print(f"✓ Graph cache warmed for {zep_user_id}")
+
+        # Fetch user summary from the user node
+        user_summary = None
+        try:
+            user_node_response = await zep_client.user.get_node(user_id=zep_user_id)
+            if user_node_response.node:
+                user_summary = getattr(user_node_response.node, "summary", None)
+            if user_summary:
+                print(f"✓ User summary retrieved")
+            else:
+                print(f"  No user summary available")
+        except Exception as e:
+            print(f"  Could not retrieve user summary: {e}")
+        print()
+
+        # Process queries in batches
         batch_size = 15
         user_results = []
 
@@ -729,15 +847,25 @@ async def evaluate_all_questions(
             tasks = [
                 process_single_query(
                     zep_client,
-                    openai_client,
+                    llm_client,
                     zep_user_id,
                     test_case["query"],
                     test_case["golden_answer"],
+                    doc_graph_id=doc_graph_id,
+                    user_summary=user_summary,
                 )
                 for test_case in batch
             ]
 
             batch_results = await asyncio.gather(*tasks)
+
+            # Attach test case metadata (id, category, needles) to results
+            for result, test_case in zip(batch_results, batch):
+                result["test_id"] = test_case.get("id")
+                result["category"] = test_case.get("category")
+                if "needles" in test_case:
+                    result["needles"] = test_case["needles"]
+
             user_results.extend(batch_results)
 
         all_results[base_user_id] = user_results
@@ -941,9 +1069,12 @@ def save_results(
         "evaluation_timestamp": timestamp,
         "run_number": manifest.get("run_number"),
         "search_configuration": {
-            "facts_limit": FACTS_LIMIT,
-            "entities_limit": ENTITIES_LIMIT,
-            "episodes_limit": EPISODES_LIMIT,
+            "user_facts_limit": USER_FACTS_LIMIT,
+            "user_entities_limit": USER_ENTITIES_LIMIT,
+            "user_episodes_limit": USER_EPISODES_LIMIT,
+            "doc_facts_limit": DOC_FACTS_LIMIT,
+            "doc_entities_limit": DOC_ENTITIES_LIMIT,
+            "doc_episodes_limit": DOC_EPISODES_LIMIT,
         },
         "model_configuration": {
             "response_model": LLM_RESPONSE_MODEL,
@@ -1058,35 +1189,51 @@ def print_summary(stats: Dict[str, Any]):
 # ============================================================================
 
 
-async def main():
-    # Load environment variables
-    load_dotenv()
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Zep Eval Harness — Evaluation Script",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  uv run zep_evaluate.py                                    # Evaluate latest run (user graphs only)
+  uv run zep_evaluate.py 1                                  # Evaluate run #1
+  uv run zep_evaluate.py --include-document-graph-search    # Also search the shared document graph
+  uv run zep_evaluate.py 2 --include-document-graph-search  # Run #2 with document graph
+""",
+    )
+    parser.add_argument(
+        "run_number",
+        nargs="?",
+        type=int,
+        default=None,
+        help="Run number to evaluate (default: latest)",
+    )
+    parser.add_argument(
+        "--include-document-graph-search",
+        action="store_true",
+        help="Also search the shared standalone document graph for context",
+    )
+    return parser.parse_args()
 
-    # Parse command-line arguments
-    run_number = None
-    if len(sys.argv) > 1:
-        try:
-            run_number = int(sys.argv[1])
-        except ValueError:
-            print(f"Error: Invalid run number '{sys.argv[1]}'")
-            print("Usage: python zep_evaluate.py [run_number]")
-            exit(1)
+
+async def main():
+    load_dotenv()
+    args = parse_args()
 
     # Validate environment variables
     zep_api_key = os.getenv("ZEP_API_KEY")
-    openai_api_key = os.getenv("OPENAI_API_KEY")
+    google_api_key = os.getenv("GOOGLE_API_KEY")
 
     if not zep_api_key:
         print("Error: Missing ZEP_API_KEY environment variable")
         exit(1)
 
-    if not openai_api_key:
-        print("Error: Missing OPENAI_API_KEY environment variable")
+    if not google_api_key:
+        print("Error: Missing GOOGLE_API_KEY environment variable")
         exit(1)
 
     # Initialize clients
     zep_client = AsyncZep(api_key=zep_api_key)
-    openai_client = AsyncOpenAI(api_key=openai_api_key)
+    llm_client = AsyncOpenAI(api_key=google_api_key, base_url=GEMINI_BASE_URL)
 
     print("=" * 80)
     print("ZEP EVALUATION SCRIPT")
@@ -1094,7 +1241,17 @@ async def main():
 
     try:
         # Load run manifest
-        manifest, run_dir = load_run_manifest(run_number)
+        manifest, run_dir = load_run_manifest(args.run_number)
+
+        # Resolve document graph ID from manifest if --documents is set
+        doc_graph_id = None
+        if args.include_document_graph_search:
+            doc_info = manifest.get("documents", {})
+            doc_graph_id = doc_info.get("graph_id")
+            if doc_graph_id:
+                print(f"Document graph: {doc_graph_id}")
+            else:
+                print("Warning: --include-document-graph-search flag set but no document graph found in manifest")
 
         # Load test cases
         test_cases_by_user = await load_all_test_cases()
@@ -1102,7 +1259,8 @@ async def main():
         # Run evaluation
         print("Starting evaluation...\n")
         results = await evaluate_all_questions(
-            zep_client, openai_client, manifest, test_cases_by_user
+            zep_client, llm_client, manifest, test_cases_by_user,
+            doc_graph_id=doc_graph_id,
         )
 
         # Save results with aggregate statistics

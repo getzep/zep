@@ -1,0 +1,16 @@
+{
+  "conversation_id": "conv_002",
+  "user_id": "zep_eval_test_user_002",
+  "messages": [
+    {
+      "role": "user",
+      "content": "We visited the place on Aspen Court in Highlands Ranch. The kitchen was recently renovated which my wife loved, but we're a little worried about the HOA fees. They said it's $180 per month. Is that normal for the area?",
+      "timestamp": "2025-01-18T16:45:00Z"
+    },
+    {
+      "role": "assistant",
+      "content": "$180/month is actually right in line with Highlands Ranch HOA fees — the community average is $150-$200/month, and that typically covers access to the rec centers, pools, and trail system. The property at 7742 Aspen Court is listed at $625,000 and the renovated kitchen is a real plus since comparable homes without updates are going for similar prices. I think it's solid value.",
+      "timestamp": "2025-01-18T16:46:00Z"
+    }
+  ]
+}

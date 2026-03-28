@@ -1,0 +1,16 @@
+{
+  "conversation_id": "conv_001",
+  "user_id": "zep_eval_test_user_002",
+  "messages": [
+    {
+      "role": "user",
+      "content": "My wife and I are looking for a 4-bedroom home in the Denver area. We have two kids so good school districts are a must. Our budget is $650,000.",
+      "timestamp": "2025-01-12T10:00:00Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Denver is a great market for families! With your budget and school priorities, I'd suggest looking at Highlands Ranch, Centennial, or Littleton — all have top-rated school districts. Highlands Ranch in particular has a lot of 4-bedroom options with family-friendly neighborhoods and parks. Want me to start a search in those areas?",
+      "timestamp": "2025-01-12T10:01:00Z"
+    }
+  ]
+}

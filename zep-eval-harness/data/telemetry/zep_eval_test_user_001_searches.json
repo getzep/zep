@@ -1,0 +1,28 @@
+{
+  "user_id": "zep_eval_test_user_001",
+  "events": [
+    {
+      "type": "property_search",
+      "timestamp": "2025-01-10T09:30:00Z",
+      "filters": {
+        "location": "Austin, TX",
+        "bedrooms": 3,
+        "max_price": 550000,
+        "features": ["home office", "fenced yard"]
+      },
+      "results_count": 14
+    },
+    {
+      "type": "property_view",
+      "timestamp": "2025-01-13T11:00:00Z",
+      "property": {
+        "address": "4821 Maple Ridge Drive, Austin, TX",
+        "price": 535000,
+        "bedrooms": 3,
+        "bathrooms": 2,
+        "sqft": 2100,
+        "neighborhood": "Circle C Ranch"
+      }
+    }
+  ]
+}

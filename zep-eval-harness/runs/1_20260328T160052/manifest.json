@@ -1,0 +1,40 @@
+{
+  "run_number": 1,
+  "timestamp": "2026-03-28T16:00:52.443412",
+  "ontology": {
+    "type": "default_zep",
+    "default_ontology_disabled": false,
+    "custom_entity_types": [],
+    "custom_edge_types": []
+  },
+  "documents": {
+    "graph_id": "zep_eval_shared_documents_5f8c6349",
+    "num_chunks": 10
+  },
+  "users": [
+    {
+      "base_user_id": "zep_eval_test_user_001",
+      "zep_user_id": "zep_eval_test_user_001_854e5a2b",
+      "first_name": "Sarah",
+      "last_name": "Chen",
+      "thread_ids": [
+        "conv_002_854e5a2b",
+        "conv_001_854e5a2b"
+      ],
+      "num_conversations": 2,
+      "num_telemetry_files": 1
+    },
+    {
+      "base_user_id": "zep_eval_test_user_002",
+      "zep_user_id": "zep_eval_test_user_002_9df91f38",
+      "first_name": "Marcus",
+      "last_name": "Rivera",
+      "thread_ids": [
+        "conv_002_9df91f38",
+        "conv_001_9df91f38"
+      ],
+      "num_conversations": 2,
+      "num_telemetry_files": 1
+    }
+  ]
+}

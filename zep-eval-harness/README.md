@@ -24,35 +24,72 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
 
 3. **Run ingestion script**
    ```bash
+   # Ingest all data and poll until processing completes
    uv run zep_ingest.py
 
-   # Or with custom ontology
+   # Ingest without waiting for processing
+   uv run zep_ingest.py --no-poll
+
+   # Ingest only specific graphs (user base IDs and/or 'documents')
+   uv run zep_ingest.py --graphs zep_eval_test_user_001,documents
+
+   # Use custom ontology
    uv run zep_ingest.py --custom-ontology
    ```
-   This creates a new run (e.g., `1_20251103T123456`) and generates a manifest in `runs/1_20251103T123456/manifest.json`
+   This creates a new run (e.g., `1_20251103T123456`) and generates a manifest in `runs/1_20251103T123456/manifest.json`.
+   Each run creates fresh users and a fresh document graph with random ID suffixes.
 
 4. **Run evaluation script**
    ```bash
-   # Evaluate the latest run
+   # Evaluate the latest run (user graphs only)
    uv run zep_evaluate.py
 
    # Or evaluate a specific run
    uv run zep_evaluate.py 1
+
+   # Also search the shared document graph for additional context
+   uv run zep_evaluate.py --include-document-graph-search
+
+   # Combine: specific run + document graph
+   uv run zep_evaluate.py 2 --include-document-graph-search
+   ```
+
+5. **Inspect a graph** (optional)
+   ```bash
+   # Inspect a user graph (use the full zep_user_id from manifest.json)
+   uv run zep_graph_inspect.py --user zep_eval_test_user_001_a7390b47
+
+   # Inspect the shared documents graph (use graph_id from manifest.json)
+   uv run zep_graph_inspect.py --graph zep_eval_shared_documents_f1a2b3c4
+
+   # Show only nodes or only edges
+   uv run zep_graph_inspect.py --user zep_eval_test_user_001_a7390b47 --nodes-only
+   uv run zep_graph_inspect.py --user zep_eval_test_user_001_a7390b47 --edges-only
    ```
 
 ## Overview
 
-This harness evaluates the complete Zep-powered QA pipeline in just **two scripts**:
+This harness evaluates the complete Zep-powered QA pipeline in three scripts:
+
+| Script | Purpose |
+|--------|---------|
+| `zep_ingest.py` | Ingest users, conversations, telemetry, and documents into Zep |
+| `zep_evaluate.py` | Search the graph, generate responses, and grade against golden answers |
+| `zep_graph_inspect.py` | Print all entities and facts for a user or standalone graph |
 
 ### Architecture
 
 ```
-data/conversations/*.json → [zep_ingest.py] → Zep Cloud Knowledge Graph
-data/users.json           →                           ↓
-                                                      ↓
-data/test_cases/*.json → [zep_evaluate.py] → Search → Generate Response → Grade
-                                                      ↓
-                                            runs/{run_number}/evaluation_results.json
+data/users.json            ┐
+data/conversations/*.json  ├→ [zep_ingest.py] → User Graphs + Document Graph
+data/telemetry/*.json      │                           ↓
+data/documents/*           ┘                           ↓
+                                                       ↓
+data/test_cases/*.json  → [zep_evaluate.py] → Search → Generate Response → Grade
+                                                       ↓
+                                             runs/{run_number}/evaluation_results.json
+
+                          [zep_graph_inspect.py] → Print all nodes & edges for any graph
 ```
 
 ### Pipeline Steps (automated in zep_evaluate.py)
@@ -92,6 +129,10 @@ runs/
     "type": "default_zep",
     "default_ontology_disabled": false
   },
+  "documents": {
+    "graph_id": "zep_eval_shared_documents_f1a2b3c4",
+    "num_chunks": 12
+  },
   "users": [
     {
       "base_user_id": "zep_eval_test_user_001",
@@ -102,7 +143,7 @@ runs/
         "conv_001_a7390b47"
       ],
       "num_conversations": 1,
-      "num_telemetry_files": 0
+      "num_telemetry_files": 2
     }
   ]
 }
@@ -155,10 +196,17 @@ The harness automatically discovers and processes data files based on naming con
 
 ### Telemetry (Optional)
 - Location: `data/telemetry/`
-- Format: `{user_id}_{data_type}.json`
-- Structure: Any JSON data with a `user_id` field
-- Ingested using `graph.add(type="json")`
+- Format: `{user_id}_*.json`
+- Structure: Any JSON data
+- Ingested using `graph.add(type="json")` into the user's graph
 - Example: User preferences, activity history, structured data
+
+### Documents (Optional)
+- Location: `data/documents/`
+- Format: Any text file (`.md`, `.txt`, etc.)
+- User-agnostic — ingested into a shared standalone graph, not per-user
+- Automatically chunked and contextualized via LLM before ingestion
+- Chunking parameters configurable in `constants.py` (`CHUNK_SIZE`, `CHUNK_OVERLAP`)
 
 ### Test Cases
 - Location: `data/test_cases/`
@@ -196,10 +244,16 @@ To add more users:
 
 ### Tune Zep Search Parameters
 
-The evaluation script uses `cross_encoder` reranker by default for best accuracy. Search is configured at the top of `zep_evaluate.py`:
-- `FACTS_LIMIT = 20`: Number of facts (edges) to return
-- `ENTITIES_LIMIT = 10`: Number of entities (nodes) to return
-- `EPISODES_LIMIT = 0`: Episodes disabled by default (set >0 to enable)
+The evaluation script uses `cross_encoder` reranker by default for best accuracy. Search parameters and LLM models are configured in `constants.py`:
+- `USER_FACTS_LIMIT = 20`: Number of facts (edges) from user graph
+- `USER_ENTITIES_LIMIT = 10`: Number of entities (nodes) from user graph
+- `USER_EPISODES_LIMIT = 0`: User episodes disabled by default (set >0 to enable)
+- `DOC_FACTS_LIMIT = 10`: Number of facts from document graph
+- `DOC_ENTITIES_LIMIT = 5`: Number of entities from document graph
+- `DOC_EPISODES_LIMIT = 0`: Document episodes disabled by default
+- `LLM_RESPONSE_MODEL`: Model for generating responses (default: `gpt-5-mini`)
+- `LLM_JUDGE_MODEL`: Model for grading answers (default: `gpt-4.1`)
+- `LLM_CONTEXTUALIZATION_MODEL`: Model for document chunk contextualization (default: `gpt-4.1-mini`)
 
 You can experiment with different rerankers by modifying the `reranker` parameter in `perform_graph_search()`:
 - `cross_encoder`: Best accuracy, slower (default)
@@ -257,9 +311,12 @@ Results are saved to `runs/{run_number}/evaluation_results_{timestamp}.json` wit
   "evaluation_timestamp": "20251106T213303",
   "run_number": 1,
   "search_configuration": {
-    "facts_limit": 20,
-    "entities_limit": 10,
-    "episodes_limit": 0
+    "user_facts_limit": 20,
+    "user_entities_limit": 10,
+    "user_episodes_limit": 0,
+    "doc_facts_limit": 10,
+    "doc_entities_limit": 5,
+    "doc_episodes_limit": 0
   },
   "model_configuration": {
     "response_model": "gpt-5-mini",
@@ -316,7 +373,7 @@ The ingestion script uses randomized user ID suffixes, so this shouldn't happen.
 2. Or modify the user_id in `data/users.json`
 
 ### Episode Processing Time
-Graph processing is asynchronous and can take 5-20 seconds per message. The ingestion script submits data without waiting, allowing evaluation to run once processing is complete.
+Graph processing is asynchronous and can take 5-20 seconds per message. By default the ingestion script polls until all episodes are processed. Use `--no-poll` to skip waiting.
 
 ### No Test Cases Found
 Ensure your test case files:
@@ -359,9 +416,11 @@ Ensure your test questions clearly specify necessary context such as timeframes,
 
 ## Data Provenance
 
-The eval harness contains:
-- **User Profile**: John Doe, Software Engineer at TechCorp Solutions
-- **1 Sample Conversation**: About adopting a dog named Max
-- **4 Test Cases**: Evaluating basic fact retrieval from the conversation
+The eval harness contains sample data for a real estate AI agent scenario:
+- **2 Users**: Sarah Chen (Product Manager) and Marcus Rivera (Teacher)
+- **4 Conversations**: Each user has 2 conversations about finding their ideal home (Austin, TX and Denver, CO)
+- **2 Telemetry Files**: Property search and viewing activity for each user
+- **4 Documents**: Home buying checklist, mortgage types guide, HOA guide, home inspection tips
+- **8 Test Cases**: 4 per user, evaluating basic fact retrieval from conversations
 
-All conversation data is synthetic and designed to test basic memory and retrieval capabilities.
+All data is synthetic and designed to test memory retrieval capabilities.
