@@ -59,9 +59,11 @@ USER_ID = f"adk-integ-{_suffix}"
 SESSION_1_ID = f"adk-integ-s1-{_suffix}"
 SESSION_2_ID = f"adk-integ-s2-{_suffix}"
 SESSION_3_ID = f"adk-integ-s3-{_suffix}"
+SESSION_4_ID = f"adk-integ-s4-{_suffix}"
 THREAD_1_ID = f"adk-integ-t1-{_suffix}"
 THREAD_2_ID = f"adk-integ-t2-{_suffix}"
 THREAD_3_ID = f"adk-integ-t3-{_suffix}"
+THREAD_4_ID = f"adk-integ-t4-{_suffix}"
 APP_NAME = "zep-adk-integ-test"
 
 FIRST_NAME = "IntegTest"
@@ -85,6 +87,14 @@ class Company(EntityModel):
     """A company or organization the user is associated with."""
 
     industry: EntityText = Field(description="The company's industry", default=None)
+
+
+# ---------------------------------------------------------------------------
+# Simple tool for testing tool-call message persistence
+# ---------------------------------------------------------------------------
+def get_current_weather(city: str) -> dict:
+    """Get the current weather for a city. This is a fake tool for testing."""
+    return {"city": city, "temperature": "72°F", "condition": "sunny"}
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +178,7 @@ async def main() -> None:
     print("Zep ADK Integration Test")
     print(f"{'=' * 70}")
     print(f"  User ID:  {USER_ID}")
-    print(f"  Threads:  {THREAD_1_ID}, {THREAD_2_ID}, {THREAD_3_ID}")
+    print(f"  Threads:  {THREAD_1_ID}, {THREAD_2_ID}, {THREAD_3_ID}, {THREAD_4_ID}")
     print(f"{'=' * 70}\n")
 
     try:
@@ -215,6 +225,7 @@ async def main() -> None:
                         "user has shared before."
                     ),
                 ),
+                get_current_weather,
             ],
             after_model_callback=create_after_model_callback(
                 zep_client=zep_client,
@@ -428,6 +439,80 @@ async def main() -> None:
             passed &= check("Thread 3 has messages", msg_count > 0, f"count={msg_count}")
         except Exception as e:
             print(f"  FAIL: Could not get thread 3: {e}")
+            passed = False
+
+        # ==================================================================
+        # Step 11: Tool-call message persistence — verify only final
+        # assistant message is persisted (not intermediate "thoughts")
+        # ==================================================================
+        print("\n[Step 11] Session 4: tool-call persistence test (get_current_weather)...")
+
+        await session_service.create_session(
+            app_name=APP_NAME,
+            user_id=USER_ID,
+            session_id=SESSION_4_ID,
+            state={
+                "zep_thread_id": THREAD_4_ID,
+                "zep_first_name": FIRST_NAME,
+                "zep_last_name": LAST_NAME,
+                "zep_email": EMAIL,
+            },
+        )
+
+        tool_message = "What's the current weather in Portland? Use the get_current_weather tool."
+        print(f"  User:  {tool_message}")
+        response4 = await send_message(runner, SESSION_4_ID, USER_ID, tool_message)
+        print(f"  Agent: {response4}\n")
+
+        passed &= check("Agent responded after tool call", len(response4) > 0)
+
+        # Give Zep a moment to process the messages
+        await asyncio.sleep(2)
+
+        # Fetch all messages from thread 4 and inspect
+        print("  Inspecting messages persisted to Zep thread 4:")
+        try:
+            t4_resp = await zep_client.thread.get(thread_id=THREAD_4_ID, lastn=20)
+            messages = t4_resp.messages or []
+            for i, msg in enumerate(messages):
+                role = msg.role or "unknown"
+                content_preview = (msg.content or "")[:120]
+                print(f"    [{i}] role={role}: {content_preview}")
+
+            # Count by role
+            user_msgs = [m for m in messages if m.role == "user"]
+            asst_msgs = [m for m in messages if m.role == "assistant"]
+            tool_msgs = [m for m in messages if m.role in ("tool", "function")]
+
+            print(f"\n  Summary: {len(user_msgs)} user, {len(asst_msgs)} assistant, {len(tool_msgs)} tool")
+
+            passed &= check(
+                "Exactly 1 user message persisted",
+                len(user_msgs) == 1,
+                f"got {len(user_msgs)}",
+            )
+            passed &= check(
+                "Exactly 1 assistant message persisted (no intermediate thoughts)",
+                len(asst_msgs) == 1,
+                f"got {len(asst_msgs)}",
+            )
+            passed &= check(
+                "No tool/function messages persisted",
+                len(tool_msgs) == 0,
+                f"got {len(tool_msgs)}",
+            )
+
+            # The single assistant message should contain weather info
+            if asst_msgs:
+                asst_text = (asst_msgs[0].content or "").lower()
+                passed &= check(
+                    "Assistant message contains weather result (not just 'let me check')",
+                    "72" in asst_text or "sunny" in asst_text or "portland" in asst_text,
+                    f"text={asst_msgs[0].content[:100]}",
+                )
+
+        except Exception as e:
+            print(f"  FAIL: Could not get thread 4 messages: {e}")
             passed = False
 
     finally:
