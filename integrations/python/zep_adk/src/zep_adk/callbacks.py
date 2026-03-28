@@ -69,9 +69,7 @@ def create_after_model_callback(
         # the model's "thinking" messages before a tool is executed (e.g.
         # "Let me look that up for you.").  Only persist the final text-only
         # response so Zep sees one clean assistant message per turn.
-        has_function_call = any(
-            hasattr(p, "function_call") and p.function_call for p in parts
-        )
+        has_function_call = any(hasattr(p, "function_call") and p.function_call for p in parts)
         if has_function_call:
             return None
 

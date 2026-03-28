@@ -484,7 +484,9 @@ async def main() -> None:
             asst_msgs = [m for m in messages if m.role == "assistant"]
             tool_msgs = [m for m in messages if m.role in ("tool", "function")]
 
-            print(f"\n  Summary: {len(user_msgs)} user, {len(asst_msgs)} assistant, {len(tool_msgs)} tool")
+            print(
+                f"\n  Summary: {len(user_msgs)} user, {len(asst_msgs)} assistant, {len(tool_msgs)} tool"
+            )
 
             passed &= check(
                 "Exactly 1 user message persisted",
