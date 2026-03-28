@@ -63,8 +63,17 @@ def create_after_model_callback(
         if not llm_response or not llm_response.content:
             return None
 
-        # Extract text from the response parts
         parts = llm_response.content.parts or []
+
+        # Skip intermediate responses that contain tool calls — these are
+        # the model's "thinking" messages before a tool is executed (e.g.
+        # "Let me look that up for you.").  Only persist the final text-only
+        # response so Zep sees one clean assistant message per turn.
+        has_function_call = any(hasattr(p, "function_call") and p.function_call for p in parts)
+        if has_function_call:
+            return None
+
+        # Extract text from the response parts
         text_parts = [p.text for p in parts if hasattr(p, "text") and p.text]
 
         if not text_parts:

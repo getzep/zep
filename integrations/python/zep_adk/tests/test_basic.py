@@ -476,6 +476,83 @@ class TestZepContextToolProcessLlmRequest:
         mock_client.thread.add_messages.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_joins_multiple_text_parts_from_user(self) -> None:
+        """When user_content has multiple text parts, all are joined."""
+        mock_client = self._make_mock_client()
+        mock_response = MagicMock()
+        mock_response.context = None
+        mock_client.thread.add_messages.return_value = mock_response
+
+        tool = self._make_tool(mock_client)
+        llm_request = self._make_llm_request()
+
+        # Create user_content with multiple text parts
+        part1 = MagicMock()
+        part1.text = "Hello"
+        part2 = MagicMock()
+        part2.text = "Also, remind me about tomorrow"
+        mock_content = MagicMock()
+        mock_content.parts = [part1, part2]
+
+        tc = MagicMock()
+        tc.user_content = mock_content
+        tc.state = {"zep_thread_id": "test-thread"}
+        tc._invocation_context.session.id = "test-session"
+        tc._invocation_context.session.user_id = "test-user"
+
+        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+
+        call_kwargs = mock_client.thread.add_messages.call_args[1]
+        assert call_kwargs["messages"][0].content == "Hello Also, remind me about tomorrow"
+
+    @pytest.mark.asyncio
+    async def test_skips_non_text_parts_from_user(self) -> None:
+        """Non-text parts (images, files) are ignored; text parts extracted."""
+        mock_client = self._make_mock_client()
+        mock_response = MagicMock()
+        mock_response.context = None
+        mock_client.thread.add_messages.return_value = mock_response
+
+        tool = self._make_tool(mock_client)
+        llm_request = self._make_llm_request()
+
+        # Part without text attribute (simulating inline_data/image)
+        image_part = MagicMock(spec=["inline_data"])  # no "text" attr
+        text_part = MagicMock()
+        text_part.text = "Describe this image"
+        mock_content = MagicMock()
+        mock_content.parts = [image_part, text_part]
+
+        tc = MagicMock()
+        tc.user_content = mock_content
+        tc.state = {"zep_thread_id": "test-thread"}
+        tc._invocation_context.session.id = "test-session"
+        tc._invocation_context.session.user_id = "test-user"
+
+        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+
+        call_kwargs = mock_client.thread.add_messages.call_args[1]
+        assert call_kwargs["messages"][0].content == "Describe this image"
+
+    @pytest.mark.asyncio
+    async def test_skips_when_only_non_text_parts(self) -> None:
+        """If user_content has only non-text parts, skip entirely."""
+        mock_client = self._make_mock_client()
+        tool = self._make_tool(mock_client)
+        llm_request = self._make_llm_request()
+
+        image_part = MagicMock(spec=["inline_data"])
+        mock_content = MagicMock()
+        mock_content.parts = [image_part]
+
+        tc = MagicMock()
+        tc.user_content = mock_content
+
+        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+
+        mock_client.thread.add_messages.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_handles_zep_api_error_gracefully(self) -> None:
         mock_client = self._make_mock_client()
         mock_client.thread.add_messages.side_effect = RuntimeError("API error")
@@ -903,6 +980,7 @@ class TestAfterModelCallback:
     def _make_llm_response(self, text: str = "Hello from the assistant") -> MagicMock:
         mock_part = MagicMock()
         mock_part.text = text
+        mock_part.function_call = None  # pure text response, no tool call
         mock_content = MagicMock()
         mock_content.parts = [mock_part]
         mock_response = MagicMock()
@@ -1061,9 +1139,10 @@ class TestAfterModelCallback:
 
         callback_context = self._make_callback_context()
 
-        # Response with no text parts (e.g. function call)
+        # Response with no text parts and no function call
         mock_part = MagicMock()
         mock_part.text = None
+        mock_part.function_call = None
         mock_content = MagicMock()
         mock_content.parts = [mock_part]
         mock_response = MagicMock()
@@ -1090,17 +1169,70 @@ class TestAfterModelCallback:
         assert result is None
 
     @pytest.mark.asyncio
+    async def test_skips_intermediate_tool_call_response(self) -> None:
+        """When the model response contains a function_call part (intermediate
+        tool-use step), the callback should NOT persist it to Zep."""
+        from zep_adk import create_after_model_callback
+
+        mock_client = self._make_mock_client()
+        callback = create_after_model_callback(zep_client=mock_client)
+
+        # Simulate response with text + function_call
+        text_part = MagicMock()
+        text_part.text = "Let me look that up."
+        text_part.function_call = None
+        fc_part = MagicMock()
+        fc_part.text = None
+        fc_part.function_call = MagicMock()  # truthy — indicates a tool call
+        mock_content = MagicMock()
+        mock_content.parts = [text_part, fc_part]
+        mock_response = MagicMock()
+        mock_response.content = mock_content
+
+        callback_context = self._make_callback_context()
+        result = await callback(callback_context, mock_response)
+
+        assert result is None
+        mock_client.thread.add_messages.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_persists_final_text_only_response(self) -> None:
+        """A pure text response (no function_call) IS persisted."""
+        from zep_adk import create_after_model_callback
+
+        mock_client = self._make_mock_client()
+        callback = create_after_model_callback(zep_client=mock_client)
+
+        # Simulate response with only text parts, no function_call
+        text_part = MagicMock()
+        text_part.text = "Here is your answer."
+        text_part.function_call = None
+        mock_content = MagicMock()
+        mock_content.parts = [text_part]
+        mock_response = MagicMock()
+        mock_response.content = mock_content
+
+        callback_context = self._make_callback_context()
+        await callback(callback_context, mock_response)
+
+        mock_client.thread.add_messages.assert_called_once()
+        call_kwargs = mock_client.thread.add_messages.call_args[1]
+        assert call_kwargs["messages"][0].content == "Here is your answer."
+
+    @pytest.mark.asyncio
     async def test_joins_multiple_text_parts(self) -> None:
         from zep_adk import create_after_model_callback
 
         mock_client = self._make_mock_client()
         callback = create_after_model_callback(zep_client=mock_client)
 
-        # Response with multiple text parts
+        # Response with multiple text parts, no function_call
         mock_part1 = MagicMock()
         mock_part1.text = "Part one."
+        mock_part1.function_call = None
         mock_part2 = MagicMock()
         mock_part2.text = "Part two."
+        mock_part2.function_call = None
         mock_content = MagicMock()
         mock_content.parts = [mock_part1, mock_part2]
         mock_response = MagicMock()

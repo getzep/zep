@@ -304,10 +304,16 @@ class ZepContextTool(BaseTool):
 
         # --- 1. Extract user message text ---------------------------------
         user_content = tool_context.user_content
-        if not user_content or not user_content.parts or not user_content.parts[0].text:
+        if not user_content or not user_content.parts:
             return
 
-        user_text: str = user_content.parts[0].text
+        # Join all text parts — user_content may contain non-text parts
+        # (images, files) interleaved with text.
+        text_parts = [p.text for p in user_content.parts if hasattr(p, "text") and p.text]
+        if not text_parts:
+            return
+
+        user_text: str = " ".join(text_parts)
 
         # --- 2. Resolve identity from session state -----------------------
         try:
