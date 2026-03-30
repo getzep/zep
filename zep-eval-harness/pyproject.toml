@@ -9,4 +9,5 @@ dependencies = [
     "zep-cloud",
     "openai",
     "pydantic",
+    "chonkie",
 ]

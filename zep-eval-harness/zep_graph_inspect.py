@@ -1,6 +1,6 @@
 """
 Zep Graph Inspection Script
-Retrieve and print all nodes (entities) and edges (facts) for one or more user or standalone graphs.
+Retrieve and print entities, edges, and/or episodes for one or more user or standalone graphs.
 """
 
 import os
@@ -10,17 +10,20 @@ import asyncio
 from dotenv import load_dotenv
 from zep_cloud.client import AsyncZep
 
+VALID_INCLUDES = {"entities", "edges", "episodes"}
+DEFAULT_INCLUDES = ["entities", "edges"]
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Inspect Zep knowledge graphs — print all entities and edges.",
+        description="Inspect Zep knowledge graphs — print entities, edges, and/or episodes.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
   uv run zep_graph_inspect.py --user USER_ID_1
-  uv run zep_graph_inspect.py --user USER_ID_1 USER_ID_2
-  uv run zep_graph_inspect.py --graph GRAPH_ID_1 GRAPH_ID_2
-  uv run zep_graph_inspect.py --user USER_ID_1 --graph GRAPH_ID_1
-  uv run zep_graph_inspect.py --user USER_ID_1 --edges-only
+  uv run zep_graph_inspect.py --graph GRAPH_ID_1
+  uv run zep_graph_inspect.py --graph GRAPH_ID_1 --include entities edges episodes
+  uv run zep_graph_inspect.py --graph GRAPH_ID_1 --include episodes
+  uv run zep_graph_inspect.py --user USER_ID_1 --include edges
 """,
     )
     parser.add_argument(
@@ -36,14 +39,12 @@ def parse_args():
         help="One or more standalone graph IDs (e.g. from manifest.json documents.graph_id)",
     )
     parser.add_argument(
-        "--nodes-only",
-        action="store_true",
-        help="Only print nodes (entities)",
-    )
-    parser.add_argument(
-        "--edges-only",
-        action="store_true",
-        help="Only print edges (facts)",
+        "--include",
+        nargs="+",
+        type=str,
+        default=DEFAULT_INCLUDES,
+        choices=sorted(VALID_INCLUDES),
+        help="What to include in the output (default: entities edges)",
     )
     args = parser.parse_args()
     if not args.user and not args.graph:
@@ -88,48 +89,88 @@ def print_edges(edges):
         print()
 
 
-async def inspect_user_graph(zep_client: AsyncZep, user_id: str, args):
-    """Fetch and print nodes/edges for a user graph."""
+def print_episodes(episodes):
+    """Print episodes in a readable format."""
+    if not episodes:
+        print("  (none)")
+        return
+
+    for i, ep in enumerate(episodes, 1):
+        content = getattr(ep, "content", "") or ""
+        # Show first 200 chars of content as preview, full content indented below
+        preview = content[:200].replace("\n", " ")
+        if len(content) > 200:
+            preview += "..."
+        print(f"  [{i}] {preview}")
+        if getattr(ep, "source", None):
+            print(f"      Source: {ep.source}")
+        if getattr(ep, "source_description", None):
+            print(f"      Source desc: {ep.source_description}")
+        processed = getattr(ep, "processed", None)
+        if processed is not None:
+            print(f"      Processed: {processed}")
+        if getattr(ep, "created_at", None):
+            print(f"      Created at: {ep.created_at}")
+        if getattr(ep, "uuid_", None):
+            print(f"      UUID: {ep.uuid_}")
+        # Print full content indented
+        if content:
+            print(f"      --- Full content ---")
+            for line in content.splitlines():
+                print(f"      {line}")
+        print()
+
+
+async def inspect_user_graph(zep_client: AsyncZep, user_id: str, includes: set):
+    """Fetch and print entities/edges/episodes for a user graph."""
     print(f"\nGraph type: User")
     print(f"User ID:    {user_id}")
     print()
 
-    show_nodes = not args.edges_only
-    show_edges = not args.nodes_only
-
-    if show_nodes:
+    if "entities" in includes:
         nodes = await zep_client.graph.node.get_by_user_id(user_id=user_id)
-        print(f"NODES ({len(nodes) if nodes else 0})")
+        print(f"ENTITIES ({len(nodes) if nodes else 0})")
         print("-" * 60)
         print_nodes(nodes)
 
-    if show_edges:
+    if "edges" in includes:
         edges = await zep_client.graph.edge.get_by_user_id(user_id=user_id)
         print(f"EDGES ({len(edges) if edges else 0})")
         print("-" * 60)
         print_edges(edges)
 
+    if "episodes" in includes:
+        result = await zep_client.graph.episode.get_by_user_id(user_id=user_id, lastn=1000)
+        episodes = result.episodes if result and result.episodes else []
+        print(f"EPISODES ({len(episodes)})")
+        print("-" * 60)
+        print_episodes(episodes)
 
-async def inspect_standalone_graph(zep_client: AsyncZep, graph_id: str, args):
-    """Fetch and print nodes/edges for a standalone graph."""
+
+async def inspect_standalone_graph(zep_client: AsyncZep, graph_id: str, includes: set):
+    """Fetch and print entities/edges/episodes for a standalone graph."""
     print(f"\nGraph type: Standalone")
     print(f"Graph ID:   {graph_id}")
     print()
 
-    show_nodes = not args.edges_only
-    show_edges = not args.nodes_only
-
-    if show_nodes:
+    if "entities" in includes:
         nodes = await zep_client.graph.node.get_by_graph_id(graph_id=graph_id)
-        print(f"NODES ({len(nodes) if nodes else 0})")
+        print(f"ENTITIES ({len(nodes) if nodes else 0})")
         print("-" * 60)
         print_nodes(nodes)
 
-    if show_edges:
+    if "edges" in includes:
         edges = await zep_client.graph.edge.get_by_graph_id(graph_id=graph_id)
         print(f"EDGES ({len(edges) if edges else 0})")
         print("-" * 60)
         print_edges(edges)
+
+    if "episodes" in includes:
+        result = await zep_client.graph.episode.get_by_graph_id(graph_id=graph_id, lastn=1000)
+        episodes = result.episodes if result and result.episodes else []
+        print(f"EPISODES ({len(episodes)})")
+        print("-" * 60)
+        print_episodes(episodes)
 
 
 async def main():
@@ -142,18 +183,20 @@ async def main():
         exit(1)
 
     zep_client = AsyncZep(api_key=api_key)
+    includes = set(args.include)
 
     print("=" * 60)
     print("ZEP GRAPH INSPECTION")
+    print(f"Showing: {', '.join(sorted(includes))}")
     print("=" * 60)
 
     if args.user:
         for user_id in args.user:
-            await inspect_user_graph(zep_client, user_id, args)
+            await inspect_user_graph(zep_client, user_id, includes)
 
     if args.graph:
         for graph_id in args.graph:
-            await inspect_standalone_graph(zep_client, graph_id, args)
+            await inspect_standalone_graph(zep_client, graph_id, includes)
 
 
 if __name__ == "__main__":

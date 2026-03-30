@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 import json
 import glob
@@ -8,14 +7,13 @@ import asyncio
 import argparse
 from time import time
 from datetime import datetime
-from typing import Generator
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from zep_cloud.client import AsyncZep
 from zep_cloud.types import Message
+from chonkie import RecursiveChunker, RecursiveRules, RecursiveLevel
 
 from constants import (
-    CHUNK_OVERLAP,
     CHUNK_SIZE,
     DOCUMENT_INGEST_LIMIT,
     DOCUMENTS_GRAPH_ID,
@@ -266,30 +264,34 @@ async def add_conversations_to_zep(
 
 async def add_telemetry_to_zep(
     zep_client: AsyncZep, user_id: str, telemetry_data: list[dict]
-) -> None:
+) -> list[str]:
     """
     Add telemetry data to Zep using graph.add.
+    Returns list of episode UUIDs.
     """
     if not telemetry_data:
-        return
+        return []
 
     print(f"\nAdding {len(telemetry_data)} telemetry file(s) for {user_id}")
 
     total_added = 0
+    episode_uuids = []
     for idx, telemetry in enumerate(telemetry_data):
         try:
-            await zep_client.graph.add(
+            episode = await zep_client.graph.add(
                 user_id=user_id,
                 type="json",
                 data=json.dumps(telemetry),
             )
             total_added += 1
+            episode_uuids.append(episode.uuid_)
             print(f"✓ Added telemetry episode {idx + 1}/{len(telemetry_data)}")
         except Exception as e:
             print(f"Error adding telemetry episode {idx}: {e}")
             continue
 
     print(f"✓ Completed adding {total_added} telemetry episodes")
+    return episode_uuids
 
 
 # ============================================================================
@@ -297,108 +299,89 @@ async def add_telemetry_to_zep(
 # ============================================================================
 
 
-def chunk_document(
-    text: str,
-    chunk_size: int = 500,
-    chunk_overlap: int = 50,
-) -> Generator[tuple[int, str], None, None]:
-    """Split a document into chunks with configurable size and overlap."""
-    if not text:
-        return
+def create_document_chunker(chunk_size: int = 500) -> RecursiveChunker:
+    """Create a Chonkie recursive chunker with paragraph -> sentence -> word hierarchy."""
+    rules = RecursiveRules(
+        [
+            RecursiveLevel(delimiters=["\n\n"], include_delim="prev"),
+            RecursiveLevel(delimiters=["\n"], include_delim="prev"),
+            RecursiveLevel(delimiters=[".", "!", "?"], include_delim="prev"),
+            RecursiveLevel(whitespace=True),
+        ]
+    )
+    return RecursiveChunker(
+        tokenizer="character",
+        chunk_size=chunk_size,
+        rules=rules,
+        min_characters_per_chunk=24,
+    )
 
-    text = text.strip()
-    paragraphs = text.split("\n\n")
 
-    current_chunk = ""
-    chunk_index = 0
+def extract_document_title(filename: str, content: str) -> str:
+    """Extract a human-readable document title from the content or filename.
 
-    for paragraph in paragraphs:
-        paragraph = paragraph.strip()
-        if not paragraph:
+    For markdown files, uses the first `# heading`. For plain text, uses the
+    first non-empty line.  Falls back to a cleaned-up filename.
+    """
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped:
             continue
-
-        if len(current_chunk) + len(paragraph) + 2 > chunk_size:
-            if current_chunk:
-                yield (chunk_index, current_chunk.strip())
-                chunk_index += 1
-
-                if chunk_overlap > 0 and len(current_chunk) > chunk_overlap:
-                    overlap_text = current_chunk[-chunk_overlap:]
-                    first_space = overlap_text.find(" ")
-                    if first_space > 0:
-                        overlap_text = overlap_text[first_space + 1 :]
-                    current_chunk = overlap_text + "\n\n"
-                else:
-                    current_chunk = ""
-
-            if len(paragraph) > chunk_size:
-                for sub_chunk in _split_long_paragraph(
-                    paragraph, chunk_size, chunk_overlap
-                ):
-                    yield (chunk_index, sub_chunk)
-                    chunk_index += 1
-                current_chunk = ""
-            else:
-                current_chunk = paragraph
-        else:
-            if current_chunk:
-                current_chunk += "\n\n" + paragraph
-            else:
-                current_chunk = paragraph
-
-    if current_chunk.strip():
-        yield (chunk_index, current_chunk.strip())
+        # Markdown heading
+        if stripped.startswith("# "):
+            return stripped.lstrip("# ").strip()
+        # First non-empty line for plain text
+        return stripped
+    # Fallback: derive from filename
+    name = os.path.splitext(filename)[0]
+    return name.replace("_", " ").replace("-", " ").title()
 
 
-def _split_long_paragraph(
-    paragraph: str, chunk_size: int, chunk_overlap: int
-) -> Generator[str, None, None]:
-    """Split a long paragraph by sentences."""
-    sentences = re.split(r"(?<=[.!?])\s+", paragraph)
-    current_chunk = ""
+async def summarize_document(
+    openai_client: AsyncOpenAI, full_document: str, title: str
+) -> str:
+    """Generate a one-sentence summary of the full document."""
+    prompt = f"""<document>
+{full_document}
+</document>
 
-    for sentence in sentences:
-        if len(current_chunk) + len(sentence) + 1 > chunk_size:
-            if current_chunk:
-                yield current_chunk.strip()
-                if chunk_overlap > 0:
-                    overlap = current_chunk[-chunk_overlap:]
-                    first_space = overlap.find(" ")
-                    if first_space > 0:
-                        current_chunk = overlap[first_space + 1 :] + " "
-                    else:
-                        current_chunk = ""
-                else:
-                    current_chunk = ""
-        current_chunk += sentence + " "
+Write a single sentence describing what this document is about. Start with the document title "{title}". Be concise — one sentence only."""
 
-    if current_chunk.strip():
-        yield current_chunk.strip()
+    response = await openai_client.chat.completions.create(
+        model=LLM_CONTEXTUALIZATION_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=128,
+    )
+
+    return response.choices[0].message.content.strip()
 
 
 async def contextualize_chunk(
     openai_client: AsyncOpenAI, full_document: str, chunk: str
 ) -> str:
-    """Use OpenAI to generate context for a chunk within its document."""
+    """Generate per-chunk contextualization: how the chunk fits in the document
+    and resolution of any ambiguous pronouns."""
     prompt = f"""<document>
 {full_document}
 </document>
 
-Here is the chunk we want to situate within the whole document:
 <chunk>
 {chunk}
 </chunk>
 
-Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. If the document has a publication date, please include the date in your context. Answer only with the succinct context and nothing else."""
+Write a brief contextualization for this chunk (1-2 sentences max). It should:
+1. Explain where this chunk fits within the overall document (e.g. which section or topic it belongs to).
+2. Resolve any ambiguous pronouns (he, she, it, they, them, this, these, those, etc.) — if the chunk uses a pronoun whose referent is not clear from the chunk alone, state what it refers to.
+
+If there are no ambiguous pronouns, just provide the document context. Answer only with the contextualization and nothing else."""
 
     response = await openai_client.chat.completions.create(
         model=LLM_CONTEXTUALIZATION_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=256,
+        max_tokens=192,
     )
 
-    context = response.choices[0].message.content.strip()
-    return f"{context}\n\n---\n\n{chunk}"
+    return response.choices[0].message.content.strip()
 
 
 async def add_documents_to_zep(
@@ -406,13 +389,24 @@ async def add_documents_to_zep(
     openai_client: AsyncOpenAI,
     documents: list[tuple[str, str]],
     graph_id: str = DOCUMENTS_GRAPH_ID,
-) -> int:
+) -> tuple[int, list[str]]:
     """
-    Ingest documents into a standalone Zep graph with contextualized chunking.
-    Returns total number of chunks added.
+    Ingest documents into a standalone Zep graph using JSON episodes.
+
+    Each chunk is sent as type="json" with:
+      - source_description: document summary + per-chunk contextualization (non-extractable)
+      - data: JSON with "document_title" (extractable entity) and "content" (chunk text)
+
+    The source_description combines a constant document-level summary with a
+    per-chunk contextualization that explains where the chunk fits in the
+    document and resolves any ambiguous pronouns. This leverages Graphiti's
+    JSON extraction path where source_description is provided as context to
+    the LLM without being an extraction target itself.
+
+    Returns tuple of (total chunks added, list of episode UUIDs).
     """
     if not documents:
-        return 0
+        return 0, []
 
     # Create the standalone graph (ignore if it already exists)
     try:
@@ -427,45 +421,64 @@ async def add_documents_to_zep(
 
     print(f"\nIngesting {len(documents)} document(s) into graph {graph_id}")
     total_added = 0
+    episode_uuids = []
 
     for filename, content in documents:
         print(f"\n  Processing: {filename}")
 
-        # Small documents don't need chunking
+        # Extract title and generate a one-sentence document summary
+        title = extract_document_title(filename, content)
+        doc_summary = await summarize_document(openai_client, content, title)
+        print(f"  Title: {title}")
+        print(f"  Document summary: {doc_summary}")
+
+        # Small documents don't need chunking — document summary is sufficient
         if len(content) <= CHUNK_SIZE:
-            contextualized = await contextualize_chunk(
-                openai_client, content, content
-            )
+            data = json.dumps({"document_title": title, "content": content})
             try:
-                await zep_client.graph.add(
-                    graph_id=graph_id, type="text", data=contextualized
+                episode = await zep_client.graph.add(
+                    graph_id=graph_id,
+                    type="json",
+                    data=data,
+                    source_description=doc_summary,
                 )
                 total_added += 1
+                episode_uuids.append(episode.uuid_)
                 print(f"  ✓ Added {filename} as single chunk")
             except Exception as e:
                 print(f"  Error adding {filename}: {e}")
             continue
 
-        # Chunk and contextualize
-        chunks = list(chunk_document(content, CHUNK_SIZE, CHUNK_OVERLAP))
+        # Chunk using Chonkie
+        chunker = create_document_chunker(CHUNK_SIZE)
+        raw_chunks = chunker.chunk(content)
+        chunks = [(i, c.text) for i, c in enumerate(raw_chunks)]
         print(f"  Split into {len(chunks)} chunks")
 
         added_for_file = 0
         for chunk_index, chunk_text in chunks:
             try:
-                contextualized = await contextualize_chunk(
+                # Per-chunk contextualization (pronoun resolution + section context)
+                chunk_context = await contextualize_chunk(
                     openai_client, content, chunk_text
                 )
+                source_desc = f"{doc_summary} | Chunk context: {chunk_context}"
+
+                data = json.dumps({"document_title": title, "content": chunk_text})
 
                 # Zep has a 10k character limit per episode
-                if len(contextualized) > 10000:
-                    contextualized = contextualized[:10000]
+                if len(data) > 10000:
+                    data = data[:10000]
 
-                await zep_client.graph.add(
-                    graph_id=graph_id, type="text", data=contextualized
+                episode = await zep_client.graph.add(
+                    graph_id=graph_id,
+                    type="json",
+                    data=data,
+                    source_description=source_desc,
                 )
                 total_added += 1
                 added_for_file += 1
+                episode_uuids.append(episode.uuid_)
             except Exception as e:
                 print(f"  Error adding chunk {chunk_index} of {filename}: {e}")
                 continue
@@ -473,7 +486,7 @@ async def add_documents_to_zep(
         print(f"  ✓ Added {added_for_file}/{len(chunks)} chunks from {filename}")
 
     print(f"✓ Completed adding {total_added} document chunks to graph {graph_id}")
-    return total_added
+    return total_added, episode_uuids
 
 
 # ============================================================================
@@ -481,62 +494,57 @@ async def add_documents_to_zep(
 # ============================================================================
 
 
-async def poll_user_episodes(zep_client: AsyncZep, user_id: str) -> int:
+async def poll_episode_uuids(
+    zep_client: AsyncZep, episode_uuids: list[str], label: str
+) -> int:
     """
-    Poll until all episodes for a user graph are processed.
+    Poll individual episode UUIDs until all are processed.
+    This is the correct polling approach per Zep docs: check each episode
+    returned from graph.add() via graph.episode.get(uuid) until .processed
+    is true. Using get_by_graph_id/get_by_user_id with lastn is unreliable
+    because it may return only a subset of episodes and report completion
+    prematurely.
     Returns number of processed episodes.
     """
-    start = time()
-    while time() - start < POLL_TIMEOUT:
-        result = await zep_client.graph.episode.get_by_user_id(
-            user_id=user_id, lastn=1000
-        )
-        episodes = result.episodes or []
-        if not episodes:
-            await asyncio.sleep(POLL_INTERVAL)
-            continue
+    if not episode_uuids:
+        print(f"  [{label}] No episodes to poll")
+        return 0
 
-        unprocessed = [e for e in episodes if not e.processed]
-        if not unprocessed:
-            print(f"  ✓ [{user_id}] All {len(episodes)} episodes processed")
-            return len(episodes)
+    remaining = set(episode_uuids)
+    processed_count = 0
+    start = time()
+
+    while remaining and time() - start < POLL_TIMEOUT:
+        newly_processed = []
+        for uuid in remaining:
+            try:
+                episode = await zep_client.graph.episode.get(uuid)
+                if episode.processed:
+                    newly_processed.append(uuid)
+            except Exception:
+                pass  # Episode may not be available yet, retry next cycle
+
+        for uuid in newly_processed:
+            remaining.discard(uuid)
+            processed_count += 1
+
+        if not remaining:
+            print(
+                f"  ✓ [{label}] All {len(episode_uuids)} episodes processed"
+            )
+            return len(episode_uuids)
 
         print(
-            f"  [{user_id}] {len(episodes) - len(unprocessed)}/{len(episodes)} episodes processed..."
+            f"  [{label}] {processed_count}/{len(episode_uuids)} episodes processed..."
         )
         await asyncio.sleep(POLL_INTERVAL)
 
-    print(f"  ⚠ [{user_id}] Polling timed out after {POLL_TIMEOUT}s")
-    return 0
-
-
-async def poll_graph_episodes(zep_client: AsyncZep, graph_id: str) -> int:
-    """
-    Poll until all episodes for a standalone graph are processed.
-    Returns number of processed episodes.
-    """
-    start = time()
-    while time() - start < POLL_TIMEOUT:
-        result = await zep_client.graph.episode.get_by_graph_id(
-            graph_id=graph_id, lastn=1000
-        )
-        episodes = result.episodes or []
-        if not episodes:
-            await asyncio.sleep(POLL_INTERVAL)
-            continue
-
-        unprocessed = [e for e in episodes if not e.processed]
-        if not unprocessed:
-            print(f"  ✓ [{graph_id}] All {len(episodes)} episodes processed")
-            return len(episodes)
-
+    if remaining:
         print(
-            f"  [{graph_id}] {len(episodes) - len(unprocessed)}/{len(episodes)} episodes processed..."
+            f"  ⚠ [{label}] Polling timed out after {POLL_TIMEOUT}s "
+            f"({processed_count}/{len(episode_uuids)} processed)"
         )
-        await asyncio.sleep(POLL_INTERVAL)
-
-    print(f"  ⚠ [{graph_id}] Polling timed out after {POLL_TIMEOUT}s")
-    return 0
+    return processed_count
 
 
 # ============================================================================
@@ -586,8 +594,11 @@ async def ingest_user(
         )
 
     # Add telemetry
+    episode_uuids = []
     if telemetry_data:
-        await add_telemetry_to_zep(zep_client, actual_user_id, telemetry_data)
+        episode_uuids = await add_telemetry_to_zep(
+            zep_client, actual_user_id, telemetry_data
+        )
 
     print(f"✓ Data submitted for user {actual_user_id}\n")
 
@@ -597,6 +608,7 @@ async def ingest_user(
         "first_name": user_def["first_name"],
         "last_name": user_def.get("last_name"),
         "thread_ids": thread_ids,
+        "episode_uuids": episode_uuids,
         "num_conversations": len(conversations),
         "num_telemetry_files": len(telemetry_data) if telemetry_data else 0,
     }
@@ -822,10 +834,10 @@ async def main():
             raw_user_results = await asyncio.gather(
                 *user_tasks, return_exceptions=True
             )
-            doc_result = 0
+            doc_result = (0, [])
         else:
             raw_user_results = []
-            doc_result = 0
+            doc_result = (0, [])
 
         # Separate successful results from failures
         run_data = []
@@ -839,8 +851,9 @@ async def main():
         if isinstance(doc_result, Exception):
             print(f"⚠ Document ingestion failed: {doc_result}")
             num_doc_chunks = 0
+            doc_episode_uuids = []
         else:
-            num_doc_chunks = doc_result
+            num_doc_chunks, doc_episode_uuids = doc_result
 
         # Write run manifest
         run_dir = write_run_manifest(
@@ -868,15 +881,21 @@ async def main():
 
             poll_tasks = []
 
-            # Poll each user graph
+            # Poll each user's telemetry episodes
             for user_data in run_data:
-                zep_user_id = user_data["zep_user_id"]
-                poll_tasks.append(poll_user_episodes(zep_client, zep_user_id))
+                uuids = user_data.get("episode_uuids", [])
+                if uuids:
+                    label = user_data["zep_user_id"]
+                    poll_tasks.append(
+                        poll_episode_uuids(zep_client, uuids, label)
+                    )
 
-            # Poll the document graph
-            if doc_graph_id and num_doc_chunks > 0:
+            # Poll the document graph episodes
+            if doc_episode_uuids:
                 poll_tasks.append(
-                    poll_graph_episodes(zep_client, doc_graph_id)
+                    poll_episode_uuids(
+                        zep_client, doc_episode_uuids, doc_graph_id
+                    )
                 )
 
             if poll_tasks:
