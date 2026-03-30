@@ -34,6 +34,26 @@ except (ImportError, NotImplementedError):
     ENTITY_TYPES = []
     EDGE_TYPES = []
 
+# Import custom instructions module
+try:
+    from custom_instructions import set_custom_instructions
+    from custom_instructions import INSTRUCTION_NAMES as CUSTOM_INSTRUCTION_NAMES
+
+    CUSTOM_INSTRUCTIONS_AVAILABLE = True
+except (ImportError, NotImplementedError):
+    CUSTOM_INSTRUCTIONS_AVAILABLE = False
+    CUSTOM_INSTRUCTION_NAMES = []
+
+# Import user summary instructions module
+try:
+    from user_summary_instructions import set_user_summary_instructions
+    from user_summary_instructions import INSTRUCTION_NAMES as USER_SUMMARY_INSTRUCTION_NAMES
+
+    USER_SUMMARY_INSTRUCTIONS_AVAILABLE = True
+except (ImportError, NotImplementedError):
+    USER_SUMMARY_INSTRUCTIONS_AVAILABLE = False
+    USER_SUMMARY_INSTRUCTION_NAMES = []
+
 
 # ============================================================================
 # Data Loading
@@ -140,10 +160,17 @@ def load_documents() -> list[tuple[str, str]]:
 # ============================================================================
 
 
-async def create_user(zep_client, user_definition, disable_default_ontology=False):
+async def create_user(
+    zep_client,
+    user_definition,
+    disable_default_ontology=False,
+    use_custom_instructions=False,
+    use_user_summary_instructions=False,
+):
     """
     Create a new user with a randomized ID suffix to make ingestion idempotent.
-    If custom ontology is enabled, applies it to the user before returning.
+    Applies custom ontology, custom instructions, and/or user summary instructions
+    to the user before returning.
 
     Returns tuple of (actual_user_id, base_user_id, random_suffix).
     """
@@ -179,6 +206,26 @@ async def create_user(zep_client, user_definition, disable_default_ontology=Fals
             print("✓ Custom ontology applied successfully\n")
         except Exception as e:
             print(f"Error setting ontology: {e}")
+            raise
+
+    # Apply custom instructions to this user BEFORE ingesting data
+    if use_custom_instructions:
+        print(f"Setting custom instructions for user: {user_id}")
+        try:
+            await set_custom_instructions(zep_client, user_ids=[user_id])
+            print("✓ Custom instructions applied successfully")
+        except Exception as e:
+            print(f"Error setting custom instructions: {e}")
+            raise
+
+    # Apply user summary instructions to this user BEFORE ingesting data
+    if use_user_summary_instructions:
+        print(f"Setting user summary instructions for user: {user_id}")
+        try:
+            await set_user_summary_instructions(zep_client, user_ids=[user_id])
+            print("✓ User summary instructions applied successfully")
+        except Exception as e:
+            print(f"Error setting user summary instructions: {e}")
             raise
 
     return user_id, base_user_id, random_suffix
@@ -556,6 +603,8 @@ async def ingest_user(
     zep_client: AsyncZep,
     user_def: dict,
     use_custom_ontology: bool,
+    use_custom_instructions: bool = False,
+    use_user_summary_instructions: bool = False,
 ) -> dict:
     """
     Run the full ingestion pipeline for a single user:
@@ -571,7 +620,11 @@ async def ingest_user(
 
     # Create user
     actual_user_id, base_user_id, suffix = await create_user(
-        zep_client, user_def, disable_default_ontology=use_custom_ontology
+        zep_client,
+        user_def,
+        disable_default_ontology=use_custom_ontology,
+        use_custom_instructions=use_custom_instructions,
+        use_user_summary_instructions=use_user_summary_instructions,
     )
 
     # Load data
@@ -651,6 +704,8 @@ def write_run_manifest(
     run_number,
     run_data,
     use_custom_ontology=False,
+    use_custom_instructions=False,
+    use_user_summary_instructions=False,
     num_doc_chunks=0,
     doc_graph_id=None,
 ):
@@ -674,6 +729,14 @@ def write_run_manifest(
             "default_ontology_disabled": use_custom_ontology,
             "custom_entity_types": ENTITY_TYPES if use_custom_ontology else [],
             "custom_edge_types": EDGE_TYPES if use_custom_ontology else [],
+        },
+        "custom_instructions": {
+            "enabled": use_custom_instructions,
+            "instruction_names": CUSTOM_INSTRUCTION_NAMES if use_custom_instructions else [],
+        },
+        "user_summary_instructions": {
+            "enabled": use_user_summary_instructions,
+            "instruction_names": USER_SUMMARY_INSTRUCTION_NAMES if use_user_summary_instructions else [],
         },
         "documents": {
             "graph_id": doc_graph_id,
@@ -706,12 +769,24 @@ def parse_args():
   uv run zep_ingest.py --graphs documents                # Ingest documents only
   uv run zep_ingest.py --graphs zep_eval_test_user_001,documents
   uv run zep_ingest.py --custom-ontology                 # Use custom ontology
+  uv run zep_ingest.py --custom-instructions             # Use custom instructions
+  uv run zep_ingest.py --user-summary-instructions       # Use user summary instructions
 """,
     )
     parser.add_argument(
         "--custom-ontology",
         action="store_true",
         help="Use custom ontology instead of Zep defaults",
+    )
+    parser.add_argument(
+        "--custom-instructions",
+        action="store_true",
+        help="Use custom instructions for graph extraction (domain context)",
+    )
+    parser.add_argument(
+        "--user-summary-instructions",
+        action="store_true",
+        help="Use custom user summary instructions (customize user node summaries)",
     )
     parser.add_argument(
         "--no-poll",
@@ -745,6 +820,20 @@ async def main():
         if not CUSTOM_ONTOLOGY_AVAILABLE:
             print("Error: Custom ontology module could not be loaded")
             print("   Check that ontology.py exists and is valid")
+            exit(1)
+
+    # Validate custom instructions flag
+    if args.custom_instructions:
+        if not CUSTOM_INSTRUCTIONS_AVAILABLE:
+            print("Error: Custom instructions module could not be loaded")
+            print("   Check that custom_instructions.py exists and is valid")
+            exit(1)
+
+    # Validate user summary instructions flag
+    if args.user_summary_instructions:
+        if not USER_SUMMARY_INSTRUCTIONS_AVAILABLE:
+            print("Error: User summary instructions module could not be loaded")
+            print("   Check that user_summary_instructions.py exists and is valid")
             exit(1)
 
     # Validate environment variables
@@ -796,9 +885,11 @@ async def main():
     print("ZEP INGESTION SCRIPT")
     print("=" * 80)
     if args.custom_ontology:
-        print("Mode: Custom ontology (default ontology suppressed)")
+        print("Ontology: Custom (default ontology suppressed)")
     else:
-        print("Mode: Default Zep ontology")
+        print("Ontology: Default Zep ontology")
+    print(f"Custom instructions: {'enabled' if args.custom_instructions else 'disabled'}")
+    print(f"User summary instructions: {'enabled' if args.user_summary_instructions else 'disabled'}")
     print(f"Polling: {'enabled' if should_poll else 'disabled'}")
     print(f"Users: {len(selected_user_defs)}")
     print(f"Documents: {'yes' if ingest_documents_flag and documents else 'no'}")
@@ -810,7 +901,13 @@ async def main():
 
         # Launch all ingestion tasks in parallel
         user_tasks = [
-            ingest_user(zep_client, user_def, args.custom_ontology)
+            ingest_user(
+                zep_client,
+                user_def,
+                args.custom_ontology,
+                use_custom_instructions=args.custom_instructions,
+                use_user_summary_instructions=args.user_summary_instructions,
+            )
             for user_def in selected_user_defs
         ]
 
@@ -857,7 +954,12 @@ async def main():
 
         # Write run manifest
         run_dir = write_run_manifest(
-            run_number, run_data, args.custom_ontology, num_doc_chunks,
+            run_number,
+            run_data,
+            use_custom_ontology=args.custom_ontology,
+            use_custom_instructions=args.custom_instructions,
+            use_user_summary_instructions=args.user_summary_instructions,
+            num_doc_chunks=num_doc_chunks,
             doc_graph_id=doc_graph_id,
         )
 
