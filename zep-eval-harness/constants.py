@@ -24,7 +24,6 @@ DOCUMENT_INGEST_LIMIT = None
 
 # Document chunking
 CHUNK_SIZE = 500
-CHUNK_OVERLAP = 50
 
 # Polling
 POLL_INTERVAL = 2  # seconds between status checks
