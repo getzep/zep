@@ -11,7 +11,7 @@ This module defines two sets of custom instructions:
 Custom instructions describe the domain, terminology, and conventions of your
 application so Zep can better understand and interpret data during graph extraction.
 
-See: https://help.getzep.com/customizing-graph-structure#custom-instructions
+See: https://help.getzep.com/custom-instructions
 """
 
 from zep_cloud import CustomInstruction
@@ -23,27 +23,38 @@ from zep_cloud import CustomInstruction
 
 CUSTOM_INSTRUCTIONS = [
     CustomInstruction(
-        name="conversation_context",
+        name="real_estate_domain",
         text=(
-            "These are personal conversations between a user and an AI assistant. "
-            "Pay attention to real-world entities: people, places, organizations, "
-            "events, and items mentioned by the user."
+            "This application operates in the residential real estate domain. "
+            "Users are home buyers working with an AI assistant to find properties. "
+            "Key terminology includes: listing (a property available for sale), "
+            "closing (the final transaction transferring ownership), pre-approval "
+            "(a lender's conditional commitment to a loan amount), earnest money "
+            "(a deposit demonstrating buyer intent), contingency (a condition that "
+            "must be met before closing), and appraisal (a professional property "
+            "valuation). A 'budget' refers to the buyer's maximum purchase price."
         ),
     ),
     CustomInstruction(
-        name="temporal_reasoning",
+        name="property_and_location",
         text=(
-            "Conversations span multiple sessions over time. Track temporal "
-            "references carefully — resolve relative expressions like 'last week' "
-            "or 'tomorrow' against the message timestamp."
+            "Users discuss specific neighborhoods, cities, and school districts "
+            "when evaluating where to buy. Common property attributes include: "
+            "bedrooms, bathrooms, square footage, lot size, and home office space. "
+            "A 'floor plan' refers to the layout of rooms. 'HOA' (Homeowners "
+            "Association) is an organization that manages a community and charges "
+            "monthly fees. 'Remote work' or 'hybrid work' affects home office needs."
         ),
     ),
     CustomInstruction(
-        name="preference_sensitivity",
+        name="household_context",
         text=(
-            "Extract user preferences with high sensitivity. Statements like "
-            "'I love sushi', 'I hate running', or 'I prefer mornings' indicate "
-            "preferences that should be captured as relationships."
+            "Users mention household members — spouses, children, and pets — whose "
+            "needs influence property requirements. Family size determines bedroom "
+            "count, children's ages affect school district priority, and pets may "
+            "require fenced yards or breed-friendly HOA policies. Professional "
+            "context (employer, commute, remote work schedule) shapes location "
+            "preferences and home office requirements."
         ),
     ),
 ]
@@ -90,27 +101,40 @@ async def set_custom_instructions(zep_client, user_ids=None):
 
 DOCUMENT_CUSTOM_INSTRUCTIONS = [
     CustomInstruction(
-        name="document_extraction",
+        name="real_estate_reference_domain",
         text=(
-            "This is reference documentation — not a personal conversation. "
-            "Focus on extracting factual information: definitions, specifications, "
-            "processes, and relationships between concepts, components, and topics."
+            "These documents are reference guides for residential real estate "
+            "buyers. Key terminology includes: conventional loan (a mortgage not "
+            "backed by a government agency), FHA loan (Federal Housing "
+            "Administration-backed loan with lower down payment requirements), "
+            "VA loan (Veterans Affairs loan with no down payment), PMI (Private "
+            "Mortgage Insurance, required when down payment is below 20%), and "
+            "APR (Annual Percentage Rate, the total yearly cost of borrowing)."
         ),
     ),
     CustomInstruction(
-        name="structure_preservation",
+        name="home_buying_process",
         text=(
-            "Preserve the hierarchical structure of the document. Track which "
-            "concepts belong to which topics, which components are part of larger "
-            "systems, and how processes relate to specifications."
+            "Documents describe the home buying process from search to closing. "
+            "Key concepts include: home inspection (a professional assessment of "
+            "a property's condition), title search (verification of legal "
+            "ownership), escrow (a neutral third party holding funds during "
+            "closing), and earnest money deposit (buyer's good-faith payment). "
+            "An HOA (Homeowners Association) governs community rules and charges "
+            "dues. CC&Rs are Covenants, Conditions, and Restrictions that HOAs "
+            "enforce."
         ),
     ),
     CustomInstruction(
-        name="cross_reference_tracking",
+        name="financial_concepts",
         text=(
-            "Track cross-references between document sections and concepts. "
-            "When a chunk references another concept, specification, or component "
-            "defined elsewhere, capture that relationship explicitly."
+            "Documents cover financial topics relevant to home buyers. Key terms: "
+            "down payment (upfront cash payment, typically 3-20% of purchase price), "
+            "debt-to-income ratio or DTI (monthly debt payments divided by gross "
+            "income, used by lenders to assess affordability), credit score "
+            "(numerical rating of creditworthiness, typically 300-850), and "
+            "amortization (the schedule of loan payments over time splitting "
+            "principal and interest)."
         ),
     ),
 ]

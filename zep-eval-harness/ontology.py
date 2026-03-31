@@ -112,7 +112,7 @@ class Item(EntityModel):
 
 
 # ============================================================================
-# Edge Types (6 relationships, no attributes)
+# Edge Types (6 relationships)
 # ============================================================================
 
 
@@ -120,42 +120,72 @@ class RelatedTo(EdgeModel):
     """Connects a Person to another Person or to the User.
     Description should explain the nature of the relationship."""
 
-    ...
+    relationship_type: EntityText = Field(
+        default=None,
+        description="family, friend, colleague, neighbor, acquaintance, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class LocatedAt(EdgeModel):
-    """Connects an Event, Person, or Item to a Location.
+    """Connects a Person, Item, or Organization to a Location.
     Description can provide additional context about the location relationship."""
 
-    ...
+    context: EntityText = Field(
+        default=None,
+        description="lives_at, works_at, located_in, visits, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class WorksFor(EdgeModel):
     """Connects a Person to an Organization where they work or are affiliated.
     Description can include role, duration, or other employment details."""
 
-    ...
+    role: EntityText = Field(
+        default=None,
+        description="The person's role or title at the organization. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class Owns(EdgeModel):
     """User or Person owns an Item.
     Description can include acquisition date, condition, or purpose."""
 
-    ...
+    ownership_type: EntityText = Field(
+        default=None,
+        description="owns, leases, rents, borrowed, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class ScheduledAt(EdgeModel):
     """Connects an Event to a specific date/time or Location.
     Description should include timing details and any special arrangements."""
 
-    ...
+    timing: EntityText = Field(
+        default=None,
+        description="The date, time, or timeframe of the event. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class Involves(EdgeModel):
     """Connects an Event to a Person, Item, or Organization that participates or is involved.
     Description should explain the nature of involvement."""
 
-    ...
+    involvement_role: EntityText = Field(
+        default=None,
+        description="participant, organizer, attendee, provider, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 # ============================================================================
@@ -232,11 +262,10 @@ async def set_custom_ontology(zep_client, user_ids=None):
                     EntityEdgeSourceTarget(source="Person", target="Person"),
                 ],
             ),
-            # Entity located at a Location
+            # Entity located at a Location (use SCHEDULED_AT for Events)
             "LOCATED_AT": (
                 LocatedAt,
                 [
-                    EntityEdgeSourceTarget(source="Event", target="Location"),
                     EntityEdgeSourceTarget(source="Person", target="Location"),
                     EntityEdgeSourceTarget(source="Item", target="Location"),
                     EntityEdgeSourceTarget(source="Organization", target="Location"),
@@ -361,7 +390,7 @@ class Component(EntityModel):
 
 
 # ============================================================================
-# Document Edge Types (5 relationships, no attributes)
+# Document Edge Types (5 relationships)
 # ============================================================================
 
 
@@ -369,35 +398,60 @@ class Describes(EdgeModel):
     """Connects a Topic to a Concept, Component, or Process it describes.
     Description should explain the nature of the description relationship."""
 
-    ...
+    description_scope: EntityText = Field(
+        default=None,
+        description="defines, explains, summarizes, introduces, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class DependsOn(EdgeModel):
     """One Component or Process depends on another Component, Concept, or Specification.
     Description should explain the nature of the dependency."""
 
-    ...
+    dependency_type: EntityText = Field(
+        default=None,
+        description="requires, extends, builds_on, prerequisite, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class PartOf(EdgeModel):
     """A Component, Concept, or Process is part of a larger Component or Topic.
     Description should explain the hierarchical relationship."""
 
-    ...
+    hierarchy_level: EntityText = Field(
+        default=None,
+        description="subsystem, subtopic, phase, subcomponent, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class References(EdgeModel):
     """One Concept, Topic, or Specification cross-references another.
     Description should explain the nature of the reference."""
 
-    ...
+    reference_type: EntityText = Field(
+        default=None,
+        description="cites, relates_to, supersedes, complements, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class Implements(EdgeModel):
     """A Component or Process implements a Specification or Concept.
     Description should explain how the implementation relates to the spec."""
 
-    ...
+    conformance: EntityText = Field(
+        default=None,
+        description="full, partial, alternative, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 # ============================================================================

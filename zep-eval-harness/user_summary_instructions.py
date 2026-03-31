@@ -3,7 +3,7 @@ Zep User Summary Instructions
 
 User summary instructions customize how Zep generates the entity summary for
 each user's node in their knowledge graph. Up to 5 instructions per user.
-Each instruction consists of a name (unique identifier) and text (max 100 chars).
+Each instruction consists of a name (unique identifier, max 100 chars) and text (max 5,000 chars).
 
 This follows the same pattern as ontology.py — define instructions here and
 apply them during ingestion via the --user-summary-instructions flag.
@@ -20,24 +20,24 @@ from zep_cloud.types import UserInstruction
 
 USER_SUMMARY_INSTRUCTIONS = [
     UserInstruction(
-        name="personal_interests",
-        text="What are the user's hobbies, interests, and favorite activities?",
+        name="property_requirements",
+        text="What are the user's property requirements — bedrooms, bathrooms, home office, yard, or other must-haves?",
     ),
     UserInstruction(
-        name="relationships",
-        text="Who are the important people in the user's life and what are those relationships?",
+        name="budget_and_finances",
+        text="What is the user's budget, down payment situation, mortgage pre-approval status, or other financial details?",
     ),
     UserInstruction(
-        name="life_events",
-        text="What significant life events or milestones has the user experienced?",
+        name="location_preferences",
+        text="What cities, neighborhoods, or school districts is the user interested in, and why?",
     ),
     UserInstruction(
-        name="preferences",
-        text="What are the user's stated preferences, likes, and dislikes?",
+        name="household_composition",
+        text="Who is in the user's household — spouse, children, pets — and how do their needs affect the home search?",
     ),
     UserInstruction(
-        name="daily_life",
-        text="What does the user's daily routine, work, or living situation look like?",
+        name="work_and_lifestyle",
+        text="What is the user's work situation — employer, remote/hybrid/onsite, commute needs — and how does it shape their preferences?",
     ),
 ]
 
