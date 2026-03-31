@@ -85,17 +85,19 @@ def get_latest_run(run_type: str) -> Optional[Tuple[int, str]]:
     if not existing_runs:
         return None
 
-    # Sort by directory name (which includes timestamp)
-    existing_runs.sort(reverse=True)
-    latest_run_dir = existing_runs[0]
+    # Sort by run number (not lexicographic — avoids 9 > 10 bug)
+    def extract_run_num(path):
+        try:
+            return int(os.path.basename(path).split("_")[0])
+        except (IndexError, ValueError):
+            return -1
 
-    # Extract run number (format: runs/{type}/1_timestamp)
-    try:
-        dir_name = os.path.basename(latest_run_dir)
-        run_num = int(dir_name.split("_")[0])
-        return run_num, latest_run_dir
-    except (IndexError, ValueError):
+    existing_runs.sort(key=extract_run_num, reverse=True)
+    latest_run_dir = existing_runs[0]
+    run_num = extract_run_num(latest_run_dir)
+    if run_num < 0:
         return None
+    return run_num, latest_run_dir
 
 
 def load_run_manifest(run_number: Optional[int], run_type: str) -> Tuple[Dict[str, Any], str]:

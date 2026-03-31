@@ -1,5 +1,4 @@
 import os
-import sys
 import json
 import glob
 import uuid
@@ -294,11 +293,10 @@ async def add_documents_to_zep(
                 )
                 source_desc = f"{doc_summary} | Chunk context: {chunk_context}"
 
-                data = json.dumps({"document_title": title, "content": chunk_text})
-
-                # Zep has a 10k character limit per episode
-                if len(data) > 10000:
-                    data = data[:10000]
+                # Zep has a 10k character limit per episode — truncate content
+                # (not the serialized JSON) to preserve valid JSON structure
+                max_content_len = 10000 - len(json.dumps({"document_title": title, "content": ""}))
+                data = json.dumps({"document_title": title, "content": chunk_text[:max_content_len]})
 
                 episode = await zep_client.graph.add(
                     graph_id=graph_id,

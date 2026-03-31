@@ -6,7 +6,7 @@ This module defines two sets of custom instructions:
 1. **User custom instructions** — for user conversation graphs (personal assistants).
    Applied via --custom-instructions flag.
 2. **Document custom instructions** — for standalone document graphs (reference material).
-   Applied via --document-custom-instructions flag.
+   Applied via --custom-instructions flag in zep_ingest_documents.py.
 
 Custom instructions describe the domain, terminology, and conventions of your
 application so Zep can better understand and interpret data during graph extraction.
