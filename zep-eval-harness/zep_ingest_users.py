@@ -14,6 +14,7 @@ from constants import (
     POLL_INTERVAL,
     POLL_TIMEOUT,
 )
+from retry import retry_with_backoff
 
 
 # Import ontology module (user only)
@@ -45,6 +46,42 @@ try:
 except (ImportError, NotImplementedError):
     USER_SUMMARY_INSTRUCTIONS_AVAILABLE = False
     USER_SUMMARY_INSTRUCTION_NAMES = []
+
+
+CHECKPOINT_DIR = "runs/checkpoints"
+
+
+# ============================================================================
+# Checkpoint Management
+# ============================================================================
+
+
+def checkpoint_path_for_run(run_number: int) -> str:
+    """Return the checkpoint file path for a given user run."""
+    os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    return os.path.join(CHECKPOINT_DIR, f"users_run_{run_number}.json")
+
+
+def save_checkpoint(path: str, data: dict):
+    """Atomically write checkpoint data to disk."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp_path, path)
+
+
+def load_checkpoint(path: str) -> dict:
+    """Load checkpoint data from disk."""
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+def delete_checkpoint(path: str):
+    """Remove a checkpoint file after successful completion."""
+    if os.path.exists(path):
+        os.remove(path)
+        print(f"✓ Checkpoint removed: {path}")
 
 
 # ============================================================================
@@ -249,8 +286,12 @@ async def add_conversations_to_zep(
             total_added = 0
             for i in range(0, len(zep_messages), batch_size):
                 batch = zep_messages[i : i + batch_size]
-                response = await zep_client.thread.add_messages(
-                    thread_id=thread_id, messages=batch
+                batch_label = f"batch {i // batch_size + 1} for thread {thread_id}"
+                response = await retry_with_backoff(
+                    zep_client.thread.add_messages,
+                    thread_id=thread_id,
+                    messages=batch,
+                    description=batch_label,
                 )
                 total_added += len(batch)
 
@@ -288,10 +329,12 @@ async def add_telemetry_to_zep(
     episode_uuids = []
     for idx, telemetry in enumerate(telemetry_data):
         try:
-            episode = await zep_client.graph.add(
+            episode = await retry_with_backoff(
+                zep_client.graph.add,
                 user_id=user_id,
                 type="json",
                 data=json.dumps(telemetry),
+                description=f"telemetry episode {idx + 1}/{len(telemetry_data)} for {user_id}",
             )
             total_added += 1
             episode_uuids.append(episode.uuid_)
@@ -596,6 +639,7 @@ def parse_args():
   uv run zep_ingest_users.py --custom-ontology                 # Use custom ontology
   uv run zep_ingest_users.py --custom-instructions             # Use custom instructions
   uv run zep_ingest_users.py --user-summary-instructions       # Use user summary instructions
+  uv run zep_ingest_users.py --resume runs/checkpoints/users_run_3.json  # Resume from checkpoint
 """,
     )
 
@@ -628,6 +672,12 @@ def parse_args():
             "(e.g. zep_eval_test_user_001). Default: all"
         ),
     )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Path to a checkpoint file to resume a previously interrupted ingestion",
+    )
     return parser.parse_args()
 
 
@@ -639,6 +689,23 @@ def parse_args():
 async def main():
     load_dotenv()
     args = parse_args()
+
+    # Handle resume mode
+    checkpoint_data = None
+    if args.resume:
+        if not os.path.exists(args.resume):
+            print(f"Error: Checkpoint file not found: {args.resume}")
+            exit(1)
+        checkpoint_data = load_checkpoint(args.resume)
+        print(f"✓ Loaded checkpoint from: {args.resume}")
+        completed_user_ids = {u["base_user_id"] for u in checkpoint_data.get("completed_users", [])}
+        print(f"  Completed users: {len(completed_user_ids)}")
+
+        # Restore config from checkpoint
+        config = checkpoint_data.get("config", {})
+        args.custom_ontology = config.get("custom_ontology", False)
+        args.custom_instructions = config.get("custom_instructions", False)
+        args.user_summary_instructions = config.get("user_summary_instructions", False)
 
     # Validate user graph flags
     if args.custom_ontology:
@@ -688,9 +755,18 @@ async def main():
         if unknown:
             print(f"Warning: Unknown user IDs (not in users.json): {unknown}")
 
+    # Filter out already-completed users when resuming
+    if checkpoint_data:
+        completed_user_ids = {u["base_user_id"] for u in checkpoint_data.get("completed_users", [])}
+        remaining_user_defs = [
+            u for u in selected_user_defs if u["user_id"] not in completed_user_ids
+        ]
+        print(f"  Skipping {len(selected_user_defs) - len(remaining_user_defs)} already-completed users")
+        selected_user_defs = remaining_user_defs
+
     # Print header
     print("=" * 80)
-    print("ZEP USER GRAPH INGESTION")
+    print("ZEP USER GRAPH INGESTION" + (" (RESUMING)" if checkpoint_data else ""))
     print("=" * 80)
     if args.custom_ontology:
         print("  Ontology: Custom (default ontology suppressed)")
@@ -703,18 +779,47 @@ async def main():
     print("=" * 80)
 
     try:
-        run_number = get_next_run_number()
-        print(f"\nStarting run #{run_number}\n")
+        # Use checkpoint run_number or get a new one
+        if checkpoint_data:
+            run_number = checkpoint_data.get("run_number", get_next_run_number())
+            previously_completed = list(checkpoint_data.get("completed_users", []))
+        else:
+            run_number = get_next_run_number()
+            previously_completed = []
 
-        # Launch all ingestion tasks in parallel
-        user_tasks = [
-            ingest_user(
+        cp_path = checkpoint_path_for_run(run_number)
+        checkpoint_lock = asyncio.Lock()
+
+        # Shared mutable state for checkpoint updates
+        completed_users = list(previously_completed)
+
+        async def ingest_user_with_checkpoint(user_def):
+            """Wrapper that updates the checkpoint after each user completes."""
+            result = await ingest_user(
                 zep_client,
                 user_def,
                 args.custom_ontology,
                 use_custom_instructions=args.custom_instructions,
                 use_user_summary_instructions=args.user_summary_instructions,
             )
+            async with checkpoint_lock:
+                completed_users.append(result)
+                save_checkpoint(cp_path, {
+                    "run_number": run_number,
+                    "config": {
+                        "custom_ontology": args.custom_ontology,
+                        "custom_instructions": args.custom_instructions,
+                        "user_summary_instructions": args.user_summary_instructions,
+                    },
+                    "completed_users": completed_users,
+                })
+            return result
+
+        print(f"\n{'Resuming' if checkpoint_data else 'Starting'} run #{run_number}\n")
+
+        # Launch all ingestion tasks in parallel
+        user_tasks = [
+            ingest_user_with_checkpoint(user_def)
             for user_def in selected_user_defs
         ]
 
@@ -728,13 +833,22 @@ async def main():
             raw_user_results = []
 
         # Separate successful results from failures
-        run_data = []
+        run_data = list(previously_completed)
+        failed_users = []
         for i, result in enumerate(raw_user_results):
             if isinstance(result, Exception):
                 base_id = selected_user_defs[i]["user_id"]
                 print(f"⚠ Ingestion failed for {base_id}: {result}")
+                failed_users.append(base_id)
             else:
                 run_data.append(result)
+
+        if failed_users:
+            print(f"\n⚠ {len(failed_users)} user(s) failed. Checkpoint saved to: {cp_path}")
+            print(f"  Resume with: uv run zep_ingest_users.py --resume {cp_path}")
+        else:
+            # All succeeded — clean up checkpoint
+            delete_checkpoint(cp_path)
 
         # Write run manifest
         run_dir = write_run_manifest(
@@ -750,7 +864,7 @@ async def main():
         print("=" * 80)
         print(f"\nRun #{run_number}")
         print(f"Manifest: {run_dir}/manifest.json")
-        print(f"Users: {len(selected_user_defs)}")
+        print(f"Users: {len(run_data)} succeeded, {len(failed_users)} failed")
 
         # Poll for processing completion
         if should_poll:

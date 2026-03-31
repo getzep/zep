@@ -3,7 +3,7 @@ Zep User Summary Instructions
 
 User summary instructions customize how Zep generates the entity summary for
 each user's node in their knowledge graph. Up to 5 instructions per user.
-Each instruction consists of a name (unique identifier, max 100 chars) and text (max 5,000 chars).
+Each instruction consists of a name (unique identifier, max 100 chars) and text (max 100 chars).
 
 This follows the same pattern as ontology.py — define instructions here and
 apply them during ingestion via the --user-summary-instructions flag.
@@ -21,11 +21,11 @@ from zep_cloud.types import UserInstruction
 USER_SUMMARY_INSTRUCTIONS = [
     UserInstruction(
         name="property_requirements",
-        text="What are the user's property requirements — bedrooms, bathrooms, home office, yard, or other must-haves?",
+        text="What are the user's property requirements (bedrooms, bathrooms, office, yard)?",
     ),
     UserInstruction(
         name="budget_and_finances",
-        text="What is the user's budget, down payment situation, mortgage pre-approval status, or other financial details?",
+        text="What is the user's budget, down payment situation, and mortgage pre-approval status?",
     ),
     UserInstruction(
         name="location_preferences",
@@ -33,11 +33,11 @@ USER_SUMMARY_INSTRUCTIONS = [
     ),
     UserInstruction(
         name="household_composition",
-        text="Who is in the user's household — spouse, children, pets — and how do their needs affect the home search?",
+        text="Who is in the user's household (spouse, children, pets) and how does it affect the search?",
     ),
     UserInstruction(
         name="work_and_lifestyle",
-        text="What is the user's work situation — employer, remote/hybrid/onsite, commute needs — and how does it shape their preferences?",
+        text="What is the user's work situation (remote/hybrid/onsite, commute) and its effect on preferences?",
     ),
 ]
 

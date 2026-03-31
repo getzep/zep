@@ -4,12 +4,14 @@ Combines graph search, AI response generation, and evaluation into a single pipe
 """
 
 import os
+import re
 import sys
 import json
 import glob
 import asyncio
 import argparse
 import statistics
+from collections import defaultdict
 from time import time
 from datetime import datetime
 from typing import List, Dict, Any, Tuple, Optional
@@ -30,6 +32,35 @@ from constants import (
     USER_EPISODES_LIMIT,
     USER_FACTS_LIMIT,
 )
+
+
+# ============================================================================
+# Helpers
+# ============================================================================
+
+
+def _safe_json_loads(raw: str) -> dict:
+    """Parse JSON, tolerating invalid escape sequences from LLM output.
+
+    Repeatedly strips lone backslashes that don't form valid JSON escapes
+    until parsing succeeds (handles nested cases like \\\\d -> \\d -> d).
+    """
+    text = raw
+    for _ in range(5):  # at most 5 rounds
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            prev = text
+            text = re.sub(
+                r'\\(?!(["\\/bfnrt]|u[0-9a-fA-F]{4}))',
+                '',
+                text,
+            )
+            if text == prev:
+                # No more substitutions possible; raise original error
+                break
+    # Final attempt — will raise if still broken
+    return json.loads(text)
 
 
 # ============================================================================
@@ -552,7 +583,8 @@ Please provide your evaluation as JSON with keys "correct" (boolean) and "reason
         temperature=0.0,
     )
 
-    result = json.loads(response.choices[0].message.content)
+    raw_content = response.choices[0].message.content
+    result = _safe_json_loads(raw_content)
 
     return bool(result["correct"]), result["reasoning"]
 
@@ -648,7 +680,8 @@ Please evaluate the context completeness as JSON with keys "completeness" (one o
         temperature=0.0,
     )
 
-    result = json.loads(response.choices[0].message.content)
+    raw_content = response.choices[0].message.content
+    result = _safe_json_loads(raw_content)
     completeness_grade = result["completeness"].strip().upper()
 
     return (
@@ -891,6 +924,38 @@ async def evaluate_all_questions(
 # ============================================================================
 
 
+def _compute_scores(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Compute completeness and accuracy scores for a list of result items."""
+    total = len(items)
+    if total == 0:
+        return {
+            "total_tests": 0,
+            "completeness": {
+                "complete": 0, "partial": 0, "insufficient": 0,
+                "complete_rate": 0, "partial_rate": 0, "insufficient_rate": 0,
+            },
+            "accuracy": {"correct": 0, "incorrect": 0, "accuracy_rate": 0},
+        }
+    complete = sum(1 for r in items if r["completeness_grade"] == "COMPLETE")
+    partial = sum(1 for r in items if r["completeness_grade"] == "PARTIAL")
+    insufficient = sum(1 for r in items if r["completeness_grade"] == "INSUFFICIENT")
+    correct = sum(1 for r in items if r["answer_grade"])
+    return {
+        "total_tests": total,
+        "completeness": {
+            "complete": complete, "partial": partial, "insufficient": insufficient,
+            "complete_rate": complete / total * 100,
+            "partial_rate": partial / total * 100,
+            "insufficient_rate": insufficient / total * 100,
+        },
+        "accuracy": {
+            "correct": correct,
+            "incorrect": total - correct,
+            "accuracy_rate": correct / total * 100,
+        },
+    }
+
+
 def calculate_aggregate_statistics(
     results: Dict[str, List[Dict[str, Any]]],
 ) -> Dict[str, Any]:
@@ -1060,7 +1125,18 @@ def calculate_aggregate_statistics(
         },
     }
 
-    return {"user_scores": user_scores, "aggregate_scores": aggregate_scores}
+    # Per-category breakdown
+    category_items = defaultdict(list)
+    for r in all_user_results:
+        cat = r.get("category", "unknown")
+        category_items[cat].append(r)
+    category_scores = {cat: _compute_scores(items) for cat, items in sorted(category_items.items())}
+
+    return {
+        "user_scores": user_scores,
+        "aggregate_scores": aggregate_scores,
+        "category_scores": category_scores,
+    }
 
 
 def save_results(
@@ -1092,6 +1168,7 @@ def save_results(
             "judge_model": LLM_JUDGE_MODEL,
         },
         "aggregate_scores": stats["aggregate_scores"],
+        "category_scores": stats.get("category_scores", {}),
         "user_scores": stats["user_scores"],
         "detailed_results": results,
     }
@@ -1106,12 +1183,18 @@ def save_results(
     return results_file, stats
 
 
+def _category_label(slug: str) -> str:
+    """Convert a snake_case category slug to a human-readable label."""
+    return slug.replace("_", " ").title()
+
+
 def print_summary(stats: Dict[str, Any]):
     """
     Print summary statistics for the evaluation.
     """
     aggregate = stats["aggregate_scores"]
     user_scores = stats["user_scores"]
+    category_scores = stats.get("category_scores", {})
 
     if not aggregate:
         print("No results to summarize")
@@ -1152,6 +1235,28 @@ def print_summary(stats: Dict[str, Any]):
     print(
         f"  Complete but wrong: {corr['complete_but_wrong']}/{corr['complete_total']}"
     )
+
+    # Per-Category Breakdown
+    if category_scores:
+        print(f"\n{'='*80}")
+        print("PER-CATEGORY SCORES")
+        print(f"{'='*80}\n")
+        for cat, scores in category_scores.items():
+            label = _category_label(cat)
+            n = scores["total_tests"]
+            c = scores["completeness"]
+            a = scores["accuracy"]
+            print(f"{label} ({n} tests):")
+            print(
+                f"  Completeness: COMPLETE={c['complete_rate']:.1f}%, "
+                f"PARTIAL={c['partial_rate']:.1f}%, "
+                f"INSUFFICIENT={c['insufficient_rate']:.1f}%"
+            )
+            print(
+                f"  Accuracy:     {a['accuracy_rate']:.1f}% "
+                f"({a['correct']}/{n} correct)"
+            )
+            print()
 
     # Timing
     print(f"\nTiming:")

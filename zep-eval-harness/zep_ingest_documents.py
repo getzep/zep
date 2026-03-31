@@ -20,6 +20,7 @@ from constants import (
     POLL_INTERVAL,
     POLL_TIMEOUT,
 )
+from retry import retry_with_backoff
 
 # Import document ontology module
 try:
@@ -46,6 +47,42 @@ try:
 except (ImportError, NotImplementedError):
     DOCUMENT_CUSTOM_INSTRUCTIONS_AVAILABLE = False
     DOCUMENT_INSTRUCTION_NAMES = []
+
+
+CHECKPOINT_DIR = "runs/checkpoints"
+
+
+# ============================================================================
+# Checkpoint Management
+# ============================================================================
+
+
+def checkpoint_path_for_graph(graph_id: str) -> str:
+    """Return the checkpoint file path for a given graph ID."""
+    os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    return os.path.join(CHECKPOINT_DIR, f"doc_{graph_id}.json")
+
+
+def save_checkpoint(path: str, data: dict):
+    """Atomically write checkpoint data to disk."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp_path, path)
+
+
+def load_checkpoint(path: str) -> dict:
+    """Load checkpoint data from disk."""
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+def delete_checkpoint(path: str):
+    """Remove a checkpoint file after successful completion."""
+    if os.path.exists(path):
+        os.remove(path)
+        print(f"✓ Checkpoint removed: {path}")
 
 
 # ============================================================================
@@ -114,18 +151,26 @@ def create_document_chunker(chunk_size: int = 500) -> RecursiveChunker:
 def extract_document_title(filename: str, content: str) -> str:
     """Extract a human-readable document title from the content or filename.
 
-    For markdown files, uses the first `# heading`. For plain text, uses the
-    first non-empty line.  Falls back to a cleaned-up filename.
+    Priority order:
+    1. First markdown heading (any level: #, ##, ###, etc.)
+    2. First short non-empty line (≤120 chars, likely a title rather than a paragraph)
+    3. Cleaned-up filename as fallback
     """
+    first_short_line = None
     for line in content.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
-        # Markdown heading
-        if stripped.startswith("# "):
-            return stripped.lstrip("# ").strip()
-        # First non-empty line for plain text
-        return stripped
+        # Markdown heading at any level
+        if stripped.startswith("#"):
+            return stripped.lstrip("#").strip()
+        # Remember the first short line as a fallback title candidate
+        if first_short_line is None and len(stripped) <= 120:
+            first_short_line = stripped
+
+    if first_short_line:
+        return first_short_line
+
     # Fallback: derive from filename
     name = os.path.splitext(filename)[0]
     return name.replace("_", " ").replace("-", " ").title()
@@ -139,19 +184,21 @@ async def summarize_document(
 {full_document}
 </document>
 
-Write a single sentence describing what this document is about. Start with the document title "{title}". Be concise — one sentence only."""
+Write a single sentence describing what this document is about. Be concise — one sentence only."""
 
-    response = await openai_client.chat.completions.create(
+    response = await retry_with_backoff(
+        openai_client.chat.completions.create,
         model=LLM_CONTEXTUALIZATION_MODEL,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=128,
+        description=f"summarize '{title}'",
     )
 
     return response.choices[0].message.content.strip()
 
 
 async def contextualize_chunk(
-    openai_client: AsyncOpenAI, full_document: str, chunk: str
+    openai_client: AsyncOpenAI, full_document: str, chunk: str, chunk_label: str = "chunk"
 ) -> str:
     """Generate per-chunk contextualization: how the chunk fits in the document
     and resolution of any ambiguous pronouns."""
@@ -169,10 +216,12 @@ Write a brief contextualization for this chunk (1-2 sentences max). It should:
 
 If there are no ambiguous pronouns, just provide the document context. Answer only with the contextualization and nothing else."""
 
-    response = await openai_client.chat.completions.create(
+    response = await retry_with_backoff(
+        openai_client.chat.completions.create,
         model=LLM_CONTEXTUALIZATION_MODEL,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=192,
+        description=f"contextualize {chunk_label}",
     )
 
     return response.choices[0].message.content.strip()
@@ -190,19 +239,19 @@ async def add_documents_to_zep(
     graph_id: str = DOCUMENTS_GRAPH_ID,
     use_document_custom_ontology: bool = False,
     use_document_custom_instructions: bool = False,
+    checkpoint_data: dict | None = None,
+    run_number: int = 0,
 ) -> tuple[int, list[str]]:
     """
     Ingest documents into a standalone Zep graph using JSON episodes.
 
-    Each chunk is sent as type="json" with:
-      - source_description: document summary + per-chunk contextualization (non-extractable)
-      - data: JSON with "document_title" (extractable entity) and "content" (chunk text)
+    Each chunk is sent as type="json" with a data payload containing:
+      - "document_title", "document_summary", and "content" (for small documents)
+      - "document_title", "document_summary", "chunk_context", and "content" (for chunked documents)
 
-    The source_description combines a constant document-level summary with a
-    per-chunk contextualization that explains where the chunk fits in the
-    document and resolves any ambiguous pronouns. This leverages Graphiti's
-    JSON extraction path where source_description is provided as context to
-    the LLM without being an extraction target itself.
+    Supports checkpoint/resume: if checkpoint_data is provided, skips already-ingested
+    documents and chunks. Saves checkpoint after each chunk so ingestion can be resumed
+    if interrupted.
 
     Args:
         zep_client: AsyncZep client instance
@@ -211,106 +260,246 @@ async def add_documents_to_zep(
         graph_id: Standalone graph ID
         use_document_custom_ontology: Apply document-specific custom ontology
         use_document_custom_instructions: Apply document-specific custom instructions
+        checkpoint_data: Existing checkpoint to resume from (None for fresh start)
 
     Returns tuple of (total chunks added, list of episode UUIDs).
     """
     if not documents:
         return 0, []
 
-    # Create the standalone graph (ignore if it already exists)
-    try:
-        await zep_client.graph.create(
-            graph_id=graph_id,
-            name="Shared Documents",
-            description="Shared reference documents for all users",
-        )
-        print(f"✓ Created standalone graph: {graph_id}")
-    except Exception:
-        print(f"  Standalone graph {graph_id} already exists")
+    cp_path = checkpoint_path_for_graph(graph_id)
+    is_resuming = checkpoint_data is not None
 
-    # Apply document-specific ontology BEFORE ingesting data
-    if use_document_custom_ontology:
-        print(f"\nSetting document custom ontology for graph: {graph_id}")
-        try:
-            await set_document_custom_ontology(zep_client, graph_ids=[graph_id])
-            print("✓ Document custom ontology applied successfully")
-        except Exception as e:
-            print(f"Error setting document ontology: {e}")
-            raise
+    # Initialize or restore checkpoint state
+    if is_resuming:
+        # Validate chunk_size matches — different chunk sizes produce different chunks
+        saved_chunk_size = checkpoint_data.get("chunk_size")
+        if saved_chunk_size is not None and saved_chunk_size != CHUNK_SIZE:
+            print(f"  ✗ CHUNK_SIZE mismatch: checkpoint was created with {saved_chunk_size}, "
+                  f"but current CHUNK_SIZE is {CHUNK_SIZE}")
+            print(f"    Resuming with a different chunk size would corrupt data.")
+            print(f"    Either restore CHUNK_SIZE to {saved_chunk_size} or start a fresh ingestion.")
+            raise ValueError(f"CHUNK_SIZE mismatch: checkpoint={saved_chunk_size}, current={CHUNK_SIZE}")
 
-    # Apply document-specific custom instructions BEFORE ingesting data
-    if use_document_custom_instructions:
-        print(f"Setting document custom instructions for graph: {graph_id}")
+        completed_docs = set(checkpoint_data.get("completed_documents", []))
+        episode_uuids = list(checkpoint_data.get("episode_uuids", []))
+        total_added = checkpoint_data.get("total_chunks_submitted", 0)
+        in_progress = checkpoint_data.get("current_document")
+        print(f"\n  Resuming: {len(completed_docs)} documents already done, {total_added} chunks submitted")
+    else:
+        completed_docs = set()
+        episode_uuids = []
+        total_added = 0
+        in_progress = None
+
+    if not is_resuming:
+        # Create the standalone graph (ignore if it already exists)
         try:
-            await set_document_custom_instructions(zep_client, graph_ids=[graph_id])
-            print("✓ Document custom instructions applied successfully")
-        except Exception as e:
-            print(f"Error setting document custom instructions: {e}")
-            raise
+            await zep_client.graph.create(
+                graph_id=graph_id,
+                name="Shared Documents",
+                description="Shared reference documents for all users",
+            )
+            print(f"✓ Created standalone graph: {graph_id}")
+        except Exception:
+            print(f"  Standalone graph {graph_id} already exists")
+
+        # Apply document-specific ontology BEFORE ingesting data
+        if use_document_custom_ontology:
+            print(f"\nSetting document custom ontology for graph: {graph_id}")
+            try:
+                await set_document_custom_ontology(zep_client, graph_ids=[graph_id])
+                print("✓ Document custom ontology applied successfully")
+            except Exception as e:
+                print(f"Error setting document ontology: {e}")
+                raise
+
+        # Apply document-specific custom instructions BEFORE ingesting data
+        if use_document_custom_instructions:
+            print(f"Setting document custom instructions for graph: {graph_id}")
+            try:
+                await set_document_custom_instructions(zep_client, graph_ids=[graph_id])
+                print("✓ Document custom instructions applied successfully")
+            except Exception as e:
+                print(f"Error setting document custom instructions: {e}")
+                raise
 
     print(f"\nIngesting {len(documents)} document(s) into graph {graph_id}")
-    total_added = 0
-    episode_uuids = []
 
     for filename, content in documents:
+        # Skip completed documents
+        if filename in completed_docs:
+            print(f"\n  Skipping (already done): {filename}")
+            continue
+
         print(f"\n  Processing: {filename}")
 
+        # Determine how many chunks to skip for in-progress document
+        skip_chunks = 0
+        cached_title = None
+        cached_summary = None
+        if is_resuming and in_progress and in_progress.get("filename") == filename:
+            skip_chunks = in_progress.get("chunks_submitted", 0)
+            cached_title = in_progress.get("title")
+            cached_summary = in_progress.get("doc_summary")
+            print(f"  Resuming from chunk {skip_chunks}")
+
         # Extract title and generate a one-sentence document summary
-        title = extract_document_title(filename, content)
-        doc_summary = await summarize_document(openai_client, content, title)
+        title = cached_title or extract_document_title(filename, content)
+        doc_summary = cached_summary or await summarize_document(openai_client, content, title)
         print(f"  Title: {title}")
         print(f"  Document summary: {doc_summary}")
 
         # Small documents don't need chunking — document summary is sufficient
         if len(content) <= CHUNK_SIZE:
-            data = json.dumps({"document_title": title, "content": content})
+            if skip_chunks > 0:
+                # Already submitted this single-chunk document
+                completed_docs.add(filename)
+                continue
+
+            data = json.dumps({"document_title": title, "document_summary": doc_summary, "content": content})
             try:
-                episode = await zep_client.graph.add(
+                episode = await retry_with_backoff(
+                    zep_client.graph.add,
                     graph_id=graph_id,
                     type="json",
                     data=data,
-                    source_description=doc_summary,
+                    description=f"add '{filename}' (single chunk)",
                 )
                 total_added += 1
                 episode_uuids.append(episode.uuid_)
                 print(f"  ✓ Added {filename} as single chunk")
             except Exception as e:
-                print(f"  Error adding {filename}: {e}")
+                print(f"  ✗ Failed to add {filename} after retries: {e}")
+                # Save checkpoint and abort
+                save_checkpoint(cp_path, {
+                    "graph_id": graph_id,
+                    "run_number": run_number,
+                    "chunk_size": CHUNK_SIZE,
+                    "config": {
+                        "custom_ontology": use_document_custom_ontology,
+                        "custom_instructions": use_document_custom_instructions,
+                    },
+                    "completed_documents": sorted(completed_docs),
+                    "current_document": {
+                        "filename": filename,
+                        "title": title,
+                        "doc_summary": doc_summary,
+                        "total_chunks": 1,
+                        "chunks_submitted": 0,
+                    },
+                    "episode_uuids": episode_uuids,
+                    "total_chunks_submitted": total_added,
+                })
+                print(f"\n  ✗ Ingestion halted. Checkpoint saved to: {cp_path}")
+                print(f"    Resume with: uv run zep_ingest_documents.py --resume {cp_path}")
+                raise
+
+            completed_docs.add(filename)
+            # Save checkpoint after completing this document
+            save_checkpoint(cp_path, {
+                "graph_id": graph_id,
+                "run_number": run_number,
+                "chunk_size": CHUNK_SIZE,
+                "config": {
+                    "custom_ontology": use_document_custom_ontology,
+                    "custom_instructions": use_document_custom_instructions,
+                },
+                "completed_documents": sorted(completed_docs),
+                "current_document": None,
+                "episode_uuids": episode_uuids,
+                "total_chunks_submitted": total_added,
+            })
             continue
 
         # Chunk using Chonkie
         chunker = create_document_chunker(CHUNK_SIZE)
         raw_chunks = chunker.chunk(content)
         chunks = [(i, c.text) for i, c in enumerate(raw_chunks)]
-        print(f"  Split into {len(chunks)} chunks")
+        print(f"  Split into {len(chunks)} chunks (skipping first {skip_chunks})")
 
         added_for_file = 0
         for chunk_index, chunk_text in chunks:
+            # Skip chunks already submitted in a previous run
+            if chunk_index < skip_chunks:
+                added_for_file += 1
+                continue
+
+            chunk_label = f"chunk {chunk_index + 1}/{len(chunks)} of '{filename}'"
+
             try:
                 # Per-chunk contextualization (pronoun resolution + section context)
                 chunk_context = await contextualize_chunk(
-                    openai_client, content, chunk_text
+                    openai_client, content, chunk_text, chunk_label=chunk_label
                 )
-                source_desc = f"{doc_summary} | Chunk context: {chunk_context}"
 
-                data = json.dumps({"document_title": title, "content": chunk_text})
+                data = json.dumps({"document_title": title, "document_summary": doc_summary, "chunk_context": chunk_context, "content": chunk_text})
 
-                episode = await zep_client.graph.add(
+                episode = await retry_with_backoff(
+                    zep_client.graph.add,
                     graph_id=graph_id,
                     type="json",
                     data=data,
-                    source_description=source_desc,
+                    description=f"add {chunk_label}",
                 )
                 total_added += 1
                 added_for_file += 1
                 episode_uuids.append(episode.uuid_)
-            except Exception as e:
-                print(f"  Error adding chunk {chunk_index} of {filename}: {e}")
-                continue
 
+                # Save checkpoint after each chunk
+                save_checkpoint(cp_path, {
+                    "graph_id": graph_id,
+                    "run_number": run_number,
+                    "chunk_size": CHUNK_SIZE,
+                    "config": {
+                        "custom_ontology": use_document_custom_ontology,
+                        "custom_instructions": use_document_custom_instructions,
+                    },
+                    "completed_documents": sorted(completed_docs),
+                    "current_document": {
+                        "filename": filename,
+                        "title": title,
+                        "doc_summary": doc_summary,
+                        "total_chunks": len(chunks),
+                        "chunks_submitted": chunk_index + 1,
+                    },
+                    "episode_uuids": episode_uuids,
+                    "total_chunks_submitted": total_added,
+                })
+            except Exception as e:
+                print(f"  ✗ Failed {chunk_label} after retries: {e}")
+                # Save checkpoint and abort
+                save_checkpoint(cp_path, {
+                    "graph_id": graph_id,
+                    "run_number": run_number,
+                    "chunk_size": CHUNK_SIZE,
+                    "config": {
+                        "custom_ontology": use_document_custom_ontology,
+                        "custom_instructions": use_document_custom_instructions,
+                    },
+                    "completed_documents": sorted(completed_docs),
+                    "current_document": {
+                        "filename": filename,
+                        "title": title,
+                        "doc_summary": doc_summary,
+                        "total_chunks": len(chunks),
+                        "chunks_submitted": chunk_index,
+                    },
+                    "episode_uuids": episode_uuids,
+                    "total_chunks_submitted": total_added,
+                })
+                print(f"\n  ✗ Ingestion halted. Checkpoint saved to: {cp_path}")
+                print(f"    Resume with: uv run zep_ingest_documents.py --resume {cp_path}")
+                raise
+
+        completed_docs.add(filename)
         print(f"  ✓ Added {added_for_file}/{len(chunks)} chunks from {filename}")
 
     print(f"✓ Completed adding {total_added} document chunks to graph {graph_id}")
+
+    # Clean up checkpoint on successful completion
+    delete_checkpoint(cp_path)
+
     return total_added, episode_uuids
 
 
@@ -464,6 +653,7 @@ def parse_args():
   uv run zep_ingest_documents.py --no-poll                # Ingest documents, don't wait
   uv run zep_ingest_documents.py --custom-ontology        # Use custom document ontology
   uv run zep_ingest_documents.py --custom-instructions    # Use custom document instructions
+  uv run zep_ingest_documents.py --resume runs/checkpoints/doc_xxx.json  # Resume from checkpoint
 """,
     )
 
@@ -482,6 +672,12 @@ def parse_args():
         action="store_true",
         help="Don't wait for processing",
     )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Path to a checkpoint file to resume a previously interrupted ingestion",
+    )
     return parser.parse_args()
 
 
@@ -493,6 +689,23 @@ def parse_args():
 async def main():
     load_dotenv()
     args = parse_args()
+
+    # Handle resume mode
+    checkpoint_data = None
+    if args.resume:
+        if not os.path.exists(args.resume):
+            print(f"Error: Checkpoint file not found: {args.resume}")
+            exit(1)
+        checkpoint_data = load_checkpoint(args.resume)
+        print(f"✓ Loaded checkpoint from: {args.resume}")
+        print(f"  Graph ID: {checkpoint_data['graph_id']}")
+        print(f"  Completed documents: {len(checkpoint_data.get('completed_documents', []))}")
+        print(f"  Chunks submitted: {checkpoint_data.get('total_chunks_submitted', 0)}")
+
+        # Restore config from checkpoint
+        config = checkpoint_data.get("config", {})
+        args.custom_ontology = config.get("custom_ontology", False)
+        args.custom_instructions = config.get("custom_instructions", False)
 
     # Validate document graph flags
     if args.custom_ontology:
@@ -534,7 +747,7 @@ async def main():
 
     # Print header
     print("=" * 80)
-    print("ZEP DOCUMENT GRAPH INGESTION")
+    print("ZEP DOCUMENT GRAPH INGESTION" + (" (RESUMING)" if checkpoint_data else ""))
     print("=" * 80)
     print("--- Document Graph ---")
     if args.custom_ontology:
@@ -548,11 +761,16 @@ async def main():
     print("=" * 80)
 
     try:
-        run_number = get_next_run_number()
-        print(f"\nStarting document run #{run_number}\n")
+        # Use checkpoint graph_id or generate a new one
+        if checkpoint_data:
+            graph_id = checkpoint_data["graph_id"]
+            # Recover run_number from checkpoint if available
+            run_number = checkpoint_data.get("run_number", get_next_run_number())
+        else:
+            run_number = get_next_run_number()
+            graph_id = f"{DOCUMENTS_GRAPH_ID}_{uuid.uuid4().hex[:8]}"
 
-        # Generate unique graph ID
-        graph_id = f"{DOCUMENTS_GRAPH_ID}_{uuid.uuid4().hex[:8]}"
+        print(f"\n{'Resuming' if checkpoint_data else 'Starting'} document run #{run_number}\n")
 
         # Ingest documents
         num_doc_chunks, doc_episode_uuids = await add_documents_to_zep(
@@ -562,6 +780,8 @@ async def main():
             graph_id=graph_id,
             use_document_custom_ontology=args.custom_ontology,
             use_document_custom_instructions=args.custom_instructions,
+            checkpoint_data=checkpoint_data,
+            run_number=run_number,
         )
 
         # Write run manifest

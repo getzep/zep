@@ -42,10 +42,7 @@ MAX_LENGTH = 50
 
 
 class Person(EntityModel):
-    """A person mentioned in conversation (family, friends, colleagues, etc.).
-    Entity names should be the person's name.
-    Descriptions should contain relationship to user, age, occupation, or other relevant details.
-    """
+    """A person mentioned in conversation (family, friends, colleagues, etc.)."""
 
     relationship: EntityText = Field(
         default=None,
@@ -56,10 +53,7 @@ class Person(EntityModel):
 
 
 class Location(EntityModel):
-    """A physical place or address.
-    Entity names should be the location name or address.
-    Descriptions should contain address details, purpose, or context about the location.
-    """
+    """A physical place or address."""
 
     location_type: EntityText = Field(
         default=None,
@@ -70,10 +64,7 @@ class Location(EntityModel):
 
 
 class Organization(EntityModel):
-    """A company, institution, or group.
-    Entity names should be the organization name.
-    Descriptions should contain type of organization, services provided, or user's relationship to it.
-    """
+    """A company, institution, or group."""
 
     org_type: EntityText = Field(
         default=None,
@@ -84,10 +75,7 @@ class Organization(EntityModel):
 
 
 class Event(EntityModel):
-    """An appointment, meeting, or scheduled activity.
-    Entity names should describe the event and include date/time if specific.
-    Descriptions should contain location, participants, purpose, and any special details.
-    """
+    """An appointment, meeting, or scheduled activity."""
 
     event_type: EntityText = Field(
         default=None,
@@ -98,10 +86,7 @@ class Event(EntityModel):
 
 
 class Item(EntityModel):
-    """A physical object, pet, or possession mentioned in conversation.
-    Entity names should be the item name or description.
-    Descriptions should contain type, purpose, condition, or other relevant details.
-    """
+    """A physical object, pet, or possession mentioned in conversation."""
 
     item_type: EntityText = Field(
         default=None,
@@ -117,8 +102,7 @@ class Item(EntityModel):
 
 
 class RelatedTo(EdgeModel):
-    """Connects a Person to another Person or to the User.
-    Description should explain the nature of the relationship."""
+    """Connects a Person to another Person or to the User."""
 
     relationship_type: EntityText = Field(
         default=None,
@@ -129,8 +113,7 @@ class RelatedTo(EdgeModel):
 
 
 class LocatedAt(EdgeModel):
-    """Connects a Person, Item, or Organization to a Location.
-    Description can provide additional context about the location relationship."""
+    """Connects a Person, Item, or Organization to a Location."""
 
     context: EntityText = Field(
         default=None,
@@ -141,8 +124,7 @@ class LocatedAt(EdgeModel):
 
 
 class WorksFor(EdgeModel):
-    """Connects a Person to an Organization where they work or are affiliated.
-    Description can include role, duration, or other employment details."""
+    """Connects a Person to an Organization they work for or are affiliated with."""
 
     role: EntityText = Field(
         default=None,
@@ -153,8 +135,7 @@ class WorksFor(EdgeModel):
 
 
 class Owns(EdgeModel):
-    """User or Person owns an Item.
-    Description can include acquisition date, condition, or purpose."""
+    """User or Person owns an Item."""
 
     ownership_type: EntityText = Field(
         default=None,
@@ -165,8 +146,7 @@ class Owns(EdgeModel):
 
 
 class ScheduledAt(EdgeModel):
-    """Connects an Event to a specific date/time or Location.
-    Description should include timing details and any special arrangements."""
+    """Connects an Event to a specific date/time or Location."""
 
     timing: EntityText = Field(
         default=None,
@@ -177,8 +157,7 @@ class ScheduledAt(EdgeModel):
 
 
 class Involves(EdgeModel):
-    """Connects an Event to a Person, Item, or Organization that participates or is involved.
-    Description should explain the nature of involvement."""
+    """Connects an Event to a participating Person, Item, or Organization."""
 
     involvement_role: EntityText = Field(
         default=None,
@@ -320,10 +299,7 @@ async def set_custom_ontology(zep_client, user_ids=None):
 
 
 class Concept(EntityModel):
-    """A key idea, term, or definition from reference material.
-    Entity names should be the concept name or term.
-    Descriptions should contain the definition, explanation, or significance.
-    """
+    """A key idea, term, or definition from reference material."""
 
     domain: EntityText = Field(
         default=None,
@@ -334,10 +310,7 @@ class Concept(EntityModel):
 
 
 class Topic(EntityModel):
-    """A subject area or category that organizes information.
-    Entity names should be the topic or subject name.
-    Descriptions should contain scope, relevance, or summary of the topic.
-    """
+    """A subject area or category that organizes information."""
 
     scope: EntityText = Field(
         default=None,
@@ -348,10 +321,7 @@ class Topic(EntityModel):
 
 
 class Process(EntityModel):
-    """A procedure, workflow, or methodology described in documentation.
-    Entity names should describe the process (e.g. 'User Onboarding Flow').
-    Descriptions should contain purpose, steps overview, or when it applies.
-    """
+    """A procedure, workflow, or methodology described in documentation."""
 
     process_type: EntityText = Field(
         default=None,
@@ -362,10 +332,7 @@ class Process(EntityModel):
 
 
 class Specification(EntityModel):
-    """A rule, requirement, or constraint defined in documentation.
-    Entity names should capture the rule or requirement concisely.
-    Descriptions should contain the full specification and any conditions.
-    """
+    """A rule, requirement, or constraint defined in documentation."""
 
     spec_type: EntityText = Field(
         default=None,
@@ -376,10 +343,7 @@ class Specification(EntityModel):
 
 
 class Component(EntityModel):
-    """A system part, tool, feature, or product referenced in documentation.
-    Entity names should be the component or product name.
-    Descriptions should contain purpose, capabilities, or how it fits in the system.
-    """
+    """A system part, tool, feature, or product referenced in documentation."""
 
     component_type: EntityText = Field(
         default=None,
@@ -395,8 +359,7 @@ class Component(EntityModel):
 
 
 class Describes(EdgeModel):
-    """Connects a Topic to a Concept, Component, or Process it describes.
-    Description should explain the nature of the description relationship."""
+    """Connects a Topic to a Concept, Component, or Process it describes."""
 
     description_scope: EntityText = Field(
         default=None,
@@ -407,8 +370,7 @@ class Describes(EdgeModel):
 
 
 class DependsOn(EdgeModel):
-    """One Component or Process depends on another Component, Concept, or Specification.
-    Description should explain the nature of the dependency."""
+    """A Component or Process depends on another Component, Concept, or Spec."""
 
     dependency_type: EntityText = Field(
         default=None,
@@ -419,8 +381,7 @@ class DependsOn(EdgeModel):
 
 
 class PartOf(EdgeModel):
-    """A Component, Concept, or Process is part of a larger Component or Topic.
-    Description should explain the hierarchical relationship."""
+    """A Component, Concept, or Process is part of a larger Component or Topic."""
 
     hierarchy_level: EntityText = Field(
         default=None,
@@ -431,8 +392,7 @@ class PartOf(EdgeModel):
 
 
 class References(EdgeModel):
-    """One Concept, Topic, or Specification cross-references another.
-    Description should explain the nature of the reference."""
+    """A Concept, Topic, or Specification cross-references another."""
 
     reference_type: EntityText = Field(
         default=None,
@@ -443,8 +403,7 @@ class References(EdgeModel):
 
 
 class Implements(EdgeModel):
-    """A Component or Process implements a Specification or Concept.
-    Description should explain how the implementation relates to the spec."""
+    """A Component or Process implements a Specification or Concept."""
 
     conformance: EntityText = Field(
         default=None,
