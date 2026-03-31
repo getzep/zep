@@ -67,13 +67,14 @@ class CompletenessGrade(BaseModel):
 # ============================================================================
 
 
-def get_latest_run() -> Optional[Tuple[int, str]]:
+def get_latest_run(run_type: str) -> Optional[Tuple[int, str]]:
     """
-    Get the latest run number and directory.
+    Get the latest run number and directory for a given run type.
+    run_type is "users" or "documents".
     Returns tuple of (run_number, run_dir) or None if no runs exist.
-    Format: runs/{number}_{ISO8601_timestamp}/
+    Format: runs/{run_type}/{number}_{ISO8601_timestamp}/
     """
-    existing_runs = glob.glob("runs/*")
+    existing_runs = glob.glob(f"runs/{run_type}/*")
 
     if not existing_runs:
         return None
@@ -88,7 +89,7 @@ def get_latest_run() -> Optional[Tuple[int, str]]:
     existing_runs.sort(reverse=True)
     latest_run_dir = existing_runs[0]
 
-    # Extract run number (format: runs/1_timestamp)
+    # Extract run number (format: runs/{type}/1_timestamp)
     try:
         dir_name = os.path.basename(latest_run_dir)
         run_num = int(dir_name.split("_")[0])
@@ -97,34 +98,42 @@ def get_latest_run() -> Optional[Tuple[int, str]]:
         return None
 
 
-def load_run_manifest(run_number: Optional[int] = None) -> Tuple[Dict[str, Any], str]:
+def load_run_manifest(run_number: Optional[int], run_type: str) -> Tuple[Dict[str, Any], str]:
     """
-    Load the run manifest for evaluation.
-    If run_number is None, loads the latest run.
+    Load a run manifest for evaluation.
+    run_type is "users" or "documents".
+    If run_number is None, loads the latest run of that type.
     Returns tuple of (manifest, run_dir).
     """
     if run_number is None:
-        result = get_latest_run()
+        result = get_latest_run(run_type)
         if result is None:
             raise FileNotFoundError(
-                "No runs found in runs/ directory. Please run zep_ingest.py first."
+                f"No {run_type} runs found in runs/{run_type}/ directory. "
+                f"Please run zep_ingest_{run_type}.py first."
             )
         run_number, run_dir = result
-        print(f"Using latest run: #{run_number}")
+        print(f"Using latest {run_type} run: #{run_number}")
     else:
-        # Find run directory by number (format: runs/{number}_timestamp)
-        matching_runs = glob.glob(f"runs/{run_number}_*")
+        # Find run directory by number
+        matching_runs = glob.glob(f"runs/{run_type}/{run_number}_*")
         if not matching_runs:
-            raise FileNotFoundError(f"Run #{run_number} not found in runs/ directory.")
+            raise FileNotFoundError(
+                f"{run_type.capitalize()} run #{run_number} not found in runs/{run_type}/ directory."
+            )
         run_dir = matching_runs[0]
-        print(f"Using run: #{run_number}")
+        print(f"Using {run_type} run: #{run_number}")
 
     manifest_path = os.path.join(run_dir, "manifest.json")
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
 
     print(f"Loaded manifest from: {manifest_path}")
-    print(f"Users: {len(manifest['users'])}")
+    if run_type == "users":
+        print(f"Users: {len(manifest['users'])}")
+    elif run_type == "documents":
+        print(f"Document graph: {manifest.get('graph_id', 'N/A')}")
+        print(f"Chunks: {manifest.get('num_chunks', 0)}")
     print(f"Timestamp: {manifest['timestamp']}\n")
 
     return manifest, run_dir
@@ -1194,23 +1203,23 @@ def parse_args():
         description="Zep Eval Harness — Evaluation Script",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
-  uv run zep_evaluate.py                                    # Evaluate latest run (user graphs only)
-  uv run zep_evaluate.py 1                                  # Evaluate run #1
-  uv run zep_evaluate.py --include-document-graph-search    # Also search the shared document graph
-  uv run zep_evaluate.py 2 --include-document-graph-search  # Run #2 with document graph
+  uv run zep_evaluate.py                                    # Evaluate latest user run (no document graph)
+  uv run zep_evaluate.py --user-run 3                       # Evaluate user run #3
+  uv run zep_evaluate.py --doc-run 2                        # Latest user run + document run #2
+  uv run zep_evaluate.py --user-run 3 --doc-run 2           # Specific user run + document run
 """,
     )
     parser.add_argument(
-        "run_number",
-        nargs="?",
+        "--user-run",
         type=int,
         default=None,
-        help="Run number to evaluate (default: latest)",
+        help="User ingestion run number to evaluate (default: latest)",
     )
     parser.add_argument(
-        "--include-document-graph-search",
-        action="store_true",
-        help="Also search the shared standalone document graph for context",
+        "--doc-run",
+        type=int,
+        default=None,
+        help="Document ingestion run number to include for document graph search (optional)",
     )
     return parser.parse_args()
 
@@ -1240,18 +1249,18 @@ async def main():
     print("=" * 80)
 
     try:
-        # Load run manifest
-        manifest, run_dir = load_run_manifest(args.run_number)
+        # Load user run manifest (always required)
+        manifest, run_dir = load_run_manifest(args.user_run, "users")
 
-        # Resolve document graph ID from manifest if --documents is set
+        # Load document run manifest if --doc-run is specified
         doc_graph_id = None
-        if args.include_document_graph_search:
-            doc_info = manifest.get("document_graph_config", {})
-            doc_graph_id = doc_info.get("graph_id")
+        if args.doc_run is not None:
+            doc_manifest, _ = load_run_manifest(args.doc_run, "documents")
+            doc_graph_id = doc_manifest.get("graph_id")
             if doc_graph_id:
                 print(f"Document graph: {doc_graph_id}")
             else:
-                print("Warning: --include-document-graph-search flag set but no document graph found in manifest")
+                print("Warning: --doc-run specified but no graph_id found in document manifest")
 
         # Load test cases
         test_cases_by_user = await load_all_test_cases()

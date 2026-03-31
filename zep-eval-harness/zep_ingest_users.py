@@ -8,57 +8,34 @@ import argparse
 from time import time
 from datetime import datetime
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
 from zep_cloud.client import AsyncZep
 from zep_cloud.types import Message
-from chonkie import RecursiveChunker, RecursiveRules, RecursiveLevel
 
 from constants import (
-    CHUNK_SIZE,
-    DOCUMENT_INGEST_LIMIT,
-    DOCUMENTS_GRAPH_ID,
-    GEMINI_BASE_URL,
-    LLM_CONTEXTUALIZATION_MODEL,
     POLL_INTERVAL,
     POLL_TIMEOUT,
 )
 
 
-# Import ontology module (user + document)
+# Import ontology module (user only)
 try:
     from ontology import set_custom_ontology, ENTITY_TYPES, EDGE_TYPES
-    from ontology import (
-        set_document_custom_ontology,
-        DOCUMENT_ENTITY_TYPES,
-        DOCUMENT_EDGE_TYPES,
-    )
 
     CUSTOM_ONTOLOGY_AVAILABLE = True
-    DOCUMENT_CUSTOM_ONTOLOGY_AVAILABLE = True
 except (ImportError, NotImplementedError):
     CUSTOM_ONTOLOGY_AVAILABLE = False
-    DOCUMENT_CUSTOM_ONTOLOGY_AVAILABLE = False
     ENTITY_TYPES = []
     EDGE_TYPES = []
-    DOCUMENT_ENTITY_TYPES = []
-    DOCUMENT_EDGE_TYPES = []
 
-# Import custom instructions module (user + document)
+# Import custom instructions module (user only)
 try:
     from custom_instructions import set_custom_instructions
     from custom_instructions import INSTRUCTION_NAMES as CUSTOM_INSTRUCTION_NAMES
-    from custom_instructions import (
-        set_document_custom_instructions,
-        DOCUMENT_INSTRUCTION_NAMES,
-    )
 
     CUSTOM_INSTRUCTIONS_AVAILABLE = True
-    DOCUMENT_CUSTOM_INSTRUCTIONS_AVAILABLE = True
 except (ImportError, NotImplementedError):
     CUSTOM_INSTRUCTIONS_AVAILABLE = False
-    DOCUMENT_CUSTOM_INSTRUCTIONS_AVAILABLE = False
     CUSTOM_INSTRUCTION_NAMES = []
-    DOCUMENT_INSTRUCTION_NAMES = []
 
 # Import user summary instructions module
 try:
@@ -134,41 +111,6 @@ def load_telemetry_for_user(user_id):
 
     print(f"✓ Loaded {len(telemetry_data)} telemetry file(s) for user {user_id}")
     return telemetry_data
-
-
-def load_documents() -> list[tuple[str, str]]:
-    """
-    Load all documents from data/documents/.
-    Returns list of (filename, content) tuples.
-    """
-    docs_dir = "data/documents"
-    if not os.path.isdir(docs_dir):
-        return []
-
-    all_files = sorted(
-        f for f in glob.glob(os.path.join(docs_dir, "*")) if os.path.isfile(f)
-    )
-
-    # Apply DOCUMENT_INGEST_LIMIT (None = all)
-    if DOCUMENT_INGEST_LIMIT is not None:
-        selected_files = all_files[:DOCUMENT_INGEST_LIMIT]
-    else:
-        selected_files = all_files
-
-    documents = []
-    for file_path in selected_files:
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        if content.strip():
-            documents.append((os.path.basename(file_path), content))
-
-    if documents:
-        total = len(all_files)
-        if DOCUMENT_INGEST_LIMIT is not None and DOCUMENT_INGEST_LIMIT < total:
-            print(f"✓ Loaded {len(documents)} of {total} document(s) from {docs_dir} (limit: {DOCUMENT_INGEST_LIMIT})")
-        else:
-            print(f"✓ Loaded {len(documents)} document(s) from {docs_dir}")
-    return documents
 
 
 # ============================================================================
@@ -361,231 +303,6 @@ async def add_telemetry_to_zep(
 
     print(f"✓ Completed adding {total_added} telemetry episodes")
     return episode_uuids
-
-
-# ============================================================================
-# Ingestion: Documents (contextualized chunking → standalone graph)
-# ============================================================================
-
-
-def create_document_chunker(chunk_size: int = 500) -> RecursiveChunker:
-    """Create a Chonkie recursive chunker with paragraph -> sentence -> word hierarchy."""
-    rules = RecursiveRules(
-        [
-            RecursiveLevel(delimiters=["\n\n"], include_delim="prev"),
-            RecursiveLevel(delimiters=["\n"], include_delim="prev"),
-            RecursiveLevel(delimiters=[".", "!", "?"], include_delim="prev"),
-            RecursiveLevel(whitespace=True),
-        ]
-    )
-    return RecursiveChunker(
-        tokenizer="character",
-        chunk_size=chunk_size,
-        rules=rules,
-        min_characters_per_chunk=24,
-    )
-
-
-def extract_document_title(filename: str, content: str) -> str:
-    """Extract a human-readable document title from the content or filename.
-
-    For markdown files, uses the first `# heading`. For plain text, uses the
-    first non-empty line.  Falls back to a cleaned-up filename.
-    """
-    for line in content.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        # Markdown heading
-        if stripped.startswith("# "):
-            return stripped.lstrip("# ").strip()
-        # First non-empty line for plain text
-        return stripped
-    # Fallback: derive from filename
-    name = os.path.splitext(filename)[0]
-    return name.replace("_", " ").replace("-", " ").title()
-
-
-async def summarize_document(
-    openai_client: AsyncOpenAI, full_document: str, title: str
-) -> str:
-    """Generate a one-sentence summary of the full document."""
-    prompt = f"""<document>
-{full_document}
-</document>
-
-Write a single sentence describing what this document is about. Start with the document title "{title}". Be concise — one sentence only."""
-
-    response = await openai_client.chat.completions.create(
-        model=LLM_CONTEXTUALIZATION_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=128,
-    )
-
-    return response.choices[0].message.content.strip()
-
-
-async def contextualize_chunk(
-    openai_client: AsyncOpenAI, full_document: str, chunk: str
-) -> str:
-    """Generate per-chunk contextualization: how the chunk fits in the document
-    and resolution of any ambiguous pronouns."""
-    prompt = f"""<document>
-{full_document}
-</document>
-
-<chunk>
-{chunk}
-</chunk>
-
-Write a brief contextualization for this chunk (1-2 sentences max). It should:
-1. Explain where this chunk fits within the overall document (e.g. which section or topic it belongs to).
-2. Resolve any ambiguous pronouns (he, she, it, they, them, this, these, those, etc.) — if the chunk uses a pronoun whose referent is not clear from the chunk alone, state what it refers to.
-
-If there are no ambiguous pronouns, just provide the document context. Answer only with the contextualization and nothing else."""
-
-    response = await openai_client.chat.completions.create(
-        model=LLM_CONTEXTUALIZATION_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=192,
-    )
-
-    return response.choices[0].message.content.strip()
-
-
-async def add_documents_to_zep(
-    zep_client: AsyncZep,
-    openai_client: AsyncOpenAI,
-    documents: list[tuple[str, str]],
-    graph_id: str = DOCUMENTS_GRAPH_ID,
-    use_document_custom_ontology: bool = False,
-    use_document_custom_instructions: bool = False,
-) -> tuple[int, list[str]]:
-    """
-    Ingest documents into a standalone Zep graph using JSON episodes.
-
-    Each chunk is sent as type="json" with:
-      - source_description: document summary + per-chunk contextualization (non-extractable)
-      - data: JSON with "document_title" (extractable entity) and "content" (chunk text)
-
-    The source_description combines a constant document-level summary with a
-    per-chunk contextualization that explains where the chunk fits in the
-    document and resolves any ambiguous pronouns. This leverages Graphiti's
-    JSON extraction path where source_description is provided as context to
-    the LLM without being an extraction target itself.
-
-    Args:
-        zep_client: AsyncZep client instance
-        openai_client: AsyncOpenAI client for contextualization
-        documents: List of (filename, content) tuples
-        graph_id: Standalone graph ID
-        use_document_custom_ontology: Apply document-specific custom ontology
-        use_document_custom_instructions: Apply document-specific custom instructions
-
-    Returns tuple of (total chunks added, list of episode UUIDs).
-    """
-    if not documents:
-        return 0, []
-
-    # Create the standalone graph (ignore if it already exists)
-    try:
-        await zep_client.graph.create(
-            graph_id=graph_id,
-            name="Shared Documents",
-            description="Shared reference documents for all users",
-        )
-        print(f"✓ Created standalone graph: {graph_id}")
-    except Exception:
-        print(f"  Standalone graph {graph_id} already exists")
-
-    # Apply document-specific ontology BEFORE ingesting data
-    if use_document_custom_ontology:
-        print(f"\nSetting document custom ontology for graph: {graph_id}")
-        try:
-            await set_document_custom_ontology(zep_client, graph_ids=[graph_id])
-            print("✓ Document custom ontology applied successfully")
-        except Exception as e:
-            print(f"Error setting document ontology: {e}")
-            raise
-
-    # Apply document-specific custom instructions BEFORE ingesting data
-    if use_document_custom_instructions:
-        print(f"Setting document custom instructions for graph: {graph_id}")
-        try:
-            await set_document_custom_instructions(zep_client, graph_ids=[graph_id])
-            print("✓ Document custom instructions applied successfully")
-        except Exception as e:
-            print(f"Error setting document custom instructions: {e}")
-            raise
-
-    print(f"\nIngesting {len(documents)} document(s) into graph {graph_id}")
-    total_added = 0
-    episode_uuids = []
-
-    for filename, content in documents:
-        print(f"\n  Processing: {filename}")
-
-        # Extract title and generate a one-sentence document summary
-        title = extract_document_title(filename, content)
-        doc_summary = await summarize_document(openai_client, content, title)
-        print(f"  Title: {title}")
-        print(f"  Document summary: {doc_summary}")
-
-        # Small documents don't need chunking — document summary is sufficient
-        if len(content) <= CHUNK_SIZE:
-            data = json.dumps({"document_title": title, "content": content})
-            try:
-                episode = await zep_client.graph.add(
-                    graph_id=graph_id,
-                    type="json",
-                    data=data,
-                    source_description=doc_summary,
-                )
-                total_added += 1
-                episode_uuids.append(episode.uuid_)
-                print(f"  ✓ Added {filename} as single chunk")
-            except Exception as e:
-                print(f"  Error adding {filename}: {e}")
-            continue
-
-        # Chunk using Chonkie
-        chunker = create_document_chunker(CHUNK_SIZE)
-        raw_chunks = chunker.chunk(content)
-        chunks = [(i, c.text) for i, c in enumerate(raw_chunks)]
-        print(f"  Split into {len(chunks)} chunks")
-
-        added_for_file = 0
-        for chunk_index, chunk_text in chunks:
-            try:
-                # Per-chunk contextualization (pronoun resolution + section context)
-                chunk_context = await contextualize_chunk(
-                    openai_client, content, chunk_text
-                )
-                source_desc = f"{doc_summary} | Chunk context: {chunk_context}"
-
-                data = json.dumps({"document_title": title, "content": chunk_text})
-
-                # Zep has a 10k character limit per episode
-                if len(data) > 10000:
-                    data = data[:10000]
-
-                episode = await zep_client.graph.add(
-                    graph_id=graph_id,
-                    type="json",
-                    data=data,
-                    source_description=source_desc,
-                )
-                total_added += 1
-                added_for_file += 1
-                episode_uuids.append(episode.uuid_)
-            except Exception as e:
-                print(f"  Error adding chunk {chunk_index} of {filename}: {e}")
-                continue
-
-        print(f"  ✓ Added {added_for_file}/{len(chunks)} chunks from {filename}")
-
-    print(f"✓ Completed adding {total_added} document chunks to graph {graph_id}")
-    return total_added, episode_uuids
 
 
 # ============================================================================
@@ -792,13 +509,13 @@ def get_next_run_number():
     """
     Get the next run number by checking existing run directories.
     """
-    os.makedirs("runs", exist_ok=True)
-    existing_runs = glob.glob("runs/*")
+    os.makedirs("runs/users", exist_ok=True)
+    existing_runs = glob.glob("runs/users/*")
 
     if not existing_runs:
         return 1
 
-    # Extract run numbers from directory names (format: runs/1_timestamp)
+    # Extract run numbers from directory names (format: runs/users/1_timestamp)
     run_numbers = []
     for run_dir in existing_runs:
         try:
@@ -822,56 +539,36 @@ def write_run_manifest(
     use_custom_ontology=False,
     use_custom_instructions=False,
     use_user_summary_instructions=False,
-    use_document_custom_ontology=False,
-    use_document_custom_instructions=False,
-    num_doc_chunks=0,
-    doc_graph_id=None,
 ):
     """
     Write a manifest file for the current run.
-    Format: runs/{number}_{ISO8601_timestamp}/
+    Format: runs/users/{number}_{ISO8601_timestamp}/
     """
     timestamp = datetime.now().isoformat()
     # Use ISO 8601 format with basic format (no colons for filesystem compatibility)
     timestamp_str = datetime.now().strftime("%Y%m%dT%H%M%S")
-    run_dir = f"runs/{run_number}_{timestamp_str}"
+    run_dir = f"runs/users/{run_number}_{timestamp_str}"
     os.makedirs(run_dir, exist_ok=True)
 
     manifest = {
         "run_number": run_number,
+        "type": "users",
         "timestamp": timestamp,
-        "user_graph_config": {
-            "ontology": {
-                "type": (
-                    "custom" if use_custom_ontology else "default_zep"
-                ),
-                "default_ontology_disabled": use_custom_ontology,
-                "custom_entity_types": ENTITY_TYPES if use_custom_ontology else [],
-                "custom_edge_types": EDGE_TYPES if use_custom_ontology else [],
-            },
-            "custom_instructions": {
-                "enabled": use_custom_instructions,
-                "instruction_names": CUSTOM_INSTRUCTION_NAMES if use_custom_instructions else [],
-            },
-            "user_summary_instructions": {
-                "enabled": use_user_summary_instructions,
-                "instruction_names": USER_SUMMARY_INSTRUCTION_NAMES if use_user_summary_instructions else [],
-            },
+        "ontology": {
+            "type": (
+                "custom" if use_custom_ontology else "default_zep"
+            ),
+            "default_ontology_disabled": use_custom_ontology,
+            "custom_entity_types": ENTITY_TYPES if use_custom_ontology else [],
+            "custom_edge_types": EDGE_TYPES if use_custom_ontology else [],
         },
-        "document_graph_config": {
-            "graph_id": doc_graph_id,
-            "num_chunks": num_doc_chunks,
-            "ontology": {
-                "type": (
-                    "custom" if use_document_custom_ontology else "default_zep"
-                ),
-                "custom_entity_types": DOCUMENT_ENTITY_TYPES if use_document_custom_ontology else [],
-                "custom_edge_types": DOCUMENT_EDGE_TYPES if use_document_custom_ontology else [],
-            },
-            "custom_instructions": {
-                "enabled": use_document_custom_instructions,
-                "instruction_names": DOCUMENT_INSTRUCTION_NAMES if use_document_custom_instructions else [],
-            },
+        "custom_instructions": {
+            "enabled": use_custom_instructions,
+            "instruction_names": CUSTOM_INSTRUCTION_NAMES if use_custom_instructions else [],
+        },
+        "user_summary_instructions": {
+            "enabled": use_user_summary_instructions,
+            "instruction_names": USER_SUMMARY_INSTRUCTION_NAMES if use_user_summary_instructions else [],
         },
         "users": run_data,
     }
@@ -891,23 +588,18 @@ def write_run_manifest(
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Zep Eval Harness — Ingestion Script",
+        description="Zep Eval Harness — User Graph Ingestion Script",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
-  uv run zep_ingest.py                                   # Ingest all, poll until done
-  uv run zep_ingest.py --no-poll                         # Ingest all, don't wait
-  uv run zep_ingest.py --graphs zep_eval_test_user_001   # Ingest one user only
-  uv run zep_ingest.py --graphs documents                # Ingest documents only
-  uv run zep_ingest.py --graphs zep_eval_test_user_001,documents
-  uv run zep_ingest.py --custom-ontology                 # Use custom ontology for user graphs
-  uv run zep_ingest.py --custom-instructions             # Use custom instructions for user graphs
-  uv run zep_ingest.py --user-summary-instructions       # Use user summary instructions
-  uv run zep_ingest.py --document-custom-ontology        # Use custom ontology for document graph
-  uv run zep_ingest.py --document-custom-instructions    # Use custom instructions for document graph
+  uv run zep_ingest_users.py                                   # Ingest all users, poll until done
+  uv run zep_ingest_users.py --no-poll                         # Ingest all, don't wait
+  uv run zep_ingest_users.py --graphs zep_eval_test_user_001   # Ingest one user only
+  uv run zep_ingest_users.py --custom-ontology                 # Use custom ontology
+  uv run zep_ingest_users.py --custom-instructions             # Use custom instructions
+  uv run zep_ingest_users.py --user-summary-instructions       # Use user summary instructions
 """,
     )
 
-    # User graph configuration
     parser.add_argument(
         "--custom-ontology",
         action="store_true",
@@ -923,18 +615,6 @@ def parse_args():
         action="store_true",
         help="Use custom user summary instructions (customize user node summaries)",
     )
-
-    # Document graph configuration
-    parser.add_argument(
-        "--document-custom-ontology",
-        action="store_true",
-        help="Use custom ontology for standalone document graph",
-    )
-    parser.add_argument(
-        "--document-custom-instructions",
-        action="store_true",
-        help="Use custom instructions for standalone document graph extraction",
-    )
     parser.add_argument(
         "--no-poll",
         action="store_true",
@@ -945,9 +625,8 @@ def parse_args():
         type=str,
         default=None,
         help=(
-            "Comma-separated list of graphs to ingest. "
-            "Use user base IDs (e.g. zep_eval_test_user_001) and/or 'documents'. "
-            "Default: all"
+            "Comma-separated list of user base IDs to ingest "
+            "(e.g. zep_eval_test_user_001). Default: all"
         ),
     )
     return parser.parse_args()
@@ -981,19 +660,6 @@ async def main():
             print("   Check that user_summary_instructions.py exists and is valid")
             exit(1)
 
-    # Validate document graph flags
-    if args.document_custom_ontology:
-        if not DOCUMENT_CUSTOM_ONTOLOGY_AVAILABLE:
-            print("Error: Document custom ontology module could not be loaded")
-            print("   Check that ontology.py exists and contains document ontology definitions")
-            exit(1)
-
-    if args.document_custom_instructions:
-        if not DOCUMENT_CUSTOM_INSTRUCTIONS_AVAILABLE:
-            print("Error: Document custom instructions module could not be loaded")
-            print("   Check that custom_instructions.py exists and contains document instruction definitions")
-            exit(1)
-
     # Validate environment variables
     api_key = os.getenv("ZEP_API_KEY")
     if not api_key:
@@ -1001,17 +667,10 @@ async def main():
         print("   Please create a .env file with your ZEP_API_KEY")
         exit(1)
 
-    google_api_key = os.getenv("GOOGLE_API_KEY")
-    if not google_api_key:
-        print("Error: Missing GOOGLE_API_KEY environment variable")
-        print("   Required for document contextualization during ingestion")
-        exit(1)
-
-    # Initialize clients
+    # Initialize client
     zep_client = AsyncZep(api_key=api_key)
-    openai_client = AsyncOpenAI(api_key=google_api_key, base_url=GEMINI_BASE_URL)
 
-    # Determine which graphs to ingest
+    # Determine which users to ingest
     should_poll = not args.no_poll
 
     user_definitions = load_user_definitions()
@@ -1019,46 +678,29 @@ async def main():
         print("Error: No users found in data/users.json")
         exit(1)
 
-    documents = load_documents()
-
-    ingest_documents_flag = True
     selected_user_defs = user_definitions
 
     if args.graphs:
         selected = set(g.strip() for g in args.graphs.split(","))
-        ingest_documents_flag = "documents" in selected
-        selected_user_ids = selected - {"documents"}
-        if selected_user_ids:
-            selected_user_defs = [
-                u for u in user_definitions if u["user_id"] in selected_user_ids
-            ]
-            unknown = selected_user_ids - {u["user_id"] for u in user_definitions}
-            if unknown:
-                print(f"Warning: Unknown graph IDs (not in users.json): {unknown}")
-        else:
-            selected_user_defs = []
+        selected_user_defs = [
+            u for u in user_definitions if u["user_id"] in selected
+        ]
+        unknown = selected - {u["user_id"] for u in user_definitions}
+        if unknown:
+            print(f"Warning: Unknown user IDs (not in users.json): {unknown}")
 
     # Print header
     print("=" * 80)
-    print("ZEP INGESTION SCRIPT")
+    print("ZEP USER GRAPH INGESTION")
     print("=" * 80)
-    print("--- User Graphs ---")
     if args.custom_ontology:
         print("  Ontology: Custom (default ontology suppressed)")
     else:
         print("  Ontology: Default Zep ontology")
     print(f"  Custom instructions: {'enabled' if args.custom_instructions else 'disabled'}")
     print(f"  User summary instructions: {'enabled' if args.user_summary_instructions else 'disabled'}")
-    print("--- Document Graph ---")
-    if args.document_custom_ontology:
-        print("  Ontology: Custom document ontology")
-    else:
-        print("  Ontology: Default Zep ontology")
-    print(f"  Custom instructions: {'enabled' if args.document_custom_instructions else 'disabled'}")
-    print("---")
-    print(f"Polling: {'enabled' if should_poll else 'disabled'}")
-    print(f"Users: {len(selected_user_defs)}")
-    print(f"Documents: {'yes' if ingest_documents_flag and documents else 'no'}")
+    print(f"  Polling: {'enabled' if should_poll else 'disabled'}")
+    print(f"  Users: {len(selected_user_defs)}")
     print("=" * 80)
 
     try:
@@ -1077,35 +719,14 @@ async def main():
             for user_def in selected_user_defs
         ]
 
-        doc_task = None
-        doc_graph_id = None
-        if ingest_documents_flag and documents:
-            doc_graph_id = f"{DOCUMENTS_GRAPH_ID}_{uuid.uuid4().hex[:8]}"
-            doc_task = add_documents_to_zep(
-                zep_client,
-                openai_client,
-                documents,
-                graph_id=doc_graph_id,
-                use_document_custom_ontology=args.document_custom_ontology,
-                use_document_custom_instructions=args.document_custom_instructions,
-            )
-
         # Gather all tasks concurrently (return_exceptions so one failure
         # doesn't cancel the rest)
-        if doc_task:
-            results = await asyncio.gather(
-                *user_tasks, doc_task, return_exceptions=True
-            )
-            raw_user_results = results[:-1]
-            doc_result = results[-1]
-        elif user_tasks:
+        if user_tasks:
             raw_user_results = await asyncio.gather(
                 *user_tasks, return_exceptions=True
             )
-            doc_result = (0, [])
         else:
             raw_user_results = []
-            doc_result = (0, [])
 
         # Separate successful results from failures
         run_data = []
@@ -1116,13 +737,6 @@ async def main():
             else:
                 run_data.append(result)
 
-        if isinstance(doc_result, Exception):
-            print(f"⚠ Document ingestion failed: {doc_result}")
-            num_doc_chunks = 0
-            doc_episode_uuids = []
-        else:
-            num_doc_chunks, doc_episode_uuids = doc_result
-
         # Write run manifest
         run_dir = write_run_manifest(
             run_number,
@@ -1130,10 +744,6 @@ async def main():
             use_custom_ontology=args.custom_ontology,
             use_custom_instructions=args.custom_instructions,
             use_user_summary_instructions=args.user_summary_instructions,
-            use_document_custom_ontology=args.document_custom_ontology,
-            use_document_custom_instructions=args.document_custom_instructions,
-            num_doc_chunks=num_doc_chunks,
-            doc_graph_id=doc_graph_id,
         )
 
         print("\n" + "=" * 80)
@@ -1142,8 +752,6 @@ async def main():
         print(f"\nRun #{run_number}")
         print(f"Manifest: {run_dir}/manifest.json")
         print(f"Users: {len(selected_user_defs)}")
-        if num_doc_chunks:
-            print(f"Document chunks: {num_doc_chunks}")
 
         # Poll for processing completion
         if should_poll:
@@ -1174,27 +782,19 @@ async def main():
                         poll_episode_uuids(zep_client, uuids, label)
                     )
 
-            # Poll the document graph episodes
-            if doc_episode_uuids:
-                poll_tasks.append(
-                    poll_episode_uuids(
-                        zep_client, doc_episode_uuids, doc_graph_id
-                    )
-                )
-
             if poll_tasks:
                 await asyncio.gather(*poll_tasks)
-                print("\n✓ All graphs finished processing")
+                print("\n✓ All user graphs finished processing")
             else:
                 print("No graphs to poll.")
 
             print(
-                f"\nYou can now run: uv run zep_evaluate.py {run_number}"
+                f"\nYou can now run: uv run zep_evaluate.py --user-run {run_number}"
             )
         else:
             print("\nGraph processing happens asynchronously and may take several minutes.")
             print(
-                f"You can run zep_evaluate.py with run #{run_number} once processing is complete."
+                f"You can run zep_evaluate.py with --user-run {run_number} once processing is complete."
             )
 
     except Exception as e:

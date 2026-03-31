@@ -19,42 +19,51 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
 2. **Set API keys**
    - Copy `.env.example` to `.env`: `cp .env.example .env`
    - Get your Zep API key: https://app.getzep.com
-   - Get your OpenAI API key: https://platform.openai.com/api-keys
+   - Get your Google API key (for document contextualization and LLM evaluation)
    - Add both keys to your `.env` file
 
-3. **Run ingestion script**
+3. **Run user ingestion**
    ```bash
-   # Ingest all data and poll until processing completes
-   uv run zep_ingest.py
+   # Ingest all users and poll until processing completes
+   uv run zep_ingest_users.py
 
    # Ingest without waiting for processing
-   uv run zep_ingest.py --no-poll
+   uv run zep_ingest_users.py --no-poll
 
-   # Ingest only specific graphs (user base IDs and/or 'documents')
-   uv run zep_ingest.py --graphs zep_eval_test_user_001,documents
+   # Ingest only specific users
+   uv run zep_ingest_users.py --graphs zep_eval_test_user_001
 
-   # Use custom ontology
-   uv run zep_ingest.py --custom-ontology
+   # Use custom ontology and/or instructions
+   uv run zep_ingest_users.py --custom-ontology --custom-instructions --user-summary-instructions
    ```
-   This creates a new run (e.g., `1_20251103T123456`) and generates a manifest in `runs/1_20251103T123456/manifest.json`.
-   Each run creates fresh users and a fresh document graph with random ID suffixes.
+   Creates a run in `runs/users/{N}_{timestamp}/manifest.json`.
 
-4. **Run evaluation script**
+4. **Run document ingestion** (optional, separate from users)
    ```bash
-   # Evaluate the latest run (user graphs only)
+   # Ingest documents and poll until processing completes
+   uv run zep_ingest_documents.py
+
+   # Use custom document ontology and/or instructions
+   uv run zep_ingest_documents.py --custom-ontology --custom-instructions
+   ```
+   Creates a run in `runs/documents/{N}_{timestamp}/manifest.json`.
+
+5. **Run evaluation**
+   ```bash
+   # Evaluate the latest user run (no document graph)
    uv run zep_evaluate.py
 
-   # Or evaluate a specific run
-   uv run zep_evaluate.py 1
+   # Evaluate a specific user run
+   uv run zep_evaluate.py --user-run 3
 
-   # Also search the shared document graph for additional context
-   uv run zep_evaluate.py --include-document-graph-search
+   # Combine a user run with a document run
+   uv run zep_evaluate.py --user-run 3 --doc-run 2
 
-   # Combine: specific run + document graph
-   uv run zep_evaluate.py 2 --include-document-graph-search
+   # Latest user run + specific document run
+   uv run zep_evaluate.py --doc-run 2
    ```
 
-5. **Inspect a graph** (optional)
+6. **Inspect a graph** (optional)
    ```bash
    # Inspect a user graph (use the full zep_user_id from manifest.json)
    uv run zep_graph_inspect.py --user zep_eval_test_user_001_a7390b47
@@ -69,69 +78,84 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
 
 ## Overview
 
-This harness evaluates the complete Zep-powered QA pipeline in three scripts:
+This harness evaluates the complete Zep-powered QA pipeline across four scripts:
 
 | Script | Purpose |
 |--------|---------|
-| `zep_ingest.py` | Ingest users, conversations, telemetry, and documents into Zep |
-| `zep_evaluate.py` | Search the graph, generate responses, and grade against golden answers |
+| `zep_ingest_users.py` | Ingest users, conversations, and telemetry into Zep user graphs |
+| `zep_ingest_documents.py` | Ingest documents into a standalone Zep document graph |
+| `zep_evaluate.py` | Search graphs, generate responses, and grade against golden answers |
 | `zep_graph_inspect.py` | Print all entities and facts for a user or standalone graph |
 
 ### Architecture
 
 ```
 data/users.json            ┐
-data/conversations/*.json  ├→ [zep_ingest.py] → User Graphs + Document Graph
-data/telemetry/*.json      │                           ↓
-data/documents/*           ┘                           ↓
-                                                       ↓
-data/test_cases/*.json  → [zep_evaluate.py] → Search → Generate Response → Grade
-                                                       ↓
-                                             runs/{run_number}/evaluation_results.json
+data/conversations/*.json  ├→ [zep_ingest_users.py]     → User Graphs     → runs/users/{N}/manifest.json
+data/telemetry/*.json      ┘
 
-                          [zep_graph_inspect.py] → Print all nodes & edges for any graph
+data/documents/*           → [zep_ingest_documents.py]  → Document Graph  → runs/documents/{N}/manifest.json
+
+data/test_cases/*.json     → [zep_evaluate.py --user-run N --doc-run M]   → Search → Generate → Grade
+                                                                                       ↓
+                                                              runs/users/{N}/evaluation_results.json
+
+                             [zep_graph_inspect.py]     → Print all nodes & edges for any graph
 ```
+
+### Decoupled Ingestion
+
+User graphs and document graphs are ingested independently, each producing their own manifest.
+This means you can:
+- Ingest 4 document graph variants (2 ontology options × 2 instruction options)
+- Ingest 8 user graph variants (2 ontology × 2 instructions × 2 summary instructions)
+- Evaluate any combination at eval time (e.g. `--user-run 3 --doc-run 2`)
+
+This avoids re-ingesting identical graphs just to test different pairings.
 
 ### Pipeline Steps (automated in zep_evaluate.py)
 
 1. **Search**: Query Zep's knowledge graph (nodes, edges) using cross-encoder reranker
 2. **Evaluate Context**: Assess whether retrieved context contains sufficient information (PRIMARY METRIC)
-3. **Generate Response**: Use gpt-5-mini with retrieved context to answer questions
-4. **Grade Answer**: Evaluate answers against golden answers using gpt-4.1 judge (SECONDARY METRIC)
+3. **Generate Response**: Use LLM with retrieved context to answer questions
+4. **Grade Answer**: Evaluate answers against golden answers using LLM judge (SECONDARY METRIC)
 
 ## Run Tracking
 
-Each ingestion creates a numbered run with a manifest file that tracks:
-- Run number and timestamp
-- Created user IDs (with random suffixes for idempotency)
-- Thread IDs for each conversation
-- Statistics (number of conversations, telemetry files)
-- Ontology configuration
+User and document ingestion runs are stored separately:
 
-**Run Directory Structure:**
 ```
 runs/
-├── 1_20251103T092345/
-│   ├── manifest.json
-│   └── evaluation_results_20251103T093012.json
-├── 2_20251103T143012/
-│   ├── manifest.json
-│   └── evaluation_results_20251103T144523.json
-└── ...
+├── users/
+│   ├── 1_20251103T092345/
+│   │   ├── manifest.json
+│   │   └── evaluation_results_20251103T093012.json
+│   └── 2_20251103T143012/
+│       └── manifest.json
+└── documents/
+    ├── 1_20251103T092400/
+    │   └── manifest.json
+    └── 2_20251103T143100/
+        └── manifest.json
 ```
 
-**Manifest Example:**
+**User Manifest Example:**
 ```json
 {
   "run_number": 1,
+  "type": "users",
   "timestamp": "2025-11-03T09:23:45.123456",
   "ontology": {
     "type": "default_zep",
     "default_ontology_disabled": false
   },
-  "documents": {
-    "graph_id": "zep_eval_shared_documents_f1a2b3c4",
-    "num_chunks": 12
+  "custom_instructions": {
+    "enabled": false,
+    "instruction_names": []
+  },
+  "user_summary_instructions": {
+    "enabled": false,
+    "instruction_names": []
   },
   "users": [
     {
@@ -139,9 +163,7 @@ runs/
       "zep_user_id": "zep_eval_test_user_001_a7390b47",
       "first_name": "John",
       "last_name": "Doe",
-      "thread_ids": [
-        "conv_001_a7390b47"
-      ],
+      "thread_ids": ["conv_001_a7390b47"],
       "num_conversations": 1,
       "num_telemetry_files": 2
     }
@@ -149,7 +171,25 @@ runs/
 }
 ```
 
-The evaluation script automatically uses the latest run, or you can specify a run number.
+**Document Manifest Example:**
+```json
+{
+  "run_number": 1,
+  "type": "documents",
+  "timestamp": "2025-11-03T09:24:00.123456",
+  "graph_id": "zep_eval_shared_documents_f1a2b3c4",
+  "num_chunks": 12,
+  "ontology": {
+    "type": "custom",
+    "custom_entity_types": ["Concept", "Topic", "Process", "Specification", "Component"],
+    "custom_edge_types": ["DESCRIBES", "DEPENDS_ON", "PART_OF", "REFERENCES", "IMPLEMENTS"]
+  },
+  "custom_instructions": {
+    "enabled": true,
+    "instruction_names": ["document_extraction", "structure_preservation", "cross_reference_tracking"]
+  }
+}
+```
 
 ## Data Structure
 
@@ -206,7 +246,7 @@ The harness automatically discovers and processes data files based on naming con
 - Format: Any text file (`.md`, `.txt`, etc.)
 - User-agnostic — ingested into a shared standalone graph, not per-user
 - Automatically chunked and contextualized via LLM before ingestion
-- Chunking parameters configurable in `constants.py` (`CHUNK_SIZE`, `CHUNK_OVERLAP`)
+- Chunking parameters configurable in `constants.py` (`CHUNK_SIZE`)
 
 ### Test Cases
 - Location: `data/test_cases/`
@@ -251,9 +291,9 @@ The evaluation script uses `cross_encoder` reranker by default for best accuracy
 - `DOC_FACTS_LIMIT = 10`: Number of facts from document graph
 - `DOC_ENTITIES_LIMIT = 5`: Number of entities from document graph
 - `DOC_EPISODES_LIMIT = 0`: Document episodes disabled by default
-- `LLM_RESPONSE_MODEL`: Model for generating responses (default: `gpt-5-mini`)
-- `LLM_JUDGE_MODEL`: Model for grading answers (default: `gpt-4.1`)
-- `LLM_CONTEXTUALIZATION_MODEL`: Model for document chunk contextualization (default: `gpt-4.1-mini`)
+- `LLM_RESPONSE_MODEL`: Model for generating responses
+- `LLM_JUDGE_MODEL`: Model for grading answers
+- `LLM_CONTEXTUALIZATION_MODEL`: Model for document chunk contextualization
 - `DOCUMENT_INGEST_LIMIT`: Maximum number of documents to ingest from `data/documents/`. Documents are sorted alphabetically by filename, so the selection is deterministic. Set to `None` to ingest all documents (default). Set to an integer (e.g. `1`) to ingest only the first N documents.
 
 You can experiment with different rerankers by modifying the `reranker` parameter in `perform_graph_search()`:
@@ -278,13 +318,21 @@ The ingestion script automatically handles JSON telemetry files. For more inform
 
 ### Custom Ontology Support
 
-The framework supports both default Zep ontology and custom ontologies:
+The framework supports custom ontologies for both user graphs and document graphs:
 
-1. Edit `ontology.py` to define custom entity and edge types
-2. Implement the ontology setup function (e.g., `set_custom_ontology()`)
-3. Run ingestion with `--custom-ontology` flag
+**User graphs** (`ontology.py`):
+1. Edit the user entity/edge types (Person, Location, Organization, Event, Item)
+2. Run ingestion with `uv run zep_ingest_users.py --custom-ontology`
 
-The included `ontology.py` provides a custom ontology with Person, Location, Organization, Event, and Item entities.
+**Document graphs** (`ontology.py`):
+1. Edit the document entity/edge types (Concept, Topic, Process, Specification, Component)
+2. Run ingestion with `uv run zep_ingest_documents.py --custom-ontology`
+
+### Custom Instructions Support
+
+Similarly, custom instructions are defined separately for user and document graphs in `custom_instructions.py`:
+- User instructions: `uv run zep_ingest_users.py --custom-instructions`
+- Document instructions: `uv run zep_ingest_documents.py --custom-instructions`
 
 ## Evaluation Metrics
 
@@ -306,7 +354,7 @@ The results include analysis of how context completeness correlates with answer 
 
 ## Output
 
-Results are saved to `runs/{run_number}/evaluation_results_{timestamp}.json` with the following structure:
+Results are saved to `runs/users/{run_number}/evaluation_results_{timestamp}.json` with the following structure:
 ```json
 {
   "evaluation_timestamp": "20251106T213303",
@@ -337,8 +385,8 @@ Results are saved to `runs/{run_number}/evaluation_results_{timestamp}.json` wit
   "user_scores": {
     "zep_eval_test_user_001": {
       "total_tests": 4,
-      "completeness": {...},
-      "accuracy": {...}
+      "completeness": {},
+      "accuracy": {}
     }
   },
   "detailed_results": {
@@ -374,7 +422,7 @@ The ingestion script uses randomized user ID suffixes, so this shouldn't happen.
 2. Or modify the user_id in `data/users.json`
 
 ### Episode Processing Time
-Graph processing is asynchronous and can take 5-20 seconds per message. By default the ingestion script polls until all episodes are processed. Use `--no-poll` to skip waiting.
+Graph processing is asynchronous and can take 5-20 seconds per message. By default the ingestion scripts poll until all episodes are processed. Use `--no-poll` to skip waiting.
 
 ### No Test Cases Found
 Ensure your test case files:
