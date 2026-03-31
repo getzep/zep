@@ -15,6 +15,7 @@ from constants import (
     POLL_TIMEOUT,
 )
 from retry import retry_with_backoff
+from checkpoint import save_checkpoint, load_checkpoint, delete_checkpoint
 
 
 # Import ontology module (user only)
@@ -51,37 +52,10 @@ except (ImportError, NotImplementedError):
 CHECKPOINT_DIR = "runs/checkpoints"
 
 
-# ============================================================================
-# Checkpoint Management
-# ============================================================================
-
-
 def checkpoint_path_for_run(run_number: int) -> str:
     """Return the checkpoint file path for a given user run."""
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     return os.path.join(CHECKPOINT_DIR, f"users_run_{run_number}.json")
-
-
-def save_checkpoint(path: str, data: dict):
-    """Atomically write checkpoint data to disk."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp_path = path + ".tmp"
-    with open(tmp_path, "w") as f:
-        json.dump(data, f, indent=2)
-    os.replace(tmp_path, path)
-
-
-def load_checkpoint(path: str) -> dict:
-    """Load checkpoint data from disk."""
-    with open(path, "r") as f:
-        return json.load(f)
-
-
-def delete_checkpoint(path: str):
-    """Remove a checkpoint file after successful completion."""
-    if os.path.exists(path):
-        os.remove(path)
-        print(f"✓ Checkpoint removed: {path}")
 
 
 # ============================================================================
