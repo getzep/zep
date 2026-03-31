@@ -103,30 +103,18 @@ def read_chunk_set_meta(chunk_set_dir: str) -> dict:
         return json.load(f)
 
 
-def read_available_chunks(jsonl_path: str) -> list[dict]:
-    """Read all complete JSONL lines (ending with newline) from a chunk set."""
-    chunks = []
-    if not os.path.exists(jsonl_path):
-        return chunks
-    with open(jsonl_path, "r") as f:
-        for line in f:
-            if not line.endswith("\n"):
-                break  # Partial line — stop here
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                chunks.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-    return chunks
+
+FOLLOW_TIMEOUT = 3600  # 1 hour max wait for an in-progress chunk set
 
 
 async def follow_and_ingest(
     zep_client: AsyncZep,
     chunk_set_dir: str,
     graph_id: str,
+    run_number: int = 0,
     ingested_count: int = 0,
+    prior_episode_uuids: list[str] | None = None,
+    config: dict | None = None,
 ) -> tuple[int, list[str]]:
     """
     Tail a chunk set's JSONL file and ingest chunks as they appear.
@@ -136,22 +124,41 @@ async def follow_and_ingest(
         zep_client: AsyncZep client instance
         chunk_set_dir: Path to chunk set directory
         graph_id: Zep graph ID to ingest into
+        run_number: Run number for checkpoint persistence
         ingested_count: Number of chunks already ingested (for resume)
+        prior_episode_uuids: Episode UUIDs from a previous run (for resume)
+        config: Ontology/instruction config flags to persist in checkpoint
 
-    Returns tuple of (total chunks ingested, list of episode UUIDs).
+    Returns tuple of (total chunks ingested, all episode UUIDs including prior).
     """
     jsonl_path = os.path.join(chunk_set_dir, "chunks.jsonl")
-    meta_path = os.path.join(chunk_set_dir, "meta.json")
 
     cp_path = checkpoint_path_for_graph(graph_id)
     total_ingested = ingested_count
-    episode_uuids = []
+    episode_uuids = list(prior_episode_uuids or [])
     last_line_read = ingested_count
+    file_offset = 0  # Track read position to avoid re-reading entire file
+    follow_start = time()
 
     while True:
-        # Read all available complete lines
-        all_chunks = read_available_chunks(jsonl_path)
-        new_chunks = all_chunks[last_line_read:]
+        # Read new lines from where we left off
+        new_chunks = []
+        if os.path.exists(jsonl_path):
+            with open(jsonl_path, "r") as f:
+                f.seek(file_offset)
+                for line in f:
+                    if not line.endswith("\n"):
+                        break  # Partial line — stop here
+                    line_stripped = line.strip()
+                    if not line_stripped:
+                        file_offset += len(line.encode())
+                        continue
+                    try:
+                        new_chunks.append(json.loads(line_stripped))
+                        file_offset += len(line.encode())
+                    except json.JSONDecodeError:
+                        file_offset += len(line.encode())
+                        continue
 
         for chunk in new_chunks:
             chunk_label = f"chunk {chunk['chunk_index'] + 1}/{chunk['total_chunks']} of '{chunk['filename']}'"
@@ -182,31 +189,45 @@ async def follow_and_ingest(
                 # Checkpoint after each chunk
                 save_checkpoint(cp_path, {
                     "graph_id": graph_id,
+                    "run_number": run_number,
                     "chunk_set_dir": chunk_set_dir,
                     "chunks_ingested": total_ingested,
                     "episode_uuids": episode_uuids,
+                    "config": config or {},
                 })
             except Exception as e:
                 print(f"  ✗ Failed {chunk_label} after retries: {e}")
                 save_checkpoint(cp_path, {
                     "graph_id": graph_id,
+                    "run_number": run_number,
                     "chunk_set_dir": chunk_set_dir,
                     "chunks_ingested": total_ingested,
                     "episode_uuids": episode_uuids,
+                    "config": config or {},
                 })
                 print(f"\n  ✗ Ingestion halted. Checkpoint saved to: {cp_path}")
                 print(f"    Resume with: uv run zep_ingest_documents.py --resume {cp_path}")
                 raise
 
-        # Check if chunk set is complete
-        meta = read_chunk_set_meta(chunk_set_dir)
-        if meta["status"] == "complete" and last_line_read >= meta["num_chunks"]:
-            break
+        # Check if chunk set is complete (with graceful handling for missing/partial meta)
+        try:
+            meta = read_chunk_set_meta(chunk_set_dir)
+            if meta["status"] == "complete" and last_line_read >= meta["num_chunks"]:
+                break
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            pass  # Chunk set not ready yet — continue waiting
 
-        if last_line_read >= len(all_chunks):
-            # Caught up — wait for more chunks
+        if not new_chunks:
+            # No new chunks available — check timeout
+            elapsed = time() - follow_start
+            if elapsed > FOLLOW_TIMEOUT:
+                print(f"  ⚠ Follow mode timed out after {FOLLOW_TIMEOUT}s")
+                break
             print(f"  Waiting for chunks... ({total_ingested} ingested, chunk set in progress)")
             await asyncio.sleep(FOLLOW_POLL_INTERVAL)
+        else:
+            # Reset timeout when we're making progress
+            follow_start = time()
 
     # Clean up checkpoint on success
     delete_checkpoint(cp_path)
@@ -458,6 +479,11 @@ async def main():
         print(f"  Graph ID: {checkpoint_data['graph_id']}")
         print(f"  Chunks ingested: {checkpoint_data.get('chunks_ingested', 0)}")
 
+        # Restore config from checkpoint
+        config = checkpoint_data.get("config", {})
+        args.custom_ontology = config.get("custom_ontology", args.custom_ontology)
+        args.custom_instructions = config.get("custom_instructions", args.custom_instructions)
+
     elif args.chunk_size is not None:
         # Inline mode: run chunking first
         google_api_key = os.getenv("GOOGLE_API_KEY")
@@ -537,14 +563,21 @@ async def main():
     print("=" * 80)
 
     try:
+        ingestion_config = {
+            "custom_ontology": args.custom_ontology,
+            "custom_instructions": args.custom_instructions,
+        }
+
         if is_resuming:
             graph_id = checkpoint_data["graph_id"]
             run_number = checkpoint_data.get("run_number", get_next_run_number())
             ingested_count = checkpoint_data.get("chunks_ingested", 0)
+            prior_episode_uuids = checkpoint_data.get("episode_uuids", [])
         else:
             run_number = get_next_run_number()
             graph_id = f"{DOCUMENTS_GRAPH_ID}_{uuid.uuid4().hex[:8]}"
             ingested_count = 0
+            prior_episode_uuids = []
 
             # Create graph and apply ontology/instructions
             await setup_graph(
@@ -559,7 +592,10 @@ async def main():
         # Ingest chunks (with follow mode for in-progress chunk sets)
         num_ingested, episode_uuids = await follow_and_ingest(
             zep_client, chunk_set_dir, graph_id,
+            run_number=run_number,
             ingested_count=ingested_count,
+            prior_episode_uuids=prior_episode_uuids,
+            config=ingestion_config,
         )
 
         # Write run manifest

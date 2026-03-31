@@ -348,16 +348,16 @@ async def poll_episode_uuids(
 
     while remaining and time() - start < POLL_TIMEOUT:
         newly_processed = []
-        for uuid in remaining:
+        for ep_uuid in remaining:
             try:
-                episode = await zep_client.graph.episode.get(uuid)
+                episode = await zep_client.graph.episode.get(ep_uuid)
                 if episode.processed:
-                    newly_processed.append(uuid)
+                    newly_processed.append(ep_uuid)
             except Exception:
                 pass  # Episode may not be available yet, retry next cycle
 
-        for uuid in newly_processed:
-            remaining.discard(uuid)
+        for ep_uuid in newly_processed:
+            remaining.discard(ep_uuid)
             processed_count += 1
 
         if not remaining:

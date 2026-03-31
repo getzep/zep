@@ -209,11 +209,16 @@ def append_chunk_line(jsonl_path: str, record: dict):
         f.write(json.dumps(record) + "\n")
 
 
-def read_completed_chunks(jsonl_path: str) -> set[tuple[str, int]]:
-    """Read a JSONL file and return the set of (filename, chunk_index) pairs present."""
+def read_completed_chunks(jsonl_path: str) -> tuple[set[tuple[str, int]], dict[str, str]]:
+    """Read a JSONL file and return completed chunks and cached summaries.
+
+    Returns:
+        Tuple of (set of (filename, chunk_index) pairs, dict of filename -> summary).
+    """
     completed = set()
+    summaries = {}
     if not os.path.exists(jsonl_path):
-        return completed
+        return completed, summaries
     with open(jsonl_path, "r") as f:
         for line in f:
             line = line.strip()
@@ -222,9 +227,12 @@ def read_completed_chunks(jsonl_path: str) -> set[tuple[str, int]]:
             try:
                 record = json.loads(line)
                 completed.add((record["filename"], record["chunk_index"]))
+                # Cache the summary so we reuse the same one on resume
+                if record["filename"] not in summaries and record.get("summary"):
+                    summaries[record["filename"]] = record["summary"]
             except (json.JSONDecodeError, KeyError):
                 continue
-    return completed
+    return completed, summaries
 
 
 # ============================================================================
@@ -265,10 +273,11 @@ async def run_chunking(
 
     # Load existing progress if resuming
     if is_resuming:
-        completed = read_completed_chunks(jsonl_path)
+        completed, cached_summaries = read_completed_chunks(jsonl_path)
         print(f"  Resuming: {len(completed)} chunks already done")
     else:
         completed = set()
+        cached_summaries = {}
 
     # Write initial meta
     meta = {
@@ -286,19 +295,33 @@ async def run_chunking(
     total_chunks = len(completed)
 
     for filename, content in documents:
+        # Determine expected chunk count for this document
+        if len(content) <= chunk_size:
+            expected_chunks = {(filename, 0)}
+        else:
+            raw = chunker.chunk(content)
+            expected_chunks = {(filename, i) for i in range(len(raw))}
+
+        # Skip entirely if all chunks for this doc are done
+        if expected_chunks.issubset(completed):
+            print(f"\n  Skipping (fully done): {filename}")
+            continue
+
         print(f"\n  Processing: {filename}")
 
         title = extract_document_title(filename, content)
-        summary = await summarize_document(openai_client, content, title)
-        print(f"  Title: {title}")
-        print(f"  Summary: {summary}")
+        # Reuse cached summary from prior run to keep consistency across chunks
+        if filename in cached_summaries:
+            summary = cached_summaries[filename]
+            print(f"  Title: {title}")
+            print(f"  Summary (cached): {summary}")
+        else:
+            summary = await summarize_document(openai_client, content, title)
+            print(f"  Title: {title}")
+            print(f"  Summary: {summary}")
 
         # Small documents: single chunk, no contextualization needed
         if len(content) <= chunk_size:
-            if (filename, 0) in completed:
-                print(f"  Skipping (already done): {filename}")
-                continue
-
             record = {
                 "filename": filename,
                 "title": title,
