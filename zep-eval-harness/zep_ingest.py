@@ -24,25 +24,41 @@ from constants import (
 )
 
 
-# Import ontology module
+# Import ontology module (user + document)
 try:
     from ontology import set_custom_ontology, ENTITY_TYPES, EDGE_TYPES
+    from ontology import (
+        set_document_custom_ontology,
+        DOCUMENT_ENTITY_TYPES,
+        DOCUMENT_EDGE_TYPES,
+    )
 
     CUSTOM_ONTOLOGY_AVAILABLE = True
+    DOCUMENT_CUSTOM_ONTOLOGY_AVAILABLE = True
 except (ImportError, NotImplementedError):
     CUSTOM_ONTOLOGY_AVAILABLE = False
+    DOCUMENT_CUSTOM_ONTOLOGY_AVAILABLE = False
     ENTITY_TYPES = []
     EDGE_TYPES = []
+    DOCUMENT_ENTITY_TYPES = []
+    DOCUMENT_EDGE_TYPES = []
 
-# Import custom instructions module
+# Import custom instructions module (user + document)
 try:
     from custom_instructions import set_custom_instructions
     from custom_instructions import INSTRUCTION_NAMES as CUSTOM_INSTRUCTION_NAMES
+    from custom_instructions import (
+        set_document_custom_instructions,
+        DOCUMENT_INSTRUCTION_NAMES,
+    )
 
     CUSTOM_INSTRUCTIONS_AVAILABLE = True
+    DOCUMENT_CUSTOM_INSTRUCTIONS_AVAILABLE = True
 except (ImportError, NotImplementedError):
     CUSTOM_INSTRUCTIONS_AVAILABLE = False
+    DOCUMENT_CUSTOM_INSTRUCTIONS_AVAILABLE = False
     CUSTOM_INSTRUCTION_NAMES = []
+    DOCUMENT_INSTRUCTION_NAMES = []
 
 # Import user summary instructions module
 try:
@@ -242,13 +258,15 @@ async def add_conversations_to_zep(
     conversations: list[dict],
     suffix: str,
     user_name: str | None = None,
-) -> list[str]:
+) -> tuple[list[str], list[str]]:
     """
     Add conversations to Zep as separate threads.
-    Returns list of created thread IDs.
+    Returns tuple of (thread_ids, task_ids) where task_ids can be polled
+    via client.task.get() to check processing completion.
     """
     total_messages = 0
     thread_ids = []
+    task_ids = []
 
     # Count total messages
     for conversation in conversations:
@@ -290,10 +308,14 @@ async def add_conversations_to_zep(
             total_added = 0
             for i in range(0, len(zep_messages), batch_size):
                 batch = zep_messages[i : i + batch_size]
-                await zep_client.thread.add_messages(
+                response = await zep_client.thread.add_messages(
                     thread_id=thread_id, messages=batch
                 )
                 total_added += len(batch)
+
+                # Capture task_id for polling processing completion
+                if response and hasattr(response, "task_id") and response.task_id:
+                    task_ids.append(response.task_id)
 
             print(f"✓ Added {total_added} messages to thread {thread_id}")
 
@@ -301,7 +323,7 @@ async def add_conversations_to_zep(
             print(f"Error processing conversation {conversation_id}: {e}")
             continue
 
-    return thread_ids
+    return thread_ids, task_ids
 
 
 # ============================================================================
@@ -436,6 +458,8 @@ async def add_documents_to_zep(
     openai_client: AsyncOpenAI,
     documents: list[tuple[str, str]],
     graph_id: str = DOCUMENTS_GRAPH_ID,
+    use_document_custom_ontology: bool = False,
+    use_document_custom_instructions: bool = False,
 ) -> tuple[int, list[str]]:
     """
     Ingest documents into a standalone Zep graph using JSON episodes.
@@ -449,6 +473,14 @@ async def add_documents_to_zep(
     document and resolves any ambiguous pronouns. This leverages Graphiti's
     JSON extraction path where source_description is provided as context to
     the LLM without being an extraction target itself.
+
+    Args:
+        zep_client: AsyncZep client instance
+        openai_client: AsyncOpenAI client for contextualization
+        documents: List of (filename, content) tuples
+        graph_id: Standalone graph ID
+        use_document_custom_ontology: Apply document-specific custom ontology
+        use_document_custom_instructions: Apply document-specific custom instructions
 
     Returns tuple of (total chunks added, list of episode UUIDs).
     """
@@ -465,6 +497,26 @@ async def add_documents_to_zep(
         print(f"✓ Created standalone graph: {graph_id}")
     except Exception:
         print(f"  Standalone graph {graph_id} already exists")
+
+    # Apply document-specific ontology BEFORE ingesting data
+    if use_document_custom_ontology:
+        print(f"\nSetting document custom ontology for graph: {graph_id}")
+        try:
+            await set_document_custom_ontology(zep_client, graph_ids=[graph_id])
+            print("✓ Document custom ontology applied successfully")
+        except Exception as e:
+            print(f"Error setting document ontology: {e}")
+            raise
+
+    # Apply document-specific custom instructions BEFORE ingesting data
+    if use_document_custom_instructions:
+        print(f"Setting document custom instructions for graph: {graph_id}")
+        try:
+            await set_document_custom_instructions(zep_client, graph_ids=[graph_id])
+            print("✓ Document custom instructions applied successfully")
+        except Exception as e:
+            print(f"Error setting document custom instructions: {e}")
+            raise
 
     print(f"\nIngesting {len(documents)} document(s) into graph {graph_id}")
     total_added = 0
@@ -594,6 +646,68 @@ async def poll_episode_uuids(
     return processed_count
 
 
+async def poll_task_ids(
+    zep_client: AsyncZep, task_ids: list[str], label: str
+) -> int:
+    """
+    Poll task IDs until all have succeeded or failed.
+    This is used for thread.add_messages operations which return task_ids
+    (rather than episode UUIDs) for tracking processing status.
+    Uses client.task.get(task_id=...) and checks .status for
+    "succeeded" or "failed".
+    Returns number of successfully completed tasks.
+    """
+    if not task_ids:
+        print(f"  [{label}] No conversation tasks to poll")
+        return 0
+
+    remaining = set(task_ids)
+    succeeded_count = 0
+    failed_count = 0
+    start = time()
+
+    while remaining and time() - start < POLL_TIMEOUT:
+        newly_done = []
+        for task_id in remaining:
+            try:
+                task = await zep_client.task.get(task_id=task_id)
+                if task.status == "succeeded":
+                    newly_done.append(task_id)
+                    succeeded_count += 1
+                elif task.status == "failed":
+                    newly_done.append(task_id)
+                    failed_count += 1
+                    error_msg = getattr(task, "error", "unknown error")
+                    print(f"  ⚠ [{label}] Task {task_id} failed: {error_msg}")
+            except Exception:
+                pass  # Task may not be available yet, retry next cycle
+
+        for task_id in newly_done:
+            remaining.discard(task_id)
+
+        if not remaining:
+            total = len(task_ids)
+            print(
+                f"  ✓ [{label}] All {total} conversation tasks completed "
+                f"({succeeded_count} succeeded, {failed_count} failed)"
+            )
+            return succeeded_count
+
+        done = succeeded_count + failed_count
+        print(
+            f"  [{label}] {done}/{len(task_ids)} conversation tasks completed..."
+        )
+        await asyncio.sleep(POLL_INTERVAL)
+
+    if remaining:
+        done = succeeded_count + failed_count
+        print(
+            f"  ⚠ [{label}] Polling timed out after {POLL_TIMEOUT}s "
+            f"({done}/{len(task_ids)} completed)"
+        )
+    return succeeded_count
+
+
 # ============================================================================
 # Per-User Ingestion Pipeline
 # ============================================================================
@@ -633,12 +747,13 @@ async def ingest_user(
 
     # Add conversations
     thread_ids = []
+    conversation_task_ids = []
     if conversations:
         first = user_def.get("first_name", "")
         last = user_def.get("last_name", "")
         full_name = f"{first} {last}".strip() or None
 
-        thread_ids = await add_conversations_to_zep(
+        thread_ids, conversation_task_ids = await add_conversations_to_zep(
             zep_client,
             actual_user_id,
             conversations,
@@ -661,6 +776,7 @@ async def ingest_user(
         "first_name": user_def["first_name"],
         "last_name": user_def.get("last_name"),
         "thread_ids": thread_ids,
+        "conversation_task_ids": conversation_task_ids,
         "episode_uuids": episode_uuids,
         "num_conversations": len(conversations),
         "num_telemetry_files": len(telemetry_data) if telemetry_data else 0,
@@ -706,6 +822,8 @@ def write_run_manifest(
     use_custom_ontology=False,
     use_custom_instructions=False,
     use_user_summary_instructions=False,
+    use_document_custom_ontology=False,
+    use_document_custom_instructions=False,
     num_doc_chunks=0,
     doc_graph_id=None,
 ):
@@ -722,25 +840,38 @@ def write_run_manifest(
     manifest = {
         "run_number": run_number,
         "timestamp": timestamp,
-        "ontology": {
-            "type": (
-                "custom" if use_custom_ontology else "default_zep"
-            ),
-            "default_ontology_disabled": use_custom_ontology,
-            "custom_entity_types": ENTITY_TYPES if use_custom_ontology else [],
-            "custom_edge_types": EDGE_TYPES if use_custom_ontology else [],
+        "user_graph_config": {
+            "ontology": {
+                "type": (
+                    "custom" if use_custom_ontology else "default_zep"
+                ),
+                "default_ontology_disabled": use_custom_ontology,
+                "custom_entity_types": ENTITY_TYPES if use_custom_ontology else [],
+                "custom_edge_types": EDGE_TYPES if use_custom_ontology else [],
+            },
+            "custom_instructions": {
+                "enabled": use_custom_instructions,
+                "instruction_names": CUSTOM_INSTRUCTION_NAMES if use_custom_instructions else [],
+            },
+            "user_summary_instructions": {
+                "enabled": use_user_summary_instructions,
+                "instruction_names": USER_SUMMARY_INSTRUCTION_NAMES if use_user_summary_instructions else [],
+            },
         },
-        "custom_instructions": {
-            "enabled": use_custom_instructions,
-            "instruction_names": CUSTOM_INSTRUCTION_NAMES if use_custom_instructions else [],
-        },
-        "user_summary_instructions": {
-            "enabled": use_user_summary_instructions,
-            "instruction_names": USER_SUMMARY_INSTRUCTION_NAMES if use_user_summary_instructions else [],
-        },
-        "documents": {
+        "document_graph_config": {
             "graph_id": doc_graph_id,
             "num_chunks": num_doc_chunks,
+            "ontology": {
+                "type": (
+                    "custom" if use_document_custom_ontology else "default_zep"
+                ),
+                "custom_entity_types": DOCUMENT_ENTITY_TYPES if use_document_custom_ontology else [],
+                "custom_edge_types": DOCUMENT_EDGE_TYPES if use_document_custom_ontology else [],
+            },
+            "custom_instructions": {
+                "enabled": use_document_custom_instructions,
+                "instruction_names": DOCUMENT_INSTRUCTION_NAMES if use_document_custom_instructions else [],
+            },
         },
         "users": run_data,
     }
@@ -768,25 +899,41 @@ def parse_args():
   uv run zep_ingest.py --graphs zep_eval_test_user_001   # Ingest one user only
   uv run zep_ingest.py --graphs documents                # Ingest documents only
   uv run zep_ingest.py --graphs zep_eval_test_user_001,documents
-  uv run zep_ingest.py --custom-ontology                 # Use custom ontology
-  uv run zep_ingest.py --custom-instructions             # Use custom instructions
+  uv run zep_ingest.py --custom-ontology                 # Use custom ontology for user graphs
+  uv run zep_ingest.py --custom-instructions             # Use custom instructions for user graphs
   uv run zep_ingest.py --user-summary-instructions       # Use user summary instructions
+  uv run zep_ingest.py --document-custom-ontology        # Use custom ontology for document graph
+  uv run zep_ingest.py --document-custom-instructions    # Use custom instructions for document graph
 """,
     )
+
+    # User graph configuration
     parser.add_argument(
         "--custom-ontology",
         action="store_true",
-        help="Use custom ontology instead of Zep defaults",
+        help="Use custom ontology for user graphs instead of Zep defaults",
     )
     parser.add_argument(
         "--custom-instructions",
         action="store_true",
-        help="Use custom instructions for graph extraction (domain context)",
+        help="Use custom instructions for user graph extraction (domain context)",
     )
     parser.add_argument(
         "--user-summary-instructions",
         action="store_true",
         help="Use custom user summary instructions (customize user node summaries)",
+    )
+
+    # Document graph configuration
+    parser.add_argument(
+        "--document-custom-ontology",
+        action="store_true",
+        help="Use custom ontology for standalone document graph",
+    )
+    parser.add_argument(
+        "--document-custom-instructions",
+        action="store_true",
+        help="Use custom instructions for standalone document graph extraction",
     )
     parser.add_argument(
         "--no-poll",
@@ -815,25 +962,36 @@ async def main():
     load_dotenv()
     args = parse_args()
 
-    # Validate custom ontology flag
+    # Validate user graph flags
     if args.custom_ontology:
         if not CUSTOM_ONTOLOGY_AVAILABLE:
             print("Error: Custom ontology module could not be loaded")
             print("   Check that ontology.py exists and is valid")
             exit(1)
 
-    # Validate custom instructions flag
     if args.custom_instructions:
         if not CUSTOM_INSTRUCTIONS_AVAILABLE:
             print("Error: Custom instructions module could not be loaded")
             print("   Check that custom_instructions.py exists and is valid")
             exit(1)
 
-    # Validate user summary instructions flag
     if args.user_summary_instructions:
         if not USER_SUMMARY_INSTRUCTIONS_AVAILABLE:
             print("Error: User summary instructions module could not be loaded")
             print("   Check that user_summary_instructions.py exists and is valid")
+            exit(1)
+
+    # Validate document graph flags
+    if args.document_custom_ontology:
+        if not DOCUMENT_CUSTOM_ONTOLOGY_AVAILABLE:
+            print("Error: Document custom ontology module could not be loaded")
+            print("   Check that ontology.py exists and contains document ontology definitions")
+            exit(1)
+
+    if args.document_custom_instructions:
+        if not DOCUMENT_CUSTOM_INSTRUCTIONS_AVAILABLE:
+            print("Error: Document custom instructions module could not be loaded")
+            print("   Check that custom_instructions.py exists and contains document instruction definitions")
             exit(1)
 
     # Validate environment variables
@@ -884,12 +1042,20 @@ async def main():
     print("=" * 80)
     print("ZEP INGESTION SCRIPT")
     print("=" * 80)
+    print("--- User Graphs ---")
     if args.custom_ontology:
-        print("Ontology: Custom (default ontology suppressed)")
+        print("  Ontology: Custom (default ontology suppressed)")
     else:
-        print("Ontology: Default Zep ontology")
-    print(f"Custom instructions: {'enabled' if args.custom_instructions else 'disabled'}")
-    print(f"User summary instructions: {'enabled' if args.user_summary_instructions else 'disabled'}")
+        print("  Ontology: Default Zep ontology")
+    print(f"  Custom instructions: {'enabled' if args.custom_instructions else 'disabled'}")
+    print(f"  User summary instructions: {'enabled' if args.user_summary_instructions else 'disabled'}")
+    print("--- Document Graph ---")
+    if args.document_custom_ontology:
+        print("  Ontology: Custom document ontology")
+    else:
+        print("  Ontology: Default Zep ontology")
+    print(f"  Custom instructions: {'enabled' if args.document_custom_instructions else 'disabled'}")
+    print("---")
     print(f"Polling: {'enabled' if should_poll else 'disabled'}")
     print(f"Users: {len(selected_user_defs)}")
     print(f"Documents: {'yes' if ingest_documents_flag and documents else 'no'}")
@@ -916,7 +1082,12 @@ async def main():
         if ingest_documents_flag and documents:
             doc_graph_id = f"{DOCUMENTS_GRAPH_ID}_{uuid.uuid4().hex[:8]}"
             doc_task = add_documents_to_zep(
-                zep_client, openai_client, documents, graph_id=doc_graph_id
+                zep_client,
+                openai_client,
+                documents,
+                graph_id=doc_graph_id,
+                use_document_custom_ontology=args.document_custom_ontology,
+                use_document_custom_instructions=args.document_custom_instructions,
             )
 
         # Gather all tasks concurrently (return_exceptions so one failure
@@ -959,6 +1130,8 @@ async def main():
             use_custom_ontology=args.custom_ontology,
             use_custom_instructions=args.custom_instructions,
             use_user_summary_instructions=args.user_summary_instructions,
+            use_document_custom_ontology=args.document_custom_ontology,
+            use_document_custom_instructions=args.document_custom_instructions,
             num_doc_chunks=num_doc_chunks,
             doc_graph_id=doc_graph_id,
         )
@@ -983,11 +1156,20 @@ async def main():
 
             poll_tasks = []
 
-            # Poll each user's telemetry episodes
+            # Poll each user's conversation task IDs (from thread.add_messages)
+            for user_data in run_data:
+                task_ids = user_data.get("conversation_task_ids", [])
+                if task_ids:
+                    label = f"{user_data['zep_user_id']} conversations"
+                    poll_tasks.append(
+                        poll_task_ids(zep_client, task_ids, label)
+                    )
+
+            # Poll each user's telemetry episodes (from graph.add)
             for user_data in run_data:
                 uuids = user_data.get("episode_uuids", [])
                 if uuids:
-                    label = user_data["zep_user_id"]
+                    label = f"{user_data['zep_user_id']} telemetry"
                     poll_tasks.append(
                         poll_episode_uuids(zep_client, uuids, label)
                     )

@@ -1246,7 +1246,7 @@ async def main():
         # Resolve document graph ID from manifest if --documents is set
         doc_graph_id = None
         if args.include_document_graph_search:
-            doc_info = manifest.get("documents", {})
+            doc_info = manifest.get("document_graph_config", {})
             doc_graph_id = doc_info.get("graph_id")
             if doc_graph_id:
                 print(f"Document graph: {doc_graph_id}")

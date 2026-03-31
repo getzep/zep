@@ -1,7 +1,10 @@
 """
 Zep Custom Ontology
 
-This ontology defines entity and edge types optimized for general conversational assistants.
+This module defines two ontologies:
+
+1. **User ontology** — for user conversation graphs (personal assistants).
+2. **Document ontology** — for standalone document graphs (reference material).
 
 Design principles:
 - Simple, generic entity types that work across domains
@@ -9,12 +12,19 @@ Design principles:
 - 1-2 attributes per entity following Zep best practices
 - Rich descriptions for full-text search on facts
 
-Entity types:
+User entity types:
 - Person: People mentioned in conversations (family, friends, colleagues, etc.)
 - Location: Physical places or addresses
 - Organization: Companies, institutions, or groups
 - Event: Appointments, meetings, or scheduled activities
 - Item: Physical objects, pets, or possessions
+
+Document entity types:
+- Concept: Key ideas, terms, or definitions from reference material
+- Topic: Subject areas or categories that organize information
+- Process: Procedures, workflows, or methodologies
+- Specification: Rules, requirements, or constraints
+- Component: System parts, tools, features, or products
 
 Edge types model relationships and enable sophisticated queries.
 """
@@ -149,7 +159,7 @@ class Involves(EdgeModel):
 
 
 # ============================================================================
-# Ontology Constants - Single Source of Truth
+# User Ontology Constants - Single Source of Truth
 # ============================================================================
 
 # Entity type names
@@ -167,7 +177,7 @@ EDGE_TYPES = [
 
 
 # ============================================================================
-# Ontology Setup Function
+# User Ontology Setup Function
 # ============================================================================
 
 
@@ -270,6 +280,228 @@ async def set_custom_ontology(zep_client, user_ids=None):
     # Apply to specific users if provided
     if user_ids:
         kwargs["user_ids"] = user_ids
+
+    response = await zep_client.graph.set_ontology(**kwargs)
+    return response
+
+
+# ============================================================================
+# Document Entity Types (5 entities)
+# ============================================================================
+
+
+class Concept(EntityModel):
+    """A key idea, term, or definition from reference material.
+    Entity names should be the concept name or term.
+    Descriptions should contain the definition, explanation, or significance.
+    """
+
+    domain: EntityText = Field(
+        default=None,
+        description="technical, business, legal, medical, scientific, general, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
+
+
+class Topic(EntityModel):
+    """A subject area or category that organizes information.
+    Entity names should be the topic or subject name.
+    Descriptions should contain scope, relevance, or summary of the topic.
+    """
+
+    scope: EntityText = Field(
+        default=None,
+        description="broad, narrow, cross-cutting, foundational, advanced, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
+
+
+class Process(EntityModel):
+    """A procedure, workflow, or methodology described in documentation.
+    Entity names should describe the process (e.g. 'User Onboarding Flow').
+    Descriptions should contain purpose, steps overview, or when it applies.
+    """
+
+    process_type: EntityText = Field(
+        default=None,
+        description="workflow, procedure, methodology, pipeline, protocol, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
+
+
+class Specification(EntityModel):
+    """A rule, requirement, or constraint defined in documentation.
+    Entity names should capture the rule or requirement concisely.
+    Descriptions should contain the full specification and any conditions.
+    """
+
+    spec_type: EntityText = Field(
+        default=None,
+        description="requirement, constraint, policy, guideline, standard, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
+
+
+class Component(EntityModel):
+    """A system part, tool, feature, or product referenced in documentation.
+    Entity names should be the component or product name.
+    Descriptions should contain purpose, capabilities, or how it fits in the system.
+    """
+
+    component_type: EntityText = Field(
+        default=None,
+        description="service, module, library, tool, feature, platform, api, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
+
+
+# ============================================================================
+# Document Edge Types (5 relationships, no attributes)
+# ============================================================================
+
+
+class Describes(EdgeModel):
+    """Connects a Topic to a Concept, Component, or Process it describes.
+    Description should explain the nature of the description relationship."""
+
+    ...
+
+
+class DependsOn(EdgeModel):
+    """One Component or Process depends on another Component, Concept, or Specification.
+    Description should explain the nature of the dependency."""
+
+    ...
+
+
+class PartOf(EdgeModel):
+    """A Component, Concept, or Process is part of a larger Component or Topic.
+    Description should explain the hierarchical relationship."""
+
+    ...
+
+
+class References(EdgeModel):
+    """One Concept, Topic, or Specification cross-references another.
+    Description should explain the nature of the reference."""
+
+    ...
+
+
+class Implements(EdgeModel):
+    """A Component or Process implements a Specification or Concept.
+    Description should explain how the implementation relates to the spec."""
+
+    ...
+
+
+# ============================================================================
+# Document Ontology Constants
+# ============================================================================
+
+DOCUMENT_ENTITY_TYPES = ["Concept", "Topic", "Process", "Specification", "Component"]
+
+DOCUMENT_EDGE_TYPES = [
+    "DESCRIBES",
+    "DEPENDS_ON",
+    "PART_OF",
+    "REFERENCES",
+    "IMPLEMENTS",
+]
+
+
+# ============================================================================
+# Document Ontology Setup Function
+# ============================================================================
+
+
+async def set_document_custom_ontology(zep_client, graph_ids=None):
+    """
+    Set a custom ontology for standalone document graphs.
+
+    This ontology is designed for reference documents and captures:
+    - Concepts, terms, and definitions
+    - Topics and subject areas
+    - Processes and workflows
+    - Specifications and requirements
+    - Components, tools, and features
+
+    Args:
+        zep_client: AsyncZep client instance
+        graph_ids: Optional list of graph IDs to apply ontology to.
+                  If None, applies to entire project.
+
+    Returns:
+        Response from set_ontology call
+    """
+    from zep_cloud import EntityEdgeSourceTarget
+
+    kwargs = {
+        "entities": {
+            "Concept": Concept,
+            "Topic": Topic,
+            "Process": Process,
+            "Specification": Specification,
+            "Component": Component,
+        },
+        "edges": {
+            # Topic describes Concept, Component, or Process
+            "DESCRIBES": (
+                Describes,
+                [
+                    EntityEdgeSourceTarget(source="Topic", target="Concept"),
+                    EntityEdgeSourceTarget(source="Topic", target="Component"),
+                    EntityEdgeSourceTarget(source="Topic", target="Process"),
+                ],
+            ),
+            # Component/Process depends on another Component, Concept, or Specification
+            "DEPENDS_ON": (
+                DependsOn,
+                [
+                    EntityEdgeSourceTarget(source="Component", target="Component"),
+                    EntityEdgeSourceTarget(source="Component", target="Concept"),
+                    EntityEdgeSourceTarget(source="Process", target="Component"),
+                    EntityEdgeSourceTarget(source="Process", target="Specification"),
+                ],
+            ),
+            # Component/Concept/Process is part of a larger Component or Topic
+            "PART_OF": (
+                PartOf,
+                [
+                    EntityEdgeSourceTarget(source="Component", target="Component"),
+                    EntityEdgeSourceTarget(source="Concept", target="Topic"),
+                    EntityEdgeSourceTarget(source="Process", target="Topic"),
+                ],
+            ),
+            # Cross-references between Concepts, Topics, Specifications
+            "REFERENCES": (
+                References,
+                [
+                    EntityEdgeSourceTarget(source="Concept", target="Concept"),
+                    EntityEdgeSourceTarget(source="Topic", target="Topic"),
+                    EntityEdgeSourceTarget(source="Specification", target="Specification"),
+                    EntityEdgeSourceTarget(source="Specification", target="Concept"),
+                ],
+            ),
+            # Component/Process implements a Specification or Concept
+            "IMPLEMENTS": (
+                Implements,
+                [
+                    EntityEdgeSourceTarget(source="Component", target="Specification"),
+                    EntityEdgeSourceTarget(source="Process", target="Specification"),
+                    EntityEdgeSourceTarget(source="Component", target="Concept"),
+                ],
+            ),
+        },
+    }
+
+    if graph_ids:
+        kwargs["graph_ids"] = graph_ids
 
     response = await zep_client.graph.set_ontology(**kwargs)
     return response
