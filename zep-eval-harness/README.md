@@ -38,17 +38,36 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
    ```
    Creates a run in `runs/users/{N}_{timestamp}/manifest.json`.
 
-4. **Run document ingestion** (optional, separate from users)
+4. **Chunk documents** (optional, separate from users)
    ```bash
-   # Ingest documents and poll until processing completes
-   uv run zep_ingest_documents.py
+   # Chunk + contextualize all documents (writes to runs/chunk_sets/)
+   uv run zep_chunk_documents.py
 
-   # Use custom document ontology and/or instructions
-   uv run zep_ingest_documents.py --custom-ontology --custom-instructions
+   # Custom chunk size and higher concurrency
+   uv run zep_chunk_documents.py --chunk-size 1000 --concurrency 10
+
+   # Resume an interrupted chunking run
+   uv run zep_chunk_documents.py --resume runs/chunk_sets/1_20260331T120000
+   ```
+   Creates a chunk set in `runs/chunk_sets/{N}_{timestamp}/` with `chunks.jsonl` and `meta.json`.
+
+5. **Ingest documents into Zep** (uses chunk set from step 4)
+   ```bash
+   # Ingest chunk set #1 into a standalone Zep graph
+   uv run zep_ingest_documents.py --chunk-set 1
+
+   # With custom ontology and/or instructions
+   uv run zep_ingest_documents.py --chunk-set 1 --custom-ontology --custom-instructions
+
+   # Inline mode (chunk + ingest in one command, no reuse)
+   uv run zep_ingest_documents.py --chunk-size 500
+
+   # Resume an interrupted ingestion
+   uv run zep_ingest_documents.py --resume runs/checkpoints/doc_xxx.json
    ```
    Creates a run in `runs/documents/{N}_{timestamp}/manifest.json`.
 
-5. **Run evaluation**
+6. **Run evaluation**
    ```bash
    # Evaluate the latest user run (no document graph)
    uv run zep_evaluate.py
@@ -63,7 +82,7 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
    uv run zep_evaluate.py --doc-run 2
    ```
 
-6. **Inspect a graph** (optional)
+7. **Inspect a graph** (optional)
    ```bash
    # Inspect a user graph (use the full zep_user_id from manifest.json)
    uv run zep_graph_inspect.py --user zep_eval_test_user_001_a7390b47
@@ -78,12 +97,13 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
 
 ## Overview
 
-This harness evaluates the complete Zep-powered QA pipeline across four scripts:
+This harness evaluates the complete Zep-powered QA pipeline across five scripts:
 
 | Script | Purpose |
 |--------|---------|
 | `zep_ingest_users.py` | Ingest users, conversations, and telemetry into Zep user graphs |
-| `zep_ingest_documents.py` | Ingest documents into a standalone Zep document graph |
+| `zep_chunk_documents.py` | Chunk documents and generate LLM-based summaries + contextualizations |
+| `zep_ingest_documents.py` | Ingest pre-chunked documents into a standalone Zep document graph |
 | `zep_evaluate.py` | Search graphs, generate responses, and grade against golden answers |
 | `zep_graph_inspect.py` | Print all entities and facts for a user or standalone graph |
 
@@ -91,16 +111,18 @@ This harness evaluates the complete Zep-powered QA pipeline across four scripts:
 
 ```
 data/users.json            ┐
-data/conversations/*.json  ├→ [zep_ingest_users.py]     → User Graphs     → runs/users/{N}/manifest.json
+data/conversations/*.json  ├→ [zep_ingest_users.py]       → User Graphs     → runs/users/{N}/manifest.json
 data/telemetry/*.json      ┘
 
-data/documents/*           → [zep_ingest_documents.py]  → Document Graph  → runs/documents/{N}/manifest.json
+data/documents/*           → [zep_chunk_documents.py]     → runs/chunk_sets/{N}/chunks.jsonl
+                                                                    ↓
+                             [zep_ingest_documents.py]    → Document Graph  → runs/documents/{N}/manifest.json
 
 data/test_cases/*.json     → [zep_evaluate.py --user-run N --doc-run M]   → Search → Generate → Grade
                                                                                        ↓
                                                               runs/users/{N}/evaluation_results.json
 
-                             [zep_graph_inspect.py]     → Print all nodes & edges for any graph
+                             [zep_graph_inspect.py]       → Print all nodes & edges for any graph
 ```
 
 ### Decoupled Ingestion
@@ -113,6 +135,31 @@ This means you can:
 
 This avoids re-ingesting identical graphs just to test different pairings.
 
+### Document Pipeline: Chunk Sets
+
+Document ingestion is split into two steps to avoid redundant LLM calls:
+
+1. **Chunking** (`zep_chunk_documents.py`): Splits documents, generates summaries and per-chunk contextualizations via LLM. Writes results to `runs/chunk_sets/{N}_{timestamp}/chunks.jsonl`. This is the expensive step.
+2. **Ingestion** (`zep_ingest_documents.py`): Reads a chunk set and sends chunks to Zep via `graph.add()`. No LLM calls — just API calls.
+
+A single chunk set can be reused across multiple ingestion runs with different ontology/instruction configurations:
+```bash
+# Chunk once
+uv run zep_chunk_documents.py                              # → chunk set #1
+
+# Ingest multiple times with different configs
+uv run zep_ingest_documents.py --chunk-set 1               # default ontology
+uv run zep_ingest_documents.py --chunk-set 1 --custom-ontology
+uv run zep_ingest_documents.py --chunk-set 1 --custom-instructions
+uv run zep_ingest_documents.py --chunk-set 1 --custom-ontology --custom-instructions
+```
+
+**Follow mode**: If the chunk set is still being generated (`status: "in_progress"` in `meta.json`), the ingestion script automatically tails the JSONL file and ingests chunks as they appear. This lets you run chunking and ingestion concurrently in separate terminals.
+
+**Inline mode**: For convenience, `--chunk-size N` on the ingestion script runs chunking inline first, then ingests. This creates a chunk set under the hood but doesn't allow reuse.
+
+**Concurrency**: The chunking script parallelizes LLM calls (summarization + contextualization) using an asyncio semaphore. Control with `--concurrency N` (default: 5). The retry logic handles rate limits with exponential backoff up to 5 minutes.
+
 ### Pipeline Steps (automated in zep_evaluate.py)
 
 1. **Search**: Query Zep's knowledge graph (nodes, edges) using cross-encoder reranker
@@ -122,7 +169,7 @@ This avoids re-ingesting identical graphs just to test different pairings.
 
 ## Run Tracking
 
-User and document ingestion runs are stored separately:
+User ingestion, document ingestion, and chunk sets are stored separately:
 
 ```
 runs/
@@ -132,11 +179,17 @@ runs/
 │   │   └── evaluation_results_20251103T093012.json
 │   └── 2_20251103T143012/
 │       └── manifest.json
-└── documents/
-    ├── 1_20251103T092400/
-    │   └── manifest.json
-    └── 2_20251103T143100/
-        └── manifest.json
+├── documents/
+│   ├── 1_20251103T092400/
+│   │   └── manifest.json
+│   └── 2_20251103T143100/
+│       └── manifest.json
+├── chunk_sets/
+│   └── 1_20251103T092000/
+│       ├── meta.json
+│       └── chunks.jsonl
+└── checkpoints/
+    └── doc_xxx.json          (temporary, removed on success)
 ```
 
 **User Manifest Example:**
@@ -245,8 +298,9 @@ The harness automatically discovers and processes data files based on naming con
 - Location: `data/documents/`
 - Format: Any text file (`.md`, `.txt`, etc.)
 - User-agnostic — ingested into a shared standalone graph, not per-user
-- Automatically chunked and contextualized via LLM before ingestion
-- Chunking parameters configurable in `constants.py` (`CHUNK_SIZE`)
+- Processed via two-step pipeline: chunk (`zep_chunk_documents.py`) then ingest (`zep_ingest_documents.py`)
+- LLM-based summarization and per-chunk contextualization resolve ambiguous pronouns and add document context
+- Chunking parameters configurable via CLI (`--chunk-size`) or `constants.py` (`CHUNK_SIZE`)
 
 ### Test Cases
 - Location: `data/test_cases/`

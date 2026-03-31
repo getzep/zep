@@ -245,6 +245,7 @@ async def run_chunking(
     documents: list[tuple[str, str]],
     chunk_size: int,
     chunk_set_dir: str | None = None,
+    concurrency: int = 5,
 ) -> str:
     """
     Chunk all documents and write results to a chunk set directory.
@@ -255,6 +256,7 @@ async def run_chunking(
         chunk_size: Character-level chunk size
         chunk_set_dir: Optional path to resume an existing chunk set.
                        If None, creates a new chunk set directory.
+        concurrency: Max concurrent LLM calls (semaphore limit)
 
     Returns:
         Path to the chunk set directory.
@@ -291,8 +293,11 @@ async def run_chunking(
     }
     write_meta(meta_path, meta)
 
+    semaphore = asyncio.Semaphore(concurrency)
     chunker = create_document_chunker(chunk_size)
     total_chunks = len(completed)
+
+    print(f"  LLM concurrency: {concurrency}")
 
     for filename, content in documents:
         # Determine expected chunk count for this document
@@ -316,7 +321,8 @@ async def run_chunking(
             print(f"  Title: {title}")
             print(f"  Summary (cached): {summary}")
         else:
-            summary = await summarize_document(openai_client, content, title)
+            async with semaphore:
+                summary = await summarize_document(openai_client, content, title)
             print(f"  Title: {title}")
             print(f"  Summary: {summary}")
 
@@ -341,18 +347,24 @@ async def run_chunking(
         # Chunk the document
         raw_chunks = chunker.chunk(content)
         chunks = [(i, c.text) for i, c in enumerate(raw_chunks)]
-        num_to_skip = sum(1 for i, _ in chunks if (filename, i) in completed)
-        print(f"  Split into {len(chunks)} chunks ({num_to_skip} already done)")
+        pending_chunks = [(i, t) for i, t in chunks if (filename, i) not in completed]
+        print(f"  Split into {len(chunks)} chunks ({len(chunks) - len(pending_chunks)} already done)")
 
-        for chunk_index, chunk_text in chunks:
-            if (filename, chunk_index) in completed:
-                continue
+        # Parallelize contextualization calls (bounded by semaphore)
+        async def _contextualize_one(chunk_idx, chunk_txt, doc_content=content):
+            chunk_label = f"chunk {chunk_idx + 1}/{len(chunks)} of '{filename}'"
+            async with semaphore:
+                ctx = await contextualize_chunk(
+                    openai_client, doc_content, chunk_txt, chunk_label=chunk_label
+                )
+            return chunk_idx, chunk_txt, ctx
 
-            chunk_label = f"chunk {chunk_index + 1}/{len(chunks)} of '{filename}'"
-            chunk_context = await contextualize_chunk(
-                openai_client, content, chunk_text, chunk_label=chunk_label
-            )
+        results = await asyncio.gather(*[
+            _contextualize_one(i, t) for i, t in pending_chunks
+        ])
 
+        # Write results in chunk-index order
+        for chunk_index, chunk_text, chunk_context in results:
             record = {
                 "filename": filename,
                 "title": title,
@@ -390,6 +402,7 @@ def parse_args():
         epilog="""Examples:
   uv run zep_chunk_documents.py                          # Chunk all docs with default size
   uv run zep_chunk_documents.py --chunk-size 1000        # Chunk with larger chunks
+  uv run zep_chunk_documents.py --concurrency 10         # More parallel LLM calls
   uv run zep_chunk_documents.py --resume runs/chunk_sets/2_20260331T130000  # Resume
 """,
     )
@@ -404,6 +417,12 @@ def parse_args():
         type=str,
         default=None,
         help="Path to a chunk set directory to resume (e.g., runs/chunk_sets/1_20260331T120000)",
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=5,
+        help="Max concurrent LLM calls for summarization/contextualization (default: 5)",
     )
     return parser.parse_args()
 
@@ -448,12 +467,15 @@ async def main():
     print("ZEP DOCUMENT CHUNKING" + (" (RESUMING)" if chunk_set_dir else ""))
     print("=" * 80)
     print(f"  Chunk size: {chunk_size}")
+    print(f"  Concurrency: {args.concurrency}")
     print(f"  Documents: {len(documents)}")
     print("=" * 80)
 
     start = time()
     result_dir = await run_chunking(
-        openai_client, documents, chunk_size, chunk_set_dir=chunk_set_dir,
+        openai_client, documents, chunk_size,
+        chunk_set_dir=chunk_set_dir,
+        concurrency=args.concurrency,
     )
     elapsed = time() - start
 

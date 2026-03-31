@@ -5,9 +5,9 @@ import random
 async def retry_with_backoff(
     fn,
     *args,
-    max_retries=5,
+    max_retries=8,
     initial_delay=2.0,
-    max_delay=120.0,
+    max_delay=300.0,
     description="operation",
     **kwargs,
 ):
