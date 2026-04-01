@@ -1,0 +1,34 @@
+{
+  "run_number": 1,
+  "type": "documents",
+  "timestamp": "2026-03-31T22:25:00.282382",
+  "graph_id": "zep_eval_shared_documents_1d4d9a28",
+  "num_chunks": 10,
+  "chunk_set": 1,
+  "chunk_size": 500,
+  "ontology": {
+    "type": "custom",
+    "custom_entity_types": [
+      "Concept",
+      "Topic",
+      "Process",
+      "Specification",
+      "Component"
+    ],
+    "custom_edge_types": [
+      "DESCRIBES",
+      "DEPENDS_ON",
+      "PART_OF",
+      "REFERENCES",
+      "IMPLEMENTS"
+    ]
+  },
+  "custom_instructions": {
+    "enabled": true,
+    "instruction_names": [
+      "real_estate_reference_domain",
+      "home_buying_process",
+      "financial_concepts"
+    ]
+  }
+}

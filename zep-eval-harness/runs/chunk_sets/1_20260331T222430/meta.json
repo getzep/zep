@@ -1,0 +1,14 @@
+{
+  "chunk_set_number": 1,
+  "chunk_size": 500,
+  "status": "complete",
+  "num_documents": 4,
+  "num_chunks": 10,
+  "timestamp": "2026-03-31T22:24:30.950446",
+  "documents": [
+    "hoa_guide.txt",
+    "home_buying_checklist.md",
+    "home_inspection_tips.txt",
+    "mortgage_types_guide.md"
+  ]
+}
