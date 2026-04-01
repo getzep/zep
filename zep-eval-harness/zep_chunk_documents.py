@@ -326,20 +326,18 @@ async def run_chunking(
             print(f"  Title: {title}")
             print(f"  Summary: {summary}")
 
-        source_desc = get_source_description(filename)
-
         # Small documents: single chunk, no contextualization needed
         if len(content) <= chunk_size:
             record = {
                 "filename": filename,
                 "title": title,
                 "summary": summary,
-                "source_description": source_desc,
                 "chunk_index": 0,
                 "total_chunks": 1,
                 "content": content,
                 "context": None,
             }
+            record["source_description"] = get_source_description(record)
             append_chunk_line(jsonl_path, record)
             total_chunks += 1
             meta["num_chunks"] = total_chunks
@@ -372,12 +370,12 @@ async def run_chunking(
                 "filename": filename,
                 "title": title,
                 "summary": summary,
-                "source_description": source_desc,
                 "chunk_index": chunk_index,
                 "total_chunks": len(chunks),
                 "content": chunk_text,
                 "context": chunk_context,
             }
+            record["source_description"] = get_source_description(record)
             append_chunk_line(jsonl_path, record)
             total_chunks += 1
             meta["num_chunks"] = total_chunks
