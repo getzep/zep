@@ -28,6 +28,7 @@ from config.document_chunking_config.constants import (
     LLM_CONTEXTUALIZATION_MODEL,
 )
 from config.document_chunking_config.source_description import get_source_description
+from config.document_chunking_config.preprocess import preprocess_document
 from retry import retry_with_backoff
 from checkpoint import save_checkpoint, load_checkpoint
 
@@ -58,7 +59,9 @@ def load_documents() -> list[tuple[str, str]]:
         with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
         if content.strip():
-            documents.append((os.path.basename(file_path), content))
+            filename = os.path.basename(file_path)
+            content = preprocess_document(content, filename)
+            documents.append((filename, content))
 
     if documents:
         print(f"✓ Loaded {len(documents)} document(s) from {docs_dir}")
