@@ -61,6 +61,8 @@ def load_documents() -> list[tuple[str, str]]:
         if content.strip():
             filename = os.path.basename(file_path)
             content = preprocess_document(content, filename)
+            if not content.strip():
+                continue
             documents.append((filename, content))
 
     if documents:
