@@ -24,7 +24,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from zep_cloud.client import AsyncZep
 
-from constants import (
+from eval_config.constants import (
     CHUNK_SIZE,
     DOCUMENTS_GRAPH_ID,
     POLL_INTERVAL,
@@ -35,7 +35,7 @@ from checkpoint import save_checkpoint, load_checkpoint, delete_checkpoint
 
 # Import document ontology module
 try:
-    from ontology import (
+    from eval_config.ontology import (
         set_document_custom_ontology,
         DOCUMENT_ENTITY_TYPES,
         DOCUMENT_EDGE_TYPES,
@@ -49,7 +49,7 @@ except (ImportError, NotImplementedError):
 
 # Import document custom instructions module
 try:
-    from custom_instructions import (
+    from eval_config.custom_instructions import (
         set_document_custom_instructions,
         DOCUMENT_INSTRUCTION_NAMES,
     )
@@ -492,7 +492,7 @@ async def main():
             exit(1)
 
         from openai import AsyncOpenAI
-        from constants import GEMINI_BASE_URL
+        from eval_config.constants import GEMINI_BASE_URL
         from zep_chunk_documents import load_documents, run_chunking
 
         openai_client = AsyncOpenAI(api_key=google_api_key, base_url=GEMINI_BASE_URL)

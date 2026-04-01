@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
 from zep_cloud.client import AsyncZep
 
-from constants import (
+from eval_config.constants import (
     DOC_ENTITIES_LIMIT,
     DOC_EPISODES_LIMIT,
     DOC_FACTS_LIMIT,
@@ -32,6 +32,8 @@ from constants import (
     USER_EPISODES_LIMIT,
     USER_FACTS_LIMIT,
 )
+from eval_config.response_prompt import get_response_system_prompt
+from retry import retry_with_backoff
 
 
 # ============================================================================
@@ -228,55 +230,67 @@ async def perform_graph_search(
     print(f"Searching [{user_id}]: '{query}'")
 
     # Build all search tasks for maximum parallelism
-    tasks: dict[str, asyncio.Task] = {}
+    tasks: dict[str, Any] = {}
 
     # User graph searches
-    tasks["user_nodes"] = zep_client.graph.search(
+    tasks["user_nodes"] = retry_with_backoff(
+        zep_client.graph.search,
         user_id=user_id,
         query=query,
         scope="nodes",
         limit=USER_ENTITIES_LIMIT,
         reranker="cross_encoder",
+        description=f"search user nodes [{user_id}]",
     )
-    tasks["user_edges"] = zep_client.graph.search(
+    tasks["user_edges"] = retry_with_backoff(
+        zep_client.graph.search,
         user_id=user_id,
         query=query,
         scope="edges",
         limit=USER_FACTS_LIMIT,
         reranker="cross_encoder",
+        description=f"search user edges [{user_id}]",
     )
     if include_episodes:
-        tasks["user_episodes"] = zep_client.graph.search(
+        tasks["user_episodes"] = retry_with_backoff(
+            zep_client.graph.search,
             user_id=user_id,
             query=query,
             scope="episodes",
             limit=USER_EPISODES_LIMIT,
             reranker="cross_encoder",
+            description=f"search user episodes [{user_id}]",
         )
 
     # Standalone document graph searches (if enabled)
     if doc_graph_id:
-        tasks["doc_nodes"] = zep_client.graph.search(
+        tasks["doc_nodes"] = retry_with_backoff(
+            zep_client.graph.search,
             graph_id=doc_graph_id,
             query=query,
             scope="nodes",
             limit=DOC_ENTITIES_LIMIT,
             reranker="cross_encoder",
+            description=f"search doc nodes [{doc_graph_id}]",
         )
-        tasks["doc_edges"] = zep_client.graph.search(
+        tasks["doc_edges"] = retry_with_backoff(
+            zep_client.graph.search,
             graph_id=doc_graph_id,
             query=query,
             scope="edges",
             limit=DOC_FACTS_LIMIT,
             reranker="cross_encoder",
+            description=f"search doc edges [{doc_graph_id}]",
         )
         if include_episodes:
-            tasks["doc_episodes"] = zep_client.graph.search(
+            tasks["doc_episodes"] = retry_with_backoff(
+                zep_client.graph.search,
                 graph_id=doc_graph_id,
                 query=query,
                 scope="episodes",
                 limit=DOC_EPISODES_LIMIT,
                 reranker="cross_encoder",
+                description=f"search doc episodes [{doc_graph_id}]",
             )
 
     # Execute all searches in parallel
@@ -482,25 +496,17 @@ async def generate_ai_response(
     Returns:
         Tuple of (AI-generated answer string, prompt token count)
     """
-    system_prompt = f"""
-You are an intelligent AI assistant helping a user with their questions.
+    system_prompt = get_response_system_prompt(context)
 
-You have access to the user's conversation history and relevant information in the CONTEXT.
-
-<CONTEXT>
-{context}
-</CONTEXT>
-
-Using only the information in the CONTEXT, answer the user's questions. Keep responses SHORT - one sentence when possible.
-"""
-
-    response = await llm_client.chat.completions.create(
+    response = await retry_with_backoff(
+        llm_client.chat.completions.create,
         model=LLM_RESPONSE_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": question},
         ],
         temperature=0.0,
+        description=f"generate response for '{question[:60]}'",
     )
 
     answer = response.choices[0].message.content.strip() if response.choices else ""
@@ -573,7 +579,8 @@ Examples of CORRECT responses:
 Please provide your evaluation as JSON with keys "correct" (boolean) and "reasoning" (string).
 """
 
-    response = await llm_client.chat.completions.create(
+    response = await retry_with_backoff(
+        llm_client.chat.completions.create,
         model=LLM_JUDGE_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -581,6 +588,7 @@ Please provide your evaluation as JSON with keys "correct" (boolean) and "reason
         ],
         response_format={"type": "json_object"},
         temperature=0.0,
+        description=f"grade response for '{question[:60]}'",
     )
 
     raw_content = response.choices[0].message.content
@@ -670,7 +678,8 @@ For your evaluation:
 Please evaluate the context completeness as JSON with keys "completeness" (one of "COMPLETE", "PARTIAL", or "INSUFFICIENT"), "reasoning" (string), "missing_elements" (list of strings), and "present_elements" (list of strings).
 """
 
-    response = await llm_client.chat.completions.create(
+    response = await retry_with_backoff(
+        llm_client.chat.completions.create,
         model=LLM_JUDGE_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -678,6 +687,7 @@ Please evaluate the context completeness as JSON with keys "completeness" (one o
         ],
         response_format={"type": "json_object"},
         temperature=0.0,
+        description=f"evaluate completeness for '{question[:60]}'",
     )
 
     raw_content = response.choices[0].message.content
@@ -725,8 +735,9 @@ async def process_single_query(
     start_time = time()
 
     # Step 1: Search (user graph + optionally document graph, all in parallel)
+    include_episodes = USER_EPISODES_LIMIT > 0 or DOC_EPISODES_LIMIT > 0
     search_results = await perform_graph_search(
-        zep_client, user_id, query, doc_graph_id=doc_graph_id
+        zep_client, user_id, query, include_episodes=include_episodes, doc_graph_id=doc_graph_id
     )
     context = construct_context_block(search_results, user_summary=user_summary)
     search_duration_ms = (time() - start_time) * 1000
@@ -813,17 +824,20 @@ async def evaluate_all_questions(
     manifest: Dict[str, Any],
     test_cases_by_user: Dict[str, List[Dict[str, Any]]],
     doc_graph_id: str | None = None,
+    concurrency: int = 15,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Run the complete evaluation pipeline for all users and their test cases.
 
     Args:
         doc_graph_id: If provided, also search this standalone document graph
+        concurrency: Max concurrent test case evaluations (semaphore limit)
 
     Returns:
         Dictionary mapping user_id to list of evaluation results
     """
     all_results = {}
+    semaphore = asyncio.Semaphore(concurrency)
 
     # Map base user IDs to actual Zep user IDs
     user_mapping = {}
@@ -852,6 +866,7 @@ async def evaluate_all_questions(
         print(f"\n{'='*80}")
         print(f"Evaluating user: {base_user_id} → {zep_user_id}")
         print(f"Test cases: {len(test_cases)}")
+        print(f"Concurrency: {concurrency}")
         if doc_graph_id:
             print(f"Document graph: {doc_graph_id}")
         print(f"{'='*80}\n")
@@ -875,21 +890,14 @@ async def evaluate_all_questions(
             print(f"  Could not retrieve user summary: {e}")
         print()
 
-        # Process queries in batches
-        batch_size = 15
-        user_results = []
+        # Process all test cases concurrently, bounded by semaphore
+        completed = 0
+        total = len(test_cases)
 
-        for i in range(0, len(test_cases), batch_size):
-            batch = test_cases[i : i + batch_size]
-            batch_num = (i // batch_size) + 1
-            total_batches = (len(test_cases) + batch_size - 1) // batch_size
-
-            print(
-                f"Processing batch {batch_num}/{total_batches} ({len(batch)} queries)..."
-            )
-
-            tasks = [
-                process_single_query(
+        async def _run_one(test_case):
+            nonlocal completed
+            async with semaphore:
+                result = await process_single_query(
                     zep_client,
                     llm_client,
                     zep_user_id,
@@ -898,21 +906,20 @@ async def evaluate_all_questions(
                     doc_graph_id=doc_graph_id,
                     user_summary=user_summary,
                 )
-                for test_case in batch
-            ]
+            result["test_id"] = test_case.get("id")
+            result["category"] = test_case.get("category")
+            if "needles" in test_case:
+                result["needles"] = test_case["needles"]
+            completed += 1
+            if completed % 10 == 0 or completed == total:
+                print(f"  Progress: {completed}/{total} test cases completed")
+            return result
 
-            batch_results = await asyncio.gather(*tasks)
+        user_results = await asyncio.gather(*[
+            _run_one(tc) for tc in test_cases
+        ])
 
-            # Attach test case metadata (id, category, needles) to results
-            for result, test_case in zip(batch_results, batch):
-                result["test_id"] = test_case.get("id")
-                result["category"] = test_case.get("category")
-                if "needles" in test_case:
-                    result["needles"] = test_case["needles"]
-
-            user_results.extend(batch_results)
-
-        all_results[base_user_id] = user_results
+        all_results[base_user_id] = list(user_results)
 
         print(f"\n✓ Completed evaluation for user {base_user_id}\n")
 
@@ -1328,6 +1335,12 @@ def parse_args():
         default=None,
         help="Document ingestion run number to include for document graph search (optional)",
     )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=15,
+        help="Max concurrent test case evaluations (default: 15)",
+    )
     return parser.parse_args()
 
 
@@ -1373,10 +1386,11 @@ async def main():
         test_cases_by_user = await load_all_test_cases()
 
         # Run evaluation
-        print("Starting evaluation...\n")
+        print(f"Starting evaluation (concurrency={args.concurrency})...\n")
         results = await evaluate_all_questions(
             zep_client, llm_client, manifest, test_cases_by_user,
             doc_graph_id=doc_graph_id,
+            concurrency=args.concurrency,
         )
 
         # Save results with aggregate statistics

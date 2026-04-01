@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from chonkie import RecursiveChunker, RecursiveRules, RecursiveLevel
 
-from constants import (
+from eval_config.constants import (
     CHUNK_SIZE,
     DOCUMENT_INGEST_LIMIT,
     GEMINI_BASE_URL,

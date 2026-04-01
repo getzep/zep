@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from zep_cloud.client import AsyncZep
 from zep_cloud.types import Message
 
-from constants import (
+from eval_config.constants import (
     POLL_INTERVAL,
     POLL_TIMEOUT,
 )
@@ -20,7 +20,7 @@ from checkpoint import save_checkpoint, load_checkpoint, delete_checkpoint
 
 # Import ontology module (user only)
 try:
-    from ontology import set_custom_ontology, ENTITY_TYPES, EDGE_TYPES
+    from eval_config.ontology import set_custom_ontology, ENTITY_TYPES, EDGE_TYPES
 
     CUSTOM_ONTOLOGY_AVAILABLE = True
 except (ImportError, NotImplementedError):
@@ -30,8 +30,8 @@ except (ImportError, NotImplementedError):
 
 # Import custom instructions module (user only)
 try:
-    from custom_instructions import set_custom_instructions
-    from custom_instructions import INSTRUCTION_NAMES as CUSTOM_INSTRUCTION_NAMES
+    from eval_config.custom_instructions import set_custom_instructions
+    from eval_config.custom_instructions import INSTRUCTION_NAMES as CUSTOM_INSTRUCTION_NAMES
 
     CUSTOM_INSTRUCTIONS_AVAILABLE = True
 except (ImportError, NotImplementedError):
@@ -40,8 +40,8 @@ except (ImportError, NotImplementedError):
 
 # Import user summary instructions module
 try:
-    from user_summary_instructions import set_user_summary_instructions
-    from user_summary_instructions import INSTRUCTION_NAMES as USER_SUMMARY_INSTRUCTION_NAMES
+    from eval_config.user_summary_instructions import set_user_summary_instructions
+    from eval_config.user_summary_instructions import INSTRUCTION_NAMES as USER_SUMMARY_INSTRUCTION_NAMES
 
     USER_SUMMARY_INSTRUCTIONS_AVAILABLE = True
 except (ImportError, NotImplementedError):
