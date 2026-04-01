@@ -36,7 +36,7 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
    # Use custom ontology and/or instructions
    uv run zep_ingest_users.py --custom-ontology --custom-instructions --user-summary-instructions
    ```
-   Creates a run in `runs/users/{N}_{timestamp}/manifest.json`.
+   Creates a run in `runs/users/{N}_{timestamp}/manifest.json` with a `user_ingestion_config_snapshot/` of the config used.
 
 4. **Chunk documents** (optional, separate from users)
    ```bash
@@ -49,7 +49,7 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
    # Resume an interrupted chunking run
    uv run zep_chunk_documents.py --resume runs/chunk_sets/1_20260331T120000
    ```
-   Creates a chunk set in `runs/chunk_sets/{N}_{timestamp}/` with `chunks.jsonl` and `meta.json`.
+   Creates a chunk set in `runs/chunk_sets/{N}_{timestamp}/` with `chunks.jsonl`, `meta.json`, and a `document_chunking_config_snapshot/`.
 
 5. **Ingest documents into Zep** (uses chunk set from step 4)
    ```bash
@@ -65,7 +65,7 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
    # Resume an interrupted ingestion
    uv run zep_ingest_documents.py --resume runs/checkpoints/doc_xxx.json
    ```
-   Creates a run in `runs/documents/{N}_{timestamp}/manifest.json`.
+   Creates a run in `runs/documents/{N}_{timestamp}/manifest.json` with a `document_ingestion_config_snapshot/`.
 
 6. **Run evaluation**
    ```bash
@@ -80,7 +80,11 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
 
    # Latest user run + specific document run
    uv run zep_evaluate.py --doc-run 2
+
+   # Adjust evaluation concurrency (default: 15)
+   uv run zep_evaluate.py --concurrency 30
    ```
+   Saves results to `runs/users/{N}_{timestamp}/evaluation_results_{timestamp}.json` with an `evaluation_config_snapshot/`.
 
 7. **Inspect a graph** (optional)
    ```bash
@@ -154,11 +158,19 @@ uv run zep_ingest_documents.py --chunk-set 1 --custom-instructions
 uv run zep_ingest_documents.py --chunk-set 1 --custom-ontology --custom-instructions
 ```
 
-**Follow mode**: If the chunk set is still being generated (`status: "in_progress"` in `meta.json`), the ingestion script automatically tails the JSONL file and ingests chunks as they appear. This lets you run chunking and ingestion concurrently in separate terminals.
+**Follow mode**: If the chunk set is still being generated (`status: "in_progress"` in `meta.json`), the ingestion script automatically tails the JSONL file and ingests chunks as they appear. This lets you run chunking and ingestion concurrently in separate terminals — the ingestion script waits for new chunks and ingests them as they become available.
 
 **Inline mode**: For convenience, `--chunk-size N` on the ingestion script runs chunking inline first, then ingests. This creates a chunk set under the hood but doesn't allow reuse.
 
-**Concurrency**: The chunking script parallelizes LLM calls (summarization + contextualization) using an asyncio semaphore. Control with `--concurrency N` (default: 5). The retry logic handles rate limits with exponential backoff up to 5 minutes.
+### Concurrency and Resilience
+
+All pipeline scripts include retry logic with exponential backoff (up to 8 retries, max 5-minute delay) for handling rate limits and transient API errors. This applies to:
+
+- **Chunking** (`zep_chunk_documents.py`): LLM calls for summarization and contextualization. Control concurrency with `--concurrency N` (default: 5).
+- **Evaluation** (`zep_evaluate.py`): Graph search, LLM response generation, and LLM grading. Control concurrency with `--concurrency N` (default: 15). All test cases run in parallel, bounded by an asyncio semaphore.
+- **Ingestion** (`zep_ingest_users.py`, `zep_ingest_documents.py`): Zep API calls for creating users, adding messages, and adding graph episodes.
+
+Rate limits are handled automatically — if you hit limits, the retry backoff with jitter will naturally throttle requests.
 
 ### Pipeline Steps (automated in zep_evaluate.py)
 
@@ -167,29 +179,53 @@ uv run zep_ingest_documents.py --chunk-set 1 --custom-ontology --custom-instruct
 3. **Generate Response**: Use LLM with retrieved context to answer questions
 4. **Grade Answer**: Evaluate answers against golden answers using LLM judge (SECONDARY METRIC)
 
+## Configuration
+
+All use-case-specific configuration lives in `config/`, organized by pipeline step:
+
+```
+config/
+├── constants.py                              # Shared: GEMINI_BASE_URL, POLL_INTERVAL, POLL_TIMEOUT
+├── user_ingestion_config/
+│   ├── ontology.py                           # User graph entity/edge types + set_custom_ontology()
+│   ├── custom_instructions.py                # User graph custom instructions + set_custom_instructions()
+│   └── user_summary_instructions.py          # User node summary instructions
+├── document_ingestion_config/
+│   ├── constants.py                          # DOCUMENTS_GRAPH_ID
+│   ├── ontology.py                           # Document graph entity/edge types + set_document_custom_ontology()
+│   └── custom_instructions.py                # Document graph custom instructions
+├── document_chunking_config/
+│   └── constants.py                          # CHUNK_SIZE, LLM_CONTEXTUALIZATION_MODEL
+└── evaluation_config/
+    ├── constants.py                          # Search limits, LLM_RESPONSE_MODEL, LLM_JUDGE_MODEL
+    └── response_prompt.py                    # get_response_system_prompt() — the system prompt for AI responses
+```
+
+Each script imports only from its relevant config subfolder. The response prompt used during evaluation is defined in `config/evaluation_config/response_prompt.py` and can be customized independently from the evaluation logic.
+
 ## Run Tracking
 
-User ingestion, document ingestion, and chunk sets are stored separately:
+Each pipeline step writes its output to a numbered, timestamped subdirectory under `runs/`. Every run includes a **config snapshot** — a copy of the config files that were active at the time the run was created. This ensures reproducibility even if config files are changed later.
 
 ```
 runs/
 ├── users/
-│   ├── 1_20251103T092345/
-│   │   ├── manifest.json
-│   │   └── evaluation_results_20251103T093012.json
-│   └── 2_20251103T143012/
-│       └── manifest.json
+│   └── 1_20260331T222436/
+│       ├── manifest.json
+│       ├── user_ingestion_config_snapshot/     # Snapshot of config/user_ingestion_config/
+│       ├── evaluation_config_snapshot/         # Snapshot of config/evaluation_config/ (created at eval time)
+│       └── evaluation_results_20260331T222821.json
 ├── documents/
-│   ├── 1_20251103T092400/
-│   │   └── manifest.json
-│   └── 2_20251103T143100/
-│       └── manifest.json
+│   └── 1_20260331T222500/
+│       ├── manifest.json
+│       └── document_ingestion_config_snapshot/ # Snapshot of config/document_ingestion_config/
 ├── chunk_sets/
-│   └── 1_20251103T092000/
+│   └── 1_20260331T222430/
 │       ├── meta.json
-│       └── chunks.jsonl
+│       ├── chunks.jsonl
+│       └── document_chunking_config_snapshot/  # Snapshot of config/document_chunking_config/
 └── checkpoints/
-    └── doc_xxx.json          (temporary, removed on success)
+    └── doc_xxx.json                           (temporary, removed on success)
 ```
 
 **User Manifest Example:**
@@ -197,28 +233,30 @@ runs/
 {
   "run_number": 1,
   "type": "users",
-  "timestamp": "2025-11-03T09:23:45.123456",
+  "timestamp": "2026-03-31T22:24:36.839291",
   "ontology": {
-    "type": "default_zep",
-    "default_ontology_disabled": false
+    "type": "custom",
+    "default_ontology_disabled": true,
+    "custom_entity_types": ["Person", "Location", "Organization", "Event", "Item"],
+    "custom_edge_types": ["RELATED_TO", "LOCATED_AT", "WORKS_FOR", "OWNS", "SCHEDULED_AT", "INVOLVES"]
   },
   "custom_instructions": {
-    "enabled": false,
-    "instruction_names": []
+    "enabled": true,
+    "instruction_names": ["real_estate_domain", "property_and_location", "household_context"]
   },
   "user_summary_instructions": {
-    "enabled": false,
-    "instruction_names": []
+    "enabled": true,
+    "instruction_names": ["property_requirements", "budget_and_finances", "location_preferences", "household_composition", "work_and_lifestyle"]
   },
   "users": [
     {
       "base_user_id": "zep_eval_test_user_001",
-      "zep_user_id": "zep_eval_test_user_001_a7390b47",
-      "first_name": "John",
-      "last_name": "Doe",
-      "thread_ids": ["conv_001_a7390b47"],
-      "num_conversations": 1,
-      "num_telemetry_files": 2
+      "zep_user_id": "zep_eval_test_user_001_3f701979",
+      "first_name": "Sarah",
+      "last_name": "Chen",
+      "thread_ids": ["conv_002_3f701979", "conv_001_3f701979"],
+      "num_conversations": 2,
+      "num_telemetry_files": 1
     }
   ]
 }
@@ -229,9 +267,9 @@ runs/
 {
   "run_number": 1,
   "type": "documents",
-  "timestamp": "2025-11-03T09:24:00.123456",
-  "graph_id": "zep_eval_shared_documents_f1a2b3c4",
-  "num_chunks": 12,
+  "timestamp": "2026-03-31T22:25:00.282382",
+  "graph_id": "zep_eval_shared_documents_1d4d9a28",
+  "num_chunks": 10,
   "ontology": {
     "type": "custom",
     "custom_entity_types": ["Concept", "Topic", "Process", "Specification", "Component"],
@@ -239,7 +277,7 @@ runs/
   },
   "custom_instructions": {
     "enabled": true,
-    "instruction_names": ["document_extraction", "structure_preservation", "cross_reference_tracking"]
+    "instruction_names": ["real_estate_reference_domain", "home_buying_process", "financial_concepts"]
   }
 }
 ```
@@ -300,7 +338,7 @@ The harness automatically discovers and processes data files based on naming con
 - User-agnostic — ingested into a shared standalone graph, not per-user
 - Processed via two-step pipeline: chunk (`zep_chunk_documents.py`) then ingest (`zep_ingest_documents.py`)
 - LLM-based summarization and per-chunk contextualization resolve ambiguous pronouns and add document context
-- Chunking parameters configurable via CLI (`--chunk-size`) or `constants.py` (`CHUNK_SIZE`)
+- Chunking parameters configurable via CLI (`--chunk-size`) or `config/document_chunking_config/constants.py`
 
 ### Test Cases
 - Location: `data/test_cases/`
@@ -320,6 +358,7 @@ The harness automatically discovers and processes data files based on naming con
     ]
   }
   ```
+- The `category` field is used for per-category metric breakdowns in evaluation results
 
 ## Multi-User Support
 
@@ -338,7 +377,7 @@ To add more users:
 
 ### Tune Zep Search Parameters
 
-The evaluation script uses `cross_encoder` reranker by default for best accuracy. Search parameters and LLM models are configured in `constants.py`:
+The evaluation script uses `cross_encoder` reranker by default for best accuracy. Search parameters and LLM models are configured in `config/evaluation_config/constants.py`:
 - `USER_FACTS_LIMIT = 20`: Number of facts (edges) from user graph
 - `USER_ENTITIES_LIMIT = 10`: Number of entities (nodes) from user graph
 - `USER_EPISODES_LIMIT = 0`: User episodes disabled by default (set >0 to enable)
@@ -347,6 +386,9 @@ The evaluation script uses `cross_encoder` reranker by default for best accuracy
 - `DOC_EPISODES_LIMIT = 0`: Document episodes disabled by default
 - `LLM_RESPONSE_MODEL`: Model for generating responses
 - `LLM_JUDGE_MODEL`: Model for grading answers
+
+Chunking-specific constants are in `config/document_chunking_config/constants.py`:
+- `CHUNK_SIZE`: Character count per chunk (default: 500)
 - `LLM_CONTEXTUALIZATION_MODEL`: Model for document chunk contextualization
 
 You can experiment with different rerankers by modifying the `reranker` parameter in `perform_graph_search()`:
@@ -355,6 +397,10 @@ You can experiment with different rerankers by modifying the `reranker` paramete
 - `mmr`: Maximal Marginal Relevance, diversity-focused
 
 For guidance, check out the [Searching the Graph documentation](https://help.getzep.com/searching-the-graph).
+
+### Customize Response Prompt
+
+The system prompt used when generating AI responses during evaluation is defined in `config/evaluation_config/response_prompt.py`. Edit the `get_response_system_prompt()` function to customize the AI's persona, response style, or instructions for your use case. This is snapshotted into each evaluation run for reproducibility.
 
 ### Customize Context Block
 
@@ -371,21 +417,21 @@ The ingestion script automatically handles JSON telemetry files. For more inform
 
 ### Custom Ontology Support
 
-The framework supports custom ontologies for both user graphs and document graphs:
+The framework supports custom ontologies for both user graphs and document graphs, defined in separate files:
 
-**User graphs** (`ontology.py`):
+**User graphs** (`config/user_ingestion_config/ontology.py`):
 1. Edit the user entity/edge types (Person, Location, Organization, Event, Item)
 2. Run ingestion with `uv run zep_ingest_users.py --custom-ontology`
 
-**Document graphs** (`ontology.py`):
+**Document graphs** (`config/document_ingestion_config/ontology.py`):
 1. Edit the document entity/edge types (Concept, Topic, Process, Specification, Component)
 2. Run ingestion with `uv run zep_ingest_documents.py --custom-ontology`
 
 ### Custom Instructions Support
 
-Similarly, custom instructions are defined separately for user and document graphs in `custom_instructions.py`:
-- User instructions: `uv run zep_ingest_users.py --custom-instructions`
-- Document instructions: `uv run zep_ingest_documents.py --custom-instructions`
+Custom instructions are defined separately for user and document graphs:
+- User instructions (`config/user_ingestion_config/custom_instructions.py`): `uv run zep_ingest_users.py --custom-instructions`
+- Document instructions (`config/document_ingestion_config/custom_instructions.py`): `uv run zep_ingest_documents.py --custom-instructions`
 
 ## Evaluation Metrics
 
@@ -402,6 +448,12 @@ Evaluates whether the AI's generated answer matches the golden answer:
 - **CORRECT**: Answer conveys the same key information
 - **WRONG**: Answer is missing critical information or incorrect
 
+### Per-Category Breakdown
+Test cases can be labeled with a `category` field (e.g. `"basic_facts"`, `"temporal_reasoning"`, `"cross_document"`). The evaluation script calculates completeness and accuracy metrics both in aggregate and per-category, making it easy to identify which types of questions the system handles well or poorly.
+
+### Per-User Breakdown
+Metrics are also broken down per user, so you can see if retrieval quality varies across different users' graphs.
+
 ### Correlation Analysis
 The results include analysis of how context completeness correlates with answer accuracy, helping identify whether issues are with retrieval or generation.
 
@@ -410,7 +462,7 @@ The results include analysis of how context completeness correlates with answer 
 Results are saved to `runs/users/{run_number}/evaluation_results_{timestamp}.json` with the following structure:
 ```json
 {
-  "evaluation_timestamp": "20251106T213303",
+  "evaluation_timestamp": "20260331T222821",
   "run_number": 1,
   "search_configuration": {
     "user_facts_limit": 20,
@@ -421,23 +473,30 @@ Results are saved to `runs/users/{run_number}/evaluation_results_{timestamp}.jso
     "doc_episodes_limit": 0
   },
   "model_configuration": {
-    "response_model": "gpt-5-mini",
-    "judge_model": "gpt-4.1"
+    "response_model": "gemini-2.5-flash-lite",
+    "judge_model": "gemini-2.5-flash-lite"
   },
   "aggregate_scores": {
-    "total_tests": 40,
+    "total_tests": 4,
     "completeness": {
-      "complete": 35,
-      "complete_rate": 87.5
+      "complete": 4,
+      "complete_rate": 100.0
     },
     "accuracy": {
-      "correct": 32,
-      "accuracy_rate": 80.0
+      "correct": 3,
+      "accuracy_rate": 75.0
+    }
+  },
+  "category_scores": {
+    "basic_facts": {
+      "total_tests": 4,
+      "completeness": { "complete": 4, "complete_rate": 100.0 },
+      "accuracy": { "correct": 3, "accuracy_rate": 75.0 }
     }
   },
   "user_scores": {
     "zep_eval_test_user_001": {
-      "total_tests": 4,
+      "total_tests": 2,
       "completeness": {},
       "accuracy": {}
     }
@@ -445,13 +504,12 @@ Results are saved to `runs/users/{run_number}/evaluation_results_{timestamp}.jso
   "detailed_results": {
     "zep_eval_test_user_001": [
       {
-        "question": "What is my dog's name?",
-        "golden_answer": "Your dog's name is Max.",
+        "question": "What is the name of my dog?",
+        "golden_answer": "Your dog's name is Biscuit.",
+        "category": "basic_facts",
         "completeness_grade": "COMPLETE",
         "completeness_reasoning": "...",
-        "completeness_missing_elements": [],
-        "completeness_present_elements": ["dog's name"],
-        "answer": "Your dog's name is Max...",
+        "answer": "Your dog's name is Biscuit.",
         "answer_grade": true,
         "answer_reasoning": "...",
         "context": "...",

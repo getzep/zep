@@ -23,7 +23,7 @@ from openai import AsyncOpenAI
 from zep_cloud.client import AsyncZep
 
 from config.constants import GEMINI_BASE_URL
-from config.evaluation.constants import (
+from config.evaluation_config.constants import (
     DOC_ENTITIES_LIMIT,
     DOC_EPISODES_LIMIT,
     DOC_FACTS_LIMIT,
@@ -33,7 +33,7 @@ from config.evaluation.constants import (
     USER_EPISODES_LIMIT,
     USER_FACTS_LIMIT,
 )
-from config.evaluation.response_prompt import get_response_system_prompt
+from config.evaluation_config.response_prompt import get_response_system_prompt
 from retry import retry_with_backoff
 
 
@@ -1157,10 +1157,10 @@ def save_results(
     results_file = os.path.join(run_dir, f"evaluation_results_{timestamp}.json")
 
     # Snapshot the evaluation config used for this run
-    snapshot_dir = os.path.join(run_dir, "eval_config_snapshot")
+    snapshot_dir = os.path.join(run_dir, "evaluation_config_snapshot")
     if not os.path.exists(snapshot_dir):
         shutil.copytree(
-            "config/evaluation", snapshot_dir,
+            "config/evaluation_config", snapshot_dir,
             ignore=shutil.ignore_patterns("__pycache__"),
         )
 

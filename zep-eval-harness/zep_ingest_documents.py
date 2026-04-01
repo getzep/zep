@@ -26,14 +26,14 @@ from dotenv import load_dotenv
 from zep_cloud.client import AsyncZep
 
 from config.constants import POLL_INTERVAL, POLL_TIMEOUT
-from config.document_ingestion.constants import DOCUMENTS_GRAPH_ID
-from config.document_chunking.constants import CHUNK_SIZE
+from config.document_ingestion_config.constants import DOCUMENTS_GRAPH_ID
+from config.document_chunking_config.constants import CHUNK_SIZE
 from retry import retry_with_backoff
 from checkpoint import save_checkpoint, load_checkpoint, delete_checkpoint
 
 # Import document ontology module
 try:
-    from config.document_ingestion.ontology import (
+    from config.document_ingestion_config.ontology import (
         set_document_custom_ontology,
         DOCUMENT_ENTITY_TYPES,
         DOCUMENT_EDGE_TYPES,
@@ -47,7 +47,7 @@ except (ImportError, NotImplementedError):
 
 # Import document custom instructions module
 try:
-    from config.document_ingestion.custom_instructions import (
+    from config.document_ingestion_config.custom_instructions import (
         set_document_custom_instructions,
         DOCUMENT_INSTRUCTION_NAMES,
     )
@@ -366,9 +366,9 @@ def write_run_manifest(
     os.makedirs(run_dir, exist_ok=True)
 
     # Snapshot the document ingestion config used for this run
-    snapshot_dir = os.path.join(run_dir, "config_snapshot")
+    snapshot_dir = os.path.join(run_dir, "document_ingestion_config_snapshot")
     shutil.copytree(
-        "config/document_ingestion", snapshot_dir,
+        "config/document_ingestion_config", snapshot_dir,
         ignore=shutil.ignore_patterns("__pycache__"),
     )
 

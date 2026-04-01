@@ -21,7 +21,7 @@ from checkpoint import save_checkpoint, load_checkpoint, delete_checkpoint
 
 # Import ontology module (user only)
 try:
-    from config.user_ingestion.ontology import set_custom_ontology, ENTITY_TYPES, EDGE_TYPES
+    from config.user_ingestion_config.ontology import set_custom_ontology, ENTITY_TYPES, EDGE_TYPES
 
     CUSTOM_ONTOLOGY_AVAILABLE = True
 except (ImportError, NotImplementedError):
@@ -31,8 +31,8 @@ except (ImportError, NotImplementedError):
 
 # Import custom instructions module (user only)
 try:
-    from config.user_ingestion.custom_instructions import set_custom_instructions
-    from config.user_ingestion.custom_instructions import INSTRUCTION_NAMES as CUSTOM_INSTRUCTION_NAMES
+    from config.user_ingestion_config.custom_instructions import set_custom_instructions
+    from config.user_ingestion_config.custom_instructions import INSTRUCTION_NAMES as CUSTOM_INSTRUCTION_NAMES
 
     CUSTOM_INSTRUCTIONS_AVAILABLE = True
 except (ImportError, NotImplementedError):
@@ -41,8 +41,8 @@ except (ImportError, NotImplementedError):
 
 # Import user summary instructions module
 try:
-    from config.user_ingestion.user_summary_instructions import set_user_summary_instructions
-    from config.user_ingestion.user_summary_instructions import INSTRUCTION_NAMES as USER_SUMMARY_INSTRUCTION_NAMES
+    from config.user_ingestion_config.user_summary_instructions import set_user_summary_instructions
+    from config.user_ingestion_config.user_summary_instructions import INSTRUCTION_NAMES as USER_SUMMARY_INSTRUCTION_NAMES
 
     USER_SUMMARY_INSTRUCTIONS_AVAILABLE = True
 except (ImportError, NotImplementedError):
@@ -509,9 +509,9 @@ def write_run_manifest(
     os.makedirs(run_dir, exist_ok=True)
 
     # Snapshot the user ingestion config used for this run
-    snapshot_dir = os.path.join(run_dir, "config_snapshot")
+    snapshot_dir = os.path.join(run_dir, "user_ingestion_config_snapshot")
     shutil.copytree(
-        "config/user_ingestion", snapshot_dir,
+        "config/user_ingestion_config", snapshot_dir,
         ignore=shutil.ignore_patterns("__pycache__"),
     )
 

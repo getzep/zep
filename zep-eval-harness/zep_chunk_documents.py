@@ -23,7 +23,7 @@ from openai import AsyncOpenAI
 from chonkie import RecursiveChunker, RecursiveRules, RecursiveLevel
 
 from config.constants import GEMINI_BASE_URL
-from config.document_chunking.constants import (
+from config.document_chunking_config.constants import (
     CHUNK_SIZE,
     LLM_CONTEXTUALIZATION_MODEL,
 )
@@ -259,9 +259,9 @@ async def run_chunking(
         os.makedirs(chunk_set_dir, exist_ok=True)
 
         # Snapshot the document chunking config used for this run
-        snapshot_dir = os.path.join(chunk_set_dir, "config_snapshot")
+        snapshot_dir = os.path.join(chunk_set_dir, "document_chunking_config_snapshot")
         shutil.copytree(
-            "config/document_chunking", snapshot_dir,
+            "config/document_chunking_config", snapshot_dir,
             ignore=shutil.ignore_patterns("__pycache__"),
         )
 
