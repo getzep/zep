@@ -5,9 +5,6 @@ User summary instructions customize how Zep generates the entity summary for
 each user's node in their knowledge graph. Up to 5 instructions per user.
 Each instruction consists of a name (unique identifier, max 100 chars) and text (max 100 chars).
 
-This follows the same pattern as ontology.py — define instructions here and
-apply them during ingestion via the --user-summary-instructions flag.
-
 See: https://help.getzep.com/user-summary-instructions
 """
 
@@ -54,20 +51,10 @@ async def set_user_summary_instructions(zep_client, user_ids=None):
     """
     Set user summary instructions for user node summary generation.
 
-    User summary instructions customize what information Zep extracts for
-    each user's summary on their user node in the knowledge graph.
-
     Args:
         zep_client: AsyncZep client instance
         user_ids: Optional list of user IDs to apply to.
                  If None, applies project-wide.
-
-    Example usage:
-        ```python
-        from zep_cloud import AsyncZep
-        client = AsyncZep(api_key="your-key")
-        await set_user_summary_instructions(client, user_ids=["user_123"])
-        ```
     """
     kwargs = {"instructions": USER_SUMMARY_INSTRUCTIONS}
     if user_ids:

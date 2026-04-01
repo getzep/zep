@@ -13,6 +13,7 @@ or custom instruction configurations, avoiding redundant LLM calls.
 import os
 import json
 import glob
+import shutil
 import asyncio
 import argparse
 from time import time
@@ -21,10 +22,9 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from chonkie import RecursiveChunker, RecursiveRules, RecursiveLevel
 
-from eval_config.constants import (
+from config.constants import GEMINI_BASE_URL
+from config.document_chunking.constants import (
     CHUNK_SIZE,
-    DOCUMENT_INGEST_LIMIT,
-    GEMINI_BASE_URL,
     LLM_CONTEXTUALIZATION_MODEL,
 )
 from retry import retry_with_backoff
@@ -52,24 +52,15 @@ def load_documents() -> list[tuple[str, str]]:
         f for f in glob.glob(os.path.join(docs_dir, "*")) if os.path.isfile(f)
     )
 
-    if DOCUMENT_INGEST_LIMIT is not None:
-        selected_files = all_files[:DOCUMENT_INGEST_LIMIT]
-    else:
-        selected_files = all_files
-
     documents = []
-    for file_path in selected_files:
+    for file_path in all_files:
         with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
         if content.strip():
             documents.append((os.path.basename(file_path), content))
 
     if documents:
-        total = len(all_files)
-        if DOCUMENT_INGEST_LIMIT is not None and DOCUMENT_INGEST_LIMIT < total:
-            print(f"✓ Loaded {len(documents)} of {total} document(s) from {docs_dir} (limit: {DOCUMENT_INGEST_LIMIT})")
-        else:
-            print(f"✓ Loaded {len(documents)} document(s) from {docs_dir}")
+        print(f"✓ Loaded {len(documents)} document(s) from {docs_dir}")
     return documents
 
 
@@ -266,6 +257,14 @@ async def run_chunking(
         timestamp_str = datetime.now().strftime("%Y%m%dT%H%M%S")
         chunk_set_dir = os.path.join(CHUNK_SETS_DIR, f"{num}_{timestamp_str}")
         os.makedirs(chunk_set_dir, exist_ok=True)
+
+        # Snapshot the document chunking config used for this run
+        snapshot_dir = os.path.join(chunk_set_dir, "config_snapshot")
+        shutil.copytree(
+            "config/document_chunking", snapshot_dir,
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+
         is_resuming = False
     else:
         is_resuming = True

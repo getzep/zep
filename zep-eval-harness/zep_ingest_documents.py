@@ -17,6 +17,7 @@ import os
 import json
 import glob
 import uuid
+import shutil
 import asyncio
 import argparse
 from time import time
@@ -24,18 +25,15 @@ from datetime import datetime
 from dotenv import load_dotenv
 from zep_cloud.client import AsyncZep
 
-from eval_config.constants import (
-    CHUNK_SIZE,
-    DOCUMENTS_GRAPH_ID,
-    POLL_INTERVAL,
-    POLL_TIMEOUT,
-)
+from config.constants import POLL_INTERVAL, POLL_TIMEOUT
+from config.document_ingestion.constants import DOCUMENTS_GRAPH_ID
+from config.document_chunking.constants import CHUNK_SIZE
 from retry import retry_with_backoff
 from checkpoint import save_checkpoint, load_checkpoint, delete_checkpoint
 
 # Import document ontology module
 try:
-    from eval_config.ontology import (
+    from config.document_ingestion.ontology import (
         set_document_custom_ontology,
         DOCUMENT_ENTITY_TYPES,
         DOCUMENT_EDGE_TYPES,
@@ -49,7 +47,7 @@ except (ImportError, NotImplementedError):
 
 # Import document custom instructions module
 try:
-    from eval_config.custom_instructions import (
+    from config.document_ingestion.custom_instructions import (
         set_document_custom_instructions,
         DOCUMENT_INSTRUCTION_NAMES,
     )
@@ -367,6 +365,13 @@ def write_run_manifest(
     run_dir = f"runs/documents/{run_number}_{timestamp_str}"
     os.makedirs(run_dir, exist_ok=True)
 
+    # Snapshot the document ingestion config used for this run
+    snapshot_dir = os.path.join(run_dir, "config_snapshot")
+    shutil.copytree(
+        "config/document_ingestion", snapshot_dir,
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+
     manifest = {
         "run_number": run_number,
         "type": "documents",
@@ -492,7 +497,7 @@ async def main():
             exit(1)
 
         from openai import AsyncOpenAI
-        from eval_config.constants import GEMINI_BASE_URL
+        from config.constants import GEMINI_BASE_URL
         from zep_chunk_documents import load_documents, run_chunking
 
         openai_client = AsyncOpenAI(api_key=google_api_key, base_url=GEMINI_BASE_URL)

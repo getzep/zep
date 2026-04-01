@@ -8,6 +8,7 @@ import re
 import sys
 import json
 import glob
+import shutil
 import asyncio
 import argparse
 import statistics
@@ -21,18 +22,18 @@ from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
 from zep_cloud.client import AsyncZep
 
-from eval_config.constants import (
+from config.constants import GEMINI_BASE_URL
+from config.evaluation.constants import (
     DOC_ENTITIES_LIMIT,
     DOC_EPISODES_LIMIT,
     DOC_FACTS_LIMIT,
-    GEMINI_BASE_URL,
     LLM_JUDGE_MODEL,
     LLM_RESPONSE_MODEL,
     USER_ENTITIES_LIMIT,
     USER_EPISODES_LIMIT,
     USER_FACTS_LIMIT,
 )
-from eval_config.response_prompt import get_response_system_prompt
+from config.evaluation.response_prompt import get_response_system_prompt
 from retry import retry_with_backoff
 
 
@@ -1154,6 +1155,14 @@ def save_results(
     """
     timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     results_file = os.path.join(run_dir, f"evaluation_results_{timestamp}.json")
+
+    # Snapshot the evaluation config used for this run
+    snapshot_dir = os.path.join(run_dir, "eval_config_snapshot")
+    if not os.path.exists(snapshot_dir):
+        shutil.copytree(
+            "config/evaluation", snapshot_dir,
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
 
     # Calculate statistics
     stats = calculate_aggregate_statistics(results)

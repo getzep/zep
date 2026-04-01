@@ -2,6 +2,7 @@ import os
 import json
 import glob
 import uuid
+import shutil
 import asyncio
 import argparse
 from time import time
@@ -10,7 +11,7 @@ from dotenv import load_dotenv
 from zep_cloud.client import AsyncZep
 from zep_cloud.types import Message
 
-from eval_config.constants import (
+from config.constants import (
     POLL_INTERVAL,
     POLL_TIMEOUT,
 )
@@ -20,7 +21,7 @@ from checkpoint import save_checkpoint, load_checkpoint, delete_checkpoint
 
 # Import ontology module (user only)
 try:
-    from eval_config.ontology import set_custom_ontology, ENTITY_TYPES, EDGE_TYPES
+    from config.user_ingestion.ontology import set_custom_ontology, ENTITY_TYPES, EDGE_TYPES
 
     CUSTOM_ONTOLOGY_AVAILABLE = True
 except (ImportError, NotImplementedError):
@@ -30,8 +31,8 @@ except (ImportError, NotImplementedError):
 
 # Import custom instructions module (user only)
 try:
-    from eval_config.custom_instructions import set_custom_instructions
-    from eval_config.custom_instructions import INSTRUCTION_NAMES as CUSTOM_INSTRUCTION_NAMES
+    from config.user_ingestion.custom_instructions import set_custom_instructions
+    from config.user_ingestion.custom_instructions import INSTRUCTION_NAMES as CUSTOM_INSTRUCTION_NAMES
 
     CUSTOM_INSTRUCTIONS_AVAILABLE = True
 except (ImportError, NotImplementedError):
@@ -40,8 +41,8 @@ except (ImportError, NotImplementedError):
 
 # Import user summary instructions module
 try:
-    from eval_config.user_summary_instructions import set_user_summary_instructions
-    from eval_config.user_summary_instructions import INSTRUCTION_NAMES as USER_SUMMARY_INSTRUCTION_NAMES
+    from config.user_ingestion.user_summary_instructions import set_user_summary_instructions
+    from config.user_ingestion.user_summary_instructions import INSTRUCTION_NAMES as USER_SUMMARY_INSTRUCTION_NAMES
 
     USER_SUMMARY_INSTRUCTIONS_AVAILABLE = True
 except (ImportError, NotImplementedError):
@@ -213,12 +214,13 @@ async def add_conversations_to_zep(
 ) -> tuple[list[str], list[str]]:
     """
     Add conversations to Zep as separate threads.
-    Returns tuple of (thread_ids, task_ids) where task_ids can be polled
-    via client.task.get() to check processing completion.
+    Returns tuple of (thread_ids, episode_uuids) where episode_uuids can be
+    polled via graph.episode.get(uuid) to check processing completion.
+    Note: thread.add_messages returns message_uuids which ARE episode UUIDs.
     """
     total_messages = 0
     thread_ids = []
-    task_ids = []
+    episode_uuids = []
 
     # Count total messages
     for conversation in conversations:
@@ -269,9 +271,10 @@ async def add_conversations_to_zep(
                 )
                 total_added += len(batch)
 
-                # Capture task_id for polling processing completion
-                if response and hasattr(response, "task_id") and response.task_id:
-                    task_ids.append(response.task_id)
+                # Capture message_uuids for polling processing completion
+                # message_uuids from add_messages are episode UUIDs
+                if response and hasattr(response, "message_uuids") and response.message_uuids:
+                    episode_uuids.extend(response.message_uuids)
 
             print(f"✓ Added {total_added} messages to thread {thread_id}")
 
@@ -279,7 +282,7 @@ async def add_conversations_to_zep(
             print(f"Error processing conversation {conversation_id}: {e}")
             continue
 
-    return thread_ids, task_ids
+    return thread_ids, episode_uuids
 
 
 # ============================================================================
@@ -379,67 +382,6 @@ async def poll_episode_uuids(
     return processed_count
 
 
-async def poll_task_ids(
-    zep_client: AsyncZep, task_ids: list[str], label: str
-) -> int:
-    """
-    Poll task IDs until all have succeeded or failed.
-    This is used for thread.add_messages operations which return task_ids
-    (rather than episode UUIDs) for tracking processing status.
-    Uses client.task.get(task_id=...) and checks .status for
-    "succeeded" or "failed".
-    Returns number of successfully completed tasks.
-    """
-    if not task_ids:
-        print(f"  [{label}] No conversation tasks to poll")
-        return 0
-
-    remaining = set(task_ids)
-    succeeded_count = 0
-    failed_count = 0
-    start = time()
-
-    while remaining and time() - start < POLL_TIMEOUT:
-        newly_done = []
-        for task_id in remaining:
-            try:
-                task = await zep_client.task.get(task_id=task_id)
-                if task.status == "succeeded":
-                    newly_done.append(task_id)
-                    succeeded_count += 1
-                elif task.status == "failed":
-                    newly_done.append(task_id)
-                    failed_count += 1
-                    error_msg = getattr(task, "error", "unknown error")
-                    print(f"  ⚠ [{label}] Task {task_id} failed: {error_msg}")
-            except Exception:
-                pass  # Task may not be available yet, retry next cycle
-
-        for task_id in newly_done:
-            remaining.discard(task_id)
-
-        if not remaining:
-            total = len(task_ids)
-            print(
-                f"  ✓ [{label}] All {total} conversation tasks completed "
-                f"({succeeded_count} succeeded, {failed_count} failed)"
-            )
-            return succeeded_count
-
-        done = succeeded_count + failed_count
-        print(
-            f"  [{label}] {done}/{len(task_ids)} conversation tasks completed..."
-        )
-        await asyncio.sleep(POLL_INTERVAL)
-
-    if remaining:
-        done = succeeded_count + failed_count
-        print(
-            f"  ⚠ [{label}] Polling timed out after {POLL_TIMEOUT}s "
-            f"({done}/{len(task_ids)} completed)"
-        )
-    return succeeded_count
-
 
 # ============================================================================
 # Per-User Ingestion Pipeline
@@ -480,13 +422,13 @@ async def ingest_user(
 
     # Add conversations
     thread_ids = []
-    conversation_task_ids = []
+    conversation_episode_uuids = []
     if conversations:
         first = user_def.get("first_name", "")
         last = user_def.get("last_name", "")
         full_name = f"{first} {last}".strip() or None
 
-        thread_ids, conversation_task_ids = await add_conversations_to_zep(
+        thread_ids, conversation_episode_uuids = await add_conversations_to_zep(
             zep_client,
             actual_user_id,
             conversations,
@@ -509,8 +451,8 @@ async def ingest_user(
         "first_name": user_def["first_name"],
         "last_name": user_def.get("last_name"),
         "thread_ids": thread_ids,
-        "conversation_task_ids": conversation_task_ids,
-        "episode_uuids": episode_uuids,
+        "conversation_episode_uuids": conversation_episode_uuids,
+        "telemetry_episode_uuids": episode_uuids,
         "num_conversations": len(conversations),
         "num_telemetry_files": len(telemetry_data) if telemetry_data else 0,
     }
@@ -565,6 +507,13 @@ def write_run_manifest(
     timestamp_str = datetime.now().strftime("%Y%m%dT%H%M%S")
     run_dir = f"runs/users/{run_number}_{timestamp_str}"
     os.makedirs(run_dir, exist_ok=True)
+
+    # Snapshot the user ingestion config used for this run
+    snapshot_dir = os.path.join(run_dir, "config_snapshot")
+    shutil.copytree(
+        "config/user_ingestion", snapshot_dir,
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
 
     manifest = {
         "run_number": run_number,
@@ -851,18 +800,18 @@ async def main():
 
             poll_tasks = []
 
-            # Poll each user's conversation task IDs (from thread.add_messages)
+            # Poll each user's conversation episode UUIDs (from thread.add_messages)
             for user_data in run_data:
-                task_ids = user_data.get("conversation_task_ids", [])
-                if task_ids:
+                uuids = user_data.get("conversation_episode_uuids", [])
+                if uuids:
                     label = f"{user_data['zep_user_id']} conversations"
                     poll_tasks.append(
-                        poll_task_ids(zep_client, task_ids, label)
+                        poll_episode_uuids(zep_client, uuids, label)
                     )
 
             # Poll each user's telemetry episodes (from graph.add)
             for user_data in run_data:
-                uuids = user_data.get("episode_uuids", [])
+                uuids = user_data.get("telemetry_episode_uuids", [])
                 if uuids:
                     label = f"{user_data['zep_user_id']} telemetry"
                     poll_tasks.append(
