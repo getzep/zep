@@ -175,7 +175,11 @@ async def follow_and_ingest(
                 }
                 if chunk.get("context"):
                     data_dict["chunk_context"] = chunk["context"]
-                episodes.append(EpisodeData(data=json.dumps(data_dict), type="json"))
+                episodes.append(EpisodeData(
+                    data=json.dumps(data_dict),
+                    type="json",
+                    source_description=chunk.get("source_description"),
+                ))
 
             first_idx = batch[0]["chunk_index"] + 1
             last_idx = batch[-1]["chunk_index"] + 1

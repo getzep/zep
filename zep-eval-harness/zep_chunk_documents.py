@@ -27,6 +27,7 @@ from config.document_chunking_config.constants import (
     CHUNK_SIZE,
     LLM_CONTEXTUALIZATION_MODEL,
 )
+from config.document_chunking_config.source_description import get_source_description
 from retry import retry_with_backoff
 from checkpoint import save_checkpoint, load_checkpoint
 
@@ -325,12 +326,15 @@ async def run_chunking(
             print(f"  Title: {title}")
             print(f"  Summary: {summary}")
 
+        source_desc = get_source_description(filename)
+
         # Small documents: single chunk, no contextualization needed
         if len(content) <= chunk_size:
             record = {
                 "filename": filename,
                 "title": title,
                 "summary": summary,
+                "source_description": source_desc,
                 "chunk_index": 0,
                 "total_chunks": 1,
                 "content": content,
@@ -368,6 +372,7 @@ async def run_chunking(
                 "filename": filename,
                 "title": title,
                 "summary": summary,
+                "source_description": source_desc,
                 "chunk_index": chunk_index,
                 "total_chunks": len(chunks),
                 "content": chunk_text,
