@@ -14,7 +14,7 @@ from zep_cloud import EpisodeData
 
 from config.constants import (
     POLL_INTERVAL,
-    POLL_TIMEOUT,
+    POLL_TIMEOUT_PER_EPISODE,
 )
 from retry import retry_with_backoff
 from checkpoint import save_checkpoint, load_checkpoint, delete_checkpoint
@@ -226,15 +226,15 @@ async def add_conversations_to_zep(
     conversations: list[dict],
     suffix: str,
     user_name: str | None = None,
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[tuple[str, int]]]:
     """
     Add conversations to Zep as separate threads using batch ingestion.
-    Returns tuple of (thread_ids, task_ids) where task_ids can be
-    polled via task.get(id) to check processing completion.
+    Returns tuple of (thread_ids, tasks) where tasks is a list of
+    (task_id, num_episodes) tuples for sequential polling.
     """
     total_messages = 0
     thread_ids = []
-    task_ids = []
+    tasks = []
 
     # Count total messages
     for conversation in conversations:
@@ -285,9 +285,9 @@ async def add_conversations_to_zep(
                 )
                 total_added += len(batch)
 
-                # Capture task_id for polling processing completion
+                # Capture task_id with episode count for polling
                 if response and response.task_id:
-                    task_ids.append(response.task_id)
+                    tasks.append((response.task_id, len(batch)))
 
             print(f"✓ Added {total_added} messages to thread {thread_id}")
 
@@ -295,7 +295,7 @@ async def add_conversations_to_zep(
             print(f"Error processing conversation {conversation_id}: {e}")
             continue
 
-    return thread_ids, task_ids
+    return thread_ids, tasks
 
 
 # ============================================================================
@@ -305,10 +305,10 @@ async def add_conversations_to_zep(
 
 async def add_telemetry_to_zep(
     zep_client: AsyncZep, user_id: str, telemetry_data: list[dict]
-) -> list[str]:
+) -> list[tuple[str, int]]:
     """
     Add telemetry data to Zep using graph.add_batch.
-    Returns list of task IDs.
+    Returns list of (task_id, num_episodes) tuples for sequential polling.
     """
     if not telemetry_data:
         return []
@@ -316,7 +316,8 @@ async def add_telemetry_to_zep(
     print(f"\nAdding {len(telemetry_data)} telemetry file(s) for {user_id}")
 
     total_added = 0
-    task_ids = []
+    tasks = []
+    seen_task_ids = set()
     batch_size = 20  # Max batch size for graph.add_batch
 
     for i in range(0, len(telemetry_data), batch_size):
@@ -337,10 +338,15 @@ async def add_telemetry_to_zep(
             )
             total_added += len(batch)
 
-            # Collect unique task_ids from returned episodes
+            # Collect unique task_ids with episode counts from this batch
+            batch_task_counts = {}
             for ep in result:
-                if ep.task_id and ep.task_id not in task_ids:
-                    task_ids.append(ep.task_id)
+                if ep.task_id:
+                    batch_task_counts[ep.task_id] = batch_task_counts.get(ep.task_id, 0) + 1
+            for tid, count in batch_task_counts.items():
+                if tid not in seen_task_ids:
+                    tasks.append((tid, count))
+                    seen_task_ids.add(tid)
 
             print(f"✓ Added telemetry batch {batch_num} ({len(batch)} episodes)")
         except Exception as e:
@@ -348,7 +354,7 @@ async def add_telemetry_to_zep(
             continue
 
     print(f"✓ Completed adding {total_added} telemetry episodes")
-    return task_ids
+    return tasks
 
 
 # ============================================================================
@@ -357,55 +363,61 @@ async def add_telemetry_to_zep(
 
 
 async def poll_task_ids(
-    zep_client: AsyncZep, task_ids: list[str], label: str
+    zep_client: AsyncZep, tasks: list[tuple[str, int]], label: str
 ) -> int:
     """
-    Poll task IDs until all are completed.
-    Uses task.get(task_id) to check task.status for completion.
+    Poll tasks sequentially until all are completed.
+    Each task gets a timeout proportional to its episode count:
+    timeout = num_episodes * POLL_TIMEOUT_PER_EPISODE.
+    The clock for each task starts only after the previous task completes.
     Returns number of completed tasks.
     """
-    if not task_ids:
+    if not tasks:
         print(f"  [{label}] No tasks to poll")
         return 0
 
-    remaining = set(task_ids)
-    completed_count = 0
-    start = time()
+    total_tasks = len(tasks)
+    succeeded_count = 0
+    failed_count = 0
 
-    while remaining and time() - start < POLL_TIMEOUT:
-        newly_completed = []
-        for task_id in remaining:
+    for task_id, num_episodes in tasks:
+        task_timeout = num_episodes * POLL_TIMEOUT_PER_EPISODE
+        start = time()
+
+        while time() - start < task_timeout:
             try:
                 task = await zep_client.task.get(task_id)
                 if task.status == "succeeded":
-                    newly_completed.append(task_id)
-                elif task.error:
-                    print(f"  ⚠ [{label}] Task {task_id} failed: {task.error.message}")
-                    newly_completed.append(task_id)
+                    succeeded_count += 1
+                    done = succeeded_count + failed_count
+                    print(f"  ✓ [{label}] Task {done}/{total_tasks} completed")
+                    break
+                elif task.status == "failed" or task.error:
+                    failed_count += 1
+                    done = succeeded_count + failed_count
+                    error_msg = task.error.message if task.error else "unknown error"
+                    print(f"  ⚠ [{label}] Task {done}/{total_tasks} FAILED: {error_msg}")
+                    break
             except Exception:
-                pass  # Task may not be available yet, retry next cycle
-
-        for task_id in newly_completed:
-            remaining.discard(task_id)
-            completed_count += 1
-
-        if not remaining:
+                pass  # Task may not be available yet
+            await asyncio.sleep(POLL_INTERVAL)
+        else:
             print(
-                f"  ✓ [{label}] All {len(task_ids)} tasks completed"
+                f"  ⚠ [{label}] Task {task_id} ({num_episodes} episodes) "
+                f"timed out after {task_timeout}s"
             )
-            return len(task_ids)
+            done = succeeded_count + failed_count
+            print(f"  ⚠ [{label}] Stopping poll — {done}/{total_tasks} done")
+            return succeeded_count
 
+    if failed_count:
         print(
-            f"  [{label}] {completed_count}/{len(task_ids)} tasks completed..."
+            f"  ⚠ [{label}] {succeeded_count}/{total_tasks} succeeded, "
+            f"{failed_count} failed"
         )
-        await asyncio.sleep(POLL_INTERVAL)
-
-    if remaining:
-        print(
-            f"  ⚠ [{label}] Polling timed out after {POLL_TIMEOUT}s "
-            f"({completed_count}/{len(task_ids)} completed)"
-        )
-    return completed_count
+    else:
+        print(f"  ✓ [{label}] All {total_tasks} tasks succeeded")
+    return succeeded_count
 
 
 
@@ -448,13 +460,13 @@ async def ingest_user(
 
     # Add conversations
     thread_ids = []
-    conversation_task_ids = []
+    conversation_tasks = []
     if conversations:
         first = user_def.get("first_name", "")
         last = user_def.get("last_name", "")
         full_name = f"{first} {last}".strip() or None
 
-        thread_ids, conversation_task_ids = await add_conversations_to_zep(
+        thread_ids, conversation_tasks = await add_conversations_to_zep(
             zep_client,
             actual_user_id,
             conversations,
@@ -463,9 +475,9 @@ async def ingest_user(
         )
 
     # Add telemetry
-    telemetry_task_ids = []
+    telemetry_tasks = []
     if telemetry_data:
-        telemetry_task_ids = await add_telemetry_to_zep(
+        telemetry_tasks = await add_telemetry_to_zep(
             zep_client, actual_user_id, telemetry_data
         )
 
@@ -477,8 +489,8 @@ async def ingest_user(
         "first_name": user_def["first_name"],
         "last_name": user_def.get("last_name"),
         "thread_ids": thread_ids,
-        "conversation_task_ids": conversation_task_ids,
-        "telemetry_task_ids": telemetry_task_ids,
+        "conversation_tasks": conversation_tasks,
+        "telemetry_tasks": telemetry_tasks,
         "num_conversations": len(conversations),
         "num_telemetry_files": len(telemetry_data) if telemetry_data else 0,
     }
@@ -821,31 +833,31 @@ async def main():
             print("POLLING FOR PROCESSING COMPLETION")
             print("=" * 80)
             print(
-                f"Checking every {POLL_INTERVAL}s (timeout: {POLL_TIMEOUT}s)\n"
+                f"Checking every {POLL_INTERVAL}s (timeout: {POLL_TIMEOUT_PER_EPISODE}s per episode)\n"
             )
 
-            poll_tasks = []
+            poll_coros = []
 
-            # Poll each user's conversation task IDs (from thread.add_messages_batch)
+            # Poll each user's conversation tasks (from thread.add_messages_batch)
             for user_data in run_data:
-                tids = user_data.get("conversation_task_ids", [])
-                if tids:
+                tasks = user_data.get("conversation_tasks", [])
+                if tasks:
                     label = f"{user_data['zep_user_id']} conversations"
-                    poll_tasks.append(
-                        poll_task_ids(zep_client, tids, label)
+                    poll_coros.append(
+                        poll_task_ids(zep_client, tasks, label)
                     )
 
-            # Poll each user's telemetry task IDs (from graph.add_batch)
+            # Poll each user's telemetry tasks (from graph.add_batch)
             for user_data in run_data:
-                tids = user_data.get("telemetry_task_ids", [])
-                if tids:
+                tasks = user_data.get("telemetry_tasks", [])
+                if tasks:
                     label = f"{user_data['zep_user_id']} telemetry"
-                    poll_tasks.append(
-                        poll_task_ids(zep_client, tids, label)
+                    poll_coros.append(
+                        poll_task_ids(zep_client, tasks, label)
                     )
 
-            if poll_tasks:
-                await asyncio.gather(*poll_tasks)
+            if poll_coros:
+                await asyncio.gather(*poll_coros)
                 print("\n✓ All user graphs finished processing")
             else:
                 print("No graphs to poll.")

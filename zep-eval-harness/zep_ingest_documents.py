@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 from zep_cloud.client import AsyncZep
 from zep_cloud import EpisodeData
 
-from config.constants import POLL_INTERVAL, POLL_TIMEOUT
+from config.constants import POLL_INTERVAL, POLL_TIMEOUT_PER_EPISODE
 from config.document_ingestion_config.constants import DOCUMENTS_GRAPH_ID
 from config.document_chunking_config.constants import CHUNK_SIZE
 from retry import retry_with_backoff
@@ -112,9 +112,9 @@ async def follow_and_ingest(
     graph_id: str,
     run_number: int = 0,
     ingested_count: int = 0,
-    prior_task_ids: list[str] | None = None,
+    prior_tasks: list[tuple[str, int]] | None = None,
     config: dict | None = None,
-) -> tuple[int, list[str]]:
+) -> tuple[int, list[tuple[str, int]]]:
     """
     Tail a chunk set's JSONL file and ingest chunks as they appear.
     Handles both complete and in-progress chunk sets. Uses graph.add_batch
@@ -126,16 +126,17 @@ async def follow_and_ingest(
         graph_id: Zep graph ID to ingest into
         run_number: Run number for checkpoint persistence
         ingested_count: Number of chunks already ingested (for resume)
-        prior_task_ids: Task IDs from a previous run (for resume)
+        prior_tasks: Tasks from a previous run as (task_id, num_episodes) tuples
         config: Ontology/instruction config flags to persist in checkpoint
 
-    Returns tuple of (total chunks ingested, all task IDs including prior).
+    Returns tuple of (total chunks ingested, all tasks including prior).
     """
     jsonl_path = os.path.join(chunk_set_dir, "chunks.jsonl")
 
     cp_path = checkpoint_path_for_graph(graph_id)
     total_ingested = ingested_count
-    task_ids = list(prior_task_ids or [])
+    tasks = list(prior_tasks or [])
+    seen_task_ids = set(t[0] for t in tasks)
     last_line_read = ingested_count
     file_offset = 0  # Track read position to avoid re-reading entire file
     follow_start = time()
@@ -195,10 +196,15 @@ async def follow_and_ingest(
                 total_ingested += len(batch)
                 last_line_read += len(batch)
 
-                # Collect unique task_ids from returned episodes
+                # Collect unique task_ids with episode counts from this batch
+                batch_task_counts = {}
                 for ep in result:
-                    if ep.task_id and ep.task_id not in task_ids:
-                        task_ids.append(ep.task_id)
+                    if ep.task_id:
+                        batch_task_counts[ep.task_id] = batch_task_counts.get(ep.task_id, 0) + 1
+                for tid, count in batch_task_counts.items():
+                    if tid not in seen_task_ids:
+                        tasks.append((tid, count))
+                        seen_task_ids.add(tid)
 
                 # Checkpoint after each batch
                 save_checkpoint(cp_path, {
@@ -206,7 +212,7 @@ async def follow_and_ingest(
                     "run_number": run_number,
                     "chunk_set_dir": chunk_set_dir,
                     "chunks_ingested": total_ingested,
-                    "task_ids": task_ids,
+                    "tasks": tasks,
                     "config": config or {},
                 })
             except Exception as e:
@@ -216,7 +222,7 @@ async def follow_and_ingest(
                     "run_number": run_number,
                     "chunk_set_dir": chunk_set_dir,
                     "chunks_ingested": total_ingested,
-                    "task_ids": task_ids,
+                    "tasks": tasks,
                     "config": config or {},
                 })
                 print(f"\n  ✗ Ingestion halted. Checkpoint saved to: {cp_path}")
@@ -246,7 +252,7 @@ async def follow_and_ingest(
     # Clean up checkpoint on success
     delete_checkpoint(cp_path)
 
-    return total_ingested, task_ids
+    return total_ingested, tasks
 
 
 # ============================================================================
@@ -296,55 +302,61 @@ async def setup_graph(
 
 
 async def poll_task_ids(
-    zep_client: AsyncZep, task_ids: list[str], label: str
+    zep_client: AsyncZep, tasks: list[tuple[str, int]], label: str
 ) -> int:
     """
-    Poll task IDs until all are completed.
-    Uses task.get(task_id) to check task.status for completion.
+    Poll tasks sequentially until all are completed.
+    Each task gets a timeout proportional to its episode count:
+    timeout = num_episodes * POLL_TIMEOUT_PER_EPISODE.
+    The clock for each task starts only after the previous task completes.
     Returns number of completed tasks.
     """
-    if not task_ids:
+    if not tasks:
         print(f"  [{label}] No tasks to poll")
         return 0
 
-    remaining = set(task_ids)
-    completed_count = 0
-    start = time()
+    total_tasks = len(tasks)
+    succeeded_count = 0
+    failed_count = 0
 
-    while remaining and time() - start < POLL_TIMEOUT:
-        newly_completed = []
-        for task_id in remaining:
+    for task_id, num_episodes in tasks:
+        task_timeout = num_episodes * POLL_TIMEOUT_PER_EPISODE
+        start = time()
+
+        while time() - start < task_timeout:
             try:
                 task = await zep_client.task.get(task_id)
                 if task.status == "succeeded":
-                    newly_completed.append(task_id)
-                elif task.error:
-                    print(f"  ⚠ [{label}] Task {task_id} failed: {task.error.message}")
-                    newly_completed.append(task_id)
+                    succeeded_count += 1
+                    done = succeeded_count + failed_count
+                    print(f"  ✓ [{label}] Task {done}/{total_tasks} completed")
+                    break
+                elif task.status == "failed" or task.error:
+                    failed_count += 1
+                    done = succeeded_count + failed_count
+                    error_msg = task.error.message if task.error else "unknown error"
+                    print(f"  ⚠ [{label}] Task {done}/{total_tasks} FAILED: {error_msg}")
+                    break
             except Exception:
-                pass  # Task may not be available yet, retry next cycle
-
-        for task_id in newly_completed:
-            remaining.discard(task_id)
-            completed_count += 1
-
-        if not remaining:
+                pass  # Task may not be available yet
+            await asyncio.sleep(POLL_INTERVAL)
+        else:
             print(
-                f"  ✓ [{label}] All {len(task_ids)} tasks completed"
+                f"  ⚠ [{label}] Task {task_id} ({num_episodes} episodes) "
+                f"timed out after {task_timeout}s"
             )
-            return len(task_ids)
+            done = succeeded_count + failed_count
+            print(f"  ⚠ [{label}] Stopping poll — {done}/{total_tasks} done")
+            return succeeded_count
 
+    if failed_count:
         print(
-            f"  [{label}] {completed_count}/{len(task_ids)} tasks completed..."
+            f"  ⚠ [{label}] {succeeded_count}/{total_tasks} succeeded, "
+            f"{failed_count} failed"
         )
-        await asyncio.sleep(POLL_INTERVAL)
-
-    if remaining:
-        print(
-            f"  ⚠ [{label}] Polling timed out after {POLL_TIMEOUT}s "
-            f"({completed_count}/{len(task_ids)} completed)"
-        )
-    return completed_count
+    else:
+        print(f"  ✓ [{label}] All {total_tasks} tasks succeeded")
+    return succeeded_count
 
 
 # ============================================================================
@@ -597,12 +609,12 @@ async def main():
             graph_id = checkpoint_data["graph_id"]
             run_number = checkpoint_data.get("run_number", get_next_run_number())
             ingested_count = checkpoint_data.get("chunks_ingested", 0)
-            prior_task_ids = checkpoint_data.get("task_ids", [])
+            prior_tasks = checkpoint_data.get("tasks", [])
         else:
             run_number = get_next_run_number()
             graph_id = f"{DOCUMENTS_GRAPH_ID}_{uuid.uuid4().hex[:8]}"
             ingested_count = 0
-            prior_task_ids = []
+            prior_tasks = []
 
             # Create graph and apply ontology/instructions
             await setup_graph(
@@ -615,11 +627,11 @@ async def main():
         print(f"Graph ID: {graph_id}\n")
 
         # Ingest chunks (with follow mode for in-progress chunk sets)
-        num_ingested, task_ids = await follow_and_ingest(
+        num_ingested, tasks = await follow_and_ingest(
             zep_client, chunk_set_dir, graph_id,
             run_number=run_number,
             ingested_count=ingested_count,
-            prior_task_ids=prior_task_ids,
+            prior_tasks=prior_tasks,
             config=ingestion_config,
         )
 
@@ -644,10 +656,10 @@ async def main():
             print("\n" + "=" * 80)
             print("POLLING FOR PROCESSING COMPLETION")
             print("=" * 80)
-            print(f"Checking every {POLL_INTERVAL}s (timeout: {POLL_TIMEOUT}s)\n")
+            print(f"Checking every {POLL_INTERVAL}s (timeout: {POLL_TIMEOUT_PER_EPISODE}s per episode)\n")
 
-            if task_ids:
-                await poll_task_ids(zep_client, task_ids, graph_id)
+            if tasks:
+                await poll_task_ids(zep_client, tasks, graph_id)
                 print("\n✓ Document graph finished processing")
             else:
                 print("No tasks to poll.")
