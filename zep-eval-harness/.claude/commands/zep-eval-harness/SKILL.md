@@ -68,7 +68,7 @@ config/
 │   ├── ontology.py                     # Document graph entity/edge types
 │   └── custom_instructions.py          # Document custom instructions
 ├── document_chunking_config/
-│   └── constants.py                    # CHUNK_SIZE, LLM_CONTEXTUALIZATION_MODEL
+│   └── constants.py                    # CHUNK_SIZE, CHUNK_OVERLAP, LLM_CONTEXTUALIZATION_MODEL
 └── evaluation_config/
     ├── constants.py                    # Search limits, LLM_RESPONSE_MODEL, LLM_JUDGE_MODEL
     └── response_prompt.py              # get_response_system_prompt() — AI persona for eval
@@ -87,6 +87,7 @@ uv run zep_chunk_documents.py [OPTIONS]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--chunk-size N` | from config | Override character count per chunk |
+| `--chunk-overlap N` | from config | Characters of overlap between consecutive chunks |
 | `--concurrency N` | 5 | Max parallel LLM calls (semaphore) |
 | `--resume PATH` | — | Resume interrupted run from chunk set directory |
 
@@ -159,8 +160,9 @@ Each pipeline step creates a numbered, timestamped directory with a config snaps
 | Directory | Contents |
 |-----------|----------|
 | `runs/chunk_sets/{N}_{ts}/` | `chunks.jsonl`, `meta.json`, `document_chunking_config_snapshot/` |
-| `runs/users/{N}_{ts}/` | `manifest.json`, `user_ingestion_config_snapshot/`, plus `evaluation_config_snapshot/` and `evaluation_results_*.json` after eval |
+| `runs/users/{N}_{ts}/` | `manifest.json`, `user_ingestion_config_snapshot/` |
 | `runs/documents/{N}_{ts}/` | `manifest.json`, `document_ingestion_config_snapshot/` |
+| `runs/evaluations/{N}_{ts}/` | `results.json` (with `parent_runs` referencing user/doc runs), `evaluation_config_snapshot/` |
 | `runs/checkpoints/` | Temporary resume files, removed on success |
 
 ## Follow Mode
@@ -187,7 +189,7 @@ All scripts include retry logic with exponential backoff (8 retries, max 5-minut
 
 ## Analyzing Results
 
-Evaluation results live at `runs/users/{N}_{ts}/evaluation_results_*.json`. When asked to analyze or compare runs:
+Evaluation results live at `runs/evaluations/{N}_{ts}/results.json`. Each result references its parent user and document runs via the `parent_runs` field. When asked to analyze or compare runs:
 
 1. Read the `aggregate_scores`, `category_scores`, and `user_scores` from each results file.
 2. Present comparisons as a table — rows are runs/configs, columns are metrics.

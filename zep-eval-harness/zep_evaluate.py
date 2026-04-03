@@ -1128,30 +1128,68 @@ def calculate_aggregate_statistics(
     }
 
 
+def _get_next_eval_run_number() -> int:
+    """Get the next evaluation run number by checking existing run directories."""
+    os.makedirs("runs/evaluations", exist_ok=True)
+    existing = glob.glob("runs/evaluations/*")
+    run_numbers = []
+    for d in existing:
+        if not os.path.isdir(d):
+            continue
+        try:
+            run_numbers.append(int(os.path.basename(d).split("_")[0]))
+        except (IndexError, ValueError):
+            continue
+    return max(run_numbers) + 1 if run_numbers else 1
+
+
 def save_results(
-    results: Dict[str, List[Dict[str, Any]]], run_dir: str, manifest: Dict[str, Any]
+    results: Dict[str, List[Dict[str, Any]]],
+    user_manifest: Dict[str, Any],
+    user_run_dir: str,
+    doc_manifest: Optional[Dict[str, Any]] = None,
+    doc_run_dir: Optional[str] = None,
 ):
     """
-    Save evaluation results with comprehensive aggregate statistics to JSON file.
+    Save evaluation results to runs/evaluations/{number}_{timestamp}/.
+    References the parent user and document ingestion runs.
     """
     timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    results_file = os.path.join(run_dir, f"evaluation_results_{timestamp}.json")
+    run_number = _get_next_eval_run_number()
+    eval_run_dir = f"runs/evaluations/{run_number}_{timestamp}"
+    os.makedirs(eval_run_dir, exist_ok=True)
+
+    results_file = os.path.join(eval_run_dir, "results.json")
 
     # Snapshot the evaluation config used for this run
-    snapshot_dir = os.path.join(run_dir, "evaluation_config_snapshot")
-    if not os.path.exists(snapshot_dir):
-        shutil.copytree(
-            "config/evaluation_config", snapshot_dir,
-            ignore=shutil.ignore_patterns("__pycache__"),
-        )
+    snapshot_dir = os.path.join(eval_run_dir, "evaluation_config_snapshot")
+    shutil.copytree(
+        "config/evaluation_config", snapshot_dir,
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
 
     # Calculate statistics
     stats = calculate_aggregate_statistics(results)
 
+    # Build parent run references
+    parent_runs = {
+        "user_run": {
+            "run_number": user_manifest.get("run_number"),
+            "run_dir": user_run_dir,
+        },
+    }
+    if doc_manifest:
+        parent_runs["document_run"] = {
+            "run_number": doc_manifest.get("run_number"),
+            "run_dir": doc_run_dir,
+            "graph_id": doc_manifest.get("graph_id"),
+        }
+
     # Prepare output structure
     output_data = {
         "evaluation_timestamp": timestamp,
-        "run_number": manifest.get("run_number"),
+        "run_number": run_number,
+        "parent_runs": parent_runs,
         "search_configuration": {
             "user_facts_limit": USER_FACTS_LIMIT,
             "user_entities_limit": USER_ENTITIES_LIMIT,
@@ -1174,7 +1212,7 @@ def save_results(
         json.dump(output_data, f, indent=2)
 
     print(f"\n{'='*80}")
-    print(f"Results saved to: {results_file}")
+    print(f"Evaluation run #{run_number} saved to: {eval_run_dir}/")
     print(f"{'='*80}")
 
     return results_file, stats
@@ -1360,12 +1398,14 @@ async def main():
 
     try:
         # Load user run manifest (always required)
-        manifest, run_dir = load_run_manifest(args.user_run, "users")
+        manifest, user_run_dir = load_run_manifest(args.user_run, "users")
 
         # Load document run manifest if --doc-run is specified
         doc_graph_id = None
+        doc_manifest = None
+        doc_run_dir = None
         if args.doc_run is not None:
-            doc_manifest, _ = load_run_manifest(args.doc_run, "documents")
+            doc_manifest, doc_run_dir = load_run_manifest(args.doc_run, "documents")
             doc_graph_id = doc_manifest.get("graph_id")
             if doc_graph_id:
                 print(f"Document graph: {doc_graph_id}")
@@ -1384,7 +1424,10 @@ async def main():
         )
 
         # Save results with aggregate statistics
-        results_file, stats = save_results(results, run_dir, manifest)
+        results_file, stats = save_results(
+            results, manifest, user_run_dir,
+            doc_manifest=doc_manifest, doc_run_dir=doc_run_dir,
+        )
 
         # Print summary
         print_summary(stats)

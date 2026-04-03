@@ -1,6 +1,17 @@
 {
   "evaluation_timestamp": "20260331T222821",
   "run_number": 1,
+  "parent_runs": {
+    "user_run": {
+      "run_number": 1,
+      "run_dir": "runs/users/1_20260331T222436"
+    },
+    "document_run": {
+      "run_number": 1,
+      "run_dir": "runs/documents/1_20260331T222500",
+      "graph_id": "zep_eval_shared_documents_1d4d9a28"
+    }
+  },
   "search_configuration": {
     "user_facts_limit": 20,
     "user_entities_limit": 10,

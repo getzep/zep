@@ -84,7 +84,7 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
    # Adjust evaluation concurrency (default: 15)
    uv run zep_evaluate.py --concurrency 30
    ```
-   Saves results to `runs/users/{N}_{timestamp}/evaluation_results_{timestamp}.json` with an `evaluation_config_snapshot/`.
+   Saves results to `runs/evaluations/{N}_{timestamp}/results.json` with an `evaluation_config_snapshot/`. Each evaluation run references its parent user and document ingestion runs.
 
 7. **Inspect a graph** (optional)
    ```bash
@@ -124,7 +124,7 @@ data/documents/*           → [zep_chunk_documents.py]     → runs/chunk_sets/
 
 data/test_cases/*.json     → [zep_evaluate.py --user-run N --doc-run M]   → Search → Generate → Grade
                                                                                        ↓
-                                                              runs/users/{N}/evaluation_results.json
+                                                              runs/evaluations/{N}/results.json
 
                              [zep_graph_inspect.py]       → Print all nodes & edges for any graph
 ```
@@ -195,7 +195,7 @@ config/
 │   ├── ontology.py                           # Document graph entity/edge types + set_document_custom_ontology()
 │   └── custom_instructions.py                # Document graph custom instructions
 ├── document_chunking_config/
-│   └── constants.py                          # CHUNK_SIZE, LLM_CONTEXTUALIZATION_MODEL
+│   └── constants.py                          # CHUNK_SIZE, CHUNK_OVERLAP, LLM_CONTEXTUALIZATION_MODEL
 └── evaluation_config/
     ├── constants.py                          # Search limits, LLM_RESPONSE_MODEL, LLM_JUDGE_MODEL
     └── response_prompt.py                    # get_response_system_prompt() — the system prompt for AI responses
@@ -212,9 +212,7 @@ runs/
 ├── users/
 │   └── 1_20260331T222436/
 │       ├── manifest.json
-│       ├── user_ingestion_config_snapshot/     # Snapshot of config/user_ingestion_config/
-│       ├── evaluation_config_snapshot/         # Snapshot of config/evaluation_config/ (created at eval time)
-│       └── evaluation_results_20260331T222821.json
+│       └── user_ingestion_config_snapshot/     # Snapshot of config/user_ingestion_config/
 ├── documents/
 │   └── 1_20260331T222500/
 │       ├── manifest.json
@@ -224,6 +222,10 @@ runs/
 │       ├── meta.json
 │       ├── chunks.jsonl
 │       └── document_chunking_config_snapshot/  # Snapshot of config/document_chunking_config/
+├── evaluations/
+│   └── 1_20260331T222821/
+│       ├── results.json                       # Evaluation results + parent run references
+│       └── evaluation_config_snapshot/        # Snapshot of config/evaluation_config/
 └── checkpoints/
     └── doc_xxx.json                           (temporary, removed on success)
 ```
@@ -389,6 +391,7 @@ The evaluation script uses `cross_encoder` reranker by default for best accuracy
 
 Chunking-specific constants are in `config/document_chunking_config/constants.py`:
 - `CHUNK_SIZE`: Character count per chunk (default: 500)
+- `CHUNK_OVERLAP`: Characters of overlap between consecutive chunks (default: 100)
 - `LLM_CONTEXTUALIZATION_MODEL`: Model for document chunk contextualization
 
 You can experiment with different rerankers by modifying the `reranker` parameter in `perform_graph_search()`:
@@ -459,11 +462,15 @@ The results include analysis of how context completeness correlates with answer 
 
 ## Output
 
-Results are saved to `runs/users/{run_number}/evaluation_results_{timestamp}.json` with the following structure:
+Results are saved to `runs/evaluations/{run_number}_{timestamp}/results.json` with the following structure:
 ```json
 {
   "evaluation_timestamp": "20260331T222821",
   "run_number": 1,
+  "parent_runs": {
+    "user_run": { "run_number": 1, "run_dir": "runs/users/1_20260331T222436" },
+    "document_run": { "run_number": 1, "run_dir": "runs/documents/1_20260331T222500", "graph_id": "zep_eval_shared_documents_1d4d9a28" }
+  },
   "search_configuration": {
     "user_facts_limit": 20,
     "user_entities_limit": 10,
