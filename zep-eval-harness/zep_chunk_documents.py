@@ -20,11 +20,12 @@ from time import time
 from datetime import datetime
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
-from chonkie import RecursiveChunker, RecursiveRules, RecursiveLevel
+from chonkie import RecursiveChunker, RecursiveRules, RecursiveLevel, OverlapRefinery
 
 from config.constants import GEMINI_BASE_URL
 from config.document_chunking_config.constants import (
     CHUNK_SIZE,
+    CHUNK_OVERLAP,
     LLM_CONTEXTUALIZATION_MODEL,
 )
 from config.document_chunking_config.source_description import get_source_description
@@ -75,8 +76,11 @@ def load_documents() -> list[tuple[str, str]]:
 # ============================================================================
 
 
-def create_document_chunker(chunk_size: int = 500) -> RecursiveChunker:
-    """Create a Chonkie recursive chunker with paragraph -> sentence -> word hierarchy."""
+def create_document_chunker(
+    chunk_size: int = 500, chunk_overlap: int = 0
+) -> tuple[RecursiveChunker, OverlapRefinery | None]:
+    """Create a Chonkie recursive chunker with paragraph -> sentence -> word hierarchy.
+    Returns (chunker, refinery) where refinery is None if chunk_overlap is 0."""
     rules = RecursiveRules(
         [
             RecursiveLevel(delimiters=["\n\n"], include_delim="prev"),
@@ -85,12 +89,23 @@ def create_document_chunker(chunk_size: int = 500) -> RecursiveChunker:
             RecursiveLevel(whitespace=True),
         ]
     )
-    return RecursiveChunker(
+    chunker = RecursiveChunker(
         tokenizer="character",
         chunk_size=chunk_size,
         rules=rules,
         min_characters_per_chunk=24,
     )
+    refinery = None
+    if chunk_overlap > 0:
+        refinery = OverlapRefinery(
+            tokenizer="character",
+            context_size=chunk_overlap,
+            mode="token",
+            method="suffix",
+            merge=True,
+            inplace=False,
+        )
+    return chunker, refinery
 
 
 def extract_document_title(filename: str, content: str) -> str:
@@ -241,6 +256,7 @@ async def run_chunking(
     openai_client: AsyncOpenAI,
     documents: list[tuple[str, str]],
     chunk_size: int,
+    chunk_overlap: int = 0,
     chunk_set_dir: str | None = None,
     concurrency: int = 5,
 ) -> str:
@@ -251,6 +267,7 @@ async def run_chunking(
         openai_client: AsyncOpenAI client for LLM calls
         documents: List of (filename, content) tuples
         chunk_size: Character-level chunk size
+        chunk_overlap: Characters of overlap between consecutive chunks
         chunk_set_dir: Optional path to resume an existing chunk set.
                        If None, creates a new chunk set directory.
         concurrency: Max concurrent LLM calls (semaphore limit)
@@ -290,6 +307,7 @@ async def run_chunking(
     meta = {
         "chunk_set_number": int(os.path.basename(chunk_set_dir).split("_")[0]),
         "chunk_size": chunk_size,
+        "chunk_overlap": chunk_overlap,
         "status": "in_progress",
         "num_documents": len(documents),
         "num_chunks": len(completed),
@@ -299,7 +317,7 @@ async def run_chunking(
     write_meta(meta_path, meta)
 
     semaphore = asyncio.Semaphore(concurrency)
-    chunker = create_document_chunker(chunk_size)
+    chunker, refinery = create_document_chunker(chunk_size, chunk_overlap)
     total_chunks = len(completed)
 
     print(f"  LLM concurrency: {concurrency}")
@@ -310,6 +328,8 @@ async def run_chunking(
             expected_chunks = {(filename, 0)}
         else:
             raw = chunker.chunk(content)
+            if refinery:
+                raw = refinery.refine(raw)
             expected_chunks = {(filename, i) for i in range(len(raw))}
 
         # Skip entirely if all chunks for this doc are done
@@ -352,6 +372,8 @@ async def run_chunking(
 
         # Chunk the document
         raw_chunks = chunker.chunk(content)
+        if refinery:
+            raw_chunks = refinery.refine(raw_chunks)
         chunks = [(i, c.text) for i, c in enumerate(raw_chunks)]
         pending_chunks = [(i, t) for i, t in chunks if (filename, i) not in completed]
         print(f"  Split into {len(chunks)} chunks ({len(chunks) - len(pending_chunks)} already done)")
@@ -420,6 +442,12 @@ def parse_args():
         help=f"Character-level chunk size (default: {CHUNK_SIZE})",
     )
     parser.add_argument(
+        "--chunk-overlap",
+        type=int,
+        default=CHUNK_OVERLAP,
+        help=f"Characters of overlap between consecutive chunks (default: {CHUNK_OVERLAP})",
+    )
+    parser.add_argument(
         "--resume",
         type=str,
         default=None,
@@ -454,6 +482,7 @@ async def main():
     # Handle resume mode
     chunk_set_dir = None
     chunk_size = args.chunk_size
+    chunk_overlap = args.chunk_overlap
     if args.resume:
         if not os.path.isdir(args.resume):
             print(f"Error: Chunk set directory not found: {args.resume}")
@@ -467,13 +496,15 @@ async def main():
             print(f"Chunk set is already complete: {args.resume}")
             exit(0)
         chunk_size = meta.get("chunk_size", args.chunk_size)
+        chunk_overlap = meta.get("chunk_overlap", args.chunk_overlap)
         chunk_set_dir = args.resume
-        print(f"✓ Resuming chunk set: {args.resume} (chunk_size={chunk_size})")
+        print(f"✓ Resuming chunk set: {args.resume} (chunk_size={chunk_size}, overlap={chunk_overlap})")
 
     print("=" * 80)
     print("ZEP DOCUMENT CHUNKING" + (" (RESUMING)" if chunk_set_dir else ""))
     print("=" * 80)
     print(f"  Chunk size: {chunk_size}")
+    print(f"  Chunk overlap: {chunk_overlap}")
     print(f"  Concurrency: {args.concurrency}")
     print(f"  Documents: {len(documents)}")
     print("=" * 80)
@@ -481,6 +512,7 @@ async def main():
     start = time()
     result_dir = await run_chunking(
         openai_client, documents, chunk_size,
+        chunk_overlap=chunk_overlap,
         chunk_set_dir=chunk_set_dir,
         concurrency=args.concurrency,
     )

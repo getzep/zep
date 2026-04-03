@@ -9,5 +9,5 @@ DOC_ENTITIES_LIMIT = 5  # Number of entities (nodes) to return
 DOC_EPISODES_LIMIT = 0  # Number of episodes to return (when enabled)
 
 # LLM models for evaluation
-LLM_RESPONSE_MODEL = "gemini-2.5-flash-lite"  # Model used for generating responses
-LLM_JUDGE_MODEL = "gemini-2.5-flash-lite"  # Model used for grading responses
+LLM_RESPONSE_MODEL = "gemini-3-flash-preview"  # Model used for generating responses
+LLM_JUDGE_MODEL = "gemini-3-flash-preview"  # Model used for grading responses

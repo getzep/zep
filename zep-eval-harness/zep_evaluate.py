@@ -4,7 +4,6 @@ Combines graph search, AI response generation, and evaluation into a single pipe
 """
 
 import os
-import re
 import sys
 import json
 import glob
@@ -35,35 +34,6 @@ from config.evaluation_config.constants import (
 )
 from config.evaluation_config.response_prompt import get_response_system_prompt
 from retry import retry_with_backoff
-
-
-# ============================================================================
-# Helpers
-# ============================================================================
-
-
-def _safe_json_loads(raw: str) -> dict:
-    """Parse JSON, tolerating invalid escape sequences from LLM output.
-
-    Repeatedly strips lone backslashes that don't form valid JSON escapes
-    until parsing succeeds (handles nested cases like \\\\d -> \\d -> d).
-    """
-    text = raw
-    for _ in range(5):  # at most 5 rounds
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            prev = text
-            text = re.sub(
-                r'\\(?!(["\\/bfnrt]|u[0-9a-fA-F]{4}))',
-                '',
-                text,
-            )
-            if text == prev:
-                # No more substitutions possible; raise original error
-                break
-    # Final attempt — will raise if still broken
-    return json.loads(text)
 
 
 # ============================================================================
@@ -577,25 +547,29 @@ Examples of CORRECT responses:
 - Golden and response have same key information with different, but commonly acceptable names e.g. NYC or New York may be used to refer to New York City
 - Response adds conversational elements but preserves all essential details from golden answer
 
-Please provide your evaluation as JSON with keys "correct" (boolean) and "reasoning" (string).
+Provide your evaluation.
 """
 
-    response = await retry_with_backoff(
-        llm_client.chat.completions.create,
-        model=LLM_JUDGE_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": grading_prompt},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.0,
+    async def _parse():
+        response = await llm_client.beta.chat.completions.parse(
+            model=LLM_JUDGE_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": grading_prompt},
+            ],
+            response_format=Grade,
+            temperature=0.0,
+        )
+        result = response.choices[0].message.parsed
+        if result is None:
+            raise ValueError(f"LLM judge returned unparseable response for '{question[:60]}'")
+        return result
+
+    result = await retry_with_backoff(
+        _parse,
         description=f"grade response for '{question[:60]}'",
     )
-
-    raw_content = response.choices[0].message.content
-    result = _safe_json_loads(raw_content)
-
-    return bool(result["correct"]), result["reasoning"]
+    return result.correct, result.reasoning
 
 
 # ============================================================================
@@ -676,30 +650,35 @@ For your evaluation:
 - Historical facts (past date ranges) count as present information
 - Provide clear reasoning explaining your completeness assessment
 
-Please evaluate the context completeness as JSON with keys "completeness" (one of "COMPLETE", "PARTIAL", or "INSUFFICIENT"), "reasoning" (string), "missing_elements" (list of strings), and "present_elements" (list of strings).
+Provide your evaluation.
 """
 
-    response = await retry_with_backoff(
-        llm_client.chat.completions.create,
-        model=LLM_JUDGE_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": completeness_prompt},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.0,
+    async def _parse():
+        response = await llm_client.beta.chat.completions.parse(
+            model=LLM_JUDGE_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": completeness_prompt},
+            ],
+            response_format=CompletenessGrade,
+            temperature=0.0,
+        )
+        result = response.choices[0].message.parsed
+        if result is None:
+            raise ValueError(f"LLM judge returned unparseable response for '{question[:60]}'")
+        return result
+
+    result = await retry_with_backoff(
+        _parse,
         description=f"evaluate completeness for '{question[:60]}'",
     )
-
-    raw_content = response.choices[0].message.content
-    result = _safe_json_loads(raw_content)
-    completeness_grade = result["completeness"].strip().upper()
+    completeness_grade = result.completeness.strip().upper()
 
     return (
         completeness_grade,
-        result["reasoning"],
-        result.get("missing_elements", []),
-        result.get("present_elements", []),
+        result.reasoning,
+        result.missing_elements,
+        result.present_elements,
     )
 
 
@@ -897,12 +876,14 @@ async def evaluate_all_questions(
 
         async def _run_one(test_case):
             nonlocal completed
+            query = test_case["query"]
+
             async with semaphore:
                 result = await process_single_query(
                     zep_client,
                     llm_client,
                     zep_user_id,
-                    test_case["query"],
+                    query,
                     test_case["golden_answer"],
                     doc_graph_id=doc_graph_id,
                     user_summary=user_summary,

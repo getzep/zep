@@ -364,21 +364,26 @@ async def add_telemetry_to_zep(
 
 async def poll_task_ids(
     zep_client: AsyncZep, tasks: list[tuple[str, int]], label: str
-) -> int:
+) -> dict:
     """
     Poll tasks sequentially until all are completed.
     Each task gets a timeout proportional to its episode count:
     timeout = num_episodes * POLL_TIMEOUT_PER_EPISODE.
     The clock for each task starts only after the previous task completes.
-    Returns number of completed tasks.
+    Returns dict with succeeded/failed counts, timing, and episode stats.
     """
     if not tasks:
         print(f"  [{label}] No tasks to poll")
-        return 0
+        return {
+            "succeeded": 0, "failed": 0, "total_episodes": 0,
+            "elapsed_seconds": 0, "avg_seconds_per_episode": 0,
+        }
 
     total_tasks = len(tasks)
+    total_episodes = sum(n for _, n in tasks)
     succeeded_count = 0
     failed_count = 0
+    poll_start = time()
 
     for task_id, num_episodes in tasks:
         task_timeout = num_episodes * POLL_TIMEOUT_PER_EPISODE
@@ -402,13 +407,23 @@ async def poll_task_ids(
                 pass  # Task may not be available yet
             await asyncio.sleep(POLL_INTERVAL)
         else:
+            elapsed = time() - poll_start
+            avg = elapsed / total_episodes if total_episodes else 0
             print(
                 f"  ⚠ [{label}] Task {task_id} ({num_episodes} episodes) "
                 f"timed out after {task_timeout}s"
             )
             done = succeeded_count + failed_count
             print(f"  ⚠ [{label}] Stopping poll — {done}/{total_tasks} done")
-            return succeeded_count
+            return {
+                "succeeded": succeeded_count, "failed": failed_count,
+                "total_episodes": total_episodes,
+                "elapsed_seconds": round(elapsed, 1),
+                "avg_seconds_per_episode": round(avg, 1),
+            }
+
+    elapsed = time() - poll_start
+    avg = elapsed / total_episodes if total_episodes else 0
 
     if failed_count:
         print(
@@ -417,7 +432,13 @@ async def poll_task_ids(
         )
     else:
         print(f"  ✓ [{label}] All {total_tasks} tasks succeeded")
-    return succeeded_count
+
+    return {
+        "succeeded": succeeded_count, "failed": failed_count,
+        "total_episodes": total_episodes,
+        "elapsed_seconds": round(elapsed, 1),
+        "avg_seconds_per_episode": round(avg, 1),
+    }
 
 
 
@@ -836,29 +857,87 @@ async def main():
                 f"Checking every {POLL_INTERVAL}s (timeout: {POLL_TIMEOUT_PER_EPISODE}s per episode)\n"
             )
 
-            poll_coros = []
-
-            # Poll each user's conversation tasks (from thread.add_messages_batch)
-            for user_data in run_data:
-                tasks = user_data.get("conversation_tasks", [])
-                if tasks:
-                    label = f"{user_data['zep_user_id']} conversations"
-                    poll_coros.append(
-                        poll_task_ids(zep_client, tasks, label)
+            async def poll_user_graph(user_data):
+                """Poll all tasks for a single user graph, return per-graph timing."""
+                user_id = user_data["zep_user_id"]
+                conv_tasks = user_data.get("conversation_tasks", [])
+                tele_tasks = user_data.get("telemetry_tasks", [])
+                if not conv_tasks and not tele_tasks:
+                    return None
+                graph_start = time()
+                conv_result = (
+                    await poll_task_ids(
+                        zep_client, conv_tasks, f"{user_id} conversations"
                     )
-
-            # Poll each user's telemetry tasks (from graph.add_batch)
-            for user_data in run_data:
-                tasks = user_data.get("telemetry_tasks", [])
-                if tasks:
-                    label = f"{user_data['zep_user_id']} telemetry"
-                    poll_coros.append(
-                        poll_task_ids(zep_client, tasks, label)
+                    if conv_tasks else None
+                )
+                tele_result = (
+                    await poll_task_ids(
+                        zep_client, tele_tasks, f"{user_id} telemetry"
                     )
+                    if tele_tasks else None
+                )
+                graph_elapsed = time() - graph_start
+                total_ep = (
+                    (conv_result["total_episodes"] if conv_result else 0)
+                    + (tele_result["total_episodes"] if tele_result else 0)
+                )
+                succeeded = (
+                    (conv_result["succeeded"] if conv_result else 0)
+                    + (tele_result["succeeded"] if tele_result else 0)
+                )
+                failed = (
+                    (conv_result["failed"] if conv_result else 0)
+                    + (tele_result["failed"] if tele_result else 0)
+                )
+                avg = graph_elapsed / total_ep if total_ep else 0
+                print(
+                    f"  [{user_id}] Graph total: {graph_elapsed:.1f}s | "
+                    f"{total_ep} episodes | {avg:.1f}s avg/episode"
+                )
+                return {
+                    "graph_id": user_id,
+                    "total_seconds": round(graph_elapsed, 1),
+                    "total_episodes": total_ep,
+                    "avg_seconds_per_episode": round(avg, 1),
+                    "succeeded": succeeded,
+                    "failed": failed,
+                }
+
+            poll_coros = [
+                poll_user_graph(ud) for ud in run_data
+                if ud.get("conversation_tasks") or ud.get("telemetry_tasks")
+            ]
 
             if poll_coros:
-                await asyncio.gather(*poll_coros)
+                poll_start = time()
+                raw_results = await asyncio.gather(*poll_coros)
+                poll_elapsed = time() - poll_start
+
+                per_graph = [r for r in raw_results if r is not None]
+                total_episodes = sum(r["total_episodes"] for r in per_graph)
+                avg_per_episode = (
+                    poll_elapsed / total_episodes if total_episodes else 0
+                )
+
                 print("\n✓ All user graphs finished processing")
+                print(f"\n  Overall ingestion processing time: {poll_elapsed:.1f}s")
+                print(f"  Total episodes: {total_episodes}")
+                print(f"  Avg time per episode: {avg_per_episode:.1f}s")
+
+                # Save timing to manifest
+                timing = {
+                    "total_seconds": round(poll_elapsed, 1),
+                    "total_episodes": total_episodes,
+                    "avg_seconds_per_episode": round(avg_per_episode, 1),
+                    "per_graph": per_graph,
+                }
+                manifest_path = os.path.join(run_dir, "manifest.json")
+                with open(manifest_path, "r") as f:
+                    manifest = json.load(f)
+                manifest["ingestion_timing"] = timing
+                with open(manifest_path, "w") as f:
+                    json.dump(manifest, indent=2, fp=f)
             else:
                 print("No graphs to poll.")
 

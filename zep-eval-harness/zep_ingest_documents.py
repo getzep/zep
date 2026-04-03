@@ -303,21 +303,26 @@ async def setup_graph(
 
 async def poll_task_ids(
     zep_client: AsyncZep, tasks: list[tuple[str, int]], label: str
-) -> int:
+) -> dict:
     """
     Poll tasks sequentially until all are completed.
     Each task gets a timeout proportional to its episode count:
     timeout = num_episodes * POLL_TIMEOUT_PER_EPISODE.
     The clock for each task starts only after the previous task completes.
-    Returns number of completed tasks.
+    Returns dict with succeeded/failed counts, timing, and episode stats.
     """
     if not tasks:
         print(f"  [{label}] No tasks to poll")
-        return 0
+        return {
+            "succeeded": 0, "failed": 0, "total_episodes": 0,
+            "elapsed_seconds": 0, "avg_seconds_per_episode": 0,
+        }
 
     total_tasks = len(tasks)
+    total_episodes = sum(n for _, n in tasks)
     succeeded_count = 0
     failed_count = 0
+    poll_start = time()
 
     for task_id, num_episodes in tasks:
         task_timeout = num_episodes * POLL_TIMEOUT_PER_EPISODE
@@ -341,13 +346,23 @@ async def poll_task_ids(
                 pass  # Task may not be available yet
             await asyncio.sleep(POLL_INTERVAL)
         else:
+            elapsed = time() - poll_start
+            avg = elapsed / total_episodes if total_episodes else 0
             print(
                 f"  ⚠ [{label}] Task {task_id} ({num_episodes} episodes) "
                 f"timed out after {task_timeout}s"
             )
             done = succeeded_count + failed_count
             print(f"  ⚠ [{label}] Stopping poll — {done}/{total_tasks} done")
-            return succeeded_count
+            return {
+                "succeeded": succeeded_count, "failed": failed_count,
+                "total_episodes": total_episodes,
+                "elapsed_seconds": round(elapsed, 1),
+                "avg_seconds_per_episode": round(avg, 1),
+            }
+
+    elapsed = time() - poll_start
+    avg = elapsed / total_episodes if total_episodes else 0
 
     if failed_count:
         print(
@@ -356,7 +371,13 @@ async def poll_task_ids(
         )
     else:
         print(f"  ✓ [{label}] All {total_tasks} tasks succeeded")
-    return succeeded_count
+
+    return {
+        "succeeded": succeeded_count, "failed": failed_count,
+        "total_episodes": total_episodes,
+        "elapsed_seconds": round(elapsed, 1),
+        "avg_seconds_per_episode": round(avg, 1),
+    }
 
 
 # ============================================================================
@@ -530,6 +551,7 @@ async def main():
 
         from openai import AsyncOpenAI
         from config.constants import GEMINI_BASE_URL
+        from config.document_chunking_config.constants import CHUNK_OVERLAP
         from zep_chunk_documents import load_documents, run_chunking
 
         openai_client = AsyncOpenAI(api_key=google_api_key, base_url=GEMINI_BASE_URL)
@@ -542,11 +564,13 @@ async def main():
         print("INLINE CHUNKING")
         print("=" * 80)
         print(f"  Chunk size: {args.chunk_size}")
+        print(f"  Chunk overlap: {CHUNK_OVERLAP}")
         print(f"  Documents: {len(documents)}")
         print("=" * 80)
 
         chunk_set_dir = await run_chunking(
             openai_client, documents, args.chunk_size,
+            chunk_overlap=CHUNK_OVERLAP,
         )
         chunk_set_number = int(os.path.basename(chunk_set_dir).split("_")[0])
         print()  # Blank line before ingestion output
@@ -659,8 +683,40 @@ async def main():
             print(f"Checking every {POLL_INTERVAL}s (timeout: {POLL_TIMEOUT_PER_EPISODE}s per episode)\n")
 
             if tasks:
-                await poll_task_ids(zep_client, tasks, graph_id)
+                poll_start = time()
+                result = await poll_task_ids(zep_client, tasks, graph_id)
+                poll_elapsed = time() - poll_start
+
+                total_episodes = result["total_episodes"]
+                avg_per_episode = (
+                    poll_elapsed / total_episodes if total_episodes else 0
+                )
+
                 print("\n✓ Document graph finished processing")
+                print(f"\n  Ingestion processing time: {poll_elapsed:.1f}s")
+                print(f"  Total episodes: {total_episodes}")
+                print(f"  Avg time per episode: {avg_per_episode:.1f}s")
+
+                # Save timing to manifest
+                timing = {
+                    "total_seconds": round(poll_elapsed, 1),
+                    "total_episodes": total_episodes,
+                    "avg_seconds_per_episode": round(avg_per_episode, 1),
+                    "per_graph": [{
+                        "graph_id": graph_id,
+                        "total_seconds": result["elapsed_seconds"],
+                        "total_episodes": result["total_episodes"],
+                        "avg_seconds_per_episode": result["avg_seconds_per_episode"],
+                        "succeeded": result["succeeded"],
+                        "failed": result["failed"],
+                    }],
+                }
+                manifest_path = os.path.join(run_dir, "manifest.json")
+                with open(manifest_path, "r") as f:
+                    manifest = json.load(f)
+                manifest["ingestion_timing"] = timing
+                with open(manifest_path, "w") as f:
+                    json.dump(manifest, indent=2, fp=f)
             else:
                 print("No tasks to poll.")
 
