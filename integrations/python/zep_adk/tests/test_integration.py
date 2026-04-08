@@ -60,10 +60,12 @@ SESSION_1_ID = f"adk-integ-s1-{_suffix}"
 SESSION_2_ID = f"adk-integ-s2-{_suffix}"
 SESSION_3_ID = f"adk-integ-s3-{_suffix}"
 SESSION_4_ID = f"adk-integ-s4-{_suffix}"
+SESSION_5_ID = f"adk-integ-s5-{_suffix}"
 THREAD_1_ID = f"adk-integ-t1-{_suffix}"
 THREAD_2_ID = f"adk-integ-t2-{_suffix}"
 THREAD_3_ID = f"adk-integ-t3-{_suffix}"
 THREAD_4_ID = f"adk-integ-t4-{_suffix}"
+THREAD_5_ID = f"adk-integ-t5-{_suffix}"
 APP_NAME = "zep-adk-integ-test"
 
 FIRST_NAME = "IntegTest"
@@ -178,7 +180,7 @@ async def main() -> None:
     print("Zep ADK Integration Test")
     print(f"{'=' * 70}")
     print(f"  User ID:  {USER_ID}")
-    print(f"  Threads:  {THREAD_1_ID}, {THREAD_2_ID}, {THREAD_3_ID}, {THREAD_4_ID}")
+    print(f"  Threads:  {THREAD_1_ID}, {THREAD_2_ID}, {THREAD_3_ID}, {THREAD_4_ID}, {THREAD_5_ID}")
     print(f"{'=' * 70}\n")
 
     try:
@@ -442,10 +444,73 @@ async def main() -> None:
             passed = False
 
         # ==================================================================
-        # Step 11: Tool-call message persistence — verify only final
+        # Step 11: Session 5 — ZepGraphSearchTool with scope="auto"
+        # ==================================================================
+        print("\n[Step 11] Session 5: testing ZepGraphSearchTool with scope='auto'...")
+
+        # Build a separate agent with scope pinned to "auto"
+        auto_agent = Agent(
+            name="zep_integ_auto_scope_agent",
+            model="gemini-2.5-flash",
+            description="A test agent with auto-scope graph search.",
+            instruction=(
+                "You are a helpful assistant. When asked about the user, "
+                "use the search_user_memory tool. Be concise."
+            ),
+            tools=[
+                ZepContextTool(zep_client=zep_client, ignore_roles=["assistant"]),
+                ZepGraphSearchTool(
+                    zep_client=zep_client,
+                    name="search_user_memory",
+                    description="Search the user's knowledge graph.",
+                    scope="auto",
+                ),
+            ],
+            after_model_callback=create_after_model_callback(
+                zep_client=zep_client, ignore_roles=["assistant"],
+            ),
+        )
+
+        auto_runner = Runner(
+            agent=auto_agent, app_name=APP_NAME, session_service=session_service,
+        )
+
+        await session_service.create_session(
+            app_name=APP_NAME,
+            user_id=USER_ID,
+            session_id=SESSION_5_ID,
+            state={
+                "zep_thread_id": THREAD_5_ID,
+                "zep_first_name": FIRST_NAME,
+                "zep_last_name": LAST_NAME,
+                "zep_email": EMAIL,
+            },
+        )
+
+        auto_search_message = (
+            "Use the search_user_memory tool to search for what you know "
+            "about where I live. Tell me exactly what the search returns."
+        )
+        print(f"  User:  {auto_search_message}")
+        response5 = await send_message(auto_runner, SESSION_5_ID, USER_ID, auto_search_message)
+        print(f"  Agent: {response5}\n")
+
+        response5_lower = response5.lower()
+        auto_keywords = ["portland", "oregon"]
+        found_auto_kw = [kw for kw in auto_keywords if kw in response5_lower]
+        print(f"  Auto-scope keywords found: {found_auto_kw}")
+
+        passed &= check(
+            "Auto-scope graph search returned location facts",
+            len(found_auto_kw) > 0,
+            f"found={found_auto_kw}, expected_one_of={auto_keywords}",
+        )
+
+        # ==================================================================
+        # Step 12: Tool-call message persistence — verify only final
         # assistant message is persisted (not intermediate "thoughts")
         # ==================================================================
-        print("\n[Step 11] Session 4: tool-call persistence test (get_current_weather)...")
+        print("\n[Step 12] Session 4: tool-call persistence test (get_current_weather)...")
 
         await session_service.create_session(
             app_name=APP_NAME,

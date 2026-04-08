@@ -49,9 +49,11 @@ _SEARCH_PARAMS: dict[str, dict[str, Any]] = {
         "type": "STRING",
         "description": (
             "What to search for: 'edges' for facts and relationships, "
-            "'nodes' for entity summaries, 'episodes' for raw messages."
+            "'nodes' for entities and their summaries, "
+            "'episodes' for raw text data (unstructured text, messages, or JSON), "
+            "'auto' to let Zep decide the best mix of results."
         ),
-        "enum": ["edges", "nodes", "episodes"],
+        "enum": ["edges", "nodes", "episodes", "auto"],
         "default": "edges",
     },
     "reranker": {
@@ -110,6 +112,10 @@ class ZepGraphSearchTool(BaseTool):
     to the given value.  Parameters not pinned are exposed in the model's tool
     schema with sensible defaults.
 
+    Pinning an optional parameter to ``None`` hides it from the model schema
+    without passing it to the Zep SDK -- useful for suppressing irrelevant
+    parameters (e.g. ``mmr_lambda=None`` when the reranker is not ``mmr``).
+
     Args:
         zep_client: An initialised ``AsyncZep`` client.
         graph_id: Optional fixed graph ID for shared-graph search.  When set,
@@ -160,6 +166,14 @@ class ZepGraphSearchTool(BaseTool):
             raise ValueError(
                 f"Unknown pinned parameters: {unknown}. Allowed: {sorted(allowed_pinned)}"
             )
+        # Pinning to None means "hide from model but don't send to SDK".
+        # This is only valid for optional parameters.
+        for k, v in pinned.items():
+            if v is None and _SEARCH_PARAMS.get(k, {}).get("required"):
+                raise ValueError(
+                    f"Cannot pin required parameter '{k}' to None. "
+                    "Only optional parameters can be hidden with None."
+                )
 
         # Store pinned search params
         self._pinned: dict[str, Any] = dict(pinned)
@@ -229,9 +243,12 @@ class ZepGraphSearchTool(BaseTool):
             search_kwargs["user_id"] = user_id
 
         # --- Merge params: pinned > model-provided > default ----------
+        # A param pinned to None is hidden from the model and omitted from
+        # the SDK call (used to suppress optional params from the schema).
         for param_name, param_def in _SEARCH_PARAMS.items():
             if param_name in self._pinned:
-                search_kwargs[param_name] = self._pinned[param_name]
+                if self._pinned[param_name] is not None:
+                    search_kwargs[param_name] = self._pinned[param_name]
             elif param_name in args:
                 search_kwargs[param_name] = args[param_name]
             elif "default" in param_def:
@@ -279,7 +296,13 @@ class ZepGraphSearchTool(BaseTool):
         """Format search results as readable text for the model."""
         parts: list[str] = []
 
-        if scope == "edges" and result.edges:
+        if scope == "auto":
+            # Auto scope returns a pre-formatted context string in result.context
+            # rather than populating the individual edges/nodes/episodes lists.
+            context = getattr(result, "context", None)
+            if context and context.strip():
+                return context.strip()
+        elif scope == "edges" and result.edges:
             for edge in result.edges:
                 if edge.fact:
                     parts.append(f"- {edge.fact}")
