@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 (2026-04-07)
+
+### Added
+
+- `auto` scope for `ZepGraphSearchTool` -- lets Zep decide the best mix of edges, nodes, and episodes to return.
+- Support for pinning optional parameters to `None` to hide them from the model schema without passing them to the SDK.
+
+### Changed
+
+- Improved `scope` parameter descriptions to be more precise about what each scope searches.
+
 ## 0.1.0 (2026-03-23)
 
 ### Added
