@@ -65,7 +65,6 @@ THREAD_1_ID = f"adk-integ-t1-{_suffix}"
 THREAD_2_ID = f"adk-integ-t2-{_suffix}"
 THREAD_3_ID = f"adk-integ-t3-{_suffix}"
 THREAD_4_ID = f"adk-integ-t4-{_suffix}"
-THREAD_5_ID = f"adk-integ-t5-{_suffix}"
 APP_NAME = "zep-adk-integ-test"
 
 FIRST_NAME = "IntegTest"
@@ -180,7 +179,7 @@ async def main() -> None:
     print("Zep ADK Integration Test")
     print(f"{'=' * 70}")
     print(f"  User ID:  {USER_ID}")
-    print(f"  Threads:  {THREAD_1_ID}, {THREAD_2_ID}, {THREAD_3_ID}, {THREAD_4_ID}, {THREAD_5_ID}")
+    print(f"  Threads:  {THREAD_1_ID}, {THREAD_2_ID}, {THREAD_3_ID}, {THREAD_4_ID}")
     print(f"{'=' * 70}\n")
 
     try:
@@ -448,17 +447,18 @@ async def main() -> None:
         # ==================================================================
         print("\n[Step 11] Session 5: testing ZepGraphSearchTool with scope='auto'...")
 
-        # Build a separate agent with scope pinned to "auto"
+        # Build a separate agent with ONLY the graph search tool (no
+        # ZepContextTool) so the model has no pre-injected memory and must
+        # call the search tool to answer questions about the user.
         auto_agent = Agent(
             name="zep_integ_auto_scope_agent",
             model="gemini-2.5-flash",
             description="A test agent with auto-scope graph search.",
             instruction=(
-                "You are a helpful assistant. When asked about the user, "
-                "use the search_user_memory tool. Be concise."
+                "You have no prior knowledge about the user. You MUST use "
+                "the search_user_memory tool to answer any question about them."
             ),
             tools=[
-                ZepContextTool(zep_client=zep_client, ignore_roles=["assistant"]),
                 ZepGraphSearchTool(
                     zep_client=zep_client,
                     name="search_user_memory",
@@ -466,10 +466,6 @@ async def main() -> None:
                     scope="auto",
                 ),
             ],
-            after_model_callback=create_after_model_callback(
-                zep_client=zep_client,
-                ignore_roles=["assistant"],
-            ),
         )
 
         auto_runner = Runner(
@@ -482,12 +478,7 @@ async def main() -> None:
             app_name=APP_NAME,
             user_id=USER_ID,
             session_id=SESSION_5_ID,
-            state={
-                "zep_thread_id": THREAD_5_ID,
-                "zep_first_name": FIRST_NAME,
-                "zep_last_name": LAST_NAME,
-                "zep_email": EMAIL,
-            },
+            state={"zep_user_id": USER_ID},
         )
 
         auto_search_message = (
