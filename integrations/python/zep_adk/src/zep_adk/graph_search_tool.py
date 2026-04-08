@@ -299,7 +299,7 @@ class ZepGraphSearchTool(BaseTool):
         if scope == "auto":
             # Auto scope returns a pre-formatted context string in result.context
             # rather than populating the individual edges/nodes/episodes lists.
-            context = getattr(result, "context", None)
+            context: str | None = getattr(result, "context", None)
             if context and context.strip():
                 return context.strip()
         elif scope == "edges" and result.edges:
