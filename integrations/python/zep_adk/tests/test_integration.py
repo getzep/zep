@@ -467,12 +467,15 @@ async def main() -> None:
                 ),
             ],
             after_model_callback=create_after_model_callback(
-                zep_client=zep_client, ignore_roles=["assistant"],
+                zep_client=zep_client,
+                ignore_roles=["assistant"],
             ),
         )
 
         auto_runner = Runner(
-            agent=auto_agent, app_name=APP_NAME, session_service=session_service,
+            agent=auto_agent,
+            app_name=APP_NAME,
+            session_service=session_service,
         )
 
         await session_service.create_session(
