@@ -1,0 +1,86 @@
+{
+  "run_number": 1,
+  "type": "users",
+  "timestamp": "2026-03-31T22:24:36.839291",
+  "ontology": {
+    "type": "custom",
+    "default_ontology_disabled": true,
+    "custom_entity_types": [
+      "Person",
+      "Location",
+      "Organization",
+      "Event",
+      "Item"
+    ],
+    "custom_edge_types": [
+      "RELATED_TO",
+      "LOCATED_AT",
+      "WORKS_FOR",
+      "OWNS",
+      "SCHEDULED_AT",
+      "INVOLVES"
+    ]
+  },
+  "custom_instructions": {
+    "enabled": true,
+    "instruction_names": [
+      "real_estate_domain",
+      "property_and_location",
+      "household_context"
+    ]
+  },
+  "user_summary_instructions": {
+    "enabled": true,
+    "instruction_names": [
+      "property_requirements",
+      "budget_and_finances",
+      "location_preferences",
+      "household_composition",
+      "work_and_lifestyle"
+    ]
+  },
+  "users": [
+    {
+      "base_user_id": "zep_eval_test_user_001",
+      "zep_user_id": "zep_eval_test_user_001_3f701979",
+      "first_name": "Sarah",
+      "last_name": "Chen",
+      "thread_ids": [
+        "conv_002_3f701979",
+        "conv_001_3f701979"
+      ],
+      "conversation_episode_uuids": [
+        "e68cfa57-b6c4-47f5-8341-57400dc5739c",
+        "48af218d-b04e-4e73-8ede-650940a29819",
+        "c7dbdbb2-64fd-4074-9d7d-c97ebf4bd640",
+        "81a608ff-d6d9-4be5-84f0-37522acffe24"
+      ],
+      "telemetry_episode_uuids": [
+        "b5f9f87e-f9af-4f80-8159-4fd5430d26b2"
+      ],
+      "num_conversations": 2,
+      "num_telemetry_files": 1
+    },
+    {
+      "base_user_id": "zep_eval_test_user_002",
+      "zep_user_id": "zep_eval_test_user_002_8fea234c",
+      "first_name": "Marcus",
+      "last_name": "Rivera",
+      "thread_ids": [
+        "conv_002_8fea234c",
+        "conv_001_8fea234c"
+      ],
+      "conversation_episode_uuids": [
+        "213d5d61-1a0c-4572-9f89-b062b9c83112",
+        "4899edb7-fa3f-4c10-8317-4e02505b0ac7",
+        "6768822b-3a9d-4f92-a764-d5716f8ab17e",
+        "ec953430-cdb9-46c7-a785-5de849f4a44d"
+      ],
+      "telemetry_episode_uuids": [
+        "4796fbc7-f00a-46d6-8bf9-10b6519edb1d"
+      ],
+      "num_conversations": 2,
+      "num_telemetry_files": 1
+    }
+  ]
+}

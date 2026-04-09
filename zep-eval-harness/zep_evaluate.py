@@ -7,9 +7,11 @@ import os
 import sys
 import json
 import glob
+import shutil
 import asyncio
 import argparse
 import statistics
+from collections import defaultdict
 from time import time
 from datetime import datetime
 from typing import List, Dict, Any, Tuple, Optional
@@ -19,17 +21,19 @@ from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
 from zep_cloud.client import AsyncZep
 
-from constants import (
+from config.constants import GEMINI_BASE_URL
+from config.evaluation_config.constants import (
     DOC_ENTITIES_LIMIT,
     DOC_EPISODES_LIMIT,
     DOC_FACTS_LIMIT,
-    GEMINI_BASE_URL,
     LLM_JUDGE_MODEL,
     LLM_RESPONSE_MODEL,
     USER_ENTITIES_LIMIT,
     USER_EPISODES_LIMIT,
     USER_FACTS_LIMIT,
 )
+from config.evaluation_config.response_prompt import get_response_system_prompt
+from retry import retry_with_backoff
 
 
 # ============================================================================
@@ -67,13 +71,14 @@ class CompletenessGrade(BaseModel):
 # ============================================================================
 
 
-def get_latest_run() -> Optional[Tuple[int, str]]:
+def get_latest_run(run_type: str) -> Optional[Tuple[int, str]]:
     """
-    Get the latest run number and directory.
+    Get the latest run number and directory for a given run type.
+    run_type is "users" or "documents".
     Returns tuple of (run_number, run_dir) or None if no runs exist.
-    Format: runs/{number}_{ISO8601_timestamp}/
+    Format: runs/{run_type}/{number}_{ISO8601_timestamp}/
     """
-    existing_runs = glob.glob("runs/*")
+    existing_runs = glob.glob(f"runs/{run_type}/*")
 
     if not existing_runs:
         return None
@@ -84,47 +89,57 @@ def get_latest_run() -> Optional[Tuple[int, str]]:
     if not existing_runs:
         return None
 
-    # Sort by directory name (which includes timestamp)
-    existing_runs.sort(reverse=True)
+    # Sort by run number (not lexicographic — avoids 9 > 10 bug)
+    def extract_run_num(path):
+        try:
+            return int(os.path.basename(path).split("_")[0])
+        except (IndexError, ValueError):
+            return -1
+
+    existing_runs.sort(key=extract_run_num, reverse=True)
     latest_run_dir = existing_runs[0]
-
-    # Extract run number (format: runs/1_timestamp)
-    try:
-        dir_name = os.path.basename(latest_run_dir)
-        run_num = int(dir_name.split("_")[0])
-        return run_num, latest_run_dir
-    except (IndexError, ValueError):
+    run_num = extract_run_num(latest_run_dir)
+    if run_num < 0:
         return None
+    return run_num, latest_run_dir
 
 
-def load_run_manifest(run_number: Optional[int] = None) -> Tuple[Dict[str, Any], str]:
+def load_run_manifest(run_number: Optional[int], run_type: str) -> Tuple[Dict[str, Any], str]:
     """
-    Load the run manifest for evaluation.
-    If run_number is None, loads the latest run.
+    Load a run manifest for evaluation.
+    run_type is "users" or "documents".
+    If run_number is None, loads the latest run of that type.
     Returns tuple of (manifest, run_dir).
     """
     if run_number is None:
-        result = get_latest_run()
+        result = get_latest_run(run_type)
         if result is None:
             raise FileNotFoundError(
-                "No runs found in runs/ directory. Please run zep_ingest.py first."
+                f"No {run_type} runs found in runs/{run_type}/ directory. "
+                f"Please run zep_ingest_{run_type}.py first."
             )
         run_number, run_dir = result
-        print(f"Using latest run: #{run_number}")
+        print(f"Using latest {run_type} run: #{run_number}")
     else:
-        # Find run directory by number (format: runs/{number}_timestamp)
-        matching_runs = glob.glob(f"runs/{run_number}_*")
+        # Find run directory by number
+        matching_runs = glob.glob(f"runs/{run_type}/{run_number}_*")
         if not matching_runs:
-            raise FileNotFoundError(f"Run #{run_number} not found in runs/ directory.")
+            raise FileNotFoundError(
+                f"{run_type.capitalize()} run #{run_number} not found in runs/{run_type}/ directory."
+            )
         run_dir = matching_runs[0]
-        print(f"Using run: #{run_number}")
+        print(f"Using {run_type} run: #{run_number}")
 
     manifest_path = os.path.join(run_dir, "manifest.json")
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
 
     print(f"Loaded manifest from: {manifest_path}")
-    print(f"Users: {len(manifest['users'])}")
+    if run_type == "users":
+        print(f"Users: {len(manifest['users'])}")
+    elif run_type == "documents":
+        print(f"Document graph: {manifest.get('graph_id', 'N/A')}")
+        print(f"Chunks: {manifest.get('num_chunks', 0)}")
     print(f"Timestamp: {manifest['timestamp']}\n")
 
     return manifest, run_dir
@@ -186,55 +201,67 @@ async def perform_graph_search(
     print(f"Searching [{user_id}]: '{query}'")
 
     # Build all search tasks for maximum parallelism
-    tasks: dict[str, asyncio.Task] = {}
+    tasks: dict[str, Any] = {}
 
     # User graph searches
-    tasks["user_nodes"] = zep_client.graph.search(
+    tasks["user_nodes"] = retry_with_backoff(
+        zep_client.graph.search,
         user_id=user_id,
         query=query,
         scope="nodes",
         limit=USER_ENTITIES_LIMIT,
         reranker="cross_encoder",
+        description=f"search user nodes [{user_id}]",
     )
-    tasks["user_edges"] = zep_client.graph.search(
+    tasks["user_edges"] = retry_with_backoff(
+        zep_client.graph.search,
         user_id=user_id,
         query=query,
         scope="edges",
         limit=USER_FACTS_LIMIT,
         reranker="cross_encoder",
+        description=f"search user edges [{user_id}]",
     )
     if include_episodes:
-        tasks["user_episodes"] = zep_client.graph.search(
+        tasks["user_episodes"] = retry_with_backoff(
+            zep_client.graph.search,
             user_id=user_id,
             query=query,
             scope="episodes",
             limit=USER_EPISODES_LIMIT,
             reranker="cross_encoder",
+            description=f"search user episodes [{user_id}]",
         )
 
     # Standalone document graph searches (if enabled)
     if doc_graph_id:
-        tasks["doc_nodes"] = zep_client.graph.search(
+        tasks["doc_nodes"] = retry_with_backoff(
+            zep_client.graph.search,
             graph_id=doc_graph_id,
             query=query,
             scope="nodes",
             limit=DOC_ENTITIES_LIMIT,
             reranker="cross_encoder",
+            description=f"search doc nodes [{doc_graph_id}]",
         )
-        tasks["doc_edges"] = zep_client.graph.search(
+        tasks["doc_edges"] = retry_with_backoff(
+            zep_client.graph.search,
             graph_id=doc_graph_id,
             query=query,
             scope="edges",
             limit=DOC_FACTS_LIMIT,
             reranker="cross_encoder",
+            description=f"search doc edges [{doc_graph_id}]",
         )
         if include_episodes:
-            tasks["doc_episodes"] = zep_client.graph.search(
+            tasks["doc_episodes"] = retry_with_backoff(
+                zep_client.graph.search,
                 graph_id=doc_graph_id,
                 query=query,
                 scope="episodes",
                 limit=DOC_EPISODES_LIMIT,
                 reranker="cross_encoder",
+                description=f"search doc episodes [{doc_graph_id}]",
             )
 
     # Execute all searches in parallel
@@ -440,25 +467,17 @@ async def generate_ai_response(
     Returns:
         Tuple of (AI-generated answer string, prompt token count)
     """
-    system_prompt = f"""
-You are an intelligent AI assistant helping a user with their questions.
+    system_prompt = get_response_system_prompt(context)
 
-You have access to the user's conversation history and relevant information in the CONTEXT.
-
-<CONTEXT>
-{context}
-</CONTEXT>
-
-Using only the information in the CONTEXT, answer the user's questions. Keep responses SHORT - one sentence when possible.
-"""
-
-    response = await llm_client.chat.completions.create(
+    response = await retry_with_backoff(
+        llm_client.chat.completions.create,
         model=LLM_RESPONSE_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": question},
         ],
         temperature=0.0,
+        description=f"generate response for '{question[:60]}'",
     )
 
     answer = response.choices[0].message.content.strip() if response.choices else ""
@@ -528,22 +547,29 @@ Examples of CORRECT responses:
 - Golden and response have same key information with different, but commonly acceptable names e.g. NYC or New York may be used to refer to New York City
 - Response adds conversational elements but preserves all essential details from golden answer
 
-Please provide your evaluation as JSON with keys "correct" (boolean) and "reasoning" (string).
+Provide your evaluation.
 """
 
-    response = await llm_client.chat.completions.create(
-        model=LLM_JUDGE_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": grading_prompt},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.0,
+    async def _parse():
+        response = await llm_client.beta.chat.completions.parse(
+            model=LLM_JUDGE_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": grading_prompt},
+            ],
+            response_format=Grade,
+            temperature=0.0,
+        )
+        result = response.choices[0].message.parsed
+        if result is None:
+            raise ValueError(f"LLM judge returned unparseable response for '{question[:60]}'")
+        return result
+
+    result = await retry_with_backoff(
+        _parse,
+        description=f"grade response for '{question[:60]}'",
     )
-
-    result = json.loads(response.choices[0].message.content)
-
-    return bool(result["correct"]), result["reasoning"]
+    return result.correct, result.reasoning
 
 
 # ============================================================================
@@ -624,27 +650,35 @@ For your evaluation:
 - Historical facts (past date ranges) count as present information
 - Provide clear reasoning explaining your completeness assessment
 
-Please evaluate the context completeness as JSON with keys "completeness" (one of "COMPLETE", "PARTIAL", or "INSUFFICIENT"), "reasoning" (string), "missing_elements" (list of strings), and "present_elements" (list of strings).
+Provide your evaluation.
 """
 
-    response = await llm_client.chat.completions.create(
-        model=LLM_JUDGE_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": completeness_prompt},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.0,
-    )
+    async def _parse():
+        response = await llm_client.beta.chat.completions.parse(
+            model=LLM_JUDGE_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": completeness_prompt},
+            ],
+            response_format=CompletenessGrade,
+            temperature=0.0,
+        )
+        result = response.choices[0].message.parsed
+        if result is None:
+            raise ValueError(f"LLM judge returned unparseable response for '{question[:60]}'")
+        return result
 
-    result = json.loads(response.choices[0].message.content)
-    completeness_grade = result["completeness"].strip().upper()
+    result = await retry_with_backoff(
+        _parse,
+        description=f"evaluate completeness for '{question[:60]}'",
+    )
+    completeness_grade = result.completeness.strip().upper()
 
     return (
         completeness_grade,
-        result["reasoning"],
-        result.get("missing_elements", []),
-        result.get("present_elements", []),
+        result.reasoning,
+        result.missing_elements,
+        result.present_elements,
     )
 
 
@@ -681,8 +715,9 @@ async def process_single_query(
     start_time = time()
 
     # Step 1: Search (user graph + optionally document graph, all in parallel)
+    include_episodes = USER_EPISODES_LIMIT > 0 or DOC_EPISODES_LIMIT > 0
     search_results = await perform_graph_search(
-        zep_client, user_id, query, doc_graph_id=doc_graph_id
+        zep_client, user_id, query, include_episodes=include_episodes, doc_graph_id=doc_graph_id
     )
     context = construct_context_block(search_results, user_summary=user_summary)
     search_duration_ms = (time() - start_time) * 1000
@@ -769,17 +804,20 @@ async def evaluate_all_questions(
     manifest: Dict[str, Any],
     test_cases_by_user: Dict[str, List[Dict[str, Any]]],
     doc_graph_id: str | None = None,
+    concurrency: int = 15,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Run the complete evaluation pipeline for all users and their test cases.
 
     Args:
         doc_graph_id: If provided, also search this standalone document graph
+        concurrency: Max concurrent test case evaluations (semaphore limit)
 
     Returns:
         Dictionary mapping user_id to list of evaluation results
     """
     all_results = {}
+    semaphore = asyncio.Semaphore(concurrency)
 
     # Map base user IDs to actual Zep user IDs
     user_mapping = {}
@@ -808,6 +846,7 @@ async def evaluate_all_questions(
         print(f"\n{'='*80}")
         print(f"Evaluating user: {base_user_id} → {zep_user_id}")
         print(f"Test cases: {len(test_cases)}")
+        print(f"Concurrency: {concurrency}")
         if doc_graph_id:
             print(f"Document graph: {doc_graph_id}")
         print(f"{'='*80}\n")
@@ -831,44 +870,38 @@ async def evaluate_all_questions(
             print(f"  Could not retrieve user summary: {e}")
         print()
 
-        # Process queries in batches
-        batch_size = 15
-        user_results = []
+        # Process all test cases concurrently, bounded by semaphore
+        completed = 0
+        total = len(test_cases)
 
-        for i in range(0, len(test_cases), batch_size):
-            batch = test_cases[i : i + batch_size]
-            batch_num = (i // batch_size) + 1
-            total_batches = (len(test_cases) + batch_size - 1) // batch_size
+        async def _run_one(test_case):
+            nonlocal completed
+            query = test_case["query"]
 
-            print(
-                f"Processing batch {batch_num}/{total_batches} ({len(batch)} queries)..."
-            )
-
-            tasks = [
-                process_single_query(
+            async with semaphore:
+                result = await process_single_query(
                     zep_client,
                     llm_client,
                     zep_user_id,
-                    test_case["query"],
+                    query,
                     test_case["golden_answer"],
                     doc_graph_id=doc_graph_id,
                     user_summary=user_summary,
                 )
-                for test_case in batch
-            ]
+            result["test_id"] = test_case.get("id")
+            result["category"] = test_case.get("category")
+            if "needles" in test_case:
+                result["needles"] = test_case["needles"]
+            completed += 1
+            if completed % 10 == 0 or completed == total:
+                print(f"  Progress: {completed}/{total} test cases completed")
+            return result
 
-            batch_results = await asyncio.gather(*tasks)
+        user_results = await asyncio.gather(*[
+            _run_one(tc) for tc in test_cases
+        ])
 
-            # Attach test case metadata (id, category, needles) to results
-            for result, test_case in zip(batch_results, batch):
-                result["test_id"] = test_case.get("id")
-                result["category"] = test_case.get("category")
-                if "needles" in test_case:
-                    result["needles"] = test_case["needles"]
-
-            user_results.extend(batch_results)
-
-        all_results[base_user_id] = user_results
+        all_results[base_user_id] = list(user_results)
 
         print(f"\n✓ Completed evaluation for user {base_user_id}\n")
 
@@ -878,6 +911,38 @@ async def evaluate_all_questions(
 # ============================================================================
 # Step 6: Save and Analyze Results
 # ============================================================================
+
+
+def _compute_scores(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Compute completeness and accuracy scores for a list of result items."""
+    total = len(items)
+    if total == 0:
+        return {
+            "total_tests": 0,
+            "completeness": {
+                "complete": 0, "partial": 0, "insufficient": 0,
+                "complete_rate": 0, "partial_rate": 0, "insufficient_rate": 0,
+            },
+            "accuracy": {"correct": 0, "incorrect": 0, "accuracy_rate": 0},
+        }
+    complete = sum(1 for r in items if r["completeness_grade"] == "COMPLETE")
+    partial = sum(1 for r in items if r["completeness_grade"] == "PARTIAL")
+    insufficient = sum(1 for r in items if r["completeness_grade"] == "INSUFFICIENT")
+    correct = sum(1 for r in items if r["answer_grade"])
+    return {
+        "total_tests": total,
+        "completeness": {
+            "complete": complete, "partial": partial, "insufficient": insufficient,
+            "complete_rate": complete / total * 100,
+            "partial_rate": partial / total * 100,
+            "insufficient_rate": insufficient / total * 100,
+        },
+        "accuracy": {
+            "correct": correct,
+            "incorrect": total - correct,
+            "accuracy_rate": correct / total * 100,
+        },
+    }
 
 
 def calculate_aggregate_statistics(
@@ -1049,25 +1114,82 @@ def calculate_aggregate_statistics(
         },
     }
 
-    return {"user_scores": user_scores, "aggregate_scores": aggregate_scores}
+    # Per-category breakdown
+    category_items = defaultdict(list)
+    for r in all_user_results:
+        cat = r.get("category", "unknown")
+        category_items[cat].append(r)
+    category_scores = {cat: _compute_scores(items) for cat, items in sorted(category_items.items())}
+
+    return {
+        "user_scores": user_scores,
+        "aggregate_scores": aggregate_scores,
+        "category_scores": category_scores,
+    }
+
+
+def _get_next_eval_run_number() -> int:
+    """Get the next evaluation run number by checking existing run directories."""
+    os.makedirs("runs/evaluations", exist_ok=True)
+    existing = glob.glob("runs/evaluations/*")
+    run_numbers = []
+    for d in existing:
+        if not os.path.isdir(d):
+            continue
+        try:
+            run_numbers.append(int(os.path.basename(d).split("_")[0]))
+        except (IndexError, ValueError):
+            continue
+    return max(run_numbers) + 1 if run_numbers else 1
 
 
 def save_results(
-    results: Dict[str, List[Dict[str, Any]]], run_dir: str, manifest: Dict[str, Any]
+    results: Dict[str, List[Dict[str, Any]]],
+    user_manifest: Dict[str, Any],
+    user_run_dir: str,
+    doc_manifest: Optional[Dict[str, Any]] = None,
+    doc_run_dir: Optional[str] = None,
 ):
     """
-    Save evaluation results with comprehensive aggregate statistics to JSON file.
+    Save evaluation results to runs/evaluations/{number}_{timestamp}/.
+    References the parent user and document ingestion runs.
     """
     timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    results_file = os.path.join(run_dir, f"evaluation_results_{timestamp}.json")
+    run_number = _get_next_eval_run_number()
+    eval_run_dir = f"runs/evaluations/{run_number}_{timestamp}"
+    os.makedirs(eval_run_dir, exist_ok=True)
+
+    results_file = os.path.join(eval_run_dir, "results.json")
+
+    # Snapshot the evaluation config used for this run
+    snapshot_dir = os.path.join(eval_run_dir, "evaluation_config_snapshot")
+    shutil.copytree(
+        "config/evaluation_config", snapshot_dir,
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
 
     # Calculate statistics
     stats = calculate_aggregate_statistics(results)
 
+    # Build parent run references
+    parent_runs = {
+        "user_run": {
+            "run_number": user_manifest.get("run_number"),
+            "run_dir": user_run_dir,
+        },
+    }
+    if doc_manifest:
+        parent_runs["document_run"] = {
+            "run_number": doc_manifest.get("run_number"),
+            "run_dir": doc_run_dir,
+            "graph_id": doc_manifest.get("graph_id"),
+        }
+
     # Prepare output structure
     output_data = {
         "evaluation_timestamp": timestamp,
-        "run_number": manifest.get("run_number"),
+        "run_number": run_number,
+        "parent_runs": parent_runs,
         "search_configuration": {
             "user_facts_limit": USER_FACTS_LIMIT,
             "user_entities_limit": USER_ENTITIES_LIMIT,
@@ -1081,6 +1203,7 @@ def save_results(
             "judge_model": LLM_JUDGE_MODEL,
         },
         "aggregate_scores": stats["aggregate_scores"],
+        "category_scores": stats.get("category_scores", {}),
         "user_scores": stats["user_scores"],
         "detailed_results": results,
     }
@@ -1089,10 +1212,15 @@ def save_results(
         json.dump(output_data, f, indent=2)
 
     print(f"\n{'='*80}")
-    print(f"Results saved to: {results_file}")
+    print(f"Evaluation run #{run_number} saved to: {eval_run_dir}/")
     print(f"{'='*80}")
 
     return results_file, stats
+
+
+def _category_label(slug: str) -> str:
+    """Convert a snake_case category slug to a human-readable label."""
+    return slug.replace("_", " ").title()
 
 
 def print_summary(stats: Dict[str, Any]):
@@ -1101,6 +1229,7 @@ def print_summary(stats: Dict[str, Any]):
     """
     aggregate = stats["aggregate_scores"]
     user_scores = stats["user_scores"]
+    category_scores = stats.get("category_scores", {})
 
     if not aggregate:
         print("No results to summarize")
@@ -1141,6 +1270,28 @@ def print_summary(stats: Dict[str, Any]):
     print(
         f"  Complete but wrong: {corr['complete_but_wrong']}/{corr['complete_total']}"
     )
+
+    # Per-Category Breakdown
+    if category_scores:
+        print(f"\n{'='*80}")
+        print("PER-CATEGORY SCORES")
+        print(f"{'='*80}\n")
+        for cat, scores in category_scores.items():
+            label = _category_label(cat)
+            n = scores["total_tests"]
+            c = scores["completeness"]
+            a = scores["accuracy"]
+            print(f"{label} ({n} tests):")
+            print(
+                f"  Completeness: COMPLETE={c['complete_rate']:.1f}%, "
+                f"PARTIAL={c['partial_rate']:.1f}%, "
+                f"INSUFFICIENT={c['insufficient_rate']:.1f}%"
+            )
+            print(
+                f"  Accuracy:     {a['accuracy_rate']:.1f}% "
+                f"({a['correct']}/{n} correct)"
+            )
+            print()
 
     # Timing
     print(f"\nTiming:")
@@ -1194,23 +1345,29 @@ def parse_args():
         description="Zep Eval Harness — Evaluation Script",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
-  uv run zep_evaluate.py                                    # Evaluate latest run (user graphs only)
-  uv run zep_evaluate.py 1                                  # Evaluate run #1
-  uv run zep_evaluate.py --include-document-graph-search    # Also search the shared document graph
-  uv run zep_evaluate.py 2 --include-document-graph-search  # Run #2 with document graph
+  uv run zep_evaluate.py                                    # Evaluate latest user run (no document graph)
+  uv run zep_evaluate.py --user-run 3                       # Evaluate user run #3
+  uv run zep_evaluate.py --doc-run 2                        # Latest user run + document run #2
+  uv run zep_evaluate.py --user-run 3 --doc-run 2           # Specific user run + document run
 """,
     )
     parser.add_argument(
-        "run_number",
-        nargs="?",
+        "--user-run",
         type=int,
         default=None,
-        help="Run number to evaluate (default: latest)",
+        help="User ingestion run number to evaluate (default: latest)",
     )
     parser.add_argument(
-        "--include-document-graph-search",
-        action="store_true",
-        help="Also search the shared standalone document graph for context",
+        "--doc-run",
+        type=int,
+        default=None,
+        help="Document ingestion run number to include for document graph search (optional)",
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=15,
+        help="Max concurrent test case evaluations (default: 15)",
     )
     return parser.parse_args()
 
@@ -1240,31 +1397,37 @@ async def main():
     print("=" * 80)
 
     try:
-        # Load run manifest
-        manifest, run_dir = load_run_manifest(args.run_number)
+        # Load user run manifest (always required)
+        manifest, user_run_dir = load_run_manifest(args.user_run, "users")
 
-        # Resolve document graph ID from manifest if --documents is set
+        # Load document run manifest if --doc-run is specified
         doc_graph_id = None
-        if args.include_document_graph_search:
-            doc_info = manifest.get("documents", {})
-            doc_graph_id = doc_info.get("graph_id")
+        doc_manifest = None
+        doc_run_dir = None
+        if args.doc_run is not None:
+            doc_manifest, doc_run_dir = load_run_manifest(args.doc_run, "documents")
+            doc_graph_id = doc_manifest.get("graph_id")
             if doc_graph_id:
                 print(f"Document graph: {doc_graph_id}")
             else:
-                print("Warning: --include-document-graph-search flag set but no document graph found in manifest")
+                print("Warning: --doc-run specified but no graph_id found in document manifest")
 
         # Load test cases
         test_cases_by_user = await load_all_test_cases()
 
         # Run evaluation
-        print("Starting evaluation...\n")
+        print(f"Starting evaluation (concurrency={args.concurrency})...\n")
         results = await evaluate_all_questions(
             zep_client, llm_client, manifest, test_cases_by_user,
             doc_graph_id=doc_graph_id,
+            concurrency=args.concurrency,
         )
 
         # Save results with aggregate statistics
-        results_file, stats = save_results(results, run_dir, manifest)
+        results_file, stats = save_results(
+            results, manifest, user_run_dir,
+            doc_manifest=doc_manifest, doc_run_dir=doc_run_dir,
+        )
 
         # Print summary
         print_summary(stats)

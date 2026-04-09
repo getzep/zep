@@ -1,7 +1,7 @@
 """
-Zep Custom Ontology
+Zep Custom Ontology — User Graphs
 
-This ontology defines entity and edge types optimized for general conversational assistants.
+Defines the ontology for user conversation graphs (personal assistants).
 
 Design principles:
 - Simple, generic entity types that work across domains
@@ -32,10 +32,7 @@ MAX_LENGTH = 50
 
 
 class Person(EntityModel):
-    """A person mentioned in conversation (family, friends, colleagues, etc.).
-    Entity names should be the person's name.
-    Descriptions should contain relationship to user, age, occupation, or other relevant details.
-    """
+    """A person mentioned in conversation (family, friends, colleagues, etc.)."""
 
     relationship: EntityText = Field(
         default=None,
@@ -46,10 +43,7 @@ class Person(EntityModel):
 
 
 class Location(EntityModel):
-    """A physical place or address.
-    Entity names should be the location name or address.
-    Descriptions should contain address details, purpose, or context about the location.
-    """
+    """A physical place or address."""
 
     location_type: EntityText = Field(
         default=None,
@@ -60,10 +54,7 @@ class Location(EntityModel):
 
 
 class Organization(EntityModel):
-    """A company, institution, or group.
-    Entity names should be the organization name.
-    Descriptions should contain type of organization, services provided, or user's relationship to it.
-    """
+    """A company, institution, or group."""
 
     org_type: EntityText = Field(
         default=None,
@@ -74,10 +65,7 @@ class Organization(EntityModel):
 
 
 class Event(EntityModel):
-    """An appointment, meeting, or scheduled activity.
-    Entity names should describe the event and include date/time if specific.
-    Descriptions should contain location, participants, purpose, and any special details.
-    """
+    """An appointment, meeting, or scheduled activity."""
 
     event_type: EntityText = Field(
         default=None,
@@ -88,10 +76,7 @@ class Event(EntityModel):
 
 
 class Item(EntityModel):
-    """A physical object, pet, or possession mentioned in conversation.
-    Entity names should be the item name or description.
-    Descriptions should contain type, purpose, condition, or other relevant details.
-    """
+    """A physical object, pet, or possession mentioned in conversation."""
 
     item_type: EntityText = Field(
         default=None,
@@ -102,54 +87,78 @@ class Item(EntityModel):
 
 
 # ============================================================================
-# Edge Types (6 relationships, no attributes)
+# Edge Types (6 relationships)
 # ============================================================================
 
 
 class RelatedTo(EdgeModel):
-    """Connects a Person to another Person or to the User.
-    Description should explain the nature of the relationship."""
+    """Connects a Person to another Person or to the User."""
 
-    ...
+    relationship_type: EntityText = Field(
+        default=None,
+        description="family, friend, colleague, neighbor, acquaintance, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class LocatedAt(EdgeModel):
-    """Connects an Event, Person, or Item to a Location.
-    Description can provide additional context about the location relationship."""
+    """Connects a Person, Item, or Organization to a Location."""
 
-    ...
+    context: EntityText = Field(
+        default=None,
+        description="lives_at, works_at, located_in, visits, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class WorksFor(EdgeModel):
-    """Connects a Person to an Organization where they work or are affiliated.
-    Description can include role, duration, or other employment details."""
+    """Connects a Person to an Organization they work for or are affiliated with."""
 
-    ...
+    role: EntityText = Field(
+        default=None,
+        description="The person's role or title at the organization. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class Owns(EdgeModel):
-    """User or Person owns an Item.
-    Description can include acquisition date, condition, or purpose."""
+    """User or Person owns an Item."""
 
-    ...
+    ownership_type: EntityText = Field(
+        default=None,
+        description="owns, leases, rents, borrowed, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class ScheduledAt(EdgeModel):
-    """Connects an Event to a specific date/time or Location.
-    Description should include timing details and any special arrangements."""
+    """Connects an Event to a specific date/time or Location."""
 
-    ...
+    timing: EntityText = Field(
+        default=None,
+        description="The date, time, or timeframe of the event. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 class Involves(EdgeModel):
-    """Connects an Event to a Person, Item, or Organization that participates or is involved.
-    Description should explain the nature of involvement."""
+    """Connects an Event to a participating Person, Item, or Organization."""
 
-    ...
+    involvement_role: EntityText = Field(
+        default=None,
+        description="participant, organizer, attendee, provider, other. "
+        + EMPTY_STRING,
+        max_length=MAX_LENGTH,
+    )
 
 
 # ============================================================================
-# Ontology Constants - Single Source of Truth
+# Constants - Single Source of Truth
 # ============================================================================
 
 # Entity type names
@@ -167,7 +176,7 @@ EDGE_TYPES = [
 
 
 # ============================================================================
-# Ontology Setup Function
+# Setup Function
 # ============================================================================
 
 
@@ -182,12 +191,6 @@ async def set_custom_ontology(zep_client, user_ids=None):
     - Events and appointments
     - Items and possessions (including pets)
 
-    Design philosophy:
-    - Simple, generic entity types applicable across domains
-    - Search-optimized entity naming (values in names)
-    - Rich descriptions for full-text search
-    - Flexible edge types for various relationship patterns
-
     Args:
         zep_client: AsyncZep client instance
         user_ids: Optional list of user IDs to apply ontology to.
@@ -195,13 +198,6 @@ async def set_custom_ontology(zep_client, user_ids=None):
 
     Returns:
         Response from set_ontology call
-
-    Example usage:
-        ```python
-        from zep_cloud import AsyncZep
-        client = AsyncZep(api_key="your-key")
-        await set_custom_ontology(client)
-        ```
     """
     from zep_cloud import EntityEdgeSourceTarget
 
@@ -214,7 +210,6 @@ async def set_custom_ontology(zep_client, user_ids=None):
             "Item": Item,
         },
         "edges": {
-            # Person related to another Person or User
             "RELATED_TO": (
                 RelatedTo,
                 [
@@ -222,17 +217,14 @@ async def set_custom_ontology(zep_client, user_ids=None):
                     EntityEdgeSourceTarget(source="Person", target="Person"),
                 ],
             ),
-            # Entity located at a Location
             "LOCATED_AT": (
                 LocatedAt,
                 [
-                    EntityEdgeSourceTarget(source="Event", target="Location"),
                     EntityEdgeSourceTarget(source="Person", target="Location"),
                     EntityEdgeSourceTarget(source="Item", target="Location"),
                     EntityEdgeSourceTarget(source="Organization", target="Location"),
                 ],
             ),
-            # Person works for Organization
             "WORKS_FOR": (
                 WorksFor,
                 [
@@ -240,7 +232,6 @@ async def set_custom_ontology(zep_client, user_ids=None):
                     EntityEdgeSourceTarget(source="Person", target="Organization"),
                 ],
             ),
-            # User or Person owns Item
             "OWNS": (
                 Owns,
                 [
@@ -248,14 +239,12 @@ async def set_custom_ontology(zep_client, user_ids=None):
                     EntityEdgeSourceTarget(source="Person", target="Item"),
                 ],
             ),
-            # Event scheduled at Location or time
             "SCHEDULED_AT": (
                 ScheduledAt,
                 [
                     EntityEdgeSourceTarget(source="Event", target="Location"),
                 ],
             ),
-            # Event involves Person, Item, or Organization
             "INVOLVES": (
                 Involves,
                 [
@@ -267,7 +256,6 @@ async def set_custom_ontology(zep_client, user_ids=None):
         },
     }
 
-    # Apply to specific users if provided
     if user_ids:
         kwargs["user_ids"] = user_ids
 
