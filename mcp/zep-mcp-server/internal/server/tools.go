@@ -10,6 +10,11 @@ var SearchGraphTool = &mcp.Tool{
 	Description: "Search the Zep knowledge graph for relevant information about a user. Returns facts, entities, and relationships.",
 }
 
+var DetectPatternsTool = &mcp.Tool{
+	Name:        "detect_patterns",
+	Description: "Detect recurring structural patterns in a user or named graph, including relationships, paths, hubs, clusters, and co-occurrences.",
+}
+
 var GetUserContextTool = &mcp.Tool{
 	Name:        "get_user_context",
 	Description: "Retrieve formatted context string for a conversation thread. Returns facts and entities relevant to the thread.",

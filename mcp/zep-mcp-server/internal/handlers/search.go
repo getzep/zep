@@ -41,10 +41,6 @@ func HandleSearchGraph(client *zepclient.Client) mcp.ToolHandlerFor[SearchGraphI
 			searchReq.Reranker = &rerankerType
 		}
 
-		if input.MinFactRating > 0.0 {
-			searchReq.MinFactRating = &input.MinFactRating
-		}
-
 		if input.MmrLambda > 0.0 {
 			searchReq.MmrLambda = &input.MmrLambda
 		}

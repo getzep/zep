@@ -5,6 +5,7 @@ Complete reference for all tools provided by the Zep MCP Server.
 ## Table of Contents
 
 - [search_graph](#search_graph)
+- [detect_patterns](#detect_patterns)
 - [get_user_context](#get_user_context)
 - [get_user](#get_user)
 - [list_threads](#list_threads)
@@ -33,7 +34,6 @@ Search the Zep knowledge graph for relevant information about a user.
 | `scope` | string | No | Search scope: `edges`, `nodes`, or `episodes` (default: `edges`) |
 | `limit` | integer | No | Maximum results (default: 10, max: 50) |
 | `reranker` | string | No | Reranking strategy: `rrf`, `mmr`, `node_distance`, `episode_mentions`, `cross_encoder` |
-| `min_fact_rating` | number | No | Minimum fact rating threshold for filtering results |
 | `mmr_lambda` | number | No | Weighting for maximal marginal relevance reranking |
 | `center_node_uuid` | string | No | Node UUID to rerank around for `node_distance` reranking |
 | `node_labels` | array[string] | No | Filter results by node labels |
@@ -63,6 +63,60 @@ JSON object containing edges, nodes, and/or episodes depending on the search sco
 - Discovering relevant entities
 - Building context for conversations
 - Filtering by entity or relationship type
+
+---
+
+## detect_patterns
+
+Detect structural patterns in a user graph or named graph. Returns recurring relationships, paths, co-occurrences, hubs, and clusters.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `user_id` | string | Conditionally | User graph target. Provide exactly one of `user_id` or `graph_id` |
+| `graph_id` | string | Conditionally | Named graph target. Provide exactly one of `graph_id` or `user_id` |
+| `seeds` | object | No | Seed selection with `node_uuids`, `node_labels`, and/or `edge_types` |
+| `search_filters` | object | No | Filters for participating nodes and edges. Uses the same structure as graph search |
+| `limit` | integer | No | Maximum number of patterns to return (default: 50, max: 200) |
+| `min_occurrences` | integer | No | Minimum occurrence count to report a pattern (default: 2) |
+| `include_examples` | boolean | No | Include example node and edge UUIDs for each pattern |
+| `recency_weight` | string | No | Temporal decay half-life: `none`, `7_days`, `30_days`, or `90_days` |
+| `detect` | object | No | Pattern-specific configuration for `relationships`, `paths`, `co_occurrences`, `hubs`, and `clusters` |
+
+### Returns
+
+JSON object containing:
+- `patterns`: detected patterns sorted by weighted score
+- `metadata`: analysis metadata including `nodes_analyzed`, `edges_analyzed`, and `elapsed_ms`
+
+### Example
+
+```javascript
+{
+  "user_id": "alice_123",
+  "seeds": {
+    "node_labels": ["Decision"]
+  },
+  "recency_weight": "30_days",
+  "include_examples": true,
+  "detect": {
+    "hubs": {
+      "min_degree": 4
+    },
+    "paths": {
+      "max_hops": 3
+    }
+  }
+}
+```
+
+### Use Cases
+
+- Finding repeated relationship structures in a user graph
+- Discovering hubs and common multi-hop paths
+- Surfacing recurring patterns for agent planning or summarization
+- Inspecting graph structure without mutating data
 
 ---
 
@@ -269,7 +323,7 @@ Retrieve messages from a conversation thread.
 
 ### Returns
 
-JSON object containing messages with `role`, `content`, `uuid`, and timestamps.
+JSON object containing messages with `role`, `content`, `uuid`, timestamps, pagination counts, and `thread_created_at`.
 
 ### Example
 

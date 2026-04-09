@@ -4,7 +4,7 @@ A Model Context Protocol (MCP) server for [Zep Cloud](https://www.getzep.com/), 
 
 ## Features
 
-- **🔍 Search & Retrieval**: Search the knowledge graph, retrieve context, and access conversation history
+- **🔍 Search & Retrieval**: Search the knowledge graph, detect structural patterns, retrieve context, and access conversation history
 - **📊 Graph Exploration**: Query nodes, edges, and episodes from the temporal knowledge graph
 - **🔒 Read-Only**: Safe, non-destructive operations for AI assistants
 - **⚡ Fast**: Built with Go for optimal performance
@@ -12,29 +12,30 @@ A Model Context Protocol (MCP) server for [Zep Cloud](https://www.getzep.com/), 
 
 ## Tools
 
-The server provides 13 read-only tools:
+The server provides 14 read-only tools:
 
 ### Core Search & Retrieval
 
 1. **`search_graph`** - Search the knowledge graph with filters, reranking, and scoped search
-2. **`get_user_context`** - Retrieve formatted context for a thread (supports custom templates)
-3. **`get_user`** - Get user information and metadata
-4. **`list_threads`** - List conversation threads for a user
+2. **`detect_patterns`** - Detect recurring structural patterns in a user or named graph
+3. **`get_user_context`** - Retrieve formatted context for a thread (supports custom templates)
+4. **`get_user`** - Get user information and metadata
+5. **`list_threads`** - List conversation threads for a user
 
 ### Graph Query
 
-5. **`get_user_nodes`** - Retrieve entity nodes from a user's knowledge graph
-6. **`get_user_edges`** - Retrieve relationship edges from a user's knowledge graph
-7. **`get_episodes`** - Get episode nodes (temporal data ingestion events)
+6. **`get_user_nodes`** - Retrieve entity nodes from a user's knowledge graph
+7. **`get_user_edges`** - Retrieve relationship edges from a user's knowledge graph
+8. **`get_episodes`** - Get episode nodes (temporal data ingestion events)
 
 ### Detail Retrieval
 
-8. **`get_thread_messages`** - Retrieve messages from a conversation thread
-9. **`get_node`** - Get a specific node by UUID
-10. **`get_edge`** - Get a specific edge by UUID
-11. **`get_episode`** - Get a specific episode by UUID
-12. **`get_node_edges`** - Get all edges connected to a specific node
-13. **`get_episode_mentions`** - Get nodes and edges mentioned in an episode
+9. **`get_thread_messages`** - Retrieve messages from a conversation thread
+10. **`get_node`** - Get a specific node by UUID
+11. **`get_edge`** - Get a specific edge by UUID
+12. **`get_episode`** - Get a specific episode by UUID
+13. **`get_node_edges`** - Get all edges connected to a specific node
+14. **`get_episode_mentions`** - Get nodes and edges mentioned in an episode
 
 ## Installation
 
@@ -121,14 +122,17 @@ See [Docker Deployment Guide](docs/DOCKER.md) for full Docker documentation.
 # Build the image
 make docker-build
 
-# Run with docker-compose
+# Run with docker compose (loads .env)
 make docker-run
 ```
 
 Or manually:
 ```bash
+cp .env.example .env
+# Optional: change ZEP_MCP_HOST_PORT in .env if you do not want the default 8081
 docker build -t zep-mcp-server:latest .
-docker run -e ZEP_API_KEY=your-key -p 8080:8080 zep-mcp-server:latest
+# If you changed ZEP_MCP_HOST_PORT, use the same host port here
+docker run --env-file .env -p 8081:8080 zep-mcp-server:latest
 ```
 
 ### MCP Client Configuration
@@ -193,10 +197,11 @@ Claude Code uses HTTP transport to connect to MCP servers. Configure it using th
 **Using Docker:**
 ```bash
 # Edit .env file with your ZEP_API_KEY
-docker-compose up -d
+# Optional: set ZEP_MCP_HOST_PORT if you do not want the default 8081
+docker compose up -d
 
 # Add to Claude Code
-claude mcp add --transport http zep http://localhost:8080
+claude mcp add --transport http zep http://localhost:8081
 ```
 
 The HTTP transport supports both stateless JSON requests and streaming responses, allowing Claude Code and other HTTP-based MCP clients to interact with the Zep knowledge graph.
@@ -212,6 +217,20 @@ tools.search_graph({
   query: "What are their preferences?",
   scope: "edges",  // edges, nodes, or episodes
   limit: 10
+})
+```
+
+### Detect Graph Patterns
+
+```javascript
+// Detect recurring graph patterns around decision nodes
+tools.detect_patterns({
+  user_id: "user_123",
+  seeds: {
+    node_labels: ["Decision"]
+  },
+  recency_weight: "30_days",
+  include_examples: true
 })
 ```
 

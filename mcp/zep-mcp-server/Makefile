@@ -47,8 +47,8 @@ help:
 	@echo ""
 	@echo "Docker targets:"
 	@echo "  make docker-build  - Build Docker image"
-	@echo "  make docker-run    - Run server with docker-compose"
-	@echo "  make docker-down   - Stop docker-compose"
+	@echo "  make docker-run    - Run server with docker compose"
+	@echo "  make docker-down   - Stop docker compose"
 	@echo "  make docker-clean  - Remove Docker images and containers"
 	@echo ""
 
@@ -137,30 +137,30 @@ docker-build:
 	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
 	@echo "✓ Docker image built: $(DOCKER_IMAGE):$(DOCKER_TAG)"
 
-## docker-run: Run server with docker-compose
+## docker-run: Run server with docker compose
 docker-run:
-	@echo "Starting server with docker-compose..."
-	docker-compose up
+	@echo "Starting server with docker compose..."
+	docker compose up
 
-## docker-run-detached: Run server with docker-compose in background
+## docker-run-detached: Run server with docker compose in background
 docker-run-detached:
-	@echo "Starting server with docker-compose (detached)..."
-	docker-compose up -d
+	@echo "Starting server with docker compose (detached)..."
+	docker compose up -d
 	@echo "✓ Server started in background"
 
-## docker-down: Stop docker-compose
+## docker-down: Stop docker compose
 docker-down:
-	@echo "Stopping docker-compose..."
-	docker-compose down
+	@echo "Stopping docker compose..."
+	docker compose down
 	@echo "✓ Stopped"
 
-## docker-logs: View docker-compose logs
+## docker-logs: View docker compose logs
 docker-logs:
-	docker-compose logs -f
+	docker compose logs -f
 
 ## docker-clean: Remove Docker images and containers
 docker-clean:
 	@echo "Cleaning Docker resources..."
-	@docker-compose down -v 2>/dev/null || true
+	@docker compose down -v 2>/dev/null || true
 	@docker rmi $(DOCKER_IMAGE):$(DOCKER_TAG) 2>/dev/null || true
 	@echo "✓ Docker resources cleaned"
