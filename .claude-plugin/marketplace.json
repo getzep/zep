@@ -1,0 +1,21 @@
+{
+  "name": "zep",
+  "owner": {
+    "name": "Zep",
+    "url": "https://www.getzep.com"
+  },
+  "metadata": {
+    "description": "Claude Code plugins for building with Zep.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "building-with-zep",
+      "source": "./plugins/building-with-zep",
+      "description": "Skill plus the Zep documentation MCP server for building apps on Zep.",
+      "version": "0.1.0",
+      "category": "development",
+      "keywords": ["zep", "agent-memory", "context-graph"]
+    }
+  ]
+}
