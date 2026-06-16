@@ -3,11 +3,11 @@ name: Test Integration Packages
 on:
   pull_request:
     paths:
-      - 'integrations/python/**'
+      - 'integrations/**'
   push:
     branches: [main]
     paths:
-      - 'integrations/python/**'
+      - 'integrations/**'
 
 permissions:
   contents: read
@@ -16,36 +16,88 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      packages: ${{ steps.changes.outputs.changes }}
+      python: ${{ steps.python.outputs.changes }}
+      typescript: ${{ steps.typescript.outputs.changes }}
+      go: ${{ steps.go.outputs.changes }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: dorny/paths-filter@v3
-        id: changes
+        id: python
         with:
           filters: |
             adk:
-              - 'integrations/python/zep_adk/**'
+              - 'integrations/adk/python/**'
             autogen:
-              - 'integrations/python/zep_autogen/**'
+              - 'integrations/autogen/python/**'
             crewai:
-              - 'integrations/python/zep_crewai/**'
+              - 'integrations/crewai/python/**'
             livekit:
-              - 'integrations/python/zep_livekit/**'
+              - 'integrations/livekit/python/**'
 
-  test:
+      - uses: dorny/paths-filter@v3
+        id: typescript
+        with:
+          filters: |
+            adk:
+              - 'integrations/adk/typescript/**'
+            mastra:
+              - 'integrations/mastra/typescript/**'
+
+      - uses: dorny/paths-filter@v3
+        id: go
+        with:
+          filters: |
+            adk:
+              - 'integrations/adk/go/**'
+
+  test-python:
     runs-on: ubuntu-latest
     needs: detect-changes
-    if: needs.detect-changes.outputs.packages != '[]'
+    if: needs.detect-changes.outputs.python != '[]'
     strategy:
+      fail-fast: false
       matrix:
-        package: ${{ fromJSON(needs.detect-changes.outputs.packages) }}
+        package: ${{ fromJSON(needs.detect-changes.outputs.python) }}
         python-version: ["3.10", "3.11", "3.12", "3.13"]
-    
     steps:
       - uses: actions/checkout@v4
-
-      - name: Test integration package
-        uses: ./.github/actions/test-integration
+      - name: Test Python integration
+        uses: ./.github/actions/test-python
         with:
           package: ${{ matrix.package }}
           python-version: ${{ matrix.python-version }}
+
+  test-typescript:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.typescript != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.detect-changes.outputs.typescript) }}
+        node-version: ["20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test TypeScript integration
+        uses: ./.github/actions/test-typescript
+        with:
+          package: ${{ matrix.package }}
+          node-version: ${{ matrix.node-version }}
+
+  test-go:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.go != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.detect-changes.outputs.go) }}
+        go-version: ["1.26"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Go integration
+        uses: ./.github/actions/test-go
+        with:
+          package: ${{ matrix.package }}
+          go-version: ${{ matrix.go-version }}

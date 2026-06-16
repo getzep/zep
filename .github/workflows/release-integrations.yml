@@ -1,109 +1,146 @@
 name: Release Integration Packages
 
+# Tag scheme: zep-<framework>-<language>-v<version>
+#   e.g. zep-adk-python-v0.2.0, zep-mastra-typescript-v0.1.0
+# Go modules are NOT released here — they are versioned by a tag matching the module
+# subpath, integrations/<framework>/go/vX.Y.Z, consumed via
+#   go get github.com/getzep/zep/integrations/<framework>/go@vX.Y.Z
+
 on:
   release:
     types: [published]
   workflow_dispatch:
     inputs:
-      package:
-        description: 'Which package to release'
+      framework:
+        description: 'Framework key (directory under integrations/, e.g. adk, crewai)'
+        required: true
+      language:
+        description: 'Language'
         required: true
         type: choice
         options:
-          - adk
-          - autogen
-          - crewai
-          - livekit
+          - python
+          - typescript
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
-  detect-package:
+  detect:
     runs-on: ubuntu-latest
     outputs:
-      package: ${{ steps.detect.outputs.package }}
+      framework: ${{ steps.detect.outputs.framework }}
+      language: ${{ steps.detect.outputs.language }}
     steps:
-      - name: Detect package from release or input
+      - name: Detect framework + language
         id: detect
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "package=${{ github.event.inputs.package }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.event_name }}" == "release" ]]; then
-            # Extract package name from release tag (e.g., zep-autogen-v0.1.0 -> autogen)
+            echo "framework=${{ github.event.inputs.framework }}" >> "$GITHUB_OUTPUT"
+            echo "language=${{ github.event.inputs.language }}" >> "$GITHUB_OUTPUT"
+          else
             TAG="${{ github.event.release.tag_name }}"
-            if [[ $TAG =~ ^zep-([^-]+)-v.*$ ]]; then
-              PACKAGE="${BASH_REMATCH[1]}"
-              echo "package=$PACKAGE" >> $GITHUB_OUTPUT
+            # zep-<framework>-<language>-v<version>
+            if [[ $TAG =~ ^zep-(.+)-(python|typescript)-v.*$ ]]; then
+              echo "framework=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+              echo "language=${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
             else
-              echo "Could not extract package from tag: $TAG"
+              echo "Tag '$TAG' does not match zep-<framework>-<language>-v<version>."
+              echo "Go modules release via the tag integrations/<framework>/go/vX.Y.Z, not this workflow."
               exit 1
             fi
           fi
 
-  test:
+  # ---------------------------------------------------------------- Python → PyPI
+  test-python:
+    if: needs.detect.outputs.language == 'python'
+    needs: detect
     runs-on: ubuntu-latest
-    needs: detect-package
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
-    
     steps:
       - uses: actions/checkout@v4
-
-      - name: Check if package exists
+      - name: Check package exists
         run: |
-          if [ ! -d "integrations/python/zep_${{ needs.detect-package.outputs.package }}" ]; then
-            echo "Package zep_${{ needs.detect-package.outputs.package }} does not exist"
+          DIR="integrations/${{ needs.detect.outputs.framework }}/python"
+          if [ ! -d "$DIR" ]; then
+            echo "Package directory $DIR does not exist"
             exit 1
           fi
-
-      - name: Test integration package
-        uses: ./.github/actions/test-integration
+      - name: Test Python integration
+        uses: ./.github/actions/test-python
         with:
-          package: ${{ needs.detect-package.outputs.package }}
+          package: ${{ needs.detect.outputs.framework }}
           python-version: ${{ matrix.python-version }}
 
-  build:
+  build-python:
+    if: needs.detect.outputs.language == 'python'
+    needs: [detect, test-python]
     runs-on: ubuntu-latest
-    needs: [detect-package, test]
     steps:
       - uses: actions/checkout@v4
-
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
           version: "latest"
-
       - name: Set up Python
         run: uv python install 3.11
-
       - name: Build package
-        working-directory: integrations/python/zep_${{ needs.detect-package.outputs.package }}
+        working-directory: integrations/${{ needs.detect.outputs.framework }}/python
         run: uv build
-
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ needs.detect-package.outputs.package }}-dist
-          path: integrations/python/zep_${{ needs.detect-package.outputs.package }}/dist/
+          name: ${{ needs.detect.outputs.framework }}-python-dist
+          path: integrations/${{ needs.detect.outputs.framework }}/python/dist/
 
-  publish:
+  publish-pypi:
+    if: needs.detect.outputs.language == 'python'
+    needs: [detect, test-python, build-python]
     runs-on: ubuntu-latest
-    needs: [detect-package, test, build]
-    environment: 
+    environment:
       name: release
-      url: https://pypi.org/p/zep-${{ needs.detect-package.outputs.package }}
-    
+      url: https://pypi.org/p/zep-${{ needs.detect.outputs.framework }}
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: ${{ needs.detect-package.outputs.package }}-dist
+          name: ${{ needs.detect.outputs.framework }}-python-dist
           path: dist/
-
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+
+  # ------------------------------------------------------------ TypeScript → npm
+  publish-npm:
+    if: needs.detect.outputs.language == 'typescript'
+    needs: detect
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrations/${{ needs.detect.outputs.framework }}/typescript
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Check package exists
+        run: |
+          if [ ! -f package.json ]; then
+            echo "package.json not found for ${{ needs.detect.outputs.framework }}/typescript"
+            exit 1
+          fi
+      - name: Install, build, test
+        run: |
+          npm ci
+          npm run build --if-present
+          npm test
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

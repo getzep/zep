@@ -101,31 +101,16 @@ This project uses [UV](https://github.com/astral-sh/uv) for Python package manag
    .venv\Scripts\activate
    ```
 
-### Workspace Structure
+### Integrations
 
-This project is configured as a UV workspace with the following packages:
+Framework integration packages live under [`integrations/`](integrations/), organized
+framework-first then language: `integrations/<framework>/<language>/`. Each package is
+built, tested, and released independently.
 
-- **Main package** (`zep`): Core Zep functionality
-- **Autogen integration** (`integration/autogen/`): Integration package for Autogen framework
-
-### Working with the Workspace
-
-- **Install dependencies**: `uv sync`
-- **Add dependencies to main package**: `uv add <package>`
-- **Add dependencies to autogen integration**: `uv add --project integration/autogen <package>`
-- **Run tests for autogen integration**: `uv run --project integration/autogen pytest`
-- **Build packages**: `uv build`
-
-### Integration Development
-
-The autogen integration package is located in `integration/autogen/` with the following structure:
-
-```
-integration/autogen/
-├── src/zep_autogen/     # Package source code
-├── tests/               # Test files
-└── pyproject.toml       # Package configuration
-```
+- **Available**: Google ADK, Microsoft AutoGen, CrewAI, and LiveKit (Python).
+- **Develop**: `cd integrations/<framework>/python && uv sync --extra dev && uv run pytest`
+- See [`integrations/README.md`](integrations/README.md) for the full list and
+  [`integrations/CLAUDE.md`](integrations/CLAUDE.md) for structure and conventions.
 
 ## Contributing
 

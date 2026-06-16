@@ -1,89 +1,68 @@
 # Zep Integrations
 
-This directory contains dedicated integration packages for Zep with various AI frameworks and libraries. Each integration is packaged separately to allow users to install only what they need.
+Dedicated integration packages for using [Zep](https://www.getzep.com) agent memory with
+AI frameworks. Each integration is packaged separately so you install only what you need.
 
-## Available Integrations
+Integrations are organized **framework-first, then language**: `integrations/<framework>/<language>/`.
 
-### Python Integrations
+New to Zep? Sign up at [getzep.com](https://www.getzep.com) and create an API key in the
+[Zep dashboard](https://app.getzep.com); each package's `SETUP.md` has the details.
 
-#### AutoGen Integration (`zep-autogen`)
-- **Package**: `zep-autogen`
-- **Location**: [`python/autogen/`](python/autogen/)
-- **Description**: Memory integration for Microsoft AutoGen agents
-- **Install**: `pip install zep-autogen`
+## Available integrations
 
-#### More Integrations Coming Soon
-Additional integrations for CrewAI, LangChain, LlamaIndex, and other frameworks are planned.
+| Framework | Language | Package | Location |
+|-----------|----------|---------|----------|
+| Google ADK | Python | [`zep-adk`](https://pypi.org/p/zep-adk) | [`adk/python/`](adk/python/) |
+| Microsoft AutoGen | Python | [`zep-autogen`](https://pypi.org/p/zep-autogen) | [`autogen/python/`](autogen/python/) |
+| CrewAI | Python | [`zep-crewai`](https://pypi.org/p/zep-crewai) | [`crewai/python/`](crewai/python/) |
+| LiveKit | Python | [`zep-livekit`](https://pypi.org/p/zep-livekit) | [`livekit/python/`](livekit/python/) |
 
-### TypeScript Integrations - Coming Soon
+### Planned
 
-Future TypeScript/JavaScript integrations will be available in the [`typescript/`](typescript/) directory.
+Microsoft Agent Framework (Python), Pydantic AI (Python), LangGraph (Python),
+Mastra (TypeScript), and Google ADK (Go, TypeScript). See [`SPIKE_FINDINGS.md`](SPIKE_FINDINGS.md)
+for the verified extension points and per-integration approach.
 
-## Package Structure
+## Package structure
 
-Each integration follows a consistent structure:
-
-```
-integrations/{language}/{framework}/
-├── src/
-│   └── zep_{framework}/          # Main package code
-│       ├── __init__.py
-│       ├── memory.py             # Core memory integration
-│       └── exceptions.py         # Framework-specific exceptions
-├── tests/                        # Test files
-├── examples/                     # Usage examples
-├── pyproject.toml               # Package configuration
-├── README.md                    # Package documentation
-└── CHANGELOG.md                 # Version history
-```
+See [`CLAUDE.md`](CLAUDE.md) for the full per-language structure and conventions. In short,
+each package lives at `integrations/<framework>/<language>/` and ships a README, a `SETUP.md`,
+a runnable example, tests, and a changelog.
 
 ## Development
 
-### Building and Testing
-
-Each package can be built and tested independently:
+Each package is built and tested independently. For a Python package:
 
 ```bash
-# Navigate to specific integration
-cd integrations/python/autogen
-
-# Install in development mode
-uv sync --extra dev
-
-# Run tests
-uv run pytest
-
-# Build package
-uv build
+cd integrations/<framework>/python
+uv sync --extra dev      # install (dev extras)
+uv run pytest            # test
+uv build                 # build
 ```
 
-### Adding New Integrations
+TypeScript: `npm ci && npm test`. Go: `go test ./...`. See [`CLAUDE.md`](CLAUDE.md) for the
+full per-language commands and the CI/release setup.
 
-1. **Create Package Structure**: Follow the template structure above
-2. **Implement Integration**: Create the memory interface for your framework
-3. **Add Tests**: Comprehensive test coverage for the integration
-4. **Update CI/CD**: The GitHub Actions will automatically detect and build new packages
-5. **Documentation**: Add README and examples
+## Adding a new integration
 
-## Release Process
+1. Create `integrations/<framework>/<language>/` following the structure in `CLAUDE.md`.
+2. Implement the framework's memory/context extension point (verified hooks are in
+   `SPIKE_FINDINGS.md`); target the latest Zep SDK.
+3. Add tests, a runnable example, a README, and a `SETUP.md`.
+4. Wire CI: add a `paths-filter` entry in `.github/workflows/test-integrations.yml`.
+5. Open a PR.
 
-Each integration package is released independently:
+## Release
 
-- **Automatic**: Version bumps in `pyproject.toml` trigger releases
-- **Manual**: Use GitHub Actions workflow dispatch
-- **CI/CD**: Automated testing across Python 3.10-3.13
+Each package releases independently via `.github/workflows/release-integrations.yml`, tag
+scheme `zep-<framework>-<language>-v<version>` (Python → PyPI, TypeScript → npm; Go is
+versioned by the module-path tag `integrations/<framework>/go/vX.Y.Z`).
 
 ## Support
 
 - [Zep Documentation](https://help.getzep.com)
 - [GitHub Issues](https://github.com/getzep/zep/issues)
-- [Community Discord](https://discord.gg/zep)
 
 ## Contributing
 
-Contributions are welcome! Please see our [Contributing Guide](../CONTRIBUTING.md) for details on:
-
-- Code style and standards
-- Testing requirements
-- Pull request process
-- Release procedures
+Contributions welcome — see the [Contributing Guide](../CONTRIBUTING.md).
