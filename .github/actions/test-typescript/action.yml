@@ -1,0 +1,47 @@
+name: 'Test TypeScript Integration'
+description: 'Lint, type-check, and test a Zep TypeScript integration package'
+
+inputs:
+  package:
+    description: 'Framework key = directory name under integrations/ (e.g. mastra, adk)'
+    required: true
+  node-version:
+    description: 'Node.js version to test with'
+    required: true
+    default: '22'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node ${{ inputs.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Resolve package dir
+      id: paths
+      shell: bash
+      run: |
+        PKG_DIR="integrations/${{ inputs.package }}/typescript"
+        echo "dir=$PKG_DIR" >> "$GITHUB_OUTPUT"
+        echo "Testing $PKG_DIR"
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ steps.paths.outputs.dir }}
+      run: npm ci
+
+    - name: Run linting
+      shell: bash
+      working-directory: ${{ steps.paths.outputs.dir }}
+      run: npm run lint --if-present
+
+    - name: Run type checking
+      shell: bash
+      working-directory: ${{ steps.paths.outputs.dir }}
+      run: npm run typecheck --if-present
+
+    - name: Run tests
+      shell: bash
+      working-directory: ${{ steps.paths.outputs.dir }}
+      run: npm test

@@ -1,86 +1,58 @@
 # Integration Package Workflows
 
-This directory contains GitHub Actions workflows for testing and releasing Zep integration packages.
+GitHub Actions workflows for testing and releasing Zep integration packages.
+Integrations are organized framework-first, then language: `integrations/<framework>/<language>/`.
 
 ## Workflows
 
-### 1. `test-integrations.yml` - Pull Request Testing
-Automatically tests integration packages on pull requests:
-- Detects which packages have changes using path filtering
-- Tests across Python 3.10-3.13
-- Runs linting (ruff), type checking (mypy), and tests (pytest)
-- Uploads coverage reports to Codecov
+### `test-integrations.yml` — PR / push testing
+Detects which packages changed (via `dorny/paths-filter`) and tests them in three
+per-language lanes:
+- **`test-python`** — matrix Python 3.11–3.13; runs ruff (lint + format check), mypy, and
+  pytest with coverage (`.github/actions/test-python`).
+- **`test-typescript`** — matrix Node 20/22; runs `npm ci`, lint, typecheck, `npm test`
+  (`.github/actions/test-typescript`).
+- **`test-go`** — `go vet`, `go test`, golangci-lint (`.github/actions/test-go`).
 
-**Triggers:**
-- Pull requests with changes in `integrations/python/**`
-- Push to `main` branch with changes in `integrations/python/**`
+Each composite action derives the package directory (`integrations/<key>/<language>`) from
+the `package` input; the Python action also derives the import name
+(`zep_<key with hyphens→underscores>`).
 
-### 2. `release-integrations.yml` - Package Releases
-Handles publishing integration packages to PyPI:
-- Triggered only by GitHub releases or manual dispatch
-- Extracts package name from release tag (e.g., `zep-autogen-v0.1.0`)
-- Runs full test suite before publishing
-- Uses PyPI trusted publishing for security
+**Triggers:** pull requests and pushes to `main` with changes under `integrations/**`.
 
-**Triggers:**
-- GitHub releases with tags like `zep-{package}-v{version}`
-- Manual workflow dispatch with package selection
+### `release-integrations.yml` — package releases
+Triggered by a published GitHub release or manual dispatch. Routes by language:
+- **Python → PyPI** (test → build → publish via trusted publishing / OIDC).
+- **TypeScript → npm** (`npm ci` → build → test → `npm publish`, using `NPM_TOKEN`).
 
-## Setup Requirements
+**Tag scheme:** `zep-<framework>-<language>-v<version>` — e.g. `zep-adk-python-v0.2.0`,
+`zep-mastra-typescript-v0.1.0`. Manual dispatch takes `framework` + `language` inputs.
 
-### PyPI Trusted Publishing
-Configure PyPI trusted publishing for each integration package:
+**Go modules** are not released by this workflow — a Go module is versioned by a git tag
+matching its module subpath: `integrations/<framework>/go/vX.Y.Z`, consumed via
+`go get github.com/getzep/zep/integrations/<framework>/go@vX.Y.Z`.
 
-1. **For each package** (e.g., `zep-autogen`):
-   - Go to PyPI project settings
-   - Add GitHub publisher with repository `getzep/zep`
-   - Set workflow name: `release-integrations.yml`
-   - Set environment name: `pypi`
+## Setup requirements
 
-2. **GitHub Environment**: Create a `pypi` environment in repository settings
-   - Add protection rules if needed (recommended for production)
-   - No secrets required (uses trusted publishing)
+### PyPI (trusted publishing)
+For each Python package (e.g. `zep-adk`): add a GitHub publisher in the PyPI project
+settings with repository `getzep/zep`, workflow `release-integrations.yml`, and environment
+`release`. Create a `release` environment in the repository settings (add protection rules
+as desired). No secret needed — trusted publishing uses OIDC.
 
-## Package Structure
+### npm
+Add an `NPM_TOKEN` secret (an automation token with publish rights) for TypeScript packages.
 
-Each integration package follows this structure:
-```
-integrations/python/{package}/
-├── pyproject.toml          # Package configuration
-├── src/zep_{package}/      # Source code
-│   ├── __init__.py        # Package entry point
-│   ├── memory.py          # Core integration
-│   └── exceptions.py      # Error handling
-├── tests/                 # Test files
-├── examples/              # Usage examples
-├── README.md              # Package documentation
-└── CHANGELOG.md           # Version history
-```
+## Adding a new package
 
-## Release Process
-
-### Release via GitHub Releases (Recommended)
-1. **Update Version**: Bump version in package's `pyproject.toml`
-2. **Create Release**: Create GitHub release with tag `zep-{package}-v{version}`
-   - Example: `zep-autogen-v0.1.0`
-3. **Automatic Publishing**: Workflow automatically tests and publishes to PyPI
-
-### Manual Release
-1. Go to Actions tab in GitHub
-2. Select "Release Integration Packages"
-3. Click "Run workflow"
-4. Choose specific package to release
-5. Package is tested and published if successful
-
-## Adding New Integration Packages
-
-1. **Create Package Structure**: Follow the template structure above
-2. **Update Workflows**: Add package name to the filters in both workflows
-3. **Configure PyPI**: Set up trusted publishing for the new package
-4. **Create Release**: Tag release as `zep-{package}-v{version}`
+1. Create `integrations/<framework>/<language>/` per [`../../integrations/CLAUDE.md`](../../integrations/CLAUDE.md).
+2. Add a `paths-filter` entry under the matching language in `test-integrations.yml`
+   (e.g. `pydantic-ai: ['integrations/pydantic-ai/python/**']`).
+3. Python: configure PyPI trusted publishing. TypeScript: ensure `NPM_TOKEN` is set.
+4. Release by tagging `zep-<framework>-<language>-v<version>` (or the Go module-path tag).
 
 ## Troubleshooting
 
-- **Tests fail on PR**: Check package dependencies and Python version compatibility
-- **Release fails**: Ensure PyPI trusted publishing is configured correctly
-- **Package not detected**: Verify path filters include your package directory
+- **Package not detected:** verify the `paths-filter` entry matches the package directory.
+- **Tests fail on PR:** check dependencies and language/version compatibility.
+- **Release fails:** confirm PyPI trusted publishing (env `release`) or `NPM_TOKEN` is set.

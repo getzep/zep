@@ -99,3 +99,6 @@ __pypackages__/
 # Node.js
 node_modules/
 dist/
+
+# Coverage (integration test runs)
+coverage.xml
