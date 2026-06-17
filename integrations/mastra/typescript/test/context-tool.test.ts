@@ -1,8 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createZepContextTool } from "../src/index.js";
-import { makeFakeZep, asZep } from "./helpers.js";
-
-const ctx = {} as never;
+import { makeFakeZep, asZep, run } from "./helpers.js";
 
 describe("createZepContextTool", () => {
   it("retrieves the user context block via thread.getUserContext", async () => {
@@ -13,7 +11,7 @@ describe("createZepContextTool", () => {
       binding: { userId: "u1", threadId: "t1" },
     });
 
-    const result = await tool.execute!({}, ctx);
+    const result = await run(tool, {});
 
     expect(result).toEqual({ context: "FACTS: Jane is in Portland", found: true });
     expect(zep.thread.getUserContext).toHaveBeenCalledWith("t1", {});
@@ -26,7 +24,7 @@ describe("createZepContextTool", () => {
       binding: { userId: "u1", threadId: "t1" },
       templateId: "tmpl-9",
     });
-    await tool.execute!({}, ctx);
+    await run(tool, {});
     expect(zep.thread.getUserContext).toHaveBeenCalledWith("t1", { templateId: "tmpl-9" });
   });
 
@@ -37,7 +35,7 @@ describe("createZepContextTool", () => {
       client: asZep(zep),
       binding: { userId: "u1", threadId: "t1" },
     });
-    const result = await tool.execute!({}, ctx);
+    const result = await run(tool, {});
     expect(result).toEqual({ context: "", found: false });
   });
 
@@ -50,7 +48,7 @@ describe("createZepContextTool", () => {
       binding: { userId: "u1", threadId: "t1" },
       logger: { warn },
     });
-    const result = await tool.execute!({}, ctx);
+    const result = await run(tool, {});
     expect(result).toEqual({ context: "", found: false });
     expect(warn).toHaveBeenCalledOnce();
   });

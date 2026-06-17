@@ -1,8 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createZepSearchTool } from "../src/index.js";
-import { makeFakeZep, asZep } from "./helpers.js";
-
-const ctx = {} as never;
+import { makeFakeZep, asZep, run } from "./helpers.js";
 
 describe("createZepSearchTool", () => {
   it("searches edges by default and returns facts", async () => {
@@ -15,7 +13,7 @@ describe("createZepSearchTool", () => {
       binding: { userId: "u1" },
     });
 
-    const result = await tool.execute!({ query: "where does Jane live" }, ctx);
+    const result = await run(tool, { query: "where does Jane live" });
 
     expect(result).toEqual({
       facts: ["Jane lives in Portland", "Jane is an engineer"],
@@ -40,7 +38,7 @@ describe("createZepSearchTool", () => {
       limit: 5,
     });
 
-    const result = await tool.execute!({ query: "Apollo" }, ctx);
+    const result = await run(tool, { query: "Apollo" });
 
     expect(result.facts).toEqual(["Apollo: A spacecraft program"]);
     expect(zep.graph.search).toHaveBeenCalledWith({
@@ -59,16 +57,66 @@ describe("createZepSearchTool", () => {
       binding: { userId: "u1" },
       scope: "auto",
     });
-    const result = await tool.execute!({ query: "anything" }, ctx);
+    const result = await run(tool, { query: "anything" });
     expect(result.facts).toEqual(["assembled block"]);
     expect(result.found).toBe(true);
+  });
+
+  it("returns formatted entries for the thread_summaries scope", async () => {
+    const zep = makeFakeZep();
+    zep.graph.search.mockResolvedValueOnce({
+      threadSummaries: [
+        { name: "Onboarding", summary: "User set up their account" },
+        { name: "NoSummary" },
+      ],
+    });
+    const tool = createZepSearchTool({
+      client: asZep(zep),
+      binding: { userId: "u1" },
+      scope: "thread_summaries",
+    });
+
+    const result = await run(tool, { query: "what happened" });
+
+    expect(result.facts).toEqual(["Onboarding: User set up their account", "NoSummary"]);
+    expect(result.found).toBe(true);
+    expect(zep.graph.search).toHaveBeenCalledWith({
+      userId: "u1",
+      query: "what happened",
+      scope: "thread_summaries",
+    });
+  });
+
+  it("returns formatted entries for the observations scope", async () => {
+    const zep = makeFakeZep();
+    zep.graph.search.mockResolvedValueOnce({
+      observations: [
+        { name: "Pattern A", summary: "User logs in every morning" },
+        { name: "Pattern B" },
+      ],
+    });
+    const tool = createZepSearchTool({
+      client: asZep(zep),
+      binding: { userId: "u1" },
+      scope: "observations",
+    });
+
+    const result = await run(tool, { query: "habits" });
+
+    expect(result.facts).toEqual(["Pattern A: User logs in every morning", "Pattern B"]);
+    expect(result.found).toBe(true);
+    expect(zep.graph.search).toHaveBeenCalledWith({
+      userId: "u1",
+      query: "habits",
+      scope: "observations",
+    });
   });
 
   it("returns found: false with no results", async () => {
     const zep = makeFakeZep();
     zep.graph.search.mockResolvedValueOnce({ edges: [] });
     const tool = createZepSearchTool({ client: asZep(zep), binding: { userId: "u1" } });
-    const result = await tool.execute!({ query: "nothing here" }, ctx);
+    const result = await run(tool, { query: "nothing here" });
     expect(result).toEqual({ facts: [], found: false });
   });
 
@@ -81,7 +129,7 @@ describe("createZepSearchTool", () => {
       binding: { userId: "u1" },
       logger: { warn },
     });
-    const result = await tool.execute!({ query: "x" }, ctx);
+    const result = await run(tool, { query: "x" });
     expect(result).toEqual({ facts: [], found: false });
     expect(warn).toHaveBeenCalledOnce();
   });
@@ -93,7 +141,7 @@ describe("createZepSearchTool", () => {
       binding: {},
       logger: { warn: vi.fn() },
     });
-    const result = await tool.execute!({ query: "x" }, ctx);
+    const result = await run(tool, { query: "x" });
     expect(result.found).toBe(false);
     expect(zep.graph.search).not.toHaveBeenCalled();
   });

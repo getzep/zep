@@ -5,9 +5,9 @@ import {
   createZepToolset,
   ensureZepUserAndThread,
 } from "../src/index.js";
+import { run } from "./helpers.js";
 
 const apiKey = process.env.ZEP_API_KEY;
-const ctx = {} as never;
 
 // These tests hit the real Zep API and only run when ZEP_API_KEY is set.
 // Ingestion is asynchronous, so they assert the calls succeed — not that a
@@ -35,14 +35,14 @@ describeLive("live Zep integration", () => {
       defaultMessageName: "Test User",
     });
 
-    const stored = await zepRemember.execute!(
-      { content: "My favorite color is teal.", role: "user" },
-      ctx,
-    );
+    const stored = await run(zepRemember, {
+      content: "My favorite color is teal.",
+      role: "user",
+    });
     expect(stored.stored).toBe(true);
 
     // Context retrieval should succeed (content may not be ingested yet).
-    const context = await zepContext.execute!({}, ctx);
+    const context = await run(zepContext, {});
     expect(typeof context.context).toBe("string");
   }, 30_000);
 });

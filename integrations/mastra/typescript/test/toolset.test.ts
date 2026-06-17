@@ -1,8 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createZepToolset, ensureZepUserAndThread } from "../src/index.js";
-import { makeFakeZep, asZep } from "./helpers.js";
-
-const ctx = {} as never;
+import { makeFakeZep, asZep, run } from "./helpers.js";
 
 describe("createZepToolset", () => {
   it("returns the three tools keyed for an Agent tools record", () => {
@@ -25,7 +23,7 @@ describe("createZepToolset", () => {
       searchScope: "episodes",
       searchLimit: 3,
     });
-    const result = await zepSearch.execute!({ query: "q" }, ctx);
+    const result = await run(zepSearch, { query: "q" });
     expect(result.facts).toEqual(["raw text"]);
     expect(zep.graph.search).toHaveBeenCalledWith({
       userId: "u1",

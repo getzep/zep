@@ -51,31 +51,51 @@ const outputSchema = z.object({
 type SearchInput = z.infer<typeof inputSchema>;
 type SearchOutput = z.infer<typeof outputSchema>;
 
+/** Format a node-like result ("name: summary" or just "name"). */
+function nameAndSummary(n: { name?: string; summary?: string }): string | undefined {
+  if (!n.name) return undefined;
+  return n.summary ? `${n.name}: ${n.summary}` : n.name;
+}
+
+const isNonEmpty = (s: string | undefined): s is string => Boolean(s);
+
 /**
  * Extract human-readable strings from a Zep search result for the active scope.
  *
- * Edges → facts, nodes → "name: summary", episodes → raw content, and `auto`
- * returns the materialized context block as a single entry.
+ * - `edges` → facts on edges
+ * - `nodes` → "name: summary" for entity nodes
+ * - `episodes` → raw episode content
+ * - `thread_summaries` → "name: summary" for thread summary nodes
+ * - `observations` → "name: summary" for derived observation nodes
+ * - `auto` → the materialized context block as a single entry
+ *
+ * The switch is exhaustive over every {@link Zep.GraphSearchScope} the public
+ * type allows; the `never` default makes a new SDK scope a compile error rather
+ * than a silently-empty result.
  */
 function extractResults(result: Zep.GraphSearchResults, scope: Zep.GraphSearchScope): string[] {
-  if (scope === "auto") {
-    const ctx = result.context?.trim();
-    return ctx ? [ctx] : [];
+  switch (scope) {
+    case "auto": {
+      const ctx = result.context?.trim();
+      return ctx ? [ctx] : [];
+    }
+    case "edges":
+      return (result.edges ?? []).map((e) => e.fact).filter(isNonEmpty);
+    case "nodes":
+      return (result.nodes ?? []).map(nameAndSummary).filter(isNonEmpty);
+    case "episodes":
+      return (result.episodes ?? []).map((e) => e.content).filter(isNonEmpty);
+    case "thread_summaries":
+      return (result.threadSummaries ?? []).map(nameAndSummary).filter(isNonEmpty);
+    case "observations":
+      return (result.observations ?? []).map(nameAndSummary).filter(isNonEmpty);
+    default: {
+      // Exhaustiveness guard: if a new GraphSearchScope is added to the SDK,
+      // this line fails to compile until a branch above handles it.
+      const _exhaustive: never = scope;
+      return _exhaustive;
+    }
   }
-  if (scope === "nodes") {
-    return (result.nodes ?? [])
-      .map((n) => (n.summary ? `${n.name}: ${n.summary}` : n.name))
-      .filter((s): s is string => Boolean(s));
-  }
-  if (scope === "episodes") {
-    return (result.episodes ?? [])
-      .map((e) => e.content)
-      .filter((s): s is string => Boolean(s));
-  }
-  // Default + "edges": facts on edges.
-  return (result.edges ?? [])
-    .map((e) => e.fact)
-    .filter((s): s is string => Boolean(s));
 }
 
 /**

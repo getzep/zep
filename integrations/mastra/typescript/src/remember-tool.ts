@@ -4,9 +4,12 @@ import { z } from "zod";
 import type { ZepBinding, ZepThreadBinding, ZepLogger } from "./types.js";
 import {
   errorMessage,
+  GRAPH_MAX_CHARS,
+  MESSAGE_MAX_CHARS,
   resolveGraphTarget,
   resolveLogger,
   toRoleType,
+  truncateForZep,
 } from "./zep-utils.js";
 
 /** Options for {@link createZepRememberTool}. */
@@ -113,11 +116,18 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
       try {
         // Conversational content with a bound thread → thread.addMessages.
         if (inputData.role && hasThread(binding) && binding.userId) {
+          // Zep rejects messages over 4,096 chars with a 400; truncate + warn.
+          const messageContent = truncateForZep(
+            content,
+            MESSAGE_MAX_CHARS,
+            "zep-remember",
+            logger,
+          );
           await client.thread.addMessages(binding.threadId, {
             messages: [
               {
                 role: toRoleType(inputData.role),
-                content,
+                content: messageContent,
                 name: inputData.name ?? options.defaultMessageName,
               },
             ],
@@ -126,7 +136,9 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
         }
 
         // Everything else → graph.add as text.
-        await client.graph.add({ ...target, type: "text", data: content });
+        // Zep rejects graph.add payloads over 10,000 chars with a 400; truncate + warn.
+        const graphData = truncateForZep(content, GRAPH_MAX_CHARS, "zep-remember", logger);
+        await client.graph.add({ ...target, type: "text", data: graphData });
         return { stored: true, message: "Saved to long-term memory." };
       } catch (error) {
         logger.warn(`[zep-remember] Failed to persist to Zep: ${errorMessage(error)}`);
