@@ -10,6 +10,7 @@ from zep_cloud import Message
 
 from zep_langgraph.persistence import (
     MAX_MESSAGE_CHARS,
+    MAX_MESSAGES_PER_CALL,
     persist_messages,
     persist_messages_sync,
     to_zep_message,
@@ -73,6 +74,21 @@ class TestToZepMessage:
         msg = to_zep_message(HumanMessage(content="x" * (MAX_MESSAGE_CHARS + 500)))
         assert msg is not None
         assert len(msg.content) == MAX_MESSAGE_CHARS
+
+    def test_native_zep_message_oversize_truncated(self) -> None:
+        # Native Zep Message objects (the README/example path) must also be
+        # truncated, or Zep returns a 400 for content > 4096 chars.
+        original = Message(role="user", content="x" * (MAX_MESSAGE_CHARS + 500), name="Bob")
+        msg = to_zep_message(original)
+        assert msg is not None
+        assert len(msg.content) == MAX_MESSAGE_CHARS
+        assert msg.name == "Bob"
+        # Original must not be mutated.
+        assert len(original.content) == MAX_MESSAGE_CHARS + 500
+
+    def test_native_zep_message_within_limit_passthrough(self) -> None:
+        original = Message(role="user", content="short", name="Bob")
+        assert to_zep_message(original) is original
 
 
 class TestToZepMessages:
@@ -160,6 +176,40 @@ class TestPersistMessages:
         )
         assert result is None
 
+    @pytest.mark.asyncio
+    async def test_chunks_over_thirty_messages(self) -> None:
+        # Zep rejects > 30 messages per add_messages call with a 400; we must
+        # split into multiple calls rather than send them all at once.
+        client = _make_async_client()
+        msgs = [HumanMessage(content=f"m{i}") for i in range(70)]
+        await persist_messages(client, "thread-1", msgs)
+        assert client.thread.add_messages.await_count == 3
+        sent = [c.kwargs["messages"] for c in client.thread.add_messages.await_args_list]
+        assert [len(s) for s in sent] == [30, 30, 10]
+        # No chunk exceeds the cap.
+        assert all(len(s) <= MAX_MESSAGES_PER_CALL for s in sent)
+        # Every message is persisted exactly once, in order.
+        flattened = [m.content for chunk in sent for m in chunk]
+        assert flattened == [f"m{i}" for i in range(70)]
+
+    @pytest.mark.asyncio
+    async def test_context_requested_only_on_last_chunk(self) -> None:
+        client = _make_async_client(context="final block")
+        msgs = [HumanMessage(content=f"m{i}") for i in range(40)]
+        ctx = await persist_messages(client, "thread-1", msgs, return_context=True)
+        calls = client.thread.add_messages.await_args_list
+        assert len(calls) == 2
+        assert calls[0].kwargs["return_context"] is False
+        assert calls[1].kwargs["return_context"] is True
+        assert ctx == "final block"
+
+    @pytest.mark.asyncio
+    async def test_single_chunk_makes_single_call(self) -> None:
+        client = _make_async_client()
+        msgs = [HumanMessage(content=f"m{i}") for i in range(MAX_MESSAGES_PER_CALL)]
+        await persist_messages(client, "thread-1", msgs)
+        assert client.thread.add_messages.await_count == 1
+
 
 class TestPersistMessagesSync:
     def test_persists(self) -> None:
@@ -179,3 +229,12 @@ class TestPersistMessagesSync:
         client.thread = MagicMock()
         client.thread.add_messages = MagicMock(side_effect=RuntimeError("down"))
         assert persist_messages_sync(client, "thread-1", [HumanMessage(content="hi")]) is None
+
+    def test_chunks_over_thirty_messages(self) -> None:
+        client = _make_sync_client()
+        msgs = [HumanMessage(content=f"m{i}") for i in range(65)]
+        persist_messages_sync(client, "thread-1", msgs)
+        assert client.thread.add_messages.call_count == 3
+        sent = [c.kwargs["messages"] for c in client.thread.add_messages.call_args_list]
+        assert [len(s) for s in sent] == [30, 30, 5]
+        assert all(len(s) <= MAX_MESSAGES_PER_CALL for s in sent)

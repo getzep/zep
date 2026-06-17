@@ -70,6 +70,7 @@ try:
     )
     from .persistence import (
         MAX_MESSAGE_CHARS,
+        MAX_MESSAGES_PER_CALL,
         persist_messages,
         persist_messages_sync,
         to_zep_message,
@@ -99,6 +100,7 @@ try:
         "to_zep_message",
         "to_zep_messages",
         "MAX_MESSAGE_CHARS",
+        "MAX_MESSAGES_PER_CALL",
         # tools
         "create_graph_search_tool",
         "create_graph_search_tool_sync",

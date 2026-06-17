@@ -58,6 +58,13 @@ logger = logging.getLogger(__name__)
 #: Maximum characters Zep's ``graph.add`` accepts in a single call.
 MAX_GRAPH_ADD_CHARS = 10_000
 
+#: Default number of results when a ``SearchOp`` does not specify a limit.
+DEFAULT_SEARCH_LIMIT = 10
+
+#: Maximum number of results Zep's ``graph.search`` accepts (``limit`` is capped
+#: at 50 server-side for non-``auto`` scopes).
+MAX_SEARCH_LIMIT = 50
+
 #: A resolver mapping a store namespace to a Zep search/ingest target.
 #: It receives the namespace tuple and returns either ``{"user_id": ...}`` or
 #: ``{"graph_id": ...}``.
@@ -182,7 +189,11 @@ class ZepStore(BaseStore):
     # ------------------------------------------------------------------
 
     def _results_to_search_items(self, op: SearchOp, result: Any) -> list[SearchItem]:
-        """Convert Zep ``graph.search`` results into ``SearchItem`` objects."""
+        """Convert Zep ``graph.search`` results into ``SearchItem`` objects.
+
+        Applies ``op.offset`` then ``op.limit`` (pagination) to the converted
+        items, mirroring ``BaseStore.search`` semantics.
+        """
         now = datetime.now(UTC)
         items: list[SearchItem] = []
         scope = self._search_scope
@@ -221,7 +232,24 @@ class ZepStore(BaseStore):
                         score=getattr(node, "score", None),
                     )
                 )
-        else:  # episodes / auto / other -> use episodes when present
+        elif scope == "auto":
+            # ``auto`` returns a pre-assembled context string, not result lists,
+            # so reading ``episodes`` here yields nothing. Surface the context
+            # block as a single item instead.
+            context = getattr(result, "context", None)
+            if context and context.strip():
+                context = context.strip()
+                items.append(
+                    SearchItem(
+                        namespace=op.namespace_prefix,
+                        key="context",
+                        value={"context": context, "type": "context"},
+                        created_at=now,
+                        updated_at=now,
+                        score=None,
+                    )
+                )
+        else:  # episodes / observations / other -> use episodes when present
             for episode in getattr(result, "episodes", None) or []:
                 content = getattr(episode, "content", None)
                 if not content:
@@ -237,20 +265,54 @@ class ZepStore(BaseStore):
                     )
                 )
 
-        if op.limit:
-            items = items[: op.limit]
-        return items
+        # Honour pagination: skip ``offset`` items, then cap at ``limit``.
+        if op.offset:
+            items = items[op.offset :]
+        limit = self._effective_limit(op)
+        return items[:limit]
+
+    @staticmethod
+    def _effective_limit(op: SearchOp) -> int:
+        """Clamp ``op.limit`` to ``[1, MAX_SEARCH_LIMIT]`` with a default.
+
+        ``BaseStore.search`` defaults ``limit`` to 10 and imposes no ceiling,
+        but Zep's ``graph.search`` rejects ``limit > 50``. Clamp to stay valid.
+        """
+        limit = op.limit or DEFAULT_SEARCH_LIMIT
+        if limit > MAX_SEARCH_LIMIT:
+            logger.warning(
+                "Clamping search limit from %d to Zep maximum %d",
+                limit,
+                MAX_SEARCH_LIMIT,
+            )
+            limit = MAX_SEARCH_LIMIT
+        return max(limit, 1)
 
     def _zep_search_kwargs(self, op: SearchOp) -> dict[str, Any] | None:
         """Build ``graph.search`` kwargs for a ``SearchOp``, or ``None`` to skip."""
         if not op.query:
             # No natural-language query -> nothing for the semantic graph to do.
             return None
+        if op.filter:
+            # Zep's graph.search uses a typed ``search_filters`` shape (entity/
+            # edge types, property/date filters) that does not map onto
+            # BaseStore's MongoDB-style ``filter``. Rather than silently honour
+            # the wrong thing, warn (count of keys only -- no values/PII) and
+            # ignore it. Use ``create_graph_search_tool(search_filters=...)`` for
+            # Zep-native filtering.
+            logger.warning(
+                "ZepStore.search does not support BaseStore filters (%d key(s) "
+                "ignored); use Zep search_filters via the graph-search tool instead",
+                len(op.filter),
+            )
         target = self._namespace_target(op.namespace_prefix)
+        # Zep has no server-side offset; fetch enough rows to cover offset+limit
+        # (capped), then slice locally in ``_results_to_search_items``.
+        fetch = min(self._effective_limit(op) + (op.offset or 0), MAX_SEARCH_LIMIT)
         return {
             "query": op.query,
             "scope": self._search_scope,
-            "limit": op.limit or 10,
+            "limit": fetch,
             **target,
         }
 

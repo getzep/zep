@@ -86,7 +86,8 @@ async def main() -> None:
     # --- On-demand graph search over the user's personal graph. ---
     search_tool = create_graph_search_tool(zep, user_id=USER_ID, scope="edges")
 
-    model = ChatOpenAI(model="gpt-5", temperature=0)
+    # gpt-5 is a reasoning model and rejects an explicit ``temperature``; omit it.
+    model = ChatOpenAI(model="gpt-5")
     agent = create_react_agent(model=model, tools=[search_tool], prompt=prompt)
 
     async def chat(user_text: str) -> str:

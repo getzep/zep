@@ -209,6 +209,53 @@ class TestSyncSearch:
         results = store.search(("ns",), query="q", limit=2)
         assert len(results) == 2
 
+    def test_search_clamps_limit_to_zep_max(self) -> None:
+        from zep_langgraph.store import MAX_SEARCH_LIMIT
+
+        sync = _sync_client()
+        sync.graph.search.return_value = _search_result(edges=[])
+        store = ZepStore(_async_client(), sync_zep_client=sync)
+        # BaseStore allows any limit; Zep rejects > 50, so we must clamp.
+        store.search(("ns",), query="q", limit=500)
+        sent = sync.graph.search.call_args.kwargs["limit"]
+        assert sent <= MAX_SEARCH_LIMIT
+
+    def test_search_honors_offset(self) -> None:
+        sync = _sync_client()
+        sync.graph.search.return_value = _search_result(
+            edges=[_edge("a"), _edge("b"), _edge("c"), _edge("d")]
+        )
+        store = ZepStore(_async_client(), sync_zep_client=sync)
+        # Skip the first two, take the next one.
+        results = store.search(("ns",), query="q", limit=1, offset=2)
+        assert len(results) == 1
+        assert results[0].value["fact"] == "c"
+        # Zep has no server-side offset, so we must fetch offset+limit rows.
+        assert sync.graph.search.call_args.kwargs["limit"] >= 3
+
+    def test_search_auto_scope_returns_context_item(self) -> None:
+        sync = _sync_client()
+        # ``auto`` scope returns a context string, not result lists.
+        sync.graph.search.return_value = _search_result(context="Alice works at Acme.")
+        store = ZepStore(_async_client(), sync_zep_client=sync, search_scope="auto")
+        results = store.search(("ns",), query="where does Alice work?")
+        assert len(results) == 1
+        assert results[0].value["context"] == "Alice works at Acme."
+        assert results[0].value["type"] == "context"
+
+    def test_search_filter_warns_and_ignored(self, caplog) -> None:
+        import logging
+
+        sync = _sync_client()
+        sync.graph.search.return_value = _search_result(edges=[_edge("a")])
+        store = ZepStore(_async_client(), sync_zep_client=sync)
+        with caplog.at_level(logging.WARNING, logger="zep_langgraph.store"):
+            results = store.search(("ns",), query="q", filter={"type": "report"})
+        # The op still runs; the filter is not forwarded to Zep.
+        assert "search_filters" not in sync.graph.search.call_args.kwargs
+        assert len(results) == 1
+        assert any("filter" in rec.message.lower() for rec in caplog.records)
+
 
 # ---------------------------------------------------------------------------
 # Asynchronous public API -> abatch

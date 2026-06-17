@@ -43,6 +43,28 @@ logger = logging.getLogger(__name__)
 #: documents instead of the thread API.
 MAX_MESSAGE_CHARS = 4096
 
+#: Maximum number of messages Zep accepts in a single ``thread.add_messages``
+#: call. Larger turns are split across multiple calls.
+MAX_MESSAGES_PER_CALL = 30
+
+
+def _truncate_message_content(content: str) -> str:
+    """Truncate message content to :data:`MAX_MESSAGE_CHARS`, logging a warning.
+
+    Zep rejects messages whose content exceeds :data:`MAX_MESSAGE_CHARS` with a
+    400. To avoid silently dropping the whole message we truncate instead. The
+    log line carries only lengths -- never content -- so no PII is emitted.
+    """
+    if len(content) <= MAX_MESSAGE_CHARS:
+        return content
+    logger.warning(
+        "Truncating message content from %d to %d chars before sending to Zep",
+        len(content),
+        MAX_MESSAGE_CHARS,
+    )
+    return content[:MAX_MESSAGE_CHARS]
+
+
 #: Mapping from LangChain message ``type`` values to Zep role names.
 _LC_ROLE_MAP: dict[str, str] = {
     "human": "user",
@@ -94,20 +116,21 @@ def to_zep_message(
         (e.g. an assistant message that only carries tool calls).
     """
     if isinstance(message, Message):
-        return message
+        # Native Zep messages take the same content path the LangChain branch
+        # uses (the README/example pass these), so over-long content is truncated
+        # rather than rejected with a 400 by Zep.
+        content = message.content or ""
+        truncated = _truncate_message_content(content)
+        if truncated is content:
+            return message
+        return message.model_copy(update={"content": truncated})
 
     role = _LC_ROLE_MAP.get(message.type, "user")
     content = _coerce_content(message.content).strip()
     if not content:
         # Tool-call-only AI messages or empty placeholders carry no useful text.
         return None
-    if len(content) > MAX_MESSAGE_CHARS:
-        logger.debug(
-            "Truncating message content from %d to %d chars before sending to Zep",
-            len(content),
-            MAX_MESSAGE_CHARS,
-        )
-        content = content[:MAX_MESSAGE_CHARS]
+    content = _truncate_message_content(content)
 
     name = message.name
     if not name:
@@ -117,6 +140,28 @@ def to_zep_message(
             name = assistant_name
 
     return Message(role=role, content=content, name=name)
+
+
+def _chunk_messages(messages: Sequence[Message]) -> list[list[Message]]:
+    """Split messages into chunks of at most :data:`MAX_MESSAGES_PER_CALL`.
+
+    Zep rejects a ``thread.add_messages`` call carrying more than
+    :data:`MAX_MESSAGES_PER_CALL` messages with a 400, so larger turns are split
+    across multiple calls. The log line carries only counts -- never content.
+    """
+    if len(messages) <= MAX_MESSAGES_PER_CALL:
+        return [list(messages)]
+    chunks = [
+        list(messages[i : i + MAX_MESSAGES_PER_CALL])
+        for i in range(0, len(messages), MAX_MESSAGES_PER_CALL)
+    ]
+    logger.warning(
+        "Splitting %d messages into %d add_messages calls (cap %d per call)",
+        len(messages),
+        len(chunks),
+        MAX_MESSAGES_PER_CALL,
+    )
+    return chunks
 
 
 def to_zep_messages(
@@ -189,27 +234,32 @@ async def persist_messages(
         logger.debug("No persistable messages for thread %s -- skipping", thread_id)
         return None
 
-    try:
-        response = await zep_client.thread.add_messages(
-            thread_id,
-            messages=zep_messages,
-            ignore_roles=ignore_roles,
-            return_context=return_context,
-        )
-    except Exception:
-        logger.warning(
-            "Failed to persist %d message(s) to Zep thread %s",
-            len(zep_messages),
-            thread_id,
-            exc_info=True,
-        )
-        return None
-
-    if return_context and response is not None:
-        context: str | None = getattr(response, "context", None)
-        if context and context.strip():
-            return context.strip()
-    return None
+    chunks = _chunk_messages(zep_messages)
+    last_context: str | None = None
+    for index, chunk in enumerate(chunks):
+        # Only request context on the final chunk -- it reflects the most recent
+        # messages, which is what the Context Block is keyed off.
+        want_context = return_context and index == len(chunks) - 1
+        try:
+            response = await zep_client.thread.add_messages(
+                thread_id,
+                messages=chunk,
+                ignore_roles=ignore_roles,
+                return_context=want_context,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to persist %d message(s) to Zep thread %s",
+                len(chunk),
+                thread_id,
+                exc_info=True,
+            )
+            return last_context
+        if want_context and response is not None:
+            context: str | None = getattr(response, "context", None)
+            if context and context.strip():
+                last_context = context.strip()
+    return last_context
 
 
 def persist_messages_sync(
@@ -246,24 +296,29 @@ def persist_messages_sync(
         logger.debug("No persistable messages for thread %s -- skipping", thread_id)
         return None
 
-    try:
-        response = zep_client.thread.add_messages(
-            thread_id,
-            messages=zep_messages,
-            ignore_roles=ignore_roles,
-            return_context=return_context,
-        )
-    except Exception:
-        logger.warning(
-            "Failed to persist %d message(s) to Zep thread %s",
-            len(zep_messages),
-            thread_id,
-            exc_info=True,
-        )
-        return None
-
-    if return_context and response is not None:
-        context: str | None = getattr(response, "context", None)
-        if context and context.strip():
-            return context.strip()
-    return None
+    chunks = _chunk_messages(zep_messages)
+    last_context: str | None = None
+    for index, chunk in enumerate(chunks):
+        # Only request context on the final chunk -- it reflects the most recent
+        # messages, which is what the Context Block is keyed off.
+        want_context = return_context and index == len(chunks) - 1
+        try:
+            response = zep_client.thread.add_messages(
+                thread_id,
+                messages=chunk,
+                ignore_roles=ignore_roles,
+                return_context=want_context,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to persist %d message(s) to Zep thread %s",
+                len(chunk),
+                thread_id,
+                exc_info=True,
+            )
+            return last_context
+        if want_context and response is not None:
+            context: str | None = getattr(response, "context", None)
+            if context and context.strip():
+                last_context = context.strip()
+    return last_context
