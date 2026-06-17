@@ -98,6 +98,46 @@ describe("ZepGraphSearchTool", () => {
     expect(mocks.search).not.toHaveBeenCalled();
   });
 
+  it("formats thread_summaries results", async () => {
+    const { client, mocks } = mockZepClient({
+      searchResults: {
+        threadSummaries: [
+          { summary: "User discussed travel plans." },
+          { summary: "User confirmed a booking." },
+        ],
+      },
+    });
+    const tool = new ZepGraphSearchTool({
+      zep: client as unknown as ZepClient,
+      userId: "u",
+      scope: "thread_summaries",
+      logger: silentLogger,
+    });
+
+    const out = await callTool(tool, { query: "what did we discuss" });
+
+    expect(mocks.search).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "thread_summaries" }),
+    );
+    expect(out).toBe(
+      "- User discussed travel plans.\n- User confirmed a booking.",
+    );
+  });
+
+  it("rejects an unsupported scope at construction", () => {
+    const { client } = mockZepClient();
+    expect(
+      () =>
+        new ZepGraphSearchTool({
+          zep: client as unknown as ZepClient,
+          userId: "u",
+          // Force an invalid scope past the type checker to exercise the guard.
+          scope: "bogus" as never,
+          logger: silentLogger,
+        }),
+    ).toThrow(/Unsupported Zep graph search scope/);
+  });
+
   it("returns 'No results found.' when nothing matches", async () => {
     const { client } = mockZepClient({ searchResults: { edges: [] } });
     const tool = new ZepGraphSearchTool({

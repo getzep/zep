@@ -60,6 +60,20 @@ interface GraphSearchArgs {
 }
 
 /**
+ * Search scopes this tool knows how to format. Every member of Zep's
+ * `GraphSearchScope` is handled, so an unsupported scope is rejected at
+ * construction rather than silently returning "No results found.".
+ */
+const SUPPORTED_SCOPES = [
+  "auto",
+  "edges",
+  "nodes",
+  "episodes",
+  "observations",
+  "thread_summaries",
+] as const satisfies readonly Zep.GraphSearchScope[];
+
+/**
  * A model-callable tool that searches a Zep knowledge graph.
  *
  * The scope, reranker, and limit are pinned at construction time, so the model
@@ -99,7 +113,14 @@ export class ZepGraphSearchTool extends BaseTool {
     this.zep = options.zep;
     this.logger = options.logger ?? defaultLogger;
     this.graphId = options.graphId;
-    this.scope = options.scope ?? "edges";
+    const scope = options.scope ?? "edges";
+    if (!SUPPORTED_SCOPES.includes(scope)) {
+      throw new Error(
+        `Unsupported Zep graph search scope: '${scope}'. ` +
+          `Supported scopes are: ${SUPPORTED_SCOPES.join(", ")}.`,
+      );
+    }
+    this.scope = scope;
     this.reranker = options.reranker ?? "rrf";
     this.limit = options.limit ?? 10;
     this.identity = {
@@ -204,6 +225,11 @@ export class ZepGraphSearchTool extends BaseTool {
     } else if (this.scope === "observations") {
       for (const observation of results.observations ?? []) {
         const summary = observation.summary;
+        if (summary) lines.push(`- ${summary}`);
+      }
+    } else if (this.scope === "thread_summaries") {
+      for (const summaryNode of results.threadSummaries ?? []) {
+        const summary = summaryNode.summary;
         if (summary) lines.push(`- ${summary}`);
       }
     }

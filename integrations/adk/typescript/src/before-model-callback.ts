@@ -24,6 +24,12 @@ export interface ZepBeforeModelCallbackOptions extends ZepIdentityOptions {
   ignoreRoles?: Zep.RoleType[];
   /** Logger for Zep failures. Defaults to a `console`-backed logger. */
   logger?: Logger;
+  /**
+   * Shared resource manager. Pass the same instance used by the after-model
+   * callback so the two hooks share ensure-thread and dedup state instead of
+   * being split-brain. {@link createZepCallbacks} wires this automatically.
+   */
+  resources?: ZepResourceManager;
 }
 
 /**
@@ -86,7 +92,7 @@ export function createZepBeforeModelCallback(
   options: ZepBeforeModelCallbackOptions = {},
 ): ZepBeforeModelCallback {
   const logger = options.logger ?? defaultLogger;
-  const resources = new ZepResourceManager(zep, logger);
+  const resources = options.resources ?? new ZepResourceManager(zep, logger);
 
   return async ({ context, request }) => {
     await persistAndInject({

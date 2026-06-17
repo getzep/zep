@@ -24,6 +24,7 @@ import {
   type ResolvedIdentity,
   type ZepIdentityOptions,
 } from "./identity.js";
+import { truncateMessageContent } from "./limits.js";
 import type { Logger } from "./logging.js";
 import type { ZepResourceManager } from "./resources.js";
 
@@ -135,9 +136,20 @@ export async function persistAndInject(params: {
     return undefined;
   }
 
+  // Same-turn dedup guard. The before-model hook fires once per LLM call, so a
+  // tool-using turn fires it multiple times with the same `invocationId`. Skip
+  // re-persisting the user message for an invocation we already persisted to
+  // this thread; otherwise the same user turn is stored two or more times.
+  const { invocationId } = context;
+  if (resources.alreadyPersisted(identity.threadId, invocationId)) {
+    return undefined;
+  }
+
   if (!(await resources.ensure(identity))) {
     return undefined;
   }
+
+  const content = truncateMessageContent(userText, logger, "user");
 
   let contextBlock: string | undefined;
   try {
@@ -145,7 +157,7 @@ export async function persistAndInject(params: {
       messages: [
         {
           role: "user",
-          content: userText,
+          content,
           name: identity.displayName,
         },
       ],
@@ -161,6 +173,10 @@ export async function persistAndInject(params: {
     logger.warn("Failed to persist message / retrieve context from Zep", error);
     return undefined;
   }
+
+  // Mark as persisted only AFTER the API call succeeds, so a transient failure
+  // does not permanently suppress this turn's user message.
+  resources.markPersisted(identity.threadId, invocationId);
 
   if (!contextBlock) {
     return undefined;

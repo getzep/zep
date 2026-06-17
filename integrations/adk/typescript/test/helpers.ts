@@ -8,6 +8,26 @@ import type { Content } from "@google/genai";
 import type { AdkContextLike } from "../src/identity.js";
 import type { Logger } from "../src/logging.js";
 
+/**
+ * Read the `content` of the first message from the Nth `thread.addMessages`
+ * call recorded on a vitest mock. Centralises the loose typing of mock call
+ * args so individual tests stay strict.
+ */
+export function persistedContent(
+  addMessages: { mock: { calls: unknown[][] } },
+  callIndex = 0,
+): string {
+  const call = addMessages.mock.calls[callIndex];
+  const payload = call?.[1] as
+    | { messages?: Array<{ content?: string }> }
+    | undefined;
+  const content = payload?.messages?.[0]?.content;
+  if (typeof content !== "string") {
+    throw new Error("No persisted message content found on the mock call");
+  }
+  return content;
+}
+
 /** A delta-aware state stub matching the shape we read from ADK's `State`. */
 export function fakeState(values: Record<string, unknown> = {}) {
   return {
@@ -21,6 +41,7 @@ export function fakeState(values: Record<string, unknown> = {}) {
 export function fakeContext(opts: {
   userId?: string;
   sessionId?: string;
+  invocationId?: string;
   userText?: string;
   userContent?: Content;
   state?: Record<string, unknown>;
@@ -33,6 +54,7 @@ export function fakeContext(opts: {
   return {
     userId: opts.userId ?? "adk-user",
     sessionId: opts.sessionId ?? "adk-session",
+    invocationId: opts.invocationId ?? "adk-invocation",
     userContent,
     state: fakeState(opts.state),
   };
@@ -70,6 +92,31 @@ export const silentLogger: Logger = {
   warn: () => {},
   error: () => {},
 };
+
+/**
+ * A logger that captures the formatted messages passed to each level, so tests
+ * can assert on warning text (e.g. that a truncation warning carries lengths
+ * but never message content).
+ */
+export function capturingLogger(): Logger & {
+  warns: string[];
+  infos: string[];
+} {
+  const warns: string[] = [];
+  const infos: string[] = [];
+  return {
+    warns,
+    infos,
+    debug: () => {},
+    info: (message) => {
+      infos.push(message);
+    },
+    warn: (message) => {
+      warns.push(message);
+    },
+    error: () => {},
+  };
+}
 
 /**
  * Build a mock `ZepClient` with `thread`, `user`, and `graph` resources whose

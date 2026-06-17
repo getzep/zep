@@ -70,6 +70,12 @@ export interface ResolvedIdentity {
 export interface AdkContextLike {
   readonly userId: string;
   readonly sessionId: string;
+  /**
+   * The current ADK invocation id. Stable across the multiple
+   * `beforeModelCallback` / `processLlmRequest` firings of a single
+   * (possibly tool-using) turn, so it keys the same-turn dedup guard.
+   */
+  readonly invocationId: string;
   readonly userContent?: Content;
   readonly state: { get<T>(key: string, defaultValue?: T): T | undefined };
 }

@@ -3,11 +3,14 @@ import type { ZepClient } from "@getzep/zep-cloud";
 import type { Context, LlmResponse } from "@google/adk";
 import { createZepAfterModelCallback } from "../src/after-model-callback.js";
 import {
+  capturingLogger,
   fakeContext,
   fakeLlmResponse,
   mockZepClient,
+  persistedContent,
   silentLogger,
 } from "./helpers.js";
+import { MESSAGE_CONTENT_MAX, MESSAGE_CONTENT_TRUNCATE_TO } from "../src/limits.js";
 
 function run(
   client: ReturnType<typeof mockZepClient>["client"],
@@ -75,5 +78,21 @@ describe("createZepAfterModelCallback", () => {
     await expect(
       run(client, fakeLlmResponse({ text: "x" })),
     ).resolves.toBeUndefined();
+  });
+
+  it("truncates an over-long assistant message and warns with lengths only", async () => {
+    const { client, mocks } = mockZepClient();
+    const logger = capturingLogger();
+    const longText = "z".repeat(MESSAGE_CONTENT_MAX + 1000);
+
+    await run(client, fakeLlmResponse({ text: longText }), { logger });
+
+    const persisted = persistedContent(mocks.addMessages);
+    expect(persisted.length).toBe(MESSAGE_CONTENT_TRUNCATE_TO);
+
+    const warning = logger.warns.find((w) => w.includes("Truncated"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain(String(MESSAGE_CONTENT_MAX + 1000));
+    expect(warning).not.toContain("zzzzz");
   });
 });

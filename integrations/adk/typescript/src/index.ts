@@ -31,6 +31,12 @@ export {
   type ZepAfterModelCallbackOptions,
 } from "./after-model-callback.js";
 
+export {
+  createZepCallbacks,
+  type ZepCallbacks,
+  type ZepCallbacksOptions,
+} from "./callbacks.js";
+
 export { ZepContextTool, type ZepContextToolOptions } from "./context-tool.js";
 
 export {
@@ -54,6 +60,12 @@ export {
 } from "./identity.js";
 
 export { ZepResourceManager } from "./resources.js";
+export {
+  truncateMessageContent,
+  MESSAGE_CONTENT_MAX,
+  MESSAGE_CONTENT_TRUNCATE_TO,
+  GRAPH_DATA_MAX,
+} from "./limits.js";
 export { defaultLogger, type Logger } from "./logging.js";
 export { ZepIdentityError } from "./errors.js";
 
