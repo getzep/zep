@@ -141,6 +141,29 @@ describe("createZepRememberTool", () => {
     expect(zep.thread.addMessages.mock.calls[0]![1].messages[0].role).toBe("user");
   });
 
+  it("truncates over-long graph.add data to the 10,000-char limit and warns (lengths only)", async () => {
+    const zep = makeFakeZep();
+    const warn = vi.fn();
+    const tool = createZepRememberTool({
+      client: asZep(zep),
+      binding: { userId: "u1" }, // no thread + no role → graph.add path
+      logger: { warn },
+    });
+
+    // 12,000 chars — over Zep's 10,000-char graph.add limit.
+    const result = await run(tool, { content: "z".repeat(12000) });
+
+    expect(result.stored).toBe(true);
+    const data = zep.graph.add.mock.calls[0]![0].data as string;
+    // Capped below 10,000 (the package leaves headroom).
+    expect(data.length).toBeLessThanOrEqual(10000);
+    expect(data.length).toBeLessThan(12000);
+    expect(warn).toHaveBeenCalledOnce();
+    const warnArg = warn.mock.calls[0]![0] as string;
+    expect(warnArg).toContain("12000");
+    expect(warnArg).not.toContain("zzzz");
+  });
+
   it("truncates an over-long message to the limit and warns (lengths only)", async () => {
     const zep = makeFakeZep();
     const warn = vi.fn();

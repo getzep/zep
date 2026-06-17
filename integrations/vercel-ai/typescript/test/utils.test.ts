@@ -27,6 +27,21 @@ describe("toRoleType", () => {
     expect(toRoleType(undefined)).toBe("norole");
     expect(toRoleType("")).toBe("norole");
   });
+
+  it("debug-logs the role NAME only when coercing an unknown role to norole", () => {
+    const debug = vi.fn();
+    expect(toRoleType("wizard", { warn: vi.fn(), debug })).toBe("norole");
+    expect(debug).toHaveBeenCalledOnce();
+    const msg = debug.mock.calls[0]![0] as string;
+    expect(msg).toContain("wizard");
+    expect(msg).toContain("norole");
+  });
+
+  it("does not debug-log for a known role", () => {
+    const debug = vi.fn();
+    expect(toRoleType("Human", { warn: vi.fn(), debug })).toBe("user");
+    expect(debug).not.toHaveBeenCalled();
+  });
 });
 
 describe("resolveGraphTarget", () => {

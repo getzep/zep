@@ -1,16 +1,18 @@
 /**
- * Vercel AI SDK + Zep — `streamText` persistence example.
+ * Vercel AI SDK + Zep — `streamText` example (middleware + onFinish).
  *
- * IMPORTANT: the AI SDK only calls a middleware's `wrapGenerate` for
- * `generateText`, never for `streamText`. So for streaming:
+ * The same division of labor as the `generateText` example applies to
+ * streaming: **inject via middleware, persist via `onFinish`.**
  *
- *   - Context injection still works through the middleware's `transformParams`
- *     (or you can set `system:` yourself via `getZepContext`), but
- *   - Persistence must be done from `onFinish` using `persistZepTurn`.
+ *   - Context injection runs in the middleware's `transformParams` (it fires for
+ *     `stream` calls too, on each new user turn).
+ *   - Persistence runs from `onFinish`, which fires exactly once per turn with
+ *     the final assistant text — for both `streamText` and `generateText`. (The
+ *     middleware never persists; a per-step hook would fragment the turn.)
  *
- * This example uses the plain helpers (no middleware) to make the streaming
- * persistence pattern explicit: fetch context with `getZepContext`, set it as
- * `system`, and persist the completed turn from `onFinish`.
+ * If you'd rather set `system:` yourself instead of using the middleware, the
+ * plain `getZepContext` helper does that — but the middleware keeps the
+ * streaming and non-streaming paths identical.
  *
  * Prerequisites:
  *   export ZEP_API_KEY="your-zep-api-key"
@@ -23,11 +25,11 @@
 import { randomUUID } from "node:crypto";
 import { ZepClient } from "@getzep/zep-cloud";
 import { openai } from "@ai-sdk/openai";
-import { streamText } from "ai";
+import { streamText, wrapLanguageModel } from "ai";
 import {
+  createZepMiddleware,
+  createZepOnFinish,
   ensureZepUserAndThread,
-  getZepContext,
-  persistZepTurn,
 } from "../src/index.js";
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
@@ -52,26 +54,19 @@ async function main(): Promise<void> {
 
   const userInput = "Hi! I just adopted a beagle named Cooper.";
 
-  // 1. Fetch the Context Block and put it in the system prompt.
-  const context = await getZepContext(client, threadId);
-  const system = context
-    ? `You are a helpful assistant. Relevant long-term memory:\n\n${context}`
-    : "You are a helpful assistant.";
+  // 1. Wrap the model: inject the Context Block on each new user turn.
+  const model = wrapLanguageModel({
+    model: openai("gpt-4o-mini"),
+    middleware: createZepMiddleware({ client, threadId }),
+  });
 
   // 2. Stream the response. Persist the completed turn from onFinish, which
-  //    fires for both streamText and generateText (wrapGenerate does NOT).
+  //    fires once for both streamText and generateText.
   const result = streamText({
-    model: openai("gpt-4o-mini"),
-    system,
+    model,
+    system: "You are a helpful assistant.",
     prompt: userInput,
-    onFinish: ({ text }) => {
-      // Fire-and-forget; never block the stream on memory persistence.
-      void persistZepTurn(client, threadId, {
-        user: userInput,
-        assistant: text,
-        userName: "Bob",
-      });
-    },
+    onFinish: createZepOnFinish({ client, threadId, user: userInput, userName: "Bob" }),
   });
 
   process.stdout.write("Agent: ");

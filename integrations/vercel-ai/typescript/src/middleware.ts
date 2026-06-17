@@ -1,38 +1,24 @@
 import type { LanguageModelMiddleware } from "ai";
 import type {
   LanguageModelV3CallOptions,
-  LanguageModelV3Content,
-  LanguageModelV3GenerateResult,
   LanguageModelV3Message,
   LanguageModelV3Prompt,
 } from "@ai-sdk/provider";
 import type { ZepClient } from "@getzep/zep-cloud";
 import type { ZepLogger } from "./types.js";
 import { errorMessage, resolveLogger } from "./zep-utils.js";
-import { getZepContext, persistZepTurn } from "./helpers.js";
+import { getZepContext } from "./helpers.js";
 
 /** Options for {@link createZepMiddleware}. */
 export interface ZepMiddlewareOptions {
   /** A shared, initialized Zep client. The caller owns its lifecycle. */
   client: ZepClient;
   /**
-   * The Zep thread that scopes relevance and (when `persist` is on) receives
-   * conversation history. The Context Block is still assembled from the *whole*
-   * user graph; the thread only focuses what's relevant right now.
+   * The Zep thread that scopes relevance for the injected Context Block. The
+   * block is still assembled from the *whole* user graph; the thread only
+   * focuses what's relevant right now.
    */
   threadId: string;
-  /**
-   * Persist the user+assistant turn after a **non-streaming** `generateText`
-   * call via `wrapGenerate`.
-   *
-   * Defaults to `false`. Note that `wrapGenerate` does **not** fire for
-   * `streamText` — for streaming you must persist via `onFinish` +
-   * {@link persistZepTurn} (see this package's README and the streaming
-   * example). When `persist` is `true` and the middleware is used with
-   * `streamText`, persistence is silently skipped at the SDK level (this is a
-   * documented limitation, not a bug).
-   */
-  persist?: boolean;
   /**
    * How to wrap the retrieved Context Block into the injected system message.
    * Receives the raw Context Block; return the full system message text.
@@ -44,10 +30,6 @@ export interface ZepMiddlewareOptions {
    * When omitted, Zep's default Smart Context Assembly layout is used.
    */
   templateId?: string;
-  /** Speaker name recorded on the persisted user message (the user's real name). */
-  userName?: string;
-  /** Name recorded on the persisted assistant message. */
-  assistantName?: string;
   /** Logger for Zep failures. Defaults to `console`. */
   logger?: ZepLogger;
 }
@@ -62,78 +44,74 @@ function defaultFormatContext(context: string): string {
 }
 
 /**
- * Concatenate the text parts of the most recent `user` message in a provider
- * prompt. Returns `""` when the last message is not a user message or carries no
- * text (e.g. a tool result). Non-text parts (files) are ignored.
+ * Decide whether the current provider prompt represents a *genuine new user
+ * turn* — the one moment we want to (re)fetch and inject the Context Block.
+ *
+ * The AI SDK tool loop calls the wrapped model once per step. The first step of
+ * a turn ends with the user's message; every continuation step ends with a
+ * `tool` result (or an `assistant` tool-call message). Injecting on every step
+ * would re-fetch the Context Block N times per turn and stack N system messages
+ * onto the prompt. So we inject only when the LAST message is from the user.
  */
-function latestUserText(prompt: LanguageModelV3Prompt): string {
+function isNewUserTurn(prompt: LanguageModelV3Prompt): boolean {
   for (let i = prompt.length - 1; i >= 0; i--) {
     const message = prompt[i];
     if (!message) continue;
-    if (message.role === "user") {
-      return message.content
-        .filter((part): part is { type: "text"; text: string } => part.type === "text")
-        .map((part) => part.text)
-        .join("")
-        .trim();
-    }
-    // Stop at the first non-user message from the end — we only persist the
-    // user turn that triggered this generation.
-    if (message.role === "assistant" || message.role === "tool") {
-      return "";
-    }
+    return message.role === "user";
   }
-  return "";
-}
-
-/** Concatenate the text content the model generated in a non-streaming result. */
-function assistantText(content: Array<LanguageModelV3Content>): string {
-  return content
-    .filter((part): part is { type: "text"; text: string } => part.type === "text")
-    .map((part) => part.text)
-    .join("")
-    .trim();
+  return false;
 }
 
 /**
  * Build a Vercel AI SDK {@link LanguageModelMiddleware} that injects a Zep
- * Context Block into every model call — and, optionally, persists the turn.
+ * Context Block as a leading `system` message on each genuine new user turn.
  *
- * Wrap any language model with it via `wrapLanguageModel`:
+ * This middleware is **context-injection only**. It does not persist anything —
+ * persistence is handled once per turn from `onFinish` (see
+ * {@link createZepOnFinish}). Wrap any language model with it via
+ * `wrapLanguageModel`, and pair it with `createZepOnFinish` on your
+ * `generateText`/`streamText` call:
  *
  * ```ts
- * import { wrapLanguageModel, generateText } from "ai";
+ * import { wrapLanguageModel, generateText, stepCountIs } from "ai";
  * import { openai } from "@ai-sdk/openai";
- * import { createZepMiddleware } from "@getzep/zep-vercel-ai";
+ * import { createZepMiddleware, createZepOnFinish } from "@getzep/zep-vercel-ai";
  *
  * const model = wrapLanguageModel({
  *   model: openai("gpt-4o-mini"),
- *   middleware: createZepMiddleware({ client, threadId, persist: true }),
+ *   middleware: createZepMiddleware({ client, threadId }),
  * });
  *
- * const { text } = await generateText({ model, prompt: "What do you know about me?" });
+ * const { text } = await generateText({
+ *   model,
+ *   prompt: "What do you know about me?",
+ *   stopWhen: stepCountIs(5),
+ *   onFinish: createZepOnFinish({ client, threadId }),
+ * });
  * ```
  *
  * **What it does**
  *
  * - `transformParams` fetches the Context Block (`thread.getUserContext`) and
- *   prepends it as a `system` message to the provider prompt, on both
- *   `generate` and `stream` calls.
- * - When `persist` is enabled, `wrapGenerate` records the user+assistant turn
- *   via `thread.addMessages` after a **non-streaming** `generateText`.
+ *   prepends it as a `system` message to the provider prompt — on both
+ *   `generate` and `stream` calls — but **only on a genuine new user turn**
+ *   (detected by the last prompt message being a `user` message). On tool-loop
+ *   continuation steps (whose last message is a `tool` result or an `assistant`
+ *   tool call) it injects nothing, so the Context Block is fetched at most once
+ *   per turn rather than once per step.
  *
- * **Streaming caveat (important)**
+ * **Why injection-only**
  *
- * The AI SDK only calls `wrapGenerate` for `generateText`, never for
- * `streamText`. Context injection still works for streaming (it runs in
- * `transformParams`), but **persistence does not** — for `streamText` you must
- * persist the turn yourself from `onFinish` using {@link persistZepTurn}. This
- * limitation is by design in the SDK; the middleware does not silently pretend
- * otherwise.
+ * The AI SDK tool loop calls the wrapped model's `doGenerate` once per step, so
+ * a `wrapGenerate`-based persistence hook would fire once per step and fragment
+ * a single user+assistant turn across multiple `thread.addMessages` calls —
+ * writing the model's intermediate tool-call preamble into the user graph as a
+ * real assistant message. `onFinish` fires exactly once per turn with the final
+ * assistant text (for both `generateText` and `streamText`), so persistence
+ * lives there. See {@link createZepOnFinish}.
  *
  * All Zep failures are caught and logged (lengths only — never content/PII); a
- * Zep outage degrades to "no context / no persistence" and never crashes the
- * host call.
+ * Zep outage degrades to "no context" and never crashes the host call.
  */
 export function createZepMiddleware(
   options: ZepMiddlewareOptions,
@@ -141,7 +119,6 @@ export function createZepMiddleware(
   const { client, threadId } = options;
   const logger = resolveLogger(options.logger);
   const format = options.formatContext ?? defaultFormatContext;
-  const persist = options.persist ?? false;
 
   return {
     specificationVersion: "v3",
@@ -152,6 +129,13 @@ export function createZepMiddleware(
       type: "generate" | "stream";
       params: LanguageModelV3CallOptions;
     }): Promise<LanguageModelV3CallOptions> => {
+      // Only inject on a genuine new user turn. On tool-loop continuation steps
+      // (last message is a tool result or assistant tool call) we skip, so the
+      // Context Block is fetched at most once per turn.
+      if (!isNewUserTurn(params.prompt)) {
+        return params;
+      }
+
       try {
         const context = await getZepContext(client, threadId, {
           ...(options.templateId !== undefined ? { templateId: options.templateId } : {}),
@@ -170,43 +154,6 @@ export function createZepMiddleware(
         logger.warn(`[zep-middleware] Context injection skipped: ${errorMessage(error)}`);
       }
       return params;
-    },
-
-    wrapGenerate: async ({
-      doGenerate,
-      params,
-    }: {
-      doGenerate: () => PromiseLike<LanguageModelV3GenerateResult>;
-      params: LanguageModelV3CallOptions;
-    }): Promise<LanguageModelV3GenerateResult> => {
-      const result = await doGenerate();
-
-      if (persist) {
-        try {
-          const user = latestUserText(params.prompt);
-          const assistant = assistantText(result.content);
-          if (user || assistant) {
-            await persistZepTurn(
-              client,
-              threadId,
-              {
-                ...(user ? { user } : {}),
-                ...(assistant ? { assistant } : {}),
-                ...(options.userName !== undefined ? { userName: options.userName } : {}),
-                ...(options.assistantName !== undefined
-                  ? { assistantName: options.assistantName }
-                  : {}),
-              },
-              { logger },
-            );
-          }
-        } catch (error) {
-          // persistZepTurn already degrades gracefully; double-guard anyway.
-          logger.warn(`[zep-middleware] Persist skipped: ${errorMessage(error)}`);
-        }
-      }
-
-      return result;
     },
   };
 }

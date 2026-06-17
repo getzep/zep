@@ -1,38 +1,33 @@
 import { describe, it, expect, vi } from "vitest";
-import type {
-  LanguageModelV3CallOptions,
-  LanguageModelV3GenerateResult,
-  LanguageModelV3StreamResult,
-} from "@ai-sdk/provider";
+import type { LanguageModelV3CallOptions, LanguageModelV3Prompt } from "@ai-sdk/provider";
 import { createZepMiddleware } from "../src/index.js";
 import { makeFakeZep, asZep } from "./helpers.js";
 
+const modelStub = {} as never;
+
+/** Build a minimal V3 call-options object from an explicit prompt. */
+function makeParamsFromPrompt(prompt: LanguageModelV3Prompt): LanguageModelV3CallOptions {
+  return { prompt } as LanguageModelV3CallOptions;
+}
+
 /** Build a minimal V3 call-options object with a single user message. */
 function makeParams(userText: string): LanguageModelV3CallOptions {
-  return {
-    prompt: [{ role: "user", content: [{ type: "text", text: userText }] }],
-  } as LanguageModelV3CallOptions;
+  return makeParamsFromPrompt([
+    { role: "user", content: [{ type: "text", text: userText }] },
+  ]);
 }
-
-/** A `doGenerate` stub that resolves to a result whose text content is `text`. */
-function makeDoGenerate(text: string): () => Promise<LanguageModelV3GenerateResult> {
-  return async () =>
-    ({
-      content: [{ type: "text", text }],
-      finishReason: { unified: "stop", raw: "stop" },
-      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-      warnings: [],
-    }) as unknown as LanguageModelV3GenerateResult;
-}
-
-const doStreamStub = (async () => ({}) as unknown as LanguageModelV3StreamResult) as () => Promise<LanguageModelV3StreamResult>;
-const modelStub = {} as never;
 
 describe("createZepMiddleware", () => {
   it("uses specificationVersion v3", () => {
     const zep = makeFakeZep();
     const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1" });
     expect(mw.specificationVersion).toBe("v3");
+  });
+
+  it("does not expose a wrapGenerate hook (injection only)", () => {
+    const zep = makeFakeZep();
+    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1" });
+    expect(mw.wrapGenerate).toBeUndefined();
   });
 
   it("transformParams injects the Context Block as a leading system message", async () => {
@@ -80,90 +75,69 @@ describe("createZepMiddleware", () => {
     const params = makeParams("hi");
     const out = await mw.transformParams!({ type: "generate", params, model: modelStub });
     expect(out.prompt[0]!.role).toBe("user");
-    expect(warn).toHaveBeenCalledOnce();
+    // getZepContext logs the failure; transformParams returns the prompt as-is.
+    expect(warn).toHaveBeenCalled();
   });
 
-  it("wrapGenerate persists the user+assistant turn when persist is enabled", async () => {
+  it("injects on a genuine new user turn but NOT on tool-loop continuation steps", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({
-      client: asZep(zep),
-      threadId: "t1",
-      persist: true,
-      userName: "Jane",
-    });
-
-    const params = makeParams("I live in Portland");
-    const result = await mw.wrapGenerate!({
-      doGenerate: makeDoGenerate("Noted!"),
-      doStream: doStreamStub,
-      params,
-      model: modelStub,
-    });
-
-    expect((result.content[0] as { text: string }).text).toBe("Noted!");
-    expect(zep.thread.addMessages).toHaveBeenCalledTimes(1);
-    const req = zep.thread.addMessages.mock.calls[0]![1];
-    expect(req.messages).toEqual([
-      { role: "user", content: "I live in Portland", name: "Jane" },
-      { role: "assistant", content: "Noted!" },
-    ]);
-  });
-
-  it("wrapGenerate truncates an over-long user message and warns (lengths only)", async () => {
-    const zep = makeFakeZep();
-    const warn = vi.fn();
-    const mw = createZepMiddleware({
-      client: asZep(zep),
-      threadId: "t1",
-      persist: true,
-      logger: { warn },
-    });
-
-    const params = makeParams("u".repeat(5000));
-    await mw.wrapGenerate!({
-      doGenerate: makeDoGenerate("ok"),
-      doStream: doStreamStub,
-      params,
-      model: modelStub,
-    });
-
-    const sent = zep.thread.addMessages.mock.calls[0]![1].messages[0].content as string;
-    expect(sent.length).toBe(4000);
-    expect(warn).toHaveBeenCalledOnce();
-    const warnArg = warn.mock.calls[0]![0] as string;
-    expect(warnArg).toContain("5000");
-    expect(warnArg).not.toContain("uuuu");
-  });
-
-  it("wrapGenerate does not persist when persist is disabled (default)", async () => {
-    const zep = makeFakeZep();
+    zep.thread.getUserContext.mockResolvedValue({ context: "CONTEXT BLOCK" });
     const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1" });
-    await mw.wrapGenerate!({
-      doGenerate: makeDoGenerate("hi"),
-      doStream: doStreamStub,
-      params: makeParams("hello"),
-      model: modelStub,
-    });
-    expect(zep.thread.addMessages).not.toHaveBeenCalled();
+
+    // Step 1: the triggering new user turn — last message role is 'user'.
+    const step1 = makeParamsFromPrompt([
+      { role: "user", content: [{ type: "text", text: "Look up my orders." }] },
+    ]);
+    const out1 = await mw.transformParams!({ type: "generate", params: step1, model: modelStub });
+    expect(out1.prompt[0]!.role).toBe("system");
+    expect((out1.prompt[0] as { content: string }).content).toContain("CONTEXT BLOCK");
+
+    // Step 2: continuation step — model emitted a tool call, last message is 'tool'.
+    const step2 = makeParamsFromPrompt([
+      { role: "user", content: [{ type: "text", text: "Look up my orders." }] },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "c1",
+            toolName: "zepSearch",
+            input: JSON.stringify({ query: "orders" }),
+          },
+        ],
+      } as LanguageModelV3Prompt[number],
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "c1",
+            toolName: "zepSearch",
+            output: { type: "json", value: { facts: [], found: false } },
+          },
+        ],
+      } as LanguageModelV3Prompt[number],
+    ]);
+    const out2 = await mw.transformParams!({ type: "generate", params: step2, model: modelStub });
+    // No injection on the continuation step: prompt is unchanged, no system head.
+    expect(out2.prompt[0]!.role).toBe("user");
+    expect(out2.prompt.some((m) => m.role === "system")).toBe(false);
+
+    // Context fetched exactly once across the whole turn (step 1 only).
+    expect(zep.thread.getUserContext).toHaveBeenCalledTimes(1);
   });
 
-  it("wrapGenerate never throws when Zep persistence fails", async () => {
+  it("does not inject when the last message is an assistant message", async () => {
     const zep = makeFakeZep();
-    zep.thread.addMessages.mockRejectedValueOnce(new Error("503"));
-    const warn = vi.fn();
-    const mw = createZepMiddleware({
-      client: asZep(zep),
-      threadId: "t1",
-      persist: true,
-      logger: { warn },
-    });
-    const result = await mw.wrapGenerate!({
-      doGenerate: makeDoGenerate("done"),
-      doStream: doStreamStub,
-      params: makeParams("q"),
-      model: modelStub,
-    });
-    expect((result.content[0] as { text: string }).text).toBe("done");
-    expect(warn).toHaveBeenCalledOnce();
+    zep.thread.getUserContext.mockResolvedValue({ context: "CONTEXT" });
+    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1" });
+
+    const params = makeParamsFromPrompt([
+      { role: "user", content: [{ type: "text", text: "hi" }] },
+      { role: "assistant", content: [{ type: "text", text: "partial" }] },
+    ]);
+    const out = await mw.transformParams!({ type: "generate", params, model: modelStub });
+    expect(out.prompt.some((m) => m.role === "system")).toBe(false);
+    expect(zep.thread.getUserContext).not.toHaveBeenCalled();
   });
 });

@@ -4,10 +4,12 @@
  * Demonstrates the full loop:
  *   1. Provision a Zep user + thread (`ensureZepUserAndThread`).
  *   2. Wrap the model with `createZepMiddleware` so the user's Context Block is
- *      injected as a system message on every call, and the non-streaming turn is
- *      persisted automatically (`persist: true`).
- *   3. Attach `createZepTools` so the model can also search/store on demand.
- *   4. Seed a couple of facts across turns, wait for asynchronous ingestion,
+ *      injected as a system message on each new user turn (inject-only).
+ *   3. Persist the whole turn once per turn via `createZepOnFinish` on the
+ *      `generateText` call's `onFinish` (fires once with the final assistant
+ *      text, even across a multi-step tool loop).
+ *   4. Attach `createZepTools` so the model can also search/store on demand.
+ *   5. Seed a couple of facts across turns, wait for asynchronous ingestion,
  *      then ask the agent to recall them.
  *
  * Prerequisites:
@@ -25,6 +27,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import {
   createZepMiddleware,
+  createZepOnFinish,
   createZepTools,
   ensureZepUserAndThread,
 } from "../src/index.js";
@@ -63,18 +66,14 @@ async function main(): Promise<void> {
     email: "alice@example.com",
   });
 
-  // 2. Wrap the model: inject context on every call + persist non-streaming turns.
+  // 2. Wrap the model: inject the Context Block on each new user turn (the
+  //    middleware is inject-only; persistence happens in onFinish below).
   //    We use the Chat Completions API (`openai.chat`) rather than the default
   //    Responses API so the multi-step tool loop also works on OpenAI Zero Data
   //    Retention (ZDR) organizations, which don't persist Responses item IDs.
   const model = wrapLanguageModel({
     model: openai.chat("gpt-4o-mini"),
-    middleware: createZepMiddleware({
-      client,
-      threadId,
-      persist: true,
-      userName: "Alice",
-    }),
+    middleware: createZepMiddleware({ client, threadId }),
   });
 
   // 3. Tools the model can call to search/store memory explicitly.
@@ -85,12 +84,15 @@ async function main(): Promise<void> {
 
   async function ask(prompt: string): Promise<void> {
     console.log(`\nUser:  ${prompt}`);
+    // Persist the whole turn once via onFinish — fires a single time per turn
+    // with the final assistant text, even when the tool loop runs many steps.
     const { text } = await generateText({
       model,
       system: SYSTEM,
       tools,
       stopWhen: stepCountIs(5),
       prompt,
+      onFinish: createZepOnFinish({ client, threadId, user: prompt, userName: "Alice" }),
     });
     console.log(`Agent: ${text}`);
   }

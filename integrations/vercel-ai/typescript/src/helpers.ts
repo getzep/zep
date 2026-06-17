@@ -1,4 +1,5 @@
-import type { ZepClient, Zep } from "@getzep/zep-cloud";
+import { Zep } from "@getzep/zep-cloud";
+import type { ZepClient } from "@getzep/zep-cloud";
 import type { ZepLogger, ZepTurn } from "./types.js";
 import {
   MESSAGE_MAX_CHARS,
@@ -63,9 +64,9 @@ export async function getZepContext(
  * Persist a user/assistant turn to Zep via `thread.addMessages`.
  *
  * This both records conversation history and ingests the turn into the bound
- * user graph. Use it from `streamText`/`generateText`'s `onFinish` callback
- * (the recommended persistence path for streaming, where middleware
- * `wrapGenerate` does not fire):
+ * user graph. It is the building block behind {@link createZepOnFinish}; reach
+ * for it directly when you want to persist a turn by hand (e.g. inside your own
+ * `onFinish`, where `text` is the final assistant text for the whole turn):
  *
  * ```ts
  * const result = streamText({
@@ -77,6 +78,9 @@ export async function getZepContext(
  *   },
  * });
  * ```
+ *
+ * For the common case, prefer {@link createZepOnFinish} — it builds this
+ * callback for you and persists the whole turn exactly once.
  *
  * Over-long content is truncated to Zep's 4,096-char message limit with a
  * warning that logs **lengths only** (never content). A Zep failure is logged
@@ -138,6 +142,105 @@ export async function persistZepTurn(
   }
 }
 
+/**
+ * The minimal shape we read off the AI SDK `onFinish` event: the final,
+ * aggregated assistant text for the whole turn. Both `generateText` and
+ * `streamText` pass an `OnFinishEvent` that carries this (and much more); we
+ * intentionally depend only on `text` so the callback works for both without
+ * coupling to the SDK's heavy generic event type.
+ */
+interface ZepOnFinishEvent {
+  /** The final assistant text for the turn (aggregated across all steps). */
+  readonly text: string;
+}
+
+/** Options for {@link createZepOnFinish}. */
+export interface ZepOnFinishOptions {
+  /** A shared, initialized Zep client. The caller owns its lifecycle. */
+  client: ZepClient;
+  /** The Zep thread that receives the persisted turn. */
+  threadId: string;
+  /**
+   * The user ID for the turn. Optional and not required for persistence
+   * (`thread.addMessages` is scoped by `threadId`); accepted for symmetry with
+   * the rest of the API and for callers that want it in scope.
+   */
+  userId?: string;
+  /**
+   * The user's input for this turn — the `onFinish` event carries only the
+   * assistant text, so supply the user side here. Pass the string directly, or
+   * a resolver if you build the callback once and reuse it across turns. When
+   * omitted, only the assistant message is persisted.
+   */
+  user?: string | ((event: ZepOnFinishEvent) => string | undefined);
+  /** Speaker name recorded on the persisted user message (the user's real name). */
+  userName?: string;
+  /** Name recorded on the persisted assistant message. */
+  assistantName?: string;
+  /** Logger for Zep failures. Defaults to `console`. */
+  logger?: ZepLogger;
+}
+
+/**
+ * Build an AI SDK `onFinish` callback that persists the **whole turn once** to
+ * Zep — the user's input plus the final assistant text from the event.
+ *
+ * This is the verified-correct persistence path for the middleware pattern.
+ * `onFinish` fires exactly **once per turn** with the final aggregated
+ * assistant text (after the entire tool loop completes) for **both**
+ * `generateText` and `streamText`. Persisting here — rather than from a
+ * per-step middleware hook — records exactly one user message and one assistant
+ * message per turn, and never writes the model's intermediate tool-call
+ * preamble into the graph.
+ *
+ * ```ts
+ * const userInput = "What do you know about me?";
+ * const { text } = await generateText({
+ *   model,
+ *   prompt: userInput,
+ *   stopWhen: stepCountIs(5),
+ *   onFinish: createZepOnFinish({ client, threadId, user: userInput, userName: "Jane" }),
+ * });
+ * ```
+ *
+ * Persistence is fire-and-forget at the call site (the returned callback awaits
+ * {@link persistZepTurn} internally, which never throws): a Zep outage degrades
+ * to "turn not persisted" and never crashes or blocks the host call. Over-long
+ * content is truncated to Zep's 4,096-char message limit with a lengths-only
+ * warning.
+ *
+ * @param options - The client, thread, and how to source the user message.
+ * @returns An `onFinish` callback for `generateText`/`streamText`.
+ */
+export function createZepOnFinish(
+  options: ZepOnFinishOptions,
+): (event: ZepOnFinishEvent) => Promise<void> {
+  const { client, threadId } = options;
+  const logger = resolveLogger(options.logger);
+
+  return async (event: ZepOnFinishEvent): Promise<void> => {
+    const assistant = event.text?.trim();
+    const user =
+      typeof options.user === "function" ? options.user(event)?.trim() : options.user?.trim();
+
+    if (!user && !assistant) return;
+
+    await persistZepTurn(
+      client,
+      threadId,
+      {
+        ...(user ? { user } : {}),
+        ...(assistant ? { assistant } : {}),
+        ...(options.userName !== undefined ? { userName: options.userName } : {}),
+        ...(options.assistantName !== undefined
+          ? { assistantName: options.assistantName }
+          : {}),
+      },
+      { logger },
+    );
+  };
+}
+
 /** Options for {@link ensureZepUserAndThread}. */
 export interface EnsureIdentityOptions {
   /** A shared, initialized Zep client. */
@@ -173,28 +276,50 @@ export async function ensureZepUserAndThread(
   const logger = resolveLogger(options.logger);
 
   try {
-    try {
-      await client.user.add({
-        userId,
-        ...(options.firstName !== undefined ? { firstName: options.firstName } : {}),
-        ...(options.lastName !== undefined ? { lastName: options.lastName } : {}),
-        ...(options.email !== undefined ? { email: options.email } : {}),
-      });
-    } catch (error) {
-      // A 409/duplicate means the user already exists — that's fine. Re-raise
-      // only if a subsequent thread.create also fails.
-      logger.debug?.(`[zep] user.add: ${errorMessage(error)} (may already exist)`);
+    await client.user.add({
+      userId,
+      ...(options.firstName !== undefined ? { firstName: options.firstName } : {}),
+      ...(options.lastName !== undefined ? { lastName: options.lastName } : {}),
+      ...(options.email !== undefined ? { email: options.email } : {}),
+    });
+  } catch (error) {
+    if (isAlreadyExists(error)) {
+      // A 409 Conflict means the user already exists — that's fine.
+      logger.debug?.("[zep] user.add: user already exists; continuing.");
+    } else {
+      // Anything else (401 auth, network, 5xx) is a real failure we must not
+      // hide. Surface it but keep going — thread.create may still succeed, and
+      // its own error handling decides the final result.
+      logger.warn(`[zep] user.add failed: ${errorMessage(error)}`);
     }
+  }
 
+  try {
     await client.thread.create({ threadId, userId });
     return true;
   } catch (error) {
-    const message = errorMessage(error);
-    // Treat "already exists" style conflicts as success.
-    if (/exist|conflict|409|duplicate/i.test(message)) {
+    if (isAlreadyExists(error)) {
+      // Thread already exists — treat as success.
       return true;
     }
-    logger.warn(`[zep] Failed to ensure user/thread: ${message}`);
+    logger.warn(`[zep] Failed to ensure thread: ${errorMessage(error)}`);
     return false;
   }
+}
+
+/**
+ * Whether a thrown Zep error is a 409 Conflict (resource already exists).
+ *
+ * Gated on the SDK's typed signal — a {@link Zep.ConflictError} or any error
+ * carrying `statusCode === 409` — rather than a loose message regex, so a 401
+ * (bad key) or a network error is never mistaken for "already exists".
+ */
+function isAlreadyExists(error: unknown): boolean {
+  if (error instanceof Zep.ConflictError) return true;
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "statusCode" in error &&
+    (error as { statusCode?: unknown }).statusCode === 409
+  );
 }

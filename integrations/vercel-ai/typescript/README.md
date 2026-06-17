@@ -7,13 +7,19 @@ call:
 
 | Layer | Export | Use when |
 |-------|--------|----------|
-| **Middleware** | `createZepMiddleware` | You want context injected automatically on every model call (and, for `generateText`, the turn persisted automatically). |
-| **Helpers** | `getZepContext`, `persistZepTurn` | You want explicit control — the required pattern for `streamText` (set `system:` + persist in `onFinish`). |
+| **Middleware** | `createZepMiddleware` | You want the Context Block injected automatically as a system message on each new user turn. Injection only — pair with `createZepOnFinish` to persist. |
+| **Helpers** | `getZepContext`, `persistZepTurn`, `createZepOnFinish` | You want explicit control. `createZepOnFinish` persists the whole turn once per turn from `onFinish` (works for both `generateText` and `streamText`). |
 | **Tools** | `createZepTools` | You want the model to retrieve/persist on demand inside a tool loop. |
 
-All three handle Zep failures gracefully: a Zep outage degrades to "no memory"
-and **never crashes the host call**. Warnings log lengths and counts only —
-never message content or PII.
+**Inject via middleware, persist via `onFinish`.** The AI SDK tool loop calls
+the wrapped model once per step, so persisting from a per-step middleware hook
+would fragment a single turn across many writes and record the model's
+intermediate tool-call preamble as a real assistant message. `onFinish` fires
+exactly once per turn with the final assistant text, so persistence lives there.
+
+All three layers handle Zep failures gracefully: a Zep outage degrades to "no
+memory" and **never crashes the host call**. Warnings log lengths and counts
+only — never message content or PII.
 
 ## Installation
 
@@ -33,6 +39,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import {
   createZepMiddleware,
+  createZepOnFinish,
   createZepTools,
   ensureZepUserAndThread,
 } from "@getzep/zep-vercel-ai";
@@ -42,77 +49,89 @@ const client = new ZepClient({ apiKey: process.env.ZEP_API_KEY! });
 // 1. Provision the Zep user + thread before the first turn.
 await ensureZepUserAndThread({ client, userId: "u1", threadId: "t1", firstName: "Jane" });
 
-// 2. Wrap the model: inject the Context Block on every call + persist the turn.
+// 2. Wrap the model: inject the Context Block on each new user turn (inject-only).
 const model = wrapLanguageModel({
   model: openai("gpt-4o-mini"),
-  middleware: createZepMiddleware({ client, threadId: "t1", persist: true }),
+  middleware: createZepMiddleware({ client, threadId: "t1" }),
 });
 
 // 3. Optionally let the model search/store memory explicitly.
 const tools = createZepTools(client, { binding: { userId: "u1", threadId: "t1" } });
 
+// 4. Persist the whole turn once per turn via onFinish.
+const prompt = "What do you remember about me?";
 const { text } = await generateText({
   model,
   tools,
   stopWhen: stepCountIs(5),
-  prompt: "What do you remember about me?",
+  prompt,
+  onFinish: createZepOnFinish({ client, threadId: "t1", user: prompt }),
 });
 ```
 
 A complete, runnable version is in
 [`examples/generate-text.ts`](./examples/generate-text.ts) (`npm run example`).
 
-## Streaming (`streamText`): persist in `onFinish`
+## Streaming (`streamText`)
 
-**Important:** the AI SDK only calls a middleware's `wrapGenerate` for
-`generateText`, never for `streamText`. So for streaming:
-
-- **Context injection** still works (the middleware does it in `transformParams`,
-  or you can set `system:` yourself with `getZepContext`), but
-- **Persistence does not run via the middleware** — you must persist the
-  completed turn from `onFinish` with `persistZepTurn`.
+The same pattern works unchanged for streaming — **inject via middleware,
+persist via `onFinish`**. The middleware's `transformParams` runs for `stream`
+calls too (injecting on each new user turn), and `onFinish` fires once per turn
+with the final assistant text for `streamText` just as it does for
+`generateText`.
 
 ```ts
-import { streamText } from "ai";
+import { streamText, wrapLanguageModel } from "ai";
 import { openai } from "@ai-sdk/openai";
-import { getZepContext, persistZepTurn } from "@getzep/zep-vercel-ai";
+import { createZepMiddleware, createZepOnFinish } from "@getzep/zep-vercel-ai";
 
 const userInput = "I just adopted a beagle named Cooper.";
-const context = await getZepContext(client, "t1");
+
+const model = wrapLanguageModel({
+  model: openai("gpt-4o-mini"),
+  middleware: createZepMiddleware({ client, threadId: "t1" }),
+});
 
 const result = streamText({
-  model: openai("gpt-4o-mini"),
-  system: context ? `Relevant memory:\n${context}` : undefined,
+  model,
   prompt: userInput,
-  onFinish: ({ text }) => {
-    // onFinish fires for BOTH streamText and generateText.
-    void persistZepTurn(client, "t1", { user: userInput, assistant: text });
-  },
+  onFinish: createZepOnFinish({ client, threadId: "t1", user: userInput }),
 });
 
 for await (const chunk of result.textStream) process.stdout.write(chunk);
 ```
 
-See [`examples/stream-text.ts`](./examples/stream-text.ts).
+Prefer to set `system:` yourself instead of using the middleware? Fetch the
+block with `getZepContext` and persist with `persistZepTurn` (or
+`createZepOnFinish`) directly. See [`examples/stream-text.ts`](./examples/stream-text.ts).
 
 ## The layers in detail
 
-### `createZepMiddleware({ client, threadId, persist? })`
+### `createZepMiddleware({ client, threadId })`
 
 Returns a Vercel AI SDK `LanguageModelMiddleware` (`specificationVersion: "v3"`)
-for `wrapLanguageModel`.
+for `wrapLanguageModel`. **Injection only** — it does not persist.
 
 - `transformParams` fetches the Context Block (`thread.getUserContext`) and
   prepends it as a `system` message to the provider prompt — on both `generate`
-  and `stream` calls.
-- When `persist: true`, `wrapGenerate` records the user+assistant turn via
-  `thread.addMessages` after a non-streaming `generateText`. (No-op for
-  `streamText` — see the streaming section above.)
+  and `stream` calls — **only on a genuine new user turn** (detected by the last
+  prompt message being a `user` message). On tool-loop continuation steps (last
+  message is a `tool` result or an `assistant` tool call) it injects nothing, so
+  the Context Block is fetched at most once per turn, not once per step.
 
-Options also include `formatContext` (customize the injected system text),
-`templateId` (custom Context Block layout), `userName` / `assistantName`
-(speaker names on persisted messages), and `logger`. Implementation:
-[`src/middleware.ts`](./src/middleware.ts).
+Persist with `createZepOnFinish` (below). Options also include `formatContext`
+(customize the injected system text), `templateId` (custom Context Block
+layout), and `logger`. Implementation: [`src/middleware.ts`](./src/middleware.ts).
+
+### `createZepOnFinish({ client, threadId, user?, userId?, ... })`
+
+Returns an AI SDK `onFinish` callback that persists the whole turn **once** —
+the user's input plus the final assistant text from the event — via
+`thread.addMessages`. `onFinish` fires exactly once per turn (after the entire
+tool loop completes) for both `generateText` and `streamText`, so this records
+exactly one user message and one assistant message per turn and never writes
+intermediate tool-call preamble. Supply the user side via `user` (a string, or a
+`(event) => string` resolver); the assistant side is taken from `event.text`.
 
 ### `getZepContext(client, threadId, options?)` and `persistZepTurn(client, threadId, turn, options?)`
 
@@ -135,7 +154,7 @@ record so the model can decide when to retrieve or persist.
 | Tool | Zep operation | What it does |
 |------|---------------|--------------|
 | `zepSearch` | `graph.search` | Free-text search over the bound graph; returns relevant facts. Scope/limit/reranker/filters are pinned at construction. |
-| `zepRemember` | `thread.addMessages` / `graph.add` | Persists a message (a `role` + bound thread) or a general fact (`graph.add`). |
+| `zepRemember` | `thread.addMessages` / `graph.add` | Persists a message (a `role` + bound thread; capped at Zep's 4,096-char message limit) or a general fact (`graph.add`; capped at Zep's 10,000-char limit). Over-long content is truncated with a lengths-only warning, never dropped. |
 | `zepContext` | `thread.getUserContext` | Returns the whole-user-graph Context Block on demand. |
 
 Each tool is also exported as a standalone factory (`createZepSearchTool`,
@@ -184,7 +203,7 @@ npm run build       # tsup → dist (ESM + CJS + d.ts)
 - Node.js >= 20
 - `ai` >= 6 (peer) — the Vercel AI SDK v6 (this package targets the v3
   middleware/provider interfaces; it is **not** compatible with AI SDK v5)
-- `zod` >= 3.25 (peer)
+- `zod` 3 or 4 (peer; `^3.25.0 || ^4.0.0`)
 - `@getzep/zep-cloud` >= 3.23.0 (Zep V3)
 
 ## Links

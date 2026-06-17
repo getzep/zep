@@ -4,11 +4,13 @@ import { z } from "zod";
 import type { ZepClient, Zep } from "@getzep/zep-cloud";
 import type { ZepBinding, ZepLogger } from "./types.js";
 import {
+  GRAPH_MAX_CHARS,
   MESSAGE_MAX_CHARS,
   errorMessage,
   resolveGraphTarget,
   resolveLogger,
   toRoleType,
+  truncateForZep,
 } from "./zep-utils.js";
 
 /** Options shared by every tool factory. */
@@ -236,20 +238,13 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
 
       try {
         // Conversational content with a bound thread + user → thread.addMessages.
+        // Capped at Zep's 4,096-char message limit.
         if (role && threadId && binding.userId) {
-          const messageContent =
-            trimmed.length > MESSAGE_MAX_CHARS ? trimmed.slice(0, MESSAGE_MAX_CHARS) : trimmed;
-          if (trimmed.length > MESSAGE_MAX_CHARS) {
-            logger.warn(
-              `[zep-remember] Content length ${trimmed.length} exceeds Zep limit ` +
-                `${MESSAGE_MAX_CHARS}; truncating to ${MESSAGE_MAX_CHARS} characters.`,
-            );
-          }
           await client.thread.addMessages(threadId, {
             messages: [
               {
-                role: toRoleType(role),
-                content: messageContent,
+                role: toRoleType(role, logger),
+                content: truncateForZep(trimmed, MESSAGE_MAX_CHARS, "zep-remember", logger),
                 ...(options.defaultMessageName !== undefined
                   ? { name: options.defaultMessageName }
                   : {}),
@@ -259,8 +254,13 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
           return { stored: true, message: "Saved to conversation memory." };
         }
 
-        // Everything else → graph.add as text.
-        await client.graph.add({ ...target, type: "text", data: trimmed });
+        // Everything else → graph.add as text. Capped at Zep's 10,000-char
+        // graph.add limit (never silently dropped — truncate with a warning).
+        await client.graph.add({
+          ...target,
+          type: "text",
+          data: truncateForZep(trimmed, GRAPH_MAX_CHARS, "zep-remember", logger),
+        });
         return { stored: true, message: "Saved to long-term memory." };
       } catch (error) {
         logger.warn(`[zep-remember] Failed to persist to Zep: ${errorMessage(error)}`);

@@ -59,15 +59,16 @@ The `generate-text` example
 ([`examples/generate-text.ts`](./examples/generate-text.ts)):
 
 1. Provisions a Zep user and thread.
-2. Wraps the model with `createZepMiddleware` (context injection + persistence).
+2. Wraps the model with `createZepMiddleware` (context injection on each new user
+   turn) and persists the whole turn once via `createZepOnFinish`.
 3. Attaches `createZepTools` so the model can search/store explicitly.
 4. Seeds facts across a couple of turns, waits ~15s for Zep's asynchronous graph
    ingestion, then asks the agent to recall them.
 
-The `stream-text` example shows the streaming persistence pattern: fetch context
-with `getZepContext`, set it as `system`, and persist the completed turn from
-`onFinish` with `persistZepTurn` (because middleware `wrapGenerate` does not fire
-for `streamText`).
+The `stream-text` example shows the same pattern for streaming — inject via the
+middleware, persist the completed turn from `onFinish` with `createZepOnFinish`.
+`onFinish` fires once per turn with the final assistant text for both
+`generateText` and `streamText`.
 
 > **OpenAI Zero Data Retention (ZDR) note.** The `generate-text` example uses the
 > OpenAI Chat Completions API (`openai.chat("gpt-4o-mini")`) instead of the

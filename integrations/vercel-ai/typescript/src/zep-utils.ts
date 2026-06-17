@@ -25,11 +25,19 @@ const ROLE_ALIASES: Record<string, Zep.RoleType> = {
  * Coerce an arbitrary role string into a valid Zep {@link Zep.RoleType}.
  *
  * @param role - A role string from the host framework (case-insensitive).
+ * @param logger - Optional logger; when supplied, an unknown role coerced to
+ *   `"norole"` is logged at debug with the role **name only** (never content).
  * @returns A valid `RoleType`; defaults to `"norole"` for unknown input.
  */
-export function toRoleType(role: string | undefined): Zep.RoleType {
+export function toRoleType(role: string | undefined, logger?: ZepLogger): Zep.RoleType {
   if (!role) return "norole";
-  return ROLE_ALIASES[role.trim().toLowerCase()] ?? "norole";
+  const mapped = ROLE_ALIASES[role.trim().toLowerCase()];
+  if (mapped === undefined) {
+    // Role name only — no content/PII.
+    logger?.debug?.(`[zep] Unknown role '${role}' coerced to 'norole'.`);
+    return "norole";
+  }
+  return mapped;
 }
 
 /**
@@ -72,9 +80,18 @@ export function resolveLogger(logger: ZepLogger | undefined): ZepLogger {
 
 /**
  * Zep rejects messages longer than 4,096 characters with a 400. We truncate a
- * bit below that to leave headroom for any server-side normalization.
+ * bit below that to leave headroom for any server-side normalization. This
+ * applies to the conversational `thread.addMessages` path.
  */
 export const MESSAGE_MAX_CHARS = 4000;
+
+/**
+ * Zep's `graph.add` endpoint rejects `data` longer than 10,000 characters with
+ * a 400. We truncate a bit below that to leave headroom. This applies to the
+ * non-conversational `graph.add` path (larger documents/business data than the
+ * conversational message limit).
+ */
+export const GRAPH_MAX_CHARS = 9900;
 
 /**
  * Truncate `content` to `maxChars` if it exceeds the limit, logging a warning.

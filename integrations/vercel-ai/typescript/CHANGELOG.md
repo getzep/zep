@@ -6,25 +6,32 @@
 
 - Initial release of `@getzep/zep-vercel-ai` — Zep long-term memory for the
   Vercel AI SDK (v6).
-- `createZepMiddleware` — a `LanguageModelMiddleware` (`specificationVersion:
-  "v3"`) for `wrapLanguageModel`. `transformParams` injects the user's Context
-  Block (`thread.getUserContext`) as a system message on every `generate`/
-  `stream` call; with `persist: true`, `wrapGenerate` records the user+assistant
-  turn via `thread.addMessages` for non-streaming `generateText`. Customizable
-  via `formatContext`, `templateId`, `userName`/`assistantName`, and `logger`.
+- `createZepMiddleware` — a context-injection `LanguageModelMiddleware`
+  (`specificationVersion: "v3"`) for `wrapLanguageModel`. `transformParams`
+  injects the user's Context Block (`thread.getUserContext`) as a system message
+  on each genuine new user turn (detected by the last prompt message being a
+  `user` message), on both `generate`/`stream` calls — so the block is fetched
+  at most once per turn, not once per tool-loop step. Injection only;
+  persistence lives in `createZepOnFinish`. Customizable via `formatContext`,
+  `templateId`, and `logger`.
+- `createZepOnFinish` — builds an AI SDK `onFinish` callback that persists the
+  whole turn (user input + final assistant text) exactly once per turn, for both
+  `generateText` and `streamText`.
 - `getZepContext` and `persistZepTurn` — plain async helpers for the `system:` +
-  `onFinish` pattern, which is the required persistence path for `streamText`.
+  `onFinish` pattern.
 - `createZepTools` — builds `{ zepSearch, zepRemember, zepContext }` model-
   callable tools (AI SDK `tool()` + Zod `inputSchema`) bound to one client and
   binding, plus the standalone factories `createZepSearchTool`,
   `createZepRememberTool`, `createZepContextTool`.
 - `ensureZepUserAndThread` — idempotent helper to provision the Zep user and
   thread before the first turn.
-- `toRoleType`, `resolveGraphTarget`, `truncateForZep`, and `MESSAGE_MAX_CHARS`
-  utilities; `ZepBinding`, `ZepLogger`, `ZepTurn`, and `RoleType` types.
+- `toRoleType`, `resolveGraphTarget`, `truncateForZep`, `MESSAGE_MAX_CHARS`, and
+  `GRAPH_MAX_CHARS` utilities; `ZepBinding`, `ZepLogger`, `ZepTurn`, and
+  `RoleType` types.
 - User-graph (`userId`) and standalone-graph (`graphId`) bindings.
-- 4,096-char message truncation with lengths-only warnings (no content/PII in
-  logs) in both the middleware and the helpers/tools.
+- Truncation with lengths-only warnings (no content/PII in logs), never silent
+  drops: 4,096-char limit on the conversational `thread.addMessages` path and
+  10,000-char limit on the `graph.add` path.
 - Graceful error handling across every layer — a Zep failure is logged and never
   crashes the host call.
 - Mock-based test suite plus a live test gated on `ZEP_API_KEY`.
