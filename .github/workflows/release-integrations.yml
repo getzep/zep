@@ -59,8 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # 3.11-3.13 covers every package (crewai/livekit require >=3.11); adk/autogen
-        # 3.10 support is exercised by the PR test workflow.
+        # All integrations require Python >=3.11.
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4

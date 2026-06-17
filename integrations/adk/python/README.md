@@ -202,8 +202,8 @@ make ci          # Strict CI checks
 
 ## Requirements
 
-- Python 3.10+
-- `zep-cloud>=3.0.0`
+- Python 3.11+
+- `zep-cloud>=3.23.0`
 - `google-adk>=1.0.0`
 
 ## Support

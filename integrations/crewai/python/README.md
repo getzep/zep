@@ -352,7 +352,7 @@ mypy src/zep_crewai
 
 ## Requirements
 
-- Python 3.11+ (CrewAI 1.x's dependencies require Python 3.11 or newer)
+- Python 3.11+
 - `zep-cloud>=3.23.0`
 - `crewai>=1.0.0`
 - `pydantic>=2.0.0`

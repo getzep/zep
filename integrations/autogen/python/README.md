@@ -232,7 +232,7 @@ make pre-commit
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - `zep-cloud>=3.23.0`
 - `autogen-agentchat>=0.7.0`
 - `autogen-ext[azure,openai]>=0.7.0`

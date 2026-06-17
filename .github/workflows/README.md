@@ -8,7 +8,7 @@ Integrations are organized framework-first, then language: `integrations/<framew
 ### `test-integrations.yml` — PR / push testing
 Detects which packages changed (via `dorny/paths-filter`) and tests them in three
 per-language lanes:
-- **`test-python`** — matrix Python 3.10–3.13; runs ruff (lint + format check), mypy, and
+- **`test-python`** — matrix Python 3.11–3.13; runs ruff (lint + format check), mypy, and
   pytest with coverage (`.github/actions/test-python`).
 - **`test-typescript`** — matrix Node 20/22; runs `npm ci`, lint, typecheck, `npm test`
   (`.github/actions/test-typescript`).
