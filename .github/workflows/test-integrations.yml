@@ -36,6 +36,8 @@ jobs:
               - 'integrations/livekit/python/**'
             ag2:
               - 'integrations/ag2/python/**'
+            langgraph:
+              - 'integrations/langgraph/python/**'
 
       - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: typescript
