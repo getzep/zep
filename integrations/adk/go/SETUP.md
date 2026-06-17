@@ -41,7 +41,8 @@ cd zep/integrations/adk/go
 go mod download
 ```
 
-Requirements: Go 1.23+, `google.golang.org/adk` v1.4.0, `github.com/getzep/zep-go/v3` v3.23.0.
+Requirements: Go 1.25+ (`google.golang.org/adk` v1.4.0 requires Go 1.25),
+`google.golang.org/adk` v1.4.0, `github.com/getzep/zep-go/v3` v3.23.0.
 
 ## 4. Configure environment variables
 
@@ -64,8 +65,9 @@ go run ./examples
 The example:
 
 1. Creates (idempotently) a Zep user and a thread keyed on the ADK session ID.
-2. Builds an `llmagent` whose `BeforeModelCallback` persists each user turn to
-   Zep and injects the user's Context Block into the prompt.
+2. Builds an `llmagent` whose `BeforeModelCallback` persists each new user turn
+   to Zep and injects the user's Context Block into the prompt, and whose
+   `AfterModelCallback` persists the assistant's reply back to the same thread.
 3. Registers a `search_memory` tool the model can call on demand and attaches a
    Zep-backed `memory.Service` at the runner.
 4. Sends two turns and prints the agent's replies.

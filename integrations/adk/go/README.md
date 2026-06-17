@@ -8,7 +8,11 @@ It plugs into ADK's native extension points — it does **not** wrap or replace 
 ADK runtime:
 
 - **Context injection** via an `llmagent.BeforeModelCallback` that persists each
-  user turn to Zep and injects the user's Context Block into the model request.
+  new user turn to Zep and injects the user's Context Block into the model
+  request. It skips tool-loop continuations so a turn is recorded exactly once.
+- **Assistant persistence** via an `llmagent.AfterModelCallback` that writes the
+  assistant's reply back to the same Zep thread, so the user graph captures both
+  sides of the conversation.
 - **Memory service** — an ADK `memory.Service` backed by Zep user-graph search,
   attached at the runner and reached by tools through `ToolContext.SearchMemory`.
 - **On-demand recall** — a `functiontool` the model can call to search the user's
@@ -24,7 +28,8 @@ go get github.com/getzep/zep/integrations/adk/go@latest
 import zepadk "github.com/getzep/zep/integrations/adk/go"
 ```
 
-Requirements: Go 1.23+, `google.golang.org/adk` v1.4.0, `github.com/getzep/zep-go/v3` v3.23.0.
+Requirements: Go 1.25+ (`google.golang.org/adk` v1.4.0 requires Go 1.25),
+`google.golang.org/adk` v1.4.0, `github.com/getzep/zep-go/v3` v3.23.0.
 
 ## Quick start
 
@@ -35,6 +40,7 @@ agent, _ := llmagent.New(llmagent.Config{
     Name:                 "assistant",
     Model:                llm, // a model.LLM, e.g. gemini.NewModel(...)
     BeforeModelCallbacks: []llmagent.BeforeModelCallback{zepadk.NewBeforeModelCallback(zep)},
+    AfterModelCallbacks:  []llmagent.AfterModelCallback{zepadk.NewAfterModelCallback(zep)},
     Tools:                []tool.Tool{searchTool}, // from zepadk.NewGraphSearchTool(zep)
 })
 
@@ -59,22 +65,54 @@ The integration contract maps ADK identifiers to Zep identifiers:
 | user ID | user ID (user graph) |
 
 Provision the Zep user and thread out of band before the first turn with
-`EnsureUser` and `EnsureThread` (both idempotent). Then, on every model turn, the
-callback returned by `NewBeforeModelCallback`:
+`EnsureUser` and `EnsureThread` (both idempotent). Then, on a genuinely new user
+turn, the callback returned by `NewBeforeModelCallback`:
 
 1. Reads the user's latest message from the ADK callback context.
-2. Persists it to the user's Zep thread, requesting the Context Block in the same
+2. Truncates it to Zep's 4,096-character per-message limit if needed (logging a
+   lengths-only warning — message content is never dropped or logged).
+3. Persists it to the user's Zep thread, requesting the Context Block in the same
    round-trip (`Thread.AddMessages` with `ReturnContext=true`).
-3. Injects the returned Context Block into `req.Config.SystemInstruction`.
+4. Injects the returned Context Block into `req.Config.SystemInstruction`.
+
+During a tool loop ADK re-invokes the before-model callback after each tool
+result. On those continuations the latest content in `req.Contents` is a function
+response rather than new user input, so the callback returns early without
+re-persisting the message or re-injecting the Context Block — a turn that calls
+`search_memory` is recorded in Zep exactly once.
+
+`NewAfterModelCallback` complements it: after the model replies, it persists the
+assistant's text to the same thread (as an `assistant` message). It skips model
+errors, partial streaming chunks, and function-call-only responses (tool-loop
+steps), so only genuine replies are recorded.
 
 The public surface lives in:
 
-- [`zepadk.go`](zepadk.go) — `NewBeforeModelCallback`, `EnsureUser`, `EnsureThread`,
-  and the injection helpers `InjectSystemInstruction` / `LastUserText`.
+- [`zepadk.go`](zepadk.go) — `NewBeforeModelCallback`, `NewAfterModelCallback`,
+  `EnsureUser`, `EnsureThread`, and the helpers `InjectSystemInstruction`,
+  `LastUserText`, `AssistantText`, `IsToolLoopContinuation`.
 - [`memory.go`](memory.go) — `NewMemoryService` (the ADK `memory.Service` over
   Zep `Graph.Search`).
 - [`tool.go`](tool.go) — `NewGraphSearchTool` (the on-demand `search_memory` tool).
+- [`search.go`](search.go) — scope-aware mapping of Zep search results.
 - [`client.go`](client.go) — `NewClient` / `NewClientFromEnv`.
+
+### Search scopes
+
+The memory service and search tool map every supported Zep search scope into
+results — earlier versions read only `edges` and silently returned nothing for
+other scopes:
+
+| Scope | Result |
+|-------|--------|
+| `edges` (default) | facts |
+| `nodes` | entity summaries (`name: summary`) |
+| `episodes` | message/data content |
+| `observations` | derived memories |
+| `auto` | the pre-materialized Context Block |
+
+An unsupported scope (e.g. `thread_summaries`) is rejected loudly: the service or
+tool logs an error and returns no results rather than silently swallowing them.
 
 ## Configuration
 
@@ -83,6 +121,7 @@ Each constructor accepts functional options:
 | Constructor | Options |
 |-------------|---------|
 | `NewBeforeModelCallback` | `WithContextPrefix`, `WithUserMessageName`, `WithLogger` |
+| `NewAfterModelCallback` | `WithAssistantMessageName`, `WithAfterLogger` |
 | `NewMemoryService` | `WithSearchScope`, `WithSearchLimit`, `WithMemoryLogger` |
 | `NewGraphSearchTool` | `WithToolName`, `WithToolDescription`, `WithGraphID`, `WithToolSearchScope`, `WithToolSearchLimit`, `WithToolLogger` |
 

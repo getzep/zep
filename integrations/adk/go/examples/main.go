@@ -1,10 +1,11 @@
 // Command example demonstrates wiring Zep long-term memory into a Google ADK
 // for Go agent using the zepadk package.
 //
-// It builds an llmagent whose BeforeModelCallback persists each user turn to
-// Zep and injects the user's Zep Context Block into the prompt, registers a
-// graph-search tool the model can call on demand, and attaches a Zep-backed
-// memory.Service at the runner.
+// It builds an llmagent whose BeforeModelCallback persists each new user turn to
+// Zep and injects the user's Zep Context Block into the prompt, whose
+// AfterModelCallback persists the assistant's reply back to the same thread,
+// registers a graph-search tool the model can call on demand, and attaches a
+// Zep-backed memory.Service at the runner.
 //
 // Run it with both keys set:
 //
@@ -71,6 +72,10 @@ func main() {
 	// BeforeModelCallback persists each user turn and injects the Context Block.
 	beforeModel := zepadk.NewBeforeModelCallback(zep, zepadk.WithUserMessageName("Jane"))
 
+	// AfterModelCallback persists the assistant's reply so the user graph sees
+	// both halves of the conversation, not just the user's messages.
+	afterModel := zepadk.NewAfterModelCallback(zep, zepadk.WithAssistantMessageName("assistant"))
+
 	// Without a Google API key we cannot construct the model; print the wiring
 	// we would use and exit cleanly.
 	if os.Getenv("GOOGLE_API_KEY") == "" {
@@ -95,6 +100,7 @@ func main() {
 		Instruction: "You are a helpful assistant with long-term memory. " +
 			"Use the search_memory tool to recall details about the user when relevant.",
 		BeforeModelCallbacks: []llmagent.BeforeModelCallback{beforeModel},
+		AfterModelCallbacks:  []llmagent.AfterModelCallback{afterModel},
 		Tools:                []tool.Tool{searchTool},
 	})
 	if err != nil {

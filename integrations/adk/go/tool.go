@@ -28,7 +28,10 @@ type SearchArgs struct {
 
 // SearchResult is the typed output of the graph search tool.
 type SearchResult struct {
-	// Facts are the time-stamped facts matching the query, most relevant first.
+	// Facts are the results matching the query, most relevant first. For the
+	// default edge scope these are facts; for other scopes they are the
+	// corresponding entity summaries, episodes, observations, or the Context
+	// Block (auto). The field name is kept for backward compatibility.
 	Facts []string `json:"facts"`
 }
 
@@ -71,7 +74,10 @@ func WithGraphID(graphID string) GraphSearchToolOption {
 }
 
 // WithToolSearchScope sets the Zep graph search scope. Defaults to
-// [zep.GraphSearchScopeEdges].
+// [zep.GraphSearchScopeEdges]. Supported scopes are edges, nodes, episodes,
+// observations, and auto; each is mapped into the tool's results (auto yields
+// the pre-materialized Context Block). An unsupported scope is rejected at
+// search time: the tool logs an error and returns an empty result.
 func WithToolSearchScope(scope zep.GraphSearchScope) GraphSearchToolOption {
 	return func(o *graphSearchToolOptions) { o.scope = scope }
 }
@@ -114,10 +120,19 @@ func NewGraphSearchTool(client *zepclient.Client, opts ...GraphSearchToolOption)
 	for _, opt := range opts {
 		opt(&cfg)
 	}
+	api := newZepAPI(client)
 
 	handler := func(tc agent.ToolContext, args SearchArgs) (SearchResult, error) {
 		out := SearchResult{}
-		if client == nil || args.Query == "" {
+		if api == nil || args.Query == "" {
+			return out, nil
+		}
+
+		// Reject an unsupported scope loudly rather than returning an empty
+		// result that looks like "nothing found".
+		if !searchScopeSupported(cfg.scope) {
+			cfg.logger.Error("zepadk: unsupported graph search scope; returning no facts",
+				slog.String("scope", string(cfg.scope)))
 			return out, nil
 		}
 
@@ -134,19 +149,13 @@ func NewGraphSearchTool(client *zepclient.Client, opts ...GraphSearchToolOption)
 			query.UserID = zep.String(tc.UserID())
 		}
 
-		res, err := client.Graph.Search(tc, query)
+		res, err := api.Search(tc, query)
 		if err != nil {
 			cfg.logger.Error("zepadk: graph search tool failed; returning no facts",
 				slog.Any("error", err))
 			return out, nil
 		}
-		if res != nil {
-			for _, edge := range res.Edges {
-				if edge != nil && edge.Fact != "" {
-					out.Facts = append(out.Facts, edge.Fact)
-				}
-			}
-		}
+		out.Facts = mapSearchResults(cfg.scope, res)
 		return out, nil
 	}
 

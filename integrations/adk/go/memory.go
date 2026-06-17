@@ -16,7 +16,7 @@ import (
 // user-graph search. Attach it at the runner via [runner.Config.MemoryService];
 // ADK's built-in memory tooling reaches it through ToolContext.SearchMemory.
 type memoryService struct {
-	client *zepclient.Client
+	api    zepAPI
 	scope  zep.GraphSearchScope
 	limit  *int
 	logger *slog.Logger
@@ -26,8 +26,11 @@ type memoryService struct {
 type MemoryOption func(*memoryService)
 
 // WithSearchScope sets the Zep graph search scope used by the memory service.
-// Defaults to [zep.GraphSearchScopeEdges] (facts). Other useful scopes include
-// [zep.GraphSearchScopeNodes] and [zep.GraphSearchScopeAuto].
+// Defaults to [zep.GraphSearchScopeEdges] (facts). Supported scopes are edges,
+// nodes, episodes, observations, and auto; each is mapped into memory entries
+// (auto yields the pre-materialized Context Block). An unsupported scope is
+// rejected at search time: the service logs an error and returns no memories
+// rather than silently swallowing results.
 func WithSearchScope(scope zep.GraphSearchScope) MemoryOption {
 	return func(s *memoryService) { s.scope = scope }
 }
@@ -61,7 +64,7 @@ func WithMemoryLogger(logger *slog.Logger) MemoryOption {
 // flush at session end.
 func NewMemoryService(client *zepclient.Client, opts ...MemoryOption) memory.Service {
 	svc := &memoryService{
-		client: client,
+		api:    newZepAPI(client),
 		scope:  zep.GraphSearchScopeEdges,
 		logger: slog.Default(),
 	}
@@ -77,13 +80,23 @@ func (s *memoryService) AddSessionToMemory(_ context.Context, _ session.Session)
 	return nil
 }
 
-// SearchMemory searches the user's Zep graph for facts relevant to the query
-// and maps each matching edge fact to a [memory.Entry]. On a Zep failure it
-// logs the error and returns an empty result rather than propagating, so a
-// memory lookup never breaks the agent.
+// SearchMemory searches the user's Zep graph for information relevant to the
+// query and maps each result to a [memory.Entry] according to the configured
+// scope (facts for edges, entity summaries for nodes, message content for
+// episodes, derived memories for observations, or the Context Block for auto).
+// On a Zep failure it logs the error and returns an empty result rather than
+// propagating, so a memory lookup never breaks the agent.
 func (s *memoryService) SearchMemory(ctx context.Context, req *memory.SearchRequest) (*memory.SearchResponse, error) {
 	out := &memory.SearchResponse{}
-	if s.client == nil || req == nil || req.UserID == "" || req.Query == "" {
+	if s.api == nil || req == nil || req.UserID == "" || req.Query == "" {
+		return out, nil
+	}
+
+	// Reject an unsupported scope loudly: returning empty would look like "no
+	// memories" when in fact we never mapped the response shape.
+	if !searchScopeSupported(s.scope) {
+		s.logger.Error("zepadk: unsupported memory search scope; returning no memories",
+			slog.String("user_id", req.UserID), slog.String("scope", string(s.scope)))
 		return out, nil
 	}
 
@@ -94,22 +107,16 @@ func (s *memoryService) SearchMemory(ctx context.Context, req *memory.SearchRequ
 		Limit:  s.limit,
 	}
 
-	res, err := s.client.Graph.Search(ctx, query)
+	res, err := s.api.Search(ctx, query)
 	if err != nil {
 		s.logger.Error("zepadk: memory search failed; returning no memories",
 			slog.String("user_id", req.UserID), slog.Any("error", err))
 		return out, nil
 	}
-	if res == nil {
-		return out, nil
-	}
 
-	for _, edge := range res.Edges {
-		if edge == nil || edge.Fact == "" {
-			continue
-		}
+	for _, text := range mapSearchResults(s.scope, res) {
 		out.Memories = append(out.Memories, memory.Entry{
-			Content: genai.NewContentFromText(edge.Fact, genai.RoleModel),
+			Content: genai.NewContentFromText(text, genai.RoleModel),
 		})
 	}
 	return out, nil

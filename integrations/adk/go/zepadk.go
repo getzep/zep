@@ -1,12 +1,18 @@
 // Package zepadk integrates [Zep] long-term agent memory with the
 // [Google Agent Development Kit (ADK) for Go].
 //
-// It provides three composable building blocks:
+// It provides four composable building blocks:
 //
 //   - [NewBeforeModelCallback] returns an [llmagent.BeforeModelCallback] that,
-//     on every model turn, persists the user's latest message to a Zep thread
-//     and injects the resulting Zep Context Block into the request's system
-//     instruction. Attach it via [llmagent.Config.BeforeModelCallbacks].
+//     on a genuinely new user turn, persists the user's latest message to a Zep
+//     thread and injects the resulting Zep Context Block into the request's
+//     system instruction. It skips re-persisting and re-injecting on tool-loop
+//     continuations (turns whose latest content is a function response). Attach
+//     it via [llmagent.Config.BeforeModelCallbacks].
+//   - [NewAfterModelCallback] returns an [llmagent.AfterModelCallback] that
+//     persists the assistant's text reply to the same Zep thread so the user
+//     graph sees both halves of the conversation. Attach it via
+//     [llmagent.Config.AfterModelCallbacks].
 //   - [NewMemoryService] returns an ADK [memory.Service] backed by Zep's
 //     user-graph search. Attach it at the runner via
 //     [runner.Config.MemoryService]; ADK tools reach it through
@@ -31,6 +37,7 @@ package zepadk
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	zep "github.com/getzep/zep-go/v3"
 	zepclient "github.com/getzep/zep-go/v3/client"
@@ -93,13 +100,23 @@ func resolveCallbackOptions(opts []CallbackOption) callbackOptions {
 // NewBeforeModelCallback returns an ADK [llmagent.BeforeModelCallback] that
 // gives an agent persistent, cross-session memory backed by Zep.
 //
-// On each model turn the callback:
+// On a genuinely new user turn the callback:
 //
 //  1. Extracts the user's latest message from the callback context.
-//  2. Persists it to the Zep thread whose ID equals the ADK session ID,
+//  2. Truncates it to Zep's per-message limit if needed (logging a
+//     lengths-only warning; content is never dropped or logged).
+//  3. Persists it to the Zep thread whose ID equals the ADK session ID,
 //     requesting the Context Block in the same round-trip
 //     (Thread.AddMessages with ReturnContext=true).
-//  3. Injects the returned Context Block into req.Config.SystemInstruction.
+//  4. Injects the returned Context Block into req.Config.SystemInstruction.
+//
+// During a tool loop the same model turn fires repeatedly: ADK calls the
+// before-model callback again after each tool result so the model can continue.
+// On those continuations the latest content in req.Contents is a function
+// response, not new user input. The callback detects this (see
+// [IsToolLoopContinuation]) and returns early without re-persisting the user
+// message or re-injecting the Context Block, so a turn that calls search_memory
+// is recorded in Zep exactly once.
 //
 // It returns (nil, nil) so ADK proceeds to the real model with the mutated
 // request. A nil client (for example when ZEP_API_KEY is unset) makes the
@@ -111,11 +128,24 @@ func resolveCallbackOptions(opts []CallbackOption) callbackOptions {
 // ADK user ID maps to the Zep user ID. Create the Zep user and thread out of
 // band before the first turn (see [EnsureUser] and [EnsureThread]).
 func NewBeforeModelCallback(client *zepclient.Client, opts ...CallbackOption) llmagent.BeforeModelCallback {
+	return newBeforeModelCallback(newZepAPI(client), opts...)
+}
+
+// newBeforeModelCallback is the seam-friendly core of [NewBeforeModelCallback].
+// A nil api makes the callback a no-op.
+func newBeforeModelCallback(api zepAPI, opts ...CallbackOption) llmagent.BeforeModelCallback {
 	cfg := resolveCallbackOptions(opts)
 
 	return func(cc agent.CallbackContext, req *model.LLMRequest) (*model.LLMResponse, error) {
 		// No client configured: do not short-circuit the model.
-		if client == nil {
+		if api == nil {
+			return nil, nil
+		}
+
+		// Tool-loop continuation: the model is resuming after a tool result,
+		// not starting a new user turn. Persisting again would duplicate the
+		// user message in the graph and re-inject the Context Block, so skip.
+		if req != nil && IsToolLoopContinuation(req.Contents) {
 			return nil, nil
 		}
 
@@ -127,13 +157,13 @@ func NewBeforeModelCallback(client *zepclient.Client, opts ...CallbackOption) ll
 
 		message := &zep.Message{
 			Role:    zep.RoleTypeUserRole,
-			Content: latest,
+			Content: truncateMessageContent(cfg.logger, threadID, latest),
 		}
 		if cfg.userName != "" {
 			message.Name = zep.String(cfg.userName)
 		}
 
-		resp, err := client.Thread.AddMessages(cc, threadID, &zep.AddThreadMessagesRequest{
+		resp, err := api.AddMessages(cc, threadID, &zep.AddThreadMessagesRequest{
 			ReturnContext: zep.Bool(true),
 			Messages:      []*zep.Message{message},
 		})
@@ -147,6 +177,101 @@ func NewBeforeModelCallback(client *zepclient.Client, opts ...CallbackOption) ll
 
 		if resp != nil && resp.Context != nil && *resp.Context != "" {
 			InjectSystemInstruction(req, cfg.contextPrefix+*resp.Context)
+		}
+		return nil, nil
+	}
+}
+
+// AfterCallbackOption customizes the behavior of [NewAfterModelCallback].
+type AfterCallbackOption func(*afterCallbackOptions)
+
+// afterCallbackOptions holds the resolved configuration for an
+// AfterModelCallback.
+type afterCallbackOptions struct {
+	assistantName string
+	logger        *slog.Logger
+}
+
+// WithAssistantMessageName sets the optional display name attached to the
+// assistant message persisted to Zep (for example the agent's name).
+func WithAssistantMessageName(name string) AfterCallbackOption {
+	return func(o *afterCallbackOptions) { o.assistantName = name }
+}
+
+// WithAfterLogger sets the [slog.Logger] used by the after-model callback to
+// report Zep errors. Defaults to [slog.Default].
+func WithAfterLogger(logger *slog.Logger) AfterCallbackOption {
+	return func(o *afterCallbackOptions) {
+		if logger != nil {
+			o.logger = logger
+		}
+	}
+}
+
+func resolveAfterCallbackOptions(opts []AfterCallbackOption) afterCallbackOptions {
+	resolved := afterCallbackOptions{logger: slog.Default()}
+	for _, opt := range opts {
+		opt(&resolved)
+	}
+	return resolved
+}
+
+// NewAfterModelCallback returns an ADK [llmagent.AfterModelCallback] that
+// persists the assistant's text reply to the same Zep thread the user message
+// was written to. Without it the user graph only ever sees the user half of
+// the conversation.
+//
+// The callback:
+//
+//  1. Skips when the model returned an error, an empty/partial response, or a
+//     response carrying only a function call (a tool-loop step, not a reply to
+//     the user).
+//  2. Truncates the reply to Zep's per-message limit if needed (logging a
+//     lengths-only warning; content is never dropped or logged).
+//  3. Persists it as an assistant message via Thread.AddMessages.
+//
+// It returns (nil, nil) so ADK keeps the model's real response. A nil client
+// makes the callback a no-op, and Zep failures are logged and swallowed so a
+// persistence failure never alters the response shown to the user.
+func NewAfterModelCallback(client *zepclient.Client, opts ...AfterCallbackOption) llmagent.AfterModelCallback {
+	return newAfterModelCallback(newZepAPI(client), opts...)
+}
+
+// newAfterModelCallback is the seam-friendly core of [NewAfterModelCallback].
+// A nil api makes the callback a no-op.
+func newAfterModelCallback(api zepAPI, opts ...AfterCallbackOption) llmagent.AfterModelCallback {
+	cfg := resolveAfterCallbackOptions(opts)
+
+	return func(cc agent.CallbackContext, resp *model.LLMResponse, respErr error) (*model.LLMResponse, error) {
+		// Never touch the response; we only observe it.
+		if api == nil || respErr != nil || resp == nil {
+			return nil, nil
+		}
+		// Streaming emits partial chunks then a final consolidated response;
+		// persist only the final one to avoid duplicating fragments.
+		if resp.Partial {
+			return nil, nil
+		}
+
+		threadID := cc.SessionID()
+		reply := AssistantText(resp.Content)
+		if threadID == "" || reply == "" {
+			return nil, nil
+		}
+
+		message := &zep.Message{
+			Role:    zep.RoleTypeAssistantRole,
+			Content: truncateMessageContent(cfg.logger, threadID, reply),
+		}
+		if cfg.assistantName != "" {
+			message.Name = zep.String(cfg.assistantName)
+		}
+
+		if _, err := api.AddMessages(cc, threadID, &zep.AddThreadMessagesRequest{
+			Messages: []*zep.Message{message},
+		}); err != nil {
+			cfg.logger.Error("zepadk: persisting assistant message failed; reply unaffected",
+				slog.String("thread_id", threadID), slog.Any("error", err))
 		}
 		return nil, nil
 	}
@@ -183,6 +308,72 @@ func LastUserText(c *genai.Content) string {
 		}
 	}
 	return ""
+}
+
+// AssistantText concatenates the text parts of an assistant response, joining
+// multiple text parts with a single space. It returns "" when c is nil or
+// carries no text — for example a response whose only part is a function call
+// (a tool-loop step rather than a reply to the user).
+func AssistantText(c *genai.Content) string {
+	if c == nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, p := range c.Parts {
+		if p == nil || p.Text == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(p.Text)
+	}
+	return b.String()
+}
+
+// IsToolLoopContinuation reports whether contents represents a tool-loop
+// continuation rather than a new user turn. During a tool loop ADK re-invokes
+// the before-model callback after each tool result; on those passes the most
+// recent content carries a function response (the tool's output) instead of
+// fresh user text. Persisting the user message again on such a pass would
+// duplicate it in the graph, so callers skip when this returns true.
+//
+// It returns false for the initial turn (whose latest content is user input)
+// and for empty histories.
+func IsToolLoopContinuation(contents []*genai.Content) bool {
+	last := lastNonEmptyContent(contents)
+	if last == nil {
+		return false
+	}
+	return contentHasFunctionResponse(last)
+}
+
+// lastNonEmptyContent returns the final content in contents that has at least
+// one non-nil part, or nil when there is none.
+func lastNonEmptyContent(contents []*genai.Content) *genai.Content {
+	for i := len(contents) - 1; i >= 0; i-- {
+		c := contents[i]
+		if c == nil {
+			continue
+		}
+		for _, p := range c.Parts {
+			if p != nil {
+				return c
+			}
+		}
+	}
+	return nil
+}
+
+// contentHasFunctionResponse reports whether any part of c is a function
+// response (a tool result fed back to the model).
+func contentHasFunctionResponse(c *genai.Content) bool {
+	for _, p := range c.Parts {
+		if p != nil && p.FunctionResponse != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // EnsureUser creates a Zep user, treating an "already exists" error as
