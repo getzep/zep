@@ -1,0 +1,77 @@
+{
+  "name": "@getzep/zep-vercel-ai",
+  "version": "0.1.0",
+  "description": "Zep long-term memory for the Vercel AI SDK — a middleware that injects user context, plain persist/retrieve helpers, and model-callable tools over Zep's temporal Context Graph.",
+  "license": "Apache-2.0",
+  "author": "Zep AI, Inc.",
+  "homepage": "https://www.getzep.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getzep/zep.git",
+    "directory": "integrations/vercel-ai/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/getzep/zep/issues"
+  },
+  "keywords": [
+    "zep",
+    "vercel",
+    "ai-sdk",
+    "memory",
+    "agent",
+    "llm",
+    "knowledge-graph",
+    "context",
+    "middleware"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "SETUP.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "example": "tsx examples/generate-text.ts",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "ai": "^6.0.0",
+    "zod": "^3.25.0 || ^4.0.0"
+  },
+  "dependencies": {
+    "@getzep/zep-cloud": "^3.23.0"
+  },
+  "devDependencies": {
+    "@ai-sdk/openai": "^3.0.0",
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^22.0.0",
+    "ai": "^6.0.0",
+    "eslint": "^9.39.4",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.61.1",
+    "vitest": "^2.1.0",
+    "zod": "^3.25.0"
+  }
+}
