@@ -1,0 +1,68 @@
+{
+  "name": "@getzep/zep-adk",
+  "version": "0.1.0",
+  "description": "Zep long-term memory integration for Google ADK (TypeScript) agents",
+  "license": "Apache-2.0",
+  "author": "Zep AI",
+  "homepage": "https://github.com/getzep/zep/tree/main/integrations/adk/typescript",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/getzep/zep.git",
+    "directory": "integrations/adk/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/getzep/zep/issues"
+  },
+  "keywords": [
+    "zep",
+    "adk",
+    "google-adk",
+    "agent",
+    "memory",
+    "llm",
+    "knowledge-graph"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "SETUP.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "example": "tsx examples/basic-agent.ts",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@google/adk": "1.2.0"
+  },
+  "dependencies": {
+    "@getzep/zep-cloud": "^3.23.0",
+    "@google/genai": "^1.37.0"
+  },
+  "devDependencies": {
+    "@google/adk": "1.2.0",
+    "@types/node": "^22.10.0",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
