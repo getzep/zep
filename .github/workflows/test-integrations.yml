@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: python
         with:
           filters: |
@@ -35,7 +35,7 @@ jobs:
             livekit:
               - 'integrations/livekit/python/**'
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: typescript
         with:
           filters: |
@@ -44,7 +44,7 @@ jobs:
             mastra:
               - 'integrations/mastra/typescript/**'
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: go
         with:
           filters: |
@@ -60,6 +60,13 @@ jobs:
       matrix:
         package: ${{ fromJSON(needs.detect-changes.outputs.python) }}
         python-version: ["3.10", "3.11", "3.12", "3.13"]
+        # crewai and livekit require Python >=3.11: their latest dependency stacks
+        # pull onnxruntime, which dropped Python 3.10 wheels. Skip those combos.
+        exclude:
+          - package: crewai
+            python-version: "3.10"
+          - package: livekit
+            python-version: "3.10"
     steps:
       - uses: actions/checkout@v4
       - name: Test Python integration

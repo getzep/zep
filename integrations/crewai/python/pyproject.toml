@@ -3,7 +3,7 @@ name = "zep-crewai"
 version = "1.1.2"
 description = "CrewAI integration for Zep"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "crewai>=1.0.0",
     "aiohttp>=3.8.0",
@@ -45,7 +45,7 @@ markers = [
 ]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
@@ -74,7 +74,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
