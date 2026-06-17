@@ -27,8 +27,22 @@ from .deps import ZepDeps
 
 logger = logging.getLogger(__name__)
 
-Scope = Literal["edges", "nodes", "episodes", "auto"]
+Scope = Literal[
+    "edges",
+    "nodes",
+    "episodes",
+    "observations",
+    "thread_summaries",
+    "auto",
+]
 Reranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
+
+#: Zep caps ``graph.search`` ``limit`` at 50; larger values are rejected.
+MAX_SEARCH_LIMIT = 50
+
+#: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
+#: retrieval and applies its own internal cross-scope rerank).
+_AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
 
 #: The signature of the tool function ``create_zep_search_tool`` returns.
 ZepSearchTool = Callable[[RunContext[ZepDeps], str], Awaitable[str]]
@@ -66,10 +80,14 @@ def create_zep_search_tool(
             this graph; when ``None`` (default), the current user's graph is
             searched.
         scope: What to search -- ``"edges"`` (facts, default), ``"nodes"``
-            (entities + summaries), ``"episodes"`` (raw source text), or
-            ``"auto"`` (Zep assembles a ready-to-use context string).
-        reranker: Result ordering algorithm.  Defaults to ``"rrf"``.
-        limit: Maximum number of results to return.  Defaults to ``10``.
+            (entities + summaries), ``"episodes"`` (raw source text),
+            ``"observations"``, ``"thread_summaries"``, or ``"auto"`` (Zep
+            assembles a ready-to-use context string).
+        reranker: Result ordering algorithm.  Defaults to ``"rrf"``.  Ignored
+            when ``scope == "auto"``; ``"node_distance"`` / ``"episode_mentions"``
+            are dropped there (Zep rejects them for auto search).
+        limit: Maximum number of results to return.  Defaults to ``10`` and is
+            clamped to Zep's ceiling of ``50``.
         name: The tool name exposed to the model.  Defaults to ``"zep_search"``.
 
     Returns:
@@ -78,6 +96,30 @@ def create_zep_search_tool(
         formatted, model-readable results string.  Zep failures are caught and
         returned as an error string -- the tool never raises into the agent.
     """
+    # Clamp limit to Zep's ceiling at construction time so the call never 400s.
+    if limit > MAX_SEARCH_LIMIT:
+        logger.warning(
+            "zep_search limit %d exceeds Zep ceiling %d; clamping to %d",
+            limit,
+            MAX_SEARCH_LIMIT,
+            MAX_SEARCH_LIMIT,
+        )
+        limit = MAX_SEARCH_LIMIT
+    elif limit < 1:
+        limit = 1
+
+    # Auto scope rejects node_distance / episode_mentions and ignores reranker
+    # entirely.  Resolve the effective reranker once, here, so the call path is
+    # always valid.
+    effective_reranker: Reranker | None = reranker
+    if scope == "auto":
+        if reranker in _AUTO_INCOMPATIBLE_RERANKERS:
+            logger.warning(
+                "zep_search reranker %r is invalid for scope='auto'; "
+                "omitting reranker (auto search uses RRF).",
+                reranker,
+            )
+        effective_reranker = None
 
     async def zep_search(ctx: RunContext[ZepDeps], query: str) -> str:
         """Search the knowledge graph for facts, entities, or prior context.
@@ -93,9 +135,10 @@ def create_zep_search_tool(
         search_kwargs: dict[str, Any] = {
             "query": query[:400],
             "scope": scope,
-            "reranker": reranker,
             "limit": limit,
         }
+        if effective_reranker is not None:
+            search_kwargs["reranker"] = effective_reranker
         if graph_id:
             search_kwargs["graph_id"] = graph_id
         else:

@@ -16,10 +16,12 @@ The critical subtlety (verified against Pydantic AI 1.107): the processor fires
 **once per model request, not once per run**.  A single ``agent.run`` that makes
 a tool call therefore invokes the processor at least twice with the *same* user
 turn.  Persisting on every invocation would create duplicate Zep episodes, so
-the processor **dedupes by the latest user message text** per ``(user_id,
-thread_id)``: it persists + retrieves on the first sight of a user turn, caches
-the retrieved context, and on re-invocations within the same turn simply
-re-prepends the cached context without touching Zep again.
+the processor **dedupes per run**: the cache is keyed by the Pydantic AI
+``RunContext.run_id``, so it persists + retrieves on the first model request of a
+run, caches the retrieved context, and on re-invocations within the *same* run
+simply re-prepends the cached context without touching Zep again.  Keying on the
+run (rather than on the user text) is deliberate: two consecutive runs that send
+the *identical* user message are genuine repeat turns and must each be persisted.
 
 Assistant responses are **not** persisted here (the model has not produced them
 yet at request time).  Persist them after the run with
@@ -29,7 +31,9 @@ yet at request time).  Persist them after the run with
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 
 from pydantic_ai import RunContext
@@ -41,6 +45,7 @@ from .deps import (
     latest_user_text,
     make_context_request,
     model_messages_to_zep,
+    truncate_message_content,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,13 +56,62 @@ HistoryProcessorFn = Callable[
     Awaitable[list[ModelMessage]],
 ]
 
-# Per-(user_id, thread_id) memo of the last user turn we persisted and the
-# context we retrieved for it.  Keyed so a single long-lived process serving
-# many users/threads stays correct.  Within one agent.run the processor fires
-# multiple times with the same user text -> we persist once and replay the
-# cached context on the re-invocations.
-_TurnCache = dict[tuple[str, str], tuple[str, str | None]]
-_turn_cache: _TurnCache = {}
+#: Maximum number of runs kept in the dedupe cache.  The processor fires once
+#: per model request; the cache only needs an entry per *in-flight* run, but we
+#: keep a small backlog so concurrent runs in a busy process all dedupe
+#: correctly.  Oldest entries are evicted first (LRU).
+_CACHE_MAX_ENTRIES = 1024
+
+
+class _RunDedupeCache:
+    """A bounded, lock-guarded LRU of per-run retrieved context.
+
+    Keyed by the Pydantic AI ``RunContext.run_id`` so each ``agent.run``
+    persists its user turn exactly once, while two consecutive runs that send
+    the *same* user text each persist (genuine repeat turns).  Bounded so a
+    long-lived process serving many runs never grows the cache without limit;
+    guarded by a lock so concurrent runs do not corrupt it.
+    """
+
+    def __init__(self, max_entries: int = _CACHE_MAX_ENTRIES) -> None:
+        self._max = max_entries
+        self._data: OrderedDict[str, str | None] = OrderedDict()
+        self._lock = asyncio.Lock()
+
+    async def get(self, run_key: str) -> tuple[bool, str | None]:
+        """Return ``(hit, context)`` for ``run_key``; refreshes LRU order."""
+        async with self._lock:
+            if run_key not in self._data:
+                return False, None
+            self._data.move_to_end(run_key)
+            return True, self._data[run_key]
+
+    async def set(self, run_key: str, context: str | None) -> None:
+        """Store ``context`` for ``run_key``, evicting the oldest if full."""
+        async with self._lock:
+            self._data[run_key] = context
+            self._data.move_to_end(run_key)
+            while len(self._data) > self._max:
+                self._data.popitem(last=False)
+
+    def clear(self) -> None:
+        self._data.clear()
+
+
+_turn_cache = _RunDedupeCache()
+
+
+def _run_key(ctx: RunContext[ZepDeps], deps: ZepDeps) -> str:
+    """Build the dedupe key for this run.
+
+    Prefers ``RunContext.run_id`` (one per ``agent.run``).  Falls back to the
+    ``(user_id, thread_id)`` pair only if a run id is unavailable, so dedupe
+    still degrades gracefully on older Pydantic AI versions.
+    """
+    run_id = getattr(ctx, "run_id", None)
+    if run_id:
+        return f"run:{run_id}"
+    return f"thread:{deps.user_id}:{deps.thread_id}"
 
 
 async def zep_history_processor(
@@ -82,10 +136,11 @@ async def zep_history_processor(
 
     * resolves the Zep client + identity from ``ctx.deps``;
     * lazily creates the Zep user and thread;
-    * extracts the latest user message text;
-    * if this user turn has not yet been persisted (dedupe guard), calls
-      ``thread.add_messages(return_context=True)`` and caches the returned
-      context;
+    * extracts the latest user message text (truncated to Zep's per-message
+      limit);
+    * if this run has not yet persisted its user turn (run-scoped dedupe
+      guard), calls ``thread.add_messages(return_context=True)`` and caches the
+      returned context;
     * prepends the context block (fresh or cached) to ``messages`` as a system
       ``ModelRequest``.
 
@@ -110,14 +165,18 @@ async def zep_history_processor(
         # extractable text). Nothing to persist; pass history through.
         return messages
 
-    key = (deps.user_id, deps.thread_id)
-    cached = _turn_cache.get(key)
+    run_key = _run_key(ctx, deps)
+    hit, cached_context = await _turn_cache.get(run_key)
 
-    # --- Re-invocation within the same turn: replay cached context ----------
-    if cached is not None and cached[0] == user_text:
-        return _with_context(messages, cached[1])
+    # --- Re-invocation within the same run: replay cached context -----------
+    if hit:
+        return _with_context(messages, cached_context)
 
-    # --- First sight of this user turn: persist + retrieve ------------------
+    # --- First model request of this run: persist + retrieve ---------------
+    # Truncate on the hot path before sending; Zep rejects content >4096 chars
+    # with HTTP 400.  Warn with lengths only (never content / PII).
+    user_text = truncate_message_content(user_text, label="user turn")
+
     context: str | None = None
     try:
         if await ensure_user_and_thread(deps):
@@ -137,8 +196,8 @@ async def zep_history_processor(
             )
             context = response.context if response else None
             # Only cache after a successful round-trip so a transient failure
-            # can be retried on the next model request.
-            _turn_cache[key] = (user_text, context)
+            # can be retried on the next model request of this run.
+            await _turn_cache.set(run_key, context)
             logger.info(
                 "Persisted user turn to Zep (thread=%s); context length=%s",
                 deps.thread_id,
@@ -214,10 +273,10 @@ async def persist_run(
 
 
 def reset_turn_cache() -> None:
-    """Clear the in-process turn-dedupe cache.
+    """Clear the in-process run-dedupe cache.
 
-    Primarily useful in tests; production code rarely needs this.  The cache
-    only stores the latest user text + retrieved context per ``(user_id,
-    thread_id)`` and is naturally overwritten as conversations progress.
+    Primarily useful in tests; production code rarely needs this.  The cache is
+    a bounded LRU keyed by run id and evicts old entries automatically as runs
+    complete, so it never grows without limit.
     """
     _turn_cache.clear()

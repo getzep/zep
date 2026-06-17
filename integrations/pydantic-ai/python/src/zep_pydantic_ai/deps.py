@@ -32,9 +32,10 @@ from zep_cloud.client import AsyncZep
 
 logger = logging.getLogger(__name__)
 
-#: Zep limits a single message to 4096 characters.  Longer text is truncated
-#: before it is sent so a Zep validation error never reaches the host agent.
-MAX_MESSAGE_CHARS = 2400 * 10  # generous; Zep truncates server-side too
+#: Zep rejects a single message whose content exceeds 4096 characters (HTTP
+#: 400).  We truncate a little below that ceiling so the message is always
+#: accepted; longer text is clipped before it is sent and a warning is logged.
+MAX_MESSAGE_CHARS = 4000
 
 
 @dataclass
@@ -99,10 +100,31 @@ class ZepDeps:
         return composed or None
 
 
-def _truncate(text: str) -> str:
-    """Clip text to Zep's per-message limit, never raising."""
+def truncate_message_content(text: str, *, label: str = "message") -> str:
+    """Clip text to Zep's per-message limit, never raising.
+
+    Zep returns HTTP 400 for messages longer than 4096 characters, so overlong
+    content must be clipped before it is sent.  Truncation is logged at WARNING
+    level with **lengths only** -- never the content itself -- so no message
+    text or PII reaches the logs.
+
+    Args:
+        text: The candidate message content.
+        label: A short, non-PII tag for the log line (e.g. ``"user turn"``).
+
+    Returns:
+        ``text`` unchanged if within the limit, otherwise clipped to
+        :data:`MAX_MESSAGE_CHARS`.
+    """
     if len(text) <= MAX_MESSAGE_CHARS:
         return text
+    logger.warning(
+        "Truncating Zep %s: %d chars exceeds limit of %d; clipped to %d",
+        label,
+        len(text),
+        MAX_MESSAGE_CHARS,
+        MAX_MESSAGE_CHARS,
+    )
     return text[:MAX_MESSAGE_CHARS]
 
 
@@ -178,7 +200,13 @@ def model_messages_to_zep(
                 if isinstance(part, UserPromptPart):
                     text = " ".join(_user_part_texts(part)).strip()
                     if text:
-                        out.append(Message(role="user", content=_truncate(text), name=user_name))
+                        out.append(
+                            Message(
+                                role="user",
+                                content=truncate_message_content(text, label="user turn"),
+                                name=user_name,
+                            )
+                        )
         elif isinstance(message, ModelResponse):
             texts = [
                 part.content
@@ -187,7 +215,13 @@ def model_messages_to_zep(
             ]
             text = " ".join(texts).strip()
             if text:
-                out.append(Message(role="assistant", content=_truncate(text), name=assistant_name))
+                out.append(
+                    Message(
+                        role="assistant",
+                        content=truncate_message_content(text, label="assistant turn"),
+                        name=assistant_name,
+                    )
+                )
     return out
 
 

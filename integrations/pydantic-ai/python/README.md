@@ -119,9 +119,9 @@ skipped, so Zep sees one clean assistant message per turn.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `graph_id` | `str` | `None` | Standalone graph to search; when unset, searches the current user's graph |
-| `scope` | `"edges" \| "nodes" \| "episodes" \| "auto"` | `"edges"` | What to search |
-| `reranker` | `"rrf" \| "mmr" \| "node_distance" \| "episode_mentions" \| "cross_encoder"` | `"rrf"` | Result ordering |
-| `limit` | `int` | `10` | Maximum results |
+| `scope` | `"edges" \| "nodes" \| "episodes" \| "observations" \| "thread_summaries" \| "auto"` | `"edges"` | What to search |
+| `reranker` | `"rrf" \| "mmr" \| "node_distance" \| "episode_mentions" \| "cross_encoder"` | `"rrf"` | Result ordering (ignored for `scope="auto"`) |
+| `limit` | `int` | `10` | Maximum results (clamped to Zep's ceiling of 50) |
 | `name` | `str` | `"zep_search"` | Tool name exposed to the model |
 
 ## Features

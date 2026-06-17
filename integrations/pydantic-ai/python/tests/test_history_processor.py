@@ -43,9 +43,23 @@ def _make_deps(client: MagicMock, **kwargs: object) -> ZepDeps:
     return ZepDeps(client=client, **base)  # type: ignore[arg-type]
 
 
-def _make_ctx(deps: ZepDeps) -> MagicMock:
+_RUN_COUNTER = 0
+
+
+def _make_ctx(deps: ZepDeps, run_id: str | None = None) -> MagicMock:
+    """Build a stub RunContext.
+
+    Each call gets a *distinct* ``run_id`` by default, mirroring how Pydantic AI
+    assigns a fresh id per ``agent.run``.  Pass an explicit ``run_id`` to model
+    multiple model requests *within the same run* (the dedupe case).
+    """
+    global _RUN_COUNTER
+    if run_id is None:
+        _RUN_COUNTER += 1
+        run_id = f"run-{_RUN_COUNTER}"
     ctx = MagicMock()
     ctx.deps = deps
+    ctx.run_id = run_id
     return ctx
 
 
@@ -122,21 +136,63 @@ class TestPersistAndContext:
         kwargs = client.thread.add_messages.call_args.kwargs
         assert kwargs["ignore_roles"] == ["assistant"]
 
+    @pytest.mark.asyncio
+    async def test_overlong_user_turn_truncated_before_add(self) -> None:
+        """Regression: a user message longer than Zep's 4096-char limit is
+        truncated on the hot path before add_messages, so Zep never 400s."""
+        from zep_pydantic_ai.deps import MAX_MESSAGE_CHARS
+
+        client = _make_mock_client(context=None)
+        deps = _make_deps(client)
+        ctx = _make_ctx(deps)
+
+        long_text = "x" * (MAX_MESSAGE_CHARS + 500)
+        await zep_history_processor(ctx, _user_history(long_text))
+
+        kwargs = client.thread.add_messages.call_args.kwargs
+        sent = kwargs["messages"][0].content
+        assert len(sent) == MAX_MESSAGE_CHARS
+
+    @pytest.mark.asyncio
+    async def test_max_message_chars_matches_zep_limit(self) -> None:
+        """The clip ceiling must stay at or below Zep's 4096-char hard limit."""
+        from zep_pydantic_ai.deps import MAX_MESSAGE_CHARS
+
+        assert MAX_MESSAGE_CHARS <= 4096
+
+    @pytest.mark.asyncio
+    async def test_dedupe_falls_back_to_thread_without_run_id(self) -> None:
+        """If RunContext has no run_id, dedupe degrades to (user_id, thread_id)
+        so within-turn re-invocations still persist only once."""
+        client = _make_mock_client(context="ctx")
+        deps = _make_deps(client)
+        ctx = MagicMock()
+        ctx.deps = deps
+        ctx.run_id = None  # older Pydantic AI / no run id available
+
+        messages = _user_history("hello")
+        await zep_history_processor(ctx, messages)
+        await zep_history_processor(ctx, messages)
+
+        assert client.thread.add_messages.call_count == 1
+
 
 class TestDedupeGuard:
     @pytest.mark.asyncio
-    async def test_same_turn_reinvocation_persists_once(self) -> None:
-        """The processor fires once per model request; the same user turn must
-        only be persisted to Zep once, with context replayed from cache."""
+    async def test_same_run_reinvocation_persists_once(self) -> None:
+        """The processor fires once per model request; within ONE run the user
+        turn must only be persisted to Zep once, with context replayed from
+        cache on the re-invocation."""
         client = _make_mock_client(context="cached context")
         deps = _make_deps(client)
-        ctx = _make_ctx(deps)
+        # Same run_id -> two model requests of the same agent.run.
+        ctx = _make_ctx(deps, run_id="run-fixed")
 
         messages = _user_history("Same question")
         r1 = await zep_history_processor(ctx, messages)
         r2 = await zep_history_processor(ctx, messages)
 
-        # Persisted only once across the two model requests.
+        # Persisted only once across the two model requests of the run.
         assert client.thread.add_messages.call_count == 1
         # But both invocations still inject the (cached) context block.
         assert isinstance(r1[0].parts[0], SystemPromptPart)
@@ -147,12 +203,31 @@ class TestDedupeGuard:
     async def test_new_user_turn_persists_again(self) -> None:
         client = _make_mock_client(context="ctx")
         deps = _make_deps(client)
-        ctx = _make_ctx(deps)
 
-        await zep_history_processor(ctx, _user_history("first"))
-        await zep_history_processor(ctx, _user_history("second"))
+        # Distinct runs (distinct run_id) -> each persists.
+        await zep_history_processor(_make_ctx(deps), _user_history("first"))
+        await zep_history_processor(_make_ctx(deps), _user_history("second"))
 
         assert client.thread.add_messages.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_two_consecutive_identical_runs_persist_twice(self) -> None:
+        """Regression: dedupe is scoped to the RUN, not the user text.  Two
+        consecutive runs that send the *identical* user message are genuine
+        repeat turns and must each be persisted (the old text-keyed cache
+        silently dropped the second)."""
+        client = _make_mock_client(context="ctx")
+        deps = _make_deps(client)
+
+        same_text = "ping"
+        # Two separate agent.run invocations -> two distinct run ids.
+        await zep_history_processor(_make_ctx(deps), _user_history(same_text))
+        await zep_history_processor(_make_ctx(deps), _user_history(same_text))
+
+        assert client.thread.add_messages.call_count == 2
+        # Both persisted the same content.
+        for call in client.thread.add_messages.call_args_list:
+            assert call.kwargs["messages"][0].content == same_text
 
     @pytest.mark.asyncio
     async def test_distinct_threads_tracked_separately(self) -> None:
@@ -163,8 +238,24 @@ class TestDedupeGuard:
         await zep_history_processor(_make_ctx(deps_a), _user_history("hi"))
         await zep_history_processor(_make_ctx(deps_b), _user_history("hi"))
 
-        # Same text but different threads -> two persists.
+        # Different runs -> two persists.
         assert client.thread.add_messages.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_cache_is_bounded(self) -> None:
+        """The run cache is a bounded LRU and never grows without limit."""
+        from zep_pydantic_ai.history_processor import _CACHE_MAX_ENTRIES, _turn_cache
+
+        # Insert more entries than the cache can hold.
+        for i in range(_CACHE_MAX_ENTRIES + 50):
+            await _turn_cache.set(f"k-{i}", None)
+
+        assert len(_turn_cache._data) == _CACHE_MAX_ENTRIES
+        # Oldest evicted, newest retained.
+        hit_old, _ = await _turn_cache.get("k-0")
+        hit_new, _ = await _turn_cache.get(f"k-{_CACHE_MAX_ENTRIES + 49}")
+        assert hit_old is False
+        assert hit_new is True
 
 
 class TestErrorHandling:

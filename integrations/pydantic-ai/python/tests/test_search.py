@@ -119,6 +119,96 @@ class TestSearchTargeting:
         assert tool.__name__ == "search_memory"
 
 
+class TestLimitClamping:
+    @pytest.mark.asyncio
+    async def test_limit_clamped_to_50(self) -> None:
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        tool = create_zep_search_tool(limit=1000)
+        ctx = _make_ctx(_make_deps(client))
+
+        await tool(ctx, "query")
+
+        kwargs = client.graph.search.call_args.kwargs
+        assert kwargs["limit"] == 50
+
+    @pytest.mark.asyncio
+    async def test_limit_at_ceiling_unchanged(self) -> None:
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        tool = create_zep_search_tool(limit=50)
+        ctx = _make_ctx(_make_deps(client))
+
+        await tool(ctx, "query")
+
+        assert client.graph.search.call_args.kwargs["limit"] == 50
+
+    @pytest.mark.asyncio
+    async def test_limit_floor_is_one(self) -> None:
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        tool = create_zep_search_tool(limit=0)
+        ctx = _make_ctx(_make_deps(client))
+
+        await tool(ctx, "query")
+
+        assert client.graph.search.call_args.kwargs["limit"] == 1
+
+
+class TestAutoScopeReranker:
+    @pytest.mark.asyncio
+    async def test_auto_scope_drops_incompatible_reranker(self) -> None:
+        """node_distance / episode_mentions are rejected by Zep for auto scope;
+        the tool must not pass a reranker at all."""
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(context="ctx"))
+        tool = create_zep_search_tool(scope="auto", reranker="node_distance")
+        ctx = _make_ctx(_make_deps(client))
+
+        await tool(ctx, "query")
+
+        kwargs = client.graph.search.call_args.kwargs
+        assert kwargs["scope"] == "auto"
+        assert "reranker" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_auto_scope_drops_default_reranker_too(self) -> None:
+        """Auto search ignores reranker entirely; even rrf is omitted."""
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(context="ctx"))
+        tool = create_zep_search_tool(scope="auto")
+        ctx = _make_ctx(_make_deps(client))
+
+        await tool(ctx, "query")
+
+        assert "reranker" not in client.graph.search.call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_non_auto_scope_keeps_reranker(self) -> None:
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        tool = create_zep_search_tool(scope="edges", reranker="node_distance")
+        ctx = _make_ctx(_make_deps(client))
+
+        await tool(ctx, "query")
+
+        assert client.graph.search.call_args.kwargs["reranker"] == "node_distance"
+
+
+class TestExtendedScopes:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("scope", ["observations", "thread_summaries"])
+    async def test_new_scopes_accepted(self, scope: str) -> None:
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        tool = create_zep_search_tool(scope=scope)  # type: ignore[arg-type]
+        ctx = _make_ctx(_make_deps(client))
+
+        await tool(ctx, "query")
+
+        assert client.graph.search.call_args.kwargs["scope"] == scope
+
+
 class TestResultFormatting:
     @pytest.mark.asyncio
     async def test_formats_edges(self) -> None:
