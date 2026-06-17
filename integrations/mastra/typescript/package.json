@@ -1,0 +1,69 @@
+{
+  "name": "@getzep/zep-mastra",
+  "version": "0.1.0",
+  "description": "Zep long-term memory tools for Mastra agents — persist, search, and retrieve user context from Zep's temporal Context Graph.",
+  "license": "Apache-2.0",
+  "author": "Zep AI, Inc.",
+  "homepage": "https://www.getzep.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getzep/zep.git",
+    "directory": "integrations/mastra/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/getzep/zep/issues"
+  },
+  "keywords": [
+    "zep",
+    "mastra",
+    "memory",
+    "agent",
+    "llm",
+    "knowledge-graph",
+    "context"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "SETUP.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "example": "tsx examples/basic-agent.ts",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@mastra/core": "^1.42.0"
+  },
+  "dependencies": {
+    "@getzep/zep-cloud": "^3.23.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@mastra/core": "^1.42.0",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
