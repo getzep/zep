@@ -36,6 +36,8 @@ from agent_framework import ContextProvider
 from zep_cloud import Message as ZepMessage
 from zep_cloud.client import AsyncZep
 
+from ._text import truncate_message_content
+
 if TYPE_CHECKING:
     from agent_framework import (
         AgentSession,
@@ -166,6 +168,13 @@ class ZepContextProvider(ContextProvider):
         # already exist) for this provider instance.  Cached so repeated runs
         # do not re-issue setup calls.
         self._resources_ready: bool = False
+
+        # Whether THIS run's user turn was actually persisted in before_run.
+        # Reset at the start of every before_run and gated on in after_run so an
+        # assistant-only record is never written when the user turn failed.  This
+        # is intentionally per-run instance state, not the per-session ``state``
+        # dict, so a failure in one run cannot leak into a later run.
+        self._user_turn_persisted: bool = False
 
     # ------------------------------------------------------------------
     # Public properties
@@ -304,12 +313,20 @@ class ZepContextProvider(ContextProvider):
 
         A Zep failure is logged and the run continues without injected memory.
         """
+        # Reset the per-run flag: until this run's user turn is persisted below,
+        # after_run must not write an orphaned assistant-only record.
+        self._user_turn_persisted = False
+
         user_text = self._latest_user_text(context.input_messages)
         if not user_text:
             return
 
         if not await self._ensure_resources():
             return
+
+        # Guard against Zep's 4,096-char message limit: truncate (never silently
+        # drop) so the turn is persisted instead of triggering a swallowed 400.
+        user_text = truncate_message_content(user_text, label="user message")
 
         context_block: str | None = None
         try:
@@ -325,6 +342,7 @@ class ZepContextProvider(ContextProvider):
                 return_context=True,
                 ignore_roles=self._ignore_roles,
             )
+            self._user_turn_persisted = True
             context_block = response.context if response else None
             logger.info(
                 "Persisted user message to Zep (thread=%s). Context length: %s",
@@ -369,10 +387,19 @@ class ZepContextProvider(ContextProvider):
         if not assistant_text:
             return
 
-        # The thread/user were created in before_run; if that failed we skip
-        # rather than re-attempt here, since there is no user turn to anchor to.
-        if not self._resources_ready:
+        # Only persist the assistant turn if THIS run's user turn was actually
+        # written in before_run.  Otherwise we would record an orphaned
+        # assistant-only turn with no user message to anchor it to.
+        if not self._user_turn_persisted:
+            logger.debug(
+                "Skipping assistant persist: this run's user turn was not persisted (thread=%s).",
+                self._thread_id,
+            )
             return
+
+        # Guard against Zep's 4,096-char message limit: truncate (never silently
+        # drop) so the turn is persisted instead of triggering a swallowed 400.
+        assistant_text = truncate_message_content(assistant_text, label="assistant message")
 
         try:
             await self._zep.thread.add_messages(

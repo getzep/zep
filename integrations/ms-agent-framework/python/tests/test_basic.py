@@ -388,6 +388,7 @@ class TestAfterRun:
         client = make_mock_client()
         provider = make_provider(client)
         provider._resources_ready = True
+        provider._user_turn_persisted = True
         ctx = make_context(response_messages=[Message("assistant", ["The answer is 42."])])
 
         await run_after(provider, ctx)
@@ -404,6 +405,7 @@ class TestAfterRun:
         client = make_mock_client()
         provider = make_provider(client, assistant_message_name="Aria")
         provider._resources_ready = True
+        provider._user_turn_persisted = True
         ctx = make_context(response_messages=[Message("assistant", ["Hello"])])
 
         await run_after(provider, ctx)
@@ -416,6 +418,7 @@ class TestAfterRun:
         client = make_mock_client()
         provider = make_provider(client)
         provider._resources_ready = True
+        provider._user_turn_persisted = True
         ctx = make_context(response_messages=None)
 
         await run_after(provider, ctx)
@@ -427,6 +430,7 @@ class TestAfterRun:
         client = make_mock_client()
         provider = make_provider(client)
         provider._resources_ready = True
+        provider._user_turn_persisted = True
         ctx = make_context(response_messages=[Message("tool", ["tool output"])])
 
         await run_after(provider, ctx)
@@ -434,10 +438,14 @@ class TestAfterRun:
         client.thread.add_messages.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_skips_when_resources_not_ready(self) -> None:
+    async def test_skips_when_user_turn_not_persisted(self) -> None:
         client = make_mock_client()
         provider = make_provider(client)
-        # _resources_ready stays False (before_run failed earlier)
+        # Resources are ready, but this run's user turn never persisted (e.g.
+        # before_run's add_messages failed). after_run must not write an
+        # orphaned assistant-only record.
+        provider._resources_ready = True
+        provider._user_turn_persisted = False
         ctx = make_context(response_messages=[Message("assistant", ["Hello"])])
 
         await run_after(provider, ctx)
@@ -450,6 +458,7 @@ class TestAfterRun:
         client.thread.add_messages.side_effect = RuntimeError("API down")
         provider = make_provider(client)
         provider._resources_ready = True
+        provider._user_turn_persisted = True
         ctx = make_context(response_messages=[Message("assistant", ["Hello"])])
 
         # Must not raise.
@@ -531,3 +540,130 @@ class TestOnUserCreatedHook:
         # The run continued: message persisted and context injected.
         client.thread.add_messages.assert_called_once()
         ctx.extend_instructions.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Message-size guard (Zep 4,096-char limit)
+# ---------------------------------------------------------------------------
+class TestMessageSizeGuard:
+    def test_truncate_helper_keeps_short_content(self) -> None:
+        from zep_ms_agent_framework._text import truncate_message_content
+
+        text = "short"
+        assert truncate_message_content(text, label="user message") == text
+
+    def test_truncate_helper_caps_oversize_content(self) -> None:
+        from zep_ms_agent_framework._text import (
+            MESSAGE_TRUNCATE_LIMIT,
+            ZEP_MESSAGE_CONTENT_LIMIT,
+            truncate_message_content,
+        )
+
+        text = "x" * 9000
+        result = truncate_message_content(text, label="user message")
+        assert len(result) == MESSAGE_TRUNCATE_LIMIT
+        # Result must always be within Zep's hard limit (never silently dropped).
+        assert len(result) <= ZEP_MESSAGE_CONTENT_LIMIT
+        assert result == text[:MESSAGE_TRUNCATE_LIMIT]
+
+    def test_truncate_helper_warns_lengths_only(self, caplog: pytest.LogCaptureFixture) -> None:
+        import logging
+
+        from zep_ms_agent_framework._text import truncate_message_content
+
+        secret = "SENSITIVE" + ("y" * 9000)
+        with caplog.at_level(logging.WARNING, logger="zep_ms_agent_framework._text"):
+            truncate_message_content(secret, label="user message")
+
+        assert len(caplog.records) == 1
+        record = caplog.records[0]
+        # The warning must contain lengths/counts and the (safe) label only --
+        # never the content / PII.
+        assert "SENSITIVE" not in record.getMessage()
+        assert "user message" in record.getMessage()
+        assert "9009" in record.getMessage()
+
+    @pytest.mark.asyncio
+    async def test_before_run_truncates_oversize_user_message(self) -> None:
+        from zep_ms_agent_framework._text import MESSAGE_TRUNCATE_LIMIT
+
+        client = make_mock_client()
+        client.thread.add_messages.return_value = add_messages_response(None)
+        provider = make_provider(client)
+        oversize = "u" * 9000
+        ctx = make_context(input_messages=[Message("user", [oversize])])
+
+        await run_before(provider, ctx)
+
+        # The turn was persisted (not dropped) and truncated to the safe limit.
+        client.thread.add_messages.assert_called_once()
+        sent = client.thread.add_messages.call_args.kwargs["messages"][0].content
+        assert len(sent) == MESSAGE_TRUNCATE_LIMIT
+        assert sent == oversize[:MESSAGE_TRUNCATE_LIMIT]
+
+    @pytest.mark.asyncio
+    async def test_after_run_truncates_oversize_assistant_message(self) -> None:
+        from zep_ms_agent_framework._text import MESSAGE_TRUNCATE_LIMIT
+
+        client = make_mock_client()
+        provider = make_provider(client)
+        provider._resources_ready = True
+        provider._user_turn_persisted = True
+        oversize = "a" * 9000
+        ctx = make_context(response_messages=[Message("assistant", [oversize])])
+
+        await run_after(provider, ctx)
+
+        client.thread.add_messages.assert_called_once()
+        sent = client.thread.add_messages.call_args.kwargs["messages"][0].content
+        assert len(sent) == MESSAGE_TRUNCATE_LIMIT
+        assert sent == oversize[:MESSAGE_TRUNCATE_LIMIT]
+
+
+# ---------------------------------------------------------------------------
+# Orphaned-turn protection: after_run must not persist when the user turn failed
+# ---------------------------------------------------------------------------
+class TestOrphanedTurnProtection:
+    @pytest.mark.asyncio
+    async def test_after_run_skips_when_before_run_persist_failed(self) -> None:
+        # Resources create fine, but the user-turn add_messages fails.
+        client = make_mock_client()
+        client.thread.add_messages.side_effect = RuntimeError("API down")
+        provider = make_provider(client)
+
+        before_ctx = make_context(input_messages=[Message("user", ["Hi"])])
+        await run_before(provider, before_ctx)
+
+        # Resources were created, but the user turn was NOT persisted.
+        assert provider._resources_ready is True
+        assert provider._user_turn_persisted is False
+
+        # Now the model "responds" -- after_run must not write an orphan.
+        client.thread.add_messages.reset_mock()
+        client.thread.add_messages.side_effect = None
+        after_ctx = make_context(response_messages=[Message("assistant", ["Hello"])])
+        await run_after(provider, after_ctx)
+
+        client.thread.add_messages.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_before_run_failure_does_not_leak_into_next_run(self) -> None:
+        # A failed user turn in one run must not let a later run's after_run
+        # persist an orphan: before_run resets the per-run flag each time.
+        client = make_mock_client()
+        provider = make_provider(client)
+
+        # Run 1: user-turn persist succeeds, after_run persists.
+        client.thread.add_messages.return_value = add_messages_response(None)
+        await run_before(provider, make_context(input_messages=[Message("user", ["one"])]))
+        assert provider._user_turn_persisted is True
+
+        # Run 2: user-turn persist fails -> flag flips back to False.
+        client.thread.add_messages.side_effect = RuntimeError("API down")
+        await run_before(provider, make_context(input_messages=[Message("user", ["two"])]))
+        assert provider._user_turn_persisted is False
+
+        client.thread.add_messages.reset_mock()
+        client.thread.add_messages.side_effect = None
+        await run_after(provider, make_context(response_messages=[Message("assistant", ["resp"])]))
+        client.thread.add_messages.assert_not_called()

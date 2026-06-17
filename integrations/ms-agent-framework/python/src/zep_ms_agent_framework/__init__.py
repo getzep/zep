@@ -48,26 +48,26 @@ __description__ = "Microsoft Agent Framework integration for Zep"
 
 from .exceptions import ZepDependencyError
 
+# Guard ONLY the Microsoft Agent Framework import here.  A failure importing the
+# integration's own modules (e.g. a broken ``zep_cloud``) must surface as its own
+# error rather than being mislabeled as a missing Agent Framework dependency.
 try:
-    # Verify the Microsoft Agent Framework core is importable before exposing
-    # the integration surface.
     import agent_framework  # noqa: F401
-
-    from .context_provider import (
-        DEFAULT_SOURCE_ID,
-        UserSetupHook,
-        ZepContextProvider,
-    )
-
-    __all__ = [
-        "DEFAULT_SOURCE_ID",
-        "UserSetupHook",
-        "ZepContextProvider",
-        "ZepDependencyError",
-    ]
-
 except ImportError as e:
     raise ZepDependencyError(
         framework="Microsoft Agent Framework",
         install_command="pip install zep-ms-agent-framework",
     ) from e
+
+from .context_provider import (
+    DEFAULT_SOURCE_ID,
+    UserSetupHook,
+    ZepContextProvider,
+)
+
+__all__ = [
+    "DEFAULT_SOURCE_ID",
+    "UserSetupHook",
+    "ZepContextProvider",
+    "ZepDependencyError",
+]
