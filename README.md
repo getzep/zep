@@ -5,7 +5,7 @@
 </p>
 
 <h1 align="center">
-Zep: End-to-End Context Engineering Platform
+Zep: Agent Memory at Enterprise Scale
 </h1>
 
 <h2 align="center">Examples, Integrations, & More</h2>
@@ -22,21 +22,29 @@ Zep: End-to-End Context Engineering Platform
 
 ## What is Zep? 💬
 
-Zep is an end-to-end context engineering platform that delivers the right information at the right time with sub-200ms latency. It solves the agent context problem by assembling comprehensive, relationship-aware context from multiple data sources—chat history, business data, documents, and app events—enabling AI agents to perform accurately in production.
+Zep is an agent memory platform. It captures memory of your users, your business, and the work your agents do, assembles it into token-efficient context, and serves it back in under 200ms—managed, governed, and served at scale.
+
+Zep builds a temporal knowledge graph from chat history, business data, and user interactions. When new information contradicts an existing fact, Zep marks the old fact invalid and records the new one, so agents can ask "what is true now" or "what was true on this date" and get the right answer to either. Every query is filtered by access policies, retention rules, and audit logging at the entity level.
+
+### Three types of memory
+
+- **User memory**: preferences, behaviors, and history
+- **Business memory**: organizational data, customer records, and domain facts
+- **Work memory**: the tasks, episodes, and interactions your agents perform
 
 ### How Zep works
 
-1. **Add context**: Feed chat messages, business data, and events to Zep as they occur
-2. **Graph RAG**: Zep automatically extracts relationships and maintains a temporal knowledge graph that understands how context evolves over time
-3. **Retrieve & assemble**: Get pre-formatted, relationship-aware context blocks optimized for your LLM
+1. **Ingest**: Send chat messages, business data, and events to Zep as they occur.
+2. **Construct**: Zep builds a Context Graph connecting entities, facts, and relationships, and tracks how they change over time.
+3. **Retrieve**: Get pre-assembled, token-efficient context in under 200ms, ready for your LLM.
 
-Zep's relationship-aware retrieval system delivers context about facts, relationships, and how they've changed—providing agents with current, accurate, and relevant information for better decision-making.
+At the center is the **Context Lake**: millions of Context Graphs managed as one governed system, served by Zep's Context Graph Engine.
 
 ## Getting Started
 
 ### Sign up for Zep Cloud
 
-Visit [www.getzep.com](https://www.getzep.com/) to sign up for Zep Cloud, our managed service delivering intelligent agent context with <200ms latency, enterprise-grade scalability, and SOC2 Type 2 / HIPAA compliance. Add context assembly to your agents in three lines of code.
+Visit [www.getzep.com](https://www.getzep.com/) to sign up for Zep Cloud, our managed agent memory service with sub-200ms retrieval, SOC 2 Type II compliance, and a HIPAA BAA. Deploy as a managed Cloud service, Cloud with your own encryption keys (BYOK), or in your own VPC (BYOC). Add agent memory in a few lines of code.
 
 ### Find Zep SDKs
 
@@ -56,13 +64,13 @@ Zep offers comprehensive SDKs for multiple languages:
 
 **Note**: This repository is currently a work in progress.
 
-This repository contains examples, integrations, and tools for building intelligent agent context with Zep. Explore the example applications to see how Zep delivers context assembly with LangChain, LlamaIndex, AutoGen, and other frameworks.
+This repository contains examples, integrations, and tools for building agent memory with Zep. Explore the example applications to see how Zep adds memory to agents built with Google ADK, Microsoft AutoGen, CrewAI, LiveKit, and other frameworks.
 
 ### Repository Structure
 
 The repository includes:
 
-- Example applications demonstrating agent context assembly with Zep
+- Example applications demonstrating agent memory with Zep
 - Integration packages for popular agent frameworks
 - Code samples for different use cases
 - Development tools and utilities
@@ -123,11 +131,11 @@ We welcome contributions to help improve Zep and its ecosystem. Please see the [
 
 ## Graphiti: The Knowledge Graph Framework
 
-Zep is powered by [Graphiti](https://github.com/getzep/graphiti), an open-source temporal knowledge graph framework that enables relationship-aware context retrieval.
+Zep is powered by [Graphiti](https://github.com/getzep/graphiti), an open-source temporal knowledge graph framework.
 
-Graphiti autonomously builds and maintains knowledge graphs while reasoning about state changes over time. Each fact includes `valid_at` and `invalid_at` dates, allowing agents to understand how relationships, preferences, and context have evolved—essential for accurate decision-making in dynamic environments.
+Graphiti builds and maintains knowledge graphs while reasoning about state changes over time. Each fact includes `valid_at` and `invalid_at` dates, so agents can see how relationships, preferences, and facts have evolved.
 
-Visit the [Graphiti repository](https://github.com/getzep/graphiti) to learn more about the temporal knowledge graph framework that powers Zep's context assembly capabilities.
+Visit the [Graphiti repository](https://github.com/getzep/graphiti) to learn more about the temporal knowledge graph framework that powers Zep's agent memory.
 
 
 ## Community Edition (Legacy)
