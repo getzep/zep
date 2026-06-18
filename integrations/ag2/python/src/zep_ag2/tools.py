@@ -21,22 +21,60 @@ from zep_ag2.exceptions import ZepAG2MemoryError
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Event-loop helper
+# Size limits (Zep API constraints)
 # ---------------------------------------------------------------------------
-# AG2 executes tool functions synchronously (even if they are declared async).
-# When the caller is already inside an asyncio event loop (e.g. the test's
-# ``asyncio.run(main())``), calling ``asyncio.run()`` or
-# ``loop.run_until_complete()`` from within that loop raises:
-#   "This event loop is already running" / "bound to a different event loop"
+# Zep rejects messages longer than 4096 characters and graph.add payloads
+# longer than 10,000 characters. We truncate slightly below those limits and
+# warn (with lengths only, never content) rather than silently dropping data
+# or letting the API reject the whole call.
+MESSAGE_MAX_CHARS = 4000
+GRAPH_MAX_CHARS = 9900
+
+# Valid Zep message roles (subset of zep_cloud RoleType that makes sense for
+# agent-authored memory). Unknown roles map to "assistant".
+_VALID_ROLES = frozenset({"system", "assistant", "user", "function", "tool"})
+
+
+def _truncate(text: str, limit: int, label: str) -> str:
+    """Truncate *text* to *limit* chars, warning with lengths only (never content)."""
+    if len(text) > limit:
+        logger.warning(
+            "%s exceeds Zep limit; truncating (original_len=%d, limit=%d)",
+            label,
+            len(text),
+            limit,
+        )
+        return text[:limit]
+    return text
+
+
+def _validate_role(role: str) -> str:
+    """Map an arbitrary role string onto a valid Zep RoleType, defaulting to 'assistant'."""
+    normalized = (role or "").strip().lower()
+    if normalized in _VALID_ROLES:
+        return normalized
+    logger.warning("Unknown message role; defaulting to 'assistant'")
+    return "assistant"
+
+
+# ---------------------------------------------------------------------------
+# Background event loop + shared client
+# ---------------------------------------------------------------------------
+# AG2 executes tool functions synchronously (even when declared async). When the
+# caller is already inside an asyncio event loop (e.g. the test's
+# ``asyncio.run(main())``), ``asyncio.run()`` / ``loop.run_until_complete()``
+# raise. On Python 3.13 ``asyncio.get_event_loop()`` raises outright when there
+# is no running loop.
 #
-# Additionally, AsyncZep (via httpx.AsyncClient) is bound to the event loop
-# in which it was created. Running its coroutines in a *different* loop raises
-#   "Event object is bound to a different event loop"
+# AsyncZep wraps an ``httpx.AsyncClient`` which binds to whichever event loop
+# first drives a request and must thereafter be used only on that loop.
 #
-# Solution: keep a dedicated background event loop alive on its own thread.
-# Each tool factory creates its *own* AsyncZep instance inside that loop via
-# ``_make_client_in_bg_loop()``, so the client is always used in the loop it
-# was created in.
+# Solution: keep ONE dedicated daemon background event loop alive on its own
+# thread for the lifetime of the process. All async Zep work — for both the
+# sync tool wrappers and the manager classes' sync wrappers — is submitted to
+# that loop via ``run_coroutine_threadsafe``. The caller-supplied AsyncZep is
+# reused directly (no per-call construction, no private-attribute access); it
+# becomes bound to the background loop on first use and is driven only there.
 # ---------------------------------------------------------------------------
 
 _bg_loop: asyncio.AbstractEventLoop | None = None
@@ -44,27 +82,49 @@ _bg_loop_lock = threading.Lock()
 
 
 def _get_bg_loop() -> asyncio.AbstractEventLoop:
-    """Return the shared background event loop, creating it on first call."""
+    """Return the shared background event loop, lazily creating it (thread-safe)."""
     global _bg_loop
     with _bg_loop_lock:
         if _bg_loop is None or _bg_loop.is_closed():
             loop = asyncio.new_event_loop()
-            _bg_loop = loop
 
             def _run_loop(lp: asyncio.AbstractEventLoop) -> None:
                 asyncio.set_event_loop(lp)
                 lp.run_forever()
 
-            t = threading.Thread(target=_run_loop, args=(loop,), daemon=True)
-            t.start()
+            thread = threading.Thread(
+                target=_run_loop, args=(loop,), name="zep-ag2-bg-loop", daemon=True
+            )
+            thread.start()
+            _bg_loop = loop
         return _bg_loop
 
 
-def _run_async(coro: Any) -> Any:
-    """Run *coro* on the shared background loop and block until it finishes."""
+def _run_sync(coro: Any) -> Any:
+    """Run *coro* on the shared background loop and block until it completes.
+
+    Safe to call from any thread, including from inside another running event
+    loop (AG2's execution context), and works on Python 3.11–3.13 where
+    ``asyncio.get_event_loop()`` raises with no running loop.
+    """
     loop = _get_bg_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
     return future.result()
+
+
+def shutdown_background_loop() -> None:
+    """Stop and close the shared background event loop, if running.
+
+    Optional cleanup helper for hosts that want a deterministic shutdown. The
+    loop is recreated on the next tool/manager sync call. Does not close any
+    caller-supplied Zep client (the caller owns its lifecycle).
+    """
+    global _bg_loop
+    with _bg_loop_lock:
+        loop = _bg_loop
+        _bg_loop = None
+    if loop is not None and not loop.is_closed():
+        loop.call_soon_threadsafe(loop.stop)
 
 
 def _format_graph_results(search_results: Any) -> str:
@@ -102,34 +162,37 @@ def create_search_memory_tool(
     Compatible with AG2's @register_for_llm / @register_for_execution decorators.
 
     Args:
-        client: An initialized AsyncZep instance.
+        client: An initialized AsyncZep instance (reused for all calls).
         user_id: The user ID to search memories for.
         session_id: Optional thread/session ID for thread-scoped search.
 
     Returns:
         A callable suitable for AG2 tool registration.
     """
-    api_key: str = client._client_wrapper.api_key
 
-    async def _search(query: str, limit: int) -> str:
-        _client = AsyncZep(api_key=api_key)
+    async def _search(query: str, limit: int, scope: str | None) -> str:
         try:
-            results = await _client.graph.search(
+            results = await client.graph.search(
                 user_id=user_id,
                 query=query,
                 limit=limit,
+                scope=scope,
             )
             return _format_graph_results(results)
         except Exception as e:
-            logger.error(f"Error searching memory: {e}")
-            return f"Error searching memory: {e}"
+            logger.error("Zep search_memory failed: %s", type(e).__name__)
+            return "Error: unable to search memory at this time."
 
     def search_memory(
         query: Annotated[str, "The search query to find relevant memories"],
         limit: Annotated[int, "Maximum number of results to return"] = 5,
+        scope: Annotated[
+            str | None,
+            "Scope of search: 'edges' (facts), 'nodes' (entities), or 'episodes'",
+        ] = "edges",
     ) -> str:
         """Search Zep memory for relevant information based on a query."""
-        return str(_run_async(_search(query, limit)))
+        return str(_run_sync(_search(query, limit, scope)))
 
     return search_memory
 
@@ -143,44 +206,44 @@ def create_add_memory_tool(
     Create a tool function for adding messages to Zep conversation memory.
 
     The returned function stores messages in a Zep thread. If no session_id is
-    provided at creation time, a thread_id must be set before use.
+    provided at creation time, the content is added to the user's knowledge graph.
 
     Args:
-        client: An initialized AsyncZep instance.
+        client: An initialized AsyncZep instance (reused for all calls).
         user_id: The user ID who owns the memory.
         session_id: Optional thread/session ID for storing messages.
 
     Returns:
-        An async callable suitable for AG2 tool registration.
+        A callable suitable for AG2 tool registration.
     """
     from zep_cloud.types import Message
 
-    api_key: str = client._client_wrapper.api_key
-
     async def _add(content: str, role: str) -> str:
-        _client = AsyncZep(api_key=api_key)
         if not session_id:
             try:
-                await _client.graph.add(
+                await client.graph.add(
                     user_id=user_id,
                     type="text",
-                    data=content,
+                    data=_truncate(content, GRAPH_MAX_CHARS, "graph data"),
                 )
                 return "Memory added to knowledge graph successfully."
             except Exception as e:
-                logger.error(f"Error adding memory to graph: {e}")
-                return f"Error adding memory: {e}"
+                logger.error("Zep add_memory (graph) failed: %s", type(e).__name__)
+                return "Error: unable to add memory at this time."
 
         try:
-            message = Message(content=content, role=role)
-            await _client.thread.add_messages(
+            message = Message(
+                content=_truncate(content, MESSAGE_MAX_CHARS, "message content"),
+                role=_validate_role(role),
+            )
+            await client.thread.add_messages(
                 thread_id=session_id,
                 messages=[message],
             )
             return "Memory added to conversation thread successfully."
         except Exception as e:
-            logger.error(f"Error adding memory: {e}")
-            return f"Error adding memory: {e}"
+            logger.error("Zep add_memory (thread) failed: %s", type(e).__name__)
+            return "Error: unable to add memory at this time."
 
     def add_memory(
         content: Annotated[str, "The content to store as a memory"],
@@ -189,7 +252,7 @@ def create_add_memory_tool(
         ] = "assistant",
     ) -> str:
         """Add a message to Zep conversation memory."""
-        return str(_run_async(_add(content, role)))
+        return str(_run_sync(_add(content, role)))
 
     return add_memory
 
@@ -205,25 +268,22 @@ def create_search_graph_tool(
     Exactly one of user_id or graph_id must be provided.
 
     Args:
-        client: An initialized AsyncZep instance.
+        client: An initialized AsyncZep instance (reused for all calls).
         user_id: User ID for user knowledge graph search.
         graph_id: Graph ID for named knowledge graph search.
 
     Returns:
-        An async callable suitable for AG2 tool registration.
+        A callable suitable for AG2 tool registration.
 
     Raises:
-        ZepAG2ConfigError: If neither or both user_id and graph_id are provided.
+        ZepAG2MemoryError: If neither or both user_id and graph_id are provided.
     """
     if not user_id and not graph_id:
         raise ZepAG2MemoryError("Either user_id or graph_id must be provided")
     if user_id and graph_id:
         raise ZepAG2MemoryError("Only one of user_id or graph_id should be provided")
 
-    api_key: str = client._client_wrapper.api_key
-
     async def _search_g(query: str, limit: int, scope: str | None) -> str:
-        _client = AsyncZep(api_key=api_key)
         try:
             kwargs: dict[str, Any] = {"query": query, "limit": limit, "scope": scope}
             if graph_id:
@@ -231,11 +291,11 @@ def create_search_graph_tool(
             else:
                 kwargs["user_id"] = user_id
 
-            results = await _client.graph.search(**kwargs)
+            results = await client.graph.search(**kwargs)
             return _format_graph_results(results)
         except Exception as e:
-            logger.error(f"Error searching graph: {e}")
-            return f"Error searching knowledge graph: {e}"
+            logger.error("Zep search_graph failed: %s", type(e).__name__)
+            return "Error: unable to search the knowledge graph at this time."
 
     def search_graph(
         query: Annotated[str, "The search query for the knowledge graph"],
@@ -246,7 +306,7 @@ def create_search_graph_tool(
         ] = "edges",
     ) -> str:
         """Search the Zep knowledge graph for relevant information."""
-        return str(_run_async(_search_g(query, limit, scope)))
+        return str(_run_sync(_search_g(query, limit, scope)))
 
     return search_graph
 
@@ -262,46 +322,46 @@ def create_add_graph_data_tool(
     Exactly one of user_id or graph_id must be provided.
 
     Args:
-        client: An initialized AsyncZep instance.
+        client: An initialized AsyncZep instance (reused for all calls).
         user_id: User ID for user knowledge graph storage.
         graph_id: Graph ID for named knowledge graph storage.
 
     Returns:
-        An async callable suitable for AG2 tool registration.
+        A callable suitable for AG2 tool registration.
 
     Raises:
-        ZepAG2ConfigError: If neither or both user_id and graph_id are provided.
+        ZepAG2MemoryError: If neither or both user_id and graph_id are provided.
     """
     if not user_id and not graph_id:
         raise ZepAG2MemoryError("Either user_id or graph_id must be provided")
     if user_id and graph_id:
         raise ZepAG2MemoryError("Only one of user_id or graph_id should be provided")
 
-    api_key: str = client._client_wrapper.api_key
-
     async def _add_graph(data: str, data_type: str) -> str:
-        _client = AsyncZep(api_key=api_key)
         try:
-            kwargs: dict[str, Any] = {"type": data_type, "data": data}
+            kwargs: dict[str, Any] = {
+                "type": data_type,
+                "data": _truncate(data, GRAPH_MAX_CHARS, "graph data"),
+            }
             if graph_id:
                 kwargs["graph_id"] = graph_id
             else:
                 kwargs["user_id"] = user_id
 
-            await _client.graph.add(**kwargs)
+            await client.graph.add(**kwargs)
 
             target = f"graph '{graph_id}'" if graph_id else f"user '{user_id}'"
             return f"Data added to knowledge graph for {target} successfully."
         except Exception as e:
-            logger.error(f"Error adding graph data: {e}")
-            return f"Error adding data to knowledge graph: {e}"
+            logger.error("Zep add_graph_data failed: %s", type(e).__name__)
+            return "Error: unable to add data to the knowledge graph at this time."
 
     def add_graph_data(
         data: Annotated[str, "Text data to add to the knowledge graph"],
         data_type: Annotated[str, "Type of data: 'text', 'json', or 'message'"] = "text",
     ) -> str:
         """Add data to the Zep knowledge graph."""
-        return str(_run_async(_add_graph(data, data_type)))
+        return str(_run_sync(_add_graph(data, data_type)))
 
     return add_graph_data
 
@@ -323,7 +383,7 @@ def register_all_tools(
     Args:
         agent: The AG2 agent that will call the tools (register_for_llm).
         executor: The AG2 agent that will execute the tools (register_for_execution).
-        client: An initialized AsyncZep instance.
+        client: An initialized AsyncZep instance (reused for all calls).
         user_id: The user ID for memory operations.
         session_id: Optional thread/session ID for conversation memory.
         graph_id: Optional graph ID for named knowledge graph operations.
@@ -333,36 +393,35 @@ def register_all_tools(
     """
     tools: dict[str, Any] = {}
 
-    # Search memory tool (always uses user_id for graph search)
-    search_mem = create_search_memory_tool(client, user_id, session_id)
-    agent.register_for_llm(description="Search conversation memory for relevant information")(
-        search_mem
-    )
-    executor.register_for_execution()(search_mem)
-    tools["search_memory"] = search_mem
-
-    # Add memory tool
-    add_mem = create_add_memory_tool(client, user_id, session_id)
-    agent.register_for_llm(description="Add a message to conversation memory")(add_mem)
-    executor.register_for_execution()(add_mem)
-    tools["add_memory"] = add_mem
-
     # Graph tools — use graph_id if provided, otherwise user_id
     target_user_id = None if graph_id else user_id
-    target_graph_id = graph_id
 
-    search_graph = create_search_graph_tool(
-        client, user_id=target_user_id, graph_id=target_graph_id
-    )
-    agent.register_for_llm(description="Search the knowledge graph for relevant information")(
-        search_graph
-    )
-    executor.register_for_execution()(search_graph)
-    tools["search_graph"] = search_graph
+    factories = [
+        ("search_memory", create_search_memory_tool(client, user_id, session_id)),
+        ("add_memory", create_add_memory_tool(client, user_id, session_id)),
+        (
+            "search_graph",
+            create_search_graph_tool(client, user_id=target_user_id, graph_id=graph_id),
+        ),
+        (
+            "add_graph_data",
+            create_add_graph_data_tool(client, user_id=target_user_id, graph_id=graph_id),
+        ),
+    ]
 
-    add_graph = create_add_graph_data_tool(client, user_id=target_user_id, graph_id=target_graph_id)
-    agent.register_for_llm(description="Add data to the knowledge graph")(add_graph)
-    executor.register_for_execution()(add_graph)
-    tools["add_graph_data"] = add_graph
+    descriptions = {
+        "search_memory": "Search conversation memory for relevant information",
+        "add_memory": "Add a message to conversation memory",
+        "search_graph": "Search the knowledge graph for relevant information",
+        "add_graph_data": "Add data to the knowledge graph",
+    }
+
+    for name, fn in factories:
+        # Register for LLM (declaration) and execution exactly once each. AG2
+        # warns with "Function is being overridden" if the same name is
+        # registered for execution more than once, so we register once per tool.
+        agent.register_for_llm(description=descriptions[name])(fn)
+        executor.register_for_execution()(fn)
+        tools[name] = fn
 
     return tools

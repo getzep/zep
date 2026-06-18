@@ -5,9 +5,7 @@ All notable changes to the zep-ag2 package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-06-17
 
 ### Added
 - Initial release of zep-ag2 integration package
@@ -27,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Thread-based conversation memory storage
 - User and named knowledge graph support
 - Typed parameters with `Annotated` for AG2 tool descriptions
+- Single shared background event loop and reused Zep client for sync bridging
+  (Python 3.11–3.13 compatible)
+- Message (4000 char) and graph-data (9900 char) size guards with truncation
 
-[Unreleased]: https://github.com/getzep/zep/compare/zep-ag2-v0.1.0...HEAD
 [0.1.0]: https://github.com/getzep/zep/releases/tag/zep-ag2-v0.1.0

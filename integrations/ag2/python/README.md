@@ -75,7 +75,7 @@ user_proxy.register_for_execution()(add_tool)
 - **System message injection** — Automatically enrich agent context with relevant memories
 - **Knowledge graph** — Access Zep's knowledge graph from AG2 agents
 - **Conversation memory** — Store and retrieve thread-based conversation history
-- **Sync tool execution** — Tools run synchronously via a background event loop, compatible with AG2's execution model
+- **Sync tool execution** — Tools run synchronously via a single shared background event loop, compatible with AG2's execution model on Python 3.11–3.13
 
 ## API Reference
 
@@ -101,7 +101,8 @@ Manages Zep knowledge graph for AG2 agents.
 ### Tool Factories
 
 All tool factories return **synchronous** callables (AG2 executes tools synchronously).
-Internally they use a background event loop to call the async Zep SDK.
+Internally they bridge to the async Zep SDK on a single shared background event loop,
+reusing the `AsyncZep` client you pass in (no per-call client construction).
 
 - `create_search_memory_tool(client, user_id, session_id=None)` — Search conversation memory
 - `create_add_memory_tool(client, user_id, session_id=None)` — Add conversation memory
@@ -139,9 +140,9 @@ make ci             # CI validation
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - `ag2>=0.9.0`
-- `zep-cloud>=3.3.0`
+- `zep-cloud>=3.23.0`
 
 ## License
 

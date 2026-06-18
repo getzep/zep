@@ -3,11 +3,27 @@ name = "zep-ag2"
 version = "0.1.0"
 description = "Zep memory integration for AG2 (AutoGen community fork)"
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.11"
 license = "Apache-2.0"
+authors = [
+    { name = "Zep AI", email = "support@getzep.com" },
+    { name = "faridun-ag2" },
+]
+keywords = ["zep", "ag2", "autogen", "agent", "memory", "knowledge-graph", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "ag2>=0.9.0",
-    "zep-cloud>=3.3.0",
+    "zep-cloud>=3.23.0",
 ]
 
 [project.urls]
@@ -15,7 +31,7 @@ Homepage = "https://github.com/getzep/zep"
 Documentation = "https://help.getzep.com/integrations/ag2"
 Repository = "https://github.com/getzep/zep"
 "Bug Tracker" = "https://github.com/getzep/zep/issues"
-Changelog = "https://github.com/getzep/zep/blob/main/integrations/python/zep_ag2/CHANGELOG.md"
+Changelog = "https://github.com/getzep/zep/blob/main/integrations/ag2/python/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
@@ -43,7 +59,7 @@ markers = [
 ]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
@@ -72,7 +88,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

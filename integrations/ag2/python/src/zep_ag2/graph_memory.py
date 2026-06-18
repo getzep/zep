@@ -8,13 +8,13 @@ This is used for named/shared knowledge graphs (identified by graph_id),
 as opposed to user-scoped graphs managed by ZepMemoryManager.
 """
 
-import asyncio
 import logging
 from typing import Any
 
 from zep_cloud.client import AsyncZep
 
 from zep_ag2.exceptions import ZepAG2ConfigError
+from zep_ag2.tools import GRAPH_MAX_CHARS, _run_sync, _truncate
 
 logger = logging.getLogger(__name__)
 
@@ -108,9 +108,10 @@ class ZepGraphMemoryManager:
 
             if search_results.nodes:
                 for node in search_results.nodes:
+                    summary = node.summary or "No summary"
                     results.append(
                         {
-                            "content": f"{node.name}: {node.summary}",
+                            "content": f"{node.name}: {summary}",
                             "type": "node",
                             "name": node.name,
                             "attributes": node.attributes or {},
@@ -133,7 +134,7 @@ class ZepGraphMemoryManager:
             return results
 
         except Exception as e:
-            logger.error(f"Error searching graph: {e}")
+            logger.error("Zep graph.search failed: %s", type(e).__name__)
             return []
 
     async def add_data(
@@ -155,11 +156,11 @@ class ZepGraphMemoryManager:
             await self._client.graph.add(
                 graph_id=self._graph_id,
                 type=data_type,
-                data=data,
+                data=_truncate(data, GRAPH_MAX_CHARS, "graph data"),
             )
             return True
         except Exception as e:
-            logger.error(f"Error adding graph data: {e}")
+            logger.error("Zep graph.add failed: %s", type(e).__name__)
             return False
 
     async def enrich_system_message(
@@ -204,7 +205,7 @@ class ZepGraphMemoryManager:
                         facts = [f"- {r['content']}" for r in results]
                         context_parts.append("Knowledge graph context:\n" + "\n".join(facts))
             except Exception as e:
-                logger.error(f"Error retrieving graph context: {e}")
+                logger.error("Zep graph.episode.get_by_graph_id failed: %s", type(e).__name__)
 
         if context_parts:
             context = "\n\n".join(context_parts)
@@ -219,21 +220,16 @@ class ZepGraphMemoryManager:
         limit: int = 5,
         scope: str | None = "edges",
     ) -> list[dict[str, Any]]:
-        """Synchronous wrapper for search()."""
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
+        """Synchronous wrapper for search().
 
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return pool.submit(asyncio.run, self.search(query, limit, scope)).result()
-        return loop.run_until_complete(self.search(query, limit, scope))
+        Bridges to async via the package's shared background event loop.
+        """
+        result = _run_sync(self.search(query, limit, scope))
+        return list(result)
 
     def add_data_sync(self, data: str, data_type: str = "text") -> bool:
-        """Synchronous wrapper for add_data()."""
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
+        """Synchronous wrapper for add_data().
 
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return pool.submit(asyncio.run, self.add_data(data, data_type)).result()
-        return loop.run_until_complete(self.add_data(data, data_type))
+        Bridges to async via the package's shared background event loop.
+        """
+        return bool(_run_sync(self.add_data(data, data_type)))

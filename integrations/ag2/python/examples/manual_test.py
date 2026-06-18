@@ -8,7 +8,7 @@ Prerequisites:
     export OPENAI_API_KEY="your-openai-api-key"
 
 Usage:
-    cd integrations/python/zep_ag2
+    cd integrations/ag2/python
     source .venv/bin/activate
     python examples/manual_test.py
 """

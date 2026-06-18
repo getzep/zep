@@ -11,7 +11,6 @@ composition-based patterns. ZepMemoryManager enriches agents by:
 - Retrieving session facts and context
 """
 
-import asyncio
 import logging
 from typing import Any
 
@@ -19,6 +18,7 @@ from zep_cloud.client import AsyncZep
 from zep_cloud.types import Message
 
 from zep_ag2.exceptions import ZepAG2ConfigError, ZepAG2MemoryError
+from zep_ag2.tools import MESSAGE_MAX_CHARS, _run_sync, _truncate, _validate_role
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,9 @@ class ZepMemoryManager:
         """
         parts: list[str] = []
 
-        # Get thread context if session_id is set
+        # Get thread context if session_id is set. get_user_context returns a
+        # prompt-ready Context Block assembled from the whole user graph, so a
+        # separate recent-messages read is redundant.
         if self._session_id:
             try:
                 context_result = await self._client.thread.get_user_context(
@@ -104,17 +106,8 @@ class ZepMemoryManager:
                 )
                 if context_result.context:
                     parts.append(f"Memory context: {context_result.context}")
-
-                # Also get recent messages
-                thread = await self._client.thread.get(thread_id=self._session_id, lastn=10)
-                if thread.messages:
-                    message_lines = []
-                    for msg in thread.messages:
-                        name_prefix = f"{msg.name} " if msg.name else ""
-                        message_lines.append(f"{name_prefix}{msg.role}: {msg.content}")
-                    parts.append("Recent conversation:\n" + "\n".join(message_lines))
             except Exception as e:
-                logger.error(f"Error retrieving thread context: {e}")
+                logger.error("Zep get_user_context failed: %s", type(e).__name__)
 
         # Search knowledge graph if query is provided
         if query:
@@ -136,7 +129,7 @@ class ZepMemoryManager:
                 if facts:
                     parts.append("Relevant knowledge:\n" + "\n".join(facts))
             except Exception as e:
-                logger.error(f"Error searching knowledge graph: {e}")
+                logger.error("Zep graph.search failed: %s", type(e).__name__)
 
         return "\n\n".join(parts)
 
@@ -184,8 +177,8 @@ class ZepMemoryManager:
         try:
             zep_messages = [
                 Message(
-                    content=msg["content"],
-                    role=msg.get("role", "user"),
+                    content=_truncate(msg["content"], MESSAGE_MAX_CHARS, "message content"),
+                    role=_validate_role(msg.get("role", "user")),
                     name=msg.get("name"),
                 )
                 for msg in messages
@@ -195,7 +188,8 @@ class ZepMemoryManager:
                 messages=zep_messages,
             )
         except Exception as e:
-            raise ZepAG2MemoryError(f"Failed to add messages: {e}") from e
+            logger.error("Zep thread.add_messages failed: %s", type(e).__name__)
+            raise ZepAG2MemoryError("Failed to add messages") from e
 
     async def get_session_facts(self) -> list[str]:
         """
@@ -218,20 +212,18 @@ class ZepMemoryManager:
                 return [context_result.context]
             return []
         except Exception as e:
-            logger.error(f"Error getting session facts: {e}")
+            logger.error("Zep get_user_context failed: %s", type(e).__name__)
             return []
 
     # Sync wrappers for non-async AG2 usage
 
     def get_memory_context_sync(self, query: str | None = None, limit: int = 5) -> str:
-        """Synchronous wrapper for get_memory_context()."""
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
+        """Synchronous wrapper for get_memory_context().
 
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return pool.submit(asyncio.run, self.get_memory_context(query, limit)).result()
-        return loop.run_until_complete(self.get_memory_context(query, limit))
+        Bridges to async via the package's shared background event loop, so it
+        works on Python 3.11–3.13 and whether or not a loop is already running.
+        """
+        return str(_run_sync(self.get_memory_context(query, limit)))
 
     def enrich_system_message_sync(
         self,
@@ -239,12 +231,8 @@ class ZepMemoryManager:
         query: str | None = None,
         limit: int = 5,
     ) -> None:
-        """Synchronous wrapper for enrich_system_message()."""
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
+        """Synchronous wrapper for enrich_system_message().
 
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                pool.submit(asyncio.run, self.enrich_system_message(agent, query, limit)).result()
-        else:
-            loop.run_until_complete(self.enrich_system_message(agent, query, limit))
+        Bridges to async via the package's shared background event loop.
+        """
+        _run_sync(self.enrich_system_message(agent, query, limit))
