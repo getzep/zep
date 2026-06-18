@@ -37,6 +37,10 @@ jobs:
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@9dd8b95a392eb34b6f5fb56cf5a64cb735912d4b # v1
+        # Fail fast if the review hangs instead of letting it sit indefinitely
+        # (the job default is 360 min). A run that stalls is an infra hang, not a
+        # slow review — cap it so the check resolves and can be re-run.
+        timeout-minutes: 10
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
