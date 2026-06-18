@@ -249,12 +249,18 @@ async def persist_messages(
             )
         except Exception:
             logger.warning(
-                "Failed to persist %d message(s) to Zep thread %s",
+                "Failed to persist %d message(s) to Zep thread %s "
+                "(chunk %d/%d); attempting remaining chunks",
                 len(chunk),
                 thread_id,
+                index + 1,
+                len(chunks),
                 exc_info=True,
             )
-            return last_context
+            # Best-effort: a chunk failure must not abandon the remaining
+            # chunks. Skip this chunk and attempt the rest so the caller
+            # persists as many messages as possible.
+            continue
         if want_context and response is not None:
             context: str | None = getattr(response, "context", None)
             if context and context.strip():
@@ -311,12 +317,18 @@ def persist_messages_sync(
             )
         except Exception:
             logger.warning(
-                "Failed to persist %d message(s) to Zep thread %s",
+                "Failed to persist %d message(s) to Zep thread %s "
+                "(chunk %d/%d); attempting remaining chunks",
                 len(chunk),
                 thread_id,
+                index + 1,
+                len(chunks),
                 exc_info=True,
             )
-            return last_context
+            # Best-effort: a chunk failure must not abandon the remaining
+            # chunks. Skip this chunk and attempt the rest so the caller
+            # persists as many messages as possible.
+            continue
         if want_context and response is not None:
             context: str | None = getattr(response, "context", None)
             if context and context.strip():

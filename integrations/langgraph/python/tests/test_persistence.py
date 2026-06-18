@@ -210,6 +210,24 @@ class TestPersistMessages:
         await persist_messages(client, "thread-1", msgs)
         assert client.thread.add_messages.await_count == 1
 
+    @pytest.mark.asyncio
+    async def test_mid_batch_chunk_failure_attempts_remaining_chunks(self) -> None:
+        # A failure on one chunk must not abandon the remaining chunks: the
+        # helper is best-effort and persists as many chunks as possible.
+        client = MagicMock()
+        client.thread = MagicMock()
+        ok = MagicMock()
+        ok.context = None
+        # 70 messages -> 3 chunks; the middle (second) chunk fails.
+        client.thread.add_messages = AsyncMock(side_effect=[ok, RuntimeError("api down"), ok])
+        msgs = [HumanMessage(content=f"m{i}") for i in range(70)]
+        result = await persist_messages(client, "thread-1", msgs)
+        assert result is None
+        # All three chunks were attempted -- we did not stop at the failure.
+        assert client.thread.add_messages.await_count == 3
+        sent = [c.kwargs["messages"] for c in client.thread.add_messages.await_args_list]
+        assert [len(s) for s in sent] == [30, 30, 10]
+
 
 class TestPersistMessagesSync:
     def test_persists(self) -> None:
@@ -238,3 +256,20 @@ class TestPersistMessagesSync:
         sent = [c.kwargs["messages"] for c in client.thread.add_messages.call_args_list]
         assert [len(s) for s in sent] == [30, 30, 5]
         assert all(len(s) <= MAX_MESSAGES_PER_CALL for s in sent)
+
+    def test_mid_batch_chunk_failure_attempts_remaining_chunks(self) -> None:
+        # A failure on one chunk must not abandon the remaining chunks: the
+        # helper is best-effort and persists as many chunks as possible.
+        client = MagicMock()
+        client.thread = MagicMock()
+        ok = MagicMock()
+        ok.context = None
+        # 65 messages -> 3 chunks; the middle (second) chunk fails.
+        client.thread.add_messages = MagicMock(side_effect=[ok, RuntimeError("down"), ok])
+        msgs = [HumanMessage(content=f"m{i}") for i in range(65)]
+        result = persist_messages_sync(client, "thread-1", msgs)
+        assert result is None
+        # All three chunks were attempted -- we did not stop at the failure.
+        assert client.thread.add_messages.call_count == 3
+        sent = [c.kwargs["messages"] for c in client.thread.add_messages.call_args_list]
+        assert [len(s) for s in sent] == [30, 30, 5]
