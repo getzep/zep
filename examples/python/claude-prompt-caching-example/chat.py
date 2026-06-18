@@ -60,6 +60,25 @@ def stats_line(m: TurnMetrics) -> str:
     )
 
 
+def restore_history(zep: Zep, thread_id: str) -> list[dict]:
+    """Rebuild the agent's in-context history from a Zep thread's stored
+    messages, so resuming a thread shows Claude the conversation so far.
+
+    Only user/assistant turns are replayed, in order. A trailing user message
+    from an interrupted session is dropped so the messages array stays
+    well-formed once the next user turn is appended.
+    """
+    messages = zep.thread.get(thread_id=thread_id).messages or []
+    history = [
+        {"role": m.role, "content": [{"type": "text", "text": m.content}]}
+        for m in messages
+        if m.role in ("user", "assistant")
+    ]
+    if history and history[-1]["role"] == "user":
+        history.pop()
+    return history
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Chat with a Zep-backed Claude Opus 4.8 agent.")
     parser.add_argument(
@@ -114,6 +133,16 @@ def main() -> None:
         mode=args.context_mode,
         max_tokens=args.max_tokens,
     )
+
+    # Resuming an existing thread: replay its prior turns into the agent's
+    # in-context history so Claude sees the conversation so far. (Zep memory
+    # persists across sessions regardless; this restores the literal chat
+    # transcript, which lives only in the request's messages array.)
+    if args.thread_id is not None:
+        resumed = restore_history(zep, thread_id)
+        agent.history = resumed
+        if resumed:
+            print(f"{DIM}Resumed {len(resumed)} prior message(s) from this thread.{RESET}\n")
 
     session_metrics: list[TurnMetrics] = []
 
