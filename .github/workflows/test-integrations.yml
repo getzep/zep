@@ -47,6 +47,8 @@ jobs:
               - 'integrations/adk/typescript/**'
             mastra:
               - 'integrations/mastra/typescript/**'
+            vercel-ai:
+              - 'integrations/vercel-ai/typescript/**'
 
       - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: go
