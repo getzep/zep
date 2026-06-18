@@ -21,8 +21,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
+      # write access is required for the action to post its review as inline PR
+      # comments — with read-only the run succeeds but posts nothing (the
+      # claude-code-action GitHub App needs Pull requests + Issues: Read & write).
+      pull-requests: write
+      issues: write
       id-token: write
 
     steps:
