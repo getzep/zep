@@ -35,47 +35,19 @@ documentation at [help.getzep.com](https://help.getzep.com). Zep's official SDKs
 | Directory | Description |
 |-----------|-------------|
 | [`examples/`](examples/) | Example apps and snippets in Python, TypeScript, and Go |
-| [`integrations/`](integrations/) | Agent-framework integration packages (ADK, AutoGen, CrewAI, LiveKit) |
+| [`integrations/`](integrations/) | Agent-framework integration packages |
 | [`ontology/`](ontology/) | Default ontology definitions |
 | [`plugins/`](plugins/) | Plugins for building with Zep |
 | [`benchmarks/`](benchmarks/) | Memory benchmarks (LoCoMo, LongMemEval) |
 | [`zep-eval-harness/`](zep-eval-harness/) | Evaluation harness for ingestion and retrieval |
 | [`legacy/`](legacy/) | Deprecated Zep Community Edition (unsupported) |
 
-## Examples
-
-The [`examples/`](examples/) directory holds runnable samples per language:
-
-- **[Python](examples/python/)** — quickstart, graph, chat history, context templates, and
-  framework demos (LangGraph, OpenAI Agents SDK, AutoGen, ElevenLabs)
-- **[TypeScript](examples/typescript/)** — graph, memory, users, LangGraph, and graph
-  visualization
-- **[Go](examples/go/)** — conversations, user graph, entity types, chunking
-
 ## Integrations
 
 Framework integration packages live under [`integrations/`](integrations/), organized
 framework-first then language: `integrations/<framework>/<language>/`. Each package is built,
-tested, and released independently.
-
-- **Available**: Google ADK, Microsoft AutoGen, CrewAI, and LiveKit (Python)
-- **Develop**: `cd integrations/<framework>/python && uv sync --extra dev && uv run pytest`
-- See [`integrations/README.md`](integrations/README.md) for the full list and
-  [`integrations/CLAUDE.md`](integrations/CLAUDE.md) for conventions.
-
-## Development Setup
-
-This project uses [UV](https://github.com/astral-sh/uv) for Python package management.
-
-```bash
-# Install UV (macOS/Linux)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Sync the workspace
-uv sync
-```
-
-Requires Python 3.13+.
+tested, and released independently. See [`integrations/README.md`](integrations/README.md) for
+the full list and [`integrations/CLAUDE.md`](integrations/CLAUDE.md) for conventions.
 
 ## Contributing
 
