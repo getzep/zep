@@ -153,7 +153,7 @@ async function getAllEdges(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ type: ResourceType; id: string }> }
+  { params }: { params: Promise<{ type: string; id: string }> }
 ) {
   try {
     const ZEP_API_KEY = process.env.ZEP_API_KEY;
@@ -167,14 +167,15 @@ export async function GET(
 
     const zep = new ZepClient({ apiKey: ZEP_API_KEY });
 
-    const { type, id } = await params;
+    const { type: typeParam, id } = await params;
 
-    if (!supportedResourceTypes.includes(type as ResourceType)) {
+    if (!supportedResourceTypes.includes(typeParam as ResourceType)) {
       return NextResponse.json(
         { error: "Invalid resource type" },
         { status: 400 }
       );
     }
+    const type = typeParam as ResourceType;
 
     // Fetch all nodes and edges using the batch completion wrappers
     const [nodes, edges] = await Promise.all([
