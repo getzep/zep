@@ -36,6 +36,12 @@ jobs:
               - 'integrations/livekit/python/**'
             ag2:
               - 'integrations/ag2/python/**'
+            ms-agent-framework:
+              - 'integrations/ms-agent-framework/python/**'
+            langgraph:
+              - 'integrations/langgraph/python/**'
+            pydantic-ai:
+              - 'integrations/pydantic-ai/python/**'
 
       - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: typescript

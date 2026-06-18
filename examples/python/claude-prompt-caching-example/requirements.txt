@@ -1,0 +1,3 @@
+anthropic>=0.109.1
+zep-cloud>=3.23.0
+python-dotenv>=1.0.0
