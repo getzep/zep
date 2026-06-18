@@ -19,12 +19,21 @@ def _make_ctx(deps: ZepDeps) -> MagicMock:
     return ctx
 
 
-def _make_result(edges=None, nodes=None, episodes=None, context=None) -> MagicMock:
+def _make_result(
+    edges=None,
+    nodes=None,
+    episodes=None,
+    context=None,
+    observations=None,
+    thread_summaries=None,
+) -> MagicMock:
     result = MagicMock()
     result.edges = edges
     result.nodes = nodes
     result.episodes = episodes
     result.context = context
+    result.observations = observations
+    result.thread_summaries = thread_summaries
     return result
 
 
@@ -45,6 +54,20 @@ def _episode(content: str) -> MagicMock:
     ep = MagicMock()
     ep.content = content
     return ep
+
+
+def _observation(name: str, summary: str | None = None) -> MagicMock:
+    obs = MagicMock()
+    obs.name = name
+    obs.summary = summary
+    return obs
+
+
+def _thread_summary(summary: str | None, name: str = "thread") -> MagicMock:
+    ts = MagicMock()
+    ts.summary = summary
+    ts.name = name
+    return ts
 
 
 class TestSearchTargeting:
@@ -250,6 +273,41 @@ class TestResultFormatting:
         tool = create_zep_search_tool(scope="auto")
         out = await tool(_make_ctx(_make_deps(client)), "q")
         assert out == "Assembled context block"
+
+    @pytest.mark.asyncio
+    async def test_formats_observations(self) -> None:
+        client = MagicMock()
+        client.graph.search = AsyncMock(
+            return_value=_make_result(
+                observations=[
+                    _observation("Prefers async updates", "Communication pattern"),
+                    _observation("Ships on Fridays"),
+                ]
+            )
+        )
+        tool = create_zep_search_tool(scope="observations")
+        out = await tool(_make_ctx(_make_deps(client)), "q")
+        assert out != "No results found."
+        assert "Prefers async updates: Communication pattern" in out
+        assert "Ships on Fridays" in out
+
+    @pytest.mark.asyncio
+    async def test_formats_thread_summaries(self) -> None:
+        client = MagicMock()
+        client.graph.search = AsyncMock(
+            return_value=_make_result(
+                thread_summaries=[
+                    _thread_summary("User discussed Q3 roadmap"),
+                    _thread_summary(None, name="onboarding-thread"),
+                ]
+            )
+        )
+        tool = create_zep_search_tool(scope="thread_summaries")
+        out = await tool(_make_ctx(_make_deps(client)), "q")
+        assert out != "No results found."
+        assert "User discussed Q3 roadmap" in out
+        # Falls back to the node name when no summary is present.
+        assert "onboarding-thread" in out
 
     @pytest.mark.asyncio
     async def test_empty_results(self) -> None:

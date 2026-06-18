@@ -177,5 +177,23 @@ def _format_results(results: GraphSearchResults, scope: Scope) -> str:
                 parts.append(f"- {node_name}")
     elif scope == "episodes" and results.episodes:
         parts = [f"- {ep.content}" for ep in results.episodes if ep.content]
+    elif scope == "observations" and results.observations:
+        # Observations are DerivedNode items: ``name`` carries the derived
+        # pattern, with an optional region ``summary``.
+        for obs in results.observations:
+            obs_name = getattr(obs, "name", None) or "Observation"
+            summary = getattr(obs, "summary", None)
+            if summary:
+                parts.append(f"- {obs_name}: {summary}")
+            else:
+                parts.append(f"- {obs_name}")
+    elif scope == "thread_summaries" and results.thread_summaries:
+        # Thread summaries are GraphitiSagaNode items: ``summary`` holds the
+        # incremental thread summary; fall back to ``name`` when absent.
+        for ts in results.thread_summaries:
+            summary = getattr(ts, "summary", None)
+            text = summary or getattr(ts, "name", None)
+            if text:
+                parts.append(f"- {text}")
 
     return "\n".join(parts) if parts else "No results found."
