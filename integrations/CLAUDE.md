@@ -13,7 +13,6 @@ integrations/
     <language>/        # python | typescript | go
   CLAUDE.md            # this file
   README.md            # integrations index
-  SPIKE_FINDINGS.md    # verified extension points + per-integration approach
 ```
 
 Current packages:
@@ -21,12 +20,17 @@ Current packages:
 | Path | Distribution | Import / module |
 |------|--------------|-----------------|
 | `adk/python` | `zep-adk` (PyPI) | `zep_adk` |
+| `adk/typescript` | `@getzep/zep-adk` (npm) | `@getzep/zep-adk` |
+| `adk/go` | module-path tag | `github.com/getzep/zep/integrations/adk/go` |
+| `ag2/python` | `zep-ag2` (PyPI) | `zep_ag2` |
 | `autogen/python` | `zep-autogen` (PyPI) | `zep_autogen` |
 | `crewai/python` | `zep-crewai` (PyPI) | `zep_crewai` |
+| `langgraph/python` | `zep-langgraph` (PyPI) | `zep_langgraph` |
 | `livekit/python` | `zep-livekit` (PyPI) | `zep_livekit` |
-
-Planned (see `SPIKE_FINDINGS.md` for verified hooks): `microsoft-agent-framework/python`,
-`pydantic-ai/python`, `langgraph/python`, `mastra/typescript`, `adk/go`, `adk/typescript`.
+| `mastra/typescript` | `@getzep/zep-mastra` (npm) | `@getzep/zep-mastra` |
+| `ms-agent-framework/python` | `zep-ms-agent-framework` (PyPI) | `zep_ms_agent_framework` |
+| `pydantic-ai/python` | `zep-pydantic-ai` (PyPI) | `zep_pydantic_ai` |
+| `vercel-ai/typescript` | `@getzep/zep-vercel-ai` (npm) | `@getzep/zep-vercel-ai` |
 
 **Naming convention (keep CI derivation simple):** the framework directory is the package
 **key**. For Python, the import name is `zep_<key with hyphens→underscores>` and the PyPI
@@ -117,8 +121,8 @@ exact SDK signatures before writing Zep code.
 ## Choosing the extension point
 
 Implement the framework's *native* memory/context hook where one exists; otherwise
-integrate idiomatically (tools + context injection). The verified per-framework hooks,
-corrections, and code sketches are in **`SPIKE_FINDINGS.md`** — consult it before building.
+integrate idiomatically (tools + context injection). Confirm the hook against the
+framework's own docs and the existing integration packages before building.
 
 ## Local development
 

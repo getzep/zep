@@ -48,8 +48,7 @@ full per-language commands and the CI/release setup.
 ## Adding a new integration
 
 1. Create `integrations/<framework>/<language>/` following the structure in `CLAUDE.md`.
-2. Implement the framework's memory/context extension point (verified hooks are in
-   `SPIKE_FINDINGS.md`); target the latest Zep SDK.
+2. Implement the framework's memory/context extension point; target the latest Zep SDK.
 3. Add tests, a runnable example, a README, and a `SETUP.md`.
 4. Wire CI: add a `paths-filter` entry in `.github/workflows/test-integrations.yml`.
 5. Open a PR.
