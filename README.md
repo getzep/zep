@@ -25,7 +25,7 @@ documentation at [help.getzep.com](https://help.getzep.com). Zep's official SDKs
 
 - **Python**: `pip install zep-cloud`
 - **TypeScript/JavaScript**: `npm install @getzep/zep-cloud`
-- **Go**: `go get github.com/getzep/zep-go/v2`
+- **Go**: `go get github.com/getzep/zep-go/v3`
 
 > Looking for the open-source temporal knowledge graph framework that powers Zep? See
 > [Graphiti](https://github.com/getzep/graphiti).
@@ -46,8 +46,14 @@ documentation at [help.getzep.com](https://help.getzep.com). Zep's official SDKs
 
 Framework integration packages live under [`integrations/`](integrations/), organized
 framework-first then language: `integrations/<framework>/<language>/`. Each package is built,
-tested, and released independently. See [`integrations/README.md`](integrations/README.md) for
-the full list and [`integrations/CLAUDE.md`](integrations/CLAUDE.md) for conventions.
+tested, and released independently.
+
+- **Python**: Google ADK, Microsoft Agent Framework, Microsoft AutoGen, AG2, CrewAI, LangGraph, LiveKit, Pydantic AI
+- **TypeScript**: Google ADK, Mastra, Vercel AI SDK
+- **Go**: Google ADK
+
+See [`integrations/README.md`](integrations/README.md) for packages, release status, and
+links, and [`integrations/CLAUDE.md`](integrations/CLAUDE.md) for conventions.
 
 ## Contributing
 

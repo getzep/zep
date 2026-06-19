@@ -74,8 +74,8 @@ user's turn this processor:
 3. persists the latest user message via `thread.add_messages(return_context=True)` -- folding the write and context retrieval into a single round-trip;
 4. prepends Zep's returned context block to the message history as a system message.
 
-A subtle but important detail (see [SPIKE_FINDINGS](../../SPIKE_FINDINGS.md)):
-`ProcessHistory` fires **once per model request, not once per run**. A single
+A subtle but important detail: `ProcessHistory` fires **once per model request,
+not once per run**. A single
 `agent.run` that makes a tool call invokes the processor more than once with the
 same user turn. The processor therefore **dedupes by the latest user message
 text** per `(user_id, thread_id)`: it persists and retrieves on the first sight

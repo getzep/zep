@@ -12,16 +12,18 @@ New to Zep? Sign up at [getzep.com](https://www.getzep.com) and create an API ke
 
 | Framework | Language | Package | Location |
 |-----------|----------|---------|----------|
-| Google ADK | Python | [`zep-adk`](https://pypi.org/p/zep-adk) | [`adk/python/`](adk/python/) |
-| Microsoft AutoGen | Python | [`zep-autogen`](https://pypi.org/p/zep-autogen) | [`autogen/python/`](autogen/python/) |
+| AG2 | Python | `zep-ag2` | [`ag2/python/`](ag2/python/) |
 | CrewAI | Python | [`zep-crewai`](https://pypi.org/p/zep-crewai) | [`crewai/python/`](crewai/python/) |
+| Google ADK | Python | [`zep-adk`](https://pypi.org/p/zep-adk) | [`adk/python/`](adk/python/) |
+| Google ADK | TypeScript | `@getzep/zep-adk` | [`adk/typescript/`](adk/typescript/) |
+| Google ADK | Go | `github.com/getzep/zep/integrations/adk/go` | [`adk/go/`](adk/go/) |
+| LangGraph | Python | `zep-langgraph` | [`langgraph/python/`](langgraph/python/) |
 | LiveKit | Python | [`zep-livekit`](https://pypi.org/p/zep-livekit) | [`livekit/python/`](livekit/python/) |
-
-### Planned
-
-Microsoft Agent Framework (Python), Pydantic AI (Python), LangGraph (Python),
-Mastra (TypeScript), and Google ADK (Go, TypeScript). See [`SPIKE_FINDINGS.md`](SPIKE_FINDINGS.md)
-for the verified extension points and per-integration approach.
+| Mastra | TypeScript | `@getzep/zep-mastra` | [`mastra/typescript/`](mastra/typescript/) |
+| Microsoft Agent Framework | Python | `zep-ms-agent-framework` | [`ms-agent-framework/python/`](ms-agent-framework/python/) |
+| Microsoft AutoGen | Python | [`zep-autogen`](https://pypi.org/p/zep-autogen) | [`autogen/python/`](autogen/python/) |
+| Pydantic AI | Python | `zep-pydantic-ai` | [`pydantic-ai/python/`](pydantic-ai/python/) |
+| Vercel AI SDK | TypeScript | `@getzep/zep-vercel-ai` | [`vercel-ai/typescript/`](vercel-ai/typescript/) |
 
 ## Package structure
 
@@ -46,8 +48,7 @@ full per-language commands and the CI/release setup.
 ## Adding a new integration
 
 1. Create `integrations/<framework>/<language>/` following the structure in `CLAUDE.md`.
-2. Implement the framework's memory/context extension point (verified hooks are in
-   `SPIKE_FINDINGS.md`); target the latest Zep SDK.
+2. Implement the framework's memory/context extension point; target the latest Zep SDK.
 3. Add tests, a runnable example, a README, and a `SETUP.md`.
 4. Wire CI: add a `paths-filter` entry in `.github/workflows/test-integrations.yml`.
 5. Open a PR.
