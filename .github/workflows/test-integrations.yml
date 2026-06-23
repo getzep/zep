@@ -77,6 +77,10 @@ jobs:
         with:
           package: ${{ matrix.package }}
           python-version: ${{ matrix.python-version }}
+        env:
+          ZEP_API_KEY: ${{ secrets.ZEP_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
 
   test-typescript:
     runs-on: ubuntu-latest
@@ -94,6 +98,10 @@ jobs:
         with:
           package: ${{ matrix.package }}
           node-version: ${{ matrix.node-version }}
+        env:
+          ZEP_API_KEY: ${{ secrets.ZEP_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
 
   test-go:
     runs-on: ubuntu-latest
