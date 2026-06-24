@@ -1,12 +1,12 @@
 """
-End-to-end integration test for the Zep Microsoft Agent Framework integration.
+End-to-end integration test for the Zep LangGraph integration.
 
-Exercises the full lifecycle against live Zep and OpenAI:
+Exercises the full lifecycle against live Zep and OpenAI using the primary
+node/tool helpers with a prebuilt ``create_react_agent``:
 
-  1. Lazy user + thread creation with correct metadata.
-  2. ``before_run`` persists the user turn; ``after_run`` persists the assistant
-     turn (both sides captured on the thread).
-  3. The ``on_user_created`` hook fires exactly once.
+  1. ``build_system_message`` injects the Zep Context Block on every turn.
+  2. ``persist_messages`` writes each turn back to the Zep thread.
+  3. Both sides of the conversation are captured on the thread.
   4. Cross-thread memory recall: a second thread for the same user recalls facts
      seeded in the first thread (proving recall comes from the user graph).
   5. Zep resource verification via the SDK (user metadata, thread messages).
@@ -27,6 +27,7 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 import pytest
@@ -44,21 +45,33 @@ if not ZEP_API_KEY or not OPENAI_API_KEY:
         allow_module_level=True,
     )
 
-from agent_framework import Agent  # noqa: E402
-from agent_framework.openai import OpenAIChatClient  # noqa: E402
+from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
+from langchain_openai import ChatOpenAI  # noqa: E402
+from langgraph.prebuilt import create_react_agent  # noqa: E402
+from zep_cloud import Message  # noqa: E402
 from zep_cloud.client import AsyncZep  # noqa: E402
 
-from zep_ms_agent_framework import ZepContextProvider  # noqa: E402
+from zep_langgraph import (  # noqa: E402
+    build_system_message,
+    create_graph_search_tool,
+    persist_messages,
+)
 
 # Unique IDs per run to avoid collisions.
 _suffix = uuid4().hex[:8]
-USER_ID = f"af-integ-{_suffix}"
-THREAD_1 = f"af-integ-t1-{_suffix}"
-THREAD_2 = f"af-integ-t2-{_suffix}"
+USER_ID = f"langgraph-integ-{_suffix}"
+THREAD_1 = f"langgraph-integ-t1-{_suffix}"
+THREAD_2 = f"langgraph-integ-t2-{_suffix}"
 
 FIRST_NAME = "IntegTest"
 LAST_NAME = "User"
 EMAIL = f"integtest-{_suffix}@example.com"
+
+BASE_INSTRUCTIONS = (
+    "You are a helpful assistant with long-term memory. When memory context is "
+    "provided, use it to give personalised, memory-aware answers. You may also call "
+    "the search_memory tool to look up specific details on demand."
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("test_integration")
@@ -101,27 +114,34 @@ async def wait_for_episodes_processed(
         await asyncio.sleep(poll_interval)
 
 
-def build_agent(zep: AsyncZep, thread_id: str, hook=None) -> Agent:
-    """Build an agent scoped to USER_ID on the given thread."""
-    return Agent(
-        OpenAIChatClient(model=OPENAI_MODEL, api_key=OPENAI_API_KEY),
-        instructions=(
-            "You are a helpful assistant with long-term memory. When context "
-            "from Zep is provided, use it to answer questions about the user. "
-            "Be concise."
-        ),
-        context_providers=[
-            ZepContextProvider(
-                zep_client=zep,
-                user_id=USER_ID,
-                thread_id=thread_id,
-                first_name=FIRST_NAME,
-                last_name=LAST_NAME,
-                email=EMAIL,
-                on_user_created=hook,
-            )
-        ],
-    )
+def build_agent(zep: AsyncZep, thread_id: str) -> Callable[[str], Awaitable[str]]:
+    """Build a ReAct agent wired to Zep on the given thread; return a chat fn."""
+
+    async def prompt(state: dict) -> list:
+        system = await build_system_message(
+            zep, thread_id=thread_id, base_instructions=BASE_INSTRUCTIONS
+        )
+        return [system, *state["messages"]]
+
+    search_tool = create_graph_search_tool(zep, user_id=USER_ID, scope="edges")
+    model = ChatOpenAI(model=OPENAI_MODEL)
+    agent = create_react_agent(model=model, tools=[search_tool], prompt=prompt)
+
+    async def chat(user_text: str) -> str:
+        result = await agent.ainvoke({"messages": [HumanMessage(content=user_text)]})
+        reply = result["messages"][-1]
+        reply_text = reply.content if isinstance(reply.content, str) else str(reply.content)
+        await persist_messages(
+            zep,
+            thread_id=thread_id,
+            messages=[
+                Message(role="user", content=user_text, name=f"{FIRST_NAME} {LAST_NAME}"),
+                AIMessage(content=reply_text),
+            ],
+        )
+        return reply_text
+
+    return chat
 
 
 async def main() -> None:
@@ -129,45 +149,37 @@ async def main() -> None:
     passed = True
 
     print(f"\n{'=' * 70}")
-    print("Zep Microsoft Agent Framework Integration Test")
+    print("Zep LangGraph Integration Test")
     print(f"  User:    {USER_ID}")
     print(f"  Threads: {THREAD_1}, {THREAD_2}")
     print(f"{'=' * 70}\n")
 
-    hook_calls: list[str] = []
-
-    async def on_user_created(client: AsyncZep, user_id: str) -> None:
-        hook_calls.append(user_id)
-        logger.info("on_user_created fired for %s", user_id)
-
     try:
-        # -- Conversation 1: seed facts -------------------------------------
+        # -- One-time Zep setup: create the user and thread out-of-band. ------
+        await zep.user.add(user_id=USER_ID, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+        await zep.thread.create(thread_id=THREAD_1, user_id=USER_ID)
+
+        # -- Conversation 1: seed facts via the agent. -----------------------
         print("[Step 1] Conversation 1: seeding facts...")
-        agent1 = build_agent(zep, THREAD_1, hook=on_user_created)
+        chat1 = build_agent(zep, THREAD_1)
         seeds = [
             "My name is IntegTest. I work at Acme Corp as a data scientist.",
             "I live in Portland, Oregon and I love hiking and photography.",
         ]
         for msg in seeds:
             print(f"  User:  {msg}")
-            result = await agent1.run(msg)
-            print(f"  Agent: {result.text}\n")
-            passed &= check("Agent returned a non-empty response", len(result.text) > 0)
+            reply = await chat1(msg)
+            print(f"  Agent: {reply}\n")
+            passed &= check("Agent returned a non-empty response", len(reply) > 0)
 
-        passed &= check(
-            "on_user_created hook fired exactly once",
-            len(hook_calls) == 1 and hook_calls[0] == USER_ID,
-            f"calls={hook_calls}",
-        )
-
-        # -- Verify user metadata -------------------------------------------
+        # -- Verify user metadata --------------------------------------------
         print("[Step 2] Verifying Zep user metadata...")
         user = await zep.user.get(user_id=USER_ID)
         passed &= check("first_name matches", user.first_name == FIRST_NAME, str(user.first_name))
         passed &= check("last_name matches", user.last_name == LAST_NAME, str(user.last_name))
         passed &= check("email matches", user.email == EMAIL, str(user.email))
 
-        # -- Verify thread 1 captured both sides ----------------------------
+        # -- Verify thread 1 captured both sides -----------------------------
         print("\n[Step 3] Verifying thread 1 messages...")
         t1 = await zep.thread.get(thread_id=THREAD_1, lastn=20)
         messages = t1.messages or []
@@ -177,23 +189,16 @@ async def main() -> None:
         passed &= check("Thread 1 has user messages", len(user_msgs) >= 2, f"{len(user_msgs)}")
         passed &= check("Thread 1 has assistant messages", len(asst_msgs) >= 2, f"{len(asst_msgs)}")
 
-        # -- Wait for graph ingestion ---------------------------------------
+        # -- Wait for graph ingestion ----------------------------------------
         print("\n[Step 4] Waiting for Zep to process episodes...")
         await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=120)
 
-        # -- Conversation 2: cross-thread recall ----------------------------
+        # -- Conversation 2: cross-thread memory recall ----------------------
         print("\n[Step 5] Conversation 2: cross-thread memory recall...")
-        agent2 = build_agent(zep, THREAD_2, hook=on_user_created)
-        result = await agent2.run("What do you know about me?")
-        print(f"  Agent: {result.text}\n")
-
-        passed &= check(
-            "on_user_created did NOT fire again for existing user",
-            len(hook_calls) == 1,
-            f"calls={len(hook_calls)}",
-        )
-
-        recall = result.text.lower()
+        await zep.thread.create(thread_id=THREAD_2, user_id=USER_ID)
+        chat2 = build_agent(zep, THREAD_2)
+        recall = (await chat2("What do you know about me?")).lower()
+        print(f"  Agent: {recall}\n")
         keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
         found = [kw for kw in keywords if kw in recall]
         print(f"  Recalled keywords: {found}")
@@ -222,17 +227,14 @@ async def main() -> None:
 async def test_integration_full_lifecycle() -> None:
     """Pytest entry point for the live integration test."""
     zep = AsyncZep(api_key=ZEP_API_KEY)
-    hook_calls: list[str] = []
-
-    async def on_user_created(client: AsyncZep, user_id: str) -> None:
-        hook_calls.append(user_id)
 
     try:
-        agent1 = build_agent(zep, THREAD_1, hook=on_user_created)
-        await agent1.run("My name is IntegTest. I work at Acme Corp as a data scientist.")
-        await agent1.run("I live in Portland, Oregon and love hiking and photography.")
+        await zep.user.add(user_id=USER_ID, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+        await zep.thread.create(thread_id=THREAD_1, user_id=USER_ID)
 
-        assert hook_calls == [USER_ID]
+        chat1 = build_agent(zep, THREAD_1)
+        await chat1("My name is IntegTest. I work at Acme Corp as a data scientist.")
+        await chat1("I live in Portland, Oregon and I love hiking and photography.")
 
         user = await zep.user.get(user_id=USER_ID)
         assert user.first_name == FIRST_NAME
@@ -245,15 +247,11 @@ async def test_integration_full_lifecycle() -> None:
 
         await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=120)
 
-        agent2 = build_agent(zep, THREAD_2, hook=on_user_created)
-        result = await agent2.run("What do you know about me?")
-
-        # Existing user -> hook must not fire again.
-        assert hook_calls == [USER_ID]
-
-        recall = result.text.lower()
+        await zep.thread.create(thread_id=THREAD_2, user_id=USER_ID)
+        chat2 = build_agent(zep, THREAD_2)
+        recall = (await chat2("What do you know about me?")).lower()
         keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
-        assert any(kw in recall for kw in keywords), f"no recall in: {result.text}"
+        assert any(kw in recall for kw in keywords), f"no recall in: {recall}"
     finally:
         try:
             await zep.user.delete(user_id=USER_ID)

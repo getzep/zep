@@ -24,6 +24,7 @@ dev = [
     "pytest-asyncio",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+    "langchain-openai>=1.0",
 ]
 
 [build-system]
