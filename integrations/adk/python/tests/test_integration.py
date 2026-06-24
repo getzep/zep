@@ -119,89 +119,6 @@ async def send_message(runner: Runner, session_id: str, user_id: str, text: str)
     return " ".join(response_parts).strip()
 
 
-async def recall_until(
-    runner: Runner,
-    session_id: str,
-    user_id: str,
-    message: str,
-    keywords: list[str],
-    *,
-    attempts: int = 3,
-    delay: float = 10.0,
-) -> tuple[str, list[str]]:
-    """Send ``message`` until at least one of ``keywords`` appears in the reply.
-
-    Recall depends on two eventually-consistent, nondeterministic factors: Zep
-    finishing fact extraction/fusion (episodes reporting ``processed`` does not
-    guarantee the edges are immediately searchable), and the model choosing to
-    surface those facts. Retry a few times -- tolerating transient model errors
-    such as Gemini 503s -- so a single lagging attempt does not fail the run.
-    Returns the last response and the matched keywords.
-    """
-    response = ""
-    for attempt in range(1, attempts + 1):
-        try:
-            response = await send_message(runner, session_id, user_id, message)
-        except Exception as exc:
-            logger.warning("Recall attempt %d/%d errored: %s", attempt, attempts, exc)
-            if attempt < attempts:
-                await asyncio.sleep(delay)
-            continue
-        found = [kw for kw in keywords if kw in response.lower()]
-        if found:
-            return response, found
-        if attempt < attempts:
-            logger.info(
-                "Recall attempt %d/%d found none of %s; retrying in %.0fs...",
-                attempt,
-                attempts,
-                keywords,
-                delay,
-            )
-            await asyncio.sleep(delay)
-    return response, []
-
-
-async def wait_for_facts_searchable(
-    zep_client: AsyncZep,
-    user_id: str,
-    required_keywords: list[str],
-    timeout_seconds: int = 90,
-    poll_interval: float = 3.0,
-) -> None:
-    """Poll ``graph.search`` until every required keyword appears in a fact.
-
-    Episodes reporting ``processed`` does not guarantee the extracted edges are
-    immediately searchable. Gate the (quota-limited) model-driven recall steps
-    on the facts actually being retrievable, so each step succeeds on its first
-    model call. This polls Zep search only -- no model calls -- so it is free.
-    """
-    start = time.monotonic()
-    remaining = {kw.lower() for kw in required_keywords}
-    while remaining:
-        try:
-            results = await zep_client.graph.search(
-                user_id=user_id,
-                query="user profile job location hobbies",
-                scope="edges",
-                limit=25,
-            )
-            facts = " ".join((e.fact or "") for e in (results.edges or [])).lower()
-            remaining = {kw for kw in remaining if kw not in facts}
-        except Exception as exc:
-            logger.warning("Fact-readiness search errored: %s", exc)
-        if not remaining:
-            logger.info("All seed facts are searchable.")
-            return
-        if time.monotonic() - start > timeout_seconds:
-            logger.warning(
-                "Timed out waiting for facts to become searchable; missing=%s",
-                sorted(remaining),
-            )
-            return
-        await asyncio.sleep(poll_interval)
-
-
 async def wait_for_episodes_processed(
     zep_client: AsyncZep,
     user_id: str,
@@ -425,11 +342,6 @@ async def main() -> None:
         # ==================================================================
         print("\n[Step 6] Waiting for Zep to process episodes...")
         await wait_for_episodes_processed(zep_client, USER_ID, timeout_seconds=120)
-        await wait_for_facts_searchable(
-            zep_client,
-            USER_ID,
-            ["acme", "data scientist", "portland", "hiking", "photography"],
-        )
 
         # ==================================================================
         # Step 7: Session 2 — cross-thread memory recall
@@ -450,18 +362,20 @@ async def main() -> None:
 
         recall_message = "What do you know about me?"
         print(f"  User:  {recall_message}")
-        recall_keywords = ["acme", "data scientist", "hiking", "photography", "portland"]
-        response2, found_keywords = await recall_until(
-            runner, SESSION_2_ID, USER_ID, recall_message, recall_keywords
-        )
-        print(f"  Agent: {response2}")
-        print(f"  Recall keywords found: {found_keywords}")
+        response2 = await send_message(runner, SESSION_2_ID, USER_ID, recall_message)
+        print(f"  Agent: {response2}\n")
 
         passed &= check(
             "on_user_created hook did NOT fire again for existing user",
             len(hook_calls) == 1,
             f"hook_calls={len(hook_calls)}",
         )
+
+        # Check that the agent recalled at least some seeded facts
+        recall_keywords = ["acme", "data scientist", "hiking", "photography", "portland"]
+        response_lower = response2.lower()
+        found_keywords = [kw for kw in recall_keywords if kw in response_lower]
+        print(f"  Recall keywords found: {found_keywords}")
 
         passed &= check(
             "Agent recalled facts from first conversation",
@@ -505,11 +419,12 @@ async def main() -> None:
             "about my hobbies. Tell me exactly what the search returns."
         )
         print(f"  User:  {search_message}")
+        response3 = await send_message(runner, SESSION_3_ID, USER_ID, search_message)
+        print(f"  Agent: {response3}\n")
+
+        response3_lower = response3.lower()
         hobby_keywords = ["hiking", "photography"]
-        response3, found_hobby_kw = await recall_until(
-            runner, SESSION_3_ID, USER_ID, search_message, hobby_keywords
-        )
-        print(f"  Agent: {response3}")
+        found_hobby_kw = [kw for kw in hobby_keywords if kw in response3_lower]
         print(f"  Hobby keywords found: {found_hobby_kw}")
 
         passed &= check(
@@ -576,11 +491,12 @@ async def main() -> None:
             "about where I live. Tell me exactly what the search returns."
         )
         print(f"  User:  {auto_search_message}")
+        response5 = await send_message(auto_runner, SESSION_5_ID, USER_ID, auto_search_message)
+        print(f"  Agent: {response5}\n")
+
+        response5_lower = response5.lower()
         auto_keywords = ["portland", "oregon"]
-        response5, found_auto_kw = await recall_until(
-            auto_runner, SESSION_5_ID, USER_ID, auto_search_message, auto_keywords
-        )
-        print(f"  Agent: {response5}")
+        found_auto_kw = [kw for kw in auto_keywords if kw in response5_lower]
         print(f"  Auto-scope keywords found: {found_auto_kw}")
 
         passed &= check(
