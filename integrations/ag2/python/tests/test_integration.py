@@ -179,6 +179,7 @@ async def main() -> None:
 
         # -- Conversation 2: cross-thread memory recall ----------------------
         print("\n[Step 5] Conversation 2: cross-thread memory recall...")
+        await zep.thread.create(thread_id=THREAD_2, user_id=USER_ID)
         manager2 = ZepMemoryManager(zep, user_id=USER_ID, session_id=THREAD_2)
         context = await manager2.get_memory_context(
             query="What do we know about IntegTest's job, location, and hobbies?"
@@ -270,6 +271,7 @@ async def test_integration_full_lifecycle() -> None:
 
         await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=120)
 
+        await zep.thread.create(thread_id=THREAD_2, user_id=USER_ID)
         manager2 = ZepMemoryManager(zep, user_id=USER_ID, session_id=THREAD_2)
         context = await manager2.get_memory_context(
             query="What do we know about IntegTest's job, location, and hobbies?"
