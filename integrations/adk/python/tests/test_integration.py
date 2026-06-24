@@ -219,7 +219,12 @@ async def wait_for_episodes_processed(
             )
             return
 
-        episodes_resp = await zep_client.graph.episode.get_by_user_id(user_id=user_id, lastn=10)
+        try:
+            episodes_resp = await zep_client.graph.episode.get_by_user_id(user_id=user_id, lastn=10)
+        except Exception as exc:
+            logger.warning("Episode poll failed (%s); retrying.", exc)
+            await asyncio.sleep(poll_interval)
+            continue
         episodes = episodes_resp.episodes or []
 
         if not episodes:

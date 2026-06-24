@@ -89,7 +89,12 @@ async def wait_for_episodes_processed(
         if time.monotonic() - start > timeout_seconds:
             logger.warning("Timed out waiting for episode processing; continuing.")
             return
-        resp = await zep.graph.episode.get_by_user_id(user_id=user_id, lastn=20)
+        try:
+            resp = await zep.graph.episode.get_by_user_id(user_id=user_id, lastn=20)
+        except Exception as exc:
+            logger.warning("Episode poll failed (%s); retrying.", exc)
+            await asyncio.sleep(poll_interval)
+            continue
         episodes = resp.episodes or []
         if episodes and all(e.processed for e in episodes):
             logger.info("All %d episodes processed.", len(episodes))

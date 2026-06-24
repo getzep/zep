@@ -86,7 +86,12 @@ def wait_for_episodes_processed(
         if time.monotonic() - start > timeout_seconds:
             logger.warning("Timed out waiting for episode processing; continuing.")
             return
-        resp = zep.graph.episode.get_by_user_id(user_id=user_id, lastn=20)
+        try:
+            resp = zep.graph.episode.get_by_user_id(user_id=user_id, lastn=20)
+        except Exception as exc:
+            logger.warning("Episode poll failed (%s); retrying.", exc)
+            time.sleep(poll_interval)
+            continue
         episodes = resp.episodes or []
         if episodes and all(e.processed for e in episodes):
             logger.info("All %d episodes processed.", len(episodes))
@@ -159,9 +164,7 @@ def main() -> None:
         # -- Recall via the integration's search (thread-independent). --------
         print("\n[Step 5] Recall via ZepUserStorage.search...")
         storage2 = ZepUserStorage(client=zep, user_id=USER_ID, thread_id=THREAD_2)
-        results = storage2.search(
-            "What is IntegTest's job, location, and hobbies?", limit=10
-        )
+        results = storage2.search("What is IntegTest's job, location, and hobbies?", limit=10)
         recalled = str(results).lower()
         keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
         found = [kw for kw in keywords if kw in recalled]
@@ -179,8 +182,7 @@ def main() -> None:
             role="Personal Assistant",
             goal="Answer questions about the user using their Zep memory",
             backstory=(
-                "You recall what you know about the user by searching Zep memory "
-                "before answering."
+                "You recall what you know about the user by searching Zep memory before answering."
             ),
             tools=[search_tool],
             llm=OPENAI_MODEL,
