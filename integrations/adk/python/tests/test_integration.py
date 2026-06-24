@@ -338,10 +338,14 @@ async def main() -> None:
             passed = False
 
         # ==================================================================
-        # Step 6: Wait for Zep to process episodes
+        # Step 6: Wait for Zep to process episodes, then wait a second time
+        # so that graph node/edge extraction (which runs after episode
+        # processing) has time to complete before recall and search.
         # ==================================================================
-        print("\n[Step 6] Waiting for Zep to process episodes...")
-        await wait_for_episodes_processed(zep_client, USER_ID, timeout_seconds=120)
+        print("\n[Step 6] Waiting for Zep to process episodes (pass 1)...")
+        await wait_for_episodes_processed(zep_client, USER_ID, timeout_seconds=180)
+        print("\n[Step 6b] Waiting for graph node/edge extraction (pass 2)...")
+        await wait_for_episodes_processed(zep_client, USER_ID, timeout_seconds=180)
 
         # ==================================================================
         # Step 7: Session 2 — cross-thread memory recall
@@ -602,8 +606,18 @@ async def main() -> None:
         print("RESULT: SOME CHECKS FAILED")
     print("=" * 70)
 
-    sys.exit(0 if passed else 1)
+    assert passed, "One or more integration checks failed — see PASS/FAIL lines above"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_integration_full_lifecycle() -> None:
+    """Pytest entry point for the live ADK integration test."""
+    await main()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except AssertionError:
+        sys.exit(1)
