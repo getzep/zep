@@ -23,7 +23,8 @@ the `package` input; the Python action also derives the import name
 ### `release-integrations.yml` — package releases
 Triggered by a published GitHub release or manual dispatch. Routes by language:
 - **Python → PyPI** (test → build → publish via trusted publishing / OIDC).
-- **TypeScript → npm** (`npm ci` → build → test → `npm publish`, using `NPM_TOKEN`).
+- **TypeScript → npm** (`npm ci` → build → test → `npm publish`, via trusted
+  publishing / OIDC).
 
 **Tag scheme:** `zep-<framework>-<language>-v<version>` — e.g. `zep-adk-python-v0.2.0`,
 `zep-mastra-typescript-v0.1.0`. Manual dispatch takes `framework` + `language` inputs.
@@ -41,18 +42,31 @@ settings with repository `getzep/zep`, workflow `release-integrations.yml`, and 
 as desired). No secret needed — trusted publishing uses OIDC.
 
 ### npm
-Add an `NPM_TOKEN` secret (an automation token with publish rights) for TypeScript packages.
+For each TypeScript package (e.g. `@getzep/zep-adk`): add a GitHub Actions trusted
+publisher in the npm package settings:
+
+- Organization or user: `getzep`
+- Repository: `zep`
+- Workflow filename: `release-integrations.yml`
+- Environment name: `release`
+- Allowed actions: `npm publish`
+
+No secret is needed — trusted publishing uses OIDC. npm requires the package to already
+exist before configuring a trusted publisher, so new package names need a one-time initial
+publish by a maintainer with npm access before switching subsequent releases to this
+workflow.
 
 ## Adding a new package
 
 1. Create `integrations/<framework>/<language>/` per [`../../integrations/CLAUDE.md`](../../integrations/CLAUDE.md).
 2. Add a `paths-filter` entry under the matching language in `test-integrations.yml`
    (e.g. `pydantic-ai: ['integrations/pydantic-ai/python/**']`).
-3. Python: configure PyPI trusted publishing. TypeScript: ensure `NPM_TOKEN` is set.
+3. Python: configure PyPI trusted publishing. TypeScript: configure npm trusted publishing.
 4. Release by tagging `zep-<framework>-<language>-v<version>` (or the Go module-path tag).
 
 ## Troubleshooting
 
 - **Package not detected:** verify the `paths-filter` entry matches the package directory.
 - **Tests fail on PR:** check dependencies and language/version compatibility.
-- **Release fails:** confirm PyPI trusted publishing (env `release`) or `NPM_TOKEN` is set.
+- **Release fails:** confirm PyPI or npm trusted publishing is configured with environment
+  `release`.
