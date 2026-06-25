@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Pydantic AI integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
 dependencies = [
     "pydantic-ai>=1.107,<2",
     "zep-cloud>=3.23.0",

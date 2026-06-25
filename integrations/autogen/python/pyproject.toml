@@ -4,6 +4,7 @@ version = "1.1.1"
 description = "Autogen integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
 dependencies = [
     "autogen-agentchat>=0.7.0",
     "autogen-ext[azure,openai]>=0.7.0",

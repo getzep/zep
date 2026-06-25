@@ -4,6 +4,7 @@ version = "1.1.2"
 description = "CrewAI integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
 dependencies = [
     "crewai>=1.0.0",
     "aiohttp>=3.8.0",

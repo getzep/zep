@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Microsoft Agent Framework integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
 dependencies = [
     "agent-framework-core>=1.8.1",
     "zep-cloud>=3.23.0",

@@ -4,6 +4,7 @@ version = "0.1.1"
 description = "LiveKit integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
 dependencies = [
     "livekit-agents[openai,silero]>=1.0.0",
     "zep-cloud>=3.23.0",
