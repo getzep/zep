@@ -120,6 +120,9 @@ jobs:
     if: needs.detect.outputs.language == 'typescript'
     needs: detect
     runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://www.npmjs.com/package/@getzep/zep-${{ needs.detect.outputs.framework }}
     defaults:
       run:
         working-directory: integrations/${{ needs.detect.outputs.framework }}/typescript
@@ -128,8 +131,10 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+      - name: Install npm with OIDC support
+        run: npm install -g npm@latest
       - name: Check package exists
         run: |
           if [ ! -f package.json ]; then
@@ -143,5 +148,3 @@ jobs:
           npm test
       - name: Publish to npm
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
