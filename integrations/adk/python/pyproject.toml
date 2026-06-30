@@ -32,6 +32,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/zep_adk"]
+# py.typed sentinel is included automatically from the package directory (PEP 561)
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
