@@ -6,6 +6,13 @@
  * reply) into an ADK `LlmAgent`, then drives a short conversation that seeds
  * facts and recalls them.
  *
+ * The Zep user and thread are provisioned explicitly, out-of-band, via
+ * `ensureUser` and `ensureThread` — before the agent runs its first turn.
+ * `ensureUser`'s `onCreated` hook demonstrates one-time per-user setup (here,
+ * seeding a user summary instruction) that only runs when the user is
+ * genuinely new. The turn path itself (the before/after-model callbacks)
+ * never creates the user or thread.
+ *
  * The agent's model is Gemini, so a live run requires GOOGLE_API_KEY in
  * addition to ZEP_API_KEY. When GOOGLE_API_KEY is absent, the example builds
  * the fully-wired agent and Zep thread, prints the configuration, and exits —
@@ -32,6 +39,8 @@ import type { Content } from "@google/genai";
 import {
   createZepAfterModelCallback,
   createZepBeforeModelCallback,
+  ensureThread,
+  ensureUser,
 } from "../src/index.js";
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
@@ -67,21 +76,49 @@ async function collectResponse(
   return chunks.join(" ").trim();
 }
 
+/**
+ * One-time setup for a newly created Zep user.
+ *
+ * Fires only when `ensureUser` actually creates the user — never for a user
+ * that already existed. This is the place to configure per-user ontology,
+ * custom instructions, or (as here) a user summary instruction.
+ */
+async function onUserCreated(zep: ZepClient, userId: string): Promise<void> {
+  console.log(
+    `  [onCreated] New Zep user ${userId} — seeding summary instructions.`,
+  );
+  await zep.user.addUserSummaryInstructions({
+    instructions: [
+      {
+        name: "professional-background",
+        text:
+          "Summarize this user's professional background, interests, and " +
+          "living situation in a concise paragraph.",
+      },
+    ],
+    userIds: [userId],
+  });
+}
+
 async function main(): Promise<void> {
   const zep = new ZepClient({ apiKey: ZEP_API_KEY });
 
-  // Pre-create the Zep thread keyed on the ADK session ID. The callback also
-  // creates it lazily, but pre-creating shows the recommended pattern.
+  // Provision the Zep user and thread out-of-band, before the first turn.
+  // The agent's turn path (the before/after-model callbacks) never creates
+  // users or threads itself — see README.md's "Migrating from 0.1.x" section.
+  console.log("--- Provisioning Zep user + thread ---\n");
   try {
-    await zep.user.add({
+    await ensureUser(zep, {
       userId: USER_ID,
       firstName: "Alice",
       lastName: "Smith",
       email: "alice@example.com",
+      onCreated: onUserCreated,
     });
-    await zep.thread.create({ threadId: SESSION_ID, userId: USER_ID });
+    await ensureThread(zep, { threadId: SESSION_ID, userId: USER_ID });
   } catch (error) {
-    console.warn("Pre-creating Zep user/thread failed (continuing):", error);
+    console.error("Provisioning Zep user/thread failed:", error);
+    process.exit(1);
   }
 
   // One agent definition. The callbacks carry the Zep identity.

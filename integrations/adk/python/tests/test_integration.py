@@ -2,14 +2,19 @@
 End-to-end integration test for the Zep ADK integration.
 
 Tests the full lifecycle:
-  1. Custom ontology via on_user_created hook (set_ontology + verify via list_entity_types)
-  2. Lazy user creation with correct metadata (first_name, last_name, email)
-  3. Lazy thread creation with messages persisted to the correct thread
-  4. Agent responds coherently to user messages
-  5. Cross-thread memory recall (new session recalls facts from a different thread)
-  6. on_user_created hook fires exactly once (not on existing users)
-  7. ZepGraphSearchTool: model invokes graph search when asked
-  8. Zep resource verification via SDK (user, threads, messages)
+  1. Explicit out-of-band provisioning: ensure_user (with on_created hook that
+     sets custom ontology) + ensure_thread, called BEFORE the first turn.
+  2. ensure_user / ensure_thread idempotency: True (created) then False
+     (already exists) on a second call.
+  3. User created with correct metadata (first_name, last_name, email).
+  4. Thread created with messages persisted to the correct thread.
+  5. Agent responds coherently to user messages.
+  6. Cross-thread memory recall (new session recalls facts from a different thread).
+  7. on_created hook fires exactly once (not on the second ensure_user call).
+  8. ZepGraphSearchTool: model invokes graph search when asked.
+  9. Zep resource verification via SDK (user, threads, messages).
+  10. ZepMemoryService.search_memory against the live client (ADK-native
+      memory extension point round-trips without raising).
 
 Requires:
     ZEP_API_KEY and GOOGLE_API_KEY environment variables.
@@ -51,7 +56,14 @@ from pydantic import Field  # noqa: E402
 from zep_cloud.client import AsyncZep  # noqa: E402
 from zep_cloud.external_clients.ontology import EntityModel, EntityText  # noqa: E402
 
-from zep_adk import ZepContextTool, ZepGraphSearchTool, create_after_model_callback  # noqa: E402
+from zep_adk import (  # noqa: E402
+    ZepContextTool,
+    ZepGraphSearchTool,
+    ZepMemoryService,
+    create_after_model_callback,
+    ensure_thread,
+    ensure_user,
+)
 
 # Unique IDs per run to avoid collisions
 _suffix = uuid4().hex[:8]
@@ -82,7 +94,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 # ---------------------------------------------------------------------------
-# Custom ontology for testing on_user_created hook
+# Custom ontology for testing ensure_user's on_created hook
 # ---------------------------------------------------------------------------
 class Company(EntityModel):
     """A company or organization the user is associated with."""
@@ -189,20 +201,80 @@ async def main() -> None:
 
     try:
         # ==================================================================
-        # Step 1: Create the agent with on_user_created hook that sets ontology
+        # Step 1: Explicit out-of-band provisioning — ensure_user (with an
+        # on_created hook that sets custom ontology) + ensure_thread, BEFORE
+        # the agent ever runs.  This replaces the old lazy in-band creation.
         # ==================================================================
-        print("[Step 1] Creating agent with on_user_created hook (sets custom ontology)...")
+        print("[Step 1] Provisioning Zep user + thread out-of-band (ensure_user/ensure_thread)...")
 
         hook_calls: list[str] = []
 
-        async def on_user_created(zep: AsyncZep, user_id: str) -> None:
+        async def on_created(zep: AsyncZep, user_id: str) -> None:
             """Set a custom ontology when a new Zep user is created."""
             hook_calls.append(user_id)
-            logger.info("on_user_created hook fired for %s — setting ontology", user_id)
+            logger.info("on_created hook fired for %s — setting ontology", user_id)
             await zep.graph.set_ontology(
                 entities={"Company": Company},
                 user_ids=[user_id],
             )
+
+        user_created_1 = await ensure_user(
+            zep_client,
+            user_id=USER_ID,
+            first_name=FIRST_NAME,
+            last_name=LAST_NAME,
+            email=EMAIL,
+            on_created=on_created,
+        )
+        thread_created_1 = await ensure_thread(zep_client, thread_id=THREAD_1_ID, user_id=USER_ID)
+        # Threads 2-4 are used later in the test (cross-thread recall, graph
+        # search, tool-call persistence) -- provision them all up-front since
+        # the turn path itself never creates a thread anymore.
+        await ensure_thread(zep_client, thread_id=THREAD_2_ID, user_id=USER_ID)
+        await ensure_thread(zep_client, thread_id=THREAD_3_ID, user_id=USER_ID)
+        await ensure_thread(zep_client, thread_id=THREAD_4_ID, user_id=USER_ID)
+
+        passed &= check("ensure_user returns True for a new user", user_created_1 is True)
+        passed &= check("ensure_thread returns True for a new thread", thread_created_1 is True)
+        passed &= check(
+            "on_created hook fired exactly once",
+            len(hook_calls) == 1 and hook_calls[0] == USER_ID,
+            f"calls={hook_calls}",
+        )
+
+        # Idempotency: calling again on the same user/thread must return
+        # False (already exists) and must NOT fire the hook again.
+        user_created_again = await ensure_user(
+            zep_client,
+            user_id=USER_ID,
+            first_name=FIRST_NAME,
+            last_name=LAST_NAME,
+            email=EMAIL,
+            on_created=on_created,
+        )
+        thread_created_again = await ensure_thread(
+            zep_client, thread_id=THREAD_1_ID, user_id=USER_ID
+        )
+
+        passed &= check(
+            "ensure_user returns False on second call (already exists)",
+            user_created_again is False,
+        )
+        passed &= check(
+            "ensure_thread returns False on second call (already exists)",
+            thread_created_again is False,
+        )
+        passed &= check(
+            "on_created hook did NOT fire again for existing user",
+            len(hook_calls) == 1,
+            f"hook_calls={len(hook_calls)}",
+        )
+
+        # ==================================================================
+        # Step 2: Create the agent. The turn path never creates Zep resources
+        # -- provisioning already happened out-of-band above.
+        # ==================================================================
+        print("\n[Step 2] Creating agent (no provisioning on the turn path)...")
 
         agent = Agent(
             name="zep_integ_test_agent",
@@ -219,7 +291,6 @@ async def main() -> None:
                 ZepContextTool(
                     zep_client=zep_client,
                     ignore_roles=["assistant"],
-                    on_user_created=on_user_created,
                 ),
                 ZepGraphSearchTool(
                     zep_client=zep_client,
@@ -244,9 +315,9 @@ async def main() -> None:
         print("  Agent created.\n")
 
         # ==================================================================
-        # Step 2: Session 1 — seed facts and trigger user creation
+        # Step 3: Session 1 — seed facts on the already-provisioned thread
         # ==================================================================
-        print("[Step 2] Session 1: seeding facts (triggers lazy user + thread creation)...")
+        print("[Step 3] Session 1: seeding facts on the pre-provisioned thread...")
 
         await session_service.create_session(
             app_name=APP_NAME,
@@ -256,7 +327,6 @@ async def main() -> None:
                 "zep_thread_id": THREAD_1_ID,
                 "zep_first_name": FIRST_NAME,
                 "zep_last_name": LAST_NAME,
-                "zep_email": EMAIL,
             },
         )
 
@@ -269,16 +339,11 @@ async def main() -> None:
         print(f"  Agent: {response1}\n")
 
         passed &= check("Agent returned a non-empty response", len(response1) > 0)
-        passed &= check(
-            "on_user_created hook fired exactly once",
-            len(hook_calls) == 1 and hook_calls[0] == USER_ID,
-            f"calls={hook_calls}",
-        )
 
         # ==================================================================
-        # Step 3: Verify custom ontology was set by the hook
+        # Step 4: Verify custom ontology was set by the hook
         # ==================================================================
-        print("\n[Step 3] Verifying custom ontology set by on_user_created hook...")
+        print("\n[Step 4] Verifying custom ontology set by ensure_user's on_created hook...")
 
         ontology_resp = await zep_client.graph.list_entity_types(user_id=USER_ID)
         entity_names = [et.name for et in (ontology_resp.entity_types or [])]
@@ -307,9 +372,9 @@ async def main() -> None:
             passed = False
 
         # ==================================================================
-        # Step 4: Verify Zep user was created with correct metadata
+        # Step 5: Verify Zep user was created with correct metadata
         # ==================================================================
-        print("\n[Step 4] Verifying Zep user metadata via SDK...")
+        print("\n[Step 5] Verifying Zep user metadata via SDK...")
 
         try:
             user = await zep_client.user.get(user_id=USER_ID)
@@ -324,9 +389,9 @@ async def main() -> None:
             passed = False
 
         # ==================================================================
-        # Step 5: Verify thread 1 exists with messages
+        # Step 6: Verify thread 1 exists with messages
         # ==================================================================
-        print("\n[Step 5] Verifying thread 1 has messages...")
+        print("\n[Step 6] Verifying thread 1 has messages...")
 
         try:
             t1 = await zep_client.thread.get(thread_id=THREAD_1_ID, lastn=10)
@@ -338,19 +403,19 @@ async def main() -> None:
             passed = False
 
         # ==================================================================
-        # Step 6: Wait for Zep to process episodes, then wait a second time
+        # Step 7: Wait for Zep to process episodes, then wait a second time
         # so that graph node/edge extraction (which runs after episode
         # processing) has time to complete before recall and search.
         # ==================================================================
-        print("\n[Step 6] Waiting for Zep to process episodes (pass 1)...")
+        print("\n[Step 7] Waiting for Zep to process episodes (pass 1)...")
         await wait_for_episodes_processed(zep_client, USER_ID, timeout_seconds=180)
-        print("\n[Step 6b] Waiting for graph node/edge extraction (pass 2)...")
+        print("\n[Step 7b] Waiting for graph node/edge extraction (pass 2)...")
         await wait_for_episodes_processed(zep_client, USER_ID, timeout_seconds=180)
 
         # ==================================================================
-        # Step 7: Session 2 — cross-thread memory recall
+        # Step 8: Session 2 — cross-thread memory recall
         # ==================================================================
-        print("\n[Step 7] Session 2: testing cross-thread memory recall...")
+        print("\n[Step 8] Session 2: testing cross-thread memory recall...")
 
         await session_service.create_session(
             app_name=APP_NAME,
@@ -360,7 +425,6 @@ async def main() -> None:
                 "zep_thread_id": THREAD_2_ID,
                 "zep_first_name": FIRST_NAME,
                 "zep_last_name": LAST_NAME,
-                "zep_email": EMAIL,
             },
         )
 
@@ -368,12 +432,6 @@ async def main() -> None:
         print(f"  User:  {recall_message}")
         response2 = await send_message(runner, SESSION_2_ID, USER_ID, recall_message)
         print(f"  Agent: {response2}\n")
-
-        passed &= check(
-            "on_user_created hook did NOT fire again for existing user",
-            len(hook_calls) == 1,
-            f"hook_calls={len(hook_calls)}",
-        )
 
         # Check that the agent recalled at least some seeded facts
         recall_keywords = ["acme", "data scientist", "hiking", "photography", "portland"]
@@ -388,9 +446,9 @@ async def main() -> None:
         )
 
         # ==================================================================
-        # Step 8: Verify thread 2 also has messages
+        # Step 9: Verify thread 2 also has messages
         # ==================================================================
-        print("\n[Step 8] Verifying thread 2 has messages...")
+        print("\n[Step 9] Verifying thread 2 has messages...")
 
         try:
             t2 = await zep_client.thread.get(thread_id=THREAD_2_ID, lastn=10)
@@ -402,9 +460,35 @@ async def main() -> None:
             passed = False
 
         # ==================================================================
-        # Step 9: Session 3 — ZepGraphSearchTool (model-initiated search)
+        # Step 9b: ZepMemoryService.search_memory against the live client.
+        # Content assertions are intentionally lenient -- graph ingestion is
+        # asynchronous, so the search may or may not have picked up the
+        # seeded facts yet. This step only asserts the ADK-native memory
+        # service extension point round-trips against live Zep without
+        # raising and returns a well-formed SearchMemoryResponse.
         # ==================================================================
-        print("\n[Step 9] Session 3: testing ZepGraphSearchTool (model calls search tool)...")
+        print("\n[Step 9b] ZepMemoryService.search_memory against the live client...")
+
+        memory_service = ZepMemoryService(zep=zep_client)
+        try:
+            memory_response = await memory_service.search_memory(
+                app_name=APP_NAME,
+                user_id=USER_ID,
+                query="What do you know about the user's hobbies?",
+            )
+            print(f"  ZepMemoryService returned {len(memory_response.memories)} memories")
+            passed &= check(
+                "ZepMemoryService.search_memory returned a SearchMemoryResponse",
+                memory_response is not None,
+            )
+        except Exception as e:
+            print(f"  FAIL: ZepMemoryService.search_memory raised: {e}")
+            passed = False
+
+        # ==================================================================
+        # Step 10: Session 3 — ZepGraphSearchTool (model-initiated search)
+        # ==================================================================
+        print("\n[Step 10] Session 3: testing ZepGraphSearchTool (model calls search tool)...")
 
         await session_service.create_session(
             app_name=APP_NAME,
@@ -414,7 +498,6 @@ async def main() -> None:
                 "zep_thread_id": THREAD_3_ID,
                 "zep_first_name": FIRST_NAME,
                 "zep_last_name": LAST_NAME,
-                "zep_email": EMAIL,
             },
         )
 
@@ -438,9 +521,9 @@ async def main() -> None:
         )
 
         # ==================================================================
-        # Step 10: Verify thread 3 also has messages
+        # Step 11: Verify thread 3 also has messages
         # ==================================================================
-        print("\n[Step 10] Verifying thread 3 has messages...")
+        print("\n[Step 11] Verifying thread 3 has messages...")
 
         try:
             t3 = await zep_client.thread.get(thread_id=THREAD_3_ID, lastn=10)
@@ -452,9 +535,9 @@ async def main() -> None:
             passed = False
 
         # ==================================================================
-        # Step 11: Session 5 — ZepGraphSearchTool with scope="auto"
+        # Step 12: Session 5 — ZepGraphSearchTool with scope="auto"
         # ==================================================================
-        print("\n[Step 11] Session 5: testing ZepGraphSearchTool with scope='auto'...")
+        print("\n[Step 12] Session 5: testing ZepGraphSearchTool with scope='auto'...")
 
         # Build a separate agent with ONLY the graph search tool (no
         # ZepContextTool) so the model has no pre-injected memory and must
@@ -510,10 +593,10 @@ async def main() -> None:
         )
 
         # ==================================================================
-        # Step 12: Tool-call message persistence — verify only final
+        # Step 13: Tool-call message persistence — verify only final
         # assistant message is persisted (not intermediate "thoughts")
         # ==================================================================
-        print("\n[Step 12] Session 4: tool-call persistence test (get_current_weather)...")
+        print("\n[Step 13] Session 4: tool-call persistence test (get_current_weather)...")
 
         await session_service.create_session(
             app_name=APP_NAME,
@@ -523,7 +606,6 @@ async def main() -> None:
                 "zep_thread_id": THREAD_4_ID,
                 "zep_first_name": FIRST_NAME,
                 "zep_last_name": LAST_NAME,
-                "zep_email": EMAIL,
             },
         )
 

@@ -18,3 +18,21 @@ export class ZepIdentityError extends Error {
     Object.setPrototypeOf(this, ZepIdentityError.prototype);
   }
 }
+
+/**
+ * Detect whether `error` represents a Zep "not found" failure (404) — the
+ * shape returned when a persist call targets a user or thread that was
+ * never provisioned with `ensureUser()` / `ensureThread()`.
+ *
+ * Internal to the package; not exported from `index.ts`.
+ */
+export function isNotFoundError(error: unknown): boolean {
+  const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
+  if (statusCode === 404) {
+    return true;
+  }
+  const text = String(
+    error instanceof Error ? error.message : error,
+  ).toLowerCase();
+  return text.includes("not found") || text.includes("404");
+}

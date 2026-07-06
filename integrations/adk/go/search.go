@@ -9,14 +9,16 @@ import (
 // silently returning nothing.
 //
 // Supported scopes: edges (facts), nodes (entity summaries), episodes (raw
-// message/data content), observations (derived memories), and auto (a
-// pre-materialized Context Block returned in res.Context).
+// message/data content), observations (derived memories), thread_summaries
+// (incremental thread summaries), and auto (a pre-materialized Context Block
+// returned in res.Context).
 func searchScopeSupported(scope zep.GraphSearchScope) bool {
 	switch scope {
 	case zep.GraphSearchScopeEdges,
 		zep.GraphSearchScopeNodes,
 		zep.GraphSearchScopeEpisodes,
 		zep.GraphSearchScopeObservations,
+		zep.GraphSearchScopeThreadSummaries,
 		zep.GraphSearchScopeAuto:
 		return true
 	default:
@@ -26,14 +28,16 @@ func searchScopeSupported(scope zep.GraphSearchScope) bool {
 
 // mapSearchResults flattens a Zep graph search response into a slice of textual
 // results appropriate for the requested scope. Earlier versions read only
-// res.Edges, so any non-edge scope (auto / nodes / episodes / observations)
-// silently returned zero results; this maps every supported scope.
+// res.Edges, so any non-edge scope (auto / nodes / episodes / observations /
+// thread_summaries) silently returned zero results; this maps every
+// supported scope.
 //
-//   - edges        -> each edge's Fact
-//   - nodes        -> "name: summary" (or just the name when there is no summary)
-//   - episodes     -> each episode's Content
-//   - observations -> each observation's Content
-//   - auto         -> the single pre-materialized Context Block (res.Context)
+//   - edges            -> each edge's Fact
+//   - nodes            -> "name: summary" (or just the name when there is no summary)
+//   - episodes         -> each episode's Content
+//   - observations     -> "name: summary" (or just the name when there is no summary)
+//   - thread_summaries -> "name: summary" (or just the name when there is no summary)
+//   - auto             -> the single pre-materialized Context Block (res.Context)
 //
 // Empty entries are skipped. A nil res yields a nil slice.
 func mapSearchResults(scope zep.GraphSearchScope, res *zep.GraphSearchResults) []string {
@@ -81,6 +85,18 @@ func mapSearchResults(scope zep.GraphSearchScope, res *zep.GraphSearchResults) [
 		}
 		return out
 
+	case zep.GraphSearchScopeThreadSummaries:
+		var out []string
+		for _, summary := range res.ThreadSummaries {
+			if summary == nil {
+				continue
+			}
+			if text := threadSummaryText(summary); text != "" {
+				out = append(out, text)
+			}
+		}
+		return out
+
 	case zep.GraphSearchScopeEdges:
 		fallthrough
 	default:
@@ -108,6 +124,16 @@ func observationText(obs *zep.DerivedNode) string {
 		summary = *obs.Summary
 	}
 	return nameSummaryText(obs.Name, summary)
+}
+
+// threadSummaryText renders a thread-summary node as "name: summary",
+// falling back to whichever half is present.
+func threadSummaryText(node *zep.GraphitiSagaNode) string {
+	summary := ""
+	if node.Summary != nil {
+		summary = *node.Summary
+	}
+	return nameSummaryText(node.Name, summary)
 }
 
 // nameSummaryText joins a name and summary as "name: summary", returning just

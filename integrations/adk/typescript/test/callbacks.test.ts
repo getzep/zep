@@ -11,9 +11,9 @@ import {
 } from "./helpers.js";
 
 describe("createZepCallbacks", () => {
-  it("returns a paired before/after callback and a shared resource manager", () => {
+  it("returns a paired before/after callback and a shared dedup guard", () => {
     const { client } = mockZepClient({ addMessagesContext: "ctx" });
-    const { beforeModelCallback, afterModelCallback, resources } =
+    const { beforeModelCallback, afterModelCallback, dedup } =
       createZepCallbacks(client as unknown as ZepClient, {
         logger: silentLogger,
         userId: "u",
@@ -22,10 +22,10 @@ describe("createZepCallbacks", () => {
 
     expect(typeof beforeModelCallback).toBe("function");
     expect(typeof afterModelCallback).toBe("function");
-    expect(resources).toBeDefined();
+    expect(dedup).toBeDefined();
   });
 
-  it("shares the ensure-thread cache so the user/thread is created once across both hooks", async () => {
+  it("never calls user.add or thread.create via either paired callback", async () => {
     const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
     const { beforeModelCallback, afterModelCallback } = createZepCallbacks(
       client as unknown as ZepClient,
@@ -50,10 +50,9 @@ describe("createZepCallbacks", () => {
       response: fakeLlmResponse({ text: "hi there" }) as unknown as LlmResponse,
     });
 
-    // Shared manager: the user and thread are each created exactly once even
-    // though both hooks call ensure().
-    expect(mocks.userAdd).toHaveBeenCalledTimes(1);
-    expect(mocks.create).toHaveBeenCalledTimes(1);
+    // The turn path never provisions resources.
+    expect(mocks.userAdd).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
 
     // One user message + one assistant message persisted.
     expect(mocks.addMessages).toHaveBeenCalledTimes(2);

@@ -1,6 +1,6 @@
 {
   "name": "@getzep/zep-adk",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Zep long-term memory integration for Google ADK (TypeScript) agents",
   "license": "Apache-2.0",
   "author": "Zep AI",
@@ -51,7 +51,7 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@google/adk": "1.2.0"
+    "@google/adk": "^1.2.0"
   },
   "dependencies": {
     "@getzep/zep-cloud": "^3.23.0",

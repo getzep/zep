@@ -55,10 +55,18 @@ func main() {
 		// Provision the Zep user and thread out of band before the first turn.
 		// Both calls are idempotent. Passing a real name + email helps Zep
 		// resolve the user's identity in the graph.
-		if err := zepadk.EnsureUser(ctx, zep, userID, "Jane", "Smith", "jane@example.com"); err != nil {
+		created, err := zepadk.EnsureUser(ctx, zep, userID, "Jane", "Smith", "jane@example.com")
+		if err != nil {
 			log.Printf("warning: could not ensure Zep user: %v", err)
 		}
-		if err := zepadk.EnsureThread(ctx, zep, sessionID, userID); err != nil {
+		if created {
+			// One-time setup for a brand-new user goes here, e.g. configuring
+			// per-user ontology, custom instructions, or user summary
+			// instructions via the Zep client. Skipped for already-existing
+			// users so it never re-runs on every session start.
+			log.Printf("Zep user %q created; run one-time per-user setup here.", userID)
+		}
+		if _, err := zepadk.EnsureThread(ctx, zep, sessionID, userID); err != nil {
 			log.Printf("warning: could not ensure Zep thread: %v", err)
 		}
 	}
@@ -150,7 +158,7 @@ func send(ctx context.Context, run *runner.Runner, prompt string) {
 			return
 		}
 		if event != nil && event.IsFinalResponse() && event.Content != nil {
-			fmt.Printf("<<< %s\n", zepadk.LastUserText(event.Content))
+			fmt.Printf("<<< %s\n", zepadk.AssistantText(event.Content))
 		}
 	}
 }

@@ -51,9 +51,11 @@ _SEARCH_PARAMS: dict[str, dict[str, Any]] = {
             "What to search for: 'edges' for facts and relationships, "
             "'nodes' for entities and their summaries, "
             "'episodes' for raw text data (unstructured text, messages, or JSON), "
+            "'observations' for derived memories, "
+            "'thread_summaries' for incremental thread summaries, "
             "'auto' to let Zep decide the best mix of results."
         ),
-        "enum": ["edges", "nodes", "episodes", "auto"],
+        "enum": ["edges", "nodes", "episodes", "observations", "thread_summaries", "auto"],
         "default": "edges",
     },
     "reranker": {
@@ -99,6 +101,72 @@ _CONSTRUCTOR_ONLY_PARAMS = frozenset({"search_filters", "bfs_origin_node_uuids"}
 
 # All parameters that may be pinned at construction.
 _PINNABLE_PARAMS = frozenset(_SEARCH_PARAMS.keys()) | _CONSTRUCTOR_ONLY_PARAMS
+
+
+def _name_summary_text(name: str | None, summary: str | None) -> str:
+    """Join a name and summary as "name: summary".
+
+    Falls back to whichever half is present, and "" when both are absent.
+    Mirrors the Go integration's ``nameSummaryText`` helper so nodes,
+    observations, and thread summaries render identically across languages.
+    """
+    if name and summary:
+        return f"{name}: {summary}"
+    if name:
+        return name
+    if summary:
+        return summary
+    return ""
+
+
+def scope_results_to_texts(result: Any, scope: str) -> list[str]:
+    """Flatten a ``graph.search`` result into plain-text items for one scope.
+
+    Shared by :class:`ZepGraphSearchTool` (which prefixes each item with
+    ``"- "`` for the model) and :class:`~zep_adk.memory_service.ZepMemoryService`
+    (which wraps each item in its own ``MemoryEntry``). The ``auto`` scope is
+    intentionally excluded: it returns a single pre-materialized Context Block
+    on ``result.context`` rather than a list of discrete items, so callers
+    handle it separately.
+
+    For ``nodes``, ``observations``, and ``thread_summaries``, an item with a
+    name but no summary still yields a result (just the name) rather than
+    being dropped -- the same full name/summary fallback used by the Go and
+    TypeScript integrations.
+    """
+    texts: list[str] = []
+
+    if scope == "edges":
+        for edge in result.edges or []:
+            fact = getattr(edge, "fact", None)
+            if fact:
+                texts.append(fact)
+    elif scope == "nodes":
+        for node in result.nodes or []:
+            text = _name_summary_text(getattr(node, "name", None), getattr(node, "summary", None))
+            if text:
+                texts.append(text)
+    elif scope == "episodes":
+        for episode in result.episodes or []:
+            content = getattr(episode, "content", None)
+            if content:
+                texts.append(content)
+    elif scope == "observations":
+        for observation in result.observations or []:
+            text = _name_summary_text(
+                getattr(observation, "name", None), getattr(observation, "summary", None)
+            )
+            if text:
+                texts.append(text)
+    elif scope == "thread_summaries":
+        for thread_summary in result.thread_summaries or []:
+            text = _name_summary_text(
+                getattr(thread_summary, "name", None), getattr(thread_summary, "summary", None)
+            )
+            if text:
+                texts.append(text)
+
+    return texts
 
 
 class ZepGraphSearchTool(BaseTool):
@@ -287,38 +355,23 @@ class ZepGraphSearchTool(BaseTool):
             if user_id:
                 return str(user_id)
         try:
-            return tool_context._invocation_context.session.user_id  # type: ignore[union-attr]
+            return tool_context.user_id
         except AttributeError:
             return None
 
     @staticmethod
     def _format_results(result: Any, scope: str) -> str:
         """Format search results as readable text for the model."""
-        parts: list[str] = []
-
         if scope == "auto":
             # Auto scope returns a pre-formatted context string in result.context
             # rather than populating the individual edges/nodes/episodes lists.
             context: str | None = getattr(result, "context", None)
             if context and context.strip():
                 return context.strip()
-        elif scope == "edges" and result.edges:
-            for edge in result.edges:
-                if edge.fact:
-                    parts.append(f"- {edge.fact}")
-        elif scope == "nodes" and result.nodes:
-            for node in result.nodes:
-                name = getattr(node, "name", None) or "Entity"
-                summary = getattr(node, "summary", None)
-                if summary:
-                    parts.append(f"- {name}: {summary}")
-        elif scope == "episodes" and result.episodes:
-            for ep in result.episodes:
-                content = getattr(ep, "content", None)
-                if content:
-                    parts.append(f"- {content}")
-
-        if not parts:
             return "No results found."
 
-        return "\n".join(parts)
+        texts = scope_results_to_texts(result, scope)
+        if not texts:
+            return "No results found."
+
+        return "\n".join(f"- {text}" for text in texts)

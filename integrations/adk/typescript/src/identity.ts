@@ -13,8 +13,10 @@ import { ZepIdentityError } from "./errors.js";
 /**
  * Session-state keys read when resolving a Zep identity at runtime.
  *
- * Set these on the ADK session `state` to enrich the Zep user profile or to
- * override the IDs derived from the ADK session.
+ * Set these on the ADK session `state` to attribute persisted messages to
+ * the user or to override the IDs derived from the ADK session. The user's
+ * email on the Zep profile is a provisioning concern — pass it to
+ * `ensureUser`, not session state.
  */
 export const STATE_KEYS = {
   /** Overrides the Zep user ID (defaults to the ADK `userId`). */
@@ -25,16 +27,15 @@ export const STATE_KEYS = {
   firstName: "zep_first_name",
   /** The user's last name. */
   lastName: "zep_last_name",
-  /** The user's email address. */
-  email: "zep_email",
 } as const;
 
 /**
  * Explicit Zep identity, supplied at construction time.
  *
  * When `userId` / `threadId` are provided they take precedence over any
- * values resolved from the ADK session at runtime. `firstName`, `lastName`,
- * and `email` enrich the Zep user profile so the graph resolves identity.
+ * values resolved from the ADK session at runtime. `firstName` and
+ * `lastName` are attached as the author name on persisted messages so the
+ * graph resolves identity.
  */
 export interface ZepIdentityOptions {
   /** Zep user ID. Defaults to the ADK session `userId`. */
@@ -45,8 +46,6 @@ export interface ZepIdentityOptions {
   firstName?: string;
   /** User's last name. */
   lastName?: string;
-  /** User's email address. */
-  email?: string;
 }
 
 /** A fully resolved Zep identity for a single turn. */
@@ -55,7 +54,6 @@ export interface ResolvedIdentity {
   threadId: string;
   firstName?: string;
   lastName?: string;
-  email?: string;
   /** Display name used as the `name` on persisted user messages. */
   displayName?: string;
 }
@@ -100,7 +98,7 @@ function readStateString(
  *
  * - **userId**: explicit option → `zep_user_id` in state → ADK `userId`
  * - **threadId**: explicit option → `zep_thread_id` in state → ADK `sessionId`
- * - **firstName / lastName / email**: explicit option → matching state key
+ * - **firstName / lastName**: explicit option → matching state key
  *
  * @param context The ADK callback or tool context for this turn.
  * @param options Explicit identity overrides supplied at construction time.
@@ -136,7 +134,6 @@ export function resolveIdentity(
     options.firstName ?? readStateString(context, STATE_KEYS.firstName);
   const lastName =
     options.lastName ?? readStateString(context, STATE_KEYS.lastName);
-  const email = options.email ?? readStateString(context, STATE_KEYS.email);
 
   const displayName = [firstName, lastName]
     .filter((part): part is string => Boolean(part))
@@ -148,7 +145,6 @@ export function resolveIdentity(
     threadId,
     firstName,
     lastName,
-    email,
     displayName: displayName.length > 0 ? displayName : undefined,
   };
 }

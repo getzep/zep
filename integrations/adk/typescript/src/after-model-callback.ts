@@ -8,10 +8,10 @@
 
 import type { ZepClient, Zep } from "@getzep/zep-cloud";
 import type { Context, LlmResponse } from "@google/adk";
+import { isNotFoundError } from "./errors.js";
 import { extractText, resolveIdentity, type ZepIdentityOptions } from "./identity.js";
 import { truncateMessageContent } from "./limits.js";
 import { defaultLogger, type Logger } from "./logging.js";
-import { ZepResourceManager } from "./resources.js";
 
 /** Options for {@link createZepAfterModelCallback}. */
 export interface ZepAfterModelCallbackOptions extends ZepIdentityOptions {
@@ -24,12 +24,6 @@ export interface ZepAfterModelCallbackOptions extends ZepIdentityOptions {
   ignoreRoles?: Zep.RoleType[];
   /** Logger for Zep failures. Defaults to a `console`-backed logger. */
   logger?: Logger;
-  /**
-   * Shared resource manager. Pass the same instance used by the before-model
-   * callback so the two hooks share ensure-thread and dedup state instead of
-   * being split-brain. {@link createZepCallbacks} wires this automatically.
-   */
-  resources?: ZepResourceManager;
 }
 
 /**
@@ -48,9 +42,11 @@ export type ZepAfterModelCallback = (params: {
  * Intermediate responses that carry tool calls (the model's "thinking" turns)
  * are skipped, so only one clean assistant message per turn reaches Zep.
  *
- * The Zep thread must already exist — `createZepBeforeModelCallback` /
- * `ZepContextTool` create it on the user turn that precedes the model
- * response, so in normal use no extra setup is needed.
+ * This callback never creates the Zep user or thread. Provision them
+ * out-of-band before the first turn with `ensureUser()` / `ensureThread()`
+ * (see `src/provisioning.ts`) — e.g. during account/session onboarding. If
+ * the user/thread do not exist, persistence for that turn is skipped and a
+ * warning is logged naming the fix.
  *
  * @param zep An initialised `ZepClient`. The caller owns its lifecycle.
  * @param options Identity overrides and behaviour flags.
@@ -63,7 +59,6 @@ export function createZepAfterModelCallback(
 ): ZepAfterModelCallback {
   const logger = options.logger ?? defaultLogger;
   const assistantName = options.assistantName ?? "Assistant";
-  const resources = options.resources ?? new ZepResourceManager(zep, logger);
 
   return async ({ context, response }) => {
     // Skip partial streaming chunks and intermediate tool-call turns.
@@ -93,13 +88,6 @@ export function createZepAfterModelCallback(
       return undefined;
     }
 
-    // Ensure the user/thread exist. Normally the before-model hook already
-    // created them, but sharing the manager keeps this a cheap cache hit and
-    // also covers an after-only setup.
-    if (!(await resources.ensure(identity))) {
-      return undefined;
-    }
-
     const content = truncateMessageContent(text, logger, "assistant");
 
     try {
@@ -111,7 +99,15 @@ export function createZepAfterModelCallback(
         `Persisted assistant response to Zep (thread=${identity.threadId}, ${content.length} chars)`,
       );
     } catch (error) {
-      logger.warn("Failed to persist assistant response to Zep", error);
+      if (isNotFoundError(error)) {
+        logger.warn(
+          `Zep user/thread not found (thread=${identity.threadId}) — ` +
+            "call ensureUser()/ensureThread() before the first turn",
+          error,
+        );
+      } else {
+        logger.warn("Failed to persist assistant response to Zep", error);
+      }
     }
 
     return undefined;

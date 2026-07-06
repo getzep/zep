@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING
 from zep_cloud import Message
 from zep_cloud.client import AsyncZep
 
+from .limits import truncate_message_content
+
 if TYPE_CHECKING:
     from google.adk.agents.callback_context import CallbackContext
     from google.adk.models import LlmResponse
@@ -79,14 +81,14 @@ def create_after_model_callback(
         if not text_parts:
             return None
 
-        full_text = " ".join(text_parts)
+        full_text = truncate_message_content(" ".join(text_parts), label="assistant")
 
         # Resolve thread_id from session state
         state = callback_context.state
         thread_id = state.get("zep_thread_id") if state is not None else None
         if not thread_id:
             try:
-                thread_id = callback_context._invocation_context.session.id
+                thread_id = callback_context.session.id
             except AttributeError:
                 logger.warning("Cannot resolve Zep thread_id — skipping persist")
                 return None

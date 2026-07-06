@@ -10,9 +10,9 @@
 import type { ZepClient, Zep } from "@getzep/zep-cloud";
 import type { Context, LlmRequest, LlmResponse } from "@google/adk";
 import type { ZepIdentityOptions } from "./identity.js";
-import { persistAndInject } from "./inject.js";
+import { persistAndInject, type ContextBuilder } from "./inject.js";
 import { defaultLogger, type Logger } from "./logging.js";
-import { ZepResourceManager } from "./resources.js";
+import { TurnDedup } from "./resources.js";
 
 /** Options for {@link createZepBeforeModelCallback}. */
 export interface ZepBeforeModelCallbackOptions extends ZepIdentityOptions {
@@ -25,11 +25,29 @@ export interface ZepBeforeModelCallbackOptions extends ZepIdentityOptions {
   /** Logger for Zep failures. Defaults to a `console`-backed logger. */
   logger?: Logger;
   /**
-   * Shared resource manager. Pass the same instance used by the after-model
-   * callback so the two hooks share ensure-thread and dedup state instead of
-   * being split-brain. {@link createZepCallbacks} wires this automatically.
+   * Same-turn dedup guard. Prevents this callback from re-persisting the same
+   * user message when ADK re-invokes `beforeModelCallback` multiple times
+   * within one turn (tool-use loops). The after-model callback has no dedup
+   * guard of its own — it doesn't need one, since it only ever sees one final
+   * (non-partial, non-function-call) response per turn. Defaults to a
+   * callback-local `TurnDedup` instance if omitted. {@link createZepCallbacks}
+   * creates and wires one automatically.
    */
-  resources?: ZepResourceManager;
+  dedup?: TurnDedup;
+  /**
+   * An optional async function that builds the context block to inject,
+   * instead of the default `thread.addMessages(returnContext: true)`
+   * round-trip. When set, persistence and the builder run concurrently. See
+   * `persistAndInject` in `src/inject.ts` for the full error-isolation
+   * contract.
+   */
+  contextBuilder?: ContextBuilder;
+  /**
+   * Template used to wrap retrieved context before injecting it into the
+   * LLM's system instructions. Must contain a literal `{context}`
+   * placeholder. Defaults to `DEFAULT_CONTEXT_TEMPLATE`.
+   */
+  contextTemplate?: string;
 }
 
 /**
@@ -57,9 +75,11 @@ export type ZepBeforeModelCallback = (params: {
  * ADK session's `userId` / `sessionId`. Omitting the IDs lets one callback
  * serve every user in a shared-agent deployment.
  *
- * The Zep user and thread are created lazily on first use. Pre-create the
- * thread (keyed on the ADK `sessionId`) out-of-band if you need it to exist
- * before the first turn.
+ * This callback never creates the Zep user or thread. Provision them
+ * out-of-band before the first turn with `ensureUser()` / `ensureThread()`
+ * (see `src/provisioning.ts`) — e.g. during account/session onboarding. If
+ * the user/thread do not exist, persistence for that turn is skipped and a
+ * warning is logged.
  *
  * @example
  * ```ts
@@ -92,12 +112,12 @@ export function createZepBeforeModelCallback(
   options: ZepBeforeModelCallbackOptions = {},
 ): ZepBeforeModelCallback {
   const logger = options.logger ?? defaultLogger;
-  const resources = options.resources ?? new ZepResourceManager(zep, logger);
+  const dedup = options.dedup ?? new TurnDedup();
 
   return async ({ context, request }) => {
     await persistAndInject({
       zep,
-      resources,
+      dedup,
       logger,
       context,
       llmRequest: request,
