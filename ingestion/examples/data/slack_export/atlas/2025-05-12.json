@@ -1,0 +1,45 @@
+[
+  {
+    "type": "message",
+    "user": "U002",
+    "text": "Gripper torque update: with the production payload profile we're peaking at 39 Nm, and the Voltaic VX-9 is rated 42 Nm sustained. That's a thinner margin than I'd like.",
+    "ts": "1747065600.000100",
+    "thread_ts": "1747065600.000100",
+    "reply_count": 3
+  },
+  {
+    "type": "message",
+    "user": "U001",
+    "text": "What's driving the peak — the heavy end of the small-parts range?",
+    "ts": "1747066200.000110",
+    "thread_ts": "1747065600.000100"
+  },
+  {
+    "type": "message",
+    "user": "U002",
+    "text": "Yes, the 2kg+ items at full wrist extension. Options: cap the payload spec for the pilot, or ask Carol Diaz whether Voltaic has headroom on the VX-9 torque rating. I'll email her today.",
+    "ts": "1747066800.000120",
+    "thread_ts": "1747065600.000100"
+  },
+  {
+    "type": "message",
+    "user": "U001",
+    "text": "Do both — cap it for the Northwind pilot, and get the Voltaic answer in writing before we commit the production spec.",
+    "ts": "1747067400.000130",
+    "thread_ts": "1747065600.000100"
+  },
+  {
+    "type": "message",
+    "subtype": "bot_message",
+    "bot_id": "B001",
+    "username": "CI Bot",
+    "text": "atlas-firmware build #482 passed",
+    "ts": "1747068000.000140"
+  },
+  {
+    "type": "message",
+    "user": "U002",
+    "text": "Milestone note: gripper firmware 0.9 is feature-complete. Remaining Atlas hardware risk is the torque margin thread above.",
+    "ts": "1747070000.000150"
+  }
+]

@@ -1,0 +1,37 @@
+[
+  {
+    "type": "message",
+    "subtype": "channel_join",
+    "user": "U003",
+    "text": "<@U003> has joined the channel",
+    "ts": "1747152000.000200"
+  },
+  {
+    "type": "message",
+    "user": "U003",
+    "text": "Catching up here — I keep seeing MR-42 in older design docs. Is that a separate workstream from Atlas?",
+    "ts": "1747152600.000210",
+    "thread_ts": "1747152600.000210",
+    "reply_count": 2
+  },
+  {
+    "type": "message",
+    "user": "U002",
+    "text": "Same thing — MR-42 was the internal code name before the program was renamed. Atlas is the only name now, per <@U001>'s kickoff note.",
+    "ts": "1747153200.000220",
+    "thread_ts": "1747152600.000210"
+  },
+  {
+    "type": "message",
+    "user": "U003",
+    "text": "Got it. I'll have the old docs retitled so nobody else trips on it.",
+    "ts": "1747153800.000230",
+    "thread_ts": "1747152600.000210"
+  },
+  {
+    "type": "message",
+    "user": "U001",
+    "text": "Staffing reminder: the two engineers borrowed from Beacon go back at the end of May. Plan the Atlas sprint boundaries around that.",
+    "ts": "1747156000.000240"
+  }
+]

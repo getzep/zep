@@ -1,0 +1,57 @@
+{
+  "exported_at": "2025-06-30",
+  "employees": [
+    {
+      "name": "Alice Chen",
+      "title": "VP Engineering",
+      "company": "Meridian Robotics",
+      "office": "Portland",
+      "since": "2025-03-01"
+    },
+    {
+      "name": "Bob Rivera",
+      "title": "Engineering Lead",
+      "company": "Meridian Robotics",
+      "office": "Portland",
+      "since": "2025-03-01",
+      "responsible_for": "Atlas"
+    },
+    {
+      "name": "Priya Sharma",
+      "title": "Chief Technology Officer",
+      "company": "Meridian Robotics",
+      "office": "Portland",
+      "since": "2025-03-01",
+      "responsible_for": "FleetView"
+    },
+    {
+      "name": "Carol Diaz",
+      "title": "Account Executive",
+      "company": "Voltaic Components",
+      "office": "Fremont",
+      "since": "2025-03-01"
+    },
+    {
+      "name": "Dana Whitfield",
+      "title": "Operations Manager",
+      "company": "Northwind Logistics",
+      "office": "Reno",
+      "since": "2025-03-01"
+    }
+  ],
+  "partners": [
+    {
+      "company": "Voltaic Components",
+      "hq": "Fremont",
+      "relationship": "supplier",
+      "supplies_to": ["Meridian Robotics", "Atlas"],
+      "since": "2025-04-15"
+    },
+    {
+      "company": "Northwind Logistics",
+      "hq": "Reno",
+      "relationship": "customer",
+      "since": "2025-05-06"
+    }
+  ]
+}

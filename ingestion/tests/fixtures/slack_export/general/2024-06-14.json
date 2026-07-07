@@ -1,0 +1,38 @@
+[
+  {
+    "type": "message",
+    "user": "U001",
+    "text": "Hello world",
+    "ts": "1718355600.000100"
+  },
+  {
+    "type": "message",
+    "subtype": "channel_join",
+    "user": "U003",
+    "text": "<@U003> has joined the channel",
+    "ts": "1718355700.000110"
+  },
+  {
+    "type": "message",
+    "subtype": "bot_message",
+    "bot_id": "B001",
+    "username": "CI Bot",
+    "text": "Build passed",
+    "ts": "1718355800.000120"
+  },
+  {
+    "type": "message",
+    "user": "U002",
+    "text": "Should we deprioritize MR-42?",
+    "ts": "1718356000.000200",
+    "thread_ts": "1718356000.000200",
+    "reply_count": 2
+  },
+  {
+    "type": "message",
+    "user": "U001",
+    "text": "yes, let's do that",
+    "ts": "1718356100.000300",
+    "thread_ts": "1718356000.000200"
+  }
+]

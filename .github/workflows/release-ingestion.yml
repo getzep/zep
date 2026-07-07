@@ -1,0 +1,80 @@
+# Releases the zep-ingest package (ingestion/) to PyPI.
+# Tag scheme: zep-ingest-v<version>  (e.g. zep-ingest-v0.1.0)
+# Distinct from the integrations tag scheme (zep-<framework>-<language>-v<version>).
+
+name: Release Ingestion Package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # Releases with other tag schemes (integrations, Go modules) also fire the
+    # `release: published` event; skip them cleanly instead of failing.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'zep-ingest-v')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: ingestion
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+        with:
+          version: "latest"
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv sync --extra dev
+      - name: Run checks
+        run: |
+          uv run ruff check .
+          uv run mypy src/
+          uv run pytest tests/ -v
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+        with:
+          version: "latest"
+      - name: Set up Python
+        run: uv python install 3.11
+      - name: Build package
+        working-directory: ingestion
+        run: uv build
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ingestion-dist
+          path: ingestion/dist/
+
+  publish-pypi:
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # required for PyPI trusted publishing (OIDC)
+    environment:
+      name: release
+      url: https://pypi.org/p/zep-ingest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ingestion-dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        with:
+          packages-dir: dist/

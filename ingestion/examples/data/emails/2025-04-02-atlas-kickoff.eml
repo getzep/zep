@@ -1,0 +1,32 @@
+From: Alice Chen <alice.chen@meridianrobotics.example>
+To: Bob Rivera <bob.rivera@meridianrobotics.example>
+Subject: Atlas kickoff - you're the DRI
+Date: Wed, 02 Apr 2025 09:15:00 -0700
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Bob,
+
+Following yesterday's leadership review: Atlas is confirmed as a P0 program
+for the year, and you are the DRI. Priya and I want the next-generation
+picking arm ready for customer pilots by early Q3.
+
+A few things to lock in this week:
+
+1. The old internal code name MR-42 is retired - use "Atlas" everywhere,
+   including Jira and the design docs. Half the org still says MR-42 and it
+   is confusing new hires.
+2. Gripper torque is the open hardware risk. Carol Diaz at Voltaic
+   Components is expecting your call about the servo actuator specs; their
+   Fremont plant needs eight weeks of lead time.
+3. Staffing: you can pull two engineers from the Beacon telemetry migration
+   until the end of May. Beacon slips a sprint; that trade is approved.
+
+I'll be at Portland HQ all week if you want to walk through the milestone
+plan in person. Weekly Atlas status goes to me and Priya starting Monday.
+
+Congrats - this is the most important thing Meridian Robotics ships this
+year.
+
+Alice Chen
+VP Engineering, Meridian Robotics

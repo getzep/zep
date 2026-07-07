@@ -1,0 +1,59 @@
+name: Test Ingestion Package
+
+on:
+  pull_request:
+    paths:
+      - 'ingestion/**'
+  push:
+    branches: [main]
+    paths:
+      - 'ingestion/**'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: ingestion
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run linting
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Run type checking
+        run: uv run mypy src/
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --cov=zep_ingest --cov-report=xml
+        env:
+          ZEP_API_KEY: ${{ secrets.ZEP_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+        with:
+          file: ingestion/coverage.xml
+          flags: ingestion
+          name: ingestion-coverage

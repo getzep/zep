@@ -1,0 +1,29 @@
+[
+  {
+    "type": "message",
+    "user": "U003",
+    "text": "Actually MR-42 stays active",
+    "ts": "1718442000.000400",
+    "thread_ts": "1718356000.000200"
+  },
+  {
+    "type": "message",
+    "subtype": "thread_broadcast",
+    "user": "U003",
+    "text": "Actually MR-42 stays active",
+    "ts": "1718442000.000400",
+    "thread_ts": "1718356000.000200"
+  },
+  {
+    "type": "message",
+    "user": "U002",
+    "text": "<@U001> and <@U999> check <#C002|random> <!here> &amp; see <https://example.com|the doc> or <https://plain.example.com>",
+    "ts": "1718442500.000500"
+  },
+  {
+    "type": "message",
+    "user": "U001",
+    "text": "",
+    "ts": "1718442600.000600"
+  }
+]
