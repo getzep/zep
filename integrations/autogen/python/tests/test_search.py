@@ -155,7 +155,6 @@ class TestPinOrExposeSchema:
             "auto",
         }
 
-
     @pytest.mark.asyncio
     async def test_search_tool_query_only_omits_unset_none_default_params(self) -> None:
         """Calling with only ``query`` must not forward ``mmr_lambda``/

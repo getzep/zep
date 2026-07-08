@@ -349,9 +349,7 @@ class ZepUserMemory(Memory):
 
             # Add data to user's graph
             truncated_data = truncate_graph_data(str(content.content))
-            await self._client.graph.add(
-                user_id=self._user_id, type=data_type, data=truncated_data
-            )
+            await self._client.graph.add(user_id=self._user_id, type=data_type, data=truncated_data)
 
         else:
             raise ValueError(
