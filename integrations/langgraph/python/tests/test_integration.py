@@ -233,8 +233,13 @@ async def test_integration_full_lifecycle() -> None:
         await zep.thread.create(thread_id=THREAD_1, user_id=USER_ID)
 
         chat1 = build_agent(zep, THREAD_1)
-        await chat1("My name is IntegTest. I work at Acme Corp as a data scientist.")
-        await chat1("I live in Portland, Oregon and I love hiking and photography.")
+        # One combined turn on purpose: each persist_messages call creates one
+        # Zep extraction episode, and a user's episodes process serially, so
+        # extra turns multiply the live-test ingestion wait.
+        await chat1(
+            "My name is IntegTest. I work at Acme Corp as a data scientist. "
+            "I live in Portland, Oregon and I love hiking and photography."
+        )
 
         user = await zep.user.get(user_id=USER_ID)
         assert user.first_name == FIRST_NAME

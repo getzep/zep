@@ -100,23 +100,21 @@ def wait_for_episodes_processed(
 
 
 def seed_facts(storage: ZepUserStorage) -> None:
-    """Persist a seeded conversation through the integration's storage adapter."""
+    """Persist a seeded conversation through the integration's storage adapter.
+
+    Kept to two ``save()`` calls on purpose: each call creates one Zep
+    extraction episode, and episodes for a user are processed serially, so
+    extra calls multiply the live-test ingestion wait.
+    """
     storage.save(
-        "My name is IntegTest. I work at Acme Corp as a data scientist.",
-        metadata={"type": "message", "role": "user", "name": FIRST_NAME},
-    )
-    storage.save(
-        "Nice to meet you, IntegTest -- noted you're a data scientist at Acme Corp.",
-        metadata={"type": "message", "role": "assistant", "name": "Assistant"},
-    )
-    storage.save(
+        "My name is IntegTest. I work at Acme Corp as a data scientist. "
         "I live in Portland, Oregon and I love hiking and photography.",
         metadata={"type": "message", "role": "user", "name": FIRST_NAME},
     )
     storage.save(
-        "IntegTest is a data scientist at Acme Corp, lives in Portland, Oregon, "
-        "and enjoys hiking and photography.",
-        metadata={"type": "text"},
+        "Nice to meet you, IntegTest -- noted you're a data scientist at Acme "
+        "Corp in Portland who enjoys hiking and photography.",
+        metadata={"type": "message", "role": "assistant", "name": "Assistant"},
     )
 
 
