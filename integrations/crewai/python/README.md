@@ -488,7 +488,7 @@ mypy src/zep_crewai
 
 2. **Tool Usage**
    - Bind tools to specific users or graphs at creation
-   - Use search scope "all" sparingly (more expensive)
+   - Pin or hide search parameters the model should not control
    - Add data with appropriate types for better organization
 
 3. **Memory Management**
@@ -497,7 +497,12 @@ mypy src/zep_crewai
    - Combine storage types for comprehensive memory
 
 4. **Performance**
-   - Allow 10-20 seconds for data processing after additions
+   - Zep ingestion is asynchronous: freshly saved facts become searchable only
+     after server-side extraction completes. Because CrewAI storage adapters
+     `save()` one item per call, each call produces its own extraction episode
+     and single-message episodes can sit in Zep's coalescing window for several
+     minutes before facts appear — design for eventual availability rather
+     than read-after-write
    - Use parallel search for better performance
    - Limit search results appropriately
 

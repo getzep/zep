@@ -77,7 +77,7 @@ def check(description: str, condition: bool, detail: str = "") -> bool:
 def wait_for_episodes_processed(
     zep: Zep,
     user_id: str,
-    timeout_seconds: int = 300,
+    timeout_seconds: int = 600,
     poll_interval: float = 3.0,
 ) -> None:
     """Poll Zep episodes until all are processed or the timeout is reached (sync)."""
@@ -157,7 +157,7 @@ def main() -> None:
 
         # -- Wait for graph ingestion ----------------------------------------
         print("\n[Step 4] Waiting for Zep to process episodes...")
-        wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
+        wait_for_episodes_processed(zep, USER_ID, timeout_seconds=600)
 
         # -- Recall via the integration's search (thread-independent). --------
         print("\n[Step 5] Recall via ZepUserStorage.search...")
@@ -239,7 +239,7 @@ def test_integration_full_lifecycle() -> None:
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)
 
-        wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
+        wait_for_episodes_processed(zep, USER_ID, timeout_seconds=600)
 
         storage2 = ZepUserStorage(client=zep, user_id=USER_ID, thread_id=THREAD_2)
         results = storage2.search("What is IntegTest's job, location, and hobbies?", limit=10)
