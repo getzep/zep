@@ -26,29 +26,29 @@ help:
 # Install dependencies
 install:
 	@echo "Installing dependencies..."
-	pip install -e .[dev]
+	uv sync --extra dev
 
 # Format code
 format:
 	@echo "Formatting code with ruff..."
-	ruff format src/ tests/ examples/
-	ruff check --fix src/ tests/ examples/
+	uv run ruff format src/ tests/ examples/
+	uv run ruff check --fix src/ tests/ examples/
 
 # Lint code
 lint:
 	@echo "Running linting checks..."
-	ruff check src/ tests/ examples/
+	uv run ruff check src/ tests/ examples/
 
 # Type checking
 type-check:
 	@echo "Running MyPy type checking..."
-	mypy src/zep_livekit/
+	uv run mypy src/zep_livekit/
 
 # Run tests
 test:
 	@echo "Running test suite..."
 	@if [ -d tests/ ] && [ "$$(find tests/ -name '*.py' -type f | wc -l)" -gt 0 ]; then \
-		pytest tests/ -v; \
+		uv run pytest tests/ -v; \
 	else \
 		echo "No tests found, skipping test execution."; \
 	fi
@@ -61,14 +61,14 @@ pre-commit: format lint type-check test
 ci:
 	@echo "Running CI checks..."
 	@echo "Checking code formatting..."
-	ruff format --check src/ tests/ examples/
+	uv run ruff format --check src/ tests/ examples/
 	@echo "Running linting..."
-	ruff check src/ tests/ examples/
+	uv run ruff check src/ tests/ examples/
 	@echo "Running type checking..."
-	mypy src/zep_livekit/
+	uv run mypy src/zep_livekit/
 	@echo "Running tests..."
 	@if [ -d tests/ ] && [ "$$(find tests/ -name '*.py' -type f | wc -l)" -gt 0 ]; then \
-		pytest tests/ -v --cov=src/zep_livekit --cov-report=term-missing; \
+		uv run pytest tests/ -v --cov=src/zep_livekit --cov-report=term-missing; \
 	else \
 		echo "No tests found, skipping test execution."; \
 	fi

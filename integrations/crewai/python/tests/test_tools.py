@@ -1,5 +1,11 @@
 """
 Tests for Zep CrewAI Tools.
+
+``ZepSearchTool``/``create_search_tool`` follow the pin-or-expose pattern
+(BREAKING in this version -- see the CHANGELOG): every ``graph.search``
+parameter (``scope``, ``reranker``, ``limit``, ``mmr_lambda``,
+``center_node_uuid``) is exposed in the tool's dynamically-built
+``args_schema`` by default and can be pinned or hidden at construction time.
 """
 
 from unittest.mock import MagicMock
@@ -12,6 +18,17 @@ from zep_crewai import (
     create_add_data_tool,
     create_search_tool,
 )
+
+
+def _make_mock_graph_results(edges=None, nodes=None, episodes=None):
+    r = MagicMock()
+    r.edges = edges or []
+    r.nodes = nodes or []
+    r.episodes = episodes or []
+    r.observations = []
+    r.thread_summaries = []
+    r.context = None
+    return r
 
 
 class TestZepSearchTool:
@@ -62,7 +79,7 @@ class TestZepSearchTool:
     def test_search_graph_edges(self):
         """Test searching graph for edges."""
         from zep_cloud.client import Zep
-        from zep_cloud.types import EntityEdge, GraphSearchResults
+        from zep_cloud.types import EntityEdge
 
         mock_client = MagicMock(spec=Zep)
         mock_client.graph = MagicMock()
@@ -70,35 +87,28 @@ class TestZepSearchTool:
         # Mock edge result
         mock_edge = MagicMock(spec=EntityEdge)
         mock_edge.fact = "Python is great for AI"
-        mock_edge.name = "python_fact"
-        mock_edge.created_at = "2024-01-01"
 
-        mock_results = MagicMock(spec=GraphSearchResults)
-        mock_results.edges = [mock_edge]
-        mock_results.nodes = []
-        mock_results.episodes = []
-
+        mock_results = _make_mock_graph_results(edges=[mock_edge])
         mock_client.graph.search.return_value = mock_results
 
         tool = ZepSearchTool(client=mock_client, graph_id="test-graph")
 
-        # Run search
-        result = tool._run("Python", limit=5, scope="edges")
+        # Run search (direct _run call: params not supplied are omitted --
+        # CrewAI's run() fills args_schema defaults before reaching _run)
+        result = tool._run(query="Python", limit=5, scope="edges")
 
         # Verify search was called correctly
         mock_client.graph.search.assert_called_once_with(
-            graph_id="test-graph", query="Python", limit=5, scope="edges"
+            query="Python", graph_id="test-graph", scope="edges", limit=5
         )
 
         # Check result formatting
-        assert "Found 1 relevant memories" in result
         assert "Python is great for AI" in result
-        assert "[FACT]" in result
 
     def test_search_user_nodes(self):
         """Test searching user graph for nodes."""
         from zep_cloud.client import Zep
-        from zep_cloud.types import EntityNode, GraphSearchResults
+        from zep_cloud.types import EntityNode
 
         mock_client = MagicMock(spec=Zep)
         mock_client.graph = MagicMock()
@@ -107,113 +117,53 @@ class TestZepSearchTool:
         mock_node = MagicMock(spec=EntityNode)
         mock_node.name = "UserPreference"
         mock_node.summary = "User's programming preferences"
-        mock_node.created_at = "2024-01-01"
 
-        mock_results = MagicMock(spec=GraphSearchResults)
-        mock_results.edges = []
-        mock_results.nodes = [mock_node]
-        mock_results.episodes = []
-
+        mock_results = _make_mock_graph_results(nodes=[mock_node])
         mock_client.graph.search.return_value = mock_results
 
         tool = ZepSearchTool(client=mock_client, user_id="test-user")
 
-        # Run search
-        result = tool._run("preferences", limit=3, scope="nodes")
+        # Run search (direct _run call: params not supplied are omitted --
+        # CrewAI's run() fills args_schema defaults before reaching _run)
+        result = tool._run(query="preferences", limit=3, scope="nodes")
 
         # Verify search was called correctly
         mock_client.graph.search.assert_called_once_with(
-            user_id="test-user", query="preferences", limit=3, scope="nodes"
+            query="preferences", user_id="test-user", scope="nodes", limit=3
         )
 
         # Check result formatting
-        assert "Found 1 relevant memories" in result
         assert "UserPreference" in result
-        assert "[ENTITY]" in result
-
-    def test_search_all_scopes(self):
-        """Test searching all scopes at once."""
-        from zep_cloud.client import Zep
-        from zep_cloud.types import EntityEdge, EntityNode, Episode, GraphSearchResults
-
-        mock_client = MagicMock(spec=Zep)
-        mock_client.graph = MagicMock()
-
-        # Mock different result types
-        mock_edge = MagicMock(spec=EntityEdge)
-        mock_edge.fact = "Fact content"
-        mock_edge.name = "fact"
-        mock_edge.created_at = None
-
-        mock_node = MagicMock(spec=EntityNode)
-        mock_node.name = "Entity"
-        mock_node.summary = "Entity description"
-        mock_node.created_at = None
-
-        mock_episode = MagicMock(spec=Episode)
-        mock_episode.content = "Episode content"
-        mock_episode.source = "chat"
-        mock_episode.role = "user"
-        mock_episode.created_at = None
-
-        # Return different results for each scope
-        def mock_search(*args, **kwargs):
-            scope = kwargs.get("scope", "edges")
-            mock_results = MagicMock(spec=GraphSearchResults)
-
-            if scope == "edges":
-                mock_results.edges = [mock_edge]
-                mock_results.nodes = []
-                mock_results.episodes = []
-            elif scope == "nodes":
-                mock_results.edges = []
-                mock_results.nodes = [mock_node]
-                mock_results.episodes = []
-            elif scope == "episodes":
-                mock_results.edges = []
-                mock_results.nodes = []
-                mock_results.episodes = [mock_episode]
-
-            return mock_results
-
-        mock_client.graph.search.side_effect = mock_search
-
-        tool = ZepSearchTool(client=mock_client, graph_id="test-graph")
-
-        # Run search with scope="all"
-        result = tool._run("test", limit=5, scope="all")
-
-        # Should have called search 3 times (edges, nodes, episodes)
-        assert mock_client.graph.search.call_count == 3
-
-        # Check all result types are in output
-        assert "Found 3 relevant memories" in result
-        assert "Fact content" in result
-        assert "Entity: Entity description" in result
-        assert "Episode content" in result
 
     def test_search_no_results(self):
         """Test search with no results."""
         from zep_cloud.client import Zep
-        from zep_cloud.types import GraphSearchResults
 
         mock_client = MagicMock(spec=Zep)
         mock_client.graph = MagicMock()
-
-        mock_results = MagicMock(spec=GraphSearchResults)
-        mock_results.edges = []
-        mock_results.nodes = []
-        mock_results.episodes = []
-
-        mock_client.graph.search.return_value = mock_results
+        mock_client.graph.search.return_value = _make_mock_graph_results()
 
         tool = ZepSearchTool(client=mock_client, graph_id="test-graph")
 
         # Run search
-        result = tool._run("nonexistent", limit=5)
+        result = tool._run(query="nonexistent", limit=5)
 
         # Should return no results message
-        assert "No results found for query: 'nonexistent'" in result
+        assert "No results found." in result
+
+    def test_search_empty_query_is_error(self):
+        """An empty query must return an error string without calling Zep."""
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+
+        tool = ZepSearchTool(client=mock_client, graph_id="test-graph")
+
+        result = tool._run(query="   ")
+
+        assert "Error" in result
+        mock_client.graph.search.assert_not_called()
 
     def test_search_error_handling(self):
         """Test error handling during search."""
@@ -226,10 +176,178 @@ class TestZepSearchTool:
         tool = ZepSearchTool(client=mock_client, graph_id="test-graph")
 
         # Run search
-        result = tool._run("test", limit=5)
+        result = tool._run(query="test", limit=5)
 
         # Should return error message
         assert "Error searching Zep memory: API error" in result
+
+
+class TestZepSearchToolPinOrExpose:
+    """Pin-or-expose contract tests (BREAKING change)."""
+
+    def test_search_tool_exposes_params_by_default(self):
+        """Every graph.search parameter is exposed in args_schema by default."""
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        tool = ZepSearchTool(client=mock_client, user_id="u1")
+
+        fields = tool.args_schema.model_fields
+        for param_name in ("query", "scope", "reranker", "limit", "mmr_lambda", "center_node_uuid"):
+            assert param_name in fields, f"{param_name} should be exposed by default"
+
+    def test_search_tool_six_scopes(self):
+        """The scope field's Literal type carries all six documented values."""
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        tool = ZepSearchTool(client=mock_client, user_id="u1")
+
+        scope_annotation = tool.args_schema.model_fields["scope"].annotation
+        assert set(scope_annotation.__args__) == {
+            "edges",
+            "nodes",
+            "episodes",
+            "observations",
+            "thread_summaries",
+            "auto",
+        }
+
+    def test_search_tool_pinned_params_hidden_and_sent(self):
+        """A pinned param disappears from args_schema but is always sent."""
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(
+            client=mock_client, user_id="u1", pinned_params={"scope": "nodes", "limit": 3}
+        )
+
+        assert "scope" not in tool.args_schema.model_fields
+        assert "limit" not in tool.args_schema.model_fields
+
+        tool._run(query="hello")
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["scope"] == "nodes"
+        assert call_kwargs["limit"] == 3
+
+    def test_search_tool_hidden_params_omitted_from_sdk_call(self):
+        """A hidden (not pinned) param disappears from args_schema and is
+        never sent -- Zep's own default applies."""
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(client=mock_client, user_id="u1", hidden_params={"reranker"})
+
+        assert "reranker" not in tool.args_schema.model_fields
+
+        tool._run(query="hello")
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert "reranker" not in call_kwargs
+
+    def test_search_tool_query_only_omits_unset_none_default_params(self):
+        """mmr_lambda / center_node_uuid default to None; when unset by the
+        caller they must be OMITTED from the graph.search call, never sent
+        as explicit None."""
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(client=mock_client, user_id="u1")
+
+        tool._run(query="hello")
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert "mmr_lambda" not in call_kwargs
+        assert "center_node_uuid" not in call_kwargs
+
+    def test_search_tool_legacy_args_pin(self):
+        """The legacy scope=/reranker=/limit= constructor args still pin
+        (and thus hide) their parameter."""
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(client=mock_client, user_id="u1", scope="nodes", limit=7)
+
+        assert "scope" not in tool.args_schema.model_fields
+        assert "limit" not in tool.args_schema.model_fields
+
+        tool._run(query="hello")
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["scope"] == "nodes"
+        assert call_kwargs["limit"] == 7
+
+    def test_search_tool_unknown_pinned_param_raises(self):
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        with pytest.raises(ValueError, match="Unknown pinned"):
+            ZepSearchTool(client=mock_client, user_id="u1", pinned_params={"bogus": "x"})
+
+    def test_search_tool_unknown_hidden_param_raises(self):
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        with pytest.raises(ValueError, match="Unknown hidden"):
+            ZepSearchTool(client=mock_client, user_id="u1", hidden_params={"bogus"})
+
+    def test_search_tool_constructor_only_search_filters(self):
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(
+            client=mock_client, user_id="u1", search_filters={"node_labels": ["Person"]}
+        )
+        assert "search_filters" not in tool.args_schema.model_fields
+
+        tool._run(query="hello")
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["search_filters"] == {"node_labels": ["Person"]}
+
+    def test_search_tool_bfs_origin_node_uuids_constructor_only(self):
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(client=mock_client, user_id="u1", bfs_origin_node_uuids=["uuid-1"])
+        assert "bfs_origin_node_uuids" not in tool.args_schema.model_fields
+
+        tool._run(query="hello")
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["bfs_origin_node_uuids"] == ["uuid-1"]
+
+    def test_search_tool_query_truncated_to_400_chars(self):
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(client=mock_client, user_id="u1")
+        tool._run(query="x" * 500)
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert len(call_kwargs["query"]) == 400
 
 
 class TestZepAddDataTool:

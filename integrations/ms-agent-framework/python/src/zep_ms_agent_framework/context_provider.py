@@ -28,8 +28,10 @@ rather than crashing it.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from agent_framework import ContextProvider
@@ -37,6 +39,10 @@ from zep_cloud import Message as ZepMessage
 from zep_cloud.client import AsyncZep
 
 from ._text import truncate_message_content
+from .provisioning import UserSetupHook
+from .provisioning import ensure_thread as _ensure_thread
+from .provisioning import ensure_user as _ensure_user
+from .search import create_zep_search_tool
 
 if TYPE_CHECKING:
     from agent_framework import (
@@ -46,17 +52,89 @@ if TYPE_CHECKING:
         SupportsAgentRun,
     )
 
+    from .search import ZepSearchTool
+
 logger = logging.getLogger(__name__)
 
 #: Default ``source_id`` used to attribute this provider's contributions in the
 #: Agent Framework context pipeline.
 DEFAULT_SOURCE_ID = "zep"
 
-#: Type alias for a user-setup hook that runs once after a Zep user is created.
+#: Default template used to wrap retrieved Zep context before injecting it
+#: into the agent's instructions.  Rendered via plain string replacement
+#: (``template.replace("{context}", context_text)``), never ``str.format`` --
+#: so context text or a custom template containing ``{``/``}``/``%`` is
+#: always safe to inject.
 #:
-#: Receives the Zep client and the newly created user ID.  Use this to configure
-#: per-user ontology, custom instructions, or user summary instructions.
-UserSetupHook = Callable[[AsyncZep, str], Awaitable[None]]
+#: This exact string is canonical across zep-adk's Python, Go, and
+#: TypeScript implementations -- keep them in sync.
+DEFAULT_CONTEXT_TEMPLATE = (
+    "The following context is retrieved from Zep, the agent's long-term memory. "
+    "It contains relevant facts, entities, and prior knowledge about the user. "
+    "Use it to inform your responses.\n\n"
+    "<ZEP_CONTEXT>\n"
+    "{context}\n"
+    "</ZEP_CONTEXT>"
+)
+
+
+@dataclass(frozen=True)
+class ContextInput:
+    """Input handed to a custom context builder.
+
+    Bundling the builder's inputs into a single frozen dataclass (rather than
+    positional arguments) lets us add fields later without breaking existing
+    builders.
+
+    Attributes:
+        zep: The ``AsyncZep`` client in use by the provider.
+        user_id: The Zep user ID this provider is scoped to.
+        thread_id: The Zep thread ID this provider records the conversation in.
+        user_message: The user's message text for this turn.
+        session_context: The Agent Framework ``SessionContext`` for this turn
+            (add instructions/tools/messages here if the builder needs to).
+
+    Example:
+        A builder that searches a per-user graph instead of using the
+        thread's default context retrieval::
+
+            async def my_builder(ctx: ContextInput) -> str | None:
+                results = await ctx.zep.graph.search(
+                    user_id=ctx.user_id,
+                    query=ctx.user_message,
+                    scope="edges",
+                )
+                if not results.edges:
+                    return None
+                return "\\n".join(edge.fact for edge in results.edges)
+
+            provider = ZepContextProvider(
+                zep_client=zep,
+                user_id="user-123",
+                thread_id="thread-abc",
+                context_builder=my_builder,
+            )
+    """
+
+    zep: AsyncZep
+    user_id: str
+    thread_id: str
+    user_message: str
+    session_context: SessionContext | None = None
+
+
+#: Type alias for a custom context builder function.
+#:
+#: A context builder receives a single :class:`ContextInput` and returns the
+#: context string to inject into the agent's instructions (or ``None`` to
+#: skip injection).
+#:
+#: Error semantics: if the builder raises, ``ZepContextProvider`` logs a
+#: warning and skips injection for that turn -- it does not crash the agent
+#: run and does not prevent message persistence from completing.  See
+#: :class:`ZepContextProvider` for the full error-isolation contract between
+#: persistence and the builder.
+ContextBuilder = Callable[[ContextInput], Awaitable[str | None]]
 
 
 class ZepContextProvider(ContextProvider):
@@ -120,9 +198,91 @@ class ZepContextProvider(ContextProvider):
             stored in the thread history but are not processed into the graph.
         on_user_created: An optional async callable invoked exactly once, right
             after a new Zep user is created.  Use it to set up per-user
-            ontology, custom instructions, or user summary instructions.  A
-            failure in the hook is logged and does not block the run.  It does
-            **not** fire for users that already exist.
+            ontology, custom instructions, or user summary instructions.  It
+            does **not** fire for users that already exist.  Passed through
+            to :func:`~zep_ms_agent_framework.provisioning.ensure_user` as its
+            ``on_created`` hook, so a hook failure is treated the same as a
+            genuine provisioning failure: it is logged and this turn's Zep
+            persistence is skipped (never raised into the run), and resource
+            creation is retried on the next turn.  Contrast this with calling
+            :func:`~zep_ms_agent_framework.provisioning.ensure_user` directly,
+            out-of-band, where a hook failure **propagates** to the caller --
+            the in-provider lazy path always swallows, out-of-band callers
+            always see the error.
+        context_builder: An optional async callable that constructs the
+            context block to inject into the agent's instructions, in place
+            of the default ``thread.add_messages(return_context=True)``
+            retrieval.  Receives a single :class:`ContextInput`.  When set,
+            message persistence and context building run **concurrently**
+            for lower latency -- see the Note below for the error-isolation
+            contract between the two.
+        context_template: Template used to wrap retrieved context before
+            injecting it into the agent's instructions.  Must contain a
+            literal ``{context}`` placeholder, replaced via plain string
+            replacement (never ``str.format``).  Defaults to
+            :data:`DEFAULT_CONTEXT_TEMPLATE`.
+        expose_search_tool: When ``True``, ``before_run`` also registers a
+            model-callable graph-search tool via
+            ``context.extend_tools(self.source_id, [tool])``.  The model can
+            then decide when to search the graph for specific facts,
+            entities, or prior episodes, in addition to the context
+            automatically injected on every turn.  Defaults to ``False``.
+        search_pinned_params: Optional mapping of ``graph.search`` parameter
+            name (``scope``, ``reranker``, ``limit``, ``mmr_lambda``,
+            ``center_node_uuid``) to a fixed value.  Pinned parameters are
+            hidden from the model's tool schema and always sent with the
+            given value.  Only meaningful when ``expose_search_tool=True``.
+        search_hidden_params: Optional set of ``graph.search`` parameter
+            names to hide from the model's tool schema without pinning them
+            -- omitted from the SDK call so Zep's own default applies.  Only
+            meaningful when ``expose_search_tool=True``.
+        search_filters: Optional Zep search filters (constructor-only, never
+            exposed to the model).  Supports ``node_labels``, ``edge_types``,
+            ``exclude_node_labels``, ``exclude_edge_types``, and property
+            filters.  Only meaningful when ``expose_search_tool=True``.
+        bfs_origin_node_uuids: Optional list of node UUIDs for BFS seeding
+            (constructor-only).  Only meaningful when
+            ``expose_search_tool=True``.
+
+    Note:
+        **Per-run identity is bound at construction, not resolved per-run.**
+        ``user_id``/``thread_id`` are fixed constructor arguments; they are
+        *not* re-resolved from ``before_run``'s ``session``/``state``
+        keyword arguments on each call. This was investigated when adding
+        the graph-search tool (dimension H): the Agent Framework's
+        ``AgentSession`` exposes only ``session_id``,
+        ``service_session_id``, and a generic ``state`` dict with no
+        identity semantics -- there is no ``user_id`` anywhere in
+        ``SupportsAgentRun.run()``'s signature, ``AgentSession``, or
+        ``SessionContext``, and no framework convention (documented or in
+        the installed source) for stashing identity in ``session.state``,
+        unlike e.g. Google ADK's documented ``tool_context.state["zep_user_id"]``
+        pattern. The ``state`` dict actually passed to ``before_run``/
+        ``after_run`` is additionally scoped per-provider
+        (``session.state.setdefault(source_id, {})``), not the full session
+        state, which would make any such convention awkward to rely on even
+        if the framework adopted one later.
+
+        For a multi-user application, construct one ``ZepContextProvider``
+        (and typically one ``Agent``) per user/conversation rather than
+        sharing a single instance across users. If per-run resolution
+        becomes possible in a future Agent Framework release, this is the
+        place to add it.
+
+    Note:
+        **Error isolation between persistence and the context builder.**
+        When ``context_builder`` is set, persistence (``add_messages``) and
+        the builder run concurrently. Each is isolated from the other's
+        failure:
+
+        * If the builder raises, a warning is logged and injection is
+          skipped for this turn -- but persistence still completes and the
+          turn is marked as persisted (so ``after_run`` may write the
+          assistant reply) on success.
+        * If persistence raises, a warning is logged and the turn is
+          **not** marked as persisted (so ``after_run`` skips this turn and
+          it can be retried on the next invocation) -- but a successful
+          builder result may still be injected into the prompt.
     """
 
     def __init__(
@@ -139,6 +299,13 @@ class ZepContextProvider(ContextProvider):
         source_id: str = DEFAULT_SOURCE_ID,
         ignore_roles: list[str] | None = None,
         on_user_created: UserSetupHook | None = None,
+        context_builder: ContextBuilder | None = None,
+        context_template: str = DEFAULT_CONTEXT_TEMPLATE,
+        expose_search_tool: bool = False,
+        search_pinned_params: dict[str, Any] | None = None,
+        search_hidden_params: set[str] | None = None,
+        search_filters: dict[str, Any] | None = None,
+        bfs_origin_node_uuids: list[str] | None = None,
     ) -> None:
         super().__init__(source_id=source_id)
 
@@ -163,6 +330,24 @@ class ZepContextProvider(ContextProvider):
 
         self._ignore_roles: list[str] | None = ignore_roles
         self._on_user_created: UserSetupHook | None = on_user_created
+        self._context_builder: ContextBuilder | None = context_builder
+        self._context_template: str = context_template
+
+        # Pre-build the search tool once (it's immutable after construction)
+        # so before_run only needs to register it, never rebuild its schema.
+        self._expose_search_tool: bool = expose_search_tool
+        self._search_tool: ZepSearchTool | None = (
+            create_zep_search_tool(
+                zep_client=self._zep,
+                user_id=self._user_id,
+                search_pinned_params=search_pinned_params,
+                search_hidden_params=search_hidden_params,
+                search_filters=search_filters,
+                bfs_origin_node_uuids=bfs_origin_node_uuids,
+            )
+            if expose_search_tool
+            else None
+        )
 
         # Whether the Zep user + thread have been created (or confirmed to
         # already exist) for this provider instance.  Cached so repeated runs
@@ -197,8 +382,20 @@ class ZepContextProvider(ContextProvider):
     async def _ensure_resources(self) -> bool:
         """Create the Zep user and thread if they do not already exist.
 
-        Idempotent and cached: succeeds for users/threads that already exist
-        and only runs the ``on_user_created`` hook for genuinely new users.
+        Delegates to :func:`~zep_ms_agent_framework.provisioning.ensure_user`
+        and :func:`~zep_ms_agent_framework.provisioning.ensure_thread`, the
+        same create-then-catch-conflict helpers available for out-of-band
+        provisioning. Idempotent and cached: succeeds for users/threads that
+        already exist and only runs the ``on_user_created`` hook for
+        genuinely new users.
+
+        This is the hot path: unlike calling :func:`~.provisioning.ensure_user`
+        directly (where a genuine failure or an ``on_created`` hook error
+        propagates to the caller), here every failure -- including a hook
+        failure -- is logged and swallowed so a Zep or setup-code outage
+        never raises into ``before_run``/``after_run``. Out-of-band callers
+        that need loud failures should call ``ensure_user``/``ensure_thread``
+        directly instead of relying on this lazy path.
 
         Returns:
             ``True`` if the user and thread are ready (created or pre-existing),
@@ -208,56 +405,29 @@ class ZepContextProvider(ContextProvider):
         if self._resources_ready:
             return True
 
-        # -- Create the user (tolerate "already exists") -------------------
         try:
-            await self._zep.user.add(
+            await _ensure_user(
+                self._zep,
                 user_id=self._user_id,
                 first_name=self._first_name,
                 last_name=self._last_name,
                 email=self._email,
+                on_created=self._on_user_created,
             )
-            logger.info("Created Zep user: %s", self._user_id)
-            await self._run_user_created_hook()
         except Exception as exc:
-            if self._is_already_exists(exc):
-                logger.debug("Zep user %s already exists", self._user_id)
-            else:
-                logger.warning("Failed to create Zep user %s: %s", self._user_id, exc)
-                return False
+            # Covers both a genuine SDK failure and an on_user_created hook
+            # error -- either way, the hot path must degrade, not raise.
+            logger.warning("Failed to create Zep user %s: %s", self._user_id, exc)
+            return False
 
-        # -- Create the thread (tolerate "already exists") -----------------
         try:
-            await self._zep.thread.create(thread_id=self._thread_id, user_id=self._user_id)
-            logger.info("Created Zep thread: %s", self._thread_id)
+            await _ensure_thread(self._zep, thread_id=self._thread_id, user_id=self._user_id)
         except Exception as exc:
-            if self._is_already_exists(exc):
-                logger.debug("Zep thread %s already exists", self._thread_id)
-            else:
-                logger.warning("Failed to create Zep thread %s: %s", self._thread_id, exc)
-                return False
+            logger.warning("Failed to create Zep thread %s: %s", self._thread_id, exc)
+            return False
 
         self._resources_ready = True
         return True
-
-    async def _run_user_created_hook(self) -> None:
-        """Run the optional ``on_user_created`` hook, never raising on failure."""
-        if self._on_user_created is None:
-            return
-        try:
-            await self._on_user_created(self._zep, self._user_id)
-            logger.info("on_user_created hook completed for user %s", self._user_id)
-        except Exception as exc:
-            logger.warning(
-                "on_user_created hook failed for user %s: %s",
-                self._user_id,
-                exc,
-            )
-
-    @staticmethod
-    def _is_already_exists(exc: Exception) -> bool:
-        """Heuristically detect a Zep "resource already exists" conflict."""
-        text = str(exc).lower()
-        return "already exists" in text or "conflict" in text or "409" in text
 
     # ------------------------------------------------------------------
     # Message extraction
@@ -307,15 +477,31 @@ class ZepContextProvider(ContextProvider):
         """Persist the latest user message and inject Zep's Context Block.
 
         Called by the Agent Framework before each model invocation.  Reads the
-        latest user message from ``context.input_messages``, persists it to Zep,
-        and adds the returned Context Block to ``context`` via
-        ``extend_instructions`` so it becomes part of the model's system prompt.
+        latest user message from ``context.input_messages``, persists it to
+        Zep, and adds the returned Context Block to ``context`` via
+        ``extend_instructions`` so it becomes part of the model's system
+        prompt.  When ``expose_search_tool`` is enabled, also registers the
+        graph-search tool via ``context.extend_tools``.
+
+        By default, persistence and retrieval are folded into a single
+        ``thread.add_messages(return_context=True)`` round-trip.  When a
+        ``context_builder`` is configured, persistence (``add_messages``
+        without ``return_context``) and the builder run **concurrently**
+        instead -- see the class docstring for the error-isolation contract.
 
         A Zep failure is logged and the run continues without injected memory.
+
+        Note on identity: this provider resolves ``user_id``/``thread_id``
+        from constructor arguments, not from ``session``/``state``. See the
+        class docstring's "per-run identity" note for why and what to do in
+        multi-user deployments.
         """
         # Reset the per-run flag: until this run's user turn is persisted below,
         # after_run must not write an orphaned assistant-only record.
         self._user_turn_persisted = False
+
+        if self._search_tool is not None:
+            context.extend_tools(self.source_id, [self._search_tool])
 
         user_text = self._latest_user_text(context.input_messages)
         if not user_text:
@@ -328,7 +514,29 @@ class ZepContextProvider(ContextProvider):
         # drop) so the turn is persisted instead of triggering a swallowed 400.
         user_text = truncate_message_content(user_text, label="user message")
 
-        context_block: str | None = None
+        if self._context_builder is not None:
+            persist_ok, context_block = await self._persist_and_build_context(user_text, context)
+        else:
+            persist_ok, context_block = await self._persist_with_return_context(user_text)
+
+        # Mark as persisted only AFTER the API call succeeded, so that a
+        # transient failure does not permanently suppress the message.
+        self._user_turn_persisted = persist_ok
+
+        if context_block:
+            context.extend_instructions(self.source_id, self._format_context(context_block))
+            logger.debug(
+                "Injected Zep context (%d chars) into agent instructions",
+                len(context_block),
+            )
+
+    async def _persist_with_return_context(self, user_text: str) -> tuple[bool, str | None]:
+        """Persist the user message and retrieve context in one round-trip.
+
+        Returns:
+            A ``(persist_ok, context_block)`` tuple.  On failure, logs a
+            warning and returns ``(False, None)``.
+        """
         try:
             response = await self._zep.thread.add_messages(
                 thread_id=self._thread_id,
@@ -342,26 +550,89 @@ class ZepContextProvider(ContextProvider):
                 return_context=True,
                 ignore_roles=self._ignore_roles,
             )
-            self._user_turn_persisted = True
             context_block = response.context if response else None
             logger.info(
                 "Persisted user message to Zep (thread=%s). Context length: %s",
                 self._thread_id,
                 len(context_block) if context_block else 0,
             )
+            return True, context_block
         except Exception:
             logger.warning(
                 "Failed to persist user message / retrieve context from Zep",
                 exc_info=True,
             )
-            return
+            return False, None
 
-        if context_block:
-            context.extend_instructions(self.source_id, self._format_context(context_block))
-            logger.debug(
-                "Injected Zep context (%d chars) into agent instructions",
-                len(context_block),
+    async def _persist_and_build_context(
+        self,
+        user_text: str,
+        session_context: SessionContext,
+    ) -> tuple[bool, str | None]:
+        """Persist the message and build context concurrently.
+
+        Runs ``thread.add_messages`` (without ``return_context``) and the
+        custom ``context_builder`` concurrently via
+        ``asyncio.gather(..., return_exceptions=True)`` so one side's
+        exception can never cancel or mask the other's result.
+
+        * If the builder raises, a warning is logged and ``None`` is used for
+          the context, but persistence is unaffected.
+        * If persistence raises, a warning is logged and ``persist_ok=False``
+          is returned (so the caller does not mark the turn as persisted),
+          but a successful builder result is still returned for injection.
+
+        Returns:
+            A ``(persist_ok, context_block)`` tuple.
+        """
+        context_builder = self._context_builder
+        assert context_builder is not None  # caller already checked
+
+        async def _persist() -> None:
+            await self._zep.thread.add_messages(
+                thread_id=self._thread_id,
+                messages=[
+                    ZepMessage(
+                        role="user",
+                        content=user_text,
+                        name=self._user_message_name,
+                    )
+                ],
+                ignore_roles=self._ignore_roles,
             )
+            logger.info("Persisted user message to Zep (thread=%s).", self._thread_id)
+
+        async def _build() -> str | None:
+            context_input = ContextInput(
+                zep=self._zep,
+                user_id=self._user_id,
+                thread_id=self._thread_id,
+                user_message=user_text,
+                session_context=session_context,
+            )
+            return await context_builder(context_input)
+
+        persist_result, build_result = await asyncio.gather(
+            _persist(), _build(), return_exceptions=True
+        )
+
+        if isinstance(build_result, BaseException):
+            logger.warning(
+                "Custom context_builder raised — skipping context injection for this turn",
+                exc_info=build_result,
+            )
+            context_block: str | None = None
+        else:
+            context_block = build_result
+
+        if isinstance(persist_result, BaseException):
+            logger.warning(
+                "Failed to persist user message to Zep",
+                exc_info=persist_result,
+            )
+            return False, context_block
+
+        return True, context_block
 
     async def after_run(
         self,
@@ -428,14 +699,11 @@ class ZepContextProvider(ContextProvider):
     # Helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _format_context(context_block: str) -> str:
-        """Wrap Zep's Context Block in a clearly delimited instruction."""
-        return (
-            "The following context is retrieved from Zep's long-term memory "
-            "service. It contains relevant facts, relationships, and prior "
-            "knowledge about the user. Use it to inform your responses.\n\n"
-            "<ZEP_CONTEXT>\n"
-            f"{context_block}\n"
-            "</ZEP_CONTEXT>"
-        )
+    def _format_context(self, context_block: str) -> str:
+        """Wrap Zep's Context Block using ``self._context_template``.
+
+        Rendered via plain string replacement (``template.replace("{context}",
+        context_block)``), never ``str.format`` -- so context text or a custom
+        template containing ``{``/``}``/``%`` is always safe to inject.
+        """
+        return self._context_template.replace("{context}", context_block)

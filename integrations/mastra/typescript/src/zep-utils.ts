@@ -1,5 +1,5 @@
 import type { Zep } from "@getzep/zep-cloud";
-import type { ZepBinding, ZepLogger } from "./types.js";
+import type { ResolvedZepIdentity, ZepBinding, ZepIdentityResolver, ZepLogger } from "./types.js";
 
 /**
  * The Zep `RoleType` enum is closed (`user | assistant | system | tool |
@@ -69,6 +69,26 @@ export function resolveLogger(logger: ZepLogger | undefined): ZepLogger {
 }
 
 /**
+ * Resolve per-call identity for a tool `execute(inputData, context)` call.
+ *
+ * `resolveIdentity`, when provided, is called with `context?.requestContext`
+ * (Mastra's per-call runtime context); any field it returns overrides the
+ * constructor-bound `userId`/`threadId`. When `resolveIdentity` is unset, or
+ * omits a field, the constructor binding is used unchanged.
+ */
+export function resolveToolIdentity(
+  binding: ResolvedZepIdentity,
+  resolveIdentity: ZepIdentityResolver | undefined,
+  context: { requestContext?: unknown } | undefined,
+): ResolvedZepIdentity {
+  const override = resolveIdentity?.(context?.requestContext);
+  return {
+    userId: override?.userId ?? binding.userId,
+    threadId: override?.threadId ?? binding.threadId,
+  };
+}
+
+/**
  * Zep rejects messages longer than 4,096 characters with a 400. We truncate a
  * bit below that to leave headroom for any server-side normalization.
  */
@@ -76,8 +96,10 @@ export const MESSAGE_MAX_CHARS = 4000;
 
 /**
  * Zep's `graph.add` rejects payloads longer than 10,000 characters with a 400.
+ * We truncate to a safety margin under that ceiling (matches the 9900 used by
+ * every sibling integration's `GRAPH_MAX_CHARS`).
  */
-export const GRAPH_MAX_CHARS = 10000;
+export const GRAPH_MAX_CHARS = 9900;
 
 /**
  * Truncate `content` to `maxChars` if it exceeds the limit, logging a warning.

@@ -22,7 +22,13 @@ except ImportError as e:
     raise ZepDependencyError(framework="AG2", install_command="pip install zep-ag2") from e
 
 from zep_ag2.graph_memory import ZepGraphMemoryManager
-from zep_ag2.memory import ZepMemoryManager
+from zep_ag2.memory import (
+    DEFAULT_CONTEXT_TEMPLATE,
+    ContextBuilder,
+    ContextInput,
+    ZepMemoryManager,
+)
+from zep_ag2.provisioning import UserSetupHook, ensure_thread, ensure_user
 from zep_ag2.tools import (
     create_add_graph_data_tool,
     create_add_memory_tool,
@@ -43,6 +49,12 @@ __all__ = [
     "ZepAG2ConfigError",
     "ZepAG2MemoryError",
     "ZepDependencyError",
+    "ensure_user",
+    "ensure_thread",
+    "UserSetupHook",
+    "ContextBuilder",
+    "ContextInput",
+    "DEFAULT_CONTEXT_TEMPLATE",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

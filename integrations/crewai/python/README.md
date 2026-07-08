@@ -8,29 +8,46 @@ A comprehensive integration package that enables [CrewAI](https://github.com/joa
 pip install zep-crewai
 ```
 
+## CrewAI 1.x framework ceiling — no automatic memory loop
+
+CrewAI 1.x **removed** `crewai.memory.storage.interface.Storage` and the
+`ExternalMemory(storage=...)` wrapper (and the `external_memory=` Crew kwarg), so **no
+automatic per-turn memory loop is possible** with this framework version — there is no
+seam where an integration can transparently persist each turn and inject context before
+each model call. This package is also **sync-only**: CrewAI's adapters are built on the
+synchronous `Zep` client, so all APIs here are synchronous. The supported extension
+points are:
+
+1. **Tools** — give agents a `ZepSearchTool` / `ZepAddDataTool` so the model decides
+   when to read from or write to Zep (the primary CrewAI 1.x extension point).
+2. **Storage adapters called from your app code** — `ZepUserStorage`,
+   `ZepGraphStorage`, and `ZepStorage` are standalone, framework-agnostic adapters with
+   the historical `save` / `search` / `reset` API. Your application calls
+   `storage.save(...)` after turns and `storage.search(...)` / `storage.get_context()`
+   before kickoff.
+3. **Kickoff-level seeding** — retrieve a Zep Context Block (e.g.
+   `user_storage.get_context()`) and interpolate it into task descriptions or agent
+   backstories before `crew.kickoff()`.
+
+Re-check this on future CrewAI releases: if CrewAI reintroduces a memory extension
+point, this integration should adopt it.
+
 ## Quick Start
 
 ### User Storage with Conversation Memory
 
-> **CrewAI 1.x note:** CrewAI 1.x removed `crewai.memory.storage.interface.Storage`
-> and the `ExternalMemory(storage=...)` wrapper (and the `external_memory=` Crew
-> kwarg). The `ZepUserStorage`, `ZepGraphStorage`, and `ZepStorage` classes are now
-> standalone, framework-agnostic adapters with the same `save` / `search` / `reset`
-> API. Persist context with `storage.save(...)` and expose Zep to agents through the
-> `ZepSearchTool` / `ZepAddDataTool` (the supported CrewAI extension point).
-
 ```python
 import os
 from zep_cloud.client import Zep
-from zep_crewai import ZepUserStorage, create_search_tool
+from zep_crewai import ZepUserStorage, create_search_tool, ensure_user, ensure_thread
 from crewai import Agent, Crew, Task
 
 # Initialize Zep client
 zep_client = Zep(api_key=os.getenv("ZEP_API_KEY"))
 
-# Create user and thread
-zep_client.user.add(user_id="alice_123", first_name="Alice")
-zep_client.thread.create(user_id="alice_123", thread_id="project_456")
+# Provision the user and thread out-of-band (idempotent; genuine failures raise)
+ensure_user(zep_client, user_id="alice_123", first_name="Alice", email="alice@example.com")
+ensure_thread(zep_client, thread_id="project_456", user_id="alice_123")
 
 # Create user storage
 user_storage = ZepUserStorage(
@@ -114,17 +131,42 @@ Manages generic knowledge graphs for shared information:
 
 ### Tool Integration
 
-#### Search Tool
+#### Search Tool (pin-or-expose)
+
+Every `graph.search` parameter — `scope` (`edges`, `nodes`, `episodes`, `observations`,
+`thread_summaries`, `auto`), `reranker` (`rrf`, `mmr`, `node_distance`,
+`episode_mentions`, `cross_encoder`), `limit`, `mmr_lambda`, `center_node_uuid` — is
+exposed to the model in the tool's schema by default. Use `pinned_params` to fix a
+parameter to a constant and remove it from the schema, or `hidden_params` to remove it
+from the schema *without* pinning (Zep's own server-side default applies).
+
 ```python
+# All params model-exposed (default)
 search_tool = create_search_tool(
     zep_client,
-    user_id="user_123"  # OR graph_id="knowledge_base"
+    user_id="user_123",  # OR graph_id="knowledge_base"
+)
+
+# Pin scope+limit (hidden from the model, always sent), hide reranker entirely
+search_tool = create_search_tool(
+    zep_client,
+    user_id="user_123",
+    pinned_params={"scope": "edges", "limit": 5},
+    hidden_params={"reranker"},
+)
+
+# Constructor-only (never exposed to the model):
+search_tool = create_search_tool(
+    zep_client,
+    graph_id="knowledge_base",
+    search_filters={"node_labels": ["Project"]},
+    bfs_origin_node_uuids=["node-uuid-1"],
 )
 ```
-- Search across edges, nodes, and episodes
-- Configurable result limits
-- Scope filtering (edges, nodes, episodes, or all)
-- Natural language queries
+
+The legacy `scope=`/`reranker=`/`limit=` constructor arguments still work — each pins
+(and hides) its parameter, equivalent to putting it in `pinned_params`. A Zep failure
+returns an error string to the model; the tool never raises into the crew.
 
 #### Add Data Tool
 ```python
@@ -136,7 +178,77 @@ add_tool = create_add_data_tool(
 - Add text, JSON, or message data
 - Automatic type detection
 - Structured data support
-- Metadata preservation
+- Payloads over Zep's `graph.add` ceiling are truncated to 9,900 chars (with a
+  lengths-only warning) instead of failing with a 400
+
+### Provisioning: `ensure_user` / `ensure_thread` and `on_created`
+
+`ensure_user(client, *, user_id, first_name=None, last_name=None, email=None,
+on_created=None)` and `ensure_thread(client, *, thread_id, user_id)` are idempotent,
+create-then-catch-conflict helpers. Both return `True` if the resource was newly created
+and `False` if it already existed; genuine failures (auth, network, 5xx) always raise.
+`on_created` (a sync `Callable[[Zep, str], None]`) fires exactly once, only when the
+user is genuinely new — use it for one-time per-user setup (ontology, custom
+instructions):
+
+```python
+from zep_crewai import ensure_user, ensure_thread
+
+def setup_new_user(client, user_id):
+    client.graph.set_ontology(...)  # one-time per-user configuration
+
+ensure_user(zep_client, user_id="alice_123", first_name="Alice", on_created=setup_new_user)
+ensure_thread(zep_client, thread_id="project_456", user_id="alice_123")
+```
+
+`ZepUserStorage` and `ZepStorage` also provision **lazily** on the first
+`save()`/`search()` call (pass `first_name`/`last_name`/`email`/`on_created` to their
+constructors to feed that path). The lazy path never raises — a provisioning failure is
+logged and `save()` becomes a no-op for that call — so prefer the explicit helpers above
+when you want misconfiguration to fail loudly. `ZepGraphStorage` has no `on_created`:
+it is scoped to a standalone `graph_id`, not a Zep user.
+
+### Custom context: `context_builder` and `context_template`
+
+`ZepUserStorage(context_builder=...)` replaces the default graph composition in
+`search()` with your own retrieval logic. The builder is a **sync** callable receiving a
+frozen `ContextInput` (`zep`, `user_id`, `thread_id`, `user_message`) and returning the
+context string, or `None` for "no results". A builder exception is logged and degrades
+to empty results. Persistence (`save`) is a separate, caller-driven call in CrewAI's
+model, so nothing runs concurrently with the builder.
+
+```python
+from zep_crewai import ZepUserStorage, ContextInput
+
+def my_builder(ctx: ContextInput) -> str | None:
+    results = ctx.zep.graph.search(user_id=ctx.user_id, query=ctx.user_message, scope="edges")
+    if not results.edges:
+        return None
+    return "\n".join(edge.fact for edge in results.edges)
+
+storage = ZepUserStorage(
+    client=zep_client, user_id="alice_123", thread_id="project_456",
+    context_builder=my_builder,
+)
+```
+
+`context_template` (on `ZepUserStorage` and `ZepGraphStorage`) wraps the context string
+returned from `search()`. It must contain a literal `{context}` placeholder and is
+rendered via plain `str.replace` (never `str.format`), so context containing `{`, `}`,
+or `%` is always safe. The default is the canonical `<ZEP_CONTEXT>...</ZEP_CONTEXT>`
+block shared across Zep integrations (`DEFAULT_CONTEXT_TEMPLATE`).
+
+### Error handling and size limits
+
+- **`save()` never raises.** A Zep failure during `save()` is logged and the call
+  returns normally — a Zep outage never crashes the crew. Use the provisioning helpers
+  out-of-band if you need loud failures.
+- **Message truncation**: message content over Zep's 4,096-char thread-message limit is
+  truncated to 4,000 chars before `thread.add_messages` (warning logged with lengths
+  only, never content).
+- **Graph payload truncation**: `graph.add` payloads are truncated to 9,900 chars
+  (under Zep's 10,000-char ceiling) in the storage save paths and `ZepAddDataTool`.
+- Search queries are truncated to 400 chars (Zep's query limit), as before.
 
 ## Advanced Usage
 
@@ -299,10 +411,14 @@ export ZEP_API_KEY="your-zep-api-key"
 #### ZepUserStorage
 - `client`: Zep client instance (required)
 - `user_id`: User identifier (required)
-- `thread_id`: Thread identifier (optional)
+- `thread_id`: Thread identifier (required)
 - `search_filters`: Search filters (optional)
 - `facts_limit`: Maximum facts for context (default: 20)
 - `entity_limit`: Maximum entities for context (default: 5)
+- `first_name` / `last_name` / `email`: Optional identity fields for lazy provisioning
+- `on_created`: Optional hook fired once when the Zep user is newly created (lazy path)
+- `context_builder`: Optional sync callable replacing the default `search()` composition
+- `context_template`: Template wrapping `search()` context (default: `DEFAULT_CONTEXT_TEMPLATE`)
 - `mode`: Deprecated and ignored (Zep V3 removed the thread context mode option)
 
 #### ZepGraphStorage
@@ -311,16 +427,23 @@ export ZEP_API_KEY="your-zep-api-key"
 - `search_filters`: Search filters (optional)
 - `facts_limit`: Maximum facts for context (default: 20)
 - `entity_limit`: Maximum entities for context (default: 5)
+- `context_template`: Template wrapping `search()` context (default: `DEFAULT_CONTEXT_TEMPLATE`)
+- No `on_created` — graph-scoped, no Zep user to provision
 
 ### Tool Parameters
 
-#### Search Tool
-- `query`: Search query string
+#### Search Tool (model-exposed by default; pin or hide via `pinned_params`/`hidden_params`)
+- `query`: Search query string (always required, max 400 chars)
+- `scope`: "edges", "nodes", "episodes", "observations", "thread_summaries", or "auto" (default: "edges")
+- `reranker`: "rrf", "mmr", "node_distance", "episode_mentions", or "cross_encoder" (default: "rrf")
 - `limit`: Maximum results (default: 10)
-- `scope`: Search scope - "edges", "nodes", "episodes", or "all"
+- `mmr_lambda`: Diversity/relevance balance for the "mmr" reranker (omitted when unset)
+- `center_node_uuid`: Center node for "node_distance" reranking (omitted when unset)
+
+Constructor-only: `search_filters`, `bfs_origin_node_uuids`.
 
 #### Add Data Tool
-- `data`: Content to store
+- `data`: Content to store (truncated to 9,900 chars if over Zep's limit)
 - `data_type`: Type - "text", "json", or "message"
 
 ## Development

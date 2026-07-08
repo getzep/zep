@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from zep_crewai import ZepGraphStorage
+from zep_crewai.utils import DEFAULT_CONTEXT_TEMPLATE
 
 
 class TestZepGraphStorage:
@@ -100,6 +101,23 @@ class TestZepGraphStorage:
             graph_id="test-graph", data="Default content", type="text"
         )
 
+    def test_save_does_not_raise_on_zep_error(self, caplog):
+        """save() must log and return normally when the Zep SDK call raises --
+        never propagate the error into the crew."""
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.add = MagicMock(side_effect=Exception("Zep API error"))
+
+        storage = ZepGraphStorage(client=mock_client, graph_id="test-graph")
+
+        with caplog.at_level("ERROR"):
+            storage.save("Python is great for AI", metadata={"type": "text"})
+
+        mock_client.graph.add.assert_called_once()
+        assert "Zep API error" in caplog.text
+
     @patch("zep_crewai.graph_storage.search_graph_and_compose_context")
     def test_search_with_results(self, mock_search_compose):
         """Test search returns composed context from graph."""
@@ -143,6 +161,7 @@ class TestZepGraphStorage:
             entity_limit=5,
             episodes_limit=5,
             search_filters=None,
+            context_template=DEFAULT_CONTEXT_TEMPLATE,
         )
 
     @patch("zep_crewai.graph_storage.search_graph_and_compose_context")
@@ -192,6 +211,7 @@ class TestZepGraphStorage:
             entity_limit=10,
             episodes_limit=15,  # Uses the limit parameter for episodes
             search_filters=None,
+            context_template=DEFAULT_CONTEXT_TEMPLATE,
         )
 
     @patch("zep_crewai.graph_storage.search_graph_and_compose_context")
@@ -222,6 +242,7 @@ class TestZepGraphStorage:
             entity_limit=5,
             episodes_limit=5,
             search_filters=search_filters,
+            context_template=DEFAULT_CONTEXT_TEMPLATE,
         )
 
     def test_reset_does_nothing(self):

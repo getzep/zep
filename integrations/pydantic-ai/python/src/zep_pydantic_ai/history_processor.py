@@ -7,10 +7,12 @@ request.  This integration uses that hook to do two things on the user's turn:
 
 1. **Persist** the latest user message to Zep via
    ``thread.add_messages(return_context=True)`` -- folding write and retrieval
-   into a single round-trip.
-2. **Prepend** Zep's returned context block to the message history as a system
-   ``ModelRequest`` so the model sees the user's long-term memory before the
-   conversation.
+   into a single round-trip.  When a custom ``context_builder`` is configured
+   on ``ZepDeps``, persistence (without ``return_context``) and the builder run
+   concurrently instead -- see :data:`zep_pydantic_ai.deps.ContextBuilder`.
+2. **Prepend** the resulting context block to the message history as a system
+   ``ModelRequest`` (wrapped in ``context_template``) so the model sees the
+   user's long-term memory before the conversation.
 
 The critical subtlety (verified against Pydantic AI 1.107): the processor fires
 **once per model request, not once per run**.  A single ``agent.run`` that makes
@@ -25,8 +27,8 @@ the *identical* user message are genuine repeat turns and must each be persisted
 
 Assistant responses are **not** persisted here (the model has not produced them
 yet at request time).  Persist them after the run with
-:func:`zep_pydantic_ai.history_processor.persist_run` (or
-``store_assistant_messages``).
+:func:`zep_pydantic_ai.history_processor.persist_run`, or automatically via
+:func:`zep_pydantic_ai.capabilities.create_zep_after_run_hook`.
 """
 
 from __future__ import annotations
@@ -40,6 +42,8 @@ from pydantic_ai import RunContext
 from pydantic_ai.messages import ModelMessage
 
 from .deps import (
+    DEFAULT_CONTEXT_TEMPLATE,
+    ContextInput,
     ZepDeps,
     ensure_user_and_thread,
     latest_user_text,
@@ -49,6 +53,18 @@ from .deps import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: Re-exported for convenience -- see ``zep_pydantic_ai.deps`` for the
+#: canonical definitions (``ZepDeps.context_builder`` / ``.context_template``
+#: are typed against them, so they live there to avoid a circular import).
+__all__ = [
+    "HistoryProcessorFn",
+    "DEFAULT_CONTEXT_TEMPLATE",
+    "ContextInput",
+    "zep_history_processor",
+    "persist_run",
+    "reset_turn_cache",
+]
 
 #: Signature of the history processor registered with ``ProcessHistory``.
 HistoryProcessorFn = Callable[
@@ -139,9 +155,23 @@ async def zep_history_processor(
     * extracts the latest user message text (truncated to Zep's per-message
       limit);
     * if this run has not yet persisted its user turn (run-scoped dedupe
-      guard), calls ``thread.add_messages(return_context=True)`` and caches the
-      returned context;
-    * prepends the context block (fresh or cached) to ``messages`` as a system
+      guard):
+
+      * when ``ctx.deps.context_builder`` is ``None`` (the default), calls
+        ``thread.add_messages(return_context=True)`` -- a single round-trip
+        that persists and retrieves context together;
+      * when a ``context_builder`` is set, persists via ``add_messages``
+        (without ``return_context``) and runs the builder **concurrently**
+        via ``asyncio.gather``.  Each side is isolated from the other's
+        failure: a builder error is logged and skips injection but does not
+        stop persistence; a persistence error is logged (and the turn is not
+        marked as persisted, so it can be retried) but a successful builder
+        result is still injected.
+
+    * caches the retrieved/built context so replay on re-invocations within
+      the same run makes no further Zep calls;
+    * prepends the context block (fresh or cached), wrapped in
+      ``ctx.deps.context_template``, to ``messages`` as a system
       ``ModelRequest``.
 
     All Zep failures are caught and logged; the original ``messages`` are
@@ -170,54 +200,145 @@ async def zep_history_processor(
 
     # --- Re-invocation within the same run: replay cached context -----------
     if hit:
-        return _with_context(messages, cached_context)
+        return _with_context(messages, cached_context, deps.context_template)
 
     # --- First model request of this run: persist + retrieve ---------------
     # Truncate on the hot path before sending; Zep rejects content >4096 chars
     # with HTTP 400.  Warn with lengths only (never content / PII).
     user_text = truncate_message_content(user_text, label="user turn")
 
-    context: str | None = None
     try:
-        if await ensure_user_and_thread(deps):
-            from zep_cloud import Message  # local import keeps module import light
+        resources_ready = await ensure_user_and_thread(deps)
+    except Exception:
+        logger.warning(
+            "Failed to provision Zep user/thread for the turn path",
+            exc_info=True,
+        )
+        return messages
 
-            response = await deps.client.thread.add_messages(
-                thread_id=deps.thread_id,
-                messages=[
-                    Message(
-                        role="user",
-                        content=user_text,
-                        name=deps.display_name,
-                    )
-                ],
-                return_context=True,
-                ignore_roles=deps.ignore_roles,
-            )
-            context = response.context if response else None
-            # Only cache after a successful round-trip so a transient failure
-            # can be retried on the next model request of this run.
-            await _turn_cache.set(run_key, context)
-            logger.info(
-                "Persisted user turn to Zep (thread=%s); context length=%s",
-                deps.thread_id,
-                len(context) if context else 0,
-            )
+    if not resources_ready:
+        return messages
+
+    if deps.context_builder is not None:
+        persist_ok, context = await _persist_and_build_context(ctx, deps, user_text)
+    else:
+        persist_ok, context = await _persist_with_return_context(deps, user_text)
+
+    # Only cache after a successful persist so a transient failure can be
+    # retried on the next model request of this run.
+    if persist_ok:
+        await _turn_cache.set(run_key, context)
+
+    return _with_context(messages, context, deps.context_template)
+
+
+async def _persist_with_return_context(deps: ZepDeps, user_text: str) -> tuple[bool, str | None]:
+    """Persist the user message and retrieve context in one round-trip.
+
+    Returns:
+        A ``(persist_ok, context)`` tuple.  On failure, logs a warning and
+        returns ``(False, None)``.
+    """
+    from zep_cloud import Message  # local import keeps module import light
+
+    try:
+        response = await deps.client.thread.add_messages(
+            thread_id=deps.thread_id,
+            messages=[Message(role="user", content=user_text, name=deps.display_name)],
+            return_context=True,
+            ignore_roles=deps.ignore_roles,
+        )
     except Exception:
         logger.warning(
             "Failed to persist user turn / retrieve context from Zep",
             exc_info=True,
         )
-        return messages
+        return False, None
 
-    return _with_context(messages, context)
+    context = response.context if response else None
+    logger.info(
+        "Persisted user turn to Zep (thread=%s); context length=%s",
+        deps.thread_id,
+        len(context) if context else 0,
+    )
+    return True, context
 
 
-def _with_context(messages: list[ModelMessage], context: str | None) -> list[ModelMessage]:
+async def _persist_and_build_context(
+    ctx: RunContext[ZepDeps],
+    deps: ZepDeps,
+    user_text: str,
+) -> tuple[bool, str | None]:
+    """Persist the message and run ``context_builder`` concurrently.
+
+    Runs ``thread.add_messages`` (without ``return_context``) and the custom
+    ``context_builder`` concurrently via ``asyncio.gather(..., return_exceptions=True)``
+    so one side's exception can never cancel or mask the other's result.
+
+    * If the builder raises, a warning is logged and ``None`` is used for the
+      context, but persistence is unaffected.
+    * If persistence raises, a warning is logged and ``persist_ok=False`` is
+      returned (so the caller does not mark the turn as persisted / dedup'd),
+      but a successful builder result is still returned for injection.
+
+    Returns:
+        A ``(persist_ok, context)`` tuple.
+    """
+    from zep_cloud import Message  # local import keeps module import light
+
+    context_builder = deps.context_builder
+    assert context_builder is not None  # caller (zep_history_processor) already checked
+
+    async def _persist() -> None:
+        await deps.client.thread.add_messages(
+            thread_id=deps.thread_id,
+            messages=[Message(role="user", content=user_text, name=deps.display_name)],
+            ignore_roles=deps.ignore_roles,
+        )
+        logger.info("Persisted user turn to Zep (thread=%s).", deps.thread_id)
+
+    async def _build() -> str | None:
+        context_input = ContextInput(
+            zep=deps.client,
+            user_id=deps.user_id,
+            thread_id=deps.thread_id,
+            user_message=user_text,
+            run_context=ctx,
+        )
+        return await context_builder(context_input)
+
+    persist_result, build_result = await asyncio.gather(
+        _persist(), _build(), return_exceptions=True
+    )
+
+    if isinstance(build_result, BaseException):
+        logger.warning(
+            "Custom context_builder raised — skipping context injection for this turn",
+            exc_info=build_result,
+        )
+        context: str | None = None
+    else:
+        context = build_result
+
+    if isinstance(persist_result, BaseException):
+        logger.warning(
+            "Failed to persist user turn to Zep",
+            exc_info=persist_result,
+        )
+        return False, context
+
+    return True, context
+
+
+def _with_context(
+    messages: list[ModelMessage],
+    context: str | None,
+    context_template: str,
+) -> list[ModelMessage]:
     """Prepend the Zep context block to the history, if any."""
     if not context:
         return messages
-    return [make_context_request(context), *messages]
+    return [make_context_request(context, template=context_template), *messages]
 
 
 async def persist_run(

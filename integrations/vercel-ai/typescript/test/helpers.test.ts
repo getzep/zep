@@ -295,4 +295,50 @@ describe("ensureZepUserAndThread", () => {
     expect(ok).toBe(false);
     expect(warn).toHaveBeenCalledOnce();
   });
+
+  it("onUserCreated fires once when user.add succeeds", async () => {
+    const zep = makeFakeZep();
+    const onUserCreated = vi.fn().mockResolvedValue(undefined);
+    const ok = await ensureZepUserAndThread({
+      client: asZep(zep),
+      userId: "u1",
+      threadId: "t1",
+      onUserCreated,
+    });
+    expect(ok).toBe(true);
+    expect(onUserCreated).toHaveBeenCalledTimes(1);
+    expect(onUserCreated).toHaveBeenCalledWith(asZep(zep), "u1");
+  });
+
+  it("onUserCreated does not fire on 409 already-exists", async () => {
+    const zep = makeFakeZep();
+    zep.user.add.mockRejectedValueOnce(new Zep.ConflictError({}));
+    const onUserCreated = vi.fn().mockResolvedValue(undefined);
+    const ok = await ensureZepUserAndThread({
+      client: asZep(zep),
+      userId: "u1",
+      threadId: "t1",
+      onUserCreated,
+    });
+    expect(ok).toBe(true);
+    expect(onUserCreated).not.toHaveBeenCalled();
+  });
+
+  it("onUserCreated hook errors are logged, not thrown", async () => {
+    const zep = makeFakeZep();
+    const onUserCreated = vi.fn().mockRejectedValue(new Error("hook exploded"));
+    const warn = vi.fn();
+    const ok = await ensureZepUserAndThread({
+      client: asZep(zep),
+      userId: "u1",
+      threadId: "t1",
+      onUserCreated,
+      logger: { warn },
+    });
+    expect(ok).toBe(true);
+    expect(onUserCreated).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalled();
+    const warnArg = warn.mock.calls.at(-1)![0] as string;
+    expect(warnArg).toContain("onUserCreated");
+  });
 });

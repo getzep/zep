@@ -78,6 +78,109 @@ describe("createZepSearchTool", () => {
   });
 });
 
+describe("createZepSearchTool pin-or-expose", () => {
+  it("exposes scope/reranker/limit/mmrLambda/centerNodeUuid by default", () => {
+    const zep = makeFakeZep();
+    const tool = createZepSearchTool({ client: asZep(zep), binding: { userId: "u1" } });
+    const schema = tool.inputSchema as unknown as { shape: Record<string, unknown> };
+    const keys = Object.keys(schema.shape);
+    expect(keys).toEqual(
+      expect.arrayContaining(["query", "scope", "reranker", "limit", "mmrLambda", "centerNodeUuid"]),
+    );
+  });
+
+  it("six scopes accepted in the exposed schema", () => {
+    const zep = makeFakeZep();
+    const tool = createZepSearchTool({ client: asZep(zep), binding: { userId: "u1" } });
+    const schema = tool.inputSchema as unknown as {
+      shape: { scope: { unwrap: () => { options: string[] } } };
+    };
+    const scopeValues = schema.shape.scope.unwrap().options;
+    expect(scopeValues).toEqual([
+      "edges",
+      "nodes",
+      "episodes",
+      "observations",
+      "thread_summaries",
+      "auto",
+    ]);
+  });
+
+  it("pinned params are hidden from the schema and always sent", async () => {
+    const zep = makeFakeZep();
+    zep.graph.search.mockResolvedValueOnce({ nodes: [{ name: "Apollo" }] });
+    const tool = createZepSearchTool({
+      client: asZep(zep),
+      binding: { userId: "u1" },
+      pinnedParams: { scope: "nodes", limit: 5 },
+    });
+    const schema = tool.inputSchema as unknown as { shape: Record<string, unknown> };
+    expect(Object.keys(schema.shape)).not.toContain("scope");
+    expect(Object.keys(schema.shape)).not.toContain("limit");
+
+    await run(tool, { query: "Apollo" });
+    expect(zep.graph.search).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "nodes", limit: 5 }),
+    );
+  });
+
+  it("hidden params are omitted from the schema and the SDK call", async () => {
+    const zep = makeFakeZep();
+    const tool = createZepSearchTool({
+      client: asZep(zep),
+      binding: { userId: "u1" },
+      hiddenParams: ["mmrLambda", "centerNodeUuid"],
+    });
+    const schema = tool.inputSchema as unknown as { shape: Record<string, unknown> };
+    expect(Object.keys(schema.shape)).not.toContain("mmrLambda");
+    expect(Object.keys(schema.shape)).not.toContain("centerNodeUuid");
+
+    await run(tool, { query: "x" });
+    const sentCall = zep.graph.search.mock.calls[0]![0] as Record<string, unknown>;
+    expect(sentCall).not.toHaveProperty("mmrLambda");
+    expect(sentCall).not.toHaveProperty("centerNodeUuid");
+  });
+
+  it("query-only call omits unset optional params from graph.search", async () => {
+    const zep = makeFakeZep();
+    const tool = createZepSearchTool({ client: asZep(zep), binding: { userId: "u1" } });
+    await run(tool, { query: "hello" });
+    const sentCall = zep.graph.search.mock.calls[0]![0] as Record<string, unknown>;
+    // Only query, userId, and scope's own default (edges) plus limit default may
+    // be present; mmrLambda/centerNodeUuid must never be sent as null/undefined.
+    expect(sentCall).not.toHaveProperty("mmrLambda");
+    expect(sentCall).not.toHaveProperty("centerNodeUuid");
+    expect(Object.values(sentCall).every((v) => v !== null && v !== undefined)).toBe(true);
+  });
+
+  it("legacy option args (scope/reranker/limit) pin the corresponding parameter", async () => {
+    const zep = makeFakeZep();
+    const tool = createZepSearchTool({
+      client: asZep(zep),
+      binding: { userId: "u1" },
+      scope: "episodes",
+      limit: 7,
+    });
+    const schema = tool.inputSchema as unknown as { shape: Record<string, unknown> };
+    expect(Object.keys(schema.shape)).not.toContain("scope");
+    expect(Object.keys(schema.shape)).not.toContain("limit");
+
+    await run(tool, { query: "x" });
+    expect(zep.graph.search).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "episodes", limit: 7 }),
+    );
+  });
+
+  it("model-supplied exposed params are forwarded to graph.search", async () => {
+    const zep = makeFakeZep();
+    const tool = createZepSearchTool({ client: asZep(zep), binding: { userId: "u1" } });
+    await run(tool, { query: "x", scope: "nodes", reranker: "mmr", mmrLambda: 0.5 });
+    expect(zep.graph.search).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "nodes", reranker: "mmr", mmrLambda: 0.5 }),
+    );
+  });
+});
+
 describe("createZepRememberTool", () => {
   it("persists conversational messages via thread.addMessages", async () => {
     const zep = makeFakeZep();

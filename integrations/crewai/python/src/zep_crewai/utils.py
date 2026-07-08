@@ -9,6 +9,25 @@ from zep_cloud.client import Zep
 from zep_cloud.graph.utils import compose_context_string
 from zep_cloud.types import SearchFilters
 
+#: Default template used to wrap a composed context string before it is
+#: returned to the caller for agent consumption. Rendered via plain string
+#: replacement (``template.replace("{context}", context_text)``), never
+#: ``str.format`` -- so context text containing ``{``/``}``/``%`` is always
+#: safe to inject.
+#:
+#: This exact string is canonical across zep-adk's Python, Go, and
+#: TypeScript implementations -- keep them in sync. This is the single
+#: canonical definition; :mod:`zep_crewai.user_storage` and the package
+#: root re-export it.
+DEFAULT_CONTEXT_TEMPLATE = (
+    "The following context is retrieved from Zep, the agent's long-term memory. "
+    "It contains relevant facts, entities, and prior knowledge about the user. "
+    "Use it to inform your responses.\n\n"
+    "<ZEP_CONTEXT>\n"
+    "{context}\n"
+    "</ZEP_CONTEXT>"
+)
+
 
 def search_graph_and_compose_context(
     client: Zep,
@@ -19,12 +38,15 @@ def search_graph_and_compose_context(
     entity_limit: int = 5,
     episodes_limit: int = 10,
     search_filters: SearchFilters | None = None,
+    context_template: str = DEFAULT_CONTEXT_TEMPLATE,
 ) -> str | None:
     """
     Perform parallel graph searches and compose context string.
 
     Searches for edges, nodes, and episodes in parallel, then uses
-    compose_context_string to format the results.
+    compose_context_string to format the results, wrapped in
+    ``context_template`` (via literal ``str.replace("{context}", ...)``,
+    never ``str.format``).
 
     Args:
         client: Zep client instance
@@ -35,9 +57,13 @@ def search_graph_and_compose_context(
         entity_limit: Maximum number of entities (nodes) to retrieve
         episodes_limit: Maximum number of episodes to retrieve
         search_filters: Optional search filters
+        context_template: Template used to wrap the composed context string.
+            Must contain a literal ``{context}`` placeholder. Defaults to
+            :data:`DEFAULT_CONTEXT_TEMPLATE`.
 
     Returns:
-        Composed context string or None if no results
+        The composed context string, wrapped in ``context_template``, or
+        ``None`` if no results were found.
     """
     logger = logging.getLogger(__name__)
 
@@ -134,6 +160,6 @@ def search_graph_and_compose_context(
     # Compose context string from all results
     if edges or nodes or episodes:
         context = compose_context_string(edges=edges, nodes=nodes, episodes=episodes)
-        return context
+        return context_template.replace("{context}", context)
 
     return None

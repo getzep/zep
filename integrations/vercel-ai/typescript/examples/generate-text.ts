@@ -4,7 +4,11 @@
  * Demonstrates the full loop:
  *   1. Provision a Zep user + thread (`ensureZepUserAndThread`).
  *   2. Wrap the model with `createZepMiddleware` so the user's Context Block is
- *      injected as a system message on each new user turn (inject-only).
+ *      injected as a system message on each new user turn. This example wires
+ *      persistence explicitly via `createZepOnFinish` (below); pass
+ *      `persist: true` to `createZepMiddleware` instead if you'd rather the
+ *      middleware guarantee persistence for you — don't do both on the same
+ *      call.
  *   3. Persist the whole turn once per turn via `createZepOnFinish` on the
  *      `generateText` call's `onFinish` (fires once with the final assistant
  *      text, even across a multi-step tool loop).
@@ -66,8 +70,9 @@ async function main(): Promise<void> {
     email: "alice@example.com",
   });
 
-  // 2. Wrap the model: inject the Context Block on each new user turn (the
-  //    middleware is inject-only; persistence happens in onFinish below).
+  // 2. Wrap the model: inject the Context Block on each new user turn. `persist`
+  //    is left unset here — persistence happens explicitly via onFinish below
+  //    (pass `persist: true` instead to have the middleware do it for you).
   //    We use the Chat Completions API (`openai.chat`) rather than the default
   //    Responses API so the multi-step tool loop also works on OpenAI Zero Data
   //    Retention (ZDR) organizations, which don't persist Responses item IDs.

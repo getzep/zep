@@ -11,7 +11,8 @@ from typing import Any
 from zep_cloud.client import Zep
 from zep_cloud.types import SearchFilters
 
-from .utils import search_graph_and_compose_context
+from .limits import truncate_graph_data
+from .utils import DEFAULT_CONTEXT_TEMPLATE, search_graph_and_compose_context
 
 
 class ZepGraphStorage:
@@ -25,6 +26,13 @@ class ZepGraphStorage:
     ``save`` / ``search`` / ``reset`` contract. CrewAI 1.x removed
     ``crewai.memory.storage.interface.Storage``, so this no longer subclasses a
     CrewAI base.
+
+    Note:
+        **No ``on_created`` hook.** Unlike :class:`~zep_crewai.user_storage.ZepUserStorage`,
+        this class has no lazy user provisioning and accepts no ``on_created``
+        hook: it is scoped to a standalone ``graph_id``, not a Zep user, so
+        there is no "user created" event to hook into. Provision the graph
+        itself out-of-band (e.g. via ``client.graph.create``) if needed.
     """
 
     def __init__(
@@ -34,6 +42,8 @@ class ZepGraphStorage:
         search_filters: SearchFilters | None = None,
         facts_limit: int = 20,
         entity_limit: int = 5,
+        *,
+        context_template: str = DEFAULT_CONTEXT_TEMPLATE,
         **kwargs: Any,
     ) -> None:
         """
@@ -45,7 +55,17 @@ class ZepGraphStorage:
             search_filters: Optional filters for search operations
             facts_limit: Maximum number of facts (edges) to retrieve for context
             entity_limit: Maximum number of entities (nodes) to retrieve for context
+            context_template: Template used to wrap the composed context
+                string returned by :meth:`search`. Must contain a literal
+                ``{context}`` placeholder, replaced via plain string
+                replacement (never ``str.format``). Defaults to
+                :data:`~zep_crewai.utils.DEFAULT_CONTEXT_TEMPLATE`.
             **kwargs: Additional configuration options
+
+        Raises:
+            TypeError: If ``client`` is not a ``Zep`` instance, or if
+                ``on_created`` is passed (not supported -- see the class
+                docstring).
         """
         if not isinstance(client, Zep):
             raise TypeError("client must be an instance of Zep")
@@ -53,11 +73,19 @@ class ZepGraphStorage:
         if not graph_id:
             raise ValueError("graph_id is required")
 
+        if "on_created" in kwargs:
+            raise TypeError(
+                "ZepGraphStorage does not support 'on_created': it is scoped to a "
+                "standalone graph_id, not a Zep user. Use ZepUserStorage for "
+                "user-scoped provisioning hooks."
+            )
+
         self._client = client
         self._graph_id = graph_id
         self._search_filters = search_filters
         self._facts_limit = facts_limit
         self._entity_limit = entity_limit
+        self._context_template = context_template
         self._config = kwargs
 
         self._logger = logging.getLogger(__name__)
@@ -87,7 +115,7 @@ class ZepGraphStorage:
             # Add data to the graph
             self._client.graph.add(
                 graph_id=self._graph_id,
-                data=content_str,
+                data=truncate_graph_data(content_str),
                 type=content_type,
             )
 
@@ -96,8 +124,10 @@ class ZepGraphStorage:
             )
 
         except Exception as e:
+            # Log-only: a Zep failure here must never propagate into the
+            # crew's execution. Callers that need to know about persistence
+            # failures should inspect logs; save() always returns normally.
             self._logger.error(f"Error saving to Zep graph: {e}")
-            raise
 
     def search(
         self, query: str, limit: int = 10, score_threshold: float = 0.0
@@ -106,7 +136,7 @@ class ZepGraphStorage:
         Search the Zep knowledge graph and return composed context.
 
         Performs parallel searches across edges, nodes, and episodes,
-        then returns a composed context string.
+        then returns a composed context string wrapped in ``context_template``.
 
         Args:
             query: Search query string from the agent
@@ -126,6 +156,7 @@ class ZepGraphStorage:
                 entity_limit=self._entity_limit,
                 episodes_limit=limit,
                 search_filters=self._search_filters,
+                context_template=self._context_template,
             )
 
             if context:

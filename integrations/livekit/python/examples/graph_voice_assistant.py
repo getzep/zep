@@ -26,7 +26,7 @@ from livekit import agents
 from livekit.plugins import openai, silero
 from zep_cloud.client import AsyncZep
 
-from zep_livekit import ZepGraphAgent
+from zep_livekit import ZepGraphAgent, create_graph_search_tool
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG)  # Changed to DEBUG to see participant detection
@@ -68,6 +68,10 @@ async def entrypoint(ctx: agents.JobContext):
         vad=silero.VAD.load(),
     )
 
+    # A model-callable tool letting the agent search the shared graph on
+    # demand, in addition to the hybrid-search context injected every turn.
+    search_tool = create_graph_search_tool(zep_client, graph_id=ZEP_GRAPH_ID)
+
     # Create the graph-based memory agent
     agent = ZepGraphAgent(
         zep_client=zep_client,
@@ -76,6 +80,7 @@ async def entrypoint(ctx: agents.JobContext):
         facts_limit=15,  # Number of facts to retrieve
         entity_limit=5,  # Number of entities to retrieve
         episode_limit=2,  # Number of episodes to retrieve
+        tools=[search_tool],
         instructions="""
             You are a knowledgeable assistant with access to a persistent knowledge graph.
             You can learn and remember facts, relationships, and concepts from our conversations.

@@ -74,7 +74,10 @@ class TestZepMemoryMock:
             from zep_cloud.client import AsyncZep
 
             mock_client = MagicMock(spec=AsyncZep)
+            mock_client.user = MagicMock()
+            mock_client.user.add = AsyncMock()
             mock_client.thread = MagicMock()
+            mock_client.thread.create = AsyncMock()
             mock_client.thread.get = AsyncMock()
             mock_client.thread.add_messages = AsyncMock()
 
@@ -104,6 +107,10 @@ class TestZepMemoryMock:
             from zep_cloud.client import AsyncZep
 
             mock_client = MagicMock(spec=AsyncZep)
+            mock_client.user = MagicMock()
+            mock_client.user.add = AsyncMock()
+            mock_client.thread = MagicMock()
+            mock_client.thread.create = AsyncMock()
             mock_client.graph = MagicMock()
             mock_client.graph.add = AsyncMock()
 
@@ -135,6 +142,10 @@ class TestZepMemoryMock:
             from zep_cloud.client import AsyncZep
 
             mock_client = MagicMock(spec=AsyncZep)
+            mock_client.user = MagicMock()
+            mock_client.user.add = AsyncMock()
+            mock_client.thread = MagicMock()
+            mock_client.thread.create = AsyncMock()
             mock_client.graph = MagicMock()
             mock_client.graph.add = AsyncMock()
 
@@ -202,7 +213,10 @@ class TestZepMemoryMock:
             # Test supported mime types - these should work (with user_id for message storage)
             supported_types = [MemoryMimeType.TEXT, MemoryMimeType.MARKDOWN, MemoryMimeType.JSON]
 
+            mock_client.user = MagicMock()
+            mock_client.user.add = AsyncMock()
             mock_client.thread = MagicMock()
+            mock_client.thread.create = AsyncMock()
             mock_client.thread.get = AsyncMock()
             mock_client.thread.add_messages = AsyncMock()
 
@@ -248,7 +262,10 @@ class TestZepMemoryMock:
         from autogen_core.models import UserMessage
 
         mock_client = MagicMock(spec=AsyncZep)
+        mock_client.user = MagicMock()
+        mock_client.user.add = AsyncMock()
         mock_client.thread = MagicMock()
+        mock_client.thread.create = AsyncMock()
         mock_client.thread.get_user_context = AsyncMock(
             return_value=MagicMock(context="some context block")
         )
@@ -279,7 +296,10 @@ class TestZepMemoryMock:
         from autogen_core.models import UserMessage
 
         mock_client = MagicMock(spec=AsyncZep)
+        mock_client.user = MagicMock()
+        mock_client.user.add = AsyncMock()
         mock_client.thread = MagicMock()
+        mock_client.thread.create = AsyncMock()
         mock_client.thread.get_user_context = AsyncMock(
             return_value=MagicMock(context="templated context")
         )

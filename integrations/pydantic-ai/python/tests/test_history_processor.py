@@ -17,6 +17,7 @@ from pydantic_ai.messages import (
 )
 
 from zep_pydantic_ai import ZepDeps, persist_run, reset_turn_cache, zep_history_processor
+from zep_pydantic_ai.history_processor import DEFAULT_CONTEXT_TEMPLATE, ContextInput
 
 
 @pytest.fixture(autouse=True)
@@ -371,3 +372,109 @@ class TestPersistRun:
         new_messages = [ModelResponse(parts=[TextPart(content="answer")])]
         # Should not raise.
         await persist_run(deps, new_messages)
+
+
+class TestContextBuilder:
+    @pytest.mark.asyncio
+    async def test_processor_with_context_builder(self) -> None:
+        """When a context_builder is set: add_messages is called WITHOUT
+        return_context, the builder receives a ContextInput with the right
+        fields, and same-run replay (a second model request in the same run)
+        makes no extra Zep calls."""
+        client = _make_mock_client(context=None)
+        received: list[ContextInput] = []
+
+        async def builder(ctx: ContextInput) -> str | None:
+            received.append(ctx)
+            return "Built context"
+
+        deps = _make_deps(client, context_builder=builder)
+        ctx = _make_ctx(deps, run_id="run-fixed")
+
+        messages = _user_history("What's up?")
+        r1 = await zep_history_processor(ctx, messages)
+
+        client.thread.add_messages.assert_called_once()
+        kwargs = client.thread.add_messages.call_args.kwargs
+        assert "return_context" not in kwargs
+        assert len(received) == 1
+        built = received[0]
+        assert built.zep is client
+        assert built.user_id == "user-1"
+        assert built.thread_id == "thread-1"
+        assert built.user_message == "What's up?"
+        assert isinstance(r1[0], ModelRequest)
+        assert "Built context" in r1[0].parts[0].content
+
+        # Re-invocation within the same run: cached builder result replayed,
+        # no extra Zep calls (neither persist nor builder).
+        r2 = await zep_history_processor(ctx, messages)
+        assert client.thread.add_messages.call_count == 1
+        assert len(received) == 1
+        assert "Built context" in r2[0].parts[0].content
+
+    @pytest.mark.asyncio
+    async def test_builder_failure_isolated_from_persist(self) -> None:
+        """If the builder raises, persistence still completes and the turn is
+        marked as persisted; no context is injected."""
+        client = _make_mock_client(context=None)
+
+        async def failing_builder(ctx: ContextInput) -> str | None:
+            raise RuntimeError("builder boom")
+
+        deps = _make_deps(client, context_builder=failing_builder)
+        ctx = _make_ctx(deps)
+
+        messages = _user_history("hello")
+        result = await zep_history_processor(ctx, messages)
+
+        client.thread.add_messages.assert_called_once()
+        assert result == messages  # no context injected
+
+    @pytest.mark.asyncio
+    async def test_persist_failure_still_injects_builder_result(self) -> None:
+        """If persistence raises, a successful builder result is still
+        injected into the prompt."""
+        client = _make_mock_client(context=None)
+        client.thread.add_messages.side_effect = RuntimeError("persist boom")
+
+        async def builder(ctx: ContextInput) -> str | None:
+            return "Still injected"
+
+        deps = _make_deps(client, context_builder=builder)
+        ctx = _make_ctx(deps)
+
+        messages = _user_history("hello")
+        result = await zep_history_processor(ctx, messages)
+
+        assert isinstance(result[0], ModelRequest)
+        assert "Still injected" in result[0].parts[0].content
+
+    @pytest.mark.asyncio
+    async def test_context_template_override(self) -> None:
+        client = _make_mock_client(context="Some fact")
+        deps = _make_deps(client, context_template="CUSTOM[{context}]END")
+        ctx = _make_ctx(deps)
+
+        messages = _user_history("hello")
+        result = await zep_history_processor(ctx, messages)
+
+        assert result[0].parts[0].content == "CUSTOM[Some fact]END"
+
+    def test_default_context_template_is_canonical(self) -> None:
+        assert "{context}" in DEFAULT_CONTEXT_TEMPLATE
+        assert "<ZEP_CONTEXT>" in DEFAULT_CONTEXT_TEMPLATE
+        assert "</ZEP_CONTEXT>" in DEFAULT_CONTEXT_TEMPLATE
+
+    @pytest.mark.asyncio
+    async def test_template_rendered_via_replace_not_format(self) -> None:
+        """A context string containing braces must not break template
+        rendering (rules out str.format usage)."""
+        client = _make_mock_client(context="{not a placeholder} and %s too")
+        deps = _make_deps(client)
+        ctx = _make_ctx(deps)
+
+        messages = _user_history("hello")
+        result = await zep_history_processor(ctx, messages)
+
+        assert "{not a placeholder} and %s too" in result[0].parts[0].content

@@ -98,6 +98,142 @@ class TestToolMetadata:
         assert tool.coroutine is not None
 
 
+class TestPinOrExposeSchema:
+    def test_search_tool_exposes_params_by_default(self) -> None:
+        tool = create_graph_search_tool(_make_async_client(), user_id="u")
+        schema = tool.args_schema.model_json_schema()
+        properties = schema["properties"]
+        for name in ("query", "scope", "reranker", "limit", "mmr_lambda", "center_node_uuid"):
+            assert name in properties, f"{name} should be exposed by default"
+        assert schema["required"] == ["query"]
+
+    def test_search_tool_six_scopes(self) -> None:
+        tool = create_graph_search_tool(_make_async_client(), user_id="u")
+        schema = tool.args_schema.model_json_schema()
+        scope_enum = schema["properties"]["scope"]["enum"]
+        assert set(scope_enum) == {
+            "edges",
+            "nodes",
+            "episodes",
+            "observations",
+            "thread_summaries",
+            "auto",
+        }
+
+    def test_search_tool_five_rerankers(self) -> None:
+        tool = create_graph_search_tool(_make_async_client(), user_id="u")
+        schema = tool.args_schema.model_json_schema()
+        reranker_enum = schema["properties"]["reranker"]["enum"]
+        assert set(reranker_enum) == {
+            "rrf",
+            "mmr",
+            "node_distance",
+            "episode_mentions",
+            "cross_encoder",
+        }
+
+    def test_constructor_only_params_never_in_schema(self) -> None:
+        tool = create_graph_search_tool(
+            _make_async_client(), user_id="u", search_filters={"node_labels": ["Person"]}
+        )
+        schema = tool.args_schema.model_json_schema()
+        assert "search_filters" not in schema["properties"]
+        assert "bfs_origin_node_uuids" not in schema["properties"]
+
+    def test_search_tool_pinned_params_hidden_and_sent(self) -> None:
+        client = _make_async_client()
+        client.graph.search.return_value = _result(nodes=[_node("Alice", "engineer")])
+        tool = create_graph_search_tool(
+            client, user_id="u", pinned_params={"scope": "nodes", "limit": 3}
+        )
+        schema = tool.args_schema.model_json_schema()
+        assert "scope" not in schema["properties"]
+        assert "limit" not in schema["properties"]
+
+    @pytest.mark.asyncio
+    async def test_pinned_params_applied_to_call(self) -> None:
+        client = _make_async_client()
+        client.graph.search.return_value = _result(nodes=[_node("Alice", "engineer")])
+        tool = create_graph_search_tool(
+            client, user_id="u", pinned_params={"scope": "nodes", "limit": 3}
+        )
+        out = await tool.ainvoke({"query": "who"})
+        call = client.graph.search.call_args.kwargs
+        assert call["scope"] == "nodes"
+        assert call["limit"] == 3
+        assert "Alice" in out
+
+    def test_search_tool_hidden_params_omitted_from_schema(self) -> None:
+        tool = create_graph_search_tool(
+            _make_async_client(), user_id="u", hidden_params={"mmr_lambda"}
+        )
+        schema = tool.args_schema.model_json_schema()
+        assert "mmr_lambda" not in schema["properties"]
+
+    @pytest.mark.asyncio
+    async def test_search_tool_hidden_params_omitted_from_sdk_call(self) -> None:
+        client = _make_async_client()
+        client.graph.search.return_value = _result(edges=[_edge("fact")])
+        tool = create_graph_search_tool(
+            client, user_id="u", hidden_params={"mmr_lambda", "center_node_uuid"}
+        )
+        await tool.ainvoke({"query": "x"})
+        call = client.graph.search.call_args.kwargs
+        assert "mmr_lambda" not in call
+        assert "center_node_uuid" not in call
+
+    @pytest.mark.asyncio
+    async def test_search_tool_query_only_omits_unset_none_default_params(self) -> None:
+        # mmr_lambda / center_node_uuid default to None in the spec; when the
+        # model doesn't supply them, they must never be forwarded as an
+        # explicit `None` to graph.search (only Zep's own server default
+        # should apply).
+        client = _make_async_client()
+        client.graph.search.return_value = _result(edges=[_edge("fact")])
+        tool = create_graph_search_tool(client, user_id="u")
+        await tool.ainvoke({"query": "x"})
+        call = client.graph.search.call_args.kwargs
+        assert "mmr_lambda" not in call
+        assert "center_node_uuid" not in call
+        # But defaulted params ARE sent.
+        assert call["scope"] == "edges"
+        assert call["reranker"] == "rrf"
+        assert call["limit"] == 10
+
+    @pytest.mark.asyncio
+    async def test_model_provided_mmr_lambda_forwarded(self) -> None:
+        client = _make_async_client()
+        client.graph.search.return_value = _result(edges=[_edge("fact")])
+        tool = create_graph_search_tool(client, user_id="u")
+        await tool.ainvoke({"query": "x", "reranker": "mmr", "mmr_lambda": 0.5})
+        call = client.graph.search.call_args.kwargs
+        assert call["mmr_lambda"] == 0.5
+
+    def test_search_tool_legacy_args_pin(self) -> None:
+        tool = create_graph_search_tool(_make_async_client(), user_id="u", scope="nodes", limit=5)
+        schema = tool.args_schema.model_json_schema()
+        assert "scope" not in schema["properties"]
+        assert "limit" not in schema["properties"]
+
+    @pytest.mark.asyncio
+    async def test_legacy_args_pin_applied_to_call(self) -> None:
+        client = _make_async_client()
+        client.graph.search.return_value = _result(nodes=[_node("Alice", "x")])
+        tool = create_graph_search_tool(client, user_id="u", scope="nodes", limit=5)
+        await tool.ainvoke({"query": "who"})
+        call = client.graph.search.call_args.kwargs
+        assert call["scope"] == "nodes"
+        assert call["limit"] == 5
+
+    def test_unknown_pinned_param_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Unknown pinned"):
+            create_graph_search_tool(_make_async_client(), user_id="u", pinned_params={"bogus": 1})
+
+    def test_unknown_hidden_param_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Unknown hidden"):
+            create_graph_search_tool(_make_async_client(), user_id="u", hidden_params={"bogus"})
+
+
 class TestAsyncToolExecution:
     @pytest.mark.asyncio
     async def test_searches_user_graph(self) -> None:
@@ -119,7 +255,7 @@ class TestAsyncToolExecution:
     async def test_searches_standalone_graph(self) -> None:
         client = _make_async_client()
         client.graph.search.return_value = _result(edges=[_edge("Policy X applies")])
-        tool = create_graph_search_tool(client, graph_id="kb", scope="edges")
+        tool = create_graph_search_tool(client, graph_id="kb")
 
         await tool.ainvoke({"query": "policy"})
 
@@ -128,14 +264,14 @@ class TestAsyncToolExecution:
         assert "user_id" not in call
 
     @pytest.mark.asyncio
-    async def test_pinned_params_applied(self) -> None:
+    async def test_model_chosen_scope_reranker_limit(self) -> None:
         client = _make_async_client()
         client.graph.search.return_value = _result(nodes=[_node("Alice", "engineer")])
-        tool = create_graph_search_tool(
-            client, user_id="u", scope="nodes", reranker="cross_encoder", limit=3
-        )
+        tool = create_graph_search_tool(client, user_id="u")
 
-        out = await tool.ainvoke({"query": "who"})
+        out = await tool.ainvoke(
+            {"query": "who", "scope": "nodes", "reranker": "cross_encoder", "limit": 3}
+        )
 
         call = client.graph.search.call_args.kwargs
         assert call["scope"] == "nodes"
@@ -153,6 +289,21 @@ class TestAsyncToolExecution:
         await tool.ainvoke({"query": "x"})
 
         assert client.graph.search.call_args.kwargs["search_filters"] == filters
+
+    @pytest.mark.asyncio
+    async def test_bfs_origin_node_uuids_passed(self) -> None:
+        client = _make_async_client()
+        client.graph.search.return_value = _result(edges=[])
+        tool = create_graph_search_tool(
+            client, user_id="u", bfs_origin_node_uuids=["uuid-1", "uuid-2"]
+        )
+
+        await tool.ainvoke({"query": "x"})
+
+        assert client.graph.search.call_args.kwargs["bfs_origin_node_uuids"] == [
+            "uuid-1",
+            "uuid-2",
+        ]
 
     @pytest.mark.asyncio
     async def test_empty_query_short_circuits(self) -> None:
@@ -193,6 +344,29 @@ class TestSyncToolExecution:
         tool = create_graph_search_tool_sync(client, graph_id="g")
         out = tool.invoke({"query": "q"})
         assert "failed" in out.lower()
+
+    def test_sync_tool_exposes_params_by_default(self) -> None:
+        tool = create_graph_search_tool_sync(_make_sync_client(), user_id="u")
+        schema = tool.args_schema.model_json_schema()
+        for name in ("query", "scope", "reranker", "limit", "mmr_lambda", "center_node_uuid"):
+            assert name in schema["properties"]
+
+    def test_sync_tool_pinned_params(self) -> None:
+        client = _make_sync_client()
+        client.graph.search.return_value = _result(nodes=[_node("Bob", None)])
+        tool = create_graph_search_tool_sync(client, user_id="u", pinned_params={"scope": "nodes"})
+        out = tool.invoke({"query": "who"})
+        assert client.graph.search.call_args.kwargs["scope"] == "nodes"
+        assert "Bob" in out
+
+    def test_sync_tool_omits_unset_none_default_params(self) -> None:
+        client = _make_sync_client()
+        client.graph.search.return_value = _result(edges=[_edge("fact")])
+        tool = create_graph_search_tool_sync(client, user_id="u")
+        tool.invoke({"query": "x"})
+        call = client.graph.search.call_args.kwargs
+        assert "mmr_lambda" not in call
+        assert "center_node_uuid" not in call
 
 
 class TestFormatResults:

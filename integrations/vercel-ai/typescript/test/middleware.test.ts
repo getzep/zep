@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { LanguageModelV3CallOptions, LanguageModelV3Prompt } from "@ai-sdk/provider";
-import { createZepMiddleware } from "../src/index.js";
+import { createZepMiddleware, DEFAULT_CONTEXT_TEMPLATE } from "../src/index.js";
+import type { ZepContextBuilderInput } from "../src/index.js";
 import { makeFakeZep, asZep } from "./helpers.js";
 
 const modelStub = {} as never;
@@ -24,10 +25,18 @@ describe("createZepMiddleware", () => {
     expect(mw.specificationVersion).toBe("v3");
   });
 
-  it("does not expose a wrapGenerate hook (injection only)", () => {
+  it("does not expose wrapGenerate/wrapStream hooks when persist is unset (injection only)", () => {
     const zep = makeFakeZep();
     const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1" });
     expect(mw.wrapGenerate).toBeUndefined();
+    expect(mw.wrapStream).toBeUndefined();
+  });
+
+  it("exposes wrapGenerate/wrapStream hooks when persist is set", () => {
+    const zep = makeFakeZep();
+    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    expect(mw.wrapGenerate).toBeDefined();
+    expect(mw.wrapStream).toBeDefined();
   });
 
   it("transformParams injects the Context Block as a leading system message", async () => {
@@ -139,5 +148,102 @@ describe("createZepMiddleware", () => {
     const out = await mw.transformParams!({ type: "generate", params, model: modelStub });
     expect(out.prompt.some((m) => m.role === "system")).toBe(false);
     expect(zep.thread.getUserContext).not.toHaveBeenCalled();
+  });
+});
+
+describe("createZepMiddleware contextBuilder", () => {
+  it("contextBuilder replaces default retrieval", async () => {
+    const zep = makeFakeZep();
+    const builder = vi.fn().mockResolvedValue("BUILT CONTEXT");
+    const mw = createZepMiddleware({
+      client: asZep(zep),
+      threadId: "t1",
+      userId: "u1",
+      contextBuilder: builder,
+    });
+
+    const params = makeParams("Where do I live?");
+    const out = await mw.transformParams!({ type: "generate", params, model: modelStub });
+
+    expect(zep.thread.getUserContext).not.toHaveBeenCalled();
+    expect(builder).toHaveBeenCalledOnce();
+    const input = builder.mock.calls[0]![0] as ZepContextBuilderInput;
+    expect(input.client).toBe(asZep(zep));
+    expect(input.userId).toBe("u1");
+    expect(input.threadId).toBe("t1");
+    expect(input.userMessage).toBe("Where do I live?");
+    expect(input.params).toBe(params);
+
+    expect(out.prompt[0]!.role).toBe("system");
+    expect((out.prompt[0] as { content: string }).content).toContain("BUILT CONTEXT");
+  });
+
+  it("contextBuilder returning undefined injects nothing", async () => {
+    const zep = makeFakeZep();
+    const builder = vi.fn().mockResolvedValue(undefined);
+    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", contextBuilder: builder });
+
+    const params = makeParams("hi");
+    const out = await mw.transformParams!({ type: "generate", params, model: modelStub });
+
+    expect(builder).toHaveBeenCalledOnce();
+    expect(out.prompt.some((m) => m.role === "system")).toBe(false);
+  });
+
+  it("contextBuilder throw degrades gracefully (warn, no system message)", async () => {
+    const zep = makeFakeZep();
+    const builder = vi.fn().mockRejectedValue(new Error("builder exploded"));
+    const warn = vi.fn();
+    const mw = createZepMiddleware({
+      client: asZep(zep),
+      threadId: "t1",
+      contextBuilder: builder,
+      logger: { warn },
+    });
+
+    const params = makeParams("hi");
+    const out = await mw.transformParams!({ type: "generate", params, model: modelStub });
+
+    expect(out.prompt.some((m) => m.role === "system")).toBe(false);
+    expect(warn).toHaveBeenCalled();
+  });
+});
+
+describe("createZepMiddleware DEFAULT_CONTEXT_TEMPLATE", () => {
+  // Canonical across every Zep framework integration (Python, Go, TypeScript) —
+  // byte-identical to e.g. zep_langgraph.context.DEFAULT_CONTEXT_TEMPLATE.
+  const CANONICAL_TEMPLATE =
+    "The following context is retrieved from Zep, the agent's long-term memory. " +
+    "It contains relevant facts, entities, and prior knowledge about the user. " +
+    "Use it to inform your responses.\n\n" +
+    "<ZEP_CONTEXT>\n" +
+    "{context}\n" +
+    "</ZEP_CONTEXT>";
+
+  it("matches the canonical template text byte-for-byte", () => {
+    expect(DEFAULT_CONTEXT_TEMPLATE).toBe(CANONICAL_TEMPLATE);
+  });
+
+  it("default formatContext uses the canonical template", async () => {
+    const zep = makeFakeZep();
+    zep.thread.getUserContext.mockResolvedValueOnce({ context: "FACT" });
+    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1" });
+    const params = makeParams("hi");
+    const out = await mw.transformParams!({ type: "generate", params, model: modelStub });
+    const expected = DEFAULT_CONTEXT_TEMPLATE.split("{context}").join("FACT");
+    expect((out.prompt[0] as { content: string }).content).toBe(expected);
+  });
+
+  it("custom formatContext still wins", async () => {
+    const zep = makeFakeZep();
+    zep.thread.getUserContext.mockResolvedValueOnce({ context: "FACT" });
+    const mw = createZepMiddleware({
+      client: asZep(zep),
+      threadId: "t1",
+      formatContext: (c) => `CUSTOM[${c}]`,
+    });
+    const params = makeParams("hi");
+    const out = await mw.transformParams!({ type: "generate", params, model: modelStub });
+    expect((out.prompt[0] as { content: string }).content).toBe("CUSTOM[FACT]");
   });
 });

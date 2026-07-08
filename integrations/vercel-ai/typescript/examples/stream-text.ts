@@ -1,14 +1,17 @@
 /**
  * Vercel AI SDK + Zep — `streamText` example (middleware + onFinish).
  *
- * The same division of labor as the `generateText` example applies to
- * streaming: **inject via middleware, persist via `onFinish`.**
+ * This example wires context injection and persistence explicitly:
  *
  *   - Context injection runs in the middleware's `transformParams` (it fires for
  *     `stream` calls too, on each new user turn).
  *   - Persistence runs from `onFinish`, which fires exactly once per turn with
- *     the final assistant text — for both `streamText` and `generateText`. (The
- *     middleware never persists; a per-step hook would fragment the turn.)
+ *     the final assistant text — for both `streamText` and `generateText`.
+ *
+ * Prefer the middleware to guarantee persistence for you instead? Pass
+ * `persist: true` to `createZepMiddleware` and drop `onFinish` — see the
+ * "Quick start" section of the README. Don't combine both on the same call
+ * (that persists every turn twice).
  *
  * If you'd rather set `system:` yourself instead of using the middleware, the
  * plain `getZepContext` helper does that — but the middleware keeps the

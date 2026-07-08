@@ -121,7 +121,7 @@ class TestImports:
         import zep_ag2
 
         assert hasattr(zep_ag2, "__version__")
-        assert zep_ag2.__version__ == "0.1.0"
+        assert zep_ag2.__version__ == "0.2.0"
 
     def test_all_public_symbols(self) -> None:
         assert ZepMemoryManager is not None
@@ -188,11 +188,13 @@ class TestToolFactories:
             create_add_graph_data_tool(mock_zep_client, user_id="u1", graph_id="g1")
 
     def test_search_memory_tool_calls_sdk(self, mock_zep_client: MagicMock) -> None:
+        """Pin-or-expose (see test_search.py): unset optional params
+        (mmr_lambda, center_node_uuid) are omitted from the SDK call."""
         tool = create_search_memory_tool(mock_zep_client, user_id="u1")
         result = tool(query="hiking", limit=3)
 
         mock_zep_client.graph.search.assert_called_once_with(
-            user_id="u1", query="hiking", limit=3, scope="edges"
+            query="hiking", user_id="u1", scope="edges", reranker="rrf", limit=3
         )
         assert isinstance(result, str)
 
@@ -434,12 +436,15 @@ class TestZepMemoryManager:
     async def test_enrich_system_message(
         self, mock_zep_client: MagicMock, mock_ag2_agent: MagicMock
     ) -> None:
+        """Injected context is wrapped in DEFAULT_CONTEXT_TEMPLATE's
+        <ZEP_CONTEXT> block (see test_context_template.py)."""
         mgr = ZepMemoryManager(mock_zep_client, user_id="u1", session_id="s1")
         await mgr.enrich_system_message(mock_ag2_agent)
 
         mock_ag2_agent.update_system_message.assert_called_once()
         call_args = mock_ag2_agent.update_system_message.call_args[0][0]
-        assert "Relevant Memory Context" in call_args
+        assert "<ZEP_CONTEXT>" in call_args
+        assert "Alice likes hiking" in call_args
 
     @pytest.mark.asyncio
     async def test_enrich_system_message_no_context(
@@ -690,6 +695,8 @@ class TestFormattingHelpers:
     """Test _format_graph_results through tool calls."""
 
     def test_search_memory_with_edges_nodes_episodes(self, mock_zep_client: MagicMock) -> None:
+        """Result formatting is scope-aware (pin-or-expose, see
+        test_search.py): only the requested scope's results are rendered."""
         mock_edge = MagicMock()
         mock_edge.fact = "Alice likes hiking"
         mock_node = MagicMock()
@@ -705,11 +712,10 @@ class TestFormattingHelpers:
         )
 
         tool = create_search_memory_tool(mock_zep_client, user_id="u1")
-        result = tool(query="hiking")
 
-        assert "Alice likes hiking" in result
-        assert "Alice" in result
-        assert "Discussed hiking plans" in result
+        assert "Alice likes hiking" in tool(query="hiking", scope="edges")
+        assert "Alice" in tool(query="hiking", scope="nodes")
+        assert "Discussed hiking plans" in tool(query="hiking", scope="episodes")
 
     def test_search_memory_no_results(self, mock_zep_client: MagicMock) -> None:
         tool = create_search_memory_tool(mock_zep_client, user_id="u1")
@@ -726,9 +732,9 @@ class TestFormattingHelpers:
         )
 
         tool = create_search_memory_tool(mock_zep_client, user_id="u1")
-        result = tool(query="Bob")
+        result = tool(query="Bob", scope="nodes")
 
-        assert "No summary" in result
+        assert "Bob" in result
 
 
 class TestAddMemoryEdgeCases:
@@ -959,3 +965,81 @@ class TestSyncWrappers:
         result = mgr.add_data_sync("data")
 
         assert result is True
+
+
+class TestMultiAgentAttachCaveat:
+    """Characterization tests for the documented multi-agent double-persist risk.
+
+    ``attach_to_agent`` registers both an incoming (``process_last_received_message``,
+    persists as role=user) and an outgoing (``process_message_before_send``, persists as
+    role=assistant) hook. If two agents in a two-agent conversation each attach a manager
+    pointing at the *same* Zep thread (``session_id``), a single turn is persisted twice
+    with conflicting roles: the sender's outgoing hook persists it as ``assistant``, and the
+    recipient's incoming hook persists the same content again as ``user``.
+
+    These tests DEMONSTRATE that documented risk (see README's "Multi-agent caveat" section
+    and the ``attach_to_agent`` docstring) -- they pin current, intentional-but-risky
+    behavior rather than endorse it as correct application usage.
+    """
+
+    def test_two_attached_agents_same_thread_double_persist_documented_risk(self) -> None:
+        shared_session_id = "shared-thread"
+
+        client_a = _mock_zep_client()
+        client_b = _mock_zep_client()
+
+        manager_a = ZepMemoryManager(client_a, user_id="u1", session_id=shared_session_id)
+        manager_b = ZepMemoryManager(client_b, user_id="u1", session_id=shared_session_id)
+
+        agent_a = _mock_fake_agent_for_attach()
+        agent_b = _mock_fake_agent_for_attach()
+
+        manager_a.attach_to_agent(agent_a)
+        manager_b.attach_to_agent(agent_b)
+
+        outgoing_hook_a = next(
+            call.args[1]
+            for call in agent_a.register_hook.call_args_list
+            if call.args[0] == "process_message_before_send"
+        )
+        incoming_hook_b = next(
+            call.args[1]
+            for call in agent_b.register_hook.call_args_list
+            if call.args[0] == "process_last_received_message"
+        )
+
+        shared_content = "Let's schedule the review for Friday."
+
+        # Agent A sends the message: its outgoing hook persists it as assistant.
+        outgoing_hook_a(sender=agent_a, message=shared_content, recipient=agent_b, silent=False)
+
+        # Agent B receives the same message: its incoming hook persists it again as user.
+        incoming_hook_b(shared_content)
+
+        # Double-persist across the two independent clients/managers: one call each.
+        client_a.thread.add_messages.assert_called_once()
+        client_b.thread.add_messages.assert_called_once()
+
+        sent_by_a = client_a.thread.add_messages.call_args.kwargs["messages"][0]
+        sent_by_b = client_b.thread.add_messages.call_args.kwargs["messages"][0]
+
+        assert sent_by_a.content == shared_content
+        assert sent_by_a.role == "assistant"
+
+        assert sent_by_b.content == shared_content
+        assert sent_by_b.role == "user"
+
+        # Total persistence calls for one logical turn: two, with conflicting roles --
+        # exactly the risk documented in the README and the attach_to_agent docstring.
+        total_add_messages_calls = (
+            client_a.thread.add_messages.call_count + client_b.thread.add_messages.call_count
+        )
+        assert total_add_messages_calls == 2
+
+
+def _mock_fake_agent_for_attach() -> MagicMock:
+    agent = MagicMock()
+    agent.system_message = "You are a helpful assistant."
+    agent.update_system_message = MagicMock()
+    agent.register_hook = MagicMock()
+    return agent

@@ -1,8 +1,8 @@
 import { createTool } from "@mastra/core/tools";
 import type { ZepClient } from "@getzep/zep-cloud";
 import { z } from "zod";
-import type { ZepThreadBinding, ZepLogger } from "./types.js";
-import { errorMessage, resolveLogger } from "./zep-utils.js";
+import type { ZepIdentityResolver, ZepThreadBinding, ZepLogger } from "./types.js";
+import { errorMessage, resolveLogger, resolveToolIdentity } from "./zep-utils.js";
 
 /** Options for {@link createZepContextTool}. */
 export interface ZepContextToolOptions {
@@ -20,8 +20,21 @@ export interface ZepContextToolOptions {
   /**
    * Optional Zep context template ID for custom Context Block formatting.
    * When omitted, Zep's default Smart Context Assembly layout is used.
+   *
+   * Note: a client-side `contextBuilder` (see `ZepInputProcessor`) is *not*
+   * offered here because `ZepContextBuilderInput` requires the latest user
+   * message text, and this tool is invoked by the model with an empty input
+   * schema — it has no access to the turn's user message. Server-side
+   * `templateId` is the customization point for the tool path; use
+   * `ZepInputProcessor` with `contextBuilder` for client-side assembly.
    */
   templateId?: string;
+  /**
+   * Resolve the `threadId` (and optional `userId`) per call from the tool's
+   * `requestContext`, overriding the constructor-bound `binding`. Return
+   * `undefined` (or omit `threadId`) to fall back to `binding`.
+   */
+  resolveIdentity?: ZepIdentityResolver;
   /** Logger for Zep failures. Defaults to `console`. */
   logger?: ZepLogger;
 }
@@ -57,7 +70,7 @@ type ContextOutput = z.infer<typeof outputSchema>;
  * it never throws.
  */
 export function createZepContextTool(options: ZepContextToolOptions) {
-  const { client, binding } = options;
+  const { client, binding, resolveIdentity } = options;
   const logger = resolveLogger(options.logger);
 
   return createTool({
@@ -68,15 +81,19 @@ export function createZepContextTool(options: ZepContextToolOptions) {
         "relevant facts from previous conversations — to ground your response.",
     inputSchema,
     outputSchema,
-    execute: async (): Promise<ContextOutput> => {
-      if (!binding.threadId) {
+    execute: async (
+      _inputData: unknown,
+      context?: { requestContext?: unknown },
+    ): Promise<ContextOutput> => {
+      const identity = resolveToolIdentity(binding, resolveIdentity, context);
+      if (!identity.threadId) {
         logger.warn("[zep-context] No threadId bound; skipping context retrieval.");
         return { context: "", found: false };
       }
 
       try {
         const response = await client.thread.getUserContext(
-          binding.threadId,
+          identity.threadId,
           options.templateId ? { templateId: options.templateId } : {},
         );
         const context = response.context?.trim() ?? "";

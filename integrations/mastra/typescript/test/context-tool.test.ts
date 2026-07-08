@@ -52,4 +52,31 @@ describe("createZepContextTool", () => {
     expect(result).toEqual({ context: "", found: false });
     expect(warn).toHaveBeenCalledOnce();
   });
+
+  it("resolves identity from requestContext when resolveIdentity is provided", async () => {
+    const zep = makeFakeZep();
+    const resolveIdentity = vi.fn().mockReturnValue({ threadId: "t2" });
+    const tool = createZepContextTool({
+      client: asZep(zep),
+      binding: { userId: "u1", threadId: "t1" },
+      resolveIdentity,
+    });
+
+    await run(tool, {}, { requestContext: { tenant: "acme" } });
+
+    expect(resolveIdentity).toHaveBeenCalledWith({ tenant: "acme" });
+    expect(zep.thread.getUserContext).toHaveBeenCalledWith("t2", {});
+  });
+
+  it("falls back to constructor binding when resolveIdentity is unset", async () => {
+    const zep = makeFakeZep();
+    const tool = createZepContextTool({
+      client: asZep(zep),
+      binding: { userId: "u1", threadId: "t1" },
+    });
+
+    await run(tool, {}, { requestContext: {} });
+
+    expect(zep.thread.getUserContext).toHaveBeenCalledWith("t1", {});
+  });
 });

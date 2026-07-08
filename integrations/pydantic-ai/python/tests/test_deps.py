@@ -193,3 +193,37 @@ class TestEnsureUserAndThread:
         client.user.add.assert_called_once_with(
             user_id="u", first_name="Jane", last_name="Smith", email="jane@example.com"
         )
+
+    @pytest.mark.asyncio
+    async def test_on_created_fires_on_actual_creation(self) -> None:
+        client = _make_mock_client()
+        deps = _make_deps(client)
+        hook = AsyncMock()
+
+        ok = await ensure_user_and_thread(deps, on_created=hook)
+
+        assert ok is True
+        hook.assert_called_once_with(client, "u")
+
+    @pytest.mark.asyncio
+    async def test_on_created_not_fired_when_user_exists(self) -> None:
+        client = _make_mock_client()
+        client.user.add.side_effect = Exception("already exists")
+        deps = _make_deps(client)
+        hook = AsyncMock()
+
+        ok = await ensure_user_and_thread(deps, on_created=hook)
+
+        assert ok is True
+        hook.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_hook_error_propagates_from_ensure_user_and_thread(self) -> None:
+        client = _make_mock_client()
+        deps = _make_deps(client)
+
+        async def _failing_hook(_client: MagicMock, _user_id: str) -> None:
+            raise RuntimeError("setup failed")
+
+        with pytest.raises(RuntimeError, match="setup failed"):
+            await ensure_user_and_thread(deps, on_created=_failing_hook)

@@ -1,11 +1,15 @@
 /**
- * Basic Mastra agent with Zep long-term memory.
+ * Basic Mastra agent with automatic Zep long-term memory.
  *
  * Demonstrates the full loop:
  *   1. Provision a Zep user + thread (`ensureZepUserAndThread`).
- *   2. Build the Zep tool set bound to that user/thread (`createZepToolset`).
- *   3. Attach the tools to a Mastra `Agent` as a `tools` record.
- *   4. Seed a fact, wait for asynchronous ingestion, then recall it.
+ *   2. Build the Zep input/output processor pair (`createZepProcessors`).
+ *   3. Attach the processors to a Mastra `Agent` via `inputProcessors` /
+ *      `outputProcessors` — no tool-calling round-trip needed.
+ *   4. Seed facts across turns (persisted automatically by the output
+ *      processor), wait for asynchronous ingestion, then ask a question that
+ *      requires recalling them (answered using context the input processor
+ *      injects automatically).
  *
  * Prerequisites:
  *   npm install
@@ -19,7 +23,7 @@
 import { randomUUID } from "node:crypto";
 import { ZepClient } from "@getzep/zep-cloud";
 import { Agent } from "@mastra/core/agent";
-import { createZepToolset, ensureZepUserAndThread } from "../src/index.js";
+import { createZepProcessors, ensureZepUserAndThread } from "../src/index.js";
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -41,7 +45,7 @@ async function main(): Promise<void> {
   const client = new ZepClient({ apiKey: ZEP_API_KEY });
 
   console.log("=".repeat(60));
-  console.log("Mastra + Zep Memory Example");
+  console.log("Mastra + Zep Automatic Memory Example");
   console.log(`  User ID:   ${userId}`);
   console.log(`  Thread ID: ${threadId}`);
   console.log("=".repeat(60));
@@ -56,37 +60,38 @@ async function main(): Promise<void> {
     email: "alice@example.com",
   });
 
-  // 2. Build the Zep tool set bound to this user + thread.
-  const { zepRemember, zepSearch, zepContext } = createZepToolset({
+  // 2. Build the Zep input/output processor pair bound to this user + thread.
+  const { inputProcessor, outputProcessor } = createZepProcessors({
     client,
-    binding: { userId, threadId },
-    defaultMessageName: "Alice",
+    userId,
+    threadId,
   });
 
-  // 3. Attach to a Mastra agent (id AND name are both required).
+  // 3. Attach to a Mastra agent (id AND name are both required). No tools
+  //    needed — the processors persist and inject context automatically.
   const agent = new Agent({
     id: "memory-agent",
     name: "Memory Agent",
     instructions:
-      "You are a helpful assistant with long-term memory powered by Zep. " +
-      "Use the zep-remember tool to store facts the user shares, the " +
-      "zep-search tool to look up specific facts, and the zep-context tool " +
-      "to recall everything known about the user. Personalize your replies.",
+      "You are a helpful assistant with long-term memory about the user, " +
+      "injected automatically into your context. Personalize your replies " +
+      "using what you know about the user.",
     model: "openai/gpt-4o-mini",
-    tools: { zepRemember, zepSearch, zepContext },
+    inputProcessors: [inputProcessor],
+    outputProcessors: [outputProcessor],
   });
 
-  // 4a. Seed facts.
+  // 4a. Seed facts — the output processor persists each turn automatically.
   console.log("\n--- Phase 1: Seeding facts ---");
-  await ask(agent, "Hi! Please remember that I live in Portland and love hiking.");
-  await ask(agent, "Also remember that I work as a software engineer.");
+  await ask(agent, "Hi! I live in Portland and love hiking.");
+  await ask(agent, "I also work as a software engineer.");
 
   // 4b. Wait for asynchronous graph ingestion.
   const waitSeconds = 15;
   console.log(`\n--- Waiting ${waitSeconds}s for Zep graph processing ---`);
   await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
 
-  // 4c. Recall.
+  // 4c. Recall — the input processor injects the Context Block automatically.
   console.log("\n--- Phase 2: Recall ---");
   await ask(agent, "What do you remember about where I live and what I do?");
 

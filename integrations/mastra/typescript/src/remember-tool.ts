@@ -1,13 +1,14 @@
 import { createTool } from "@mastra/core/tools";
 import type { ZepClient } from "@getzep/zep-cloud";
 import { z } from "zod";
-import type { ZepBinding, ZepThreadBinding, ZepLogger } from "./types.js";
+import type { ZepBinding, ZepIdentityResolver, ZepThreadBinding, ZepLogger } from "./types.js";
 import {
   errorMessage,
   GRAPH_MAX_CHARS,
   MESSAGE_MAX_CHARS,
   resolveGraphTarget,
   resolveLogger,
+  resolveToolIdentity,
   toRoleType,
   truncateForZep,
 } from "./zep-utils.js";
@@ -35,6 +36,12 @@ export interface ZepRememberToolOptions {
    * real name). Passing a real name helps Zep resolve identity in the graph.
    */
   defaultMessageName?: string;
+  /**
+   * Resolve the persist target per call from the tool's `requestContext`,
+   * overriding the constructor-bound `binding`. Return `undefined` (or omit
+   * a field) to fall back to `binding`.
+   */
+  resolveIdentity?: ZepIdentityResolver;
   /** Logger for Zep failures. Defaults to `console`. */
   logger?: ZepLogger;
 }
@@ -88,9 +95,8 @@ function hasThread(binding: ZepThreadBinding | ZepBinding): binding is ZepThread
  * never throws, so a memory outage cannot crash the host agent.
  */
 export function createZepRememberTool(options: ZepRememberToolOptions) {
-  const { client, binding } = options;
+  const { client, binding, resolveIdentity } = options;
   const logger = resolveLogger(options.logger);
-  const target = resolveGraphTarget(binding);
 
   return createTool({
     id: options.id ?? "zep-remember",
@@ -100,11 +106,20 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
         "recalled in future turns and future conversations.",
     inputSchema,
     outputSchema,
-    execute: async (inputData: RememberInput): Promise<RememberOutput> => {
+    execute: async (
+      inputData: RememberInput,
+      context?: { requestContext?: unknown },
+    ): Promise<RememberOutput> => {
       const content = inputData.content?.trim();
       if (!content) {
         return { stored: false, message: "Nothing to remember: content was empty." };
       }
+
+      const identity = resolveToolIdentity(binding, resolveIdentity, context);
+      const effectiveBinding: ZepThreadBinding | ZepBinding = identity.threadId
+        ? { userId: identity.userId, graphId: binding.graphId, threadId: identity.threadId }
+        : { userId: identity.userId, graphId: binding.graphId };
+      const target = resolveGraphTarget(effectiveBinding);
       if (!target) {
         logger.warn("[zep-remember] No userId or graphId bound; skipping persist.");
         return {
@@ -115,7 +130,7 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
 
       try {
         // Conversational content with a bound thread → thread.addMessages.
-        if (inputData.role && hasThread(binding) && binding.userId) {
+        if (inputData.role && hasThread(effectiveBinding) && effectiveBinding.userId) {
           // Zep rejects messages over 4,096 chars with a 400; truncate + warn.
           const messageContent = truncateForZep(
             content,
@@ -123,7 +138,7 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
             "zep-remember",
             logger,
           );
-          await client.thread.addMessages(binding.threadId, {
+          await client.thread.addMessages(effectiveBinding.threadId, {
             messages: [
               {
                 role: toRoleType(inputData.role),
