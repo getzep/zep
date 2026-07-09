@@ -28,7 +28,7 @@ from zep_ms_agent_framework import ZepContextProvider
 zep = AsyncZep(api_key="your-zep-api-key")
 
 agent = Agent(
-    OpenAIChatClient(model="gpt-4o-mini"),
+    OpenAIChatClient(model="gpt-5-mini"),
     instructions="You are a helpful assistant with long-term memory.",
     context_providers=[
         ZepContextProvider(

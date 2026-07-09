@@ -82,7 +82,7 @@ async def entrypoint(ctx: agents.JobContext):
     # Create session with providers
     session = agents.AgentSession(
         stt=openai.STT(),
-        llm=openai.LLM(model="gpt-4o-mini"),
+        llm=openai.LLM(model="gpt-5-mini"),
         tts=openai.TTS(),
         vad=silero.VAD.load(),
     )
@@ -176,7 +176,7 @@ async def entrypoint(ctx: agents.JobContext):
     # Create session
     session = agents.AgentSession(
         stt=openai.STT(),
-        llm=openai.LLM(model="gpt-4o-mini"),
+        llm=openai.LLM(model="gpt-5-mini"),
         tts=openai.TTS(),
         vad=silero.VAD.load(),
     )

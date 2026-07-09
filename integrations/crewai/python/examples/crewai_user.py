@@ -156,7 +156,7 @@ def main():
         Use the Zep memory search tool to recall Alice's history and preferences.""",
         tools=[search_tool],
         verbose=True,
-        llm="gpt-4o-mini",
+        llm="gpt-5-mini",
     )
 
     resource_planner = Agent(
@@ -168,7 +168,7 @@ def main():
         team's composition and current projects.""",
         tools=[search_tool],
         verbose=True,
-        llm="gpt-4o-mini",
+        llm="gpt-5-mini",
     )
 
     # Create tasks that leverage user-specific memory

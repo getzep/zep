@@ -72,7 +72,7 @@ async def main() -> None:
     )
 
     agent = Agent(
-        "openai:gpt-4o-mini",
+        "openai:gpt-5-mini",
         deps_type=ZepDeps,
         capabilities=zep_capabilities(deps),
         tools=[create_zep_search_tool()],

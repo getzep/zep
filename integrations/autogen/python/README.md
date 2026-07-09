@@ -68,7 +68,7 @@ async def main():
     # Create agent with tools and reflection
     agent = AssistantAgent(
         name="KnowledgeAssistant",
-        model_client=OpenAIChatCompletionClient(model="gpt-4o-mini"),
+        model_client=OpenAIChatCompletionClient(model="gpt-5-mini"),
         tools=[search_tool, add_tool],
         system_message="You can search and add information to knowledge bases.",
         reflect_on_tool_use=True,  # Enables natural language responses

@@ -44,7 +44,7 @@ async def prompt(state):
     return [system, *state["messages"]]
 
 agent = create_react_agent(
-    model=ChatOpenAI(model="gpt-5"),
+    model=ChatOpenAI(model="gpt-5-mini"),
     tools=[create_graph_search_tool(zep, user_id="user-1")],
     prompt=prompt,
 )

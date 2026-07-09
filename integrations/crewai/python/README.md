@@ -105,7 +105,7 @@ agent = Agent(
     role="Knowledge Assistant",
     goal="Manage and retrieve information efficiently",
     tools=[search_tool, add_tool],
-    llm="gpt-4o-mini"
+    llm="gpt-5-mini"
 )
 ```
 

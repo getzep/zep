@@ -32,7 +32,7 @@ async def main() -> None:
     except Exception as e:
         print(f"Setup: {e}")
 
-    llm_config = LLMConfig({"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]})
+    llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
 
     researcher = AssistantAgent(
         name="researcher",
