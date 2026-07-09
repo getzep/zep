@@ -2,6 +2,7 @@
 Tests for the prebuilt graph-search tools (zep_langgraph.tools).
 """
 
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -232,6 +233,94 @@ class TestPinOrExposeSchema:
     def test_unknown_hidden_param_rejected(self) -> None:
         with pytest.raises(ValueError, match="Unknown hidden"):
             create_graph_search_tool(_make_async_client(), user_id="u", hidden_params={"bogus"})
+
+
+class TestLimitClamping:
+    @pytest.mark.asyncio
+    async def test_pinned_limit_above_ceiling_clamped_with_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        client = _make_async_client()
+        client.graph.search.return_value = _result(edges=[])
+        with caplog.at_level(logging.WARNING, logger="zep_langgraph.tools"):
+            tool = create_graph_search_tool(client, user_id="u", pinned_params={"limit": 100})
+        assert "clamping" in caplog.text
+
+        await tool.ainvoke({"query": "x"})
+
+        assert client.graph.search.call_args.kwargs["limit"] == 50
+
+    @pytest.mark.asyncio
+    async def test_pinned_limit_below_one_clamped(self) -> None:
+        client = _make_async_client()
+        client.graph.search.return_value = _result(edges=[])
+        tool = create_graph_search_tool(client, user_id="u", pinned_params={"limit": 0})
+
+        await tool.ainvoke({"query": "x"})
+
+        assert client.graph.search.call_args.kwargs["limit"] == 1
+
+    @pytest.mark.asyncio
+    async def test_model_provided_limit_above_ceiling_clamped(self) -> None:
+        client = _make_async_client()
+        client.graph.search.return_value = _result(edges=[])
+        tool = create_graph_search_tool(client, user_id="u")
+
+        await tool.ainvoke({"query": "x", "limit": 200})
+
+        assert client.graph.search.call_args.kwargs["limit"] == 50
+
+    @pytest.mark.asyncio
+    async def test_model_provided_limit_below_one_clamped(self) -> None:
+        client = _make_async_client()
+        client.graph.search.return_value = _result(edges=[])
+        tool = create_graph_search_tool(client, user_id="u")
+
+        await tool.ainvoke({"query": "x", "limit": 0})
+
+        assert client.graph.search.call_args.kwargs["limit"] == 1
+
+
+class TestAutoScopeReranker:
+    @pytest.mark.asyncio
+    async def test_pinned_auto_scope_drops_incompatible_reranker(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        client = _make_async_client()
+        client.graph.search.return_value = _result(context="ctx")
+        with caplog.at_level(logging.WARNING, logger="zep_langgraph.tools"):
+            tool = create_graph_search_tool(
+                client, user_id="u", pinned_params={"scope": "auto", "reranker": "node_distance"}
+            )
+        assert "node_distance" in caplog.text
+
+        await tool.ainvoke({"query": "x"})
+
+        kwargs = client.graph.search.call_args.kwargs
+        assert kwargs["scope"] == "auto"
+        assert "reranker" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_model_provided_auto_scope_drops_incompatible_reranker(self) -> None:
+        client = _make_async_client()
+        client.graph.search.return_value = _result(context="ctx")
+        tool = create_graph_search_tool(client, user_id="u")
+
+        await tool.ainvoke({"query": "x", "scope": "auto", "reranker": "episode_mentions"})
+
+        kwargs = client.graph.search.call_args.kwargs
+        assert kwargs["scope"] == "auto"
+        assert "reranker" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_non_auto_scope_keeps_reranker(self) -> None:
+        client = _make_async_client()
+        client.graph.search.return_value = _result(edges=[])
+        tool = create_graph_search_tool(client, user_id="u")
+
+        await tool.ainvoke({"query": "x", "scope": "edges", "reranker": "node_distance"})
+
+        assert client.graph.search.call_args.kwargs["reranker"] == "node_distance"
 
 
 class TestAsyncToolExecution:

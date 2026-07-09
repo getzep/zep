@@ -32,6 +32,18 @@ const DEFAULT_SCOPE: Zep.GraphSearchScope = "edges";
 const DEFAULT_RERANKER: Zep.Reranker = "rrf";
 const DEFAULT_LIMIT = 10;
 
+/** Zep caps `graph.search` at 50 results; a higher limit is rejected with a 400. */
+const MAX_SEARCH_LIMIT = 50;
+
+/**
+ * Rerankers Zep rejects outright when `scope` is `"auto"` (auto search always
+ * uses RRF internally and ignores `reranker` entirely).
+ */
+const AUTO_INCOMPATIBLE_RERANKERS: readonly Zep.Reranker[] = [
+  "node_distance",
+  "episode_mentions",
+];
+
 /**
  * Every `graph.search` parameter that can be pinned, hidden, or exposed to
  * the model. Keys match the Zep SDK's `graph.search()` field names.
@@ -210,6 +222,32 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
   if (options.reranker !== undefined) pinned.reranker ??= options.reranker;
   if (options.limit !== undefined) pinned.limit ??= options.limit;
 
+  // Clamp a pinned limit to Zep's ceiling at construction so the call never 400s.
+  if (pinned.limit !== undefined) {
+    if (pinned.limit > MAX_SEARCH_LIMIT) {
+      logger.warn(
+        `[zep-search] Pinned limit ${pinned.limit} exceeds Zep ceiling ` +
+          `${MAX_SEARCH_LIMIT}; clamping to ${MAX_SEARCH_LIMIT}.`,
+      );
+      pinned.limit = MAX_SEARCH_LIMIT;
+    } else if (pinned.limit < 1) {
+      pinned.limit = 1;
+    }
+  }
+
+  // Auto scope rejects node_distance/episode_mentions and ignores reranker
+  // entirely. If both are pinned, resolve the conflict once, here, so the
+  // call path is always valid.
+  if (pinned.scope === "auto" && pinned.reranker !== undefined) {
+    if (AUTO_INCOMPATIBLE_RERANKERS.includes(pinned.reranker)) {
+      logger.warn(
+        `[zep-search] Reranker '${pinned.reranker}' is invalid for scope 'auto'; ` +
+          "omitting reranker (auto search uses RRF).",
+      );
+    }
+    delete pinned.reranker;
+  }
+
   const hidden = new Set(options.hiddenParams ?? []);
   for (const name of hidden) {
     if (!(PINNABLE_PARAM_NAMES as readonly string[]).includes(name)) {
@@ -321,7 +359,7 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
         return { facts: [], found: false };
       }
 
-      const identity = resolveToolIdentity(binding, resolveIdentity, context);
+      const identity = await resolveToolIdentity(binding, resolveIdentity, context);
       const target = resolveGraphTarget({ userId: identity.userId, graphId: binding.graphId });
       if (!target) {
         logger.warn("[zep-search] No userId or graphId bound; skipping search.");
@@ -329,10 +367,28 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
       }
 
       const scope = resolveParam(scopeState, inputData.scope, DEFAULT_SCOPE);
-      const reranker = resolveParam(rerankerState, inputData.reranker, DEFAULT_RERANKER);
-      const limit = resolveParam(limitState, inputData.limit, DEFAULT_LIMIT);
+      let reranker = resolveParam(rerankerState, inputData.reranker, DEFAULT_RERANKER);
+      let limit = resolveParam(limitState, inputData.limit, DEFAULT_LIMIT);
       const mmrLambda = resolveParam(mmrLambdaState, inputData.mmrLambda);
       const centerNodeUuid = resolveParam(centerNodeUuidState, inputData.centerNodeUuid);
+
+      // Auto search always uses RRF internally and ignores reranker entirely;
+      // Zep rejects node_distance/episode_mentions outright. Omit the reranker
+      // for auto scope, warning only when the value is one Zep would reject.
+      if (scope === "auto" && reranker !== undefined) {
+        if (AUTO_INCOMPATIBLE_RERANKERS.includes(reranker)) {
+          logger.warn(
+            `[zep-search] Reranker '${reranker}' is invalid for scope 'auto'; ` +
+              "omitting reranker.",
+          );
+        }
+        reranker = undefined;
+      }
+
+      // Clamp the effective limit to Zep's ceiling so the call never 400s.
+      if (limit !== undefined) {
+        limit = Math.min(MAX_SEARCH_LIMIT, Math.max(1, limit));
+      }
 
       try {
         const searchRequest: Zep.GraphSearchQuery = { ...target, query };

@@ -82,6 +82,8 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
         "type": "integer",
         "description": "Maximum number of results to return.",
         "default": 10,
+        "minimum": 1,
+        "maximum": MAX_SEARCH_LIMIT,
     },
     "mmr_lambda": {
         "type": "number",
@@ -255,12 +257,26 @@ def create_zep_search_tool(
                 search_kwargs[param_name] = pinned[param_name]
             elif param_name in hidden:
                 continue  # hidden, not pinned -> omit; Zep applies its own default
-            elif param_name in kwargs:
+            elif param_name in kwargs and kwargs[param_name] is not None:
                 search_kwargs[param_name] = kwargs[param_name]
             else:
                 default = _SEARCH_PARAM_SPECS[param_name].get("default")
                 if default is not None:
                     search_kwargs[param_name] = default
+
+        # Clamp a model-provided limit to Zep's bounds at call time -- the
+        # schema advertises them, but ``Tool.from_schema`` skips argument
+        # validation, so an out-of-range value would otherwise 400.
+        limit_value = search_kwargs.get("limit")
+        if limit_value is not None and not 1 <= limit_value <= MAX_SEARCH_LIMIT:
+            clamped_limit = max(1, min(limit_value, MAX_SEARCH_LIMIT))
+            logger.warning(
+                "zep_search limit %d is outside [1, %d]; clamping to %d",
+                limit_value,
+                MAX_SEARCH_LIMIT,
+                clamped_limit,
+            )
+            search_kwargs["limit"] = clamped_limit
 
         effective_scope = search_kwargs.get("scope", "edges")
         if effective_scope == "auto" and "reranker" in search_kwargs:
@@ -326,6 +342,10 @@ def _build_json_schema(
         prop: dict[str, Any] = {"type": spec["type"], "description": spec["description"]}
         if "enum" in spec:
             prop["enum"] = spec["enum"]
+        if "minimum" in spec:
+            prop["minimum"] = spec["minimum"]
+        if "maximum" in spec:
+            prop["maximum"] = spec["maximum"]
         properties[param_name] = prop
 
     return {

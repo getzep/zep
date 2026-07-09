@@ -181,6 +181,66 @@ describe("createZepSearchTool pin-or-expose", () => {
   });
 });
 
+describe("createZepSearchTool sanitization", () => {
+  it("drops a pinned reranker incompatible with pinned scope 'auto' and warns at construction", async () => {
+    const zep = makeFakeZep();
+    zep.graph.search.mockResolvedValueOnce({ context: "CTX" });
+    const warn = vi.fn();
+    const tool = createZepSearchTool({
+      client: asZep(zep),
+      binding: { userId: "u1" },
+      pinnedParams: { scope: "auto", reranker: "node_distance" },
+      logger: { warn },
+    });
+    expect(warn).toHaveBeenCalledOnce();
+
+    await run(tool, { query: "x" });
+    const sent = zep.graph.search.mock.calls[0]![0] as Record<string, unknown>;
+    expect(sent.scope).toBe("auto");
+    expect(sent).not.toHaveProperty("reranker");
+  });
+
+  it("drops a model-provided reranker incompatible with scope 'auto' at execute", async () => {
+    const zep = makeFakeZep();
+    zep.graph.search.mockResolvedValueOnce({ context: "CTX" });
+    const warn = vi.fn();
+    const tool = createZepSearchTool({
+      client: asZep(zep),
+      binding: { userId: "u1" },
+      logger: { warn },
+    });
+
+    await run(tool, { query: "x", scope: "auto", reranker: "episode_mentions" });
+    expect(warn).toHaveBeenCalledOnce();
+    const sent = zep.graph.search.mock.calls[0]![0] as Record<string, unknown>;
+    expect(sent.scope).toBe("auto");
+    expect(sent).not.toHaveProperty("reranker");
+  });
+
+  it("clamps a pinned limit above Zep's ceiling to 50 and warns at construction", async () => {
+    const zep = makeFakeZep();
+    const warn = vi.fn();
+    const tool = createZepSearchTool({
+      client: asZep(zep),
+      binding: { userId: "u1" },
+      pinnedParams: { limit: 200 },
+      logger: { warn },
+    });
+    expect(warn).toHaveBeenCalledOnce();
+
+    await run(tool, { query: "x" });
+    expect(zep.graph.search).toHaveBeenCalledWith(expect.objectContaining({ limit: 50 }));
+  });
+
+  it("clamps a model-provided limit above Zep's ceiling to 50 at execute", async () => {
+    const zep = makeFakeZep();
+    const tool = createZepSearchTool({ client: asZep(zep), binding: { userId: "u1" } });
+
+    await run(tool, { query: "x", limit: 200 });
+    expect(zep.graph.search).toHaveBeenCalledWith(expect.objectContaining({ limit: 50 }));
+  });
+});
+
 describe("createZepRememberTool", () => {
   it("persists conversational messages via thread.addMessages", async () => {
     const zep = makeFakeZep();

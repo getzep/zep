@@ -45,6 +45,13 @@ GraphSearchScope = Literal[
 ]
 GraphSearchReranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
 
+#: Zep caps ``graph.search`` ``limit`` at 50; larger values are rejected.
+MAX_SEARCH_LIMIT = 50
+
+#: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
+#: retrieval and applies its own internal cross-scope rerank).
+_AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
+
 #: Default tool name surfaced to the model.
 DEFAULT_TOOL_NAME = "search_memory"
 
@@ -222,6 +229,34 @@ def _resolve_pinned_and_hidden(
         raise ValueError(
             f"Unknown hidden parameters: {unknown_hidden}. Allowed: {sorted(_PINNABLE_PARAMS)}"
         )
+
+    # Clamp a pinned limit to Zep's ceiling at construction time so the call
+    # never 400s.
+    if "limit" in pinned:
+        pinned_limit = pinned["limit"]
+        if pinned_limit > MAX_SEARCH_LIMIT:
+            logger.warning(
+                "Pinned graph-search limit %d exceeds Zep ceiling %d; clamping to %d",
+                pinned_limit,
+                MAX_SEARCH_LIMIT,
+                MAX_SEARCH_LIMIT,
+            )
+            pinned["limit"] = MAX_SEARCH_LIMIT
+        elif pinned_limit < 1:
+            pinned["limit"] = 1
+
+    # Auto scope rejects node_distance / episode_mentions and ignores reranker
+    # entirely.  If scope is pinned to "auto" and reranker is also pinned,
+    # resolve the effective value once, here, so the call path is always valid.
+    if pinned.get("scope") == "auto" and "reranker" in pinned:
+        if pinned["reranker"] in _AUTO_INCOMPATIBLE_RERANKERS:
+            logger.warning(
+                "Graph-search reranker %r is invalid for scope='auto'; "
+                "omitting reranker (auto search uses RRF).",
+                pinned["reranker"],
+            )
+        del pinned["reranker"]
+
     return pinned, hidden
 
 
@@ -241,6 +276,12 @@ def _build_search_kwargs(
     ``None``) are never forwarded as an explicit ``None``, matching the
     sibling ports' ``if value is not None`` guard so Zep's own server-side
     default applies instead of an explicit null on the wire.
+
+    A model-provided ``limit`` is clamped to ``[1, MAX_SEARCH_LIMIT]``, and a
+    reranker is dropped when the effective scope is ``auto`` (auto search
+    always uses RRF internally; Zep rejects
+    ``node_distance``/``episode_mentions`` outright), so the call never 400s
+    on model-chosen parameters.
     """
     query = str(call_args.get("query", ""))[:400]
     search_kwargs: dict[str, Any] = {"query": query, **target}
@@ -253,7 +294,27 @@ def _build_search_kwargs(
         elif param_name in call_args:
             value = call_args[param_name]
             if value is not None:
+                if param_name == "limit" and not (1 <= value <= MAX_SEARCH_LIMIT):
+                    clamped = max(1, min(value, MAX_SEARCH_LIMIT))
+                    logger.warning(
+                        "Model-provided graph-search limit %d out of range [1, %d]; clamping to %d",
+                        value,
+                        MAX_SEARCH_LIMIT,
+                        clamped,
+                    )
+                    value = clamped
                 search_kwargs[param_name] = value
+
+    if search_kwargs.get("scope") == "auto" and "reranker" in search_kwargs:
+        # Auto search always uses RRF internally and ignores reranker
+        # entirely; Zep rejects node_distance/episode_mentions outright.
+        # Warn only when the (would-be) reranker is one Zep would reject.
+        dropped_reranker = search_kwargs.pop("reranker")
+        if dropped_reranker in _AUTO_INCOMPATIBLE_RERANKERS:
+            logger.warning(
+                "Graph-search reranker %r is invalid for scope='auto'; omitting reranker.",
+                dropped_reranker,
+            )
 
     search_kwargs.update(constructor_only)
     return search_kwargs

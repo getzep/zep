@@ -71,7 +71,8 @@ class ContextInput:
     Attributes:
         zep: The ``AsyncZep`` client in use by this manager.
         user_id: The Zep user ID this manager is scoped to.
-        thread_id: The Zep thread ID this manager records the conversation in.
+        thread_id: The Zep thread ID this manager records the conversation in,
+            or ``None`` when the manager was created without a ``session_id``.
         user_message: The user message text this turn is building context for.
         agent: The AG2 agent this call is being made on behalf of, when
             invoked via :meth:`ZepMemoryManager.attach_to_agent`'s automatic
@@ -102,7 +103,7 @@ class ContextInput:
 
     zep: AsyncZep
     user_id: str
-    thread_id: str
+    thread_id: str | None
     user_message: str
     agent: Any | None = None
 
@@ -290,8 +291,6 @@ class ZepMemoryManager:
         """
         if self._context_builder is None:
             return None
-        if not self._session_id:
-            return None
         try:
             return await self._context_builder(
                 ContextInput(
@@ -416,7 +415,7 @@ class ZepMemoryManager:
             A formatted string containing relevant memory context, or empty string
             if no relevant memories are found.
         """
-        if self._context_builder is not None and self._session_id:
+        if self._context_builder is not None:
             await self.ensure_user_and_thread()
             context_text = await self._build_context_via_builder(query or "", None)
             return context_text or ""
@@ -481,7 +480,7 @@ class ZepMemoryManager:
                 the builder's ``user_message`` when ``context_builder`` is set.
             limit: Maximum number of memory results.
         """
-        if self._context_builder is not None and self._session_id:
+        if self._context_builder is not None:
             await self.ensure_user_and_thread()
             context_text = await self._build_context_via_builder(query or "", agent)
             if context_text:

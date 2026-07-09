@@ -131,6 +131,25 @@ describe("createZepSearchTool", () => {
     );
   });
 
+  it("awaits an async resolveIdentity and uses the resolved identity", async () => {
+    const zep = makeFakeZep();
+    zep.graph.search.mockResolvedValueOnce({ edges: [{ fact: "async fact" }] });
+    const resolveIdentity = vi.fn().mockResolvedValue({ userId: "u2" });
+    const tool = createZepSearchTool({
+      client: asZep(zep),
+      binding: { userId: "u1" },
+      resolveIdentity,
+    });
+
+    const result = await run(tool, { query: "q" }, { requestContext: { tenant: "acme" } });
+
+    expect(resolveIdentity).toHaveBeenCalledWith({ tenant: "acme" });
+    expect(result.facts).toEqual(["async fact"]);
+    expect(zep.graph.search).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "u2" }),
+    );
+  });
+
   it("falls back to constructor binding when resolveIdentity is unset or returns nothing", async () => {
     const zep = makeFakeZep();
     zep.graph.search.mockResolvedValueOnce({ edges: [{ fact: "base fact" }] });
@@ -285,6 +304,74 @@ describe("createZepSearchTool", () => {
           searchFilters,
           bfsOriginNodeUuids: ["uuid-1", "uuid-2"],
         }),
+      );
+    });
+
+    it("omits a model-provided auto-incompatible reranker when scope is 'auto'", async () => {
+      const zep = makeFakeZep();
+      zep.graph.search.mockResolvedValueOnce({ context: "block" });
+      const warn = vi.fn();
+      const tool = createZepSearchTool({
+        client: asZep(zep),
+        binding: { userId: "u1" },
+        logger: { warn },
+      });
+
+      await run(tool, { query: "q", scope: "auto", reranker: "node_distance" });
+
+      const sentParams = zep.graph.search.mock.calls[0]![0] as Record<string, unknown>;
+      expect(sentParams).toMatchObject({ scope: "auto" });
+      expect(sentParams).not.toHaveProperty("reranker");
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it("resolves a pinned auto-incompatible scope/reranker pair at construction", async () => {
+      const zep = makeFakeZep();
+      zep.graph.search.mockResolvedValueOnce({ context: "block" });
+      const warn = vi.fn();
+      const tool = createZepSearchTool({
+        client: asZep(zep),
+        binding: { userId: "u1" },
+        pinnedParams: { scope: "auto", reranker: "episode_mentions" },
+        logger: { warn },
+      });
+      expect(warn).toHaveBeenCalledOnce();
+
+      await run(tool, { query: "q" });
+
+      const sentParams = zep.graph.search.mock.calls[0]![0] as Record<string, unknown>;
+      expect(sentParams).toMatchObject({ scope: "auto" });
+      expect(sentParams).not.toHaveProperty("reranker");
+    });
+
+    it("clamps a model-provided limit to Zep's 50-result ceiling", async () => {
+      const zep = makeFakeZep();
+      zep.graph.search.mockResolvedValueOnce({ edges: [] });
+      const tool = createZepSearchTool({ client: asZep(zep), binding: { userId: "u1" } });
+
+      await run(tool, { query: "q", limit: 200 });
+
+      expect(zep.graph.search).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 50 }),
+      );
+    });
+
+    it("clamps a pinned limit to Zep's 50-result ceiling at construction, with a warning", async () => {
+      const zep = makeFakeZep();
+      zep.graph.search.mockResolvedValueOnce({ edges: [] });
+      const warn = vi.fn();
+      const tool = createZepSearchTool({
+        client: asZep(zep),
+        binding: { userId: "u1" },
+        pinnedParams: { limit: 200 },
+        logger: { warn },
+      });
+      expect(warn).toHaveBeenCalledOnce();
+
+      await run(tool, { query: "q" });
+
+      expect(zep.graph.search).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 50 }),
       );
     });
 

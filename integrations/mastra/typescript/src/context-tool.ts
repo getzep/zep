@@ -85,7 +85,7 @@ export function createZepContextTool(options: ZepContextToolOptions) {
       _inputData: unknown,
       context?: { requestContext?: unknown },
     ): Promise<ContextOutput> => {
-      const identity = resolveToolIdentity(binding, resolveIdentity, context);
+      const identity = await resolveToolIdentity(binding, resolveIdentity, context);
       if (!identity.threadId) {
         logger.warn("[zep-context] No threadId bound; skipping context retrieval.");
         return { context: "", found: false };

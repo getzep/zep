@@ -89,6 +89,8 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
         "type": "integer",
         "description": "Maximum number of results to return.",
         "default": 10,
+        "minimum": 1,
+        "maximum": MAX_SEARCH_LIMIT,
     },
     "mmr_lambda": {
         "type": "number",
@@ -214,17 +216,7 @@ def create_graph_search_tool(
     # Clamp a pinned limit to Zep's ceiling at construction time so the call
     # never 400s.
     if "limit" in pinned:
-        pinned_limit = pinned["limit"]
-        if pinned_limit > MAX_SEARCH_LIMIT:
-            logger.warning(
-                "zep_search limit %d exceeds Zep ceiling %d; clamping to %d",
-                pinned_limit,
-                MAX_SEARCH_LIMIT,
-                MAX_SEARCH_LIMIT,
-            )
-            pinned["limit"] = MAX_SEARCH_LIMIT
-        elif pinned_limit < 1:
-            pinned["limit"] = 1
+        pinned["limit"] = _clamp_limit(pinned["limit"])
 
     # Auto scope rejects node_distance / episode_mentions and ignores reranker
     # entirely.  If scope is pinned to "auto" and reranker is also pinned,
@@ -252,7 +244,13 @@ def create_graph_search_tool(
             elif param_name in hidden:
                 continue  # hidden, not pinned -> omit; Zep applies its own default
             elif param_name in raw_arguments and raw_arguments[param_name] is not None:
-                search_kwargs[param_name] = raw_arguments[param_name]
+                value = raw_arguments[param_name]
+                if param_name == "limit":
+                    # Clamp a model-provided limit at call time so the call
+                    # never 400s (the schema advertises the bounds, but the
+                    # model may still ignore them).
+                    value = _clamp_limit(value)
+                search_kwargs[param_name] = value
             else:
                 default = _SEARCH_PARAM_SPECS[param_name].get("default")
                 if default is not None:
@@ -299,6 +297,21 @@ def create_graph_search_tool(
     return function_tool(zep_search, raw_schema=raw_schema)
 
 
+def _clamp_limit(limit: int) -> int:
+    """Clamp ``limit`` to Zep's accepted range ``[1, MAX_SEARCH_LIMIT]``."""
+    if limit > MAX_SEARCH_LIMIT:
+        logger.warning(
+            "zep_search limit %d exceeds Zep ceiling %d; clamping to %d",
+            limit,
+            MAX_SEARCH_LIMIT,
+            MAX_SEARCH_LIMIT,
+        )
+        return MAX_SEARCH_LIMIT
+    if limit < 1:
+        return 1
+    return limit
+
+
 def _build_json_schema(
     *,
     pinned: dict[str, Any],
@@ -320,6 +333,9 @@ def _build_json_schema(
         prop: dict[str, Any] = {"type": spec["type"], "description": spec["description"]}
         if "enum" in spec:
             prop["enum"] = spec["enum"]
+        for bound in ("minimum", "maximum"):
+            if bound in spec:
+                prop[bound] = spec[bound]
         properties[param_name] = prop
 
     return {

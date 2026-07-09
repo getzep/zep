@@ -19,6 +19,7 @@ signature; pinned/hidden params are never parameters of the function at all.
 from __future__ import annotations
 
 import inspect
+import logging
 from typing import get_type_hints
 from unittest.mock import AsyncMock, MagicMock
 
@@ -212,6 +213,101 @@ class TestSearchGraphToolPinOrExpose:
 
         assert isinstance(result, str)
         assert "boom" not in result
+
+
+class TestSearchLimitClamp:
+    """A limit above Zep's ceiling (50) is clamped, never sent as-is (400)."""
+
+    def test_pinned_limit_clamped_with_warning(
+        self, mock_zep_client: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING, logger="zep_ag2.tools"):
+            tool = create_search_graph_tool(
+                mock_zep_client, user_id="u1", pinned_params={"limit": 100}
+            )
+        assert any("clamping" in record.message for record in caplog.records)
+
+        tool(query="hello")
+
+        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        assert call_kwargs["limit"] == 50
+
+    def test_pinned_limit_below_one_clamped_to_one(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(mock_zep_client, user_id="u1", pinned_params={"limit": 0})
+
+        tool(query="hello")
+
+        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        assert call_kwargs["limit"] == 1
+
+    def test_model_limit_clamped_at_call_time(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+
+        tool(query="hello", limit=200)
+
+        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        assert call_kwargs["limit"] == 50
+
+    def test_model_limit_below_one_clamped_to_one(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+
+        tool(query="hello", limit=-3)
+
+        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        assert call_kwargs["limit"] == 1
+
+    def test_search_memory_tool_pinned_limit_clamped(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_memory_tool(mock_zep_client, user_id="u1", limit=100)
+
+        tool(query="hello")
+
+        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        assert call_kwargs["limit"] == 50
+
+
+class TestAutoScopeReranker:
+    """scope='auto' ignores reranker and rejects node_distance/episode_mentions."""
+
+    def test_pinned_auto_scope_drops_incompatible_reranker(
+        self, mock_zep_client: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING, logger="zep_ag2.tools"):
+            tool = create_search_graph_tool(
+                mock_zep_client,
+                user_id="u1",
+                pinned_params={"scope": "auto", "reranker": "node_distance"},
+            )
+        assert any("node_distance" in record.message for record in caplog.records)
+
+        tool(query="hello")
+
+        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        assert call_kwargs["scope"] == "auto"
+        assert "reranker" not in call_kwargs
+
+    def test_model_auto_scope_drops_incompatible_reranker(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+
+        tool(query="hello", scope="auto", reranker="episode_mentions")
+
+        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        assert call_kwargs["scope"] == "auto"
+        assert "reranker" not in call_kwargs
+
+    def test_search_memory_tool_auto_scope_drops_incompatible_reranker(
+        self, mock_zep_client: MagicMock
+    ) -> None:
+        tool = create_search_memory_tool(
+            mock_zep_client,
+            user_id="u1",
+            pinned_params={"scope": "auto", "reranker": "episode_mentions"},
+        )
+
+        tool(query="hello")
+
+        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        assert call_kwargs["scope"] == "auto"
+        assert "reranker" not in call_kwargs
 
 
 class TestSearchMemoryToolPinOrExpose:

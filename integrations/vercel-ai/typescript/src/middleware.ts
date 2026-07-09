@@ -97,9 +97,10 @@ export interface ZepMiddlewareOptions {
    * middleware also wraps `wrapGenerate`/`wrapStream`: after the model's
    * final step in a turn (`finishReason !== "tool-calls"`), it fires a
    * fire-and-forget `thread.addMessages` call with the user's message (the
-   * last user turn in `params.prompt`) and the assistant's final text.
-   * Persistence never blocks or throws into the host call — failures are
-   * logged via `logger`.
+   * last user turn in `params.prompt`, skipped when an assistant text
+   * response already follows it — i.e. it was persisted on an earlier call)
+   * and the assistant's final text. Persistence never blocks or throws into
+   * the host call — failures are logged via `logger`.
    *
    * **Use one or the other:** enabling `persist` here AND wiring
    * `createZepOnFinish` on the same call double-persists every turn (two
@@ -149,6 +150,39 @@ function lastUserMessageText(prompt: LanguageModelV3Prompt): string {
       .filter((part): part is { type: "text"; text: string } => part.type === "text")
       .map((part) => part.text)
       .join("");
+  }
+  return "";
+}
+
+/**
+ * The user text the guaranteed-persist hooks should persist this call, or `""`
+ * when the last user message was already answered.
+ *
+ * Scanning backwards from the end of the prompt: if an assistant message with
+ * TEXT content appears before the last user message is reached, that user
+ * message belongs to an earlier, already-persisted turn (assistant
+ * continuation, `finishReason: "length"` continuation, follow-up generate over
+ * existing history) — persisting it again would duplicate it in Zep.
+ * Tool-call-only assistant messages don't count as an answer: on the final
+ * step of a tool loop (prompt ends with a tool result) the user message has
+ * not been persisted yet and still must be.
+ */
+function pendingUserMessageText(prompt: LanguageModelV3Prompt): string {
+  for (let i = prompt.length - 1; i >= 0; i--) {
+    const message = prompt[i];
+    if (!message) continue;
+    if (message.role === "user") {
+      return message.content
+        .filter((part): part is { type: "text"; text: string } => part.type === "text")
+        .map((part) => part.text)
+        .join("");
+    }
+    if (
+      message.role === "assistant" &&
+      message.content.some((part) => part.type === "text" && part.text.length > 0)
+    ) {
+      return "";
+    }
   }
   return "";
 }
@@ -314,7 +348,7 @@ export function createZepMiddleware(options: ZepMiddlewareOptions): LanguageMode
   }): Promise<LanguageModelV3GenerateResult> => {
     const result = await doGenerate();
     if (isEndOfTurn(result.finishReason)) {
-      const userText = lastUserMessageText(params.prompt);
+      const userText = pendingUserMessageText(params.prompt);
       const assistantText = assistantTextFromContent(result.content);
       persistTurn(client, threadId, userText, assistantText, persistOptions, logger);
     }
@@ -338,7 +372,7 @@ export function createZepMiddleware(options: ZepMiddlewareOptions): LanguageMode
         if (part.type === "text-delta") {
           assistantText += part.delta;
         } else if (part.type === "finish" && isEndOfTurn(part.finishReason)) {
-          const userText = lastUserMessageText(params.prompt);
+          const userText = pendingUserMessageText(params.prompt);
           persistTurn(client, threadId, userText, assistantText, persistOptions, logger);
         }
         controller.enqueue(part);

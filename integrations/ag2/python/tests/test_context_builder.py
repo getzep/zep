@@ -29,6 +29,8 @@ def _make_mock_client() -> MagicMock:
     client.thread.create = AsyncMock()
     client.thread.add_messages = AsyncMock(return_value=MagicMock(context="default context"))
     client.thread.get_user_context = AsyncMock(return_value=MagicMock(context="default context"))
+    client.graph = MagicMock()
+    client.graph.search = AsyncMock()
     return client
 
 
@@ -160,6 +162,52 @@ class TestEnrichSystemMessageUsesBuilder:
         await manager.enrich_system_message(agent)
 
         agent.update_system_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_enrich_system_message_uses_builder_without_session(self) -> None:
+        """A configured builder replaces the default retrieval even when no
+        session_id is set -- ContextInput.thread_id is None in that case."""
+        client = _make_mock_client()
+        received: list[ContextInput] = []
+
+        async def builder(ctx: ContextInput) -> str | None:
+            received.append(ctx)
+            return "Builder context without session"
+
+        manager = ZepMemoryManager(client, user_id="u1", context_builder=builder)
+        agent = MagicMock()
+        agent.system_message = "You are a helpful assistant."
+        agent.update_system_message = MagicMock()
+
+        await manager.enrich_system_message(agent, query="hiking")
+
+        client.thread.get_user_context.assert_not_called()
+        client.thread.create.assert_not_called()
+        assert len(received) == 1
+        assert received[0].thread_id is None
+        assert received[0].user_message == "hiking"
+        agent.update_system_message.assert_called_once()
+        injected = agent.update_system_message.call_args[0][0]
+        assert "Builder context without session" in injected
+
+    @pytest.mark.asyncio
+    async def test_get_memory_context_uses_builder_without_session(self) -> None:
+        client = _make_mock_client()
+        received: list[ContextInput] = []
+
+        async def builder(ctx: ContextInput) -> str | None:
+            received.append(ctx)
+            return "Builder context without session"
+
+        manager = ZepMemoryManager(client, user_id="u1", context_builder=builder)
+
+        result = await manager.get_memory_context(query="hiking")
+
+        client.thread.get_user_context.assert_not_called()
+        client.graph.search.assert_not_called()
+        assert len(received) == 1
+        assert received[0].thread_id is None
+        assert result == "Builder context without session"
 
     @pytest.mark.asyncio
     async def test_enrich_system_message_builder_error_degrades(self) -> None:

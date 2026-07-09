@@ -59,8 +59,9 @@ On every call:
    is called.
 2. **`ZepOutputProcessor`** (`processOutputResult`) persists the completed turn (the latest
    user message + the assistant's response) to the bound thread via a single
-   `thread.addMessages` call — after the model responds. It skips turns where
-   `finishReason === "tool-calls"` (the turn isn't complete yet).
+   `thread.addMessages` call — after the model responds. The assistant text is the final
+   step's text; when the generation ends mid-tool-loop (`finishReason === "tool-calls"`)
+   the user message is still persisted.
 
 Because the input and output processors sit on **opposite sides of the model call**,
 running both together is naturally concurrency-safe — the same guarantee ADK's

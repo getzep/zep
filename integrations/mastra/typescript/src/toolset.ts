@@ -112,8 +112,9 @@ export interface EnsureIdentityOptions {
   email?: string;
   /**
    * Runs exactly once, only when the user was newly created (not on an
-   * already-exists conflict). Awaited before this function returns; a
-   * rejection is logged and does not affect the return value.
+   * already-exists conflict). Awaited immediately after user creation,
+   * before the thread step; a rejection is logged and does not affect the
+   * return value.
    */
   onUserCreated?: ZepUserCreatedHook;
   /** Logger for failures. Defaults to `console`. */
@@ -196,6 +197,17 @@ export async function ensureZepUserAndThread(
     // Already exists — proceed to ensure the thread.
   }
 
+  // The hook must run before the thread step: a transient thread.create
+  // failure would otherwise skip it forever (a retry hits the already-exists
+  // path with userCreated=false).
+  if (userCreated && onUserCreated) {
+    try {
+      await onUserCreated(client, userId);
+    } catch (error) {
+      logger.warn(`[zep] onUserCreated hook failed: ${errorMessage(error)}`);
+    }
+  }
+
   try {
     await client.thread.create({ threadId, userId });
   } catch (error) {
@@ -204,14 +216,6 @@ export async function ensureZepUserAndThread(
       return false;
     }
     // Already exists — that's fine.
-  }
-
-  if (userCreated && onUserCreated) {
-    try {
-      await onUserCreated(client, userId);
-    } catch (error) {
-      logger.warn(`[zep] onUserCreated hook failed: ${errorMessage(error)}`);
-    }
   }
 
   return true;

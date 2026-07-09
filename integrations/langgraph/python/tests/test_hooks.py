@@ -90,6 +90,20 @@ class TestCreateZepPreModelHook:
         assert isinstance(result["llm_input_messages"][0], SystemMessage)
 
     @pytest.mark.asyncio
+    async def test_pre_model_hook_no_context_no_instructions_passthrough(self) -> None:
+        # With no Zep context and no base_instructions the formatted block is
+        # empty; the hook must NOT prepend an empty SystemMessage (providers
+        # such as Anthropic reject empty message content).
+        client = _make_async_client(None)
+        hook = create_zep_pre_model_hook(client, user_id="u", thread_id="t")
+
+        state = {"messages": [HumanMessage(content="hi")]}
+        result = await hook(state)
+
+        assert result == {"llm_input_messages": state["messages"]}
+        assert not any(isinstance(m, SystemMessage) for m in result["llm_input_messages"])
+
+    @pytest.mark.asyncio
     async def test_pre_model_hook_custom_template(self) -> None:
         client = _make_async_client("fact")
         hook = create_zep_pre_model_hook(

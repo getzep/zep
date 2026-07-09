@@ -114,6 +114,33 @@ const RERANKER_VALUES = ["rrf", "mmr", "node_distance", "episode_mentions", "cro
 
 const DEFAULT_SEARCH_SCOPE: Zep.GraphSearchScope = "edges";
 
+/** Zep's server-side ceiling for the `graph.search` result `limit`. */
+const MAX_SEARCH_LIMIT = 50;
+
+/**
+ * Rerankers Zep rejects outright when `scope` is `"auto"` (auto search always
+ * uses RRF internally and ignores `reranker` entirely).
+ */
+const AUTO_INCOMPATIBLE_RERANKERS: ReadonlySet<string> = new Set([
+  "node_distance",
+  "episode_mentions",
+]);
+
+/**
+ * Clamp a search limit into Zep's accepted range `[1, 50]` so the call never
+ * 400s. Warns (via `warn`) only when the limit exceeds the ceiling.
+ */
+function clampSearchLimit(limit: number, warn: (message: string) => void): number {
+  if (limit > MAX_SEARCH_LIMIT) {
+    warn(
+      `[zep-search] limit ${limit} exceeds Zep ceiling ${MAX_SEARCH_LIMIT}; ` +
+        `clamping to ${MAX_SEARCH_LIMIT}.`,
+    );
+    return MAX_SEARCH_LIMIT;
+  }
+  return limit < 1 ? 1 : limit;
+}
+
 const queryField = z
   .string()
   .min(1)
@@ -280,6 +307,25 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
   if (options.reranker !== undefined) pinnedValues.reranker ??= options.reranker;
   if (options.limit !== undefined) pinnedValues.limit ??= options.limit;
 
+  // Clamp a pinned limit to Zep's ceiling at construction so the call never
+  // 400s.
+  if (typeof pinnedValues.limit === "number") {
+    pinnedValues.limit = clampSearchLimit(pinnedValues.limit, (m) => logger.warn(m));
+  }
+
+  // Auto scope rejects node_distance/episode_mentions and ignores reranker
+  // entirely. If scope is pinned to "auto" and reranker is also pinned,
+  // resolve the conflict once, here, so the call path is always valid.
+  if (pinnedValues.scope === "auto" && "reranker" in pinnedValues) {
+    if (AUTO_INCOMPATIBLE_RERANKERS.has(String(pinnedValues.reranker))) {
+      logger.warn(
+        `[zep-search] reranker '${String(pinnedValues.reranker)}' is invalid for ` +
+          "scope 'auto'; omitting reranker (auto search uses RRF).",
+      );
+    }
+    delete pinnedValues.reranker;
+  }
+
   const pinned = new Set(Object.keys(pinnedValues) as ZepSearchParamName[]);
   const hidden = toParamSet(options.hiddenParams);
 
@@ -316,6 +362,27 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
       }
 
       const effectiveScope = (resolved.scope as Zep.GraphSearchScope | undefined) ?? DEFAULT_SEARCH_SCOPE;
+
+      // Clamp a model-provided limit to Zep's ceiling — clamp, never reject:
+      // the tool must not 400 on limit. (A pinned limit was already clamped at
+      // construction, so this is a no-op for it.)
+      if (typeof resolved.limit === "number") {
+        resolved.limit = clampSearchLimit(resolved.limit, (m) => logger.warn(m));
+      }
+
+      // Auto search always uses RRF internally and ignores reranker entirely;
+      // Zep rejects node_distance/episode_mentions outright. Drop any
+      // (model-provided) reranker; warn only when Zep would have rejected it.
+      if (effectiveScope === "auto" && "reranker" in resolved) {
+        const droppedReranker = resolved.reranker;
+        delete resolved.reranker;
+        if (AUTO_INCOMPATIBLE_RERANKERS.has(String(droppedReranker))) {
+          logger.warn(
+            `[zep-search] reranker '${String(droppedReranker)}' is invalid for ` +
+              "scope 'auto'; omitting reranker.",
+          );
+        }
+      }
 
       try {
         // None/undefined-omission guard: only send a key when a value is

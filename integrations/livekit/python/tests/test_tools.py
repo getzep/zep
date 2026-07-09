@@ -18,7 +18,7 @@ import pytest
 from livekit.agents.llm import RawFunctionTool
 
 from zep_livekit.exceptions import AgentConfigurationError
-from zep_livekit.tools import create_graph_search_tool
+from zep_livekit.tools import MAX_SEARCH_LIMIT, create_graph_search_tool
 
 
 def _make_result(
@@ -101,6 +101,16 @@ class TestSchemaExposure:
         assert "center_node_uuid" in properties
         assert schema["required"] == ["query"]
 
+    def test_limit_schema_advertises_zep_bounds(self) -> None:
+        """The model-facing schema must carry Zep's limit bounds so
+        well-behaved models self-limit instead of sending e.g. 200."""
+        client = MagicMock()
+        tool = create_graph_search_tool(client, user_id="u1")
+        limit_prop = tool.info.raw_schema["parameters"]["properties"]["limit"]
+
+        assert limit_prop["minimum"] == 1
+        assert limit_prop["maximum"] == MAX_SEARCH_LIMIT
+
     def test_custom_name_and_description(self) -> None:
         client = MagicMock()
         tool = create_graph_search_tool(
@@ -181,6 +191,50 @@ class TestPinnedAndHiddenParams:
         kwargs = client.graph.search.call_args.kwargs
         assert kwargs["search_filters"] == {"node_labels": ["Person"]}
         assert kwargs["bfs_origin_node_uuids"] == ["uuid-1"]
+
+
+class TestLimitClamping:
+    @pytest.mark.asyncio
+    async def test_model_provided_limit_clamped_to_ceiling(self) -> None:
+        """A model-sent limit above Zep's ceiling is clamped, not forwarded
+        verbatim (which would 400 and degrade the tool to an error string)."""
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        tool = create_graph_search_tool(client, user_id="u1")
+
+        await _call(tool, query="query", limit=200)
+
+        assert client.graph.search.call_args.kwargs["limit"] == MAX_SEARCH_LIMIT
+
+    @pytest.mark.asyncio
+    async def test_model_provided_limit_clamped_to_floor(self) -> None:
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        tool = create_graph_search_tool(client, user_id="u1")
+
+        await _call(tool, query="query", limit=0)
+
+        assert client.graph.search.call_args.kwargs["limit"] == 1
+
+    @pytest.mark.asyncio
+    async def test_model_provided_limit_in_range_forwarded_unchanged(self) -> None:
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        tool = create_graph_search_tool(client, user_id="u1")
+
+        await _call(tool, query="query", limit=25)
+
+        assert client.graph.search.call_args.kwargs["limit"] == 25
+
+    @pytest.mark.asyncio
+    async def test_pinned_limit_clamped_at_construction(self) -> None:
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        tool = create_graph_search_tool(client, user_id="u1", pinned_params={"limit": 200})
+
+        await _call(tool, query="query")
+
+        assert client.graph.search.call_args.kwargs["limit"] == MAX_SEARCH_LIMIT
 
 
 class TestQueryHandling:

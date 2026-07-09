@@ -82,6 +82,8 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
         "type": "integer",
         "description": "Maximum number of results to return.",
         "default": 10,
+        "minimum": 1,
+        "maximum": MAX_SEARCH_LIMIT,
     },
     "mmr_lambda": {
         "type": "number",
@@ -234,12 +236,18 @@ def create_zep_search_tool(
                 search_kwargs[param_name] = pinned[param_name]
             elif param_name in hidden:
                 continue  # hidden, not pinned -> omit; Zep applies its own default
-            elif param_name in kwargs:
+            elif param_name in kwargs and kwargs[param_name] is not None:
                 search_kwargs[param_name] = kwargs[param_name]
             else:
                 default = _SEARCH_PARAM_SPECS[param_name].get("default")
                 if default is not None:
                     search_kwargs[param_name] = default
+
+        # Clamp a model-provided limit to Zep's bounds so the call never 400s
+        # (a pinned limit is already clamped at construction time; the schema
+        # advertises these bounds, but not every model respects them).
+        if "limit" in search_kwargs:
+            search_kwargs["limit"] = min(max(search_kwargs["limit"], 1), MAX_SEARCH_LIMIT)
 
         effective_scope = search_kwargs.get("scope", "edges")
         if effective_scope == "auto" and "reranker" in search_kwargs:
@@ -304,6 +312,9 @@ def _build_json_schema(
         prop: dict[str, Any] = {"type": spec["type"], "description": spec["description"]}
         if "enum" in spec:
             prop["enum"] = spec["enum"]
+        for bound in ("minimum", "maximum"):
+            if bound in spec:
+                prop[bound] = spec[bound]
         properties[param_name] = prop
 
     return {

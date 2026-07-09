@@ -72,16 +72,17 @@ export function resolveLogger(logger: ZepLogger | undefined): ZepLogger {
  * Resolve per-call identity for a tool `execute(inputData, context)` call.
  *
  * `resolveIdentity`, when provided, is called with `context?.requestContext`
- * (Mastra's per-call runtime context); any field it returns overrides the
- * constructor-bound `userId`/`threadId`. When `resolveIdentity` is unset, or
- * omits a field, the constructor binding is used unchanged.
+ * (Mastra's per-call runtime context) and awaited (resolvers may be async);
+ * any field it returns overrides the constructor-bound `userId`/`threadId`.
+ * When `resolveIdentity` is unset, or omits a field, the constructor binding
+ * is used unchanged.
  */
-export function resolveToolIdentity(
+export async function resolveToolIdentity(
   binding: ResolvedZepIdentity,
   resolveIdentity: ZepIdentityResolver | undefined,
   context: { requestContext?: unknown } | undefined,
-): ResolvedZepIdentity {
-  const override = resolveIdentity?.(context?.requestContext);
+): Promise<ResolvedZepIdentity> {
+  const override = await resolveIdentity?.(context?.requestContext);
   return {
     userId: override?.userId ?? binding.userId,
     threadId: override?.threadId ?? binding.threadId,

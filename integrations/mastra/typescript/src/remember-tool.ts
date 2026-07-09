@@ -115,7 +115,7 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
         return { stored: false, message: "Nothing to remember: content was empty." };
       }
 
-      const identity = resolveToolIdentity(binding, resolveIdentity, context);
+      const identity = await resolveToolIdentity(binding, resolveIdentity, context);
       const effectiveBinding: ZepThreadBinding | ZepBinding = identity.threadId
         ? { userId: identity.userId, graphId: binding.graphId, threadId: identity.threadId }
         : { userId: identity.userId, graphId: binding.graphId };

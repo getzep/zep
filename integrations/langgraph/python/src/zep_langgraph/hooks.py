@@ -113,7 +113,9 @@ def create_zep_pre_model_hook(
     Returns:
         An async callable suitable for ``create_react_agent(pre_model_hook=...)``.
         A Zep failure is logged and degrades to base-instructions-only --
-        the hook never raises.
+        the hook never raises. When there is neither context nor
+        ``base_instructions``, the messages pass through unchanged (no empty
+        ``SystemMessage`` is injected).
     """
 
     async def _pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
@@ -133,6 +135,11 @@ def create_zep_pre_model_hook(
             base_instructions=base_instructions,
             template=template,
         )
+        if not content:
+            # No Zep context and no base_instructions -> nothing to inject.
+            # Never prepend an empty SystemMessage: some providers (e.g.
+            # Anthropic) reject empty message content and would fail the turn.
+            return {"llm_input_messages": messages}
         system_message = SystemMessage(content=content)
 
         return {"llm_input_messages": [system_message, *messages]}

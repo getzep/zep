@@ -203,6 +203,67 @@ class TestResultFormatting:
         assert out == "No results found."
 
 
+class TestModelProvidedArguments:
+    @pytest.mark.asyncio
+    async def test_null_model_argument_falls_back_to_default(self) -> None:
+        """An explicit JSON null from the model is treated as absent: the spec
+        default applies instead of forwarding None to graph.search.
+
+        Calls the raw handler (``tool.func``) directly: ``FunctionTool.invoke``
+        may reject nulls itself depending on the framework version, but the
+        handler must be null-safe regardless.
+        """
+        client = _make_mock_client()
+        client.graph.search.return_value = _make_result(edges=[_edge("Alice works at Acme")])
+        tool = create_zep_search_tool(zep_client=client, user_id="user-1")
+
+        out = await tool.func(query="q", scope=None)
+
+        kwargs = client.graph.search.call_args.kwargs
+        assert kwargs["scope"] == "edges"
+        assert "Alice works at Acme" in out
+
+    @pytest.mark.asyncio
+    async def test_null_model_argument_without_default_is_omitted(self) -> None:
+        client = _make_mock_client()
+        client.graph.search.return_value = _make_result(edges=[])
+        tool = create_zep_search_tool(zep_client=client, user_id="user-1")
+
+        await tool.func(query="q", mmr_lambda=None, center_node_uuid=None)
+
+        kwargs = client.graph.search.call_args.kwargs
+        assert "mmr_lambda" not in kwargs
+        assert "center_node_uuid" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_model_limit_above_ceiling_is_clamped(self) -> None:
+        client = _make_mock_client()
+        client.graph.search.return_value = _make_result(edges=[])
+        tool = create_zep_search_tool(zep_client=client, user_id="user-1")
+
+        await _call(tool, query="q", limit=200)
+
+        assert client.graph.search.call_args.kwargs["limit"] == 50
+
+    @pytest.mark.asyncio
+    async def test_model_limit_below_floor_is_clamped(self) -> None:
+        client = _make_mock_client()
+        client.graph.search.return_value = _make_result(edges=[])
+        tool = create_zep_search_tool(zep_client=client, user_id="user-1")
+
+        await _call(tool, query="q", limit=0)
+
+        assert client.graph.search.call_args.kwargs["limit"] == 1
+
+    def test_limit_schema_carries_bounds(self) -> None:
+        client = _make_mock_client()
+        tool = create_zep_search_tool(zep_client=client, user_id="user-1")
+        limit_prop = tool.parameters()["properties"]["limit"]
+
+        assert limit_prop["minimum"] == 1
+        assert limit_prop["maximum"] == 50
+
+
 class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_search_tool_errors_return_string(self) -> None:

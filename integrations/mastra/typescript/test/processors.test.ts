@@ -110,6 +110,31 @@ describe("ZepInputProcessor", () => {
     expect(zep.thread.getUserContext).toHaveBeenCalledWith("t2", {});
   });
 
+  it("awaits an async resolveIdentity and uses the resolved identity", async () => {
+    const zep = makeFakeZep();
+    zep.thread.getUserContext.mockResolvedValueOnce({ context: "async override context" });
+    const resolveIdentity = vi.fn().mockResolvedValue({ userId: "u2", threadId: "t2" });
+    const processor = new ZepInputProcessor({
+      client: asZep(zep),
+      userId: "u1",
+      threadId: "t1",
+      resolveIdentity,
+    });
+
+    await processor.processInput({
+      messages: [userMessage("hi")],
+      messageList: {} as never,
+      systemMessages: [],
+      state: {},
+      abort: neverAbort,
+      retryCount: 0,
+      requestContext: { tenant: "acme" } as never,
+    } as never);
+
+    expect(resolveIdentity).toHaveBeenCalledWith({ tenant: "acme" });
+    expect(zep.thread.getUserContext).toHaveBeenCalledWith("t2", {});
+  });
+
   it("passes through unchanged when threadId is missing", async () => {
     const zep = makeFakeZep();
     const processor = new ZepInputProcessor({
@@ -203,7 +228,9 @@ describe("ZepOutputProcessor", () => {
     expect(req.messages[1]).toMatchObject({ role: "assistant", content: "It's sunny." });
   });
 
-  it("skips persistence when finishReason is 'tool-calls'", async () => {
+  it("still persists the user message when the generation ends with finishReason 'tool-calls'", async () => {
+    // processOutputResult runs exactly once per generation, so a turn that
+    // exhausts its step budget mid-tool-loop must not drop the user message.
     const zep = makeFakeZep();
     const processor = new ZepOutputProcessor({
       client: asZep(zep),
@@ -226,7 +253,102 @@ describe("ZepOutputProcessor", () => {
     } as never);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(zep.thread.addMessages).toHaveBeenCalledTimes(1);
+    const [threadId, req] = zep.thread.addMessages.mock.calls[0]!;
+    expect(threadId).toBe("t1");
+    expect(req.messages).toEqual([{ role: "user", content: "do a thing" }]);
+  });
+
+  it("persists only the final step's text, not the accumulated multi-step result.text", async () => {
+    // result.text joins every step's text with no separator, so tool-call
+    // preamble would concatenate with the final answer.
+    const zep = makeFakeZep();
+    const processor = new ZepOutputProcessor({
+      client: asZep(zep),
+      userId: "u1",
+      threadId: "t1",
+    });
+
+    await processor.processOutputResult({
+      messages: [userMessage("what's the weather?")],
+      messageList: {} as never,
+      state: {},
+      abort: neverAbort,
+      retryCount: 0,
+      result: {
+        text: "Let me check the weather.It's sunny in Portland.",
+        usage: {} as never,
+        finishReason: "stop",
+        steps: [
+          { text: "Let me check the weather." },
+          { text: "It's sunny in Portland." },
+        ],
+      },
+    } as never);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(zep.thread.addMessages).toHaveBeenCalledTimes(1);
+    const [, req] = zep.thread.addMessages.mock.calls[0]!;
+    expect(req.messages).toEqual([
+      { role: "user", content: "what's the weather?" },
+      { role: "assistant", content: "It's sunny in Portland." },
+    ]);
+  });
+
+  it("skips persistence entirely when there is no user text and no assistant text", async () => {
+    const zep = makeFakeZep();
+    const processor = new ZepOutputProcessor({
+      client: asZep(zep),
+      userId: "u1",
+      threadId: "t1",
+    });
+
+    await processor.processOutputResult({
+      messages: [],
+      messageList: {} as never,
+      state: {},
+      abort: neverAbort,
+      retryCount: 0,
+      result: {
+        text: "",
+        usage: {} as never,
+        finishReason: "tool-calls",
+        steps: [],
+      },
+    } as never);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(zep.thread.addMessages).not.toHaveBeenCalled();
+  });
+
+  it("awaits an async resolveIdentity and uses the resolved identity", async () => {
+    const zep = makeFakeZep();
+    const resolveIdentity = vi.fn().mockResolvedValue({ userId: "u2", threadId: "t2" });
+    const processor = new ZepOutputProcessor({
+      client: asZep(zep),
+      userId: "u1",
+      threadId: "t1",
+      resolveIdentity,
+    });
+
+    await processor.processOutputResult({
+      messages: [userMessage("hi")],
+      messageList: {} as never,
+      state: {},
+      abort: neverAbort,
+      retryCount: 0,
+      requestContext: { tenant: "acme" } as never,
+      result: {
+        text: "hello!",
+        usage: {} as never,
+        finishReason: "stop",
+        steps: [],
+      },
+    } as never);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(resolveIdentity).toHaveBeenCalledWith({ tenant: "acme" });
+    expect(zep.thread.addMessages).toHaveBeenCalledWith("t2", expect.anything());
   });
 
   it("never aborts or throws on a persist failure", async () => {

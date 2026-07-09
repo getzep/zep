@@ -192,6 +192,83 @@ class TestLimitClamping:
         assert client.graph.search.call_args.kwargs["limit"] == 1
 
 
+class TestModelProvidedArguments:
+    @pytest.mark.asyncio
+    async def test_none_scope_falls_back_to_default(self) -> None:
+        """An explicit JSON null from the model (Tool.from_schema skips
+        argument validation) must not reach graph.search as scope=None; the
+        spec default applies and results are formatted normally."""
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[_edge("Alice hikes")]))
+        tool = create_zep_search_tool()
+        ctx = _make_ctx(_make_deps(client))
+
+        out = await _call(tool, ctx, "query", scope=None)
+
+        kwargs = client.graph.search.call_args.kwargs
+        assert kwargs["scope"] == "edges"
+        assert "Alice hikes" in out
+
+    @pytest.mark.asyncio
+    async def test_none_optional_params_omitted(self) -> None:
+        """None for a defaultless param (mmr_lambda, center_node_uuid) is
+        omitted from the SDK call rather than sent as JSON null."""
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        tool = create_zep_search_tool()
+        ctx = _make_ctx(_make_deps(client))
+
+        await _call(tool, ctx, "query", mmr_lambda=None, center_node_uuid=None)
+
+        kwargs = client.graph.search.call_args.kwargs
+        assert "mmr_lambda" not in kwargs
+        assert "center_node_uuid" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_model_limit_clamped_to_ceiling(self) -> None:
+        """A model-provided limit above Zep's cap is clamped at call time so
+        the search never 400s."""
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        tool = create_zep_search_tool()
+        ctx = _make_ctx(_make_deps(client))
+
+        await _call(tool, ctx, "query", limit=200)
+
+        assert client.graph.search.call_args.kwargs["limit"] == 50
+
+    @pytest.mark.asyncio
+    async def test_model_limit_floored_to_one(self) -> None:
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        tool = create_zep_search_tool()
+        ctx = _make_ctx(_make_deps(client))
+
+        await _call(tool, ctx, "query", limit=0)
+
+        assert client.graph.search.call_args.kwargs["limit"] == 1
+
+    @pytest.mark.asyncio
+    async def test_model_limit_in_range_unchanged(self) -> None:
+        client = MagicMock()
+        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        tool = create_zep_search_tool()
+        ctx = _make_ctx(_make_deps(client))
+
+        await _call(tool, ctx, "query", limit=25)
+
+        assert client.graph.search.call_args.kwargs["limit"] == 25
+
+    def test_limit_schema_carries_bounds(self) -> None:
+        """The model-facing schema advertises Zep's limit bounds so
+        well-behaved models self-limit."""
+        tool = create_zep_search_tool()
+        limit_prop = tool.tool_def.parameters_json_schema["properties"]["limit"]
+
+        assert limit_prop["minimum"] == 1
+        assert limit_prop["maximum"] == 50
+
+
 class TestAutoScopeReranker:
     @pytest.mark.asyncio
     async def test_auto_scope_drops_incompatible_reranker(self) -> None:

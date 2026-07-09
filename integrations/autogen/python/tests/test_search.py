@@ -257,6 +257,80 @@ class TestUnknownParams:
             create_search_graph_tool(client, user_id="user-1", hidden_params={"bogus"})
 
 
+class TestLimitClamping:
+    @pytest.mark.asyncio
+    async def test_pinned_limit_clamped_to_ceiling_with_warning(self, caplog) -> None:
+        """A pinned limit above Zep's ceiling is clamped at construction time
+        (with a warning) so the call never 400s."""
+        client = _make_mock_client()
+        client.graph.search.return_value = _make_result(edges=[])
+        with caplog.at_level("WARNING", logger="zep_autogen.tools"):
+            tool = create_search_graph_tool(client, user_id="user-1", pinned_params={"limit": 100})
+        assert any("clamping" in record.message for record in caplog.records)
+
+        await _run(tool, query="query")
+
+        assert client.graph.search.call_args.kwargs["limit"] == 50
+
+    @pytest.mark.asyncio
+    async def test_model_provided_limit_clamped_at_call_time(self) -> None:
+        """A model-provided limit above Zep's ceiling is clamped (not
+        rejected) when building the SDK kwargs."""
+        client = _make_mock_client()
+        client.graph.search.return_value = _make_result(edges=[])
+        tool = create_search_graph_tool(client, user_id="user-1")
+
+        await _run(tool, query="query", limit=200)
+
+        assert client.graph.search.call_args.kwargs["limit"] == 50
+
+    @pytest.mark.asyncio
+    async def test_model_provided_limit_clamped_to_at_least_one(self) -> None:
+        client = _make_mock_client()
+        client.graph.search.return_value = _make_result(edges=[])
+        tool = create_search_graph_tool(client, user_id="user-1")
+
+        await _run(tool, query="query", limit=0)
+
+        assert client.graph.search.call_args.kwargs["limit"] == 1
+
+
+class TestAutoScopeReranker:
+    @pytest.mark.asyncio
+    async def test_pinned_auto_scope_drops_incompatible_pinned_reranker(self, caplog) -> None:
+        """scope pinned to 'auto' + a pinned auto-incompatible reranker: the
+        reranker is dropped (with a warning) and never sent to graph.search."""
+        client = _make_mock_client()
+        client.graph.search.return_value = _make_result(context="ctx")
+        with caplog.at_level("WARNING", logger="zep_autogen.tools"):
+            tool = create_search_graph_tool(
+                client,
+                user_id="user-1",
+                pinned_params={"scope": "auto", "reranker": "node_distance"},
+            )
+        assert any("invalid for scope='auto'" in record.message for record in caplog.records)
+
+        await _run(tool, query="query")
+
+        kwargs = client.graph.search.call_args.kwargs
+        assert kwargs["scope"] == "auto"
+        assert "reranker" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_model_provided_auto_scope_drops_incompatible_reranker(self) -> None:
+        """When the model itself chooses scope='auto' + an incompatible
+        reranker, the reranker is dropped at call time."""
+        client = _make_mock_client()
+        client.graph.search.return_value = _make_result(context="ctx")
+        tool = create_search_graph_tool(client, user_id="user-1")
+
+        await _run(tool, query="query", scope="auto", reranker="node_distance")
+
+        kwargs = client.graph.search.call_args.kwargs
+        assert kwargs["scope"] == "auto"
+        assert "reranker" not in kwargs
+
+
 class TestResultFormatting:
     @pytest.mark.asyncio
     async def test_auto_scope_returns_context(self) -> None:

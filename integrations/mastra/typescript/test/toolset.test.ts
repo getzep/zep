@@ -123,6 +123,24 @@ describe("ensureZepUserAndThread", () => {
     expect(onUserCreated).toHaveBeenCalledWith(asZep(zep), "u1");
   });
 
+  it("onUserCreated still fires when thread creation fails after the user was created", async () => {
+    // A transient thread.create failure must not skip the hook forever: a
+    // retry hits the already-exists path with userCreated=false.
+    const zep = makeFakeZep();
+    zep.thread.create.mockRejectedValueOnce(new Error("500 internal"));
+    const onUserCreated = vi.fn();
+    const ok = await ensureZepUserAndThread({
+      client: asZep(zep),
+      userId: "u1",
+      threadId: "t1",
+      onUserCreated,
+      logger: { warn: vi.fn() },
+    });
+    expect(ok).toBe(false);
+    expect(onUserCreated).toHaveBeenCalledOnce();
+    expect(onUserCreated).toHaveBeenCalledWith(asZep(zep), "u1");
+  });
+
   it("onUserCreated does not fire on 409 already-exists", async () => {
     const zep = makeFakeZep();
     const conflict = Object.assign(new Error("user already exists"), { statusCode: 409 });

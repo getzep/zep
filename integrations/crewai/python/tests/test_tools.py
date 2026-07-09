@@ -8,6 +8,7 @@ parameter (``scope``, ``reranker``, ``limit``, ``mmr_lambda``,
 ``args_schema`` by default and can be pinned or hidden at construction time.
 """
 
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,6 +19,7 @@ from zep_crewai import (
     create_add_data_tool,
     create_search_tool,
 )
+from zep_crewai.tools import MAX_SEARCH_LIMIT
 
 
 def _make_mock_graph_results(edges=None, nodes=None, episodes=None):
@@ -348,6 +350,175 @@ class TestZepSearchToolPinOrExpose:
 
         call_kwargs = mock_client.graph.search.call_args.kwargs
         assert len(call_kwargs["query"]) == 400
+
+
+class TestSearchLimitClamping:
+    """A limit above Zep's ceiling (or below 1) is clamped, never rejected."""
+
+    def test_pinned_limit_clamped_with_warning(self, caplog):
+        """A pinned limit above MAX_SEARCH_LIMIT is clamped at construction
+        with a warning, and the clamped value is sent."""
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        with caplog.at_level(logging.WARNING, logger="zep_crewai.tools"):
+            tool = ZepSearchTool(client=mock_client, user_id="u1", pinned_params={"limit": 100})
+
+        assert any("clamping" in record.message for record in caplog.records)
+
+        tool._run(query="hello")
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["limit"] == MAX_SEARCH_LIMIT
+
+    def test_pinned_limit_below_one_clamped_to_one(self):
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(client=mock_client, user_id="u1", pinned_params={"limit": 0})
+
+        tool._run(query="hello")
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["limit"] == 1
+
+    def test_legacy_limit_arg_clamped(self):
+        """The legacy limit= constructor arg pins and is clamped the same way."""
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(client=mock_client, user_id="u1", limit=100)
+
+        tool._run(query="hello")
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["limit"] == MAX_SEARCH_LIMIT
+
+    def test_model_provided_limit_clamped_at_call_time(self):
+        """A model-provided limit above the ceiling is clamped to 50, not
+        rejected -- the tool never 400s on limit."""
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(client=mock_client, user_id="u1")
+
+        tool._run(query="hello", limit=200)
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["limit"] == MAX_SEARCH_LIMIT
+
+    def test_model_provided_limit_below_one_clamped_to_one(self):
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(client=mock_client, user_id="u1")
+
+        tool._run(query="hello", limit=-3)
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["limit"] == 1
+
+    def test_valid_limit_passes_through_unchanged(self):
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(client=mock_client, user_id="u1")
+
+        tool._run(query="hello", limit=25)
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["limit"] == 25
+
+
+class TestAutoScopeReranker:
+    """scope='auto' ignores reranker and rejects node_distance /
+    episode_mentions outright -- the reranker must be dropped, not sent."""
+
+    def test_pinned_auto_scope_drops_incompatible_reranker(self, caplog):
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        with caplog.at_level(logging.WARNING, logger="zep_crewai.tools"):
+            tool = ZepSearchTool(
+                client=mock_client,
+                user_id="u1",
+                pinned_params={"scope": "auto", "reranker": "node_distance"},
+            )
+
+        assert any("reranker" in record.message for record in caplog.records)
+
+        tool._run(query="hello")
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["scope"] == "auto"
+        assert "reranker" not in call_kwargs
+
+    def test_model_provided_auto_scope_drops_incompatible_reranker(self):
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(client=mock_client, user_id="u1")
+
+        tool._run(query="hello", scope="auto", reranker="episode_mentions")
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["scope"] == "auto"
+        assert "reranker" not in call_kwargs
+
+    def test_pinned_auto_scope_with_model_reranker_dropped(self):
+        """scope pinned to 'auto' + reranker left model-exposed: a
+        model-provided incompatible reranker is still dropped at call time."""
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(client=mock_client, user_id="u1", pinned_params={"scope": "auto"})
+
+        tool._run(query="hello", reranker="node_distance")
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["scope"] == "auto"
+        assert "reranker" not in call_kwargs
+
+    def test_non_auto_scope_keeps_reranker(self):
+        from zep_cloud.client import Zep
+
+        mock_client = MagicMock(spec=Zep)
+        mock_client.graph = MagicMock()
+        mock_client.graph.search.return_value = _make_mock_graph_results()
+
+        tool = ZepSearchTool(client=mock_client, user_id="u1")
+
+        tool._run(query="hello", scope="edges", reranker="node_distance")
+
+        call_kwargs = mock_client.graph.search.call_args.kwargs
+        assert call_kwargs["reranker"] == "node_distance"
 
 
 class TestZepAddDataTool:

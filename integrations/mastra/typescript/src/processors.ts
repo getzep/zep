@@ -157,12 +157,15 @@ export interface ZepInputProcessorOptions extends ZepProcessorSharedOptions {
   formatContext?: (context: string) => string;
 }
 
-/** Resolve identity for this call: `resolveIdentity` result wins, falling back to constructor binding. */
-function resolveCallIdentity(
+/**
+ * Resolve identity for this call: `resolveIdentity` result wins, falling back
+ * to constructor binding. The resolver may be async, so its result is awaited.
+ */
+async function resolveCallIdentity(
   options: ZepProcessorSharedOptions,
   requestContext: unknown,
-): ResolvedZepIdentity {
-  const override = options.resolveIdentity?.(requestContext);
+): Promise<ResolvedZepIdentity> {
+  const override = await options.resolveIdentity?.(requestContext);
   return {
     userId: override?.userId ?? options.userId,
     threadId: override?.threadId ?? options.threadId,
@@ -200,7 +203,7 @@ export class ZepInputProcessor {
       return passthrough;
     }
 
-    const identity = resolveCallIdentity(this.options, args.requestContext);
+    const identity = await resolveCallIdentity(this.options, args.requestContext);
     if (!identity.threadId) {
       this.logger.warn(
         "[zep-context] No threadId resolved for this call; skipping context injection.",
@@ -252,14 +255,36 @@ export class ZepInputProcessor {
 export type ZepOutputProcessorOptions = ZepProcessorSharedOptions;
 
 /**
+ * The assistant text of the final step that produced any, or `""`.
+ *
+ * `result.text` is the text of ALL steps joined with no separator, so in a
+ * multi-step tool loop it concatenates tool-call preamble with the final
+ * answer. Falls back to `result.text` only when no step carries text (e.g. a
+ * caller that does not populate `steps`).
+ */
+function extractFinalStepText(result: ProcessOutputResultArgs["result"]): string {
+  const steps = Array.isArray(result.steps) ? result.steps : [];
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const text = steps[i]?.text?.trim();
+    if (text) return text;
+  }
+  return result.text?.trim() ?? "";
+}
+
+/**
  * Mastra output processor: persists the completed turn (latest user message
  * + assistant response) to the bound Zep thread in a single
  * `thread.addMessages` call, after the model responds.
  *
+ * `processOutputResult` runs exactly once per generation, so the user message
+ * is persisted even when the generation ends mid-tool-loop
+ * (`finishReason === "tool-calls"`, e.g. the step budget was exhausted) —
+ * only the assistant message is omitted when there is no assistant text. The
+ * assistant text is the final step's text, never the accumulated
+ * all-steps `result.text`.
+ *
  * Persistence is fire-and-forget from the caller's perspective — failures are
- * caught internally, logged, and never thrown or aborted. Skips persistence
- * entirely when `finishReason === "tool-calls"` (the turn is not yet
- * complete; a later call in the same agentic loop will carry the final text).
+ * caught internally, logged, and never thrown or aborted.
  */
 export class ZepOutputProcessor {
   readonly id = "zep-persist";
@@ -276,24 +301,19 @@ export class ZepOutputProcessor {
   async processOutputResult(args: ProcessOutputResultArgs): Promise<MastraDBMessage[]> {
     // This processor never mutates messages — it only side-effects to Zep —
     // so every branch below returns args.messages unchanged.
-    if (args.result.finishReason === "tool-calls") {
+    const userText = extractLatestUserText(args.messages);
+    const assistantText = extractFinalStepText(args.result);
+    if (!userText && !assistantText) {
       return args.messages;
     }
 
-    const assistantText = args.result.text?.trim();
-    if (!assistantText) {
-      return args.messages;
-    }
-
-    const identity = resolveCallIdentity(this.options, args.requestContext);
+    const identity = await resolveCallIdentity(this.options, args.requestContext);
     if (!identity.threadId) {
       this.logger.warn(
         "[zep-persist] No threadId resolved for this call; skipping persist.",
       );
       return args.messages;
     }
-
-    const userText = extractLatestUserText(args.messages);
 
     // Fire-and-forget: never let a Zep failure propagate into the agent loop.
     this.persist(identity.threadId, userText, assistantText).catch((error) => {
@@ -315,10 +335,12 @@ export class ZepOutputProcessor {
         content: truncateForZep(userText, MESSAGE_MAX_CHARS, "zep-persist", this.logger),
       });
     }
-    messages.push({
-      role: "assistant" as const,
-      content: truncateForZep(assistantText, MESSAGE_MAX_CHARS, "zep-persist", this.logger),
-    });
+    if (assistantText) {
+      messages.push({
+        role: "assistant" as const,
+        content: truncateForZep(assistantText, MESSAGE_MAX_CHARS, "zep-persist", this.logger),
+      });
+    }
 
     await this.options.client.thread.addMessages(threadId, { messages });
   }
