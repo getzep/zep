@@ -38,6 +38,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync"
 
 	zep "github.com/getzep/zep-go/v3"
 	zepclient "github.com/getzep/zep-go/v3/client"
@@ -50,23 +51,118 @@ import (
 
 // DefaultContextPrefix is prepended to the Zep Context Block when it is
 // injected into the model's system instruction.
+//
+// Deprecated: use [WithContextTemplate] and [DefaultContextTemplate] instead.
+// DefaultContextPrefix remains exported only so callers using
+// [WithContextPrefix] continue to compile.
 const DefaultContextPrefix = "Relevant memory retrieved from Zep about the user:\n"
+
+// DefaultContextTemplate is the default wrapper for the Zep context block
+// (whether retrieved via the default single round-trip or produced by a
+// custom [ContextBuilder]) before it is injected into the model's system
+// instruction. It is rendered via [strings.ReplaceAll], substituting every
+// occurrence of the literal "{context}" placeholder with the context text —
+// never via fmt verbs — so context content containing "%", "{", or "}" is
+// always safe to inject.
+//
+// This exact string is canonical across zep-adk's Python, Go, and TypeScript
+// implementations — keep them in sync.
+const DefaultContextTemplate = "The following context is retrieved from Zep, the agent's long-term memory. " +
+	"It contains relevant facts, entities, and prior knowledge about the user. " +
+	"Use it to inform your responses.\n\n" +
+	"<ZEP_CONTEXT>\n" +
+	"{context}\n" +
+	"</ZEP_CONTEXT>"
+
+// ContextInput is handed to a custom [ContextBuilder].
+//
+// Bundling the builder's inputs into a single struct (rather than positional
+// arguments) lets us add fields later without breaking existing builders.
+type ContextInput struct {
+	// Client is the concrete Zep client in use by the callback (the same
+	// value passed to [NewBeforeModelCallback]).
+	Client *zepclient.Client
+	// UserID is the resolved Zep user ID for this turn.
+	UserID string
+	// ThreadID is the resolved Zep thread ID for this turn.
+	ThreadID string
+	// UserMessage is the user's message text for this turn (after
+	// truncation to Zep's per-message limit).
+	UserMessage string
+	// Callback is the ADK callback context for this turn: session state,
+	// invocation metadata.
+	Callback agent.CallbackContext
+	// Request is the outgoing model request about to be sent to the LLM.
+	Request *model.LLMRequest
+}
+
+// ContextBuilder builds a custom context block to inject into the LLM prompt,
+// instead of using Thread.AddMessages' ReturnContext. Returning "" (with a
+// nil error) skips injection for that turn.
+//
+// Error semantics: if the builder returns a non-nil error, [NewBeforeModelCallback]
+// logs a warning and skips injection for that turn — it never crashes the
+// host agent and never prevents message persistence from completing. See
+// [WithContextBuilder] for the full error-isolation contract between
+// persistence and the builder.
+type ContextBuilder func(ctx context.Context, in ContextInput) (string, error)
 
 // callbackOptions holds the resolved configuration for a BeforeModelCallback.
 type callbackOptions struct {
-	contextPrefix string
-	userName      string
-	logger        *slog.Logger
+	contextTemplate string
+	contextBuilder  ContextBuilder
+	userName        string
+	logger          *slog.Logger
 }
 
 // CallbackOption customizes the behavior of [NewBeforeModelCallback].
 type CallbackOption func(*callbackOptions)
 
 // WithContextPrefix overrides the text prepended to the Zep Context Block
-// before it is injected into the system instruction. Pass an empty string to
-// inject the Context Block verbatim.
+// before it is injected into the system instruction.
+//
+// Deprecated: use [WithContextTemplate]. WithContextPrefix is implemented as
+// a shim over WithContextTemplate: it sets the template to
+// prefix+"{context}", so the injected text is identical to the pre-template
+// behavior (no <ZEP_CONTEXT> wrapper).
 func WithContextPrefix(prefix string) CallbackOption {
-	return func(o *callbackOptions) { o.contextPrefix = prefix }
+	return func(o *callbackOptions) { o.contextTemplate = prefix + "{context}" }
+}
+
+// WithContextTemplate overrides the template used to wrap the Zep context
+// block before it is injected into the system instruction. template must
+// contain a literal "{context}" placeholder; every occurrence is replaced
+// with the context text via [strings.ReplaceAll] (never fmt verbs), so
+// context text containing "%", "{", or "}" is always safe. Defaults to
+// [DefaultContextTemplate].
+func WithContextTemplate(template string) CallbackOption {
+	return func(o *callbackOptions) { o.contextTemplate = template }
+}
+
+// WithContextBuilder configures a custom [ContextBuilder] that constructs the
+// context block to inject, instead of relying on
+// Thread.AddMessages(ReturnContext=true).
+//
+// When set, message persistence (Thread.AddMessages, without ReturnContext)
+// and the builder run concurrently for lower latency. When unset (the
+// default), the callback uses a single Thread.AddMessages(ReturnContext=true)
+// round-trip.
+//
+// Error isolation (mandatory): persistence and the builder are isolated from
+// each other's failure — one side failing never blocks or masks the other's
+// result:
+//
+//   - If the builder returns an error, a warning is logged and injection is
+//     skipped for this turn — but persistence still completes independently.
+//   - If persistence fails, a warning is logged and the turn is not persisted
+//     to Zep this pass — but a successful builder result may still be
+//     injected into the prompt.
+//
+// (Go's tool-loop dedup, unlike Python/TS's persist-success-gated dedup, is
+// structural: see [IsToolLoopContinuation]. It does not depend on whether
+// persistence or the builder succeeded on a prior pass.)
+func WithContextBuilder(b ContextBuilder) CallbackOption {
+	return func(o *callbackOptions) { o.contextBuilder = b }
 }
 
 // WithUserMessageName sets the optional display name attached to the user
@@ -88,13 +184,21 @@ func WithLogger(logger *slog.Logger) CallbackOption {
 
 func resolveCallbackOptions(opts []CallbackOption) callbackOptions {
 	resolved := callbackOptions{
-		contextPrefix: DefaultContextPrefix,
-		logger:        slog.Default(),
+		contextTemplate: DefaultContextTemplate,
+		logger:          slog.Default(),
 	}
 	for _, opt := range opts {
 		opt(&resolved)
 	}
 	return resolved
+}
+
+// renderContextTemplate substitutes every occurrence of the literal
+// "{context}" placeholder in template with contextBlock via
+// [strings.ReplaceAll] — never fmt verbs — so contextBlock or a custom
+// template containing "%", "{", or "}" is always safe to inject.
+func renderContextTemplate(template, contextBlock string) string {
+	return strings.ReplaceAll(template, "{context}", contextBlock)
 }
 
 // NewBeforeModelCallback returns an ADK [llmagent.BeforeModelCallback] that
@@ -105,10 +209,16 @@ func resolveCallbackOptions(opts []CallbackOption) callbackOptions {
 //  1. Extracts the user's latest message from the callback context.
 //  2. Truncates it to Zep's per-message limit if needed (logging a
 //     lengths-only warning; content is never dropped or logged).
-//  3. Persists it to the Zep thread whose ID equals the ADK session ID,
-//     requesting the Context Block in the same round-trip
-//     (Thread.AddMessages with ReturnContext=true).
-//  4. Injects the returned Context Block into req.Config.SystemInstruction.
+//  3. Persists it to the Zep thread whose ID equals the ADK session ID and
+//     retrieves the context to inject — either via a single
+//     Thread.AddMessages(ReturnContext=true) round-trip (the default), or,
+//     when [WithContextBuilder] is configured, by persisting
+//     (Thread.AddMessages without ReturnContext) and running the custom
+//     [ContextBuilder] concurrently. See [WithContextBuilder] for the
+//     error-isolation contract between persistence and the builder.
+//  4. Injects the resulting context block into req.Config.SystemInstruction,
+//     rendered through the configured template (see [WithContextTemplate],
+//     [DefaultContextTemplate]).
 //
 // During a tool loop the same model turn fires repeatedly: ADK calls the
 // before-model callback again after each tool result so the model can continue.
@@ -120,20 +230,22 @@ func resolveCallbackOptions(opts []CallbackOption) callbackOptions {
 //
 // It returns (nil, nil) so ADK proceeds to the real model with the mutated
 // request. A nil client (for example when ZEP_API_KEY is unset) makes the
-// callback a no-op. Zep failures are logged via the configured logger and
-// never propagated, so the agent continues without memory rather than
-// crashing.
+// callback a no-op — the [ContextBuilder], if any, is never called. Zep
+// failures are logged via the configured logger and never propagated, so the
+// agent continues without memory rather than crashing.
 //
 // The integration contract is: ADK session ID maps to the Zep thread ID and
 // ADK user ID maps to the Zep user ID. Create the Zep user and thread out of
 // band before the first turn (see [EnsureUser] and [EnsureThread]).
 func NewBeforeModelCallback(client *zepclient.Client, opts ...CallbackOption) llmagent.BeforeModelCallback {
-	return newBeforeModelCallback(newZepAPI(client), opts...)
+	return newBeforeModelCallback(client, newZepAPI(client), opts...)
 }
 
 // newBeforeModelCallback is the seam-friendly core of [NewBeforeModelCallback].
-// A nil api makes the callback a no-op.
-func newBeforeModelCallback(api zepAPI, opts ...CallbackOption) llmagent.BeforeModelCallback {
+// A nil api makes the callback a no-op. client is threaded through separately
+// from api (the testable seam) so [ContextInput.Client] can carry the
+// concrete *zepclient.Client without requiring every test to construct one.
+func newBeforeModelCallback(client *zepclient.Client, api zepAPI, opts ...CallbackOption) llmagent.BeforeModelCallback {
 	cfg := resolveCallbackOptions(opts)
 
 	return func(cc agent.CallbackContext, req *model.LLMRequest) (*model.LLMResponse, error) {
@@ -155,31 +267,117 @@ func newBeforeModelCallback(api zepAPI, opts ...CallbackOption) llmagent.BeforeM
 			return nil, nil
 		}
 
+		truncated := truncateMessageContent(cfg.logger, threadID, latest)
 		message := &zep.Message{
 			Role:    zep.RoleTypeUserRole,
-			Content: truncateMessageContent(cfg.logger, threadID, latest),
+			Content: truncated,
 		}
 		if cfg.userName != "" {
 			message.Name = zep.String(cfg.userName)
 		}
 
-		resp, err := api.AddMessages(cc, threadID, &zep.AddThreadMessagesRequest{
-			ReturnContext: zep.Bool(true),
-			Messages:      []*zep.Message{message},
-		})
-		if err != nil {
-			// Never crash the host agent on a Zep failure: log and proceed
-			// without injecting memory for this turn.
-			cfg.logger.Error("zepadk: persisting user message failed; proceeding without memory",
-				slog.String("thread_id", threadID), slog.Any("error", err))
-			return nil, nil
+		var contextBlock string
+		if cfg.contextBuilder != nil {
+			contextBlock = persistAndBuildContext(cc, client, api, cfg, threadID, truncated, message, req)
+		} else {
+			contextBlock = persistWithReturnContext(cc, api, cfg, threadID, message)
 		}
 
-		if resp != nil && resp.Context != nil && *resp.Context != "" {
-			InjectSystemInstruction(req, cfg.contextPrefix+*resp.Context)
+		if contextBlock != "" {
+			InjectSystemInstruction(req, renderContextTemplate(cfg.contextTemplate, contextBlock))
 		}
 		return nil, nil
 	}
+}
+
+// persistWithReturnContext is the default (no custom builder) persist path: a
+// single Thread.AddMessages(ReturnContext=true) round-trip. It returns the
+// context block to inject, or "" on failure or when Zep returned none.
+func persistWithReturnContext(cc agent.CallbackContext, api zepAPI, cfg callbackOptions, threadID string, message *zep.Message) string {
+	resp, err := api.AddMessages(cc, threadID, &zep.AddThreadMessagesRequest{
+		ReturnContext: zep.Bool(true),
+		Messages:      []*zep.Message{message},
+	})
+	if err != nil {
+		// Never crash the host agent on a Zep failure: log and proceed
+		// without injecting memory for this turn.
+		cfg.logger.Error("zepadk: persisting user message failed; proceeding without memory",
+			slog.String("thread_id", threadID), slog.Any("error", err))
+		return ""
+	}
+	if resp != nil && resp.Context != nil {
+		return *resp.Context
+	}
+	return ""
+}
+
+// persistAndBuildContext persists the message (Thread.AddMessages without
+// ReturnContext) and runs the configured [ContextBuilder] concurrently via two
+// goroutines and a sync.WaitGroup, so a slow builder cannot delay persistence
+// (or vice versa).
+//
+// Error isolation (mandatory — see [WithContextBuilder]): each goroutine
+// catches and logs its own failure independently, so one side's error can
+// neither block nor mask the other's result. It returns the context block to
+// inject ("" when the builder failed, returned "", or was skipped).
+func persistAndBuildContext(cc agent.CallbackContext, client *zepclient.Client, api zepAPI, cfg callbackOptions, threadID, userMessage string, message *zep.Message, req *model.LLMRequest) string {
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		// A panic on a spawned goroutine cannot be recovered upstream and
+		// would kill the whole process; recover here to keep the
+		// never-crash-the-host-agent contract.
+		defer func() {
+			if r := recover(); r != nil {
+				cfg.logger.Error("zepadk: panic while persisting user message; proceeding without memory",
+					slog.String("thread_id", threadID), slog.Any("panic", r))
+			}
+		}()
+		if _, err := api.AddMessages(cc, threadID, &zep.AddThreadMessagesRequest{
+			Messages: []*zep.Message{message},
+		}); err != nil {
+			// Isolated from the builder's outcome: log and proceed. The
+			// builder's result (if any) may still be injected below.
+			cfg.logger.Error("zepadk: persisting user message failed; proceeding without memory",
+				slog.String("thread_id", threadID), slog.Any("error", err))
+		}
+	}()
+
+	// Written only by the builder goroutine below; safe to read after
+	// wg.Wait() synchronizes with that write (no concurrent access).
+	var contextBlock string
+	go func() {
+		defer wg.Done()
+		// The builder is arbitrary user code; a panic here would otherwise
+		// kill the process (see the persist goroutine above).
+		defer func() {
+			if r := recover(); r != nil {
+				cfg.logger.Warn("zepadk: context builder panicked; skipping context injection for this turn",
+					slog.String("thread_id", threadID), slog.Any("panic", r))
+			}
+		}()
+		out, err := cfg.contextBuilder(cc, ContextInput{
+			Client:      client,
+			UserID:      cc.UserID(),
+			ThreadID:    threadID,
+			UserMessage: userMessage,
+			Callback:    cc,
+			Request:     req,
+		})
+		if err != nil {
+			// Isolated from the persist outcome: log and skip injection.
+			// Persistence still completes independently of this failure.
+			cfg.logger.Warn("zepadk: context builder failed; skipping context injection for this turn",
+				slog.String("thread_id", threadID), slog.Any("error", err))
+			return
+		}
+		contextBlock = out
+	}()
+
+	wg.Wait()
+	return contextBlock
 }
 
 // AfterCallbackOption customizes the behavior of [NewAfterModelCallback].
@@ -376,14 +574,40 @@ func contentHasFunctionResponse(c *genai.Content) bool {
 	return false
 }
 
-// EnsureUser creates a Zep user, treating an "already exists" error as
-// success so it is safe to call on every session start. Passing a real first
-// name, last name, and email helps Zep resolve the user's identity in the
-// graph. It is a no-op when client is nil.
-func EnsureUser(ctx context.Context, client *zepclient.Client, userID, firstName, lastName, email string) error {
+// EnsureUser idempotently ensures the Zep user exists.
+//
+// It calls User.Add directly (create-then-catch-conflict) rather than
+// checking for existence first, which would be racy and cost an extra
+// round-trip. Passing a real first name, last name, and email helps Zep
+// resolve the user's identity in the graph.
+//
+// Returns created=true iff the user was newly created by this call. When the
+// user already exists (an "already exists" conflict — see [isAlreadyExists])
+// it returns (false, nil): this is not an error, since EnsureUser is meant to
+// be called on every session start. Any other failure (auth, network, 5xx)
+// is returned as (false, err) and never swallowed. It is a no-op — (false,
+// nil), no calls made — when client is nil.
+//
+// There is no OnCreated hook: the Go idiom is to branch on the returned bool,
+// e.g.:
+//
+//	created, err := EnsureUser(ctx, client, userID, firstName, lastName, email)
+//	if err != nil {
+//	    // handle genuine failure
+//	}
+//	if created {
+//	    // one-time per-user setup: ontology, custom instructions, etc.
+//	}
+func EnsureUser(ctx context.Context, client *zepclient.Client, userID, firstName, lastName, email string) (created bool, err error) {
 	if client == nil || userID == "" {
-		return nil
+		return false, nil
 	}
+	return ensureUserWithAPI(ctx, newZepAPI(client), userID, firstName, lastName, email)
+}
+
+// ensureUserWithAPI is the seam-friendly core of [EnsureUser]. api is assumed
+// non-nil; callers (EnsureUser) handle the nil-client no-op case.
+func ensureUserWithAPI(ctx context.Context, api zepAPI, userID, firstName, lastName, email string) (created bool, err error) {
 	req := &zep.CreateUserRequest{UserID: userID}
 	if firstName != "" {
 		req.FirstName = zep.String(firstName)
@@ -394,30 +618,56 @@ func EnsureUser(ctx context.Context, client *zepclient.Client, userID, firstName
 	if email != "" {
 		req.Email = zep.String(email)
 	}
-	if _, err := client.User.Add(ctx, req); err != nil {
+	if _, err := api.AddUser(ctx, req); err != nil {
 		if isAlreadyExists(err) {
-			return nil
+			return false, nil
 		}
-		return err
+		return false, err
 	}
-	return nil
+	return true, nil
 }
 
-// EnsureThread creates a Zep thread for the given user, treating an "already
-// exists" error as success so it is safe to call on every session start. The
-// thread ID should equal the ADK session ID. It is a no-op when client is nil.
-func EnsureThread(ctx context.Context, client *zepclient.Client, threadID, userID string) error {
+// EnsureThread idempotently ensures the Zep thread exists.
+//
+// It calls Thread.Create directly (create-then-catch-conflict). The thread ID
+// should equal the ADK session ID, and the user must already exist (see
+// [EnsureUser]).
+//
+// Returns created=true iff the thread was newly created by this call. When
+// the thread already exists (see [isAlreadyExists]) it returns (false, nil):
+// this is not an error, since EnsureThread is meant to be called on every
+// session start. Any other failure (auth, network, 5xx) is returned as
+// (false, err). It is a no-op — (false, nil), no calls made — when client is
+// nil.
+//
+// There is no OnCreated hook: the Go idiom is to branch on the returned bool,
+// e.g.:
+//
+//	created, err := EnsureThread(ctx, client, threadID, userID)
+//	if err != nil {
+//	    // handle genuine failure
+//	}
+//	if created {
+//	    // one-time per-thread setup, if any.
+//	}
+func EnsureThread(ctx context.Context, client *zepclient.Client, threadID, userID string) (created bool, err error) {
 	if client == nil || threadID == "" || userID == "" {
-		return nil
+		return false, nil
 	}
-	if _, err := client.Thread.Create(ctx, &zep.CreateThreadRequest{
+	return ensureThreadWithAPI(ctx, newZepAPI(client), threadID, userID)
+}
+
+// ensureThreadWithAPI is the seam-friendly core of [EnsureThread]. api is
+// assumed non-nil; callers (EnsureThread) handle the nil-client no-op case.
+func ensureThreadWithAPI(ctx context.Context, api zepAPI, threadID, userID string) (created bool, err error) {
+	if _, err := api.CreateThread(ctx, &zep.CreateThreadRequest{
 		ThreadID: threadID,
 		UserID:   userID,
 	}); err != nil {
 		if isAlreadyExists(err) {
-			return nil
+			return false, nil
 		}
-		return err
+		return false, err
 	}
-	return nil
+	return true, nil
 }

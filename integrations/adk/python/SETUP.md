@@ -39,7 +39,7 @@ cd zep/integrations/adk/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `google-adk>=1.0.0`, `zep-cloud>=3.23.0`.
+Requirements: Python 3.11+, `google-adk>=1.19.0,<3`, `zep-cloud>=3.23.0`.
 
 ## 4. Configure environment variables
 
@@ -64,10 +64,17 @@ python examples/basic_agent.py
 
 The example:
 
-1. Seeds facts about a user across two turns in one thread.
-2. Waits for Zep to process the knowledge graph (ingestion is asynchronous).
-3. Starts a **new** thread for the same user and asks recall questions — the
-   agent answers using facts fused into the user's graph from the first thread.
+1. Provisions the Zep user and thread out-of-band with `ensure_user` /
+   `ensure_thread` before the first turn — the agent's turn path
+   (`ZepContextTool`) never creates them itself. When wiring your own agent,
+   call these once (e.g. during account or session onboarding) before running
+   any turns.
+2. Seeds facts about a user across two turns in one thread.
+3. Waits for Zep to process the knowledge graph (ingestion is asynchronous).
+4. Asks recall questions in that same thread.
+5. Provisions a **second, brand-new** thread for the same user and asks a
+   recall question there — the agent answers using facts fused into the
+   user's graph from the first thread, demonstrating cross-thread recall.
 
 ## 6. Run the tests
 

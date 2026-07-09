@@ -64,7 +64,10 @@ go run ./examples
 
 The example:
 
-1. Creates (idempotently) a Zep user and a thread keyed on the ADK session ID.
+1. Provisions the Zep user and thread out-of-band with `EnsureUser` /
+   `EnsureThread` before the first turn — the before/after-model callbacks
+   never create them themselves. When wiring your own agent, call these once
+   (e.g. during account or session onboarding) before running any turns.
 2. Builds an `llmagent` whose `BeforeModelCallback` persists each new user turn
    to Zep and injects the user's Context Block into the prompt, and whose
    `AfterModelCallback` persists the assistant's reply back to the same thread.

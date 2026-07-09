@@ -54,6 +54,8 @@ npm run example
 npx tsx examples/basic-agent.ts
 ```
 
+Before its first turn, the example provisions the Zep user and thread out-of-band with `ensureUser` / `ensureThread` — the callbacks and tools never create them implicitly. When wiring your own agent, call `ensureUser` / `ensureThread` once (e.g. during account or session onboarding) before the first turn.
+
 - **With `GOOGLE_API_KEY` set:** the example seeds facts about a user, waits for Zep to process the graph, then asks recall questions and prints the agent's memory-aware answers.
 - **Without `GOOGLE_API_KEY`:** the example still creates the Zep user and thread and builds the fully-wired agent, then exits before the model call — useful for verifying the integration end-to-end without a model.
 

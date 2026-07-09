@@ -21,9 +21,9 @@ import {
 } from "@google/adk";
 import type { FunctionDeclaration } from "@google/genai";
 import type { ZepIdentityOptions } from "./identity.js";
-import { persistAndInject } from "./inject.js";
+import { persistAndInject, type ContextBuilder } from "./inject.js";
 import { defaultLogger, type Logger } from "./logging.js";
-import { ZepResourceManager } from "./resources.js";
+import { TurnDedup } from "./resources.js";
 
 /** Options for the {@link ZepContextTool} constructor. */
 export interface ZepContextToolOptions extends ZepIdentityOptions {
@@ -40,6 +40,20 @@ export interface ZepContextToolOptions extends ZepIdentityOptions {
   description?: string;
   /** Logger for Zep failures. Defaults to a `console`-backed logger. */
   logger?: Logger;
+  /**
+   * An optional async function that builds the context block to inject,
+   * instead of the default `thread.addMessages(returnContext: true)`
+   * round-trip. When set, persistence and the builder run concurrently. See
+   * `persistAndInject` in `src/inject.ts` for the full error-isolation
+   * contract.
+   */
+  contextBuilder?: ContextBuilder;
+  /**
+   * Template used to wrap retrieved context before injecting it into the
+   * LLM's system instructions. Must contain a literal `{context}`
+   * placeholder. Defaults to `DEFAULT_CONTEXT_TEMPLATE`.
+   */
+  contextTemplate?: string;
 }
 
 /**
@@ -63,9 +77,11 @@ export interface ZepContextToolOptions extends ZepIdentityOptions {
 export class ZepContextTool extends BaseTool {
   private readonly zep: ZepClient;
   private readonly logger: Logger;
-  private readonly resources: ZepResourceManager;
+  private readonly dedup: TurnDedup;
   private readonly ignoreRoles?: Zep.RoleType[];
   private readonly identity: ZepIdentityOptions;
+  private readonly contextBuilder?: ContextBuilder;
+  private readonly contextTemplate?: string;
 
   constructor(options: ZepContextToolOptions) {
     super({
@@ -76,15 +92,16 @@ export class ZepContextTool extends BaseTool {
     });
     this.zep = options.zep;
     this.logger = options.logger ?? defaultLogger;
-    this.resources = new ZepResourceManager(this.zep, this.logger);
+    this.dedup = new TurnDedup();
     this.ignoreRoles = options.ignoreRoles;
     this.identity = {
       userId: options.userId,
       threadId: options.threadId,
       firstName: options.firstName,
       lastName: options.lastName,
-      email: options.email,
     };
+    this.contextBuilder = options.contextBuilder;
+    this.contextTemplate = options.contextTemplate;
   }
 
   /**
@@ -120,11 +137,16 @@ export class ZepContextTool extends BaseTool {
   }): Promise<void> {
     await persistAndInject({
       zep: this.zep,
-      resources: this.resources,
+      dedup: this.dedup,
       logger: this.logger,
       context: toolContext,
       llmRequest,
-      options: { ...this.identity, ignoreRoles: this.ignoreRoles },
+      options: {
+        ...this.identity,
+        ignoreRoles: this.ignoreRoles,
+        contextBuilder: this.contextBuilder,
+        contextTemplate: this.contextTemplate,
+      },
     });
   }
 }

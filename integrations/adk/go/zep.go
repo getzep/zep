@@ -30,9 +30,13 @@ const messageTruncateChars = 4000
 //   - AddMessages persists a thread turn (and can return the Context Block).
 //   - GetUserContext fetches the Context Block for a thread without writing.
 //   - Search runs a graph search.
+//   - AddUser creates a Zep user (used by EnsureUser).
+//   - CreateThread creates a Zep thread (used by EnsureThread).
 type zepAPI interface {
 	AddMessages(ctx context.Context, threadID string, req *zep.AddThreadMessagesRequest, opts ...zepoption.RequestOption) (*zep.AddThreadMessagesResponse, error)
 	Search(ctx context.Context, req *zep.GraphSearchQuery, opts ...zepoption.RequestOption) (*zep.GraphSearchResults, error)
+	AddUser(ctx context.Context, req *zep.CreateUserRequest, opts ...zepoption.RequestOption) (*zep.User, error)
+	CreateThread(ctx context.Context, req *zep.CreateThreadRequest, opts ...zepoption.RequestOption) (*zep.Thread, error)
 }
 
 // clientAdapter adapts the concrete *zepclient.Client to the zepAPI seam by
@@ -56,6 +60,14 @@ func (a *clientAdapter) AddMessages(ctx context.Context, threadID string, req *z
 
 func (a *clientAdapter) Search(ctx context.Context, req *zep.GraphSearchQuery, opts ...zepoption.RequestOption) (*zep.GraphSearchResults, error) {
 	return a.client.Graph.Search(ctx, req, opts...)
+}
+
+func (a *clientAdapter) AddUser(ctx context.Context, req *zep.CreateUserRequest, opts ...zepoption.RequestOption) (*zep.User, error) {
+	return a.client.User.Add(ctx, req, opts...)
+}
+
+func (a *clientAdapter) CreateThread(ctx context.Context, req *zep.CreateThreadRequest, opts ...zepoption.RequestOption) (*zep.Thread, error) {
+	return a.client.Thread.Create(ctx, req, opts...)
 }
 
 // truncateMessageContent returns content trimmed to Zep's per-message character

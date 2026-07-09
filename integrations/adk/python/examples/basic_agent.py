@@ -11,6 +11,12 @@ ZepContextTool and create_after_model_callback work together so that:
   - Relevant context from Zep's knowledge graph is injected into prompts.
   - Assistant responses are persisted to Zep after each model call.
 
+The Zep user and thread are provisioned explicitly, out-of-band, via
+``ensure_user`` and ``ensure_thread`` -- before the agent runs its first
+turn.  ``ensure_user``'s ``on_created`` hook demonstrates one-time per-user
+setup (here, seeding a user summary instruction) that only runs when the
+user is genuinely new.
+
 Prerequisites:
     pip install zep-adk
 
@@ -28,9 +34,10 @@ from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
+from zep_cloud import UserInstruction
 from zep_cloud.client import AsyncZep
 
-from zep_adk import ZepContextTool, create_after_model_callback
+from zep_adk import ZepContextTool, create_after_model_callback, ensure_thread, ensure_user
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -47,6 +54,7 @@ if not GOOGLE_API_KEY:
 _suffix = uuid4().hex[:8]
 USER_ID = f"adk-example-user-{_suffix}"
 SESSION_ID = f"adk-example-session-{_suffix}"
+SESSION_ID_2 = f"adk-example-session-2-{_suffix}"
 APP_NAME = "zep-adk-example"
 
 
@@ -68,6 +76,28 @@ async def send_message(runner: Runner, session_id: str, user_id: str, text: str)
     return " ".join(response_parts).strip()
 
 
+async def setup_new_user(zep: AsyncZep, user_id: str) -> None:
+    """One-time setup for a newly created Zep user.
+
+    Fires only when ``ensure_user`` actually creates the user -- never for a
+    user that already existed.  This is the place to configure per-user
+    ontology, custom instructions, or (as here) a user summary instruction.
+    """
+    print(f"  [on_created] New Zep user {user_id} -- seeding summary instructions.")
+    await zep.user.add_user_summary_instructions(
+        instructions=[
+            UserInstruction(
+                name="professional-background",
+                text=(
+                    "Summarize this user's professional background, interests, "
+                    "and living situation in a concise paragraph."
+                ),
+            )
+        ],
+        user_ids=[user_id],
+    )
+
+
 async def main() -> None:
     zep_client = AsyncZep(api_key=ZEP_API_KEY)
 
@@ -77,6 +107,20 @@ async def main() -> None:
     print(f"  User ID:    {USER_ID}")
     print(f"  Session ID: {SESSION_ID}")
     print(f"{'=' * 60}\n")
+
+    # --- Provision the Zep user and thread out-of-band, before the first
+    # turn.  This replaces the old lazy in-band creation: the agent's turn
+    # path (ZepContextTool) never creates users or threads itself.
+    print("--- Provisioning Zep user + thread ---\n")
+    await ensure_user(
+        zep_client,
+        user_id=USER_ID,
+        first_name="Alice",
+        last_name="Smith",
+        email="alice@example.com",
+        on_created=setup_new_user,
+    )
+    await ensure_thread(zep_client, thread_id=SESSION_ID, user_id=USER_ID)
 
     # --- One-time agent setup (shared across all users) ---
     agent = Agent(
@@ -96,6 +140,20 @@ async def main() -> None:
         tools=[ZepContextTool(zep_client=zep_client)],
         after_model_callback=create_after_model_callback(zep_client=zep_client),
     )
+    # To customise how context is retrieved (e.g. a filtered search or a
+    # different graph) instead of the default `add_messages(return_context=True)`
+    # round-trip, pass a `context_builder` to `ZepContextTool`:
+    #
+    #   async def my_builder(ctx: ContextInput) -> str | None:
+    #       results = await ctx.zep.graph.search(
+    #           user_id=ctx.user_id, query=ctx.user_message, scope="edges"
+    #       )
+    #       return "\n".join(e.fact for e in results.edges or [])
+    #
+    #   ZepContextTool(zep_client=zep_client, context_builder=my_builder)
+    #
+    # See the `ContextInput` docstring in `zep_adk.context_tool` for the full
+    # contract (error isolation, concurrency with persistence).
 
     session_service = InMemorySessionService()
     runner = Runner(
@@ -107,16 +165,16 @@ async def main() -> None:
     # --- Per-user session (identity in state) ---
     # user_id is automatically used as the Zep user ID.
     # session_id is automatically used as the Zep thread ID.
-    # Only name/email need to be in state.
+    # Only the display name needs to be in state; email goes to ensure_user.
+    session_state = {
+        "zep_first_name": "Alice",
+        "zep_last_name": "Smith",
+    }
     await session_service.create_session(
         app_name=APP_NAME,
         user_id=USER_ID,
         session_id=SESSION_ID,
-        state={
-            "zep_first_name": "Alice",
-            "zep_last_name": "Smith",
-            "zep_email": "alice@example.com",
-        },
+        state=session_state,
     )
 
     # Phase 1: Seed some facts
@@ -145,6 +203,22 @@ async def main() -> None:
         print(f"User:  {msg}")
         response = await send_message(runner, SESSION_ID, USER_ID, msg)
         print(f"Agent: {response}\n")
+
+    # Phase 4: Cross-thread recall -- a brand-new thread for the same user.
+    # Facts are fused into the user's graph (not the thread), so a second,
+    # never-before-seen thread can recall them immediately.
+    print("--- Phase 4: Cross-thread recall (new thread, same user) ---\n")
+    await ensure_thread(zep_client, thread_id=SESSION_ID_2, user_id=USER_ID)
+    await session_service.create_session(
+        app_name=APP_NAME,
+        user_id=USER_ID,
+        session_id=SESSION_ID_2,
+        state=session_state,
+    )
+    msg = "What do you know about me?"
+    print(f"User:  {msg}")
+    response = await send_message(runner, SESSION_ID_2, USER_ID, msg)
+    print(f"Agent: {response}\n")
 
     print("Done!")
 

@@ -27,10 +27,10 @@ type MemoryOption func(*memoryService)
 
 // WithSearchScope sets the Zep graph search scope used by the memory service.
 // Defaults to [zep.GraphSearchScopeEdges] (facts). Supported scopes are edges,
-// nodes, episodes, observations, and auto; each is mapped into memory entries
-// (auto yields the pre-materialized Context Block). An unsupported scope is
-// rejected at search time: the service logs an error and returns no memories
-// rather than silently swallowing results.
+// nodes, episodes, observations, thread_summaries, and auto; each is mapped
+// into memory entries (auto yields the pre-materialized Context Block). An
+// unsupported scope is rejected at search time: the service logs an error and
+// returns no memories rather than silently swallowing results.
 func WithSearchScope(scope zep.GraphSearchScope) MemoryOption {
 	return func(s *memoryService) { s.scope = scope }
 }

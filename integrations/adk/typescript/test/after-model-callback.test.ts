@@ -95,4 +95,29 @@ describe("createZepAfterModelCallback", () => {
     expect(warning).toContain(String(MESSAGE_CONTENT_MAX + 1000));
     expect(warning).not.toContain("zzzzz");
   });
+
+  it("never calls user.add or thread.create on the turn path", async () => {
+    const { client, mocks } = mockZepClient();
+    await run(client, fakeLlmResponse({ text: "Hello there." }));
+
+    expect(mocks.userAdd).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("logs a warning naming ensureUser/ensureThread on a Zep NotFound error and resolves without throwing", async () => {
+    const { client, mocks } = mockZepClient();
+    const notFound = Object.assign(new Error("thread not found"), {
+      statusCode: 404,
+    });
+    mocks.addMessages.mockRejectedValueOnce(notFound);
+    const logger = capturingLogger();
+
+    await expect(
+      run(client, fakeLlmResponse({ text: "hi" }), { logger }),
+    ).resolves.toBeUndefined();
+
+    const warning = logger.warns.find((w) => w.includes("ensureUser"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("ensureThread");
+  });
 });

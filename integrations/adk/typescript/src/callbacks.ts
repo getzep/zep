@@ -1,11 +1,10 @@
 /**
  * `createZepCallbacks` — build a paired before- and after-model callback that
- * share a single {@link ZepResourceManager}.
+ * share a single {@link TurnDedup} guard.
  *
- * Wiring both callbacks through one manager keeps their ensure-thread cache and
- * same-turn dedup state in sync, so they are not split-brain: the thread is
- * created once, and the user turn is persisted exactly once per invocation even
- * when both hooks run.
+ * Wiring both callbacks through one guard keeps their same-turn dedup state in
+ * sync, so they are not split-brain: the user turn is persisted exactly once
+ * per invocation even when both hooks run.
  */
 
 import type { ZepClient } from "@getzep/zep-cloud";
@@ -20,7 +19,7 @@ import {
   type ZepAfterModelCallbackOptions,
 } from "./after-model-callback.js";
 import { defaultLogger } from "./logging.js";
-import { ZepResourceManager } from "./resources.js";
+import { TurnDedup } from "./resources.js";
 
 /** Options for {@link createZepCallbacks}. */
 export interface ZepCallbacksOptions
@@ -33,17 +32,16 @@ export interface ZepCallbacks {
   beforeModelCallback: ZepBeforeModelCallback;
   /** Wire into `LlmAgent.afterModelCallback`. */
   afterModelCallback: ZepAfterModelCallback;
-  /** The shared resource manager backing both callbacks. */
-  resources: ZepResourceManager;
+  /** The shared same-turn dedup guard backing both callbacks. */
+  dedup: TurnDedup;
 }
 
 /**
  * Create the before- and after-model callbacks together, backed by one shared
- * {@link ZepResourceManager}.
+ * {@link TurnDedup} guard.
  *
  * Prefer this over constructing the two callbacks independently: a shared
- * manager means the Zep thread is ensured once and the same-turn dedup guard is
- * consistent across both hooks.
+ * guard means the same-turn dedup state is consistent across both hooks.
  *
  * @example
  * ```ts
@@ -67,25 +65,24 @@ export interface ZepCallbacks {
  *
  * @param zep An initialised `ZepClient`. The caller owns its lifecycle.
  * @param options Identity overrides and behaviour flags shared by both hooks.
- * @returns The paired callbacks and the shared resource manager.
+ * @returns The paired callbacks and the shared dedup guard.
  */
 export function createZepCallbacks(
   zep: ZepClient,
   options: ZepCallbacksOptions = {},
 ): ZepCallbacks {
   const logger = options.logger ?? defaultLogger;
-  const resources = options.resources ?? new ZepResourceManager(zep, logger);
+  const dedup = options.dedup ?? new TurnDedup();
 
   const beforeModelCallback = createZepBeforeModelCallback(zep, {
     ...options,
     logger,
-    resources,
+    dedup,
   });
   const afterModelCallback = createZepAfterModelCallback(zep, {
     ...options,
     logger,
-    resources,
   });
 
-  return { beforeModelCallback, afterModelCallback, resources };
+  return { beforeModelCallback, afterModelCallback, dedup };
 }

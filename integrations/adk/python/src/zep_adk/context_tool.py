@@ -36,23 +36,90 @@ from typing_extensions import override
 from zep_cloud import Message
 from zep_cloud.client import AsyncZep
 
+from .limits import truncate_message_content
+from .provisioning import UserSetupHook  # noqa: F401  (re-exported for compatibility)
+
 if TYPE_CHECKING:
     from google.adk.models import LlmRequest
 
+#: Default template used to wrap retrieved Zep context before injecting it
+#: into the LLM's system instructions.  Rendered via plain string
+#: replacement (``template.replace("{context}", context_text)``), never
+#: ``str.format`` -- so context text or a custom template containing
+#: ``{``/``}``/``%`` is always safe to inject.
+#:
+#: This exact string is canonical across zep-adk's Python, Go, and
+#: TypeScript implementations -- keep them in sync.
+DEFAULT_CONTEXT_TEMPLATE = (
+    "The following context is retrieved from Zep, the agent's long-term memory. "
+    "It contains relevant facts, entities, and prior knowledge about the user. "
+    "Use it to inform your responses.\n\n"
+    "<ZEP_CONTEXT>\n"
+    "{context}\n"
+    "</ZEP_CONTEXT>"
+)
+
+
+@dataclass(frozen=True)
+class ContextInput:
+    """Input handed to a custom context builder.
+
+    Bundling the builder's inputs into a single frozen dataclass (rather than
+    positional arguments) lets us add fields later without breaking existing
+    builders.
+
+    Attributes:
+        zep: The ``AsyncZep`` client in use by the tool.
+        user_id: The resolved Zep user ID for this turn.
+        thread_id: The resolved Zep thread ID for this turn.
+        user_message: The user's message text for this turn.
+        tool_context: The ADK ``ToolContext`` for this turn (session state,
+            invocation metadata).
+        llm_request: The outgoing ``LlmRequest`` about to be sent to the model.
+
+    Example:
+        A builder that searches a per-user graph instead of using the
+        thread's default context retrieval::
+
+            async def my_builder(ctx: ContextInput) -> str | None:
+                results = await ctx.zep.graph.search(
+                    user_id=ctx.user_id,
+                    query=ctx.user_message,
+                    scope="edges",
+                )
+                if not results.edges:
+                    return None
+                return "\\n".join(edge.fact for edge in results.edges)
+
+            tool = ZepContextTool(zep_client=zep, context_builder=my_builder)
+    """
+
+    zep: AsyncZep
+    user_id: str
+    thread_id: str
+    user_message: str
+    tool_context: ToolContext
+    llm_request: LlmRequest
+
+
 #: Type alias for a custom context builder function.
 #:
-#: A context builder receives the Zep client, the resolved user ID, thread ID,
-#: and the user's message text.  It returns the context string to inject into
-#: the LLM prompt (or ``None`` to skip injection).
-ContextBuilder = Callable[[AsyncZep, str, str, str], Awaitable[str | None]]
-
-#: Type alias for a user-setup hook that runs once after a Zep user is created.
+#: A context builder receives a single :class:`ContextInput` and returns the
+#: context string to inject into the LLM prompt (or ``None`` to skip
+#: injection).
 #:
-#: Receives the Zep client and the newly created user ID.  Use this to configure
-#: per-user ontology, custom instructions, or user summary instructions.
-UserSetupHook = Callable[[AsyncZep, str], Awaitable[None]]
+#: Error semantics: if the builder raises, ``ZepContextTool`` logs a warning
+#: and skips injection for that turn -- it does not crash the agent and does
+#: not prevent message persistence from completing. See
+#: :class:`ZepContextTool` for the full error-isolation contract between
+#: persistence and the builder.
+ContextBuilder = Callable[[ContextInput], Awaitable[str | None]]
 
 logger = logging.getLogger(__name__)
+
+#: Substrings that identify a Zep "not found" error on the turn path (message
+#: persistence failing because the user/thread was never provisioned).
+_NOT_FOUND_MARKERS = ("not found", "404")
 
 
 @dataclass
@@ -63,7 +130,6 @@ class _ZepIdentity:
     thread_id: str
     first_name: str | None
     last_name: str | None
-    email: str | None
     user_display_name: str | None
 
 
@@ -75,8 +141,8 @@ class ZepContextTool(BaseTool):
     giving it the opportunity to persist the latest user message to Zep and
     prepend relevant context from Zep's long-term memory.
 
-    Identity (user ID, thread ID, name, email) is resolved at runtime from
-    ADK session state, so a single tool instance can be shared across all
+    Identity (user ID, thread ID, name) is resolved at runtime from ADK
+    session state, so a single tool instance can be shared across all
     users and sessions.
 
     Args:
@@ -87,32 +153,50 @@ class ZepContextTool(BaseTool):
             processed into the user's graph.  Passed through to every
             ``thread.add_messages()`` call made by this tool.
         context_builder: An optional async callable that constructs the
-            context block to inject into the LLM prompt.  Signature::
+            context block to inject into the LLM prompt.  Receives a single
+            :class:`ContextInput`. Example::
 
-                async def my_builder(
-                    zep_client: AsyncZep,
-                    user_id: str,
-                    thread_id: str,
-                    user_message: str,
-                ) -> str | None:
-                    ...
+                async def my_builder(ctx: ContextInput) -> str | None:
+                    results = await ctx.zep.graph.search(
+                        user_id=ctx.user_id,
+                        query=ctx.user_message,
+                        scope="edges",
+                    )
+                    return "\\n".join(e.fact for e in results.edges or [])
+
+                tool = ZepContextTool(zep_client=zep, context_builder=my_builder)
 
             When provided, message persistence and context building run
             **in parallel** for lower latency.  When ``None`` (the default),
             the tool uses ``thread.add_messages(return_context=True)`` to
             persist and retrieve context in a single API call.
-        on_user_created: An optional async callable that runs once after a new
-            Zep user is created.  Use this to set up per-user configuration
-            such as custom ontology, custom instructions, or user summary
-            instructions.  Signature::
+        context_template: Template used to wrap retrieved context before
+            injecting it into the LLM's system instructions.  Must contain a
+            literal ``{context}`` placeholder, which is replaced with the
+            retrieved context text via plain string replacement (never
+            ``str.format``).  Defaults to :data:`DEFAULT_CONTEXT_TEMPLATE`.
 
-                async def setup(zep_client: AsyncZep, user_id: str) -> None:
-                    ...
+    Note:
+        This tool does **not** create the Zep user or thread.  Provision them
+        out-of-band, before the first turn, with
+        :func:`zep_adk.provisioning.ensure_user` and
+        :func:`zep_adk.provisioning.ensure_thread`.  If persistence fails
+        because the user/thread does not exist, a warning is logged naming
+        those helpers and the turn continues without Zep memory.
 
-            The hook fires only when ``user.add()`` succeeds (i.e. the user
-            is genuinely new).  It does **not** fire for users that already
-            exist.  If the hook raises an exception, a warning is logged but
-            the agent turn continues normally.
+    Note:
+        **Error isolation between persistence and the context builder.**
+        When ``context_builder`` is set, persistence (``add_messages``) and
+        the builder run concurrently. Each is isolated from the other's
+        failure:
+
+        * If the builder raises, a warning is logged and injection is
+          skipped for this turn -- but persistence still completes and the
+          turn is marked as persisted (dedup) on success.
+        * If persistence raises, a warning is logged and the turn is
+          **not** marked as persisted (so it can be retried on the next
+          invocation) -- but a successful builder result may still be
+          injected into the prompt.
     """
 
     def __init__(
@@ -120,14 +204,14 @@ class ZepContextTool(BaseTool):
         *,
         zep_client: AsyncZep,
         context_builder: ContextBuilder | None = None,
+        context_template: str = DEFAULT_CONTEXT_TEMPLATE,
         ignore_roles: list[str] | None = None,
-        on_user_created: UserSetupHook | None = None,
     ) -> None:
         super().__init__(name="zep_context", description="zep_context")
         self._zep: AsyncZep = zep_client
         self._context_builder: ContextBuilder | None = context_builder
+        self._context_template: str = context_template
         self._ignore_roles: list[str] | None = ignore_roles
-        self._on_user_created: UserSetupHook | None = on_user_created
 
         # Same-turn guard: maps thread_id → id() of the last user_content
         # object we successfully persisted.  Within a single ADK turn,
@@ -136,9 +220,6 @@ class ZepContextTool(BaseTool):
         # re-invocations without blocking legitimately repeated user text
         # in a later turn (which will be a different object).
         self._last_persisted_content_id: dict[str, int] = {}
-
-        # Track which (user_id, thread_id) pairs have been lazily created
-        self._created_resources: set[tuple[str, str]] = set()
 
     # ------------------------------------------------------------------
     # Identity resolution from session state
@@ -154,7 +235,10 @@ class ZepContextTool(BaseTool):
         * **thread_id**: ``zep_thread_id`` in state → ADK session ``id``
         * **first_name**: ``zep_first_name`` in state → ``"Anonymous"``
         * **last_name**: ``zep_last_name`` in state → ``"User"``
-        * **email**: ``zep_email`` in state → ``None``
+
+        Email is not resolved from session state: the turn path never creates
+        or updates the Zep user, so email only takes effect when passed to
+        :func:`~zep_adk.provisioning.ensure_user` during provisioning.
 
         Raises:
             ValueError: If neither the session state key nor the ADK session
@@ -171,7 +255,7 @@ class ZepContextTool(BaseTool):
         user_id = state.get("zep_user_id")
         if not user_id:
             try:
-                user_id = tool_context._invocation_context.session.user_id
+                user_id = tool_context.user_id
             except AttributeError as err:
                 raise ValueError(
                     "Cannot determine Zep user ID. Either set 'zep_user_id' in "
@@ -187,17 +271,16 @@ class ZepContextTool(BaseTool):
         thread_id = state.get("zep_thread_id")
         if not thread_id:
             try:
-                thread_id = tool_context._invocation_context.session.id
+                thread_id = tool_context.session.id
             except AttributeError as err:
                 raise ValueError(
                     "Cannot determine Zep thread ID. Either set 'zep_thread_id' "
                     "in session state or ensure the ADK session has an id."
                 ) from err
 
-        # -- name / email: state with sensible defaults --------------------
+        # -- name: state with sensible defaults -----------------------------
         first_name = state.get("zep_first_name") or "Anonymous"
         last_name = state.get("zep_last_name") or "User"
-        email = state.get("zep_email")
 
         display = f"{first_name} {last_name}".strip()
 
@@ -206,82 +289,17 @@ class ZepContextTool(BaseTool):
             thread_id=thread_id,
             first_name=first_name,
             last_name=last_name,
-            email=email,
             user_display_name=display,
         )
 
-    # ------------------------------------------------------------------
-    # Lazy resource creation
-    # ------------------------------------------------------------------
-
-    async def _ensure_resources(self, identity: _ZepIdentity) -> bool:
-        """Create the Zep user and thread if they don't already exist.
-
-        Returns:
-            True if resources are ready (created or already existed), False on
-            genuine failure.
-        """
-        key = (identity.user_id, identity.thread_id)
-        if key in self._created_resources:
+    @staticmethod
+    def _is_not_found_error(exc: Exception) -> bool:
+        """Detect a Zep "not found" error (e.g. unprovisioned user/thread)."""
+        status_code = getattr(exc, "status_code", None)
+        if status_code == 404:
             return True
-
-        # Create user (ignore if already exists)
-        user_ok = False
-        try:
-            await self._zep.user.add(
-                user_id=identity.user_id,
-                first_name=identity.first_name,
-                last_name=identity.last_name,
-                email=identity.email,
-            )
-            logger.info("Created Zep user: %s", identity.user_id)
-            user_ok = True
-
-            # Run the user-setup hook for newly created users
-            if self._on_user_created is not None:
-                try:
-                    await self._on_user_created(self._zep, identity.user_id)
-                    logger.info(
-                        "on_user_created hook completed for user %s",
-                        identity.user_id,
-                    )
-                except Exception as hook_exc:
-                    logger.warning(
-                        "on_user_created hook failed for user %s: %s",
-                        identity.user_id,
-                        hook_exc,
-                    )
-
-        except Exception as exc:
-            # "already exists" conflicts are fine; genuine failures are not
-            exc_str = str(exc).lower()
-            if "already exists" in exc_str or "conflict" in exc_str or "409" in exc_str:
-                logger.debug("Zep user %s already exists", identity.user_id)
-                user_ok = True
-            else:
-                logger.warning("Failed to create Zep user %s: %s", identity.user_id, exc)
-                return False
-
-        # Create thread (ignore if already exists)
-        thread_ok = False
-        try:
-            await self._zep.thread.create(thread_id=identity.thread_id, user_id=identity.user_id)
-            logger.info("Created Zep thread: %s", identity.thread_id)
-            thread_ok = True
-        except Exception as exc:
-            exc_str = str(exc).lower()
-            if "already exists" in exc_str or "conflict" in exc_str or "409" in exc_str:
-                logger.debug("Zep thread %s already exists", identity.thread_id)
-                thread_ok = True
-            else:
-                logger.warning("Failed to create Zep thread %s: %s", identity.thread_id, exc)
-                return False
-
-        # Only cache as created if both succeeded or already existed
-        if user_ok and thread_ok:
-            self._created_resources.add(key)
-            return True
-        return False
+        text = str(exc).lower()
+        return any(marker in text for marker in _NOT_FOUND_MARKERS)
 
     # ------------------------------------------------------------------
     # Core hook -- runs on every LLM request
@@ -297,9 +315,12 @@ class ZepContextTool(BaseTool):
         """Persist the user message to Zep and inject the returned context.
 
         This method is called by the ADK framework before every LLM request.
-        It resolves the user's Zep identity from session state, persists the
-        latest message to Zep via ``thread.add_messages(return_context=True)``,
-        and appends the returned context block to the LLM system instructions.
+        It resolves the user's Zep identity from session state, truncates the
+        message content to Zep's per-message limit if needed, persists it to
+        Zep (via ``thread.add_messages(return_context=True)`` by default, or
+        concurrently with a custom ``context_builder``), and appends the
+        resulting context block to the LLM system instructions using
+        ``context_template``.
         """
 
         # --- 1. Extract user message text ---------------------------------
@@ -336,24 +357,28 @@ class ZepContextTool(BaseTool):
             logger.debug("Skipping same-turn re-invocation for thread %s", identity.thread_id)
             return
 
-        # --- 4. Ensure Zep resources exist --------------------------------
-        if not await self._ensure_resources(identity):
-            return
-
-        # --- 5. Persist message and retrieve context ----------------------
+        # --- 4. Persist message and retrieve context -----------------------
+        # The Zep user and thread must already exist -- this tool never
+        # creates them (see zep_adk.provisioning.ensure_user/ensure_thread).
+        truncated_text = truncate_message_content(user_text, label="user")
         zep_msg = Message(
             role="user",
-            content=user_text,
+            content=truncated_text,
             name=identity.user_display_name,
         )
 
-        context_text: str | None = None
-        try:
-            if self._context_builder is not None:
-                # Custom builder: persist + build context in parallel
-                context_text = await self._persist_and_build_context(identity, zep_msg, user_text)
-            else:
-                # Default: single round-trip
+        context_text: str | None
+        persist_ok: bool
+        if self._context_builder is not None:
+            # Custom builder: persist + build context concurrently. Each side
+            # is isolated from the other's failure -- one raising must not
+            # cancel or mask the other's result.
+            persist_ok, context_text = await self._persist_and_build_context(
+                identity, zep_msg, truncated_text, llm_request, tool_context
+            )
+        else:
+            # Default: single round-trip
+            try:
                 response = await self._zep.thread.add_messages(
                     thread_id=identity.thread_id,
                     messages=[zep_msg],
@@ -361,36 +386,45 @@ class ZepContextTool(BaseTool):
                     ignore_roles=self._ignore_roles,
                 )
                 context_text = response.context if response else None
-            logger.info(
-                "Persisted message to Zep (thread=%s). Context length: %s",
-                identity.thread_id,
-                len(context_text) if context_text else 0,
-            )
-        except Exception:
-            logger.warning(
-                "Failed to add message / retrieve context from Zep",
-                exc_info=True,
-            )
-            return
+                persist_ok = True
+                logger.info(
+                    "Persisted message to Zep (thread=%s). Context length: %s",
+                    identity.thread_id,
+                    len(context_text) if context_text else 0,
+                )
+            except Exception as exc:
+                self._log_persist_failure(exc, identity)
+                context_text = None
+                persist_ok = False
 
         # Mark as persisted only AFTER the API call succeeded, so that a
         # transient failure does not permanently suppress the message.
-        self._last_persisted_content_id[identity.thread_id] = content_id
+        if persist_ok:
+            self._last_persisted_content_id[identity.thread_id] = content_id
 
-        # --- 6. Inject context into the LLM prompt -----------------------
+        # --- 5. Inject context into the LLM prompt -----------------------
         if context_text:
-            instruction = (
-                "The following context is retrieved from Zep's long-term memory "
-                "service. It contains relevant facts, relationships, and prior "
-                "knowledge about the user. Use it to inform your responses.\n\n"
-                "<ZEP_CONTEXT>\n"
-                f"{context_text}\n"
-                "</ZEP_CONTEXT>"
-            )
+            instruction = self._context_template.replace("{context}", context_text)
             llm_request.append_instructions([instruction])
             logger.debug(
                 "Injected Zep context (%d chars) into LLM prompt",
                 len(context_text),
+            )
+
+    def _log_persist_failure(self, exc: Exception, identity: _ZepIdentity) -> None:
+        """Log a warning for a failed ``add_messages`` call."""
+        if self._is_not_found_error(exc):
+            logger.warning(
+                "Zep user/thread not found for user_id=%s thread_id=%s — call "
+                "zep_adk.ensure_user() and zep_adk.ensure_thread() before the "
+                "first turn",
+                identity.user_id,
+                identity.thread_id,
+            )
+        else:
+            logger.warning(
+                "Failed to add message / retrieve context from Zep",
+                exc_info=True,
             )
 
     async def _persist_and_build_context(
@@ -398,30 +432,62 @@ class ZepContextTool(BaseTool):
         identity: _ZepIdentity,
         zep_msg: Message,
         user_text: str,
-    ) -> str | None:
-        """Persist the message and build context in parallel.
+        llm_request: LlmRequest,
+        tool_context: ToolContext,
+    ) -> tuple[bool, str | None]:
+        """Persist the message and build context concurrently.
 
         Runs ``thread.add_messages`` (without ``return_context``) and the
         custom ``context_builder`` concurrently via ``asyncio.gather`` to
         minimise latency.
+
+        Error isolation: each coroutine catches its own exceptions so that
+        ``asyncio.gather`` cannot let one side's failure cancel or mask the
+        other's result.
+
+        * If the builder raises, a warning is logged and ``None`` is
+          returned for the context, but persistence is unaffected.
+        * If persistence raises, a warning is logged and ``False`` is
+          returned for ``persist_ok`` (so the caller does not mark the turn
+          as persisted / dedup'd), but a successful builder result is still
+          returned for injection.
+
+        Returns:
+            A ``(persist_ok, context_text)`` tuple.
         """
         assert self._context_builder is not None  # noqa: S101
         context_builder = self._context_builder
 
-        async def _persist() -> None:
-            await self._zep.thread.add_messages(
-                thread_id=identity.thread_id,
-                messages=[zep_msg],
-                ignore_roles=self._ignore_roles,
-            )
+        async def _persist() -> bool:
+            try:
+                await self._zep.thread.add_messages(
+                    thread_id=identity.thread_id,
+                    messages=[zep_msg],
+                    ignore_roles=self._ignore_roles,
+                )
+                logger.info("Persisted message to Zep (thread=%s).", identity.thread_id)
+                return True
+            except Exception as exc:
+                self._log_persist_failure(exc, identity)
+                return False
 
         async def _build_context() -> str | None:
-            return await context_builder(
-                self._zep,
-                identity.user_id,
-                identity.thread_id,
-                user_text,
-            )
+            try:
+                context_input = ContextInput(
+                    zep=self._zep,
+                    user_id=identity.user_id,
+                    thread_id=identity.thread_id,
+                    user_message=user_text,
+                    tool_context=tool_context,
+                    llm_request=llm_request,
+                )
+                return await context_builder(context_input)
+            except Exception:
+                logger.warning(
+                    "Custom context_builder raised — skipping context injection for this turn",
+                    exc_info=True,
+                )
+                return None
 
-        _, context_text = await asyncio.gather(_persist(), _build_context())
-        return context_text
+        persist_ok, context_text = await asyncio.gather(_persist(), _build_context())
+        return persist_ok, context_text
