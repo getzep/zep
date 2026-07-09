@@ -23,7 +23,7 @@ async def main():
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
 
     llm_config = LLMConfig(
-        {"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}
+        {"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]}
     )
 
     assistant = AssistantAgent(

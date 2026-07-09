@@ -29,7 +29,7 @@ deps = ZepDeps(
 )
 
 agent = Agent(
-    "openai:gpt-4o-mini",
+    "openai:gpt-5-mini",
     deps_type=ZepDeps,
     capabilities=zep_capabilities(deps),
     tools=[create_zep_search_tool()],
@@ -219,7 +219,7 @@ persists the assistant's reply once the run completes -- no explicit
 from zep_pydantic_ai import zep_capabilities
 
 agent = Agent(
-    "openai:gpt-4o-mini",
+    "openai:gpt-5-mini",
     deps_type=ZepDeps,
     capabilities=zep_capabilities(deps),
 )

@@ -33,7 +33,7 @@ from zep_ms_agent_framework import ZepContextProvider
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5-mini")
 
 if not ZEP_API_KEY:
     raise SystemExit("ZEP_API_KEY is not set.")

@@ -23,7 +23,7 @@ async def main() -> None:
     graph_id = "company_knowledge_base"
 
     # Configure AG2 agents
-    llm_config = LLMConfig({"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]})
+    llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
 
     assistant = AssistantAgent(
         name="knowledge_assistant",

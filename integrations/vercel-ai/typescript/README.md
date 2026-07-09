@@ -54,7 +54,7 @@ await ensureZepUserAndThread({ client, userId: "u1", threadId: "t1", firstName: 
 // 2. Wrap the model: inject the Context Block on each new user turn AND
 //    guarantee the turn is persisted — no onFinish wiring needed.
 const model = wrapLanguageModel({
-  model: openai("gpt-4o-mini"),
+  model: openai("gpt-5-mini"),
   middleware: createZepMiddleware({ client, threadId: "t1", persist: true }),
 });
 
@@ -77,7 +77,7 @@ middleware stays injection-only) and pair it with `createZepOnFinish`:
 
 ```ts
 const model = wrapLanguageModel({
-  model: openai("gpt-4o-mini"),
+  model: openai("gpt-5-mini"),
   middleware: createZepMiddleware({ client, threadId: "t1" }), // injection only
 });
 
@@ -109,7 +109,7 @@ import { openai } from "@ai-sdk/openai";
 import { createZepMiddleware } from "@getzep/zep-vercel-ai";
 
 const model = wrapLanguageModel({
-  model: openai("gpt-4o-mini"),
+  model: openai("gpt-5-mini"),
   middleware: createZepMiddleware({ client, threadId: "t1", persist: true }),
 });
 

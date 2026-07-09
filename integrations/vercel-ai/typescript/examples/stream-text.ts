@@ -59,7 +59,7 @@ async function main(): Promise<void> {
 
   // 1. Wrap the model: inject the Context Block on each new user turn.
   const model = wrapLanguageModel({
-    model: openai("gpt-4o-mini"),
+    model: openai("gpt-5-mini"),
     middleware: createZepMiddleware({ client, threadId }),
   });
 

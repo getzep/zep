@@ -77,7 +77,7 @@ async function main(): Promise<void> {
   //    Responses API so the multi-step tool loop also works on OpenAI Zero Data
   //    Retention (ZDR) organizations, which don't persist Responses item IDs.
   const model = wrapLanguageModel({
-    model: openai.chat("gpt-4o-mini"),
+    model: openai.chat("gpt-5-mini"),
     middleware: createZepMiddleware({ client, threadId }),
   });
 

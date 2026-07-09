@@ -153,7 +153,7 @@ def main():
         search tool to query the knowledge graph for technology and company facts.""",
         tools=[search_tool],
         verbose=True,
-        llm="gpt-4o-mini",
+        llm="gpt-5-mini",
     )
 
     recruiter = Agent(
@@ -165,7 +165,7 @@ def main():
         to query the knowledge graph.""",
         tools=[search_tool],
         verbose=True,
-        llm="gpt-4o-mini",
+        llm="gpt-5-mini",
     )
 
     # Create tasks that leverage the graph knowledge

@@ -71,7 +71,7 @@ def main():
         knowledge base where you can store and retrieve information specific to him.""",
         tools=[user_search_tool, user_add_tool],
         verbose=True,
-        llm="gpt-4o-mini",
+        llm="gpt-5-mini",
     )
 
     knowledge_curator = Agent(
@@ -82,7 +82,7 @@ def main():
         benefits everyone.""",
         tools=[graph_search_tool, graph_add_tool],
         verbose=True,
-        llm="gpt-4o-mini",
+        llm="gpt-5-mini",
     )
 
     research_analyst = Agent(
@@ -92,7 +92,7 @@ def main():
         knowledge to provide comprehensive insights and recommendations.""",
         tools=[user_search_tool, graph_search_tool],  # Read-only access to both
         verbose=True,
-        llm="gpt-4o-mini",
+        llm="gpt-5-mini",
     )
 
     # Task 1: Store Bob's personal information

@@ -76,7 +76,7 @@ async function main(): Promise<void> {
       "You are a helpful assistant with long-term memory about the user, " +
       "injected automatically into your context. Personalize your replies " +
       "using what you know about the user.",
-    model: "openai/gpt-4o-mini",
+    model: "openai/gpt-5-mini",
     inputProcessors: [inputProcessor],
     outputProcessors: [outputProcessor],
   });
