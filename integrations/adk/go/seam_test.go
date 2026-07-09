@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -31,17 +32,26 @@ func validUTF8(s string) bool { return utf8.ValidString(s) }
 // table-test the success paths (persist / inject / dedup / scope-mapping)
 // without a live Zep account or HTTP mocking.
 type fakeZepAPI struct {
-	added       []*zep.Message
-	contextOut  string // returned as resp.Context from AddMessages
-	addErr      error
-	searchRes   *zep.GraphSearchResults
-	searchErr   error
-	lastQuery   *zep.GraphSearchQuery
-	addMsgCalls int
+	added         []*zep.Message
+	contextOut    string // returned as resp.Context from AddMessages
+	addErr        error
+	searchRes     *zep.GraphSearchResults
+	searchErr     error
+	lastQuery     *zep.GraphSearchQuery
+	addMsgCalls   int
+	lastAddMsgReq *zep.AddThreadMessagesRequest
+
+	addUserErr          error
+	addUserCalls        int
+	lastAddUserReq      *zep.CreateUserRequest
+	createThreadErr     error
+	createThreadCalls   int
+	lastCreateThreadReq *zep.CreateThreadRequest
 }
 
 func (f *fakeZepAPI) AddMessages(_ context.Context, _ string, req *zep.AddThreadMessagesRequest, _ ...zepoption.RequestOption) (*zep.AddThreadMessagesResponse, error) {
 	f.addMsgCalls++
+	f.lastAddMsgReq = req
 	if f.addErr != nil {
 		return nil, f.addErr
 	}
@@ -59,6 +69,24 @@ func (f *fakeZepAPI) Search(_ context.Context, req *zep.GraphSearchQuery, _ ...z
 		return nil, f.searchErr
 	}
 	return f.searchRes, nil
+}
+
+func (f *fakeZepAPI) AddUser(_ context.Context, req *zep.CreateUserRequest, _ ...zepoption.RequestOption) (*zep.User, error) {
+	f.addUserCalls++
+	f.lastAddUserReq = req
+	if f.addUserErr != nil {
+		return nil, f.addUserErr
+	}
+	return &zep.User{UserID: &req.UserID}, nil
+}
+
+func (f *fakeZepAPI) CreateThread(_ context.Context, req *zep.CreateThreadRequest, _ ...zepoption.RequestOption) (*zep.Thread, error) {
+	f.createThreadCalls++
+	f.lastCreateThreadReq = req
+	if f.createThreadErr != nil {
+		return nil, f.createThreadErr
+	}
+	return &zep.Thread{ThreadID: &req.ThreadID}, nil
 }
 
 // --- minimal CallbackContext stub ---------------------------------------
@@ -93,7 +121,7 @@ var _ agent.CallbackContext = (*fakeCallbackContext)(nil)
 
 func TestBeforeModelCallbackPersistsAndInjects(t *testing.T) {
 	api := &fakeZepAPI{contextOut: "USER FACTS"}
-	cb := newBeforeModelCallback(api, WithUserMessageName("Jane"))
+	cb := newBeforeModelCallback(nil, api, WithUserMessageName("Jane"))
 
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("hi there", genai.RoleUser))
 	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi there", genai.RoleUser)}}
@@ -112,10 +140,10 @@ func TestBeforeModelCallbackPersistsAndInjects(t *testing.T) {
 	if msg.Name == nil || *msg.Name != "Jane" {
 		t.Fatalf("message name = %v, want Jane", msg.Name)
 	}
-	// Context block injected with the default prefix.
+	// Context block injected through the default template wrapper.
 	got := LastUserText(req.Config.SystemInstruction)
-	if !strings.Contains(got, "USER FACTS") || !strings.Contains(got, DefaultContextPrefix) {
-		t.Fatalf("system instruction = %q, want prefix + context block", got)
+	if !strings.Contains(got, "USER FACTS") || !strings.Contains(got, "<ZEP_CONTEXT>") {
+		t.Fatalf("system instruction = %q, want default template + context block", got)
 	}
 }
 
@@ -123,7 +151,7 @@ func TestBeforeModelCallbackPersistsAndInjects(t *testing.T) {
 
 func TestBeforeModelCallbackSkipsToolLoopContinuation(t *testing.T) {
 	api := &fakeZepAPI{contextOut: "USER FACTS"}
-	cb := newBeforeModelCallback(api)
+	cb := newBeforeModelCallback(nil, api)
 
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("what do you know about me?", genai.RoleUser))
 
@@ -187,7 +215,7 @@ func TestIsToolLoopContinuation(t *testing.T) {
 
 func TestBeforeModelCallbackTruncatesOversizeMessage(t *testing.T) {
 	api := &fakeZepAPI{}
-	cb := newBeforeModelCallback(api)
+	cb := newBeforeModelCallback(nil, api)
 
 	huge := strings.Repeat("a", maxMessageContentChars+500)
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText(huge, genai.RoleUser))
@@ -373,6 +401,16 @@ func TestMemoryServiceScopeMapping(t *testing.T) {
 			res:   &zep.GraphSearchResults{Context: zep.String("CTX"), Edges: nil},
 			want:  []string{"CTX"},
 		},
+		{
+			name:  "thread_summaries -> name and summary",
+			scope: zep.GraphSearchScopeThreadSummaries,
+			res: &zep.GraphSearchResults{ThreadSummaries: []*zep.GraphitiSagaNode{
+				{Name: "thread-1", Summary: zep.String("Discussed hiking plans.")},
+				{Name: "thread-2"},
+				nil,
+			}},
+			want: []string{"thread-1: Discussed hiking plans.", "thread-2"},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -395,8 +433,12 @@ func TestMemoryServiceScopeMapping(t *testing.T) {
 }
 
 func TestMemoryServiceRejectsUnsupportedScope(t *testing.T) {
+	// All GraphSearchScope constants are currently supported by this
+	// package; searchScopeSupported exists to reject any future values the
+	// SDK adds before this package's mapping is updated. Exercise that path
+	// directly via an out-of-range scope value rather than a real constant.
 	api := &fakeZepAPI{searchRes: &zep.GraphSearchResults{Edges: []*zep.EntityEdge{{Fact: "f"}}}}
-	svc := &memoryService{api: api, scope: zep.GraphSearchScopeThreadSummaries, logger: discardLogger()}
+	svc := &memoryService{api: api, scope: zep.GraphSearchScope("not_a_real_scope"), logger: discardLogger()}
 
 	resp, err := svc.SearchMemory(context.Background(), &memory.SearchRequest{UserID: "u1", Query: "q"})
 	if err != nil {
@@ -412,14 +454,17 @@ func TestMemoryServiceRejectsUnsupportedScope(t *testing.T) {
 }
 
 // --- Graph search tool scope mapping ------------------------------------
+//
+// See also tool_test.go for the pin-or-expose merge/schema tests
+// (TestGraphSearchHandler*, TestGraphSearchToolSchema*).
 
 func TestGraphSearchToolScopeMapping(t *testing.T) {
 	api := &fakeZepAPI{searchRes: &zep.GraphSearchResults{
 		Nodes: []*zep.EntityNode{{Name: "Jane", Summary: "likes hiking"}},
 	}}
-	cfg := graphSearchToolOptions{scope: zep.GraphSearchScopeNodes, logger: discardLogger()}
+	handler := newGraphSearchHandler(api, WithToolSearchScope(zep.GraphSearchScopeNodes), WithToolLogger(discardLogger()))
 
-	out, err := runGraphSearchHandler(api, cfg, SearchArgs{Query: "jane"})
+	out, err := handler(fakeSearchToolContext{Context: context.Background(), userID: "u1"}, SearchArgs{Query: "jane"})
 	if err != nil {
 		t.Fatalf("handler err: %v", err)
 	}
@@ -429,10 +474,15 @@ func TestGraphSearchToolScopeMapping(t *testing.T) {
 }
 
 func TestGraphSearchToolRejectsUnsupportedScope(t *testing.T) {
+	// All GraphSearchScope constants are currently supported by this
+	// package; searchScopeSupported exists to reject any future values the
+	// SDK adds before this package's mapping is updated. Exercise that path
+	// directly via an out-of-range scope value rather than a real constant.
 	api := &fakeZepAPI{searchRes: &zep.GraphSearchResults{Edges: []*zep.EntityEdge{{Fact: "f"}}}}
-	cfg := graphSearchToolOptions{scope: zep.GraphSearchScopeThreadSummaries, logger: discardLogger()}
+	unsupported := zep.GraphSearchScope("not_a_real_scope")
+	handler := newGraphSearchHandler(api, WithToolSearchScope(unsupported), WithToolLogger(discardLogger()))
 
-	out, err := runGraphSearchHandler(api, cfg, SearchArgs{Query: "x"})
+	out, err := handler(fakeSearchToolContext{Context: context.Background(), userID: "u1"}, SearchArgs{Query: "x"})
 	if err != nil {
 		t.Fatalf("handler err: %v", err)
 	}
@@ -470,31 +520,37 @@ func TestTruncateMessageContent(t *testing.T) {
 			t.Fatal("truncation produced invalid UTF-8")
 		}
 	})
+	t.Run("warning logs lengths only, never message content", func(t *testing.T) {
+		// Matches Python's and TypeScript's truncation-warning tests: the
+		// warning must carry only lengths (and the non-PII thread label) for
+		// debugging, and must never leak the message body itself.
+		var buf strings.Builder
+		logger := slog.New(slog.NewTextHandler(&buf, nil))
+
+		secret := strings.Repeat("S", maxMessageContentChars+2000)
+		got := truncateMessageContent(logger, "thread-secret", secret)
+
+		logged := buf.String()
+		if logged == "" {
+			t.Fatal("expected a warning to be logged for oversize content")
+		}
+		if !strings.Contains(logged, strconv.Itoa(len(secret))) {
+			t.Fatalf("warning = %q, want it to contain the original length %d", logged, len(secret))
+		}
+		if !strings.Contains(logged, strconv.Itoa(len(got))) {
+			t.Fatalf("warning = %q, want it to contain the truncated length %d", logged, len(got))
+		}
+		if !strings.Contains(logged, strconv.Itoa(maxMessageContentChars)) {
+			t.Fatalf("warning = %q, want it to contain the limit %d", logged, maxMessageContentChars)
+		}
+		// The content itself (a long run of "S") must never appear in the log.
+		if strings.Contains(logged, strings.Repeat("S", 20)) {
+			t.Fatalf("warning leaked message content: %q", logged)
+		}
+	})
 }
 
 // --- helpers -------------------------------------------------------------
-
-func runGraphSearchHandler(api zepAPI, cfg graphSearchToolOptions, args SearchArgs) (SearchResult, error) {
-	out := SearchResult{}
-	if api == nil || args.Query == "" {
-		return out, nil
-	}
-	if !searchScopeSupported(cfg.scope) {
-		cfg.logger.Error("zepadk: unsupported graph search scope; returning no facts",
-			"scope", string(cfg.scope))
-		return out, nil
-	}
-	query := &zep.GraphSearchQuery{Query: args.Query, Scope: &cfg.scope, Limit: cfg.limit}
-	if cfg.graphID != "" {
-		query.GraphID = zep.String(cfg.graphID)
-	}
-	res, err := api.Search(context.Background(), query)
-	if err != nil {
-		return out, nil
-	}
-	out.Facts = mapSearchResults(cfg.scope, res)
-	return out, nil
-}
 
 func entryTexts(resp *memory.SearchResponse) []string {
 	var out []string

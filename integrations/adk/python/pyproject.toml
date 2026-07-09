@@ -1,11 +1,11 @@
 [project]
 name = "zep-adk"
-version = "0.2.1"
+version = "0.3.0"
 description = "Google ADK integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "google-adk>=1.0.0",
+    "google-adk>=1.19.0,<3",
     "typing-extensions>=4.0.0",
     "zep-cloud>=3.23.0",
 ]

@@ -102,3 +102,6 @@ dist/
 
 # Coverage (integration test runs)
 coverage.xml
+
+# Superpowers Skill
+.superpowers/

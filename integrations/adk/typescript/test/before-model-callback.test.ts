@@ -45,15 +45,6 @@ describe("createZepBeforeModelCallback", () => {
     // Callback always returns undefined (proceed to the model).
     expect(result).toBeUndefined();
 
-    // Lazy resource creation.
-    expect(mocks.userAdd).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "user-1", firstName: "Alice" }),
-    );
-    expect(mocks.create).toHaveBeenCalledWith({
-      threadId: "thread-1",
-      userId: "user-1",
-    });
-
     // Persisted with returnContext + display name.
     expect(mocks.addMessages).toHaveBeenCalledWith("thread-1", {
       messages: [
@@ -86,9 +77,44 @@ describe("createZepBeforeModelCallback", () => {
       "explicit-thread",
       expect.anything(),
     );
-    expect(mocks.userAdd).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "explicit-user" }),
+  });
+
+  it("never calls user.add or thread.create on the turn path", async () => {
+    const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
+    const ctx = fakeContext({
+      userId: "user-1",
+      sessionId: "thread-1",
+      userText: "hello",
+    });
+
+    await run(client, ctx, fakeLlmRequest(), {
+      firstName: "Alice",
+      lastName: "Smith",
+    });
+
+    expect(mocks.userAdd).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("logs a warning naming ensureUser/ensureThread on a Zep NotFound error and resolves without throwing", async () => {
+    const { client, mocks } = mockZepClient();
+    const notFound = Object.assign(new Error("user not found"), {
+      statusCode: 404,
+    });
+    mocks.addMessages.mockRejectedValueOnce(notFound);
+    const logger = capturingLogger();
+
+    const result = await run(
+      client,
+      fakeContext({ userId: "u", sessionId: "t", userText: "hi" }),
+      fakeLlmRequest(),
+      { logger },
     );
+
+    expect(result).toBeUndefined();
+    const warning = logger.warns.find((w) => w.includes("ensureUser"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("ensureThread");
   });
 
   it("resolves identity from session-state keys when no options are given", async () => {
@@ -152,24 +178,7 @@ describe("createZepBeforeModelCallback", () => {
     expect(req.config?.systemInstruction).toBeUndefined();
   });
 
-  it("treats an 'already exists' user/thread error as success", async () => {
-    const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
-    mocks.userAdd.mockRejectedValueOnce(new Error("user already exists"));
-    mocks.create.mockRejectedValueOnce(new Error("thread already exists"));
-    const req = fakeLlmRequest();
-
-    await run(
-      client,
-      fakeContext({ userId: "u", sessionId: "t", userText: "hi" }),
-      req,
-    );
-
-    // Persistence still happens despite the conflicts.
-    expect(mocks.addMessages).toHaveBeenCalled();
-    expect((req.config?.systemInstruction as string)).toContain("ctx");
-  });
-
-  it("creates Zep resources only once across turns", async () => {
+  it("persists across turns without ever provisioning the user/thread itself", async () => {
     const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
     const cb = createZepBeforeModelCallback(client as unknown as ZepClient, {
       logger: silentLogger,
@@ -187,8 +196,8 @@ describe("createZepBeforeModelCallback", () => {
       });
     }
 
-    expect(mocks.userAdd).toHaveBeenCalledTimes(1);
-    expect(mocks.create).toHaveBeenCalledTimes(1);
+    expect(mocks.userAdd).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
     expect(mocks.addMessages).toHaveBeenCalledTimes(3);
   });
 

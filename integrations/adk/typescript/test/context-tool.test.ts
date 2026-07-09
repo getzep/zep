@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ZepClient } from "@getzep/zep-cloud";
 import type { Context, LlmRequest } from "@google/adk";
 import { ZepContextTool } from "../src/context-tool.js";
@@ -69,5 +69,47 @@ describe("ZepContextTool", () => {
       }),
     ).resolves.toBeUndefined();
     expect(req.config?.systemInstruction).toBeUndefined();
+  });
+
+  it("threads contextBuilder and contextTemplate through to persistAndInject", async () => {
+    const { client, mocks } = mockZepClient();
+    const contextBuilder = vi.fn(async () => "built via tool");
+    const tool = new ZepContextTool({
+      zep: client as unknown as ZepClient,
+      userId: "u-1",
+      threadId: "t-1",
+      logger: silentLogger,
+      contextBuilder,
+      contextTemplate: "TOOL[{context}]",
+    });
+    const req = fakeLlmRequest();
+
+    await tool.processLlmRequest({
+      toolContext: fakeContext({ userText: "remember this" }) as unknown as Context,
+      llmRequest: req as unknown as LlmRequest,
+    });
+
+    expect(contextBuilder).toHaveBeenCalledTimes(1);
+    const [, payload] = mocks.addMessages.mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.returnContext).toBeUndefined();
+    expect(req.config?.systemInstruction).toBe("TOOL[built via tool]");
+  });
+
+  it("never calls user.add or thread.create via processLlmRequest", async () => {
+    const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
+    const tool = new ZepContextTool({
+      zep: client as unknown as ZepClient,
+      userId: "u-1",
+      threadId: "t-1",
+      logger: silentLogger,
+    });
+
+    await tool.processLlmRequest({
+      toolContext: fakeContext({ userText: "remember this" }) as unknown as Context,
+      llmRequest: fakeLlmRequest() as unknown as LlmRequest,
+    });
+
+    expect(mocks.userAdd).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 });

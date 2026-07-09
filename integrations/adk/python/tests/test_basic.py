@@ -19,9 +19,10 @@ def test_package_import() -> None:
 
 def test_public_exports() -> None:
     """Test that the expected public API is exported."""
-    from zep_adk import ZepContextTool, create_after_model_callback
+    from zep_adk import ZepContextTool, ZepMemoryService, create_after_model_callback
 
     assert ZepContextTool is not None
+    assert ZepMemoryService is not None
     assert create_after_model_callback is not None
 
 
@@ -32,7 +33,35 @@ class TestPackageStructure:
         import zep_adk
 
         assert hasattr(zep_adk, "__version__")
-        assert zep_adk.__version__ == "0.1.0"
+        assert zep_adk.__version__
+
+    def test_version_matches_installed_metadata(self) -> None:
+        """``zep_adk.__version__`` must match the installed package version.
+
+        Guards against the version drifting between ``pyproject.toml`` and the
+        hand-maintained ``__version__`` constant in ``__init__.py``. Prefers
+        ``importlib.metadata`` (accurate for both regular and editable
+        installs); falls back to parsing ``pyproject.toml`` directly if the
+        distribution metadata can't be found (e.g. running from a source
+        checkout without an install).
+        """
+        import importlib.metadata
+
+        import zep_adk
+
+        try:
+            installed_version = importlib.metadata.version("zep-adk")
+        except importlib.metadata.PackageNotFoundError:
+            import pathlib
+            import re
+
+            pyproject_path = pathlib.Path(__file__).resolve().parent.parent / "pyproject.toml"
+            pyproject_text = pyproject_path.read_text()
+            match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', pyproject_text)
+            assert match is not None, "Could not find version in pyproject.toml"
+            installed_version = match.group(1)
+
+        assert zep_adk.__version__ == installed_version
 
     def test_author_exists(self) -> None:
         import zep_adk
@@ -62,7 +91,6 @@ class TestZepContextToolInit:
         assert tool is not None
         assert tool._zep is mock_client
         assert len(tool._last_persisted_content_id) == 0
-        assert len(tool._created_resources) == 0
 
 
 class TestIdentityResolution:
@@ -84,13 +112,14 @@ class TestIdentityResolution:
         mock_tc.state = state or {}
 
         if session_id is not None:
-            mock_tc._invocation_context.session.id = session_id
-            mock_tc._invocation_context.session.user_id = session_user_id
+            mock_tc.session.id = session_id
+            mock_tc.user_id = session_user_id
         else:
-            # Simulate missing session by making the attribute access raise
-            mock_invocation = MagicMock()
-            mock_invocation.session = MagicMock(spec=[])  # spec=[] means no attributes
-            mock_tc._invocation_context = mock_invocation
+            # Simulate a ToolContext whose public user_id/session properties
+            # raise (e.g. an ADK version without them), by giving the mock
+            # a spec that excludes those attributes.
+            mock_tc = MagicMock(spec=["state"])
+            mock_tc.state = state or {}
         return mock_tc
 
     def test_resolves_identity_from_state(self) -> None:
@@ -101,7 +130,6 @@ class TestIdentityResolution:
                 "zep_thread_id": "thread-1",
                 "zep_first_name": "Jane",
                 "zep_last_name": "Smith",
-                "zep_email": "jane@example.com",
             }
         )
         identity = tool._resolve_identity(tc)
@@ -109,7 +137,6 @@ class TestIdentityResolution:
         assert identity.thread_id == "thread-1"
         assert identity.first_name == "Jane"
         assert identity.last_name == "Smith"
-        assert identity.email == "jane@example.com"
         assert identity.user_display_name == "Jane Smith"
 
     def test_user_id_falls_back_to_session_user_id(self) -> None:
@@ -179,14 +206,13 @@ class TestIdentityResolution:
         identity = tool._resolve_identity(tc)
         assert identity.user_display_name == "Jane Doe"
 
-    def test_name_defaults_and_email_none(self) -> None:
-        """When no identity fields are in state, first/last default but email is None."""
+    def test_name_defaults_when_no_identity_fields(self) -> None:
+        """When no identity fields are in state, first/last names default."""
         tool = self._make_tool()
         tc = self._make_tool_context(state={"zep_user_id": "u", "zep_thread_id": "t"})
         identity = tool._resolve_identity(tc)
         assert identity.first_name == "Anonymous"
         assert identity.last_name == "User"
-        assert identity.email is None
 
 
 class TestZepContextToolProcessLlmRequest:
@@ -223,8 +249,8 @@ class TestZepContextToolProcessLlmRequest:
         mock_tc = MagicMock()
         mock_tc.user_content = mock_content
         mock_tc.state = state if state is not None else {"zep_thread_id": "test-thread"}
-        mock_tc._invocation_context.session.id = session_id
-        mock_tc._invocation_context.session.user_id = session_user_id
+        mock_tc.session.id = session_id
+        mock_tc.user_id = session_user_id
         return mock_tc
 
     def _make_llm_request(self) -> MagicMock:
@@ -246,17 +272,9 @@ class TestZepContextToolProcessLlmRequest:
 
         await tool.process_llm_request(tool_context=tool_context, llm_request=llm_request)
 
-        # Should have created user and thread (lazy init)
-        # user_id comes from session.user_id, name defaults to Anonymous/User
-        mock_client.user.add.assert_called_once_with(
-            user_id="test-user",
-            first_name="Anonymous",
-            last_name="User",
-            email=None,
-        )
-        mock_client.thread.create.assert_called_once_with(
-            thread_id="test-thread", user_id="test-user"
-        )
+        # The turn path never provisions resources -- no user.add/thread.create.
+        mock_client.user.add.assert_not_called()
+        mock_client.thread.create.assert_not_called()
 
         # Should have called add_messages with return_context=True
         mock_client.thread.add_messages.assert_called_once()
@@ -268,7 +286,9 @@ class TestZepContextToolProcessLlmRequest:
         assert call_kwargs["messages"][0].role == "user"
 
     @pytest.mark.asyncio
-    async def test_user_add_receives_identity_fields(self) -> None:
+    async def test_identity_fields_do_not_trigger_user_add(self) -> None:
+        """Identity fields are used for message metadata only -- the turn
+        path never calls user.add, even when name/email are present in state."""
         mock_client = self._make_mock_client()
         mock_response = MagicMock()
         mock_response.context = None
@@ -282,19 +302,13 @@ class TestZepContextToolProcessLlmRequest:
                 "zep_thread_id": "test-thread",
                 "zep_first_name": "Jane",
                 "zep_last_name": "Smith",
-                "zep_email": "jane@example.com",
             },
         )
         llm_request = self._make_llm_request()
 
         await tool.process_llm_request(tool_context=tool_context, llm_request=llm_request)
 
-        mock_client.user.add.assert_called_once_with(
-            user_id="test-user",
-            first_name="Jane",
-            last_name="Smith",
-            email="jane@example.com",
-        )
+        mock_client.user.add.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_message_includes_user_display_name(self) -> None:
@@ -497,8 +511,8 @@ class TestZepContextToolProcessLlmRequest:
         tc = MagicMock()
         tc.user_content = mock_content
         tc.state = {"zep_thread_id": "test-thread"}
-        tc._invocation_context.session.id = "test-session"
-        tc._invocation_context.session.user_id = "test-user"
+        tc.session.id = "test-session"
+        tc.user_id = "test-user"
 
         await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
 
@@ -526,8 +540,8 @@ class TestZepContextToolProcessLlmRequest:
         tc = MagicMock()
         tc.user_content = mock_content
         tc.state = {"zep_thread_id": "test-thread"}
-        tc._invocation_context.session.id = "test-session"
-        tc._invocation_context.session.user_id = "test-user"
+        tc.session.id = "test-session"
+        tc.user_id = "test-user"
 
         await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
 
@@ -568,56 +582,6 @@ class TestZepContextToolProcessLlmRequest:
         llm_request.append_instructions.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_resource_creation_cached_per_user_thread(self) -> None:
-        """user.add and thread.create should only run once per (user_id, thread_id)."""
-        mock_client = self._make_mock_client()
-        mock_response = MagicMock()
-        mock_response.context = None
-        mock_client.thread.add_messages.return_value = mock_response
-
-        tool = self._make_tool(mock_client)
-        llm_request = self._make_llm_request()
-
-        # First call
-        tc1 = self._make_tool_context("Message 1")
-        await tool.process_llm_request(tool_context=tc1, llm_request=llm_request)
-
-        # Second call (different message to avoid dedup)
-        tc2 = self._make_tool_context("Message 2")
-        await tool.process_llm_request(tool_context=tc2, llm_request=llm_request)
-
-        # user.add and thread.create should only have been called once
-        assert mock_client.user.add.call_count == 1
-        assert mock_client.thread.create.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_resource_creation_separate_per_user_thread_pair(self) -> None:
-        """Different (user_id, thread_id) pairs should each get resource creation."""
-        mock_client = self._make_mock_client()
-        mock_response = MagicMock()
-        mock_response.context = None
-        mock_client.thread.add_messages.return_value = mock_response
-
-        tool = self._make_tool(mock_client)
-        llm_request = self._make_llm_request()
-
-        tc_a = self._make_tool_context(
-            "Msg A",
-            state={"zep_user_id": "user-A", "zep_thread_id": "thread-A"},
-        )
-        tc_b = self._make_tool_context(
-            "Msg B",
-            state={"zep_user_id": "user-B", "zep_thread_id": "thread-B"},
-        )
-
-        await tool.process_llm_request(tool_context=tc_a, llm_request=llm_request)
-        await tool.process_llm_request(tool_context=tc_b, llm_request=llm_request)
-
-        # Each pair should have triggered resource creation
-        assert mock_client.user.add.call_count == 2
-        assert mock_client.thread.create.call_count == 2
-
-    @pytest.mark.asyncio
     async def test_thread_id_uses_session_fallback(self) -> None:
         """When zep_thread_id is not in state, session ID should be used."""
         mock_client = self._make_mock_client()
@@ -636,10 +600,11 @@ class TestZepContextToolProcessLlmRequest:
 
         await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
 
-        # Thread should have been created with the session ID
-        mock_client.thread.create.assert_called_once_with(
-            thread_id="my-session-id", user_id="test-user"
-        )
+        # No provisioning on the turn path -- just confirm the session-id
+        # fallback flows through to the persistence call.
+        mock_client.thread.create.assert_not_called()
+        call_kwargs = mock_client.thread.add_messages.call_args[1]
+        assert call_kwargs["thread_id"] == "my-session-id"
 
     @pytest.mark.asyncio
     async def test_missing_user_id_degrades_gracefully(self) -> None:
@@ -652,13 +617,11 @@ class TestZepContextToolProcessLlmRequest:
         mock_part.text = "Hello"
         mock_content = MagicMock()
         mock_content.parts = [mock_part]
-        tc = MagicMock()
+        tc = MagicMock(spec=["user_content", "state"])
         tc.user_content = mock_content
         tc.state = {}
-        # Make session attribute access fail
-        mock_invocation = MagicMock()
-        mock_invocation.session = MagicMock(spec=[])  # no .user_id or .id
-        tc._invocation_context = mock_invocation
+        # tc has no user_id/session attrs (spec restricts them), simulating
+        # an ADK context where the public identity properties are absent.
 
         llm_request = self._make_llm_request()
 
@@ -674,12 +637,16 @@ class TestZepContextToolProcessLlmRequest:
     @pytest.mark.asyncio
     async def test_context_builder_called_instead_of_return_context(self) -> None:
         """When context_builder is set, add_messages should NOT use return_context."""
-        from zep_adk import ZepContextTool
+        from zep_adk import ContextInput, ZepContextTool
 
         mock_client = self._make_mock_client()
         mock_client.thread.add_messages.return_value = None  # no return_context
 
-        custom_builder = AsyncMock(return_value="Custom context from builder")
+        captured: list[ContextInput] = []
+
+        async def custom_builder(ctx: ContextInput) -> str | None:
+            captured.append(ctx)
+            return "Custom context from builder"
 
         tool = ZepContextTool(
             zep_client=mock_client,
@@ -694,23 +661,27 @@ class TestZepContextToolProcessLlmRequest:
         call_kwargs = mock_client.thread.add_messages.call_args[1]
         assert "return_context" not in call_kwargs
 
-        # context_builder should have been called with the right args
-        custom_builder.assert_called_once()
-        args = custom_builder.call_args[0]
-        assert args[0] is mock_client  # zep_client
-        assert args[1] == "test-user"  # user_id
-        assert args[2] == "test-thread"  # thread_id
-        assert args[3] == "Hello"  # user_message
+        # context_builder should have been called once with a fully-populated
+        # ContextInput.
+        assert len(captured) == 1
+        ctx = captured[0]
+        assert ctx.zep is mock_client
+        assert ctx.user_id == "test-user"
+        assert ctx.thread_id == "test-thread"
+        assert ctx.user_message == "Hello"
+        assert ctx.tool_context is tc
+        assert ctx.llm_request is llm_request
 
     @pytest.mark.asyncio
     async def test_context_builder_result_injected_into_prompt(self) -> None:
         """The string returned by context_builder should appear in LLM instructions."""
-        from zep_adk import ZepContextTool
+        from zep_adk import ContextInput, ZepContextTool
 
         mock_client = self._make_mock_client()
         mock_client.thread.add_messages.return_value = None
 
-        custom_builder = AsyncMock(return_value="User works at Acme Corp as CTO")
+        async def custom_builder(ctx: ContextInput) -> str | None:
+            return "User works at Acme Corp as CTO"
 
         tool = ZepContextTool(zep_client=mock_client, context_builder=custom_builder)
         tc = self._make_tool_context("Tell me about myself")
@@ -725,13 +696,15 @@ class TestZepContextToolProcessLlmRequest:
 
     @pytest.mark.asyncio
     async def test_context_builder_returning_none_skips_injection(self) -> None:
-        """When context_builder returns None, no context should be injected."""
-        from zep_adk import ZepContextTool
+        """When context_builder returns None, no context should be injected,
+        but persistence still happens."""
+        from zep_adk import ContextInput, ZepContextTool
 
         mock_client = self._make_mock_client()
         mock_client.thread.add_messages.return_value = None
 
-        custom_builder = AsyncMock(return_value=None)
+        async def custom_builder(ctx: ContextInput) -> str | None:
+            return None
 
         tool = ZepContextTool(zep_client=mock_client, context_builder=custom_builder)
         tc = self._make_tool_context("Hello")
@@ -740,16 +713,41 @@ class TestZepContextToolProcessLlmRequest:
         await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
 
         llm_request.append_instructions.assert_not_called()
+        mock_client.thread.add_messages.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_context_builder_and_persist_both_called(self) -> None:
-        """Both add_messages and context_builder should be called (parallel execution)."""
-        from zep_adk import ZepContextTool
+    async def test_context_builder_returning_empty_string_skips_injection(self) -> None:
+        """Empty-string builder result also skips injection; persist still happens."""
+        from zep_adk import ContextInput, ZepContextTool
 
         mock_client = self._make_mock_client()
         mock_client.thread.add_messages.return_value = None
 
-        custom_builder = AsyncMock(return_value="context")
+        async def custom_builder(ctx: ContextInput) -> str | None:
+            return ""
+
+        tool = ZepContextTool(zep_client=mock_client, context_builder=custom_builder)
+        tc = self._make_tool_context("Hello")
+        llm_request = self._make_llm_request()
+
+        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+
+        llm_request.append_instructions.assert_not_called()
+        mock_client.thread.add_messages.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_context_builder_and_persist_both_called(self) -> None:
+        """Both add_messages and context_builder should be called (parallel execution)."""
+        from zep_adk import ContextInput, ZepContextTool
+
+        mock_client = self._make_mock_client()
+        mock_client.thread.add_messages.return_value = None
+
+        calls = []
+
+        async def custom_builder(ctx: ContextInput) -> str | None:
+            calls.append(ctx)
+            return "context"
 
         tool = ZepContextTool(zep_client=mock_client, context_builder=custom_builder)
         tc = self._make_tool_context("Hello")
@@ -759,7 +757,7 @@ class TestZepContextToolProcessLlmRequest:
 
         # Both should have been called
         mock_client.thread.add_messages.assert_called_once()
-        custom_builder.assert_called_once()
+        assert len(calls) == 1
 
     @pytest.mark.asyncio
     async def test_default_path_uses_return_context(self) -> None:
@@ -779,193 +777,176 @@ class TestZepContextToolProcessLlmRequest:
         assert call_kwargs["return_context"] is True
 
     @pytest.mark.asyncio
-    async def test_context_builder_error_handled_gracefully(self) -> None:
-        """When context_builder raises, should log and skip, not crash."""
-        from zep_adk import ZepContextTool
+    async def test_context_builder_error_handled_gracefully(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """When context_builder raises, a warning is logged, injection is
+        skipped, but persistence still completes and the turn is marked as
+        persisted (dedup) on success."""
+        from zep_adk import ContextInput, ZepContextTool
 
         mock_client = self._make_mock_client()
         mock_client.thread.add_messages.return_value = None
 
-        custom_builder = AsyncMock(side_effect=RuntimeError("builder failed"))
+        async def custom_builder(ctx: ContextInput) -> str | None:
+            raise RuntimeError("builder failed")
 
         tool = ZepContextTool(zep_client=mock_client, context_builder=custom_builder)
         tc = self._make_tool_context("Hello")
         llm_request = self._make_llm_request()
 
-        # Should not raise
-        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+        with caplog.at_level("WARNING"):
+            await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
 
         llm_request.append_instructions.assert_not_called()
+        mock_client.thread.add_messages.assert_called_once()
+        assert any("context_builder" in r.message for r in caplog.records)
+
+        # Persist succeeded, so the turn should be marked as persisted --
+        # a second call with the SAME user_content object must be skipped.
+        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+        assert mock_client.thread.add_messages.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_persist_raises_builder_succeeds_not_marked_persisted(self) -> None:
+        """If persist raises while the builder succeeds, warn and do
+        NOT mark the turn as persisted (so a retry is possible), but the
+        builder's context may still be injected."""
+        from zep_adk import ContextInput, ZepContextTool
+
+        mock_client = self._make_mock_client()
+        mock_client.thread.add_messages.side_effect = RuntimeError("persist failed")
+
+        async def custom_builder(ctx: ContextInput) -> str | None:
+            return "context despite persist failure"
+
+        tool = ZepContextTool(zep_client=mock_client, context_builder=custom_builder)
+        tc = self._make_tool_context("Hello")
+        llm_request = self._make_llm_request()
+
+        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+
+        # Builder result is still injected even though persistence failed.
+        llm_request.append_instructions.assert_called_once()
+        instructions = llm_request.append_instructions.call_args[0][0]
+        assert "context despite persist failure" in instructions[0]
+
+        # Not marked as persisted -- a retry with the SAME user_content
+        # object must attempt add_messages again.
+        assert mock_client.thread.add_messages.call_count == 1
+        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+        assert mock_client.thread.add_messages.call_count == 2
 
     @pytest.mark.asyncio
     async def test_context_builder_type_exported(self) -> None:
-        """ContextBuilder type alias should be importable from the package."""
-        from zep_adk import ContextBuilder
+        """ContextBuilder and ContextInput should be importable from the package."""
+        from zep_adk import ContextBuilder, ContextInput
 
         assert ContextBuilder is not None
+        assert ContextInput is not None
 
     @pytest.mark.asyncio
-    async def test_resource_creation_failure_prevents_caching(self) -> None:
-        """When user.add fails with a genuine error, resources should NOT be cached."""
+    async def test_default_template_used_when_none_provided(self) -> None:
+        """The default injection template contains <ZEP_CONTEXT> tags."""
+        from zep_adk import DEFAULT_CONTEXT_TEMPLATE
+
+        assert "<ZEP_CONTEXT>" in DEFAULT_CONTEXT_TEMPLATE
+        assert "{context}" in DEFAULT_CONTEXT_TEMPLATE
+
+    @pytest.mark.asyncio
+    async def test_custom_context_template_respected(self) -> None:
+        """A custom context_template is used instead of the default."""
+        from zep_adk import ZepContextTool
+
         mock_client = self._make_mock_client()
-        mock_client.user.add.side_effect = RuntimeError("network timeout")
+        mock_response = MagicMock()
+        mock_response.context = "some facts"
+        mock_client.thread.add_messages.return_value = mock_response
+
+        tool = ZepContextTool(
+            zep_client=mock_client,
+            context_template="MEMORY START\n{context}\nMEMORY END",
+        )
+        tc = self._make_tool_context("Hello")
+        llm_request = self._make_llm_request()
+
+        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+
+        instructions = llm_request.append_instructions.call_args[0][0]
+        assert instructions[0] == "MEMORY START\nsome facts\nMEMORY END"
+        assert "<ZEP_CONTEXT>" not in instructions[0]
+
+    @pytest.mark.asyncio
+    async def test_context_template_uses_plain_replace_not_format(self) -> None:
+        """Context text (or a template) containing %, {}, or a literal
+        '{context}' must be injected safely via str.replace, never
+        str.format -- which would raise or double-substitute."""
+        mock_client = self._make_mock_client()
+        mock_response = MagicMock()
+        tricky_context = "50% off {unrelated} and a literal {context} marker"
+        mock_response.context = tricky_context
+        mock_client.thread.add_messages.return_value = mock_response
 
         tool = self._make_tool(mock_client)
         tc = self._make_tool_context("Hello")
         llm_request = self._make_llm_request()
 
+        # Should not raise (str.format would raise KeyError on {unrelated}).
         await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
 
-        # Should not have persisted the message (resource creation failed)
-        mock_client.thread.add_messages.assert_not_called()
-
-        # Reset the mock and try again — should retry resource creation
-        mock_client.user.add.reset_mock()
-        mock_client.user.add.side_effect = None  # now succeeds
-        mock_response = MagicMock()
-        mock_response.context = None
-        mock_client.thread.add_messages.return_value = mock_response
-
-        tc2 = self._make_tool_context("Hello again")
-        await tool.process_llm_request(tool_context=tc2, llm_request=llm_request)
-
-        # Should have retried user.add
-        mock_client.user.add.assert_called_once()
-
-
-class TestOnUserCreatedHook:
-    """Test on_user_created hook in ZepContextTool."""
-
-    def _make_mock_client(self) -> MagicMock:
-        mock_client = MagicMock()
-        mock_client.user = MagicMock()
-        mock_client.user.add = AsyncMock()
-        mock_client.thread = MagicMock()
-        mock_client.thread.create = AsyncMock()
-        mock_client.thread.add_messages = AsyncMock()
-        return mock_client
-
-    def _make_tool_context(
-        self,
-        text: str = "Hello",
-        state: dict | None = None,
-        session_user_id: str = "test-user",
-    ) -> MagicMock:
-        mock_part = MagicMock()
-        mock_part.text = text
-        mock_content = MagicMock()
-        mock_content.parts = [mock_part]
-        mock_tc = MagicMock()
-        mock_tc.user_content = mock_content
-        mock_tc.state = state if state is not None else {"zep_thread_id": "test-thread"}
-        mock_tc._invocation_context.session.id = "test-session"
-        mock_tc._invocation_context.session.user_id = session_user_id
-        return mock_tc
-
-    def _make_llm_request(self) -> MagicMock:
-        mock_request = MagicMock()
-        mock_request.append_instructions = MagicMock()
-        return mock_request
+        instructions = llm_request.append_instructions.call_args[0][0]
+        # The tricky context appears verbatim exactly once, in the expected slot.
+        assert instructions[0].count(tricky_context) == 1
 
     @pytest.mark.asyncio
-    async def test_hook_called_on_new_user(self) -> None:
-        from zep_adk import ZepContextTool
+    async def test_not_found_logs_warning_naming_ensure_helpers(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Persistence NotFound logs a warning naming
+        ``ensure_user``/``ensure_thread``, and the callback completes without
+        raising (warn-and-continue, never crash)."""
+        from zep_cloud.errors import NotFoundError
 
         mock_client = self._make_mock_client()
-        mock_response = MagicMock()
-        mock_response.context = None
-        mock_client.thread.add_messages.return_value = mock_response
+        mock_client.thread.add_messages.side_effect = NotFoundError(
+            body={"message": "user not found"}
+        )
 
-        hook = AsyncMock()
-        tool = ZepContextTool(zep_client=mock_client, on_user_created=hook)
+        tool = self._make_tool(mock_client)
         tc = self._make_tool_context("Hello")
         llm_request = self._make_llm_request()
 
-        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+        with caplog.at_level("WARNING"):
+            await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
 
-        hook.assert_called_once_with(mock_client, "test-user")
-
-    @pytest.mark.asyncio
-    async def test_hook_not_called_on_existing_user(self) -> None:
-        from zep_adk import ZepContextTool
-
-        mock_client = self._make_mock_client()
-        # Simulate "already exists" error
-        mock_client.user.add.side_effect = Exception("already exists")
-        mock_response = MagicMock()
-        mock_response.context = None
-        mock_client.thread.add_messages.return_value = mock_response
-
-        hook = AsyncMock()
-        tool = ZepContextTool(zep_client=mock_client, on_user_created=hook)
-        tc = self._make_tool_context("Hello")
-        llm_request = self._make_llm_request()
-
-        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
-
-        hook.assert_not_called()
+        assert any(
+            "ensure_user" in record.message and "ensure_thread" in record.message
+            for record in caplog.records
+        )
+        llm_request.append_instructions.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_hook_not_called_on_cached_resources(self) -> None:
-        from zep_adk import ZepContextTool
-
+    async def test_turn_path_never_calls_user_add_or_thread_create(self) -> None:
+        """process_llm_request must never call user.add or
+        thread.create -- provisioning is entirely out-of-band now."""
         mock_client = self._make_mock_client()
         mock_response = MagicMock()
         mock_response.context = None
         mock_client.thread.add_messages.return_value = mock_response
 
-        hook = AsyncMock()
-        tool = ZepContextTool(zep_client=mock_client, on_user_created=hook)
+        tool = self._make_tool(mock_client)
         llm_request = self._make_llm_request()
 
-        # First call — hook fires
-        tc1 = self._make_tool_context("Hello")
+        tc1 = self._make_tool_context("Message 1")
         await tool.process_llm_request(tool_context=tc1, llm_request=llm_request)
-        assert hook.call_count == 1
-
-        # Second call (different message, same user/thread) — hook does NOT fire
-        tc2 = self._make_tool_context("World")
+        tc2 = self._make_tool_context(
+            "Message 2",
+            state={"zep_user_id": "user-B", "zep_thread_id": "thread-B"},
+        )
         await tool.process_llm_request(tool_context=tc2, llm_request=llm_request)
-        assert hook.call_count == 1  # still 1
 
-    @pytest.mark.asyncio
-    async def test_hook_failure_does_not_block_agent(self) -> None:
-        from zep_adk import ZepContextTool
-
-        mock_client = self._make_mock_client()
-        mock_response = MagicMock()
-        mock_response.context = "Some context"
-        mock_client.thread.add_messages.return_value = mock_response
-
-        hook = AsyncMock(side_effect=RuntimeError("hook exploded"))
-        tool = ZepContextTool(zep_client=mock_client, on_user_created=hook)
-        tc = self._make_tool_context("Hello")
-        llm_request = self._make_llm_request()
-
-        # Should not raise — hook failure is logged but agent continues
-        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
-
-        # Message was still persisted and context still injected
-        mock_client.thread.add_messages.assert_called_once()
-        llm_request.append_instructions.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_no_hook_no_error(self) -> None:
-        """Without on_user_created, everything works as before."""
-        from zep_adk import ZepContextTool
-
-        mock_client = self._make_mock_client()
-        mock_response = MagicMock()
-        mock_response.context = None
-        mock_client.thread.add_messages.return_value = mock_response
-
-        tool = ZepContextTool(zep_client=mock_client)  # no hook
-        tc = self._make_tool_context("Hello")
-        llm_request = self._make_llm_request()
-
-        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
-
-        mock_client.thread.add_messages.assert_called_once()
+        mock_client.user.add.assert_not_called()
+        mock_client.thread.create.assert_not_called()
 
 
 class TestAfterModelCallback:
@@ -995,7 +976,7 @@ class TestAfterModelCallback:
         """Create a mock CallbackContext with state and session ID."""
         mock_ctx = MagicMock()
         mock_ctx.state = state if state is not None else {"zep_thread_id": "test-thread"}
-        mock_ctx._invocation_context.session.id = session_id
+        mock_ctx.session.id = session_id
         return mock_ctx
 
     def test_returns_callable(self) -> None:
@@ -1086,12 +1067,10 @@ class TestAfterModelCallback:
         callback = create_after_model_callback(zep_client=mock_client)
 
         llm_response = self._make_llm_response("Response")
-        callback_context = MagicMock()
+        callback_context = MagicMock(spec=["state"])
         callback_context.state = {}
-        # Simulate missing session ID by making session have no .id attribute
-        mock_invocation = MagicMock()
-        mock_invocation.session = MagicMock(spec=[])  # spec=[] means no attributes
-        callback_context._invocation_context = mock_invocation
+        # callback_context has no session attr (spec restricts it), simulating
+        # missing session ID access via the public property.
 
         result = await callback(callback_context, llm_response)
 
@@ -1244,6 +1223,187 @@ class TestAfterModelCallback:
         call_kwargs = mock_client.thread.add_messages.call_args[1]
         assert call_kwargs["messages"][0].content == "Part one. Part two."
 
+    @pytest.mark.asyncio
+    async def test_truncates_oversize_assistant_message(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Assistant responses over Zep's per-message limit are
+        truncated (never dropped) before being persisted, and a warning
+        logs both the original and truncated lengths -- never content."""
+        from zep_adk import create_after_model_callback
+        from zep_adk.limits import MESSAGE_CONTENT_MAX, MESSAGE_CONTENT_TRUNCATE_TO
+
+        mock_client = self._make_mock_client()
+        callback = create_after_model_callback(zep_client=mock_client)
+
+        oversize_text = "x" * (MESSAGE_CONTENT_MAX + 500)
+        response = self._make_llm_response(oversize_text)
+        callback_context = self._make_callback_context()
+
+        with caplog.at_level("WARNING"):
+            await callback(callback_context, response)
+
+        call_kwargs = mock_client.thread.add_messages.call_args[1]
+        persisted_content = call_kwargs["messages"][0].content
+        assert len(persisted_content) == MESSAGE_CONTENT_TRUNCATE_TO
+        assert persisted_content == oversize_text[:MESSAGE_CONTENT_TRUNCATE_TO]
+
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert any(str(MESSAGE_CONTENT_MAX + 500) in r.message for r in warnings)
+        assert any(str(MESSAGE_CONTENT_TRUNCATE_TO) in r.message for r in warnings)
+        # Never log the actual message content.
+        assert not any(oversize_text in r.message for r in warnings)
+
+    @pytest.mark.asyncio
+    async def test_assistant_message_at_limit_untouched(self) -> None:
+        """Content exactly at the limit is persisted unchanged."""
+        from zep_adk import create_after_model_callback
+        from zep_adk.limits import MESSAGE_CONTENT_MAX
+
+        mock_client = self._make_mock_client()
+        callback = create_after_model_callback(zep_client=mock_client)
+
+        exact_text = "y" * MESSAGE_CONTENT_MAX
+        response = self._make_llm_response(exact_text)
+        callback_context = self._make_callback_context()
+
+        await callback(callback_context, response)
+
+        call_kwargs = mock_client.thread.add_messages.call_args[1]
+        assert call_kwargs["messages"][0].content == exact_text
+
+
+# ======================================================================
+# limits.py -- message truncation
+# ======================================================================
+
+
+class TestTruncateMessageContent:
+    """Unit tests for zep_adk.limits.truncate_message_content."""
+
+    def test_content_within_limit_untouched(self) -> None:
+        from zep_adk.limits import MESSAGE_CONTENT_MAX, truncate_message_content
+
+        content = "a" * (MESSAGE_CONTENT_MAX - 1)
+        assert truncate_message_content(content) == content
+
+    def test_content_at_limit_untouched(self) -> None:
+        from zep_adk.limits import MESSAGE_CONTENT_MAX, truncate_message_content
+
+        content = "a" * MESSAGE_CONTENT_MAX
+        assert truncate_message_content(content) == content
+
+    def test_content_over_limit_truncated(self) -> None:
+        from zep_adk.limits import MESSAGE_CONTENT_TRUNCATE_TO, truncate_message_content
+
+        content = "a" * (MESSAGE_CONTENT_TRUNCATE_TO + 1000)
+        result = truncate_message_content(content)
+        assert len(result) == MESSAGE_CONTENT_TRUNCATE_TO
+        assert result == content[:MESSAGE_CONTENT_TRUNCATE_TO]
+
+    def test_over_limit_logs_warning_with_lengths_only(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from zep_adk.limits import (
+            MESSAGE_CONTENT_MAX,
+            MESSAGE_CONTENT_TRUNCATE_TO,
+            truncate_message_content,
+        )
+
+        original_len = MESSAGE_CONTENT_MAX + 42
+        content = "s" * original_len
+
+        with caplog.at_level("WARNING"):
+            truncate_message_content(content, label="user")
+
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1
+        assert str(original_len) in warnings[0].message
+        assert str(MESSAGE_CONTENT_TRUNCATE_TO) in warnings[0].message
+        assert content not in warnings[0].message
+
+    def test_within_limit_does_not_log(self, caplog: pytest.LogCaptureFixture) -> None:
+        from zep_adk.limits import truncate_message_content
+
+        with caplog.at_level("WARNING"):
+            truncate_message_content("short content")
+
+        assert len(caplog.records) == 0
+
+
+class TestZepContextToolTruncatesUserMessages:
+    """ZepContextTool truncates over-limit user message content."""
+
+    def _make_tool_context(self, text: str) -> MagicMock:
+        mock_part = MagicMock()
+        mock_part.text = text
+        mock_content = MagicMock()
+        mock_content.parts = [mock_part]
+
+        mock_tc = MagicMock()
+        mock_tc.user_content = mock_content
+        mock_tc.state = {"zep_thread_id": "test-thread"}
+        mock_tc.session.id = "test-session"
+        mock_tc.user_id = "test-user"
+        return mock_tc
+
+    def _make_mock_client(self) -> MagicMock:
+        mock_client = MagicMock()
+        mock_client.thread = MagicMock()
+        mock_client.thread.add_messages = AsyncMock()
+        return mock_client
+
+    def _make_llm_request(self) -> MagicMock:
+        mock_request = MagicMock()
+        mock_request.append_instructions = MagicMock()
+        return mock_request
+
+    @pytest.mark.asyncio
+    async def test_oversize_user_message_truncated_before_persist(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from zep_adk import ZepContextTool
+        from zep_adk.limits import MESSAGE_CONTENT_MAX, MESSAGE_CONTENT_TRUNCATE_TO
+
+        mock_client = self._make_mock_client()
+        mock_response = MagicMock()
+        mock_response.context = None
+        mock_client.thread.add_messages.return_value = mock_response
+
+        tool = ZepContextTool(zep_client=mock_client)
+        oversize_text = "z" * (MESSAGE_CONTENT_MAX + 1)
+        tc = self._make_tool_context(oversize_text)
+        llm_request = self._make_llm_request()
+
+        with caplog.at_level("WARNING"):
+            await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+
+        call_kwargs = mock_client.thread.add_messages.call_args[1]
+        persisted_content = call_kwargs["messages"][0].content
+        assert len(persisted_content) == MESSAGE_CONTENT_TRUNCATE_TO
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert any(str(MESSAGE_CONTENT_MAX + 1) in r.message for r in warnings)
+
+    @pytest.mark.asyncio
+    async def test_user_message_at_limit_untouched(self) -> None:
+        from zep_adk import ZepContextTool
+        from zep_adk.limits import MESSAGE_CONTENT_MAX
+
+        mock_client = self._make_mock_client()
+        mock_response = MagicMock()
+        mock_response.context = None
+        mock_client.thread.add_messages.return_value = mock_response
+
+        tool = ZepContextTool(zep_client=mock_client)
+        exact_text = "w" * MESSAGE_CONTENT_MAX
+        tc = self._make_tool_context(exact_text)
+        llm_request = self._make_llm_request()
+
+        await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
+
+        call_kwargs = mock_client.thread.add_messages.call_args[1]
+        assert call_kwargs["messages"][0].content == exact_text
+
 
 # ======================================================================
 # ZepGraphSearchTool tests
@@ -1343,6 +1503,21 @@ class TestGraphSearchToolDeclaration:
         assert "mmr_lambda" in props
         assert "center_node_uuid" in props
 
+    def test_scope_enum_includes_all_supported_scopes(self) -> None:
+        from zep_adk import ZepGraphSearchTool
+
+        tool = ZepGraphSearchTool(zep_client=MagicMock())
+        decl = tool._get_declaration()
+        props = decl.parameters.properties
+        assert list(props["scope"].enum) == [
+            "edges",
+            "nodes",
+            "episodes",
+            "observations",
+            "thread_summaries",
+            "auto",
+        ]
+
     def test_pinned_params_hidden_from_schema(self) -> None:
         from zep_adk import ZepGraphSearchTool
 
@@ -1394,7 +1569,7 @@ class TestGraphSearchToolExecution:
     ) -> MagicMock:
         mock_tc = MagicMock()
         mock_tc.state = state if state is not None else {}
-        mock_tc._invocation_context.session.user_id = session_user_id
+        mock_tc.user_id = session_user_id
         return mock_tc
 
     @staticmethod
@@ -1542,12 +1717,10 @@ class TestGraphSearchToolExecution:
         from zep_adk import ZepGraphSearchTool
 
         tool = ZepGraphSearchTool(zep_client=MagicMock())
-        tc = MagicMock()
+        tc = MagicMock(spec=["state"])
         tc.state = {}
-        # Simulate no session user_id
-        mock_inv = MagicMock()
-        mock_inv.session = MagicMock(spec=[])
-        tc._invocation_context = mock_inv
+        # tc has no user_id attr (spec restricts it), simulating a context
+        # without the public user_id property.
 
         result = await tool.run_async(args={"query": "test"}, tool_context=tc)
         assert "Error" in result
@@ -1585,6 +1758,18 @@ class TestGraphSearchResultFormatting:
         ep.content = content
         return ep
 
+    def _make_observation(self, name: str, summary: str) -> MagicMock:
+        observation = MagicMock()
+        observation.name = name
+        observation.summary = summary
+        return observation
+
+    def _make_thread_summary(self, name: str, summary: str) -> MagicMock:
+        thread_summary = MagicMock()
+        thread_summary.name = name
+        thread_summary.summary = summary
+        return thread_summary
+
     def test_format_edges(self) -> None:
         from zep_adk.graph_search_tool import ZepGraphSearchTool
 
@@ -1619,6 +1804,124 @@ class TestGraphSearchResultFormatting:
 
         formatted = ZepGraphSearchTool._format_results(result, "episodes")
         assert "Acme Corp" in formatted
+
+    def test_format_observations(self) -> None:
+        from zep_adk.graph_search_tool import ZepGraphSearchTool
+
+        result = MagicMock()
+        result.edges = None
+        result.nodes = None
+        result.episodes = None
+        result.observations = [self._make_observation("Alice", "Prefers async communication")]
+        result.thread_summaries = None
+
+        formatted = ZepGraphSearchTool._format_results(result, "observations")
+        assert "Alice" in formatted
+        assert "Prefers async communication" in formatted
+
+    def test_format_thread_summaries(self) -> None:
+        from zep_adk.graph_search_tool import ZepGraphSearchTool
+
+        result = MagicMock()
+        result.edges = None
+        result.nodes = None
+        result.episodes = None
+        result.observations = None
+        result.thread_summaries = [self._make_thread_summary("thread-1", "Discussed billing issue")]
+
+        formatted = ZepGraphSearchTool._format_results(result, "thread_summaries")
+        assert "thread-1" in formatted
+        assert "Discussed billing issue" in formatted
+
+    def test_format_observation_with_name_only_still_shown(self) -> None:
+        """An observation with a name but no summary is rendered as just the
+        name, matching the Go/TypeScript integrations, rather than being
+        silently dropped."""
+        from zep_adk.graph_search_tool import ZepGraphSearchTool
+
+        result = MagicMock()
+        result.edges = None
+        result.nodes = None
+        result.episodes = None
+        result.observations = [self._make_observation("Alice", None)]
+        result.thread_summaries = None
+
+        formatted = ZepGraphSearchTool._format_results(result, "observations")
+        assert "Alice" in formatted
+        assert formatted != "No results found."
+
+    def test_format_thread_summary_with_name_only_still_shown(self) -> None:
+        """A thread summary with a name but no summary is rendered as just
+        the name, matching the Go/TypeScript integrations, rather than being
+        silently dropped."""
+        from zep_adk.graph_search_tool import ZepGraphSearchTool
+
+        result = MagicMock()
+        result.edges = None
+        result.nodes = None
+        result.episodes = None
+        result.observations = None
+        result.thread_summaries = [self._make_thread_summary("thread-1", None)]
+
+        formatted = ZepGraphSearchTool._format_results(result, "thread_summaries")
+        assert "thread-1" in formatted
+        assert formatted != "No results found."
+
+    def test_format_node_with_name_only_still_shown(self) -> None:
+        """A node with a name but no summary is rendered as just the name."""
+        from zep_adk.graph_search_tool import ZepGraphSearchTool
+
+        result = MagicMock()
+        result.edges = None
+        result.nodes = [self._make_node("Alice", None)]
+        result.episodes = None
+
+        formatted = ZepGraphSearchTool._format_results(result, "nodes")
+        assert "Alice" in formatted
+        assert formatted != "No results found."
+
+    def test_format_node_with_summary_only_renders_summary_without_label(self) -> None:
+        """A node with a summary but no name renders as just the summary --
+        no generic 'Entity'-style label prefix, matching Go/TypeScript."""
+        from zep_adk.graph_search_tool import ZepGraphSearchTool
+
+        result = MagicMock()
+        result.edges = None
+        result.nodes = [self._make_node(None, "A software engineer at Acme")]
+        result.episodes = None
+
+        formatted = ZepGraphSearchTool._format_results(result, "nodes")
+        assert formatted == "- A software engineer at Acme"
+
+    def test_format_observation_with_summary_only_renders_summary_without_label(self) -> None:
+        """An observation with a summary but no name renders as just the
+        summary -- no generic 'Observation'-style label prefix."""
+        from zep_adk.graph_search_tool import ZepGraphSearchTool
+
+        result = MagicMock()
+        result.edges = None
+        result.nodes = None
+        result.episodes = None
+        result.observations = [self._make_observation(None, "Prefers async communication")]
+        result.thread_summaries = None
+
+        formatted = ZepGraphSearchTool._format_results(result, "observations")
+        assert formatted == "- Prefers async communication"
+
+    def test_format_thread_summary_with_summary_only_renders_summary_without_label(self) -> None:
+        """A thread summary with a summary but no name renders as just the
+        summary -- no generic 'Thread'-style label prefix."""
+        from zep_adk.graph_search_tool import ZepGraphSearchTool
+
+        result = MagicMock()
+        result.edges = None
+        result.nodes = None
+        result.episodes = None
+        result.observations = None
+        result.thread_summaries = [self._make_thread_summary(None, "Discussed billing issue")]
+
+        formatted = ZepGraphSearchTool._format_results(result, "thread_summaries")
+        assert formatted == "- Discussed billing issue"
 
     def test_format_empty_results(self) -> None:
         from zep_adk.graph_search_tool import ZepGraphSearchTool

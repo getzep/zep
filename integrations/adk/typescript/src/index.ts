@@ -13,8 +13,15 @@
  * responses, and add {@link ZepGraphSearchTool} to let the model search the
  * graph on demand.
  *
- * Every Zep call is wrapped: failures are logged, never thrown, so a Zep outage
- * cannot crash the host agent.
+ * Before the first turn, provision the Zep user and thread out-of-band with
+ * {@link ensureUser} and {@link ensureThread} — the turn path never creates
+ * them itself.
+ *
+ * On the turn path (callbacks and tools), every Zep call is wrapped: failures
+ * are logged, never thrown, so a Zep outage cannot crash the host agent. The
+ * out-of-band provisioning helpers ({@link ensureUser}, {@link ensureThread})
+ * are the deliberate exception — they throw on genuine failures so
+ * misconfiguration is caught before the agent runs.
  *
  * @packageDocumentation
  */
@@ -37,6 +44,8 @@ export {
   type ZepCallbacksOptions,
 } from "./callbacks.js";
 
+export { TurnDedup } from "./resources.js";
+
 export { ZepContextTool, type ZepContextToolOptions } from "./context-tool.js";
 
 export {
@@ -45,9 +54,17 @@ export {
 } from "./graph-search-tool.js";
 
 export {
+  ZepMemoryService,
+  type ZepMemoryServiceOptions,
+} from "./memory-service.js";
+
+export {
   formatContextInstruction,
   persistAndInject,
+  DEFAULT_CONTEXT_TEMPLATE,
   type InjectOptions,
+  type ContextBuilder,
+  type ContextBuilderInput,
 } from "./inject.js";
 
 export {
@@ -59,7 +76,14 @@ export {
   type ZepIdentityOptions,
 } from "./identity.js";
 
-export { ZepResourceManager } from "./resources.js";
+export {
+  ensureUser,
+  ensureThread,
+  type EnsureUserOptions,
+  type EnsureThreadOptions,
+  type UserSetupHook,
+} from "./provisioning.js";
+
 export {
   truncateMessageContent,
   MESSAGE_CONTENT_MAX,
@@ -70,4 +94,4 @@ export { defaultLogger, type Logger } from "./logging.js";
 export { ZepIdentityError } from "./errors.js";
 
 /** The installed package version. */
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";

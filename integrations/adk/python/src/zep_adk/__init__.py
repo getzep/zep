@@ -17,7 +17,7 @@ Usage:
     from google.adk.runners import Runner
     from google.adk.sessions import InMemorySessionService
     from zep_cloud.client import AsyncZep
-    from zep_adk import ZepContextTool, create_after_model_callback
+    from zep_adk import ZepContextTool, create_after_model_callback, ensure_user, ensure_thread
 
     zep = AsyncZep(api_key="your-api-key")
 
@@ -33,6 +33,17 @@ Usage:
     session_service = InMemorySessionService()
     runner = Runner(agent=agent, app_name="my_app", session_service=session_service)
 
+    # Provision the Zep user and thread out-of-band, before the first turn
+    # (e.g. during account/session onboarding).
+    await ensure_user(
+        zep,
+        user_id="user_123",
+        first_name="Jane",
+        last_name="Smith",
+        email="jane@example.com",  # optional
+    )
+    await ensure_thread(zep, thread_id="session_abc", user_id="user_123")
+
     # Per-user session: user_id → Zep user, session_id → Zep thread
     await session_service.create_session(
         app_name="my_app",
@@ -41,12 +52,11 @@ Usage:
         state={
             "zep_first_name": "Jane",
             "zep_last_name": "Smith",
-            "zep_email": "jane@example.com",  # optional
         },
     )
 """
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 __author__ = "Zep AI"
 __description__ = "Google ADK integration for Zep"
 
@@ -58,15 +68,27 @@ try:
 
     # Import our integration components
     from .callbacks import create_after_model_callback
-    from .context_tool import ContextBuilder, UserSetupHook, ZepContextTool
+    from .context_tool import (
+        DEFAULT_CONTEXT_TEMPLATE,
+        ContextBuilder,
+        ContextInput,
+        ZepContextTool,
+    )
     from .graph_search_tool import ZepGraphSearchTool
+    from .memory_service import ZepMemoryService
+    from .provisioning import UserSetupHook, ensure_thread, ensure_user
 
     __all__ = [
+        "DEFAULT_CONTEXT_TEMPLATE",
         "ContextBuilder",
+        "ContextInput",
         "UserSetupHook",
         "ZepContextTool",
         "ZepGraphSearchTool",
+        "ZepMemoryService",
         "create_after_model_callback",
+        "ensure_thread",
+        "ensure_user",
         "ZepDependencyError",
     ]
 
