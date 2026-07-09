@@ -11,8 +11,13 @@ Exercises the full lifecycle against live Zep and OpenAI:
      seeded in the first thread (proving recall comes from the user graph).
   5. Zep resource verification via the SDK (user metadata, thread messages).
 
+Also includes a lighter-weight test (``test_ensure_helpers_and_before_after_run``)
+that only requires ``ZEP_API_KEY`` -- it drives ``ensure_user``/``ensure_thread``
+and a ``before_run``/``after_run`` cycle directly against real Zep with a fake
+session double, without needing a real model provider.
+
 Requires:
-    ZEP_API_KEY and OPENAI_API_KEY environment variables.
+    ZEP_API_KEY (all tests) and OPENAI_API_KEY (agent-driven tests only).
 
 Usage:
     uv run pytest tests/test_integration.py -v -s -m integration
@@ -27,28 +32,28 @@ import logging
 import os
 import sys
 import time
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 
 # ---------------------------------------------------------------------------
-# Configuration -- skip the whole module when API keys are not available.
+# Configuration -- skip the whole module when no Zep API key is available.
+# Tests that also need a real model provider additionally gate on
+# OPENAI_API_KEY (see test_integration_full_lifecycle).
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
-if not ZEP_API_KEY or not OPENAI_API_KEY:
-    pytest.skip(
-        "ZEP_API_KEY and OPENAI_API_KEY required for integration tests",
-        allow_module_level=True,
-    )
+if not ZEP_API_KEY:
+    pytest.skip("ZEP_API_KEY required for integration tests", allow_module_level=True)
 
 from agent_framework import Agent  # noqa: E402
 from agent_framework.openai import OpenAIChatClient  # noqa: E402
 from zep_cloud.client import AsyncZep  # noqa: E402
 
-from zep_ms_agent_framework import ZepContextProvider  # noqa: E402
+from zep_ms_agent_framework import ZepContextProvider, ensure_thread, ensure_user  # noqa: E402
 
 # Unique IDs per run to avoid collisions.
 _suffix = uuid4().hex[:8]
@@ -125,6 +130,10 @@ def build_agent(zep: AsyncZep, thread_id: str, hook=None) -> Agent:
 
 
 async def main() -> None:
+    if not OPENAI_API_KEY:
+        print("OPENAI_API_KEY not set; skipping the agent-driven lifecycle test.")
+        sys.exit(0)
+
     zep = AsyncZep(api_key=ZEP_API_KEY)
     passed = True
 
@@ -219,8 +228,81 @@ async def main() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_ensure_helpers_and_before_after_run() -> None:
+    """Exercise ``ensure_user``/``ensure_thread`` and a ``before_run``/
+    ``after_run`` cycle directly against real Zep, without a model provider.
+
+    Uses a fake ``SessionContext`` double (mirroring the mock-based unit
+    tests) so this only requires ``ZEP_API_KEY`` -- no OpenAI call is made.
+    """
+    zep = AsyncZep(api_key=ZEP_API_KEY)
+    user_id = f"{USER_ID}-ensure"
+    thread_id = f"{THREAD_1}-ensure"
+
+    try:
+        # -- Out-of-band provisioning via the new helpers -------------------
+        created_user = await ensure_user(
+            zep,
+            user_id=user_id,
+            first_name=FIRST_NAME,
+            last_name=LAST_NAME,
+            email=f"ensure-{_suffix}@example.com",
+        )
+        assert created_user is True
+
+        # Idempotent: calling again reports "already exists", not an error.
+        created_again = await ensure_user(zep, user_id=user_id)
+        assert created_again is False
+
+        created_thread = await ensure_thread(zep, thread_id=thread_id, user_id=user_id)
+        assert created_thread is True
+
+        # -- before_run/after_run cycle with a fake SessionContext double ---
+        provider = ZepContextProvider(zep_client=zep, user_id=user_id, thread_id=thread_id)
+
+        before_ctx = MagicMock()
+        before_ctx.input_messages = [
+            MagicMock(role="user", text="Hello from the integration test.")
+        ]
+        before_ctx.extend_instructions = MagicMock()
+        before_ctx.extend_tools = MagicMock()
+        before_ctx.response = None
+
+        # Must not raise; resources are already provisioned above.
+        await provider.before_run(
+            agent=MagicMock(), session=MagicMock(), context=before_ctx, state={}
+        )
+        assert provider._user_turn_persisted is True
+
+        after_ctx = MagicMock()
+        after_ctx.input_messages = []
+        response = MagicMock()
+        response.messages = [MagicMock(role="assistant", text="Hi there!")]
+        after_ctx.response = response
+
+        await provider.after_run(
+            agent=MagicMock(), session=MagicMock(), context=after_ctx, state={}
+        )
+
+        # -- Context retrieval round-trips: the thread now has both turns ---
+        t = await zep.thread.get(thread_id=thread_id, lastn=20)
+        messages = t.messages or []
+        assert any(m.role == "user" for m in messages)
+        assert any(m.role == "assistant" for m in messages)
+    finally:
+        try:
+            await zep.user.delete(user_id=user_id)
+        except Exception:
+            pass
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_integration_full_lifecycle() -> None:
     """Pytest entry point for the live integration test."""
+    if not OPENAI_API_KEY:
+        pytest.skip("OPENAI_API_KEY required for this test")
+
     zep = AsyncZep(api_key=ZEP_API_KEY)
     hook_calls: list[str] = []
 

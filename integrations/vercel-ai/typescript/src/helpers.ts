@@ -1,6 +1,6 @@
 import { Zep } from "@getzep/zep-cloud";
 import type { ZepClient } from "@getzep/zep-cloud";
-import type { ZepLogger, ZepTurn } from "./types.js";
+import type { ZepLogger, ZepTurn, ZepUserCreatedHook } from "./types.js";
 import {
   MESSAGE_MAX_CHARS,
   errorMessage,
@@ -255,6 +255,15 @@ export interface EnsureIdentityOptions {
   lastName?: string;
   /** User's email. */
   email?: string;
+  /**
+   * Runs exactly once, immediately after the Zep user is newly created (not
+   * on an already-exists path). Errors are logged, not thrown — a failing
+   * hook never flips this helper's return value to `false`; the "ready"
+   * meaning of the return value is about the user/thread existing, not about
+   * the hook's success. Use this to configure per-user ontology, custom
+   * instructions, or user summary instructions.
+   */
+  onUserCreated?: ZepUserCreatedHook;
   /** Logger for failures. Defaults to `console`. */
   logger?: ZepLogger;
 }
@@ -266,6 +275,11 @@ export interface EnsureIdentityOptions {
  * once, out-of-band, before the first turn (the Zep "create user → create thread"
  * step). Already-existing resources are treated as success. Failures are logged
  * (no PII) and reported via the return value rather than thrown.
+ *
+ * When the user is newly created (not an already-exists conflict) and
+ * `onUserCreated` is provided, the hook is awaited before `thread.create` runs.
+ * A hook failure is logged and does not affect the returned "ready" result —
+ * see {@link EnsureIdentityOptions.onUserCreated}.
  *
  * @returns `true` if the user and thread are ready, `false` if setup failed.
  */
@@ -282,6 +296,14 @@ export async function ensureZepUserAndThread(
       ...(options.lastName !== undefined ? { lastName: options.lastName } : {}),
       ...(options.email !== undefined ? { email: options.email } : {}),
     });
+    // A genuinely successful create (no conflict) — fire the hook exactly once.
+    if (options.onUserCreated) {
+      try {
+        await options.onUserCreated(client, userId);
+      } catch (hookError) {
+        logger.warn(`[zep] onUserCreated hook failed: ${errorMessage(hookError)}`);
+      }
+    }
   } catch (error) {
     if (isAlreadyExists(error)) {
       // A 409 Conflict means the user already exists — that's fine.

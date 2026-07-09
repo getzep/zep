@@ -1,6 +1,6 @@
 {
   "name": "@getzep/zep-mastra",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Zep long-term memory tools for Mastra agents — persist, search, and retrieve user context from Zep's temporal Context Graph.",
   "license": "Apache-2.0",
   "author": "Zep AI, Inc.",

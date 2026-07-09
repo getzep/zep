@@ -62,13 +62,19 @@ type ToolOutput<TResult> = TResult extends object
  * tools always resolve to the structured output, so this helper narrows that
  * union down to the success shape (asserting a non-void object) to keep tests
  * readable and typed.
+ *
+ * @param context - Optional second argument forwarded to `execute` (e.g.
+ *   `{ requestContext }`), for exercising per-call identity resolution.
+ *   Defaults to `undefined`, matching a tool invoked with no execution
+ *   context.
  */
 export async function run<TIn, TResult>(
   tool: ExecutableTool<TIn, TResult>,
   input: TIn,
+  context?: unknown,
 ): Promise<ToolOutput<TResult>> {
   if (!tool.execute) throw new Error("tool has no execute");
-  const result = await tool.execute(input, undefined as never);
+  const result = await tool.execute(input, context as never);
   if (result === undefined || result === null || typeof result !== "object") {
     throw new Error(`expected a structured tool result, got: ${typeof result}`);
   }

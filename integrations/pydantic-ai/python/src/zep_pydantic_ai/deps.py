@@ -17,7 +17,9 @@ persistence helper need them.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 from pydantic_ai.messages import (
     ModelMessage,
@@ -30,12 +32,88 @@ from pydantic_ai.messages import (
 from zep_cloud import Message
 from zep_cloud.client import AsyncZep
 
+from .provisioning import UserSetupHook, _is_already_exists_error
+from .provisioning import ensure_thread as _provision_thread
+
+if TYPE_CHECKING:
+    from pydantic_ai import RunContext
+
 logger = logging.getLogger(__name__)
 
 #: Zep rejects a single message whose content exceeds 4096 characters (HTTP
 #: 400).  We truncate a little below that ceiling so the message is always
 #: accepted; longer text is clipped before it is sent and a warning is logged.
 MAX_MESSAGE_CHARS = 4000
+
+#: Default template used to wrap retrieved Zep context before injecting it
+#: into the message history.  Rendered via plain string replacement
+#: (``template.replace("{context}", context_text)``), never ``str.format`` --
+#: so context text or a custom template containing ``{``/``}``/``%`` is
+#: always safe to inject.
+#:
+#: This exact string is canonical across zep-adk's Python, Go, and
+#: TypeScript implementations -- keep them in sync.
+DEFAULT_CONTEXT_TEMPLATE = (
+    "The following context is retrieved from Zep, the agent's long-term memory. "
+    "It contains relevant facts, entities, and prior knowledge about the user. "
+    "Use it to inform your responses.\n\n"
+    "<ZEP_CONTEXT>\n"
+    "{context}\n"
+    "</ZEP_CONTEXT>"
+)
+
+
+@dataclass(frozen=True)
+class ContextInput:
+    """Input handed to a custom context builder.
+
+    Bundling the builder's inputs into a single frozen dataclass (rather than
+    positional arguments) lets us add fields later without breaking existing
+    builders.
+
+    Attributes:
+        zep: The ``AsyncZep`` client in use (``ctx.deps.client``).
+        user_id: The Zep user ID for this turn.
+        thread_id: The Zep thread ID for this turn.
+        user_message: The user's message text for this turn.
+        run_context: The Pydantic AI ``RunContext`` for this turn.
+
+    Example:
+        A builder that searches a per-user graph instead of using the
+        thread's default context retrieval::
+
+            async def my_builder(ctx: ContextInput) -> str | None:
+                results = await ctx.zep.graph.search(
+                    user_id=ctx.user_id,
+                    query=ctx.user_message,
+                    scope="edges",
+                )
+                if not results.edges:
+                    return None
+                return "\\n".join(edge.fact for edge in results.edges)
+
+            deps = ZepDeps(client=zep, user_id="u", thread_id="t", context_builder=my_builder)
+    """
+
+    zep: AsyncZep
+    user_id: str
+    thread_id: str
+    user_message: str
+    run_context: RunContext[Any] | None = None
+
+
+#: Type alias for a custom context builder function.
+#:
+#: A context builder receives a single :class:`ContextInput` and returns the
+#: context string to inject into the LLM prompt (or ``None`` to skip
+#: injection).
+#:
+#: Error semantics: if the builder raises, the processor logs a warning and
+#: skips injection for that turn -- it does not crash the agent run and does
+#: not prevent message persistence from completing.  See
+#: :func:`zep_pydantic_ai.history_processor.zep_history_processor` for the
+#: full error-isolation contract between persistence and the builder.
+ContextBuilder = Callable[[ContextInput], Awaitable[str | None]]
 
 
 @dataclass
@@ -71,6 +149,18 @@ class ZepDeps:
             knowledge-graph ingestion.  Messages are still stored in the thread
             history but are not processed into the user's graph.  Passed through
             to every ``thread.add_messages`` call.
+        context_builder: Optional async callable that constructs the context
+            block to inject into the prompt, in place of the default
+            ``thread.add_messages(return_context=True)`` retrieval.  Receives
+            a single :class:`ContextInput`.  When set, message persistence and
+            context building run **concurrently** for lower latency; see
+            :func:`zep_pydantic_ai.history_processor.zep_history_processor`
+            for the error-isolation contract between the two.
+        context_template: Template used to wrap retrieved context before
+            injecting it into the message history.  Must contain a literal
+            ``{context}`` placeholder, replaced via plain string replacement
+            (never ``str.format``).  Defaults to
+            :data:`DEFAULT_CONTEXT_TEMPLATE`.
     """
 
     client: AsyncZep
@@ -82,6 +172,8 @@ class ZepDeps:
     user_name: str | None = None
     assistant_name: str = "Assistant"
     ignore_roles: list[str] | None = None
+    context_builder: ContextBuilder | None = None
+    context_template: str = DEFAULT_CONTEXT_TEMPLATE
 
     #: Internal: tracks whether the user/thread have been created this process,
     #: keyed by ``(user_id, thread_id)``, to avoid redundant create calls.
@@ -225,62 +317,94 @@ def model_messages_to_zep(
     return out
 
 
-def make_context_request(context: str) -> ModelRequest:
+def make_context_request(context: str, *, template: str = DEFAULT_CONTEXT_TEMPLATE) -> ModelRequest:
     """Wrap a Zep context block in a ``ModelRequest`` with a ``SystemPromptPart``.
 
     The returned request is prepended to the message history by the processor so
-    the model sees Zep's memory before the conversation.
+    the model sees Zep's memory before the conversation.  ``template`` is
+    rendered via plain string replacement (``template.replace("{context}",
+    context)``), never ``str.format`` -- so context text containing ``{``,
+    ``}``, or ``%`` is always safe to inject.
 
     Args:
         context: The Zep context block (facts, summaries, entities).
+        template: The template to wrap ``context`` in.  Must contain a
+            literal ``{context}`` placeholder.  Defaults to
+            :data:`DEFAULT_CONTEXT_TEMPLATE`.
 
     Returns:
         A ``ModelRequest`` carrying a single system-prompt part.
     """
-    instruction = (
-        "The following context is retrieved from Zep's long-term memory "
-        "service. It contains relevant facts, relationships, and prior "
-        "knowledge about the user. Use it to inform your responses.\n\n"
-        "<ZEP_CONTEXT>\n"
-        f"{context}\n"
-        "</ZEP_CONTEXT>"
-    )
+    instruction = template.replace("{context}", context)
     return ModelRequest(parts=[SystemPromptPart(content=instruction)])
 
 
-async def ensure_user_and_thread(deps: ZepDeps) -> bool:
+async def ensure_user_and_thread(
+    deps: ZepDeps,
+    *,
+    on_created: UserSetupHook | None = None,
+) -> bool:
     """Create the Zep user and thread if they do not already exist.
 
-    Creation is idempotent: "already exists" conflicts are treated as success,
-    and the ``(user_id, thread_id)`` pair is cached on ``deps`` so subsequent
-    turns skip the round-trips.  A genuine failure (network, auth) returns
-    ``False`` and is logged -- it never raises.
+    Uses the same create-then-catch-conflict semantics as
+    :func:`zep_pydantic_ai.provisioning.ensure_user` and
+    :func:`~.provisioning.ensure_thread`.  Creation is idempotent: "already
+    exists" conflicts are treated as success, and the ``(user_id, thread_id)``
+    pair is cached on ``deps`` so subsequent turns skip the round-trips.
+
+    This function is called from the history processor's hot path, where a
+    genuine failure (network, auth) must never raise into the agent run --
+    such failures are logged and ``False`` is returned instead.  An
+    ``on_created`` hook error, however, indicates the caller's own setup code
+    is broken and **does** propagate, same as :func:`~.provisioning.ensure_user`.
 
     Args:
         deps: The dependency object carrying the client and identity.
+        on_created: Optional async hook run exactly once, only when the user
+            is newly created.  See :func:`~.provisioning.ensure_user`.
 
     Returns:
         ``True`` if the user and thread are ready, ``False`` on genuine failure.
+
+    Raises:
+        Exception: Any exception raised by ``on_created``.
     """
     key = (deps.user_id, deps.thread_id)
     if key in deps._created:
         return True
 
-    if not await _ensure_user(deps):
+    try:
+        user_created = await _create_user(deps)
+    except Exception as exc:
+        logger.warning("Failed to create Zep user %s: %s", deps.user_id, exc)
         return False
-    if not await _ensure_thread(deps):
+
+    if user_created and on_created is not None:
+        # A hook error indicates the caller's own setup code is broken; let
+        # it propagate rather than swallowing it like a genuine SDK failure.
+        await on_created(deps.client, deps.user_id)
+        logger.info("on_created hook completed for user %s", deps.user_id)
+
+    try:
+        await _provision_thread(deps.client, thread_id=deps.thread_id, user_id=deps.user_id)
+    except Exception as exc:
+        logger.warning("Failed to create Zep thread %s: %s", deps.thread_id, exc)
         return False
 
     deps._created.add(key)
     return True
 
 
-def _is_already_exists(exc: Exception) -> bool:
-    text = str(exc).lower()
-    return "already exists" in text or "conflict" in text or "409" in text
+async def _create_user(deps: ZepDeps) -> bool:
+    """Create the Zep user, treating "already exists" as success.
 
+    Returns:
+        ``True`` if the user was newly created, ``False`` if it already
+        existed.
 
-async def _ensure_user(deps: ZepDeps) -> bool:
+    Raises:
+        Exception: Any genuine failure from the Zep SDK (auth, network, 5xx).
+    """
     try:
         await deps.client.user.add(
             user_id=deps.user_id,
@@ -288,24 +412,11 @@ async def _ensure_user(deps: ZepDeps) -> bool:
             last_name=deps.last_name,
             email=deps.email,
         )
-        logger.info("Created Zep user: %s", deps.user_id)
-        return True
     except Exception as exc:
-        if _is_already_exists(exc):
+        if _is_already_exists_error(exc):
             logger.debug("Zep user %s already exists", deps.user_id)
-            return True
-        logger.warning("Failed to create Zep user %s: %s", deps.user_id, exc)
-        return False
+            return False
+        raise
 
-
-async def _ensure_thread(deps: ZepDeps) -> bool:
-    try:
-        await deps.client.thread.create(thread_id=deps.thread_id, user_id=deps.user_id)
-        logger.info("Created Zep thread: %s", deps.thread_id)
-        return True
-    except Exception as exc:
-        if _is_already_exists(exc):
-            logger.debug("Zep thread %s already exists", deps.thread_id)
-            return True
-        logger.warning("Failed to create Zep thread %s: %s", deps.thread_id, exc)
-        return False
+    logger.info("Created Zep user: %s", deps.user_id)
+    return True

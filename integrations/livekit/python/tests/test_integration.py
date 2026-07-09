@@ -84,7 +84,7 @@ def check(description: str, condition: bool, detail: str = "") -> bool:
 async def wait_for_episodes_processed(
     zep: AsyncZep,
     user_id: str,
-    timeout_seconds: int = 120,
+    timeout_seconds: int = 300,
     poll_interval: float = 3.0,
 ) -> None:
     """Poll Zep episodes until all are processed or the timeout is reached."""
@@ -204,7 +204,7 @@ async def main() -> None:
 
         # -- Wait for graph ingestion ----------------------------------------
         print("\n[Step 4] Waiting for Zep to process episodes...")
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=120)
+        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
 
         # -- Conversation 2: cross-thread memory recall ----------------------
         print("\n[Step 5] Conversation 2: cross-thread memory recall...")
@@ -288,7 +288,7 @@ async def test_integration_full_lifecycle() -> None:
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)
 
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=120)
+        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
 
         await zep.thread.create(thread_id=THREAD_2, user_id=USER_ID)
         agent2 = build_agent(zep, THREAD_2)

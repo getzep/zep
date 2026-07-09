@@ -3,112 +3,410 @@ Zep AutoGen Tools.
 
 This module provides AutoGen tools for interacting with Zep memory storage,
 including graph and user memory operations.
+
+``create_search_graph_tool`` (BREAKING in this version -- see the CHANGELOG)
+follows the pin-or-expose pattern shared by the other Zep framework
+integrations: every ``graph.search`` parameter (``scope``, ``reranker``,
+``limit``, ``mmr_lambda``, ``center_node_uuid``) is exposed to the model by
+default and can be pinned (fixed to a constant, hidden from the model) or
+hidden (removed from the schema without pinning; Zep's own default applies)
+at construction time.
+
+Unlike the sibling integrations' ``create_zep_search_tool`` (which builds a
+tool from a hand-crafted JSON schema), AutoGen's ``FunctionTool`` derives its
+schema strictly from the wrapped Python function's typed signature -- there is
+no raw-JSON-schema constructor argument. So pin-or-expose here works by
+*dynamically building the wrapped function's signature*: exposed parameters
+become real, typed parameters of the function AutoGen introspects (so they
+appear in ``tool.schema["parameters"]["properties"]``), while pinned/hidden
+parameters are never parameters of the function at all -- they are merged in
+as constants (or omitted) when the tool actually calls ``graph.search``. This
+was verified against the installed ``autogen_core`` package's
+``FunctionTool``/``args_base_model_from_signature`` implementation.
 """
 
+import inspect
 import logging
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from autogen_core.tools import FunctionTool
 from zep_cloud.client import AsyncZep
 
+from .limits import truncate_graph_data
+
 logger = logging.getLogger(__name__)
 
+Scope = Literal[
+    "edges",
+    "nodes",
+    "episodes",
+    "observations",
+    "thread_summaries",
+    "auto",
+]
+Reranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
 
-async def search_memory(
-    client: AsyncZep,
-    query: Annotated[str, "The search query to find relevant memories"],
-    graph_id: Annotated[str | None, "Graph ID to search in (for generic knowledge graph)"] = None,
-    user_id: Annotated[str | None, "User ID to search graph for (for user knowledge graph)"] = None,
-    limit: Annotated[int, "Maximum number of results to return"] = 10,
-    scope: Annotated[
-        str | None,
-        "Scope of search: 'edges' (facts), 'nodes' (entities), 'episodes' (for knowledge graph). Defaults to edges",
-    ] = "edges",
-) -> list[dict[str, Any]]:
+#: Zep caps ``graph.search`` ``limit`` at 50; larger values are rejected.
+MAX_SEARCH_LIMIT = 50
+
+#: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
+#: retrieval and applies its own internal cross-scope rerank).
+_AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
+
+# ---------------------------------------------------------------------------
+# Parameter definitions
+# ---------------------------------------------------------------------------
+# Each entry describes a graph.search parameter that can be pinned or exposed
+# to the model.  Keys match the Zep SDK's ``graph.search()`` kwargs.  Model-
+# exposed by default; hidden only when pinned or explicitly listed in
+# ``hidden_params``. ``annotation`` is the real typed annotation used to build
+# the dynamic function signature FunctionTool introspects.
+
+_SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
+    "scope": {
+        "annotation": Scope,
+        "description": (
+            "What to search for: 'edges' for facts and relationships, "
+            "'nodes' for entities and their summaries, "
+            "'episodes' for raw text data (unstructured text, messages, or JSON), "
+            "'observations' for derived memories, "
+            "'thread_summaries' for incremental thread summaries, "
+            "'auto' to let Zep decide the best mix of results."
+        ),
+        "default": "edges",
+    },
+    "reranker": {
+        "annotation": Reranker,
+        "description": (
+            "Result ordering algorithm: 'rrf' (balanced), 'mmr' (diverse), "
+            "'cross_encoder' (highest accuracy), 'episode_mentions' "
+            "(frequently referenced), 'node_distance' (near a specific entity)."
+        ),
+        "default": "rrf",
+    },
+    "limit": {
+        "annotation": int,
+        "description": "Maximum number of results to return.",
+        "default": 10,
+    },
+    "mmr_lambda": {
+        "annotation": float | None,
+        "description": (
+            "Balance between diversity (0.0) and relevance (1.0). Only used when reranker is 'mmr'."
+        ),
+        "default": None,
+    },
+    "center_node_uuid": {
+        "annotation": str | None,
+        "description": (
+            "UUID of the center node for distance-based reranking. "
+            "Required when reranker is 'node_distance'."
+        ),
+        "default": None,
+    },
+}
+
+#: Parameters that are always constructor-only (complex types not suitable for
+#: model schema generation).
+_CONSTRUCTOR_ONLY_PARAMS = frozenset({"search_filters", "bfs_origin_node_uuids"})
+
+#: All parameters that may be pinned or hidden at construction.
+_PINNABLE_PARAMS = frozenset(_SEARCH_PARAM_SPECS.keys())
+
+
+def _name_summary_text(name: str | None, summary: str | None) -> str:
+    """Join a name and summary as "name: summary", falling back gracefully."""
+    if name and summary:
+        return f"{name}: {summary}"
+    if name:
+        return name
+    if summary:
+        return summary
+    return ""
+
+
+def _format_results(result: Any, scope: str) -> str:
+    """Render Zep search results as readable text for the model."""
+    if scope == "auto":
+        context = getattr(result, "context", None)
+        if context and str(context).strip():
+            return str(context).strip()
+        return "No results found."
+
+    parts: list[str] = []
+    if scope == "edges" and result.edges:
+        parts = [f"- {edge.fact}" for edge in result.edges if edge.fact]
+    elif scope == "nodes" and result.nodes:
+        for node in result.nodes:
+            text = _name_summary_text(getattr(node, "name", None), getattr(node, "summary", None))
+            if text:
+                parts.append(f"- {text}")
+    elif scope == "episodes" and result.episodes:
+        parts = [f"- {ep.content}" for ep in result.episodes if ep.content]
+    elif scope == "observations" and result.observations:
+        for obs in result.observations:
+            text = _name_summary_text(getattr(obs, "name", None), getattr(obs, "summary", None))
+            if text:
+                parts.append(f"- {text}")
+    elif scope == "thread_summaries" and result.thread_summaries:
+        for ts in result.thread_summaries:
+            summary = getattr(ts, "summary", None)
+            summary_text = summary or getattr(ts, "name", None)
+            if summary_text:
+                parts.append(f"- {summary_text}")
+
+    return "\n".join(parts) if parts else "No results found."
+
+
+def _build_search_signature(
+    exposed: dict[str, dict[str, Any]],
+) -> tuple[inspect.Signature, dict[str, Any]]:
+    """Build the typed signature FunctionTool will introspect.
+
+    ``query`` is always present and required; ``exposed`` params (those not
+    pinned or hidden) become real, defaulted parameters annotated with
+    ``Annotated[<type>, <description>]`` so FunctionTool's schema generation
+    picks up both the type/enum and the description.
     """
-    Search Zep memory storage for relevant information.
+    params: list[inspect.Parameter] = [
+        inspect.Parameter(
+            "query",
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            annotation=Annotated[str, "Search query text (max 400 characters)."],
+        )
+    ]
+    for name, spec in exposed.items():
+        base_type = spec["annotation"]
+        param_description = spec["description"]
+        params.append(
+            inspect.Parameter(
+                name,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default=spec["default"],
+                annotation=Annotated[base_type, param_description],
+            )
+        )
+    signature = inspect.Signature(params)
+    annotations = {p.name: p.annotation for p in params}
+    return signature, annotations
 
-    Searches either graph memory (if graph_id provided) or user memory (if user_id provided).
-    Exactly one of graph_id or user_id must be provided.
+
+def create_search_graph_tool(
+    client: AsyncZep,
+    graph_id: str | None = None,
+    user_id: str | None = None,
+    *,
+    pinned_params: dict[str, Any] | None = None,
+    hidden_params: set[str] | None = None,
+    search_filters: dict[str, Any] | None = None,
+    bfs_origin_node_uuids: list[str] | None = None,
+    name: str = "zep_search",
+    description: str = (
+        "Search the knowledge graph for facts, entities, or prior context. "
+        "Use this to look up specific details the user has shared before, or "
+        "domain knowledge stored in the graph."
+    ),
+    # Back-compat: the original constructor args.  Each, if passed, pins
+    # (hides) the corresponding parameter -- equivalent to putting it in
+    # ``pinned_params``.
+    scope: Scope | None = None,
+    limit: int | None = None,
+) -> FunctionTool:
+    """Build an AutoGen ``FunctionTool`` that searches a Zep knowledge graph.
+
+    Register the returned tool with an agent::
+
+        from zep_autogen import create_search_graph_tool
+
+        tool = create_search_graph_tool(zep_client, user_id="user-123")
+        agent = AssistantAgent(..., tools=[tool], reflect_on_tool_use=True)
+
+    By default the tool searches the graph identified by **exactly one of**
+    ``graph_id`` or ``user_id`` (required, mutually exclusive).
+
+    **Pin-or-expose.** Every ``graph.search`` parameter (``scope``,
+    ``reranker``, ``limit``, ``mmr_lambda``, ``center_node_uuid``) is exposed
+    to the model in the tool's schema by default, with the documented
+    defaults above. Use ``pinned_params`` to fix a parameter to a constant
+    value and remove it from the schema (the model can no longer choose it);
+    use ``hidden_params`` to remove a parameter from the schema *without*
+    pinning it -- Zep's own server-side default applies, and the parameter is
+    simply omitted from the SDK call.
+
+    ``search_filters`` and ``bfs_origin_node_uuids`` are always
+    constructor-only: their complex/list-of-object shapes are not exposed to
+    the model.
 
     Args:
-        client: AsyncZep client instance
-        query: Search query string
-        graph_id: Graph ID for graph memory search
-        user_id: User ID for user memory search
-        limit: Maximum results to return
-        scope: Optional search filters
+        client: AsyncZep client instance.
+        graph_id: Optional graph ID to bind to this tool.
+        user_id: Optional user ID to bind to this tool.
+        pinned_params: Optional mapping of ``graph.search`` parameter name to
+            a fixed value.  Pinned parameters are hidden from the model's
+            tool schema and always sent with the given value.
+        hidden_params: Optional set of ``graph.search`` parameter names to
+            hide from the model's tool schema without pinning them --
+            omitted from the SDK call so Zep's own default takes effect.
+        search_filters: Optional Zep search filters (constructor-only).
+            Supports ``node_labels``, ``edge_types``, ``exclude_node_labels``,
+            ``exclude_edge_types``, and property filters.
+        bfs_origin_node_uuids: Optional list of node UUIDs for BFS seeding
+            (constructor-only).
+        name: The tool name exposed to the model. Defaults to ``"zep_search"``.
+        description: The tool description exposed to the model.
+        scope: Deprecated back-compat alias for ``pinned_params={"scope": scope}``.
+        limit: Deprecated back-compat alias for ``pinned_params={"limit": limit}``.
 
     Returns:
-        List of memory results with content and metadata
+        An ``autogen_core.tools.FunctionTool``. Calling it executes
+        ``graph.search`` with pinned/model-provided/default parameters
+        merged; Zep failures are caught and returned as an error string --
+        the tool never raises into the agent.
 
     Raises:
-        ValueError: If neither or both graph_id and user_id are provided
+        ValueError: If neither or both of ``graph_id``/``user_id`` are
+            provided, or ``pinned_params``/``hidden_params`` (or a legacy
+            alias) contains an unknown parameter name.
     """
     if not graph_id and not user_id:
-        raise ValueError("Either graph_id or user_id must be provided")
-
+        raise ValueError("Either graph_id or user_id must be provided when creating the tool")
     if graph_id and user_id:
-        raise ValueError("Only one of graph_id or user_id should be provided")
+        raise ValueError(
+            "Only one of graph_id or user_id should be provided when creating the tool"
+        )
 
-    try:
-        results = []
-        if graph_id:
-            # Search graph memory
-            search_results = await client.graph.search(
-                graph_id=graph_id, query=query, limit=limit, scope=scope
+    pinned: dict[str, Any] = dict(pinned_params or {})
+    hidden: set[str] = set(hidden_params or ())
+
+    # Legacy constructor args pin (and thus hide) their parameter, same as
+    # passing it via pinned_params -- back-compat for the pre-pin-or-expose API.
+    if scope is not None:
+        pinned.setdefault("scope", scope)
+    if limit is not None:
+        pinned.setdefault("limit", limit)
+
+    unknown_pinned = set(pinned.keys()) - _PINNABLE_PARAMS
+    if unknown_pinned:
+        raise ValueError(
+            f"Unknown pinned parameters: {unknown_pinned}. Allowed: {sorted(_PINNABLE_PARAMS)}"
+        )
+    unknown_hidden = hidden - _PINNABLE_PARAMS
+    if unknown_hidden:
+        raise ValueError(
+            f"Unknown hidden parameters: {unknown_hidden}. Allowed: {sorted(_PINNABLE_PARAMS)}"
+        )
+
+    # Clamp a pinned limit to Zep's ceiling at construction time so the call
+    # never 400s.
+    if "limit" in pinned:
+        pinned_limit = pinned["limit"]
+        if pinned_limit > MAX_SEARCH_LIMIT:
+            logger.warning(
+                "zep_search limit %d exceeds Zep ceiling %d; clamping to %d",
+                pinned_limit,
+                MAX_SEARCH_LIMIT,
+                MAX_SEARCH_LIMIT,
             )
+            pinned["limit"] = MAX_SEARCH_LIMIT
+        elif pinned_limit < 1:
+            pinned["limit"] = 1
 
-        else:  # user_id provided
-            # Search user memory
-            search_results = await client.graph.search(user_id=user_id, query=query, limit=limit)
+    # Auto scope rejects node_distance / episode_mentions and ignores reranker
+    # entirely.  If scope is pinned to "auto" and reranker is also pinned,
+    # resolve the effective value once, here, so the call path is always valid.
+    # The reranker stays hidden from the model (the caller pinned it) but is
+    # omitted from the SDK call.
+    if pinned.get("scope") == "auto" and "reranker" in pinned:
+        if pinned["reranker"] in _AUTO_INCOMPATIBLE_RERANKERS:
+            logger.warning(
+                "zep_search reranker %r is invalid for scope='auto'; "
+                "omitting reranker (auto search uses RRF).",
+                pinned["reranker"],
+            )
+        del pinned["reranker"]
+        hidden.add("reranker")
 
-        # Process graph results
-        if search_results.edges:
-            for edge in search_results.edges:
-                results.append(
-                    {
-                        "content": edge.fact,
-                        "type": "edge",
-                        "name": edge.name,
-                        "attributes": edge.attributes or {},
-                        "created_at": edge.created_at,
-                        "valid_at": edge.valid_at,
-                        "invalid_at": edge.invalid_at,
-                        "expired_at": edge.expired_at,
-                    }
+    exposed = {
+        param_name: spec
+        for param_name, spec in _SEARCH_PARAM_SPECS.items()
+        if param_name not in pinned and param_name not in hidden
+    }
+    signature, annotations = _build_search_signature(exposed)
+
+    constructor_only: dict[str, Any] = {}
+    if search_filters is not None:
+        constructor_only["search_filters"] = search_filters
+    if bfs_origin_node_uuids is not None:
+        constructor_only["bfs_origin_node_uuids"] = bfs_origin_node_uuids
+
+    async def zep_search(*args: Any, **kwargs: Any) -> str:
+        bound = signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+        call_args = dict(bound.arguments)
+
+        query = str(call_args.pop("query", ""))[:400]
+        search_kwargs: dict[str, Any] = {"query": query}
+
+        for param_name in _SEARCH_PARAM_SPECS:
+            if param_name in pinned:
+                search_kwargs[param_name] = pinned[param_name]
+            elif param_name in hidden:
+                continue  # hidden, not pinned -> omit; Zep applies its own default
+            elif param_name in call_args:
+                value = call_args[param_name]
+                if value is not None:
+                    search_kwargs[param_name] = value
+
+        # Clamp a model-provided limit to Zep's ceiling so the call never
+        # 400s (pinned limits were already clamped at construction time).
+        limit_value = search_kwargs.get("limit")
+        if limit_value is not None:
+            if limit_value > MAX_SEARCH_LIMIT:
+                logger.warning(
+                    "zep_search limit %d exceeds Zep ceiling %d; clamping to %d",
+                    limit_value,
+                    MAX_SEARCH_LIMIT,
+                    MAX_SEARCH_LIMIT,
+                )
+                search_kwargs["limit"] = MAX_SEARCH_LIMIT
+            elif limit_value < 1:
+                search_kwargs["limit"] = 1
+
+        effective_scope = str(search_kwargs.get("scope", "edges"))
+        if effective_scope == "auto" and "reranker" in search_kwargs:
+            # Auto search always uses RRF internally and ignores reranker
+            # entirely; Zep rejects node_distance/episode_mentions outright.
+            # Warn only when the (would-be) reranker is one Zep would reject.
+            dropped_reranker = search_kwargs.pop("reranker")
+            if dropped_reranker in _AUTO_INCOMPATIBLE_RERANKERS:
+                logger.warning(
+                    "zep_search reranker %r is invalid for scope='auto'; omitting reranker.",
+                    dropped_reranker,
                 )
 
-        if search_results.nodes:
-            for node in search_results.nodes:
-                results.append(
-                    {
-                        "content": f"{node.name}: {node.summary}",
-                        "type": "node",
-                        "name": node.name,
-                        "attributes": node.attributes or {},
-                        "created_at": node.created_at,
-                    }
-                )
+        if graph_id:
+            search_kwargs["graph_id"] = graph_id
+        else:
+            search_kwargs["user_id"] = user_id
 
-        if search_results.episodes:
-            for episode in search_results.episodes:
-                results.append(
-                    {
-                        "content": episode.content,
-                        "type": "episode",
-                        "source": episode.source,
-                        "role": episode.role,
-                        "created_at": episode.created_at,
-                    }
-                )
+        search_kwargs.update(constructor_only)
 
-        logger.info(f"Found {len(results)} memories for query: {query}")
-        return results
+        if not search_kwargs.get("query"):
+            return "Error: No search query provided."
 
-    except Exception as e:
-        logger.error(f"Error searching memory: {e}")
-        return []
+        try:
+            result = await client.graph.search(**search_kwargs)
+        except Exception as exc:
+            logger.warning("Zep graph search failed: %s", exc, exc_info=True)
+            return f"Graph search failed: {exc}"
+
+        return _format_results(result, effective_scope)
+
+    zep_search.__signature__ = signature  # type: ignore[attr-defined]
+    zep_search.__annotations__ = {**annotations, "return": str}
+    zep_search.__name__ = name
+
+    return FunctionTool(zep_search, description=description, name=name)
 
 
 async def add_graph_data(
@@ -142,10 +440,12 @@ async def add_graph_data(
     if graph_id and user_id:
         raise ValueError("Only one of graph_id or user_id should be provided")
 
+    truncated_data = truncate_graph_data(data)
+
     try:
         if graph_id:
             # Add to graph memory
-            await client.graph.add(graph_id=graph_id, type=data_type, data=data)
+            await client.graph.add(graph_id=graph_id, type=data_type, data=truncated_data)
 
             logger.debug(f"Added data to graph {graph_id}")
             return {
@@ -157,7 +457,7 @@ async def add_graph_data(
 
         else:  # user_id provided
             # Add to user graph memory
-            await client.graph.add(user_id=user_id, type=data_type, data=data)
+            await client.graph.add(user_id=user_id, type=data_type, data=truncated_data)
 
             logger.debug(f"Added data to user graph {user_id}")
             return {
@@ -170,47 +470,6 @@ async def add_graph_data(
     except Exception as e:
         logger.error(f"Error adding memory data: {e}")
         return {"success": False, "message": f"Failed to add data: {str(e)}"}
-
-
-def create_search_graph_tool(
-    client: AsyncZep, graph_id: str | None = None, user_id: str | None = None
-) -> FunctionTool:
-    """
-    Create a search memory tool bound to a Zep client.
-
-    Args:
-        client: AsyncZep client instance
-        graph_id: Optional graph ID to bind to this tool
-        user_id: Optional user ID to bind to this tool
-
-    Returns:
-        FunctionTool for searching memory
-
-    Raises:
-        ValueError: If neither or both graph_id and user_id are provided
-    """
-    if not graph_id and not user_id:
-        raise ValueError("Either graph_id or user_id must be provided when creating the tool")
-
-    if graph_id and user_id:
-        raise ValueError(
-            "Only one of graph_id or user_id should be provided when creating the tool"
-        )
-
-    async def bound_search_memory(
-        query: Annotated[str, "The search query to find relevant memories"],
-        limit: Annotated[int, "Maximum number of results to return"] = 10,
-        scope: Annotated[
-            str | None,
-            "Scope of search: 'edges' (facts), 'nodes' (entities), 'episodes' (for knowledge graph). Defaults to edges",
-        ] = "edges",
-    ) -> list[dict[str, Any]]:
-        return await search_memory(client, query, graph_id, user_id, limit, scope)
-
-    return FunctionTool(
-        bound_search_memory,
-        description=f"Search Zep memory storage for relevant information in {'graph ' + (graph_id or '') if graph_id else 'user ' + (user_id or '')}.",
-    )
 
 
 def create_add_graph_data_tool(

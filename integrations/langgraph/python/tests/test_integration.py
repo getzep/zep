@@ -92,7 +92,7 @@ def check(description: str, condition: bool, detail: str = "") -> bool:
 async def wait_for_episodes_processed(
     zep: AsyncZep,
     user_id: str,
-    timeout_seconds: int = 120,
+    timeout_seconds: int = 300,
     poll_interval: float = 3.0,
 ) -> None:
     """Poll Zep episodes until all are processed or the timeout is reached."""
@@ -112,6 +112,33 @@ async def wait_for_episodes_processed(
             logger.info("All %d episodes processed.", len(episodes))
             return
         await asyncio.sleep(poll_interval)
+
+
+async def wait_for_graph_searchable(
+    zep: AsyncZep,
+    user_id: str,
+    query: str,
+    timeout_seconds: int = 300,
+    poll_interval: float = 5.0,
+) -> bool:
+    """Poll ``graph.search`` until it returns at least one edge.
+
+    Episodes can report ``processed`` before the extracted facts are actually
+    searchable, so gate the recall turn on the signal it depends on: a live
+    graph search returning results.
+    """
+    start = time.monotonic()
+    while time.monotonic() - start <= timeout_seconds:
+        try:
+            result = await zep.graph.search(user_id=user_id, query=query, scope="edges", limit=5)
+            if result.edges:
+                logger.info("Graph search returned %d edges.", len(result.edges))
+                return True
+        except Exception as exc:
+            logger.warning("Graph search poll failed (%s); retrying.", exc)
+        await asyncio.sleep(poll_interval)
+    logger.warning("Timed out waiting for graph search results; continuing.")
+    return False
 
 
 def build_agent(zep: AsyncZep, thread_id: str) -> Callable[[str], Awaitable[str]]:
@@ -191,16 +218,24 @@ async def main() -> None:
 
         # -- Wait for graph ingestion ----------------------------------------
         print("\n[Step 4] Waiting for Zep to process episodes...")
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=120)
+        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
+        await wait_for_graph_searchable(zep, USER_ID, query="Where does IntegTest work?")
 
         # -- Conversation 2: cross-thread memory recall ----------------------
         print("\n[Step 5] Conversation 2: cross-thread memory recall...")
-        await zep.thread.create(thread_id=THREAD_2, user_id=USER_ID)
-        chat2 = build_agent(zep, THREAD_2)
-        recall = (await chat2("What do you know about me?")).lower()
-        print(f"  Agent: {recall}\n")
         keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
-        found = [kw for kw in keywords if kw in recall]
+        recall = ""
+        found: list[str] = []
+        for attempt in range(3):
+            thread_id = f"{THREAD_2}-r{attempt}"
+            await zep.thread.create(thread_id=thread_id, user_id=USER_ID)
+            chat2 = build_agent(zep, thread_id)
+            recall = (await chat2("What do you know about me?")).lower()
+            found = [kw for kw in keywords if kw in recall]
+            if found:
+                break
+            await asyncio.sleep(10)
+        print(f"  Agent: {recall}\n")
         print(f"  Recalled keywords: {found}")
         passed &= check(
             "Agent recalled facts from conversation 1",
@@ -233,8 +268,13 @@ async def test_integration_full_lifecycle() -> None:
         await zep.thread.create(thread_id=THREAD_1, user_id=USER_ID)
 
         chat1 = build_agent(zep, THREAD_1)
-        await chat1("My name is IntegTest. I work at Acme Corp as a data scientist.")
-        await chat1("I live in Portland, Oregon and I love hiking and photography.")
+        # One combined turn on purpose: each persist_messages call creates one
+        # Zep extraction episode, and a user's episodes process serially, so
+        # extra turns multiply the live-test ingestion wait.
+        await chat1(
+            "My name is IntegTest. I work at Acme Corp as a data scientist. "
+            "I live in Portland, Oregon and I love hiking and photography."
+        )
 
         user = await zep.user.get(user_id=USER_ID)
         assert user.first_name == FIRST_NAME
@@ -245,12 +285,21 @@ async def test_integration_full_lifecycle() -> None:
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)
 
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=120)
+        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
+        await wait_for_graph_searchable(zep, USER_ID, query="Where does IntegTest work?")
 
-        await zep.thread.create(thread_id=THREAD_2, user_id=USER_ID)
-        chat2 = build_agent(zep, THREAD_2)
-        recall = (await chat2("What do you know about me?")).lower()
+        # The recall turn is still LLM-dependent (the model may decline to use
+        # the tool/context), so give it a few attempts on fresh threads.
         keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
+        recall = ""
+        for attempt in range(3):
+            thread_id = f"{THREAD_2}-r{attempt}"
+            await zep.thread.create(thread_id=thread_id, user_id=USER_ID)
+            chat2 = build_agent(zep, thread_id)
+            recall = (await chat2("What do you know about me?")).lower()
+            if any(kw in recall for kw in keywords):
+                break
+            await asyncio.sleep(10)
         assert any(kw in recall for kw in keywords), f"no recall in: {recall}"
     finally:
         try:

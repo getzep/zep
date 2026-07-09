@@ -1,6 +1,6 @@
 [project]
 name = "zep-langgraph"
-version = "0.1.0"
+version = "0.2.0"
 description = "LangGraph integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"

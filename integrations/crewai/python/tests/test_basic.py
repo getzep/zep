@@ -85,6 +85,7 @@ class TestZepStorageMock:
             from zep_cloud.client import Zep
 
             mock_client = MagicMock(spec=Zep)
+            mock_client.user = MagicMock()
             mock_client.thread = MagicMock()
             mock_client.thread.add_messages = MagicMock()
 
@@ -112,12 +113,39 @@ class TestZepStorageMock:
         except ImportError:
             pytest.skip("zep_cloud not available")
 
+    def test_save_does_not_raise_on_zep_error(self, caplog):
+        """save() must log and return normally when the Zep SDK call raises --
+        never propagate the error into the crew."""
+        try:
+            from zep_cloud.client import Zep
+
+            mock_client = MagicMock(spec=Zep)
+            mock_client.user = MagicMock()
+            mock_client.thread = MagicMock()
+            mock_client.thread.add_messages = MagicMock(side_effect=Exception("Zep API error"))
+
+            storage = ZepStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
+
+            with caplog.at_level("ERROR"):
+                storage.save(
+                    "Test message content",
+                    metadata={"type": "message", "role": "user", "name": "John Doe"},
+                )
+
+            mock_client.thread.add_messages.assert_called_once()
+            assert "Zep API error" in caplog.text
+
+        except ImportError:
+            pytest.skip("zep_cloud not available")
+
     def test_zep_storage_save_graph_sync(self):
         """Test saving memory as graph data using sync interface."""
         try:
             from zep_cloud.client import Zep
 
             mock_client = MagicMock(spec=Zep)
+            mock_client.user = MagicMock()
+            mock_client.thread = MagicMock()
             mock_client.graph = MagicMock()
             mock_client.graph.add = MagicMock()
 

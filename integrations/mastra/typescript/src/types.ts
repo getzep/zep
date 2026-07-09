@@ -49,3 +49,25 @@ export interface ZepLogger {
 
 /** Re-export of Zep's closed role enum for convenience. */
 export type RoleType = Zep.RoleType;
+
+/** Resolved per-call identity: which Zep user/thread a call should use. */
+export interface ResolvedZepIdentity {
+  userId?: string;
+  threadId?: string;
+}
+
+/**
+ * A per-call identity override, resolved from a Mastra `requestContext`.
+ *
+ * May be synchronous or async — a returned promise is awaited before the
+ * identity is used. Return `undefined` (or omit a field) to fall back to the
+ * constructor-bound identity. Accepted by both {@link "./processors.js"}
+ * (per-turn identity) and the tools in the toolset (per-tool-call identity
+ * via `execute(inputData, context)`'s `context.requestContext`) — useful when
+ * a single processor or tool instance is shared across many end users and
+ * identity is only known per request (e.g. from auth middleware that sets
+ * values on `RequestContext`).
+ */
+export type ZepIdentityResolver = (
+  requestContext: unknown,
+) => ResolvedZepIdentity | undefined | Promise<ResolvedZepIdentity | undefined>;

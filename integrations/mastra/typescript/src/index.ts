@@ -1,36 +1,43 @@
 /**
- * `@getzep/zep-mastra` — Zep long-term memory tools for Mastra agents.
+ * `@getzep/zep-mastra` — Zep long-term memory for Mastra agents.
  *
- * Three `createTool`-based tools wrap Zep's two real operations — persist and
- * retrieve — over its temporal Context Graph:
+ * Two complementary surfaces, both built on Zep's temporal Context Graph:
  *
- * - {@link createZepRememberTool} — persist a message or fact.
- * - {@link createZepSearchTool} — search the graph for relevant facts.
- * - {@link createZepContextTool} — fetch the whole-user-graph Context Block.
+ * - **Automatic memory (recommended):** {@link createZepProcessors} builds a
+ *   {@link ZepInputProcessor} / {@link ZepOutputProcessor} pair that plugs
+ *   directly into an `Agent`'s native `inputProcessors`/`outputProcessors`
+ *   pipeline — no tool-calling round-trip required. The input processor
+ *   injects a Zep Context Block as a system message before every model call;
+ *   the output processor persists the completed turn afterward.
+ * - **Tools:** {@link createZepRememberTool}, {@link createZepSearchTool}, and
+ *   {@link createZepContextTool} (bundled by {@link createZepToolset}) let the
+ *   model decide when to persist or recall — a tool-centric alternative or
+ *   complement to the automatic loop.
  *
- * {@link createZepToolset} builds all three bound to one client, and
- * {@link ensureZepUserAndThread} provisions the Zep user/thread before the first
- * turn. Every tool handles Zep failures gracefully — a Zep outage never crashes
- * the host agent.
+ * {@link ensureZepUserAndThread} provisions the Zep user/thread before the
+ * first turn either way. Every processor and tool handles Zep failures
+ * gracefully — a Zep outage never crashes the host agent.
  *
- * @example
+ * @example Automatic memory loop
  * ```ts
  * import { ZepClient } from "@getzep/zep-cloud";
  * import { Agent } from "@mastra/core/agent";
- * import { createZepToolset, ensureZepUserAndThread } from "@getzep/zep-mastra";
+ * import { createZepProcessors, ensureZepUserAndThread } from "@getzep/zep-mastra";
  *
  * const client = new ZepClient({ apiKey: process.env.ZEP_API_KEY! });
- * const binding = { userId: "user-123", threadId: "thread-abc" };
- * await ensureZepUserAndThread({ client, ...binding, firstName: "Jane" });
+ * const userId = "user-123";
+ * const threadId = "thread-abc";
+ * await ensureZepUserAndThread({ client, userId, threadId, firstName: "Jane" });
  *
- * const { zepRemember, zepSearch, zepContext } = createZepToolset({ client, binding });
+ * const { inputProcessor, outputProcessor } = createZepProcessors({ client, userId, threadId });
  *
  * const agent = new Agent({
  *   id: "memory-agent",
  *   name: "Memory Agent",
- *   instructions: "You have long-term memory. Recall and store user facts.",
+ *   instructions: "You have long-term memory about the user.",
  *   model: "openai/gpt-4o-mini",
- *   tools: { zepRemember, zepSearch, zepContext },
+ *   inputProcessors: [inputProcessor],
+ *   outputProcessors: [outputProcessor],
  * });
  * ```
  *
@@ -41,7 +48,7 @@ export { createZepRememberTool } from "./remember-tool.js";
 export type { ZepRememberToolOptions } from "./remember-tool.js";
 
 export { createZepSearchTool } from "./search-tool.js";
-export type { ZepSearchToolOptions } from "./search-tool.js";
+export type { ZepSearchToolOptions, ZepSearchPinnableParams } from "./search-tool.js";
 
 export { createZepContextTool } from "./context-tool.js";
 export type { ZepContextToolOptions } from "./context-tool.js";
@@ -54,7 +61,25 @@ export type {
   ZepToolset,
   ZepToolsetOptions,
   EnsureIdentityOptions,
+  ZepUserCreatedHook,
 } from "./toolset.js";
+
+export {
+  ZepInputProcessor,
+  ZepOutputProcessor,
+  createZepProcessors,
+  DEFAULT_CONTEXT_TEMPLATE,
+} from "./processors.js";
+export type {
+  ZepInputProcessorOptions,
+  ZepOutputProcessorOptions,
+  ZepProcessorsOptions,
+  ZepProcessorSharedOptions,
+  ZepIdentityResolver,
+  ResolvedZepIdentity,
+  ZepContextBuilder,
+  ZepContextBuilderInput,
+} from "./processors.js";
 
 export { toRoleType, resolveGraphTarget } from "./zep-utils.js";
 
@@ -64,6 +89,8 @@ export type {
   ZepLogger,
   RoleType,
 } from "./types.js";
+// Note: ZepIdentityResolver / ResolvedZepIdentity are exported above from
+// ./processors.js (which re-exports the canonical definitions in types.js).
 
 /** Package version. */
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";

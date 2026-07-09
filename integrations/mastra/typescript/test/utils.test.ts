@@ -68,6 +68,6 @@ describe("truncateForZep", () => {
 
   it("exposes the documented Zep limits", () => {
     expect(MESSAGE_MAX_CHARS).toBeLessThanOrEqual(4096);
-    expect(GRAPH_MAX_CHARS).toBe(10000);
+    expect(GRAPH_MAX_CHARS).toBe(9900);
   });
 });

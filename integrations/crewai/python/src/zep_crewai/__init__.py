@@ -42,7 +42,7 @@ Note:
     Zep into a CrewAI agent's tool list, the supported extension point in 1.x.
 """
 
-__version__ = "1.1.2"
+__version__ = "1.2.0"
 __author__ = "Zep AI"
 __description__ = "Zep integration for CrewAI"
 
@@ -59,13 +59,15 @@ try:
     # Import our integration components
     from .graph_storage import ZepGraphStorage
     from .memory import ZepStorage
+    from .provisioning import UserSetupHook, ensure_thread, ensure_user
     from .tools import (
         ZepAddDataTool,
         ZepSearchTool,
         create_add_data_tool,
         create_search_tool,
     )
-    from .user_storage import ZepUserStorage
+    from .user_storage import ContextBuilder, ContextInput, ZepUserStorage
+    from .utils import DEFAULT_CONTEXT_TEMPLATE
 
     __all__ = [
         "ZepStorage",
@@ -76,6 +78,12 @@ try:
         "create_search_tool",
         "create_add_data_tool",
         "ZepDependencyError",
+        "ensure_user",
+        "ensure_thread",
+        "UserSetupHook",
+        "ContextBuilder",
+        "ContextInput",
+        "DEFAULT_CONTEXT_TEMPLATE",
     ]
 
 except ImportError as e:

@@ -11,13 +11,19 @@ Two layers are provided:
 LangGraph guide). Call the Zep client directly inside your graph nodes:
 
 * :func:`~zep_langgraph.context.build_system_message` / :func:`~zep_langgraph.context.get_zep_context`
-  -- fetch the user's Context Block (from :meth:`thread.get_user_context`) and
-  inject it into the system prompt.
+  -- fetch the user's Context Block (from :meth:`thread.get_user_context`, or a
+  custom :data:`~zep_langgraph.context.ContextBuilder`) and inject it into the
+  system prompt.
 * :func:`~zep_langgraph.persistence.persist_messages` -- persist a conversation
   turn (wraps :meth:`thread.add_messages`).
-* :func:`~zep_langgraph.tools.create_graph_search_tool` -- a prebuilt
-  LangChain/LangGraph tool over :meth:`graph.search`, ready for
+* :func:`~zep_langgraph.tools.create_graph_search_tool` -- a prebuilt,
+  pin-or-expose LangChain/LangGraph tool over :meth:`graph.search`, ready for
   ``create_react_agent``.
+* :func:`~zep_langgraph.hooks.create_zep_pre_model_hook` -- a prebuilt
+  ``pre_model_hook`` for ``create_react_agent`` that injects context on every
+  turn via ``llm_input_messages``.
+* :func:`~zep_langgraph.provisioning.ensure_user` / :func:`~zep_langgraph.provisioning.ensure_thread`
+  (+ ``_sync`` twins) -- explicit, out-of-band resource provisioning.
 
 **Secondary -- ``ZepStore``** (:class:`~zep_langgraph.store.ZepStore`), a
 hybrid-delegate :class:`~langgraph.store.base.BaseStore` for the
@@ -49,7 +55,7 @@ Quick start (primary path)::
         return {"messages": [response]}
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Zep AI"
 __description__ = "LangGraph integration for Zep"
 
@@ -62,12 +68,16 @@ try:
 
     from .context import (
         DEFAULT_CONTEXT_TEMPLATE,
+        ContextBuilder,
+        ContextBuilderSync,
+        ContextInput,
         build_system_message,
         build_system_message_sync,
         format_context_block,
         get_zep_context,
         get_zep_context_sync,
     )
+    from .hooks import ZepPreModelHook, create_zep_pre_model_hook
     from .persistence import (
         MAX_MESSAGE_CHARS,
         MAX_MESSAGES_PER_CALL,
@@ -75,6 +85,14 @@ try:
         persist_messages_sync,
         to_zep_message,
         to_zep_messages,
+    )
+    from .provisioning import (
+        UserSetupHook,
+        UserSetupHookSync,
+        ensure_thread,
+        ensure_thread_sync,
+        ensure_user,
+        ensure_user_sync,
     )
     from .store import NamespaceTargetResolver, ZepStore
     from .tools import (
@@ -94,6 +112,9 @@ try:
         "get_zep_context_sync",
         "format_context_block",
         "DEFAULT_CONTEXT_TEMPLATE",
+        "ContextInput",
+        "ContextBuilder",
+        "ContextBuilderSync",
         # persistence
         "persist_messages",
         "persist_messages_sync",
@@ -101,6 +122,16 @@ try:
         "to_zep_messages",
         "MAX_MESSAGE_CHARS",
         "MAX_MESSAGES_PER_CALL",
+        # provisioning
+        "ensure_user",
+        "ensure_user_sync",
+        "ensure_thread",
+        "ensure_thread_sync",
+        "UserSetupHook",
+        "UserSetupHookSync",
+        # hooks
+        "create_zep_pre_model_hook",
+        "ZepPreModelHook",
         # tools
         "create_graph_search_tool",
         "create_graph_search_tool_sync",

@@ -45,7 +45,12 @@ Both approaches work with the same underlying temporal knowledge graph - threads
 
 ## Thread-Based Memory Access
 
-Using structured conversation threads that automatically contribute to your unified graph:
+Using structured conversation threads that automatically contribute to your unified graph.
+
+> **Per-session identity.** `user_id`/`thread_id` (and `graph_id` for `ZepGraphAgent`) are
+> fixed constructor arguments, resolved once and not re-resolved per turn. This is
+> idiomatic for voice: construct one agent (and typically one `AgentSession`) per
+> user/call rather than sharing a single instance across users.
 
 ### Basic Setup
 
@@ -108,6 +113,39 @@ agent = ZepUserAgent(
 )
 ```
 
+## Provisioning
+
+Prefer explicit, out-of-band provisioning with `ensure_user`/`ensure_thread` before the
+first turn -- e.g. during account/session onboarding. Both are idempotent
+(create-then-catch-conflict) and return whether the resource was newly created; genuine
+failures (auth, network, 5xx) always raise:
+
+```python
+from zep_livekit import ensure_thread, ensure_user
+
+async def seed_new_user(zep_client, user_id: str) -> None:
+    """Runs exactly once, right after the user is first created."""
+    ...  # seed initial facts, set custom instructions, configure ontology, etc.
+
+created = await ensure_user(
+    zep_client,
+    user_id="user_123",
+    first_name="Alice",
+    on_created=seed_new_user,  # fires only for a genuinely new user
+)
+await ensure_thread(zep_client, thread_id="conversation_456", user_id="user_123")
+```
+
+`ZepUserAgent` also accepts `first_name`/`last_name`/`email`/`on_created` directly and
+lazily calls the same helpers on the first turn (cached per agent instance) -- convenient
+for prototyping, but this lazy path always logs and swallows failures rather than raising
+into the voice session. Prefer the explicit out-of-band call above when you need
+provisioning failures to surface loudly.
+
+`ZepGraphAgent` does **not** accept `on_created`: it is scoped to a standalone `graph_id`,
+not a Zep user, so there is no "user created" event to hook into. Passing it raises
+`TypeError`.
+
 ## Direct Graph Memory Access
 
 For explicit control over what gets stored as facts, entities, and relationships in your unified graph:
@@ -161,6 +199,104 @@ async def entrypoint(ctx: agents.JobContext):
     await session.start(agent=agent, room=ctx.room)
 ```
 
+
+## Custom Context Builders
+
+By default, `ZepUserAgent` folds persistence and retrieval into a single
+`thread.add_messages(return_context=True)` round-trip, and `ZepGraphAgent` runs a hybrid
+search across edges, nodes, and episodes. Pass `context_builder` to replace either with
+custom logic -- e.g. a filtered graph search, a different graph entirely, or a
+multi-source context assembly:
+
+```python
+from zep_livekit import ContextInput
+
+async def my_builder(ctx: ContextInput) -> str | None:
+    results = await ctx.zep.graph.search(
+        user_id=ctx.user_id,
+        query=ctx.user_message,
+        scope="edges",
+    )
+    if not results.edges:
+        return None
+    return "\n".join(edge.fact for edge in results.edges)
+
+agent = ZepUserAgent(
+    zep_client=zep_client,
+    user_id="user_123",
+    thread_id="conversation_456",
+    context_builder=my_builder,
+)
+```
+
+When `context_builder` is set, message persistence and context building run
+**concurrently** for lower latency, with per-side failure isolation: a builder error is
+logged and skips injection for that turn but does not stop persistence; a persistence
+error is logged but a successful builder result is still injected.
+
+`ZepGraphAgent` takes the analogous `context_builder` typed as `GraphContextBuilder`,
+receiving a `GraphContextInput` (`zep`, `graph_id`, `user_message`, `session`) in place of
+`ContextInput`. Unlike `ZepUserAgent`, setting it fully replaces the default hybrid search
+rather than running concurrently with anything (graph message persistence already happens
+independently, earlier in the turn).
+
+### Context template
+
+Both agents wrap injected context in `DEFAULT_CONTEXT_TEMPLATE` before adding it as a
+system message. Override with `context_template` -- it must contain a literal `{context}`
+placeholder, substituted via plain string replacement (never `str.format`, so context text
+containing `{`, `}`, or `%` is always safe to inject):
+
+```python
+agent = ZepUserAgent(
+    zep_client=zep_client,
+    user_id="user_123",
+    thread_id="conversation_456",
+    context_template="Known facts about the user:\n{context}",
+)
+```
+
+## Graph Search Tool
+
+In addition to the context injected automatically every turn, register a model-callable
+tool that lets the agent search a Zep graph on demand:
+
+```python
+from zep_livekit import create_graph_search_tool
+
+# Search a user's personal graph...
+search_tool = create_graph_search_tool(zep_client, user_id="user_123")
+
+# ...or a shared standalone graph. Exactly one of graph_id/user_id is required.
+search_tool = create_graph_search_tool(zep_client, graph_id="company_knowledge_base")
+
+agent = ZepUserAgent(
+    zep_client=zep_client,
+    user_id="user_123",
+    thread_id="conversation_456",
+    tools=[search_tool],
+    instructions="...",
+)
+```
+
+The tool exposes `scope` (`edges`, `nodes`, `episodes`, `observations`, `thread_summaries`,
+`auto`), `reranker`, `limit`, `mmr_lambda`, and `center_node_uuid` to the model by default.
+Use `pinned_params` to fix a parameter to a constant value (hidden from the model, always
+sent), or `hidden_params` to hide a parameter without pinning it (Zep's own default
+applies):
+
+```python
+search_tool = create_graph_search_tool(
+    zep_client,
+    user_id="user_123",
+    pinned_params={"scope": "edges", "limit": 5},
+    hidden_params={"center_node_uuid"},
+)
+```
+
+`search_filters` and `bfs_origin_node_uuids` are always constructor-only. Zep failures are
+caught and returned as an error string to the model -- the tool never raises into the
+voice session.
 
 ## Querying Your Unified Graph
 
@@ -246,6 +382,12 @@ class ZepUserAgent(agents.Agent):
         context_mode: Literal["basic", "summary"] | None = None,  # Deprecated, ignored
         user_message_name: str | None = None,
         assistant_message_name: str | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        email: str | None = None,
+        on_created: UserSetupHook | None = None,
+        context_builder: ContextBuilder | None = None,
+        context_template: str = DEFAULT_CONTEXT_TEMPLATE,
         **kwargs: Any  # All LiveKit Agent parameters
     )
 ```
@@ -265,8 +407,43 @@ class ZepGraphAgent(agents.Agent):
         episode_limit: int = 2,
         search_filters: SearchFilters | None = None,
         reranker: Reranker | None = "rrf",
+        context_builder: GraphContextBuilder | None = None,  # cannot combine with on_created
+        context_template: str = DEFAULT_CONTEXT_TEMPLATE,
         **kwargs: Any  # All LiveKit Agent parameters
     )
+```
+
+### Provisioning
+
+```python
+async def ensure_user(
+    client: AsyncZep,
+    *,
+    user_id: str,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    email: str | None = None,
+    on_created: UserSetupHook | None = None,
+) -> bool: ...  # True iff newly created
+
+async def ensure_thread(client: AsyncZep, *, thread_id: str, user_id: str) -> bool: ...
+```
+
+### create_graph_search_tool
+
+```python
+def create_graph_search_tool(
+    zep_client: AsyncZep,
+    *,
+    graph_id: str | None = None,   # exactly one of graph_id/user_id required
+    user_id: str | None = None,
+    pinned_params: dict[str, Any] | None = None,
+    hidden_params: set[str] | None = None,
+    search_filters: dict[str, Any] | None = None,
+    bfs_origin_node_uuids: list[str] | None = None,
+    name: str | None = None,
+    description: str | None = None,
+) -> RawFunctionTool: ...
 ```
 
 

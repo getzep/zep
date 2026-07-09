@@ -9,6 +9,17 @@ import pytest
 from zep_crewai import ZepUserStorage
 
 
+def _make_mock_zep_client():
+    """A Zep mock with ``user.add``/``thread.create`` wired up so lazy
+    provisioning in ``save()``/``search()`` succeeds by default."""
+    from zep_cloud.client import Zep
+
+    client = MagicMock(spec=Zep)
+    client.user = MagicMock()
+    client.thread = MagicMock()
+    return client
+
+
 class TestZepUserStorage:
     """Test suite for ZepUserStorage."""
 
@@ -82,10 +93,7 @@ class TestZepUserStorage:
 
     def test_save_message_with_thread(self):
         """Test saving message when thread_id is set."""
-        from zep_cloud.client import Zep
-
-        mock_client = MagicMock(spec=Zep)
-        mock_client.thread = MagicMock()
+        mock_client = _make_mock_zep_client()
         mock_client.thread.add_messages = MagicMock()
 
         storage = ZepUserStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
@@ -110,9 +118,7 @@ class TestZepUserStorage:
 
     def test_save_json_data(self):
         """Test saving JSON data to user graph."""
-        from zep_cloud.client import Zep
-
-        mock_client = MagicMock(spec=Zep)
+        mock_client = _make_mock_zep_client()
         mock_client.graph = MagicMock()
         mock_client.graph.add = MagicMock()
 
@@ -129,9 +135,7 @@ class TestZepUserStorage:
 
     def test_save_text_data(self):
         """Test saving text data to user graph."""
-        from zep_cloud.client import Zep
-
-        mock_client = MagicMock(spec=Zep)
+        mock_client = _make_mock_zep_client()
         mock_client.graph = MagicMock()
         mock_client.graph.add = MagicMock()
 
@@ -144,6 +148,23 @@ class TestZepUserStorage:
         mock_client.graph.add.assert_called_once_with(
             user_id="test-user", data="User prefers morning meetings", type="text"
         )
+
+    def test_save_does_not_raise_on_zep_error(self, caplog):
+        """save() must log and return normally when the Zep SDK call raises --
+        never propagate the error into the crew."""
+        mock_client = _make_mock_zep_client()
+        mock_client.thread.add_messages = MagicMock(side_effect=Exception("Zep API error"))
+
+        storage = ZepUserStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
+
+        with caplog.at_level("ERROR"):
+            storage.save(
+                "Hello, how can I help?",
+                metadata={"type": "message", "role": "assistant", "name": "Helper"},
+            )
+
+        mock_client.thread.add_messages.assert_called_once()
+        assert "Zep API error" in caplog.text
 
     @patch("zep_crewai.utils.compose_context_string")
     @patch("zep_crewai.utils.ThreadPoolExecutor")
@@ -190,11 +211,11 @@ class TestZepUserStorage:
         # Perform search
         results = storage.search("test query", limit=5)
 
-        # Verify results include context
+        # Verify results include context (wrapped in the default context_template)
         assert isinstance(results, list)
         assert len(results) == 1
         assert results[0]["type"] == "user_graph_context"
-        assert results[0]["context"] == "Context: User likes Python"
+        assert "Context: User likes Python" in results[0]["context"]
 
     @patch("zep_crewai.utils.compose_context_string")
     @patch("zep_crewai.utils.ThreadPoolExecutor")

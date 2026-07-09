@@ -188,11 +188,11 @@ def main():
         print("\n🔧 Direct tool demonstration...")
 
         print("\n1. Searching Bob's personal knowledge:")
-        personal_results = user_search_tool._run("project", limit=3)
+        personal_results = user_search_tool.run(query="project", limit=3)
         print(personal_results)
 
-        print("\n2. Searching company knowledge:")
-        company_results = graph_search_tool._run("best practices", limit=3, scope="all")
+        print("\n2. Searching company knowledge (auto scope lets Zep decide):")
+        company_results = graph_search_tool.run(query="best practices", limit=3, scope="auto")
         print(company_results)
 
     except Exception as e:

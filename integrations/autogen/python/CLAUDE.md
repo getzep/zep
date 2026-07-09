@@ -8,6 +8,45 @@ The Zep AutoGen integration provides two main capabilities:
 1. **Memory Integration**: Persistent conversation memory using `ZepUserMemory` and `ZepGraphMemory`
 2. **Tool Integration**: Exportable AutoGen tools for graph and user data operations
 
+## The memory loop contract (read this first)
+
+AutoGen's `Memory` interface splits the Zep loop across two independently-invoked hooks:
+
+- `update_context()` is called **automatically** by AutoGen before every model call.
+  Injection only -- it never persists anything.
+- `add()` is **never called automatically**. The application must call it explicitly
+  (typically once per user turn, once per assistant turn) to persist to Zep.
+
+Because these are two separate, caller-controlled calls (not one "turn" the integration
+owns), `context_builder` (see below) never runs concurrently with persistence the way it
+does in the ADK / Microsoft Agent Framework / Pydantic AI ports -- there is no
+`asyncio.gather` here. Don't try to add one; `update_context()` has nothing to gather the
+builder against. See the README's "Zep memory loop, precisely" section for the full wiring
+snippet.
+
+## Provisioning
+
+`zep_autogen.provisioning` exports `ensure_user`/`ensure_thread` (create-then-catch-conflict,
+identical contract to the ADK/ms-agent-framework/pydantic-ai ports -- copy that module
+verbatim when porting to a new framework, don't reinvent it). `ZepUserMemory` calls these
+lazily from both `add()` and `update_context()`, hot-path-wrapped (log + swallow, never
+raise). `ZepGraphMemory` has no lazy provisioning or `on_created` hook -- it is scoped to a
+standalone `graph_id`, not a Zep user.
+
+## Pin-or-expose tool schema: AutoGen-specific constraint
+
+Unlike the sibling ports, `autogen_core.tools.FunctionTool` has **no raw-JSON-schema
+constructor argument** -- its schema is derived strictly from the wrapped function's typed
+signature via `args_base_model_from_signature`/pydantic `model_json_schema()`. So
+`create_search_graph_tool` (`tools.py`) implements pin-or-expose by *dynamically building
+the wrapped function's `inspect.Signature`*: parameters that should be model-visible become
+real `inspect.Parameter`s (assigned to `func.__signature__`/`func.__annotations__`), while
+pinned/hidden parameters are simply never parameters of the function -- they're merged in as
+constants (or omitted) inside the function body before calling `graph.search`. If you touch
+this code, re-verify `FunctionTool`'s introspection behavior against the installed
+`autogen_core` version; don't assume the hand-crafted-JSON-schema pattern from
+`zep_ms_agent_framework.search`/`zep_pydantic_ai.search` applies here.
+
 ## Memory Integration
 
 ### User Memory (Thread-based)
@@ -90,10 +129,12 @@ With `reflect_on_tool_use=True`, AutoGen follows this pattern:
 ```
 zep_autogen/
 ├── src/zep_autogen/
-│   ├── __init__.py          # Exports: ZepUserMemory, ZepGraphMemory, tools
-│   ├── memory.py            # ZepUserMemory implementation
+│   ├── __init__.py          # Exports: ZepUserMemory, ZepGraphMemory, tools, provisioning, ContextInput/Builder
+│   ├── memory.py            # ZepUserMemory implementation (ContextInput/ContextBuilder/DEFAULT_CONTEXT_TEMPLATE live here)
 │   ├── graph_memory.py      # ZepGraphMemory implementation
-│   ├── tools.py             # AutoGen tool functions
+│   ├── tools.py             # AutoGen tool functions (pin-or-expose create_search_graph_tool)
+│   ├── provisioning.py      # ensure_user / ensure_thread / UserSetupHook (copy verbatim from sibling ports)
+│   ├── limits.py            # truncate_message_content (4096/4000) / truncate_graph_data (9900)
 │   └── exceptions.py        # Custom exceptions
 ├── examples/
 │   ├── autogen_basic.py     # Basic memory example
@@ -101,7 +142,12 @@ zep_autogen/
 │   ├── autogen_tools_search.py  # Search tool only
 │   └── autogen_tools_full.py    # Search + add tools
 └── tests/
-    └── test_basic.py        # Basic functionality tests
+    ├── test_basic.py             # Basic functionality tests
+    ├── test_provisioning.py      # ensure_user/ensure_thread + lazy provisioning in add()
+    ├── test_context_builder.py   # context_builder + ContextInput
+    ├── test_context_template.py  # context_template override + str.replace contract
+    ├── test_search.py            # pin-or-expose create_search_graph_tool
+    └── test_limits.py            # truncation
 ```
 
 ### Memory Interface Implementation
@@ -121,23 +167,44 @@ async def update_context(self, model_context: ChatCompletionContext) -> UpdateCo
 
 ### Tool Implementation Pattern
 
-Tools follow AutoGen's `FunctionTool` pattern with bound client instances:
+Simple tools (e.g. `create_add_graph_data_tool`) follow AutoGen's `FunctionTool` pattern
+with a bound client instance and a normal typed signature. `create_search_graph_tool` is
+the exception -- per the pin-or-expose section above, its signature is built dynamically
+so exposed params become real, model-visible parameters:
 
 ```python
-def create_search_graph_tool(client: AsyncZep, graph_id: str = None, user_id: str = None) -> FunctionTool:
-    # Validate parameters
-    if not graph_id and not user_id:
-        raise ValueError("Either graph_id or user_id must be provided")
-    
-    # Create bound function
-    async def bound_search_memory(
-        query: Annotated[str, "Search query"],
-        limit: Annotated[int, "Max results"] = 10,
-    ) -> List[Dict[str, Any]]:
-        return await search_memory(client, query, graph_id, user_id, limit)
-    
-    return FunctionTool(bound_search_memory, description="Search Zep memory")
+def create_search_graph_tool(client: AsyncZep, graph_id: str | None = None, user_id: str | None = None, *,
+                              pinned_params: dict[str, Any] | None = None,
+                              hidden_params: set[str] | None = None) -> FunctionTool:
+    # Validate parameters, resolve exposed = all params minus pinned/hidden
+    signature, annotations = _build_search_signature(exposed)
+
+    async def zep_search(*args: Any, **kwargs: Any) -> str:
+        bound = signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+        call_args = dict(bound.arguments)
+        search_kwargs: dict[str, Any] = {"query": str(call_args.pop("query", ""))[:400]}
+        for param_name in _SEARCH_PARAM_SPECS:
+            if param_name in pinned:
+                search_kwargs[param_name] = pinned[param_name]
+            elif param_name in hidden:
+                continue  # omit; Zep applies its own default
+            elif param_name in call_args:
+                value = call_args[param_name]
+                if value is not None:  # never forward explicit None on the wire
+                    search_kwargs[param_name] = value
+        return _format_results(await client.graph.search(**search_kwargs), ...)
+
+    zep_search.__signature__ = signature  # what FunctionTool introspects
+    return FunctionTool(zep_search, description="Search Zep memory")
 ```
+
+The `if value is not None` guard matters: `apply_defaults()` materializes every exposed
+param, including unset optional ones (`mmr_lambda`, `center_node_uuid`) whose spec default
+is `None` -- forwarding those as explicit `None` would serialize as `"mmr_lambda": null` on
+the wire instead of being omitted like the SDK's own OMIT sentinel. Match this guard
+against the sibling ports' `search_kwargs` construction in
+`zep_pydantic_ai.search`/`zep_ms_agent_framework.search` if you touch it.
 
 ## Example Workflows
 

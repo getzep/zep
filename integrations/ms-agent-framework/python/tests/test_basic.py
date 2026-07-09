@@ -119,7 +119,7 @@ class TestPackageStructure:
         import zep_ms_agent_framework
 
         assert hasattr(zep_ms_agent_framework, "__version__")
-        assert zep_ms_agent_framework.__version__ == "0.1.0"
+        assert zep_ms_agent_framework.__version__ == "0.2.0"
 
     def test_author_exists(self) -> None:
         import zep_ms_agent_framework
@@ -380,6 +380,70 @@ class TestBeforeRun:
 
 
 # ---------------------------------------------------------------------------
+# context_template
+# ---------------------------------------------------------------------------
+class TestContextTemplate:
+    @pytest.mark.asyncio
+    async def test_context_template_override(self) -> None:
+        client = make_mock_client()
+        client.thread.add_messages.return_value = add_messages_response("Some fact")
+        provider = make_provider(client, context_template="CUSTOM[{context}]END")
+        ctx = make_context(input_messages=[Message("user", ["hello"])])
+
+        await run_before(provider, ctx)
+
+        _, instruction = ctx.extend_instructions.call_args.args
+        assert instruction == "CUSTOM[Some fact]END"
+
+    @pytest.mark.asyncio
+    async def test_default_template_matches_previous_output(self) -> None:
+        """The default context_template must render byte-for-byte the same
+        output as the old hardcoded _format_context wrapper."""
+        client = make_mock_client()
+        client.thread.add_messages.return_value = add_messages_response(
+            "User is a data scientist in Portland."
+        )
+        provider = make_provider(client)
+        ctx = make_context(input_messages=[Message("user", ["What do you know about me?"])])
+
+        await run_before(provider, ctx)
+
+        _, instruction = ctx.extend_instructions.call_args.args
+        expected = (
+            "The following context is retrieved from Zep, the agent's long-term memory. "
+            "It contains relevant facts, entities, and prior knowledge about the user. "
+            "Use it to inform your responses.\n\n"
+            "<ZEP_CONTEXT>\n"
+            "User is a data scientist in Portland.\n"
+            "</ZEP_CONTEXT>"
+        )
+        assert instruction == expected
+
+    @pytest.mark.asyncio
+    async def test_template_rendered_via_replace_not_format(self) -> None:
+        """A context string containing braces must not break template
+        rendering (rules out str.format usage)."""
+        client = make_mock_client()
+        client.thread.add_messages.return_value = add_messages_response(
+            "{not a placeholder} and %s too"
+        )
+        provider = make_provider(client)
+        ctx = make_context(input_messages=[Message("user", ["hello"])])
+
+        await run_before(provider, ctx)
+
+        _, instruction = ctx.extend_instructions.call_args.args
+        assert "{not a placeholder} and %s too" in instruction
+
+    def test_default_context_template_is_canonical(self) -> None:
+        from zep_ms_agent_framework import DEFAULT_CONTEXT_TEMPLATE
+
+        assert "{context}" in DEFAULT_CONTEXT_TEMPLATE
+        assert "<ZEP_CONTEXT>" in DEFAULT_CONTEXT_TEMPLATE
+        assert "</ZEP_CONTEXT>" in DEFAULT_CONTEXT_TEMPLATE
+
+
+# ---------------------------------------------------------------------------
 # after_run
 # ---------------------------------------------------------------------------
 class TestAfterRun:
@@ -528,18 +592,62 @@ class TestOnUserCreatedHook:
         assert hook.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_hook_failure_does_not_block_run(self) -> None:
+    async def test_hook_failure_swallowed_by_provider_but_skips_this_turn(self) -> None:
+        """Per the provisioning contract, a hook error PROPAGATES out of
+        ``ensure_user`` (it indicates the caller's own setup code is broken,
+        not a transient Zep failure). The provider's hot path still never
+        lets it raise into ``before_run`` -- it is caught at the same
+        boundary as a genuine provisioning failure, logged, and this turn's
+        persistence is skipped (resources are retried on the next turn)."""
         client = make_mock_client()
         client.thread.add_messages.return_value = add_messages_response("ctx")
         hook = AsyncMock(side_effect=RuntimeError("hook exploded"))
         provider = make_provider(client, on_user_created=hook)
         ctx = make_context(input_messages=[Message("user", ["Hi"])])
 
+        # Must not raise.
         await run_before(provider, ctx)
 
-        # The run continued: message persisted and context injected.
-        client.thread.add_messages.assert_called_once()
-        ctx.extend_instructions.assert_called_once()
+        client.thread.add_messages.assert_not_called()
+        ctx.extend_instructions.assert_not_called()
+        assert provider._resources_ready is False
+
+
+# ---------------------------------------------------------------------------
+# Provider lazy path onto provisioning.py (hot-path: swallow, never raise)
+# ---------------------------------------------------------------------------
+class TestProviderLazyPathProvisioning:
+    @pytest.mark.asyncio
+    async def test_provider_lazy_path_swallows_provisioning_errors(self) -> None:
+        """A genuine provisioning failure (e.g. a 500 from user.add) must be
+        logged and swallowed by the provider's hot path -- before_run must
+        survive it and simply skip the turn."""
+        client = make_mock_client()
+        client.user.add.side_effect = RuntimeError("500 internal server error")
+        provider = make_provider(client)
+        ctx = make_context(input_messages=[Message("user", ["Hi"])])
+
+        # Must not raise.
+        await run_before(provider, ctx)
+
+        client.thread.add_messages.assert_not_called()
+        assert provider._resources_ready is False
+
+    @pytest.mark.asyncio
+    async def test_provider_uses_ensure_user_and_ensure_thread(self) -> None:
+        """The provider's lazy resource creation now delegates to
+        provisioning.ensure_user / provisioning.ensure_thread."""
+        client = make_mock_client()
+        client.thread.add_messages.return_value = add_messages_response(None)
+        provider = make_provider(client, first_name="Jane", last_name="Smith")
+        ctx = make_context(input_messages=[Message("user", ["Hi"])])
+
+        await run_before(provider, ctx)
+
+        client.user.add.assert_called_once_with(
+            user_id="user-1", first_name="Jane", last_name="Smith", email=None
+        )
+        client.thread.create.assert_called_once_with(thread_id="thread-1", user_id="user-1")
 
 
 # ---------------------------------------------------------------------------

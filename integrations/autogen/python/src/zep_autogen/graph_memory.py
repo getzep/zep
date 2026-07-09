@@ -22,6 +22,8 @@ from zep_cloud import GraphSearchResults, SearchFilters
 from zep_cloud.client import AsyncZep
 from zep_cloud.graph.utils import compose_context_string
 
+from .limits import truncate_graph_data
+
 
 class ZepGraphMemory(Memory):
     """
@@ -33,6 +35,14 @@ class ZepGraphMemory(Memory):
     - Manual memory queries via query()
     - Message storage in Zep threads
     - Data storage in Zep user graphs
+
+    Note:
+        **No user-scoped lazy provisioning here.** Unlike ``ZepUserMemory``,
+        this class has no ``on_created`` hook or user provisioning: it is
+        scoped to a standalone ``graph_id`` (e.g. a shared knowledge base),
+        not a Zep user, so there is no per-user setup step to run. Callers
+        that want the graph itself to exist before first use should create it
+        out-of-band via ``client.graph.create(graph_id=...)``.
     """
 
     def __init__(
@@ -112,9 +122,8 @@ class ZepGraphMemory(Memory):
             data_type = "text"  # Default for string or unknown types
 
         # Add data to user's graph
-        await self._client.graph.add(
-            graph_id=self._graph_id, type=data_type, data=str(content.content)
-        )
+        truncated_data = truncate_graph_data(str(content.content))
+        await self._client.graph.add(graph_id=self._graph_id, type=data_type, data=truncated_data)
 
     def _graph_results_to_memory_content(
         self, graph_results: GraphSearchResults

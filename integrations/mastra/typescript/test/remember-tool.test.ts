@@ -93,7 +93,7 @@ describe("createZepRememberTool", () => {
     expect(warnArg).not.toContain("aaaa");
   });
 
-  it("truncates over-long graph.add data to the 10000-char limit and warns", async () => {
+  it("truncates over-long graph.add data to the 9900-char limit and warns", async () => {
     const zep = makeFakeZep();
     const warn = vi.fn();
     const tool = createZepRememberTool({
@@ -107,11 +107,11 @@ describe("createZepRememberTool", () => {
 
     expect(result.stored).toBe(true);
     const sent = zep.graph.add.mock.calls[0]![0].data as string;
-    expect(sent.length).toBe(10000);
+    expect(sent.length).toBe(9900);
     expect(warn).toHaveBeenCalledOnce();
     const warnArg = warn.mock.calls[0]![0] as string;
     expect(warnArg).toContain("12000");
-    expect(warnArg).toContain("10000");
+    expect(warnArg).toContain("9900");
     expect(warnArg).not.toContain("bbbb");
   });
 
@@ -169,5 +169,38 @@ describe("createZepRememberTool", () => {
     const result = await run(tool, { content: "x" });
     expect(result.stored).toBe(false);
     expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it("resolves identity from requestContext when resolveIdentity is provided", async () => {
+    const zep = makeFakeZep();
+    const resolveIdentity = vi.fn().mockReturnValue({ userId: "u2", threadId: "t2" });
+    const tool = createZepRememberTool({
+      client: asZep(zep),
+      binding: { userId: "u1", threadId: "t1" },
+      resolveIdentity,
+    });
+
+    await run(tool, { content: "hi", role: "user" }, { requestContext: { tenant: "acme" } });
+
+    expect(resolveIdentity).toHaveBeenCalledWith({ tenant: "acme" });
+    expect(zep.thread.addMessages).toHaveBeenCalledWith(
+      "t2",
+      expect.objectContaining({ messages: expect.any(Array) }),
+    );
+  });
+
+  it("falls back to constructor binding when resolveIdentity is unset", async () => {
+    const zep = makeFakeZep();
+    const tool = createZepRememberTool({
+      client: asZep(zep),
+      binding: { userId: "u1", threadId: "t1" },
+    });
+
+    await run(tool, { content: "hi", role: "user" }, { requestContext: {} });
+
+    expect(zep.thread.addMessages).toHaveBeenCalledWith(
+      "t1",
+      expect.objectContaining({ messages: expect.any(Array) }),
+    );
   });
 });

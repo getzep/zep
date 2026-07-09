@@ -42,7 +42,7 @@ Usage::
     print(result.text)
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Zep AI"
 __description__ = "Microsoft Agent Framework integration for Zep"
 
@@ -60,14 +60,32 @@ except ImportError as e:
     ) from e
 
 from .context_provider import (
+    DEFAULT_CONTEXT_TEMPLATE,
     DEFAULT_SOURCE_ID,
-    UserSetupHook,
+    ContextBuilder,
+    ContextInput,
     ZepContextProvider,
+)
+from .provisioning import UserSetupHook, ensure_thread, ensure_user
+from .search import (
+    Reranker,
+    Scope,
+    ZepSearchTool,
+    create_zep_search_tool,
 )
 
 __all__ = [
+    "DEFAULT_CONTEXT_TEMPLATE",
     "DEFAULT_SOURCE_ID",
+    "ContextBuilder",
+    "ContextInput",
+    "Reranker",
+    "Scope",
     "UserSetupHook",
     "ZepContextProvider",
     "ZepDependencyError",
+    "ZepSearchTool",
+    "create_zep_search_tool",
+    "ensure_user",
+    "ensure_thread",
 ]

@@ -1,8 +1,13 @@
 """
 Basic AG2 + Zep Memory Example.
 
-Demonstrates how to use ZepMemoryManager to enrich an AG2 agent's system
-message with conversation memory and register memory tools for search/add.
+Demonstrates ZepMemoryManager's automatic memory loop (attach_to_agent):
+every message the agent receives is persisted and used to refresh its
+system message, and every reply the agent sends is persisted automatically
+too -- no manual enrich_system_message()/add_messages() calls needed.
+
+Also registers the search/add memory tools so the agent can look up and
+store memories on its own.
 
 Prerequisites:
     export ZEP_API_KEY="your-zep-cloud-api-key"
@@ -25,14 +30,6 @@ async def main() -> None:
     user_id = f"user_{uuid.uuid4().hex[:16]}"
     session_id = f"thread_{uuid.uuid4().hex[:16]}"
 
-    # Create user and thread in Zep
-    try:
-        await zep.user.add(user_id=user_id, email="alice@example.com", first_name="Alice")
-        await zep.thread.create(thread_id=session_id, user_id=user_id)
-        print(f"Created user {user_id} and thread {session_id}")
-    except Exception as e:
-        print(f"Setup: {e}")
-
     # Configure AG2 agents
     llm_config = LLMConfig({"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]})
 
@@ -48,14 +45,29 @@ async def main() -> None:
         is_termination_msg=lambda msg: "TERMINATE" in (msg.get("content") or ""),
     )
 
-    # Enrich agent with memory context
-    memory_mgr = ZepMemoryManager(zep, user_id=user_id, session_id=session_id)
-    await memory_mgr.enrich_system_message(assistant, query="conversation topic")
+    # ZepMemoryManager lazily provisions the Zep user/thread on first use
+    # (pass first_name/last_name/email so Zep can anchor the user's identity
+    # node in the graph). Call ensure_user/ensure_thread out-of-band instead
+    # if you want provisioning failures to surface loudly before the first turn.
+    memory_mgr = ZepMemoryManager(
+        zep,
+        user_id=user_id,
+        session_id=session_id,
+        first_name="Alice",
+        email="alice@example.com",
+    )
 
-    # Register Zep tools so the agent can search and store memories
+    # Wire the automatic inject+persist loop onto the assistant. Every
+    # incoming message is persisted and used to refresh the system message;
+    # every outgoing reply is persisted as an assistant turn.
+    memory_mgr.attach_to_agent(assistant)
+
+    # Register Zep tools so the agent can also search and store memories
+    # explicitly (pin-or-expose: scope/reranker/limit/mmr_lambda/center_node_uuid
+    # are all model-visible by default -- see README for pinning options).
     register_all_tools(assistant, user_proxy, zep, user_id=user_id, session_id=session_id)
 
-    # Run a conversation
+    # Run a conversation -- no manual memory calls needed per turn.
     try:
         result = user_proxy.initiate_chat(
             assistant,

@@ -1,4 +1,4 @@
-import type { Zep } from "@getzep/zep-cloud";
+import type { Zep, ZepClient } from "@getzep/zep-cloud";
 
 /**
  * A binding identifies *which* Zep graph the tools read from and write to.
@@ -58,3 +58,47 @@ export interface ZepTurn {
   /** Optional name recorded on the assistant message. */
   assistantName?: string;
 }
+
+/**
+ * Input handed to a custom {@link ZepContextBuilder}.
+ *
+ * Bundling the builder's inputs into a single object (rather than positional
+ * arguments) lets us add fields later without breaking existing builders.
+ */
+export interface ZepContextBuilderInput {
+  /** The `ZepClient` in use by the integration. */
+  client: ZepClient;
+  /** The resolved Zep user ID for this turn, when configured. */
+  userId?: string;
+  /** The Zep thread that scopes this turn. */
+  threadId: string;
+  /** The user's message text for this turn. */
+  userMessage: string;
+  /**
+   * The middleware call params for this turn (`transformParams`'s `params`),
+   * exposed for power users who need more than `userMessage`. Typed `unknown`
+   * to avoid coupling this module to the AI SDK's provider types.
+   */
+  params?: unknown;
+}
+
+/**
+ * A custom context builder function.
+ *
+ * Receives a single {@link ZepContextBuilderInput} and returns the context
+ * block to inject into the prompt (or `undefined` to skip injection). Used by
+ * {@link ZepMiddlewareOptions.contextBuilder} to replace the default
+ * `thread.getUserContext` retrieval — useful when you want to assemble context
+ * from more than one Zep call, or fold in non-Zep data.
+ */
+export type ZepContextBuilder = (input: ZepContextBuilderInput) => Promise<string | undefined>;
+
+/**
+ * Hook run exactly once, immediately after a Zep user is newly created by
+ * {@link EnsureIdentityOptions}. Receives the Zep client and the newly created
+ * user ID. Use this to configure per-user ontology, custom instructions, or
+ * user summary instructions. Errors are logged, not thrown — a failing hook
+ * never flips {@link ensureZepUserAndThread}'s `Promise<boolean>` "ready"
+ * result to `false`.
+ */
+export type ZepUserCreatedHook = (client: ZepClient, userId: string) => void | Promise<void>;
