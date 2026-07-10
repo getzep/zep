@@ -25,13 +25,19 @@ Triggered by a published GitHub release or manual dispatch. Routes by language:
 - **Python → PyPI** (test → build → publish via trusted publishing / OIDC).
 - **TypeScript → npm** (`npm ci` → build → test → `npm publish`, via trusted
   publishing / OIDC).
+- **Go → GitHub + Go proxy** (manual dispatch → test → scoped tag + GitHub Release →
+  `proxy.golang.org` verification).
 
 **Tag scheme:** `zep-<framework>-<language>-v<version>` — e.g. `zep-adk-python-v0.2.0`,
 `zep-mastra-typescript-v0.1.0`. Manual dispatch takes `framework` + `language` inputs.
 
-**Go modules** are not released by this workflow — a Go module is versioned by a git tag
-matching its module subpath: `integrations/<framework>/go/vX.Y.Z`, consumed via
-`go get github.com/getzep/zep/integrations/<framework>/go@vX.Y.Z`.
+**Go modules** use a git tag matching the module subpath:
+`integrations/<framework>/go/vX.Y.Z`. To release one, run this workflow manually from
+`main`, choose the framework and `go`, and enter the version without the `v` prefix. After
+the Go checks pass and the protected `release` environment is approved, the workflow
+creates the scoped tag and GitHub Release and verifies the module through the public Go
+proxy. For example, ADK version `0.1.0` is consumed with
+`go get github.com/getzep/zep/integrations/adk/go@v0.1.0`.
 
 ## Setup requirements
 
@@ -62,7 +68,8 @@ workflow.
 2. Add a `paths-filter` entry under the matching language in `test-integrations.yml`
    (e.g. `pydantic-ai: ['integrations/pydantic-ai/python/**']`).
 3. Python: configure PyPI trusted publishing. TypeScript: configure npm trusted publishing.
-4. Release by tagging `zep-<framework>-<language>-v<version>` (or the Go module-path tag).
+4. Python/TypeScript: publish a release tag using `zep-<framework>-<language>-v<version>`.
+   Go: manually dispatch `release-integrations.yml`; do not create the tag yourself.
 
 ## Troubleshooting
 
@@ -70,3 +77,5 @@ workflow.
 - **Tests fail on PR:** check dependencies and language/version compatibility.
 - **Release fails:** confirm PyPI or npm trusted publishing is configured with environment
   `release`.
+- **Go tag already exists:** versions are immutable. Re-run only when the tag points to the
+  same commit; otherwise choose a new version.

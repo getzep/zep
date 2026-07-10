@@ -55,9 +55,10 @@ full per-language commands and the CI/release setup.
 
 ## Release
 
-Each package releases independently via `.github/workflows/release-integrations.yml`, tag
-scheme `zep-<framework>-<language>-v<version>` (Python → PyPI, TypeScript → npm; Go is
-versioned by the module-path tag `integrations/<framework>/go/vX.Y.Z`).
+Each package releases independently via `.github/workflows/release-integrations.yml`.
+Python and TypeScript use `zep-<framework>-<language>-v<version>` release tags. For Go,
+manually dispatch the workflow from `main` with the framework and version; after validation
+it creates the module-path tag `integrations/<framework>/go/vX.Y.Z` and GitHub Release.
 
 ## Support
 

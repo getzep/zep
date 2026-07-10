@@ -159,8 +159,9 @@ go vet ./... && go test ./... && golangci-lint run
 - **Release:** `.github/workflows/release-integrations.yml`. Tag scheme encodes language:
   **`zep-<framework>-<language>-v<version>`** (e.g. `zep-adk-python-v0.2.0`,
   `zep-mastra-typescript-v0.1.0`). Python → PyPI, TypeScript → npm.
-  **Go exception:** Go modules are versioned by a tag matching the module subpath —
-  `integrations/<framework>/go/vX.Y.Z` — consumed via
+  **Go exception:** manually dispatch the workflow from `main` with the framework and
+  version. After tests and release-environment approval, it creates the module-path tag and
+  GitHub Release: `integrations/<framework>/go/vX.Y.Z`. Consumers install it via
   `go get github.com/getzep/zep/integrations/<framework>/go@vX.Y.Z`.
 
 ## Quality bar
