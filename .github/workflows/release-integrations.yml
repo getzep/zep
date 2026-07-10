@@ -2,8 +2,8 @@ name: Release Integration Packages
 
 # Tag scheme: zep-<framework>-<language>-v<version>
 #   e.g. zep-adk-python-v0.2.0, zep-mastra-typescript-v0.1.0
-# Go modules are NOT released here — they are versioned by a tag matching the module
-# subpath, integrations/<framework>/go/vX.Y.Z, consumed via
+# Go modules are tested, tagged, and released from workflow_dispatch. Their tags match
+# the module subpath, integrations/<framework>/go/vX.Y.Z, consumed via
 #   go get github.com/getzep/zep/integrations/<framework>/go@vX.Y.Z
 
 on:
@@ -21,6 +21,10 @@ on:
         options:
           - python
           - typescript
+          - go
+      version:
+        description: 'Go version without the v prefix (required for Go, e.g. 0.1.0)'
+        required: false
 
 permissions:
   contents: read
@@ -32,25 +36,216 @@ jobs:
     outputs:
       framework: ${{ steps.detect.outputs.framework }}
       language: ${{ steps.detect.outputs.language }}
+      version: ${{ steps.detect.outputs.version }}
     steps:
       - name: Detect framework + language
         id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_FRAMEWORK: ${{ github.event.inputs.framework }}
+          INPUT_LANGUAGE: ${{ github.event.inputs.language }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "framework=${{ github.event.inputs.framework }}" >> "$GITHUB_OUTPUT"
-            echo "language=${{ github.event.inputs.language }}" >> "$GITHUB_OUTPUT"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            FRAMEWORK="$INPUT_FRAMEWORK"
+            LANGUAGE="$INPUT_LANGUAGE"
+            VERSION="$INPUT_VERSION"
           else
-            TAG="${{ github.event.release.tag_name }}"
+            TAG="$RELEASE_TAG"
             # zep-<framework>-<language>-v<version>
-            if [[ $TAG =~ ^zep-(.+)-(python|typescript)-v.*$ ]]; then
-              echo "framework=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-              echo "language=${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+            if [[ $TAG =~ ^zep-([a-z0-9][a-z0-9-]*)-(python|typescript)-v(.+)$ ]]; then
+              FRAMEWORK="${BASH_REMATCH[1]}"
+              LANGUAGE="${BASH_REMATCH[2]}"
+              VERSION="${BASH_REMATCH[3]}"
+            elif [[ $TAG =~ ^integrations/([a-z0-9][a-z0-9-]*)/go/v(.+)$ ]]; then
+              # Go releases created with GITHUB_TOKEN do not recursively trigger this
+              # workflow. Recognize externally-created Go releases so they no-op cleanly.
+              FRAMEWORK="${BASH_REMATCH[1]}"
+              LANGUAGE="go"
+              VERSION="${BASH_REMATCH[2]}"
             else
-              echo "Tag '$TAG' does not match zep-<framework>-<language>-v<version>."
-              echo "Go modules release via the tag integrations/<framework>/go/vX.Y.Z, not this workflow."
+              echo "Tag '$TAG' does not match a supported integration release tag."
               exit 1
             fi
           fi
+
+          if [[ ! "$FRAMEWORK" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+            echo "Invalid framework key '$FRAMEWORK'."
+            exit 1
+          fi
+          if [[ ! "$LANGUAGE" =~ ^(python|typescript|go)$ ]]; then
+            echo "Unsupported integration language '$LANGUAGE'."
+            exit 1
+          fi
+          {
+            echo "framework=$FRAMEWORK"
+            echo "language=$LANGUAGE"
+            echo "version=$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------- Go → scoped tag + GitHub Release
+  validate-go:
+    if: github.event_name == 'workflow_dispatch' && needs.detect.outputs.language == 'go'
+    needs: detect
+    runs-on: ubuntu-latest
+    outputs:
+      framework: ${{ steps.metadata.outputs.framework }}
+      module: ${{ steps.metadata.outputs.module }}
+      package_dir: ${{ steps.metadata.outputs.package_dir }}
+      tag: ${{ steps.metadata.outputs.tag }}
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - name: Validate release metadata
+        id: metadata
+        env:
+          FRAMEWORK: ${{ needs.detect.outputs.framework }}
+          VERSION: ${{ needs.detect.outputs.version }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Go releases must be dispatched from main (got '$GITHUB_REF')."
+            exit 1
+          fi
+          if [[ ! "$FRAMEWORK" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+            echo "Invalid framework key '$FRAMEWORK'."
+            exit 1
+          fi
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Invalid Go semantic version '$VERSION' (expected e.g. 0.1.0 or 1.2.0-rc.1)."
+            exit 1
+          fi
+          if [[ "$VERSION" == *-* ]]; then
+            IFS='.' read -ra PRERELEASE_IDENTIFIERS <<< "${VERSION#*-}"
+            for identifier in "${PRERELEASE_IDENTIFIERS[@]}"; do
+              if [[ "$identifier" =~ ^[0-9]+$ && "$identifier" == 0* && "$identifier" != "0" ]]; then
+                echo "Invalid numeric prerelease identifier '$identifier': leading zeroes are not allowed."
+                exit 1
+              fi
+            done
+          fi
+
+          PACKAGE_DIR="integrations/$FRAMEWORK/go"
+          MODULE="github.com/$GITHUB_REPOSITORY/$PACKAGE_DIR"
+          MAJOR="${VERSION%%.*}"
+          if (( MAJOR >= 2 )); then
+            MODULE="$MODULE/v$MAJOR"
+          fi
+
+          {
+            echo "framework=$FRAMEWORK"
+            echo "module=$MODULE"
+            echo "package_dir=$PACKAGE_DIR"
+            echo "tag=$PACKAGE_DIR/v$VERSION"
+            echo "version=v$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Validate Go module path
+        env:
+          EXPECTED_MODULE: ${{ steps.metadata.outputs.module }}
+          PACKAGE_DIR: ${{ steps.metadata.outputs.package_dir }}
+        run: |
+          if [[ ! -f "$PACKAGE_DIR/go.mod" ]]; then
+            echo "Go module $PACKAGE_DIR/go.mod does not exist."
+            exit 1
+          fi
+          ACTUAL_MODULE="$(awk '$1 == "module" { print $2; exit }' "$PACKAGE_DIR/go.mod")"
+          if [[ "$ACTUAL_MODULE" != "$EXPECTED_MODULE" ]]; then
+            echo "go.mod declares '$ACTUAL_MODULE'; expected '$EXPECTED_MODULE'."
+            exit 1
+          fi
+
+      - name: Test Go integration
+        uses: ./.github/actions/test-go
+        with:
+          package: ${{ steps.metadata.outputs.framework }}
+          go-version: '1.26'
+
+  publish-go:
+    if: github.event_name == 'workflow_dispatch' && needs.detect.outputs.language == 'go'
+    needs: [detect, validate-go]
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://github.com/${{ github.repository }}/releases
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Create scoped tag and GitHub Release
+        env:
+          FRAMEWORK: ${{ needs.validate-go.outputs.framework }}
+          GH_TOKEN: ${{ github.token }}
+          MODULE: ${{ needs.validate-go.outputs.module }}
+          PACKAGE_DIR: ${{ needs.validate-go.outputs.package_dir }}
+          TAG: ${{ needs.validate-go.outputs.tag }}
+          VERSION: ${{ needs.validate-go.outputs.version }}
+        run: |
+          TAG_EXISTS=false
+          TAG_REF="$(git ls-remote --tags origin "refs/tags/$TAG")"
+          if [[ -n "$TAG_REF" ]]; then
+            TAG_EXISTS=true
+            git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+            TAG_SHA="$(git rev-list -n 1 "$TAG")"
+            if [[ "$TAG_SHA" != "$GITHUB_SHA" ]]; then
+              echo "Tag '$TAG' already points to $TAG_SHA, not $GITHUB_SHA."
+              exit 1
+            fi
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release '$TAG' already exists at the validated commit; continuing verification."
+            exit 0
+          fi
+
+          NOTES_FILE="$(mktemp)"
+          printf '%s\n\n' "Go module: \`$MODULE\`" > "$NOTES_FILE"
+          # shellcheck disable=SC2016 # Markdown fences are intentionally literal.
+          printf 'Install with:\n\n```bash\ngo get %s@%s\n```\n\n' "$MODULE" "$VERSION" >> "$NOTES_FILE"
+          printf '[Changelog](https://github.com/%s/blob/%s/%s/CHANGELOG.md)\n' \
+            "$GITHUB_REPOSITORY" "$TAG" "$PACKAGE_DIR" >> "$NOTES_FILE"
+
+          RELEASE_ARGS=(
+            "$TAG"
+            --title "Zep $FRAMEWORK Go integration $VERSION"
+            --notes-file "$NOTES_FILE"
+            --latest=false
+          )
+          if [[ "$TAG_EXISTS" == "true" ]]; then
+            RELEASE_ARGS+=(--verify-tag)
+          else
+            RELEASE_ARGS+=(--target "$GITHUB_SHA")
+          fi
+          gh release create "${RELEASE_ARGS[@]}"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Register and verify module with the Go proxy
+        env:
+          MODULE: ${{ needs.validate-go.outputs.module }}
+          VERSION: ${{ needs.validate-go.outputs.version }}
+        run: |
+          for attempt in {1..6}; do
+            if GOPROXY=https://proxy.golang.org GO111MODULE=on go list -m "$MODULE@$VERSION"; then
+              exit 0
+            fi
+            if (( attempt < 6 )); then
+              echo "Go proxy has not resolved $MODULE@$VERSION yet; retrying in 10 seconds."
+              sleep 10
+            fi
+          done
+          echo "Go proxy did not resolve $MODULE@$VERSION after 6 attempts."
+          exit 1
 
   # ---------------------------------------------------------------- Python → PyPI
   test-python:
