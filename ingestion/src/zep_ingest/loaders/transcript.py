@@ -14,7 +14,7 @@ from zep_ingest.types import Episode
 _TIMESTAMP = re.compile(r"^\s*(?:\*\*)?\[?(\d{1,2}):(\d{2}):(\d{2})\]?(?:\*\*)?\s*$")
 _VTT_TIME = r"(?:(?P<hours>\d{2,}):)?(?P<minutes>[0-5]\d):(?P<seconds>[0-5]\d)\.(?P<millis>\d{3})"
 _VTT_CUE = re.compile(rf"^{_VTT_TIME}\s+-->\s+.+?(?:\s+\S+:\S+)*$")
-_VTT_VOICE = re.compile(r"^<v(?:\.[^ >]+)*\s+([^>]+)>(.*)$", re.IGNORECASE)
+_VTT_VOICE = re.compile(r"^<v(?:\.[^. >]+)*\s+([^>]+)>(.*)$", re.IGNORECASE)
 _BOLD_TURN = re.compile(r"^\*\*(?P<speaker>[^:*][^:]{0,80}?):?\*\*:?\s*(?P<text>.*)$")
 _PLAIN_TURN = re.compile(r"^(?P<speaker>[A-Z][^:]{0,80}?):\s+(?P<text>.+)$")
 _HEADER_LINE = re.compile(r"^([A-Z][A-Z _-]{2,30}):\s*(.*)$")

@@ -37,7 +37,7 @@ def test_webvtt_optional_hours_identifier_settings_voice_and_millis(tmp_path):
         "WEBVTT\n\n"
         "generated-cue-a\n"
         "00:02.125 --> 00:04.000 align:start position:10%\n"
-        "<v Avery Brown>Generated opening.\n\n"
+        "<v.panel.host Avery Brown>Generated opening.\n\n"
         "generated-cue-b\n"
         "01:02:03.500 --> 01:02:04.000 line:20%\n"
         "<v Blake Carter>Generated response.\n",

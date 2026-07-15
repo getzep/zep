@@ -116,14 +116,11 @@ class TestFormatting:
 
     def test_markup_normalization(self):
         markup = general(load())[2].data
-        assert "@Avery Brown" in markup
-        assert "@U999" in markup  # unknown user falls back to the raw id
-        assert "#random" in markup
-        assert "@here" in markup
-        assert "&" in markup and "&amp;" not in markup
-        assert "the doc (https://example.com)" in markup
-        assert "https://plain.example.com" in markup
-        assert "<" not in markup
+        assert markup == (
+            "Blake Carter (Slack #general, 2024-06-15 09:08 UTC): "
+            "@Avery Brown and @U999 check #random @here & see "
+            "the doc (https://example.com) or https://plain.example.com"
+        )
 
     def test_custom_formatter(self):
         eps = general(load(formatter=lambda m: f"{m.sender}: {m.text}"))
