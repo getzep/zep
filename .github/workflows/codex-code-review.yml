@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      pull-requests: read
     outputs:
       final_message: ${{ steps.codex.outputs.final-message }}
 
@@ -35,16 +36,22 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # Fetch the untrusted PR commits as Git objects for diffing, but never
-      # check them out or execute content from them.
-      - name: Fetch pull request head
+      # Download the PR as inert text rather than importing its untrusted Git
+      # objects into the secret-bearing review job.
+      - name: Download pull request diff
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin \
-            "+refs/pull/${PR_NUMBER}/head:refs/remotes/codex/pr-head"
+          mkdir -p .codex-review
+          gh api \
+            -H "Accept: application/vnd.github.v3.diff" \
+            "repos/${REPOSITORY}/pulls/${PR_NUMBER}" \
+            > .codex-review/pr.diff
+          test -s .codex-review/pr.diff
 
       - name: Run Codex review
         id: codex
