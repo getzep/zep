@@ -7,9 +7,10 @@ Integrations are organized framework-first, then language: `integrations/<framew
 
 ### `codex-code-review.yml` — automatic maintainer PR review
 
-Runs Codex when a non-draft pull request authored by a `getzep` organization
-member is opened, updated, reopened, or marked ready for review. Pull requests
-from outside contributors and external collaborators are skipped before the
+Runs Codex when a non-draft pull request is opened, updated, reopened, or
+marked ready for review. A secretless preflight job verifies the PR comes from
+a branch in this repository, its author is not a bot, and the author has write
+(or higher) repository permission; anything else is skipped before the
 secret-bearing job starts. Codex's output is posted as a GitHub pull request
 review. It does not submit a formal approval.
 
