@@ -5,6 +5,16 @@ Integrations are organized framework-first, then language: `integrations/<framew
 
 ## Workflows
 
+### `codex-code-review.yml` — automatic maintainer PR review
+
+Runs Codex when a non-draft pull request authored by a `getzep` organization
+member is opened, updated, reopened, or marked ready for review. Pull requests
+from outside contributors and external collaborators are skipped before the
+secret-bearing job starts. Codex's output is posted as a GitHub pull request
+review. It does not submit a formal approval.
+
+Requires an `OPENAI_API_KEY` Actions secret.
+
 ### `test-integrations.yml` — PR / push testing
 Detects which packages changed (via `dorny/paths-filter`) and tests them in three
 per-language lanes:
