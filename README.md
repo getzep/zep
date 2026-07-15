@@ -20,7 +20,7 @@ This repository is **not** Zep's product or service. It contains **example code,
 integrations, and tools** for building agent memory with [Zep Cloud](https://www.getzep.com/),
 Zep's managed agent memory platform.
 
-To use Zep Cloud, sign up at [www.getzep.com](https://www.getzep.com/) and read the
+To use Zep Cloud, sign up at [www.getzep.com](https://www.getzep.com/) and explore the
 documentation at [help.getzep.com](https://help.getzep.com). Zep's official SDKs are:
 
 - **Python**: `pip install zep-cloud`
