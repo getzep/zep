@@ -10,13 +10,16 @@ concurrency:
 
 jobs:
   review:
-    # Restrict paid, secret-bearing reviews to PRs authored by members of the
-    # getzep organization. COLLABORATOR is intentionally excluded because it
-    # can include external repository collaborators.
+    # Restrict paid, secret-bearing reviews to PRs from branches in this
+    # repository: only users with write access can push branches here, and
+    # fork PRs never receive secrets on pull_request events. Bots (e.g.
+    # dependabot) are excluded to avoid burning paid reviews. We don't gate
+    # on author_association because private org membership reports as
+    # CONTRIBUTOR in event payloads, which silently skips every review.
     if: >-
       github.event.pull_request.draft == false &&
-      (github.event.pull_request.author_association == 'MEMBER' ||
-       github.event.pull_request.author_association == 'OWNER')
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.type != 'Bot'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
