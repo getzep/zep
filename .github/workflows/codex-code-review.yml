@@ -25,12 +25,26 @@ jobs:
       final_message: ${{ steps.codex.outputs.final-message }}
 
     steps:
-      - name: Checkout pull request
+      # Keep PR-controlled files out of the working tree. In particular, this
+      # ensures the prompt and repository instructions come from the trusted
+      # base revision even though this job receives OPENAI_API_KEY.
+      - name: Checkout trusted base
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
           persist-credentials: false
+
+      # Fetch the untrusted PR commits as Git objects for diffing, but never
+      # check them out or execute content from them.
+      - name: Fetch pull request head
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin \
+            "+refs/pull/${PR_NUMBER}/head:refs/remotes/codex/pr-head"
 
       - name: Run Codex review
         id: codex
