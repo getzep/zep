@@ -143,6 +143,31 @@ class TestSequentialResult:
         result = IngestResult(method="sequential", client=mock_zep)
         assert result.status == "succeeded"
 
+    def test_task_ids_are_polled_until_succeeded(self, mock_zep):
+        from zep_cloud.types.get_task_response import GetTaskResponse
+
+        result = IngestResult(method="sequential", task_ids=["t1"], client=mock_zep)
+        assert result.status == "queued"
+        mock_zep.task.get.side_effect = [
+            GetTaskResponse(task_id="t1", status="processing"),
+            GetTaskResponse(task_id="t1", status="succeeded"),
+        ]
+
+        result.wait(poll_interval=0)
+
+        assert result.status == "succeeded"
+        assert mock_zep.task.get.call_count == 2
+
+    def test_failed_task_makes_result_failed(self, mock_zep):
+        from zep_cloud.types.get_task_response import GetTaskResponse
+
+        result = IngestResult.from_task_ids(mock_zep, ["t1"])
+        mock_zep.task.get.return_value = GetTaskResponse(task_id="t1", status="failed")
+
+        result.refresh()
+
+        assert result.status == "failed"
+
 
 class TestRaiseForStatus:
     def test_raises_on_failed(self, mock_zep):

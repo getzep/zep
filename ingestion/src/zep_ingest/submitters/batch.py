@@ -13,6 +13,8 @@ from typing import Any
 from zep_cloud.client import Zep
 from zep_cloud.core.api_error import ApiError
 
+from zep_ingest._errors import safe_api_error
+from zep_ingest._validation import require_int_range
 from zep_ingest.exceptions import BatchUnavailableError
 from zep_ingest.result import AddError, IngestResult
 from zep_ingest.submitters.sequential import call_with_retries
@@ -40,7 +42,7 @@ def process_batch(client: Zep, batch_id: str, result: IngestResult, *, max_retri
     if error is not None:
         result.mark_batch_failed(
             batch_id,
-            f"batch.process failed: status={error.status_code}, body={error.body}; "
+            f"{safe_api_error('batch.process', error)}; "
             f"items were added but the batch was never processed — retry with "
             f"client.batch.process({batch_id!r}).",
         )
@@ -57,6 +59,14 @@ class BatchSubmitter:
         max_add_retries: int = 3,
         initial_batch_id: str | None = None,
     ) -> None:
+        require_int_range("page_size", page_size, minimum=1, maximum=MAX_ITEMS_PER_ADD)
+        require_int_range(
+            "max_items_per_batch",
+            max_items_per_batch,
+            minimum=page_size,
+            maximum=MAX_ITEMS_PER_BATCH,
+        )
+        require_int_range("max_add_retries", max_add_retries, minimum=1)
         self.client = client
         self.page_size = page_size
         self.max_items_per_batch = max_items_per_batch
@@ -124,9 +134,8 @@ class BatchSubmitter:
                 index=page_index,
                 item_count=len(items),
                 error=(
-                    f"batch.add failed after {self.max_add_retries} attempt(s): "
-                    f"status={last_error.status_code if last_error else None}, "
-                    f"body={last_error.body if last_error else None}"
+                    f"{safe_api_error('batch.add', last_error) if last_error else 'batch.add failed'} "
+                    f"after {self.max_add_retries} attempt(s)"
                 ),
                 batch_id=batch_id,
             )

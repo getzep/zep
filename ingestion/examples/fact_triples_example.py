@@ -35,7 +35,7 @@ DATA = Path(__file__).parent / "data"
 # gap. Node labels tie triple-created nodes to the declared ontology types;
 # without them the nodes stay untyped. Indexed strictly ([] not .get) so a new
 # portfolio name in the data fails loudly here instead of mislabeling a node.
-PORTFOLIO_TYPES = {"Atlas": "Project", "FleetView": "Product"}
+PORTFOLIO_TYPES = {"ROBOT-202": "Project", "OPERATIONS-DASHBOARD": "Product"}
 
 
 def employee_triples(row: dict) -> list[FactTriple]:
@@ -91,7 +91,7 @@ def partner_triples(row: dict) -> list[FactTriple]:
             fact_name="SUPPLIES",
             source_node_name=company,
             source_node_labels=["Organization"],
-            source_node_summary=f"{row.get('relationship', 'partner')} of Meridian Robotics",
+            source_node_summary=f"{row.get('relationship', 'partner')} of Alder Ridge Robotics",
             target_node_name=target,
             # supplies_to names a company unless it's a known portfolio item
             target_node_labels=[PORTFOLIO_TYPES.get(target, "Organization")],
@@ -102,11 +102,11 @@ def partner_triples(row: dict) -> list[FactTriple]:
     if row.get("relationship") == "customer":
         triples.append(
             FactTriple(
-                fact=f"{company} is a customer of Meridian Robotics",
+                fact=f"{company} is a customer of Alder Ridge Robotics",
                 fact_name="CUSTOMER_OF",
                 source_node_name=company,
                 source_node_labels=["Organization"],
-                target_node_name="Meridian Robotics",
+                target_node_name="Alder Ridge Robotics",
                 target_node_labels=["Organization"],
                 valid_at=since,
             )
@@ -155,11 +155,12 @@ def main() -> None:
     #    already happened at FactTriple construction — before any API call.
     triples = load_triples()
     result = ingest_fact_triples(client, triples, graph_id=graph_id)
+    result.wait(timeout=600)
     result.raise_for_status()
     print(f"Molded org_chart.json into {len(triples)} fact triples: {result.status}")
 
     # search indexing lags ingestion slightly; search_when_ready absorbs that
-    query = "Who works at Meridian Robotics?"
+    query = "Who works at Alder Ridge Robotics?"
     response = search_when_ready(client, query, graph_id=graph_id, limit=5)
     print(f"\nSearch: {query}")
     for edge in response.edges or []:

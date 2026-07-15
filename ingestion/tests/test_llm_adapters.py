@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from zep_ingest.exceptions import ZepDependencyError
+from zep_ingest.exceptions import ConfigurationError, ZepDependencyError
 
 
 class TestOpenAIAdapter:
@@ -88,6 +88,12 @@ class TestOpenAICompatibleAdapter:
             base_url="http://localhost:11434/v1", api_key="k"
         )
         assert llm.model == "llama3.1:70b"
+
+    def test_requires_base_url_when_constructing_client(self):
+        from zep_ingest.llm.openai import OpenAICompatibleLLM
+
+        with pytest.raises(ConfigurationError, match="base_url"):
+            OpenAICompatibleLLM(model="local-model")
 
     def test_complete_uses_chat_completions(self):
         from zep_ingest.llm.openai import OpenAICompatibleLLM

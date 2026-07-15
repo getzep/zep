@@ -54,7 +54,7 @@ class TestTextSplitting:
 
 class TestMessageSplitting:
     def test_message_split_on_line_boundaries(self):
-        lines = [f"Alice (Slack #general): message number {i}" for i in range(400)]
+        lines = [f"Avery Brown (Slack #general): message number {i}" for i in range(400)]
         data = "\n".join(lines)
         assert len(data) > SAFE_EPISODE_CHARS
         out = apply(LimitGuard(), Episode(data=data, data_type="message"))
@@ -94,7 +94,27 @@ class TestJsonSplitting:
         guard = LimitGuard()
         out = apply(guard, Episode(data="not json " * 2000, data_type="json"))
         assert all(len(e.data) <= MAX_EPISODE_CHARS for e in out)
+        assert all(e.data_type == "text" for e in out)
         assert any("json" in w.lower() for w in guard.warnings)
+
+    def test_single_oversize_json_value_stays_valid(self):
+        value = "x" * 500
+        guard = LimitGuard(limit=100)
+
+        out = apply(guard, Episode(data=json.dumps({"blob": value}), data_type="json"))
+
+        assert len(out) > 1
+        assert all(len(e.data) <= 100 and e.data_type == "json" for e in out)
+        assert "".join(json.loads(e.data)["blob"] for e in out) == value
+
+    def test_unrepresentable_json_wrapper_falls_back_to_text_without_data_loss(self):
+        data = json.dumps({"x" * 150: ""})
+        guard = LimitGuard(limit=100)
+
+        out = apply(guard, Episode(data=data, data_type="json"))
+
+        assert all(e.data_type == "text" and len(e.data) <= 100 for e in out)
+        assert "".join(e.data for e in out) == data
 
 
 class TestFieldPropagation:
@@ -115,3 +135,13 @@ class TestFieldPropagation:
             assert episode.metadata["source"] == "slack"
             assert episode.metadata["part"] == f"{i}/{n}"
             assert episode.source_description == "desc"
+
+    def test_full_metadata_map_is_preserved_without_part_key(self):
+        metadata = {f"k{i}": i for i in range(10)}
+        guard = LimitGuard(limit=100)
+
+        out = apply(guard, Episode(data="word " * 100, metadata=metadata))
+
+        assert len(out) > 1
+        assert all(e.metadata == metadata for e in out)
+        assert any("part" in warning for warning in guard.warnings)

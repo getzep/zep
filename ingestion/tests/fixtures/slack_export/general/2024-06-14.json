@@ -23,7 +23,7 @@
   {
     "type": "message",
     "user": "U002",
-    "text": "Should we deprioritize MR-42?",
+    "text": "Should we deprioritize PROTOTYPE-202?",
     "ts": "1718356000.000200",
     "thread_ts": "1718356000.000200",
     "reply_count": 2

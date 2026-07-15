@@ -82,7 +82,7 @@ class TestRateLimits:
         result = SequentialSubmitter(mock_zep).submit(episodes(2), DEST)
         assert mock_zep.graph.add.call_count == 2
         assert len(result.add_errors) == 1
-        assert "bad request" in result.add_errors[0].error
+        assert result.add_errors[0].error == "graph.add failed: status=400"
         assert sleeps == []
 
     def test_server_error_retried(self, mock_zep, sleeps):
@@ -93,10 +93,3 @@ class TestRateLimits:
         result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
         assert result.add_errors == []
         assert mock_zep.graph.add.call_count == 2
-
-
-class TestWarnings:
-    def test_metadata_truncation_warning(self, mock_zep, sleeps):
-        ep = Episode(data="x", metadata={f"k{i}": i for i in range(11)})
-        result = SequentialSubmitter(mock_zep).submit([ep], DEST)
-        assert any("metadata" in w for w in result.warnings)

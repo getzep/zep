@@ -4,8 +4,20 @@ version = "0.1.0"
 description = "Bulk data ingestion pipeline for Zep: chunk, contextualize, canonicalize, and submit unstructured and structured data"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Zep AI" }]
+keywords = ["zep", "ingestion", "knowledge-graph", "data-pipeline"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
 dependencies = [
-    "typing-extensions>=4.0.0",
     "zep-cloud>=3.23.0",
 ]
 
@@ -18,7 +30,7 @@ Changelog = "https://github.com/getzep/zep/blob/main/ingestion/CHANGELOG.md"
 
 [project.optional-dependencies]
 openai = [
-    "openai>=1.0.0",
+    "openai>=1.45.0",
 ]
 anthropic = [
     "anthropic>=0.40.0",

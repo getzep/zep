@@ -35,9 +35,9 @@ def main() -> None:
         # canonicalize retired code names, longhand phrasings, and casual
         # first-name references so each merges into one entity
         aliases={
-            "Atlas": ["MR-42", "Atlas program"],
-            "Priya Sharma": ["Priya"],
-            "Alice Chen": ["Alice"],
+            "ROBOT-202": ["PROTOTYPE-202", "ROBOT-202 program"],
+            "Casey Nguyen": ["Casey Nguyen"],
+            "Avery Brown": ["Avery Brown"],
         },
         risky_words=DEFAULT_RISKY_WORDS,  # reject aliases that are common words
         wait=True,
@@ -51,7 +51,7 @@ def main() -> None:
         print(f"Batch ids: {result.batch_ids}")
 
     # search indexing lags ingestion slightly; search_when_ready absorbs that
-    query = "Who is responsible for the Atlas project?"
+    query = "Who is responsible for the ROBOT-202 project?"
     response = search_when_ready(client, query, graph_id=graph_id, limit=5)
     print(f"\nSearch: {query}")
     for edge in response.edges or []:

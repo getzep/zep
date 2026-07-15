@@ -8,6 +8,7 @@ and hard-slice only pathological unbroken strings.
 
 import json
 import re
+from collections.abc import Callable
 from typing import Any
 
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
@@ -94,32 +95,87 @@ def split_lines(text: str, chunk_size: int) -> list[str]:
     return pieces
 
 
-def split_json_top_level(text: str, chunk_size: int) -> list[str] | None:
-    """Split a JSON document at the top level into valid JSON pieces.
+def _split_json_value(
+    value: Any, render: Callable[[Any], str], chunk_size: int
+) -> list[str] | None:
+    rendered = render(value)
+    if len(rendered) <= chunk_size:
+        return [rendered]
 
-    Returns None when the text is not parseable JSON or cannot be split
-    (e.g. a scalar) — callers fall back to a hard split.
-    """
+    if isinstance(value, str):
+        if not value:
+            return None
+        pieces: list[str] = []
+        start = 0
+        while start < len(value):
+            low, high, best = 1, len(value) - start, 0
+            while low <= high:
+                middle = (low + high) // 2
+                candidate = render(value[start : start + middle])
+                if len(candidate) <= chunk_size:
+                    best = middle
+                    low = middle + 1
+                else:
+                    high = middle - 1
+            if best == 0:
+                return None
+            pieces.append(render(value[start : start + best]))
+            start += best
+        return pieces
+
+    if isinstance(value, list):
+        if not value:
+            return None
+        list_pieces: list[str] = []
+        list_group: list[Any] = []
+        for item in value:
+            candidate = render([*list_group, item])
+            if len(candidate) <= chunk_size:
+                list_group.append(item)
+                continue
+            if list_group:
+                list_pieces.append(render(list_group))
+                list_group = []
+            nested = _split_json_value(item, lambda part: render([part]), chunk_size)
+            if nested is None:
+                return None
+            list_pieces.extend(nested)
+        if list_group:
+            list_pieces.append(render(list_group))
+        return list_pieces
+
+    if isinstance(value, dict):
+        if not value:
+            return None
+        dict_pieces: list[str] = []
+        dict_group: dict[str, Any] = {}
+        for key, item in value.items():
+            candidate = render({**dict_group, key: item})
+            if len(candidate) <= chunk_size:
+                dict_group[key] = item
+                continue
+            if dict_group:
+                dict_pieces.append(render(dict_group))
+                dict_group = {}
+
+            def render_item(part: Any, item_key: str = key) -> str:
+                return render({item_key: part})
+
+            nested = _split_json_value(item, render_item, chunk_size)
+            if nested is None:
+                return None
+            dict_pieces.extend(nested)
+        if dict_group:
+            dict_pieces.append(render(dict_group))
+        return dict_pieces
+
+    return None
+
+
+def split_json_top_level(text: str, chunk_size: int) -> list[str] | None:
+    """Split JSON recursively while keeping every returned piece valid JSON."""
     try:
         parsed = json.loads(text)
     except (json.JSONDecodeError, ValueError):
         return None
-
-    def pack(items: list[Any], render: Any) -> list[str]:
-        pieces: list[str] = []
-        group: list[Any] = []
-        for item in items:
-            candidate = render(group + [item])
-            if group and len(candidate) > chunk_size:
-                pieces.append(render(group))
-                group = []
-            group.append(item)
-        if group:
-            pieces.append(render(group))
-        return pieces
-
-    if isinstance(parsed, list):
-        return pack(parsed, json.dumps)
-    if isinstance(parsed, dict):
-        return pack(list(parsed.items()), lambda items: json.dumps(dict(items)))
-    return None
+    return _split_json_value(parsed, json.dumps, chunk_size)

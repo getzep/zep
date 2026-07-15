@@ -2,7 +2,7 @@
   {
     "type": "message",
     "user": "U001",
-    "text": "Big one for the company: Northwind Logistics confirmed the PickPoint One pilot at their Reno fulfillment center, starting the first week of June. Four arms in the small-parts zone.",
+    "text": "Pilot update: four ROBOT-101 units will be commissioned at South Warehouse next week.",
     "ts": "1747072000.000300",
     "thread_ts": "1747072000.000300",
     "reply_count": 3
@@ -10,28 +10,28 @@
   {
     "type": "message",
     "user": "U002",
-    "text": "Excellent. Who runs it on their side?",
+    "text": "Who is coordinating the pilot on the Clearwater side?",
     "ts": "1747072600.000310",
     "thread_ts": "1747072000.000300"
   },
   {
     "type": "message",
     "user": "U001",
-    "text": "Dana Whitfield, their operations manager. Two commitments from us: FleetView dashboards for her shift leads from day one, and an engineer on site for commissioning week.",
+    "text": "Morgan Lee coordinates it for Clearwater Fulfillment.",
     "ts": "1747073200.000320",
     "thread_ts": "1747072000.000300"
   },
   {
     "type": "message",
     "user": "U003",
-    "text": "FleetView provisioning for Northwind is straightforward — I'll have accounts ready two weeks before go-live.",
+    "text": "I will provision two read-only OPERATIONS-DASHBOARD accounts before the walkthrough.",
     "ts": "1747073800.000330",
     "thread_ts": "1747072000.000300"
   },
   {
     "type": "message",
     "user": "U003",
-    "text": "Separate note: Cascadia Freight renewed FleetView for all their distribution sites. Quiet win for the subscription business.",
+    "text": "Evertrail Freight Group also asked for a dashboard onboarding session next month.",
     "ts": "1747078000.000340"
   }
 ]

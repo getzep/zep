@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
+from zep_ingest._validation import require_int_range, require_nonnegative_number
 from zep_ingest.exceptions import IngestFailedError, IngestTimeoutError
 
 if TYPE_CHECKING:
@@ -14,9 +15,25 @@ if TYPE_CHECKING:
 
 # Batch statuses that will not change without further action.
 _TERMINAL_BATCH_STATUSES = frozenset({"succeeded", "partial", "failed", "invalid", "canceled"})
+_TERMINAL_TASK_STATUSES = frozenset({"succeeded", "partial", "failed", "canceled"})
 
 # Aggregation priority: the worst/least-done status wins.
 _STATUS_PRIORITY = ["failed", "partial", "canceled", "processing", "queued", "succeeded"]
+
+
+def _normalize_task_status(status: str | None) -> str:
+    status = status.lower() if status is not None else None
+    if status is None or status in {"created", "draft", "pending", "queued"}:
+        return "queued"
+    if status in {"in_progress", "processing", "running"}:
+        return "processing"
+    if status in {"complete", "completed", "succeeded"}:
+        return "succeeded"
+    if status in {"cancelled", "canceled"}:
+        return "canceled"
+    if status in {"error", "failed"}:
+        return "failed"
+    return status
 
 
 @dataclass(slots=True)
@@ -35,7 +52,7 @@ class IngestResult:
     """Outcome of an ingestion run.
 
     Stateless by design: everything recoverable comes from Batch API statuses or
-    episode processing flags; ``batch_ids``/``episode_uuids`` are the resume
+    episode/task processing flags; ``batch_ids``/``episode_uuids``/``task_ids`` are the resume
     handles a caller can persist.
     """
 
@@ -43,6 +60,7 @@ class IngestResult:
     items_submitted: int = 0
     batch_ids: list[str] = field(default_factory=list)
     episode_uuids: list[str] = field(default_factory=list)
+    task_ids: list[str] = field(default_factory=list)
     add_errors: list[AddError] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     client: "Zep | None" = field(default=None, repr=False)
@@ -50,6 +68,7 @@ class IngestResult:
         default_factory=dict, repr=False, compare=False
     )
     _processed_uuids: set[str] = field(default_factory=set, repr=False, compare=False)
+    _task_statuses: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
 
     @classmethod
     def from_batch_ids(cls, client: "Zep", batch_ids: "Sequence[str]") -> "IngestResult":
@@ -57,6 +76,11 @@ class IngestResult:
         after running an ingest without wait=True. refresh()/status/wait()/
         failed_items() work as if the original result had been kept."""
         return cls(method="batch", batch_ids=list(batch_ids), client=client)
+
+    @classmethod
+    def from_task_ids(cls, client: "Zep", task_ids: "Sequence[str]") -> "IngestResult":
+        """Reconstruct a task-backed sequential result from persisted task IDs."""
+        return cls(method="sequential", task_ids=list(task_ids), client=client)
 
     def mark_batch_failed(self, batch_id: str, error: str) -> None:
         """Record a batch whose processing could not be triggered: an AddError is
@@ -84,6 +108,11 @@ class IngestResult:
                 episode = self.client.graph.episode.get(uuid_=uuid)
                 if episode.processed:
                     self._processed_uuids.add(uuid)
+            for task_id in self.task_ids:
+                if self._task_statuses.get(task_id) in _TERMINAL_TASK_STATUSES:
+                    continue
+                task = self.client.task.get(task_id)
+                self._task_statuses[task_id] = _normalize_task_status(task.status)
 
     @property
     def status(self) -> str:
@@ -105,6 +134,7 @@ class IngestResult:
                     statuses.append("succeeded")
                 else:
                     statuses.append("processing")
+            statuses.extend(self._task_statuses.get(task_id, "queued") for task_id in self.task_ids)
         if self.add_errors:
             statuses.append("partial")
         if not statuses:
@@ -119,6 +149,9 @@ class IngestResult:
 
         Raises IngestTimeoutError on timeout; the result stays usable.
         """
+        require_nonnegative_number("poll_interval", poll_interval)
+        if timeout is not None:
+            require_nonnegative_number("timeout", timeout)
         start = time.monotonic()
         while True:
             self.refresh()
@@ -138,10 +171,16 @@ class IngestResult:
                 and summary.status in _TERMINAL_BATCH_STATUSES
                 for batch_id in self.batch_ids
             )
-        return len(self._processed_uuids) >= len(set(self.episode_uuids))
+        episodes_terminal = len(self._processed_uuids) >= len(set(self.episode_uuids))
+        tasks_terminal = all(
+            self._task_statuses.get(task_id) in _TERMINAL_TASK_STATUSES
+            for task_id in set(self.task_ids)
+        )
+        return episodes_terminal and tasks_terminal
 
     def failed_items(self, *, limit: int = 100) -> "list[BatchItemDetail] | list[AddError]":
         """Failed item details: Batch API item records (batch) or AddErrors (sequential)."""
+        require_int_range("limit", limit, minimum=1)
         if self.method == "sequential":
             return self.add_errors[:limit]
         if self.client is None:

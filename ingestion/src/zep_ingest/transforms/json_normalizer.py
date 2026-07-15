@@ -11,6 +11,7 @@ import json
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Any
 
+from zep_ingest._validation import require_int_range
 from zep_ingest.types import Episode
 
 
@@ -43,6 +44,10 @@ class JsonNormalizer:
         long_string_chars: int = 1_000,
         identity_fields: Sequence[str] = ("id", "name", "description"),
     ) -> None:
+        require_int_range("max_props", max_props, minimum=1)
+        require_int_range("max_depth", max_depth, minimum=1)
+        require_int_range("max_list_items", max_list_items, minimum=0)
+        require_int_range("long_string_chars", long_string_chars, minimum=1)
         self.max_props = max_props
         self.max_depth = max_depth
         self.max_list_items = max_list_items

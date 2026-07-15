@@ -2,7 +2,7 @@
   {
     "type": "message",
     "user": "U003",
-    "text": "Actually MR-42 stays active",
+    "text": "Actually PROTOTYPE-202 stays active",
     "ts": "1718442000.000400",
     "thread_ts": "1718356000.000200"
   },
@@ -10,7 +10,7 @@
     "type": "message",
     "subtype": "thread_broadcast",
     "user": "U003",
-    "text": "Actually MR-42 stays active",
+    "text": "Actually PROTOTYPE-202 stays active",
     "ts": "1718442000.000400",
     "thread_ts": "1718356000.000200"
   },

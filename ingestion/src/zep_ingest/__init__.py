@@ -17,6 +17,8 @@ Quickstarts:
     ingest_json_records(client, "products.csv", graph_id="catalog", id_field="sku")
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 from zep_ingest.exceptions import (
     BatchUnavailableError,
     ConfigurationError,
@@ -29,6 +31,8 @@ from zep_ingest.loaders.email import EmlLoader
 from zep_ingest.loaders.json_records import JsonRecordsLoader
 from zep_ingest.loaders.slack import DEFAULT_SKIP_SUBTYPES, SlackExportLoader, SlackMessage
 from zep_ingest.loaders.text import TextFileLoader
+from zep_ingest.loaders.transcript import TranscriptLoader
+from zep_ingest.nodes import NodeItem, ingest_nodes
 from zep_ingest.pipeline import (
     Pipeline,
     PreviewReport,
@@ -37,6 +41,7 @@ from zep_ingest.pipeline import (
     ingest_emails,
     ingest_json_records,
     ingest_slack_export,
+    ingest_transcripts,
 )
 from zep_ingest.protocols import LLMClient, Loader, Submitter, Transform
 from zep_ingest.result import AddError, IngestResult
@@ -59,7 +64,10 @@ from zep_ingest.types import (
 )
 from zep_ingest.verify import search_when_ready
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("zep-ingest")
+except PackageNotFoundError:  # source tree without an editable install
+    __version__ = "0.1.0"
 
 __all__ = [
     "DEFAULT_CONTEXT_PROMPT",
@@ -88,6 +96,7 @@ __all__ = [
     "LLMClient",
     "LLMContextualizer",
     "LimitGuard",
+    "NodeItem",
     "Loader",
     "Pipeline",
     "PreviewReport",
@@ -97,6 +106,7 @@ __all__ = [
     "Submitter",
     "TextChunker",
     "TextFileLoader",
+    "TranscriptLoader",
     "Transform",
     "ZepDependencyError",
     "ZepIngestError",
@@ -106,8 +116,10 @@ __all__ = [
     "ingest_emails",
     "ingest_fact_triples",
     "ingest_json_records",
+    "ingest_nodes",
     "ingest_slack_export",
     "ingest_thread_messages",
+    "ingest_transcripts",
     "search_when_ready",
     "submit_episodes",
 ]

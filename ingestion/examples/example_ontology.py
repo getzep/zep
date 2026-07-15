@@ -52,7 +52,7 @@ from zep_cloud.external_clients.ontology import EdgeModel, EntityModel, EntityTe
 # blocks every declared edge that needs a Person endpoint.
 class Person(EntityModel):
     """Represents one specific individual human being, referred to by a
-    personal name ("Alice Chen", "Bob") — an employee, a customer contact, or
+    personal name ("Avery Brown", "Blake Carter") — an employee, a customer contact, or
     a supplier contact.
     Examples: an engineering lead, a VP of Sales, a supplier's account
     executive, a customer's operations manager.
@@ -75,7 +75,7 @@ class Person(EntityModel):
 # this declaration is what gives the type — and our edge signatures — a home.
 class Organization(EntityModel):
     """Represents a company, institution, or formal business entity referred
-    to by its proper name ("Voltaic Components").
+    to by its proper name ("Westbridge Components").
     Examples: an employer, a customer company, a channel partner, a component
     supplier, a government agency.
     Only named entities qualify: industries, fields, and markets
@@ -95,7 +95,7 @@ class Organization(EntityModel):
 
 class Project(EntityModel):
     """Represents an internal program, initiative, or workstream with a
-    proper name people use to refer to it ("Atlas", "Beacon").
+    proper name people use to refer to it ("ROBOT-202", "Beacon").
     Examples: a product-development program, a data-migration project, an
     internal platform build.
     Only proper-named initiatives qualify: departments ("the engineering
@@ -115,12 +115,12 @@ class Project(EntityModel):
 
 class Product(EntityModel):
     """Represents a sellable product, SKU, or service offering referred to by
-    its brand or model name ("PickPoint One", "FleetView Team") — something
+    its brand or model name ("ROBOT-101", "OPERATIONS-DASHBOARD Team") — something
     customers buy, license, subscribe to, or use.
     Examples: a hardware product line, a SaaS subscription plan, a consumer
     app.
     Only branded offerings qualify: generic device categories, descriptions,
-    and prototypes ("robotic picking arm", "warehouse robotics", "Atlas
+    and prototypes ("robotic picking arm", "warehouse robotics", "ROBOT-202
     prototypes") are NOT Products. Internal initiatives are Projects, not
     Products.
     """

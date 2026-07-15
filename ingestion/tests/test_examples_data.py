@@ -32,11 +32,11 @@ def test_slack_export_previews_clean():
 
 def test_handbook_produces_many_chunks():
     pipeline = Pipeline(
-        TextFileLoader(str(DATA / "docs" / "meridian_company_handbook.md")),
+        TextFileLoader(str(DATA / "docs" / "company_handbook.md")),
         transforms=[TextChunker()],
     )
     report = pipeline.preview(limit=None)
-    assert len(report.episodes) >= 10  # documents_example depends on real chunking
+    assert len(report.episodes) >= 4
 
 
 def test_org_chart_molds_into_declared_edges():

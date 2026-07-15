@@ -52,7 +52,7 @@ def main() -> None:
         print(f"Batch ids: {result.batch_ids}")
 
     # search indexing lags ingestion slightly; search_when_ready absorbs that
-    query = "Which company supplies parts for PickPoint One?"
+    query = "Which company supplies parts for ROBOT-101?"
     response = search_when_ready(client, query, graph_id=graph_id, limit=5)
     print(f"\nSearch: {query}")
     for edge in response.edges or []:

@@ -30,5 +30,22 @@ def load_rows(path: Path) -> list[dict[str, Any]]:
 
 
 def rows_to_fields(rows: list[dict[str, Any]], fields: frozenset[str]) -> list[dict[str, Any]]:
-    """Filter each row to the dataclass's fields, dropping empty values."""
-    return [{k: v for k, v in row.items() if k in fields and v not in (None, "")} for row in rows]
+    """Validate row shapes and retain non-empty dataclass fields.
+
+    Unknown columns are rejected because silently dropping a misspelled public
+    field can produce a valid-looking but semantically incomplete ingestion.
+    """
+    validated: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ConfigurationError(
+                f"Row {index} must be a JSON object or CSV record, got {type(row).__name__}"
+            )
+        unknown = sorted(set(row) - fields)
+        if unknown:
+            raise ConfigurationError(
+                f"Row {index} has unknown field(s): {', '.join(unknown)}. "
+                f"Expected fields: {', '.join(sorted(fields))}."
+            )
+        validated.append({k: v for k, v in row.items() if v not in (None, "")})
+    return validated

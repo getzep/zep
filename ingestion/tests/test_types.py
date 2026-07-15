@@ -90,16 +90,10 @@ class TestToBatchItem:
         assert item.user_id == "u1"
         assert item.graph_id is None
 
-    def test_metadata_truncated_to_ten_keys_with_warning(self):
+    def test_metadata_over_limit_rejected(self):
         metadata = {f"k{i}": i for i in range(12)}
-        warnings: list[str] = []
-        item = to_batch_item(
-            Episode(data="x", metadata=metadata), Destination(graph_id="g1"), warnings=warnings
-        )
-        assert item.metadata is not None
-        assert len(item.metadata) == MAX_METADATA_KEYS
-        assert len(warnings) == 1
-        assert "metadata" in warnings[0]
+        with pytest.raises(ConfigurationError, match="metadata"):
+            Episode(data="x", metadata=metadata)
 
 
 class TestToGraphAddKwargs:
@@ -125,11 +119,7 @@ class TestToGraphAddKwargs:
         kwargs = to_graph_add_kwargs(Episode(data="x"), Destination(graph_id="g1"))
         assert kwargs == {"data": "x", "type": "text", "graph_id": "g1"}
 
-    def test_metadata_truncated_with_warning(self):
+    def test_metadata_over_limit_rejected(self):
         metadata = {f"k{i}": i for i in range(11)}
-        warnings: list[str] = []
-        kwargs = to_graph_add_kwargs(
-            Episode(data="x", metadata=metadata), Destination(graph_id="g1"), warnings=warnings
-        )
-        assert len(kwargs["metadata"]) == MAX_METADATA_KEYS
-        assert len(warnings) == 1
+        with pytest.raises(ConfigurationError, match="metadata"):
+            Episode(data="x", metadata=metadata)

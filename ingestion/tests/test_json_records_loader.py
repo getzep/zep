@@ -8,8 +8,8 @@ from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.loaders.json_records import JsonRecordsLoader
 
 RECORDS = [
-    {"sku": "P1", "title": "Wool Runners", "about": "Comfy shoes", "date": "2024-06-15"},
-    {"sku": "P2", "title": "Tree Dashers", "about": "Fast shoes", "date": "2024-07-01"},
+    {"sku": "P1", "title": "Sample Product A", "about": "Comfy shoes", "date": "2024-06-15"},
+    {"sku": "P2", "title": "Sample Product B", "about": "Fast shoes", "date": "2024-07-01"},
 ]
 
 
@@ -25,8 +25,8 @@ def csv_file(tmp_path):
     file = tmp_path / "products.csv"
     file.write_text(
         "sku,title,about,date\n"
-        "P1,Wool Runners,Comfy shoes,2024-06-15\n"
-        "P2,Tree Dashers,Fast shoes,2024-07-01\n"
+        "P1,Sample Product A,Comfy shoes,2024-06-15\n"
+        "P2,Sample Product B,Fast shoes,2024-07-01\n"
     )
     return file
 
@@ -48,7 +48,7 @@ class TestFormats:
     def test_csv(self, csv_file):
         episodes = list(JsonRecordsLoader(csv_file).load())
         assert len(episodes) == 2
-        assert json.loads(episodes[1].data)["title"] == "Tree Dashers"
+        assert json.loads(episodes[1].data)["title"] == "Sample Product B"
 
     def test_json_array(self, json_array_file):
         episodes = list(JsonRecordsLoader(json_array_file).load())
@@ -74,7 +74,7 @@ class TestFieldMapping:
         )
         record = json.loads(episodes[0].data)
         assert record["id"] == "P1"
-        assert record["name"] == "Wool Runners"
+        assert record["name"] == "Sample Product A"
         assert record["description"] == "Comfy shoes"
 
     def test_record_type_injected(self, jsonl_file):

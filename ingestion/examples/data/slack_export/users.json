@@ -1,25 +1,25 @@
 [
   {
     "id": "U001",
-    "name": "alice",
+    "name": "avery-brown",
     "profile": {
-      "real_name": "Alice Chen",
+      "real_name": "Avery Brown",
       "display_name": ""
     }
   },
   {
     "id": "U002",
-    "name": "bob",
+    "name": "blake-carter",
     "profile": {
-      "real_name": "Bob Rivera",
+      "real_name": "Blake Carter",
       "display_name": ""
     }
   },
   {
     "id": "U003",
-    "name": "priya",
+    "name": "casey-nguyen",
     "profile": {
-      "real_name": "Priya Sharma",
+      "real_name": "Casey Nguyen",
       "display_name": ""
     }
   }

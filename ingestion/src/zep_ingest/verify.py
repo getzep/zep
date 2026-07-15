@@ -9,6 +9,7 @@ this helper owns the retry so callers don't hand-roll poll loops.
 import time
 from typing import TYPE_CHECKING, Any
 
+from zep_ingest._validation import require_int_range, require_nonnegative_number
 from zep_ingest.types import Destination
 
 if TYPE_CHECKING:
@@ -37,6 +38,9 @@ def search_when_ready(
     once ``timeout`` seconds have elapsed — it never raises on empty results,
     since "nothing matched" is a valid answer.
     """
+    require_int_range("limit", limit, minimum=1)
+    require_nonnegative_number("timeout", timeout)
+    require_nonnegative_number("poll_interval", poll_interval)
     destination = Destination(graph_id=graph_id, user_id=user_id)
     target = (
         {"graph_id": destination.graph_id}
@@ -48,7 +52,17 @@ def search_when_ready(
         response = client.graph.search(
             query=query, scope=scope, limit=limit, **target, **search_kwargs
         )
-        if response.edges or response.nodes or response.episodes:
+        if any(
+            getattr(response, field, None)
+            for field in (
+                "context",
+                "edges",
+                "nodes",
+                "episodes",
+                "observations",
+                "thread_summaries",
+            )
+        ):
             return response
         if time.monotonic() >= deadline:
             return response

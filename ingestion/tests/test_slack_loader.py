@@ -45,7 +45,7 @@ class TestBasics:
         # hello, thread (parent + 2 replies), markup message — join/bot/empty skipped
         assert len(eps) == 3
         assert "Hello world" in eps[0].data
-        assert "Should we deprioritize MR-42?" in eps[1].data
+        assert "Should we deprioritize PROTOTYPE-202?" in eps[1].data
         assert "check" in eps[2].data
 
     def test_created_at_is_rfc3339_from_ts(self):
@@ -62,9 +62,9 @@ class TestThreadGrouping:
         thread = general(load())[1]
         lines = thread.data.split("\n")
         assert len(lines) == 3  # parent + reply + cross-day reply (broadcast deduped)
-        assert "Should we deprioritize MR-42?" in lines[0]
+        assert "Should we deprioritize PROTOTYPE-202?" in lines[0]
         assert "yes, let's do that" in lines[1]
-        assert "Actually MR-42 stays active" in lines[2]
+        assert "Actually PROTOTYPE-202 stays active" in lines[2]
 
     def test_thread_created_at_is_parent_ts(self):
         thread = general(load())[1]
@@ -106,17 +106,17 @@ class TestFiltering:
 class TestFormatting:
     def test_line_format_display_name_channel_timestamp(self):
         eps = general(load())
-        assert eps[0].data == "Alice Smith (Slack #general, 2024-06-14 09:00 UTC): Hello world"
+        assert eps[0].data == "Avery Brown (Slack #general, 2024-06-14 09:00 UTC): Hello world"
 
     def test_display_name_fallbacks(self):
         eps = general(load())
-        # Bob has empty display_name -> real_name; charlie has neither -> name
-        assert "Bob Jones" in eps[1].data
+        # Blake Carter has empty display_name -> real_name; charlie has neither -> name
+        assert "Blake Carter" in eps[1].data
         assert "charlie" in eps[1].data
 
     def test_markup_normalization(self):
         markup = general(load())[2].data
-        assert "@Alice Smith" in markup
+        assert "@Avery Brown" in markup
         assert "@U999" in markup  # unknown user falls back to the raw id
         assert "#random" in markup
         assert "@here" in markup
@@ -127,7 +127,7 @@ class TestFormatting:
 
     def test_custom_formatter(self):
         eps = general(load(formatter=lambda m: f"{m.sender}: {m.text}"))
-        assert eps[0].data == "Alice Smith: Hello world"
+        assert eps[0].data == "Avery Brown: Hello world"
 
 
 class TestZipAndFallbacks:

@@ -7,7 +7,14 @@ import pytest
 from zep_cloud.errors.not_found_error import NotFoundError
 
 from tests.conftest import make_zep_episode
-from zep_ingest.pipeline import Pipeline, ingest, ingest_documents, ingest_slack_export
+from zep_ingest.exceptions import ConfigurationError
+from zep_ingest.pipeline import (
+    Pipeline,
+    ingest,
+    ingest_documents,
+    ingest_json_records,
+    ingest_slack_export,
+)
 from zep_ingest.types import MAX_EPISODE_CHARS, Episode
 
 FIXTURE = Path(__file__).parent / "fixtures" / "slack_export"
@@ -59,6 +66,33 @@ class TestRun:
         [add_call] = mock_zep.batch.add.call_args_list
         assert [i.data for i in add_call.kwargs["items"]] == ["ONE", "TWO"]
 
+    def test_custom_submitter_is_supported(self, mock_zep):
+        class CustomSubmitter:
+            def __init__(self):
+                self.seen = []
+
+            def submit(self, episodes, destination):
+                self.seen = list(episodes)
+                return __import__("zep_ingest").IngestResult(method="sequential")
+
+        submitter = CustomSubmitter()
+        result = Pipeline(ListLoader([stamped("x")]), submitter=submitter).run(
+            mock_zep, graph_id="g1"
+        )
+        assert result.method == "sequential"
+        assert [episode.data for episode in submitter.seen] == ["x"]
+        mock_zep.batch.create.assert_not_called()
+
+    def test_custom_submitter_rejects_builtin_dispatch_options(self, mock_zep):
+        class CustomSubmitter:
+            def submit(self, episodes, destination):
+                raise AssertionError("must fail before submission")
+
+        with pytest.raises(ConfigurationError, match="custom Pipeline submitter"):
+            Pipeline(ListLoader([stamped("x")]), submitter=CustomSubmitter()).run(
+                mock_zep, graph_id="g1", method="batch"
+            )
+
     def test_transform_warnings_collected(self, mock_zep):
         result = Pipeline(ListLoader([stamped("x")]), transforms=(UppercaseTransform(),)).run(
             mock_zep, graph_id="g1"
@@ -95,6 +129,16 @@ class TestRun:
             mock_zep, user_id="u1", method="sequential"
         )
         assert result.method == "sequential"
+        mock_zep.batch.create.assert_not_called()
+
+    def test_invalid_late_jsonl_row_is_found_before_any_submission(self, mock_zep, tmp_path):
+        source = tmp_path / "records.jsonl"
+        source.write_text('{"id": 1}\n{"id": 2}\nnot-json\n')
+
+        with pytest.raises(ConfigurationError, match="Unparseable records"):
+            ingest_json_records(mock_zep, source, graph_id="g1", method="sequential")
+
+        mock_zep.graph.add.assert_not_called()
         mock_zep.batch.create.assert_not_called()
 
     def test_missing_created_at_warning(self, mock_zep):
@@ -134,21 +178,21 @@ class TestPreview:
     def test_limited_preview_surfaces_alias_counts(self):
         from zep_ingest.transforms.canonicalizer import AliasCanonicalizer
 
-        loader = ListLoader([stamped(f"ep {i}: MR-42 is ready") for i in range(20)])
-        canon = AliasCanonicalizer({"Atlas": ["MR-42"]})
+        loader = ListLoader([stamped(f"ep {i}: PROTOTYPE-202 is ready") for i in range(20)])
+        canon = AliasCanonicalizer({"ROBOT-202": ["PROTOTYPE-202"]})
         report = Pipeline(loader, transforms=(canon,)).preview(limit=10)
-        [warning] = [w for w in report.warnings if "MR-42" in w]
+        [warning] = [w for w in report.warnings if "PROTOTYPE-202" in w]
         assert "10" in warning
 
     def test_limited_preview_counts_do_not_leak_into_run(self, mock_zep):
         from zep_ingest.transforms.canonicalizer import AliasCanonicalizer
 
-        loader = ListLoader([stamped(f"ep {i}: MR-42 is ready") for i in range(20)])
-        canon = AliasCanonicalizer({"Atlas": ["MR-42"]})
+        loader = ListLoader([stamped(f"ep {i}: PROTOTYPE-202 is ready") for i in range(20)])
+        canon = AliasCanonicalizer({"ROBOT-202": ["PROTOTYPE-202"]})
         pipeline = Pipeline(loader, transforms=(canon,))
         pipeline.preview(limit=10)
         result = pipeline.run(mock_zep, graph_id="g1")
-        [warning] = [w for w in result.warnings if "MR-42" in w]
+        [warning] = [w for w in result.warnings if "PROTOTYPE-202" in w]
         assert "20" in warning
 
 
@@ -229,7 +273,7 @@ class TestConvenience:
                 mock_zep,
                 FIXTURE,
                 graph_id="g1",
-                aliases={"Will Hughes": ["Will"]},
+                aliases={"William Example": ["Will"]},
                 risky_words=frozenset({"will"}),
             )
         mock_zep.batch.create.assert_not_called()

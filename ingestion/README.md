@@ -2,8 +2,8 @@
 
 Bulk data ingestion pipeline for [Zep](https://www.getzep.com). Owns everything
 upstream of the Zep API so getting unstructured **and** structured data into
-Context Graphs correctly is a one-liner — and getting it *incorrectly* is caught
-before it corrupts a graph.
+Context Graphs safely is a one-liner, with validation and preview warnings for
+the failure modes the package can detect before submission.
 
 ```bash
 pip install zep-ingest
@@ -37,6 +37,7 @@ those rules so you don't have to know them.
 |---|---|---|
 | Slack export (conversations) | `ingest_slack_export` | `message`, thread-grouped; join/leave noise skipped (tune with `skip_subtypes=`) |
 | Documents (text/Markdown, long PDFs pre-converted to text) | `ingest_documents` | `text`, chunked (+optional LLM context) |
+| Speaker-labeled or WebVTT transcripts | `ingest_transcripts` | `message`, chunked at turn boundaries with source offsets |
 | Email exports (.eml files) | `ingest_emails` | `message`, dated by the `Date:` header |
 | A user's own chat history (app conversations) | `ingest_thread_messages` | thread messages on the **user graph** |
 | Records (CSV / JSONL / JSON array; CRM rows, catalogs) | `ingest_json_records` | `json`, normalized per Zep's JSON guidance |
@@ -45,7 +46,7 @@ those rules so you don't have to know them.
 
 **Extraction vs explicit facts:** narrative content (conversations, documents)
 goes through Zep's LLM extraction as episodes. When you already know the exact
-relationship ("Ana is RESPONSIBLE for GTM analytics"), assert it as a fact
+relationship ("Avery Brown is RESPONSIBLE for OPERATIONS-DASHBOARD"), assert it as a fact
 triple instead — no extraction variance, and pre-seeded canonical entities
 anchor later extraction.
 
@@ -66,7 +67,7 @@ backfill at ingestion time. Thread ids are global to a project — pass
 **Batch vs sequential:** the Batch API (fast, 50k items/batch) is
 enterprise-only. The default `method="auto"` tries batch and transparently
 falls back to sequential `graph.add` calls with rate-limit-aware pacing —
-everything in this package works on every plan.
+the episode ingestion paths also work on plans without Batch API access.
 
 ## The pipeline
 
@@ -86,7 +87,7 @@ from zep_ingest.llm.anthropic import AnthropicLLM
 pipeline = Pipeline(
     TextFileLoader("handbook/**/*.md"),
     transforms=[
-        AliasCanonicalizer({"Atlas": ["MR-42"]}),
+        AliasCanonicalizer({"ROBOT-202": ["PROTOTYPE-202"]}),
         TextChunker(chunk_size=500, overlap=50),
         LLMContextualizer(AnthropicLLM()),
     ],
@@ -95,9 +96,8 @@ report = pipeline.preview()      # NO API calls: inspect episodes + warnings fir
 result = pipeline.run(client, graph_id="company_kb", wait=True)
 ```
 
-`preview()` shows exactly what would be ingested — including every warning
-(missing timestamps, oversize splits, runaway alias rewrites, metadata
-truncation) — before a single API call.
+`preview()` shows the transformed episodes and validation warnings (including
+missing timestamps, oversize splits, and alias rewrites) before an API call.
 
 ## Temporal correctness (the silent backfill killer)
 
@@ -106,9 +106,10 @@ date extracted facts. Zep resolves contradictions by "latest `valid_at` wins" �
 so a timestamp-less backfill doesn't just lose history, it makes fact
 invalidation pick wrong survivors, permanently.
 
-Every loader in this package stamps `created_at` from source data (Slack `ts`,
-a record date field, file mtime), and the pipeline **warns about every episode
-missing one** in `preview()` and `result.warnings`. For document corpora with
+Loaders preserve source timestamps when available (for example Slack `ts` or
+a configured record date field), and the pipeline **warns about every episode
+missing one** in `preview()` and `result.warnings`. Filesystem mtime requires
+explicit `use_file_mtime=True`. For document corpora with
 publication dates, the contextualizer's default prompt also asks the LLM to
 include the date in each chunk's context.
 
@@ -161,20 +162,19 @@ dependency here beyond the `openai` package.
 
 ## Entity canonicalization
 
-Zep merges entities by the names it sees in text; semantic aliases ("MR-42" vs
-"Atlas") stay separate nodes. The supported fix is canonicalizing
+Zep merges entities by the names it sees in text; semantic aliases ("PROTOTYPE-202" vs
+"ROBOT-202") stay separate nodes. The supported fix is canonicalizing
 **before ingestion**:
 
 ```python
-AliasCanonicalizer({"Atlas": ["MR-42", "Picker X1"]})         # rewrite
-AliasCanonicalizer({"Atlas": ["MR-42"]}, mode="annotate")     # "MR-42 (also known as Atlas)"
+AliasCanonicalizer({"ROBOT-202": ["PROTOTYPE-202", "Picker X1"]})         # rewrite
+AliasCanonicalizer({"ROBOT-202": ["PROTOTYPE-202"]}, mode="annotate")     # "PROTOTYPE-202 (also known as ROBOT-202)"
 ```
 
 Ambiguous aliases are a data-corruption hazard (alias `"Will"` must not rewrite
-"he will go"). Pass `risky_words=DEFAULT_RISKY_WORDS` (an exported starter set
-of common words — extend it with `| {"your", "words"}`) and construction
-rejects aliases that match it or are shorter than 3 characters; omit it and no
-guard runs. Matching is
+"he will go"). The exported `DEFAULT_RISKY_WORDS` guard is enabled by default
+and rejects risky or very short aliases; extend it with `| {"your", "words"}`
+or pass an empty set to opt out explicitly. Matching is
 case-sensitive and word-boundary by default, URLs/code spans are never
 touched, the transform is idempotent, and per-alias replacement counts surface
 as warnings so you see "will → Will Hughes: 4,213 replacements" in `preview()`
@@ -221,27 +221,28 @@ overriding it, and avoid the reserved field names (`uuid`, `name`, `graph_id`,
 user graphs (`user.add(disable_default_ontology=True)`).
 
 **Don't start from a blank page:**
-[`examples/example_ontology.py`](examples/example_ontology.py) ships a starter
+[`examples/example_ontology.py`](https://github.com/getzep/zep/blob/main/ingestion/examples/example_ontology.py) ships a starter
 ontology (Person / Organization / Project / Product / Location +
 RESPONSIBLE / WORKS_AT / SUPPLIES / CUSTOMER_OF / LOCATED_AT) built with
 those levers —
 every example passes it via `ontology=`. Copy the file and adapt the types to
 your domain. The examples themselves are self-contained and re-runnable: each
 creates a fresh graph and ingests bundled sample data with zero arguments —
-see [`examples/README.md`](examples/README.md).
+see [`examples/README.md`](https://github.com/getzep/zep/blob/main/ingestion/examples/README.md).
 
 ## Seeding a graph from scratch
 
 The full lifecycle, in the order that works
-(see [`examples/fact_triples_example.py`](examples/fact_triples_example.py)
+(see [`examples/fact_triples_example.py`](https://github.com/getzep/zep/blob/main/ingestion/examples/fact_triples_example.py)
 for a named graph and
-[`examples/user_graph_example.py`](examples/user_graph_example.py) for a user
+[`examples/user_graph_example.py`](https://github.com/getzep/zep/blob/main/ingestion/examples/user_graph_example.py) for a user
 graph):
 
 1. Create the graph (`create_if_missing=True` does it for you).
 2. Set the ontology (`ontology=` preflight).
-3. Optionally seed canonical entities as fact triples — extraction dedups
-   against the existing graph, so seeded entities anchor resolution.
+3. Optionally connect fact triples to existing canonical entities by pinning
+   endpoints with `source_node_uuid`/`target_node_uuid`. Extraction dedups
+   against the existing graph, so known entities anchor resolution.
 4. Ingest the corpus with real `created_at` timestamps and alias
    canonicalization; `wait=True`.
 
@@ -298,7 +299,9 @@ response = search_when_ready(client, "who runs the pilot?", graph_id="g1")
 
 Partial failures never crash a run: pages/episodes that keep failing are
 recorded as `AddError`s (indices and API messages only — never episode content)
-and the run continues. `batch_ids` / `episode_uuids` are the resume handles.
+and the run continues. `batch_ids` / `episode_uuids` / `task_ids` are the
+resume handles. Task IDs are used by asynchronous operations such as fact
+triples and direct node creation, and `wait()` polls them through `client.task`.
 
 **Checking status later** — if you skipped `wait=True`, persist
 `result.batch_ids` and reconstruct in another process:
@@ -308,6 +311,10 @@ from zep_ingest import IngestResult
 
 result = IngestResult.from_batch_ids(client, ["batch-id-1"])
 result.status          # refreshed on demand
+result.wait()
+
+# Task-backed ingestion can be resumed the same way:
+result = IngestResult.from_task_ids(client, ["task-id-1"])
 result.wait()
 ```
 
@@ -321,7 +328,8 @@ result.wait()
   matters.
 - Alias maps are validated (no control characters, sane lengths) since they
   often come from config files.
-- Errors and warnings never include episode bodies.
+- Stored `AddError` records and package-generated warnings omit episode bodies
+  and raw API response bodies.
 
 ## What this package does NOT fix
 
@@ -356,4 +364,4 @@ make all       # format + lint + type-check + test
 ```
 
 Live integration tests run only when `ZEP_API_KEY` is set. See
-[`SETUP.md`](SETUP.md) for account setup.
+[`SETUP.md`](https://github.com/getzep/zep/blob/main/ingestion/SETUP.md) for account setup.

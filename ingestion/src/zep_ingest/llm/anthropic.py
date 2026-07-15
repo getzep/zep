@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from zep_ingest._validation import require_int_range
 from zep_ingest.exceptions import ZepDependencyError
 
 
@@ -13,6 +14,7 @@ class AnthropicLLM:
         model: str = "claude-haiku-4-5",
         max_tokens: int = 200,
     ) -> None:
+        require_int_range("max_tokens", max_tokens, minimum=1)
         if client is None:
             try:
                 import anthropic

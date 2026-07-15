@@ -21,7 +21,7 @@ def message(**overrides) -> ThreadMessage:
         "thread_id": "support-42",
         "role": "user",
         "content": "My dashboard isn't loading.",
-        "name": "Alice",
+        "name": "Avery Brown",
         "created_at": "2024-06-15T10:30:00Z",
     }
     kwargs.update(overrides)
@@ -67,7 +67,7 @@ class TestBatchPath:
         result = ingest_thread_messages(
             mock_zep,
             [message(), message(role="assistant", name="Bot")],
-            user_id="alice",
+            user_id="avery-brown",
             method="batch",
         )
         assert result.method == "batch"
@@ -77,7 +77,7 @@ class TestBatchPath:
         assert items[0].thread_id == "support-42"
         assert items[0].content == "My dashboard isn't loading."
         assert items[0].role == "user"
-        assert items[0].name == "Alice"
+        assert items[0].name == "Avery Brown"
         assert items[0].created_at == "2024-06-15T10:30:00Z"
         mock_zep.batch.process.assert_called_once()
 
@@ -86,16 +86,18 @@ class TestBatchPath:
         ingest_thread_messages(
             mock_zep,
             [message(), message(thread_id="support-43")],
-            user_id="alice",
+            user_id="avery-brown",
         )
-        mock_zep.user.add.assert_called_once_with(user_id="alice")
+        mock_zep.user.add.assert_called_once_with(user_id="avery-brown")
         created = {c.kwargs["thread_id"] for c in mock_zep.thread.create.call_args_list}
         assert created == {"support-42", "support-43"}
-        assert all(c.kwargs["user_id"] == "alice" for c in mock_zep.thread.create.call_args_list)
+        assert all(
+            c.kwargs["user_id"] == "avery-brown" for c in mock_zep.thread.create.call_args_list
+        )
 
     def test_sequential_sends_metadata(self, mock_zep):
         msgs = [message(metadata={"source": "zendesk"})]
-        ingest_thread_messages(mock_zep, msgs, user_id="alice", method="sequential")
+        ingest_thread_messages(mock_zep, msgs, user_id="avery-brown", method="sequential")
         [sent] = mock_zep.thread.add_messages.call_args.kwargs["messages"]
         assert sent.metadata == {"source": "zendesk"}
 
@@ -104,14 +106,16 @@ class TestBatchPath:
             status_code=400, body={"message": "bad request: invalid thread id"}
         )
         with pytest.raises(ApiError):
-            ingest_thread_messages(mock_zep, [message()], user_id="alice")
+            ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
 
     def test_thread_id_suffix_applied(self, mock_zep):
         msgs = [message(created_at=None)]
-        ingest_thread_messages(mock_zep, msgs, user_id="alice", thread_id_suffix="-run7")
+        ingest_thread_messages(mock_zep, msgs, user_id="avery-brown", thread_id_suffix="-run7")
         items = mock_zep.batch.add.call_args.kwargs["items"]
         assert items[0].thread_id == "support-42-run7"
-        mock_zep.thread.create.assert_called_once_with(thread_id="support-42-run7", user_id="alice")
+        mock_zep.thread.create.assert_called_once_with(
+            thread_id="support-42-run7", user_id="avery-brown"
+        )
 
     def test_no_sequential_fallback_after_partial_batch(self, mock_zep, monkeypatch):
         monkeypatch.setattr("zep_ingest.threads.MAX_ITEMS_PER_ADD", 1)
@@ -122,12 +126,12 @@ class TestBatchPath:
         ]
         msgs = [message(content=f"m{i}", created_at=None) for i in range(2)]
         with pytest.raises(BatchUnavailableError):
-            ingest_thread_messages(mock_zep, msgs, user_id="alice")
+            ingest_thread_messages(mock_zep, msgs, user_id="avery-brown")
         mock_zep.thread.add_messages.assert_not_called()  # no double ingestion
 
     def test_existing_thread_conflict_tolerated(self, mock_zep):
         mock_zep.thread.create.side_effect = ApiError(status_code=409, body="exists")
-        result = ingest_thread_messages(mock_zep, [message()], user_id="alice")
+        result = ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
         assert result.items_submitted == 1
 
     def test_existing_thread_400_already_exists_tolerated(self, mock_zep):
@@ -135,7 +139,7 @@ class TestBatchPath:
         mock_zep.thread.create.side_effect = ApiError(
             status_code=400, body={"message": "bad request: session with id x already exists"}
         )
-        result = ingest_thread_messages(mock_zep, [message()], user_id="alice")
+        result = ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
         assert result.items_submitted == 1
 
     def test_user_id_required(self, mock_zep):
@@ -145,7 +149,7 @@ class TestBatchPath:
     def test_oversize_content_split_with_warning(self, mock_zep):
         long = "A perfectly normal sentence. " * 300  # ~8700 chars
         result = ingest_thread_messages(
-            mock_zep, [message(content=long)], user_id="alice", method="batch"
+            mock_zep, [message(content=long)], user_id="avery-brown", method="batch"
         )
         items = mock_zep.batch.add.call_args.kwargs["items"]
         assert len(items) > 1
@@ -153,13 +157,13 @@ class TestBatchPath:
         assert any("split" in w.lower() for w in result.warnings)
 
     def test_missing_created_at_warns(self, mock_zep):
-        result = ingest_thread_messages(mock_zep, [message(created_at=None)], user_id="alice")
+        result = ingest_thread_messages(mock_zep, [message(created_at=None)], user_id="avery-brown")
         assert any("created_at" in w for w in result.warnings)
 
     def test_process_failure_recorded_not_raised(self, mock_zep):
         mock_zep.batch.process.side_effect = ApiError(status_code=500, body="boom")
         result = ingest_thread_messages(
-            mock_zep, [message(created_at=None)], user_id="alice", method="batch"
+            mock_zep, [message(created_at=None)], user_id="avery-brown", method="batch"
         )
         assert result.items_submitted == 1
         [error] = result.add_errors
@@ -204,7 +208,7 @@ class TestSequentialPath:
             message(thread_id="support-43", content="other thread", created_at=None),
             message(content="second", role="assistant", created_at=None),
         ]
-        result = ingest_thread_messages(mock_zep, msgs, user_id="alice")
+        result = ingest_thread_messages(mock_zep, msgs, user_id="avery-brown")
         assert result.method == "sequential"
         assert result.items_submitted == 3
         calls = {
@@ -217,19 +221,19 @@ class TestSequentialPath:
     def test_explicit_batch_raises_on_gating(self, mock_zep):
         mock_zep.batch.create.side_effect = ApiError(status_code=403)
         with pytest.raises(BatchUnavailableError):
-            ingest_thread_messages(mock_zep, [message()], user_id="alice", method="batch")
+            ingest_thread_messages(mock_zep, [message()], user_id="avery-brown", method="batch")
 
     def test_sequential_chunks_large_threads(self, mock_zep):
         msgs = [message(content=f"m{i}") for i in range(65)]
         ingest_thread_messages(
-            mock_zep, msgs, user_id="alice", method="sequential", messages_per_call=30
+            mock_zep, msgs, user_id="avery-brown", method="sequential", messages_per_call=30
         )
         assert mock_zep.thread.add_messages.call_count == 3
 
     def test_sequential_failure_recorded_and_continues(self, mock_zep):
         mock_zep.thread.add_messages.side_effect = [ApiError(status_code=400, body="bad"), None]
         msgs = [message(), message(thread_id="support-43")]
-        result = ingest_thread_messages(mock_zep, msgs, user_id="alice", method="sequential")
+        result = ingest_thread_messages(mock_zep, msgs, user_id="avery-brown", method="sequential")
         assert len(result.add_errors) == 1
         assert result.items_submitted == 1
 
@@ -241,14 +245,14 @@ class TestFileSources:
             {
                 "thread_id": "t1",
                 "role": "user",
-                "name": "Alice",
+                "name": "Avery Brown",
                 "content": "hello",
                 "created_at": "2024-06-15T10:30:00Z",
             },
-            {"thread_id": "t1", "role": "assistant", "content": "hi Alice"},
+            {"thread_id": "t1", "role": "assistant", "content": "hi Avery Brown"},
         ]
         file.write_text("\n".join(json.dumps(r) for r in rows))
-        result = ingest_thread_messages(mock_zep, file, user_id="alice")
+        result = ingest_thread_messages(mock_zep, file, user_id="avery-brown")
         assert result.items_submitted == 2
 
     def test_json_array_source(self, mock_zep, tmp_path):
@@ -263,13 +267,13 @@ class TestFileSources:
             {"thread_id": "t1", "role": "assistant", "content": "hi"},
         ]
         file.write_text(json.dumps(rows, indent=2))
-        result = ingest_thread_messages(mock_zep, file, user_id="alice")
+        result = ingest_thread_messages(mock_zep, file, user_id="avery-brown")
         assert result.items_submitted == 2
 
     def test_invalid_row_raises_before_any_call(self, mock_zep, tmp_path):
         file = tmp_path / "chat.jsonl"
         file.write_text(json.dumps({"thread_id": "t1", "role": "nope", "content": "x"}))
         with pytest.raises(ConfigurationError):
-            ingest_thread_messages(mock_zep, file, user_id="alice")
+            ingest_thread_messages(mock_zep, file, user_id="avery-brown")
         mock_zep.batch.add.assert_not_called()
         mock_zep.thread.add_messages.assert_not_called()

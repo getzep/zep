@@ -50,12 +50,12 @@ def main() -> None:
 
     result = ingest_documents(
         client,
-        str(DATA / "docs" / "meridian_company_handbook.md"),
+        str(DATA / "docs" / "company_handbook.md"),
         graph_id=graph_id,
         create_if_missing=True,
         ontology=ONTOLOGY,  # set BEFORE data flows — it is not retroactive
         llm=llm,
-        created_at="2025-06-01T00:00:00Z",  # date the corpus; omit for file mtime
+        created_at="2025-06-01T00:00:00Z",  # generated source date
         wait=True,
     )
     print(f"Submitted {result.items_submitted} chunks via {result.method}: {result.status}")
@@ -67,7 +67,7 @@ def main() -> None:
         print(f"Batch ids: {result.batch_ids}")
 
     # search indexing lags ingestion slightly; search_when_ready absorbs that
-    query = "What products does Meridian Robotics sell?"
+    query = "What products does Alder Ridge Robotics sell?"
     response = search_when_ready(client, query, graph_id=graph_id, limit=5)
     print(f"\nSearch: {query}")
     for edge in response.edges or []:

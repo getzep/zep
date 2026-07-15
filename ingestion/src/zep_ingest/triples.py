@@ -7,6 +7,7 @@ is a clear Python error naming the field — not an HTTP 400 mid-run.
 """
 
 import re
+import uuid as _uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,8 +15,14 @@ from typing import Any
 
 from zep_cloud.client import Zep
 
+from zep_ingest._errors import safe_api_error
 from zep_ingest._io import load_rows, rows_to_fields
-from zep_ingest._validation import check_scalar_map, check_timestamp
+from zep_ingest._validation import (
+    check_len,
+    check_required_string,
+    check_scalar_map,
+    check_timestamp,
+)
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.result import AddError, IngestResult
 from zep_ingest.submitters.sequential import call_with_retries
@@ -29,14 +36,15 @@ MAX_SUMMARY_CHARS = 500
 _FACT_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
-def _check_len(field: str, value: str | None, limit: int, errors: list[str]) -> None:
-    if value is not None and len(value) > limit:
-        errors.append(f"{field} exceeds {limit} characters (got {len(value)})")
-
-
 @dataclass(slots=True)
 class FactTriple:
-    """One fact edge between two named nodes, validated against the API limits."""
+    """One fact edge between two named nodes, validated against the API limits.
+
+    ``source_node_uuid``/``target_node_uuid`` pin an endpoint to an existing
+    node by identity instead of name resolution — pass them for endpoints with
+    known UUIDs so a re-run cannot resolve a slightly different name to a new
+    node.
+    """
 
     fact: str
     fact_name: str
@@ -46,6 +54,9 @@ class FactTriple:
     target_node_summary: str | None = None
     source_node_labels: list[str] | None = None
     target_node_labels: list[str] | None = None
+    source_node_uuid: str | None = None
+    target_node_uuid: str | None = None
+    fact_uuid: str | None = None
     valid_at: str | None = None
     invalid_at: str | None = None
     created_at: str | None = None
@@ -54,16 +65,20 @@ class FactTriple:
 
     def __post_init__(self) -> None:
         errors: list[str] = []
-        _check_len("fact", self.fact, MAX_FACT_CHARS, errors)
-        _check_len("fact_name", self.fact_name, MAX_FACT_NAME_CHARS, errors)
-        if not _FACT_NAME.match(self.fact_name):
+        check_required_string("fact", self.fact, MAX_FACT_CHARS, errors)
+        check_required_string("fact_name", self.fact_name, MAX_FACT_NAME_CHARS, errors)
+        if isinstance(self.fact_name, str) and not _FACT_NAME.match(self.fact_name):
             errors.append(
                 f"fact_name must be SCREAMING_SNAKE_CASE (e.g. WORKS_AT): {self.fact_name!r}"
             )
-        _check_len("source_node_name", self.source_node_name, MAX_NODE_NAME_CHARS, errors)
-        _check_len("target_node_name", self.target_node_name, MAX_NODE_NAME_CHARS, errors)
-        _check_len("source_node_summary", self.source_node_summary, MAX_SUMMARY_CHARS, errors)
-        _check_len("target_node_summary", self.target_node_summary, MAX_SUMMARY_CHARS, errors)
+        check_required_string(
+            "source_node_name", self.source_node_name, MAX_NODE_NAME_CHARS, errors
+        )
+        check_required_string(
+            "target_node_name", self.target_node_name, MAX_NODE_NAME_CHARS, errors
+        )
+        check_len("source_node_summary", self.source_node_summary, MAX_SUMMARY_CHARS, errors)
+        check_len("target_node_summary", self.target_node_summary, MAX_SUMMARY_CHARS, errors)
         for field in ("source_node_labels", "target_node_labels"):
             labels = getattr(self, field)
             if labels is None:
@@ -79,6 +94,15 @@ class FactTriple:
                     f"{field} allows at most one entity-type label (extraction assigns "
                     f"one best-match type per node); got {labels!r}"
                 )
+            elif labels:
+                check_len(f"{field}[0]", labels[0], 100, errors)
+        for field in ("source_node_uuid", "target_node_uuid", "fact_uuid"):
+            value = getattr(self, field)
+            if value is not None:
+                try:
+                    _uuid.UUID(str(value))
+                except (ValueError, AttributeError, TypeError):
+                    errors.append(f"{field} is not a valid UUID: {value!r}")
         check_timestamp("valid_at", self.valid_at, errors)
         check_timestamp("invalid_at", self.invalid_at, errors)
         check_timestamp("created_at", self.created_at, errors)
@@ -86,7 +110,7 @@ class FactTriple:
         check_scalar_map("metadata", self.metadata, errors, max_keys=MAX_METADATA_KEYS)
         if errors:
             raise ConfigurationError(
-                f"Invalid fact triple ({self.fact[:60]!r}): " + "; ".join(errors)
+                f"Invalid fact triple ({str(self.fact)[:60]!r}): " + "; ".join(errors)
             )
 
     def to_api_kwargs(self, destination: Destination) -> dict[str, Any]:
@@ -101,6 +125,9 @@ class FactTriple:
             "target_node_summary",
             "source_node_labels",
             "target_node_labels",
+            "source_node_uuid",
+            "target_node_uuid",
+            "fact_uuid",
             "valid_at",
             "invalid_at",
             "created_at",
@@ -144,7 +171,7 @@ def ingest_fact_triples(
     result = IngestResult(method="sequential", client=client)
     for index, triple in enumerate(materialized):
         kwargs = triple.to_api_kwargs(destination)
-        _, error = call_with_retries(
+        response, error = call_with_retries(
             lambda: client.graph.add_fact_triple(**kwargs),  # noqa: B023
             max_retries=max_retries,
         )
@@ -153,12 +180,12 @@ def ingest_fact_triples(
                 AddError(
                     index=index,
                     item_count=1,
-                    error=(
-                        f"graph.add_fact_triple failed: status={error.status_code}, "
-                        f"body={error.body}"
-                    ),
+                    error=safe_api_error("graph.add_fact_triple", error),
                 )
             )
         else:
             result.items_submitted += 1
+            task_id = getattr(response, "task_id", None)
+            if task_id and str(task_id) not in result.task_ids:
+                result.task_ids.append(str(task_id))
     return result

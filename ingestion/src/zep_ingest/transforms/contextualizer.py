@@ -17,6 +17,8 @@ import re
 from collections.abc import Iterable, Iterator
 from typing import Literal
 
+from zep_ingest._validation import require_int_range
+from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.protocols import LLMClient
 from zep_ingest.types import Episode
 
@@ -48,6 +50,12 @@ class LLMContextualizer:
         max_context_chars: int = 2_000,
         on_error: Literal["keep_raw", "raise"] = "keep_raw",
     ) -> None:
+        require_int_range("max_document_chars", max_document_chars, minimum=1)
+        require_int_range("max_context_chars", max_context_chars, minimum=1)
+        if on_error not in ("keep_raw", "raise"):
+            raise ConfigurationError(
+                f"on_error must be one of ['keep_raw', 'raise'], got {on_error!r}"
+            )
         self.llm = llm
         self.prompt_template = prompt_template
         self.max_document_chars = max_document_chars
@@ -76,7 +84,7 @@ class LLMContextualizer:
             if self.on_error == "raise":
                 raise
             self.warnings.append(
-                f"LLM contextualization failed ({error}); kept the raw chunk. "
+                f"LLM contextualization failed ({type(error).__name__}); kept the raw chunk. "
                 "The chunk is still ingested — only the situating context is missing."
             )
             return None

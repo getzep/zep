@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from zep_cloud.types.batch_add_item import BatchAddItem
 
+from zep_ingest._validation import check_len, check_scalar_map, check_timestamp
 from zep_ingest.exceptions import ConfigurationError
 
 # Documented Zep API limits (see help.getzep.com/adding-batch-data and
@@ -34,6 +35,22 @@ class Episode:
     source_description: str | None = None
     document: str | None = field(default=None, repr=False)
 
+    def __post_init__(self) -> None:
+        errors: list[str] = []
+        if not isinstance(self.data, str) or not self.data.strip():
+            errors.append("data must be a non-empty string")
+        if self.data_type not in ("text", "json", "message"):
+            errors.append(
+                f"data_type must be one of ['json', 'message', 'text'], got {self.data_type!r}"
+            )
+        check_timestamp("created_at", self.created_at, errors)
+        check_scalar_map("metadata", self.metadata, errors, max_keys=MAX_METADATA_KEYS)
+        check_len("source_description", self.source_description, 500, errors)
+        if self.document is not None and not isinstance(self.document, str):
+            errors.append(f"document must be a string, got {type(self.document).__name__}")
+        if errors:
+            raise ConfigurationError("Invalid episode: " + "; ".join(errors))
+
 
 @dataclass(frozen=True, slots=True)
 class Destination:
@@ -54,22 +71,16 @@ class Destination:
 def _capped_metadata(
     metadata: dict[str, Any] | None, warnings: list[str] | None
 ) -> dict[str, Any] | None:
-    if metadata is None or len(metadata) <= MAX_METADATA_KEYS:
-        return metadata
-    capped = dict(list(metadata.items())[:MAX_METADATA_KEYS])
-    if warnings is not None:
-        dropped = sorted(set(metadata) - set(capped))
-        warnings.append(
-            f"Episode metadata has {len(metadata)} keys; the API allows "
-            f"{MAX_METADATA_KEYS}. Dropped keys: {', '.join(dropped)}."
-        )
-    return capped
+    # Episode validates this at construction. Keep the helper for API mapping
+    # compatibility, but never silently discard caller metadata.
+    del warnings
+    return metadata
 
 
 def to_batch_item(
     episode: Episode, destination: Destination, warnings: list[str] | None = None
 ) -> BatchAddItem:
-    """Map an Episode to a Batch API item (metadata capped at the API limit)."""
+    """Map a validated Episode to a Batch API item."""
     return BatchAddItem(
         type="graph_episode",
         data=episode.data,

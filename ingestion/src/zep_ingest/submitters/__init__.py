@@ -8,6 +8,8 @@ from typing import Any, Literal
 from zep_cloud.client import Zep
 from zep_cloud.core.api_error import ApiError
 
+from zep_ingest._validation import require_int_range, require_nonnegative_number
+from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.result import IngestResult
 from zep_ingest.submitters.batch import BatchSubmitter, is_gating_error
 from zep_ingest.submitters.sequential import SequentialSubmitter
@@ -43,6 +45,21 @@ def submit_episodes(
     method="auto" uses the Batch API when the plan allows it and falls back to
     sequential graph.add ingestion otherwise; no episodes are lost on fallback.
     """
+    if method not in ("auto", "batch", "sequential"):
+        raise ConfigurationError(
+            f"method must be one of ['auto', 'batch', 'sequential'], got {method!r}"
+        )
+    require_int_range("page_size", page_size, minimum=1, maximum=MAX_ITEMS_PER_ADD)
+    require_int_range(
+        "max_items_per_batch",
+        max_items_per_batch,
+        minimum=page_size,
+        maximum=MAX_ITEMS_PER_BATCH,
+    )
+    require_int_range("max_add_retries", max_add_retries, minimum=1)
+    require_int_range("max_retries", max_retries, minimum=1)
+    require_nonnegative_number("min_interval", min_interval)
+
     if method == "sequential":
         return SequentialSubmitter(
             client, max_retries=max_retries, min_interval=min_interval

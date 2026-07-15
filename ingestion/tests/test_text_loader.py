@@ -21,9 +21,16 @@ def test_one_text_episode_per_file(tmp_path):
 def test_created_at_from_mtime(tmp_path):
     file = tmp_path / "doc.txt"
     file.write_text("content")
-    [episode] = TextFileLoader(str(file)).load()
+    [episode] = TextFileLoader(str(file), use_file_mtime=True).load()
     expected = datetime.fromtimestamp(file.stat().st_mtime, tz=UTC).isoformat()
     assert episode.created_at == expected
+
+
+def test_mtime_is_not_used_by_default(tmp_path):
+    file = tmp_path / "doc.txt"
+    file.write_text("content")
+    [episode] = TextFileLoader(str(file)).load()
+    assert episode.created_at is None
 
 
 def test_created_at_override(tmp_path):

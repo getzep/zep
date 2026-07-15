@@ -13,6 +13,8 @@ from typing import Any
 from zep_cloud.client import Zep
 from zep_cloud.core.api_error import ApiError
 
+from zep_ingest._errors import safe_api_error
+from zep_ingest._validation import require_int_range, require_nonnegative_number
 from zep_ingest.result import AddError, IngestResult
 from zep_ingest.types import Destination, Episode, to_graph_add_kwargs
 
@@ -39,6 +41,7 @@ def call_with_retries(
     Returns (result, None) on success or (None, last_error) once retries are
     exhausted or the error is not retryable.
     """
+    require_int_range("max_retries", max_retries, minimum=1)
     last_error: ApiError | None = None
     for attempt in range(1, max_retries + 1):
         try:
@@ -56,6 +59,8 @@ def call_with_retries(
 
 class SequentialSubmitter:
     def __init__(self, client: Zep, *, max_retries: int = 5, min_interval: float = 0.0) -> None:
+        require_int_range("max_retries", max_retries, minimum=1)
+        require_nonnegative_number("min_interval", min_interval)
         self.client = client
         self.max_retries = max_retries
         self.min_interval = min_interval
@@ -76,7 +81,7 @@ class SequentialSubmitter:
                 AddError(
                     index=index,
                     item_count=1,
-                    error=f"graph.add failed: status={error.status_code}, body={error.body}",
+                    error=safe_api_error("graph.add", error),
                 )
             )
             return

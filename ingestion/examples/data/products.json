@@ -1,48 +1,48 @@
 [
   {
-    "sku": "PP1-STD",
-    "title": "PickPoint One",
-    "about": "Robotic picking arm for small-parts fulfillment zones. Mounts on standard racking and commissions in one week; servo actuators supplied by Voltaic Components.",
+    "sku": "RBT-001",
+    "title": "ROBOT-101",
+    "about": "Standard robotic picking arm for small and medium cartons.",
     "category": "hardware",
-    "supplier": "Voltaic Components",
+    "supplier": "Westbridge Components",
     "updated_at": "2025-06-01T00:00:00Z"
   },
   {
-    "sku": "PP1-HD",
-    "title": "PickPoint One HD",
-    "about": "Heavy-duty variant of the PickPoint One picking arm with a reinforced wrist assembly for items up to 12 kg. Uses the same Voltaic Components VX-9 actuators as the standard unit.",
+    "sku": "RBT-002",
+    "title": "ROBOT-101 HD",
+    "about": "High-duty ROBOT-101 variant with a reinforced wrist assembly.",
     "category": "hardware",
-    "supplier": "Voltaic Components",
+    "supplier": "Westbridge Components",
     "updated_at": "2025-06-01T00:00:00Z"
   },
   {
-    "sku": "PP1-SPARES",
-    "title": "PickPoint One Spares Kit",
-    "about": "On-site spares kit for PickPoint One: gripper assembly, wrist encoder, and a spare VX-9 servo actuator. Sized so a customer maintenance crew can clear common faults without a service visit.",
+    "sku": "RBT-003",
+    "title": "ROBOT-101 Spares Kit",
+    "about": "Field spares kit for routine ROBOT-101 maintenance.",
     "category": "hardware",
-    "supplier": "Voltaic Components",
+    "supplier": "Westbridge Components",
     "updated_at": "2025-06-01T00:00:00Z"
   },
   {
-    "sku": "FV-TEAM",
-    "title": "FleetView Team",
-    "about": "FleetView monitoring subscription for fleets up to 25 arms. Real-time pick rates, fault trends, and per-arm utilization dashboards for shift leads.",
+    "sku": "SFT-001",
+    "title": "OPERATIONS-DASHBOARD Team",
+    "about": "Team subscription with equipment monitoring and utilization reports.",
     "category": "software subscription",
     "supplier": null,
     "updated_at": "2025-05-15T00:00:00Z"
   },
   {
-    "sku": "FV-SITE",
-    "title": "FleetView Site",
-    "about": "FleetView monitoring subscription for a full building of up to 200 arms, including alerting integrations and an API for warehouse-management systems.",
+    "sku": "SFT-002",
+    "title": "OPERATIONS-DASHBOARD Site",
+    "about": "Site subscription with fleet-wide monitoring and alert history.",
     "category": "software subscription",
     "supplier": null,
     "updated_at": "2025-05-15T00:00:00Z"
   },
   {
-    "sku": "SVC-COMM",
+    "sku": "SVC-001",
     "title": "Commissioning Week",
-    "about": "One week of on-site commissioning by a Meridian Robotics engineer, including service training for the customer's maintenance crew. Included with every first PickPoint One deployment.",
+    "about": "On-site commissioning, operator training, and launch support.",
     "category": "professional services",
     "supplier": null,
     "updated_at": "2025-04-20T00:00:00Z"

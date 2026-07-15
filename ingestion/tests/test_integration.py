@@ -44,11 +44,11 @@ def graph_id(zep):
 
 EPISODES = [
     Episode(
-        data="Alice joined the engineering team as a senior developer.",
+        data="Avery Brown joined the engineering team as a senior developer.",
         created_at="2024-06-15T10:30:00Z",
     ),
     Episode(
-        data="Alice was promoted to tech lead of the engineering team.",
+        data="Avery Brown was promoted to tech lead of the engineering team.",
         created_at="2024-09-01T09:00:00Z",
     ),
 ]

@@ -1,7 +1,7 @@
 """EmlLoader: RFC-822 .eml files → message episodes.
 
 Parses standard email exports (e.g. from an email client's "save as .eml",
-Google Takeout, or an mbox split into messages) with the stdlib email package.
+standard email exports, or an mbox split into messages) with the stdlib email package.
 The Date header becomes the episode's created_at so backfilled correspondence
 carries its real timeline; a missing Date surfaces through the pipeline's
 missing-timestamp warning.

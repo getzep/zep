@@ -6,24 +6,29 @@ is spent. run() adds the preflights that encode Zep's order-of-operations
 rules: ontology before ingestion, destination existence before submission.
 """
 
+import pickle
 from collections.abc import Callable, Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from itertools import islice
 from pathlib import Path
+from tempfile import SpooledTemporaryFile
 from typing import Any, Literal
 
 from zep_cloud.client import Zep
 from zep_cloud.errors.not_found_error import NotFoundError
 
+from zep_ingest._validation import require_nonnegative_number
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.loaders.email import EmlLoader
 from zep_ingest.loaders.json_records import JsonRecordsLoader
 from zep_ingest.loaders.slack import DEFAULT_SKIP_SUBTYPES, SlackExportLoader
 from zep_ingest.loaders.text import TextFileLoader
-from zep_ingest.protocols import LLMClient, Loader, Transform
+from zep_ingest.loaders.transcript import DEFAULT_CHUNK_CHARS, TranscriptLoader
+from zep_ingest.protocols import LLMClient, Loader, Submitter, Transform
 from zep_ingest.result import IngestResult
 from zep_ingest.submitters import Method, submit_episodes
-from zep_ingest.transforms.canonicalizer import AliasCanonicalizer
+from zep_ingest.transforms.canonicalizer import DEFAULT_RISKY_WORDS, AliasCanonicalizer
 from zep_ingest.transforms.chunker import TextChunker
 from zep_ingest.transforms.json_normalizer import JsonNormalizer
 from zep_ingest.transforms.limits import LimitGuard
@@ -61,10 +66,47 @@ class _MissingTimestampCounter:
         ]
 
 
+@contextmanager
+def _validated_replay(episodes: Iterable[Episode]) -> Iterator[Iterator[Episode]]:
+    """Fully validate a stream before submission, spilling large runs to disk."""
+    with SpooledTemporaryFile(max_size=8 * 1024 * 1024, mode="w+b") as spool:
+        for episode in episodes:
+            record = (
+                episode.data,
+                episode.data_type,
+                episode.created_at,
+                episode.metadata,
+                episode.source_description,
+                episode.document,
+            )
+            pickle.dump(record, spool, protocol=pickle.HIGHEST_PROTOCOL)
+        spool.seek(0)
+
+        def replay() -> Iterator[Episode]:
+            while True:
+                try:
+                    data, data_type, created_at, metadata, source_description, document = (
+                        pickle.load(spool)
+                    )
+                except EOFError:
+                    return
+                yield Episode(
+                    data=data,
+                    data_type=data_type,
+                    created_at=created_at,
+                    metadata=metadata,
+                    source_description=source_description,
+                    document=document,
+                )
+
+        yield replay()
+
+
 @dataclass
 class Pipeline:
     loader: Loader
     transforms: Sequence[Transform] = ()
+    submitter: Submitter | None = None
 
     def _stream(self, guard: LimitGuard, counter: _MissingTimestampCounter) -> Iterator[Episode]:
         episodes: Iterable[Episode] = self.loader.load()
@@ -126,21 +168,32 @@ class Pipeline:
         poll_interval: float = 10.0,
         timeout: float | None = None,
     ) -> IngestResult:
+        require_nonnegative_number("poll_interval", poll_interval)
+        if timeout is not None:
+            require_nonnegative_number("timeout", timeout)
         destination = Destination(graph_id=graph_id, user_id=user_id)
-        if create_if_missing:
-            _ensure_destination(client, destination)
-        if ontology is not None:
-            _apply_ontology(client, destination, ontology)
+        if self.submitter is not None and (method != "auto" or batch_metadata is not None):
+            raise ConfigurationError(
+                "method and batch_metadata cannot be used with a custom Pipeline submitter"
+            )
         guard = LimitGuard()
         counter = _MissingTimestampCounter()
         baseline = self._warning_baseline()
-        result = submit_episodes(
-            client,
-            self._stream(guard, counter),
-            destination,
-            method=method,
-            batch_metadata=batch_metadata,
-        )
+        with _validated_replay(self._stream(guard, counter)) as stream:
+            if create_if_missing:
+                _ensure_destination(client, destination)
+            if ontology is not None:
+                _apply_ontology(client, destination, ontology)
+            if self.submitter is not None:
+                result = self.submitter.submit(stream, destination)
+            else:
+                result = submit_episodes(
+                    client,
+                    stream,
+                    destination,
+                    method=method,
+                    batch_metadata=batch_metadata,
+                )
         result.warnings.extend(self._collect_warnings(guard, counter, baseline))
         if wait:
             result.wait(poll_interval=poll_interval, timeout=timeout)
@@ -197,7 +250,8 @@ def _alias_transforms(
     """The one place the alias canonicalizer is built for the one-liners."""
     if not aliases:
         return []
-    return [AliasCanonicalizer(aliases, risky_words=risky_words)]
+    guard = DEFAULT_RISKY_WORDS if risky_words is None else risky_words
+    return [AliasCanonicalizer(aliases, risky_words=guard)]
 
 
 def ingest_slack_export(
@@ -240,13 +294,14 @@ def ingest_documents(
     chunk_size: int = 500,
     overlap: int = 50,
     created_at: str | None = None,
+    use_file_mtime: bool = False,
     aliases: dict[str, Sequence[str]] | None = None,
     risky_words: frozenset[str] | None = None,
     **run_kwargs: Any,
 ) -> IngestResult:
     """One-liner: text/Markdown files → chunked (and optionally LLM-contextualized)
     text episodes."""
-    loader = TextFileLoader(path_or_glob, created_at=created_at)
+    loader = TextFileLoader(path_or_glob, created_at=created_at, use_file_mtime=use_file_mtime)
     transforms = _alias_transforms(aliases, risky_words)
     transforms.append(TextChunker(chunk_size=chunk_size, overlap=overlap))
     if llm is not None:
@@ -254,6 +309,31 @@ def ingest_documents(
 
         transforms.append(LLMContextualizer(llm))
     return Pipeline(loader, transforms=transforms).run(
+        client, graph_id=graph_id, user_id=user_id, **run_kwargs
+    )
+
+
+def ingest_transcripts(
+    client: Zep,
+    path_or_glob: str | Path,
+    *,
+    graph_id: str | None = None,
+    user_id: str | None = None,
+    chunk_chars: int = DEFAULT_CHUNK_CHARS,
+    meeting_start: str | None = None,
+    default_start_time: str | None = None,
+    aliases: dict[str, Sequence[str]] | None = None,
+    risky_words: frozenset[str] | None = None,
+    **run_kwargs: Any,
+) -> IngestResult:
+    """Ingest speaker-labeled or WebVTT transcripts at turn boundaries."""
+    loader = TranscriptLoader(
+        path_or_glob,
+        chunk_chars=chunk_chars,
+        meeting_start=meeting_start,
+        default_start_time=default_start_time,
+    )
+    return Pipeline(loader, transforms=_alias_transforms(aliases, risky_words)).run(
         client, graph_id=graph_id, user_id=user_id, **run_kwargs
     )
 

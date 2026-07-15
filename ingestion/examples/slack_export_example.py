@@ -51,13 +51,14 @@ def main() -> None:
         create_if_missing=True,
         ontology=ONTOLOGY,  # set BEFORE data flows — it is not retroactive
         aliases={
-            "Atlas": ["MR-42", "Atlas program"],  # retired code name + longhand
-            "Voltaic Components": ["Voltaic"],  # casual shorthand in chat
+            "ROBOT-202": [
+                "PROTOTYPE-202",
+                "ROBOT-202 program",
+            ],  # retired code name + longhand
+            "Westbridge Components": ["Westbridge Components"],  # casual shorthand in chat
         },
-        # Guard the alias map (opt-in): rewriting a common word like "will"
-        # corrupts unrelated text corpus-wide. Extend with your own people's
-        # word-like names: DEFAULT_RISKY_WORDS | {"chip", "sunny"}
-        risky_words=DEFAULT_RISKY_WORDS,
+        # The guard is enabled by default; extend it for domain-specific words.
+        risky_words=DEFAULT_RISKY_WORDS | {"sample"},
         # skip_subtypes=frozenset(),  # keep join/leave/topic messages
         # skip_subtypes=DEFAULT_SKIP_SUBTYPES | {"huddle_thread"},  # skip more
         #   (import DEFAULT_SKIP_SUBTYPES from zep_ingest to extend the default)
@@ -75,7 +76,7 @@ def main() -> None:
         print(f"Batch ids: {result.batch_ids}")
 
     # search indexing lags ingestion slightly; search_when_ready absorbs that
-    query = "What is the open risk on the Atlas project?"
+    query = "What is the open risk on the ROBOT-202 project?"
     response = search_when_ready(client, query, graph_id=graph_id, limit=5)
     print(f"\nSearch: {query}")
     for edge in response.edges or []:

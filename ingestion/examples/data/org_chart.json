@@ -1,55 +1,54 @@
-{
-  "exported_at": "2025-06-30",
+{  "exported_at": "2025-06-30",
   "employees": [
     {
-      "name": "Alice Chen",
+      "name": "Avery Brown",
       "title": "VP Engineering",
-      "company": "Meridian Robotics",
-      "office": "Portland",
+      "company": "Alder Ridge Robotics",
+      "office": "North Campus",
       "since": "2025-03-01"
     },
     {
-      "name": "Bob Rivera",
+      "name": "Blake Carter",
       "title": "Engineering Lead",
-      "company": "Meridian Robotics",
-      "office": "Portland",
+      "company": "Alder Ridge Robotics",
+      "office": "North Campus",
       "since": "2025-03-01",
-      "responsible_for": "Atlas"
+      "responsible_for": "ROBOT-202"
     },
     {
-      "name": "Priya Sharma",
+      "name": "Casey Nguyen",
       "title": "Chief Technology Officer",
-      "company": "Meridian Robotics",
-      "office": "Portland",
+      "company": "Alder Ridge Robotics",
+      "office": "North Campus",
       "since": "2025-03-01",
-      "responsible_for": "FleetView"
+      "responsible_for": "OPERATIONS-DASHBOARD"
     },
     {
-      "name": "Carol Diaz",
+      "name": "Devon Brooks",
       "title": "Account Executive",
-      "company": "Voltaic Components",
-      "office": "Fremont",
+      "company": "Westbridge Components",
+      "office": "Westbridge Plant",
       "since": "2025-03-01"
     },
     {
-      "name": "Dana Whitfield",
+      "name": "Morgan Lee",
       "title": "Operations Manager",
-      "company": "Northwind Logistics",
-      "office": "Reno",
+      "company": "Clearwater Fulfillment",
+      "office": "South Warehouse",
       "since": "2025-03-01"
     }
   ],
   "partners": [
     {
-      "company": "Voltaic Components",
-      "hq": "Fremont",
+      "company": "Westbridge Components",
+      "hq": "Westbridge Plant",
       "relationship": "supplier",
-      "supplies_to": ["Meridian Robotics", "Atlas"],
+      "supplies_to": ["Alder Ridge Robotics", "ROBOT-202"],
       "since": "2025-04-15"
     },
     {
-      "company": "Northwind Logistics",
-      "hq": "Reno",
+      "company": "Clearwater Fulfillment",
+      "hq": "South Warehouse",
       "relationship": "customer",
       "since": "2025-05-06"
     }

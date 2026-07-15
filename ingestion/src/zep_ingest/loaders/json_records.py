@@ -47,6 +47,10 @@ class JsonRecordsLoader:
         metadata_fields: Sequence[str] = (),
         record_type: str | None = None,
     ) -> None:
+        if format not in ("auto", "jsonl", "csv", "json"):
+            raise ConfigurationError(
+                f"format must be one of ['auto', 'csv', 'json', 'jsonl'], got {format!r}"
+            )
         self.pattern = str(path_or_glob)
         self.format = format
         self.id_field = id_field

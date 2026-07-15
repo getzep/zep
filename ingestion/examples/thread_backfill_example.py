@@ -15,11 +15,11 @@ Usage:
 
 chat_history.jsonl rows (one message per line, chronological order; a JSON
 array or CSV with the same columns also works):
-    {"thread_id": "support-1001", "role": "user", "name": "Marcus Webb",
-     "content": "Half my team can't log into FleetView...",
+    {"thread_id": "support-1001", "role": "user", "name": "Morgan Lee",
+     "content": "Half my team can't log into OPERATIONS-DASHBOARD...",
      "created_at": "2025-04-10T15:02:00Z"}
-    {"thread_id": "support-1001", "role": "assistant", "name": "MeridianAssistant",
-     "content": "Are the affected users seeing an error from FleetView...",
+    {"thread_id": "support-1001", "role": "assistant", "name": "Riley Chen",
+     "content": "Are the affected users seeing an error from OPERATIONS-DASHBOARD...",
      "created_at": "2025-04-10T15:03:00Z"}
 """
 
@@ -39,7 +39,7 @@ def main() -> None:
     run_id = int(time.time())
     user_id = f"example-backfill-{run_id}"
 
-    client.user.add(user_id=user_id, first_name="Marcus", last_name="Webb")
+    client.user.add(user_id=user_id, first_name="Morgan", last_name="Example")
 
     # On user graphs custom types are ADDITIVE to Zep's defaults (User,
     # Preference, Location, ...); set them before the backfill flows.
@@ -66,7 +66,7 @@ def main() -> None:
 
     # Extraction is asynchronous; wait until facts are searchable, then pull
     # the context block an agent would receive for one of the threads.
-    search_when_ready(client, "FleetView", user_id=user_id)
+    search_when_ready(client, "OPERATIONS-DASHBOARD", user_id=user_id)
     context = client.thread.get_user_context(thread_id=f"support-1001-{run_id}")
     print(f"\nUser context for thread support-1001-{run_id}:")
     print(context.context)

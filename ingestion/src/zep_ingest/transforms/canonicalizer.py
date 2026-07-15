@@ -1,17 +1,17 @@
 """AliasCanonicalizer: canonicalize entity names before ingestion.
 
 Zep resolves entities by the names it sees in text; lexically-different
-aliases ("MR-42" vs "Atlas") do not merge on their own. Zep support
+aliases ("PROTOTYPE-202" vs "ROBOT-202") do not merge on their own. Zep support
 recommends canonicalizing references before ingestion — either rewriting
-aliases to one canonical name, or introducing the alias inline ("MR-42
-(also known as Atlas)"). This transform implements both.
+aliases to one canonical name, or introducing the alias inline ("PROTOTYPE-202
+(also known as ROBOT-202)"). This transform implements both.
 
 Ambiguous aliases are a data-corruption hazard: alias "Will" must not rewrite
 the modal verb in "he will go" — and case-sensitivity alone cannot save a
 word-like alias at sentence start ("Will you go?"). Pass ``risky_words`` (a
 set of common words to guard against) and construction rejects aliases that
-match it case-insensitively or are shorter than 3 characters; without it, no
-guard runs. Per-alias replacement counts are surfaced as warnings either way,
+match it case-insensitively or are shorter than 3 characters. The guard is on
+by default; pass an empty set to opt out. Per-alias replacement counts surface,
 so a runaway alias is visible in preview() before any API call.
 """
 
@@ -26,8 +26,7 @@ MIN_ALIAS_CHARS = 3
 MAX_NAME_CHARS = 200
 
 #: Common English words (and word-like given names) that make catastrophic
-#: aliases. Not applied by default — pass ``risky_words=DEFAULT_RISKY_WORDS``
-#: (optionally ``| {"your", "words"}``) to arm the guard.
+#: aliases. Applied by default; extend it or explicitly pass an empty set.
 DEFAULT_RISKY_WORDS = frozenset(
     """
     the be to of and a in that have i it for not on with he as you do at this
@@ -54,16 +53,14 @@ class AliasCanonicalizer:
         *,
         mode: Literal["rewrite", "annotate"] = "rewrite",
         strict: bool = True,
-        risky_words: frozenset[str] | None = None,
+        risky_words: frozenset[str] | None = DEFAULT_RISKY_WORDS,
     ) -> None:
         self.mode = mode
         self.strict = strict
         self.warnings: list[str] = []
         self._counts: dict[str, int] = {}
         self._alias_to_canonical: dict[str, str] = {}
-        lowered_risky = (
-            frozenset(w.lower() for w in risky_words) if risky_words is not None else None
-        )
+        lowered_risky = frozenset(w.lower() for w in risky_words) if risky_words else None
 
         for canonical, alias_list in aliases.items():
             self._validate_name(canonical, kind="canonical name")
@@ -83,7 +80,7 @@ class AliasCanonicalizer:
 
         # One scan over aliases AND protected spans (existing canonical
         # mentions, URLs, code spans), longest literal first, so an alias that
-        # contains its canonical ("Atlas Mk II" → "Atlas") still wins over the
+        # contains its canonical ("ROBOT-202" → "ROBOT-202") still wins over the
         # protection of the bare canonical. URLs/code spans go first: an alias
         # inside them must stay untouched.
         self._canonicals = set(aliases)

@@ -27,6 +27,7 @@ def test_public_api_exports():
         "ingest_documents",
         "ingest_emails",
         "ingest_json_records",
+        "ingest_transcripts",
         "ingest_fact_triples",
         "ingest_thread_messages",
         # loaders
@@ -34,6 +35,7 @@ def test_public_api_exports():
         "TextFileLoader",
         "JsonRecordsLoader",
         "EmlLoader",
+        "TranscriptLoader",
         # transforms
         "TextChunker",
         "LLMContextualizer",

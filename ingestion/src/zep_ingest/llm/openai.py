@@ -13,7 +13,8 @@ pass a pre-constructed client).
 
 from typing import Any
 
-from zep_ingest.exceptions import ZepDependencyError
+from zep_ingest._validation import require_int_range
+from zep_ingest.exceptions import ConfigurationError, ZepDependencyError
 
 
 def _make_openai_client(**kwargs: Any) -> Any:
@@ -32,6 +33,7 @@ class OpenAILLM:
         model: str = "gpt-5-mini",
         max_tokens: int = 200,
     ) -> None:
+        require_int_range("max_tokens", max_tokens, minimum=1)
         self.client = client if client is not None else _make_openai_client()
         self.model = model
         self.max_tokens = max_tokens
@@ -63,6 +65,11 @@ class OpenAICompatibleLLM(OpenAILLM):
         client: Any | None = None,
         max_tokens: int = 200,
     ) -> None:
+        require_int_range("max_tokens", max_tokens, minimum=1)
         if client is None:
+            if not isinstance(base_url, str) or not base_url.strip():
+                raise ConfigurationError(
+                    "base_url is required when OpenAICompatibleLLM constructs its client"
+                )
             client = _make_openai_client(base_url=base_url, api_key=api_key)
         super().__init__(client, model=model, max_tokens=max_tokens)

@@ -28,8 +28,14 @@ from zep_cloud.errors.not_found_error import NotFoundError
 from zep_cloud.types.batch_add_item import BatchAddItem
 from zep_cloud.types.message import Message
 
+from zep_ingest._errors import safe_api_error
 from zep_ingest._io import load_rows, rows_to_fields
-from zep_ingest._validation import check_scalar_map, check_timestamp
+from zep_ingest._validation import (
+    check_len,
+    check_scalar_map,
+    check_timestamp,
+    require_int_range,
+)
 from zep_ingest.exceptions import BatchUnavailableError, ConfigurationError
 from zep_ingest.result import AddError, IngestResult
 from zep_ingest.submitters.batch import is_gating_error, process_batch
@@ -60,12 +66,13 @@ class ThreadMessage:
 
     def __post_init__(self) -> None:
         errors: list[str] = []
-        if not self.thread_id or not self.thread_id.strip():
+        if not isinstance(self.thread_id, str) or not self.thread_id.strip():
             errors.append("thread_id must be a non-empty string")
-        if not self.content or not self.content.strip():
+        if not isinstance(self.content, str) or not self.content.strip():
             errors.append("content must be a non-empty string")
-        if self.role not in ROLE_TYPES:
+        if not isinstance(self.role, str) or self.role not in ROLE_TYPES:
             errors.append(f"role must be one of {sorted(ROLE_TYPES)}, got {self.role!r}")
+        check_len("name", self.name, 100, errors)
         check_timestamp("created_at", self.created_at, errors)
         check_scalar_map("metadata", self.metadata, errors, max_keys=MAX_METADATA_KEYS)
         if errors:
@@ -186,10 +193,7 @@ def _submit_batch(
                 AddError(
                     index=page_index,
                     item_count=len(page),
-                    error=(
-                        f"batch.add failed: status={add_failure.status_code}, "
-                        f"body={add_failure.body}"
-                    ),
+                    error=(safe_api_error("batch.add", add_failure)),
                     batch_id=batch_id,
                 )
             )
@@ -236,10 +240,7 @@ def _submit_sequential(
                     AddError(
                         index=chunk_index,
                         item_count=len(chunk),
-                        error=(
-                            f"thread.add_messages({thread_id!r}) failed: "
-                            f"status={error.status_code}, body={error.body}"
-                        ),
+                        error=safe_api_error(f"thread.add_messages({thread_id!r})", error),
                     )
                 )
             else:
@@ -275,6 +276,14 @@ def ingest_thread_messages(
             "ingest_thread_messages requires user_id — threads belong to a user "
             "and their messages land on that user's graph."
         )
+    if method not in ("auto", "batch", "sequential"):
+        raise ConfigurationError(
+            f"method must be one of ['auto', 'batch', 'sequential'], got {method!r}"
+        )
+    require_int_range("messages_per_call", messages_per_call, minimum=1)
+    require_int_range("max_retries", max_retries, minimum=1)
+    if thread_id_suffix is not None and not isinstance(thread_id_suffix, str):
+        raise ConfigurationError("thread_id_suffix must be a string or None")
     if isinstance(messages, str | Path):
         materialized = _load_messages(Path(messages))
     else:

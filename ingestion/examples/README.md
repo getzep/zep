@@ -33,19 +33,17 @@ the [dashboard](https://app.getzep.com) when you're done.
 
 ## The sample data
 
-Everything under `data/` describes one coherent fictional company —
-**Meridian Robotics**, a warehouse-robotics maker in Portland — so entities
-recur across sources and the graphs connect: emails, a company handbook,
-an HR-style directory export (molded into fact triples), a product catalog,
-a Slack export, and two support chat histories. All timestamps are fixed
-historical dates, which is what a real backfill looks like.
+Everything under `data/` follows one scenario centered on **Alder Ridge
+Robotics**. The same people, products, and projects recur across emails, a
+handbook, a directory export, a catalog, a Slack export, and chat histories so
+the resulting graph contains useful cross-source relationships.
 
 Thread-message files (`chat_history.jsonl`, `combined_threads.jsonl`) are one
 JSON object per line with columns matching `ThreadMessage`; a JSON array or
 CSV with the same columns also works:
 
 ```json
-{"thread_id": "support-1001", "role": "user", "name": "Marcus Webb",
+{"thread_id": "support-1", "role": "user", "name": "Morgan Lee",
  "content": "...", "created_at": "2025-04-10T15:02:00Z"}
 ```
 

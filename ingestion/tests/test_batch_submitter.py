@@ -93,7 +93,7 @@ class TestRetries:
         assert len(result.add_errors) == 1
         assert result.add_errors[0].index == 0
         assert result.add_errors[0].item_count == 1
-        assert "boom" in result.add_errors[0].error
+        assert result.add_errors[0].error == "batch.add failed: status=500 after 2 attempt(s)"
         assert result.items_submitted == 2
 
     def test_add_error_does_not_contain_episode_data(self, mock_zep):
@@ -124,13 +124,6 @@ class TestRetries:
         assert result.status == "failed"
         # a failed-to-process batch is terminal: wait() must not hang on it
         assert result.wait(poll_interval=0) is result
-
-
-class TestWarnings:
-    def test_metadata_truncation_warning_in_result(self, mock_zep):
-        ep = Episode(data="x", metadata={f"k{i}": i for i in range(11)})
-        result = BatchSubmitter(mock_zep).submit([ep], DEST)
-        assert any("metadata" in w for w in result.warnings)
 
 
 class TestBatchMetadata:

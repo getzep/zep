@@ -37,9 +37,9 @@ def main() -> None:
     # 1. Create the user (the user graph comes with it).
     client.user.add(
         user_id=user_id,
-        first_name="Dana",
-        last_name="Whitfield",
-        email="dana.whitfield@northwindlogistics.example",
+        first_name="Morgan",
+        last_name="Example",
+        email="morgan@clearwater-fulfillment.example",
     )
 
     # 2. Set the ontology BEFORE any data flows. On user graphs custom types
@@ -54,37 +54,39 @@ def main() -> None:
     #    later extraction resolves against these known entities.
     profile = [
         FactTriple(
-            fact="Dana Whitfield is an Operations Manager at Northwind Logistics",
+            fact="Morgan Lee is an Operations Manager at Clearwater Fulfillment",
             fact_name="WORKS_AT",
-            source_node_name="Dana Whitfield",
+            source_node_name="Morgan Lee",
             source_node_labels=["Person"],  # ties the node to the declared type
-            source_node_summary="Operations Manager running the PickPoint One pilot",
-            target_node_name="Northwind Logistics",
+            source_node_summary="Operations Manager running the ROBOT-101 pilot",
+            target_node_name="Clearwater Fulfillment",
             target_node_labels=["Organization"],
-            target_node_summary="Regional fulfillment provider piloting Meridian Robotics arms",
+            target_node_summary="Regional fulfillment provider piloting Alder Ridge Robotics arms",
             valid_at="2025-03-01T00:00:00Z",
         ),
         FactTriple(
-            fact="Dana Whitfield is based at the Reno fulfillment center",
+            fact="Morgan Lee is based at the South Warehouse fulfillment center",
             fact_name="LOCATED_AT",
-            source_node_name="Dana Whitfield",
+            source_node_name="Morgan Lee",
             source_node_labels=["Person"],
-            target_node_name="Reno",
+            target_node_name="South Warehouse",
             target_node_labels=["Location"],
-            target_node_summary="Reno, Nevada — Northwind Logistics fulfillment center",
+            target_node_summary="Clearwater Fulfillment warehouse location",
             valid_at="2025-03-01T00:00:00Z",
         ),
         FactTriple(
-            fact="Northwind Logistics operates a fulfillment center in Reno, Nevada",
+            fact="Clearwater Fulfillment operates the South Warehouse pilot",
             fact_name="LOCATED_AT",
-            source_node_name="Northwind Logistics",
+            source_node_name="Clearwater Fulfillment",
             source_node_labels=["Organization"],
-            target_node_name="Reno",
+            target_node_name="South Warehouse",
             target_node_labels=["Location"],
             valid_at="2025-03-01T00:00:00Z",
         ),
     ]
-    ingest_fact_triples(client, profile, user_id=user_id).raise_for_status()
+    profile_result = ingest_fact_triples(client, profile, user_id=user_id)
+    profile_result.wait(timeout=600)
+    profile_result.raise_for_status()
     print(f"Seeded {len(profile)} profile facts")
 
     # 4. Backfill the user's support conversations as thread messages —
@@ -99,21 +101,21 @@ def main() -> None:
     )
     print(f"Backfilled {threads.items_submitted} thread messages: {threads.status}")
 
-    # 5. Documents can land on a user graph too — Dana's deployment notes.
+    # 5. Documents can land on a user graph too — Morgan Lee's deployment notes.
     docs = ingest_documents(
         client,
-        str(DATA / "northwind_deployment_notes.md"),
+        str(DATA / "deployment_notes.md"),
         user_id=user_id,
-        created_at="2025-06-20T00:00:00Z",  # the notes' real date; omitting
-        wait=True,  # falls back to file mtime
+        created_at="2025-06-20T00:00:00Z",  # generated source date
+        wait=True,
     )
     print(f"Ingested {docs.items_submitted} document chunks: {docs.status}")
 
     # Extraction is asynchronous; wait until facts are searchable, then pull
     # the context block an agent would receive for one of the threads.
     search_when_ready(client, "Arm 3 calibration", user_id=user_id)
-    context = client.thread.get_user_context(thread_id=f"northwind-support-1-{run_id}")
-    print(f"\nUser context for thread northwind-support-1-{run_id}:")
+    context = client.thread.get_user_context(thread_id=f"support-1-{run_id}")
+    print(f"\nUser context for thread support-1-{run_id}:")
     print(context.context)
 
     print(f"\nUser: {user_id}")

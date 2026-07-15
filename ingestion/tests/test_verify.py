@@ -1,5 +1,7 @@
 """Tests for search_when_ready — the indexing-lag-aware search helper."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from zep_ingest.exceptions import ConfigurationError
@@ -30,6 +32,29 @@ class TestSearchWhenReady:
     def test_no_polling_when_results_immediate(self, mock_zep):
         mock_zep.graph.search.return_value = results(2)
         search_when_ready(mock_zep, "q", graph_id="g1")
+        assert mock_zep.graph.search.call_count == 1
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("context", "assembled context"),
+            ("observations", [object()]),
+            ("thread_summaries", [object()]),
+        ],
+    )
+    def test_all_supported_result_fields_stop_polling(self, mock_zep, field, value):
+        response = SimpleNamespace(
+            context=None,
+            edges=None,
+            nodes=None,
+            episodes=None,
+            observations=None,
+            thread_summaries=None,
+        )
+        setattr(response, field, value)
+        mock_zep.graph.search.return_value = response
+
+        assert search_when_ready(mock_zep, "q", graph_id="g1") is response
         assert mock_zep.graph.search.call_count == 1
 
     def test_returns_empty_response_after_timeout(self, mock_zep, monkeypatch):

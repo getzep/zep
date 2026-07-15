@@ -1,18 +1,18 @@
 [
   {
     "id": "U001",
-    "name": "alice",
+    "name": "avery-brown",
     "profile": {
-      "display_name": "Alice Smith",
-      "real_name": "Alice B. Smith"
+      "display_name": "Avery Brown",
+      "real_name": "Avery Brown"
     }
   },
   {
     "id": "U002",
-    "name": "bob",
+    "name": "blake-carter",
     "profile": {
       "display_name": "",
-      "real_name": "Bob Jones"
+      "real_name": "Blake Carter"
     }
   },
   {

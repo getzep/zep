@@ -16,10 +16,10 @@ def no_sleep(monkeypatch):
 
 def triple(**overrides) -> FactTriple:
     kwargs = {
-        "fact": "Paul met Eric",
+        "fact": "Avery Brown met Blake Carter",
         "fact_name": "MET",
-        "source_node_name": "Paul",
-        "target_node_name": "Eric Clapton",
+        "source_node_name": "Avery Brown",
+        "target_node_name": "Morgan Lee",
     }
     kwargs.update(overrides)
     return FactTriple(**kwargs)
@@ -29,11 +29,18 @@ class TestValidation:
     def test_valid_triple_constructs(self):
         triple()
 
+    @pytest.mark.parametrize("field", ["fact", "fact_name", "source_node_name", "target_node_name"])
+    def test_required_string_fields_reject_empty_values(self, field):
+        with pytest.raises(ConfigurationError, match=field):
+            triple(**{field: "   "})
+
     @pytest.mark.parametrize(
         ("field", "value"),
         [
             ("fact", "x" * 251),
+            ("fact", 123),
             ("fact_name", "A" * 51),
+            ("fact_name", 123),
             ("fact_name", "lowercase_name"),
             ("fact_name", "HAS SPACE"),
             ("source_node_name", "x" * 51),
@@ -62,10 +69,10 @@ class TestValidation:
 
     def test_node_labels_accepted_and_mapped(self, mock_zep):
         triple = FactTriple(
-            fact="Alice works at Acme",
+            fact="Avery Brown works at Example Organization",
             fact_name="WORKS_AT",
-            source_node_name="Alice",
-            target_node_name="Acme",
+            source_node_name="Avery Brown",
+            target_node_name="Example Organization",
             source_node_labels=["Person"],
             target_node_labels=["Organization"],
         )
@@ -77,10 +84,10 @@ class TestValidation:
     def test_more_than_one_label_raises(self):
         with pytest.raises(ConfigurationError, match="labels"):
             FactTriple(
-                fact="Alice works at Acme",
+                fact="Avery Brown works at Example Organization",
                 fact_name="WORKS_AT",
-                source_node_name="Alice",
-                target_node_name="Acme",
+                source_node_name="Avery Brown",
+                target_node_name="Example Organization",
                 source_node_labels=["Person", "Employee"],
             )
 
@@ -100,9 +107,11 @@ class TestIngest:
         calls = mock_zep.graph.add_fact_triple.call_args_list
         assert [c.kwargs["fact"] for c in calls] == ["A met B", "C met D"]
         assert calls[0].kwargs["fact_name"] == "MET"
-        assert calls[0].kwargs["source_node_name"] == "Paul"
+        assert calls[0].kwargs["source_node_name"] == "Avery Brown"
         assert calls[0].kwargs["edge_attributes"] == {"confidence": "high"}
         assert all(c.kwargs["graph_id"] == "g1" for c in calls)
+        assert result.task_ids == ["task-1"]
+        assert result.status == "queued"
 
     def test_destination_required(self, mock_zep):
         with pytest.raises(ConfigurationError):
@@ -147,10 +156,10 @@ class TestIngest:
         file = tmp_path / "triples.jsonl"
         rows = [
             {
-                "fact": "Paul met Eric",
+                "fact": "Avery Brown met Blake Carter",
                 "fact_name": "MET",
-                "source_node_name": "Paul",
-                "target_node_name": "Eric",
+                "source_node_name": "Avery Brown",
+                "target_node_name": "Blake Carter",
             },
             {
                 "fact": "Ana owns GTM",
@@ -168,10 +177,10 @@ class TestIngest:
         file = tmp_path / "triples.json"
         rows = [
             {
-                "fact": "Paul met Eric",
+                "fact": "Avery Brown met Blake Carter",
                 "fact_name": "MET",
-                "source_node_name": "Paul",
-                "target_node_name": "Eric",
+                "source_node_name": "Avery Brown",
+                "target_node_name": "Blake Carter",
             },
             {
                 "fact": "Ana owns GTM",
@@ -188,7 +197,7 @@ class TestIngest:
     def test_csv_file_source(self, mock_zep, tmp_path):
         file = tmp_path / "triples.csv"
         file.write_text(
-            "fact,fact_name,source_node_name,target_node_name\nPaul met Eric,MET,Paul,Eric\n"
+            "fact,fact_name,source_node_name,target_node_name\nAvery Brown met Blake Carter,MET,Avery Brown,Blake Carter\n"
         )
         result = ingest_fact_triples(mock_zep, file, graph_id="g1")
         assert result.items_submitted == 1
@@ -199,7 +208,7 @@ class TestIngest:
         file = tmp_path / "triples.csv"
         file.write_text(
             "fact,fact_name,source_node_name,target_node_name,source_node_labels\n"
-            "Paul met Eric,MET,Paul,Eric,Person\n"
+            "Avery Brown met Blake Carter,MET,Avery Brown,Blake Carter,Person\n"
         )
         with pytest.raises(ConfigurationError, match="CSV"):
             ingest_fact_triples(mock_zep, file, graph_id="g1")
@@ -209,7 +218,7 @@ class TestIngest:
         file = tmp_path / "triples.csv"
         file.write_text(
             "fact,fact_name,source_node_name,target_node_name,metadata\n"
-            'Paul met Eric,MET,Paul,Eric,"{""a"": 1}"\n'
+            'Avery Brown met Blake Carter,MET,Avery Brown,Blake Carter,"{""a"": 1}"\n'
         )
         with pytest.raises(ConfigurationError, match="metadata"):
             ingest_fact_triples(mock_zep, file, graph_id="g1")
@@ -228,3 +237,20 @@ class TestIngest:
         )
         with pytest.raises(ConfigurationError, match="fact"):
             ingest_fact_triples(mock_zep, file, graph_id="g1")
+
+
+class TestNodeUuidPinning:
+    def test_valid_uuids_accepted_and_mapped(self):
+        import uuid as uuid_module
+
+        source, target = str(uuid_module.uuid4()), str(uuid_module.uuid4())
+        t = triple(source_node_uuid=source, target_node_uuid=target)
+        kwargs = t.to_api_kwargs(
+            __import__("zep_ingest.types", fromlist=["Destination"]).Destination(graph_id="g")
+        )
+        assert kwargs["source_node_uuid"] == source
+        assert kwargs["target_node_uuid"] == target
+
+    def test_invalid_uuid_raises_naming_the_field(self):
+        with pytest.raises(ConfigurationError, match="source_node_uuid"):
+            triple(source_node_uuid="nope")

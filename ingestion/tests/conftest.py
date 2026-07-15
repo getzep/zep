@@ -5,11 +5,13 @@ from unittest.mock import MagicMock
 
 import pytest
 from zep_cloud.client import Zep
+from zep_cloud.types.add_triple_response import AddTripleResponse
 from zep_cloud.types.batch_item_detail import BatchItemDetail
 from zep_cloud.types.batch_item_list_response import BatchItemListResponse
 from zep_cloud.types.batch_progress import BatchProgress
 from zep_cloud.types.batch_summary import BatchSummary
 from zep_cloud.types.episode import Episode as ZepEpisode
+from zep_cloud.types.get_task_response import GetTaskResponse
 
 
 def make_batch_summary(
@@ -55,7 +57,7 @@ def mock_zep() -> MagicMock:
     client.graph.create = MagicMock()
     client.graph.get = MagicMock()
     client.graph.set_ontology = MagicMock()
-    client.graph.add_fact_triple = MagicMock()
+    client.graph.add_fact_triple = MagicMock(return_value=AddTripleResponse(task_id="task-1"))
     client.graph.node = MagicMock()
     client.graph.edge = MagicMock()
     client.user = MagicMock()
@@ -64,4 +66,6 @@ def mock_zep() -> MagicMock:
     client.thread = MagicMock()
     client.thread.create = MagicMock()
     client.thread.add_messages = MagicMock()
+    client.task = MagicMock()
+    client.task.get = MagicMock(return_value=GetTaskResponse(task_id="task-1", status="succeeded"))
     return client

@@ -1,5 +1,8 @@
 """Tests for TextChunker — the docs-cookbook paragraph→sentence→char splitter."""
 
+import pytest
+
+from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.transforms.chunker import TextChunker
 from zep_ingest.types import Episode
 
@@ -27,9 +30,9 @@ class TestPassThrough:
         out = apply(TextChunker(chunk_size=100), message, json_ep)
         assert [ep.data for ep in out] == [long, long]
 
-    def test_empty_text_passes_through(self):
-        [out] = apply(TextChunker(), Episode(data=""))
-        assert out.data == ""
+    def test_empty_text_is_rejected(self):
+        with pytest.raises(ConfigurationError, match="non-empty"):
+            Episode(data="")
 
 
 class TestSplitting:
@@ -101,6 +104,16 @@ class TestChunkMetadata:
         ep = Episode(data=make_long_text(), metadata=metadata)
         apply(TextChunker(chunk_size=500), ep)
         assert metadata == {"source": "handbook"}
+
+    def test_full_metadata_map_is_preserved_without_chunk_key(self):
+        metadata = {f"k{i}": i for i in range(10)}
+        chunker = TextChunker(chunk_size=100, overlap=0)
+
+        chunks = apply(chunker, Episode(data=make_long_text(), metadata=metadata))
+
+        assert len(chunks) > 1
+        assert all(chunk.metadata == metadata for chunk in chunks)
+        assert any("chunk" in warning for warning in chunker.warnings)
 
     def test_document_set_to_original_only_when_split(self):
         long_ep = Episode(data=make_long_text())

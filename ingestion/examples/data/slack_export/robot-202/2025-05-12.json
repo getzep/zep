@@ -1,0 +1,45 @@
+[
+  {
+    "type": "message",
+    "user": "U002",
+    "text": "Test update: the ROBOT-202 engineering build is running with ACTUATOR-09.",
+    "ts": "1747065600.000100",
+    "thread_ts": "1747065600.000100",
+    "reply_count": 3
+  },
+  {
+    "type": "message",
+    "user": "U001",
+    "text": "Which load condition should we run before the design review?",
+    "ts": "1747066200.000110",
+    "thread_ts": "1747065600.000100"
+  },
+  {
+    "type": "message",
+    "user": "U002",
+    "text": "Use the high-load profile and record Westbridge Components as the actuator supplier.",
+    "ts": "1747066800.000120",
+    "thread_ts": "1747065600.000100"
+  },
+  {
+    "type": "message",
+    "user": "U001",
+    "text": "Agreed. I will attach the temperature and cycle-count results to the review ticket.",
+    "ts": "1747067400.000130",
+    "thread_ts": "1747065600.000100"
+  },
+  {
+    "type": "message",
+    "subtype": "bot_message",
+    "bot_id": "B001",
+    "username": "CI Bot",
+    "text": "robot-202-firmware build passed",
+    "ts": "1747068000.000140"
+  },
+  {
+    "type": "message",
+    "user": "U002",
+    "text": "The first milestone is complete. I will circulate the test summary this afternoon.",
+    "ts": "1747070000.000150"
+  }
+]
