@@ -9,17 +9,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  review:
-    # Restrict paid, secret-bearing reviews to PRs from branches in this
-    # repository: only users with write access can push branches here, and
-    # fork PRs never receive secrets on pull_request events. Bots (e.g.
-    # dependabot) are excluded to avoid burning paid reviews. We don't gate
-    # on author_association because private org membership reports as
-    # CONTRIBUTOR in event payloads, which silently skips every review.
+  check-permission:
+    # Secretless preflight: restrict paid, secret-bearing reviews to PR
+    # authors with write access. A same-repo head check alone is not enough
+    # on a public repository -- anyone can open a PR from an existing
+    # upstream branch without push access -- so the author's repository
+    # permission is verified explicitly. We don't gate on author_association
+    # because private org membership reports as CONTRIBUTOR in event
+    # payloads, which silently skips every review.
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.type != 'Bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      authorized: ${{ steps.check.outputs.authorized }}
+
+    steps:
+      - name: Check author repository permission
+        id: check
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.payload.pull_request.user.login,
+            });
+            const authorized = ["admin", "maintain", "write"].includes(data.permission);
+            core.info(`Author permission: ${data.permission} (authorized: ${authorized})`);
+            core.setOutput("authorized", authorized ? "true" : "false");
+
+  review:
+    needs: check-permission
+    if: needs.check-permission.outputs.authorized == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
