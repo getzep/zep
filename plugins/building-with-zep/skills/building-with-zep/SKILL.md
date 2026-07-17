@@ -7,9 +7,11 @@ description: Guide for building, designing, reviewing, evaluating, and troublesh
 
 This skill is the **decision-and-workflow layer** for building on Zep: how to
 reason about Zep, scope graphs, ingest data, retrieve context, and evaluate
-whether Zep delivers your use case. It is **not** an API reference — for exact,
-current details (method names, parameters, limits, plan availability), query the
-**`zep-docs` MCP server** first — preferring to load the whole relevant page (see
+whether Zep delivers your use case. It is **not** an API reference or a full
+best-practices manual — for exact, current details (method names, parameters,
+limits, plan availability) and the complete best practices for any given
+feature, query the **`zep-docs` MCP server** first — preferring to load the
+whole relevant page (see
 [Documentation index](#documentation-index) for how to read pages vs. search). If
 it is unavailable, use [help.getzep.com](https://help.getzep.com) and the
 [SDK/API reference](https://help.getzep.com/sdk-reference). If this skill and the
@@ -34,6 +36,22 @@ interactions, business data — into one time-aware picture, and Zep supports
 **many graphs with governance** for enterprise scale (many graphs, sources,
 agents, and humans, with security and control over creation, usage, and
 retrieval).
+
+The mental model: **Zep is not a chat-log store and not a vector database.** It
+extracts structured, time-aware knowledge from whatever you feed it, fuses it
+into the graph, and returns the slice that matters for the current moment. That
+sets it apart from the tools you might otherwise reach for:
+
+- **vs. a store per data type** — chat, documents, JSON, and business events all
+  fuse into *one* graph per subject; you don't stand up and stitch together a
+  separate store for each source.
+- **vs. plain vector search** — retrieval is **hybrid** (semantic + keyword +
+  graph traversal, then reranked), not similarity alone, so it captures exact
+  terms and relationships, not just conceptual matches.
+- **vs. static GraphRAG** — Zep is built for **change**: it ingests streaming,
+  frequently-updated data incrementally and time-stamps every fact (see the
+  bitemporal model below), whereas GraphRAG targets one-time summarization of
+  static documents. Reach for Zep when knowledge evolves.
 
 Two kinds of graph. A **user graph is a specialization of a standalone graph**:
 anything a standalone graph can do, a user graph can do too. Only some features
@@ -68,7 +86,10 @@ expired), so you can ask what is true *now* or what was true at a past date.
 
 **Context types** (what ingestion creates, what retrieval returns): episodes, entities, facts, thread
 summaries, the user summary, and observations. Each captures a different value;
-**auto** search finds the most relevant artifacts across all of them. See
+**auto** search finds the most relevant artifacts across all of them. A useful
+contrast: **entity/node summaries** give *depth* (a narrative rolling up one
+entity's history) while **facts** give *breadth* (granular, individually-dated
+claims) — good retrieval draws on both. See
 [Context types](https://help.getzep.com/context-types).
 
 ## Architectural philosophy and invariants
@@ -101,6 +122,13 @@ summaries, the user summary, and observations. Each captures a different value;
 - **Retrieval philosophy — favor recall over precision.** Retrieve broadly and
   let the downstream LLM ignore what is irrelevant; missing relevant context is
   worse than including some extra. See [Retrieval philosophy](https://help.getzep.com/retrieval-philosophy).
+- **Lead with the high-level path.** Default to the high-level retrieval surface
+  (the Context Block, or `scope="auto"`) and drop to low-level `graph.search`
+  tuning (custom scopes, rerankers, filters) only with a concrete, measured
+  reason. Most "Zep isn't returning the right thing" problems are solved by
+  better data and the default context, not by search tuning — so localize the
+  failure (see [Evaluating Zep](#evaluating-zep)) before reaching for low-level
+  knobs.
 - **Ingestion is asynchronous.** Added data is processed before it becomes
   retrievable (seconds or more). Design for eventual availability rather than
   reading back immediately; check status when it matters via
@@ -141,12 +169,19 @@ docs (see the [index](#documentation-index)) rather than guessing.
 - **Seed vs. stream.** Decide between backfilling initial/historical data (use
   [batch ingestion](https://help.getzep.com/adding-batch-data) for large
   volumes) and live/streaming updates.
-- **Customize extraction (iterate, don't front-load):**
-  [custom ontology](https://help.getzep.com/customizing-graph-structure)
-  (entity/edge types), [custom instructions](https://help.getzep.com/custom-instructions)
-  (domain interpretation on ingest), and
-  [user summary instructions](https://help.getzep.com/user-summary-instructions)
-  **(user graphs only)**.
+- **Customize extraction (iterate, don't front-load).** Rule of thumb:
+  **ontology defines the *shape* of the graph (which entity/edge types exist);
+  instructions define *how to interpret* your domain** — don't conflate them.
+  - [Custom ontology](https://help.getzep.com/customizing-graph-structure) —
+    your entity/edge types. Model entity types as **nouns** and edge types as
+    **verbs/relationships**, and start with a few generic types rather than
+    modeling everything up front (custom attributes are advanced and often
+    unnecessary). Sharpens extraction and enables type-filtered retrieval.
+  - [Custom instructions](https://help.getzep.com/custom-instructions) —
+    describe your domain (terminology, concepts) so Zep interprets data better
+    on ingest. Not for defining types — that is the ontology's job.
+  - [User summary instructions](https://help.getzep.com/user-summary-instructions)
+    **(user graphs only)** — steer what the always-on user summary captures.
 
 ### 3. Provide retrieval to agents
 
