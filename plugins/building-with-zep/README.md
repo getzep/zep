@@ -46,3 +46,37 @@ plugins/building-with-zep/
 > `zep-docs` server loads under your installed Codex CLI; if Codex rejects
 > `type`, move Claude's MCP inline into `.claude-plugin/plugin.json` and keep
 > `.mcp.json` as a bare-`url` Codex-only file.
+
+## What goes in the skill vs. the docs
+
+The skill is the **decision-and-workflow layer**, not a second copy of the
+product docs. When deciding where a piece of content belongs, follow this rule:
+
+> **Put stable, cross-cutting (not confined to a single doc page) philosophy,
+> decision rules, and critical invariants in the skill. Use the docs for
+> volatile and exhaustive facts. Add reference files only when they provide
+> agent-specific value not well served by the docs — or when a self-contained,
+> versioned fallback is intentionally required.**
+
+Concretely:
+
+- **Belongs in `SKILL.md`** — mental models, differentiators, decision rules,
+  and invariants that are cross-cutting and stable over time. E.g. "Zep is not a
+  chat-log store and not a vector database," "ontology defines the *shape* of the
+  graph; instructions define *how to interpret* your domain," or "lead with the
+  high-level path."
+- **Leave to the docs** (via the `zep-docs` MCP and the skill's documentation
+  index) — volatile or exhaustive detail: method names, parameters, limits, plan
+  availability, pricing, exact reranker names, template syntax, and the **full
+  list of best practices for a given feature**. These drift, and the agent can
+  retrieve them on demand. A single cross-cutting best-practice *principle* still
+  belongs in the skill (e.g. "lead with the high-level path," "iterate, don't
+  front-load ontology"); the exhaustive per-feature checklist does not.
+- **Add a `references/` file only** when it provides agent-specific value the
+  docs don't serve well, or when a self-contained, versioned fallback is
+  deliberately required — and comes with a maintenance plan.
+
+**Duplication is not forbidden.** Stable guidance *should* be repeated when it
+must always be in context. The goal is to avoid duplicating volatile API detail
+and exhaustive documentation **without a deliberate reason and a maintenance
+plan.**
