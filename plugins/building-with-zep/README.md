@@ -63,15 +63,14 @@ Concretely:
 - **Belongs in `SKILL.md`** — mental models, differentiators, decision rules,
   and invariants that are cross-cutting and stable over time. E.g. "Zep is not a
   chat-log store and not a vector database," "ontology defines the *shape* of the
-  graph; instructions define *how to interpret* your domain," or "lead with the
-  high-level path."
+  graph; instructions define *how to interpret* your domain."
 - **Leave to the docs** (via the `zep-docs` MCP and the skill's documentation
   index) — volatile or exhaustive detail: method names, parameters, limits, plan
   availability, pricing, exact reranker names, template syntax, and the **full
   list of best practices for a given feature**. These drift, and the agent can
   retrieve them on demand. A single cross-cutting best-practice *principle* still
-  belongs in the skill (e.g. "lead with the high-level path," "iterate, don't
-  front-load ontology"); the exhaustive per-feature checklist does not.
+  belongs in the skill (e.g. "iterate, don't front-load ontology"); the
+  exhaustive per-feature checklist does not.
 - **Add a `references/` file only** when it provides agent-specific value the
   docs don't serve well, or when a self-contained, versioned fallback is
   deliberately required — and comes with a maintenance plan.

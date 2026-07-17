@@ -122,13 +122,6 @@ claims) — good retrieval draws on both. See
 - **Retrieval philosophy — favor recall over precision.** Retrieve broadly and
   let the downstream LLM ignore what is irrelevant; missing relevant context is
   worse than including some extra. See [Retrieval philosophy](https://help.getzep.com/retrieval-philosophy).
-- **Lead with the high-level path.** Default to the high-level retrieval surface
-  (the Context Block, or `scope="auto"`) and drop to low-level `graph.search`
-  tuning (custom scopes, rerankers, filters) only with a concrete, measured
-  reason. Most "Zep isn't returning the right thing" problems are solved by
-  better data and the default context, not by search tuning — so localize the
-  failure (see [Evaluating Zep](#evaluating-zep)) before reaching for low-level
-  knobs.
 - **Ingestion is asynchronous.** Added data is processed before it becomes
   retrievable (seconds or more). Design for eventual availability rather than
   reading back immediately; check status when it matters via
