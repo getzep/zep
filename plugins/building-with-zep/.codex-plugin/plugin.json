@@ -7,5 +7,7 @@
     "url": "https://www.getzep.com"
   },
   "homepage": "https://help.getzep.com",
-  "keywords": ["zep", "agent-memory", "context-graph", "mcp"]
+  "keywords": ["zep", "agent-memory", "context-graph", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
 }
