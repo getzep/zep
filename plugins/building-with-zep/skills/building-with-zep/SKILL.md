@@ -1,126 +1,324 @@
 ---
 name: building-with-zep
-description: Guide for building and configuring applications that use Zep — agent memory built on temporal Context Graphs, for use cases that need low-latency retrieval, many users and agents, multi-source ingestion, and governance. Use whenever you are writing or designing code that integrates Zep: adding agent memory or long-term context to an agent or chatbot, ingesting chat/business/document data into a Context Graph, retrieving a Context Block or searching the graph, choosing between user graphs and standalone graphs, defining a custom ontology or custom instructions, or deciding how to evaluate and tune Zep for a use case. Triggers on requests like "add memory to my agent", "integrate Zep", "store this in Zep", "search the Zep graph", "set up a Zep ontology", "how should I structure my Zep graphs", "make my agent remember users". Covers what Zep is, its core concepts, the high-level vs low-level APIs, customization, and how to start simple and benchmark.
+description: Guide for building, designing, reviewing, evaluating, and troubleshooting applications that use Zep — agent memory built on temporal Context Graphs, for use cases needing low-latency retrieval, one or many users and agents, multi-source ingestion, and governance. Use whenever you write or design code that integrates Zep — adding memory or long-term context to an agent or chatbot, ingesting chat/business/document/JSON data into a Context Graph, retrieving a Context Block or searching the graph, choosing between user graphs and standalone graphs, scoping graphs, defining a custom ontology or custom instructions, or deciding how to evaluate and tune Zep for a use case. Triggers on requests like "add memory to my agent", "integrate Zep", "store this in Zep", "search the Zep graph", "set up a Zep ontology", "how should I structure my Zep graphs", "why is Zep not returning the right context", "help me evaluate Zep", or "make my agent remember users".
 ---
 
 # Building with Zep
 
-Zep is **agent memory** — for use cases that require low-latency retrieval, large numbers of users and agents, ingestion from many sources, and governance. This skill teaches you how to reason about Zep and build apps on it correctly — what it is, how its pieces fit together, which API to reach for, when to customize, and how to validate that it works for a given use case.
+This skill is the **decision-and-workflow layer** for building on Zep: how to
+reason about Zep, scope graphs, ingest data, retrieve context, and evaluate
+whether Zep delivers your use case. It is **not** an API reference — for exact,
+current details (method names, parameters, limits, plan availability), query the
+**`zep-docs` MCP server** first — preferring to load the whole relevant page (see
+[Documentation index](#documentation-index) for how to read pages vs. search). If
+it is unavailable, use [help.getzep.com](https://help.getzep.com) and the
+[SDK/API reference](https://help.getzep.com/sdk-reference). If this skill and the
+live docs ever disagree, **the live docs win** (see [Source authority](#source-authority-and-validation)).
 
-Read this top-to-bottom before writing Zep code. Pull in the reference files (under `references/`) when you need exact method signatures, parameters, or code.
+Work backward from the **end use case and the business value** it must deliver.
+Success is whether the agent receives **complete context** and produces
+**accurate answers** for that use case — not whether the graph is perfect or the
+ingested data is perfect.
 
-> All guidance here is for **Zep V3** (SDK packages `zep-cloud` for Python/TypeScript, `github.com/getzep/zep-go/v3` for Go). Ignore anything you may know about the legacy V2 `Memory` API.
->
-> Zep has no meaningful free tier — it is a paid product (Subscription and Enterprise plans). Some features noted below are limited to specific plans.
+> Guidance here targets **Zep V3** (SDK packages `zep-cloud` for
+> Python/TypeScript, `github.com/getzep/zep-go/v3` for Go). Ignore the legacy V2
+> `Memory` API. Zep is a paid product; some features are plan-gated — confirm
+> availability in the docs.
 
----
+## Conceptual overview
 
-## Looking up current details (read first)
+Zep builds **temporal Context Graphs**. *You* control the data that goes in and
+the context retrieved out. A graph is a substrate that **fuses many data
+sources** — conversations, emails, Slack, documents, transcripts, user
+interactions, business data — into one time-aware picture, and Zep supports
+**many graphs with governance** for enterprise scale (many graphs, sources,
+agents, and humans, with security and control over creation, usage, and
+retrieval).
 
-This plugin bundles the **`zep-docs` MCP server** — Zep's documentation search. Treat it as the source of truth for anything that must be exact or current: method names, parameters, limits, plan availability, and newer features the summaries here may not cover.
+Two kinds of graph. A **user graph is a specialization of a standalone graph**:
+anything a standalone graph can do, a user graph can do too. Only some features
+are **user-graph-only** — flagged **(user graphs only)** below; everything else
+applies to every graph.
 
-1. **Query the `zep-docs` MCP server first.** Use its documentation-search tool to look up the specific guide or API before relying on memory or on the summaries in this skill, whenever precision matters. It covers both the **guides** and the **SDK/API reference**.
-2. **If the MCP server is unavailable, fall back to the Zep documentation directly:**
-   - Guides: https://help.getzep.com
-   - SDK / API reference: https://help.getzep.com/sdk-reference
+- **Standalone graph** — the base graph type (`graph_id`), for shared or domain
+  knowledge (knowledge bases, product/runbook data). See
+  [Graph overview](https://help.getzep.com/graph-overview).
+- **User graph** — a standalone graph **specialized for a user**: auto-created
+  per user, the home of agent memory (an agent remembering prior conversations
+  with that user). Adds user-only features — a **user node**, a **user
+  summary**, and **threads** — and fuses all of that user's threads and business
+  data. See [Users and user graphs](https://help.getzep.com/users-and-user-graphs).
 
-The reference files in this skill are a fast, curated map of the API surface and the judgment around it — not a replacement for the live docs. If this skill and the live docs ever disagree, the live docs win.
+An integration with Zep can use **one or both** kinds of graph. The developer
+integrating Zep decides which graphs exist and what data feeds each. Access to
+graphs is determined in the **application layer**: at retrieval time the
+application decides which graph(s) a given request reads from — for example,
+granting a user access to their own user graph *and* a companywide standalone
+graph. See [Architecture patterns](https://help.getzep.com/architecture-patterns).
 
----
+**How an episode is processed.** Each ingested artifact (an "episode") is
+processed asynchronously: Zep extracts the **entities** mentioned, extracts the
+**facts/relationships** between them, **deduplicates** the new entities and
+facts against what is already in the graph, and **invalidates** any facts the
+new data supersedes (e.g. a changed preference — the old fact is marked invalid
+but kept as history).
 
-## 1. What Zep does
+**Bitemporal model.** Facts carry validity timestamps (valid/invalid/created/
+expired), so you can ask what is true *now* or what was true at a past date.
 
-Zep gives an agent durable, up-to-date memory of **users, the business, and work done**, and serves it back as ready-to-use context in milliseconds.
+**Context types** (what ingestion creates, what retrieval returns): episodes, entities, facts, thread
+summaries, the user summary, and observations. Each captures a different value;
+**auto** search finds the most relevant artifacts across all of them. See
+[Context types](https://help.getzep.com/context-types).
 
-The flow is always the same three moves:
+## Architectural philosophy and invariants
 
-1. **Ingest** data from any source — chat messages, business records, documents, JSON.
-2. Zep **builds a temporal knowledge graph** (its *Context Graph*) of the entities, relationships, and facts in that data, and keeps it current as new data arrives.
-3. **Retrieve** a token-efficient *Context Block* (or run targeted graph searches) and drop it into your prompt.
+- **Test end to end for your use case.** Zep's many choices (scoping, ontology,
+  retrieval) rarely have one "correct" setting; what matters is whether
+  the whole pipeline delivers **complete context and accurate answers** for
+  *your* use case, not whether any single part looks right in isolation. Tune and
+  validate against an **end-to-end evaluation**, not a "perfect" graph — several
+  trade-offs below (under-merging, recall over precision) only make sense through
+  this lens. See [Evaluating Zep](#evaluating-zep).
+- **Zep vs. your application.** Zep manages the graph (extraction, dedup,
+  retrieval). The application controls **what data is sent**, **which graphs
+  are retrieved from**, and **how the agent uses the context Zep returns**
+  (prompt, model, logic). Retrieving from one vs. many graphs is an
+  application-layer decision.
+- **Zep does not infer beyond the data provided; it is only as good as the data
+  it receives.** If context was never sent to Zep, Zep cannot surface it — a
+  possible cause of "missing" context is that it was never ingested.
+- **Deduplication philosophy — prefer under- to over-merging.** Wrongly merging
+  two distinct entities is worse than failing to merge two that are the same,
+  because unmerged duplicates are *both* still retrievable, so the agent still
+  gets complete context. This is a concrete reason not to chase a "perfect"
+  graph — what matters is complete retrieval when you **test end to end** for
+  your use case.
+- **Dedup needs context.** Threads automatically use prior messages as
+  extraction context; `graph.add` does **not**. Episodes with pronouns or bare
+  first names (e.g. multiple "John"s with no last name) deduplicate poorly —
+  pre-process ambiguous data with stable identifiers (full names, IDs).
+- **Retrieval philosophy — favor recall over precision.** Retrieve broadly and
+  let the downstream LLM ignore what is irrelevant; missing relevant context is
+  worse than including some extra. See [Retrieval philosophy](https://help.getzep.com/retrieval-philosophy).
+- **Ingestion is asynchronous.** Added data is processed before it becomes
+  retrievable (seconds or more). Design for eventual availability rather than
+  reading back immediately; check status when it matters via
+  [Check ingestion status](https://help.getzep.com/check-data-ingestion-status).
 
-This gives an agent access to relevant prior context across sessions without building and maintaining a separate retrieval pipeline.
+## Implementation: scope → ingest → retrieve
 
-The mental model to hold: **Zep is not a chat-log store and not a vector database.** It extracts structured, time-aware knowledge from whatever you feed it, fuses it into a graph per subject, and returns the slice that matters for the current moment.
+Implementing Zep has four steps — **scope → ingest → retrieve → evaluate**.
+Evaluation has its own section below; the choices for the first three follow.
+These are cross-cutting decisions; confirm exact signatures and limits in the
+docs (see the [index](#documentation-index)) rather than guessing.
 
-## 2. How Zep is different
+### 1. Scope your graphs and data sources
 
-When you're deciding whether Zep fits, or explaining it, these are the differentiators that matter:
+- Choose **user graphs** (per-user memory) vs. **standalone graphs** (shared or
+  domain knowledge). Use **separate graphs wherever you need hard data
+  separation** — per user, per team, per tenant.
+- Decide which data sources feed which graphs. One graph can hold many sources;
+  you can also have many graphs.
+- **Zep threads apply only to user graphs.** A Zep thread represents a
+  conversation between the user and the agent; it records that conversation
+  history *and* ingests it into the user graph. Note the available episode/data
+  types (message, text, JSON). Standalone graphs have no first-class thread
+  support, but can still ingest arbitrary text — e.g. Slack or email threads —
+  at a lower level via `graph.add` (as text/JSON, not as a thread).
 
-- **Many sources, one graph.** Chat, documents, JSON, and business events all flow into the same Context Graph and are fused into one coherent picture of a subject. You don't keep separate stores per data type.
-- **Temporal by design.** Every fact carries validity timestamps. When new data contradicts an old fact, Zep invalidates the old one *and keeps it as history* — so you can ask what is true now, or what was true at a past date. This is the key advantage over static GraphRAG and over plain vector search, which have no notion of change over time.
-- **Built for change, not static corpora.** Zep is designed for streaming, frequently-updated data and incremental graph updates. Traditional GraphRAG is built for one-time summarization of static documents; reach for Zep when knowledge evolves.
-- **Hybrid retrieval, not similarity alone.** Retrieval combines semantic search, full-text (BM25) search, and graph traversal with reranking — capturing conceptual matches, exact keywords, and relationships in one ranked result. It optimizes for **recall** (give the agent everything relevant) over precision.
-- **Low latency at scale.** Sub-200ms (P95) retrieval regardless of graph size or number of graphs, which supports large numbers of users and latency-sensitive applications such as voice agents.
-- **Many users, many agents.** Each user gets their own graph; standalone graphs hold shared or domain knowledge. The same memory can be served to whichever agents need it.
-- **Governance.** Authorization (RBAC/ABAC), retention policies, audit logging, and provenance (every fact traces to the source episode that produced it) apply across every graph and query. Deployment can be Cloud, Cloud + BYOK, or BYOC (your VPC); SOC 2 Type II and HIPAA BAA are available.
+### 2. Ingest data into graphs
 
-## 3. Core concepts
+- Use `thread.add_messages` for conversation; `graph.add` for documents, JSON,
+  and business data.
+- **Prepare the data.** Chunk large documents to fit the per-call size limit
+  ([Chunking](https://help.getzep.com/chunking-large-documents)); follow
+  [JSON best practices](https://help.getzep.com/adding-json-best-practices);
+  pass real identifiers (full names, emails) so identity resolves and dedup
+  works; attach [**episode metadata**](https://help.getzep.com/adding-business-data#episode-metadata)
+  (such as `source`) at ingest to enable episode-metadata filtering when
+  searching the graph.
+- **Seed vs. stream.** Decide between backfilling initial/historical data (use
+  [batch ingestion](https://help.getzep.com/adding-batch-data) for large
+  volumes) and live/streaming updates.
+- **Customize extraction (iterate, don't front-load):**
+  [custom ontology](https://help.getzep.com/customizing-graph-structure)
+  (entity/edge types), [custom instructions](https://help.getzep.com/custom-instructions)
+  (domain interpretation on ingest), and
+  [user summary instructions](https://help.getzep.com/user-summary-instructions)
+  **(user graphs only)**.
 
-You must get these right — most integration mistakes come from misunderstanding what a thread or a graph actually *is*. Full detail and code in **`references/concepts.md`**; the essentials and the common misconceptions:
+### 3. Provide retrieval to agents
 
-| Concept | What it is | What it is **not** |
-|---------|-----------|--------------------|
-| **User graph** | A Context Graph automatically created for one user; fuses *all* of that user's threads and business data into one picture. The home for agent memory. | Not something you create by hand, and not partitioned by thread. |
-| **Standalone graph** | A general-purpose graph (`graph_id`) for knowledge about an object or system — shared knowledge bases, product/domain data, runbooks. | Not for personalized user memory (no user node, **no user summary**). For a user, use a user graph. |
-| **Thread** | A conversation: an ordered sequence of messages for one user. Adding messages both records history *and* ingests into the user graph. | **Not** an isolated conversation store and **not** the container for facts. Facts are extracted across *all* threads into the user graph. |
-| **Entity (node)** | A noun extracted from data — person, account, product, place, concept — with a regenerated narrative **summary**. | Not where precise claims live (those are facts on edges). Deduplication is automatic; you don't manage node identity. |
-| **Edge / fact** | A fact is a precise, time-stamped claim ("Emily's account is suspended") stored *on an edge* between two entities, with `valid_at`/`invalid_at`/`created_at`/`expired_at`. | A fact is not independent of its edge, and not a vector chunk. |
-| **Entity summary vs facts** | Summaries roll an entity's history into a narrative (depth); facts are granular dated claims (breadth). The Context Block uses both. | A summary is not a fact and is not citable as a precise dated claim. |
-| **Episode** | The raw ingested artifact (a message, text chunk, or JSON object), stored verbatim alongside what Zep derives from it. | Not the extracted knowledge itself — reach for episodes when you need the exact source wording or a citation. |
-| **User summary** | One always-on narrative of who the user is, on the user node; included **unconditionally** in every Context Block. | Not query-filtered and not per-thread; the same baseline regardless of the latest message. Standalone graphs don't have one. |
-| **Thread summary** | An auto-maintained natural-language summary of *one* thread's arc (what happened in that conversation). One per thread. | Not a user-wide view (that's the user summary / facts) and not something you trigger manually. |
-| **Observation** *(Flex Plus and Enterprise plans)* | A durable, evidence-backed pattern Zep derives across many facts/entities — a decision, commitment, preference, recurring behavior. | Not "just more facts" — it's a cross-entity synthesis, and it's read-only (you can't create or edit observations). |
+- **Choose the context surface:**
+  - *Default Context Block* **(user graphs only)** — `thread.get_user_context`;
+    returns whole-user-graph context, relevance driven by the most recent thread
+    messages. Best for most conversational agents.
+  - *Context templates* **(user graphs only)** — automatic relevance, your fixed
+    layout/sections. See [Context templates](https://help.getzep.com/context-templates).
+  - *Advanced/manual construction* — run searches and assemble the string
+    yourself; the **only** context surface for standalone graphs, and used for
+    custom blocks on any graph. See
+    [Advanced construction](https://help.getzep.com/advanced-context-block-construction).
+- **Search** with `graph.search`: `scope="auto"` (recommended entry point for
+  standalone/non-thread queries, spans all context types) or a specific scope
+  (edges, nodes, episodes, observations, thread_summaries) with rerankers and
+  **filters** (metadata, timestamp, entity/edge type, property). See
+  [Searching the graph](https://help.getzep.com/searching-the-graph).
+- **Decide how the agent retrieves:** expose search as a **tool call** (LLM
+  decides when) vs. **deterministic/programmatic** retrieval on every turn.
+- **Decide how many graphs** to read (one versus many, using parallel graph
+  searches) — an application-layer decision. See
+  [Architecture patterns](https://help.getzep.com/architecture-patterns).
 
-The single most important runtime fact: **`thread.get_user_context(thread_id=...)` returns context from the entire user graph, not just that thread.** The thread is used only to figure out *what's relevant right now* (from its last two messages).
+## Evaluating Zep
 
-## 4. Choosing an API: high-level first, low-level when you must
+- **Anchor to the end business task** and evaluate **end-to-end**, not each part
+  in isolation. See [Evaluate Zep for your use case](https://help.getzep.com/evaluate-zep-for-your-use-case).
+- **Two distinct measures:**
+  - *Context completeness* — did Zep provide the context needed? (Zep's job.)
+  - *Answer accuracy* — did your agent use that context to produce the correct
+    result? (Your LLM/prompt's job, assuming context is complete.)
+- **Diagnose with them:**
+  - Completeness **high**, accuracy **low** → fix the **agent** (prompt, model,
+    logic), not Zep.
+  - Completeness **low** → accuracy will be low too. Localize the failure: is it
+    ingestion or retrieval? First check whether the needed information is in the
+    graph **at all** — [read/export the graph](https://help.getzep.com/reading-data-from-the-graph)
+    (edges, entities, observations) and inspect the **episodes** (the raw data
+    that was sent).
+    - Not in the episodes → the data was **never sent** to Zep; fix what your
+      application ingests. Not a Zep problem.
+    - In the episodes but not in derived artifacts → tune **ingestion** (custom
+      instructions, ontology, pre-processing the data).
+    - In the derived artifacts but not in the retrieved context → tune
+      **retrieval** (search scope, rerankers, filters, context assembly).
+- This is why under-deduplication is acceptable (see philosophy above): an
+  imperfect graph can still yield complete retrieval, which is what the
+  end-to-end evaluation actually measures.
+- Zep provides an **evaluation harness** to help measure context completeness
+  and answer accuracy — but you supply a **gold dataset**: the kinds of
+  questions you want your agent to answer, paired with the correct answers.
+  See the full guidance in
+  [Evaluate Zep for your use case](https://help.getzep.com/evaluate-zep-for-your-use-case).
 
-Zep's high-level APIs cover most use cases. **Default to the high-level path** and only drop down when you have a concrete reason. Full API surface, parameters, scopes, rerankers, and filters are in **`references/apis.md`**.
+## Documentation index
 
-**High-level (start here):**
-- **`thread.get_user_context(thread_id)`** → returns the **Context Block**: an optimized, prompt-ready string assembled by *Smart Context Assembly* (auto search over the whole user graph, based on the last two messages). This is the right answer for most conversational agents. Sub-200ms.
-- **Context templates** → same automatic relevance, but your own fixed layout/sections (`%{user_summary}`, `%{edges}`, `%{entities}`, …). Use when you need consistent custom formatting across threads.
-- **`graph.search(..., scope="auto")`** → the recommended entry point for *standalone* graphs (and for non-thread queries). Retrieves across all data shapes, cross-scope reranks, packs to a character budget, returns a ready-to-use `context` string.
+The `zep-docs` MCP server is the source for exact, current details and **best
+practices** — query it before relying on memory, and **refer to the
+documentation before implementing any feature**. The pages below are curated
+entry points ("read X to do Y"), grouped into foundational concepts, pages that
+apply to all graphs, and the smaller sets that are user-graph-only or
+standalone-graph-only.
 
-**Low-level (when the high-level path isn't enough):**
-- **`graph.search` with a specific `scope`** (`edges`, `nodes`, `episodes`, `observations`, `thread_summaries`), plus rerankers (`rrf` default, `mmr`, `cross_encoder`, `episode_mentions`, `node_distance`), `search_filters` (entity/edge types, properties, dates, metadata), and BFS from recent episodes. Use for UI features, tool-call retrieval where the LLM decides when to search, or precise control.
-- **Advanced/manual context construction** → run several searches and assemble the string yourself. Maximum control, most code. This is the **required** pattern for retrieving from standalone graphs into a custom block.
+**How to retrieve — read a page (preferred), or search.** Prefer loading a whole
+page over searching. The server exposes two mechanisms:
 
-Decision shortcut:
-- Conversational agent, user memory → `thread.get_user_context`.
-- Need fixed sections but automatic relevance → context template.
-- Domain/standalone graph → `graph.search(scope="auto")`, or manual construction for a custom block.
-- LLM-driven "search when needed" → expose `graph.search` as a tool.
-- Need one result type, a filter, or a specific reranker → scoped `graph.search`.
+1. **Read a whole page (preferred).** Load a full doc page in one shot as an MCP
+   **resource** — `zep-docs://<slug>`, where `<slug>` is the page's
+   `help.getzep.com` path (everything after the domain, no leading slash). E.g.
+   `https://help.getzep.com/searching-the-graph` →
+   `zep-docs://searching-the-graph`; nested paths keep their slashes. Every page
+   linked below is reachable at its `zep-docs://<slug>` resource by this rule;
+   discover the full list with your client's resource-listing capability (both
+   Claude Code and Codex expose MCP resources — Codex via `list_mcp_resources` /
+   `read_mcp_resource`). **Prefer this whenever you implement, verify, or debug a
+   specific feature** — you get the complete, current page, not fragments — and it
+   needs only the MCP connection, so it works even when the agent has no general
+   web access.
+   - *Fallbacks* if the client can't read MCP resources or a resource errors:
+     fetch the identical markdown at `https://help.getzep.com/<slug>.md` (the
+     resource is just a cached proxy to that file), or the rendered page at
+     `https://help.getzep.com/<slug>`. Both require web access to
+     `help.getzep.com`.
+2. **Search the docs (discovery).** Use the **`search_documentation`** tool
+   (served by `zep-docs`; params: `query`, and optional `max_results`, 1–10,
+   default 5) when you don't know where something is documented, whether it exists
+   at all, or you want a broad look. It returns reranked text chunks with **no
+   page URLs**, so use it to find *what* to read, then load that page in full via
+   its `zep-docs://<slug>` resource.
 
-## 5. Customization: ontology and instructions
+**Foundational concepts**
 
-Customization improves extraction quality, but it is **prompt engineering — iterate, don't front-load it.** Full APIs, limits, and code in **`references/customization.md`**.
+| Read | To |
+|------|----|
+| [Key concepts](https://help.getzep.com/concepts) | Understand graphs, entities, facts, episodes |
+| [Architecture patterns](https://help.getzep.com/architecture-patterns) | Scope graphs and choose one-vs-many-graph retrieval |
+| [Context types](https://help.getzep.com/context-types) | Understand each context type and auto search |
+| [Retrieval philosophy](https://help.getzep.com/retrieval-philosophy) | Understand recall-over-precision retrieval |
 
-- **Custom ontology** (`graph.set_ontology`) — define your own entity types and edge types (max 10 each per scope, ≤10 fields each). Good for: focusing extraction on the entities/relationships that matter in your domain, and enabling precise type-filtered retrieval. Recommended for most production use cases. **Not** good for: modeling everything up front, or as a substitute for good data — many use cases are fully served by default entities + node summaries + facts. Custom *attributes* on types are an advanced feature; you often don't need them. Design entity types as nouns and edge types as verbs/relationships, and start with a few generic types.
-- **Custom instructions** (`graph.add_custom_instructions`, Enterprise) — describe your *domain* (terminology, concepts) so Zep interprets data better during extraction. Applied automatically on ingest. Good for: specialized vocabularies (legal, healthcare, internal jargon). **Not** for: defining entity/relationship *types* — that's what ontology is for.
-- **User summary instructions** (`user.add_user_summary_instructions`) — steer what the user summary captures (short, question-shaped prompts). Good for: shaping the always-on user baseline. Note they don't apply to Batch-API-ingested data.
+**All graphs**
 
-The unifying rule: **ontology = the *shape* of the graph (types); instructions = *how to interpret* your domain.** Both are scoped project-wide or per user/graph.
+| Read | To |
+|------|----|
+| [Adding context](https://help.getzep.com/adding-context) · [business data](https://help.getzep.com/adding-business-data) | Ingest documents/JSON/business data (`graph.add`) |
+| [Batch ingestion](https://help.getzep.com/adding-batch-data) | Backfill large volumes |
+| [JSON best practices](https://help.getzep.com/adding-json-best-practices) · [Chunking](https://help.getzep.com/chunking-large-documents) | Prepare data for ingestion |
+| [Check ingestion status](https://help.getzep.com/check-data-ingestion-status) | Handle asynchronous processing |
+| [Webhooks](https://help.getzep.com/webhooks) | Receive pushed events (episode processed, batch completed) instead of polling |
+| [Customizing graph structure](https://help.getzep.com/customizing-graph-structure) | Define a custom ontology (entity/edge types) |
+| [Custom instructions](https://help.getzep.com/custom-instructions) | Steer domain interpretation on ingest |
+| [Searching the graph](https://help.getzep.com/searching-the-graph) | Scoped search, filters, rerankers |
+| [Assembling context](https://help.getzep.com/assembling-context) · [Advanced construction](https://help.getzep.com/advanced-context-block-construction) | Build custom context blocks (the only context surface for standalone graphs) |
+| [Manually updating the graph](https://help.getzep.com/adding-fact-triplets) | Add nodes/fact triplets and update existing edges, nodes, and facts by UUID |
+| [Reading data](https://help.getzep.com/reading-data-from-the-graph) · [Deleting data](https://help.getzep.com/deleting-data-from-the-graph) | Inspect or remove graph data |
+| [Cloning graphs](https://help.getzep.com/cloning-graphs) | Copy a graph (e.g. for testing) |
+| [Evaluate Zep for your use case](https://help.getzep.com/evaluate-zep-for-your-use-case) | Benchmark completeness vs. accuracy |
+| [Performance best practices](https://help.getzep.com/performance) | Reduce latency and optimize production performance (SDK client reuse, cache warming, concise search) |
 
-## 6. Best practices: start simple, then benchmark
+**User graphs only**
 
-1. **Start simple.** Get the basic loop working first — create user → create thread → `add_messages` → `get_user_context` — with default ontology and the default Context Block. Don't add custom ontology, templates, or low-level search until you've measured a concrete gap. See **`references/getting-started.md`**.
-2. **Ingestion is asynchronous.** Graph building takes time (seconds per message). Don't expect a fact to be retrievable the instant you add it; design for eventual availability and check status when it matters.
-3. **Feed data well.** Use `thread.add_messages` for conversation, `graph.add` for documents/JSON/business data (≤10,000 chars/call — chunk larger). Prepare JSON: split large/deeply-nested objects, keep each piece understandable in isolation. Always pass real user names (and ideally last name + email) so the graph resolves identity correctly.
-4. **Optimize latency only when needed.** Reuse one client instance; use `return_context=True` on `add_messages` to fold retrieval into the same call; run ingest and search concurrently; warm the user cache on login. Relevant for voice/real-time agents.
-5. **Benchmark for your use case before tuning.** Don't guess whether retrieval is good enough — measure it. Zep ships an evaluation harness: write 3–5 example interactions, generate test conversations + questions, ingest, and grade *context completeness* (Zep's job) separately from *answer accuracy* (also your LLM's job). Iterate on ontology and search strategy against that suite, and keep it as a regression test. Full workflow in **`references/evaluation.md`**.
-6. **Lead with the high-level path.** Most "Zep isn't returning the right thing" problems are solved by better data and the default Context Block, not by jumping to low-level `graph.search` tuning.
+| Read | To |
+|------|----|
+| [Quick start](https://help.getzep.com/quick-start-guide) | Stand up the basic loop (the user-graph quick start) |
+| [Users and user graphs](https://help.getzep.com/users-and-user-graphs) | Create users and per-user memory |
+| [Threads](https://help.getzep.com/threads) | Record conversations and ingest into the user graph |
+| [Retrieving context](https://help.getzep.com/retrieving-context) | Get the default Context Block |
+| [Context templates](https://help.getzep.com/context-templates) | Fixed custom layout with automatic relevance |
+| [User summary](https://help.getzep.com/user-summary) · [summary instructions](https://help.getzep.com/user-summary-instructions) | Shape the always-on user baseline |
+| [Add user business data](https://help.getzep.com/how-to-add-user-specific-business-data-to-user-graphs) | Add non-chat data to a user graph |
 
----
+**Standalone graphs only**
 
-## Reference files
+| Read | To |
+|------|----|
+| [Give your agent domain knowledge](https://help.getzep.com/give-your-agent-domain-knowledge) | Stand up the basic loop (the standalone-graph quick start) |
+| [Graph overview](https://help.getzep.com/graph-overview) · [Create graph](https://help.getzep.com/create-graph) | Create and manage standalone graphs |
 
-- **`references/getting-started.md`** — install, client init, the quick-start loop, adding messages / business data / JSON, batch ingestion, ingestion status.
-- **`references/concepts.md`** — every core concept in depth, with what-it-is / what-it-isn't and retrieval code.
-- **`references/apis.md`** — the full retrieval and search API surface: Context Block, templates, `graph.search` scopes, rerankers, filters, BFS, direct getters.
-- **`references/customization.md`** — ontology, custom instructions, user summary instructions, fact triplets, pattern detection, defaults and limits.
-- **`references/evaluation.md`** — the evaluation harness, benchmarking methodology, and what to measure.
-- **`references/governance.md`** — RBAC, audit logging, deployment models, compliance.
+**Reference and governance**
 
-When you need an exact endpoint or a detail not covered here, look it up rather than guessing: query the **`zep-docs` MCP server** first, and fall back to the SDK/API reference at https://help.getzep.com/sdk-reference and the guides at https://help.getzep.com. This skill captures the shape and the judgment, not every parameter — the live docs are authoritative.
+- SDK / API reference: <https://help.getzep.com/sdk-reference> — confirm exact
+  signatures, parameters, and limits here or via the `zep-docs` MCP.
+- Docs MCP server setup: <https://help.getzep.com/docs-mcp-server>.
+- Governance (enterprise):
+  - [Security & compliance](https://help.getzep.com/security-compliance) — the hub
+    for Zep's security posture: SOC 2 Type II, HIPAA BAAs, access controls,
+    audit/API logging, and BYOK/BYOC deployment options.
+  - [RBAC](https://help.getzep.com/role-based-access-control) — role-based access
+    control. Governs **human** teammates' access to the Zep dashboard via account-
+    and project-scoped roles, so each person gets the right level of access.
+  - [ABAC](https://help.getzep.com/attribute-based-access-control) — attribute-based
+    access control. Scopes an individual **API key** to a subset of a project's
+    actions and data (by action, and by data class via ingestion metadata) to
+    enforce least privilege — useful when each agent authenticates with its own key.
+  - [BYOK](https://help.getzep.com/bring-your-own-key) — bring your own key. Encrypt
+    data at rest with your own AWS KMS key, keeping full control including revocation.
+
+## Source authority and validation
+
+- **Query the `zep-docs` MCP server first** for anything that must be exact or
+  current — method names, parameters, limits, plan availability, newer features.
+  Prefer loading the whole relevant page via its **`zep-docs://<slug>` resource**;
+  use the **`search_documentation`** tool to find the right page or check whether
+  something exists (see [Documentation index](#documentation-index) for both). It
+  covers the guides and the SDK/API reference.
+- **Fallback if resources or the MCP are unavailable:** fetch the page markdown at
+  `https://help.getzep.com/<slug>.md`, else the guides at <https://help.getzep.com>
+  and the SDK/API reference at <https://help.getzep.com/sdk-reference>.
+- **The live docs win on conflict.** Treat this skill's summaries as stale if
+  they disagree with current, version-matched documentation. Verify
+  version-sensitive code against the SDK reference and, when available, the
+  installed SDK's types/source.
+- **Validate behavior, not just plausibility.** Don't stop at code that looks
+  right — confirm ingestion completed, retrieval returns the expected context,
+  and (per [Evaluating Zep](#evaluating-zep)) the end use case actually improves.
