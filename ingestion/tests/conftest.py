@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from zep_cloud.client import Zep
+from zep_cloud.types.add_nodes_response import AddNodesResponse
 from zep_cloud.types.add_triple_response import AddTripleResponse
 from zep_cloud.types.batch_item_detail import BatchItemDetail
 from zep_cloud.types.batch_item_list_response import BatchItemListResponse
@@ -58,6 +59,7 @@ def mock_zep() -> MagicMock:
     client.graph.get = MagicMock()
     client.graph.set_ontology = MagicMock()
     client.graph.add_fact_triple = MagicMock(return_value=AddTripleResponse(task_id="task-1"))
+    client.graph.add_nodes = MagicMock(return_value=AddNodesResponse(task_id="task-1"))
     client.graph.node = MagicMock()
     client.graph.edge = MagicMock()
     client.user = MagicMock()

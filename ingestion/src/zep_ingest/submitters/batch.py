@@ -90,7 +90,7 @@ class BatchSubmitter:
             if batch_id is None:
                 batch_id = self._create_batch(result)
                 items_in_batch = 0
-            items = [to_batch_item(ep, destination, warnings=result.warnings) for ep in page]
+            items = [to_batch_item(ep, destination) for ep in page]
             if self._add_page(batch_id, items, page_index, result):
                 items_in_batch += len(page)
                 result.items_submitted += len(page)

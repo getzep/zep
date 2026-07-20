@@ -68,7 +68,7 @@ class SequentialSubmitter:
     def submit(self, episodes: Iterable[Episode], destination: Destination) -> IngestResult:
         result = IngestResult(method="sequential", client=self.client)
         for index, episode in enumerate(episodes):
-            kwargs = to_graph_add_kwargs(episode, destination, warnings=result.warnings)
+            kwargs = to_graph_add_kwargs(episode, destination)
             self._add_episode(index, kwargs, result)
         return result
 

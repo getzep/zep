@@ -211,14 +211,25 @@ like OWNS/LEADS or untyped entities tells you which description or signature
 to widen), refine, and re-ingest into a fresh graph. Start simple (few generic
 types), add precision incrementally.
 
-**Custom types are additive to Zep's defaults.** Every graph already carries
-the default ontology (User, Assistant, Preference, Location, Event, Object,
-Topic, Organization, Document + LOCATED_AT/OCCURRED_AT edges); your declared
-types are prioritized on top of it, and a same-name declaration overrides how
-that type classifies. Don't re-declare a default unless you're deliberately
-overriding it, and avoid the reserved field names (`uuid`, `name`, `graph_id`,
-`name_embedding`, `summary`, `created_at`). Defaults can only be disabled on
-user graphs (`user.add(disable_default_ontology=True)`).
+**Default types are user-graph-only.** Zep's default ontology (User, Assistant,
+Preference, Location, Event, Object, Topic, Organization, Document +
+LOCATED_AT/OCCURRED_AT edges) is applied **only to user graphs** — named
+(standalone) graphs carry **no** default types. The rule therefore differs by
+graph kind:
+
+- **Named graphs** (the destination for most one-liners here): nothing is typed
+  unless you declare it. Declare every entity and edge type you rely on —
+  *including* ones that reuse a default's name like Location or Organization — or
+  those entities stay untyped and any custom edge whose signature needs them
+  never applies. This is exactly why
+  [`examples/example_ontology.py`](https://github.com/getzep/zep/blob/main/ingestion/examples/example_ontology.py)
+  declares Location and LOCATED_AT itself.
+- **User graphs:** your custom types are *additive* to the defaults; a same-name
+  declaration overrides how that type classifies, and the defaults can be turned
+  off with `user.add(disable_default_ontology=True)`.
+
+Either way, avoid the reserved field names (`uuid`, `name`, `graph_id`,
+`name_embedding`, `summary`, `created_at`).
 
 **Don't start from a blank page:**
 [`examples/example_ontology.py`](https://github.com/getzep/zep/blob/main/ingestion/examples/example_ontology.py) ships a starter
@@ -275,6 +286,27 @@ validated **client-side at construction** — a clear Python error naming the
 field, not an HTTP 400 three hours into a run. Also accepts a JSON-array,
 JSONL, or CSV path whose columns match the field names. Sequential only (the
 Batch API doesn't take triples).
+
+## Direct node seeding
+
+When you have canonical entities to create up front — before any extraction, and
+without relationships — `ingest_nodes` adds them directly via
+`client.graph.add_nodes`:
+
+```python
+from zep_ingest import NodeItem, ingest_nodes
+
+ingest_nodes(client, [
+    NodeItem(name="Ana Azimova", label="Person", uuid="…"),
+    NodeItem(name="GTM analytics", label="Project", uuid="…"),
+], graph_id="org")
+```
+
+Pass a persisted UUIDv4 per node (required by default): it is the node's only
+identity/dedup key, so a re-run upserts instead of duplicating. Up to 100 nodes
+per request, every documented limit (name ≤50, summary ≤500, label ≤100, ≤10
+scalar attributes, ≤10 metadata keys) validated client-side at construction.
+Sequential only (the Batch API doesn't take direct nodes).
 
 ## Monitoring a run
 

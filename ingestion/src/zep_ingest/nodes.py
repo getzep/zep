@@ -1,6 +1,5 @@
 """Batch node seeding for canonical entities, independent of episode extraction."""
 
-import json
 import uuid as uuid_module
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -8,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from zep_cloud.client import Zep
-from zep_cloud.core.api_error import ApiError
+from zep_cloud.types.add_node_item import AddNodeItem
 
 from zep_ingest._errors import safe_api_error
 from zep_ingest._io import load_rows, rows_to_fields
@@ -60,36 +59,35 @@ class NodeItem:
         if errors:
             raise ConfigurationError(f"Invalid node {str(self.name)[:40]!r}: " + "; ".join(errors))
 
-    def to_payload(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {"name": self.name}
-        for field in ("uuid", "label", "summary", "attributes", "metadata", "created_at"):
-            value = getattr(self, field)
-            if value is not None and value != {}:
-                payload[field] = value
-        return payload
+    def to_add_node_item(self) -> AddNodeItem:
+        """Build the SDK request model, omitting unset fields.
+
+        Our ``uuid`` maps to the SDK's ``uuid_`` field, which the client
+        serializes to the wire ``uuid`` key. Only fields that are actually set
+        are passed, so an unset field is omitted from the request rather than
+        sent as ``null`` (which matters for upserts, where a null could clobber
+        an existing value).
+        """
+        fields: dict[str, Any] = {"name": self.name}
+        if self.uuid is not None:
+            fields["uuid_"] = self.uuid
+        if self.label is not None:
+            fields["label"] = self.label
+        if self.summary is not None:
+            fields["summary"] = self.summary
+        if self.attributes:
+            fields["attributes"] = self.attributes
+        if self.metadata:
+            fields["metadata"] = self.metadata
+        if self.created_at is not None:
+            fields["created_at"] = self.created_at
+        return AddNodeItem(**fields)
 
 
 def _load_nodes(path: Path) -> list[NodeItem]:
     rows = load_rows(path)
     fields = frozenset({"name", "label", "summary", "attributes", "metadata", "uuid", "created_at"})
     return [NodeItem(**row) for row in rows_to_fields(rows, fields)]
-
-
-def _post_batch(client: Zep, payload: dict[str, Any]) -> dict[str, Any]:
-    """POST through the SDK's authenticated transport until add_nodes is public."""
-    wrapper = client._client_wrapper  # noqa: SLF001
-    response = wrapper.httpx_client.request("graph/nodes", method="POST", json=payload)
-    if response.status_code not in (200, 201, 202):
-        try:
-            body = response.json()
-        except json.JSONDecodeError:
-            body = response.text
-        raise ApiError(status_code=response.status_code, body=body)
-    try:
-        parsed = response.json()
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
 
 
 def ingest_nodes(
@@ -102,7 +100,7 @@ def ingest_nodes(
     max_retries: int = 5,
     require_uuids: bool = True,
 ) -> IngestResult:
-    """Create/upsert canonical nodes via ``POST /graph/nodes``.
+    """Create/upsert canonical nodes via ``client.graph.add_nodes``.
 
     UUID is the only safe idempotency key. By default every node must have a
     persisted UUIDv4; callers must explicitly opt out of that protection.
@@ -133,9 +131,9 @@ def ingest_nodes(
         result.warnings.append(f"{len(missing)} node(s) have no UUID and may duplicate on a rerun.")
     for start in range(0, len(materialized), batch_size):
         batch = materialized[start : start + batch_size]
-        payload = {**scope, "nodes": [node.to_payload() for node in batch]}
+        items = [node.to_add_node_item() for node in batch]
         response, error = call_with_retries(
-            lambda: _post_batch(client, payload),  # noqa: B023
+            lambda: client.graph.add_nodes(nodes=items, **scope),  # noqa: B023
             max_retries=max_retries,
         )
         if error is not None:
@@ -143,12 +141,12 @@ def ingest_nodes(
                 AddError(
                     index=start,
                     item_count=len(batch),
-                    error=safe_api_error("POST /graph/nodes", error),
+                    error=safe_api_error("graph.add_nodes", error),
                 )
             )
             continue
         result.items_submitted += len(batch)
-        task_id = (response or {}).get("task_id")
+        task_id = getattr(response, "task_id", None)
         if task_id and str(task_id) not in result.task_ids:
             result.task_ids.append(str(task_id))
     return result

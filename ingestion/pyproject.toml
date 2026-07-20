@@ -18,7 +18,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "zep-cloud>=3.23.0",
+    "zep-cloud>=3.25.0",
 ]
 
 [project.urls]

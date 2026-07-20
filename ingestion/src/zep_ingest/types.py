@@ -68,41 +68,27 @@ class Destination:
             )
 
 
-def _capped_metadata(
-    metadata: dict[str, Any] | None, warnings: list[str] | None
-) -> dict[str, Any] | None:
-    # Episode validates this at construction. Keep the helper for API mapping
-    # compatibility, but never silently discard caller metadata.
-    del warnings
-    return metadata
-
-
-def to_batch_item(
-    episode: Episode, destination: Destination, warnings: list[str] | None = None
-) -> BatchAddItem:
+def to_batch_item(episode: Episode, destination: Destination) -> BatchAddItem:
     """Map a validated Episode to a Batch API item."""
     return BatchAddItem(
         type="graph_episode",
         data=episode.data,
         data_type=episode.data_type,
         created_at=episode.created_at,
-        metadata=_capped_metadata(episode.metadata, warnings),
+        metadata=episode.metadata,
         source_description=episode.source_description,
         graph_id=destination.graph_id,
         user_id=destination.user_id,
     )
 
 
-def to_graph_add_kwargs(
-    episode: Episode, destination: Destination, warnings: list[str] | None = None
-) -> dict[str, Any]:
+def to_graph_add_kwargs(episode: Episode, destination: Destination) -> dict[str, Any]:
     """Map an Episode to graph.add(**kwargs) (unset optional fields omitted)."""
     kwargs: dict[str, Any] = {"data": episode.data, "type": episode.data_type}
     if episode.created_at is not None:
         kwargs["created_at"] = episode.created_at
-    metadata = _capped_metadata(episode.metadata, warnings)
-    if metadata is not None:
-        kwargs["metadata"] = metadata
+    if episode.metadata is not None:
+        kwargs["metadata"] = episode.metadata
     if episode.source_description is not None:
         kwargs["source_description"] = episode.source_description
     if destination.graph_id is not None:
