@@ -176,3 +176,36 @@ class TestJsonExportEdgeCases:
         episodes = load(copy)
         assert "first" in episodes[0].data
         assert "second" in episodes[1].data
+
+
+class TestUserResolution:
+    def test_org_users_json_roster_resolves_names(self, tmp_path):
+        # Enterprise Grid organization exports name the roster org_users.json.
+        copy = tmp_path / "export"
+        shutil.copytree(FIXTURE, copy)
+        (copy / "users.json").rename(copy / "org_users.json")
+        eps = general(load(copy))
+        assert eps[0].data == "Avery Brown (Slack #general, 2024-06-14 09:00 UTC): Hello world"
+
+    def test_missing_roster_warns_and_falls_back_to_raw_ids(self, tmp_path):
+        copy = tmp_path / "export"
+        shutil.copytree(FIXTURE, copy)
+        (copy / "users.json").unlink()
+        loader = SlackExportLoader(copy)
+        episodes = list(loader.load())
+        assert episodes  # still ingestible, no crash
+        assert not any("Avery Brown" in e.data for e in episodes)  # names no longer resolve
+        assert any("org_users.json" in w for w in loader.warnings)
+
+    def test_unresolved_user_ids_warn(self):
+        # the fixture mentions <@U999>, a user absent from users.json
+        loader = SlackExportLoader(FIXTURE)
+        list(loader.load())
+        assert any("absent from the roster" in w for w in loader.warnings)
+
+    def test_input_that_is_not_a_slack_export_raises(self, tmp_path):
+        bogus = tmp_path / "bogus"
+        bogus.mkdir()
+        (bogus / "notes.txt").write_text("hello")
+        with pytest.raises(ConfigurationError):
+            list(SlackExportLoader(bogus).load())

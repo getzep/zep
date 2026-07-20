@@ -1,10 +1,13 @@
 """SlackExportLoader: standard Slack workspace exports → message episodes.
 
 Accepts an export .zip (read in place) or an extracted directory. Resolves
-user IDs to display names, normalizes Slack markup, skips join/leave/bot
-noise, groups messages by thread (the semantic unit Zep extracts best from),
-and stamps every episode with the original message timestamp so backfilled
-facts carry the correct valid_at timeline.
+user IDs to display names via the export's users.json — or org_users.json in
+an Enterprise Grid organization export — and warns when that roster is missing
+or does not cover every referenced user (either case leaves raw Slack IDs in
+the graph, which degrades entity extraction). Normalizes Slack markup, skips
+join/leave/bot noise, groups messages by thread (the semantic unit Zep
+extracts best from), and stamps every episode with the original message
+timestamp so backfilled facts carry the correct valid_at timeline.
 """
 
 import html
@@ -136,17 +139,50 @@ class SlackExportLoader:
         self.include_bots = include_bots
         self.skip_subtypes = skip_subtypes
         self.formatter = formatter or _default_formatter
+        self.warnings: list[str] = []
+        self._unresolved_users: set[str] = set()
 
     def load(self) -> Iterator[Episode]:
         reader = _ZipReader(self.path) if self.path.is_file() else _DirReader(self.path)
-        users = self._user_map(reader)
-        for channel in self._channel_names(reader):
+        self._unresolved_users = set()
+        roster = self._read_roster(reader)
+        users = self._user_map(roster)
+        channels = self._channel_names(reader)
+        if roster is None and not channels:
+            raise ConfigurationError(
+                f"{self.path} does not look like a Slack export: it has no user "
+                "roster (users.json / org_users.json) and no channels. Point at an "
+                "unzipped export directory or the export .zip itself."
+            )
+        if roster is None:
+            self.warnings.append(
+                "No users.json or org_users.json roster found in the Slack export; "
+                "every message author and @mention will be ingested as a raw Slack "
+                "ID (e.g. U012AB3CD) instead of a display name, which degrades entity "
+                "extraction. Verify this is a complete workspace export."
+            )
+        for channel in channels:
             yield from self._load_channel(reader, channel, users)
+        if self._unresolved_users:
+            self.warnings.append(
+                f"{len(self._unresolved_users)} Slack user ID(s) referenced in "
+                "messages were absent from the roster (typically deactivated, bot, "
+                "or Slack Connect users) and were left as raw IDs."
+            )
 
-    def _user_map(self, reader: _DirReader | _ZipReader) -> dict[str, str]:
-        users = reader.read_json("users.json") or []
+    @staticmethod
+    def _read_roster(reader: _DirReader | _ZipReader) -> Any:
+        """The user roster: users.json in a standard export, or org_users.json in an
+        Enterprise Grid organization export. None when neither file is present."""
+        roster = reader.read_json("users.json")
+        if roster is None:
+            roster = reader.read_json("org_users.json")
+        return roster
+
+    @staticmethod
+    def _user_map(roster: Any) -> dict[str, str]:
         mapping: dict[str, str] = {}
-        for user in users:
+        for user in roster or []:
             profile = user.get("profile") or {}
             mapping[user["id"]] = (
                 profile.get("display_name")
@@ -215,7 +251,7 @@ class SlackExportLoader:
         if ts is None:
             return None
         if raw.get("user"):
-            sender = users.get(raw["user"], raw["user"])
+            sender = self._resolve(raw["user"], users)
         else:
             sender = raw.get("username") or "bot"
         return SlackMessage(
@@ -226,9 +262,16 @@ class SlackExportLoader:
             thread_ts=raw.get("thread_ts"),
         )
 
-    @staticmethod
-    def _normalize_text(text: str, users: dict[str, str]) -> str:
-        text = _MENTION.sub(lambda m: f"@{users.get(m.group(1), m.group(1))}", text)
+    def _resolve(self, user_id: str, users: dict[str, str]) -> str:
+        """Map a Slack user ID to a display name, recording IDs the roster misses."""
+        name = users.get(user_id)
+        if name is None:
+            self._unresolved_users.add(user_id)
+            return user_id
+        return name
+
+    def _normalize_text(self, text: str, users: dict[str, str]) -> str:
+        text = _MENTION.sub(lambda m: f"@{self._resolve(m.group(1), users)}", text)
         text = _CHANNEL_REF.sub(r"#\1", text)
         text = _CHANNEL_REF_BARE.sub(r"#\1", text)
         text = _SPECIAL.sub(r"@\1", text)
