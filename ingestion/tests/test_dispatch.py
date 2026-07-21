@@ -3,7 +3,7 @@
 import pytest
 from zep_cloud.core.api_error import ApiError
 
-from tests.conftest import make_zep_episode
+from tests.conftest import make_batch_summary, make_zep_episode
 from zep_ingest.exceptions import BatchUnavailableError
 from zep_ingest.submitters import submit_episodes
 from zep_ingest.types import Destination, Episode
@@ -52,6 +52,28 @@ class TestAuto:
         mock_zep.batch.create.side_effect = ApiError(status_code=500)
         with pytest.raises(ApiError):
             submit_episodes(mock_zep, episodes(1), DEST, method="auto")
+
+    def test_probe_retries_transient_error_then_uses_batch(self, mock_zep):
+        # A transient 503 on the availability probe must be retried, not read as
+        # "batch unavailable": the run recovers and still uses batch.
+        mock_zep.batch.create.side_effect = [
+            ApiError(status_code=503, body="unavailable"),
+            make_batch_summary("batch-1", "draft"),
+        ]
+        result = submit_episodes(mock_zep, episodes(3), DEST, method="auto")
+        assert result.method == "batch"
+        assert mock_zep.batch.create.call_count == 2
+        mock_zep.batch.add.assert_called_once()
+        mock_zep.graph.add.assert_not_called()
+
+    def test_persistent_transient_probe_error_raises_without_fallback(self, mock_zep):
+        # A 5xx that survives retries surfaces as an error — never a silent
+        # downgrade to sequential (which would hit the same entitlements anyway).
+        mock_zep.batch.create.side_effect = ApiError(status_code=500)
+        with pytest.raises(ApiError):
+            submit_episodes(mock_zep, episodes(3), DEST, method="auto", max_add_retries=3)
+        assert mock_zep.batch.create.call_count == 3
+        mock_zep.graph.add.assert_not_called()
 
     def test_empty_stream_no_probe(self, mock_zep):
         result = submit_episodes(mock_zep, [], DEST, method="auto")

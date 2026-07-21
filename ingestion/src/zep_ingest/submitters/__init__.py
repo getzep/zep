@@ -6,13 +6,12 @@ from itertools import chain
 from typing import Any, Literal
 
 from zep_cloud.client import Zep
-from zep_cloud.core.api_error import ApiError
 
 from zep_ingest._validation import require_int_range, require_nonnegative_number
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.result import IngestResult
 from zep_ingest.submitters.batch import BatchSubmitter, is_gating_error
-from zep_ingest.submitters.sequential import SequentialSubmitter
+from zep_ingest.submitters.sequential import SequentialSubmitter, call_with_retries
 from zep_ingest.types import (
     MAX_ITEMS_PER_ADD,
     MAX_ITEMS_PER_BATCH,
@@ -75,19 +74,25 @@ def submit_episodes(
         return BatchSubmitter(client, **batch_kwargs).submit(episodes, destination)
 
     # method == "auto": probe batch availability with the real batch.create,
-    # then hand the (untouched) stream to the chosen submitter.
+    # then hand the (untouched) stream to the chosen submitter. The probe is
+    # retried on transient errors (429/5xx) like every other batch call, so a
+    # momentary blip can't crash the run or wrongly trip the sequential
+    # fallback — only a genuine plan-gating status does that. A transient error
+    # that survives retries is re-raised, not silently downgraded to sequential.
     iterator = iter(episodes)
     try:
         first = next(iterator)
     except StopIteration:
         return IngestResult(method="sequential", client=client)
     stream = chain([first], iterator)
-    try:
+
+    def create_probe_batch() -> Any:
         if batch_metadata is not None:
-            summary = client.batch.create(metadata=batch_metadata)
-        else:
-            summary = client.batch.create()
-    except ApiError as error:
+            return client.batch.create(metadata=batch_metadata)
+        return client.batch.create()
+
+    summary, error = call_with_retries(create_probe_batch, max_retries=max_add_retries)
+    if error is not None:
         if is_gating_error(error):
             notice = (
                 "Zep Batch API not available on this plan — falling back to "
@@ -99,7 +104,7 @@ def submit_episodes(
             ).submit(stream, destination)
             result.warnings.insert(0, notice)
             return result
-        raise
+        raise error
     return BatchSubmitter(client, initial_batch_id=summary.batch_id, **batch_kwargs).submit(
         stream, destination
     )
