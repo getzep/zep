@@ -48,7 +48,7 @@
     "@eslint/config-array/minimatch": "3.1.3",
     "@eslint/eslintrc/minimatch": "3.1.3",
     "minimatch": ">=9.0.7",
-    "js-yaml": ">=4.2.0",
+    "js-yaml": ">=5.2.1",
     "flatted": ">=3.4.2",
     "ajv": "^6.14.0",
     "@eslint/plugin-kit": ">=0.3.5"
