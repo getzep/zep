@@ -20,7 +20,7 @@ the [dashboard](https://app.getzep.com) when you're done.
 
 | Script | Demonstrates | Destination |
 |---|---|---|
-| [`email_example.py`](email_example.py) | `.eml` files → message episodes dated by their `Date:` headers; alias canonicalization | named graph |
+| [`email_example.py`](email_example.py) | `.eml` files → text episodes dated by their `Date:` headers; alias canonicalization | named graph |
 | [`documents_example.py`](documents_example.py) | Markdown → ~500-char chunks; optional LLM contextualization (auto-detects `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`) | named graph |
 | [`fact_triples_example.py`](fact_triples_example.py) | molding a realistic directory export (no triple-shaped columns) into explicit fact triples; the manual create → set_ontology → seed lifecycle | named graph |
 | [`json_records_example.py`](json_records_example.py) | structured records with identity-field mapping — Zep extracts the relationships | named graph |
@@ -39,8 +39,8 @@ handbook, a directory export, a catalog, a Slack export, and chat histories so
 the resulting graph contains useful cross-source relationships.
 
 Thread-message files (`chat_history.jsonl`, `combined_threads.jsonl`) are one
-JSON object per line with columns matching `ThreadMessage`; a JSON array or
-CSV with the same columns also works:
+JSON object per line with columns matching `ThreadMessage`; a JSON array with
+the same columns also works:
 
 ```json
 {"thread_id": "support-1", "role": "user", "name": "Morgan Lee",

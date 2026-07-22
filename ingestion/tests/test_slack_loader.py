@@ -27,11 +27,11 @@ def iso(ts: str) -> str:
 
 
 class TestBasics:
-    def test_all_episodes_are_message_type_with_metadata(self):
+    def test_all_episodes_are_text_type_with_metadata(self):
         episodes = load()
         assert episodes
         for ep in episodes:
-            assert ep.data_type == "message"
+            assert ep.data_type == "text"
             assert ep.metadata is not None
             assert ep.metadata["source"] == "slack"
             assert ep.metadata["channel"] in ("general", "random")

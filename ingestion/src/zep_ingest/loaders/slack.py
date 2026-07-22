@@ -1,4 +1,4 @@
-"""SlackExportLoader: standard Slack workspace exports → message episodes.
+"""SlackExportLoader: standard Slack workspace exports → text episodes.
 
 Accepts an export .zip (read in place) or an extracted directory. Resolves
 user IDs to display names via the export's users.json — or org_users.json in
@@ -286,7 +286,7 @@ class SlackExportLoader:
             metadata["thread_ts"] = first.thread_ts or first.ts
         return Episode(
             data="\n".join(self.formatter(m) for m in messages),
-            data_type="message",
+            data_type="text",
             created_at=datetime.fromtimestamp(float(first.ts), tz=UTC).isoformat(),
             metadata=metadata,
             source_description=f"Slack #{channel} export",

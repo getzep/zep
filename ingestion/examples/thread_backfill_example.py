@@ -14,7 +14,7 @@ Usage:
     python thread_backfill_example.py
 
 chat_history.jsonl rows (one message per line, chronological order; a JSON
-array or CSV with the same columns also works):
+array with the same columns also works):
     {"thread_id": "support-1001", "role": "user", "name": "Morgan Lee",
      "content": "Half my team can't log into OPERATIONS-DASHBOARD...",
      "created_at": "2025-04-10T15:02:00Z"}

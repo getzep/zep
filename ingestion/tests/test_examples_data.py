@@ -20,7 +20,7 @@ def test_emails_load_with_real_dates():
     episodes = list(EmlLoader(str(DATA / "emails" / "*.eml")).load())
     assert len(episodes) == 3
     assert all(e.created_at is not None for e in episodes)
-    assert all(e.data_type == "message" for e in episodes)
+    assert all(e.data_type == "text" for e in episodes)
 
 
 def test_slack_export_previews_clean():

@@ -35,7 +35,7 @@ def eml_dir(tmp_path):
 def test_one_message_episode_per_file(eml_dir):
     episodes = list(EmlLoader(str(eml_dir / "*.eml")).load())
     assert len(episodes) == 2
-    assert all(e.data_type == "message" for e in episodes)
+    assert all(e.data_type == "text" for e in episodes)
 
 
 def test_headers_and_body_in_data(eml_dir):
@@ -94,4 +94,4 @@ def test_ingest_emails_one_liner(mock_zep, eml_dir):
     result = ingest_emails(mock_zep, str(eml_dir / "*.eml"), graph_id="mail")
     assert result.items_submitted == 2
     items = mock_zep.batch.add.call_args.kwargs["items"]
-    assert all(i.data_type == "message" for i in items)
+    assert all(i.data_type == "text" for i in items)

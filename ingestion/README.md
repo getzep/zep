@@ -35,10 +35,10 @@ those rules so you don't have to know them.
 
 | Your data | Use | Episodes |
 |---|---|---|
-| Slack export (conversations) | `ingest_slack_export` | `message`, thread-grouped; join/leave noise skipped (tune with `skip_subtypes=`) |
+| Slack export (conversations) | `ingest_slack_export` | `text`, thread-grouped with speaker/channel labels inline; join/leave noise skipped (tune with `skip_subtypes=`) |
 | Documents (text/Markdown, long PDFs pre-converted to text) | `ingest_documents` | `text`, chunked (+optional LLM context) |
-| Speaker-labeled or WebVTT transcripts | `ingest_transcripts` | `message`, chunked at turn boundaries with source offsets |
-| Email exports (.eml files) | `ingest_emails` | `message`, dated by the `Date:` header |
+| Speaker-labeled or WebVTT transcripts | `ingest_transcripts` | `text`, chunked at turn boundaries with speaker labels inline and source offsets |
+| Email exports (.eml files) | `ingest_emails` | `text`, with sender/recipient/subject inline, dated by the `Date:` header |
 | A user's own chat history (app conversations) | `ingest_thread_messages` | thread messages on the **user graph** |
 | Records (CSV / JSONL / JSON array; CRM rows, catalogs) | `ingest_json_records` | `json`, normalized per Zep's JSON guidance |
 | Known, exact relationships (org chart, entity seeding) | `ingest_fact_triples` | fact triples via `graph.add_fact_triple` |
@@ -283,8 +283,8 @@ triples-only graph.
 Every documented limit (fact ≤250 chars, names ≤50, summaries ≤500,
 SCREAMING_SNAKE_CASE `fact_name`, scalar attributes, ≤10 metadata keys) is
 validated **client-side at construction** — a clear Python error naming the
-field, not an HTTP 400 three hours into a run. Also accepts a JSON-array,
-JSONL, or CSV path whose columns match the field names. Sequential only (the
+field, not an HTTP 400 three hours into a run. Also accepts a JSONL or
+JSON-array path whose columns match the field names. Sequential only (the
 Batch API doesn't take triples).
 
 ## Direct node seeding

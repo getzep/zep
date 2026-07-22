@@ -243,7 +243,7 @@ class TestConvenience:
         result = ingest_slack_export(mock_zep, FIXTURE, graph_id="g1")
         assert result.method == "batch"
         items = mock_zep.batch.add.call_args.kwargs["items"]
-        assert all(i.data_type == "message" for i in items)
+        assert all(i.data_type == "text" for i in items)
         assert all(i.created_at is not None for i in items)
         assert result.items_submitted == len(items) == 4
 

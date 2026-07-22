@@ -194,34 +194,18 @@ class TestIngest:
         assert result.items_submitted == 2
         assert mock_zep.graph.add_fact_triple.call_args.kwargs["fact_name"] == "RESPONSIBLE"
 
-    def test_csv_file_source(self, mock_zep, tmp_path):
+    def test_csv_file_source_rejected_with_clear_error(self, mock_zep, tmp_path):
+        # CSV cannot express the list/mapping fields (labels, attributes,
+        # metadata) these schemas rely on, so it is rejected at the file layer
+        # with a message pointing to JSONL/JSON (and to ingest_json_records).
         file = tmp_path / "triples.csv"
         file.write_text(
-            "fact,fact_name,source_node_name,target_node_name\nAvery Brown met Blake Carter,MET,Avery Brown,Blake Carter\n"
-        )
-        result = ingest_fact_triples(mock_zep, file, graph_id="g1")
-        assert result.items_submitted == 1
-
-    def test_csv_labels_column_rejected_with_clear_error(self, mock_zep, tmp_path):
-        # CSV cells are strings; a labels column must fail with a named error,
-        # not a misleading "more than one label" or a raw string sent to the API
-        file = tmp_path / "triples.csv"
-        file.write_text(
-            "fact,fact_name,source_node_name,target_node_name,source_node_labels\n"
-            "Avery Brown met Blake Carter,MET,Avery Brown,Blake Carter,Person\n"
+            "fact,fact_name,source_node_name,target_node_name\n"
+            "Avery Brown met Blake Carter,MET,Avery Brown,Blake Carter\n"
         )
         with pytest.raises(ConfigurationError, match="CSV"):
             ingest_fact_triples(mock_zep, file, graph_id="g1")
         mock_zep.graph.add_fact_triple.assert_not_called()
-
-    def test_csv_metadata_column_rejected_with_clear_error(self, mock_zep, tmp_path):
-        file = tmp_path / "triples.csv"
-        file.write_text(
-            "fact,fact_name,source_node_name,target_node_name,metadata\n"
-            'Avery Brown met Blake Carter,MET,Avery Brown,Blake Carter,"{""a"": 1}"\n'
-        )
-        with pytest.raises(ConfigurationError, match="metadata"):
-            ingest_fact_triples(mock_zep, file, graph_id="g1")
 
     def test_file_with_invalid_row_names_the_row(self, mock_zep, tmp_path):
         file = tmp_path / "triples.jsonl"

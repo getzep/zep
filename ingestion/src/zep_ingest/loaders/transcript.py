@@ -1,4 +1,8 @@
-"""Speaker-labeled and WebVTT transcript exports to message episodes."""
+"""Speaker-labeled and WebVTT transcript exports to text episodes.
+
+Each turn is rendered inline as ``Speaker: text`` so the speaker attribution
+survives even though the episode is ingested as a plain-text episode.
+"""
 
 import glob
 import re
@@ -92,7 +96,7 @@ class TranscriptLoader:
                 created_at = (start + (chunk[0].offset or timedelta())).isoformat()
             yield Episode(
                 data="\n".join(f"{turn.speaker}: {turn.text}" for turn in chunk),
-                data_type="message",
+                data_type="text",
                 created_at=created_at,
                 metadata={
                     "source": "transcript",

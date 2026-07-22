@@ -86,8 +86,7 @@ class FactTriple:
             if not isinstance(labels, list):
                 errors.append(
                     f"{field} must be a list with one entity-type label, got "
-                    f"{type(labels).__name__} (note: CSV columns cannot express "
-                    "lists — use JSONL or a JSON array)"
+                    f"{type(labels).__name__}"
                 )
             elif len(labels) > 1:
                 errors.append(

@@ -348,7 +348,7 @@ def ingest_emails(
     risky_words: frozenset[str] | None = None,
     **run_kwargs: Any,
 ) -> IngestResult:
-    """One-liner: .eml files → message episodes dated by their Date headers."""
+    """One-liner: .eml files → text episodes dated by their Date headers."""
     transforms = _alias_transforms(aliases, risky_words)
     return Pipeline(EmlLoader(path_or_glob), transforms=transforms).run(
         client, graph_id=graph_id, user_id=user_id, **run_kwargs

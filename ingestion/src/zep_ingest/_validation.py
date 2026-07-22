@@ -58,15 +58,14 @@ def check_scalar_map(
 ) -> None:
     """Validate an optional dict-of-scalars field (metadata / attributes).
 
-    Rejects non-dict values outright — a CSV column, for instance, arrives as
-    a string and must fail with a named error rather than an AttributeError.
+    Rejects non-dict values outright — a JSON scalar in that position must fail
+    with a named error rather than an AttributeError.
     """
     if mapping is None:
         return
     if not isinstance(mapping, dict):
         errors.append(
-            f"{field} must be a mapping of scalar values, got {type(mapping).__name__} "
-            "(note: CSV columns cannot express mappings — use JSONL or a JSON array)"
+            f"{field} must be a mapping of scalar values, got {type(mapping).__name__}"
         )
         return
     if max_keys is not None and len(mapping) > max_keys:

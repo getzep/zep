@@ -1,4 +1,4 @@
-"""EmlLoader: RFC-822 .eml files → message episodes.
+"""EmlLoader: RFC-822 .eml files → text episodes.
 
 Parses standard email exports (e.g. from an email client's "save as .eml",
 standard email exports, or an mbox split into messages) with the stdlib email package.
@@ -64,7 +64,7 @@ class EmlLoader:
                     created_at = None
             yield Episode(
                 data=f"Email from {sender} to {recipient} (subject: {subject}):\n{body}",
-                data_type="message",
+                data_type="text",
                 created_at=created_at,
                 metadata={"source": "email", "subject": subject[:100]},
                 source_description=f"email export ({file.name})",
