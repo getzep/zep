@@ -1,10 +1,15 @@
 """Tests for SequentialSubmitter (graph.add path — works on every plan)."""
 
+import httpx
 import pytest
 from zep_cloud.core.api_error import ApiError
 
 from tests.conftest import make_zep_episode
-from zep_ingest.submitters.sequential import SequentialSubmitter, _retry_after_seconds
+from zep_ingest.submitters.sequential import (
+    MAX_RETRY_WAIT_SECONDS,
+    SequentialSubmitter,
+    _retry_after_seconds,
+)
 from zep_ingest.types import Destination, Episode
 
 DEST = Destination(user_id="u1")
@@ -102,3 +107,76 @@ class TestRateLimits:
         assert len(result.add_errors) == 1
         assert mock_zep.graph.add.call_count == 1
         assert sleeps == []
+
+    def test_absurd_retry_after_is_capped(self, mock_zep, sleeps):
+        mock_zep.graph.add.side_effect = [
+            ApiError(status_code=429, headers={"Retry-After": "86400"}),
+            make_zep_episode("uuid-0"),
+        ]
+        result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
+        assert result.episode_uuids == ["uuid-0"]
+        assert sleeps == [MAX_RETRY_WAIT_SECONDS]
+
+
+class TestTransportErrors:
+    """The SDK raises httpx errors untouched and never retries them itself."""
+
+    def test_read_timeout_records_error_and_returns_written_uuids(self, mock_zep, sleeps):
+        def side_effect(**kwargs):
+            if kwargs["data"] == "episode 2":
+                raise httpx.ReadTimeout("response never arrived")
+            return make_zep_episode(kwargs["data"])
+
+        mock_zep.graph.add.side_effect = side_effect
+        result = SequentialSubmitter(mock_zep).submit(episodes(4), DEST)
+        # the caller still gets a result carrying every episode already written
+        assert result.episode_uuids == ["episode 0", "episode 1", "episode 3"]
+        assert result.items_submitted == 3
+        [error] = result.add_errors
+        assert error.index == 2
+        assert error.error == "graph.add failed: transport error ReadTimeout"
+        assert result.status == "partial"
+
+    def test_read_timeout_is_not_retried_without_idempotency(self, mock_zep, sleeps):
+        # the request went out, so the write may already have landed
+        mock_zep.graph.add.side_effect = [
+            httpx.ReadTimeout("response never arrived"),
+            make_zep_episode("uuid-0"),
+        ]
+        result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
+        assert mock_zep.graph.add.call_count == 1
+        assert len(result.add_errors) == 1
+        assert sleeps == []
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            httpx.ConnectError("connection refused"),
+            httpx.ConnectTimeout("connect timed out"),
+            httpx.PoolTimeout("no connection available"),
+        ],
+    )
+    def test_unsent_transport_error_is_retried(self, mock_zep, sleeps, error):
+        # the request never reached the server, so retrying cannot duplicate it
+        mock_zep.graph.add.side_effect = [error, make_zep_episode("uuid-0")]
+        result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
+        assert mock_zep.graph.add.call_count == 2
+        assert result.add_errors == []
+        assert result.episode_uuids == ["uuid-0"]
+        assert len(sleeps) == 1
+
+    def test_exhausted_transport_retries_record_error_and_continue(self, mock_zep, sleeps):
+        def side_effect(**kwargs):
+            if kwargs["data"] == "episode 0":
+                raise httpx.ConnectError("connection refused")
+            return make_zep_episode(kwargs["data"])
+
+        mock_zep.graph.add.side_effect = side_effect
+        result = SequentialSubmitter(mock_zep, max_retries=2).submit(episodes(2), DEST)
+        assert len(result.add_errors) == 1
+        assert result.episode_uuids == ["episode 1"]
+
+    def test_transport_error_does_not_contain_episode_data(self, mock_zep, sleeps):
+        mock_zep.graph.add.side_effect = httpx.ReadTimeout("SENSITIVE-CONTENT")
+        result = SequentialSubmitter(mock_zep).submit([Episode(data="SENSITIVE-CONTENT")], DEST)
+        assert "SENSITIVE-CONTENT" not in result.add_errors[0].error

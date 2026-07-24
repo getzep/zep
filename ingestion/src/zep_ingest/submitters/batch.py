@@ -9,10 +9,11 @@ from collections.abc import Iterable
 from itertools import islice
 from typing import Any
 
+import httpx
 from zep_cloud.client import Zep
 from zep_cloud.core.api_error import ApiError
 
-from zep_ingest._errors import safe_api_error
+from zep_ingest._errors import SubmitError, safe_api_error
 from zep_ingest._validation import require_int_range
 from zep_ingest.exceptions import BatchUnavailableError, InvalidBatchResponseError
 from zep_ingest.result import AddError, IngestResult
@@ -45,8 +46,9 @@ def require_batch_id(
     return batch_id
 
 
-def is_gating_error(error: ApiError) -> bool:
-    return error.status_code in GATING_STATUS_CODES
+def is_gating_error(error: SubmitError) -> bool:
+    # A transport error carries no status, so it can never prove plan gating.
+    return isinstance(error, ApiError) and error.status_code in GATING_STATUS_CODES
 
 
 def process_batch(client: Zep, batch_id: str, result: IngestResult, *, max_retries: int) -> None:
@@ -142,6 +144,14 @@ class BatchSubmitter:
             if is_gating_error(error):
                 raise BatchUnavailableError(partial_result=result) from error
             raise
+        except httpx.TransportError as error:
+            # No response, so the batch may exist without us knowing its id.
+            # Carry the result so already-filled batches are still recoverable.
+            raise InvalidBatchResponseError(
+                f"{safe_api_error('batch.create', error)}; refusing to submit because "
+                "the batch may already have been created.",
+                partial_result=result,
+            ) from error
         result.batch_ids.append(batch_id)
         return batch_id
 

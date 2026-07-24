@@ -41,7 +41,9 @@ class BatchUnavailableError(ZepIngestError):
 
 
 class InvalidBatchResponseError(ZepIngestError):
-    """Raised when batch creation succeeds without returning a usable batch ID."""
+    """Raised when batch creation returns no usable batch ID — because the
+    response omitted it, or because a transport error meant no response arrived
+    and the batch may exist unidentifiable."""
 
     def __init__(
         self,

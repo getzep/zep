@@ -2,6 +2,7 @@
 
 from unittest.mock import call
 
+import httpx
 import pytest
 from zep_cloud.core.api_error import ApiError
 from zep_cloud.types.batch_summary import BatchSummary
@@ -149,6 +150,73 @@ class TestRetries:
         assert result.status == "failed"
         # a failed-to-process batch is terminal: wait() must not hang on it
         assert result.wait(poll_interval=0) is result
+
+
+class TestTransportErrors:
+    """The SDK raises httpx errors untouched and never retries them itself."""
+
+    def test_transport_error_on_add_still_processes_and_returns_batch_id(self, mock_zep):
+        calls = {"n": 0}
+
+        def add_side_effect(batch_id, *, items):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise httpx.ReadTimeout("response never arrived")
+
+        mock_zep.batch.add.side_effect = add_side_effect
+        result = BatchSubmitter(mock_zep, page_size=1).submit(episodes(3), DEST)
+        # the batch is processed and its id reaches the caller, so the items
+        # that did land are never stranded in an unprocessed draft
+        assert result.batch_ids == ["batch-1"]
+        mock_zep.batch.process.assert_called_once_with("batch-1")
+        assert result.items_submitted == 2
+        [error] = result.add_errors
+        assert error.index == 1
+        assert error.batch_id == "batch-1"
+        assert error.error == "batch.add failed: transport error ReadTimeout after 1 attempt(s)"
+
+    def test_connect_error_on_add_is_retried(self, mock_zep):
+        mock_zep.batch.add.side_effect = [httpx.ConnectError("connection refused"), None]
+        result = BatchSubmitter(mock_zep).submit(episodes(3), DEST)
+        assert mock_zep.batch.add.call_count == 2
+        assert result.add_errors == []
+        assert result.items_submitted == 3
+
+    def test_transport_error_on_process_is_retried(self, mock_zep):
+        # processing a known batch is idempotent, so even an ambiguous
+        # transport failure is safe to retry
+        mock_zep.batch.process.side_effect = [
+            httpx.ReadTimeout("response never arrived"),
+            make_batch_summary("batch-1", "queued"),
+        ]
+        result = BatchSubmitter(mock_zep).submit(episodes(2), DEST)
+        assert mock_zep.batch.process.call_count == 2
+        assert result.add_errors == []
+
+    def test_exhausted_process_transport_retries_record_error_without_raising(self, mock_zep):
+        mock_zep.batch.process.side_effect = httpx.ConnectError("connection refused")
+        result = BatchSubmitter(mock_zep).submit(episodes(2), DEST)
+        assert result.batch_ids == ["batch-1"]
+        assert result.items_submitted == 2
+        [error] = result.add_errors
+        assert error.batch_id == "batch-1"
+        assert "transport error ConnectError" in error.error
+
+    def test_transport_error_on_rollover_create_carries_partial_result(self, mock_zep):
+        mock_zep.batch.create.side_effect = [
+            make_batch_summary("b1", "draft"),
+            httpx.ConnectError("connection refused"),
+        ]
+
+        with pytest.raises(
+            InvalidBatchResponseError, match="transport error ConnectError"
+        ) as caught:
+            BatchSubmitter(mock_zep, page_size=1, max_items_per_batch=1).submit(episodes(2), DEST)
+
+        partial = caught.value.partial_result
+        assert partial is not None
+        assert partial.batch_ids == ["b1"]
+        assert partial.items_submitted == 1
 
 
 class TestBatchMetadata:

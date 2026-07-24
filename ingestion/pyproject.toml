@@ -19,6 +19,8 @@ classifiers = [
 ]
 dependencies = [
     "zep-cloud>=3.25.0",
+    # Transport errors are classified for retry; zep-cloud's own floor.
+    "httpx>=0.21.2",
 ]
 
 [project.urls]

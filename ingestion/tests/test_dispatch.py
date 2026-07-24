@@ -1,5 +1,6 @@
 """Tests for submit_episodes dispatch: method="auto" | "batch" | "sequential"."""
 
+import httpx
 import pytest
 from zep_cloud.core.api_error import ApiError
 from zep_cloud.types.batch_summary import BatchSummary
@@ -69,6 +70,15 @@ class TestAuto:
         # downgrade to sequential (which would hit the same entitlements anyway).
         mock_zep.batch.create.side_effect = ApiError(status_code=500)
         with pytest.raises(ApiError):
+            submit_episodes(mock_zep, episodes(3), DEST, method="auto", max_add_retries=3)
+        assert mock_zep.batch.create.call_count == 1
+        mock_zep.graph.add.assert_not_called()
+
+    def test_probe_transport_error_surfaces_without_gating_fallback(self, mock_zep):
+        # A transport error carries no status, so it can never be mistaken for a
+        # plan-gating response and downgraded to sequential.
+        mock_zep.batch.create.side_effect = httpx.ReadTimeout("response never arrived")
+        with pytest.raises(httpx.ReadTimeout):
             submit_episodes(mock_zep, episodes(3), DEST, method="auto", max_add_retries=3)
         assert mock_zep.batch.create.call_count == 1
         mock_zep.graph.add.assert_not_called()

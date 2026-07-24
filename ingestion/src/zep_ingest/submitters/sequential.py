@@ -12,13 +12,28 @@ from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
 
+import httpx
 from zep_cloud.client import Zep
 from zep_cloud.core.api_error import ApiError
 
-from zep_ingest._errors import safe_api_error
+from zep_ingest._errors import SubmitError, safe_api_error
 from zep_ingest._validation import require_int_range, require_nonnegative_number
 from zep_ingest.result import AddError, IngestResult
 from zep_ingest.types import Destination, Episode, to_graph_add_kwargs
+
+#: Ceiling on any single retry sleep. A server or proxy is free to send
+#: "Retry-After: 86400"; honoring that verbatim stalls the whole import.
+MAX_RETRY_WAIT_SECONDS = 60.0
+
+#: Transport failures raised before the request reached the server: no write can
+#: have been applied, so retrying carries no duplication risk — the same
+#: reasoning that makes a 429 safe to retry.
+_UNSENT_TRANSPORT_ERRORS = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+    httpx.ProxyError,
+)
 
 
 def _retry_after_seconds(error: ApiError) -> float | None:
@@ -37,40 +52,45 @@ def _retry_after_seconds(error: ApiError) -> float | None:
     return None
 
 
-def _is_retryable(error: ApiError, *, retry_server_errors: bool) -> bool:
+def _is_retryable(error: SubmitError, *, retry_server_errors: bool) -> bool:
     """Return whether retrying is safe for this operation."""
+    if isinstance(error, httpx.TransportError):
+        return isinstance(error, _UNSENT_TRANSPORT_ERRORS) or retry_server_errors
     return error.status_code == 429 or (retry_server_errors and (error.status_code or 0) >= 500)
 
 
 def call_with_retries(
     fn: Callable[[], Any], *, max_retries: int = 5, retry_server_errors: bool = False
-) -> tuple[Any, ApiError | None]:
+) -> tuple[Any, SubmitError | None]:
     """Call ``fn`` with rate-limit retries and optional server-error retries.
 
     A 5xx can mean a non-idempotent write succeeded but its response was lost,
     so those errors are not retried unless the caller establishes idempotency.
     429 responses are safe to retry because the request was rejected before it
-    could be processed.
+    could be processed. Transport errors — which the SDK never converts to an
+    ApiError, and never retries itself — are classified on the same axis: one
+    raised before the request went out is retried like a 429, one raised after
+    it went out (a read timeout, a dropped response) like a 5xx.
 
     Returns (result, None) on success or (None, last_error) once retries are
     exhausted or the error is not retryable.
     """
     require_int_range("max_retries", max_retries, minimum=1)
-    last_error: ApiError | None = None
+    last_error: SubmitError | None = None
     for attempt in range(1, max_retries + 1):
         try:
             return fn(), None
-        except ApiError as error:
+        except (ApiError, httpx.TransportError) as error:
             last_error = error
             if (
                 not _is_retryable(error, retry_server_errors=retry_server_errors)
                 or attempt >= max_retries
             ):
                 break
-            wait = _retry_after_seconds(error)
+            wait = _retry_after_seconds(error) if isinstance(error, ApiError) else None
             if wait is None:
                 wait = (2 ** (attempt - 1)) * (1 + random.random() * 0.25)
-            time.sleep(wait)
+            time.sleep(min(wait, MAX_RETRY_WAIT_SECONDS))
     return None, last_error
 
 
