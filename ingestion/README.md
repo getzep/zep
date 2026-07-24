@@ -293,7 +293,7 @@ Every documented limit (fact ≤250 chars, names ≤50, summaries ≤500,
 SCREAMING_SNAKE_CASE `fact_name`, scalar attributes, ≤10 metadata keys) is
 validated **client-side at construction** — a clear Python error naming the
 field, not an HTTP 400 three hours into a run. Also accepts a JSONL or
-JSON-array path whose columns match the field names. Sequential only (the
+JSON object or array path whose columns match the field names. Sequential only (the
 Batch API doesn't take triples).
 
 ## Direct node seeding

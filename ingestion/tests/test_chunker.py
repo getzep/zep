@@ -36,6 +36,18 @@ class TestPassThrough:
 
 
 class TestSplitting:
+    def test_tail_merge_uses_merged_chunk_instead_of_oversized_source(self, monkeypatch):
+        monkeypatch.setattr(
+            "zep_ingest.transforms.chunker.split_text", lambda *_: ["first", "tail"]
+        )
+        source = Episode(data="x" * 11)
+
+        [chunk] = apply(TextChunker(chunk_size=10, overlap=0, min_chunk_size=5), source)
+
+        assert chunk.data == "first tail"
+        assert chunk.document == source.data
+        assert chunk.metadata == {"chunk": "1/1"}
+
     def test_chunks_within_chunk_size(self):
         text = make_long_text()
         chunks = apply(TextChunker(chunk_size=500, overlap=50), Episode(data=text))

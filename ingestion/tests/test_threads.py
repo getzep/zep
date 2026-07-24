@@ -287,3 +287,10 @@ class TestFileSources:
             ingest_thread_messages(mock_zep, file, user_id="avery-brown")
         mock_zep.batch.add.assert_not_called()
         mock_zep.thread.add_messages.assert_not_called()
+
+    def test_empty_role_in_file_is_rejected_instead_of_defaulted(self, mock_zep, tmp_path):
+        file = tmp_path / "chat.jsonl"
+        file.write_text(json.dumps({"thread_id": "t1", "role": "", "content": "hello"}))
+        with pytest.raises(ConfigurationError, match="role"):
+            ingest_thread_messages(mock_zep, file, user_id="avery-brown")
+        mock_zep.batch.add.assert_not_called()

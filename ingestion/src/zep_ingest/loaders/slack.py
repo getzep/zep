@@ -148,6 +148,8 @@ class SlackExportLoader:
         self.path = Path(path)
         if not self.path.exists():
             raise ConfigurationError(f"Slack export not found: {self.path}")
+        if grouping not in ("thread", "message"):
+            raise ConfigurationError(f"grouping must be 'thread' or 'message', got {grouping!r}")
         self.channels = list(channels) if channels is not None else None
         self.grouping = grouping
         self.include_bots = include_bots

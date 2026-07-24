@@ -56,6 +56,10 @@ class TestBasics:
         with pytest.raises(ConfigurationError):
             SlackExportLoader(FIXTURE / "does-not-exist")
 
+    def test_invalid_grouping_is_rejected_eagerly(self):
+        with pytest.raises(ConfigurationError, match="grouping"):
+            SlackExportLoader(FIXTURE, grouping="messages")  # type: ignore[arg-type]
+
 
 class TestThreadGrouping:
     def test_thread_grouped_into_one_episode_across_day_files(self):

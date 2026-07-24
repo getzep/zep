@@ -11,6 +11,7 @@ import glob
 import html
 import re
 from collections.abc import Iterator
+from datetime import UTC
 from email import policy
 from email.parser import BytesParser
 from email.utils import parsedate_to_datetime
@@ -59,7 +60,13 @@ class EmlLoader:
             created_at = None
             if date_header:
                 try:
-                    created_at = parsedate_to_datetime(str(date_header)).isoformat()
+                    parsed_date = parsedate_to_datetime(str(date_header))
+                    # RFC 5322's -0000 means the sender's local offset is
+                    # unknown. Preserve the instant as UTC so Episode receives
+                    # a valid RFC3339 timestamp instead of aborting ingestion.
+                    if parsed_date.tzinfo is None:
+                        parsed_date = parsed_date.replace(tzinfo=UTC)
+                    created_at = parsed_date.isoformat()
                 except ValueError:
                     created_at = None
             yield Episode(

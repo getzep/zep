@@ -273,7 +273,7 @@ def ingest_thread_messages(
 ) -> IngestResult:
     """Backfill chat history into a user's graph via threads.
 
-    Accepts ThreadMessage objects or a JSONL / JSON-array path with columns
+    Accepts ThreadMessage objects or a JSONL / JSON-object / JSON-array path with columns
     thread_id/role/name/content/created_at. The user and every referenced
     thread are created if missing (the Batch API requires threads to exist);
     per-thread message order is preserved on both submission paths.

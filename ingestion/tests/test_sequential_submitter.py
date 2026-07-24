@@ -4,7 +4,7 @@ import pytest
 from zep_cloud.core.api_error import ApiError
 
 from tests.conftest import make_zep_episode
-from zep_ingest.submitters.sequential import SequentialSubmitter
+from zep_ingest.submitters.sequential import SequentialSubmitter, _retry_after_seconds
 from zep_ingest.types import Destination, Episode
 
 DEST = Destination(user_id="u1")
@@ -39,6 +39,14 @@ class TestSubmission:
 
 
 class TestRateLimits:
+    def test_retry_after_http_date_in_the_past_clamps_to_zero(self):
+        error = ApiError(status_code=429, headers={"Retry-After": "Thu, 01 Jan 1970 00:00:00 GMT"})
+        assert _retry_after_seconds(error) == 0.0
+
+    def test_malformed_retry_after_falls_back_to_backoff(self):
+        error = ApiError(status_code=429, headers={"Retry-After": "not-a-date"})
+        assert _retry_after_seconds(error) is None
+
     def test_429_honors_retry_after_then_succeeds(self, mock_zep, sleeps):
         mock_zep.graph.add.side_effect = [
             ApiError(status_code=429, headers={"Retry-After": "3"}),

@@ -48,8 +48,9 @@ class TextChunker:
                 and len(pieces[-1]) < self.min_chunk_size
                 and len(pieces[-2]) + 1 + len(pieces[-1]) <= self.chunk_size
             ):
-                pieces[-2] = f"{pieces[-2]} {pieces.pop()}"
-            if len(pieces) == 1:
+                tail = pieces.pop()
+                pieces[-1] = f"{pieces[-1]} {tail}"
+            if len(pieces) == 1 and pieces[0] == episode.data:
                 yield episode
                 continue
             document = episode.data[: self.max_document_chars]

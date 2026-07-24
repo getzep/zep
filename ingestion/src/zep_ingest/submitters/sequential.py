@@ -8,6 +8,8 @@ which correct valid_at sequencing depends on.
 import random
 import time
 from collections.abc import Callable, Iterable
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 from zep_cloud.client import Zep
@@ -25,7 +27,13 @@ def _retry_after_seconds(error: ApiError) -> float | None:
             try:
                 return float(value)
             except (TypeError, ValueError):
-                return None
+                try:
+                    retry_at = parsedate_to_datetime(str(value))
+                except (TypeError, ValueError, IndexError):
+                    return None
+                if retry_at.tzinfo is None:
+                    return None
+                return max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
     return None
 
 

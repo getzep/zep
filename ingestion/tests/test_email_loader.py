@@ -24,6 +24,16 @@ Content-Type: text/plain; charset="utf-8"
 No date header here.
 """
 
+EML_UNKNOWN_TIMEZONE = """\
+From: someone@example.com
+To: other@example.com
+Date: Tue, 14 Apr 2026 09:15:00 -0000
+Subject: unknown timezone
+Content-Type: text/plain; charset="utf-8"
+
+The sender did not provide an offset.
+"""
+
 
 @pytest.fixture
 def eml_dir(tmp_path):
@@ -53,6 +63,12 @@ def test_created_at_from_date_header(eml_dir):
 def test_missing_date_header_leaves_created_at_none(eml_dir):
     [episode] = EmlLoader(str(eml_dir / "02_undated.eml")).load()
     assert episode.created_at is None  # pipeline will warn about it
+
+
+def test_unknown_timezone_date_is_normalized_to_utc(tmp_path):
+    (tmp_path / "unknown-timezone.eml").write_text(EML_UNKNOWN_TIMEZONE)
+    [episode] = EmlLoader(str(tmp_path / "*.eml")).load()
+    assert episode.created_at == "2026-04-14T09:15:00+00:00"
 
 
 def test_metadata_and_source_description(eml_dir):
