@@ -1,0 +1,158 @@
+# Releases the zep-ingest package (ingestion/) to PyPI.
+# Tag scheme: zep-ingest-v<version>  (e.g. zep-ingest-v0.1.0)
+# Distinct from the integrations tag scheme (zep-<framework>-<language>-v<version>).
+
+name: Release Ingestion Package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Immutable tag or commit SHA to release
+        required: true
+      version:
+        description: Exact package version to publish
+        required: true
+
+concurrency:
+  group: release-zep-ingest
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-release:
+    # Releases with other tag schemes (integrations, Go modules) also fire the
+    # `release: published` event; skip them cleanly instead of failing.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'zep-ingest-v')
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.release.outputs.sha }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Validate dispatch ref
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          REF: ${{ inputs.ref }}
+        run: |
+          if [[ ! "$REF" =~ ^[0-9a-f]{40}$ && ! "$REF" =~ ^zep-ingest-v[0-9]+(\.[0-9]+)*([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "ref must be a full commit SHA or a zep-ingest-v* release tag" >&2
+            exit 1
+          fi
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.release.tag_name }}
+          fetch-depth: 1
+      - id: release
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=$DISPATCH_VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${RELEASE_TAG#zep-ingest-v}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Archive resolved source
+        run: git archive --format=tar "${{ steps.release.outputs.sha }}" > release-source.tar
+      - name: Upload resolved source
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-source
+          path: release-source.tar
+          if-no-files-found: error
+
+  test:
+    needs: resolve-release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: ingestion
+    steps:
+      - name: Download resolved source
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-source
+          path: .
+      - name: Extract resolved source
+        working-directory: .
+        run: tar -xf release-source.tar
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+        with:
+          version: "0.7.19"
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv sync --extra dev
+      - name: Run checks
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src/
+          uv run pytest tests/ -v -m "not integration"
+
+      - name: Verify release version
+        env:
+          EXPECTED_VERSION: ${{ needs.resolve-release.outputs.version }}
+        run: |
+          package_version=$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          test "$package_version" = "$EXPECTED_VERSION"
+
+  build:
+    needs: [resolve-release, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download resolved source
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-source
+          path: .
+      - name: Extract resolved source
+        run: tar -xf release-source.tar
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+        with:
+          version: "0.7.19"
+      - name: Set up Python
+        run: uv python install 3.11
+      - name: Build package
+        env:
+          EXPECTED_VERSION: ${{ needs.resolve-release.outputs.version }}
+        working-directory: ingestion
+        run: |
+          package_version=$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          test "$package_version" = "$EXPECTED_VERSION"
+          uv build
+          uvx twine check dist/*
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ingestion-dist
+          path: ingestion/dist/
+
+  publish-pypi:
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # required for PyPI trusted publishing (OIDC)
+    environment:
+      name: release
+      url: https://pypi.org/p/zep-ingest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ingestion-dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        with:
+          packages-dir: dist/

@@ -1,0 +1,56 @@
+{  "exported_at": "2025-06-30",
+  "employees": [
+    {
+      "name": "Avery Brown",
+      "title": "VP Engineering",
+      "company": "Alder Ridge Robotics",
+      "office": "North Campus",
+      "since": "2025-03-01"
+    },
+    {
+      "name": "Blake Carter",
+      "title": "Engineering Lead",
+      "company": "Alder Ridge Robotics",
+      "office": "North Campus",
+      "since": "2025-03-01",
+      "responsible_for": "ROBOT-202"
+    },
+    {
+      "name": "Casey Nguyen",
+      "title": "Chief Technology Officer",
+      "company": "Alder Ridge Robotics",
+      "office": "North Campus",
+      "since": "2025-03-01",
+      "responsible_for": "OPERATIONS-DASHBOARD"
+    },
+    {
+      "name": "Devon Brooks",
+      "title": "Account Executive",
+      "company": "Westbridge Components",
+      "office": "Westbridge Plant",
+      "since": "2025-03-01"
+    },
+    {
+      "name": "Morgan Lee",
+      "title": "Operations Manager",
+      "company": "Clearwater Fulfillment",
+      "office": "South Warehouse",
+      "since": "2025-03-01"
+    }
+  ],
+  "partners": [
+    {
+      "company": "Westbridge Components",
+      "hq": "Westbridge Plant",
+      "relationship": "supplier",
+      "supplies_to": ["Alder Ridge Robotics", "ROBOT-202"],
+      "since": "2025-04-15"
+    },
+    {
+      "company": "Clearwater Fulfillment",
+      "hq": "South Warehouse",
+      "relationship": "customer",
+      "since": "2025-05-06"
+    }
+  ]
+}

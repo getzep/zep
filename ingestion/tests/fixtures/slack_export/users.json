@@ -1,0 +1,26 @@
+[
+  {
+    "id": "U001",
+    "name": "avery-brown",
+    "profile": {
+      "display_name": "Avery Brown",
+      "real_name": "Avery Brown"
+    }
+  },
+  {
+    "id": "U002",
+    "name": "blake-carter",
+    "profile": {
+      "display_name": "",
+      "real_name": "Blake Carter"
+    }
+  },
+  {
+    "id": "U003",
+    "name": "charlie",
+    "profile": {
+      "display_name": "",
+      "real_name": ""
+    }
+  }
+]
