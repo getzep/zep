@@ -44,9 +44,7 @@ def rows_to_fields(rows: list[dict[str, Any]], fields: frozenset[str]) -> list[d
     validated: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
-            raise ConfigurationError(
-                f"Row {index} must be a JSON object, got {type(row).__name__}"
-            )
+            raise ConfigurationError(f"Row {index} must be a JSON object, got {type(row).__name__}")
         unknown = sorted(set(row) - fields)
         if unknown:
             raise ConfigurationError(

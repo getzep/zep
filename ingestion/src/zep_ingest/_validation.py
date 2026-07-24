@@ -64,9 +64,7 @@ def check_scalar_map(
     if mapping is None:
         return
     if not isinstance(mapping, dict):
-        errors.append(
-            f"{field} must be a mapping of scalar values, got {type(mapping).__name__}"
-        )
+        errors.append(f"{field} must be a mapping of scalar values, got {type(mapping).__name__}")
         return
     if max_keys is not None and len(mapping) > max_keys:
         errors.append(f"{field} has {len(mapping)} keys; the API allows {max_keys}")

@@ -92,7 +92,7 @@ pipeline = Pipeline(
         LLMContextualizer(AnthropicLLM()),
     ],
 )
-report = pipeline.preview()      # NO API calls: inspect episodes + warnings first
+report = pipeline.preview()  # NO API calls: inspect episodes + warnings first
 result = pipeline.run(client, graph_id="company_kb", wait=True)
 ```
 
@@ -138,6 +138,7 @@ for any provider, proxy, or local model:
 class MyLLM:
     def complete(self, prompt: str) -> str: ...
 
+
 ingest_documents(client, "docs/**/*.md", graph_id="kb", llm=MyLLM())
 ```
 
@@ -148,12 +149,14 @@ own engine — uses for its LLM clients):
 from zep_ingest.llm.openai import OpenAILLM, OpenAICompatibleLLM
 from zep_ingest.llm.anthropic import AnthropicLLM
 
-OpenAILLM()                                       # OpenAI (pip install "zep-ingest[openai]")
-AnthropicLLM()                                    # Anthropic (pip install "zep-ingest[anthropic]")
+OpenAILLM()  # OpenAI (pip install "zep-ingest[openai]")
+AnthropicLLM()  # Anthropic (pip install "zep-ingest[anthropic]")
 # The universal connector — any OpenAI-compatible /chat/completions endpoint:
-OpenAICompatibleLLM(model="llama3.1:70b",         # LiteLLM, Ollama, vLLM,
-                    base_url="http://localhost:11434/v1",  # OpenRouter, Together, ...
-                    api_key="ollama")
+OpenAICompatibleLLM(
+    model="llama3.1:70b",  # LiteLLM, Ollama, vLLM,
+    base_url="http://localhost:11434/v1",  # OpenRouter, Together, ...
+    api_key="ollama",
+)
 ```
 
 `OpenAICompatibleLLM` is the docs-recommended route to "any provider":
@@ -167,8 +170,10 @@ Zep merges entities by the names it sees in text; semantic aliases ("PROTOTYPE-2
 **before ingestion**:
 
 ```python
-AliasCanonicalizer({"ROBOT-202": ["PROTOTYPE-202", "Picker X1"]})         # rewrite
-AliasCanonicalizer({"ROBOT-202": ["PROTOTYPE-202"]}, mode="annotate")     # "PROTOTYPE-202 (also known as ROBOT-202)"
+AliasCanonicalizer({"ROBOT-202": ["PROTOTYPE-202", "Picker X1"]})  # rewrite
+AliasCanonicalizer(
+    {"ROBOT-202": ["PROTOTYPE-202"]}, mode="annotate"
+)  # "PROTOTYPE-202 (also known as ROBOT-202)"
 ```
 
 Ambiguous aliases are a data-corruption hazard (alias `"Will"` must not rewrite
@@ -262,17 +267,21 @@ graph):
 ```python
 from zep_ingest import FactTriple, ingest_fact_triples
 
-ingest_fact_triples(client, [
-    FactTriple(
-        fact="Ana Azimova is responsible for GTM analytics",
-        fact_name="RESPONSIBLE",
-        source_node_name="Ana Azimova",
-        source_node_labels=["Person"],       # ties the node to a declared type
-        target_node_name="GTM analytics",
-        target_node_labels=["Project"],
-        valid_at="2024-06-15T00:00:00Z",
-    ),
-], graph_id="org")
+ingest_fact_triples(
+    client,
+    [
+        FactTriple(
+            fact="Ana Azimova is responsible for GTM analytics",
+            fact_name="RESPONSIBLE",
+            source_node_name="Ana Azimova",
+            source_node_labels=["Person"],  # ties the node to a declared type
+            target_node_name="GTM analytics",
+            target_node_labels=["Project"],
+            valid_at="2024-06-15T00:00:00Z",
+        ),
+    ],
+    graph_id="org",
+)
 ```
 
 Triples skip extraction entirely, so nodes they create are **untyped unless
@@ -296,10 +305,14 @@ without relationships — `ingest_nodes` adds them directly via
 ```python
 from zep_ingest import NodeItem, ingest_nodes
 
-ingest_nodes(client, [
-    NodeItem(name="Ana Azimova", label="Person", uuid="…"),
-    NodeItem(name="GTM analytics", label="Project", uuid="…"),
-], graph_id="org")
+ingest_nodes(
+    client,
+    [
+        NodeItem(name="Ana Azimova", label="Person", uuid="…"),
+        NodeItem(name="GTM analytics", label="Project", uuid="…"),
+    ],
+    graph_id="org",
+)
 ```
 
 Pass a persisted UUIDv4 per node (required by default): it is the node's only
@@ -312,10 +325,10 @@ Sequential only (the Batch API doesn't take direct nodes).
 
 ```python
 result = ingest_slack_export(client, "export.zip", graph_id="g1")
-result.status          # queued | processing | succeeded | partial | failed
+result.status  # queued | processing | succeeded | partial | failed
 result.wait(timeout=3600)
 result.failed_items()  # Batch API item records, or AddErrors on the sequential path
-result.warnings        # everything the pipeline noticed
+result.warnings  # everything the pipeline noticed
 result.raise_for_status()  # opt-in strictness
 ```
 
@@ -342,7 +355,7 @@ triples and direct node creation, and `wait()` polls them through `client.task`.
 from zep_ingest import IngestResult
 
 result = IngestResult.from_batch_ids(client, ["batch-id-1"])
-result.status          # refreshed on demand
+result.status  # refreshed on demand
 result.wait()
 
 # Task-backed ingestion can be resumed the same way:
@@ -374,13 +387,15 @@ all supported here.
 ## Extending
 
 ```python
-class MyLoader:                       # any source
+class MyLoader:  # any source
     def load(self) -> Iterator[Episode]: ...
 
-class MyTransform:                    # any prep step; optional .warnings list
+
+class MyTransform:  # any prep step; optional .warnings list
     def apply(self, episodes: Iterable[Episode]) -> Iterator[Episode]: ...
 
-class MyLLM:                          # any LLM provider
+
+class MyLLM:  # any LLM provider
     def complete(self, prompt: str) -> str: ...
 ```
 
