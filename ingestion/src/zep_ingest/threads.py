@@ -140,7 +140,7 @@ def _ensure_user_and_threads(client: Zep, user_id: str, messages: list[ThreadMes
             # Thread IDs are project-global. A collision must be verified
             # before adding messages; otherwise this import could cross a user
             # boundary and write into another user's conversation.
-            existing = client.thread.get(message.thread_id, limit=1)
+            existing = client.thread.get(message.thread_id, lastn=1)
             owner_id = getattr(existing, "user_id", None)
             if owner_id != user_id:
                 owner = repr(owner_id) if owner_id is not None else "unknown"

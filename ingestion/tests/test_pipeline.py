@@ -169,6 +169,26 @@ class TestPreview:
         report = Pipeline(loader).preview()
         assert any("created_at" in w for w in report.warnings)
 
+    def test_limited_preview_warns_that_timestamp_validation_is_sampled(self):
+        loader = ListLoader(
+            [stamped(f"ep {i}") for i in range(10)] + [Episode(data="later missing timestamp")]
+        )
+        report = Pipeline(loader).preview()
+        [scope_warning] = [w for w in report.warnings if "limit=None" in w]
+        assert "created_at" in scope_warning
+        assert "sample" in scope_warning
+        assert loader.consumed == 10
+
+    def test_unlimited_preview_counts_every_missing_timestamp(self):
+        loader = ListLoader(
+            [stamped(f"ep {i}") for i in range(10)]
+            + [Episode(data="missing one"), Episode(data="missing two")]
+        )
+        report = Pipeline(loader).preview(limit=None)
+        [warning] = [w for w in report.warnings if "created_at" in w]
+        assert "2 episode(s)" in warning
+        assert not any("sample" in w for w in report.warnings)
+
     def test_preview_applies_transforms_and_limit_guard(self):
         loader = ListLoader([stamped("word " * 4000)])
         report = Pipeline(loader).preview()

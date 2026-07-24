@@ -135,6 +135,7 @@ class TestBatchPath:
         mock_zep.thread.get.return_value = SimpleNamespace(user_id="avery-brown")
         result = ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
         assert result.items_submitted == 1
+        mock_zep.thread.get.assert_called_once_with("support-42", lastn=1)
 
     def test_existing_thread_400_already_exists_tolerated(self, mock_zep):
         # the live API reports duplicates as 400 "... already exists"

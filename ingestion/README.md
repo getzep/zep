@@ -92,12 +92,15 @@ pipeline = Pipeline(
         LLMContextualizer(AnthropicLLM()),
     ],
 )
-report = pipeline.preview()  # NO API calls: inspect episodes + warnings first
+report = pipeline.preview()  # NO Zep API calls: inspect episodes + warnings first
 result = pipeline.run(client, graph_id="company_kb", wait=True)
 ```
 
 `preview()` shows the transformed episodes and validation warnings (including
-missing timestamps, oversize splits, and alias rewrites) before an API call.
+missing timestamps, oversize splits, and alias rewrites) before a Zep API call.
+It lazily inspects at most 10 transformed episodes by default and clearly marks
+its warning counts as sample-scoped. Use `preview(limit=None)` when you need an
+exhaustive preflight of the entire stream.
 
 ## Temporal correctness (the silent backfill killer)
 
@@ -107,9 +110,11 @@ so a timestamp-less backfill doesn't just lose history, it makes fact
 invalidation pick wrong survivors, permanently.
 
 Loaders preserve source timestamps when available (for example Slack `ts` or
-a configured record date field), and the pipeline **warns about every episode
-missing one** in `preview()` and `result.warnings`. Filesystem mtime requires
-explicit `use_file_mtime=True`. For document corpora with
+a configured record date field). `result.warnings` counts every episode missing
+one because `run()` validates the entire stream before submission. The default
+`preview()` reports on its 10-episode sample; use `preview(limit=None)` to count
+every missing timestamp before ingestion. Filesystem mtime requires explicit
+`use_file_mtime=True`. For document corpora with
 publication dates, the contextualizer's default prompt also asks the LLM to
 include the date in each chunk's context.
 

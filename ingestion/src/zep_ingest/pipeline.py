@@ -1,9 +1,10 @@
 """Pipeline: Loader → Transforms → LimitGuard → Submitter, plus one-liners.
 
-preview() runs the full chain with no API calls so mistakes (missing
-timestamps, oversize splits, runaway alias rewrites) surface before any quota
-is spent. run() adds the preflights that encode Zep's order-of-operations
-rules: ontology before ingestion, destination existence before submission.
+preview() runs a lazy sample through the full chain by default, with no Zep API
+calls. Its warning scope is explicit; pass ``limit=None`` to validate the full
+stream for missing timestamps, oversize splits, and runaway alias rewrites.
+run() adds the preflights that encode Zep's order-of-operations rules: ontology
+before ingestion, destination existence before submission.
 """
 
 import pickle
@@ -144,15 +145,25 @@ class Pipeline:
         return warnings
 
     def preview(self, limit: int | None = 10) -> PreviewReport:
-        """Run the full chain with NO API calls; inspect episodes and warnings first."""
+        """Run the chain with no Zep API calls.
+
+        The default returns a lazy sample and labels warnings as sample-scoped.
+        Pass ``limit=None`` for exhaustive validation and warning counts.
+        """
         guard = LimitGuard()
         counter = _MissingTimestampCounter()
         baseline = self._warning_baseline()
         stream = self._stream(guard, counter)
         episodes = list(stream) if limit is None else list(islice(stream, limit))
-        return PreviewReport(
-            episodes=episodes, warnings=self._collect_warnings(guard, counter, baseline)
-        )
+        warnings = self._collect_warnings(guard, counter, baseline)
+        if limit is not None:
+            warnings.append(
+                f"Preview is limited to a sample of at most {limit} transformed episode(s); "
+                "warning counts cover only that sample. Later episodes may still be missing "
+                "created_at or contain other validation issues. Use preview(limit=None) for "
+                "an exhaustive preflight."
+            )
+        return PreviewReport(episodes=episodes, warnings=warnings)
 
     def run(
         self,
