@@ -5,7 +5,6 @@ new batch at the 50k-items-per-batch limit, and never crashes mid-run: a page
 that keeps failing is recorded as an AddError and the run continues.
 """
 
-import time
 from collections.abc import Iterable
 from itertools import islice
 from typing import Any
@@ -38,7 +37,13 @@ def process_batch(client: Zep, batch_id: str, result: IngestResult, *, max_retri
     """Trigger batch processing, retrying transient errors. A persistent failure
     is recorded on the result (and the batch pinned terminal) instead of raising,
     so a filled batch's ids and errors are never lost mid-run."""
-    _, error = call_with_retries(lambda: client.batch.process(batch_id), max_retries=max_retries)
+    _, error = call_with_retries(
+        lambda: client.batch.process(batch_id),
+        max_retries=max_retries,
+        # Processing a known batch is idempotent; retrying it cannot add items
+        # twice, unlike graph.add or batch.add.
+        retry_server_errors=True,
+    )
     if error is not None:
         result.mark_batch_failed(
             batch_id,
@@ -112,7 +117,7 @@ class BatchSubmitter:
                 batch_id = summary.batch_id or ""
         except ApiError as error:
             if is_gating_error(error):
-                raise BatchUnavailableError() from error
+                raise BatchUnavailableError(partial_result=result) from error
             raise
         result.batch_ids.append(batch_id)
         return batch_id
@@ -120,23 +125,24 @@ class BatchSubmitter:
     def _add_page(
         self, batch_id: str, items: list[Any], page_index: int, result: IngestResult
     ) -> bool:
-        last_error: ApiError | None = None
-        for attempt in range(1, self.max_add_retries + 1):
-            try:
-                self.client.batch.add(batch_id, items=items)
-                return True
-            except ApiError as error:
-                last_error = error
-                if attempt < self.max_add_retries:
-                    time.sleep(2 ** (attempt - 1))
+        attempts = 0
+
+        def add_page() -> None:
+            nonlocal attempts
+            attempts += 1
+            self.client.batch.add(batch_id, items=items)
+
+        _, error = call_with_retries(
+            add_page,
+            max_retries=self.max_add_retries,
+        )
+        if error is None:
+            return True
         result.add_errors.append(
             AddError(
                 index=page_index,
                 item_count=len(items),
-                error=(
-                    f"{safe_api_error('batch.add', last_error) if last_error else 'batch.add failed'} "
-                    f"after {self.max_add_retries} attempt(s)"
-                ),
+                error=f"{safe_api_error('batch.add', error)} after {attempts} attempt(s)",
                 batch_id=batch_id,
             )
         )

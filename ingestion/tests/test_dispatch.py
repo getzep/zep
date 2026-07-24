@@ -13,7 +13,6 @@ DEST = Destination(graph_id="g1")
 
 @pytest.fixture(autouse=True)
 def no_sleep(monkeypatch):
-    monkeypatch.setattr("zep_ingest.submitters.batch.time.sleep", lambda _: None)
     monkeypatch.setattr("zep_ingest.submitters.sequential.time.sleep", lambda _: None)
 
 
@@ -53,18 +52,16 @@ class TestAuto:
         with pytest.raises(ApiError):
             submit_episodes(mock_zep, episodes(1), DEST, method="auto")
 
-    def test_probe_retries_transient_error_then_uses_batch(self, mock_zep):
-        # A transient 503 on the availability probe must be retried, not read as
-        # "batch unavailable": the run recovers and still uses batch.
+    def test_probe_does_not_retry_ambiguous_server_error(self, mock_zep):
+        # batch.create is non-idempotent: a 503 may have created a batch before
+        # the response was lost, so it must surface instead of being retried.
         mock_zep.batch.create.side_effect = [
             ApiError(status_code=503, body="unavailable"),
             make_batch_summary("batch-1", "draft"),
         ]
-        result = submit_episodes(mock_zep, episodes(3), DEST, method="auto")
-        assert result.method == "batch"
-        assert mock_zep.batch.create.call_count == 2
-        mock_zep.batch.add.assert_called_once()
-        mock_zep.graph.add.assert_not_called()
+        with pytest.raises(ApiError):
+            submit_episodes(mock_zep, episodes(3), DEST, method="auto")
+        assert mock_zep.batch.create.call_count == 1
 
     def test_persistent_transient_probe_error_raises_without_fallback(self, mock_zep):
         # A 5xx that survives retries surfaces as an error — never a silent
@@ -72,7 +69,7 @@ class TestAuto:
         mock_zep.batch.create.side_effect = ApiError(status_code=500)
         with pytest.raises(ApiError):
             submit_episodes(mock_zep, episodes(3), DEST, method="auto", max_add_retries=3)
-        assert mock_zep.batch.create.call_count == 3
+        assert mock_zep.batch.create.call_count == 1
         mock_zep.graph.add.assert_not_called()
 
     def test_empty_stream_no_probe(self, mock_zep):

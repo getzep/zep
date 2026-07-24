@@ -1,6 +1,7 @@
 """Tests for ThreadMessage validation and ingest_thread_messages (user data)."""
 
 import json
+from types import SimpleNamespace
 
 import pytest
 from zep_cloud.core.api_error import ApiError
@@ -131,6 +132,7 @@ class TestBatchPath:
 
     def test_existing_thread_conflict_tolerated(self, mock_zep):
         mock_zep.thread.create.side_effect = ApiError(status_code=409, body="exists")
+        mock_zep.thread.get.return_value = SimpleNamespace(user_id="avery-brown")
         result = ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
         assert result.items_submitted == 1
 
@@ -139,8 +141,16 @@ class TestBatchPath:
         mock_zep.thread.create.side_effect = ApiError(
             status_code=400, body={"message": "bad request: session with id x already exists"}
         )
+        mock_zep.thread.get.return_value = SimpleNamespace(user_id="avery-brown")
         result = ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
         assert result.items_submitted == 1
+
+    def test_existing_thread_for_another_user_is_rejected(self, mock_zep):
+        mock_zep.thread.create.side_effect = ApiError(status_code=409, body="exists")
+        mock_zep.thread.get.return_value = SimpleNamespace(user_id="another-user")
+        with pytest.raises(ConfigurationError, match="already belongs"):
+            ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
+        mock_zep.thread.add_messages.assert_not_called()
 
     def test_user_id_required(self, mock_zep):
         with pytest.raises(ConfigurationError, match="user_id"):

@@ -6,13 +6,13 @@ import pytest
 from zep_cloud.core.api_error import ApiError
 
 from tests.conftest import make_batch_summary
+from zep_ingest.exceptions import BatchUnavailableError
 from zep_ingest.submitters.batch import BatchSubmitter
 from zep_ingest.types import Destination, Episode
 
 
 @pytest.fixture(autouse=True)
 def no_sleep(monkeypatch):
-    monkeypatch.setattr("zep_ingest.submitters.batch.time.sleep", lambda _: None)
     monkeypatch.setattr("zep_ingest.submitters.sequential.time.sleep", lambda _: None)
 
 
@@ -74,14 +74,21 @@ class TestPaging:
 
 
 class TestRetries:
-    def test_transient_add_failure_retried(self, mock_zep):
-        mock_zep.batch.add.side_effect = [ApiError(status_code=500), None]
+    def test_rate_limited_add_is_retried(self, mock_zep):
+        mock_zep.batch.add.side_effect = [ApiError(status_code=429), None]
         result = BatchSubmitter(mock_zep).submit(episodes(3), DEST)
         assert mock_zep.batch.add.call_count == 2
         assert result.add_errors == []
         assert result.items_submitted == 3
 
-    def test_exhausted_retries_record_error_and_continue(self, mock_zep):
+    def test_server_error_add_is_not_retried(self, mock_zep):
+        mock_zep.batch.add.side_effect = [ApiError(status_code=500), None]
+        result = BatchSubmitter(mock_zep).submit(episodes(3), DEST)
+        assert mock_zep.batch.add.call_count == 1
+        [error] = result.add_errors
+        assert error.error.endswith("after 1 attempt(s)")
+
+    def test_server_error_records_error_and_continues(self, mock_zep):
         def add_side_effect(batch_id, *, items):
             if any(i.data == "episode 0" for i in items):
                 raise ApiError(status_code=500, body="boom")
@@ -89,11 +96,11 @@ class TestRetries:
 
         mock_zep.batch.add.side_effect = add_side_effect
         result = BatchSubmitter(mock_zep, page_size=1, max_add_retries=2).submit(episodes(3), DEST)
-        assert mock_zep.batch.add.call_count == 2 + 2  # 2 tries for page 0, 1 each for rest
+        assert mock_zep.batch.add.call_count == 3  # no ambiguous 5xx retry; one try per page
         assert len(result.add_errors) == 1
         assert result.add_errors[0].index == 0
         assert result.add_errors[0].item_count == 1
-        assert result.add_errors[0].error == "batch.add failed: status=500 after 2 attempt(s)"
+        assert result.add_errors[0].error == "batch.add failed: status=500 after 1 attempt(s)"
         assert result.items_submitted == 2
 
     def test_add_error_does_not_contain_episode_data(self, mock_zep):
@@ -130,3 +137,15 @@ class TestBatchMetadata:
     def test_batch_metadata_passed_to_create(self, mock_zep):
         BatchSubmitter(mock_zep, batch_metadata={"run": "backfill-1"}).submit(episodes(1), DEST)
         assert mock_zep.batch.create.call_args.kwargs["metadata"] == {"run": "backfill-1"}
+
+    def test_rollover_gating_error_carries_partial_result(self, mock_zep):
+        mock_zep.batch.create.side_effect = [
+            make_batch_summary("b1", "draft"),
+            ApiError(status_code=403),
+        ]
+        with pytest.raises(BatchUnavailableError) as caught:
+            BatchSubmitter(mock_zep, page_size=1, max_items_per_batch=1).submit(episodes(2), DEST)
+        partial = caught.value.partial_result
+        assert partial is not None
+        assert partial.batch_ids == ["b1"]
+        assert partial.items_submitted == 1

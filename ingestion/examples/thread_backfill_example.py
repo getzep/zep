@@ -67,8 +67,8 @@ def main() -> None:
     # Extraction is asynchronous; wait until facts are searchable, then pull
     # the context block an agent would receive for one of the threads.
     search_when_ready(client, "OPERATIONS-DASHBOARD", user_id=user_id)
-    context = client.thread.get_user_context(thread_id=f"support-1001-{run_id}")
-    print(f"\nUser context for thread support-1001-{run_id}:")
+    context = client.thread.get_user_context(thread_id=f"access-1042-{run_id}")
+    print(f"\nUser context for thread access-1042-{run_id}:")
     print(context.context)
 
     print(f"\nUser: {user_id}")

@@ -58,10 +58,19 @@ class SlackMessage:
 
 class _DirReader:
     def __init__(self, path: Path) -> None:
-        self.path = path
+        self.path = path.resolve()
+
+    def _resolve_export_path(self, relpath: str) -> Path:
+        """Resolve a path and reject traversal or symlinks outside the export."""
+        candidate = (self.path / relpath).resolve()
+        try:
+            candidate.relative_to(self.path)
+        except ValueError as error:
+            raise ConfigurationError(f"Slack export path escapes its root: {relpath!r}") from error
+        return candidate
 
     def read_json(self, relpath: str) -> Any | None:
-        file = self.path / relpath
+        file = self._resolve_export_path(relpath)
         if not file.exists():
             return None
         try:
@@ -70,10 +79,15 @@ class _DirReader:
             raise ConfigurationError(f"Unparseable JSON in Slack export: {relpath}") from error
 
     def channel_dirs(self) -> list[str]:
-        return sorted(p.name for p in self.path.iterdir() if p.is_dir())
+        directories: list[str] = []
+        for path in self.path.iterdir():
+            if path.is_dir():
+                self._resolve_export_path(path.name)
+                directories.append(path.name)
+        return sorted(directories)
 
     def day_files(self, channel: str) -> list[str]:
-        directory = self.path / channel
+        directory = self._resolve_export_path(channel)
         if not directory.is_dir():
             return []
         return sorted(p.name for p in directory.glob("*.json"))
@@ -198,6 +212,15 @@ class SlackExportLoader:
             available = [c["name"] for c in channels_json]
         else:
             available = reader.channel_dirs()
+        for channel in available:
+            if (
+                not isinstance(channel, str)
+                or not channel
+                or channel in {".", ".."}
+                or "/" in channel
+                or "\\" in channel
+            ):
+                raise ConfigurationError(f"Invalid Slack channel path in export: {channel!r}")
         if self.channels is None:
             return available
         missing = [c for c in self.channels if c not in available]

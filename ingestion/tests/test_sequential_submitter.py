@@ -85,11 +85,12 @@ class TestRateLimits:
         assert result.add_errors[0].error == "graph.add failed: status=400"
         assert sleeps == []
 
-    def test_server_error_retried(self, mock_zep, sleeps):
+    def test_server_error_is_not_retried_without_idempotency(self, mock_zep, sleeps):
         mock_zep.graph.add.side_effect = [
             ApiError(status_code=503),
             make_zep_episode("uuid-0"),
         ]
         result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
-        assert result.add_errors == []
-        assert mock_zep.graph.add.call_count == 2
+        assert len(result.add_errors) == 1
+        assert mock_zep.graph.add.call_count == 1
+        assert sleeps == []

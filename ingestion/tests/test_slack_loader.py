@@ -149,6 +149,25 @@ class TestZipAndFallbacks:
 
 
 class TestJsonExportEdgeCases:
+    def test_channel_path_traversal_is_rejected(self, tmp_path):
+        export = tmp_path / "export"
+        export.mkdir()
+        (export / "users.json").write_text("[]")
+        (export / "channels.json").write_text(json.dumps([{"name": "../../outside"}]))
+        with pytest.raises(ConfigurationError, match="Invalid Slack channel path"):
+            load(export)
+
+    def test_channel_symlink_outside_export_is_rejected(self, tmp_path):
+        export = tmp_path / "export"
+        export.mkdir()
+        (export / "users.json").write_text("[]")
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "2024-01-01.json").write_text("[]")
+        (export / "general").symlink_to(outside, target_is_directory=True)
+        with pytest.raises(ConfigurationError, match="escapes its root"):
+            load(export)
+
     def test_unparseable_day_file_raises_configuration_error(self, tmp_path):
         copy = tmp_path / "export"
         shutil.copytree(FIXTURE, copy)

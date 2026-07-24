@@ -137,6 +137,17 @@ def _ensure_user_and_threads(client: Zep, user_id: str, messages: list[ThreadMes
             )
             if not already_exists:
                 raise
+            # Thread IDs are project-global. A collision must be verified
+            # before adding messages; otherwise this import could cross a user
+            # boundary and write into another user's conversation.
+            existing = client.thread.get(message.thread_id, limit=1)
+            owner_id = getattr(existing, "user_id", None)
+            if owner_id != user_id:
+                owner = repr(owner_id) if owner_id is not None else "unknown"
+                raise ConfigurationError(
+                    f"Thread {message.thread_id!r} already belongs to user {owner}; "
+                    f"refusing to ingest it for {user_id!r}."
+                ) from error
 
 
 def _submit_batch(

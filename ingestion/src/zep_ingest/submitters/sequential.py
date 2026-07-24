@@ -29,14 +29,20 @@ def _retry_after_seconds(error: ApiError) -> float | None:
     return None
 
 
-def _is_retryable(error: ApiError) -> bool:
-    return error.status_code == 429 or (error.status_code or 0) >= 500
+def _is_retryable(error: ApiError, *, retry_server_errors: bool) -> bool:
+    """Return whether retrying is safe for this operation."""
+    return error.status_code == 429 or (retry_server_errors and (error.status_code or 0) >= 500)
 
 
 def call_with_retries(
-    fn: Callable[[], Any], *, max_retries: int = 5
+    fn: Callable[[], Any], *, max_retries: int = 5, retry_server_errors: bool = False
 ) -> tuple[Any, ApiError | None]:
-    """Call ``fn``, retrying 429/5xx with Retry-After / exponential backoff + jitter.
+    """Call ``fn`` with rate-limit retries and optional server-error retries.
+
+    A 5xx can mean a non-idempotent write succeeded but its response was lost,
+    so those errors are not retried unless the caller establishes idempotency.
+    429 responses are safe to retry because the request was rejected before it
+    could be processed.
 
     Returns (result, None) on success or (None, last_error) once retries are
     exhausted or the error is not retryable.
@@ -48,7 +54,10 @@ def call_with_retries(
             return fn(), None
         except ApiError as error:
             last_error = error
-            if not _is_retryable(error) or attempt >= max_retries:
+            if (
+                not _is_retryable(error, retry_server_errors=retry_server_errors)
+                or attempt >= max_retries
+            ):
                 break
             wait = _retry_after_seconds(error)
             if wait is None:
