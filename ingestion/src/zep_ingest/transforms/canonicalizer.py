@@ -55,11 +55,14 @@ class AliasCanonicalizer:
         strict: bool = True,
         risky_words: frozenset[str] | None = DEFAULT_RISKY_WORDS,
     ) -> None:
+        if mode not in ("rewrite", "annotate"):
+            raise ConfigurationError(f"mode must be one of ['annotate', 'rewrite'], got {mode!r}")
         self.mode = mode
         self.strict = strict
         self.warnings: list[str] = []
         self._counts: dict[str, int] = {}
         self._alias_to_canonical: dict[str, str] = {}
+        casefolded_aliases: dict[str, tuple[str, str]] = {}
         lowered_risky = frozenset(w.lower() for w in risky_words) if risky_words else None
 
         for canonical, alias_list in aliases.items():
@@ -74,9 +77,18 @@ class AliasCanonicalizer:
                         f"Alias {alias!r} is mapped to two canonical names "
                         f"({existing!r} and {canonical!r})."
                     )
+                folded = alias.casefold()
+                folded_existing = casefolded_aliases.get(folded)
+                if not strict and folded_existing is not None and folded_existing[1] != canonical:
+                    previous_alias, previous_canonical = folded_existing
+                    raise ConfigurationError(
+                        f"Case-insensitive alias collision: {previous_alias!r} maps to "
+                        f"{previous_canonical!r}, but {alias!r} maps to {canonical!r}."
+                    )
                 if lowered_risky is not None:
                     self._check_risky(alias, lowered_risky)
                 self._alias_to_canonical[alias] = canonical
+                casefolded_aliases[folded] = (alias, canonical)
 
         # One scan over aliases AND protected spans (existing canonical
         # mentions, URLs, code spans), longest literal first, so an alias that
@@ -84,7 +96,9 @@ class AliasCanonicalizer:
         # protection of the bare canonical. URLs/code spans go first: an alias
         # inside them must stay untouched.
         self._canonicals = set(aliases)
-        self._lowered_aliases = {a.lower(): c for a, c in self._alias_to_canonical.items()}
+        self._casefolded_aliases = {
+            alias.casefold(): canonical for alias, canonical in self._alias_to_canonical.items()
+        }
         # (?<!\w)/(?!\w) instead of \b: \b needs a word char on the alias side
         # of the boundary, so aliases that start or end with punctuation
         # (".NET", "C++") would silently never match.
@@ -162,7 +176,7 @@ class AliasCanonicalizer:
         exact = self._alias_to_canonical.get(matched)
         if exact is not None:
             return exact
-        return self._lowered_aliases.get(matched.lower(), matched)
+        return self._casefolded_aliases.get(matched.casefold(), matched)
 
     def _process(self, text: str) -> str:
         annotated: set[str] = set()  # canonicals already annotated in this episode

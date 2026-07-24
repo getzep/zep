@@ -80,6 +80,28 @@ class TestLists:
         [out] = apply(JsonNormalizer(max_list_items=3), record)
         assert json.loads(out.data)["tags"] == ["red"]
 
+    def test_child_identity_fields_do_not_overwrite_parent_identity(self):
+        record = {
+            "id": "order-1",
+            "name": "Order 1",
+            "items": [
+                {"id": "sku-1", "name": "Widget"},
+                {"id": "sku-2", "name": "Gadget"},
+            ],
+        }
+
+        pieces = apply(JsonNormalizer(max_list_items=1), record)
+        item_pieces = [
+            json.loads(piece.data)
+            for piece in pieces
+            if json.loads(piece.data).get("item_type") == "item"
+        ]
+
+        assert [piece["id"] for piece in item_pieces] == ["order-1", "order-1"]
+        assert [piece["name"] for piece in item_pieces] == ["Order 1", "Order 1"]
+        assert [piece["item_id"] for piece in item_pieces] == ["sku-1", "sku-2"]
+        assert [piece["item_name"] for piece in item_pieces] == ["Widget", "Gadget"]
+
 
 class TestNesting:
     def test_deep_nesting_flattened_with_key_paths(self):
@@ -93,6 +115,20 @@ class TestNesting:
         record = {"id": "N1", "a": {"b": 1}}
         [out] = apply(JsonNormalizer(max_depth=3), record)
         assert json.loads(out.data)["a"] == {"b": 1}
+
+    def test_flattening_disambiguates_colliding_key_paths(self):
+        record = {
+            "id": "N1",
+            "a_b": "top-level",
+            "a": {"b": "nested"},
+            "deep": {"path": {"to": {"value": 1}}},
+        }
+
+        [out] = apply(JsonNormalizer(max_depth=3, max_props=10), record)
+        parsed = json.loads(out.data)
+
+        assert parsed["a_b"] == "top-level"
+        assert parsed["a_b__2"] == "nested"
 
 
 class TestLongStrings:

@@ -38,3 +38,18 @@ def test_node_task_id_is_tracked_as_task(mock_zep):
     # Must populate the SDK's uuid_ field (the client serializes it to the wire
     # "uuid" key); passing the "uuid" alias instead would leave identity unset.
     assert item.uuid_ == node_uuid
+
+
+def test_empty_node_maps_are_sent_to_clear_existing_values():
+    node = NodeItem(
+        name="Avery Brown",
+        uuid=str(uuid.uuid4()),
+        attributes={},
+        metadata={},
+    )
+
+    item = node.to_add_node_item()
+
+    assert item.attributes == {}
+    assert item.metadata == {}
+    assert {"attributes", "metadata"} <= item.model_fields_set

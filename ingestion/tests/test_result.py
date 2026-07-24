@@ -89,6 +89,19 @@ class TestBatchResult:
         )
         assert len(result.failed_items(limit=2)) == 2
 
+    def test_failed_items_includes_pages_rejected_before_batch_acceptance(self, mock_zep):
+        submission_error = AddError(index=0, item_count=2, error="batch.add failed", batch_id="b1")
+        server_error = make_item_detail(status="failed", sequence_index=3)
+        result = IngestResult(
+            method="batch",
+            batch_ids=["b1"],
+            add_errors=[submission_error],
+            client=mock_zep,
+        )
+        mock_zep.batch.list_items.return_value = make_item_list([server_error])
+
+        assert result.failed_items() == [submission_error, server_error]
+
 
 class TestSequentialResult:
     def test_status_processing_until_all_processed(self, mock_zep):

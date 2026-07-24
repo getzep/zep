@@ -23,14 +23,19 @@ _SCALARS = (str, int, float, bool)
 def _parse_timestamp(value: Any) -> str | None:
     if value is None:
         return None
+    if isinstance(value, bool):
+        return None
     if isinstance(value, int | float):
-        return datetime.fromtimestamp(float(value), tz=UTC).isoformat()
+        try:
+            return datetime.fromtimestamp(float(value), tz=UTC).isoformat()
+        except (OverflowError, OSError, ValueError):
+            return None
     try:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
+        return None
     return parsed.isoformat()
 
 

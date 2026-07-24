@@ -225,6 +225,7 @@ def _submit_sequential(
     max_retries: int,
 ) -> IngestResult:
     result = IngestResult(method="sequential", client=client)
+    missing_task_handles = 0
     by_thread: dict[str, list[ThreadMessage]] = {}
     for message in messages:
         by_thread.setdefault(message.thread_id, []).append(message)
@@ -242,7 +243,7 @@ def _submit_sequential(
                 )
                 for m in chunk
             ]
-            _, error = call_with_retries(
+            response, error = call_with_retries(
                 lambda: client.thread.add_messages(thread_id, messages=payload),  # noqa: B023
                 max_retries=max_retries,
             )
@@ -256,7 +257,20 @@ def _submit_sequential(
                 )
             else:
                 result.items_submitted += len(chunk)
+                task_id = getattr(response, "task_id", None)
+                if task_id:
+                    normalized_task_id = str(task_id)
+                    if normalized_task_id not in result.task_ids:
+                        result.task_ids.append(normalized_task_id)
+                else:
+                    missing_task_handles += 1
             chunk_index += 1
+    if missing_task_handles:
+        result.warnings.append(
+            f"{missing_task_handles} successful thread.add_messages call(s) returned no "
+            "completion handle; wait()/status cannot track their server-side extraction. "
+            "Poll your own read (e.g. zep_ingest.search_when_ready) before querying."
+        )
     return result
 
 
@@ -360,11 +374,5 @@ def ingest_thread_messages(
                 max_retries=max_retries,
             )
             result.warnings.insert(0, notice)
-    if result.method == "sequential":
-        result.warnings.append(
-            "Sequential thread ingestion has no completion handle: wait()/status "
-            "reflect submission only, and extraction continues server-side. Poll "
-            "your own read (e.g. zep_ingest.search_when_ready) before querying."
-        )
     result.warnings.extend(warnings)
     return result

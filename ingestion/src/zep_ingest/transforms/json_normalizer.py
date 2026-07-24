@@ -23,14 +23,24 @@ def _depth(value: Any) -> int:
     return 0
 
 
-def _flatten(record: dict[str, Any], prefix: str = "") -> dict[str, Any]:
-    flat: dict[str, Any] = {}
+def _flatten(
+    record: dict[str, Any],
+    prefix: str = "",
+    flat: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if flat is None:
+        flat = {}
     for key, value in record.items():
         path = f"{prefix}{key}"
         if isinstance(value, dict):
-            flat.update(_flatten(value, prefix=f"{path}_"))
+            _flatten(value, prefix=f"{path}_", flat=flat)
         else:
-            flat[path] = value
+            candidate = path
+            suffix = 2
+            while candidate in flat:
+                candidate = f"{path}__{suffix}"
+                suffix += 1
+            flat[candidate] = value
     return flat
 
 
@@ -92,7 +102,16 @@ class JsonNormalizer:
                     piece = dict(identity)
                     piece["item_type"] = item_type
                     if isinstance(element, dict):
-                        piece.update(element)
+                        for element_key, element_value in element.items():
+                            candidate = element_key
+                            suffix = 2
+                            if candidate in piece:
+                                candidate = f"{item_type}_{element_key}"
+                            base_candidate = candidate
+                            while candidate in piece:
+                                candidate = f"{base_candidate}__{suffix}"
+                                suffix += 1
+                            piece[candidate] = element_value
                     else:
                         piece["value"] = element
                     list_pieces.append(piece)

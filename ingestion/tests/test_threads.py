@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 from zep_cloud.core.api_error import ApiError
 from zep_cloud.errors.not_found_error import NotFoundError
+from zep_cloud.types.add_thread_messages_response import AddThreadMessagesResponse
 
 from tests.conftest import make_batch_summary
 from zep_ingest.exceptions import BatchUnavailableError, ConfigurationError
@@ -241,8 +242,37 @@ class TestSequentialPath:
         )
         assert mock_zep.thread.add_messages.call_count == 3
 
+    def test_sequential_tracks_task_ids_for_waiting(self, mock_zep):
+        mock_zep.thread.add_messages.side_effect = [
+            AddThreadMessagesResponse(task_id="thread-task-1"),
+            AddThreadMessagesResponse(task_id="thread-task-2"),
+        ]
+        msgs = [message(), message(thread_id="support-43")]
+
+        result = ingest_thread_messages(mock_zep, msgs, user_id="avery-brown", method="sequential")
+
+        assert result.task_ids == ["thread-task-1", "thread-task-2"]
+        assert result.status == "queued"
+        assert not any("no completion handle" in warning for warning in result.warnings)
+        assert result.wait(poll_interval=0) is result
+        assert result.status == "succeeded"
+        assert mock_zep.task.get.call_count == 2
+
+    def test_sequential_warns_when_response_has_no_task_id(self, mock_zep):
+        mock_zep.thread.add_messages.return_value = AddThreadMessagesResponse()
+
+        result = ingest_thread_messages(
+            mock_zep, [message()], user_id="avery-brown", method="sequential"
+        )
+
+        assert result.task_ids == []
+        assert any("no completion handle" in warning for warning in result.warnings)
+
     def test_sequential_failure_recorded_and_continues(self, mock_zep):
-        mock_zep.thread.add_messages.side_effect = [ApiError(status_code=400, body="bad"), None]
+        mock_zep.thread.add_messages.side_effect = [
+            ApiError(status_code=400, body="bad"),
+            AddThreadMessagesResponse(task_id="thread-task-2"),
+        ]
         msgs = [message(), message(thread_id="support-43")]
         result = ingest_thread_messages(mock_zep, msgs, user_id="avery-brown", method="sequential")
         assert len(result.add_errors) == 1

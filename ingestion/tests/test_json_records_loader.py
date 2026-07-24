@@ -8,8 +8,18 @@ from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.loaders.json_records import JsonRecordsLoader
 
 RECORDS = [
-    {"sku": "P1", "title": "Sample Product A", "about": "Comfy shoes", "date": "2024-06-15"},
-    {"sku": "P2", "title": "Sample Product B", "about": "Fast shoes", "date": "2024-07-01"},
+    {
+        "sku": "P1",
+        "title": "Sample Product A",
+        "about": "Comfy shoes",
+        "date": "2024-06-15T00:00:00Z",
+    },
+    {
+        "sku": "P2",
+        "title": "Sample Product B",
+        "about": "Fast shoes",
+        "date": "2024-07-01T00:00:00Z",
+    },
 ]
 
 
@@ -25,8 +35,8 @@ def csv_file(tmp_path):
     file = tmp_path / "products.csv"
     file.write_text(
         "sku,title,about,date\n"
-        "P1,Sample Product A,Comfy shoes,2024-06-15\n"
-        "P2,Sample Product B,Fast shoes,2024-07-01\n"
+        "P1,Sample Product A,Comfy shoes,2024-06-15T00:00:00Z\n"
+        "P2,Sample Product B,Fast shoes,2024-07-01T00:00:00Z\n"
     )
     return file
 
@@ -93,6 +103,25 @@ class TestFieldMapping:
         episodes = list(loader.load())
         assert episodes[0].created_at is None
         assert any("date" in w for w in loader.warnings)
+
+    def test_naive_created_at_is_rejected_instead_of_assumed_utc(self, tmp_path):
+        file = tmp_path / "r.jsonl"
+        file.write_text(json.dumps({"id": 1, "date": "2024-06-15T10:30:00"}))
+        loader = JsonRecordsLoader(file, created_at_field="date")
+        [episode] = loader.load()
+        assert episode.created_at is None
+        assert any("unparseable" in warning for warning in loader.warnings)
+
+    @pytest.mark.parametrize("value", [True, False])
+    def test_boolean_created_at_is_rejected_instead_of_treated_as_epoch(self, tmp_path, value):
+        file = tmp_path / "r.jsonl"
+        file.write_text(json.dumps({"id": 1, "date": value}))
+        loader = JsonRecordsLoader(file, created_at_field="date")
+
+        [episode] = loader.load()
+
+        assert episode.created_at is None
+        assert any("unparseable" in warning for warning in loader.warnings)
 
     def test_metadata_fields_lifted(self, jsonl_file):
         episodes = list(JsonRecordsLoader(jsonl_file, metadata_fields=["sku"]).load())

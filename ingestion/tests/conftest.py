@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from zep_cloud.client import Zep
 from zep_cloud.types.add_nodes_response import AddNodesResponse
+from zep_cloud.types.add_thread_messages_response import AddThreadMessagesResponse
 from zep_cloud.types.add_triple_response import AddTripleResponse
 from zep_cloud.types.batch_item_detail import BatchItemDetail
 from zep_cloud.types.batch_item_list_response import BatchItemListResponse
@@ -67,7 +68,9 @@ def mock_zep() -> MagicMock:
     client.user.get = MagicMock()
     client.thread = MagicMock()
     client.thread.create = MagicMock()
-    client.thread.add_messages = MagicMock()
+    client.thread.add_messages = MagicMock(
+        return_value=AddThreadMessagesResponse(task_id="thread-task-1")
+    )
     client.task = MagicMock()
     client.task.get = MagicMock(return_value=GetTaskResponse(task_id="task-1", status="succeeded"))
     return client

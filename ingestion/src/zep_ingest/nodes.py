@@ -75,9 +75,9 @@ class NodeItem:
             fields["label"] = self.label
         if self.summary is not None:
             fields["summary"] = self.summary
-        if self.attributes:
+        if self.attributes is not None:
             fields["attributes"] = self.attributes
-        if self.metadata:
+        if self.metadata is not None:
             fields["metadata"] = self.metadata
         if self.created_at is not None:
             fields["created_at"] = self.created_at

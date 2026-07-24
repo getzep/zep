@@ -178,14 +178,18 @@ class IngestResult:
         )
         return episodes_terminal and tasks_terminal
 
-    def failed_items(self, *, limit: int = 100) -> "list[BatchItemDetail] | list[AddError]":
-        """Failed item details: Batch API item records (batch) or AddErrors (sequential)."""
+    def failed_items(self, *, limit: int = 100) -> "list[BatchItemDetail | AddError]":
+        """Failed item details from submission and server-side batch processing."""
         require_int_range("limit", limit, minimum=1)
         if self.method == "sequential":
-            return self.add_errors[:limit]
+            sequential_errors: list[BatchItemDetail | AddError] = []
+            sequential_errors.extend(self.add_errors[:limit])
+            return sequential_errors
+        collected: list[BatchItemDetail | AddError] = list(self.add_errors[:limit])
+        if len(collected) >= limit:
+            return collected
         if self.client is None:
             raise RuntimeError("IngestResult has no client; cannot list failed items.")
-        collected: list[BatchItemDetail] = []
         for batch_id in self.batch_ids:
             cursor: int | None = None
             while len(collected) < limit:

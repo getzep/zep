@@ -7,14 +7,6 @@ name: Release Ingestion Package
 on:
   release:
     types: [published]
-  workflow_dispatch:
-    inputs:
-      ref:
-        description: Immutable tag or commit SHA to release
-        required: true
-      version:
-        description: Exact package version to publish
-        required: true
 
 concurrency:
   group: release-zep-ingest
@@ -27,36 +19,33 @@ jobs:
   resolve-release:
     # Releases with other tag schemes (integrations, Go modules) also fire the
     # `release: published` event; skip them cleanly instead of failing.
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'zep-ingest-v')
+    if: startsWith(github.event.release.tag_name, 'zep-ingest-v')
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.release.outputs.sha }}
       version: ${{ steps.release.outputs.version }}
     steps:
-      - name: Validate dispatch ref
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          REF: ${{ inputs.ref }}
-        run: |
-          if [[ ! "$REF" =~ ^[0-9a-f]{40}$ && ! "$REF" =~ ^zep-ingest-v[0-9]+(\.[0-9]+)*([-.][0-9A-Za-z.-]+)?$ ]]; then
-            echo "ref must be a full commit SHA or a zep-ingest-v* release tag" >&2
-            exit 1
-          fi
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.release.tag_name }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
       - id: release
         env:
-          DISPATCH_VERSION: ${{ inputs.version }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=$DISPATCH_VERSION" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${RELEASE_TAG#zep-ingest-v}" >> "$GITHUB_OUTPUT"
+          if [[ ! "$RELEASE_TAG" =~ ^zep-ingest-v[0-9]+(\.[0-9]+)*([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "release tag must match zep-ingest-v<version>" >&2
+            exit 1
           fi
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          TAG_SHA="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          if [[ "$TAG_SHA" != "$HEAD_SHA" ]]; then
+            echo "release tag resolves to $TAG_SHA, but the release event resolved to $HEAD_SHA" >&2
+            exit 1
+          fi
+          echo "sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "version=${RELEASE_TAG#zep-ingest-v}" >> "$GITHUB_OUTPUT"
       - name: Archive resolved source
         run: git archive --format=tar "${{ steps.release.outputs.sha }}" > release-source.tar
       - name: Upload resolved source

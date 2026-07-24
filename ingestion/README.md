@@ -332,7 +332,7 @@ Sequential only (the Batch API doesn't take direct nodes).
 result = ingest_slack_export(client, "export.zip", graph_id="g1")
 result.status  # queued | processing | succeeded | partial | failed
 result.wait(timeout=3600)
-result.failed_items()  # Batch API item records, or AddErrors on the sequential path
+result.failed_items()  # Batch API item records and/or submission AddErrors
 result.warnings  # everything the pipeline noticed
 result.raise_for_status()  # opt-in strictness
 ```
@@ -351,7 +351,8 @@ Partial failures never crash a run: pages/episodes that keep failing are
 recorded as `AddError`s (indices and API messages only — never episode content)
 and the run continues. `batch_ids` / `episode_uuids` / `task_ids` are the
 resume handles. Task IDs are used by asynchronous operations such as fact
-triples and direct node creation, and `wait()` polls them through `client.task`.
+triples, direct node creation, and sequential thread submissions, and `wait()`
+polls them through `client.task`.
 
 **Checking status later** — if you skipped `wait=True`, persist
 `result.batch_ids` and reconstruct in another process:

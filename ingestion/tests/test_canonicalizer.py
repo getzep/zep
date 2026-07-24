@@ -116,6 +116,28 @@ class TestCorrectnessEdgeCases:
         with pytest.raises(ConfigurationError):
             AliasCanonicalizer({"CanonA": ["PROTOTYPE-202"], "CanonB": ["PROTOTYPE-202"]})
 
+    def test_case_folded_alias_collision_raises_in_non_strict_mode(self):
+        with pytest.raises(ConfigurationError, match="(?i)case-insensitive"):
+            AliasCanonicalizer(
+                {"CanonA": ["PROTOTYPE-202"], "CanonB": ["prototype-202"]},
+                strict=False,
+            )
+
+    def test_case_variants_for_same_canonical_are_allowed_in_non_strict_mode(self):
+        transform = AliasCanonicalizer(
+            {"CanonA": ["PROTOTYPE-202", "prototype-202"]},
+            strict=False,
+        )
+        [out] = list(transform.apply([Episode(data="Prototype-202")]))
+        assert out.data == "CanonA"
+
+    def test_invalid_mode_raises_instead_of_rewriting(self):
+        with pytest.raises(ConfigurationError, match="mode"):
+            AliasCanonicalizer(
+                {"ROBOT-202": ["PROTOTYPE-202"]},
+                mode="annotatee",
+            )
+
     def test_urls_not_rewritten(self):
         out = rewrite(
             "see https://example.com/PROTOTYPE-202/page and PROTOTYPE-202",

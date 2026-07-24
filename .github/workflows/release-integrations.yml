@@ -32,6 +32,9 @@ permissions:
 
 jobs:
   detect:
+    # zep-ingest is released by release-ingestion.yml. A published ingestion
+    # release also emits this repository-wide event, so skip it cleanly.
+    if: github.event_name == 'workflow_dispatch' || !startsWith(github.event.release.tag_name, 'zep-ingest-v')
     runs-on: ubuntu-latest
     outputs:
       framework: ${{ steps.detect.outputs.framework }}
