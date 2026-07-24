@@ -4,6 +4,9 @@ All notable changes to `zep-ingest` are documented here.
 
 ## Unreleased
 
+- Reject blank Batch API IDs before submission, preserve explicit
+  `untracked` status when an asynchronous write returns no completion handle,
+  and keep raw chunks when an LLM returns empty contextualization.
 - Ingest Slack, transcript, and email sources as `text` episodes instead of
   `message`. Each episode already carries its speaker/author context inline
   (`Sender (Slack #channel, time): …`, `Speaker: …`, `Email from … to …`), so

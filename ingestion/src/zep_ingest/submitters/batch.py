@@ -14,7 +14,7 @@ from zep_cloud.core.api_error import ApiError
 
 from zep_ingest._errors import safe_api_error
 from zep_ingest._validation import require_int_range
-from zep_ingest.exceptions import BatchUnavailableError
+from zep_ingest.exceptions import BatchUnavailableError, InvalidBatchResponseError
 from zep_ingest.result import AddError, IngestResult
 from zep_ingest.submitters.sequential import call_with_retries
 from zep_ingest.types import (
@@ -27,6 +27,22 @@ from zep_ingest.types import (
 
 #: Statuses the Batch API returns when the feature is not enabled for the plan.
 GATING_STATUS_CODES = frozenset({402, 403, 404})
+
+
+def require_batch_id(
+    batch_id: Any,
+    *,
+    source: str = "batch.create",
+    partial_result: IngestResult | None = None,
+) -> str:
+    """Return a usable batch ID or fail before any add/process call."""
+    if not isinstance(batch_id, str) or not batch_id.strip():
+        raise InvalidBatchResponseError(
+            f"{source} returned no usable batch_id; refusing to submit because "
+            "the batch may already have been created.",
+            partial_result=partial_result,
+        )
+    return batch_id
 
 
 def is_gating_error(error: ApiError) -> bool:
@@ -77,7 +93,11 @@ class BatchSubmitter:
         self.max_items_per_batch = max_items_per_batch
         self.batch_metadata = batch_metadata
         self.max_add_retries = max_add_retries
-        self.initial_batch_id = initial_batch_id
+        self.initial_batch_id = (
+            require_batch_id(initial_batch_id, source="initial_batch_id")
+            if initial_batch_id is not None
+            else None
+        )
 
     def submit(self, episodes: Iterable[Episode], destination: Destination) -> IngestResult:
         result = IngestResult(method="batch", client=self.client)
@@ -114,7 +134,10 @@ class BatchSubmitter:
                     summary = self.client.batch.create(metadata=self.batch_metadata)
                 else:
                     summary = self.client.batch.create()
-                batch_id = summary.batch_id or ""
+                batch_id = require_batch_id(
+                    getattr(summary, "batch_id", None),
+                    partial_result=result,
+                )
         except ApiError as error:
             if is_gating_error(error):
                 raise BatchUnavailableError(partial_result=result) from error

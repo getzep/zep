@@ -187,4 +187,6 @@ def ingest_fact_triples(
             task_id = getattr(response, "task_id", None)
             if task_id and str(task_id) not in result.task_ids:
                 result.task_ids.append(str(task_id))
+            elif not task_id:
+                result.untracked_items += 1
     return result

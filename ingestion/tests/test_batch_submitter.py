@@ -4,9 +4,10 @@ from unittest.mock import call
 
 import pytest
 from zep_cloud.core.api_error import ApiError
+from zep_cloud.types.batch_summary import BatchSummary
 
 from tests.conftest import make_batch_summary
-from zep_ingest.exceptions import BatchUnavailableError
+from zep_ingest.exceptions import BatchUnavailableError, InvalidBatchResponseError
 from zep_ingest.submitters.batch import BatchSubmitter
 from zep_ingest.types import Destination, Episode
 
@@ -71,6 +72,23 @@ class TestPaging:
         assert mock_zep.batch.process.call_args_list == [call("b1"), call("b2")]
         assert result.batch_ids == ["b1", "b2"]
         assert result.items_submitted == 6
+
+    @pytest.mark.parametrize("batch_id", [None, "", "   "])
+    def test_missing_created_batch_id_fails_before_add(self, mock_zep, batch_id):
+        mock_zep.batch.create.return_value = BatchSummary(batch_id=batch_id, status="draft")
+
+        with pytest.raises(InvalidBatchResponseError, match="batch_id"):
+            BatchSubmitter(mock_zep).submit(episodes(1), DEST)
+
+        mock_zep.batch.add.assert_not_called()
+        mock_zep.batch.process.assert_not_called()
+
+    @pytest.mark.parametrize("batch_id", ["", "   "])
+    def test_blank_initial_batch_id_is_rejected(self, mock_zep, batch_id):
+        with pytest.raises(InvalidBatchResponseError, match="initial_batch_id"):
+            BatchSubmitter(mock_zep, initial_batch_id=batch_id)
+
+        mock_zep.batch.create.assert_not_called()
 
 
 class TestRetries:
@@ -149,3 +167,18 @@ class TestBatchMetadata:
         assert partial is not None
         assert partial.batch_ids == ["b1"]
         assert partial.items_submitted == 1
+
+    def test_rollover_without_batch_id_carries_partial_result(self, mock_zep):
+        mock_zep.batch.create.side_effect = [
+            make_batch_summary("b1", "draft"),
+            BatchSummary(status="draft"),
+        ]
+
+        with pytest.raises(InvalidBatchResponseError) as caught:
+            BatchSubmitter(mock_zep, page_size=1, max_items_per_batch=1).submit(episodes(2), DEST)
+
+        partial = caught.value.partial_result
+        assert partial is not None
+        assert partial.batch_ids == ["b1"]
+        assert partial.items_submitted == 1
+        assert mock_zep.batch.add.call_count == 1

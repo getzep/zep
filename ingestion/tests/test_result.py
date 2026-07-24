@@ -3,7 +3,7 @@
 import pytest
 
 from tests.conftest import make_batch_summary, make_item_detail, make_item_list, make_zep_episode
-from zep_ingest.exceptions import IngestFailedError, IngestTimeoutError
+from zep_ingest.exceptions import IngestFailedError, IngestTimeoutError, IngestUntrackedError
 from zep_ingest.result import AddError, IngestResult
 
 
@@ -155,6 +155,34 @@ class TestSequentialResult:
     def test_empty_run_is_succeeded(self, mock_zep):
         result = IngestResult(method="sequential", client=mock_zep)
         assert result.status == "succeeded"
+
+    def test_submitted_work_without_handles_is_untracked(self, mock_zep):
+        result = IngestResult(
+            method="sequential",
+            items_submitted=2,
+            untracked_items=2,
+            client=mock_zep,
+        )
+
+        assert result.status == "untracked"
+        with pytest.raises(IngestUntrackedError, match="2 submitted item"):
+            result.wait()
+        mock_zep.graph.episode.get.assert_not_called()
+        mock_zep.task.get.assert_not_called()
+
+    def test_untracked_work_beats_queued_tracked_work(self, mock_zep):
+        result = IngestResult(
+            method="sequential",
+            items_submitted=2,
+            task_ids=["t1"],
+            untracked_items=1,
+            client=mock_zep,
+        )
+
+        assert result.status == "untracked"
+        with pytest.raises(IngestUntrackedError):
+            result.wait()
+        mock_zep.task.get.assert_not_called()
 
     def test_task_ids_are_polled_until_succeeded(self, mock_zep):
         from zep_cloud.types.get_task_response import GetTaskResponse

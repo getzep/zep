@@ -40,6 +40,17 @@ def test_node_task_id_is_tracked_as_task(mock_zep):
     assert item.uuid_ == node_uuid
 
 
+def test_node_submission_without_task_id_is_untracked(mock_zep):
+    mock_zep.graph.add_nodes.return_value = AddNodesResponse()
+    node = NodeItem(name="Avery Brown", uuid=str(uuid.uuid4()))
+
+    result = ingest_nodes(mock_zep, [node], graph_id="g1")
+
+    assert result.items_submitted == 1
+    assert result.untracked_items == 1
+    assert result.status == "untracked"
+
+
 def test_empty_node_maps_are_sent_to_clear_existing_values():
     node = NodeItem(
         name="Avery Brown",

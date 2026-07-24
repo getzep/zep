@@ -10,7 +10,7 @@ from zep_cloud.client import Zep
 from zep_ingest._validation import require_int_range, require_nonnegative_number
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.result import IngestResult
-from zep_ingest.submitters.batch import BatchSubmitter, is_gating_error
+from zep_ingest.submitters.batch import BatchSubmitter, is_gating_error, require_batch_id
 from zep_ingest.submitters.sequential import SequentialSubmitter, call_with_retries
 from zep_ingest.types import (
     MAX_ITEMS_PER_ADD,
@@ -105,6 +105,7 @@ def submit_episodes(
             result.warnings.insert(0, notice)
             return result
         raise error
-    return BatchSubmitter(client, initial_batch_id=summary.batch_id, **batch_kwargs).submit(
+    batch_id = require_batch_id(getattr(summary, "batch_id", None))
+    return BatchSubmitter(client, initial_batch_id=batch_id, **batch_kwargs).submit(
         stream, destination
     )

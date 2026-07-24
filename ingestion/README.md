@@ -330,7 +330,7 @@ Sequential only (the Batch API doesn't take direct nodes).
 
 ```python
 result = ingest_slack_export(client, "export.zip", graph_id="g1")
-result.status  # queued | processing | succeeded | partial | failed
+result.status  # queued | processing | untracked | succeeded | partial | failed | canceled
 result.wait(timeout=3600)
 result.failed_items()  # Batch API item records and/or submission AddErrors
 result.warnings  # everything the pipeline noticed
@@ -353,6 +353,11 @@ and the run continues. `batch_ids` / `episode_uuids` / `task_ids` are the
 resume handles. Task IDs are used by asynchronous operations such as fact
 triples, direct node creation, and sequential thread submissions, and `wait()`
 polls them through `client.task`.
+
+If the API accepts a task-backed submission without returning a completion
+handle, the result reports `status == "untracked"` instead of claiming success.
+`wait()` raises `IngestUntrackedError` immediately in that state; use
+`search_when_ready` or an application-specific read to verify availability.
 
 **Checking status later** — if you skipped `wait=True`, persist
 `result.batch_ids` and reconstruct in another process:

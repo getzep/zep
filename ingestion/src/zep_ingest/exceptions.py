@@ -1,7 +1,8 @@
 """Exception classes for zep-ingest.
 
-Philosophy: configuration errors raise immediately, before any API call;
-runtime partial failures never raise — they are collected into IngestResult.
+Philosophy: configuration errors and unusable API responses raise immediately;
+per-item runtime failures are collected into IngestResult. Waiting also raises
+when completion cannot be tracked safely.
 """
 
 from typing import TYPE_CHECKING
@@ -39,6 +40,19 @@ class BatchUnavailableError(ZepIngestError):
         )
 
 
+class InvalidBatchResponseError(ZepIngestError):
+    """Raised when batch creation succeeds without returning a usable batch ID."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        partial_result: "IngestResult | None" = None,
+    ) -> None:
+        self.partial_result = partial_result
+        super().__init__(message)
+
+
 class IngestTimeoutError(ZepIngestError):
     """Raised by IngestResult.wait() when processing does not finish in time.
 
@@ -48,6 +62,10 @@ class IngestTimeoutError(ZepIngestError):
 
 class IngestFailedError(ZepIngestError):
     """Raised only by the opt-in IngestResult.raise_for_status() when items failed."""
+
+
+class IngestUntrackedError(ZepIngestError):
+    """Raised when wait() cannot observe completion because the API returned no handle."""
 
 
 class ZepDependencyError(ImportError):

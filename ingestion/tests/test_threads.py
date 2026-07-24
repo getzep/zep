@@ -7,9 +7,15 @@ import pytest
 from zep_cloud.core.api_error import ApiError
 from zep_cloud.errors.not_found_error import NotFoundError
 from zep_cloud.types.add_thread_messages_response import AddThreadMessagesResponse
+from zep_cloud.types.batch_summary import BatchSummary
 
 from tests.conftest import make_batch_summary
-from zep_ingest.exceptions import BatchUnavailableError, ConfigurationError
+from zep_ingest.exceptions import (
+    BatchUnavailableError,
+    ConfigurationError,
+    IngestUntrackedError,
+    InvalidBatchResponseError,
+)
 from zep_ingest.threads import MAX_MESSAGE_CHARS, ThreadMessage, ingest_thread_messages
 
 
@@ -183,6 +189,20 @@ class TestBatchPath:
         assert "process" in error.error
         assert result.status == "failed"
 
+    @pytest.mark.parametrize("batch_id", [None, "", "   "])
+    def test_missing_created_batch_id_fails_before_add(self, mock_zep, batch_id):
+        mock_zep.batch.create.return_value = BatchSummary(batch_id=batch_id, status="draft")
+
+        with pytest.raises(InvalidBatchResponseError, match="batch_id"):
+            ingest_thread_messages(
+                mock_zep,
+                [message(created_at=None)],
+                user_id="avery-brown",
+                method="batch",
+            )
+
+        mock_zep.batch.add.assert_not_called()
+
 
 class TestSequentialPath:
     def test_auto_prefers_sequential_when_timestamps_present(self, mock_zep):
@@ -266,7 +286,11 @@ class TestSequentialPath:
         )
 
         assert result.task_ids == []
+        assert result.untracked_items == 1
+        assert result.status == "untracked"
         assert any("no completion handle" in warning for warning in result.warnings)
+        with pytest.raises(IngestUntrackedError):
+            result.wait()
 
     def test_sequential_failure_recorded_and_continues(self, mock_zep):
         mock_zep.thread.add_messages.side_effect = [

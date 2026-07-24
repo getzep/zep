@@ -2,9 +2,10 @@
 
 import pytest
 from zep_cloud.core.api_error import ApiError
+from zep_cloud.types.batch_summary import BatchSummary
 
 from tests.conftest import make_batch_summary, make_zep_episode
-from zep_ingest.exceptions import BatchUnavailableError
+from zep_ingest.exceptions import BatchUnavailableError, InvalidBatchResponseError
 from zep_ingest.submitters import submit_episodes
 from zep_ingest.types import Destination, Episode
 
@@ -76,6 +77,16 @@ class TestAuto:
         result = submit_episodes(mock_zep, [], DEST, method="auto")
         mock_zep.batch.create.assert_not_called()
         assert result.items_submitted == 0
+
+    @pytest.mark.parametrize("batch_id", [None, "", "   "])
+    def test_probe_without_usable_batch_id_does_not_open_second_batch(self, mock_zep, batch_id):
+        mock_zep.batch.create.return_value = BatchSummary(batch_id=batch_id, status="draft")
+
+        with pytest.raises(InvalidBatchResponseError, match="batch_id"):
+            submit_episodes(mock_zep, episodes(1), DEST, method="auto")
+
+        assert mock_zep.batch.create.call_count == 1
+        mock_zep.batch.add.assert_not_called()
 
 
 class TestExplicit:

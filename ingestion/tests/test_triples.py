@@ -4,6 +4,7 @@ import json
 
 import pytest
 from zep_cloud.core.api_error import ApiError
+from zep_cloud.types.add_triple_response import AddTripleResponse
 
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.triples import FactTriple, ingest_fact_triples
@@ -112,6 +113,15 @@ class TestIngest:
         assert all(c.kwargs["graph_id"] == "g1" for c in calls)
         assert result.task_ids == ["task-1"]
         assert result.status == "queued"
+
+    def test_submission_without_task_id_is_untracked(self, mock_zep):
+        mock_zep.graph.add_fact_triple.return_value = AddTripleResponse()
+
+        result = ingest_fact_triples(mock_zep, [triple()], graph_id="g1")
+
+        assert result.items_submitted == 1
+        assert result.untracked_items == 1
+        assert result.status == "untracked"
 
     def test_destination_required(self, mock_zep):
         with pytest.raises(ConfigurationError):

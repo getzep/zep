@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 from zep_ingest._validation import require_int_range, require_nonnegative_number
-from zep_ingest.exceptions import IngestFailedError, IngestTimeoutError
+from zep_ingest.exceptions import IngestFailedError, IngestTimeoutError, IngestUntrackedError
 
 if TYPE_CHECKING:
     from zep_cloud.client import Zep
@@ -18,7 +18,15 @@ _TERMINAL_BATCH_STATUSES = frozenset({"succeeded", "partial", "failed", "invalid
 _TERMINAL_TASK_STATUSES = frozenset({"succeeded", "partial", "failed", "canceled"})
 
 # Aggregation priority: the worst/least-done status wins.
-_STATUS_PRIORITY = ["failed", "partial", "canceled", "processing", "queued", "succeeded"]
+_STATUS_PRIORITY = [
+    "failed",
+    "partial",
+    "canceled",
+    "untracked",
+    "processing",
+    "queued",
+    "succeeded",
+]
 
 
 def _normalize_task_status(status: str | None) -> str:
@@ -53,7 +61,8 @@ class IngestResult:
 
     Stateless by design: everything recoverable comes from Batch API statuses or
     episode/task processing flags; ``batch_ids``/``episode_uuids``/``task_ids`` are the resume
-    handles a caller can persist.
+    handles a caller can persist. ``untracked_items`` records accepted writes for
+    which the API returned no completion handle.
     """
 
     method: Literal["batch", "sequential"]
@@ -61,6 +70,7 @@ class IngestResult:
     batch_ids: list[str] = field(default_factory=list)
     episode_uuids: list[str] = field(default_factory=list)
     task_ids: list[str] = field(default_factory=list)
+    untracked_items: int = 0
     add_errors: list[AddError] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     client: "Zep | None" = field(default=None, repr=False)
@@ -116,7 +126,7 @@ class IngestResult:
 
     @property
     def status(self) -> str:
-        """Aggregate status: failed > partial > canceled > processing > queued > succeeded."""
+        """Aggregate status, including explicit ``untracked`` completion state."""
         statuses: list[str] = []
         if self.method == "batch":
             for batch_id in self.batch_ids:
@@ -135,6 +145,8 @@ class IngestResult:
                 else:
                     statuses.append("processing")
             statuses.extend(self._task_statuses.get(task_id, "queued") for task_id in self.task_ids)
+        if self.untracked_items:
+            statuses.append("untracked")
         if self.add_errors:
             statuses.append("partial")
         if not statuses:
@@ -147,11 +159,18 @@ class IngestResult:
     def wait(self, *, poll_interval: float = 10.0, timeout: float | None = None) -> "IngestResult":
         """Poll until processing reaches a terminal state.
 
-        Raises IngestTimeoutError on timeout; the result stays usable.
+        Raises IngestTimeoutError on timeout, or IngestUntrackedError when the
+        API returned no completion handle; the result stays usable.
         """
         require_nonnegative_number("poll_interval", poll_interval)
         if timeout is not None:
             require_nonnegative_number("timeout", timeout)
+        if self.untracked_items:
+            raise IngestUntrackedError(
+                f"Cannot wait for {self.untracked_items} submitted item(s): the API returned "
+                "no completion handle. Use search_when_ready() or poll an application-specific "
+                "read before querying the ingested data."
+            )
         start = time.monotonic()
         while True:
             self.refresh()
@@ -165,6 +184,8 @@ class IngestResult:
             time.sleep(poll_interval)
 
     def _is_terminal(self) -> bool:
+        if self.untracked_items:
+            return False
         if self.method == "batch":
             return all(
                 (summary := self._batch_summaries.get(batch_id)) is not None

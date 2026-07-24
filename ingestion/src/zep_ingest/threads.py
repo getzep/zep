@@ -38,7 +38,7 @@ from zep_ingest._validation import (
 )
 from zep_ingest.exceptions import BatchUnavailableError, ConfigurationError
 from zep_ingest.result import AddError, IngestResult
-from zep_ingest.submitters.batch import is_gating_error, process_batch
+from zep_ingest.submitters.batch import is_gating_error, process_batch, require_batch_id
 from zep_ingest.submitters.sequential import call_with_retries
 from zep_ingest.transforms._splitting import split_text
 from zep_ingest.types import MAX_ITEMS_PER_ADD, MAX_ITEMS_PER_BATCH, MAX_METADATA_KEYS
@@ -179,7 +179,10 @@ def _submit_batch(
                 if is_gating_error(error):
                     raise BatchUnavailableError(partial_result=result) from error
                 raise
-            batch_id = summary.batch_id or ""
+            batch_id = require_batch_id(
+                getattr(summary, "batch_id", None),
+                partial_result=result,
+            )
             result.batch_ids.append(batch_id)
             items_in_batch = 0
         items = [
@@ -264,6 +267,7 @@ def _submit_sequential(
                         result.task_ids.append(normalized_task_id)
                 else:
                     missing_task_handles += 1
+                    result.untracked_items += len(chunk)
             chunk_index += 1
     if missing_task_handles:
         result.warnings.append(

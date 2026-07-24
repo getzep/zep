@@ -24,6 +24,8 @@ from zep_ingest.exceptions import (
     ConfigurationError,
     IngestFailedError,
     IngestTimeoutError,
+    IngestUntrackedError,
+    InvalidBatchResponseError,
     ZepDependencyError,
     ZepIngestError,
 )
@@ -91,6 +93,8 @@ __all__ = [
     "IngestFailedError",
     "IngestResult",
     "IngestTimeoutError",
+    "IngestUntrackedError",
+    "InvalidBatchResponseError",
     "JsonNormalizer",
     "JsonRecordsLoader",
     "LLMClient",

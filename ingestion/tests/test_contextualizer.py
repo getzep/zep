@@ -82,6 +82,22 @@ class TestErrorHandling:
         with pytest.raises(RuntimeError):
             list(contextualizer.apply([chunk_episode()]))
 
+    @pytest.mark.parametrize("response", ["", " \n\t ", "<document> </document>"])
+    def test_keep_raw_on_empty_sanitized_context(self, response):
+        contextualizer = LLMContextualizer(FakeLLM(response))
+
+        [out] = list(contextualizer.apply([chunk_episode()]))
+
+        assert out.data == "The chunk body."
+        assert out.document is None
+        assert any("empty" in warning.lower() for warning in contextualizer.warnings)
+
+    def test_raise_mode_rejects_empty_sanitized_context(self):
+        contextualizer = LLMContextualizer(FakeLLM("   "), on_error="raise")
+
+        with pytest.raises(RuntimeError, match="empty"):
+            list(contextualizer.apply([chunk_episode()]))
+
 
 class TestHardening:
     def test_document_cannot_break_prompt_structure(self):

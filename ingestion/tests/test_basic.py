@@ -56,6 +56,8 @@ def test_public_api_exports():
         "BatchUnavailableError",
         "IngestTimeoutError",
         "IngestFailedError",
+        "IngestUntrackedError",
+        "InvalidBatchResponseError",
         "ZepDependencyError",
     }
     assert expected <= set(zep_ingest.__all__)

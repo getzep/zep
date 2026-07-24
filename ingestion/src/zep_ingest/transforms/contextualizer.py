@@ -89,6 +89,12 @@ class LLMContextualizer:
             )
             return None
         context = _TAGS.sub("", context).strip()
+        if not context:
+            message = "LLM contextualization returned an empty response"
+            if self.on_error == "raise":
+                raise RuntimeError(message)
+            self.warnings.append(f"{message}; kept the raw chunk.")
+            return None
         if len(context) > self.max_context_chars:
             context = context[: self.max_context_chars]
             self.warnings.append("An LLM context exceeded the size cap and was truncated.")
