@@ -37,6 +37,11 @@ class LimitGuard:
                 yield episode
                 continue
             pieces, output_type = self._split(episode)
+            # A whitespace run longer than the limit hard-splits into all-blank
+            # slices; they carry no data and Episode rejects them. Dropping them
+            # cannot empty the list — every non-whitespace character of a valid
+            # episode still lands in some piece.
+            pieces = [piece for piece in pieces if piece.strip()]
             total = len(pieces)
             if total == 1:
                 # Splitting can shrink an over-limit episode into one piece

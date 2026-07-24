@@ -38,6 +38,31 @@ class TestSinglePieceShrink:
         assert not any("split" in w for w in guard.warnings)  # nothing was split
 
 
+class TestWhitespaceRuns:
+    """A whitespace run longer than the limit hard-splits into all-blank slices;
+    Episode rejects those, so LimitGuard must drop them."""
+
+    def test_message_with_long_whitespace_run_keeps_content(self):
+        data = "first line\n" + " " * (SAFE_EPISODE_CHARS * 2) + "\nlast line"
+        out = apply(LimitGuard(), Episode(data=data, data_type="message"))
+        assert all(e.data.strip() for e in out)
+        assert "first line" in out[0].data
+        assert "last line" in out[-1].data
+
+    def test_text_with_long_whitespace_run_keeps_content(self):
+        data = "Intro para.\n\n" + "x" * 100 + " " * (SAFE_EPISODE_CHARS * 2) + "y" * 100
+        out = apply(LimitGuard(), Episode(data=data, data_type="text"))
+        assert all(e.data.strip() for e in out)
+        assert "x" * 100 in "".join(e.data for e in out)
+        assert "y" * 100 in "".join(e.data for e in out)
+
+    def test_part_markers_count_only_kept_pieces(self):
+        data = "a" * 100 + " " * 400 + "b" * 100
+        out = apply(LimitGuard(limit=100), Episode(data=data, data_type="message"))
+        total = len(out)
+        assert [e.metadata["part"] for e in out] == [f"{i}/{total}" for i in range(1, total + 1)]
+
+
 class TestTextSplitting:
     def test_oversize_text_split_under_safe_limit(self):
         text = "\n\n".join("word " * 200 for _ in range(15))
