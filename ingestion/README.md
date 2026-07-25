@@ -62,15 +62,17 @@ anchor later extraction.
 user) or `graph_id=` (a shared/business graph). Passing both or neither is a
 `ConfigurationError` before any API call. For a user's own conversations,
 use `ingest_thread_messages` — messages land on the user graph via threads
-(the same store `thread.get_user_context()` reads), the user and missing
-threads are created automatically, messages over the 4,096-character
-thread-message limit are split at sentence boundaries, and per-thread order
-is preserved on both the Batch API (`thread_message` items) and the
-sequential `thread.add_messages` fallback. When messages carry `created_at`
-timestamps, `method="auto"` submits sequentially: the Batch API currently
-ignores `created_at` on `thread_message` items, which would silently date a
-backfill at ingestion time. Thread ids are global to a project — pass
-`thread_id_suffix=` to namespace a backfill without rewriting the source data.
+(the same store `thread.get_user_context()` reads). Every message requires
+`thread_id`, `role`, `name`, `content`, and `created_at` (only `metadata` is
+optional). The user must already exist; missing threads are created for you
+(they are backfill-owned), messages over the 4,096-character thread-message
+limit are split at sentence boundaries, and per-thread order is preserved.
+Because every message carries a required `created_at`, `method="auto"` submits
+sequentially via `thread.add_messages`: the Batch API currently ignores
+`created_at` on `thread_message` items, which would silently date a backfill at
+ingestion time. Pass `method="batch"` to opt into the Batch API anyway (faster,
+but dates every message at ingestion time). Thread ids are global to a project —
+pass `thread_id_suffix=` to namespace a backfill without rewriting the source data.
 Pass `ignore_roles=["assistant"]` to keep assistant turns as conversational
 context but exclude them from graph extraction (they stay in thread history);
 it applies on both the batch and sequential paths.

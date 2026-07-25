@@ -4,6 +4,17 @@ All notable changes to `zep-ingest` are documented here.
 
 ## Unreleased
 
+- **Breaking:** `ingest_thread_messages` no longer creates the user — the user
+  must already exist (create it with `client.user.add(...)`, where you also set
+  its profile and any per-user ontology/instructions). Missing threads are still
+  created automatically (they are backfill-owned). A missing user now raises
+  `ConfigurationError` before any submission instead of silently creating a bare
+  user.
+- **Breaking:** `ThreadMessage` now requires `role`, `name`, and `created_at`
+  (previously defaulted to `"user"`/`None`/`None`); only `metadata` stays
+  optional. Because every message now carries a `created_at` the Batch API would
+  drop, `method="auto"` always submits via sequential `thread.add_messages` (the
+  auto→batch path is gone); pass `method="batch"` to opt into the Batch API.
 - **Breaking:** remove the `ontology` parameter from `Pipeline.run` and every
   pipeline one-liner. The ontology is a property of the graph, not of an ingest
   run: set it once with `client.graph.set_ontology(entities=..., edges=...,

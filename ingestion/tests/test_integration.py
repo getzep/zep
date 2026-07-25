@@ -90,6 +90,7 @@ def test_batch_still_drops_thread_message_created_at(zep):
         message = ThreadMessage(
             thread_id=f"canary-{user_id}",
             role="user",
+            name="Canary",
             content="Canary: does the Batch API preserve created_at yet?",
             created_at="2024-06-15T10:30:00Z",
         )

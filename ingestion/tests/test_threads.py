@@ -9,7 +9,6 @@ from zep_cloud.errors.not_found_error import NotFoundError
 from zep_cloud.types.add_thread_messages_response import AddThreadMessagesResponse
 from zep_cloud.types.batch_summary import BatchSummary
 
-from tests.conftest import make_batch_summary
 from zep_ingest.exceptions import (
     BatchUnavailableError,
     ConfigurationError,
@@ -69,6 +68,14 @@ class TestValidation:
         with pytest.raises(ConfigurationError, match="metadata"):
             message(metadata={f"k{i}": i for i in range(11)})
 
+    def test_missing_name_raises(self):
+        with pytest.raises(ConfigurationError, match="name"):
+            message(name=None)
+
+    def test_missing_created_at_raises(self):
+        with pytest.raises(ConfigurationError, match="created_at"):
+            message(created_at=None)
+
 
 class TestBatchPath:
     def test_batch_items_mapped_and_processed(self, mock_zep):
@@ -89,14 +96,23 @@ class TestBatchPath:
         assert items[0].created_at == "2024-06-15T10:30:00Z"
         mock_zep.batch.process.assert_called_once()
 
-    def test_user_and_threads_ensured_before_submission(self, mock_zep):
+    def test_missing_user_raises_before_submission(self, mock_zep):
         mock_zep.user.get.side_effect = NotFoundError(body=None)
+        with pytest.raises(ConfigurationError, match="does not exist"):
+            ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
+        mock_zep.user.add.assert_not_called()
+        mock_zep.thread.create.assert_not_called()
+        mock_zep.batch.create.assert_not_called()
+        mock_zep.thread.add_messages.assert_not_called()
+
+    def test_threads_created_for_existing_user(self, mock_zep):
+        # the user already exists (mock_zep.user.get succeeds by default)
         ingest_thread_messages(
             mock_zep,
             [message(), message(thread_id="support-43")],
             user_id="avery-brown",
         )
-        mock_zep.user.add.assert_called_once_with(user_id="avery-brown")
+        mock_zep.user.add.assert_not_called()
         created = {c.kwargs["thread_id"] for c in mock_zep.thread.create.call_args_list}
         assert created == {"support-42", "support-43"}
         assert all(
@@ -117,25 +133,14 @@ class TestBatchPath:
             ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
 
     def test_thread_id_suffix_applied(self, mock_zep):
-        msgs = [message(created_at=None)]
-        ingest_thread_messages(mock_zep, msgs, user_id="avery-brown", thread_id_suffix="-run7")
+        ingest_thread_messages(
+            mock_zep, [message()], user_id="avery-brown", method="batch", thread_id_suffix="-run7"
+        )
         items = mock_zep.batch.add.call_args.kwargs["items"]
         assert items[0].thread_id == "support-42-run7"
         mock_zep.thread.create.assert_called_once_with(
             thread_id="support-42-run7", user_id="avery-brown"
         )
-
-    def test_no_sequential_fallback_after_partial_batch(self, mock_zep, monkeypatch):
-        monkeypatch.setattr("zep_ingest.threads.MAX_ITEMS_PER_ADD", 1)
-        monkeypatch.setattr("zep_ingest.threads.MAX_ITEMS_PER_BATCH", 1)
-        mock_zep.batch.create.side_effect = [
-            make_batch_summary("b1", "draft"),
-            ApiError(status_code=403),
-        ]
-        msgs = [message(content=f"m{i}", created_at=None) for i in range(2)]
-        with pytest.raises(BatchUnavailableError):
-            ingest_thread_messages(mock_zep, msgs, user_id="avery-brown")
-        mock_zep.thread.add_messages.assert_not_called()  # no double ingestion
 
     def test_existing_thread_conflict_tolerated(self, mock_zep):
         mock_zep.thread.create.side_effect = ApiError(status_code=409, body="exists")
@@ -174,14 +179,10 @@ class TestBatchPath:
         assert all(len(i.content) <= MAX_MESSAGE_CHARS for i in items)
         assert any("split" in w.lower() for w in result.warnings)
 
-    def test_missing_created_at_warns(self, mock_zep):
-        result = ingest_thread_messages(mock_zep, [message(created_at=None)], user_id="avery-brown")
-        assert any("created_at" in w for w in result.warnings)
-
     def test_process_failure_recorded_not_raised(self, mock_zep):
         mock_zep.batch.process.side_effect = ApiError(status_code=500, body="boom")
         result = ingest_thread_messages(
-            mock_zep, [message(created_at=None)], user_id="avery-brown", method="batch"
+            mock_zep, [message()], user_id="avery-brown", method="batch"
         )
         assert result.items_submitted == 1
         [error] = result.add_errors
@@ -196,7 +197,7 @@ class TestBatchPath:
         with pytest.raises(InvalidBatchResponseError, match="batch_id"):
             ingest_thread_messages(
                 mock_zep,
-                [message(created_at=None)],
+                [message()],
                 user_id="avery-brown",
                 method="batch",
             )
@@ -205,15 +206,10 @@ class TestBatchPath:
 
 
 class TestSequentialPath:
-    def test_auto_prefers_sequential_when_timestamps_present(self, mock_zep):
-        # the Batch API currently drops created_at on thread_message items,
-        # which silently corrupts backfill timelines — auto must protect that
-        msgs = [
-            ThreadMessage(
-                thread_id="t1", role="user", content="hi", created_at="2024-06-15T10:30:00Z"
-            )
-        ]
-        result = ingest_thread_messages(mock_zep, msgs, user_id="u1")
+    def test_auto_uses_sequential_to_preserve_created_at(self, mock_zep):
+        # every message carries a required created_at, and the Batch API drops it,
+        # so auto must use sequential to protect the backfill timeline
+        result = ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
         assert result.method == "sequential"
         mock_zep.batch.create.assert_not_called()
         assert any("created_at" in w for w in result.warnings)
@@ -225,27 +221,20 @@ class TestSequentialPath:
         assert result.status == "succeeded"
         mock_zep.task.get.assert_called()
 
-    def test_auto_uses_batch_when_no_timestamps(self, mock_zep):
-        msgs = [ThreadMessage(thread_id="t1", role="user", content="hi")]
-        result = ingest_thread_messages(mock_zep, msgs, user_id="u1")
-        assert result.method == "batch"
-
-    def test_explicit_batch_with_timestamps_warns(self, mock_zep):
-        msgs = [
-            ThreadMessage(
-                thread_id="t1", role="user", content="hi", created_at="2024-06-15T10:30:00Z"
-            )
-        ]
-        result = ingest_thread_messages(mock_zep, msgs, user_id="u1", method="batch")
+    def test_explicit_batch_warns_about_dropped_created_at(self, mock_zep):
+        result = ingest_thread_messages(
+            mock_zep, [message()], user_id="avery-brown", method="batch"
+        )
         assert result.method == "batch"
         assert any("created_at" in w for w in result.warnings)
 
-    def test_auto_falls_back_and_groups_by_thread(self, mock_zep):
-        mock_zep.batch.create.side_effect = ApiError(status_code=403)
-        msgs = [  # no created_at: auto tries batch first, then hits the gate
-            message(content="first", created_at=None),
-            message(thread_id="support-43", content="other thread", created_at=None),
-            message(content="second", role="assistant", created_at=None),
+    def test_auto_groups_by_thread(self, mock_zep):
+        # auto uses sequential (the Batch API drops created_at); per-thread
+        # grouping and order are preserved
+        msgs = [
+            message(content="first"),
+            message(thread_id="support-43", content="other thread"),
+            message(content="second", role="assistant"),
         ]
         result = ingest_thread_messages(mock_zep, msgs, user_id="avery-brown")
         assert result.method == "sequential"
@@ -314,7 +303,7 @@ class TestIgnoreRoles:
     def test_batch_passes_ignore_roles_to_create(self, mock_zep):
         ingest_thread_messages(
             mock_zep,
-            [message(created_at=None)],
+            [message()],
             user_id="avery-brown",
             method="batch",
             ignore_roles=["assistant"],
@@ -334,15 +323,13 @@ class TestIgnoreRoles:
 
     def test_ignore_roles_omitted_when_unset(self, mock_zep):
         # unset -> the field is never sent, so the SDK applies its own default
-        ingest_thread_messages(
-            mock_zep, [message(created_at=None)], user_id="avery-brown", method="batch"
-        )
+        ingest_thread_messages(mock_zep, [message()], user_id="avery-brown", method="batch")
         assert "ignore_roles" not in mock_zep.batch.create.call_args.kwargs
 
     def test_duplicate_roles_are_deduplicated_in_order(self, mock_zep):
         ingest_thread_messages(
             mock_zep,
-            [message(created_at=None)],
+            [message()],
             user_id="avery-brown",
             method="batch",
             ignore_roles=["assistant", "assistant", "system"],
@@ -377,7 +364,13 @@ class TestFileSources:
                 "content": "hello",
                 "created_at": "2024-06-15T10:30:00Z",
             },
-            {"thread_id": "t1", "role": "assistant", "content": "hi Avery Brown"},
+            {
+                "thread_id": "t1",
+                "role": "assistant",
+                "name": "Riley Chen",
+                "content": "hi Avery Brown",
+                "created_at": "2024-06-15T10:31:00Z",
+            },
         ]
         file.write_text("\n".join(json.dumps(r) for r in rows))
         result = ingest_thread_messages(mock_zep, file, user_id="avery-brown")
@@ -389,10 +382,17 @@ class TestFileSources:
             {
                 "thread_id": "t1",
                 "role": "user",
+                "name": "Avery Brown",
                 "content": "hello",
                 "created_at": "2024-06-15T10:30:00Z",
             },
-            {"thread_id": "t1", "role": "assistant", "content": "hi"},
+            {
+                "thread_id": "t1",
+                "role": "assistant",
+                "name": "Riley Chen",
+                "content": "hi",
+                "created_at": "2024-06-15T10:31:00Z",
+            },
         ]
         file.write_text(json.dumps(rows, indent=2))
         result = ingest_thread_messages(mock_zep, file, user_id="avery-brown")
@@ -400,15 +400,35 @@ class TestFileSources:
 
     def test_invalid_row_raises_before_any_call(self, mock_zep, tmp_path):
         file = tmp_path / "chat.jsonl"
-        file.write_text(json.dumps({"thread_id": "t1", "role": "nope", "content": "x"}))
+        file.write_text(
+            json.dumps(
+                {
+                    "thread_id": "t1",
+                    "role": "nope",
+                    "name": "Avery Brown",
+                    "content": "x",
+                    "created_at": "2024-06-15T10:30:00Z",
+                }
+            )
+        )
         with pytest.raises(ConfigurationError):
             ingest_thread_messages(mock_zep, file, user_id="avery-brown")
         mock_zep.batch.add.assert_not_called()
         mock_zep.thread.add_messages.assert_not_called()
 
-    def test_empty_role_in_file_is_rejected_instead_of_defaulted(self, mock_zep, tmp_path):
+    def test_empty_role_in_file_is_rejected(self, mock_zep, tmp_path):
         file = tmp_path / "chat.jsonl"
-        file.write_text(json.dumps({"thread_id": "t1", "role": "", "content": "hello"}))
+        file.write_text(
+            json.dumps(
+                {
+                    "thread_id": "t1",
+                    "role": "",
+                    "name": "Avery Brown",
+                    "content": "hello",
+                    "created_at": "2024-06-15T10:30:00Z",
+                }
+            )
+        )
         with pytest.raises(ConfigurationError, match="role"):
             ingest_thread_messages(mock_zep, file, user_id="avery-brown")
         mock_zep.batch.add.assert_not_called()
