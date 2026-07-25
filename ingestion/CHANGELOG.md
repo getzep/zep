@@ -4,6 +4,14 @@ All notable changes to `zep-ingest` are documented here.
 
 ## Unreleased
 
+- **Breaking:** remove the `ontology` parameter from `Pipeline.run` and every
+  pipeline one-liner. The ontology is a property of the graph, not of an ingest
+  run: set it once with `client.graph.set_ontology(entities=..., edges=...,
+  graph_ids=[...])` before ingesting. Setting it per run re-declared it on every
+  call, and because `set_ontology` replaces the whole ontology for its scope, the
+  last call silently won. Doing it yourself also unlocks the scopes the parameter
+  could not express — project-wide (omit `graph_ids`/`user_ids`) and multiple
+  graphs or users per call.
 - **Breaking:** remove `create_if_missing` from `Pipeline.run` and every pipeline
   one-liner. The package now writes only into existing graphs and never creates
   them — create the destination first (`client.graph.create(graph_id=...)` or

@@ -28,8 +28,10 @@ the [dashboard](https://app.getzep.com) when you're done.
 | [`user_graph_example.py`](user_graph_example.py) | **combined**: profile fact triples → chat-thread backfill → a document, all on one user's graph | user graph |
 | [`thread_backfill_example.py`](thread_backfill_example.py) | historic chat history (JSONL) → threads that power `thread.get_user_context()` | user graph |
 
-`example_ontology.py` is the starter ontology every example passes via
-`ontology=` — copy it and adapt the types to your domain.
+`example_ontology.py` is the starter ontology every example applies with
+`client.graph.set_ontology(...)` before ingesting — copy it and adapt the types
+to your domain. The ingestion package never sets an ontology itself; that is a
+one-time graph setup step you own.
 
 ## The sample data
 

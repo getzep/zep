@@ -27,9 +27,12 @@ ingest_json_records(client, "products.csv", graph_id="catalog", id_field="sku")
 The raw ingestion surface has sharp edges people hit constantly: a 10,000-character
 episode limit, DIY chunking, timestamps that silently default to ingestion time
 (corrupting fact timelines), entity aliases that never merge, elaborate manual
-JSON-shaping rules, an enterprise-only Batch API, rate limits, and an ontology
-that only applies to data ingested *after* it is set. `zep-ingest` encodes all of
-those rules so you don't have to know them.
+JSON-shaping rules, an enterprise-only Batch API, and rate limits. `zep-ingest`
+encodes all of those rules so you don't have to know them.
+
+Graph *setup* stays outside the package: create the graph and set its ontology
+yourself, once, then ingest into it. See
+[Ontology](#ontology-set-it-before-you-ingest).
 
 ## Choosing your path
 
@@ -209,9 +212,29 @@ date column into `created_at`.
 Two facts drive everything here:
 
 1. **The ontology is not retroactive.** Data ingested before `set_ontology` is
-   never re-typed; the only fix is re-ingesting. Pass `ontology=` to
-   `Pipeline.run` / any one-liner and it is applied to the destination graph
-   *before* any data flows — the ordering mistake becomes impossible.
+   never re-typed; the only fix is re-ingesting. So set it on the graph *once*,
+   before your first ingest run:
+
+   ```python
+   from zep_cloud import EntityEdgeSourceTarget
+
+   client.graph.set_ontology(
+       entities={"Person": Person, "Organization": Organization},
+       edges={
+           "WORKS_AT": (
+               WorksAt,
+               [EntityEdgeSourceTarget(source="Person", target="Organization")],
+           ),
+       },
+       graph_ids=["org"],  # or user_ids=[...]; omit both to apply project-wide
+   )
+   ```
+
+   The ontology is a property of the **graph**, not of an ingest run, so
+   `zep-ingest` has no `ontology=` parameter — running several one-liners
+   against one graph would otherwise re-declare it per call, and
+   `set_ontology` *replaces* the whole ontology for its scope, so the last
+   call would silently win. Configure the graph first; then ingest into it.
 2. **The ontology guides classification; it is not enforced.** Extraction
    reuses a declared type when it confidently matches and derives a new name
    otherwise. Your levers: richer type **descriptions** (enumerate synonym
@@ -248,10 +271,10 @@ Either way, avoid the reserved field names (`uuid`, `name`, `graph_id`,
 [`examples/example_ontology.py`](https://github.com/getzep/zep/blob/main/ingestion/examples/example_ontology.py) ships a starter
 ontology (Person / Organization / Project / Product / Location +
 RESPONSIBLE / WORKS_AT / SUPPLIES / CUSTOMER_OF / LOCATED_AT) built with
-those levers —
-every example passes it via `ontology=`. Copy the file and adapt the types to
-your domain. The examples themselves are self-contained and re-runnable: each
-creates a fresh graph and ingests bundled sample data with zero arguments —
+those levers — every example applies it with `client.graph.set_ontology(...)`
+before ingesting. Copy the file and adapt the types to your domain. The examples
+themselves are self-contained and re-runnable: each creates a fresh graph, sets
+that ontology, and ingests bundled sample data with zero arguments —
 see [`examples/README.md`](https://github.com/getzep/zep/blob/main/ingestion/examples/README.md).
 
 ## Seeding a graph from scratch
@@ -265,9 +288,9 @@ graph):
 1. Create the graph: `client.graph.create(graph_id=...)` (or `client.user.add(...)`
    for a user graph). The ingestion package writes only into existing graphs —
    it never creates them.
-2. Set the ontology before any data flows: `client.graph.set_ontology(...)`, or
-   pass `ontology=` to a pipeline one-liner / `Pipeline.run` to apply it as a
-   preflight. It is not retroactive.
+2. Set the ontology before any data flows: `client.graph.set_ontology(...)`,
+   scoped with `graph_ids=`/`user_ids=` (or project-wide by omitting both). It is
+   not retroactive, and the ingestion package never sets it for you.
 3. Optionally connect fact triples to existing canonical entities by pinning
    endpoints with `source_node_uuid`/`target_node_uuid`. Extraction dedups
    against the existing graph, so known entities anchor resolution.

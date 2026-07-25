@@ -1,4 +1,4 @@
-"""Tests for Pipeline, preview, preflights, and the convenience one-liners."""
+"""Tests for Pipeline, preview, graph-setup boundaries, and the one-liners."""
 
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -215,31 +215,29 @@ class TestPreview:
         assert "20" in warning
 
 
-class TestPreflights:
-    def test_ontology_set_before_submission(self, mock_zep):
-        entities = {"Product": object()}
-        Pipeline(ListLoader([stamped("x")])).run(
-            mock_zep, graph_id="g1", ontology={"entities": entities}
-        )
-        mock_zep.graph.set_ontology.assert_called_once()
-        assert mock_zep.graph.set_ontology.call_args.kwargs["graph_ids"] == ["g1"]
-        calls = [c[0] for c in mock_zep.mock_calls]
-        assert calls.index("graph.set_ontology") < calls.index("batch.create")
-
-    def test_ontology_scoped_to_user(self, mock_zep):
-        Pipeline(ListLoader([stamped("x")])).run(mock_zep, user_id="u1", ontology={"entities": {}})
-        assert mock_zep.graph.set_ontology.call_args.kwargs["user_ids"] == ["u1"]
-
-    def test_no_ontology_no_call(self, mock_zep):
-        Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_id="g1")
-        mock_zep.graph.set_ontology.assert_not_called()
-
+class TestGraphSetupIsCallerOwned:
     def test_run_never_creates_destination(self, mock_zep):
         # Ingestion writes only into existing graphs/users; it never creates them.
         Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_id="g1")
         mock_zep.graph.get.assert_not_called()
         mock_zep.graph.create.assert_not_called()
         mock_zep.user.add.assert_not_called()
+
+    def test_run_never_sets_ontology(self, mock_zep):
+        # The ontology is a property of the graph, set once by the caller before
+        # ingesting — never per ingest run.
+        Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_id="g1")
+        mock_zep.graph.set_ontology.assert_not_called()
+
+    def test_ontology_kwarg_is_rejected(self, mock_zep):
+        with pytest.raises(TypeError):
+            Pipeline(ListLoader([stamped("x")])).run(
+                mock_zep, graph_id="g1", ontology={"entities": {}}
+            )
+
+    def test_one_liner_rejects_ontology_kwarg(self, mock_zep):
+        with pytest.raises(TypeError):
+            ingest_slack_export(mock_zep, FIXTURE, graph_id="g1", ontology={"entities": {}})
 
 
 class TestConvenience:

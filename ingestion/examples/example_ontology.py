@@ -2,8 +2,9 @@
 
 Setting an ontology BEFORE ingesting matters twice over: it is not retroactive
 (data ingested before set_ontology is never re-typed), and it steers extraction
-toward a predictable graph shape. Every example passes this spec via the
-pipeline's ``ontology=`` preflight so the ordering is impossible to get wrong.
+toward a predictable graph shape. Every example applies this spec with
+``client.graph.set_ontology(...)`` right after creating its graph or user —
+the ontology belongs to the graph, so zep-ingest never sets it for you.
 
 The descriptions below follow the style of Zep's documentation and shipped
 default ontology, because descriptions are the primary lever extraction

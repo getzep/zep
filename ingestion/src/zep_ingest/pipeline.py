@@ -3,9 +3,9 @@
 preview() runs a lazy sample through the full chain by default, with no Zep API
 calls. Its warning scope is explicit; pass ``limit=None`` to validate the full
 stream for missing timestamps, oversize splits, and runaway alias rewrites.
-run() adds the preflight that encodes Zep's order-of-operations rule: ontology
-before ingestion. The destination graph/user must already exist — ingestion
-writes into existing graphs and never creates them.
+The destination graph/user must already exist and already carry whatever ontology
+you want applied — ingestion writes into existing, configured graphs and never
+creates or configures them.
 """
 
 import pickle
@@ -34,9 +34,6 @@ from zep_ingest.transforms.chunker import TextChunker
 from zep_ingest.transforms.json_normalizer import JsonNormalizer
 from zep_ingest.transforms.limits import LimitGuard
 from zep_ingest.types import Destination, Episode
-
-#: entities/edges in the same shapes client.graph.set_ontology accepts.
-OntologySpec = dict[str, Any]
 
 
 @dataclass
@@ -172,7 +169,6 @@ class Pipeline:
         graph_id: str | None = None,
         user_id: str | None = None,
         method: Method = "auto",
-        ontology: OntologySpec | None = None,
         batch_metadata: dict[str, Any] | None = None,
         wait: bool = False,
         poll_interval: float = 10.0,
@@ -190,8 +186,6 @@ class Pipeline:
         counter = _MissingTimestampCounter()
         baseline = self._warning_baseline()
         with _validated_replay(self._stream(guard, counter)) as stream:
-            if ontology is not None:
-                _apply_ontology(client, destination, ontology)
             if self.submitter is not None:
                 result = self.submitter.submit(stream, destination)
             else:
@@ -206,24 +200,6 @@ class Pipeline:
         if wait:
             result.wait(poll_interval=poll_interval, timeout=timeout)
         return result
-
-
-def _apply_ontology(client: Zep, destination: Destination, ontology: OntologySpec) -> None:
-    if not isinstance(ontology, dict) or "entities" not in ontology:
-        raise ConfigurationError(
-            'ontology must be a dict with an "entities" key (and optionally "edges"), '
-            "matching client.graph.set_ontology(entities=..., edges=...)."
-        )
-    scope: dict[str, list[str]] = {}
-    if destination.graph_id is not None:
-        scope["graph_ids"] = [destination.graph_id]
-    else:
-        scope["user_ids"] = [destination.user_id or ""]
-    # set_ontology lives on the SDK's external graph client wrapper, which the
-    # type stubs don't surface on GraphClient
-    client.graph.set_ontology(  # type: ignore[attr-defined]
-        entities=ontology["entities"], edges=ontology.get("edges"), **scope
-    )
 
 
 def ingest(

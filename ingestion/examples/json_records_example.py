@@ -29,13 +29,18 @@ def main() -> None:
     client = Zep()  # reads ZEP_API_KEY
     graph_id = f"example-records-{int(time.time())}"
 
-    # Create the graph up front; ingestion writes only into existing graphs.
+    # Create the graph and set its ontology up front: ingestion writes only into
+    # existing graphs, and the ontology is not retroactive.
     client.graph.create(graph_id=graph_id)
+    client.graph.set_ontology(
+        entities=ONTOLOGY["entities"],
+        edges=ONTOLOGY["edges"],
+        graph_ids=[graph_id],
+    )
     result = ingest_json_records(
         client,
         str(DATA / "products.json"),
         graph_id=graph_id,
-        ontology=ONTOLOGY,  # set BEFORE data flows — it is not retroactive
         id_field="sku",
         name_field="title",
         description_field="about",

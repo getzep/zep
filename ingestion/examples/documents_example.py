@@ -48,13 +48,18 @@ def main() -> None:
     if llm is None:
         print("No LLM key found — chunking without contextualization (works fine).")
 
-    # Create the graph up front; ingestion writes only into existing graphs.
+    # Create the graph and set its ontology up front: ingestion writes only into
+    # existing graphs, and the ontology is not retroactive.
     client.graph.create(graph_id=graph_id)
+    client.graph.set_ontology(
+        entities=ONTOLOGY["entities"],
+        edges=ONTOLOGY["edges"],
+        graph_ids=[graph_id],
+    )
     result = ingest_documents(
         client,
         str(DATA / "docs" / "company_handbook.md"),
         graph_id=graph_id,
-        ontology=ONTOLOGY,  # set BEFORE data flows — it is not retroactive
         llm=llm,
         created_at="2025-06-01T00:00:00Z",  # generated source date
         wait=True,
