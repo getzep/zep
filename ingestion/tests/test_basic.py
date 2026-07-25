@@ -45,7 +45,6 @@ def test_public_api_exports():
         # submitters
         "BatchSubmitter",
         "SequentialSubmitter",
-        "submit_episodes",
         # triples & threads
         "FactTriple",
         "ThreadMessage",
@@ -62,3 +61,16 @@ def test_public_api_exports():
     assert expected <= set(zep_ingest.__all__)
     for name in zep_ingest.__all__:
         assert getattr(zep_ingest, name) is not None
+
+
+def test_submit_episodes_demoted_from_top_level():
+    """submit_episodes is intentionally not part of the top-level public API:
+    it skips the LimitGuard/validation that Pipeline.run applies, and its
+    batch-tuning parameters are still being optimized. It stays reachable via
+    the submitters submodule for advanced callers with pre-built episodes."""
+    assert "submit_episodes" not in zep_ingest.__all__
+    assert not hasattr(zep_ingest, "submit_episodes")
+
+    from zep_ingest.submitters import submit_episodes
+
+    assert callable(submit_episodes)

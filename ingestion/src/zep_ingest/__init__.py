@@ -47,7 +47,7 @@ from zep_ingest.pipeline import (
 )
 from zep_ingest.protocols import LLMClient, Loader, Submitter, Transform
 from zep_ingest.result import AddError, IngestResult
-from zep_ingest.submitters import BatchSubmitter, SequentialSubmitter, submit_episodes
+from zep_ingest.submitters import BatchSubmitter, SequentialSubmitter
 from zep_ingest.threads import ThreadMessage, ingest_thread_messages
 from zep_ingest.transforms.canonicalizer import DEFAULT_RISKY_WORDS, AliasCanonicalizer
 from zep_ingest.transforms.chunker import TextChunker
@@ -123,5 +123,4 @@ __all__ = [
     "ingest_thread_messages",
     "ingest_transcripts",
     "search_when_ready",
-    "submit_episodes",
 ]
