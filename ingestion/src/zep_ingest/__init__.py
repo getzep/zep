@@ -2,7 +2,7 @@
 
 Everything upstream of the Zep API for getting unstructured and structured
 data into Context Graphs correctly: parsing sources, chunking,
-contextualization, entity canonicalization, JSON shaping, temporal-correctness
+contextualization, entity canonicalization, temporal-correctness
 warnings, and rate-limit-aware submission via the Batch API (enterprise) or
 sequential graph.add (every plan).
 
@@ -52,7 +52,6 @@ from zep_ingest.threads import ThreadMessage, ingest_thread_messages
 from zep_ingest.transforms.canonicalizer import DEFAULT_RISKY_WORDS, AliasCanonicalizer
 from zep_ingest.transforms.chunker import TextChunker
 from zep_ingest.transforms.contextualizer import DEFAULT_CONTEXT_PROMPT, LLMContextualizer
-from zep_ingest.transforms.json_normalizer import JsonNormalizer
 from zep_ingest.transforms.limits import LimitGuard
 from zep_ingest.triples import FactTriple, ingest_fact_triples
 from zep_ingest.types import (
@@ -95,7 +94,6 @@ __all__ = [
     "IngestTimeoutError",
     "IngestUntrackedError",
     "InvalidBatchResponseError",
-    "JsonNormalizer",
     "JsonRecordsLoader",
     "LLMClient",
     "LLMContextualizer",

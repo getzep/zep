@@ -31,7 +31,6 @@ from zep_ingest.result import IngestResult
 from zep_ingest.submitters import Method, submit_episodes
 from zep_ingest.transforms.canonicalizer import DEFAULT_RISKY_WORDS, AliasCanonicalizer
 from zep_ingest.transforms.chunker import TextChunker
-from zep_ingest.transforms.json_normalizer import JsonNormalizer
 from zep_ingest.transforms.limits import LimitGuard
 from zep_ingest.types import Destination, Episode
 
@@ -340,7 +339,7 @@ def ingest_json_records(
     record_type: str | None = None,
     **run_kwargs: Any,
 ) -> IngestResult:
-    """One-liner: structured records (JSONL/CSV/JSON array) → normalized json episodes."""
+    """One-liner: structured records (JSONL/CSV/JSON array) → one json episode per record."""
     loader = JsonRecordsLoader(
         path_or_glob,
         format=format,
@@ -351,6 +350,6 @@ def ingest_json_records(
         metadata_fields=metadata_fields,
         record_type=record_type,
     )
-    return Pipeline(loader, transforms=(JsonNormalizer(),)).run(
+    return Pipeline(loader, transforms=()).run(
         client, graph_id=graph_id, user_id=user_id, **run_kwargs
     )

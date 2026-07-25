@@ -41,7 +41,6 @@ def test_public_api_exports():
         "LLMContextualizer",
         "DEFAULT_CONTEXT_PROMPT",
         "AliasCanonicalizer",
-        "JsonNormalizer",
         "LimitGuard",
         # submitters
         "BatchSubmitter",

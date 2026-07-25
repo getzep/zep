@@ -77,15 +77,15 @@ class LimitGuard:
             if pieces is None:
                 self.warnings.append(
                     "A json episode exceeded the episode size limit and could not be "
-                    "split as valid JSON; it was hard-split as text. Pre-shape large "
-                    "JSON (see JsonNormalizer) to preserve structured semantics."
+                    "split as valid JSON; it was hard-split as text. Provide smaller, "
+                    "flatter JSON records to preserve structured semantics."
                 )
                 return hard_split(episode.data, self.limit), "text"
             if len(pieces) > 1:  # a compact re-render can fit in one piece
                 self.warnings.append(
                     "A json episode exceeded the episode size limit and was split at "
                     "the top level; cross-references between pieces may be lost. "
-                    "Pre-shape large JSON (see JsonNormalizer) for better results."
+                    "Provide smaller, flatter JSON records for better results."
                 )
             return pieces, "json"
         return split_text(episode.data, self.limit, overlap=0), "text"

@@ -203,16 +203,22 @@ touched, the transform is idempotent, and per-alias replacement counts surface
 as warnings so you see "will → Will Hughes: 4,213 replacements" in `preview()`
 — not after your graph is poisoned.
 
-## Structured data (JSON) shaping
+## Structured data (JSON): shape it before you ingest
 
-Zep extracts poorly from large, nested, or multi-entity JSON. The docs give a
-manual shaping algorithm; `JsonNormalizer` automates it: flatten nesting deeper
-than 3–4 levels (preserving key-path context), explode long lists into
-per-element episodes with a contextualizing `item_type` field, extract long
-string values as separate text episodes, and split wide objects into ≤6-property
-pieces that each duplicate the `id`/`name`/`description` identity fields.
-`JsonRecordsLoader` maps your columns onto those identity fields and parses a
-date column into `created_at`.
+Zep extracts best from JSON that is small, flat, self-contained, and about one
+entity, and poorly from large, deeply nested, or multi-entity records.
+`ingest_json_records` ingests each record **as you provide it** — one `json`
+episode per record — so shaping the data for good extraction is your
+responsibility (see the JSON best-practices in the Zep docs). `LimitGuard` still
+guarantees no episode exceeds the API size limit — it top-level-splits an
+oversize record as a safety net, with a warning — but it does not restructure
+your data.
+
+`JsonRecordsLoader` (and the `ingest_json_records` one-liner) helps you attach
+meaning to opaque records: map your own fields onto the canonical
+`id`/`name`/`description` identity keys, lift a timestamp field into
+`created_at`, tag records with a `record_type`, and promote fields to episode
+`metadata`.
 
 ## Ontology: set it before you ingest
 
