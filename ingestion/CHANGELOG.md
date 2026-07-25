@@ -4,6 +4,11 @@ All notable changes to `zep-ingest` are documented here.
 
 ## Unreleased
 
+- Add an `ignore_roles` parameter to `ingest_thread_messages` (e.g.
+  `ignore_roles=["assistant"]`): the listed roles stay in thread history and
+  serve as context but are excluded from graph extraction. Applies on both the
+  Batch API (`batch.create`) and sequential (`thread.add_messages`) paths;
+  unknown roles are rejected before any API call.
 - Reject blank Batch API IDs before submission, preserve explicit
   `untracked` status when an asynchronous write returns no completion handle,
   and keep raw chunks when an LLM returns empty contextualization.

@@ -63,6 +63,9 @@ timestamps, `method="auto"` submits sequentially: the Batch API currently
 ignores `created_at` on `thread_message` items, which would silently date a
 backfill at ingestion time. Thread ids are global to a project — pass
 `thread_id_suffix=` to namespace a backfill without rewriting the source data.
+Pass `ignore_roles=["assistant"]` to keep assistant turns as conversational
+context but exclude them from graph extraction (they stay in thread history);
+it applies on both the batch and sequential paths.
 
 **Batch vs sequential:** the Batch API (fast, 50k items/batch) is
 enterprise-only. The default `method="auto"` tries batch and transparently

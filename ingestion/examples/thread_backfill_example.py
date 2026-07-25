@@ -57,6 +57,9 @@ def main() -> None:
         # this example from appending to an earlier run's threads. Skip it
         # when your ids are already unique.
         thread_id_suffix=f"-{run_id}",
+        # Keep assistant turns as context but exclude them from graph
+        # extraction (they still land in thread history):
+        # ignore_roles=["assistant"],
     )
     print(f"Submitted {result.items_submitted} messages via {result.method}: {result.status}")
     for warning in result.warnings:

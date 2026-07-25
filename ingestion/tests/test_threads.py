@@ -303,6 +303,62 @@ class TestSequentialPath:
         assert result.items_submitted == 1
 
 
+class TestIgnoreRoles:
+    def test_batch_passes_ignore_roles_to_create(self, mock_zep):
+        ingest_thread_messages(
+            mock_zep,
+            [message(created_at=None)],
+            user_id="avery-brown",
+            method="batch",
+            ignore_roles=["assistant"],
+        )
+        assert mock_zep.batch.create.call_args.kwargs["ignore_roles"] == ["assistant"]
+
+    def test_sequential_passes_ignore_roles_to_add_messages(self, mock_zep):
+        mock_zep.thread.add_messages.return_value = AddThreadMessagesResponse(task_id="t1")
+        ingest_thread_messages(
+            mock_zep,
+            [message()],
+            user_id="avery-brown",
+            method="sequential",
+            ignore_roles=["assistant"],
+        )
+        assert mock_zep.thread.add_messages.call_args.kwargs["ignore_roles"] == ["assistant"]
+
+    def test_ignore_roles_omitted_when_unset(self, mock_zep):
+        # unset -> the field is never sent, so the SDK applies its own default
+        ingest_thread_messages(
+            mock_zep, [message(created_at=None)], user_id="avery-brown", method="batch"
+        )
+        assert "ignore_roles" not in mock_zep.batch.create.call_args.kwargs
+
+    def test_duplicate_roles_are_deduplicated_in_order(self, mock_zep):
+        ingest_thread_messages(
+            mock_zep,
+            [message(created_at=None)],
+            user_id="avery-brown",
+            method="batch",
+            ignore_roles=["assistant", "assistant", "system"],
+        )
+        assert mock_zep.batch.create.call_args.kwargs["ignore_roles"] == ["assistant", "system"]
+
+    def test_unknown_ignore_role_rejected_before_any_call(self, mock_zep):
+        with pytest.raises(ConfigurationError, match="unknown role"):
+            ingest_thread_messages(
+                mock_zep, [message()], user_id="avery-brown", ignore_roles=["customer"]
+            )
+        mock_zep.user.get.assert_not_called()  # fail-fast, before any API traffic
+        mock_zep.batch.create.assert_not_called()
+        mock_zep.thread.add_messages.assert_not_called()
+
+    def test_bare_string_ignore_roles_rejected(self, mock_zep):
+        # a common mistake: ignore_roles="assistant" would iterate into characters
+        with pytest.raises(ConfigurationError, match="bare string"):
+            ingest_thread_messages(
+                mock_zep, [message()], user_id="avery-brown", ignore_roles="assistant"
+            )
+
+
 class TestFileSources:
     def test_jsonl_source(self, mock_zep, tmp_path):
         file = tmp_path / "chat.jsonl"

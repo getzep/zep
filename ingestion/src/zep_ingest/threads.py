@@ -16,7 +16,7 @@ to their user graph as thread messages. This module owns that path end to end:
 """
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from itertools import islice
 from pathlib import Path
@@ -87,6 +87,31 @@ class ThreadMessage:
 
 
 _MESSAGE_FIELDS = frozenset(ThreadMessage.__dataclass_fields__)
+
+
+def _validate_ignore_roles(ignore_roles: Sequence[str] | None) -> list[str] | None:
+    """Validate ``ignore_roles`` against the documented role types before any
+    API call. Returns an order-preserving, de-duplicated list, or ``None`` when
+    unset/empty so the field is simply omitted from the request."""
+    if ignore_roles is None:
+        return None
+    if isinstance(ignore_roles, str):
+        raise ConfigurationError(
+            "ignore_roles must be a list of roles (e.g. ['assistant']), not a bare string"
+        )
+    try:
+        roles = list(ignore_roles)
+    except TypeError:
+        raise ConfigurationError(
+            "ignore_roles must be a list of role strings (e.g. ['assistant'])"
+        ) from None
+    invalid = [r for r in roles if r not in ROLE_TYPES]
+    if invalid:
+        raise ConfigurationError(
+            f"ignore_roles contains unknown role(s) {invalid!r}; "
+            f"valid roles are {sorted(ROLE_TYPES)}"
+        )
+    return list(dict.fromkeys(roles)) or None
 
 
 def _load_messages(path: Path) -> list[ThreadMessage]:
@@ -160,6 +185,7 @@ def _submit_batch(
     messages: list[ThreadMessage],
     *,
     batch_metadata: dict[str, Any] | None,
+    ignore_roles: list[str] | None,
     max_retries: int,
 ) -> IngestResult:
     result = IngestResult(method="batch", client=client)
@@ -175,11 +201,13 @@ def _submit_batch(
             process_batch(client, batch_id, result, max_retries=max_retries)
             batch_id = None
         if batch_id is None:
+            create_kwargs: dict[str, Any] = {}
+            if batch_metadata is not None:
+                create_kwargs["metadata"] = batch_metadata
+            if ignore_roles:
+                create_kwargs["ignore_roles"] = ignore_roles
             try:
-                if batch_metadata is not None:
-                    summary = client.batch.create(metadata=batch_metadata)
-                else:
-                    summary = client.batch.create()
+                summary = client.batch.create(**create_kwargs)
             except ApiError as error:
                 if is_gating_error(error):
                     raise BatchUnavailableError(partial_result=result) from error
@@ -238,6 +266,7 @@ def _submit_sequential(
     messages: list[ThreadMessage],
     *,
     messages_per_call: int,
+    ignore_roles: list[str] | None,
     max_retries: int,
 ) -> IngestResult:
     result = IngestResult(method="sequential", client=client)
@@ -259,8 +288,11 @@ def _submit_sequential(
                 )
                 for m in chunk
             ]
+            add_kwargs: dict[str, Any] = {"messages": payload}
+            if ignore_roles:
+                add_kwargs["ignore_roles"] = ignore_roles
             response, error = call_with_retries(
-                lambda: client.thread.add_messages(thread_id, messages=payload),  # noqa: B023
+                lambda: client.thread.add_messages(thread_id, **add_kwargs),  # noqa: B023
                 max_retries=max_retries,
             )
             if error is not None:
@@ -298,6 +330,7 @@ def ingest_thread_messages(
     user_id: str | None = None,
     method: Literal["auto", "batch", "sequential"] = "auto",
     batch_metadata: dict[str, Any] | None = None,
+    ignore_roles: Sequence[str] | None = None,
     messages_per_call: int = 30,
     max_retries: int = 5,
     thread_id_suffix: str | None = None,
@@ -312,6 +345,11 @@ def ingest_thread_messages(
     Thread ids are global to a Zep project — pass ``thread_id_suffix`` to
     namespace them (e.g. per environment or per re-run) without rewriting
     your source data.
+
+    ``ignore_roles`` lists message roles (e.g. ``["assistant"]``) to keep as
+    conversational context but exclude from graph extraction; those messages are
+    still stored in thread history. Applies to both the batch and sequential
+    submission paths.
     """
     if not user_id:
         raise ConfigurationError(
@@ -326,6 +364,7 @@ def ingest_thread_messages(
     require_int_range("max_retries", max_retries, minimum=1)
     if thread_id_suffix is not None and not isinstance(thread_id_suffix, str):
         raise ConfigurationError("thread_id_suffix must be a string or None")
+    normalized_ignore_roles = _validate_ignore_roles(ignore_roles)
     if isinstance(messages, str | Path):
         materialized = _load_messages(Path(messages))
     else:
@@ -362,16 +401,28 @@ def ingest_thread_messages(
 
     if method == "sequential":
         result = _submit_sequential(
-            client, prepared, messages_per_call=messages_per_call, max_retries=max_retries
+            client,
+            prepared,
+            messages_per_call=messages_per_call,
+            ignore_roles=normalized_ignore_roles,
+            max_retries=max_retries,
         )
     elif method == "batch":
         result = _submit_batch(
-            client, prepared, batch_metadata=batch_metadata, max_retries=max_retries
+            client,
+            prepared,
+            batch_metadata=batch_metadata,
+            ignore_roles=normalized_ignore_roles,
+            max_retries=max_retries,
         )
     else:
         try:
             result = _submit_batch(
-                client, prepared, batch_metadata=batch_metadata, max_retries=max_retries
+                client,
+                prepared,
+                batch_metadata=batch_metadata,
+                ignore_roles=normalized_ignore_roles,
+                max_retries=max_retries,
             )
         except BatchUnavailableError as error:
             partial = error.partial_result
@@ -388,6 +439,7 @@ def ingest_thread_messages(
                 client,
                 prepared,
                 messages_per_call=messages_per_call,
+                ignore_roles=normalized_ignore_roles,
                 max_retries=max_retries,
             )
             result.warnings.insert(0, notice)
