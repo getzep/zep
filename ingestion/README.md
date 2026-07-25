@@ -17,6 +17,11 @@ from zep_ingest import ingest_slack_export, ingest_documents, ingest_json_record
 
 client = Zep(api_key="...")
 
+# Setup is yours, once per graph: zep-ingest writes only into graphs that
+# already exist and already carry their ontology (see Ontology below).
+for graph_id in ("team_knowledge", "company_kb", "catalog"):
+    client.graph.create(graph_id=graph_id)
+
 ingest_slack_export(client, "slack-export.zip", graph_id="team_knowledge")
 ingest_documents(client, "handbook/**/*.md", graph_id="company_kb")
 ingest_json_records(client, "products.csv", graph_id="catalog", id_field="sku")
@@ -239,7 +244,10 @@ Two facts drive everything here:
    reuses a declared type when it confidently matches and derives a new name
    otherwise. Your levers: richer type **descriptions** (enumerate synonym
    verbs), wider source→target **signatures**, and graph **custom
-   instructions**. Limits: 10 entity types + 10 edge types, 10 fields each.
+   instructions**. Custom entity and edge types are capped per scope (10 of each
+   and 10 fields per type at time of writing, but the cap depends on your plan —
+   check the [Zep docs](https://help.getzep.com/customizing-graph-structure) or
+   your project's limits).
 
 Typing quality is therefore an iteration loop: sample-ingest, inspect the node
 labels and edge type names in the Zep dashboard (a long tail of derived types
@@ -270,7 +278,7 @@ Either way, avoid the reserved field names (`uuid`, `name`, `graph_id`,
 **Don't start from a blank page:**
 [`examples/example_ontology.py`](https://github.com/getzep/zep/blob/main/ingestion/examples/example_ontology.py) ships a starter
 ontology (Person / Organization / Project / Product / Location +
-RESPONSIBLE / WORKS_AT / SUPPLIES / CUSTOMER_OF / LOCATED_AT) built with
+RESPONSIBLE / WORKS_AT / SUPPLIES / SELLS / CUSTOMER_OF / LOCATED_AT) built with
 those levers — every example applies it with `client.graph.set_ontology(...)`
 before ingesting. Copy the file and adapt the types to your domain. The examples
 themselves are self-contained and re-runnable: each creates a fresh graph, sets

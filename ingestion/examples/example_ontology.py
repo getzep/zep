@@ -36,8 +36,9 @@ actually uses:
    graphs, custom types are additive to the defaults (a same-name declaration
    overrides classification for that name), and defaults can be disabled with
    ``user.add(disable_default_ontology=True)``.
-6. **Start small and iterate.** Zep allows 10 custom entity + 10 custom edge
-   types (10 fields each); this uses 5 + 5. After a sample ingest, inspect
+6. **Start small and iterate.** Custom types are capped per scope (10 entity +
+   10 edge types, 10 fields each at time of writing, depending on your plan);
+   this file uses 5 entity + 6 edge types. After a sample ingest, inspect
    the node labels and edge type names in the Zep dashboard — a long tail of
    derived types (OWNS, LEADS, ...) or untyped entities tells you which
    description or signature to widen next, then re-ingest into a fresh graph.

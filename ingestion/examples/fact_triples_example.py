@@ -11,9 +11,11 @@ example_ontology.py, and every triple is validated at construction (fact
 <= 250 chars, SCREAMING_SNAKE_CASE fact_name, node names <= 50 chars) before
 the first API call.
 
-This example also spells out the manual lifecycle the one-liners do for you:
-create the graph, set the ontology, then ingest. For narrative data where
-Zep extracts the relationships instead, see json_records_example.py.
+This example also spells out the graph lifecycle every ingest depends on:
+create the graph, set the ontology, then ingest. zep-ingest does none of that
+for you — it writes only into graphs that already exist and already carry their
+ontology. For narrative data where Zep extracts the relationships instead, see
+json_records_example.py.
 
 Usage:
     export ZEP_API_KEY=...
