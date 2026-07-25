@@ -9,6 +9,7 @@ from zep_cloud.errors.not_found_error import NotFoundError
 from zep_cloud.types.add_thread_messages_response import AddThreadMessagesResponse
 from zep_cloud.types.batch_summary import BatchSummary
 
+from tests.conftest import make_batch_summary
 from zep_ingest.exceptions import (
     BatchUnavailableError,
     ConfigurationError,
@@ -206,13 +207,9 @@ class TestBatchPath:
 
 
 class TestSequentialPath:
-    def test_auto_uses_sequential_to_preserve_created_at(self, mock_zep):
-        # every message carries a required created_at, and the Batch API drops it,
-        # so auto must use sequential to protect the backfill timeline
+    def test_auto_uses_batch(self, mock_zep):
         result = ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
-        assert result.method == "sequential"
-        mock_zep.batch.create.assert_not_called()
-        assert any("created_at" in w for w in result.warnings)
+        assert result.method == "batch"
 
     def test_wait_polls_until_terminal(self, mock_zep):
         result = ingest_thread_messages(
@@ -221,22 +218,35 @@ class TestSequentialPath:
         assert result.status == "succeeded"
         mock_zep.task.get.assert_called()
 
-    def test_explicit_batch_warns_about_dropped_created_at(self, mock_zep):
-        result = ingest_thread_messages(
-            mock_zep, [message()], user_id="avery-brown", method="batch"
-        )
-        assert result.method == "batch"
-        assert any("created_at" in w for w in result.warnings)
+    def test_auto_falls_back_to_sequential_when_batch_unavailable(self, mock_zep):
+        mock_zep.batch.create.side_effect = ApiError(status_code=403)
+        result = ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
+        assert result.method == "sequential"
+        assert any("not available" in w for w in result.warnings)
 
-    def test_auto_groups_by_thread(self, mock_zep):
-        # auto uses sequential (the Batch API drops created_at); per-thread
-        # grouping and order are preserved
+    def test_auto_no_sequential_fallback_after_partial_batch(self, mock_zep, monkeypatch):
+        # once some batches have been submitted, a mid-stream gating error must
+        # surface, not fall back to sequential (that would re-submit + duplicate)
+        monkeypatch.setattr("zep_ingest.threads.MAX_ITEMS_PER_ADD", 1)
+        monkeypatch.setattr("zep_ingest.threads.MAX_ITEMS_PER_BATCH", 1)
+        mock_zep.batch.create.side_effect = [
+            make_batch_summary("b1", "draft"),
+            ApiError(status_code=403),
+        ]
+        msgs = [message(content="m0"), message(content="m1")]
+        with pytest.raises(BatchUnavailableError):
+            ingest_thread_messages(mock_zep, msgs, user_id="avery-brown")
+        mock_zep.thread.add_messages.assert_not_called()  # no double ingestion
+
+    def test_sequential_groups_by_thread(self, mock_zep):
+        # the sequential path issues one add_messages call per thread, preserving
+        # per-thread order
         msgs = [
             message(content="first"),
             message(thread_id="support-43", content="other thread"),
             message(content="second", role="assistant"),
         ]
-        result = ingest_thread_messages(mock_zep, msgs, user_id="avery-brown")
+        result = ingest_thread_messages(mock_zep, msgs, user_id="avery-brown", method="sequential")
         assert result.method == "sequential"
         assert result.items_submitted == 3
         calls = {

@@ -9,13 +9,12 @@ to their user graph as thread messages. This module owns that path end to end:
   (the Batch API requires threads to exist),
 - auto-splits messages over the 4,096-character message limit at sentence
   boundaries instead of letting the API reject them,
-- submits via sequential ``thread.add_messages`` by default to preserve every
-  message's required ``created_at`` (the Batch API currently drops created_at
-  on ``thread_message`` items); pass ``method="batch"`` to opt into the Batch
-  API, which dates every message at ingestion time. Per-thread chronological
-  order is preserved either way.
+- submits via the Batch API by default, with transparent fallback to sequential
+  ``thread.add_messages`` when the plan lacks Batch access — preserving
+  per-thread chronological order either way.
 """
 
+import logging
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from itertools import islice
@@ -48,6 +47,8 @@ from zep_ingest.submitters.batch import is_gating_error, process_batch, require_
 from zep_ingest.submitters.sequential import call_with_retries
 from zep_ingest.transforms._splitting import split_text
 from zep_ingest.types import MAX_ITEMS_PER_ADD, MAX_ITEMS_PER_BATCH, MAX_METADATA_KEYS
+
+logger = logging.getLogger("zep_ingest")
 
 #: Documented per-message content limit for thread messages (thread.add_messages
 #: and thread_message batch items alike) — distinct from the 10k episode limit.
@@ -393,30 +394,6 @@ def ingest_thread_messages(
     prepared = _prepare(materialized, warnings)
     _ensure_user_and_threads(client, user_id, prepared)
 
-    # Every message now carries a required created_at, but the Zep Batch API
-    # currently ignores created_at on thread_message items (verified against the
-    # live API 2026-07): a batch backfill silently dates every message at
-    # ingestion time, corrupting fact validity timelines. So the default (auto)
-    # path uses sequential thread.add_messages to preserve the timeline; batch is
-    # opt-in only, and warns.
-    if method == "auto":
-        notice = (
-            "Using sequential thread.add_messages to preserve each message's "
-            "created_at: the Zep Batch API currently ignores created_at on "
-            "thread_message items. Pass method='batch' to force the batch path "
-            "(which dates every message at ingestion time) anyway."
-        )
-        if batch_metadata is not None:
-            notice += " Note: batch_metadata does not apply on the sequential path."
-        warnings.append(notice)
-        method = "sequential"
-    elif method == "batch":
-        warnings.append(
-            "The Zep Batch API currently ignores created_at on thread_message items: "
-            "these messages will be dated at ingestion time, not their created_at. "
-            "Use method='sequential' (or 'auto') to preserve backfill timelines."
-        )
-
     if method == "sequential":
         result = _submit_sequential(
             client,
@@ -425,7 +402,7 @@ def ingest_thread_messages(
             ignore_roles=normalized_ignore_roles,
             max_retries=max_retries,
         )
-    else:  # method == "batch": opt-in; auto never batches, so there is no fallback
+    elif method == "batch":
         result = _submit_batch(
             client,
             prepared,
@@ -433,6 +410,34 @@ def ingest_thread_messages(
             ignore_roles=normalized_ignore_roles,
             max_retries=max_retries,
         )
+    else:  # auto: prefer the Batch API, fall back to sequential when unavailable
+        try:
+            result = _submit_batch(
+                client,
+                prepared,
+                batch_metadata=batch_metadata,
+                ignore_roles=normalized_ignore_roles,
+                max_retries=max_retries,
+            )
+        except BatchUnavailableError as error:
+            partial = error.partial_result
+            if partial is not None and partial.batch_ids:
+                # Earlier batches were already submitted; re-submitting all
+                # messages sequentially would duplicate them. Surface instead.
+                raise
+            notice = (
+                "Zep Batch API not available on this plan — falling back to "
+                "sequential thread.add_messages ingestion."
+            )
+            logger.info(notice)
+            result = _submit_sequential(
+                client,
+                prepared,
+                messages_per_call=messages_per_call,
+                ignore_roles=normalized_ignore_roles,
+                max_retries=max_retries,
+            )
+            result.warnings.insert(0, notice)
     result.warnings.extend(warnings)
     if wait:
         result.wait(poll_interval=poll_interval, timeout=timeout)

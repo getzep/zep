@@ -72,38 +72,3 @@ def test_batch_round_trip(zep, graph_id):
     assert result.batch_ids
     result.wait(poll_interval=5.0, timeout=600)
     assert result.status in ("succeeded", "partial")
-
-
-def test_batch_still_drops_thread_message_created_at(zep):
-    """Canary for the auto->sequential workaround in threads.py.
-
-    The Batch API currently ignores created_at on thread_message items, so
-    ingest_thread_messages(method="auto") routes timestamped backfills through
-    the sequential path. When THIS TEST FAILS, Zep has fixed the bug: remove
-    the workaround (and this canary).
-    """
-    from zep_ingest import ThreadMessage, ingest_thread_messages
-
-    user_id = f"zep-ingest-it-{uuid.uuid4().hex[:12]}"
-    zep.user.add(user_id=user_id)
-    try:
-        message = ThreadMessage(
-            thread_id=f"canary-{user_id}",
-            role="user",
-            name="Canary",
-            content="Canary: does the Batch API preserve created_at yet?",
-            created_at="2024-06-15T10:30:00Z",
-        )
-        try:
-            result = ingest_thread_messages(zep, [message], user_id=user_id, method="batch")
-        except BatchUnavailableError:
-            pytest.skip("Batch API not enabled for this ZEP_API_KEY")
-        result.wait(poll_interval=5.0, timeout=600)
-        episodes = zep.graph.episode.get_by_user_id(user_id, lastn=5)
-        [episode] = episodes.episodes or []
-        assert not str(episode.created_at).startswith("2024-06-15"), (
-            "The Batch API now preserves created_at on thread_message items — "
-            "remove the auto->sequential workaround in threads.py and this canary."
-        )
-    finally:
-        zep.user.delete(user_id)
