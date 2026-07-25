@@ -73,6 +73,9 @@ class EmlLoader:
                 data=f"Email from {sender} to {recipient} (subject: {subject}):\n{body}",
                 data_type="text",
                 created_at=created_at,
-                metadata={"source": "email", "subject": subject[:100]},
-                source_description=f"email export ({file.name})",
+                metadata={
+                    "source_type": "email",
+                    "subject": subject[:100],
+                    "file_name": file.name,
+                },
             )

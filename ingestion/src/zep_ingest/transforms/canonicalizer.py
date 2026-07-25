@@ -152,7 +152,6 @@ class AliasCanonicalizer:
                     data_type=episode.data_type,
                     created_at=episode.created_at,
                     metadata=episode.metadata,
-                    source_description=episode.source_description,
                     document=episode.document,
                 )
         self.flush_warnings()

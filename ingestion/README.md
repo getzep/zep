@@ -435,7 +435,7 @@ result.wait()
 Retrieval-side behavior is out of scope: survivor selection under contradiction
 (strictly latest-`valid_at`), confidence/authority weighting, and as-of search.
 The ingestion-side mitigations — correct `created_at`, canonical names, and
-`source`/`confidence` episode `metadata` you can filter on at search time — are
+`source_type`/`confidence` episode `metadata` you can filter on at search time — are
 all supported here.
 
 ## Extending

@@ -99,11 +99,10 @@ class TranscriptLoader:
                 data_type="text",
                 created_at=created_at,
                 metadata={
-                    "source": "transcript",
+                    "source_type": "transcript",
                     "meeting": title[:100],
                     "chunk": f"{index}/{len(chunks)}",
                 },
-                source_description=f"meeting transcript: {title}"[:500],
             )
 
     @staticmethod

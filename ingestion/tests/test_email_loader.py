@@ -71,11 +71,11 @@ def test_unknown_timezone_date_is_normalized_to_utc(tmp_path):
     assert episode.created_at == "2026-04-14T09:15:00+00:00"
 
 
-def test_metadata_and_source_description(eml_dir):
+def test_metadata_carries_source_type_and_fields(eml_dir):
     [episode] = EmlLoader(str(eml_dir / "01_kickoff.eml")).load()
-    assert episode.metadata["source"] == "email"
+    assert episode.metadata["source_type"] == "email"
     assert episode.metadata["subject"] == "Kickoff priorities"
-    assert episode.source_description == "email export (01_kickoff.eml)"
+    assert episode.metadata["file_name"] == "01_kickoff.eml"
 
 
 EML_HTML_ONLY = """\

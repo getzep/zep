@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from zep_cloud.types.batch_add_item import BatchAddItem
 
-from zep_ingest._validation import check_len, check_scalar_map, check_timestamp
+from zep_ingest._validation import check_scalar_map, check_timestamp
 from zep_ingest.exceptions import ConfigurationError
 
 # Documented Zep API limits (see help.getzep.com/adding-batch-data and
@@ -23,6 +23,12 @@ DataType = Literal["text", "json", "message"]
 class Episode:
     """One unit of data to ingest into a Zep graph.
 
+    Provenance travels in ``metadata``: loaders stamp a ``source_type`` on every
+    episode (``document``, ``slack``, ``transcript``, ``email``, ``json_record``)
+    plus source-specific keys (a document's ``file_name``, a Slack ``channel`` /
+    ``thread_ts``, and so on) — structured, queryable fields rather than one
+    free-text description.
+
     ``document`` is internal plumbing: the chunker sets it to the full source
     document when it splits, and the contextualizer consumes it. It is never
     sent to the API.
@@ -32,7 +38,6 @@ class Episode:
     data_type: DataType = "text"
     created_at: str | None = None  # RFC3339; loaders populate from source timestamps
     metadata: dict[str, Any] | None = None
-    source_description: str | None = None
     document: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
@@ -45,7 +50,6 @@ class Episode:
             )
         check_timestamp("created_at", self.created_at, errors)
         check_scalar_map("metadata", self.metadata, errors, max_keys=MAX_METADATA_KEYS)
-        check_len("source_description", self.source_description, 500, errors)
         if self.document is not None and not isinstance(self.document, str):
             errors.append(f"document must be a string, got {type(self.document).__name__}")
         if errors:
@@ -76,7 +80,6 @@ def to_batch_item(episode: Episode, destination: Destination) -> BatchAddItem:
         data_type=episode.data_type,
         created_at=episode.created_at,
         metadata=episode.metadata,
-        source_description=episode.source_description,
         graph_id=destination.graph_id,
         user_id=destination.user_id,
     )
@@ -89,8 +92,6 @@ def to_graph_add_kwargs(episode: Episode, destination: Destination) -> dict[str,
         kwargs["created_at"] = episode.created_at
     if episode.metadata is not None:
         kwargs["metadata"] = episode.metadata
-    if episode.source_description is not None:
-        kwargs["source_description"] = episode.source_description
     if destination.graph_id is not None:
         kwargs["graph_id"] = destination.graph_id
     if destination.user_id is not None:

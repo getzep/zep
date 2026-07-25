@@ -127,9 +127,10 @@ class TestFieldMapping:
         episodes = list(JsonRecordsLoader(jsonl_file, metadata_fields=["sku"]).load())
         assert episodes[0].metadata["sku"] == "P1"
 
-    def test_source_description_is_filename(self, jsonl_file):
+    def test_metadata_carries_source_type_and_filename(self, jsonl_file):
         episodes = list(JsonRecordsLoader(jsonl_file).load())
-        assert episodes[0].source_description == "products.jsonl"
+        assert episodes[0].metadata["source_type"] == "json_record"
+        assert episodes[0].metadata["file_name"] == "products.jsonl"
 
 
 class TestOneLiner:

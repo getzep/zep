@@ -46,5 +46,5 @@ class TextFileLoader:
                 data=file.read_text(encoding="utf-8"),
                 data_type="text",
                 created_at=created_at,
-                source_description=file.name,
+                metadata={"source_type": "document", "file_name": file.name},
             )

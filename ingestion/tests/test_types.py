@@ -33,7 +33,6 @@ class TestEpisode:
         assert ep.data_type == "text"
         assert ep.created_at is None
         assert ep.metadata is None
-        assert ep.source_description is None
         assert ep.document is None
 
     def test_document_excluded_from_repr(self):
@@ -71,8 +70,7 @@ class TestToBatchItem:
             data="hello",
             data_type="message",
             created_at="2024-06-15T10:30:00Z",
-            metadata={"source": "slack"},
-            source_description="Slack #general export",
+            metadata={"source_type": "slack", "channel": "general"},
         )
         item = to_batch_item(ep, Destination(graph_id="g1"))
         assert isinstance(item, BatchAddItem)
@@ -80,8 +78,7 @@ class TestToBatchItem:
         assert item.data == "hello"
         assert item.data_type == "message"
         assert item.created_at == "2024-06-15T10:30:00Z"
-        assert item.metadata == {"source": "slack"}
-        assert item.source_description == "Slack #general export"
+        assert item.metadata == {"source_type": "slack", "channel": "general"}
         assert item.graph_id == "g1"
         assert item.user_id is None
 
@@ -102,16 +99,14 @@ class TestToGraphAddKwargs:
             data="hello",
             data_type="text",
             created_at="2024-06-15T10:30:00Z",
-            metadata={"source": "docs"},
-            source_description="handbook",
+            metadata={"source_type": "document", "file_name": "handbook.md"},
         )
         kwargs = to_graph_add_kwargs(ep, Destination(user_id="u1"))
         assert kwargs == {
             "data": "hello",
             "type": "text",
             "created_at": "2024-06-15T10:30:00Z",
-            "metadata": {"source": "docs"},
-            "source_description": "handbook",
+            "metadata": {"source_type": "document", "file_name": "handbook.md"},
             "user_id": "u1",
         }
 

@@ -306,7 +306,7 @@ class SlackExportLoader:
 
     def _episode(self, messages: list[SlackMessage], channel: str) -> Episode:
         first = messages[0]
-        metadata: dict[str, Any] = {"source": "slack", "channel": channel}
+        metadata: dict[str, Any] = {"source_type": "slack", "channel": channel}
         if len(messages) > 1 or (self.grouping == "message" and first.thread_ts):
             metadata["thread_ts"] = first.thread_ts or first.ts
         return Episode(
@@ -314,5 +314,4 @@ class SlackExportLoader:
             data_type="text",
             created_at=datetime.fromtimestamp(float(first.ts), tz=UTC).isoformat(),
             metadata=metadata,
-            source_description=f"Slack #{channel} export",
         )

@@ -148,8 +148,7 @@ class TestFieldPropagation:
         ep = Episode(
             data=text,
             created_at="2024-06-15T10:30:00Z",
-            metadata={"source": "slack"},
-            source_description="desc",
+            metadata={"source_type": "slack", "channel": "general"},
         )
         out = apply(LimitGuard(), ep)
         n = len(out)
@@ -157,9 +156,9 @@ class TestFieldPropagation:
         for i, episode in enumerate(out, start=1):
             assert episode.created_at == "2024-06-15T10:30:00Z"
             assert episode.metadata is not None
-            assert episode.metadata["source"] == "slack"
+            assert episode.metadata["source_type"] == "slack"
+            assert episode.metadata["channel"] == "general"
             assert episode.metadata["part"] == f"{i}/{n}"
-            assert episode.source_description == "desc"
 
     def test_full_metadata_map_is_preserved_without_part_key(self):
         metadata = {f"k{i}": i for i in range(10)}

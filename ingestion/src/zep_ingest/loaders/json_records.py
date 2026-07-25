@@ -107,7 +107,7 @@ class JsonRecordsLoader:
     def _to_episode(self, record: Any, file: Path) -> tuple[Episode, int]:
         created_at: str | None = None
         timestamp_missing = 0
-        metadata: dict[str, Any] | None = None
+        metadata: dict[str, Any] = {"source_type": "json_record", "file_name": file.name}
         if isinstance(record, dict):
             record = dict(record)
             for target, source in (
@@ -122,19 +122,15 @@ class JsonRecordsLoader:
             if self.created_at_field:
                 created_at = _parse_timestamp(record.get(self.created_at_field))
                 timestamp_missing = int(created_at is None)
-            lifted = {
-                f: record[f]
-                for f in self.metadata_fields
-                if f in record and isinstance(record[f], _SCALARS)
-            }
-            metadata = lifted or None
+            for f in self.metadata_fields:
+                if f in record and isinstance(record[f], _SCALARS):
+                    metadata[f] = record[f]
         return (
             Episode(
                 data=json.dumps(record),
                 data_type="json",
                 created_at=created_at,
                 metadata=metadata,
-                source_description=file.name,
             ),
             timestamp_missing,
         )

@@ -33,12 +33,8 @@ class TestBasics:
         for ep in episodes:
             assert ep.data_type == "text"
             assert ep.metadata is not None
-            assert ep.metadata["source"] == "slack"
+            assert ep.metadata["source_type"] == "slack"
             assert ep.metadata["channel"] in ("general", "random")
-            assert ep.source_description in (
-                "Slack #general export",
-                "Slack #random export",
-            )
 
     def test_general_channel_episode_order_and_count(self):
         eps = general(load())

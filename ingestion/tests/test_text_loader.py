@@ -15,7 +15,9 @@ def test_one_text_episode_per_file(tmp_path):
     assert sorted(e.data for e in episodes) == ["Document A", "Document B"]
     for ep in episodes:
         assert ep.data_type == "text"
-        assert ep.source_description in ("a.md", "b.md")
+        assert ep.metadata is not None
+        assert ep.metadata["source_type"] == "document"
+        assert ep.metadata["file_name"] in ("a.md", "b.md")
 
 
 def test_created_at_from_mtime(tmp_path):

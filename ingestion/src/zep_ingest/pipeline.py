@@ -73,7 +73,6 @@ def _validated_replay(episodes: Iterable[Episode]) -> Iterator[Iterator[Episode]
                 episode.data_type,
                 episode.created_at,
                 episode.metadata,
-                episode.source_description,
                 episode.document,
             )
             pickle.dump(record, spool, protocol=pickle.HIGHEST_PROTOCOL)
@@ -82,9 +81,7 @@ def _validated_replay(episodes: Iterable[Episode]) -> Iterator[Iterator[Episode]
         def replay() -> Iterator[Episode]:
             while True:
                 try:
-                    data, data_type, created_at, metadata, source_description, document = (
-                        pickle.load(spool)
-                    )
+                    data, data_type, created_at, metadata, document = pickle.load(spool)
                 except EOFError:
                     return
                 yield Episode(
@@ -92,7 +89,6 @@ def _validated_replay(episodes: Iterable[Episode]) -> Iterator[Iterator[Episode]
                     data_type=data_type,
                     created_at=created_at,
                     metadata=metadata,
-                    source_description=source_description,
                     document=document,
                 )
 

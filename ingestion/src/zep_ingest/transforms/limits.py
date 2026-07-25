@@ -65,7 +65,6 @@ class LimitGuard:
                     data_type=output_type,
                     created_at=episode.created_at,
                     metadata=metadata,
-                    source_description=episode.source_description,
                     document=episode.document,
                 )
 

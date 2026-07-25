@@ -24,6 +24,8 @@ def test_speaker_transcript_chunks_at_turn_boundaries(tmp_path):
     [episode] = TranscriptLoader(path, meeting_start="2025-01-01T10:00:00Z").load()
     assert episode.data_type == "text"
     assert episode.created_at == "2025-01-01T10:00:02+00:00"
+    assert episode.metadata["source_type"] == "transcript"
+    assert episode.metadata["meeting"] == "Quarterly Review"
     assert episode.data.splitlines() == [
         "Avery Brown: First generated turn.",
         "Blake Carter: Second generated turn.",

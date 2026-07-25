@@ -99,23 +99,22 @@ class TestChunkMetadata:
         ep = Episode(
             data=make_long_text(),
             created_at="2024-06-15T10:30:00Z",
-            metadata={"source": "handbook"},
-            source_description="employee handbook",
+            metadata={"source_type": "document", "file_name": "handbook.md"},
         )
         chunks = apply(TextChunker(chunk_size=500), ep)
         n = len(chunks)
         for i, chunk in enumerate(chunks, start=1):
             assert chunk.created_at == "2024-06-15T10:30:00Z"
             assert chunk.metadata is not None
-            assert chunk.metadata["source"] == "handbook"
+            assert chunk.metadata["source_type"] == "document"
+            assert chunk.metadata["file_name"] == "handbook.md"
             assert chunk.metadata["chunk"] == f"{i}/{n}"
-            assert chunk.source_description == "employee handbook"
 
     def test_parent_metadata_not_mutated(self):
-        metadata = {"source": "handbook"}
+        metadata = {"source_type": "document", "file_name": "handbook.md"}
         ep = Episode(data=make_long_text(), metadata=metadata)
         apply(TextChunker(chunk_size=500), ep)
-        assert metadata == {"source": "handbook"}
+        assert metadata == {"source_type": "document", "file_name": "handbook.md"}
 
     def test_full_metadata_map_is_preserved_without_chunk_key(self):
         metadata = {f"k{i}": i for i in range(10)}
