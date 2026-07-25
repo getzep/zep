@@ -4,6 +4,15 @@ All notable changes to `zep-ingest` are documented here.
 
 ## Unreleased
 
+- **Breaking:** remove `create_if_missing` from `Pipeline.run` and every pipeline
+  one-liner. The package now writes only into existing graphs and never creates
+  them — create the destination first (`client.graph.create(graph_id=...)` or
+  `client.user.add(user_id=...)`). `ingest_thread_messages` still auto-creates the
+  user and its threads, which the Batch API requires.
+- Add `wait` / `poll_interval` / `timeout` to `ingest_fact_triples`,
+  `ingest_nodes`, and `ingest_thread_messages`, matching the pipeline one-liners:
+  `wait=True` blocks until Zep finishes processing the submitted items, polling
+  every `poll_interval` seconds up to `timeout`.
 - Add an `ignore_roles` parameter to `ingest_thread_messages` (e.g.
   `ignore_roles=["assistant"]`): the listed roles stay in thread history and
   serve as context but are excluded from graph extraction. Applies on both the

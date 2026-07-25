@@ -262,8 +262,12 @@ for a named graph and
 [`examples/user_graph_example.py`](https://github.com/getzep/zep/blob/main/ingestion/examples/user_graph_example.py) for a user
 graph):
 
-1. Create the graph (`create_if_missing=True` does it for you).
-2. Set the ontology (`ontology=` preflight).
+1. Create the graph: `client.graph.create(graph_id=...)` (or `client.user.add(...)`
+   for a user graph). The ingestion package writes only into existing graphs —
+   it never creates them.
+2. Set the ontology before any data flows: `client.graph.set_ontology(...)`, or
+   pass `ontology=` to a pipeline one-liner / `Pipeline.run` to apply it as a
+   preflight. It is not retroactive.
 3. Optionally connect fact triples to existing canonical entities by pinning
    endpoints with `source_node_uuid`/`target_node_uuid`. Extraction dedups
    against the existing graph, so known entities anchor resolution.

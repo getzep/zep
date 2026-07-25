@@ -3,8 +3,9 @@
 preview() runs a lazy sample through the full chain by default, with no Zep API
 calls. Its warning scope is explicit; pass ``limit=None`` to validate the full
 stream for missing timestamps, oversize splits, and runaway alias rewrites.
-run() adds the preflights that encode Zep's order-of-operations rules: ontology
-before ingestion, destination existence before submission.
+run() adds the preflight that encodes Zep's order-of-operations rule: ontology
+before ingestion. The destination graph/user must already exist — ingestion
+writes into existing graphs and never creates them.
 """
 
 import pickle
@@ -17,7 +18,6 @@ from tempfile import SpooledTemporaryFile
 from typing import Any, Literal
 
 from zep_cloud.client import Zep
-from zep_cloud.errors.not_found_error import NotFoundError
 
 from zep_ingest._validation import require_nonnegative_number
 from zep_ingest.exceptions import ConfigurationError
@@ -173,7 +173,6 @@ class Pipeline:
         user_id: str | None = None,
         method: Method = "auto",
         ontology: OntologySpec | None = None,
-        create_if_missing: bool = False,
         batch_metadata: dict[str, Any] | None = None,
         wait: bool = False,
         poll_interval: float = 10.0,
@@ -191,8 +190,6 @@ class Pipeline:
         counter = _MissingTimestampCounter()
         baseline = self._warning_baseline()
         with _validated_replay(self._stream(guard, counter)) as stream:
-            if create_if_missing:
-                _ensure_destination(client, destination)
             if ontology is not None:
                 _apply_ontology(client, destination, ontology)
             if self.submitter is not None:
@@ -209,20 +206,6 @@ class Pipeline:
         if wait:
             result.wait(poll_interval=poll_interval, timeout=timeout)
         return result
-
-
-def _ensure_destination(client: Zep, destination: Destination) -> None:
-    if destination.graph_id is not None:
-        try:
-            client.graph.get(destination.graph_id)
-        except NotFoundError:
-            client.graph.create(graph_id=destination.graph_id)
-    else:
-        user_id = destination.user_id or ""
-        try:
-            client.user.get(user_id)
-        except NotFoundError:
-            client.user.add(user_id=user_id)
 
 
 def _apply_ontology(client: Zep, destination: Destination, ontology: OntologySpec) -> None:

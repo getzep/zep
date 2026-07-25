@@ -114,6 +114,13 @@ class TestIngest:
         assert result.task_ids == ["task-1"]
         assert result.status == "queued"
 
+    def test_wait_polls_until_terminal(self, mock_zep):
+        result = ingest_fact_triples(
+            mock_zep, [triple()], graph_id="g1", wait=True, poll_interval=0
+        )
+        assert result.status == "succeeded"
+        mock_zep.task.get.assert_called()
+
     def test_submission_without_task_id_is_untracked(self, mock_zep):
         mock_zep.graph.add_fact_triple.return_value = AddTripleResponse()
 

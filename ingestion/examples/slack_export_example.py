@@ -44,11 +44,12 @@ def main() -> None:
     client = Zep()  # reads ZEP_API_KEY
     graph_id = f"example-slack-{int(time.time())}"
 
+    # Create the graph up front; ingestion writes only into existing graphs.
+    client.graph.create(graph_id=graph_id)
     result = ingest_slack_export(
         client,
         DATA / "slack_export",
         graph_id=graph_id,
-        create_if_missing=True,
         ontology=ONTOLOGY,  # set BEFORE data flows — it is not retroactive
         aliases={
             "ROBOT-202": [

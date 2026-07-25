@@ -36,6 +36,7 @@ from zep_ingest._validation import (
     check_scalar_map,
     check_timestamp,
     require_int_range,
+    require_nonnegative_number,
 )
 from zep_ingest.exceptions import (
     BatchUnavailableError,
@@ -334,6 +335,9 @@ def ingest_thread_messages(
     messages_per_call: int = 30,
     max_retries: int = 5,
     thread_id_suffix: str | None = None,
+    wait: bool = False,
+    poll_interval: float = 10.0,
+    timeout: float | None = None,
 ) -> IngestResult:
     """Backfill chat history into a user's graph via threads.
 
@@ -350,6 +354,9 @@ def ingest_thread_messages(
     conversational context but exclude from graph extraction; those messages are
     still stored in thread history. Applies to both the batch and sequential
     submission paths.
+
+    Pass ``wait=True`` to block until Zep finishes processing the submitted
+    messages, polling every ``poll_interval`` seconds up to ``timeout``.
     """
     if not user_id:
         raise ConfigurationError(
@@ -364,6 +371,9 @@ def ingest_thread_messages(
     require_int_range("max_retries", max_retries, minimum=1)
     if thread_id_suffix is not None and not isinstance(thread_id_suffix, str):
         raise ConfigurationError("thread_id_suffix must be a string or None")
+    require_nonnegative_number("poll_interval", poll_interval)
+    if timeout is not None:
+        require_nonnegative_number("timeout", timeout)
     normalized_ignore_roles = _validate_ignore_roles(ignore_roles)
     if isinstance(messages, str | Path):
         materialized = _load_messages(Path(messages))
@@ -444,4 +454,6 @@ def ingest_thread_messages(
             )
             result.warnings.insert(0, notice)
     result.warnings.extend(warnings)
+    if wait:
+        result.wait(poll_interval=poll_interval, timeout=timeout)
     return result

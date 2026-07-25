@@ -26,11 +26,12 @@ def main() -> None:
     client = Zep()  # reads ZEP_API_KEY
     graph_id = f"example-email-{int(time.time())}"
 
+    # Create the graph up front; ingestion writes only into existing graphs.
+    client.graph.create(graph_id=graph_id)
     result = ingest_emails(
         client,
         str(DATA / "emails" / "*.eml"),
         graph_id=graph_id,
-        create_if_missing=True,
         ontology=ONTOLOGY,  # set BEFORE data flows — it is not retroactive
         # canonicalize retired code names, longhand phrasings, and casual
         # first-name references so each merges into one entity

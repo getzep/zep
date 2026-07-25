@@ -218,6 +218,13 @@ class TestSequentialPath:
         mock_zep.batch.create.assert_not_called()
         assert any("created_at" in w for w in result.warnings)
 
+    def test_wait_polls_until_terminal(self, mock_zep):
+        result = ingest_thread_messages(
+            mock_zep, [message()], user_id="u1", method="sequential", wait=True, poll_interval=0
+        )
+        assert result.status == "succeeded"
+        mock_zep.task.get.assert_called()
+
     def test_auto_uses_batch_when_no_timestamps(self, mock_zep):
         msgs = [ThreadMessage(thread_id="t1", role="user", content="hi")]
         result = ingest_thread_messages(mock_zep, msgs, user_id="u1")

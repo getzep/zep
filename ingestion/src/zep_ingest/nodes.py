@@ -16,6 +16,7 @@ from zep_ingest._validation import (
     check_required_string,
     check_scalar_map,
     check_timestamp,
+    require_nonnegative_number,
 )
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.result import AddError, IngestResult
@@ -99,13 +100,22 @@ def ingest_nodes(
     batch_size: int = MAX_NODES_PER_REQUEST,
     max_retries: int = 5,
     require_uuids: bool = True,
+    wait: bool = False,
+    poll_interval: float = 10.0,
+    timeout: float | None = None,
 ) -> IngestResult:
     """Create/upsert canonical nodes via ``client.graph.add_nodes``.
 
     UUID is the only safe idempotency key. By default every node must have a
     persisted UUIDv4; callers must explicitly opt out of that protection.
     UUID uniqueness is checked before the first network call.
+
+    Pass ``wait=True`` to block until Zep finishes processing the submitted
+    nodes, polling every ``poll_interval`` seconds up to ``timeout``.
     """
+    require_nonnegative_number("poll_interval", poll_interval)
+    if timeout is not None:
+        require_nonnegative_number("timeout", timeout)
     destination = Destination(graph_id=graph_id, user_id=user_id)
     if not 1 <= batch_size <= MAX_NODES_PER_REQUEST:
         raise ConfigurationError(f"batch_size must be 1..{MAX_NODES_PER_REQUEST}, got {batch_size}")
@@ -151,4 +161,6 @@ def ingest_nodes(
             result.task_ids.append(str(task_id))
         elif not task_id:
             result.untracked_items += len(batch)
+    if wait:
+        result.wait(poll_interval=poll_interval, timeout=timeout)
     return result

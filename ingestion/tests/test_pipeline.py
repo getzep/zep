@@ -4,7 +4,6 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 import pytest
-from zep_cloud.errors.not_found_error import NotFoundError
 
 from tests.conftest import make_zep_episode
 from zep_ingest.exceptions import ConfigurationError
@@ -235,23 +234,12 @@ class TestPreflights:
         Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_id="g1")
         mock_zep.graph.set_ontology.assert_not_called()
 
-    def test_create_if_missing_graph(self, mock_zep):
-        mock_zep.graph.get.side_effect = NotFoundError(body=None)
-        Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_id="g1", create_if_missing=True)
-        mock_zep.graph.create.assert_called_once_with(graph_id="g1")
-
-    def test_create_if_missing_user(self, mock_zep):
-        mock_zep.user.get.side_effect = NotFoundError(body=None)
-        Pipeline(ListLoader([stamped("x")])).run(mock_zep, user_id="u1", create_if_missing=True)
-        mock_zep.user.add.assert_called_once_with(user_id="u1")
-
-    def test_create_if_missing_skips_existing(self, mock_zep):
-        Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_id="g1", create_if_missing=True)
-        mock_zep.graph.create.assert_not_called()
-
-    def test_no_preflight_check_without_create_if_missing(self, mock_zep):
+    def test_run_never_creates_destination(self, mock_zep):
+        # Ingestion writes only into existing graphs/users; it never creates them.
         Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_id="g1")
         mock_zep.graph.get.assert_not_called()
+        mock_zep.graph.create.assert_not_called()
+        mock_zep.user.add.assert_not_called()
 
 
 class TestConvenience:
