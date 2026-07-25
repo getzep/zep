@@ -1,73 +1,43 @@
 # Changelog
 
-All notable changes to `zep-ingest` are documented here.
+All notable changes to `zep-ingest` are documented here. The project follows
+[Semantic Versioning](https://semver.org); while at `0.x` the public API may
+still change between minor versions.
 
-## Unreleased
+## 0.1.0 (unreleased)
 
-- **Breaking:** `ingest_thread_messages` no longer creates the user — the user
-  must already exist (create it with `client.user.add(...)`, where you also set
-  its profile and any per-user ontology/instructions). Missing threads are still
-  created automatically (they are backfill-owned). A missing user now raises
-  `ConfigurationError` before any submission instead of silently creating a bare
-  user.
-- **Breaking:** `ThreadMessage` now requires `role`, `name`, and `created_at`
-  (previously defaulted to `"user"`/`None`/`None`); only `metadata` stays
-  optional. Because every message now carries a `created_at` the Batch API would
-  drop, `method="auto"` always submits via sequential `thread.add_messages` (the
-  auto→batch path is gone); pass `method="batch"` to opt into the Batch API.
-- **Breaking:** remove the `ontology` parameter from `Pipeline.run` and every
-  pipeline one-liner. The ontology is a property of the graph, not of an ingest
-  run: set it once with `client.graph.set_ontology(entities=..., edges=...,
-  graph_ids=[...])` before ingesting. Setting it per run re-declared it on every
-  call, and because `set_ontology` replaces the whole ontology for its scope, the
-  last call silently won. Doing it yourself also unlocks the scopes the parameter
-  could not express — project-wide (omit `graph_ids`/`user_ids`) and multiple
-  graphs or users per call.
-- **Breaking:** remove `create_if_missing` from `Pipeline.run` and every pipeline
-  one-liner. The package now writes only into existing graphs and never creates
-  them — create the destination first (`client.graph.create(graph_id=...)` or
-  `client.user.add(user_id=...)`). `ingest_thread_messages` still auto-creates the
-  user and its threads, which the Batch API requires.
-- Add `wait` / `poll_interval` / `timeout` to `ingest_fact_triples`,
-  `ingest_nodes`, and `ingest_thread_messages`, matching the pipeline one-liners:
-  `wait=True` blocks until Zep finishes processing the submitted items, polling
-  every `poll_interval` seconds up to `timeout`.
-- Add an `ignore_roles` parameter to `ingest_thread_messages` (e.g.
-  `ignore_roles=["assistant"]`): the listed roles stay in thread history and
-  serve as context but are excluded from graph extraction. Applies on both the
-  Batch API (`batch.create`) and sequential (`thread.add_messages`) paths;
-  unknown roles are rejected before any API call.
-- Reject blank Batch API IDs before submission, preserve explicit
-  `untracked` status when an asynchronous write returns no completion handle,
-  and keep raw chunks when an LLM returns empty contextualization.
-- Ingest Slack, transcript, and email sources as `text` episodes instead of
-  `message`. Each episode already carries its speaker/author context inline
-  (`Sender (Slack #channel, time): …`, `Speaker: …`, `Email from … to …`), so
-  no attribution is lost; the pre-defined pipelines no longer emit `message`
-  episodes. (`message` remains a valid `data_type` for directly constructed
-  episodes.)
-- Restrict the direct dataclass paths (`ingest_fact_triples`, `ingest_nodes`,
-  `ingest_thread_messages`) to JSON input — JSONL or a JSON array. A `.csv` path
-  is now rejected with a clear error, because these schemas carry list/mapping
-  fields (node labels, attributes, metadata) that CSV cannot express.
-  `ingest_json_records` still accepts CSV for flat tabular data.
-- Require `zep-cloud>=3.25.0` and create canonical nodes through the public
-  `client.graph.add_nodes` SDK method (`ingest_nodes`), replacing the previous
-  private-transport call. The package now uses only the public SDK surface.
-- Document `ingest_nodes` / `NodeItem` direct node seeding in the README.
-- Fix the ontology guidance in the README: default entity/edge types apply to
-  user graphs only, so named (standalone) graphs must declare every type they
-  rely on (matching `examples/example_ontology.py`).
-- Remove the no-op internal metadata helper (`_capped_metadata`); episode
-  metadata is already validated at construction.
+First release — everything upstream of the Zep API for getting unstructured and
+structured data into Context Graphs correctly.
 
-## 0.1.0 - 2026-07-10
-
-Initial public release.
-
-- Lazy loader/transform pipeline with preview, validation, and warnings before submission.
-- Slack, text, email, transcript, and JSON/CSV loaders with source-aware timestamps.
-- Text chunking, JSON normalization, alias canonicalization, and optional LLM context.
-- Enterprise Batch API submission with sequential fallback, retries, progress, and errors.
-- Fact-triple and user-thread ingestion with eager validation and temporal safeguards.
-- End-to-end examples and bundled fixtures for common ingestion workflows.
+- **A one-liner per source:** `ingest_slack_export`, `ingest_documents`,
+  `ingest_transcripts`, `ingest_emails`, and `ingest_json_records` (CSV / JSONL /
+  JSON array) parse the source, preserve its original timestamps, and submit.
+- **User-graph and explicit paths:** `ingest_thread_messages` backfills chat
+  history into a user's graph via threads; `ingest_fact_triples` asserts known
+  relationships; `ingest_nodes` seeds canonical entities.
+- **Composable pipeline:** `Loader → Transforms → LimitGuard → Submitter`, all
+  lazy generators (a 500k-item export never sits in memory). `preview()` returns
+  the transformed episodes and validation warnings with zero Zep API calls.
+- **Transforms:** `TextChunker` (paragraph/sentence-aware, 500-char chunks),
+  `AliasCanonicalizer` (entity-name canonicalization with a risky-word guard),
+  and optional `LLMContextualizer` — bring any LLM through a one-method
+  `complete()` protocol; OpenAI, Anthropic, and OpenAI-compatible adapters ship
+  as optional extras.
+- **Submission:** the enterprise Batch API with transparent fallback to
+  sequential `graph.add` for the episode paths, rate-limit-aware pacing, retries,
+  progress, and per-item error recording. `IngestResult` exposes
+  `wait()` / `status` / `failed_items()` and the resume handles
+  (`batch_ids` / `task_ids` / `episode_uuids`).
+- **Temporal correctness:** loaders preserve source timestamps, and the pipeline
+  warns about episodes missing `created_at` before submission.
+  `search_when_ready` absorbs post-ingestion indexing lag.
+- **Ingests into existing, configured destinations:** create the graph and set
+  its ontology (`client.graph.set_ontology`) yourself first — the package does
+  not create graphs or users, nor set ontologies (`ingest_thread_messages`
+  creates only the backfill's own threads).
+- **Eager, client-side validation:** every documented API limit (episode/message
+  size, metadata keys, UUIDs, RFC3339 timestamps, SCREAMING_SNAKE fact names, …)
+  is checked before the first network call — a bad item is a clear Python error
+  naming the field, not an HTTP 400 mid-run.
+- **Examples and fixtures** for every path, built around one coherent sample
+  dataset.
