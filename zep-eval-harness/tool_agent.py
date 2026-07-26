@@ -490,15 +490,23 @@ async def run_tool_agent(
             result.completion_tokens += getattr(usage, "completion_tokens", 0) or 0
         return response.choices[0].message if response.choices else None
 
-    for iteration in range(1, max_iterations + 1):
+    # Counted rather than a range(), because the retrieval nudge below gives the
+    # round back: it exists to compensate for a provider ignoring tool_choice, and
+    # shouldn't come out of the retrieval budget the run asked for.
+    rounds_used = 0
+    while rounds_used < max_iterations:
         budget_left = max_tool_calls - len(result.calls)
         if budget_left <= 0:
             cut_off = True
             break
 
+        first_round = rounds_used == 0 and not retrieval_demanded
+        rounds_used += 1
+        iteration = rounds_used
+
         llm_start = time()
         message = await _turn(
-            "required" if (iteration == 1 and require_tool_call) else "auto",
+            "required" if (first_round and require_tool_call) else "auto",
             f"agent turn {iteration} for {label}",
         )
         result.llm_ms += (time() - llm_start) * 1000
@@ -510,20 +518,17 @@ async def run_tool_agent(
             # `message is None` when the provider returned no choices at all:
             # there is no assistant turn to replay, and nothing to argue with, so
             # that falls through to the forced-answer turn instead of nudging.
-            if (
-                message is not None
-                and iteration == 1
-                and require_tool_call
-                and not retrieval_demanded
-            ):
+            if message is not None and first_round and require_tool_call:
                 # tool_choice="required" was asked for and the provider answered
                 # anyway (it may not support the parameter). Say it in the prompt
-                # and spend one more round rather than accepting an answer the run
-                # asked to be grounded in retrieval. Once only, so a model that
-                # simply refuses can still finish.
+                # and give the model another turn rather than accepting an answer
+                # the run asked to be grounded in retrieval. Once only, so a model
+                # that simply refuses can still finish, and the round is refunded
+                # so the nudge doesn't cost the agent a retrieval opportunity.
                 print(f"  ⚠ no tool call on the first turn despite tool_choice=required for {label}")
                 retrieval_demanded = True
                 result.require_tool_call_unenforced = True
+                rounds_used -= 1
                 messages.append(_assistant_message(message, iteration))
                 messages.append({"role": "user", "content": RETRIEVE_FIRST_INSTRUCTION})
                 unanswered_text = unanswered_text or text
@@ -583,8 +588,11 @@ async def run_tool_agent(
         cut_off = True
 
     if cut_off:
+        # Measured against rounds actually offered to the model, not
+        # result.iterations (which counts only rounds that requested tools): a
+        # round the model spent answering still consumed the budget.
         result.hit_call_cap = len(result.calls) >= max_tool_calls
-        result.hit_iteration_cap = result.iterations >= max_iterations
+        result.hit_iteration_cap = rounds_used >= max_iterations
 
     if answer is None:
         llm_start = time()
