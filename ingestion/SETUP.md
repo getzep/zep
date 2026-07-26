@@ -20,14 +20,16 @@ pip install "zep-ingest[anthropic]"   # and/or "zep-ingest[openai]"
 
 Requires Python ≥ 3.11.
 
-## 3. Batch API vs sequential (plan requirements)
+## 3. Batch API vs sequential
 
-- The **Batch API** is available to **enterprise plans only** — contact your
-  Zep account team to enable it. It is the fastest path for large backfills
-  (up to 50,000 items per batch).
-- **Everything in this package also works without it**: the default
-  `method="auto"` detects Batch API availability and falls back to sequential
-  `graph.add` ingestion with rate-limit-aware pacing. Force a path with
+- The **Batch API** is the default submission path and the fastest way to run
+  large backfills (up to 50,000 items per batch).
+- **Everything in this package also works without it**: if the deployment has
+  no batch endpoint to call (HTTP 404 — an older server, a self-hosted or
+  Community deployment, or a base URL that doesn't route `/batches`), the
+  default `method="auto"` falls back to sequential `graph.add` ingestion with
+  rate-limit-aware pacing. That 404 is the only trigger; authorization and
+  quota errors are raised rather than quietly downgraded. Force a path with
   `method="batch"` or `method="sequential"`.
 
 ## 4. Getting a Slack export

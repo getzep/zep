@@ -69,15 +69,17 @@ def main() -> None:
         # skip_subtypes=DEFAULT_SKIP_SUBTYPES | {"huddle_thread"},  # skip more
         #   (import DEFAULT_SKIP_SUBTYPES from zep_ingest to extend the default)
         # include_bots=True,  # keep bot messages
-        wait=True,
     )
+    # Submission returns immediately; blocking is opt-in. Bind the result first
+    # so a wait() timeout still leaves you the ids below to resume from.
+    result.wait(timeout=600)
     print(f"Submitted {result.items_submitted} episodes via {result.method}: {result.status}")
     for warning in result.warnings:
         print(f"WARNING: {warning}")
     for error in result.add_errors:
         print(f"ERROR: {error}")
     if result.batch_ids:
-        # Without wait=True you can persist these ids and check later:
+        # Instead of waiting you can persist these ids and check later:
         #   IngestResult.from_batch_ids(client, batch_ids).status
         print(f"Batch ids: {result.batch_ids}")
 

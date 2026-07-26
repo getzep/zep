@@ -2,7 +2,7 @@
 
 Kept minimal: one sequential round-trip and one batch round-trip against a
 throwaway graph that is deleted afterwards. The batch test skips gracefully
-on plans without Batch API access.
+on deployments that do not serve the batch endpoint.
 """
 
 import os

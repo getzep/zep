@@ -54,7 +54,8 @@ def test_node_submission_without_task_id_is_untracked(mock_zep):
 def test_node_wait_polls_until_terminal(mock_zep):
     node = NodeItem(name="Avery Brown", uuid=str(uuid.uuid4()))
 
-    result = ingest_nodes(mock_zep, [node], graph_id="g1", wait=True, poll_interval=0)
+    result = ingest_nodes(mock_zep, [node], graph_id="g1")
+    result.wait(poll_interval=0)
 
     assert result.status == "succeeded"
     mock_zep.task.get.assert_called()

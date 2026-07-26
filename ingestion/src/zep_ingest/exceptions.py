@@ -21,22 +21,26 @@ class ConfigurationError(ZepIngestError):
 
 
 class BatchUnavailableError(ZepIngestError):
-    """Raised when the Zep Batch API rejects batch creation.
+    """Raised when the Zep deployment being used does not serve the Batch API.
 
-    The Batch API is available on enterprise plans only. Use method="sequential"
-    (or the default method="auto", which falls back automatically), or contact
-    your Zep account team to enable batch ingestion. See SETUP.md.
+    Batch is the default submission path, but not every deployment exposes it.
+    This is the one failure sequential ingestion can work around, so it is the
+    only one raised here: a refused key or an exhausted quota surfaces as the
+    underlying API error instead, since sequential graph.add would be refused
+    the same way. Use method="sequential" (or the default method="auto", which
+    falls back automatically). See SETUP.md.
     """
 
     def __init__(self, message: str | None = None, *, partial_result: "IngestResult | None" = None):
-        #: IngestResult for batches already submitted before the rejection, if
+        #: IngestResult for batches already submitted before the failure, if
         #: any — callers must not blindly re-submit everything when this is set.
         self.partial_result = partial_result
         super().__init__(
             message
-            or "The Zep Batch API is not available on this plan. It requires an "
-            "enterprise plan — contact your Zep account team to enable it, or use "
-            'method="sequential" (method="auto" falls back automatically). See SETUP.md.'
+            or "The Zep Batch API is not available on this deployment: the batch "
+            "endpoint was not found. Check that the client is pointed at a Zep "
+            'deployment that supports batching, or use method="sequential" '
+            '(method="auto" falls back automatically). See SETUP.md.'
         )
 
 

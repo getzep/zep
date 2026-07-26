@@ -12,15 +12,20 @@ pip install "zep-ingest[anthropic]"   # or [openai]
 ```
 
 ```python
+from example_ontology import ONTOLOGY  # copy examples/example_ontology.py, adapt it
 from zep_cloud.client import Zep
 from zep_ingest import ingest_slack_export, ingest_documents, ingest_json_records
 
 client = Zep(api_key="...")
 
 # Setup is yours, once per graph: zep-ingest writes only into graphs that
-# already exist and already carry their ontology (see Ontology below).
+# already exist and already carry their ontology (see Ontology below). The
+# ontology is not retroactive, so set it before the first ingest.
 for graph_id in ("team_knowledge", "company_kb", "catalog"):
     client.graph.create(graph_id=graph_id)
+    client.graph.set_ontology(
+        entities=ONTOLOGY["entities"], edges=ONTOLOGY["edges"], graph_ids=[graph_id]
+    )
 
 ingest_slack_export(client, "slack-export.zip", graph_id="team_knowledge")
 ingest_documents(client, "handbook/**/*.md", graph_id="company_kb")
@@ -31,9 +36,9 @@ ingest_json_records(client, "products.csv", graph_id="catalog", id_field="sku")
 
 The raw ingestion surface has sharp edges people hit constantly: a 10,000-character
 episode limit, DIY chunking, timestamps that silently default to ingestion time
-(corrupting fact timelines), entity aliases that never merge, elaborate manual
-JSON-shaping rules, an enterprise-only Batch API, and rate limits. `zep-ingest`
-encodes all of those rules so you don't have to know them.
+(corrupting fact timelines), entity aliases that never merge, a separate Batch
+API for bulk throughput, and rate limits. `zep-ingest` encodes all of those
+rules so you don't have to know them.
 
 Graph *setup* stays outside the package: create the graph and set its ontology
 yourself, once, then ingest into it. See
@@ -48,7 +53,7 @@ yourself, once, then ingest into it. See
 | Speaker-labeled or WebVTT transcripts | `ingest_transcripts` | `text`, chunked at turn boundaries with speaker labels inline and source offsets |
 | Email exports (.eml files) | `ingest_emails` | `text`, with sender/recipient/subject inline, dated by the `Date:` header |
 | A user's own chat history (app conversations) | `ingest_thread_messages` | thread messages on the **user graph** |
-| Records (CSV / JSONL / JSON array; CRM rows, catalogs) | `ingest_json_records` | `json`, normalized per Zep's JSON guidance |
+| Records (CSV / JSONL / JSON array; CRM rows, catalogs) | `ingest_json_records` | one `json` episode per record, as you provide it (shaping is yours) |
 | Known, exact relationships (org chart, entity seeding) | `ingest_fact_triples` | fact triples via `graph.add_fact_triple` |
 | Anything else | implement a `Loader`, use `ingest(...)` | you decide |
 
@@ -68,21 +73,26 @@ optional). The user must already exist; missing threads are created for you
 (they are backfill-owned), messages over the 4,096-character thread-message
 limit are split at sentence boundaries, and per-thread order is preserved.
 `method="auto"` uses the Batch API and transparently falls back to sequential
-`thread.add_messages` on plans without Batch access. Thread ids are global to a project —
-pass `thread_id_suffix=` to namespace a backfill without rewriting the source data.
+`thread.add_messages` only when the deployment doesn't serve the batch endpoint
+at all. Thread ids are global to a project — pass `thread_id_suffix=` to
+namespace a backfill without rewriting the source data.
 Pass `ignore_roles=["assistant"]` to keep assistant turns as conversational
 context but exclude them from graph extraction (they stay in thread history);
 it applies on both the batch and sequential paths.
 
-**Batch vs sequential:** the Batch API (fast, 50k items/batch) is
-enterprise-only. The default `method="auto"` tries batch and transparently
-falls back to sequential `graph.add` calls with rate-limit-aware pacing —
-the episode ingestion paths also work on plans without Batch API access.
+**Batch vs sequential:** the Batch API (fast, 50k items/batch) is the default
+high-throughput submission path. `method="auto"` tries batch and transparently
+falls back to sequential `graph.add` calls with rate-limit-aware pacing in
+exactly one case: the deployment has no batch endpoint to call (HTTP 404 — an
+older server, a self-hosted or Community deployment, or a base URL that doesn't
+route `/batches`). Authorization and quota errors are raised as errors instead
+of quietly downgrading the run. Every source here ingests fine without the
+Batch API — pass `method="sequential"` to take that path deliberately.
 
 ## The pipeline
 
 ```
-Loader  →  Transforms (chunk / contextualize / canonicalize / normalize)  →  LimitGuard  →  Submitter
+Loader  →  Transforms (chunk / contextualize / canonicalize)  →  LimitGuard  →  Submitter
 ```
 
 Each stage is a small protocol (`Loader`, `Transform`, `Submitter`,
@@ -103,7 +113,8 @@ pipeline = Pipeline(
     ],
 )
 report = pipeline.preview()  # NO Zep API calls: inspect episodes + warnings first
-result = pipeline.run(client, graph_id="company_kb", wait=True)
+result = pipeline.run(client, graph_id="company_kb")
+result.wait(timeout=3600)  # submission returns immediately; blocking is opt-in
 ```
 
 `preview()` shows the transformed episodes and validation warnings (including
@@ -217,6 +228,14 @@ meaning to opaque records: map your own fields onto the canonical
 `created_at`, tag records with a `record_type`, and promote fields to episode
 `metadata`.
 
+Every record episode is stamped with `source_type` and `file_name` provenance,
+which spends 2 of the API's 10 metadata keys — so `metadata_fields` may name at
+most **8** fields of your own, and an over-budget list is rejected up front
+(a `ConfigurationError` before any file is read, not an error mid-run). Naming
+`source_type` or `file_name` there does not override the provenance: those
+fields are skipped with a warning, and the record still reaches the graph whole
+— that field included — in the episode body.
+
 ## Ontology: set it before you ingest
 
 Two facts drive everything here:
@@ -308,7 +327,7 @@ graph):
    endpoints with `source_node_uuid`/`target_node_uuid`. Extraction dedups
    against the existing graph, so known entities anchor resolution.
 4. Ingest the corpus with real `created_at` timestamps and alias
-   canonicalization; `wait=True`.
+   canonicalization, then block on the bound result with `result.wait(...)`.
 
 ## Fact triples
 
@@ -380,6 +399,13 @@ result.warnings  # everything the pipeline noticed
 result.raise_for_status()  # opt-in strictness
 ```
 
+Every ingest call returns as soon as the data is submitted; `result.wait()` is
+the only thing that blocks. Bind the result first, as above — don't chain
+`ingest_slack_export(...).wait()`. The chain works (`wait()` returns `self`),
+but when it raises — a timeout, or a submission the API left untracked —
+nothing was ever bound, and `batch_ids` / `task_ids` are the only handles for
+resuming or diagnosing that run.
+
 Ingestion is asynchronous — a just-added fact is not instantly retrievable,
 even after `wait()`: search indexing lands a few seconds after processing.
 `search_when_ready` owns that gap so scripts don't hand-roll poll loops:
@@ -402,7 +428,7 @@ handle, the result reports `status == "untracked"` instead of claiming success.
 `wait()` raises `IngestUntrackedError` immediately in that state; use
 `search_when_ready` or an application-specific read to verify availability.
 
-**Checking status later** — if you skipped `wait=True`, persist
+**Checking status later** — if you never call `wait()`, persist
 `result.batch_ids` and reconstruct in another process:
 
 ```python
@@ -435,8 +461,8 @@ result.wait()
 Retrieval-side behavior is out of scope: survivor selection under contradiction
 (strictly latest-`valid_at`), confidence/authority weighting, and as-of search.
 The ingestion-side mitigations — correct `created_at`, canonical names, and
-`source_type`/`confidence` episode `metadata` you can filter on at search time — are
-all supported here.
+`source_type` episode `metadata` you can filter on at search time — are all
+supported here.
 
 ## Extending
 

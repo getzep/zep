@@ -1,4 +1,4 @@
-"""Tests for BatchSubmitter (enterprise Batch API path)."""
+"""Tests for BatchSubmitter (the Batch API path)."""
 
 from unittest.mock import call
 
@@ -119,14 +119,21 @@ class TestRetries:
         assert len(result.add_errors) == 1
         assert result.add_errors[0].index == 0
         assert result.add_errors[0].item_count == 1
-        assert result.add_errors[0].error == "batch.add failed: status=500 after 1 attempt(s)"
+        # the server's own message passes through, as a direct SDK call would report it
+        assert (
+            result.add_errors[0].error
+            == "batch.add failed: status=500, body=boom after 1 attempt(s)"
+        )
         assert result.items_submitted == 2
 
-    def test_add_error_does_not_contain_episode_data(self, mock_zep):
+    def test_add_error_reports_the_server_message_and_adds_nothing(self, mock_zep):
+        """The package reports a failure as the API reported it: the server's body
+        passes through, and the package never adds episode content of its own."""
         mock_zep.batch.add.side_effect = ApiError(status_code=500, body="server error")
         result = BatchSubmitter(mock_zep, max_add_retries=1).submit(
             [Episode(data="SENSITIVE-CONTENT")], DEST
         )
+        assert "server error" in result.add_errors[0].error
         assert "SENSITIVE-CONTENT" not in result.add_errors[0].error
 
     def test_transient_process_failure_retried(self, mock_zep):
@@ -202,21 +209,39 @@ class TestTransportErrors:
         assert error.batch_id == "batch-1"
         assert "transport error ConnectError" in error.error
 
-    def test_transport_error_on_rollover_create_carries_partial_result(self, mock_zep):
+    def test_transport_error_on_rollover_stops_and_keeps_batch_ids(self, mock_zep):
         mock_zep.batch.create.side_effect = [
             make_batch_summary("b1", "draft"),
             httpx.ConnectError("connection refused"),
         ]
 
-        with pytest.raises(
-            InvalidBatchResponseError, match="transport error ConnectError"
-        ) as caught:
-            BatchSubmitter(mock_zep, page_size=1, max_items_per_batch=1).submit(episodes(2), DEST)
+        # max_add_retries=1 pins this to a single attempt: a ConnectError is an
+        # unsent failure and so is normally retried, which is covered separately.
+        result = BatchSubmitter(
+            mock_zep, page_size=1, max_items_per_batch=1, max_add_retries=1
+        ).submit(episodes(2), DEST)
 
-        partial = caught.value.partial_result
-        assert partial is not None
-        assert partial.batch_ids == ["b1"]
-        assert partial.items_submitted == 1
+        assert result.batch_ids == ["b1"]
+        assert result.items_submitted == 1
+        assert result.add_errors[-1].index == -1
+        assert "transport error ConnectError" in result.add_errors[-1].error
+        # a transport failure leaves it unknowable whether a batch was opened
+        assert "without its id being returned" in result.add_errors[-1].error
+
+    def test_transient_error_on_rollover_create_is_retried(self, mock_zep):
+        mock_zep.batch.create.side_effect = [
+            make_batch_summary("b1", "draft"),
+            ApiError(status_code=429),
+            make_batch_summary("b2", "draft"),
+        ]
+
+        result = BatchSubmitter(mock_zep, page_size=1, max_items_per_batch=1).submit(
+            episodes(2), DEST
+        )
+
+        assert result.batch_ids == ["b1", "b2"]  # the blip did not end the run
+        assert result.items_submitted == 2
+        assert result.add_errors == []
 
 
 class TestBatchMetadata:
@@ -224,17 +249,36 @@ class TestBatchMetadata:
         BatchSubmitter(mock_zep, batch_metadata={"run": "backfill-1"}).submit(episodes(1), DEST)
         assert mock_zep.batch.create.call_args.kwargs["metadata"] == {"run": "backfill-1"}
 
-    def test_rollover_gating_error_carries_partial_result(self, mock_zep):
+    def test_first_batch_failure_still_raises(self, mock_zep):
+        """The rollover leniency applies only once work is in flight. On the very
+        first batch nothing has been submitted, so the caller must see the failure
+        — that is what lets the dispatcher fall back to sequential."""
+        mock_zep.batch.create.side_effect = ApiError(status_code=404)
+        with pytest.raises(BatchUnavailableError):
+            BatchSubmitter(mock_zep, page_size=1, max_items_per_batch=1).submit(episodes(2), DEST)
+
+    @pytest.mark.parametrize("status_code", [402, 403, 404, 500])
+    def test_rollover_failure_stops_the_run_without_losing_batch_ids(self, mock_zep, status_code):
+        """Whatever the cause, a mid-run create failure must not raise: the batches
+        already submitted are still processing, and their ids are the only handle
+        on them. The reason is recorded on the result instead."""
         mock_zep.batch.create.side_effect = [
             make_batch_summary("b1", "draft"),
-            ApiError(status_code=403),
+            ApiError(status_code=status_code, body="refused"),
         ]
-        with pytest.raises(BatchUnavailableError) as caught:
-            BatchSubmitter(mock_zep, page_size=1, max_items_per_batch=1).submit(episodes(2), DEST)
-        partial = caught.value.partial_result
-        assert partial is not None
-        assert partial.batch_ids == ["b1"]
-        assert partial.items_submitted == 1
+
+        result = BatchSubmitter(mock_zep, page_size=1, max_items_per_batch=1).submit(
+            episodes(2), DEST
+        )
+
+        assert result.batch_ids == ["b1"]
+        assert result.items_submitted == 1  # the second episode never went out
+        assert result.add_errors[-1].index == -1
+        assert result.add_errors[-1].item_count == 0
+        assert f"status={status_code}" in result.add_errors[-1].error
+        assert "body=refused" in result.add_errors[-1].error
+        assert "result.batch_ids" in result.add_errors[-1].error
+        assert result.status == "partial"
 
     def test_rollover_without_batch_id_carries_partial_result(self, mock_zep):
         mock_zep.batch.create.side_effect = [

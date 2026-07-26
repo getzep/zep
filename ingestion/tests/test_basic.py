@@ -8,6 +8,9 @@ def test_version():
 
 
 def test_public_api_exports():
+    """__all__ is pinned exactly, not as a subset: widening the public surface
+    is as much a deliberate, reviewable decision as narrowing it, and everything
+    listed here is supported from 0.1.0 onward."""
     expected = {
         # core
         "Episode",
@@ -15,6 +18,12 @@ def test_public_api_exports():
         "IngestResult",
         "AddError",
         "PreviewReport",
+        # limits
+        "MAX_EPISODE_CHARS",
+        "SAFE_EPISODE_CHARS",
+        "MAX_ITEMS_PER_ADD",
+        "MAX_ITEMS_PER_BATCH",
+        "MAX_METADATA_KEYS",
         # protocols
         "Loader",
         "Transform",
@@ -30,8 +39,11 @@ def test_public_api_exports():
         "ingest_transcripts",
         "ingest_fact_triples",
         "ingest_thread_messages",
+        "ingest_nodes",
         # loaders
         "SlackExportLoader",
+        "SlackMessage",
+        "DEFAULT_SKIP_SUBTYPES",
         "TextFileLoader",
         "JsonRecordsLoader",
         "EmlLoader",
@@ -41,13 +53,17 @@ def test_public_api_exports():
         "LLMContextualizer",
         "DEFAULT_CONTEXT_PROMPT",
         "AliasCanonicalizer",
+        "DEFAULT_RISKY_WORDS",
         "LimitGuard",
         # submitters
         "BatchSubmitter",
         "SequentialSubmitter",
-        # triples & threads
+        # triples, threads & nodes
         "FactTriple",
         "ThreadMessage",
+        "NodeItem",
+        # verification
+        "search_when_ready",
         # exceptions
         "ZepIngestError",
         "ConfigurationError",
@@ -57,8 +73,14 @@ def test_public_api_exports():
         "IngestUntrackedError",
         "InvalidBatchResponseError",
         "ZepDependencyError",
+        # metadata
+        "__version__",
     }
-    assert expected <= set(zep_ingest.__all__)
+    actual = set(zep_ingest.__all__)
+    added = sorted(actual - expected)
+    removed = sorted(expected - actual)
+    assert not added, f"__all__ gained unpinned public names: {added}"
+    assert not removed, f"__all__ lost pinned public names: {removed}"
     for name in zep_ingest.__all__:
         assert getattr(zep_ingest, name) is not None
 

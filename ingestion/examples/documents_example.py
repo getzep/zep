@@ -62,13 +62,15 @@ def main() -> None:
         graph_id=graph_id,
         llm=llm,
         created_at="2025-06-01T00:00:00Z",  # generated source date
-        wait=True,
     )
+    # Submission returns immediately; blocking is opt-in. Bind the result first
+    # so a wait() timeout still leaves you the ids below to resume from.
+    result.wait(timeout=600)
     print(f"Submitted {result.items_submitted} chunks via {result.method}: {result.status}")
     for warning in result.warnings:
         print(f"WARNING: {warning}")
     if result.batch_ids:
-        # Without wait=True you can persist these ids and check later:
+        # Instead of waiting you can persist these ids and check later:
         #   IngestResult.from_batch_ids(client, batch_ids).status
         print(f"Batch ids: {result.batch_ids}")
 

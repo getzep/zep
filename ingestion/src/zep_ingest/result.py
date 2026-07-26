@@ -46,8 +46,10 @@ def _normalize_task_status(status: str | None) -> str:
 
 @dataclass(slots=True)
 class AddError:
-    """A submission failure. Carries indices and the API message — never episode
-    content, which may be sensitive."""
+    """A submission failure: where it happened, and what the API said about it.
+
+    The API's own message is reported unchanged, exactly as a direct SDK call
+    would surface it. Nothing here is added from the submitted episodes."""
 
     index: int  # page index (batch) or episode stream index (sequential); -1 = batch-level
     item_count: int
@@ -83,7 +85,7 @@ class IngestResult:
     @classmethod
     def from_batch_ids(cls, client: "Zep", batch_ids: "Sequence[str]") -> "IngestResult":
         """Reconstruct a result from persisted batch ids — e.g. in a later process,
-        after running an ingest without wait=True. refresh()/status/wait()/
+        after an ingest whose result was never waited on. refresh()/status/wait()/
         failed_items() work as if the original result had been kept."""
         return cls(method="batch", batch_ids=list(batch_ids), client=client)
 

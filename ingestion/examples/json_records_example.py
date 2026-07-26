@@ -1,10 +1,12 @@
-"""Ingest structured records (JSON/JSONL/CSV) as normalized json episodes.
+"""Ingest structured records (JSON/JSONL/CSV) as one json episode per record.
 
 Self-contained and re-runnable: creates a fresh graph, sets the starter
 ontology, and ingests the bundled product catalog under examples/data/.
 Zep EXTRACTS entities and relationships from the record contents — contrast
 with fact_triples_example.py, where you state known relationships exactly.
 
+Records are ingested exactly as provided, so shaping them for good extraction
+is your job — the bundled catalog is flat and describes one product per record.
 The field mapping (id_field, name_field, ...) tells the loader which columns
 identify and describe each record; created_at_field keeps real timestamps so
 backfilled records don't all land "now".
@@ -47,13 +49,15 @@ def main() -> None:
         created_at_field="updated_at",
         metadata_fields=("category",),
         record_type="product",
-        wait=True,
     )
+    # Submission returns immediately; blocking is opt-in. Bind the result first
+    # so a wait() timeout still leaves you the ids below to resume from.
+    result.wait(timeout=600)
     print(f"Submitted {result.items_submitted} records via {result.method}: {result.status}")
     for warning in result.warnings:
         print(f"WARNING: {warning}")
     if result.batch_ids:
-        # Without wait=True you can persist these ids and check later:
+        # Instead of waiting you can persist these ids and check later:
         #   IngestResult.from_batch_ids(client, batch_ids).status
         print(f"Batch ids: {result.batch_ids}")
 

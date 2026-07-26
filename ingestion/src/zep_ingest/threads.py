@@ -10,8 +10,8 @@ to their user graph as thread messages. This module owns that path end to end:
 - auto-splits messages over the 4,096-character message limit at sentence
   boundaries instead of letting the API reject them,
 - submits via the Batch API by default, with transparent fallback to sequential
-  ``thread.add_messages`` when the plan lacks Batch access — preserving
-  per-thread chronological order either way.
+  ``thread.add_messages`` when batch submission is unavailable for the account
+  or deployment — preserving per-thread chronological order either way.
 """
 
 import logging
@@ -28,14 +28,13 @@ from zep_cloud.errors.not_found_error import NotFoundError
 from zep_cloud.types.batch_add_item import BatchAddItem
 from zep_cloud.types.message import Message
 
-from zep_ingest._errors import safe_api_error
+from zep_ingest._errors import format_api_error
 from zep_ingest._io import load_rows, rows_to_fields
 from zep_ingest._validation import (
     check_required_string,
     check_scalar_map,
     check_timestamp,
     require_int_range,
-    require_nonnegative_number,
 )
 from zep_ingest.exceptions import (
     BatchUnavailableError,
@@ -43,7 +42,12 @@ from zep_ingest.exceptions import (
     InvalidBatchResponseError,
 )
 from zep_ingest.result import AddError, IngestResult
-from zep_ingest.submitters.batch import is_gating_error, process_batch, require_batch_id
+from zep_ingest.submitters.batch import (
+    is_batch_unavailable,
+    process_batch,
+    require_batch_id,
+    rollover_failure_message,
+)
 from zep_ingest.submitters.sequential import call_with_retries
 from zep_ingest.transforms._splitting import split_text
 from zep_ingest.types import MAX_ITEMS_PER_ADD, MAX_ITEMS_PER_BATCH, MAX_METADATA_KEYS
@@ -94,9 +98,6 @@ class ThreadMessage:
             )
 
 
-_MESSAGE_FIELDS = frozenset(ThreadMessage.__dataclass_fields__)
-
-
 def _validate_ignore_roles(ignore_roles: Sequence[str] | None) -> list[str] | None:
     """Validate ``ignore_roles`` against the documented role types before any
     API call. Returns an order-preserving, de-duplicated list, or ``None`` when
@@ -123,7 +124,7 @@ def _validate_ignore_roles(ignore_roles: Sequence[str] | None) -> list[str] | No
 
 
 def _load_messages(path: Path) -> list[ThreadMessage]:
-    rows = rows_to_fields(load_rows(path), _MESSAGE_FIELDS)
+    rows = rows_to_fields(load_rows(path), ThreadMessage)
     return [ThreadMessage(**row) for row in rows]
 
 
@@ -196,6 +197,11 @@ def _submit_batch(
     max_retries: int,
 ) -> IngestResult:
     result = IngestResult(method="batch", client=client)
+    create_kwargs: dict[str, Any] = {}
+    if batch_metadata is not None:
+        create_kwargs["metadata"] = batch_metadata
+    if ignore_roles:
+        create_kwargs["ignore_roles"] = ignore_roles
     iterator = iter(messages)
     batch_id: str | None = None
     items_in_batch = 0
@@ -208,25 +214,38 @@ def _submit_batch(
             process_batch(client, batch_id, result, max_retries=max_retries)
             batch_id = None
         if batch_id is None:
-            create_kwargs: dict[str, Any] = {}
-            if batch_metadata is not None:
-                create_kwargs["metadata"] = batch_metadata
-            if ignore_roles:
-                create_kwargs["ignore_roles"] = ignore_roles
-            try:
-                summary = client.batch.create(**create_kwargs)
-            except ApiError as error:
-                if is_gating_error(error):
-                    raise BatchUnavailableError(partial_result=result) from error
-                raise
-            except httpx.TransportError as error:
-                # No response, so the batch may exist without us knowing its id.
-                # Carry the result so already-filled batches are still recoverable.
-                raise InvalidBatchResponseError(
-                    f"{safe_api_error('batch.create', error)}; refusing to submit because "
-                    "the batch may already have been created.",
-                    partial_result=result,
-                ) from error
+            # batch.create is retried on transient errors (429, unsent transport
+            # failures) like every other batch call, so a momentary blip can't
+            # crash the run or wrongly trip the sequential fallback — only a
+            # genuinely absent batch endpoint does that. A transient error that
+            # survives retries is re-raised, not silently downgraded.
+            summary, create_error = call_with_retries(
+                lambda: client.batch.create(**create_kwargs),
+                max_retries=max_retries,
+            )
+            if create_error is not None:
+                if result.batch_ids:
+                    # A rollover: earlier batches are already processing and their
+                    # ids are the only handle on them, so stop and report rather
+                    # than raising them away.
+                    result.add_errors.append(
+                        AddError(
+                            index=-1,
+                            item_count=0,
+                            error=rollover_failure_message(create_error, result),
+                        )
+                    )
+                    break
+                if isinstance(create_error, httpx.TransportError):
+                    # No response, so the batch may exist without us knowing its id.
+                    raise InvalidBatchResponseError(
+                        f"{format_api_error('batch.create', create_error)}; refusing to submit "
+                        "because the batch may already have been created.",
+                        partial_result=result,
+                    ) from create_error
+                if is_batch_unavailable(create_error):
+                    raise BatchUnavailableError(partial_result=result) from create_error
+                raise create_error
             batch_id = require_batch_id(
                 getattr(summary, "batch_id", None),
                 partial_result=result,
@@ -255,7 +274,7 @@ def _submit_batch(
                 AddError(
                     index=page_index,
                     item_count=len(page),
-                    error=(safe_api_error("batch.add", add_failure)),
+                    error=(format_api_error("batch.add", add_failure)),
                     batch_id=batch_id,
                 )
             )
@@ -307,7 +326,7 @@ def _submit_sequential(
                     AddError(
                         index=chunk_index,
                         item_count=len(chunk),
-                        error=safe_api_error(f"thread.add_messages({thread_id!r})", error),
+                        error=format_api_error(f"thread.add_messages({thread_id!r})", error),
                     )
                 )
             else:
@@ -341,9 +360,6 @@ def ingest_thread_messages(
     messages_per_call: int = 30,
     max_retries: int = 5,
     thread_id_suffix: str | None = None,
-    wait: bool = False,
-    poll_interval: float = 10.0,
-    timeout: float | None = None,
 ) -> IngestResult:
     """Backfill chat history into a user's graph via threads.
 
@@ -362,8 +378,11 @@ def ingest_thread_messages(
     still stored in thread history. Applies to both the batch and sequential
     submission paths.
 
-    Pass ``wait=True`` to block until Zep finishes processing the submitted
-    messages, polling every ``poll_interval`` seconds up to ``timeout``.
+    Submission is asynchronous; bind the result, then wait on it, so the resume
+    handles survive a timeout::
+
+        result = ingest_thread_messages(client, messages, user_id="u1")
+        result.wait(timeout=600)
     """
     if not user_id:
         raise ConfigurationError(
@@ -378,9 +397,6 @@ def ingest_thread_messages(
     require_int_range("max_retries", max_retries, minimum=1)
     if thread_id_suffix is not None and not isinstance(thread_id_suffix, str):
         raise ConfigurationError("thread_id_suffix must be a string or None")
-    require_nonnegative_number("poll_interval", poll_interval)
-    if timeout is not None:
-        require_nonnegative_number("timeout", timeout)
     normalized_ignore_roles = _validate_ignore_roles(ignore_roles)
     if isinstance(messages, str | Path):
         materialized = _load_messages(Path(messages))
@@ -426,7 +442,7 @@ def ingest_thread_messages(
                 # messages sequentially would duplicate them. Surface instead.
                 raise
             notice = (
-                "Zep Batch API not available on this plan — falling back to "
+                "Zep Batch API not available for this account — falling back to "
                 "sequential thread.add_messages ingestion."
             )
             logger.info(notice)
@@ -439,6 +455,4 @@ def ingest_thread_messages(
             )
             result.warnings.insert(0, notice)
     result.warnings.extend(warnings)
-    if wait:
-        result.wait(poll_interval=poll_interval, timeout=timeout)
     return result

@@ -10,6 +10,7 @@ between the paths.
 """
 
 import json
+from dataclasses import MISSING, fields
 from pathlib import Path
 from typing import Any
 
@@ -42,21 +43,38 @@ def load_rows(path: Path) -> list[dict[str, Any]]:
     raise ConfigurationError(f"{path.name} must contain JSON objects, not {type(parsed).__name__}.")
 
 
-def rows_to_fields(rows: list[dict[str, Any]], fields: frozenset[str]) -> list[dict[str, Any]]:
-    """Validate row shapes and retain supplied dataclass fields exactly.
+def rows_to_fields(rows: list[dict[str, Any]], row_type: type) -> list[dict[str, Any]]:
+    """Validate row shapes against a dataclass and retain supplied fields exactly.
 
     Unknown columns are rejected because silently dropping a misspelled public
     field can produce a valid-looking but semantically incomplete ingestion.
+    Omitted required columns are rejected here too, so a chat export missing
+    ``name`` or ``created_at`` names the field and the row rather than surfacing
+    as a bare TypeError from the dataclass constructor. Both the allowed and the
+    required sets are read off the dataclass, so neither can drift from it.
     """
+    spec = fields(row_type)
+    allowed = frozenset(field.name for field in spec)
+    required = [
+        field.name
+        for field in spec
+        if field.default is MISSING and field.default_factory is MISSING
+    ]
     validated: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
             raise ConfigurationError(f"Row {index} must be a JSON object, got {type(row).__name__}")
-        unknown = sorted(set(row) - fields)
+        unknown = sorted(set(row) - allowed)
         if unknown:
             raise ConfigurationError(
                 f"Row {index} has unknown field(s): {', '.join(unknown)}. "
-                f"Expected fields: {', '.join(sorted(fields))}."
+                f"Expected fields: {', '.join(sorted(allowed))}."
+            )
+        missing = [name for name in required if name not in row]
+        if missing:
+            raise ConfigurationError(
+                f"Row {index} is missing required field(s): {', '.join(missing)}. "
+                f"Required fields: {', '.join(required)}."
             )
         validated.append(dict(row))
     return validated

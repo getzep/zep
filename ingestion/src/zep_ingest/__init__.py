@@ -3,8 +3,8 @@
 Everything upstream of the Zep API for getting unstructured and structured
 data into Context Graphs correctly: parsing sources, chunking,
 contextualization, entity canonicalization, temporal-correctness
-warnings, and rate-limit-aware submission via the Batch API (enterprise) or
-sequential graph.add (every plan).
+warnings, and rate-limit-aware submission via the Batch API or sequential
+graph.add.
 
 Quickstarts:
 
@@ -12,12 +12,22 @@ Quickstarts:
     from zep_ingest import ingest_slack_export, ingest_documents, ingest_json_records
 
     client = Zep(api_key="...")
+
+    # Setup is yours, once per graph: zep-ingest writes only into graphs that
+    # already exist and already carry their ontology (it is not retroactive).
+    # ENTITIES/EDGES are your EntityModel/EdgeModel subclasses, keyed by type
+    # name; see the Ontology section of the README for a starter spec.
+    for graph_id in ("team_knowledge", "company_kb", "catalog"):
+        client.graph.create(graph_id=graph_id)
+        client.graph.set_ontology(entities=ENTITIES, edges=EDGES, graph_ids=[graph_id])
+
     ingest_slack_export(client, "export.zip", graph_id="team_knowledge")
     ingest_documents(client, "handbook/**/*.md", graph_id="company_kb")
     ingest_json_records(client, "products.csv", graph_id="catalog", id_field="sku")
 """
 
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _version
 
 from zep_ingest.exceptions import (
     BatchUnavailableError,
@@ -66,8 +76,8 @@ from zep_ingest.types import (
 from zep_ingest.verify import search_when_ready
 
 try:
-    __version__ = version("zep-ingest")
-except PackageNotFoundError:  # source tree without an editable install
+    __version__ = _version("zep-ingest")
+except _PackageNotFoundError:  # source tree without an editable install
     __version__ = "0.1.0"
 
 __all__ = [

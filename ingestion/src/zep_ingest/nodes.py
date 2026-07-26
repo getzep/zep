@@ -9,14 +9,13 @@ from typing import Any
 from zep_cloud.client import Zep
 from zep_cloud.types.add_node_item import AddNodeItem
 
-from zep_ingest._errors import safe_api_error
+from zep_ingest._errors import format_api_error
 from zep_ingest._io import load_rows, rows_to_fields
 from zep_ingest._validation import (
     check_len,
     check_required_string,
     check_scalar_map,
     check_timestamp,
-    require_nonnegative_number,
 )
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.result import AddError, IngestResult
@@ -86,9 +85,8 @@ class NodeItem:
 
 
 def _load_nodes(path: Path) -> list[NodeItem]:
-    rows = load_rows(path)
-    fields = frozenset({"name", "label", "summary", "attributes", "metadata", "uuid", "created_at"})
-    return [NodeItem(**row) for row in rows_to_fields(rows, fields)]
+    rows = rows_to_fields(load_rows(path), NodeItem)
+    return [NodeItem(**row) for row in rows]
 
 
 def ingest_nodes(
@@ -100,9 +98,6 @@ def ingest_nodes(
     batch_size: int = MAX_NODES_PER_REQUEST,
     max_retries: int = 5,
     require_uuids: bool = True,
-    wait: bool = False,
-    poll_interval: float = 10.0,
-    timeout: float | None = None,
 ) -> IngestResult:
     """Create/upsert canonical nodes via ``client.graph.add_nodes``.
 
@@ -110,12 +105,12 @@ def ingest_nodes(
     persisted UUIDv4; callers must explicitly opt out of that protection.
     UUID uniqueness is checked before the first network call.
 
-    Pass ``wait=True`` to block until Zep finishes processing the submitted
-    nodes, polling every ``poll_interval`` seconds up to ``timeout``.
+    Submission is asynchronous; bind the result, then wait on it, so the resume
+    handles survive a timeout::
+
+        result = ingest_nodes(client, nodes, graph_id="g1")
+        result.wait(timeout=600)
     """
-    require_nonnegative_number("poll_interval", poll_interval)
-    if timeout is not None:
-        require_nonnegative_number("timeout", timeout)
     destination = Destination(graph_id=graph_id, user_id=user_id)
     if not 1 <= batch_size <= MAX_NODES_PER_REQUEST:
         raise ConfigurationError(f"batch_size must be 1..{MAX_NODES_PER_REQUEST}, got {batch_size}")
@@ -151,7 +146,7 @@ def ingest_nodes(
                 AddError(
                     index=start,
                     item_count=len(batch),
-                    error=safe_api_error("graph.add_nodes", error),
+                    error=format_api_error("graph.add_nodes", error),
                 )
             )
             continue
@@ -161,6 +156,4 @@ def ingest_nodes(
             result.task_ids.append(str(task_id))
         elif not task_id:
             result.untracked_items += len(batch)
-    if wait:
-        result.wait(poll_interval=poll_interval, timeout=timeout)
     return result

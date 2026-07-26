@@ -19,7 +19,6 @@ from typing import Any, Literal
 
 from zep_cloud.client import Zep
 
-from zep_ingest._validation import require_nonnegative_number
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.loaders.email import EmlLoader
 from zep_ingest.loaders.json_records import JsonRecordsLoader
@@ -165,13 +164,15 @@ class Pipeline:
         user_id: str | None = None,
         method: Method = "auto",
         batch_metadata: dict[str, Any] | None = None,
-        wait: bool = False,
-        poll_interval: float = 10.0,
-        timeout: float | None = None,
     ) -> IngestResult:
-        require_nonnegative_number("poll_interval", poll_interval)
-        if timeout is not None:
-            require_nonnegative_number("timeout", timeout)
+        """Submit the transformed stream and return immediately.
+
+        Submission is asynchronous; bind the result, then wait on it, so the
+        resume handles survive a timeout::
+
+            result = pipeline.run(client, graph_id="company_kb")
+            result.wait(timeout=600)
+        """
         destination = Destination(graph_id=graph_id, user_id=user_id)
         if self.submitter is not None and (method != "auto" or batch_metadata is not None):
             raise ConfigurationError(
@@ -192,8 +193,6 @@ class Pipeline:
                     batch_metadata=batch_metadata,
                 )
         result.warnings.extend(self._collect_warnings(guard, counter, baseline))
-        if wait:
-            result.wait(poll_interval=poll_interval, timeout=timeout)
         return result
 
 

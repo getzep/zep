@@ -4,6 +4,10 @@ Implements the docs' "unified entity" guidance: each record can be given
 id/name/description identity fields, a contextualizing record_type, and a
 created_at parsed from a record field so structured backfills carry real
 timestamps.
+
+Every episode carries source_type/file_name provenance, which a record field
+of the same name can never overwrite, so metadata_fields may lift at most
+MAX_METADATA_FIELDS fields alongside it.
 """
 
 import csv
@@ -15,9 +19,14 @@ from pathlib import Path
 from typing import Any, Literal
 
 from zep_ingest.exceptions import ConfigurationError
-from zep_ingest.types import Episode
+from zep_ingest.types import MAX_METADATA_KEYS, Episode
 
 _SCALARS = (str, int, float, bool)
+# provenance the loader stamps on every episode; record fields with these
+# names are not liftable, so what the episode reports about its own origin
+# stays trustworthy (source_type is always 'json_record')
+_RESERVED_METADATA_KEYS = ("source_type", "file_name")
+MAX_METADATA_FIELDS = MAX_METADATA_KEYS - len(_RESERVED_METADATA_KEYS)
 
 
 def _parse_timestamp(value: Any) -> str | None:
@@ -63,6 +72,19 @@ class JsonRecordsLoader:
         self.description_field = description_field
         self.created_at_field = created_at_field
         self.metadata_fields = list(metadata_fields)
+        # rejected up front, before any file is touched: an over-budget request
+        # otherwise survives preview() and aborts run() on the first record that
+        # happens to carry every requested field
+        if len(self.metadata_fields) > MAX_METADATA_FIELDS:
+            raise ConfigurationError(
+                f"metadata_fields names {len(self.metadata_fields)} fields; at most "
+                f"{MAX_METADATA_FIELDS} are allowed. Every episode reserves "
+                f"{len(_RESERVED_METADATA_KEYS)} of the API's {MAX_METADATA_KEYS} metadata "
+                f"keys for provenance ({', '.join(_RESERVED_METADATA_KEYS)})."
+            )
+        self._liftable_fields = [
+            f for f in self.metadata_fields if f not in _RESERVED_METADATA_KEYS
+        ]
         self.record_type = record_type
         self.warnings: list[str] = []
         self.files = sorted(
@@ -72,6 +94,15 @@ class JsonRecordsLoader:
             raise ConfigurationError(f"No files match {self.pattern!r}.")
 
     def load(self) -> Iterator[Episode]:
+        # a collision is a property of metadata_fields, not of the records, so
+        # warn once per pass — preview() and run() then report it identically
+        reserved = [f for f in self.metadata_fields if f in _RESERVED_METADATA_KEYS]
+        if reserved:
+            self.warnings.append(
+                f"metadata_fields names {', '.join(reserved)}, which the loader stamps as "
+                "provenance on every episode; those record fields were not lifted into "
+                "metadata and their values remain only in the episode body."
+            )
         for file in self.files:
             missing_timestamps = 0
             for record in self._read(file):
@@ -122,7 +153,7 @@ class JsonRecordsLoader:
             if self.created_at_field:
                 created_at = _parse_timestamp(record.get(self.created_at_field))
                 timestamp_missing = int(created_at is None)
-            for f in self.metadata_fields:
+            for f in self._liftable_fields:
                 if f in record and isinstance(record[f], _SCALARS):
                     metadata[f] = record[f]
         return (

@@ -115,9 +115,8 @@ class TestIngest:
         assert result.status == "queued"
 
     def test_wait_polls_until_terminal(self, mock_zep):
-        result = ingest_fact_triples(
-            mock_zep, [triple()], graph_id="g1", wait=True, poll_interval=0
-        )
+        result = ingest_fact_triples(mock_zep, [triple()], graph_id="g1")
+        result.wait(poll_interval=0)
         assert result.status == "succeeded"
         mock_zep.task.get.assert_called()
 
@@ -238,6 +237,26 @@ class TestIngest:
         )
         with pytest.raises(ConfigurationError, match="fact"):
             ingest_fact_triples(mock_zep, file, graph_id="g1")
+
+    def test_row_missing_required_field_names_the_field_and_row(self, mock_zep, tmp_path):
+        # an omitted column is a ConfigurationError pointing at the row, not the
+        # dataclass constructor's bare TypeError
+        file = tmp_path / "triples.jsonl"
+        rows = [
+            {
+                "fact": "Avery Brown met Blake Carter",
+                "fact_name": "MET",
+                "source_node_name": "Avery Brown",
+                "target_node_name": "Blake Carter",
+            },
+            {"fact": "Ana owns GTM", "fact_name": "RESPONSIBLE", "source_node_name": "Ana"},
+        ]
+        file.write_text("\n".join(json.dumps(r) for r in rows))
+        with pytest.raises(
+            ConfigurationError, match=r"Row 1 is missing required field\(s\): target_node_name"
+        ):
+            ingest_fact_triples(mock_zep, file, graph_id="g1")
+        mock_zep.graph.add_fact_triple.assert_not_called()
 
 
 class TestNodeUuidPinning:

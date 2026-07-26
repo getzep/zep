@@ -107,8 +107,8 @@ def main() -> None:
         str(DATA / "deployment_notes.md"),
         user_id=user_id,
         created_at="2025-06-20T00:00:00Z",  # generated source date
-        wait=True,
     )
+    docs.wait(timeout=600)
     print(f"Ingested {docs.items_submitted} document chunks: {docs.status}")
 
     # Extraction is asynchronous; wait until facts are searchable, then pull

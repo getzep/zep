@@ -10,7 +10,7 @@ from zep_cloud.client import Zep
 from zep_ingest._validation import require_int_range, require_nonnegative_number
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.result import IngestResult
-from zep_ingest.submitters.batch import BatchSubmitter, is_gating_error, require_batch_id
+from zep_ingest.submitters.batch import BatchSubmitter, is_batch_unavailable, require_batch_id
 from zep_ingest.submitters.sequential import SequentialSubmitter, call_with_retries
 from zep_ingest.types import (
     MAX_ITEMS_PER_ADD,
@@ -41,8 +41,9 @@ def submit_episodes(
 ) -> IngestResult:
     """Submit an episode stream via the requested method.
 
-    method="auto" uses the Batch API when the plan allows it and falls back to
-    sequential graph.add ingestion otherwise; no episodes are lost on fallback.
+    method="auto" uses the Batch API when this deployment serves it and falls
+    back to sequential graph.add ingestion when it does not; no episodes are
+    lost on fallback. Any other failure is raised, not worked around.
     """
     if method not in ("auto", "batch", "sequential"):
         raise ConfigurationError(
@@ -77,8 +78,9 @@ def submit_episodes(
     # then hand the (untouched) stream to the chosen submitter. The probe is
     # retried on transient errors (429/5xx) like every other batch call, so a
     # momentary blip can't crash the run or wrongly trip the sequential
-    # fallback — only a genuine plan-gating status does that. A transient error
-    # that survives retries is re-raised, not silently downgraded to sequential.
+    # fallback — only a deployment that does not serve the endpoint does that.
+    # Every other error, transient or not, is re-raised rather than silently
+    # downgraded to sequential, which would hit the same wall one item at a time.
     iterator = iter(episodes)
     try:
         first = next(iterator)
@@ -93,10 +95,10 @@ def submit_episodes(
 
     summary, error = call_with_retries(create_probe_batch, max_retries=max_add_retries)
     if error is not None:
-        if is_gating_error(error):
+        if is_batch_unavailable(error):
             notice = (
-                "Zep Batch API not available on this plan — falling back to "
-                "sequential graph.add ingestion."
+                "Zep Batch API not available on this deployment — "
+                "falling back to sequential graph.add ingestion."
             )
             logger.info(notice)
             result = SequentialSubmitter(

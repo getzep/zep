@@ -3,6 +3,7 @@
 import json
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from zep_cloud.core.api_error import ApiError
 from zep_cloud.errors.not_found_error import NotFoundError
@@ -191,6 +192,37 @@ class TestBatchPath:
         assert "process" in error.error
         assert result.status == "failed"
 
+    def test_transient_create_error_is_retried(self, mock_zep):
+        # the user and every thread already exist by the time batch.create runs,
+        # so a momentary 429 there must not abort the whole backfill
+        mock_zep.batch.create.side_effect = [
+            ApiError(status_code=429, body="rate limited"),
+            make_batch_summary("batch-1", "draft"),
+        ]
+        result = ingest_thread_messages(
+            mock_zep, [message()], user_id="avery-brown", method="batch"
+        )
+        assert result.items_submitted == 1
+        assert mock_zep.batch.create.call_count == 2
+        mock_zep.batch.add.assert_called_once()
+
+    def test_server_error_on_create_propagates(self, mock_zep):
+        # batch.create is non-idempotent: a 5xx may have created a batch before
+        # the response was lost, so it must surface instead of being retried
+        mock_zep.batch.create.side_effect = ApiError(status_code=500, body="boom")
+        with pytest.raises(ApiError):
+            ingest_thread_messages(mock_zep, [message()], user_id="avery-brown", method="batch")
+        assert mock_zep.batch.create.call_count == 1
+        mock_zep.batch.add.assert_not_called()
+
+    def test_create_transport_error_refuses_to_submit(self, mock_zep):
+        # no response arrived, so a batch may exist without a usable id; opening
+        # a second one could duplicate the import
+        mock_zep.batch.create.side_effect = httpx.ReadTimeout("response never arrived")
+        with pytest.raises(InvalidBatchResponseError, match="may already have been created"):
+            ingest_thread_messages(mock_zep, [message()], user_id="avery-brown", method="batch")
+        mock_zep.batch.add.assert_not_called()
+
     @pytest.mark.parametrize("batch_id", [None, "", "   "])
     def test_missing_created_batch_id_fails_before_add(self, mock_zep, batch_id):
         mock_zep.batch.create.return_value = BatchSummary(batch_id=batch_id, status="draft")
@@ -212,31 +244,63 @@ class TestSequentialPath:
         assert result.method == "batch"
 
     def test_wait_polls_until_terminal(self, mock_zep):
-        result = ingest_thread_messages(
-            mock_zep, [message()], user_id="u1", method="sequential", wait=True, poll_interval=0
-        )
+        result = ingest_thread_messages(mock_zep, [message()], user_id="u1", method="sequential")
+        result.wait(poll_interval=0)
         assert result.status == "succeeded"
         mock_zep.task.get.assert_called()
 
-    def test_auto_falls_back_to_sequential_when_batch_unavailable(self, mock_zep):
-        mock_zep.batch.create.side_effect = ApiError(status_code=403)
+    def test_auto_falls_back_to_sequential_when_endpoint_not_found(self, mock_zep):
+        # a 404 means this deployment does not serve the batch endpoint, which
+        # sequential thread.add_messages is unaffected by
+        mock_zep.batch.create.side_effect = ApiError(status_code=404)
         result = ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
         assert result.method == "sequential"
         assert any("not available" in w for w in result.warnings)
+        # a missing endpoint is conclusive, so it is never retried
+        assert mock_zep.batch.create.call_count == 1
+
+    @pytest.mark.parametrize("status_code", [402, 403])
+    def test_auto_refused_create_propagates_without_fallback(self, mock_zep, status_code):
+        # a refused key or an exhausted quota would refuse thread.add_messages
+        # too, so falling back would only bury the real error in a slow run
+        mock_zep.batch.create.side_effect = ApiError(status_code=status_code, body="refused")
+        with pytest.raises(ApiError) as caught:
+            ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
+        assert not isinstance(caught.value, BatchUnavailableError)
+        assert caught.value.status_code == status_code
+        assert caught.value.body == "refused"
+        mock_zep.thread.add_messages.assert_not_called()
+
+    def test_auto_retries_transient_create_error_instead_of_falling_back(self, mock_zep):
+        # only a missing endpoint may downgrade the run to sequential; a 429 is
+        # a blip, so the retry keeps the run on the batch path
+        mock_zep.batch.create.side_effect = [
+            ApiError(status_code=429, body="rate limited"),
+            make_batch_summary("batch-1", "draft"),
+        ]
+        result = ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")
+        assert result.method == "batch"
+        assert result.items_submitted == 1
+        mock_zep.thread.add_messages.assert_not_called()
 
     def test_auto_no_sequential_fallback_after_partial_batch(self, mock_zep, monkeypatch):
-        # once some batches have been submitted, a mid-stream gating error must
-        # surface, not fall back to sequential (that would re-submit + duplicate)
+        # once some batches have been submitted, a mid-stream create failure must
+        # stop the run — never fall back to sequential, which would re-submit the
+        # messages already in flight — and must keep the ids of those batches
         monkeypatch.setattr("zep_ingest.threads.MAX_ITEMS_PER_ADD", 1)
         monkeypatch.setattr("zep_ingest.threads.MAX_ITEMS_PER_BATCH", 1)
         mock_zep.batch.create.side_effect = [
             make_batch_summary("b1", "draft"),
-            ApiError(status_code=403),
+            ApiError(status_code=404),
         ]
         msgs = [message(content="m0"), message(content="m1")]
-        with pytest.raises(BatchUnavailableError):
-            ingest_thread_messages(mock_zep, msgs, user_id="avery-brown")
+
+        result = ingest_thread_messages(mock_zep, msgs, user_id="avery-brown")
+
         mock_zep.thread.add_messages.assert_not_called()  # no double ingestion
+        assert result.batch_ids == ["b1"]
+        assert result.add_errors[-1].index == -1
+        assert "result.batch_ids" in result.add_errors[-1].error
 
     def test_sequential_groups_by_thread(self, mock_zep):
         # the sequential path issues one add_messages call per thread, preserving
@@ -256,8 +320,8 @@ class TestSequentialPath:
         assert calls["support-42"][1].role == "assistant"
         assert [m.content for m in calls["support-43"]] == ["other thread"]
 
-    def test_explicit_batch_raises_on_gating(self, mock_zep):
-        mock_zep.batch.create.side_effect = ApiError(status_code=403)
+    def test_explicit_batch_raises_when_endpoint_not_found(self, mock_zep):
+        mock_zep.batch.create.side_effect = ApiError(status_code=404)
         with pytest.raises(BatchUnavailableError):
             ingest_thread_messages(mock_zep, [message()], user_id="avery-brown", method="batch")
 
@@ -422,6 +486,31 @@ class TestFileSources:
             )
         )
         with pytest.raises(ConfigurationError):
+            ingest_thread_messages(mock_zep, file, user_id="avery-brown")
+        mock_zep.batch.add.assert_not_called()
+        mock_zep.thread.add_messages.assert_not_called()
+
+    def test_row_missing_required_field_names_the_field_and_row(self, mock_zep, tmp_path):
+        # real chat exports routinely omit name/created_at; an omitted column is
+        # a ConfigurationError pointing at the row, not a dataclass TypeError
+        file = tmp_path / "chat.jsonl"
+        rows = [
+            {
+                "thread_id": "t1",
+                "role": "user",
+                "name": "Avery Brown",
+                "content": "hello",
+                "created_at": "2024-06-15T10:30:00Z",
+            },
+            {
+                "thread_id": "t1",
+                "role": "user",
+                "content": "hi",
+                "created_at": "2024-06-15T10:31:00Z",
+            },
+        ]
+        file.write_text("\n".join(json.dumps(r) for r in rows))
+        with pytest.raises(ConfigurationError, match=r"Row 1 is missing required field\(s\): name"):
             ingest_thread_messages(mock_zep, file, user_id="avery-brown")
         mock_zep.batch.add.assert_not_called()
         mock_zep.thread.add_messages.assert_not_called()

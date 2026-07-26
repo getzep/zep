@@ -1,4 +1,4 @@
-"""SequentialSubmitter: one graph.add per episode — works on every Zep plan.
+"""SequentialSubmitter: one graph.add per episode.
 
 Rate-limit aware: honors the Retry-After header on 429s and otherwise backs
 off exponentially with jitter. One call at a time also preserves stream order,
@@ -16,7 +16,7 @@ import httpx
 from zep_cloud.client import Zep
 from zep_cloud.core.api_error import ApiError
 
-from zep_ingest._errors import SubmitError, safe_api_error
+from zep_ingest._errors import SubmitError, format_api_error
 from zep_ingest._validation import require_int_range, require_nonnegative_number
 from zep_ingest.result import AddError, IngestResult
 from zep_ingest.types import Destination, Episode, to_graph_add_kwargs
@@ -118,7 +118,7 @@ class SequentialSubmitter:
                 AddError(
                     index=index,
                     item_count=1,
-                    error=safe_api_error("graph.add", error),
+                    error=format_api_error("graph.add", error),
                 )
             )
             return

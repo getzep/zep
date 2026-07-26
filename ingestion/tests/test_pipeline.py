@@ -147,9 +147,8 @@ class TestRun:
         assert "2" in warning
 
     def test_wait_polls(self, mock_zep):
-        result = Pipeline(ListLoader([stamped("x")])).run(
-            mock_zep, graph_id="g1", wait=True, poll_interval=0
-        )
+        result = Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_id="g1")
+        result.wait(poll_interval=0)
         assert result.status == "succeeded"
         mock_zep.batch.get.assert_called()
 

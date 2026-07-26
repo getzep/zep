@@ -1,8 +1,12 @@
-"""BatchSubmitter: bulk submission via the enterprise Zep Batch API.
+"""BatchSubmitter: bulk submission via the Zep Batch API.
 
-Pages the episode stream at the API's 350-items-per-add limit, rolls over to a
-new batch at the 50k-items-per-batch limit, and never crashes mid-run: a page
-that keeps failing is recorded as an AddError and the run continues.
+Pages the episode stream at the API's 350-items-per-add limit and rolls over to
+a new batch at the 50k-items-per-batch limit. Nothing that happens after the
+first batch opens is allowed to crash the run: a page that keeps failing is
+recorded as an AddError and the run continues, and a rollover that cannot open
+its next batch stops the run with the reason recorded — because the batches
+already submitted are still processing, and their ids are the only handle on
+them.
 """
 
 from collections.abc import Iterable
@@ -13,7 +17,7 @@ import httpx
 from zep_cloud.client import Zep
 from zep_cloud.core.api_error import ApiError
 
-from zep_ingest._errors import SubmitError, safe_api_error
+from zep_ingest._errors import SubmitError, format_api_error
 from zep_ingest._validation import require_int_range
 from zep_ingest.exceptions import BatchUnavailableError, InvalidBatchResponseError
 from zep_ingest.result import AddError, IngestResult
@@ -26,8 +30,11 @@ from zep_ingest.types import (
     to_batch_item,
 )
 
-#: Statuses the Batch API returns when the feature is not enabled for the plan.
-GATING_STATUS_CODES = frozenset({402, 403, 404})
+#: The only status that means "this deployment does not serve the Batch API",
+#: and so the only failure sequential ingestion can work around. Every other
+#: refusal — a rejected key, an exhausted quota — would refuse graph.add just
+#: as readily, so falling back would only hide the real error behind a slow run.
+BATCH_UNAVAILABLE_STATUS_CODES = frozenset({404})
 
 
 def require_batch_id(
@@ -46,9 +53,23 @@ def require_batch_id(
     return batch_id
 
 
-def is_gating_error(error: SubmitError) -> bool:
-    # A transport error carries no status, so it can never prove plan gating.
-    return isinstance(error, ApiError) and error.status_code in GATING_STATUS_CODES
+def rollover_failure_message(error: SubmitError, result: IngestResult) -> str:
+    """Explain a failed mid-run batch.create in terms of what is still in flight."""
+    unknown_batch = (
+        " A further batch may have been created without its id being returned."
+        if isinstance(error, httpx.TransportError)
+        else ""
+    )
+    return (
+        f"{format_api_error('batch.create', error)}; stopped after "
+        f"{len(result.batch_ids)} batch(es). Those batches are still processing — see "
+        f"result.batch_ids. The remaining items were not submitted.{unknown_batch}"
+    )
+
+
+def is_batch_unavailable(error: SubmitError) -> bool:
+    # A transport error carries no status, so it can never prove unavailability.
+    return isinstance(error, ApiError) and error.status_code in BATCH_UNAVAILABLE_STATUS_CODES
 
 
 def process_batch(client: Zep, batch_id: str, result: IngestResult, *, max_retries: int) -> None:
@@ -65,7 +86,7 @@ def process_batch(client: Zep, batch_id: str, result: IngestResult, *, max_retri
     if error is not None:
         result.mark_batch_failed(
             batch_id,
-            f"{safe_api_error('batch.process', error)}; "
+            f"{format_api_error('batch.process', error)}; "
             f"items were added but the batch was never processed — retry with "
             f"client.batch.process({batch_id!r}).",
         )
@@ -116,6 +137,8 @@ class BatchSubmitter:
                 batch_id = None
             if batch_id is None:
                 batch_id = self._create_batch(result)
+                if batch_id is None:
+                    break
                 items_in_batch = 0
             items = [to_batch_item(ep, destination) for ep in page]
             if self._add_page(batch_id, items, page_index, result):
@@ -126,32 +149,53 @@ class BatchSubmitter:
             process_batch(self.client, batch_id, result, max_retries=self.max_add_retries)
         return result
 
-    def _create_batch(self, result: IngestResult) -> str:
-        try:
-            if self.initial_batch_id is not None:
-                batch_id = self.initial_batch_id
-                self.initial_batch_id = None
-            else:
-                if self.batch_metadata is not None:
-                    summary = self.client.batch.create(metadata=self.batch_metadata)
-                else:
-                    summary = self.client.batch.create()
-                batch_id = require_batch_id(
-                    getattr(summary, "batch_id", None),
-                    partial_result=result,
+    def _create_batch(self, result: IngestResult) -> str | None:
+        """Open the next batch, or return None when a rollover cannot continue.
+
+        A failure opening the *first* batch is raised: nothing has been
+        submitted yet, and the caller may still fall back to sequential. A
+        failure on a rollover is recorded instead — earlier batches are already
+        processing, and their ids are the only handle on them, so raising would
+        throw away the run's only means of recovery.
+        """
+        if self.initial_batch_id is not None:
+            batch_id = self.initial_batch_id
+            self.initial_batch_id = None
+            result.batch_ids.append(batch_id)
+            return batch_id
+
+        def create() -> Any:
+            if self.batch_metadata is not None:
+                return self.client.batch.create(metadata=self.batch_metadata)
+            return self.client.batch.create()
+
+        # Retried on transient errors like every other batch call, so a
+        # momentary blip cannot end the run early.
+        summary, error = call_with_retries(create, max_retries=self.max_add_retries)
+        if error is not None:
+            if result.batch_ids:
+                result.add_errors.append(
+                    AddError(
+                        index=-1,
+                        item_count=0,
+                        error=rollover_failure_message(error, result),
+                    )
                 )
-        except ApiError as error:
-            if is_gating_error(error):
+                return None
+            if isinstance(error, httpx.TransportError):
+                # No response, so the batch may exist without us knowing its id.
+                raise InvalidBatchResponseError(
+                    f"{format_api_error('batch.create', error)}; refusing to submit because "
+                    "the batch may already have been created.",
+                    partial_result=result,
+                ) from error
+            if is_batch_unavailable(error):
                 raise BatchUnavailableError(partial_result=result) from error
-            raise
-        except httpx.TransportError as error:
-            # No response, so the batch may exist without us knowing its id.
-            # Carry the result so already-filled batches are still recoverable.
-            raise InvalidBatchResponseError(
-                f"{safe_api_error('batch.create', error)}; refusing to submit because "
-                "the batch may already have been created.",
-                partial_result=result,
-            ) from error
+            raise error
+        batch_id = require_batch_id(
+            getattr(summary, "batch_id", None),
+            partial_result=result,
+        )
         result.batch_ids.append(batch_id)
         return batch_id
 
@@ -175,7 +219,7 @@ class BatchSubmitter:
             AddError(
                 index=page_index,
                 item_count=len(items),
-                error=f"{safe_api_error('batch.add', error)} after {attempts} attempt(s)",
+                error=f"{format_api_error('batch.add', error)} after {attempts} attempt(s)",
                 batch_id=batch_id,
             )
         )

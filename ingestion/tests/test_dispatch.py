@@ -29,8 +29,10 @@ class TestAuto:
         mock_zep.batch.add.assert_called_once()
         mock_zep.graph.add.assert_not_called()
 
-    def test_falls_back_to_sequential_on_gating_error(self, mock_zep, caplog):
-        mock_zep.batch.create.side_effect = ApiError(status_code=403, body="forbidden")
+    def test_falls_back_to_sequential_when_endpoint_not_found(self, mock_zep, caplog):
+        # A 404 is the one failure sequential ingestion is unaffected by: the
+        # deployment simply does not serve the batch endpoint.
+        mock_zep.batch.create.side_effect = ApiError(status_code=404, body="not found")
         mock_zep.graph.add.side_effect = [make_zep_episode(f"u{i}") for i in range(3)]
         with caplog.at_level("INFO"):
             result = submit_episodes(mock_zep, episodes(3), DEST, method="auto")
@@ -42,14 +44,27 @@ class TestAuto:
         assert any("Batch API" in warning for warning in result.warnings)
 
     def test_no_episodes_lost_on_fallback(self, mock_zep):
-        mock_zep.batch.create.side_effect = ApiError(status_code=402)
+        mock_zep.batch.create.side_effect = ApiError(status_code=404)
         mock_zep.graph.add.side_effect = [make_zep_episode(f"u{i}") for i in range(5)]
         result = submit_episodes(mock_zep, iter(episodes(5)), DEST, method="auto")
         datas = [c.kwargs["data"] for c in mock_zep.graph.add.call_args_list]
         assert datas == [f"episode {i}" for i in range(5)]
         assert result.items_submitted == 5
 
-    def test_non_gating_create_error_propagates(self, mock_zep):
+    @pytest.mark.parametrize("status_code", [402, 403])
+    def test_refused_probe_propagates_without_fallback(self, mock_zep, status_code):
+        # A refused key or an exhausted quota would refuse graph.add too, so
+        # grinding through the stream sequentially would only bury the real
+        # error in per-item failures. It must surface as itself.
+        mock_zep.batch.create.side_effect = ApiError(status_code=status_code, body="refused")
+        with pytest.raises(ApiError) as caught:
+            submit_episodes(mock_zep, episodes(3), DEST, method="auto")
+        assert caught.value.status_code == status_code
+        # the server's own explanation reaches the caller intact
+        assert caught.value.body == "refused"
+        mock_zep.graph.add.assert_not_called()
+
+    def test_server_error_on_create_propagates(self, mock_zep):
         mock_zep.batch.create.side_effect = ApiError(status_code=500)
         with pytest.raises(ApiError):
             submit_episodes(mock_zep, episodes(1), DEST, method="auto")
@@ -67,16 +82,17 @@ class TestAuto:
 
     def test_persistent_transient_probe_error_raises_without_fallback(self, mock_zep):
         # A 5xx that survives retries surfaces as an error — never a silent
-        # downgrade to sequential (which would hit the same entitlements anyway).
+        # downgrade to sequential, which would only mask a server fault the
+        # sequential path would hit too.
         mock_zep.batch.create.side_effect = ApiError(status_code=500)
         with pytest.raises(ApiError):
             submit_episodes(mock_zep, episodes(3), DEST, method="auto", max_add_retries=3)
         assert mock_zep.batch.create.call_count == 1
         mock_zep.graph.add.assert_not_called()
 
-    def test_probe_transport_error_surfaces_without_gating_fallback(self, mock_zep):
-        # A transport error carries no status, so it can never be mistaken for a
-        # plan-gating response and downgraded to sequential.
+    def test_probe_transport_error_surfaces_without_fallback(self, mock_zep):
+        # A transport error carries no status, so it can never be mistaken for
+        # a missing endpoint and downgraded to sequential.
         mock_zep.batch.create.side_effect = httpx.ReadTimeout("response never arrived")
         with pytest.raises(httpx.ReadTimeout):
             submit_episodes(mock_zep, episodes(3), DEST, method="auto", max_add_retries=3)
@@ -100,10 +116,20 @@ class TestAuto:
 
 
 class TestExplicit:
-    def test_batch_raises_batch_unavailable_on_gating(self, mock_zep):
-        mock_zep.batch.create.side_effect = ApiError(status_code=403)
+    def test_batch_raises_batch_unavailable_when_endpoint_not_found(self, mock_zep):
+        mock_zep.batch.create.side_effect = ApiError(status_code=404)
         with pytest.raises(BatchUnavailableError):
             submit_episodes(mock_zep, episodes(1), DEST, method="batch")
+
+    @pytest.mark.parametrize("status_code", [402, 403])
+    def test_batch_surfaces_refusal_instead_of_batch_unavailable(self, mock_zep, status_code):
+        # method="batch" was asked for explicitly, so a refusal is reported as
+        # the refusal it is, not as "this deployment has no Batch API".
+        mock_zep.batch.create.side_effect = ApiError(status_code=status_code, body="refused")
+        with pytest.raises(ApiError) as caught:
+            submit_episodes(mock_zep, episodes(1), DEST, method="batch")
+        assert not isinstance(caught.value, BatchUnavailableError)
+        assert caught.value.status_code == status_code
 
     def test_sequential_never_touches_batch(self, mock_zep):
         submit_episodes(mock_zep, episodes(2), DEST, method="sequential")

@@ -1,4 +1,4 @@
-"""Tests for SequentialSubmitter (graph.add path — works on every plan)."""
+"""Tests for SequentialSubmitter (the graph.add path)."""
 
 import httpx
 import pytest
@@ -95,7 +95,7 @@ class TestRateLimits:
         result = SequentialSubmitter(mock_zep).submit(episodes(2), DEST)
         assert mock_zep.graph.add.call_count == 2
         assert len(result.add_errors) == 1
-        assert result.add_errors[0].error == "graph.add failed: status=400"
+        assert result.add_errors[0].error == "graph.add failed: status=400, body=bad request"
         assert sleeps == []
 
     def test_server_error_is_not_retried_without_idempotency(self, mock_zep, sleeps):

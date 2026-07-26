@@ -133,6 +133,73 @@ class TestFieldMapping:
         assert episodes[0].metadata["file_name"] == "products.jsonl"
 
 
+class TestReservedProvenanceKeys:
+    def test_record_fields_cannot_overwrite_provenance(self, tmp_path):
+        file = tmp_path / "web.csv"
+        file.write_text("source_type,file_name,body\nweb,report-q3.pdf,hello\n")
+        loader = JsonRecordsLoader(file, metadata_fields=["source_type", "file_name"])
+
+        [episode] = loader.load()
+
+        assert episode.metadata["source_type"] == "json_record"
+        assert episode.metadata["file_name"] == "web.csv"
+        # dropped from metadata only; the record itself is untouched
+        assert json.loads(episode.data)["source_type"] == "web"
+        assert json.loads(episode.data)["file_name"] == "report-q3.pdf"
+
+    def test_dropped_collision_warns(self, tmp_path):
+        file = tmp_path / "web.csv"
+        file.write_text("source_type,body\nweb,hello\n")
+        loader = JsonRecordsLoader(file, metadata_fields=["source_type"])
+
+        list(loader.load())
+
+        assert any("metadata_fields" in warning for warning in loader.warnings)
+        assert any("source_type" in warning for warning in loader.warnings)
+
+    def test_collision_warns_even_when_no_record_carries_the_field(self, jsonl_file):
+        loader = JsonRecordsLoader(jsonl_file, metadata_fields=["source_type"])
+
+        # the collision is config-level, so preview() and run() report it alike
+        list(loader.load())
+
+        assert any("source_type" in warning for warning in loader.warnings)
+
+    def test_other_metadata_fields_still_lift_alongside_a_collision(self, tmp_path):
+        file = tmp_path / "web.csv"
+        file.write_text("source_type,region,body\nweb,emea,hello\n")
+        loader = JsonRecordsLoader(file, metadata_fields=["source_type", "region"])
+
+        [episode] = loader.load()
+
+        assert episode.metadata["region"] == "emea"
+        assert episode.metadata["source_type"] == "json_record"
+
+
+class TestMetadataBudget:
+    def test_over_budget_metadata_fields_rejected(self, jsonl_file):
+        with pytest.raises(ConfigurationError, match="metadata_fields"):
+            JsonRecordsLoader(jsonl_file, metadata_fields=[f"f{i}" for i in range(9)])
+
+    def test_over_budget_rejected_before_any_file_is_read(self, tmp_path):
+        # the metadata_fields error wins over "no files match": the request is
+        # invalid regardless of what is on disk
+        with pytest.raises(ConfigurationError, match="metadata_fields"):
+            JsonRecordsLoader(
+                str(tmp_path / "*.jsonl"), metadata_fields=[f"f{i}" for i in range(9)]
+            )
+
+    def test_full_budget_fits_the_api_metadata_limit(self, tmp_path):
+        fields = [f"f{i}" for i in range(8)]
+        file = tmp_path / "r.jsonl"
+        file.write_text(json.dumps({f: i for i, f in enumerate(fields)}))
+
+        [episode] = JsonRecordsLoader(file, metadata_fields=fields).load()
+
+        assert len(episode.metadata) == 10
+        assert episode.metadata["source_type"] == "json_record"
+
+
 class TestOneLiner:
     def test_ingest_json_records(self, mock_zep, jsonl_file):
         from zep_ingest.pipeline import ingest_json_records
