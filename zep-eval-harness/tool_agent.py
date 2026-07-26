@@ -187,9 +187,11 @@ class AgentLoopResult:
     hit_call_cap: bool = False
     hit_iteration_cap: bool = False
     tool_choice_downgrades: int = 0
-    # The agent kept requesting tools instead of answering, through every forced
-    # answer attempt. Any text it produced alongside those calls is a preamble,
-    # not an answer, so it is published only because nothing better exists.
+    # True whenever the published answer did not come from a turn that answered
+    # cleanly — i.e. the agent kept requesting tools, and the text being graded is
+    # a preamble it produced alongside those calls. Published anyway, because a
+    # model that answers and calls a tool in the same turn shouldn't lose its
+    # answer, but flagged so the run's diagnostics don't imply a clean answer.
     forced_answer_failed: bool = False
 
     @property
@@ -562,10 +564,15 @@ async def run_tool_agent(
             )
 
             if not ignored:
-                # Any earlier preamble is a last resort: a poor answer, but better
-                # than discarding a genuine one from a model that answered and
-                # called a tool in the same turn.
-                answer = text or preamble
+                answer = text
+                if not answer and preamble:
+                    # This turn answered cleanly but said nothing, so the only text
+                    # the agent ever produced came from a turn that was still
+                    # asking for tools. Publishing it beats discarding a genuine
+                    # answer from a model that answered and called a tool at once,
+                    # but it is not a clean answer and is flagged as such.
+                    answer = preamble
+                    result.forced_answer_failed = True
                 break
 
             preamble = preamble or text
