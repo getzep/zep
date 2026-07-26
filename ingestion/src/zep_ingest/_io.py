@@ -27,6 +27,13 @@ def load_rows(path: Path) -> list[dict[str, Any]]:
             "use ingest_json_records, which does accept CSV."
         )
     text = path.read_text(encoding="utf-8")
+    if not text.strip():
+        # an empty file parses as zero JSONL rows, so without this the run
+        # succeeds having ingested nothing — usually a wrong path, not intent
+        raise ConfigurationError(
+            f"{path.name} is empty. Pass a file with rows, or an explicit "
+            "[] if ingesting nothing is deliberate."
+        )
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:

@@ -139,21 +139,34 @@ class JsonRecordsLoader:
                     "created_at and Zep will default to the ingestion time."
                 )
 
+    @staticmethod
+    def _read_lines(file: Path) -> Iterator[Any]:
+        for line in file.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                yield json.loads(line)
+
     def _read(self, file: Path) -> Iterator[Any]:
         fmt: str = self.format
-        if fmt == "auto":
-            suffix = file.suffix.lower()
-            fmt = {"jsonl": "jsonl", ".jsonl": "jsonl", ".csv": "csv"}.get(suffix, "json")
+        detected = fmt == "auto"
+        if detected:
+            fmt = {".jsonl": "jsonl", ".csv": "csv"}.get(file.suffix.lower(), "json")
         try:
             if fmt == "jsonl":
-                for line in file.read_text(encoding="utf-8").splitlines():
-                    if line.strip():
-                        yield json.loads(line)
+                yield from self._read_lines(file)
             elif fmt == "csv":
                 with file.open(newline="", encoding="utf-8") as handle:
                     yield from csv.DictReader(handle)
             else:
-                parsed = json.loads(file.read_text(encoding="utf-8"))
+                try:
+                    parsed = json.loads(file.read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    # a .json file holding newline-delimited objects is a common
+                    # export shape, and the shared row reader already accepts it;
+                    # an explicit format="json" means the caller ruled that out
+                    if not detected:
+                        raise
+                    yield from self._read_lines(file)
+                    return
                 yield from parsed if isinstance(parsed, list) else [parsed]
         except (json.JSONDecodeError, ValueError) as error:
             raise ConfigurationError(f"Unparseable records in {file}: {error}") from error

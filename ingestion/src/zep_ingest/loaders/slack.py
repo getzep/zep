@@ -169,6 +169,9 @@ class _DirReader:
             return []
         return sorted(p.name for p in directory.glob("*.json") if p.is_file())
 
+    def close(self) -> None:
+        """No handle is held open; defined so both readers share one interface."""
+
 
 class _ZipReader:
     def __init__(self, path: Path) -> None:
@@ -211,6 +214,9 @@ class _ZipReader:
             for name in self.names
             if name.startswith(prefix) and name.endswith(".json") and "/" not in name[len(prefix) :]
         )
+
+    def close(self) -> None:
+        self.zip.close()
 
 
 def _conversation_ref(message: SlackMessage) -> str:
@@ -280,12 +286,14 @@ class SlackExportLoader:
         self.formatter = formatter or _default_formatter
         self.warnings: list[str] = []
         self._unresolved_users: set[str] = set()
+        self._duplicate_ts = 0
 
     def load(self) -> Iterator[Episode]:
         reader = _ZipReader(self.path) if self.path.is_file() else _DirReader(self.path)
         # both reset per pass: a second load() re-derives them, and appending to
         # the previous pass's list would report every warning twice
         self._unresolved_users = set()
+        self._duplicate_ts = 0
         self.warnings = []
         roster = self._read_roster(reader)
         users = self._user_map(roster)
@@ -305,13 +313,25 @@ class SlackExportLoader:
             )
         conversations = self._select(inventory)
         self._warn_skipped_types(inventory)
-        for conversation in conversations:
-            yield from self._load_conversation(reader, conversation, users)
+        try:
+            for conversation in conversations:
+                yield from self._load_conversation(reader, conversation, users)
+        finally:
+            # a caller that stops early — preview(limit=...) — abandons this
+            # generator, so the archive is closed here rather than at collection
+            reader.close()
         if self._unresolved_users:
             self.warnings.append(
                 f"{len(self._unresolved_users)} Slack user ID(s) referenced in "
                 "messages were absent from the roster (typically deactivated, bot, "
                 "or Slack Connect users) and were left as raw IDs."
+            )
+        if self._duplicate_ts:
+            self.warnings.append(
+                f"{self._duplicate_ts} Slack message(s) repeated a timestamp already "
+                "seen in the same conversation and were skipped as duplicates. Exports "
+                "merged from several dumps can repeat messages; verify the export if "
+                "you did not expect this."
             )
 
     @staticmethod
@@ -462,7 +482,10 @@ class SlackExportLoader:
             raw_messages = reader.read_json(f"{conversation.folder}/{day_file}") or []
             for raw in raw_messages:
                 message = self._parse(raw, conversation, users)
-                if message is None or message.ts in seen_ts:
+                if message is None:
+                    continue
+                if message.ts in seen_ts:
+                    self._duplicate_ts += 1
                     continue
                 seen_ts.add(message.ts)
                 messages.append(message)
@@ -487,7 +510,10 @@ class SlackExportLoader:
     ) -> SlackMessage | None:
         if raw.get("subtype") in self.skip_subtypes:
             return None
-        if raw.get("bot_id") and not self.include_bots:
+        # bot_message is the subtype Slack gives an app post; most carry a bot_id
+        # too, but an incoming-webhook post often has only the subtype, so keying
+        # solely on bot_id lets that traffic through include_bots=False
+        if not self.include_bots and (raw.get("bot_id") or raw.get("subtype") == "bot_message"):
             return None
         text = self._normalize_text(raw.get("text") or "", users).strip()
         if not text:

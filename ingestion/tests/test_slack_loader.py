@@ -187,6 +187,46 @@ class TestFiltering:
         bot_ep = next(e for e in included if "Build passed" in e.data)
         assert "CI Bot" in bot_ep.data
 
+    def test_bot_message_subtype_skipped_without_a_bot_id(self, tmp_path):
+        """Most app posts carry a bot_id, but an incoming-webhook post often has
+        only the subtype, so keying solely on bot_id lets that traffic through."""
+        export = mixed_export(tmp_path)
+        (export / "general" / "2024-06-15.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "subtype": "bot_message",
+                        "username": "CI",
+                        "ts": "1718400000.1",
+                        "text": "bot",
+                    },
+                    {"user": "U001", "ts": "1718400001.1", "text": "human"},
+                ]
+            )
+        )
+        bodies = " ".join(e.data for e in SlackExportLoader(export).load())
+        assert "human" in bodies
+        assert "bot" not in bodies
+
+        included = " ".join(e.data for e in SlackExportLoader(export, include_bots=True).load())
+        assert "bot" in included
+
+    def test_duplicate_timestamps_are_reported_not_dropped_in_silence(self, tmp_path):
+        export = mixed_export(tmp_path)
+        (export / "general" / "2024-06-15.json").write_text(
+            json.dumps(
+                [
+                    {"user": "U001", "ts": "1718400000.1", "text": "kept"},
+                    {"user": "U001", "ts": "1718400000.1", "text": "duplicate timestamp"},
+                ]
+            )
+        )
+        loader = SlackExportLoader(export)
+        bodies = " ".join(e.data for e in loader.load())
+
+        assert "duplicate timestamp" not in bodies
+        assert any("repeated a timestamp" in w for w in loader.warnings)
+
     def test_join_subtype_skipped(self):
         assert not any("has joined" in e.data for e in load())
 
@@ -392,6 +432,19 @@ class TestExtractedWrapper:
 
         loader = SlackExportLoader(root)
         assert list(loader.load()) == []
+
+    def test_zip_is_closed_even_when_the_caller_stops_early(self, tmp_path):
+        """preview(limit=...) abandons the generator, so the archive has to be
+        closed on teardown rather than whenever the collector gets to it."""
+        archive = Path(shutil.make_archive(str(tmp_path / "export"), "zip", FIXTURE))
+        loader = SlackExportLoader(archive)
+
+        episodes = loader.load()
+        next(episodes)  # consume one, then walk away
+        episodes.close()
+
+        with zipfile.ZipFile(archive) as reopened:  # not held open by the loader
+            assert reopened.namelist()
 
     def test_warnings_do_not_accumulate_across_loads(self, tmp_path):
         loader = SlackExportLoader(mixed_export(tmp_path))

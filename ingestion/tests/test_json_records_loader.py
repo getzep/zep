@@ -55,6 +55,24 @@ class TestFormats:
         assert all(e.data_type == "json" for e in episodes)
         assert json.loads(episodes[0].data)["sku"] == "P1"
 
+    def test_json_suffix_holding_jsonl_falls_back(self, tmp_path):
+        """JSONL exports are routinely saved as .json. The shared row reader used by
+        the fact-triple and thread paths already accepts that shape."""
+        path = tmp_path / "records.json"
+        path.write_text('{"sku": "P1"}\n{"sku": "P2"}\n')
+
+        episodes = list(JsonRecordsLoader(path).load())
+
+        assert [json.loads(e.data)["sku"] for e in episodes] == ["P1", "P2"]
+
+    def test_explicit_json_format_does_not_fall_back(self, tmp_path):
+        # format="json" is the caller stating the shape, so a decode failure is real
+        path = tmp_path / "records.json"
+        path.write_text('{"sku": "P1"}\n{"sku": "P2"}\n')
+
+        with pytest.raises(ConfigurationError, match="Unparseable records"):
+            list(JsonRecordsLoader(path, format="json").load())
+
     def test_csv(self, csv_file):
         episodes = list(JsonRecordsLoader(csv_file).load())
         assert len(episodes) == 2
