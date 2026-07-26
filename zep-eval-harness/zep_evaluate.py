@@ -817,6 +817,9 @@ async def process_single_query(
         "tool_choice_downgrades": (
             loop_result.tool_choice_downgrades if loop_result else 0
         ),
+        "require_tool_call_unenforced": (
+            loop_result.require_tool_call_unenforced if loop_result else False
+        ),
         "forced_answer_failed": (
             loop_result.forced_answer_failed if loop_result else False
         ),
@@ -1069,6 +1072,10 @@ def _compute_tool_statistics(
         # Turns where the provider rejected tool_choice and it was relaxed
         "tool_choice_downgrades": sum(
             r.get("tool_choice_downgrades", 0) for r in items
+        ),
+        # Tests where require_tool_call was asked for but not applied
+        "tests_require_tool_call_unenforced": sum(
+            1 for r in items if r.get("require_tool_call_unenforced")
         ),
         # Only meaningful when tools were offered: otherwise every test would
         # trivially count as "no tool calls".
@@ -1569,6 +1576,12 @@ def print_summary(stats: Dict[str, Any]):
             print(
                 f"  ⚠ tool_choice downgraded on {tools['tool_choice_downgrades']} turn(s) "
                 f"— the provider rejected the requested tool_choice"
+            )
+        if tools.get("tests_require_tool_call_unenforced"):
+            print(
+                f"  ⚠ require_tool_call not applied on "
+                f"{tools['tests_require_tool_call_unenforced']}/{total_tests} tests "
+                f"— the provider either rejected it or answered without retrieving"
             )
         if tools["per_tool"]:
             print(f"\n  Per tool:")

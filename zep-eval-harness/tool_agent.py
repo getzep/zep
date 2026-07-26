@@ -193,7 +193,15 @@ class AgentLoopResult:
     total_ms: float = 0.0
     hit_call_cap: bool = False
     hit_iteration_cap: bool = False
+    # Turns where the provider rejected the requested tool_choice with a 400 and
+    # the turn was retried with "auto". Only counted when that retry succeeded —
+    # a 400 from any other cause fails the retry too and propagates — so it means
+    # "dropping the constraint is what made the call work".
     tool_choice_downgrades: int = 0
+    # require_tool_call was asked for but not applied: either the provider
+    # rejected tool_choice="required", or it accepted it and answered without
+    # calling a tool anyway.
+    require_tool_call_unenforced: bool = False
     # True whenever the published answer did not come from a turn that answered
     # cleanly — i.e. the agent kept requesting tools, and the text being graded is
     # a preamble it produced alongside those calls. Published anyway, because a
@@ -469,6 +477,11 @@ async def run_tool_agent(
         )
         result.llm_turns += 1
         result.tool_choice_downgrades += int(downgraded)
+        # Attributed, not just counted: a downgrade on the first turn means the
+        # run's require_tool_call was not applied, while one on the forced-answer
+        # turn means the model was merely allowed to ask for tools again.
+        if downgraded and tool_choice == "required":
+            result.require_tool_call_unenforced = True
         usage = getattr(response, "usage", None)
         if usage:
             prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
@@ -494,7 +507,15 @@ async def run_tool_agent(
         text = (getattr(message, "content", "") or "").strip()
 
         if not tool_calls:
-            if iteration == 1 and require_tool_call and not retrieval_demanded:
+            # `message is None` when the provider returned no choices at all:
+            # there is no assistant turn to replay, and nothing to argue with, so
+            # that falls through to the forced-answer turn instead of nudging.
+            if (
+                message is not None
+                and iteration == 1
+                and require_tool_call
+                and not retrieval_demanded
+            ):
                 # tool_choice="required" was asked for and the provider answered
                 # anyway (it may not support the parameter). Say it in the prompt
                 # and spend one more round rather than accepting an answer the run
@@ -502,6 +523,7 @@ async def run_tool_agent(
                 # simply refuses can still finish.
                 print(f"  ⚠ no tool call on the first turn despite tool_choice=required for {label}")
                 retrieval_demanded = True
+                result.require_tool_call_unenforced = True
                 messages.append(_assistant_message(message, iteration))
                 messages.append({"role": "user", "content": RETRIEVE_FIRST_INSTRUCTION})
                 unanswered_text = unanswered_text or text

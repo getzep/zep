@@ -610,7 +610,8 @@ Three counters are worth watching:
 - **Cap hits.** Many tests hitting the round or call cap means the budget is throttling retrieval, and completeness is measuring your budget rather than Zep. Both caps can be flagged on the same test when both budgets ran out together.
 - **`tests_with_no_calls`.** The agent retrieved nothing. It counts tests with no *executed* calls, so a model that only ever named a nonexistent tool lands here too — check `invalid_calls` before concluding the agent chose not to retrieve.
 - **`tests_forced_answer_failed`.** No turn ever answered cleanly: the agent kept requesting tools through every forced-answer attempt, and the text being graded is a preamble it produced alongside those calls. The text is still graded (a model that answers *and* calls a tool in the same turn shouldn't lose its answer), so this counter is the only signal that the answer wasn't produced cleanly.
-- **`tool_choice_downgrades`.** The provider rejected a `tool_choice` the harness asked for and the turn was retried with `auto`. On a first turn that means `require_tool_call` wasn't enforced; on the forced-answer turn it means the model was allowed to request tools instead of answering (the harness refuses those calls and re-asks). Either way the run isn't quite the run you configured.
+- **`tool_choice_downgrades`.** The provider rejected a `tool_choice` the harness asked for and the turn was retried with `auto`. Only counted when that retry succeeded, so it means dropping the constraint is what made the call work — a 400 from any other cause (oversized history, malformed messages) fails the retry too and surfaces as an error instead.
+- **`tests_require_tool_call_unenforced`.** `--require-tool-call` was asked for but not applied, either because the provider rejected `tool_choice="required"` or because it accepted it and answered without retrieving anyway. This is the counter to read for enforcement; `tool_choice_downgrades` also covers the forced-answer turn, which is a different problem.
 
 Token counts differ by mode by construction: in tool mode `response_prompt_tokens` is the **sum over every LLM turn**, and each turn re-sends the growing history, so it is not comparable to the single-turn count from context-block mode. Per-turn counts are kept in `response_prompt_tokens_per_turn` so the total stays decomposable.
 
@@ -694,6 +695,7 @@ Results are saved to `runs/evaluations/{run_number}_{timestamp}/results.json` wi
       "invalid_calls": 0,
       "refused_calls": 0,
       "tool_choice_downgrades": 0,
+      "tests_require_tool_call_unenforced": 0,
       "tests_with_no_calls": 0,
       "tests_hitting_call_cap": 0,
       "tests_hitting_iteration_cap": 1,
@@ -756,6 +758,8 @@ Results are saved to `runs/evaluations/{run_number}_{timestamp}/results.json` wi
         "tool_invalid_calls": 0,
         "tool_refused_calls": 0,
         "tool_choice_downgrades": 0,
+        "require_tool_call_unenforced": false,
+      "tests_require_tool_call_unenforced": 0,
         "forced_answer_failed": false,
         "hit_tool_call_cap": false,
         "hit_tool_iteration_cap": false,
