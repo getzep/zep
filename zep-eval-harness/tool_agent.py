@@ -40,6 +40,7 @@ FINAL_ANSWER_ATTEMPTS = 2
 
 # Used when the model answers the first turn without retrieving even though
 # tool_choice="required" asked it to — some providers don't enforce the parameter.
+# Only sent when no context block was injected, so its claim stays true.
 RETRIEVE_FIRST_INSTRUCTION = (
     "You have not retrieved anything yet, and you have no knowledge of this user "
     "beyond what your tools return. Call a retrieval tool now, before answering."
@@ -433,6 +434,7 @@ async def run_tool_agent(
     max_iterations: int,
     max_tool_calls: int,
     require_tool_call: bool = True,
+    has_context_block: bool = False,
 ) -> AgentLoopResult:
     """
     Let the model retrieve context via tools, then answer.
@@ -453,6 +455,11 @@ async def run_tool_agent(
         max_tool_calls: Max individual tool calls across all iterations
         require_tool_call: Force a tool call on the first turn, so the model
             cannot answer before retrieving anything
+        has_context_block: Whether the system prompt already carries a
+            deterministic context block. When it does, answering the first turn
+            without a tool call is legitimate — there is other grounding — so the
+            run records that require_tool_call went unenforced without spending a
+            turn insisting on retrieval the model doesn't need.
 
     Returns:
         AgentLoopResult with the final answer, every tool call and its output,
@@ -520,19 +527,25 @@ async def run_tool_agent(
             # that falls through to the forced-answer turn instead of nudging.
             if message is not None and first_round and require_tool_call:
                 # tool_choice="required" was asked for and the provider answered
-                # anyway (it may not support the parameter). Say it in the prompt
-                # and give the model another turn rather than accepting an answer
-                # the run asked to be grounded in retrieval. Once only, so a model
-                # that simply refuses can still finish, and the round is refunded
-                # so the nudge doesn't cost the agent a retrieval opportunity.
-                print(f"  ⚠ no tool call on the first turn despite tool_choice=required for {label}")
-                retrieval_demanded = True
+                # anyway (it may not support the parameter). Always recorded, since
+                # it is a fact about the provider either way.
                 result.require_tool_call_unenforced = True
-                rounds_used -= 1
-                messages.append(_assistant_message(message, iteration))
-                messages.append({"role": "user", "content": RETRIEVE_FIRST_INSTRUCTION})
-                unanswered_text = unanswered_text or text
-                continue
+                if not has_context_block:
+                    # Nothing else grounded this answer, so it is worth a turn to
+                    # say so in the prompt and ask again. Once only, so a model
+                    # that simply refuses can still finish, and the round is
+                    # refunded so the nudge costs no retrieval opportunity.
+                    print(f"  ⚠ no tool call on the first turn despite tool_choice=required for {label}")
+                    retrieval_demanded = True
+                    rounds_used -= 1
+                    messages.append(_assistant_message(message, iteration))
+                    messages.append(
+                        {"role": "user", "content": RETRIEVE_FIRST_INSTRUCTION}
+                    )
+                    unanswered_text = unanswered_text or text
+                    continue
+                # A context block was injected, so answering from it is legitimate
+                # and the instruction above would be false. The answer stands.
             # Empty content is not an answer — fall through to the final turn.
             answer = text or None
             break

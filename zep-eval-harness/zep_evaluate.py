@@ -692,6 +692,7 @@ async def process_single_query(
                 max_iterations=max_tool_iterations,
                 max_tool_calls=max_tool_calls,
                 require_tool_call=require_tool_call,
+                has_context_block=context_block is not None,
             )
         )
         ai_answer = loop_result.answer

@@ -423,7 +423,7 @@ uv run zep_evaluate.py --tools --max-tool-calls 4 --max-tool-iterations 2
 | `--context-block` / `--no-context-block` | `USE_CONTEXT_BLOCK` | Whether deterministic search runs and injects a context block. Combinable with `--tools` |
 | `--max-tool-iterations N` | `MAX_TOOL_ITERATIONS` (3) | Max LLM turns that may request tools |
 | `--max-tool-calls N` | `MAX_TOOL_CALLS` (8) | Max individual tool calls per test case |
-| `--require-tool-call` / `--no-require-tool-call` | `REQUIRE_TOOL_CALL` (on) | Force a tool call on the agent's first turn so it can't answer from the question alone. Requested via `tool_choice="required"`; if the provider ignores that and answers anyway, the model is told to retrieve first and given one more turn |
+| `--require-tool-call` / `--no-require-tool-call` | `REQUIRE_TOOL_CALL` (on) | Force a tool call on the agent's first turn so it can't answer from the question alone. Requested via `tool_choice="required"`; if the provider ignores that and answers anyway, the model is told to retrieve first and given one more turn — but only when no context block was injected, since with one the answer already has grounding |
 
 Defaults live in `config/evaluation_config/constants.py`; the flags override them per run.
 
@@ -611,7 +611,7 @@ Three counters are worth watching:
 - **`tests_with_no_calls`.** The agent retrieved nothing. It counts tests with no *executed* calls, so a model that only ever named a nonexistent tool lands here too — check `invalid_calls` before concluding the agent chose not to retrieve.
 - **`tests_forced_answer_failed`.** No turn ever answered cleanly: the agent kept requesting tools through every forced-answer attempt, and the text being graded is a preamble it produced alongside those calls. The text is still graded (a model that answers *and* calls a tool in the same turn shouldn't lose its answer), so this counter is the only signal that the answer wasn't produced cleanly.
 - **`tool_choice_downgrades`.** The provider rejected a `tool_choice` the harness asked for and the turn was retried with `auto`. Only counted when that retry succeeded, so it means dropping the constraint is what made the call work — a 400 from any other cause (oversized history, malformed messages) fails the retry too and surfaces as an error instead.
-- **`tests_require_tool_call_unenforced`.** `--require-tool-call` was asked for but not applied, either because the provider rejected `tool_choice="required"` or because it accepted it and answered without retrieving anyway. This is the counter to read for enforcement; `tool_choice_downgrades` also covers the forced-answer turn, which is a different problem.
+- **`tests_require_tool_call_unenforced`.** `--require-tool-call` was asked for but not applied, either because the provider rejected `tool_choice="required"` or because it accepted it and answered without retrieving anyway. Read it as a statement about the provider, not about groundedness: in "both" mode the context block still grounded the answer, so the harness records this and moves on rather than insisting on a tool call the model didn't need. `tool_choice_downgrades` also covers the forced-answer turn, which is a different problem.
 
 Token counts differ by mode by construction: in tool mode `response_prompt_tokens` is the **sum over every LLM turn**, and each turn re-sends the growing history, so it is not comparable to the single-turn count from context-block mode. Per-turn counts are kept in `response_prompt_tokens_per_turn` so the total stays decomposable.
 
