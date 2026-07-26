@@ -28,6 +28,28 @@ def _first_non_finite(value: Any) -> float | None:
     return None
 
 
+def _is_finite_number(value: int | float) -> bool:
+    """Whether a number is usable as a duration or rate. Timing config only.
+
+    ``math.isfinite`` raises OverflowError for an ``int`` too large to convert to
+    a float, and such an ``int`` is as unusable downstream as an infinity is —
+    ``time.sleep`` and ``time.monotonic() + timeout`` both raise OverflowError on
+    it — so catch the overflow and treat the value as non-finite rather than
+    letting the check itself raise, or dodging it by accepting the value.
+
+    Deliberately NOT used by the metadata guards above, and the asymmetry is not
+    an oversight: JSON integers are arbitrary-precision, so ``10**400`` in a
+    metadata value serializes and reparses exactly and is refused by nothing.
+    What those guards reject is ``NaN``/``Infinity``, which have no JSON form at
+    all. Here the constraint is the opposite one — not "can this be written as
+    JSON" but "can the C clock take it" — so it is a float's range that binds.
+    """
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def is_scalar_or_scalar_array(value: Any) -> bool:
     """Whether a metadata / attribute value is one the API accepts.
 
@@ -162,14 +184,14 @@ def require_nonnegative_number(field: str, value: Any) -> None:
     are never true, so the poll loop never gives up. (-inf is already refused as
     negative.)
 
-    Only a ``float`` can be non-finite, and asking ``math.isfinite`` about an
-    ``int`` too large to convert to one raises OverflowError, so the finiteness
-    check is scoped to floats rather than applied to every number.
+    An ``int`` too large to convert to a float is refused for the same reason: it
+    is not representable as one, so it produces those very failures rather than
+    escaping them. See ``_is_finite_number``.
     """
     if (
         isinstance(value, bool)
         or not isinstance(value, int | float)
-        or (isinstance(value, float) and not math.isfinite(value))
+        or not _is_finite_number(value)
         or value < 0
     ):
         raise ConfigurationError(f"{field} must be a finite, non-negative number, got {value!r}")

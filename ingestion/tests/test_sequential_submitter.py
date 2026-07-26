@@ -56,11 +56,17 @@ class TestConstructorValidation:
     def test_finite_min_interval_accepted(self, mock_zep):
         assert SequentialSubmitter(mock_zep, min_interval=0.25).min_interval == 0.25
 
-    def test_int_too_large_for_a_float_does_not_leak_an_overflow_error(self, mock_zep):
-        # only a float can be non-finite, and math.isfinite() on an int this big
-        # raises OverflowError — the finiteness check must not turn a validator
-        # into a source of the very error type it exists to prevent
-        assert SequentialSubmitter(mock_zep, min_interval=10**400).min_interval == 10**400
+    def test_int_too_large_for_a_float_refused(self, mock_zep):
+        # an int this big is not representable as a float, so it is as unusable
+        # as +inf: accepting it only defers the failure to time.sleep, which
+        # raises OverflowError once submit() paces its first episode. Refuse it
+        # here, naming the parameter, rather than shipping that error downstream.
+        with pytest.raises(ConfigurationError, match="min_interval"):
+            SequentialSubmitter(mock_zep, min_interval=10**400)
+
+    def test_finite_int_min_interval_accepted(self, mock_zep):
+        # the guard is finiteness, not "is not an int"
+        assert SequentialSubmitter(mock_zep, min_interval=3).min_interval == 3
 
 
 class TestRateLimits:

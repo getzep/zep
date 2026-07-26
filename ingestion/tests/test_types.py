@@ -1,5 +1,7 @@
 """Tests for core data model: Episode, Destination, and API mappings."""
 
+import json
+
 import pytest
 from zep_cloud.types.batch_add_item import BatchAddItem
 
@@ -95,11 +97,41 @@ class TestMetadataValues:
             Episode(data="x", metadata={"score": float("inf")})
 
         assert "metadata['score']" in str(error.value)
-        assert "inf" in str(error.value)
+        # "is inf;" rather than "inf", which -inf would satisfy too — the value is
+        # quoted back to the caller, so a wrong-sign report has to fail here
+        assert "is inf;" in str(error.value)
+
+    def test_nested_array_of_non_finites_reports_the_shape_not_the_value(self):
+        # [[nan]] is refused for its nesting, not its NaN: _first_non_finite only
+        # looks one level down, so the non-finite branch must not shadow the
+        # generic shape error for a value it cannot actually see
+        with pytest.raises(ConfigurationError) as error:
+            Episode(data="x", metadata={"score": [[float("nan")]]})
+
+        assert "arrays of scalars" in str(error.value)
+        assert "not valid JSON" not in str(error.value)
+
+    def test_non_finite_beside_a_non_scalar_reports_only_the_non_finite(self):
+        # the two branches are exclusive: a value that is both non-finite and
+        # otherwise invalid is named once, by the more specific message
+        with pytest.raises(ConfigurationError) as error:
+            Episode(data="x", metadata={"score": [float("nan"), {"a": 1}]})
+
+        assert "is nan;" in str(error.value)
+        assert "arrays of scalars" not in str(error.value)
 
     def test_largest_finite_float_still_accepted(self):
         # the guard is finiteness, not magnitude
         assert Episode(data="x", metadata={"score": 1e308}).metadata == {"score": 1e308}
+
+    def test_int_too_large_for_a_float_accepted_here_unlike_in_timing_config(self):
+        # JSON integers are arbitrary-precision, so this serializes and reparses
+        # exactly: nothing about it is unsendable. require_nonnegative_number
+        # refuses the same value, because there the limit is what a C clock can
+        # hold, not what JSON can express. Do not "unify" the two guards.
+        huge = 10**400
+        assert Episode(data="x", metadata={"score": huge}).metadata == {"score": huge}
+        assert json.loads(json.dumps({"score": huge}))["score"] == huge
 
     def test_non_mapping_metadata_rejected(self):
         with pytest.raises(ConfigurationError, match="metadata"):
