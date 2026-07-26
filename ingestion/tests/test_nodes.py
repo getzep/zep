@@ -154,6 +154,49 @@ def test_non_string_map_key_fails_before_any_api_call(mock_zep):
     mock_zep.graph.add_nodes.assert_not_called()
 
 
+@pytest.mark.parametrize("field", ["attributes", "metadata"])
+@pytest.mark.parametrize(
+    "value",
+    [float("nan"), float("inf"), float("-inf"), [float("nan")], [1.0, float("inf")]],
+)
+def test_non_finite_map_value_fails_before_any_api_call(mock_zep, field, value):
+    def plan():
+        yield NodeItem(name="Avery Brown", uuid=str(uuid.uuid4()))
+        yield NodeItem(name="Blake Carter", uuid=str(uuid.uuid4()), **{field: {"score": value}})
+
+    with pytest.raises(ConfigurationError, match="not valid JSON"):
+        ingest_nodes(mock_zep, plan(), graph_id="g1")
+
+    mock_zep.graph.add_nodes.assert_not_called()
+
+
+def test_non_finite_attribute_from_a_json_file_fails_before_any_api_call(mock_zep, tmp_path):
+    # json.loads reads bare NaN / Infinity as a Python extension, so a row file
+    # can carry one all the way to the wire, where it is not valid JSON. The
+    # failure must name the file's field, not surface as a serialization error.
+    path = tmp_path / "nodes.jsonl"
+    path.write_text(
+        '{"name": "Avery Brown", "uuid": "' + CANONICAL_UUID + '", '
+        '"attributes": {"score": NaN, "ratios": [1.0, Infinity]}}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError) as error:
+        ingest_nodes(mock_zep, path, graph_id="g1")
+
+    assert "attributes['score']" in str(error.value)
+    assert "not valid JSON" in str(error.value)
+    mock_zep.graph.add_nodes.assert_not_called()
+
+
+def test_finite_float_attributes_are_accepted(mock_zep):
+    # the guard is finiteness, not magnitude
+    node = NodeItem(name="Avery Brown", uuid=CANONICAL_UUID, attributes={"score": 1e308})
+    ingest_nodes(mock_zep, [node], graph_id="g1")
+
+    assert mock_zep.graph.add_nodes.call_args.kwargs["nodes"][0].attributes == {"score": 1e308}
+
+
 def test_empty_node_maps_are_sent_to_clear_existing_values():
     node = NodeItem(
         name="Avery Brown",

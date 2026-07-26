@@ -73,6 +73,34 @@ class TestMetadataValues:
         assert "metadata['teams']" in str(error.value)
         assert "arrays of scalars" in str(error.value)
 
+    @pytest.mark.parametrize(
+        "value",
+        [
+            float("nan"),
+            float("inf"),
+            float("-inf"),
+            [float("nan")],  # refused inside an array as well as alone
+            [1.0, float("inf")],  # one bad element condemns the array
+        ],
+    )
+    def test_non_finite_numbers_rejected(self, value):
+        # json accepts NaN/Infinity on the way in and writes them straight back
+        # out, so an accepted one reaches the API as a bare NaN / Infinity token
+        # that no strict JSON parser accepts.
+        with pytest.raises(ConfigurationError, match="not valid JSON"):
+            Episode(data="x", metadata={"score": value})
+
+    def test_non_finite_rejection_names_the_key_and_the_value(self):
+        with pytest.raises(ConfigurationError) as error:
+            Episode(data="x", metadata={"score": float("inf")})
+
+        assert "metadata['score']" in str(error.value)
+        assert "inf" in str(error.value)
+
+    def test_largest_finite_float_still_accepted(self):
+        # the guard is finiteness, not magnitude
+        assert Episode(data="x", metadata={"score": 1e308}).metadata == {"score": 1e308}
+
     def test_non_mapping_metadata_rejected(self):
         with pytest.raises(ConfigurationError, match="metadata"):
             Episode(data="x", metadata=["sales"])

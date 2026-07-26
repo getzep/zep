@@ -74,3 +74,14 @@ class TestSearchWhenReady:
         with pytest.raises(ConfigurationError):
             search_when_ready(mock_zep, "q")
         mock_zep.graph.search.assert_not_called()
+
+    @pytest.mark.parametrize("field", ["timeout", "poll_interval"])
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_timing_refused_before_searching(self, mock_zep, field, value):
+        # `deadline = time.monotonic() + timeout` is nan or inf for a non-finite
+        # timeout, and `time.monotonic() >= deadline` is then never true, so the
+        # helper would poll forever instead of returning the empty response.
+        with pytest.raises(ConfigurationError, match=field):
+            search_when_ready(mock_zep, "q", graph_id="g1", **{field: value})
+
+        mock_zep.graph.search.assert_not_called()

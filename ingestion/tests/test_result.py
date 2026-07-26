@@ -3,7 +3,12 @@
 import pytest
 
 from tests.conftest import make_batch_summary, make_item_detail, make_item_list, make_zep_episode
-from zep_ingest.exceptions import IngestFailedError, IngestTimeoutError, IngestUntrackedError
+from zep_ingest.exceptions import (
+    ConfigurationError,
+    IngestFailedError,
+    IngestTimeoutError,
+    IngestUntrackedError,
+)
 from zep_ingest.result import AddError, IngestResult
 
 
@@ -66,6 +71,31 @@ class TestBatchResult:
         with pytest.raises(IngestTimeoutError):
             result.wait(poll_interval=0, timeout=0)
         assert result.status == "processing"
+
+    @pytest.mark.parametrize("field", ["poll_interval", "timeout"])
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_wait_timing_refused_before_polling(self, mock_zep, field, value):
+        # A non-finite interval reaches time.sleep as a ValueError (nan) or an
+        # OverflowError (inf), and a non-finite timeout is worse than either: it
+        # silently stops being a timeout, because `elapsed >= nan` and
+        # `elapsed >= inf` are never true, so wait() would poll forever.
+        result = IngestResult(method="batch", batch_ids=["b1"], client=mock_zep)
+        with pytest.raises(ConfigurationError, match=field):
+            result.wait(**{field: value})
+
+        mock_zep.batch.get.assert_not_called()
+
+    def test_finite_timeout_still_fires(self, mock_zep, monkeypatch):
+        # the control for the case above: with a clock that leaps past any
+        # deadline, a finite timeout terminates the loop on the first check
+        clock = iter(float(seconds) for seconds in range(0, 10_000_000, 1_000_000))
+        monkeypatch.setattr("zep_ingest.result.time.monotonic", lambda: next(clock))
+        monkeypatch.setattr("zep_ingest.result.time.sleep", lambda _: None)
+        result = IngestResult(method="batch", batch_ids=["b1"], client=mock_zep)
+        mock_zep.batch.get.return_value = make_batch_summary("b1", "processing")
+
+        with pytest.raises(IngestTimeoutError):
+            result.wait(poll_interval=0, timeout=30.0)
 
     def test_failed_items_pages_across_batches(self, mock_zep):
         result = IngestResult(method="batch", batch_ids=["b1", "b2"], client=mock_zep)

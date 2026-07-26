@@ -5,6 +5,7 @@ import pytest
 from zep_cloud.core.api_error import ApiError
 
 from tests.conftest import make_zep_episode
+from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.submitters.sequential import (
     MAX_RETRY_WAIT_SECONDS,
     SequentialSubmitter,
@@ -42,6 +43,24 @@ class TestSubmission:
         result = SequentialSubmitter(mock_zep).submit([], DEST)
         mock_zep.graph.add.assert_not_called()
         assert result.status == "succeeded"
+
+
+class TestConstructorValidation:
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_min_interval_refused(self, mock_zep, value):
+        # a non-finite pacing interval reaches time.sleep as a ValueError (nan)
+        # or an OverflowError (inf); refuse it while naming the parameter
+        with pytest.raises(ConfigurationError, match="min_interval"):
+            SequentialSubmitter(mock_zep, min_interval=value)
+
+    def test_finite_min_interval_accepted(self, mock_zep):
+        assert SequentialSubmitter(mock_zep, min_interval=0.25).min_interval == 0.25
+
+    def test_int_too_large_for_a_float_does_not_leak_an_overflow_error(self, mock_zep):
+        # only a float can be non-finite, and math.isfinite() on an int this big
+        # raises OverflowError — the finiteness check must not turn a validator
+        # into a source of the very error type it exists to prevent
+        assert SequentialSubmitter(mock_zep, min_interval=10**400).min_interval == 10**400
 
 
 class TestRateLimits:

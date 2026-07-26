@@ -72,6 +72,19 @@ class TestValidation:
         with pytest.raises(ConfigurationError, match="attributes"):
             triple(attributes={"tags": value})
 
+    @pytest.mark.parametrize(
+        "value",
+        [float("nan"), float("inf"), float("-inf"), [float("nan")], [1.0, float("inf")]],
+    )
+    def test_non_finite_attributes_raise(self, value):
+        # a bare NaN / Infinity on the wire is not valid JSON
+        with pytest.raises(ConfigurationError, match="not valid JSON"):
+            triple(attributes={"score": value})
+
+    def test_finite_float_attributes_ok(self):
+        # the guard is finiteness, not magnitude
+        triple(attributes={"score": 1e308, "ratios": [0.5, 1.5]})
+
     def test_scalar_array_metadata_ok(self):
         triple(metadata={"teams": ["sales", "support"]})
 

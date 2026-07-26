@@ -4,6 +4,7 @@ Both dataclasses promise the same thing — a clear Python error naming the
 field before any API call — so the checks live once, here.
 """
 
+import math
 from datetime import datetime
 from typing import Any
 
@@ -12,21 +13,39 @@ from zep_ingest.exceptions import ConfigurationError
 SCALARS = (str, int, float, bool, type(None))
 
 
+def _first_non_finite(value: Any) -> float | None:
+    """The first NaN / Infinity / -Infinity in a scalar or an array of scalars.
+
+    They are a Python extension that json accepts on the way in and writes back
+    out, so one left in a metadata / attributes value reaches the API as a bare
+    ``NaN`` / ``Infinity`` token that no strict JSON parser accepts. Only
+    ``float`` can be non-finite — ``bool`` and ``int`` cannot.
+    """
+    elements = value if isinstance(value, list | tuple) else (value,)
+    for element in elements:
+        if isinstance(element, float) and not math.isfinite(element):
+            return element
+    return None
+
+
 def is_scalar_or_scalar_array(value: Any) -> bool:
     """Whether a metadata / attribute value is one the API accepts.
 
     The API takes a scalar or an array of scalars. An empty array carries no
     meaning and a ``None`` element inside an array is not a value, so both are
-    refused; anything nested is refused too.
+    refused; anything nested is refused too. A non-finite float is refused as
+    well, at either position — it has no JSON form to send.
 
     ``str`` is a Python sequence but a scalar here, and a ``set`` has no JSON
     form to send, so only ``list`` and ``tuple`` count as arrays.
     """
     if isinstance(value, SCALARS):
-        return True
+        return _first_non_finite(value) is None
     if isinstance(value, list | tuple):
-        return bool(value) and all(
-            element is not None and isinstance(element, SCALARS) for element in value
+        return (
+            bool(value)
+            and all(element is not None and isinstance(element, SCALARS) for element in value)
+            and _first_non_finite(value) is None
         )
     return False
 
@@ -101,7 +120,16 @@ def check_scalar_map(
             errors.append(f"{field} keys must be strings, got {type(key).__name__}: {key!r}")
         elif not key.strip():
             errors.append(f"{field} keys must be non-empty strings, got {key!r}")
-        if not is_scalar_or_scalar_array(value):
+        # A non-finite float is a number, so the generic message below would be
+        # misleading about why it was refused — name the value instead.
+        non_finite = _first_non_finite(value)
+        if non_finite is not None:
+            errors.append(
+                f"{field}[{key!r}] is {non_finite!r}; NaN, Infinity and -Infinity are not "
+                "valid JSON, so the value cannot be sent. Replace it with a finite "
+                "number, a string, or null"
+            )
+        elif not is_scalar_or_scalar_array(value):
             errors.append(
                 f"{field}[{key!r}] must only contain scalar values (string, number, "
                 "boolean, null) or arrays of scalars; empty arrays, null array "
@@ -125,6 +153,23 @@ def require_int_range(
 
 
 def require_nonnegative_number(field: str, value: Any) -> None:
-    """Validate a public duration/rate configuration value."""
-    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
-        raise ConfigurationError(f"{field} must be a non-negative number, got {value!r}")
+    """Validate a public duration/rate configuration value.
+
+    Finiteness is part of the contract: ``value < 0`` is False for both NaN and
+    +inf, so neither would be caught. A NaN interval reaches ``time.sleep`` as a
+    ValueError and +inf as an OverflowError, and worse, a non-finite timeout
+    silently stops being a timeout — ``elapsed >= nan`` and ``elapsed >= inf``
+    are never true, so the poll loop never gives up. (-inf is already refused as
+    negative.)
+
+    Only a ``float`` can be non-finite, and asking ``math.isfinite`` about an
+    ``int`` too large to convert to one raises OverflowError, so the finiteness
+    check is scoped to floats rather than applied to every number.
+    """
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or (isinstance(value, float) and not math.isfinite(value))
+        or value < 0
+    ):
+        raise ConfigurationError(f"{field} must be a finite, non-negative number, got {value!r}")
