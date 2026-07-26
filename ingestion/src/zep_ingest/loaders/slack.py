@@ -579,7 +579,10 @@ class SlackExportLoader:
             "channel": conversation.label,
             "conversation_type": conversation.kind,
         }
-        if len(messages) > 1 or (self.grouping == "message" and first.thread_ts):
+        # a lone message still belongs to a thread when it carries a thread_ts —
+        # its parent may have been filtered out as a join or bot message — so
+        # message count alone would leave that episode unfilterable by thread
+        if len(messages) > 1 or first.thread_ts:
             metadata["thread_ts"] = first.thread_ts or first.ts
         return Episode(
             data="\n".join(self.formatter(m) for m in messages),

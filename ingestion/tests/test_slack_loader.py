@@ -172,6 +172,31 @@ class TestThreadGrouping:
         thread = general(load())[1]
         assert thread.metadata["thread_ts"] == "1718356000.000200"
 
+    def test_lone_reply_keeps_thread_ts_when_its_parent_was_filtered(self, tmp_path):
+        """Message count is not the test for "is a thread": a reply whose parent was
+        skipped as join/bot noise is still thread-scoped and must stay filterable."""
+        export = mixed_export(tmp_path)
+        (export / "general" / "2024-06-15.json").write_text(
+            json.dumps(
+                [
+                    {"subtype": "channel_join", "user": "U001", "ts": "1718400000.1", "text": "j"},
+                    {
+                        "user": "U001",
+                        "ts": "1718400001.1",
+                        "thread_ts": "1718400000.1",
+                        "text": "orphan reply",
+                    },
+                    {"user": "U001", "ts": "1718400002.1", "text": "standalone"},
+                ]
+            )
+        )
+        episodes = list(SlackExportLoader(export).load())
+
+        orphan = next(e for e in episodes if "orphan reply" in e.data)
+        standalone = next(e for e in episodes if "standalone" in e.data)
+        assert orphan.metadata["thread_ts"] == "1718400000.1"
+        assert "thread_ts" not in standalone.metadata  # not part of any thread
+
     def test_message_grouping_yields_one_episode_per_message(self):
         eps = general(load(grouping="message"))
         # hello + 3 thread messages + markup (broadcast deduped, join/bot/empty skipped)
