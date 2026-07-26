@@ -104,6 +104,21 @@ class TestJsonSplitting:
             json.loads(episode.data)
         assert any("json" in w.lower() for w in guard.warnings)
 
+    def test_non_finite_body_is_not_split_as_json(self):
+        """NaN is a Python extension, not JSON. Python reads and re-writes it, so
+        splitting such a body as JSON would emit pieces labelled json that no
+        strict parser accepts. It falls back to a text split instead."""
+        record = {f"field_{i}": "x" * 400 for i in range(40)}
+        record["price"] = float("nan")
+        data = json.dumps(record)  # emits a bare NaN token
+        guard = LimitGuard()
+
+        out = apply(guard, Episode(data=data, data_type="json"))
+
+        assert len(out) > 1
+        assert all(e.data_type == "text" for e in out)  # no longer claims to be json
+        assert any("could not be split as valid JSON" in w for w in guard.warnings)
+
     def test_json_object_split_top_level(self):
         obj = {f"key{i}": "v" * 300 for i in range(60)}
         data = json.dumps(obj)

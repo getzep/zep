@@ -357,6 +357,52 @@ class TestFormatting:
         assert eps[0].data == "Avery Brown: Hello world"
 
 
+class TestExtractedWrapper:
+    """A zip whose export sits in a single wrapper folder is unwrapped; the same
+    export extracted to disk has to be too, or a valid export ingests nothing."""
+
+    def test_extracted_wrapper_is_unwrapped(self, tmp_path):
+        root = tmp_path / "slack-data"
+        root.mkdir()
+        mixed_export(root)  # creates root/mixed_export/, so root wraps the export
+
+        loader = SlackExportLoader(root)
+        episodes = list(loader.load())
+
+        assert [e.metadata["channel"] for e in episodes] == ["general"]
+        assert not any("declares no conversations" in w for w in loader.warnings)
+
+    def test_extracted_wrapper_still_honors_the_public_only_default(self, tmp_path):
+        root = tmp_path / "slack-data"
+        root.mkdir()
+        mixed_export(root)
+
+        loader = SlackExportLoader(root)
+        bodies = " ".join(e.data for e in loader.load())
+
+        assert "direct message" not in bodies
+        assert "private channel message" not in bodies
+        assert any("not ingested" in w for w in loader.warnings)
+
+    def test_two_top_level_folders_are_not_a_wrapper(self, tmp_path):
+        root = tmp_path / "slack-data"
+        root.mkdir()
+        mixed_export(root)
+        (root / "unrelated").mkdir()
+
+        loader = SlackExportLoader(root)
+        assert list(loader.load()) == []
+
+    def test_warnings_do_not_accumulate_across_loads(self, tmp_path):
+        loader = SlackExportLoader(mixed_export(tmp_path))
+
+        list(loader.load())
+        first = list(loader.warnings)
+        list(loader.load())
+
+        assert loader.warnings == first
+
+
 class TestZipAndFallbacks:
     def test_zip_parity(self, tmp_path):
         archive = shutil.make_archive(str(tmp_path / "export"), "zip", FIXTURE)

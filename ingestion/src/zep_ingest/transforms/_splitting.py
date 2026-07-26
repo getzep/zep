@@ -172,10 +172,21 @@ def _split_json_value(
     return None
 
 
+def _reject_non_finite(token: str) -> float:
+    """NaN/Infinity/-Infinity are a Python extension that json accepts on the way
+    in and writes back out, so a body carrying one would split into pieces no
+    strict JSON parser accepts — exactly what this module promises not to emit."""
+    raise ValueError(f"{token} is not valid JSON")
+
+
 def split_json_top_level(text: str, chunk_size: int) -> list[str] | None:
-    """Split JSON recursively while keeping every returned piece valid JSON."""
+    """Split JSON recursively while keeping every returned piece valid JSON.
+
+    Returns None when the body is not valid JSON, leaving the caller to split it
+    as text rather than emitting pieces that only look like JSON.
+    """
     try:
-        parsed = json.loads(text)
+        parsed = json.loads(text, parse_constant=_reject_non_finite)
     except (json.JSONDecodeError, ValueError):
         return None
     return _split_json_value(parsed, json.dumps, chunk_size)

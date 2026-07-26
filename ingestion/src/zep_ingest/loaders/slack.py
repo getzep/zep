@@ -112,7 +112,29 @@ class _Conversation:
 
 class _DirReader:
     def __init__(self, path: Path) -> None:
-        self.path = path.resolve()
+        self.path = self._unwrap(path.resolve())
+
+    @staticmethod
+    def _unwrap(root: Path) -> Path:
+        """Re-root onto a single top-level folder wrapping the export.
+
+        An export stays an export once it is extracted, so this mirrors the zip
+        reader: without it, the wrapper reads as one conversation whose only
+        files are the index files, and a valid export ingests nothing.
+        """
+        if any((root / marker).is_file() for marker in EXPORT_MARKER_FILES):
+            return root
+        children = [child for child in root.iterdir() if child.is_dir()]
+        if len(children) != 1:
+            return root
+        candidate = children[0].resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            return root  # a symlink out of the export is not a wrapper
+        if any((candidate / marker).is_file() for marker in EXPORT_MARKER_FILES):
+            return candidate
+        return root
 
     def _resolve_export_path(self, relpath: str) -> Path:
         """Resolve a path and reject traversal or symlinks outside the export."""
@@ -261,7 +283,10 @@ class SlackExportLoader:
 
     def load(self) -> Iterator[Episode]:
         reader = _ZipReader(self.path) if self.path.is_file() else _DirReader(self.path)
+        # both reset per pass: a second load() re-derives them, and appending to
+        # the previous pass's list would report every warning twice
         self._unresolved_users = set()
+        self.warnings = []
         roster = self._read_roster(reader)
         users = self._user_map(roster)
         inventory = self._inventory(reader, users)
