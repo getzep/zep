@@ -66,6 +66,21 @@ def _is_retryable(error: SubmitError, *, retry_server_errors: bool) -> bool:
     return error.status_code == 429 or (retry_server_errors and (error.status_code or 0) >= 500)
 
 
+def may_have_landed(error: SubmitError) -> bool:
+    """Return whether the write this error reports may already have been applied.
+
+    The same axis _is_retryable classifies on, read for the other purpose. A
+    failure raised before the request reached the server proves no write was
+    applied, and a rejection the server answered with a 4xx (429 included) proves
+    it refused one. Everything else — a 5xx, a read timeout, a dropped response,
+    a status the SDK could not determine — leaves the outcome unknown, and a
+    caller counting what the server now holds has to assume the write landed.
+    """
+    if isinstance(error, httpx.TransportError):
+        return not isinstance(error, _UNSENT_TRANSPORT_ERRORS)
+    return error.status_code is None or error.status_code >= 500
+
+
 def call_with_retries(
     fn: Callable[[], Any], *, max_retries: int = 5, retry_server_errors: bool = False
 ) -> tuple[Any, SubmitError | None]:

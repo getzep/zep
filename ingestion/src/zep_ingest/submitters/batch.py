@@ -7,6 +7,11 @@ recorded as an AddError and the run continues, and a rollover that cannot open
 its next batch stops the run with the reason recorded — because the batches
 already submitted are still processing, and their ids are the only handle on
 them.
+
+A page whose failure leaves it unknown whether the server accepted it is not
+reported as a page that definitely failed: it still counts against the batch's
+item limit, since only counting confirmed pages would let later pages push the
+batch past the server's 50k cap.
 """
 
 from collections.abc import Iterable
@@ -21,7 +26,7 @@ from zep_ingest._errors import SubmitError, format_api_error
 from zep_ingest._validation import require_int_range
 from zep_ingest.exceptions import BatchUnavailableError, InvalidBatchResponseError
 from zep_ingest.result import AddError, IngestResult
-from zep_ingest.submitters.sequential import call_with_retries
+from zep_ingest.submitters.sequential import call_with_retries, may_have_landed
 from zep_ingest.types import (
     MAX_ITEMS_PER_ADD,
     MAX_ITEMS_PER_BATCH,
@@ -65,6 +70,25 @@ def rollover_failure_message(error: SubmitError, result: IngestResult) -> str:
         f"{len(result.batch_ids)} batch(es). Those batches are still processing — see "
         f"result.batch_ids. The remaining items were not submitted.{unknown_batch}"
     )
+
+
+def add_failure_message(error: SubmitError, *, attempts: int | None = None) -> str:
+    """Describe a failed batch.add, saying so when the outcome is unknown.
+
+    A read timeout or a 5xx does not establish that the page was rejected, so the
+    message stops short of claiming it was and points at the handle that can
+    settle it.
+    """
+    message = format_api_error("batch.add", error)
+    if attempts is not None:
+        message += f" after {attempts} attempt(s)"
+    if may_have_landed(error):
+        message += (
+            "; the request reached the server, so these items may already have been "
+            "added — they count against the batch's item limit, and the batch id is "
+            "the handle for reconciling what it actually holds"
+        )
+    return message
 
 
 def is_batch_unavailable(error: SubmitError) -> bool:
@@ -143,7 +167,6 @@ class BatchSubmitter:
             items = [to_batch_item(ep, destination) for ep in page]
             if self._add_page(batch_id, items, page_index, result):
                 items_in_batch += len(page)
-                result.items_submitted += len(page)
             page_index += 1
         if batch_id is not None:
             process_batch(self.client, batch_id, result, max_retries=self.max_add_retries)
@@ -202,6 +225,13 @@ class BatchSubmitter:
     def _add_page(
         self, batch_id: str, items: list[Any], page_index: int, result: IngestResult
     ) -> bool:
+        """Add one page, and return whether it counts against the batch's capacity.
+
+        A confirmed page counts and is added to ``items_submitted``. A page whose
+        failure leaves the outcome unknown counts too but is not claimed as
+        submitted: the cap it is counted against is the server's, and the server
+        may already hold it, so undercounting is what overfills a batch.
+        """
         attempts = 0
 
         def add_page() -> None:
@@ -214,13 +244,14 @@ class BatchSubmitter:
             max_retries=self.max_add_retries,
         )
         if error is None:
+            result.items_submitted += len(items)
             return True
         result.add_errors.append(
             AddError(
                 index=page_index,
                 item_count=len(items),
-                error=f"{format_api_error('batch.add', error)} after {attempts} attempt(s)",
+                error=add_failure_message(error, attempts=attempts),
                 batch_id=batch_id,
             )
         )
-        return False
+        return may_have_landed(error)

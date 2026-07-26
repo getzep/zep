@@ -24,6 +24,13 @@ def episodes(n: int) -> list[Episode]:
 
 DEST = Destination(graph_id="g1")
 
+#: Appended to a batch.add failure that does not establish the page was rejected.
+UNKNOWN_OUTCOME = (
+    "; the request reached the server, so these items may already have been added "
+    "— they count against the batch's item limit, and the batch id is the handle "
+    "for reconciling what it actually holds"
+)
+
 
 class TestPaging:
     def test_351_episodes_two_add_calls(self, mock_zep):
@@ -105,7 +112,7 @@ class TestRetries:
         result = BatchSubmitter(mock_zep).submit(episodes(3), DEST)
         assert mock_zep.batch.add.call_count == 1
         [error] = result.add_errors
-        assert error.error.endswith("after 1 attempt(s)")
+        assert error.error.startswith("batch.add failed: status=500 after 1 attempt(s)")
 
     def test_server_error_records_error_and_continues(self, mock_zep):
         def add_side_effect(batch_id, *, items):
@@ -122,7 +129,7 @@ class TestRetries:
         # the server's own message passes through, as a direct SDK call would report it
         assert (
             result.add_errors[0].error
-            == "batch.add failed: status=500, body=boom after 1 attempt(s)"
+            == "batch.add failed: status=500, body=boom after 1 attempt(s)" + UNKNOWN_OUTCOME
         )
         assert result.items_submitted == 2
 
@@ -180,7 +187,10 @@ class TestTransportErrors:
         [error] = result.add_errors
         assert error.index == 1
         assert error.batch_id == "batch-1"
-        assert error.error == "batch.add failed: transport error ReadTimeout after 1 attempt(s)"
+        assert (
+            error.error
+            == "batch.add failed: transport error ReadTimeout after 1 attempt(s)" + UNKNOWN_OUTCOME
+        )
 
     def test_connect_error_on_add_is_retried(self, mock_zep):
         mock_zep.batch.add.side_effect = [httpx.ConnectError("connection refused"), None]
@@ -242,6 +252,127 @@ class TestTransportErrors:
         assert result.batch_ids == ["b1", "b2"]  # the blip did not end the run
         assert result.items_submitted == 2
         assert result.add_errors == []
+
+
+class TestUnknownAddOutcome:
+    """A batch.add failure that does not establish the page was rejected.
+
+    A read timeout or a 5xx may have been applied before the response was lost.
+    Treating such a page as definitely absent would undercount the batch and let
+    later pages push it past the server's 50k item limit, so it counts against
+    capacity and its AddError says the outcome is unknown.
+    """
+
+    @pytest.fixture
+    def rollover_client(self, mock_zep):
+        """Two openable batches, and a record of what each one was actually sent."""
+        mock_zep.batch.create.side_effect = [
+            make_batch_summary("b1", "draft"),
+            make_batch_summary("b2", "draft"),
+        ]
+        return mock_zep
+
+    @staticmethod
+    def sent_to(mock_zep) -> dict[str, int]:
+        held: dict[str, int] = {}
+        for c in mock_zep.batch.add.call_args_list:
+            batch_id = c.args[0]
+            held[batch_id] = held.get(batch_id, 0) + len(c.kwargs["items"])
+        return held
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            httpx.ReadTimeout("response never arrived"),
+            httpx.ReadError("connection reset mid-response"),
+            ApiError(status_code=500, body="boom"),
+            ApiError(status_code=None),
+        ],
+        ids=["read-timeout", "read-error", "server-error", "no-status"],
+    )
+    def test_unknown_page_counts_against_the_batch_limit(self, rollover_client, error):
+        # cap 4, pages of 2: page 0's outcome is unknown, so it fills half of b1
+        # and only one further page fits before rollover.
+        rollover_client.batch.add.side_effect = [error, None, None, None]
+
+        result = BatchSubmitter(
+            rollover_client, page_size=2, max_items_per_batch=4, max_add_retries=1
+        ).submit(episodes(8), DEST)
+
+        # if the unknown page were assumed absent, b1 would have been sent 6 items
+        assert self.sent_to(rollover_client) == {"b1": 4, "b2": 4}
+        assert result.batch_ids == ["b1", "b2"]
+        assert result.items_submitted == 6  # only the three confirmed pages
+        [add_error] = result.add_errors
+        assert add_error.index == 0
+        assert add_error.item_count == 2
+        assert add_error.batch_id == "b1"
+        assert add_error.error.endswith(UNKNOWN_OUTCOME)
+
+    @pytest.mark.parametrize(
+        "error",
+        [ApiError(status_code=400, body="bad item"), ApiError(status_code=429)],
+        ids=["bad-request", "rate-limited"],
+    )
+    def test_rejected_page_neither_consumes_capacity_nor_claims_uncertainty(
+        self, rollover_client, error
+    ):
+        """The control: the server answered, so the page provably was not applied."""
+        rollover_client.batch.add.side_effect = [error, None, None, None]
+
+        result = BatchSubmitter(
+            rollover_client, page_size=2, max_items_per_batch=4, max_add_retries=1
+        ).submit(episodes(8), DEST)
+
+        assert self.sent_to(rollover_client) == {"b1": 6, "b2": 2}
+        assert result.items_submitted == 6
+        [add_error] = result.add_errors
+        assert UNKNOWN_OUTCOME not in add_error.error
+
+    def test_unsent_page_neither_consumes_capacity_nor_claims_uncertainty(self, rollover_client):
+        """The other control: a connect failure never put the page on the wire, so
+        exhausting its retries proves the batch does not hold it."""
+        rollover_client.batch.add.side_effect = [
+            httpx.ConnectError("connection refused"),
+            None,
+            None,
+            None,
+        ]
+
+        result = BatchSubmitter(
+            rollover_client, page_size=2, max_items_per_batch=4, max_add_retries=1
+        ).submit(episodes(8), DEST)
+
+        assert self.sent_to(rollover_client) == {"b1": 6, "b2": 2}
+        assert result.items_submitted == 6
+        assert UNKNOWN_OUTCOME not in result.add_errors[0].error
+
+    def test_no_failures_fills_each_batch_to_the_limit(self, rollover_client):
+        """The passing control: capacity accounting is unchanged when nothing fails."""
+        result = BatchSubmitter(
+            rollover_client, page_size=2, max_items_per_batch=4, max_add_retries=1
+        ).submit(episodes(8), DEST)
+
+        assert self.sent_to(rollover_client) == {"b1": 4, "b2": 4}
+        assert result.items_submitted == 8
+        assert result.add_errors == []
+
+    def test_repeated_unknown_pages_do_not_compound_the_undercount(self, rollover_client):
+        """Each unknown page consumes capacity, so the shortfall cannot accumulate."""
+        rollover_client.batch.add.side_effect = [
+            httpx.ReadTimeout("response never arrived"),
+            httpx.ReadTimeout("response never arrived"),
+            None,
+            None,
+        ]
+
+        result = BatchSubmitter(
+            rollover_client, page_size=2, max_items_per_batch=4, max_add_retries=1
+        ).submit(episodes(8), DEST)
+
+        assert self.sent_to(rollover_client) == {"b1": 4, "b2": 4}
+        assert result.items_submitted == 4
+        assert len(result.add_errors) == 2
 
 
 class TestBatchMetadata:

@@ -456,6 +456,15 @@ resume handles. Task IDs are used by asynchronous operations such as fact
 triples, direct node creation, and sequential thread submissions, and `wait()`
 polls them through `client.task`.
 
+Not every failure establishes that the write was rejected. A read timeout or a
+5xx on `batch.add` means the response was lost, not that the page was refused,
+so its `AddError` says the items may already have been added and the page still
+counts against the batch's 50,000-item limit — assuming otherwise is what would
+overfill a batch. `items_submitted` therefore counts only confirmed items and is
+a lower bound on what the server holds: reconcile a run against the batch itself
+(`refresh()` / `status` / `failed_items()`, or `IngestResult.from_batch_ids`)
+rather than reading the shortfall as data that was dropped.
+
 If the API accepts a task-backed submission without returning a completion
 handle, the result reports `status == "untracked"` instead of claiming success.
 `wait()` raises `IngestUntrackedError` immediately in that state; use

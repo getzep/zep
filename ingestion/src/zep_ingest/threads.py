@@ -43,12 +43,13 @@ from zep_ingest.exceptions import (
 )
 from zep_ingest.result import AddError, IngestResult
 from zep_ingest.submitters.batch import (
+    add_failure_message,
     is_batch_unavailable,
     process_batch,
     require_batch_id,
     rollover_failure_message,
 )
-from zep_ingest.submitters.sequential import call_with_retries
+from zep_ingest.submitters.sequential import call_with_retries, may_have_landed
 from zep_ingest.transforms._splitting import split_text
 from zep_ingest.types import (
     MAX_ITEMS_PER_ADD,
@@ -279,10 +280,15 @@ def _submit_batch(
                 AddError(
                     index=page_index,
                     item_count=len(page),
-                    error=(format_api_error("batch.add", add_failure)),
+                    error=add_failure_message(add_failure),
                     batch_id=batch_id,
                 )
             )
+            # An unknown outcome still counts against the 50k cap: the server may
+            # already hold this page, and only counting confirmed pages would let
+            # later ones push the batch past the limit.
+            if may_have_landed(add_failure):
+                items_in_batch += len(page)
         else:
             result.items_submitted += len(page)
             items_in_batch += len(page)

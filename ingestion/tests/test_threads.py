@@ -239,6 +239,83 @@ class TestBatchPath:
         mock_zep.batch.add.assert_not_called()
 
 
+class TestUnknownAddOutcome:
+    """The thread-message batch path handles an unknown batch.add outcome exactly
+    as the episode path does: the page counts against the 50k item limit, because
+    the server may already hold it, and the AddError says the outcome is unknown
+    rather than reporting the page as rejected."""
+
+    @pytest.fixture
+    def small_batches(self, mock_zep, monkeypatch):
+        """Two openable batches at a scaled-down add/batch limit."""
+        monkeypatch.setattr("zep_ingest.threads.MAX_ITEMS_PER_ADD", 2)
+        monkeypatch.setattr("zep_ingest.threads.MAX_ITEMS_PER_BATCH", 4)
+        mock_zep.batch.create.side_effect = [
+            make_batch_summary("b1", "draft"),
+            make_batch_summary("b2", "draft"),
+        ]
+        return mock_zep
+
+    @staticmethod
+    def sent_to(mock_zep) -> dict[str, int]:
+        held: dict[str, int] = {}
+        for c in mock_zep.batch.add.call_args_list:
+            batch_id = c.args[0]
+            held[batch_id] = held.get(batch_id, 0) + len(c.kwargs["items"])
+        return held
+
+    def eight(self):
+        return [message(content=f"m{i}") for i in range(8)]
+
+    def submit(self, client):
+        return ingest_thread_messages(
+            client, self.eight(), user_id="avery-brown", method="batch", max_retries=1
+        )
+
+    @pytest.mark.parametrize(
+        "error",
+        [httpx.ReadTimeout("response never arrived"), ApiError(status_code=500, body="boom")],
+        ids=["read-timeout", "server-error"],
+    )
+    def test_unknown_page_counts_against_the_batch_limit(self, small_batches, error):
+        small_batches.batch.add.side_effect = [error, None, None, None]
+
+        result = self.submit(small_batches)
+
+        # if the unknown page were assumed absent, b1 would have been sent 6 items
+        assert self.sent_to(small_batches) == {"b1": 4, "b2": 4}
+        assert result.batch_ids == ["b1", "b2"]
+        assert result.items_submitted == 6  # only the three confirmed pages
+        [add_error] = result.add_errors
+        assert add_error.index == 0
+        assert add_error.item_count == 2
+        assert add_error.batch_id == "b1"
+        assert "may already have been added" in add_error.error
+
+    def test_rejected_page_neither_consumes_capacity_nor_claims_uncertainty(self, small_batches):
+        """The control: a 4xx means the server answered and refused the write."""
+        small_batches.batch.add.side_effect = [
+            ApiError(status_code=400, body="bad"),
+            None,
+            None,
+            None,
+        ]
+
+        result = self.submit(small_batches)
+
+        assert self.sent_to(small_batches) == {"b1": 6, "b2": 2}
+        assert result.items_submitted == 6
+        assert "may already have been added" not in result.add_errors[0].error
+
+    def test_no_failures_fills_each_batch_to_the_limit(self, small_batches):
+        """The passing control: capacity accounting is unchanged when nothing fails."""
+        result = self.submit(small_batches)
+
+        assert self.sent_to(small_batches) == {"b1": 4, "b2": 4}
+        assert result.items_submitted == 8
+        assert result.add_errors == []
+
+
 class TestSequentialPath:
     def test_auto_uses_batch(self, mock_zep):
         result = ingest_thread_messages(mock_zep, [message()], user_id="avery-brown")

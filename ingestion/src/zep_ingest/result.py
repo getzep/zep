@@ -71,6 +71,13 @@ class IngestResult:
     episode/task processing flags; ``batch_ids``/``episode_uuids``/``task_ids`` are the resume
     handles a caller can persist. ``untracked_items`` records accepted writes for
     which the API returned no completion handle.
+
+    ``items_submitted`` counts only what the API confirmed accepting, so it is a
+    lower bound on what the server holds: a write whose response was lost is left
+    out of it and reported in ``add_errors`` as an outcome the failure could not
+    settle. Reconcile against the server — ``refresh()``/``status`` and
+    ``failed_items()``, or a result rebuilt with ``from_batch_ids`` — rather than
+    treating the difference from the input count as data that was dropped.
     """
 
     method: Literal["batch", "sequential"]
