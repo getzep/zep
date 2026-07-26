@@ -5,6 +5,7 @@ off exponentially with jitter. One call at a time also preserves stream order,
 which correct valid_at sequencing depends on.
 """
 
+import math
 import random
 import time
 from collections.abc import Callable, Iterable
@@ -40,7 +41,7 @@ def _retry_after_seconds(error: ApiError) -> float | None:
     for key, value in (error.headers or {}).items():
         if key.lower() == "retry-after":
             try:
-                return float(value)
+                seconds = float(value)
             except (TypeError, ValueError):
                 try:
                     retry_at = parsedate_to_datetime(str(value))
@@ -49,6 +50,12 @@ def _retry_after_seconds(error: ApiError) -> float | None:
                 if retry_at.tzinfo is None:
                     return None
                 return max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
+            # "Retry-After: nan" parses as a float but carries no delay to honor,
+            # so treat it as a missing header and let the caller back off instead.
+            if not math.isfinite(seconds):
+                return None
+            # A negative delay means "now", the same as an already-elapsed date.
+            return max(0.0, seconds)
     return None
 
 

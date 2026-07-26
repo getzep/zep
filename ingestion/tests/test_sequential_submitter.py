@@ -9,6 +9,7 @@ from zep_ingest.submitters.sequential import (
     MAX_RETRY_WAIT_SECONDS,
     SequentialSubmitter,
     _retry_after_seconds,
+    call_with_retries,
 )
 from zep_ingest.types import Destination, Episode
 
@@ -116,6 +117,42 @@ class TestRateLimits:
         result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
         assert result.episode_uuids == ["uuid-0"]
         assert sleeps == [MAX_RETRY_WAIT_SECONDS]
+
+    def test_negative_retry_after_clamps_to_zero(self):
+        error = ApiError(status_code=429, headers={"Retry-After": "-1"})
+        assert _retry_after_seconds(error) == 0.0
+
+    @pytest.mark.parametrize("header", ["nan", "inf", "-inf"])
+    def test_non_finite_retry_after_falls_back_to_backoff(self, header):
+        error = ApiError(status_code=429, headers={"Retry-After": header})
+        assert _retry_after_seconds(error) is None
+
+    @pytest.mark.parametrize(
+        ("header", "expected_sleep"),
+        [("-1", 0.0), ("2", 2.0)],
+    )
+    def test_out_of_range_retry_after_still_retries(self, mock_zep, sleeps, header, expected_sleep):
+        mock_zep.graph.add.side_effect = [
+            ApiError(status_code=429, headers={"Retry-After": header}),
+            make_zep_episode("uuid-0"),
+        ]
+        result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
+        assert result.add_errors == []
+        assert result.episode_uuids == ["uuid-0"]
+        assert sleeps == [expected_sleep]
+
+    @pytest.mark.parametrize("header", ["-1", "nan", "2"])
+    def test_malformed_retry_after_returns_error_rather_than_raising(self, sleeps, header):
+        """call_with_retries promises (None, last_error); a header that reaches
+        time.sleep as a negative or NaN value must not turn into a ValueError."""
+
+        def always_rate_limited():
+            raise ApiError(status_code=429, headers={"Retry-After": header})
+
+        result, error = call_with_retries(always_rate_limited, max_retries=2)
+        assert result is None
+        assert isinstance(error, ApiError)
+        assert error.status_code == 429
 
 
 class TestTransportErrors:
