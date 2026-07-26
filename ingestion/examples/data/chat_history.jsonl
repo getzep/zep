@@ -1,0 +1,18 @@
+{"thread_id":"access-1042","role":"user","name":"Morgan Lee","content":"The identity provider accepts my sign-in, but OPERATIONS-DASHBOARD says I do not have a workspace.","created_at":"2025-04-10T15:02:00Z"}
+{"thread_id":"access-1042","role":"assistant","name":"Riley Chen","content":"I can check the workspace mapping. Did your identity-provider group name change recently?","created_at":"2025-04-10T15:03:00Z"}
+{"thread_id":"access-1042","role":"user","name":"Morgan Lee","content":"Yes. Our group changed from warehouse-ops to warehouse-operations.","created_at":"2025-04-10T15:06:00Z"}
+{"thread_id":"access-1042","role":"assistant","name":"Riley Chen","content":"I updated the group mapping. Please sign out and back in.","created_at":"2025-04-10T15:07:00Z"}
+{"thread_id":"access-1042","role":"user","name":"Morgan Lee","content":"That worked. The supervisors can see the South Warehouse workspace now.","created_at":"2025-04-10T15:11:00Z"}
+{"thread_id":"access-1042","role":"assistant","name":"Riley Chen","content":"Great, I will mark the access issue as resolved.","created_at":"2025-04-10T15:14:00Z"}
+{"thread_id":"access-1042","role":"user","name":"Morgan Lee","content":"Confirmed. You can close the ticket.","created_at":"2025-04-10T15:25:00Z"}
+{"thread_id":"device-1187","role":"user","name":"Morgan Lee","content":"ROBOT-101 unit three reports a calibration warning at South Warehouse.","created_at":"2025-05-21T18:30:00Z"}
+{"thread_id":"device-1187","role":"assistant","name":"Riley Chen","content":"Check whether its calibration timestamp predates the maintenance event.","created_at":"2025-05-21T18:31:00Z"}
+{"thread_id":"device-1187","role":"user","name":"Morgan Lee","content":"It does. Maintenance finished at 17:40, but the calibration record is from yesterday.","created_at":"2025-05-21T18:35:00Z"}
+{"thread_id":"device-1187","role":"assistant","name":"Riley Chen","content":"Run the remote calibration workflow while the arm is idle.","created_at":"2025-05-21T18:36:00Z"}
+{"thread_id":"device-1187","role":"user","name":"Morgan Lee","content":"Calibration completed and the validation cycle passed.","created_at":"2025-05-21T19:20:00Z"}
+{"thread_id":"device-1187","role":"assistant","name":"Riley Chen","content":"I recorded the result and started a 48-hour verification period.","created_at":"2025-05-21T19:21:00Z"}
+{"thread_id":"onboarding-1210","role":"user","name":"Morgan Lee","content":"What is the best way to onboard two new shift supervisors to OPERATIONS-DASHBOARD?","created_at":"2025-06-12T16:00:00Z"}
+{"thread_id":"onboarding-1210","role":"assistant","name":"Riley Chen","content":"Add them to the read-only operations group and begin with the fleet overview.","created_at":"2025-06-12T16:01:00Z"}
+{"thread_id":"onboarding-1210","role":"user","name":"Morgan Lee","content":"Can read-only users change equipment records?","created_at":"2025-06-12T16:04:00Z"}
+{"thread_id":"onboarding-1210","role":"assistant","name":"Riley Chen","content":"No. They can inspect status and utilization but cannot edit records or acknowledge alerts.","created_at":"2025-06-12T16:05:00Z"}
+{"thread_id":"onboarding-1210","role":"user","name":"Morgan Lee","content":"Perfect. I will schedule the walkthrough for Tuesday.","created_at":"2025-06-12T16:08:00Z"}

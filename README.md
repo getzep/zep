@@ -36,6 +36,7 @@ documentation at [help.getzep.com](https://help.getzep.com). Zep's official SDKs
 |-----------|-------------|
 | [`examples/`](examples/) | Example apps and snippets in Python, TypeScript, and Go |
 | [`integrations/`](integrations/) | Agent-framework integration packages |
+| [`ingestion/`](ingestion/) | `zep-ingest` — bulk data ingestion pipeline (Slack, documents, email, JSON/CSV, fact triples) |
 | [`ontology/`](ontology/) | Default ontology definitions |
 | [`plugins/`](plugins/) | Plugins for building with Zep |
 | [`benchmarks/`](benchmarks/) | Memory benchmarks (LoCoMo, LongMemEval) |
@@ -51,6 +52,7 @@ tested, and released independently.
 - **Python**: Google ADK, Microsoft Agent Framework, Microsoft AutoGen, AG2, CrewAI, LangGraph, LiveKit, Pydantic AI
 - **TypeScript**: Google ADK, Mastra, Vercel AI SDK
 - **Go**: Google ADK
+
 
 See [`integrations/README.md`](integrations/README.md) for packages, release status, and
 links, and [`integrations/CLAUDE.md`](integrations/CLAUDE.md) for conventions.

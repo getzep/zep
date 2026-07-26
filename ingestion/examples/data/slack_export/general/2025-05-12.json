@@ -1,0 +1,37 @@
+[
+  {
+    "type": "message",
+    "user": "U001",
+    "text": "Pilot update: four ROBOT-101 units will be commissioned at South Warehouse next week.",
+    "ts": "1747072000.000300",
+    "thread_ts": "1747072000.000300",
+    "reply_count": 3
+  },
+  {
+    "type": "message",
+    "user": "U002",
+    "text": "Who is coordinating the pilot on the Clearwater side?",
+    "ts": "1747072600.000310",
+    "thread_ts": "1747072000.000300"
+  },
+  {
+    "type": "message",
+    "user": "U001",
+    "text": "Morgan Lee coordinates it for Clearwater Fulfillment.",
+    "ts": "1747073200.000320",
+    "thread_ts": "1747072000.000300"
+  },
+  {
+    "type": "message",
+    "user": "U003",
+    "text": "I will provision two read-only OPERATIONS-DASHBOARD accounts before the walkthrough.",
+    "ts": "1747073800.000330",
+    "thread_ts": "1747072000.000300"
+  },
+  {
+    "type": "message",
+    "user": "U003",
+    "text": "Evertrail Freight Group also asked for a dashboard onboarding session next month.",
+    "ts": "1747078000.000340"
+  }
+]

@@ -1,0 +1,83 @@
+name: Test Ingestion Package
+
+on:
+  pull_request:
+    paths:
+      - 'ingestion/**'
+      - '.github/workflows/test-ingestion.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ingestion/**'
+      - '.github/workflows/test-ingestion.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+        resolution: ["highest", "lowest-direct"]
+    defaults:
+      run:
+        working-directory: ingestion
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+        with:
+          version: "0.7.19"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          uv lock --resolution ${{ matrix.resolution }} --refresh
+          uv sync --extra dev
+
+      - name: Run linting
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Run type checking
+        run: uv run mypy src/
+
+      - name: Run offline tests
+        run: uv run pytest tests/ -v -m "not integration" --cov=zep_ingest --cov-report=xml
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.11' && matrix.resolution == 'highest'
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+        with:
+          file: ingestion/coverage.xml
+          flags: ingestion
+          name: ingestion-coverage
+
+  integration:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: integration
+    defaults:
+      run:
+        working-directory: ingestion
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+        with:
+          version: "0.7.19"
+      - name: Set up Python
+        run: uv python install 3.13
+      - name: Install dependencies
+        run: uv sync --extra dev
+      - name: Run live integration tests
+        run: uv run pytest tests/test_integration.py -v -m integration
+        env:
+          ZEP_API_KEY: ${{ secrets.ZEP_API_KEY }}

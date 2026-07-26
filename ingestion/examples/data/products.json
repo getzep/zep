@@ -1,0 +1,50 @@
+[
+  {
+    "sku": "RBT-001",
+    "title": "ROBOT-101",
+    "about": "Standard robotic picking arm for small and medium cartons.",
+    "category": "hardware",
+    "supplier": "Westbridge Components",
+    "updated_at": "2025-06-01T00:00:00Z"
+  },
+  {
+    "sku": "RBT-002",
+    "title": "ROBOT-101 HD",
+    "about": "High-duty ROBOT-101 variant with a reinforced wrist assembly.",
+    "category": "hardware",
+    "supplier": "Westbridge Components",
+    "updated_at": "2025-06-01T00:00:00Z"
+  },
+  {
+    "sku": "RBT-003",
+    "title": "ROBOT-101 Spares Kit",
+    "about": "Field spares kit for routine ROBOT-101 maintenance.",
+    "category": "hardware",
+    "supplier": "Westbridge Components",
+    "updated_at": "2025-06-01T00:00:00Z"
+  },
+  {
+    "sku": "SFT-001",
+    "title": "OPERATIONS-DASHBOARD Team",
+    "about": "Team subscription with equipment monitoring and utilization reports.",
+    "category": "software subscription",
+    "supplier": null,
+    "updated_at": "2025-05-15T00:00:00Z"
+  },
+  {
+    "sku": "SFT-002",
+    "title": "OPERATIONS-DASHBOARD Site",
+    "about": "Site subscription with fleet-wide monitoring and alert history.",
+    "category": "software subscription",
+    "supplier": null,
+    "updated_at": "2025-05-15T00:00:00Z"
+  },
+  {
+    "sku": "SVC-001",
+    "title": "Commissioning Week",
+    "about": "On-site commissioning, operator training, and launch support.",
+    "category": "professional services",
+    "supplier": null,
+    "updated_at": "2025-04-20T00:00:00Z"
+  }
+]

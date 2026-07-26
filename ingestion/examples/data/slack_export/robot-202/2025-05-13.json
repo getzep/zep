@@ -1,0 +1,37 @@
+[
+  {
+    "type": "message",
+    "subtype": "channel_join",
+    "user": "U003",
+    "text": "<@U003> has joined the channel",
+    "ts": "1747152000.000200"
+  },
+  {
+    "type": "message",
+    "user": "U003",
+    "text": "Older design records use PROTOTYPE-202. Is that the same project?",
+    "ts": "1747152600.000210",
+    "thread_ts": "1747152600.000210",
+    "reply_count": 2
+  },
+  {
+    "type": "message",
+    "user": "U002",
+    "text": "Yes. PROTOTYPE-202 was the working name before we approved ROBOT-202.",
+    "ts": "1747153200.000220",
+    "thread_ts": "1747152600.000210"
+  },
+  {
+    "type": "message",
+    "user": "U003",
+    "text": "I will update the design documents to use the current name.",
+    "ts": "1747153800.000230",
+    "thread_ts": "1747152600.000210"
+  },
+  {
+    "type": "message",
+    "user": "U001",
+    "text": "Reminder: the design review starts Thursday at 10:00 in North Campus room 3B.",
+    "ts": "1747156000.000240"
+  }
+]

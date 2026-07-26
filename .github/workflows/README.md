@@ -50,6 +50,17 @@ creates the scoped tag and GitHub Release and verifies the module through the pu
 proxy. For example, ADK version `0.1.0` is consumed with
 `go get github.com/getzep/zep/integrations/adk/go@v0.1.0`.
 
+### `release-ingestion.yml` — ingestion package releases
+
+Triggered only by a published GitHub Release whose tag matches
+`zep-ingest-v<version>`. The workflow resolves and archives the release event's
+exact commit once, then tests that source on Python 3.11–3.13, builds it, checks
+that `ingestion/pyproject.toml` matches the tag version, and publishes
+`zep-ingest` to PyPI through trusted publishing.
+
+There is no manual arbitrary-ref publishing path. To release version `0.1.0`,
+publish the GitHub Release for tag `zep-ingest-v0.1.0`.
+
 ## Setup requirements
 
 ### PyPI (trusted publishing)
@@ -57,6 +68,9 @@ For each Python package (e.g. `zep-adk`): add a GitHub publisher in the PyPI pro
 settings with repository `getzep/zep`, workflow `release-integrations.yml`, and environment
 `release`. Create a `release` environment in the repository settings (add protection rules
 as desired). No secret needed — trusted publishing uses OIDC.
+
+For `zep-ingest`, configure the publisher with workflow
+`release-ingestion.yml` and the same `release` environment.
 
 ### npm
 For each TypeScript package (e.g. `@getzep/zep-adk`): add a GitHub Actions trusted

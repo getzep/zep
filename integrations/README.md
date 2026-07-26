@@ -25,6 +25,10 @@ New to Zep? Sign up at [getzep.com](https://www.getzep.com) and create an API ke
 | Pydantic AI | Python | `zep-pydantic-ai` | [`pydantic-ai/python/`](pydantic-ai/python/) |
 | Vercel AI SDK | TypeScript | `@getzep/zep-vercel-ai` | [`vercel-ai/typescript/`](vercel-ai/typescript/) |
 
+Looking for bulk data ingestion (Slack exports, documents, email, CSV/JSON records,
+fact triples)? That's the standalone [`zep-ingest`](../ingestion/) package at the
+repository root — not a framework integration.
+
 ## Package structure
 
 See [`CLAUDE.md`](CLAUDE.md) for the full per-language structure and conventions. In short,
