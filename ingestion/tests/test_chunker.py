@@ -126,6 +126,19 @@ class TestChunkMetadata:
         assert all(chunk.metadata == metadata for chunk in chunks)
         assert any("chunk" in warning for warning in chunker.warnings)
 
+    def test_caller_chunk_key_is_kept_not_overwritten_by_the_marker(self):
+        metadata = {"source_type": "document", "chunk": "chapter 4"}
+        chunker = TextChunker(chunk_size=500)
+
+        chunks = apply(chunker, Episode(data=make_long_text(), metadata=metadata))
+
+        assert len(chunks) > 1
+        assert all(chunk.metadata == metadata for chunk in chunks)
+        assert any(
+            "'chunk'" in warning and "caller's value was kept" in warning
+            for warning in chunker.warnings
+        )
+
     def test_document_set_to_original_only_when_split(self):
         long_ep = Episode(data=make_long_text())
         chunks = apply(TextChunker(chunk_size=500), long_ep)

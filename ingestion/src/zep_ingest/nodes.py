@@ -1,6 +1,7 @@
 """Batch node seeding for canonical entities, independent of episode extraction."""
 
 import uuid as uuid_module
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,7 +32,12 @@ MAX_NODES_PER_REQUEST = 100
 
 @dataclass(slots=True)
 class NodeItem:
-    """One canonical entity node, validated against the batch-node API limits."""
+    """One canonical entity node, validated against the batch-node API limits.
+
+    A supplied ``uuid`` is stored in its canonical spelling, so one UUID
+    written two ways — differing case, braces, no hyphens — stays one identity
+    both in the uniqueness check and on the wire.
+    """
 
     name: str
     label: str | None = None
@@ -54,6 +60,10 @@ class NodeItem:
                 parsed = uuid_module.UUID(str(self.uuid))
                 if parsed.version != 4:
                     errors.append(f"uuid must be UUIDv4 (got version {parsed.version})")
+                # A UUID is a 128-bit value, not the text it was typed as; keep
+                # the canonical spelling so identity comparisons and the
+                # submitted value cannot disagree with each other.
+                self.uuid = str(parsed)
             except (ValueError, AttributeError, TypeError):
                 errors.append(f"uuid is not a valid UUID: {self.uuid!r}")
         if errors:
@@ -103,7 +113,8 @@ def ingest_nodes(
 
     UUID is the only safe idempotency key. By default every node must have a
     persisted UUIDv4; callers must explicitly opt out of that protection.
-    UUID uniqueness is checked before the first network call.
+    UUID uniqueness is checked by value, not by spelling, before the first
+    network call.
 
     Submission is asynchronous; bind the result, then wait on it, so the resume
     handles survive a timeout::
@@ -122,9 +133,17 @@ def ingest_nodes(
             f"{len(missing)} node(s) have no persisted UUIDv4 ({sample}). "
             "Set require_uuids=False only for an intentionally non-idempotent ingest."
         )
-    uuids = [str(node.uuid) for node in materialized if node.uuid is not None]
-    if len(uuids) != len(set(uuids)):
-        raise ConfigurationError("node UUIDs must be unique within an ingestion plan")
+    # NodeItem canonicalizes on construction, so this compares identities, not
+    # spellings: one UUID written two ways is one node, and pinning it twice
+    # would silently overwrite the first node with the second.
+    counts = Counter(node.uuid for node in materialized if node.uuid is not None)
+    duplicates = [node_uuid for node_uuid, count in counts.items() if count > 1]
+    if duplicates:
+        sample = ", ".join(repr(node_uuid) for node_uuid in duplicates[:3])
+        raise ConfigurationError(
+            f"{len(duplicates)} node UUID(s) appear on more than one node ({sample}). "
+            "UUIDs are compared as values, not text; give each node its own UUIDv4."
+        )
 
     scope = (
         {"graph_id": destination.graph_id}

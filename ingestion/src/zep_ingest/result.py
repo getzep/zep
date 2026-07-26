@@ -17,6 +17,12 @@ if TYPE_CHECKING:
 _TERMINAL_BATCH_STATUSES = frozenset({"succeeded", "partial", "failed", "invalid", "canceled"})
 _TERMINAL_TASK_STATUSES = frozenset({"succeeded", "partial", "failed", "canceled"})
 
+# Terminal statuses that mean the run did not fully succeed. Derived from the terminal
+# sets so a status added there cannot slip past raise_for_status(). "untracked" is
+# excluded deliberately: with no completion handle the outcome is unknown rather than
+# bad, and wait() already raises IngestUntrackedError for it.
+_UNSUCCESSFUL_STATUSES = (_TERMINAL_BATCH_STATUSES | _TERMINAL_TASK_STATUSES) - {"succeeded"}
+
 # Aggregation priority: the worst/least-done status wins.
 _STATUS_PRIORITY = [
     "failed",
@@ -228,10 +234,22 @@ class IngestResult:
         return collected[:limit]
 
     def raise_for_status(self) -> None:
-        """Opt-in strictness: raise IngestFailedError if anything failed."""
-        if self.add_errors or self.status in ("failed", "partial"):
-            raise IngestFailedError(
-                f"Ingestion finished with status {self.status!r}: "
-                f"{len(self.add_errors)} submission error(s). "
-                "Inspect failed_items() and warnings for details."
-            )
+        """Opt-in strictness: raise IngestFailedError if anything failed or was canceled.
+
+        ``untracked`` is not treated as a failure: wait() raises
+        IngestUntrackedError for it, and a missing completion handle means the
+        outcome is unknown, not bad.
+        """
+        status = self.status
+        if not self.add_errors and status not in _UNSUCCESSFUL_STATUSES:
+            return
+        if self.add_errors:
+            detail = f"{len(self.add_errors)} submission error(s)"
+        elif status == "canceled":
+            detail = "canceled before all items were processed"
+        else:
+            detail = "no submission errors; the failure happened server-side"
+        raise IngestFailedError(
+            f"Ingestion finished with status {status!r}: {detail}. "
+            "Inspect failed_items() and warnings for details."
+        )

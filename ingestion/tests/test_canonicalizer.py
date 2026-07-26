@@ -131,6 +131,34 @@ class TestCorrectnessEdgeCases:
         [out] = list(transform.apply([Episode(data="Prototype-202")]))
         assert out.data == "CanonA"
 
+    def test_alias_that_is_also_a_canonical_name_raises(self):
+        # "Beta" would be protected as a canonical mention, silently killing the
+        # alias — reject the self-contradictory map instead
+        with pytest.raises(ConfigurationError, match="Ambiguous term 'Beta'") as excinfo:
+            AliasCanonicalizer({"Alpha": ["Beta"], "Beta": ["Gamma"]})
+        assert "'Alpha'" in str(excinfo.value)  # both roles named, so the map is fixable
+        assert "'Gamma'" in str(excinfo.value)
+
+    def test_alias_that_is_also_a_canonical_name_raises_in_either_declaration_order(self):
+        with pytest.raises(ConfigurationError, match="Ambiguous term 'Beta'"):
+            AliasCanonicalizer({"Beta": ["Gamma"], "Alpha": ["Beta"]})
+
+    def test_case_folded_alias_canonical_collision_raises_in_non_strict_mode(self):
+        with pytest.raises(ConfigurationError, match="(?i)case-insensitive") as excinfo:
+            AliasCanonicalizer({"Alpha": ["beta"], "Beta": ["Gamma"]}, strict=False)
+        assert "'beta'" in str(excinfo.value)
+        assert "'Beta'" in str(excinfo.value)
+
+    def test_case_variant_of_a_canonical_is_a_usable_alias_in_strict_mode(self):
+        # strict matching is case-sensitive, so "beta" and "Beta" are distinct terms
+        out = rewrite("beta and Beta", {"Alpha": ["beta"], "Beta": ["Gamma"]})
+        assert out == "Alpha and Beta"
+
+    def test_alias_differing_only_in_case_from_its_own_canonical_is_allowed(self):
+        transform = AliasCanonicalizer({"Prototype-202": ["prototype-202"]}, strict=False)
+        [out] = list(transform.apply([Episode(data="prototype-202 and Prototype-202")]))
+        assert out.data == "Prototype-202 and Prototype-202"
+
     def test_invalid_mode_raises_instead_of_rewriting(self):
         with pytest.raises(ConfigurationError, match="mode"):
             AliasCanonicalizer(

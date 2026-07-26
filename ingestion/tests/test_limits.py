@@ -169,3 +169,16 @@ class TestFieldPropagation:
         assert len(out) > 1
         assert all(e.metadata == metadata for e in out)
         assert any("part" in warning for warning in guard.warnings)
+
+    def test_caller_part_key_is_kept_not_overwritten_by_the_marker(self):
+        metadata = {"source_type": "catalog", "part": "AX-1042"}
+        guard = LimitGuard(limit=100)
+
+        out = apply(guard, Episode(data="word " * 100, metadata=metadata))
+
+        assert len(out) > 1
+        assert all(e.metadata == metadata for e in out)
+        assert any(
+            "'part'" in warning and "caller's value was kept" in warning
+            for warning in guard.warnings
+        )

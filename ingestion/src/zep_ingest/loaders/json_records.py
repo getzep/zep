@@ -140,19 +140,27 @@ class JsonRecordsLoader:
         timestamp_missing = 0
         metadata: dict[str, Any] = {"source_type": "json_record", "file_name": file.name}
         if isinstance(record, dict):
+            # every field the caller names is read from the record as they wrote it,
+            # never from a key the loader just wrote: with id_field='sku' and
+            # name_field='id' the name is still the record's own 'id', and the order
+            # of the mappings below carries no meaning
+            original = record
             record = dict(record)
-            for target, source in (
+            for target, field in (
                 ("id", self.id_field),
                 ("name", self.name_field),
                 ("description", self.description_field),
             ):
-                if source and source in record:
-                    record[target] = record[source]
+                if field and field in original:
+                    record[target] = original[field]
             if self.record_type:
                 record["record_type"] = self.record_type
             if self.created_at_field:
-                created_at = _parse_timestamp(record.get(self.created_at_field))
+                created_at = _parse_timestamp(original.get(self.created_at_field))
                 timestamp_missing = int(created_at is None)
+            # metadata_fields promotes keys of the episode as emitted, so a lifted
+            # value always matches the episode body under that key — a mapped
+            # identity key or an injected record_type included
             for f in self._liftable_fields:
                 if f in record and isinstance(record[f], _SCALARS):
                     metadata[f] = record[f]

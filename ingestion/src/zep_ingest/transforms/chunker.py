@@ -56,8 +56,15 @@ class TextChunker:
             document = episode.data[: self.max_document_chars]
             total = len(pieces)
             base_metadata = dict(episode.metadata or {})
-            include_chunk = "chunk" in base_metadata or len(base_metadata) < MAX_METADATA_KEYS
-            if not include_chunk:
+            # the marker is diagnostic and the caller's value is domain data, so a
+            # name collision omits the marker rather than overwriting
+            include_chunk = "chunk" not in base_metadata and len(base_metadata) < MAX_METADATA_KEYS
+            if "chunk" in base_metadata:
+                self.warnings.append(
+                    "Internal 'chunk' metadata marker omitted because the episode already "
+                    "carries its own 'chunk' metadata key; the caller's value was kept."
+                )
+            elif not include_chunk:
                 self.warnings.append(
                     "Internal 'chunk' metadata marker omitted because the episode already has "
                     f"the API maximum of {MAX_METADATA_KEYS} metadata keys."

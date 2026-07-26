@@ -63,6 +63,7 @@ class AliasCanonicalizer:
         self._counts: dict[str, int] = {}
         self._alias_to_canonical: dict[str, str] = {}
         casefolded_aliases: dict[str, tuple[str, str]] = {}
+        casefolded_canonicals = {c.casefold(): c for c in aliases}
         lowered_risky = frozenset(w.lower() for w in risky_words) if risky_words else None
 
         for canonical, alias_list in aliases.items():
@@ -84,6 +85,24 @@ class AliasCanonicalizer:
                     raise ConfigurationError(
                         f"Case-insensitive alias collision: {previous_alias!r} maps to "
                         f"{previous_canonical!r}, but {alias!r} maps to {canonical!r}."
+                    )
+                # A term that is a canonical name is protected in text (see _resolve),
+                # so declaring it as an alias too would silently kill the alias.
+                if alias in aliases:
+                    raise ConfigurationError(
+                        f"Ambiguous term {alias!r}: it is declared as an alias of "
+                        f"{canonical!r} and as the canonical name for "
+                        f"{list(aliases[alias])!r}. A term cannot be both an alias and a "
+                        "canonical name — drop it from one of the two roles."
+                    )
+                folded_canonical = casefolded_canonicals.get(folded)
+                if not strict and folded_canonical is not None and folded_canonical != canonical:
+                    raise ConfigurationError(
+                        f"Case-insensitive alias/canonical collision: {alias!r} is declared "
+                        f"as an alias of {canonical!r}, but {folded_canonical!r} is the "
+                        f"canonical name for {list(aliases[folded_canonical])!r}. A term "
+                        "cannot be both an alias and a canonical name — drop it from one "
+                        "of the two roles."
                     )
                 if lowered_risky is not None:
                     self._check_risky(alias, lowered_risky)

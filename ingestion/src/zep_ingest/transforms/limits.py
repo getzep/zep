@@ -50,8 +50,15 @@ class LimitGuard:
                 yield replace(episode, data=pieces[0], data_type=output_type)
                 continue
             base_metadata = dict(episode.metadata or {})
-            include_part = "part" in base_metadata or len(base_metadata) < MAX_METADATA_KEYS
-            if not include_part:
+            # the marker is diagnostic and the caller's value is domain data, so a
+            # name collision omits the marker rather than overwriting
+            include_part = "part" not in base_metadata and len(base_metadata) < MAX_METADATA_KEYS
+            if "part" in base_metadata:
+                self.warnings.append(
+                    "Internal 'part' metadata marker omitted because the episode already "
+                    "carries its own 'part' metadata key; the caller's value was kept."
+                )
+            elif not include_part:
                 self.warnings.append(
                     "Internal 'part' metadata marker omitted because the episode already has "
                     f"the API maximum of {MAX_METADATA_KEYS} metadata keys."

@@ -54,6 +54,61 @@ def test_webvtt_optional_hours_identifier_settings_voice_and_millis(tmp_path):
     assert episode.created_at == "2025-01-01T10:00:02.125000+00:00"
 
 
+def test_webvtt_voice_end_tags_are_stripped(tmp_path):
+    path = write(
+        tmp_path,
+        "meeting.vtt",
+        "WEBVTT\n\n"
+        "generated-cue-a\n"
+        "00:00:02.000 --> 00:00:04.000\n"
+        "<v Avery Brown>Generated opening.</v>\n\n"
+        "generated-cue-b\n"
+        "00:00:04.000 --> 00:00:06.000\n"
+        "<v.panel.host Blake Carter>Generated response.</v>   \n\n"
+        "generated-cue-c\n"
+        "00:00:06.000 --> 00:00:08.000\n"
+        "<v Casey Diaz>Generated follow-up.</V>\n",
+    )
+    [episode] = TranscriptLoader(path, meeting_start="2025-01-01T10:00:00Z").load()
+    assert "</v>" not in episode.data
+    assert "</V>" not in episode.data
+    assert episode.data.splitlines() == [
+        "Avery Brown: Generated opening.",
+        "Blake Carter: Generated response.",
+        "Casey Diaz: Generated follow-up.",
+    ]
+    assert episode.created_at == "2025-01-01T10:00:02+00:00"
+
+
+def test_webvtt_voice_end_tag_closing_a_wrapped_cue_is_stripped(tmp_path):
+    path = write(
+        tmp_path,
+        "meeting.vtt",
+        "WEBVTT\n\n"
+        "generated-cue-a\n"
+        "00:00:02.000 --> 00:00:06.000\n"
+        "<v Avery Brown>Generated opening\n"
+        "that wraps onto a second line.</v>\n",
+    )
+    [episode] = TranscriptLoader(path).load()
+    assert episode.data.splitlines() == [
+        "Avery Brown: Generated opening that wraps onto a second line.",
+    ]
+
+
+def test_webvtt_voice_end_tag_inside_cue_text_is_preserved(tmp_path):
+    path = write(
+        tmp_path,
+        "meeting.vtt",
+        "WEBVTT\n\n"
+        "generated-cue-a\n"
+        "00:00:02.000 --> 00:00:04.000\n"
+        "<v Avery Brown>The </v> tag closes a voice span.\n",
+    )
+    [episode] = TranscriptLoader(path).load()
+    assert episode.data.splitlines() == ["Avery Brown: The </v> tag closes a voice span."]
+
+
 def test_stage_direction_preserved_but_redaction_removed(tmp_path):
     path = write(
         tmp_path,

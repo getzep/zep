@@ -19,6 +19,7 @@ _TIMESTAMP = re.compile(r"^\s*(?:\*\*)?\[?(\d{1,2}):(\d{2}):(\d{2})\]?(?:\*\*)?\
 _VTT_TIME = r"(?:(?P<hours>\d{2,}):)?(?P<minutes>[0-5]\d):(?P<seconds>[0-5]\d)\.(?P<millis>\d{3})"
 _VTT_CUE = re.compile(rf"^{_VTT_TIME}\s+-->\s+.+?(?:\s+\S+:\S+)*$")
 _VTT_VOICE = re.compile(r"^<v(?:\.[^. >]+)*\s+([^>]+)>(.*)$", re.IGNORECASE)
+_VTT_VOICE_END = re.compile(r"</v\s*>\s*$", re.IGNORECASE)
 _BOLD_TURN = re.compile(r"^\*\*(?P<speaker>[^:*][^:]{0,80}?):?\*\*:?\s*(?P<text>.*)$")
 _PLAIN_TURN = re.compile(r"^(?P<speaker>[A-Z][^:]{0,80}?):\s+(?P<text>.+)$")
 _HEADER_LINE = re.compile(r"^([A-Z][A-Z _-]{2,30}):\s*(.*)$")
@@ -166,7 +167,8 @@ class TranscriptLoader:
                 continue
             voice = _VTT_VOICE.match(line) if is_vtt else None
             if voice:
-                turns.append(_Turn(voice.group(1).strip(), voice.group(2).strip(), offset))
+                text = _VTT_VOICE_END.sub("", voice.group(2)).strip()
+                turns.append(_Turn(voice.group(1).strip(), text, offset))
                 continue
             turn = _BOLD_TURN.match(line) or _PLAIN_TURN.match(line)
             if turn:
@@ -174,7 +176,8 @@ class TranscriptLoader:
                     _Turn(turn.group("speaker").strip(), turn.group("text").strip(), offset)
                 )
             elif turns:
-                turns[-1].text = f"{turns[-1].text} {line}".strip()
+                continued = _VTT_VOICE_END.sub("", line) if is_vtt else line
+                turns[-1].text = f"{turns[-1].text} {continued}".strip()
         return [turn for turn in turns if turn.text]
 
     @staticmethod

@@ -133,6 +133,73 @@ class TestFieldMapping:
         assert episodes[0].metadata["file_name"] == "products.jsonl"
 
 
+class TestMappingSources:
+    def test_mapping_target_never_feeds_another_mapping(self, tmp_path):
+        # name_field='id' means "use the id column as the display name"; the
+        # id_field mapping must not hand it the sku instead
+        file = tmp_path / "r.jsonl"
+        file.write_text(json.dumps({"id": "legacy-7", "sku": "P1", "title": "Shoes"}))
+
+        [episode] = JsonRecordsLoader(file, id_field="sku", name_field="id").load()
+
+        record = json.loads(episode.data)
+        assert record["id"] == "P1"
+        assert record["name"] == "legacy-7"
+
+    def test_mapping_order_does_not_change_the_outcome(self, tmp_path):
+        # id and name swap places, which only resolves if each mapping reads the
+        # original record — whichever of the two the loader applies first
+        file = tmp_path / "r.jsonl"
+        file.write_text(json.dumps({"id": "legacy-7", "name": "Shoes"}))
+
+        [episode] = JsonRecordsLoader(file, id_field="name", name_field="id").load()
+
+        record = json.loads(episode.data)
+        assert record["id"] == "Shoes"
+        assert record["name"] == "legacy-7"
+
+    def test_chained_mappings_each_read_their_own_source(self, tmp_path):
+        file = tmp_path / "r.jsonl"
+        file.write_text(json.dumps({"id": "legacy-7", "name": "Shoes", "sku": "P1"}))
+
+        [episode] = JsonRecordsLoader(
+            file, id_field="sku", name_field="id", description_field="name"
+        ).load()
+
+        record = json.loads(episode.data)
+        assert record["id"] == "P1"
+        assert record["name"] == "legacy-7"
+        assert record["description"] == "Shoes"
+
+    def test_created_at_field_reads_the_record_not_a_mapped_key(self, tmp_path):
+        # created_at_field names a column of the caller's record, exactly like the
+        # identity mappings do, so mapping something onto 'id' cannot steal it
+        file = tmp_path / "r.jsonl"
+        file.write_text(json.dumps({"id": "2024-06-15T00:00:00Z", "sku": "P1"}))
+        loader = JsonRecordsLoader(file, id_field="sku", created_at_field="id")
+
+        [episode] = loader.load()
+
+        assert episode.created_at is not None
+        assert episode.created_at.startswith("2024-06-15")
+        assert json.loads(episode.data)["id"] == "P1"
+        assert loader.warnings == []
+
+    def test_metadata_lifts_the_episode_as_emitted(self, tmp_path):
+        # the other side of the same rule: metadata_fields names keys of the
+        # episode body, so a lifted value always agrees with the body
+        file = tmp_path / "r.jsonl"
+        file.write_text(json.dumps({"id": "legacy-7", "sku": "P1"}))
+
+        [episode] = JsonRecordsLoader(
+            file, id_field="sku", record_type="product", metadata_fields=["id", "record_type"]
+        ).load()
+
+        assert episode.metadata["id"] == "P1"
+        assert episode.metadata["record_type"] == "product"
+        assert json.loads(episode.data)["id"] == "P1"
+
+
 class TestReservedProvenanceKeys:
     def test_record_fields_cannot_overwrite_provenance(self, tmp_path):
         file = tmp_path / "web.csv"

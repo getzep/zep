@@ -215,8 +215,44 @@ class TestRaiseForStatus:
         result = IngestResult(method="batch", batch_ids=["b1"], client=mock_zep)
         mock_zep.batch.get.return_value = make_batch_summary("b1", "failed")
         result.refresh()
-        with pytest.raises(IngestFailedError):
+        with pytest.raises(IngestFailedError) as excinfo:
             result.raise_for_status()
+        message = str(excinfo.value)
+        assert "'failed'" in message
+        assert "the failure happened server-side" in message
+        assert "0 submission error" not in message
+
+    def test_raises_on_canceled_batch(self, mock_zep):
+        result = IngestResult(method="batch", batch_ids=["b1"], client=mock_zep)
+        mock_zep.batch.get.return_value = make_batch_summary("b1", "canceled")
+
+        result.wait(poll_interval=0)
+
+        assert result.status == "canceled"
+        with pytest.raises(IngestFailedError) as excinfo:
+            result.raise_for_status()
+        message = str(excinfo.value)
+        assert "canceled before all items were processed" in message
+        assert "0 submission error" not in message
+
+    def test_raises_on_canceled_task(self, mock_zep):
+        from zep_cloud.types.get_task_response import GetTaskResponse
+
+        result = IngestResult.from_task_ids(mock_zep, ["t1"])
+        mock_zep.task.get.return_value = GetTaskResponse(task_id="t1", status="cancelled")
+
+        result.wait(poll_interval=0)
+
+        assert result.status == "canceled"
+        with pytest.raises(IngestFailedError, match="canceled before all items were processed"):
+            result.raise_for_status()
+
+    def test_untracked_is_not_a_failure(self, mock_zep):
+        result = IngestResult(
+            method="sequential", items_submitted=1, untracked_items=1, client=mock_zep
+        )
+        assert result.status == "untracked"
+        result.raise_for_status()
 
     def test_raises_on_add_errors(self, mock_zep):
         result = IngestResult(

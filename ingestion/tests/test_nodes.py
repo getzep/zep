@@ -9,6 +9,8 @@ from zep_cloud.types.add_nodes_response import AddNodesResponse
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.nodes import NodeItem, ingest_nodes
 
+CANONICAL_UUID = "f6b6bcbe-6b64-4d3f-9f9e-8f6a6f9f0f47"
+
 
 @pytest.mark.parametrize(
     ("field", "value"),
@@ -18,6 +20,37 @@ def test_non_string_node_fields_raise_configuration_error(field, value):
     kwargs = {"name": "Avery Brown", field: value}
     with pytest.raises(ConfigurationError, match=field):
         NodeItem(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "F6B6BCBE-6B64-4D3F-9F9E-8F6A6F9F0F47",
+        "{f6b6bcbe-6b64-4d3f-9f9e-8f6a6f9f0f47}",
+        "f6b6bcbe6b644d3f9f9e8f6a6f9f0f47",
+    ],
+)
+def test_node_uuid_spellings_are_canonicalized(spelling):
+    node = NodeItem(name="Avery Brown", uuid=spelling)
+
+    # One UUID value, one text: what we dedup on is what we submit.
+    assert node.uuid == CANONICAL_UUID
+    assert node.to_add_node_item().uuid_ == CANONICAL_UUID
+
+
+def test_case_different_uuid_spellings_are_rejected_as_duplicates(mock_zep):
+    node_uuid = str(uuid.uuid4())
+    nodes = [
+        NodeItem(name="Avery Brown", uuid=node_uuid),
+        NodeItem(name="Avery B.", uuid=node_uuid.upper()),
+    ]
+
+    # Both spellings are one node, so the second would silently overwrite the
+    # first — the error must name the UUID to be actionable on a large plan.
+    with pytest.raises(ConfigurationError, match=node_uuid):
+        ingest_nodes(mock_zep, nodes, graph_id="g1")
+
+    mock_zep.graph.add_nodes.assert_not_called()
 
 
 def test_node_task_id_is_tracked_as_task(mock_zep):
