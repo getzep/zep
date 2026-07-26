@@ -50,7 +50,12 @@ from zep_ingest.submitters.batch import (
 )
 from zep_ingest.submitters.sequential import call_with_retries
 from zep_ingest.transforms._splitting import split_text
-from zep_ingest.types import MAX_ITEMS_PER_ADD, MAX_ITEMS_PER_BATCH, MAX_METADATA_KEYS
+from zep_ingest.types import (
+    MAX_ITEMS_PER_ADD,
+    MAX_ITEMS_PER_BATCH,
+    MAX_MESSAGES_PER_THREAD_ADD,
+    MAX_METADATA_KEYS,
+)
 
 logger = logging.getLogger("zep_ingest")
 
@@ -357,7 +362,7 @@ def ingest_thread_messages(
     method: Literal["auto", "batch", "sequential"] = "auto",
     batch_metadata: dict[str, Any] | None = None,
     ignore_roles: Sequence[str] | None = None,
-    messages_per_call: int = 30,
+    messages_per_call: int = MAX_MESSAGES_PER_THREAD_ADD,
     max_retries: int = 5,
     thread_id_suffix: str | None = None,
 ) -> IngestResult:
@@ -393,7 +398,12 @@ def ingest_thread_messages(
         raise ConfigurationError(
             f"method must be one of ['auto', 'batch', 'sequential'], got {method!r}"
         )
-    require_int_range("messages_per_call", messages_per_call, minimum=1)
+    require_int_range(
+        "messages_per_call",
+        messages_per_call,
+        minimum=1,
+        maximum=MAX_MESSAGES_PER_THREAD_ADD,
+    )
     require_int_range("max_retries", max_retries, minimum=1)
     if thread_id_suffix is not None and not isinstance(thread_id_suffix, str):
         raise ConfigurationError("thread_id_suffix must be a string or None")

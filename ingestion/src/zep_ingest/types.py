@@ -8,12 +8,13 @@ from zep_cloud.types.batch_add_item import BatchAddItem
 from zep_ingest._validation import check_scalar_map, check_timestamp
 from zep_ingest.exceptions import ConfigurationError
 
-# Documented Zep API limits (see help.getzep.com/adding-batch-data and
-# help.getzep.com/adding-business-data).
+# Documented Zep API limits (see help.getzep.com/adding-batch-data,
+# help.getzep.com/adding-business-data and help.getzep.com/adding-messages).
 MAX_EPISODE_CHARS = 10_000
 SAFE_EPISODE_CHARS = 9_500  # LimitGuard target; headroom for context prefixes
 MAX_ITEMS_PER_ADD = 350
 MAX_ITEMS_PER_BATCH = 50_000
+MAX_MESSAGES_PER_THREAD_ADD = 30  # thread.add_messages per call; not MAX_ITEMS_PER_ADD
 MAX_METADATA_KEYS = 10
 
 DataType = Literal["text", "json", "message"]

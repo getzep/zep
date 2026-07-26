@@ -48,7 +48,7 @@ yourself, once, then ingest into it. See
 
 | Your data | Use | Episodes |
 |---|---|---|
-| Slack export (conversations) | `ingest_slack_export` | `text`, thread-grouped with speaker/channel labels inline; join/leave noise skipped (tune with `skip_subtypes=`) |
+| Slack export (conversations) | `ingest_slack_export` | `text`, thread-grouped with speaker/channel labels inline; public channels only unless `conversation_types=` widens it; join/leave noise skipped (tune with `skip_subtypes=`) |
 | Documents (text/Markdown, long PDFs pre-converted to text) | `ingest_documents` | `text`, chunked (+optional LLM context) |
 | Speaker-labeled or WebVTT transcripts | `ingest_transcripts` | `text`, chunked at turn boundaries with speaker labels inline and source offsets |
 | Email exports (.eml files) | `ingest_emails` | `text`, with sender/recipient/subject inline, dated by the `Date:` header |
@@ -79,6 +79,37 @@ namespace a backfill without rewriting the source data.
 Pass `ignore_roles=["assistant"]` to keep assistant turns as conversational
 context but exclude them from graph extraction (they stay in thread history);
 it applies on both the batch and sequential paths.
+
+**Slack conversation types:** a Slack export indexes its conversations in four
+files — `channels.json` (public channels), `groups.json` (private channels),
+`dms.json` (1:1 DMs) and `mpims.json` (group DMs). All four are read, but only
+**public channels are ingested by default**, so private conversations never
+start flowing into a graph unnoticed. Whatever the export contains and
+`conversation_types=` does not select is reported in `result.warnings` with
+counts and the exact parameter to pass — never skipped in silence. Any subset
+works:
+
+```python
+# Public channels only — the default, e.g. a company-wide standalone graph:
+ingest_slack_export(client, "export.zip", graph_id="company_wide")
+
+# DMs only, into their own graph:
+ingest_slack_export(
+    client,
+    "export.zip",
+    graph_id="dm_history",
+    conversation_types=["dm", "group_dm"],
+)
+```
+
+`channels=` composes with it: it filters *by name within* the selected types,
+matching a channel name, an `mpdm-…` slug, or a DM id (`D01ABC234`) or its
+resolved member label. Naming a conversation whose type isn't selected is a
+`ConfigurationError` that says which type to add, rather than a silently empty
+run. DMs and group DMs are labeled by their resolved members ("Avery Brown,
+Blake Carter") instead of the opaque id or slug Slack names their folder with —
+raw ids degrade entity extraction — and every episode carries its
+`conversation_type` in `metadata` for filtering at search time.
 
 **Batch vs sequential:** the Batch API (fast, 50k items/batch) is the default
 high-throughput submission path. `method="auto"` tries batch and transparently
@@ -357,7 +388,8 @@ declared entity type each) or the declared ontology never touches a
 triples-only graph.
 
 Every documented limit (fact ≤250 chars, names ≤50, summaries ≤500,
-SCREAMING_SNAKE_CASE `fact_name`, scalar attributes, ≤10 metadata keys) is
+SCREAMING_SNAKE_CASE `fact_name`, attribute and metadata values that are
+scalars or arrays of scalars, ≤10 metadata keys) is
 validated **client-side at construction** — a clear Python error naming the
 field, not an HTTP 400 three hours into a run. Also accepts a JSONL or
 JSON object or array path whose columns match the field names. Sequential only (the
@@ -385,7 +417,8 @@ ingest_nodes(
 Pass a persisted UUIDv4 per node (required by default): it is the node's only
 identity/dedup key, so a re-run upserts instead of duplicating. Up to 100 nodes
 per request, every documented limit (name ≤50, summary ≤500, label ≤100, ≤10
-scalar attributes, ≤10 metadata keys) validated client-side at construction.
+attributes, ≤10 metadata keys, each value a scalar or an array of scalars)
+validated client-side at construction.
 Sequential only (the Batch API doesn't take direct nodes).
 
 ## Monitoring a run
@@ -453,8 +486,10 @@ result.wait()
   matters.
 - Alias maps are validated (no control characters, sane lengths) since they
   often come from config files.
-- Stored `AddError` records and package-generated warnings omit episode bodies
-  and raw API response bodies.
+- Stored `AddError` records and package-generated warnings never add content
+  from the episodes you submitted. They do carry the API's own response body
+  verbatim, so a failure reads exactly as it would from a direct SDK call —
+  worth knowing if you ship `failed_items()` output to a log aggregator.
 
 ## What this package does NOT fix
 

@@ -18,6 +18,7 @@ from zep_ingest.exceptions import (
     InvalidBatchResponseError,
 )
 from zep_ingest.threads import MAX_MESSAGE_CHARS, ThreadMessage, ingest_thread_messages
+from zep_ingest.types import MAX_MESSAGES_PER_THREAD_ADD
 
 
 @pytest.fixture(autouse=True)
@@ -331,6 +332,40 @@ class TestSequentialPath:
             mock_zep, msgs, user_id="avery-brown", method="sequential", messages_per_call=30
         )
         assert mock_zep.thread.add_messages.call_count == 3
+
+    def test_messages_per_call_over_api_limit_rejected_before_any_call(self, mock_zep):
+        # thread.add_messages caps a call at 30 messages; a larger chunk would
+        # only be refused as a 400 after the user and threads had been touched
+        with pytest.raises(ConfigurationError, match="messages_per_call"):
+            ingest_thread_messages(
+                mock_zep,
+                [message()],
+                user_id="avery-brown",
+                method="sequential",
+                messages_per_call=MAX_MESSAGES_PER_THREAD_ADD + 1,
+            )
+        mock_zep.user.get.assert_not_called()  # fail-fast, before any API traffic
+        mock_zep.thread.create.assert_not_called()
+        mock_zep.thread.add_messages.assert_not_called()
+
+    def test_messages_per_call_at_api_limit_accepted(self, mock_zep):
+        result = ingest_thread_messages(
+            mock_zep,
+            [message()],
+            user_id="avery-brown",
+            method="sequential",
+            messages_per_call=MAX_MESSAGES_PER_THREAD_ADD,
+        )
+        assert result.items_submitted == 1
+
+    def test_default_messages_per_call_chunks_at_the_api_limit(self, mock_zep):
+        # the default is the same constant as the validated maximum, so the two
+        # cannot drift apart — and the chunk size is the 30 thread.add_messages
+        # limit, never the 350-item batch.add page size
+        msgs = [message(content=f"m{i}") for i in range(MAX_MESSAGES_PER_THREAD_ADD + 1)]
+        ingest_thread_messages(mock_zep, msgs, user_id="avery-brown", method="sequential")
+        sizes = [len(c.kwargs["messages"]) for c in mock_zep.thread.add_messages.call_args_list]
+        assert sizes == [MAX_MESSAGES_PER_THREAD_ADD, 1]
 
     def test_sequential_tracks_task_ids_for_waiting(self, mock_zep):
         mock_zep.thread.add_messages.side_effect = [

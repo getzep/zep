@@ -94,6 +94,39 @@ def test_node_wait_polls_until_terminal(mock_zep):
     mock_zep.task.get.assert_called()
 
 
+def test_scalar_arrays_accepted_in_both_node_maps():
+    # attributes and metadata answer to the same API rule, so an array of
+    # scalars is a valid value in either
+    node = NodeItem(
+        name="Avery Brown",
+        attributes={"aliases": ["Avery B.", "A. Brown"]},
+        metadata={"teams": ["sales", "support"]},
+    )
+
+    item = node.to_add_node_item()
+
+    assert item.attributes == {"aliases": ["Avery B.", "A. Brown"]}
+    assert item.metadata == {"teams": ["sales", "support"]}
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("attributes", []),
+        ("attributes", ["Avery B.", None]),
+        ("attributes", [["Avery B."]]),
+        ("attributes", [{"alias": "Avery B."}]),
+        ("attributes", {"alias": "Avery B."}),
+        ("metadata", []),
+        ("metadata", ["sales", None]),
+        ("metadata", {"team": "sales"}),
+    ],
+)
+def test_non_scalar_node_map_values_raise_naming_the_field(field, value):
+    with pytest.raises(ConfigurationError, match=field):
+        NodeItem(name="Avery Brown", **{field: {"aliases": value}})
+
+
 def test_empty_node_maps_are_sent_to_clear_existing_values():
     node = NodeItem(
         name="Avery Brown",

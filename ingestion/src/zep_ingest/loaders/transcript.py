@@ -23,6 +23,17 @@ _VTT_VOICE_END = re.compile(r"</v\s*>\s*$", re.IGNORECASE)
 _BOLD_TURN = re.compile(r"^\*\*(?P<speaker>[^:*][^:]{0,80}?):?\*\*:?\s*(?P<text>.*)$")
 _PLAIN_TURN = re.compile(r"^(?P<speaker>[A-Z][^:]{0,80}?):\s+(?P<text>.+)$")
 _HEADER_LINE = re.compile(r"^([A-Z][A-Z _-]{2,30}):\s*(.*)$")
+_HEADER_KEY_WORD = re.compile(r"[A-Z]+")
+# Words that name transcript metadata rather than a person, matched against any
+# word of a header key so ``MEETING ID`` and ``START TIME`` qualify too. Role
+# words that double as speaker labels — HOST, SPEAKER, INTERVIEWER, SUBJECT,
+# CALLER — are deliberately absent; see ``_match_header``.
+_HEADER_KEYS = frozenset(
+    """
+    ATTENDEES CALL DATE DURATION LANGUAGE LOCATION MEETING PARTICIPANTS
+    RECORDED RECORDING TIME TIMEZONE TITLE TOPIC TRANSCRIPT
+    """.split()
+)
 _REDACTION_ONLY = re.compile(r"^\[[^\]]*\b(?:omitted|redacted)\b[^\]]*\]$", re.IGNORECASE)
 _TRANSCRIPT_HEADING = re.compile(r"^#{1,6}\s.*transcript\s*$", re.IGNORECASE)
 _DATE = re.compile(r"(\d{4})[-_](\d{2})[-_](\d{2})")
@@ -118,7 +129,7 @@ class TranscriptLoader:
             if _TIMESTAMP.match(stripped) or _VTT_CUE.match(stripped) or _BOLD_TURN.match(stripped):
                 body_start = index
                 break
-            header = _HEADER_LINE.match(stripped)
+            header = TranscriptLoader._match_header(stripped)
             if header:
                 for piece in stripped.split(" | "):
                     match = _HEADER_LINE.match(piece.strip())
@@ -133,6 +144,27 @@ class TranscriptLoader:
             if _TRANSCRIPT_HEADING.match(line.strip()):
                 return headers, body[index + 1 :]
         return headers, body
+
+    @staticmethod
+    def _match_header(line: str) -> re.Match[str] | None:
+        """The metadata match for a line, or None when it reads as a speaker turn.
+
+        A header and an all-caps turn are the same shape — ``DATE: 2024-06-15``
+        and ``ALICE: First turn`` both match :data:`_HEADER_LINE` — so the key
+        has to settle it. A key with no value cannot be a turn, since
+        :data:`_PLAIN_TURN` requires text after the colon; otherwise the key
+        must name transcript metadata. The vocabulary stays narrow because the
+        two mistakes are not symmetric: reading a turn as a header consumes the
+        rest of the header block and can empty the file, while reading a header
+        as a turn only leaves one extra line of text in the episode.
+        """
+        match = _HEADER_LINE.match(line)
+        if match is None:
+            return None
+        if not match.group(2).strip():
+            return match
+        words = _HEADER_KEY_WORD.findall(match.group(1))
+        return match if any(word in _HEADER_KEYS for word in words) else None
 
     def _parse_turns(self, lines: list[str]) -> list[_Turn]:
         turns: list[_Turn] = []

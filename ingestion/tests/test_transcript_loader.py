@@ -32,6 +32,62 @@ def test_speaker_transcript_chunks_at_turn_boundaries(tmp_path):
     ]
 
 
+def test_all_caps_speaker_turns_are_not_read_as_headers(tmp_path):
+    """An all-caps turn is shaped exactly like a ``KEY: value`` metadata header.
+    Reading it as one consumes the turns as metadata and leaves nothing to ingest."""
+    path = write(
+        tmp_path,
+        "meeting.txt",
+        "AVERY BROWN: First generated turn.\n"
+        "BLAKE CARTER: Second generated turn.\n"
+        "AVERY BROWN: Third generated turn.\n",
+    )
+    loader = TranscriptLoader(path)
+    [episode] = loader.load()
+    assert loader.warnings == []
+    assert episode.data.splitlines() == [
+        "AVERY BROWN: First generated turn.",
+        "BLAKE CARTER: Second generated turn.",
+        "AVERY BROWN: Third generated turn.",
+    ]
+
+
+@pytest.mark.parametrize("separator", ["", "\n"])
+def test_all_caps_speakers_keep_their_turns_alongside_real_headers(tmp_path, separator):
+    """Metadata keys are still stripped, and still supply the date, whether or not a
+    blank line separates the header block from the first turn."""
+    path = write(
+        tmp_path,
+        "meeting.txt",
+        "MEETING: Quarterly Review\n"
+        "DATE: 2025-01-01\n"
+        "PARTICIPANTS: Avery Brown, Blake Carter\n"
+        f"{separator}"
+        "AVERY BROWN: First generated turn.\n"
+        "BLAKE CARTER: Second generated turn.\n",
+    )
+    [episode] = TranscriptLoader(path, default_start_time="09:00:00+00:00").load()
+    assert episode.created_at == "2025-01-01T09:00:00+00:00"
+    assert episode.metadata["meeting"] == "Quarterly Review"
+    assert episode.data.splitlines() == [
+        "AVERY BROWN: First generated turn.",
+        "BLAKE CARTER: Second generated turn.",
+    ]
+
+
+def test_valueless_key_does_not_end_the_header_block(tmp_path):
+    """A key with nothing after the colon cannot be a turn, so the scan continues and
+    the ``DATE`` below it is still read."""
+    path = write(
+        tmp_path,
+        "meeting.txt",
+        "NOTES:\nDATE: 2025-01-01\nAVERY BROWN: First generated turn.\n",
+    )
+    [episode] = TranscriptLoader(path, default_start_time="09:00:00+00:00").load()
+    assert episode.created_at == "2025-01-01T09:00:00+00:00"
+    assert episode.data.splitlines() == ["AVERY BROWN: First generated turn."]
+
+
 def test_webvtt_optional_hours_identifier_settings_voice_and_millis(tmp_path):
     path = write(
         tmp_path,

@@ -26,6 +26,47 @@ def iso(ts: str) -> str:
     return datetime.fromtimestamp(float(ts), tz=UTC).isoformat()
 
 
+def mixed_export(root: Path) -> Path:
+    """An export carrying all four conversation indexes Slack writes."""
+    export = root / "mixed_export"
+    export.mkdir()
+    (export / "users.json").write_text(
+        json.dumps(
+            [
+                {"id": "U001", "name": "avery", "profile": {"display_name": "Avery Brown"}},
+                {"id": "U002", "name": "blake", "profile": {"display_name": "Blake Carter"}},
+                {"id": "U003", "name": "charlie", "profile": {}},
+            ]
+        )
+    )
+    (export / "channels.json").write_text(json.dumps([{"id": "C1", "name": "general"}]))
+    (export / "groups.json").write_text(json.dumps([{"id": "G1", "name": "leadership"}]))
+    (export / "dms.json").write_text(json.dumps([{"id": "D01ABC234", "members": ["U001", "U002"]}]))
+    (export / "mpims.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": "G2",
+                    "name": "mpdm-avery--blake--charlie-1",
+                    "members": ["U001", "U002", "U003"],
+                }
+            ]
+        )
+    )
+    conversations = {
+        "general": ("U001", "public channel message", "1718355600.000100"),
+        "leadership": ("U002", "private channel message", "1718355700.000100"),
+        "D01ABC234": ("U001", "direct message", "1718355800.000100"),
+        "mpdm-avery--blake--charlie-1": ("U003", "group dm message", "1718355900.000100"),
+    }
+    for folder, (user, text, ts) in conversations.items():
+        (export / folder).mkdir()
+        (export / folder / "2024-06-14.json").write_text(
+            json.dumps([{"type": "message", "user": user, "text": text, "ts": ts}])
+        )
+    return export
+
+
 class TestBasics:
     def test_all_episodes_are_text_type_with_metadata(self):
         episodes = load()
@@ -101,6 +142,138 @@ class TestFiltering:
         assert len(episodes) == 1
         assert "Random note" in episodes[0].data
         assert episodes[0].metadata["channel"] == "random"
+
+
+class TestConversationTypes:
+    def test_default_ingests_public_channels_only(self, tmp_path):
+        episodes = load(mixed_export(tmp_path))
+        assert [e.metadata["conversation_type"] for e in episodes] == ["public_channel"]
+        assert "public channel message" in episodes[0].data
+
+    def test_skipped_types_warn_with_counts_and_remedy(self, tmp_path):
+        loader = SlackExportLoader(mixed_export(tmp_path))
+        list(loader.load())
+        warning = next(w for w in loader.warnings if "conversation_types" in w)
+        assert "1 private channel(s)" in warning
+        assert "1 DM conversation(s)" in warning
+        assert "1 group DM conversation(s)" in warning
+        assert (
+            "conversation_types=['public_channel', 'private_channel', 'dm', 'group_dm']" in warning
+        )
+
+    def test_no_skip_warning_when_export_has_only_public_channels(self):
+        loader = SlackExportLoader(FIXTURE)
+        list(loader.load())
+        assert not any("conversation_types" in w for w in loader.warnings)
+
+    def test_no_skip_warning_when_every_type_selected(self, tmp_path):
+        loader = SlackExportLoader(
+            mixed_export(tmp_path),
+            conversation_types=["public_channel", "private_channel", "dm", "group_dm"],
+        )
+        episodes = list(loader.load())
+        assert len(episodes) == 4
+        assert not any("conversation_types" in w for w in loader.warnings)
+
+    def test_dms_only_selection(self, tmp_path):
+        episodes = load(mixed_export(tmp_path), conversation_types=["dm", "group_dm"])
+        assert {e.metadata["conversation_type"] for e in episodes} == {"dm", "group_dm"}
+        assert not any("channel message" in e.data for e in episodes)
+
+    def test_private_channels_only_selection(self, tmp_path):
+        episodes = load(mixed_export(tmp_path), conversation_types=["private_channel"])
+        assert len(episodes) == 1
+        assert episodes[0].metadata["channel"] == "leadership"
+        assert episodes[0].data == (
+            "Blake Carter (Slack #leadership, 2024-06-14 09:01 UTC): private channel message"
+        )
+
+    def test_dm_labeled_by_resolved_members(self, tmp_path):
+        episodes = load(mixed_export(tmp_path), conversation_types=["dm"])
+        assert episodes[0].metadata["channel"] == "Avery Brown, Blake Carter"
+        assert episodes[0].data == (
+            "Avery Brown (Slack DM: Avery Brown, Blake Carter, 2024-06-14 09:03 UTC): "
+            "direct message"
+        )
+
+    def test_group_dm_labeled_by_members_not_mpdm_slug(self, tmp_path):
+        episodes = load(mixed_export(tmp_path), conversation_types=["group_dm"])
+        assert episodes[0].metadata["channel"] == "Avery Brown, Blake Carter, charlie"
+        assert episodes[0].data == (
+            "charlie (Slack group DM: Avery Brown, Blake Carter, charlie, "
+            "2024-06-14 09:05 UTC): group dm message"
+        )
+
+    def test_dm_without_roster_falls_back_to_raw_member_ids(self, tmp_path):
+        export = mixed_export(tmp_path)
+        (export / "users.json").unlink()
+        loader = SlackExportLoader(export, conversation_types=["dm"])
+        episodes = list(loader.load())
+        assert episodes[0].metadata["channel"] == "U001, U002"
+        assert any("org_users.json" in w for w in loader.warnings)
+
+    def test_dm_without_members_falls_back_to_its_id(self, tmp_path):
+        export = mixed_export(tmp_path)
+        (export / "dms.json").write_text(json.dumps([{"id": "D01ABC234"}]))
+        episodes = load(export, conversation_types=["dm"])
+        assert episodes[0].metadata["channel"] == "D01ABC234"
+
+    def test_channels_filter_applies_within_selected_types(self, tmp_path):
+        episodes = load(
+            mixed_export(tmp_path),
+            conversation_types=["public_channel", "private_channel"],
+            channels=["leadership"],
+        )
+        assert len(episodes) == 1
+        assert episodes[0].metadata["channel"] == "leadership"
+
+    def test_channel_of_unselected_type_raises_with_remedy(self, tmp_path):
+        with pytest.raises(ConfigurationError) as excinfo:
+            load(mixed_export(tmp_path), channels=["leadership"])
+        message = str(excinfo.value)
+        assert "leadership" in message
+        assert "Add private_channel to conversation_types" in message
+
+    def test_dm_selectable_by_id_or_member_label(self, tmp_path):
+        export = mixed_export(tmp_path)
+        by_id = load(export, conversation_types=["dm"], channels=["D01ABC234"])
+        by_label = load(export, conversation_types=["dm"], channels=["Avery Brown, Blake Carter"])
+        assert len(by_id) == 1
+        assert [e.data for e in by_id] == [e.data for e in by_label]
+
+    def test_unknown_channel_error_lists_dm_ids_with_their_labels(self, tmp_path):
+        with pytest.raises(ConfigurationError) as excinfo:
+            load(mixed_export(tmp_path), channels=["nonexistent"])
+        assert "D01ABC234 (Avery Brown, Blake Carter)" in str(excinfo.value)
+
+    def test_zip_parity_across_conversation_types(self, tmp_path):
+        export = mixed_export(tmp_path)
+        archive = shutil.make_archive(str(tmp_path / "mixed"), "zip", export)
+        types = ["public_channel", "private_channel", "dm", "group_dm"]
+        from_dir = load(export, conversation_types=types)
+        from_zip = load(Path(archive), conversation_types=types)
+        assert [e.data for e in from_zip] == [e.data for e in from_dir]
+
+    @pytest.mark.parametrize(
+        "filename,entry",
+        [
+            ("groups.json", {"name": "../../outside"}),
+            ("dms.json", {"id": "../../outside"}),
+            ("mpims.json", {"name": "../../outside"}),
+        ],
+    )
+    def test_path_traversal_rejected_from_every_index(self, tmp_path, filename, entry):
+        export = tmp_path / "export"
+        export.mkdir()
+        (export / "users.json").write_text("[]")
+        (export / filename).write_text(json.dumps([entry]))
+        with pytest.raises(ConfigurationError, match="Invalid Slack channel path"):
+            load(export, conversation_types=["private_channel", "dm", "group_dm"])
+
+    @pytest.mark.parametrize("types", [[], ["dms"], "dm"])
+    def test_invalid_conversation_types_rejected_eagerly(self, types):
+        with pytest.raises(ConfigurationError, match="conversation_types"):
+            SlackExportLoader(FIXTURE, conversation_types=types)
 
 
 class TestFormatting:

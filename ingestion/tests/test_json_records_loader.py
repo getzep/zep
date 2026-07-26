@@ -127,6 +127,26 @@ class TestFieldMapping:
         episodes = list(JsonRecordsLoader(jsonl_file, metadata_fields=["sku"]).load())
         assert episodes[0].metadata["sku"] == "P1"
 
+    def test_array_field_lifts_into_metadata(self, tmp_path):
+        # the API takes an array of scalars as a metadata value, so a record's
+        # tags belong in metadata and not in the episode body alone
+        file = tmp_path / "r.jsonl"
+        file.write_text(json.dumps({"sku": "P1", "tags": ["shoes", "sale"]}))
+
+        [episode] = JsonRecordsLoader(file, metadata_fields=["tags"]).load()
+
+        assert episode.metadata["tags"] == ["shoes", "sale"]
+
+    def test_fields_the_api_would_reject_are_not_lifted(self, tmp_path):
+        file = tmp_path / "r.jsonl"
+        file.write_text(json.dumps({"dims": {"w": 3}, "tags": [], "sizes": [8, None]}))
+
+        [episode] = JsonRecordsLoader(file, metadata_fields=["dims", "tags", "sizes"]).load()
+
+        assert set(episode.metadata) == {"source_type", "file_name"}
+        # dropped from metadata only; the record itself is untouched
+        assert json.loads(episode.data)["dims"] == {"w": 3}
+
     def test_metadata_carries_source_type_and_filename(self, jsonl_file):
         episodes = list(JsonRecordsLoader(jsonl_file).load())
         assert episodes[0].metadata["source_type"] == "json_record"

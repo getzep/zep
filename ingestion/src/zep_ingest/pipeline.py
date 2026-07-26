@@ -22,7 +22,12 @@ from zep_cloud.client import Zep
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.loaders.email import EmlLoader
 from zep_ingest.loaders.json_records import JsonRecordsLoader
-from zep_ingest.loaders.slack import DEFAULT_SKIP_SUBTYPES, SlackExportLoader
+from zep_ingest.loaders.slack import (
+    DEFAULT_CONVERSATION_TYPES,
+    DEFAULT_SKIP_SUBTYPES,
+    ConversationType,
+    SlackExportLoader,
+)
 from zep_ingest.loaders.text import TextFileLoader
 from zep_ingest.loaders.transcript import DEFAULT_CHUNK_CHARS, TranscriptLoader
 from zep_ingest.protocols import LLMClient, Loader, Submitter, Transform
@@ -225,6 +230,7 @@ def ingest_slack_export(
     graph_id: str | None = None,
     user_id: str | None = None,
     channels: Sequence[str] | None = None,
+    conversation_types: Sequence[ConversationType] = DEFAULT_CONVERSATION_TYPES,
     grouping: Literal["thread", "message"] = "thread",
     include_bots: bool = False,
     skip_subtypes: frozenset[str] = DEFAULT_SKIP_SUBTYPES,
@@ -233,10 +239,16 @@ def ingest_slack_export(
     risky_words: frozenset[str] | None = None,
     **run_kwargs: Any,
 ) -> IngestResult:
-    """One-liner: Slack workspace export (.zip or directory) → Zep graph."""
+    """One-liner: Slack workspace export (.zip or directory) → Zep graph.
+
+    Ingests public channels only unless ``conversation_types`` says otherwise;
+    private channels, DMs and group DMs found in the export but not selected
+    are reported in ``result.warnings``.
+    """
     loader = SlackExportLoader(
         path,
         channels=channels,
+        conversation_types=conversation_types,
         grouping=grouping,
         include_bots=include_bots,
         skip_subtypes=skip_subtypes,

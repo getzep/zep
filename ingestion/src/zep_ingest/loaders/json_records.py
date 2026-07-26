@@ -18,10 +18,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from zep_ingest._validation import is_scalar_or_scalar_array
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.types import MAX_METADATA_KEYS, Episode
 
-_SCALARS = (str, int, float, bool)
 # provenance the loader stamps on every episode; record fields with these
 # names are not liftable, so what the episode reports about its own origin
 # stays trustworthy (source_type is always 'json_record')
@@ -160,9 +160,11 @@ class JsonRecordsLoader:
                 timestamp_missing = int(created_at is None)
             # metadata_fields promotes keys of the episode as emitted, so a lifted
             # value always matches the episode body under that key — a mapped
-            # identity key or an injected record_type included
+            # identity key or an injected record_type included. A field the API
+            # would not take as a metadata value (a nested object, say) stays in
+            # the body only.
             for f in self._liftable_fields:
-                if f in record and isinstance(record[f], _SCALARS):
+                if f in record and is_scalar_or_scalar_array(record[f]):
                     metadata[f] = record[f]
         return (
             Episode(

@@ -64,6 +64,17 @@ class TestValidation:
     def test_scalar_attributes_ok(self):
         triple(attributes={"confidence": "high", "priority": 1, "active": True})
 
+    def test_scalar_array_attributes_ok(self):
+        triple(attributes={"tags": ["gtm", "q3"], "reviewer_ids": [1, 2]})
+
+    @pytest.mark.parametrize("value", [[], ["gtm", None], [["gtm"]], [{"tag": "gtm"}]])
+    def test_attribute_arrays_the_api_rejects_raise(self, value):
+        with pytest.raises(ConfigurationError, match="attributes"):
+            triple(attributes={"tags": value})
+
+    def test_scalar_array_metadata_ok(self):
+        triple(metadata={"teams": ["sales", "support"]})
+
     def test_metadata_over_ten_keys_raises(self):
         with pytest.raises(ConfigurationError, match="metadata"):
             triple(metadata={f"k{i}": i for i in range(11)})

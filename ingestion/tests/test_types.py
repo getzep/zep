@@ -40,6 +40,44 @@ class TestEpisode:
         assert "document" not in repr(ep)
 
 
+class TestMetadataValues:
+    """The API takes a scalar or an array of scalars for every metadata and
+    attribute value, so the client refuses exactly what it would refuse."""
+
+    @pytest.mark.parametrize(
+        "value",
+        ["sales", 7, 1.5, True, None, ["sales", "support"], [1, 2], ("sales", "support")],
+    )
+    def test_scalars_and_scalar_arrays_accepted(self, value):
+        assert Episode(data="x", metadata={"teams": value}).metadata == {"teams": value}
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            [],  # an empty array carries no meaning
+            ["sales", None],  # a null element is not a value
+            [["sales"]],
+            [{"name": "sales"}],
+            {"name": "sales"},
+            {"sales", "support"},  # a set has no JSON form to send
+        ],
+    )
+    def test_non_scalar_values_rejected(self, value):
+        with pytest.raises(ConfigurationError, match="metadata"):
+            Episode(data="x", metadata={"teams": value})
+
+    def test_rejection_names_the_key_and_the_accepted_shapes(self):
+        with pytest.raises(ConfigurationError) as error:
+            Episode(data="x", metadata={"teams": {"name": "sales"}})
+
+        assert "metadata['teams']" in str(error.value)
+        assert "arrays of scalars" in str(error.value)
+
+    def test_non_mapping_metadata_rejected(self):
+        with pytest.raises(ConfigurationError, match="metadata"):
+            Episode(data="x", metadata=["sales"])
+
+
 class TestDestination:
     def test_graph_id_only_is_valid(self):
         dest = Destination(graph_id="g1")
