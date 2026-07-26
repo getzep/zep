@@ -211,6 +211,24 @@ class TestFiltering:
         included = " ".join(e.data for e in SlackExportLoader(export, include_bots=True).load())
         assert "bot" in included
 
+    @pytest.mark.parametrize("field", ["ts", "thread_ts"])
+    def test_non_numeric_timestamp_skips_one_message_not_the_export(self, tmp_path, field):
+        """Ordering and created_at both read the timestamp as a float, so one bad
+        value used to abort the whole export with a bare ValueError."""
+        export = mixed_export(tmp_path)
+        bad = {"user": "U001", "ts": "1718400001.1", "text": "bad timestamp"}
+        bad[field] = "not-a-timestamp"
+        (export / "general" / "2024-06-15.json").write_text(
+            json.dumps([{"user": "U001", "ts": "1718400000.1", "text": "kept"}, bad])
+        )
+        loader = SlackExportLoader(export)
+
+        bodies = " ".join(e.data for e in loader.load())
+
+        assert "kept" in bodies
+        assert "bad timestamp" not in bodies
+        assert any("not a number" in w for w in loader.warnings)
+
     def test_duplicate_timestamps_are_reported_not_dropped_in_silence(self, tmp_path):
         export = mixed_export(tmp_path)
         (export / "general" / "2024-06-15.json").write_text(

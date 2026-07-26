@@ -287,6 +287,7 @@ class SlackExportLoader:
         self.warnings: list[str] = []
         self._unresolved_users: set[str] = set()
         self._duplicate_ts = 0
+        self._invalid_ts = 0
 
     def load(self) -> Iterator[Episode]:
         reader = _ZipReader(self.path) if self.path.is_file() else _DirReader(self.path)
@@ -294,6 +295,7 @@ class SlackExportLoader:
         # the previous pass's list would report every warning twice
         self._unresolved_users = set()
         self._duplicate_ts = 0
+        self._invalid_ts = 0
         self.warnings = []
         roster = self._read_roster(reader)
         users = self._user_map(roster)
@@ -325,6 +327,12 @@ class SlackExportLoader:
                 f"{len(self._unresolved_users)} Slack user ID(s) referenced in "
                 "messages were absent from the roster (typically deactivated, bot, "
                 "or Slack Connect users) and were left as raw IDs."
+            )
+        if self._invalid_ts:
+            self.warnings.append(
+                f"{self._invalid_ts} Slack message(s) had a timestamp that is not a "
+                "number and were skipped; Slack writes ts as epoch seconds, so an "
+                "export carrying anything else has been altered or is corrupt."
             )
         if self._duplicate_ts:
             self.warnings.append(
@@ -521,6 +529,19 @@ class SlackExportLoader:
         ts = raw.get("ts")
         if ts is None:
             return None
+        # ordering and created_at both read ts as a float later, where a bad value
+        # would abort the whole export; drop the one message and report it instead
+        try:
+            float(ts)
+        except (TypeError, ValueError):
+            self._invalid_ts += 1
+            return None
+        if raw.get("thread_ts") is not None:
+            try:
+                float(raw["thread_ts"])
+            except (TypeError, ValueError):
+                self._invalid_ts += 1
+                return None
         if raw.get("user"):
             sender = self._resolve(raw["user"], users)
         else:
