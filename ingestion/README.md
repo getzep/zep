@@ -388,8 +388,8 @@ declared entity type each) or the declared ontology never touches a
 triples-only graph.
 
 Every documented limit (fact ≤250 chars, names ≤50, summaries ≤500,
-SCREAMING_SNAKE_CASE `fact_name`, attribute and metadata values that are
-scalars or arrays of scalars, ≤10 metadata keys) is
+SCREAMING_SNAKE_CASE `fact_name`, string attribute and metadata keys whose
+values are scalars or arrays of scalars, ≤10 metadata keys) is
 validated **client-side at construction** — a clear Python error naming the
 field, not an HTTP 400 three hours into a run. Also accepts a JSONL or
 JSON object or array path whose columns match the field names. Sequential only (the
@@ -468,8 +468,9 @@ handle, the result reports `status == "untracked"` instead of claiming success.
 from zep_ingest import IngestResult
 
 result = IngestResult.from_batch_ids(client, ["batch-id-1"])
-result.status  # refreshed on demand
-result.wait()
+result.refresh()  # status reads cached state, so fetch it first
+result.status
+result.wait()  # or skip refresh() entirely — wait() polls for you
 
 # Task-backed ingestion can be resumed the same way:
 result = IngestResult.from_task_ids(client, ["task-id-1"])

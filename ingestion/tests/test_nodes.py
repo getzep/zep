@@ -127,6 +127,33 @@ def test_non_scalar_node_map_values_raise_naming_the_field(field, value):
         NodeItem(name="Avery Brown", **{field: {"aliases": value}})
 
 
+@pytest.mark.parametrize("field", ["attributes", "metadata"])
+@pytest.mark.parametrize("key", [1, True, None])
+def test_non_string_node_map_keys_raise_naming_the_key(field, key):
+    with pytest.raises(ConfigurationError, match=f"{field} keys must be strings"):
+        NodeItem(name="Avery Brown", **{field: {key: "Avery B."}})
+
+
+@pytest.mark.parametrize("field", ["attributes", "metadata"])
+def test_blank_node_map_keys_raise(field):
+    with pytest.raises(ConfigurationError, match=f"{field} keys must be non-empty strings"):
+        NodeItem(name="Avery Brown", **{field: {"  ": "Avery B."}})
+
+
+def test_non_string_map_key_fails_before_any_api_call(mock_zep):
+    def plan():
+        yield NodeItem(name="Avery Brown", uuid=str(uuid.uuid4()))
+        yield NodeItem(name="Blake Carter", uuid=str(uuid.uuid4()), metadata={1: "sales"})
+
+    # The API takes JSON object keys, which are strings. A non-string one fails
+    # while the plan is still being materialized — nothing reaches the wire, so
+    # there is no half-submitted run to reconcile.
+    with pytest.raises(ConfigurationError, match="metadata keys must be strings, got int: 1"):
+        ingest_nodes(mock_zep, plan(), graph_id="g1")
+
+    mock_zep.graph.add_nodes.assert_not_called()
+
+
 def test_empty_node_maps_are_sent_to_clear_existing_values():
     node = NodeItem(
         name="Avery Brown",

@@ -287,6 +287,89 @@ class TestMetadataBudget:
         assert episode.metadata["source_type"] == "json_record"
 
 
+class TestNonFiniteNumbers:
+    # json reads NaN/Infinity/-Infinity as a Python extension and writes them
+    # back out, so an accepted record would emit an episode body no strict JSON
+    # parser reads; the loader refuses the record instead
+
+    @pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+    def test_non_finite_value_rejected_naming_file_field_and_record(self, tmp_path, token):
+        file = tmp_path / "prices.jsonl"
+        file.write_text('{"sku": "P1", "price": 1.5}\n{"sku": "P2", "price": ' + token + "}\n")
+
+        with pytest.raises(ConfigurationError) as error:
+            list(JsonRecordsLoader(file).load())
+
+        message = str(error.value)
+        assert "prices.jsonl" in message
+        assert "'price'" in message
+        assert "record 2" in message
+
+    def test_non_finite_rejected_in_a_json_array(self, tmp_path):
+        file = tmp_path / "products.json"
+        file.write_text('[{"sku": "P1"}, {"sku": "P2", "qty": Infinity}]')
+
+        with pytest.raises(ConfigurationError) as error:
+            list(JsonRecordsLoader(file).load())
+
+        message = str(error.value)
+        assert "products.json" in message
+        assert "'qty'" in message
+        assert "record 2" in message
+
+    def test_nested_non_finite_is_caught(self, tmp_path):
+        # the value can sit at any depth; the path locates it inside the record
+        file = tmp_path / "r.jsonl"
+        file.write_text('{"sku": "P1", "dims": {"sizes": [8, NaN]}}')
+
+        with pytest.raises(ConfigurationError) as error:
+            list(JsonRecordsLoader(file).load())
+
+        assert "'dims.sizes[1]'" in str(error.value)
+
+    def test_record_that_is_itself_non_finite_is_rejected(self, tmp_path):
+        file = tmp_path / "r.json"
+        file.write_text("NaN")
+
+        with pytest.raises(ConfigurationError) as error:
+            list(JsonRecordsLoader(file).load())
+
+        assert "r.json" in str(error.value)
+
+    def test_non_finite_metadata_field_rejected_instead_of_nulled(self, tmp_path):
+        # the API records a non-finite metadata value as null, silently changing
+        # it, so the record is refused rather than the field lifted or skipped
+        file = tmp_path / "scores.jsonl"
+        file.write_text('{"sku": "P1", "score": NaN}')
+
+        with pytest.raises(ConfigurationError) as error:
+            list(JsonRecordsLoader(file, metadata_fields=["score"]).load())
+
+        message = str(error.value)
+        assert "scores.jsonl" in message
+        assert "'score'" in message
+
+    def test_finite_floats_load_end_to_end(self, tmp_path):
+        file = tmp_path / "r.jsonl"
+        file.write_text(json.dumps({"sku": "P1", "price": 19.99, "sizes": [8.5, 9.0]}))
+
+        [episode] = JsonRecordsLoader(file, metadata_fields=["price", "sizes"]).load()
+
+        assert json.loads(episode.data)["price"] == 19.99
+        assert episode.metadata["price"] == 19.99
+        assert episode.metadata["sizes"] == [8.5, 9.0]
+
+    def test_csv_nan_text_stays_a_string(self, tmp_path):
+        # csv.DictReader yields strings, so a 'NaN' cell is text and not a float
+        file = tmp_path / "products.csv"
+        file.write_text("sku,price\nP1,NaN\n")
+
+        [episode] = JsonRecordsLoader(file, metadata_fields=["price"]).load()
+
+        assert json.loads(episode.data)["price"] == "NaN"
+        assert episode.metadata["price"] == "NaN"
+
+
 class TestOneLiner:
     def test_ingest_json_records(self, mock_zep, jsonl_file):
         from zep_ingest.pipeline import ingest_json_records

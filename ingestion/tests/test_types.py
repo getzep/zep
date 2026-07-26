@@ -78,6 +78,43 @@ class TestMetadataValues:
             Episode(data="x", metadata=["sales"])
 
 
+class TestMetadataKeys:
+    """A JSON object key is a string, so a non-string key is a named error here
+    rather than a serialization failure once a request is already in flight."""
+
+    @pytest.mark.parametrize("key", [1, 1.5, True, None, ("teams",)])
+    def test_non_string_keys_rejected(self, key):
+        with pytest.raises(ConfigurationError, match="metadata keys must be strings"):
+            Episode(data="x", metadata={key: "sales"})
+
+    def test_rejection_names_the_offending_key(self):
+        with pytest.raises(ConfigurationError) as error:
+            Episode(data="x", metadata={"teams": "sales", 7: "support"})
+
+        # The key and its type, so it is findable in a large mapping.
+        assert "metadata keys must be strings, got int: 7" in str(error.value)
+
+    @pytest.mark.parametrize("key", ["", "   "])
+    def test_blank_keys_rejected(self, key):
+        # Consistent with every required string in this package, which counts
+        # whitespace-only as empty.
+        with pytest.raises(ConfigurationError, match="metadata keys must be non-empty strings"):
+            Episode(data="x", metadata={key: "sales"})
+
+    @pytest.mark.parametrize("key", ["teams", "team names", "équipes", "k" * 200])
+    def test_any_other_string_key_accepted(self, key):
+        # The API limits how many keys a map has, not how they are spelled; a
+        # length or charset rule invented here would refuse data it accepts.
+        assert Episode(data="x", metadata={key: ["sales", "support"]}).metadata == {
+            key: ["sales", "support"]
+        }
+
+    def test_keys_are_neither_trimmed_nor_coerced(self):
+        # Rewriting a key would rename a field the caller has to filter on later,
+        # so a usable key is stored exactly as written.
+        assert Episode(data="x", metadata={" teams ": "sales"}).metadata == {" teams ": "sales"}
+
+
 class TestDestination:
     def test_graph_id_only_is_valid(self):
         dest = Destination(graph_id="g1")

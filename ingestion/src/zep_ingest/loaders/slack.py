@@ -6,7 +6,10 @@ channels), groups.json (private channels), dms.json (1:1 DMs) and mpims.json
 (group DMs) — and all four are read. ``conversation_types`` picks which of
 them are ingested; it defaults to public channels only, and anything found in
 the export but not selected is reported in ``warnings`` rather than dropped
-silently. Resolves user IDs to display names via the export's users.json — or
+silently. An export carrying none of those indexes is typed by folder name
+instead: DM and group DM folders are recognized and stay excluded by default,
+and the rest are read as channels with a warning that their types could not be
+confirmed. Resolves user IDs to display names via the export's users.json — or
 org_users.json in an Enterprise Grid organization export — and warns when that
 roster is missing or does not cover every referenced user (either case leaves
 raw Slack IDs in the graph, which degrades entity extraction); the same roster
@@ -40,6 +43,14 @@ CONVERSATION_FILES: dict[ConversationType, str] = {
     "group_dm": "mpims.json",
 }
 
+# the user roster: users.json in a standard export, org_users.json in an
+# Enterprise Grid organization export
+ROSTER_FILES: tuple[str, ...] = ("users.json", "org_users.json")
+
+# any of these at the root identifies an export root, which is what lets a
+# single folder wrapping the export be recognized and stripped
+EXPORT_MARKER_FILES: frozenset[str] = frozenset({*CONVERSATION_FILES.values(), *ROSTER_FILES})
+
 # public channels only: DMs must never start flowing into a graph by default
 DEFAULT_CONVERSATION_TYPES: tuple[ConversationType, ...] = ("public_channel",)
 
@@ -65,6 +76,12 @@ DEFAULT_SKIP_SUBTYPES = frozenset(
         "reminder_add",
     }
 )
+
+# Slack names a DM folder with the conversation's opaque id (D01ABC234) and a
+# group DM folder with an mpdm- slug; channel names are lowercase, so a channel
+# folder cannot take either shape
+_DM_FOLDER = re.compile(r"^D[A-Z0-9]{2,}$")
+_GROUP_DM_FOLDER = re.compile(r"^mpdm-")
 
 _MENTION = re.compile(r"<@(\w+)>")
 _CHANNEL_REF = re.compile(r"<#\w+\|([^>]+)>")
@@ -124,25 +141,27 @@ class _DirReader:
         return sorted(directories)
 
     def day_files(self, channel: str) -> list[str]:
+        """A conversation's day files: the .json files directly inside its folder."""
         directory = self._resolve_export_path(channel)
         if not directory.is_dir():
             return []
-        return sorted(p.name for p in directory.glob("*.json"))
+        return sorted(p.name for p in directory.glob("*.json") if p.is_file())
 
 
 class _ZipReader:
     def __init__(self, path: Path) -> None:
         self.zip = zipfile.ZipFile(path)
         names = self.zip.namelist()
-        # tolerate a single top-level folder wrapping the export
+        entries = set(names)
+        # tolerate a single top-level folder wrapping the export: any index or
+        # roster file marks the real root, and an export missing channels.json
+        # or naming its roster org_users.json is still an export
         self.prefix = ""
-        if names and "users.json" not in names and "channels.json" not in names:
+        if names and not (EXPORT_MARKER_FILES & entries):
             roots = {name.split("/", 1)[0] for name in names if "/" in name}
             if len(roots) == 1:
                 candidate = next(iter(roots)) + "/"
-                if any(name == candidate + "users.json" for name in names) or any(
-                    name == candidate + "channels.json" for name in names
-                ):
+                if any(candidate + marker in entries for marker in EXPORT_MARKER_FILES):
                     self.prefix = candidate
         self.names = [n[len(self.prefix) :] for n in names if n.startswith(self.prefix)]
 
@@ -158,11 +177,17 @@ class _ZipReader:
         return sorted({name.split("/", 1)[0] for name in self.names if "/" in name})
 
     def day_files(self, channel: str) -> list[str]:
+        """A conversation's day files: the .json files directly inside its folder.
+
+        Anything deeper belongs to another conversation or to an attachment
+        folder, and reading it here would file one conversation's messages under
+        another's name and type.
+        """
         prefix = channel + "/"
         return sorted(
             name[len(prefix) :]
             for name in self.names
-            if name.startswith(prefix) and name.endswith(".json")
+            if name.startswith(prefix) and name.endswith(".json") and "/" not in name[len(prefix) :]
         )
 
 
@@ -183,6 +208,15 @@ def _matches(conversation: _Conversation, name: str) -> bool:
     """channels= names a conversation by its export identity (channel name, mpdm
     slug or DM id) or by the member label DMs are resolved to."""
     return name in (conversation.folder, conversation.label)
+
+
+def _folder_kind(folder: str) -> ConversationType:
+    """Type a conversation folder by its name, for an export carrying no indexes."""
+    if _GROUP_DM_FOLDER.match(folder):
+        return "group_dm"
+    if _DM_FOLDER.match(folder):
+        return "dm"
+    return "public_channel"
 
 
 def _describe(conversation: _Conversation) -> str:
@@ -259,10 +293,11 @@ class SlackExportLoader:
     def _read_roster(reader: _DirReader | _ZipReader) -> Any:
         """The user roster: users.json in a standard export, or org_users.json in an
         Enterprise Grid organization export. None when neither file is present."""
-        roster = reader.read_json("users.json")
-        if roster is None:
-            roster = reader.read_json("org_users.json")
-        return roster
+        for filename in ROSTER_FILES:
+            roster = reader.read_json(filename)
+            if roster is not None:
+                return roster
+        return None
 
     @staticmethod
     def _user_map(roster: Any) -> dict[str, str]:
@@ -282,9 +317,8 @@ class SlackExportLoader:
     ) -> list[_Conversation]:
         """Every conversation the export declares, across all four indexes.
 
-        Only an export carrying none of them falls back to listing directories;
-        those are assumed to be channels, which is what an index-less export of
-        public channels looks like.
+        Only an export carrying none of them falls back to typing its folders by
+        name, which is all an index-less export gives you to go on.
         """
         conversations: list[_Conversation] = []
         seen: set[str] = set()
@@ -302,10 +336,32 @@ class SlackExportLoader:
                 )
         if conversations:
             return conversations
-        return [
-            _Conversation(folder, folder, "public_channel")
+        return self._folder_inventory(reader)
+
+    def _folder_inventory(self, reader: _DirReader | _ZipReader) -> list[_Conversation]:
+        """An index-less export: folder names are the only evidence of type.
+
+        Slack names DM and group DM folders unmistakably, so those are typed from
+        the folder name and stay behind the default conversation_types. Nothing
+        distinguishes a private channel's folder from a public one without
+        groups.json, so the rest are read as public channels — an assumption that
+        is warned about rather than made silently.
+        """
+        inventory = [
+            _Conversation(folder, folder, _folder_kind(folder))
             for folder in (self._validated_folder(d) for d in reader.channel_dirs())
         ]
+        assumed = sum(1 for c in inventory if c.kind == "public_channel")
+        if assumed:
+            self.warnings.append(
+                "The Slack export declares no conversations (it has no channels.json, "
+                "groups.json, dms.json or mpims.json), so conversation types could not "
+                f"be determined: {assumed} folder(s) were read as public channels. A "
+                "private channel's folder is indistinguishable from a public one in an "
+                "index-less export, so confirm none of them are private before "
+                "trusting what lands in the graph."
+            )
+        return inventory
 
     @staticmethod
     def _validated_folder(folder: Any) -> str:
@@ -355,7 +411,7 @@ class SlackExportLoader:
         return [c for c in selected if any(_matches(c, name) for name in self.channels)]
 
     def _warn_skipped_types(self, inventory: list[_Conversation]) -> None:
-        """The export's own indexes say what it holds; never drop a type in silence."""
+        """What the export holds, by index or by folder name, is never dropped in silence."""
         skipped = [
             (kind, sum(1 for c in inventory if c.kind == kind))
             for kind in CONVERSATION_FILES

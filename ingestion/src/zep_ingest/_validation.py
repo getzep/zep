@@ -75,8 +75,9 @@ def check_timestamp(field: str, value: Any, errors: list[str]) -> None:
 def check_scalar_map(
     field: str, mapping: Any, errors: list[str], *, max_keys: int | None = None
 ) -> None:
-    """Validate an optional metadata / attributes map against the same rule the
-    API applies to both: every value is a scalar or an array of scalars.
+    """Validate an optional metadata / attributes map against the same rules the
+    API applies to both: every key is a non-blank string, and every value is a
+    scalar or an array of scalars.
 
     Rejects non-dict values outright — a JSON scalar in that position must fail
     with a named error rather than an AttributeError.
@@ -92,6 +93,14 @@ def check_scalar_map(
     if max_keys is not None and len(mapping) > max_keys:
         errors.append(f"{field} has {len(mapping)} keys; the API allows {max_keys}")
     for key, value in mapping.items():
+        # A JSON object key is a string, so the API takes nothing else — bool
+        # included, though Python has already collapsed {True: ..., 1: ...} into
+        # one entry by now. Name the offending key rather than coercing it:
+        # rewriting 1 to "1" renames a field the caller never wrote.
+        if not isinstance(key, str):
+            errors.append(f"{field} keys must be strings, got {type(key).__name__}: {key!r}")
+        elif not key.strip():
+            errors.append(f"{field} keys must be non-empty strings, got {key!r}")
         if not is_scalar_or_scalar_array(value):
             errors.append(
                 f"{field}[{key!r}] must only contain scalar values (string, number, "

@@ -2,6 +2,7 @@
 
 import json
 import shutil
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -65,6 +66,62 @@ def mixed_export(root: Path) -> Path:
             json.dumps([{"type": "message", "user": user, "text": text, "ts": ts}])
         )
     return export
+
+
+def index_less_export(root: Path) -> Path:
+    """The same export with its four conversation indexes removed: folder names
+    are all that is left to type conversations by."""
+    export = mixed_export(root)
+    for index in ("channels.json", "groups.json", "dms.json", "mpims.json"):
+        (export / index).unlink()
+    return export
+
+
+def wrapped_grid_export(root: Path) -> Path:
+    """An Enterprise Grid export zipped inside a wrapping folder: its roster is
+    org_users.json and it holds no public channels, so no channels.json."""
+    archive = root / "grid.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr(
+            "grid_export/org_users.json",
+            json.dumps(
+                [
+                    {"id": "U001", "name": "avery", "profile": {"display_name": "Avery Brown"}},
+                    {"id": "U002", "name": "blake", "profile": {"display_name": "Blake Carter"}},
+                ]
+            ),
+        )
+        zf.writestr("grid_export/groups.json", json.dumps([{"id": "G1", "name": "leadership"}]))
+        zf.writestr(
+            "grid_export/dms.json", json.dumps([{"id": "D01ABC234", "members": ["U001", "U002"]}])
+        )
+        zf.writestr(
+            "grid_export/leadership/2024-06-14.json",
+            json.dumps(
+                [
+                    {
+                        "type": "message",
+                        "user": "U002",
+                        "text": "private channel message",
+                        "ts": "1718355700.000100",
+                    }
+                ]
+            ),
+        )
+        zf.writestr(
+            "grid_export/D01ABC234/2024-06-14.json",
+            json.dumps(
+                [
+                    {
+                        "type": "message",
+                        "user": "U001",
+                        "text": "direct message",
+                        "ts": "1718355800.000100",
+                    }
+                ]
+            ),
+        )
+    return archive
 
 
 class TestBasics:
@@ -319,6 +376,116 @@ class TestZipAndFallbacks:
     def test_unknown_channel_filter_raises(self):
         with pytest.raises(ConfigurationError):
             load(channels=["nonexistent"])
+
+    def test_wrapped_grid_archive_ingests_nothing_private_by_default(self, tmp_path):
+        # the wrapper must be stripped even without users.json or channels.json,
+        # or the whole export reads as one public pseudo-channel of DM content
+        loader = SlackExportLoader(wrapped_grid_export(tmp_path))
+        assert list(loader.load()) == []
+        warning = next(w for w in loader.warnings if "conversation_types" in w)
+        assert "1 private channel(s)" in warning
+        assert "1 DM conversation(s)" in warning
+
+    def test_wrapped_grid_archive_typed_correctly_when_requested(self, tmp_path):
+        archive = wrapped_grid_export(tmp_path)
+        episodes = load(archive, conversation_types=["private_channel", "dm"])
+        assert [e.metadata["conversation_type"] for e in episodes] == ["private_channel", "dm"]
+        assert [e.metadata["channel"] for e in episodes] == [
+            "leadership",
+            "Avery Brown, Blake Carter",
+        ]
+
+    @pytest.mark.parametrize(
+        "marker",
+        ["channels.json", "groups.json", "dms.json", "mpims.json", "users.json", "org_users.json"],
+    )
+    def test_wrapper_folder_stripped_for_every_index_or_roster_marker(self, tmp_path, marker):
+        archive = tmp_path / "wrapped.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr(f"wrapper/{marker}", "[]")
+            zf.writestr(
+                "wrapper/general/2024-06-14.json",
+                json.dumps(
+                    [
+                        {
+                            "type": "message",
+                            "user": "U001",
+                            "text": "public channel message",
+                            "ts": "1718355600.000100",
+                        }
+                    ]
+                ),
+            )
+        # unstripped, the only conversation would be the wrapper folder itself
+        assert [e.metadata["channel"] for e in load(archive)] == ["general"]
+
+    def test_nested_json_is_not_read_as_a_day_file(self, tmp_path):
+        export = tmp_path / "export"
+        export.mkdir()
+        (export / "users.json").write_text("[]")
+        (export / "channels.json").write_text(json.dumps([{"name": "general"}]))
+        (export / "general").mkdir()
+        (export / "general" / "2024-06-14.json").write_text(
+            json.dumps(
+                [{"type": "message", "user": "U1", "text": "day file", "ts": "1718355600.000100"}]
+            )
+        )
+        nested = export / "general" / "canvas_in_the_conversation"
+        nested.mkdir()
+        (nested / "2024-06-14.json").write_text(
+            json.dumps(
+                [{"type": "message", "user": "U1", "text": "nested", "ts": "1718355700.000100"}]
+            )
+        )
+        archive = shutil.make_archive(str(tmp_path / "nested"), "zip", export)
+        for source in (export, Path(archive)):
+            episodes = load(source)
+            assert len(episodes) == 1
+            assert "nested" not in episodes[0].data
+
+
+class TestIndexLessExport:
+    """An export with no channels.json/groups.json/dms.json/mpims.json: nothing
+    states what its folders are, so types come from folder names and the
+    remaining ambiguity is warned about instead of assumed away."""
+
+    def test_dm_shaped_folders_are_not_ingested_as_public_channels(self, tmp_path):
+        episodes = load(index_less_export(tmp_path))
+        assert [e.metadata["channel"] for e in episodes] == ["general", "leadership"]
+        assert not any("direct message" in e.data or "group dm message" in e.data for e in episodes)
+
+    def test_undetermined_types_are_warned_about(self, tmp_path):
+        loader = SlackExportLoader(index_less_export(tmp_path))
+        list(loader.load())
+        warning = next(w for w in loader.warnings if "could not" in w)
+        assert "2 folder(s) were read as public channels" in warning
+
+    def test_dm_shaped_folders_reported_as_skipped(self, tmp_path):
+        loader = SlackExportLoader(index_less_export(tmp_path))
+        list(loader.load())
+        warning = next(w for w in loader.warnings if "conversation_types" in w)
+        assert "1 DM conversation(s)" in warning
+        assert "1 group DM conversation(s)" in warning
+
+    def test_dm_shaped_folders_ingested_on_explicit_request(self, tmp_path):
+        episodes = load(index_less_export(tmp_path), conversation_types=["dm", "group_dm"])
+        assert [e.metadata["conversation_type"] for e in episodes] == ["dm", "group_dm"]
+        assert [e.metadata["channel"] for e in episodes] == [
+            "D01ABC234",
+            "mpdm-avery--blake--charlie-1",
+        ]
+
+    def test_dm_folder_named_in_channels_reports_the_remedy(self, tmp_path):
+        with pytest.raises(ConfigurationError, match="Add dm to conversation_types"):
+            load(index_less_export(tmp_path), channels=["D01ABC234"])
+
+    def test_export_of_only_dm_folders_ingests_nothing_by_default(self, tmp_path):
+        export = index_less_export(tmp_path)
+        shutil.rmtree(export / "general")
+        shutil.rmtree(export / "leadership")
+        loader = SlackExportLoader(export)
+        assert list(loader.load()) == []
+        assert not any("could not" in w for w in loader.warnings)  # nothing was assumed
 
 
 class TestJsonExportEdgeCases:

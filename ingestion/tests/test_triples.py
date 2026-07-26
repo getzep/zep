@@ -75,6 +75,20 @@ class TestValidation:
     def test_scalar_array_metadata_ok(self):
         triple(metadata={"teams": ["sales", "support"]})
 
+    @pytest.mark.parametrize("field", ["attributes", "metadata"])
+    def test_non_string_map_keys_raise_naming_the_key(self, field):
+        with pytest.raises(ConfigurationError, match=f"{field} keys must be strings, got int: 1"):
+            triple(**{field: {1: "high"}})
+
+    @pytest.mark.parametrize("field", ["attributes", "metadata"])
+    def test_blank_map_keys_raise(self, field):
+        with pytest.raises(ConfigurationError, match=f"{field} keys must be non-empty strings"):
+            triple(**{field: {"": "high"}})
+
+    def test_string_keys_with_scalar_and_array_values_ok(self):
+        # Key validation sits alongside the value rule; neither shape regresses.
+        triple(attributes={"tags": ["gtm", "q3"], "confidence": "high"})
+
     def test_metadata_over_ten_keys_raises(self):
         with pytest.raises(ConfigurationError, match="metadata"):
             triple(metadata={f"k{i}": i for i in range(11)})

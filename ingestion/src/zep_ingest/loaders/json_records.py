@@ -13,6 +13,7 @@ MAX_METADATA_FIELDS fields alongside it.
 import csv
 import glob
 import json
+import math
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -46,6 +47,28 @@ def _parse_timestamp(value: Any) -> str | None:
     if parsed.tzinfo is None:
         return None
     return parsed.isoformat()
+
+
+def _find_non_finite(value: Any, path: str = "") -> tuple[str, float] | None:
+    """Locate the first NaN / Infinity / -Infinity anywhere inside a record.
+
+    Returns the dotted path to the offending value ('price', 'dims.w',
+    'sizes[0].w') so a bad row in a large file is findable, or None if the
+    record is clean. The path is empty when the record is itself such a number.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return path, value
+    if isinstance(value, dict):
+        for key, item in value.items():
+            found = _find_non_finite(item, f"{path}.{key}" if path else str(key))
+            if found is not None:
+                return found
+    elif isinstance(value, list | tuple):
+        for position, item in enumerate(value):
+            found = _find_non_finite(item, f"{path}[{position}]")
+            if found is not None:
+                return found
+    return None
 
 
 class JsonRecordsLoader:
@@ -105,8 +128,8 @@ class JsonRecordsLoader:
             )
         for file in self.files:
             missing_timestamps = 0
-            for record in self._read(file):
-                episode, timestamp_missing = self._to_episode(record, file)
+            for index, record in enumerate(self._read(file), start=1):
+                episode, timestamp_missing = self._to_episode(record, file, index)
                 missing_timestamps += timestamp_missing
                 yield episode
             if missing_timestamps and self.created_at_field:
@@ -135,7 +158,23 @@ class JsonRecordsLoader:
         except (json.JSONDecodeError, ValueError) as error:
             raise ConfigurationError(f"Unparseable records in {file}: {error}") from error
 
-    def _to_episode(self, record: Any, file: Path) -> tuple[Episode, int]:
+    def _to_episode(self, record: Any, file: Path, index: int) -> tuple[Episode, int]:
+        # json reads NaN/Infinity/-Infinity as a Python extension and would write
+        # them straight back out, so they are refused here — at the record, the one
+        # point every format reaches, and before any mapping, so the field named is
+        # the one in the caller's file. CSV rows and records that never went through
+        # json.loads are covered alike, and allow_nan=False on the dump below keeps
+        # the guarantee mechanical.
+        found = _find_non_finite(record)
+        if found is not None:
+            path, value = found
+            where = f"field {path!r}" if path else "the record"
+            raise ConfigurationError(
+                f"Non-finite number in {file}, record {index}: {where} is {value!r}. "
+                "NaN, Infinity and -Infinity are not valid JSON, so the episode body "
+                "would be unparseable, and a value lifted into metadata is sent as null. "
+                "Replace it with a finite number, a string, or null."
+            )
         created_at: str | None = None
         timestamp_missing = 0
         metadata: dict[str, Any] = {"source_type": "json_record", "file_name": file.name}
@@ -168,7 +207,7 @@ class JsonRecordsLoader:
                     metadata[f] = record[f]
         return (
             Episode(
-                data=json.dumps(record),
+                data=json.dumps(record, allow_nan=False),
                 data_type="json",
                 created_at=created_at,
                 metadata=metadata,
