@@ -972,6 +972,31 @@ def _median_stdev(values: List[float]) -> Tuple[float, float]:
     return statistics.median(values), statistics.stdev(values)
 
 
+def unsupported_rerankers(
+    use_context_block: bool, tools_enabled: bool
+) -> List[Tuple[str, str]]:
+    """
+    Configured rerankers that the harness cannot use, for the active paths only.
+
+    A disabled path's reranker never reaches Zep, so checking it would couple the
+    two independently toggleable retrieval modes: a tools-only run would fail on
+    the context block's reranker and vice versa.
+
+    Returns:
+        List of (constant name, configured value) for each unusable reranker.
+    """
+    configured = []
+    if use_context_block:
+        configured.append(("CONTEXT_BLOCK_RERANKER", CONTEXT_BLOCK_RERANKER))
+    if tools_enabled:
+        configured.append(("TOOL_SEARCH_RERANKER", TOOL_SEARCH_RERANKER))
+    return [
+        (label, reranker)
+        for label, reranker in configured
+        if reranker not in SUPPORTED_RERANKERS
+    ]
+
+
 def describe_retrieval_mode(
     use_context_block: bool, tool_registry: Optional[ToolRegistry]
 ) -> str:
@@ -1730,18 +1755,16 @@ async def main():
             print(f"Warning: {message} Continuing with the context block only.\n")
 
         # Caught here rather than as an API error on every single search.
-        for label, reranker in (
-            ("CONTEXT_BLOCK_RERANKER", CONTEXT_BLOCK_RERANKER),
-            ("TOOL_SEARCH_RERANKER", TOOL_SEARCH_RERANKER),
+        for label, reranker in unsupported_rerankers(
+            use_context_block, bool(tool_registry)
         ):
-            if reranker not in SUPPORTED_RERANKERS:
-                print(
-                    f"Error: {label}='{reranker}' is not supported as a harness-wide "
-                    f"default. Choose one of: {', '.join(SUPPORTED_RERANKERS)}. "
-                    f"(mmr and node_distance need extra per-search arguments — see "
-                    f"the comment in config/evaluation_config/constants.py.)"
-                )
-                exit(1)
+            print(
+                f"Error: {label}='{reranker}' is not supported. Choose one of: "
+                f"{', '.join(SUPPORTED_RERANKERS)}. (mmr and node_distance need "
+                f"extra per-search arguments — see the comment in "
+                f"config/evaluation_config/constants.py.)"
+            )
+            exit(1)
 
         # Semaphore(0) never admits anyone, so the run would hang after warming
         # the graphs with no output at all.
