@@ -1,23 +1,23 @@
 import asyncio
 import random
 
-# 4xx statuses worth retrying — everything else in the 4xx range is a rejected
-# request that will be rejected identically on every attempt.
-RETRYABLE_CLIENT_ERRORS = {408, 409, 425, 429}
+# Statuses that mean "this exact request will never be accepted": retrying only
+# burns the full backoff schedule to arrive at the same rejection. Kept
+# deliberately narrow — everything else, including 404s for a resource that may
+# not be visible yet, still retries exactly as it always did.
+NON_RETRYABLE_STATUSES = {400, 422}
 
 
 def is_retryable(exception) -> bool:
     """
     Whether an exception is worth retrying.
 
-    Client errors (400 bad request, 404 not found, 422 unprocessable) are
-    deterministic: retrying burns the full backoff schedule to arrive at the same
-    rejection. Both the OpenAI and Zep SDKs expose `status_code` on their API
-    errors, so one check covers both.
+    Both the OpenAI and Zep SDKs expose `status_code` on their API errors, so one
+    check covers both. Anything without a recognizable status is retried.
     """
     status = getattr(exception, "status_code", None)
-    if isinstance(status, int) and 400 <= status < 500:
-        return status in RETRYABLE_CLIENT_ERRORS
+    if isinstance(status, int) and status in NON_RETRYABLE_STATUSES:
+        return False
     return True
 
 
