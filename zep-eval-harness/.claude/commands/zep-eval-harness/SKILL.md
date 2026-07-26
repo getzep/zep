@@ -11,7 +11,9 @@ The pipeline has four steps:
 1. **Chunk documents** — split documents and generate LLM-based summaries + contextualizations
 2. **Ingest users** — create Zep users, add conversations and telemetry to user graphs
 3. **Ingest documents** — send pre-chunked documents to a standalone Zep document graph
-4. **Evaluate** — for each test case: search graphs → assess context completeness → generate LLM response → grade answer accuracy
+4. **Evaluate** — for each test case: retrieve context → assess context completeness → generate LLM response → grade answer accuracy
+
+Retrieval in step 4 happens one of two ways (or both): the harness searches the graph and injects a **context block**, or the response model retrieves for itself through **tool calls**. See [Retrieval Modes](#retrieval-modes).
 
 ### Evaluation Metrics
 
@@ -31,6 +33,28 @@ When completeness is low, the key diagnostic question is: **does the graph conta
 This measures whether the response model uses the context well. It depends on the LLM and response prompt, not Zep. High completeness + low accuracy means retrieval is working but the response generation needs tuning (better model, better prompt).
 
 Metrics are calculated in aggregate, per-category (based on test case `category` field), and per-user.
+
+### Retrieval Modes
+
+| Mode | Command | What the model gets |
+|------|---------|---------------------|
+| Context block (default) | `uv run zep_evaluate.py` | The harness searches the graph and injects a formatted context block |
+| Tools | `--tools --no-context-block` | Nothing up front — the model calls Zep retrieval tools itself, then answers |
+| Both | `--tools` | A context block up front, plus tools for follow-up retrieval |
+
+`--tools` is the only switch that decides whether tools are used; they stay defined in `config/evaluation_config/tools.py` regardless, so agentic retrieval can be flipped on and off between runs without editing config.
+
+**In tool mode, completeness is graded on the union of every successful tool call's output** (plus the context block, when injected), including output the agent ignored when answering. Completeness therefore still measures retrieval, and accuracy still measures generation. A COMPLETE-but-wrong result means the tools found the information and the agent failed to use it — an agent problem, not a Zep problem.
+
+**Iterations vs calls**: an iteration is one LLM turn that requests tools. Three tools requested in parallel in one turn is 1 iteration and 3 calls. Both are capped independently (`--max-tool-iterations`, `--max-tool-calls`); when either budget runs out the harness forces a final answer turn with tool calls forbidden.
+
+Tool mode is the right choice when the application being evaluated exposes search as a tool call. Context-block mode is the right choice when the application retrieves deterministically every turn. Comparing the two on the same graphs answers "would agentic retrieval do better here?" — completeness is the metric to compare, since both modes feed the same judge.
+
+**Compare `--tools --no-context-block` against the default, not `--tools`.** In "both" mode the graded context is the context block plus every tool output, so completeness can only match or exceed context-block mode — that comparison is rigged by construction. "Both" mode answers a different question: does letting the agent top up a context block improve the result?
+
+Only Zep's output is graded. Tool-call arguments are deliberately excluded from the graded context (a query like "did they cancel the Boston trip" would otherwise let the judge credit retrieval for "Boston"), as are failed and refused calls, whose output is harness error text. All of it is still in `tool_trace`.
+
+Watch three counters before trusting a tool run: `tests_hitting_call_cap`/`tests_hitting_iteration_cap` (the budget, not Zep, is bounding retrieval); `tests_with_no_calls` (nothing was retrieved — but it counts tests with no *executed* calls, so check `invalid_calls` in case the model only ever named a tool that doesn't exist); and `tool_choice_downgrades` (the provider rejected a `tool_choice` the harness asked for, so either `require_tool_call` wasn't enforced or the forced-answer turn was allowed to request tools).
 
 ### Context Block: Edges vs Nodes vs Episodes
 
@@ -70,9 +94,16 @@ config/
 ├── document_chunking_config/
 │   └── constants.py                    # CHUNK_SIZE, CHUNK_OVERLAP, LLM_CONTEXTUALIZATION_MODEL
 └── evaluation_config/
-    ├── constants.py                    # Search limits, LLM_RESPONSE_MODEL, LLM_JUDGE_MODEL
-    └── response_prompt.py              # get_response_system_prompt() — AI persona for eval
+    ├── constants.py                    # Retrieval mode, tool budgets, search limits, LLM models
+    ├── tools.py                        # TOOL_SPECS — retrieval tools the agent can call
+    ├── formatting.py                   # How search results render into context text
+    ├── judge_prompts.py                # Completeness + accuracy judge rubrics (snapshotted per run)
+    └── response_prompt.py              # System prompts (context-block mode and tool mode)
 ```
+
+Tools are `ToolSpec` entries in `TOOL_SPECS` (`name`, `description`, `parameters` JSON Schema, async `executor`, `enabled`, `requires_doc_graph`). Defaults: `search_memory` (user graph; `scope` = auto/edges/nodes/episodes), `search_documents` (document graph, auto-skipped without `--doc-run`), `get_user_profile` (user node summary). Executor output is text and successful output goes verbatim to both the model and the completeness judge — format it like context. Raise to record a tool failure; return a string for a normal result. Leave `parameters` empty for a no-argument tool.
+
+Tool search volume is bounded per scope, because Zep honours different knobs per scope: `TOOL_SEARCH_MAX_CHARACTERS` for `scope="auto"` (which ignores `limit`/`reranker` and always uses RRF), and `TOOL_SEARCH_DEFAULT_LIMIT`/`TOOL_SEARCH_MAX_LIMIT`/`TOOL_SEARCH_RERANKER` for the other scopes. All are in `constants.py` and recorded per run in `retrieval_configuration.tool_search`.
 
 ## Scripts
 
@@ -137,6 +168,13 @@ uv run zep_evaluate.py [OPTIONS]
 | `--user-run N` | latest | Which user ingestion run to evaluate |
 | `--doc-run N` | none | Which document ingestion run to include |
 | `--concurrency N` | 15 | Max parallel test case evaluations (semaphore) |
+| `--tools` / `--no-tools` | config | Let the response model retrieve its own context via tools |
+| `--context-block` / `--no-context-block` | config (on) | Run deterministic search and inject a context block; combinable with `--tools` |
+| `--max-tool-iterations N` | config (3) | Max LLM turns that may request tools |
+| `--max-tool-calls N` | config (8) | Max individual tool calls per test case |
+| `--require-tool-call` / `--no-require-tool-call` | config (on) | Force a tool call on the agent's first turn |
+
+Defaults come from `config/evaluation_config/constants.py` (`USE_TOOLS`, `USE_CONTEXT_BLOCK`, `MAX_TOOL_ITERATIONS`, `MAX_TOOL_CALLS`, `REQUIRE_TOOL_CALL`). Passing `--no-context-block` without usable tools is rejected — that would leave the model with no context at all.
 
 ### 5. Inspect Graph (`zep_graph_inspect.py`)
 
@@ -203,6 +241,16 @@ Evaluation results live at `runs/evaluations/{N}_{ts}/results.json`. Each result
 
 When comparing runs, focus on completeness differences. Accuracy is still worth tracking (it catches cases where context is technically present but hard for the LLM to use), but completeness is what tells you whether Zep's graph and search are doing their job.
 
+### Latency and Tool Metrics
+
+`aggregate_scores.timing` reports median ± stdev per query. The one to quote as "latency" is `answer_latency_*` (context block search + answer generation) — `total_*` includes the two LLM judges, which a real application would never run. Within answer latency: `search_*` is deterministic retrieval, `response_*` is answer generation, and in tool mode `response_*` splits into `tool_*` (wall-clock inside tools, so parallel calls count once) and `answer_llm_*` (everything else — model turns and writing the answer). `tool_calls_summed_*` sums individual call durations; comparing it to `tool_*` shows what parallel tool calling saved.
+
+`aggregate_scores.tools` reports `enabled`, calls and rounds per query, tests with no calls, tests hitting each cap, failed/invalid/refused calls, `tool_choice` downgrades, and per-tool call counts, failures, and latency. Empty answers are top-level (`aggregate_scores.empty_answers`) since they occur in both modes. Per-test detail is in each result's `tool_trace`, where `outcome` is `ok`, `error`, `invalid`, or `refused`.
+
+Two things not to misread: retry backoff sleeps land inside the timed stages, so a rate-limited run looks slow (lower `--concurrency` before blaming retrieval); and `response_prompt_tokens` is a sum across turns in tool mode versus one turn in context-block mode, so the two are not comparable — use `response_prompt_tokens_per_turn` to decompose. `response_*` timings also changed meaning in this version (previously the shared gather window), so they are not comparable with runs from before it — and the completeness rubric in `judge_prompts.py` changed too, so re-run the baseline instead of comparing completeness against a pre-change run.
+
+When comparing tool mode against context-block mode, report both completeness and answer latency — tool mode usually buys completeness at the cost of extra LLM turns, and the trade-off is the decision the user is actually making.
+
 ## Typical Full Pipeline
 
 ```bash
@@ -217,4 +265,12 @@ uv run zep_ingest_documents.py --chunk-set 1 --custom-ontology --custom-instruct
 
 # 4. Evaluate
 uv run zep_evaluate.py --user-run 1 --doc-run 1 --concurrency 30
+```
+
+To compare retrieval strategies on the same graphs, run step 4 more than once — the graphs don't need re-ingesting:
+
+```bash
+uv run zep_evaluate.py --user-run 1 --doc-run 1                        # context block
+uv run zep_evaluate.py --user-run 1 --doc-run 1 --tools --no-context-block   # tools only
+uv run zep_evaluate.py --user-run 1 --doc-run 1 --tools                # both
 ```
