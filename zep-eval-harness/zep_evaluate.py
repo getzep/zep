@@ -32,6 +32,7 @@ from config.evaluation_config.constants import (
     MAX_TOOL_CALLS,
     MAX_TOOL_ITERATIONS,
     REQUIRE_TOOL_CALL,
+    SEARCH_MAX_QUERY_CHARS,
     SUPPORTED_RERANKERS,
     TOOL_SEARCH_DEFAULT_LIMIT,
     TOOL_SEARCH_MAX_CHARACTERS,
@@ -225,6 +226,11 @@ async def perform_graph_search(
         Dictionary containing search results for all scopes
     """
     print(f"Searching [{user_id}]: '{query}'")
+
+    # Zep rejects a query longer than this, so a verbose test question would fail
+    # the whole search rather than retrieve from its first characters. The tools
+    # truncate identically, keeping the two retrieval paths comparable.
+    query = query[:SEARCH_MAX_QUERY_CHARS]
 
     # Build all search tasks for maximum parallelism
     tasks: dict[str, Any] = {}
@@ -872,9 +878,11 @@ async def evaluate_all_questions(
     # standalone graphs, so a lightweight search primes the cache)
     if doc_graph_id:
         print(f"Warming document graph {doc_graph_id}...")
+        # No reranker: this primes the cache with a single result, so ranking is
+        # irrelevant — and passing the context block's reranker would drag its
+        # configuration into runs that disabled the context block entirely.
         await zep_client.graph.search(
             graph_id=doc_graph_id, query=".", scope="edges", limit=1,
-            reranker=CONTEXT_BLOCK_RERANKER,
         )
         print(f"✓ Document graph warmed\n")
 
@@ -1062,7 +1070,11 @@ def _compute_tool_statistics(
         "tool_choice_downgrades": sum(
             r.get("tool_choice_downgrades", 0) for r in items
         ),
-        "tests_with_no_calls": sum(1 for c in calls_per_test if c == 0),
+        # Only meaningful when tools were offered: otherwise every test would
+        # trivially count as "no tool calls".
+        "tests_with_no_calls": (
+            sum(1 for c in calls_per_test if c == 0) if enabled else 0
+        ),
         "tests_hitting_call_cap": sum(
             1 for r in items if r.get("hit_tool_call_cap")
         ),
@@ -1791,7 +1803,11 @@ async def main():
 
         retrieval_configuration = {
             "use_context_block": use_context_block,
+            # What actually happened vs what was asked for: --tools with every
+            # spec inactive is a real run without tools, and both facts are
+            # recorded so the artifact can't be misread either way.
             "use_tools": bool(tool_registry),
+            "tools_requested": bool(args.tools),
             "max_tool_iterations": args.max_tool_iterations,
             "max_tool_calls": args.max_tool_calls,
             "require_tool_call": args.require_tool_call,

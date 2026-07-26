@@ -172,7 +172,7 @@ uv run zep_evaluate.py [OPTIONS]
 | `--context-block` / `--no-context-block` | config (on) | Run deterministic search and inject a context block; combinable with `--tools` |
 | `--max-tool-iterations N` | config (3) | Max LLM turns that may request tools |
 | `--max-tool-calls N` | config (8) | Max individual tool calls per test case |
-| `--require-tool-call` / `--no-require-tool-call` | config (on) | Force a tool call on the agent's first turn |
+| `--require-tool-call` / `--no-require-tool-call` | config (on) | Force a tool call on the agent's first turn; if the provider ignores it, the model is told to retrieve first and re-asked once |
 
 Defaults come from `config/evaluation_config/constants.py` (`USE_TOOLS`, `USE_CONTEXT_BLOCK`, `MAX_TOOL_ITERATIONS`, `MAX_TOOL_CALLS`, `REQUIRE_TOOL_CALL`). Passing `--no-context-block` without usable tools is rejected — that would leave the model with no context at all.
 

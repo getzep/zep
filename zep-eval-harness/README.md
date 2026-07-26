@@ -423,7 +423,7 @@ uv run zep_evaluate.py --tools --max-tool-calls 4 --max-tool-iterations 2
 | `--context-block` / `--no-context-block` | `USE_CONTEXT_BLOCK` | Whether deterministic search runs and injects a context block. Combinable with `--tools` |
 | `--max-tool-iterations N` | `MAX_TOOL_ITERATIONS` (3) | Max LLM turns that may request tools |
 | `--max-tool-calls N` | `MAX_TOOL_CALLS` (8) | Max individual tool calls per test case |
-| `--require-tool-call` / `--no-require-tool-call` | `REQUIRE_TOOL_CALL` (on) | Force a tool call on the agent's first turn so it can't answer from the question alone |
+| `--require-tool-call` / `--no-require-tool-call` | `REQUIRE_TOOL_CALL` (on) | Force a tool call on the agent's first turn so it can't answer from the question alone. Requested via `tool_choice="required"`; if the provider ignores that and answers anyway, the model is told to retrieve first and given one more turn |
 
 Defaults live in `config/evaluation_config/constants.py`; the flags override them per run.
 
@@ -484,6 +484,7 @@ Zep honours different search knobs depending on the scope the model picks, so `t
 | `TOOL_SEARCH_DEFAULT_LIMIT` | other scopes | Results per call when the model passes no `limit` |
 | `TOOL_SEARCH_MAX_LIMIT` | other scopes | Caps whatever `limit` the model asks for |
 | `TOOL_SEARCH_RERANKER` | other scopes | Reranker; defaults to the same one the context block uses, so the two retrieval modes stay comparable |
+| `SEARCH_MAX_QUERY_CHARS` | every scope, **both paths** | Zep rejects a longer query, so tool queries and context-block queries are both truncated to this |
 
 Both sets are recorded in `retrieval_configuration.tool_search`. The context block's own limits live in `search_configuration`, which is marked `applied: false` on runs where the context block was disabled.
 
@@ -627,6 +628,7 @@ Results are saved to `runs/evaluations/{run_number}_{timestamp}/results.json` wi
   "retrieval_configuration": {
     "use_context_block": false,
     "use_tools": true,
+    "tools_requested": true,
     "max_tool_iterations": 3,
     "max_tool_calls": 8,
     "require_tool_call": true,

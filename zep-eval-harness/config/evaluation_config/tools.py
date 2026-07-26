@@ -17,10 +17,10 @@ tool output should read like context, not like an API dump.
 """
 
 from config.evaluation_config.constants import (
+    SEARCH_MAX_QUERY_CHARS,
     TOOL_SEARCH_DEFAULT_LIMIT,
     TOOL_SEARCH_MAX_CHARACTERS,
     TOOL_SEARCH_MAX_LIMIT,
-    TOOL_SEARCH_MAX_QUERY_CHARS,
     TOOL_SEARCH_RERANKER,
 )
 from config.evaluation_config.formatting import (
@@ -47,10 +47,13 @@ FACT_VALIDITY_NOTE = (
 
 def _render_search_results(results, scope: str) -> str:
     """Render Zep search results as context text for the model."""
-    # scope="auto" spans all context types and returns a pre-assembled block.
+    # scope="auto" spans all context types and returns a pre-assembled block. The
+    # validity note is prepended here too, so a dated fact reads the same however
+    # it was retrieved — otherwise the default tool scope would be the one path
+    # that never tells the model a past end date means the fact no longer holds.
     context = getattr(results, "context", None)
     if scope == "auto" and context:
-        return context
+        return f"{FACT_VALIDITY_NOTE}\n{context}"
 
     sections: list[str] = []
     for label, items, formatter in (
@@ -110,7 +113,7 @@ async def _search(
         ctx.zep_client.graph.search,
         # Truncated rather than rejected: the API caps query length, and a long
         # model-written query still retrieves usefully from its first 400 chars.
-        query=query[:TOOL_SEARCH_MAX_QUERY_CHARS],
+        query=query[:SEARCH_MAX_QUERY_CHARS],
         scope=scope,
         description=f"tool search {label} [{query[:40]}]",
         **bounds,
@@ -176,11 +179,11 @@ _SEARCH_PARAMETERS = {
     "properties": {
         "query": {
             "type": "string",
-            "maxLength": TOOL_SEARCH_MAX_QUERY_CHARS,
+            "maxLength": SEARCH_MAX_QUERY_CHARS,
             "description": (
                 "What to look for, phrased as a natural-language statement or "
                 "question. Be specific — the query is matched semantically. "
-                f"Keep it under {TOOL_SEARCH_MAX_QUERY_CHARS} characters; issue "
+                f"Keep it under {SEARCH_MAX_QUERY_CHARS} characters; issue "
                 "separate calls rather than one long multi-part query."
             ),
         },

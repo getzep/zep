@@ -29,6 +29,12 @@ MAX_TOOL_CALLS = 8  # Max individual tool calls across all iterations
 REQUIRE_TOOL_CALL = True
 
 # ============================================================================
+# Search configuration — shared
+# ============================================================================
+# Zep rejects a longer query, so both retrieval paths truncate to this.
+SEARCH_MAX_QUERY_CHARS = 400
+
+# ============================================================================
 # Search configuration — deterministic context block
 # ============================================================================
 # Search configuration — user graphs
@@ -68,7 +74,6 @@ TOOL_SEARCH_MAX_CHARACTERS = 5000  # Per-call cap for scope="auto" (API max 5000
 TOOL_SEARCH_DEFAULT_LIMIT = 15  # Non-auto scopes, when the model passes no limit
 TOOL_SEARCH_MAX_LIMIT = 50  # Non-auto scopes, hard cap on what the model may ask
 TOOL_SEARCH_RERANKER = CONTEXT_BLOCK_RERANKER  # Non-auto scopes only
-TOOL_SEARCH_MAX_QUERY_CHARS = 400  # API limit; longer queries are truncated
 
 # ============================================================================
 # LLM models for evaluation

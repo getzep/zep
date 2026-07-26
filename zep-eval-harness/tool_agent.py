@@ -38,6 +38,13 @@ FINAL_ANSWER_INSTRUCTION = (
 # tools instead of answering.
 FINAL_ANSWER_ATTEMPTS = 2
 
+# Used when the model answers the first turn without retrieving even though
+# tool_choice="required" asked it to — some providers don't enforce the parameter.
+RETRIEVE_FIRST_INSTRUCTION = (
+    "You have not retrieved anything yet, and you have no knowledge of this user "
+    "beyond what your tools return. Call a retrieval tool now, before answering."
+)
+
 # outcome values on ToolCallRecord
 OK = "ok"  # executor ran and succeeded
 ERROR = "error"  # executor ran and raised
@@ -452,6 +459,8 @@ async def run_tool_agent(
     start = time()
     answer: str | None = None
     cut_off = False  # True when a budget stopped the agent before it answered
+    retrieval_demanded = False  # Whether the first-turn tool call was re-demanded
+    unanswered_text = ""  # Best text from a turn that didn't answer cleanly
     label = f"'{question[:60]}'"
 
     async def _turn(tool_choice: str, description: str):
@@ -482,14 +491,30 @@ async def run_tool_agent(
         result.llm_ms += (time() - llm_start) * 1000
 
         tool_calls = list(getattr(message, "tool_calls", None) or []) if message else []
+        text = (getattr(message, "content", "") or "").strip()
 
         if not tool_calls:
+            if iteration == 1 and require_tool_call and not retrieval_demanded:
+                # tool_choice="required" was asked for and the provider answered
+                # anyway (it may not support the parameter). Say it in the prompt
+                # and spend one more round rather than accepting an answer the run
+                # asked to be grounded in retrieval. Once only, so a model that
+                # simply refuses can still finish.
+                print(f"  ⚠ no tool call on the first turn despite tool_choice=required for {label}")
+                retrieval_demanded = True
+                messages.append(_assistant_message(message, iteration))
+                messages.append({"role": "user", "content": RETRIEVE_FIRST_INSTRUCTION})
+                unanswered_text = unanswered_text or text
+                continue
             # Empty content is not an answer — fall through to the final turn.
-            answer = (getattr(message, "content", "") or "").strip() or None
+            answer = text or None
             break
 
         messages.append(_assistant_message(message, iteration))
         result.iterations = iteration
+        # Text alongside tool calls is a preamble, not an answer, but it is the
+        # best fallback available if the forced-answer turns all come back empty.
+        unanswered_text = unanswered_text or text
 
         # Calls beyond the remaining budget are refused, but each still needs a
         # tool response message so the conversation stays valid.
@@ -549,7 +574,10 @@ async def run_tool_agent(
         # in the loop above: every requested call is refused on the record and the
         # model is asked again. Bounded, because a provider that ignores the
         # constraint once will often ignore it twice.
-        preamble = ""
+        # Seeded with any text from a turn that requested tools: it isn't an
+        # answer, but if every forced attempt comes back empty it beats publishing
+        # nothing — and the flag below records that no turn answered cleanly.
+        preamble = unanswered_text
         for attempt in range(1, FINAL_ANSWER_ATTEMPTS + 1):
             messages.append({"role": "user", "content": FINAL_ANSWER_INSTRUCTION})
             message = await _turn(
