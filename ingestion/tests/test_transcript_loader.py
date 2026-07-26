@@ -54,6 +54,68 @@ def test_webvtt_optional_hours_identifier_settings_voice_and_millis(tmp_path):
     assert episode.created_at == "2025-01-01T10:00:02.125000+00:00"
 
 
+def test_webvtt_without_cue_identifiers_keeps_every_turn(tmp_path):
+    """Cue identifiers are optional. When a file omits them, each cue's payload is
+    still followed — after a blank line — by the next cue's timing line, which must
+    not be read as an identifier: doing so drops every turn but the last."""
+    path = write(
+        tmp_path,
+        "no_identifiers.vtt",
+        "WEBVTT\n\n"
+        "00:00:00.000 --> 00:00:03.000\n"
+        "<v Avery Brown>First line.\n\n"
+        "00:00:03.000 --> 00:00:06.000\n"
+        "<v Blake Carter>Second line.\n\n"
+        "00:00:06.000 --> 00:00:09.000\n"
+        "<v Avery Brown>Third line.\n",
+    )
+    [episode] = TranscriptLoader(path, meeting_start="2025-01-01T10:00:00Z").load()
+    assert episode.data.splitlines() == [
+        "Avery Brown: First line.",
+        "Blake Carter: Second line.",
+        "Avery Brown: Third line.",
+    ]
+
+
+def test_webvtt_payload_abutting_the_next_cue_is_not_an_identifier(tmp_path):
+    """An identifier also has to open its block. Without that check, a payload line
+    left flush against the next timing line would be dropped as an identifier."""
+    path = write(
+        tmp_path,
+        "no_blank_line.vtt",
+        "WEBVTT\n\n"
+        "00:00:00.000 --> 00:00:03.000\n"
+        "<v Avery Brown>First line.\n"
+        "00:00:03.000 --> 00:00:06.000\n"
+        "<v Blake Carter>Second line.\n",
+    )
+    [episode] = TranscriptLoader(path, meeting_start="2025-01-01T10:00:00Z").load()
+    assert episode.data.splitlines() == [
+        "Avery Brown: First line.",
+        "Blake Carter: Second line.",
+    ]
+
+
+def test_webvtt_numeric_cue_identifiers_are_still_dropped(tmp_path):
+    """The common generated form: identifiers that are bare sequence numbers."""
+    path = write(
+        tmp_path,
+        "numbered.vtt",
+        "WEBVTT\n\n"
+        "1\n"
+        "00:00:00.000 --> 00:00:03.000\n"
+        "<v Avery Brown>First line.\n\n"
+        "2\n"
+        "00:00:03.000 --> 00:00:06.000\n"
+        "<v Blake Carter>Second line.\n",
+    )
+    [episode] = TranscriptLoader(path, meeting_start="2025-01-01T10:00:00Z").load()
+    assert episode.data.splitlines() == [
+        "Avery Brown: First line.",
+        "Blake Carter: Second line.",
+    ]
+
+
 def test_webvtt_voice_end_tags_are_stripped(tmp_path):
     path = write(
         tmp_path,

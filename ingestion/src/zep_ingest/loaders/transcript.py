@@ -182,11 +182,22 @@ class TranscriptLoader:
 
     @staticmethod
     def _is_vtt_identifier(lines: list[str], index: int) -> bool:
-        for following in lines[index + 1 :]:
-            stripped = following.strip()
-            if stripped:
-                return _VTT_CUE.match(stripped) is not None
-        return False
+        """Whether this line is a cue identifier — the optional label above a cue.
+
+        It qualifies only if it sits directly above the timing line, with no
+        blank line between, *and* directly below the blank line that ends the
+        previous cue. Both halves matter, and skipping blanks to find the timing
+        line satisfies neither: the last payload line of a cue is also followed
+        — after a blank — by the next cue's timing line, so it would be read as
+        that cue's identifier and dropped. Since identifiers are optional, that
+        empties all but the final turn of any file written without them.
+        """
+        if index + 1 >= len(lines) or not _VTT_CUE.match(lines[index + 1].strip()):
+            return False
+        if index == 0:
+            return True
+        previous = lines[index - 1].strip()
+        return not previous or previous == "WEBVTT"
 
     def _resolve_start(self, file: Path, headers: dict[str, str]) -> datetime | None:
         if self._meeting_start is not None:
