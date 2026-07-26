@@ -320,8 +320,16 @@ class SlackExportLoader:
                 yield from self._load_conversation(reader, conversation, users)
         finally:
             # a caller that stops early — preview(limit=...) — abandons this
-            # generator, so the archive is closed here rather than at collection
+            # generator at a yield, so both the archive and the tallies below are
+            # handled here: anything after the try block would never run, and a
+            # preview that saw a problem has to be able to report it
             reader.close()
+            self._summarize()
+
+    def _summarize(self) -> None:
+        """Append the counts gathered while reading. On an abandoned generator
+        these describe only the messages actually consumed, which is what a
+        partial preview should report."""
         if self._unresolved_users:
             self.warnings.append(
                 f"{len(self._unresolved_users)} Slack user ID(s) referenced in "

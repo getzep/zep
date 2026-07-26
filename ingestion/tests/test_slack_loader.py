@@ -489,6 +489,24 @@ class TestExtractedWrapper:
         with zipfile.ZipFile(archive) as reopened:  # not held open by the loader
             assert reopened.namelist()
 
+    def test_summary_warnings_survive_a_caller_that_stops_early(self, tmp_path):
+        """preview(limit=...) abandons the generator at a yield, so tallies appended
+        after the loop would never run — a preview could show a sampled problem and
+        report nothing about it."""
+        export = mixed_export(tmp_path)
+        (export / "users.json").unlink()  # roster gap, reported at the end
+        (export / "general" / "2024-06-15.json").write_text(
+            json.dumps([{"user": "U001", "ts": "not-a-timestamp", "text": "bad"}])
+        )
+        loader = SlackExportLoader(export)
+
+        episodes = loader.load()
+        next(episodes)
+        episodes.close()
+
+        assert any("roster" in w for w in loader.warnings)
+        assert any("not a number" in w for w in loader.warnings)
+
     def test_warnings_do_not_accumulate_across_loads(self, tmp_path):
         loader = SlackExportLoader(mixed_export(tmp_path))
 
