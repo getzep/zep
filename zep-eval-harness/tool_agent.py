@@ -609,17 +609,26 @@ async def run_tool_agent(
         # nothing — and the flag below records that no turn answered cleanly.
         preamble = unanswered_text
         for attempt in range(1, FINAL_ANSWER_ATTEMPTS + 1):
-            messages.append({"role": "user", "content": FINAL_ANSWER_INSTRUCTION})
+            # Skipped when the previous attempt produced nothing to respond to, so
+            # the history doesn't accumulate the same instruction twice in a row.
+            if messages[-1].get("content") != FINAL_ANSWER_INSTRUCTION:
+                messages.append({"role": "user", "content": FINAL_ANSWER_INSTRUCTION})
             message = await _turn(
                 "none",
                 f"final answer for {label}"
                 if attempt == 1
                 else f"final answer attempt {attempt} for {label}",
             )
+
+            if message is None:
+                # No choices at all. There is nothing to accept and nothing to
+                # refuse, so spend a remaining attempt rather than publishing an
+                # empty answer — the same rule the retrieval loop applies.
+                print(f"  ⚠ no response on forced-answer attempt {attempt} for {label}")
+                continue
+
             text = (getattr(message, "content", "") or "").strip()
-            ignored = (
-                list(getattr(message, "tool_calls", None) or []) if message else []
-            )
+            ignored = list(getattr(message, "tool_calls", None) or [])
 
             if not ignored:
                 answer = text
@@ -654,13 +663,14 @@ async def run_tool_agent(
                     }
                 )
         else:
-            # Every attempt asked for tools instead of answering. Flagged rather
-            # than blanked: any text is kept so a model that answers *and* calls a
-            # tool doesn't lose a real answer, and the flag records that no clean
-            # answer was ever produced.
+            # No attempt answered cleanly — the model kept requesting tools, or the
+            # provider never returned a message. Flagged rather than blanked: any
+            # text is kept so a model that answers *and* calls a tool doesn't lose
+            # a real answer, and the flag records that no clean answer was
+            # produced (with answer_empty covering the case where there was none).
             print(
-                f"  ⚠ agent kept requesting tools after "
-                f"{FINAL_ANSWER_ATTEMPTS} forced-answer attempts for {label}"
+                f"  ⚠ no clean answer after {FINAL_ANSWER_ATTEMPTS} "
+                f"forced-answer attempts for {label}"
             )
             result.forced_answer_failed = True
             answer = preamble
