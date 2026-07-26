@@ -34,6 +34,10 @@ FINAL_ANSWER_INSTRUCTION = (
     "information you already retrieved. Do not request any more tools."
 )
 
+# How many times to ask for the final answer when the model keeps requesting
+# tools instead of answering.
+FINAL_ANSWER_ATTEMPTS = 2
+
 # outcome values on ToolCallRecord
 OK = "ok"  # executor ran and succeeded
 ERROR = "error"  # executor ran and raised
@@ -183,6 +187,10 @@ class AgentLoopResult:
     hit_call_cap: bool = False
     hit_iteration_cap: bool = False
     tool_choice_downgrades: int = 0
+    # The agent kept requesting tools instead of answering, through every forced
+    # answer attempt. Any text it produced alongside those calls is a preamble,
+    # not an answer, so it is published only because nothing better exists.
+    forced_answer_failed: bool = False
 
     @property
     def tool_call_ms(self) -> float:
@@ -531,20 +539,37 @@ async def run_tool_agent(
 
     if answer is None:
         llm_start = time()
-        messages.append({"role": "user", "content": FINAL_ANSWER_INSTRUCTION})
-        message = await _turn("none", f"final answer for {label}")
-        answer = (getattr(message, "content", "") or "").strip()
 
         # A provider that rejected tool_choice="none" (and was retried with
         # "auto") can come back with tool calls — on their own, or alongside a
         # "let me search for that..." preamble. Either way the turn didn't
         # answer, so tool calls take precedence over any text, exactly as they do
-        # in the loop above: refuse them on the record and ask once more, so a
-        # provider quirk isn't published as an answer or as silent retrieval.
-        ignored = list(getattr(message, "tool_calls", None) or []) if message else []
-        if ignored:
-            preamble = answer
-            round_number = result.iterations + 1
+        # in the loop above: every requested call is refused on the record and the
+        # model is asked again. Bounded, because a provider that ignores the
+        # constraint once will often ignore it twice.
+        preamble = ""
+        for attempt in range(1, FINAL_ANSWER_ATTEMPTS + 1):
+            messages.append({"role": "user", "content": FINAL_ANSWER_INSTRUCTION})
+            message = await _turn(
+                "none",
+                f"final answer for {label}"
+                if attempt == 1
+                else f"final answer attempt {attempt} for {label}",
+            )
+            text = (getattr(message, "content", "") or "").strip()
+            ignored = (
+                list(getattr(message, "tool_calls", None) or []) if message else []
+            )
+
+            if not ignored:
+                # Any earlier preamble is a last resort: a poor answer, but better
+                # than discarding a genuine one from a model that answered and
+                # called a tool in the same turn.
+                answer = text or preamble
+                break
+
+            preamble = preamble or text
+            round_number = result.iterations + attempt
             messages.append(_assistant_message(message, round_number))
             for i, tc in enumerate(ignored):
                 record = ToolCallRecord(
@@ -563,12 +588,17 @@ async def run_tool_agent(
                         "content": record.output,
                     }
                 )
-            messages.append({"role": "user", "content": FINAL_ANSWER_INSTRUCTION})
-            message = await _turn("none", f"final answer retry for {label}")
-            # The retry is the authoritative answer. The preamble is only a last
-            # resort: it's a poor answer, but better than discarding a genuine
-            # one from a model that answered and called a tool in the same turn.
-            answer = (getattr(message, "content", "") or "").strip() or preamble
+        else:
+            # Every attempt asked for tools instead of answering. Flagged rather
+            # than blanked: any text is kept so a model that answers *and* calls a
+            # tool doesn't lose a real answer, and the flag records that no clean
+            # answer was ever produced.
+            print(
+                f"  ⚠ agent kept requesting tools after "
+                f"{FINAL_ANSWER_ATTEMPTS} forced-answer attempts for {label}"
+            )
+            result.forced_answer_failed = True
+            answer = preamble
 
         result.llm_ms += (time() - llm_start) * 1000
 

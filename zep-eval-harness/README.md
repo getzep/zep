@@ -512,10 +512,12 @@ Chunking-specific constants are in `config/document_chunking_config/constants.py
 - `CHUNK_OVERLAP`: Characters of overlap between consecutive chunks (default: 100)
 - `LLM_CONTEXTUALIZATION_MODEL`: Model for document chunk contextualization
 
-You can experiment with different rerankers by modifying the `reranker` parameter in `perform_graph_search()`:
+To experiment with rerankers, set `CONTEXT_BLOCK_RERANKER` (and `TOOL_SEARCH_RERANKER`, which follows it by default) to one of `SUPPORTED_RERANKERS`:
 - `cross_encoder`: Best accuracy, slower (default)
 - `rrf`: Reciprocal Rank Fusion, balanced
-- `mmr`: Maximal Marginal Relevance, diversity-focused
+- `episode_mentions`: Favors entities and facts mentioned most often
+
+Zep also offers `mmr` and `node_distance`, which are **not** in `SUPPORTED_RERANKERS` because they need extra per-search arguments the harness doesn't send — `mmr_lambda` for MMR, and a `center_node_uuid` to rerank around for node distance. Setting one as the default is rejected at startup rather than failing on every search; to evaluate them, pass their arguments at the call sites in `perform_graph_search()` and `config/evaluation_config/tools.py`. Note also that `scope="auto"` ignores the reranker entirely (it always retrieves with RRF), so only the non-auto scopes are affected.
 
 For guidance, check out the [Searching the Graph documentation](https://help.getzep.com/searching-the-graph).
 

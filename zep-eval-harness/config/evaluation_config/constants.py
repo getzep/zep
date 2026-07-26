@@ -41,8 +41,17 @@ DOC_FACTS_LIMIT = 10  # Number of facts (edges) to return
 DOC_ENTITIES_LIMIT = 5  # Number of entities (nodes) to return
 DOC_EPISODES_LIMIT = 0  # Number of episodes to return (when enabled)
 
+# Rerankers usable as a harness-wide default: they need no arguments beyond the
+# query. Zep also offers `mmr` and `node_distance`, which are deliberately not
+# listed — they require extra per-search arguments the harness does not send
+# (`mmr_lambda` for MMR, and a `center_node_uuid` to rerank around for node
+# distance), so selecting one here would make every search fail. To evaluate
+# those, pass their arguments explicitly at the call sites in
+# perform_graph_search() and config/evaluation_config/tools.py.
+# See https://help.getzep.com/searching-the-graph
+SUPPORTED_RERANKERS = ("rrf", "cross_encoder", "episode_mentions")
+
 # Reranker for the context block searches
-# rrf | mmr | node_distance | episode_mentions | cross_encoder
 CONTEXT_BLOCK_RERANKER = "cross_encoder"
 
 # ============================================================================

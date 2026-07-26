@@ -32,6 +32,7 @@ from config.evaluation_config.constants import (
     MAX_TOOL_CALLS,
     MAX_TOOL_ITERATIONS,
     REQUIRE_TOOL_CALL,
+    SUPPORTED_RERANKERS,
     TOOL_SEARCH_DEFAULT_LIMIT,
     TOOL_SEARCH_MAX_CHARACTERS,
     TOOL_SEARCH_MAX_LIMIT,
@@ -810,6 +811,9 @@ async def process_single_query(
         "tool_choice_downgrades": (
             loop_result.tool_choice_downgrades if loop_result else 0
         ),
+        "forced_answer_failed": (
+            loop_result.forced_answer_failed if loop_result else False
+        ),
         "hit_tool_call_cap": loop_result.hit_call_cap if loop_result else False,
         "hit_tool_iteration_cap": (
             loop_result.hit_iteration_cap if loop_result else False
@@ -1039,6 +1043,10 @@ def _compute_tool_statistics(
         ),
         "tests_hitting_iteration_cap": sum(
             1 for r in items if r.get("hit_tool_iteration_cap")
+        ),
+        # The agent never produced a clean answer — it kept asking for tools
+        "tests_forced_answer_failed": sum(
+            1 for r in items if r.get("forced_answer_failed")
         ),
         "per_tool": dict(sorted(per_tool.items())),
     }
@@ -1514,6 +1522,12 @@ def print_summary(stats: Dict[str, Any]):
                 f"  Failed calls: {tools['errors']}  |  Invalid (bad name/args): "
                 f"{tools['invalid_calls']}  |  Refused (over budget): {tools['refused_calls']}"
             )
+        if tools.get("tests_forced_answer_failed"):
+            print(
+                f"  ⚠ Never answered cleanly: {tools['tests_forced_answer_failed']}"
+                f"/{total_tests} kept requesting tools through every forced-answer "
+                f"attempt (any text they produced is a preamble, not an answer)"
+            )
         if tools["tool_choice_downgrades"]:
             print(
                 f"  ⚠ tool_choice downgraded on {tools['tool_choice_downgrades']} turn(s) "
@@ -1714,6 +1728,20 @@ async def main():
                 print(f"Error: {message}")
                 exit(1)
             print(f"Warning: {message} Continuing with the context block only.\n")
+
+        # Caught here rather than as an API error on every single search.
+        for label, reranker in (
+            ("CONTEXT_BLOCK_RERANKER", CONTEXT_BLOCK_RERANKER),
+            ("TOOL_SEARCH_RERANKER", TOOL_SEARCH_RERANKER),
+        ):
+            if reranker not in SUPPORTED_RERANKERS:
+                print(
+                    f"Error: {label}='{reranker}' is not supported as a harness-wide "
+                    f"default. Choose one of: {', '.join(SUPPORTED_RERANKERS)}. "
+                    f"(mmr and node_distance need extra per-search arguments — see "
+                    f"the comment in config/evaluation_config/constants.py.)"
+                )
+                exit(1)
 
         # Semaphore(0) never admits anyone, so the run would hang after warming
         # the graphs with no output at all.
