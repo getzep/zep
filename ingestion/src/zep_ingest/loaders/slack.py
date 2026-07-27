@@ -306,6 +306,9 @@ class SlackExportLoader:
         # of those actually used by ingested content (id -> the name used)
         self._weak_name_ids: frozenset[str] = frozenset()
         self._weak_names: dict[str, str] = {}
+        # weak names seen while parsing one message, promoted to _weak_names only
+        # once that message survives validation (see _resolve)
+        self._pending_weak_names: dict[str, str] = {}
         self._duplicate_ts = 0
         self._invalid_ts = 0
 
@@ -315,6 +318,7 @@ class SlackExportLoader:
         # the previous pass's list would report every warning twice
         self._unresolved_users = set()
         self._weak_names = {}
+        self._pending_weak_names = {}
         self._duplicate_ts = 0
         self._invalid_ts = 0
         self.warnings = []
@@ -563,6 +567,8 @@ class SlackExportLoader:
                     continue
                 seen_ts.add(message.ts)
                 messages.append(message)
+                # accepted, so the names its text carries really do reach the graph
+                self._weak_names.update(self._pending_weak_names)
         messages.sort(key=lambda m: float(m.ts))
         if messages:
             # every episode below carries conversation.label, so the members it
@@ -586,6 +592,10 @@ class SlackExportLoader:
     def _parse(
         self, raw: dict[str, Any], conversation: _Conversation, users: dict[str, str]
     ) -> SlackMessage | None:
+        # @mentions are resolved while normalizing text below, which happens before
+        # this message is known to be usable; buffer what that records so a message
+        # dropped further down does not claim its mentions reached the graph
+        self._pending_weak_names = {}
         if raw.get("subtype") in self.skip_subtypes:
             return None
         # bot_message is the subtype Slack gives an app post; most carry a bot_id
@@ -636,13 +646,21 @@ class SlackExportLoader:
 
     def _resolve(self, user_id: str, users: dict[str, str]) -> str:
         """Map a Slack user ID to a name, recording IDs the roster misses and the
-        names that are not a person's full name."""
+        names that are not a person's full name.
+
+        The two are recorded at different times on purpose, because they claim
+        different things: an unresolved id was "referenced in messages", which
+        holds even for a message this run goes on to drop, while a weak name is
+        reported as "named in ingested content", which does not. Weak names
+        therefore go to a per-message buffer that _load_conversation promotes only
+        once the message is accepted.
+        """
         name = users.get(user_id)
         if name is None:
             self._unresolved_users.add(user_id)
             return user_id
         if user_id in self._weak_name_ids:
-            self._weak_names[user_id] = name
+            self._pending_weak_names[user_id] = name
         return name
 
     def _normalize_text(self, text: str, users: dict[str, str]) -> str:

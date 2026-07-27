@@ -565,6 +565,91 @@ class TestWeakNameWarnings:
         assert any("riley" in w for w in loader.warnings if "no real_name" in w)
 
 
+class TestWeakNamesFromSkippedMessages:
+    """@mentions resolve while text is normalized, which happens before a message
+    is known to be usable. A message this run drops must not make the warning
+    claim its mentions were ingested."""
+
+    @staticmethod
+    def export_with(root: Path, messages: list[dict]) -> Path:
+        export = root / "export"
+        (export / "general").mkdir(parents=True)
+        (export / "users.json").write_text(
+            json.dumps(
+                [
+                    {"id": "U1", "name": "morgan", "profile": {"real_name": "Morgan Lee"}},
+                    {"id": "U2", "name": "riley", "profile": {"display_name": "riley"}},
+                ]
+            )
+        )
+        (export / "channels.json").write_text(json.dumps([{"name": "general"}]))
+        (export / "general" / "2024-06-14.json").write_text(json.dumps(messages))
+        return export
+
+    def test_mention_in_a_message_with_an_unusable_ts_is_not_reported(self, tmp_path):
+        export = self.export_with(
+            tmp_path,
+            [
+                {"user": "U1", "text": "ask <@U2>", "ts": "not-a-number"},
+                {"user": "U1", "text": "kept", "ts": "1718355600.000100"},
+            ],
+        )
+        loader = SlackExportLoader(export)
+        [episode] = list(loader.load())
+        assert "riley" not in episode.data
+        assert any("not a number" in w for w in loader.warnings)  # it really was dropped
+        assert not any("no real_name" in w for w in loader.warnings)
+
+    def test_mention_in_a_message_with_an_unusable_thread_ts_is_not_reported(self, tmp_path):
+        export = self.export_with(
+            tmp_path,
+            [
+                {"user": "U1", "text": "ask <@U2>", "ts": "1718355700.1", "thread_ts": "nope"},
+                {"user": "U1", "text": "kept", "ts": "1718355600.000100"},
+            ],
+        )
+        loader = SlackExportLoader(export)
+        list(loader.load())
+        assert not any("no real_name" in w for w in loader.warnings)
+
+    def test_mention_in_a_duplicate_message_is_not_reported(self, tmp_path):
+        """The duplicate drop happens in _load_conversation, after _parse returned."""
+        export = self.export_with(
+            tmp_path,
+            [
+                {"user": "U1", "text": "kept", "ts": "1718355600.000100"},
+                {"user": "U1", "text": "dupe mentioning <@U2>", "ts": "1718355600.000100"},
+            ],
+        )
+        loader = SlackExportLoader(export)
+        list(loader.load())
+        assert any("repeated a timestamp" in w for w in loader.warnings)
+        assert not any("no real_name" in w for w in loader.warnings)
+
+    def test_mention_in_a_kept_message_is_still_reported(self, tmp_path):
+        """The buffer must not swallow the real case."""
+        export = self.export_with(
+            tmp_path, [{"user": "U1", "text": "ask <@U2>", "ts": "1718355600.000100"}]
+        )
+        loader = SlackExportLoader(export)
+        [episode] = list(loader.load())
+        assert "@riley" in episode.data
+        assert any("riley" in w for w in loader.warnings if "no real_name" in w)
+
+    def test_a_dropped_mention_does_not_mask_a_later_kept_one(self, tmp_path):
+        """Buffering is per message, so an earlier drop must not clear a later hit."""
+        export = self.export_with(
+            tmp_path,
+            [
+                {"user": "U1", "text": "dropped <@U2>", "ts": "bad"},
+                {"user": "U1", "text": "kept <@U2>", "ts": "1718355600.000100"},
+            ],
+        )
+        loader = SlackExportLoader(export)
+        list(loader.load())
+        assert any("riley" in w for w in loader.warnings if "no real_name" in w)
+
+
 class TestWeakNamesInDmLabels:
     """A DM label names its members in every episode without going through
     _resolve, so a handle-only member reaches the graph even if they never post."""
