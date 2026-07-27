@@ -46,6 +46,12 @@ structured data into Context Graphs correctly.
   size, metadata keys, UUIDs, RFC3339 timestamps, SCREAMING_SNAKE fact names, …)
   is checked before the first network call — a bad item is a clear Python error
   naming the field, not an HTTP 400 mid-run.
+- **Canonical Slack names:** speakers, `@mentions`, and DM labels resolve through
+  the export roster preferring `profile.real_name` over `profile.display_name`,
+  so a workspace handle ("morgan") does not split one person from the full name
+  used in other sources ("Morgan Lee"). Authors with no `real_name` are reported
+  in `warnings`, and `SlackMessage.user_id` exposes the raw Slack id so
+  `formatter=` can substitute names from your own directory.
 - **Runnable examples and sample data** for the Slack, document, email,
   JSON-record, thread-backfill, fact-triple, and user-graph paths, built around
   one coherent sample dataset.

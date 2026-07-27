@@ -421,11 +421,51 @@ class TestFormatting:
         eps = general(load())
         assert eps[0].data == "Avery Brown (Slack #general, 2024-06-14 09:00 UTC): Hello world"
 
-    def test_display_name_fallbacks(self):
+    def test_real_name_wins_over_a_display_name_handle(self):
+        """U001's display_name is the handle "avery" and real_name is "Avery Brown".
+        Slack's own precedence would pick the handle, which then cannot merge with
+        the same person written in full in an email or document."""
+        eps = general(load())
+        assert "Avery Brown" in eps[0].data
+        assert "avery (" not in eps[0].data
+
+    def test_name_source_fallbacks(self):
         eps = general(load())
         # Blake Carter has empty display_name -> real_name; charlie has neither -> name
         assert "Blake Carter" in eps[1].data
         assert "charlie" in eps[1].data
+
+    def test_display_name_is_used_when_no_real_name_exists(self, tmp_path):
+        export = tmp_path / "export"
+        (export / "general").mkdir(parents=True)
+        (export / "users.json").write_text(
+            json.dumps([{"id": "U1", "name": "mo", "profile": {"display_name": "Morgan Lee"}}])
+        )
+        (export / "channels.json").write_text(json.dumps([{"name": "general"}]))
+        (export / "general" / "2024-06-14.json").write_text(
+            json.dumps([{"type": "message", "user": "U1", "text": "Hi", "ts": "1718355600.000100"}])
+        )
+        loader = SlackExportLoader(export)
+        [episode] = list(loader.load())
+        assert "Morgan Lee" in episode.data
+        # a full name, handle-shaped or not, is not worth warning about
+        assert not any("no real_name" in w for w in loader.warnings)
+
+    def test_user_id_is_exposed_to_a_custom_formatter(self):
+        """The escape hatch for a thin roster: remap the raw Slack id yourself."""
+        directory = {"U001": "Avery Q. Brown", "U002": "Blake Carter", "U003": "Charlie Diaz"}
+        eps = general(load(formatter=lambda m: f"{directory[m.user_id]}: {m.text}"))
+        assert eps[0].data == "Avery Q. Brown: Hello world"
+
+    def test_bot_message_has_no_user_id(self):
+        captured: list[str | None] = []
+
+        def formatter(message):
+            captured.append(message.user_id)
+            return message.text
+
+        load(include_bots=True, formatter=formatter)
+        assert None in captured  # the fixture's bot post carries a username, not an id
 
     def test_markup_normalization(self):
         markup = general(load())[2].data
@@ -438,6 +478,91 @@ class TestFormatting:
     def test_custom_formatter(self):
         eps = general(load(formatter=lambda m: f"{m.sender}: {m.text}"))
         assert eps[0].data == "Avery Brown: Hello world"
+
+
+class TestWeakNameWarnings:
+    def test_warns_when_an_ingested_author_has_no_real_name(self):
+        """charlie (U003) has neither real_name nor display_name, so the label falls
+        back to the username slug — reported because it may not merge."""
+        loader = SlackExportLoader(FIXTURE)
+        list(loader.load())
+        warning = next(w for w in loader.warnings if "no real_name" in w)
+        assert "charlie" in warning
+        assert "SlackMessage.user_id" in warning
+
+    def test_no_warning_when_every_ingested_author_has_a_real_name(self, tmp_path):
+        export = tmp_path / "export"
+        (export / "general").mkdir(parents=True)
+        (export / "users.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "U1",
+                        "name": "mo",
+                        "profile": {"display_name": "mo", "real_name": "Morgan Lee"},
+                    }
+                ]
+            )
+        )
+        (export / "channels.json").write_text(json.dumps([{"name": "general"}]))
+        (export / "general" / "2024-06-14.json").write_text(
+            json.dumps([{"type": "message", "user": "U1", "text": "Hi", "ts": "1718355600.000100"}])
+        )
+        loader = SlackExportLoader(export)
+        list(loader.load())
+        assert not any("no real_name" in w for w in loader.warnings)
+
+    def test_a_weak_name_never_ingested_is_not_reported(self, tmp_path):
+        """The roster lists a handle-only user who posts nowhere we read; warning
+        about them would be noise."""
+        export = tmp_path / "export"
+        (export / "general").mkdir(parents=True)
+        (export / "users.json").write_text(
+            json.dumps(
+                [
+                    {"id": "U1", "profile": {"real_name": "Morgan Lee"}},
+                    {"id": "U2", "name": "ghost", "profile": {}},
+                ]
+            )
+        )
+        (export / "channels.json").write_text(json.dumps([{"name": "general"}]))
+        (export / "general" / "2024-06-14.json").write_text(
+            json.dumps([{"type": "message", "user": "U1", "text": "Hi", "ts": "1718355600.000100"}])
+        )
+        loader = SlackExportLoader(export)
+        list(loader.load())
+        assert not any("no real_name" in w for w in loader.warnings)
+
+    def test_a_handle_in_a_mention_is_reported(self, tmp_path):
+        """@mentions resolve through the same roster, so a handle reaches the graph
+        even when that user never posted."""
+        export = tmp_path / "export"
+        (export / "general").mkdir(parents=True)
+        (export / "users.json").write_text(
+            json.dumps(
+                [
+                    {"id": "U1", "profile": {"real_name": "Morgan Lee"}},
+                    {"id": "U2", "name": "riley", "profile": {"display_name": "riley"}},
+                ]
+            )
+        )
+        (export / "channels.json").write_text(json.dumps([{"name": "general"}]))
+        (export / "general" / "2024-06-14.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "type": "message",
+                        "user": "U1",
+                        "text": "ask <@U2> about it",
+                        "ts": "1718355600.000100",
+                    }
+                ]
+            )
+        )
+        loader = SlackExportLoader(export)
+        [episode] = list(loader.load())
+        assert "@riley" in episode.data
+        assert any("riley" in w for w in loader.warnings if "no real_name" in w)
 
 
 class TestExtractedWrapper:
