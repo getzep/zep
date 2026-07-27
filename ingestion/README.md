@@ -111,6 +111,26 @@ Blake Carter") instead of the opaque id or slug Slack names their folder with �
 raw ids degrade entity extraction — and every episode carries its
 `conversation_type` in `metadata` for filtering at search time.
 
+**Slack names:** messages store author *ids*, so every speaker, `@mention`, and
+DM label is resolved through the export's `users.json` roster, preferring
+`profile.real_name` over `profile.display_name` (then the username, then the raw
+id). Slack's own precedence is the opposite, but it optimizes for how a name
+reads in a chat client: a display name is often a short handle ("morgan") that
+Zep cannot merge with the same person written in full ("Morgan Lee") in an email
+or document, which silently splits one person into two nodes. Authors whose
+roster entry has no `real_name` are counted in `result.warnings`. When your
+roster is thin, `formatter=` receives each `SlackMessage` — including its raw
+`user_id` — so you can substitute names from your own directory:
+
+```python
+ingest_slack_export(
+    client,
+    "export.zip",
+    graph_id="team_knowledge",
+    formatter=lambda m: f"{DIRECTORY.get(m.user_id, m.sender)}: {m.text}",
+)
+```
+
 **Batch vs sequential:** the Batch API (fast, 50k items/batch) is the default
 high-throughput submission path. `method="auto"` tries batch and transparently
 falls back to sequential `graph.add` calls with rate-limit-aware pacing in

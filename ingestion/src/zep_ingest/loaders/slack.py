@@ -91,6 +91,13 @@ _LINK_LABELED = re.compile(r"<(https?://[^|>]+)\|([^>]+)>")
 _LINK_BARE = re.compile(r"<(https?://[^>]+)>")
 
 
+def _looks_like_handle(name: str) -> bool:
+    """True for a single-token name ("morgan"), which reads as a Slack handle
+    rather than a person. A bare first name fails to merge with the full name
+    just as a handle does, so both are reported."""
+    return not any(character.isspace() for character in name)
+
+
 @dataclass(slots=True)
 class SlackMessage:
     sender: str
@@ -99,6 +106,10 @@ class SlackMessage:
     channel: str  # the readable conversation label: a channel name, or DM members
     thread_ts: str | None = None
     conversation_type: ConversationType = "public_channel"
+    # The raw Slack ID behind ``sender``, so a formatter= can substitute names
+    # from its own directory when the export's roster is thin. None for a bot
+    # post, which Slack writes with a username instead of a user id.
+    user_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -108,6 +119,11 @@ class _Conversation:
     folder: str
     label: str
     kind: ConversationType
+    # roster ids rendered into ``label`` (DMs and group DMs only). The label names
+    # them in every episode without going through _resolve, so they are carried
+    # here and recorded once the conversation is known to be both selected and
+    # non-empty — a skipped conversation must not warn about its members.
+    member_ids: tuple[str, ...] = ()
 
 
 class _DirReader:
@@ -286,6 +302,13 @@ class SlackExportLoader:
         self.formatter = formatter or _default_formatter
         self.warnings: list[str] = []
         self._unresolved_users: set[str] = set()
+        # roster ids whose best name is not a person's full name, and the subset
+        # of those actually used by ingested content (id -> the name used)
+        self._weak_name_ids: frozenset[str] = frozenset()
+        self._weak_names: dict[str, str] = {}
+        # weak names seen while parsing one message, promoted to _weak_names only
+        # once that message survives validation (see _resolve)
+        self._pending_weak_names: dict[str, str] = {}
         self._duplicate_ts = 0
         self._invalid_ts = 0
 
@@ -294,11 +317,13 @@ class SlackExportLoader:
         # both reset per pass: a second load() re-derives them, and appending to
         # the previous pass's list would report every warning twice
         self._unresolved_users = set()
+        self._weak_names = {}
+        self._pending_weak_names = {}
         self._duplicate_ts = 0
         self._invalid_ts = 0
         self.warnings = []
         roster = self._read_roster(reader)
-        users = self._user_map(roster)
+        users, self._weak_name_ids = self._user_map(roster)
         inventory = self._inventory(reader, users)
         if roster is None and not inventory:
             raise ConfigurationError(
@@ -336,6 +361,16 @@ class SlackExportLoader:
                 "messages were absent from the roster (typically deactivated, bot, "
                 "or Slack Connect users) and were left as raw IDs."
             )
+        if self._weak_names:
+            examples = ", ".join(sorted(self._weak_names.values())[:3])
+            self.warnings.append(
+                f"{len(self._weak_names)} Slack user(s) named in ingested content have "
+                f"no real_name in the roster, so they are labeled with a display-name "
+                f"handle, a username, or a raw ID instead (e.g. {examples}). Zep merges "
+                "entities by the names it sees, so these may not merge with the same "
+                "person written in full in another source. Populate real_name in the "
+                "export, or pass formatter= and map SlackMessage.user_id to your own names."
+            )
         if self._invalid_ts:
             self.warnings.append(
                 f"{self._invalid_ts} Slack message(s) had a timestamp that is not a "
@@ -361,17 +396,41 @@ class SlackExportLoader:
         return None
 
     @staticmethod
-    def _user_map(roster: Any) -> dict[str, str]:
+    def _user_map(roster: Any) -> tuple[dict[str, str], frozenset[str]]:
+        """Map each Slack user ID to the best name the roster offers.
+
+        ``real_name`` is preferred over ``display_name``. Zep merges entities by
+        the names it sees in text, and a Slack display name is frequently a short
+        handle ("morgan") that will not merge with the same person written in full
+        ("Morgan Lee") in an email or document, splitting one person into two
+        nodes. Slack's own precedence is the opposite, but it optimizes for how a
+        name reads in a chat client, not for entity resolution.
+
+        Returns the mapping plus the IDs whose name is *not* a person's full name,
+        so the run can warn about the ones it actually used.
+        """
         mapping: dict[str, str] = {}
+        weak: set[str] = set()
         for user in roster or []:
             profile = user.get("profile") or {}
-            mapping[user["id"]] = (
-                profile.get("display_name")
-                or profile.get("real_name")
-                or user.get("name")
-                or user["id"]
-            )
-        return mapping
+            real_name = (profile.get("real_name") or "").strip()
+            display_name = (profile.get("display_name") or "").strip()
+            username = (user.get("name") or "").strip()
+            if real_name:
+                name = real_name
+            elif display_name:
+                name = display_name
+                if _looks_like_handle(display_name):
+                    weak.add(user["id"])
+            elif username:
+                # a username slug ("morgan.lee") is a poor entity name
+                name = username
+                weak.add(user["id"])
+            else:
+                name = user["id"]
+                weak.add(user["id"])
+            mapping[user["id"]] = name
+        return mapping, frozenset(weak)
 
     def _inventory(
         self, reader: _DirReader | _ZipReader, users: dict[str, str]
@@ -392,9 +451,8 @@ class SlackExportLoader:
                 if folder in seen:
                     continue
                 seen.add(folder)
-                conversations.append(
-                    _Conversation(folder, self._label(entry, folder, kind, users), kind)
-                )
+                label, member_ids = self._label(entry, folder, kind, users)
+                conversations.append(_Conversation(folder, label, kind, member_ids))
         if conversations:
             return conversations
         return self._folder_inventory(reader)
@@ -440,15 +498,19 @@ class SlackExportLoader:
     @staticmethod
     def _label(
         entry: dict[str, Any], folder: str, kind: ConversationType, users: dict[str, str]
-    ) -> str:
+    ) -> tuple[str, tuple[str, ...]]:
         """Channels are labeled by name; DMs and group DMs by their members, since
-        their folders are an opaque id or slug and raw ids degrade extraction."""
+        their folders are an opaque id or slug and raw ids degrade extraction.
+
+        Returns the label and the roster ids it names, so the caller can report a
+        member whose name is only a handle even if they never posted.
+        """
         if kind not in ("dm", "group_dm"):
-            return folder
+            return folder, ()
         members = [m for m in entry.get("members") or [] if isinstance(m, str)]
         if not members:
-            return folder
-        return ", ".join(users.get(member, member) for member in members)
+            return folder, ()
+        return ", ".join(users.get(member, member) for member in members), tuple(members)
 
     def _select(self, inventory: list[_Conversation]) -> list[_Conversation]:
         """conversation_types picks the types; channels= filters by name within them."""
@@ -505,7 +567,13 @@ class SlackExportLoader:
                     continue
                 seen_ts.add(message.ts)
                 messages.append(message)
+                # accepted, so the names its text carries really do reach the graph
+                self._weak_names.update(self._pending_weak_names)
         messages.sort(key=lambda m: float(m.ts))
+        if messages:
+            # every episode below carries conversation.label, so the members it
+            # names are now in the graph whether or not they authored anything
+            self._note_label_names(conversation, users)
         if self.grouping == "message":
             for message in messages:
                 yield self._episode([message], conversation)
@@ -524,6 +592,10 @@ class SlackExportLoader:
     def _parse(
         self, raw: dict[str, Any], conversation: _Conversation, users: dict[str, str]
     ) -> SlackMessage | None:
+        # @mentions are resolved while normalizing text below, which happens before
+        # this message is known to be usable; buffer what that records so a message
+        # dropped further down does not claim its mentions reached the graph
+        self._pending_weak_names = {}
         if raw.get("subtype") in self.skip_subtypes:
             return None
         # bot_message is the subtype Slack gives an app post; most carry a bot_id
@@ -561,14 +633,34 @@ class SlackExportLoader:
             channel=conversation.label,
             thread_ts=raw.get("thread_ts"),
             conversation_type=conversation.kind,
+            user_id=raw.get("user") or None,
         )
 
+    def _note_label_names(self, conversation: _Conversation, users: dict[str, str]) -> None:
+        """Record weak names a DM label puts into the graph. Called only for a
+        selected conversation that yielded episodes, so members of a conversation
+        the run skipped are never reported."""
+        for member in conversation.member_ids:
+            if member in self._weak_name_ids:
+                self._weak_names[member] = users[member]
+
     def _resolve(self, user_id: str, users: dict[str, str]) -> str:
-        """Map a Slack user ID to a display name, recording IDs the roster misses."""
+        """Map a Slack user ID to a name, recording IDs the roster misses and the
+        names that are not a person's full name.
+
+        The two are recorded at different times on purpose, because they claim
+        different things: an unresolved id was "referenced in messages", which
+        holds even for a message this run goes on to drop, while a weak name is
+        reported as "named in ingested content", which does not. Weak names
+        therefore go to a per-message buffer that _load_conversation promotes only
+        once the message is accepted.
+        """
         name = users.get(user_id)
         if name is None:
             self._unresolved_users.add(user_id)
             return user_id
+        if user_id in self._weak_name_ids:
+            self._pending_weak_names[user_id] = name
         return name
 
     def _normalize_text(self, text: str, users: dict[str, str]) -> str:
