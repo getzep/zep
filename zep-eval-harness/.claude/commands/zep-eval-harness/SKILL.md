@@ -13,6 +13,12 @@ The pipeline has four steps:
 3. **Ingest documents** — send pre-chunked documents to a standalone Zep document graph
 4. **Evaluate** — for each test case: search graphs → assess context completeness → generate LLM response → grade answer accuracy
 
+### Scope: Single-Shot Retrieval
+
+**The harness evaluates single-shot retrieval only.** Every test case issues one fixed batch of scoped searches from the raw test question (nodes + edges, optionally episodes, across the user graph and any document graph), then hands the resulting context block to the response model in a single turn — no second retrieval round, no query reformulation. This mirrors deterministic/programmatic retrieval, not the tool-based pattern where an agent is handed Zep search tools (e.g. `search_graph` from the Zep MCP server) and decides when and what to search.
+
+That makes the harness a clean instrument for the ingestion and search configuration, but it says nothing about agent tool-use behavior. A tool-based agent may do better (several targeted searches, reformulating after a weak result) or worse (never searching, poorly phrased queries, running out of turns). When reporting results, scope conclusions to the config under test and never present them as a prediction of production agent performance.
+
 ### Evaluation Metrics
 
 **Context Completeness (PRIMARY)** — Did Zep retrieve sufficient information to answer the question?
@@ -202,6 +208,8 @@ Evaluation results live at `runs/evaluations/{N}_{ts}/results.json`. Each result
 **Answer accuracy is secondary.** It measures whether the LLM used the retrieved context correctly to produce a good answer. This depends on the response model and prompt, not on Zep. A run with high completeness but lower accuracy indicates the retrieval is working but the response generation could be improved (better model, better prompt in `response_prompt.py`, etc.) — not a Zep issue.
 
 When comparing runs, focus on completeness differences. Accuracy is still worth tracking (it catches cases where context is technically present but hard for the LLM to use), but completeness is what tells you whether Zep's graph and search are doing their job.
+
+Both metrics describe a single-shot retrieval path (see **Scope** above). State that caveat when presenting conclusions, and if the user's production design exposes Zep through tools, note that the agent path needs its own end-to-end evaluation.
 
 ## Typical Full Pipeline
 
