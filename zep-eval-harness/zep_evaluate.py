@@ -23,44 +23,17 @@ from zep_cloud.client import AsyncZep
 
 from config.constants import GEMINI_BASE_URL
 from config.evaluation_config.constants import (
-    CONTEXT_BLOCK_RERANKER,
     DOC_ENTITIES_LIMIT,
     DOC_EPISODES_LIMIT,
     DOC_FACTS_LIMIT,
     LLM_JUDGE_MODEL,
     LLM_RESPONSE_MODEL,
-    MAX_TOOL_CALLS,
-    MAX_TOOL_ITERATIONS,
-    REQUIRE_TOOL_CALL,
-    SEARCH_MAX_QUERY_CHARS,
-    SUPPORTED_RERANKERS,
-    TOOL_SEARCH_DEFAULT_LIMIT,
-    TOOL_SEARCH_MAX_CHARACTERS,
-    TOOL_SEARCH_MAX_LIMIT,
-    TOOL_SEARCH_RERANKER,
     USER_ENTITIES_LIMIT,
     USER_EPISODES_LIMIT,
     USER_FACTS_LIMIT,
-    USE_CONTEXT_BLOCK,
-    USE_TOOLS,
 )
-from config.evaluation_config.formatting import (
-    format_edges,
-    format_episodes,
-    format_nodes,
-)
-from config.evaluation_config.judge_prompts import (
-    get_accuracy_judge_prompts,
-    get_completeness_judge_prompts,
-)
-from config.evaluation_config.response_prompt import (
-    get_response_system_prompt,
-    get_tool_agent_system_prompt,
-)
-from config.evaluation_config.tools import TOOL_SPECS
+from config.evaluation_config.response_prompt import get_response_system_prompt
 from retry import retry_with_backoff
-import tool_agent
-from tool_agent import AgentLoopResult, ToolContext, ToolRegistry, run_tool_agent
 
 
 # ============================================================================
@@ -227,11 +200,6 @@ async def perform_graph_search(
     """
     print(f"Searching [{user_id}]: '{query}'")
 
-    # Zep rejects a query longer than this, so a verbose test question would fail
-    # the whole search rather than retrieve from its first characters. The tools
-    # truncate identically, keeping the two retrieval paths comparable.
-    query = query[:SEARCH_MAX_QUERY_CHARS]
-
     # Build all search tasks for maximum parallelism
     tasks: dict[str, Any] = {}
 
@@ -242,7 +210,7 @@ async def perform_graph_search(
         query=query,
         scope="nodes",
         limit=USER_ENTITIES_LIMIT,
-        reranker=CONTEXT_BLOCK_RERANKER,
+        reranker="cross_encoder",
         description=f"search user nodes [{user_id}]",
     )
     tasks["user_edges"] = retry_with_backoff(
@@ -251,7 +219,7 @@ async def perform_graph_search(
         query=query,
         scope="edges",
         limit=USER_FACTS_LIMIT,
-        reranker=CONTEXT_BLOCK_RERANKER,
+        reranker="cross_encoder",
         description=f"search user edges [{user_id}]",
     )
     if include_episodes:
@@ -261,7 +229,7 @@ async def perform_graph_search(
             query=query,
             scope="episodes",
             limit=USER_EPISODES_LIMIT,
-            reranker=CONTEXT_BLOCK_RERANKER,
+            reranker="cross_encoder",
             description=f"search user episodes [{user_id}]",
         )
 
@@ -273,7 +241,7 @@ async def perform_graph_search(
             query=query,
             scope="nodes",
             limit=DOC_ENTITIES_LIMIT,
-            reranker=CONTEXT_BLOCK_RERANKER,
+            reranker="cross_encoder",
             description=f"search doc nodes [{doc_graph_id}]",
         )
         tasks["doc_edges"] = retry_with_backoff(
@@ -282,7 +250,7 @@ async def perform_graph_search(
             query=query,
             scope="edges",
             limit=DOC_FACTS_LIMIT,
-            reranker=CONTEXT_BLOCK_RERANKER,
+            reranker="cross_encoder",
             description=f"search doc edges [{doc_graph_id}]",
         )
         if include_episodes:
@@ -292,7 +260,7 @@ async def perform_graph_search(
                 query=query,
                 scope="episodes",
                 limit=DOC_EPISODES_LIMIT,
-                reranker=CONTEXT_BLOCK_RERANKER,
+                reranker="cross_encoder",
                 description=f"search doc episodes [{doc_graph_id}]",
             )
 
@@ -311,6 +279,82 @@ async def perform_graph_search(
         "doc_edges": results.get("doc_edges"),
         "doc_episodes": results.get("doc_episodes"),
     }
+
+
+def _format_edges(edges) -> list[str]:
+    """Format a list of edge results into context lines."""
+    parts = []
+    if edges:
+        for edge in edges:
+            fact = getattr(edge, "fact", "No fact available")
+            valid_at = getattr(edge, "valid_at", None)
+            invalid_at = getattr(edge, "invalid_at", None)
+            labels = getattr(edge, "labels", None)
+            attributes = getattr(edge, "attributes", None)
+
+            valid_at_str = valid_at if valid_at else "unknown"
+            invalid_at_str = invalid_at if invalid_at else "present"
+
+            parts.append(
+                f"{fact} (Date range: {valid_at_str} - {invalid_at_str})"
+            )
+
+            if labels and len(labels) > 0:
+                parts.append(f"  Labels: {', '.join(labels)}")
+
+            if attributes and isinstance(attributes, dict) and len(attributes) > 0:
+                parts.append(f"  Attributes:")
+                for attr_name, attr_value in attributes.items():
+                    parts.append(f"    {attr_name}: {attr_value}")
+
+            parts.append("")
+    else:
+        parts.append("No relevant facts found")
+    return parts
+
+
+def _format_nodes(nodes) -> list[str]:
+    """Format a list of node results into context lines."""
+    parts = []
+    if nodes:
+        for node in nodes:
+            name = getattr(node, "name", "Unknown")
+            labels = getattr(node, "labels", None)
+            attributes = getattr(node, "attributes", None)
+            summary = getattr(node, "summary", "No summary available")
+
+            parts.append(f"Name: {name}")
+
+            if labels and len(labels) > 0:
+                filtered_labels = (
+                    [l for l in labels if l != "Entity"] if len(labels) > 1 else labels
+                )
+                if filtered_labels:
+                    parts.append(f"Labels: {', '.join(filtered_labels)}")
+
+            if attributes and isinstance(attributes, dict) and len(attributes) > 0:
+                parts.append(f"Attributes:")
+                for attr_name, attr_value in attributes.items():
+                    parts.append(f"  {attr_name}: {attr_value}")
+
+            parts.append(f"Summary: {summary}")
+            parts.append("")
+    else:
+        parts.append("No relevant entities found")
+    return parts
+
+
+def _format_episodes(episodes) -> list[str]:
+    """Format a list of episode results into context lines."""
+    parts = []
+    if episodes:
+        for episode in episodes:
+            content = getattr(episode, "content", "No content available")
+            created_at = getattr(episode, "created_at", "Unknown date")
+            parts.append(f"({created_at}) {content}")
+    else:
+        parts.append("No relevant episodes found")
+    return parts
 
 
 def construct_context_block(
@@ -353,7 +397,7 @@ def construct_context_block(
     context_parts.append("# Facts with a past end date are NO LONGER VALID.")
     context_parts.append("<FACTS>")
     edges = getattr(search_results["edges"], "edges", [])
-    context_parts.extend(format_edges(edges))
+    context_parts.extend(_format_edges(edges))
     context_parts.append("</FACTS>\n")
 
     # Entities
@@ -362,7 +406,7 @@ def construct_context_block(
     )
     context_parts.append("<ENTITIES>")
     nodes = getattr(search_results["nodes"], "nodes", [])
-    context_parts.extend(format_nodes(nodes))
+    context_parts.extend(_format_nodes(nodes))
     context_parts.append("</ENTITIES>")
 
     # Episodes (optional)
@@ -370,7 +414,7 @@ def construct_context_block(
         context_parts.append("\n# These are the most relevant episodes")
         context_parts.append("<EPISODES>")
         episodes = getattr(search_results["episodes"], "episodes", [])
-        context_parts.extend(format_episodes(episodes))
+        context_parts.extend(_format_episodes(episodes))
         context_parts.append("</EPISODES>")
 
     # --- Document graph results (optional) ---
@@ -385,72 +429,23 @@ def construct_context_block(
         context_parts.append("# Reference document facts")
         context_parts.append("<DOCUMENT_FACTS>")
         doc_edges = getattr(search_results["doc_edges"], "edges", [])
-        context_parts.extend(format_edges(doc_edges))
+        context_parts.extend(_format_edges(doc_edges))
         context_parts.append("</DOCUMENT_FACTS>\n")
 
         context_parts.append("# Reference document entities")
         context_parts.append("<DOCUMENT_ENTITIES>")
         doc_nodes = getattr(search_results["doc_nodes"], "nodes", [])
-        context_parts.extend(format_nodes(doc_nodes))
+        context_parts.extend(_format_nodes(doc_nodes))
         context_parts.append("</DOCUMENT_ENTITIES>")
 
         if has_doc_episodes:
             context_parts.append("\n# Reference document episodes")
             context_parts.append("<DOCUMENT_EPISODES>")
             doc_episodes = getattr(search_results["doc_episodes"], "episodes", [])
-            context_parts.extend(format_episodes(doc_episodes))
+            context_parts.extend(_format_episodes(doc_episodes))
             context_parts.append("</DOCUMENT_EPISODES>")
 
     return "\n".join(context_parts)
-
-
-def construct_agent_context(
-    loop_result: AgentLoopResult, context_block: str | None = None
-) -> str:
-    """
-    Assemble the context that context completeness is graded on in tool mode.
-
-    Everything the agent retrieved counts: the pre-injected context block (when
-    deterministic retrieval also ran) plus the full output of every successful
-    tool call. Grading the union of tool outputs — rather than just what ended up
-    in the answer — keeps completeness a measure of retrieval, not of generation.
-
-    Only Zep's output goes in. The model's own query strings are deliberately
-    left out: a query like "did the user cancel the Boston trip" would otherwise
-    put "Boston" in the graded context and let the judge credit retrieval for a
-    detail the model guessed. Failed and refused calls are excluded for the same
-    reason — their output is harness error text, not retrieved context. Both are
-    still recorded in tool_trace.
-
-    Args:
-        loop_result: Result of the agent loop, including all tool call records
-        context_block: Deterministic context block, if one was injected
-
-    Returns:
-        Formatted context string for the completeness judge
-    """
-    parts = []
-
-    if context_block:
-        parts.append("# Context block retrieved before the agent ran")
-        parts.append("<CONTEXT_BLOCK>")
-        parts.append(context_block)
-        parts.append("</CONTEXT_BLOCK>\n")
-
-    parts.append("# Everything the agent retrieved from Zep via its own tool calls")
-    parts.append("<TOOL_RESULTS>")
-
-    retrieved = loop_result.retrieved_calls
-    if not retrieved:
-        parts.append("The agent retrieved nothing via tool calls.")
-    for i, call in enumerate(retrieved, start=1):
-        parts.append(f"## Result {i} of {len(retrieved)} (from {call.name})")
-        parts.append(call.output)
-        parts.append("")
-
-    parts.append("</TOOL_RESULTS>")
-
-    return "\n".join(parts)
 
 
 # ============================================================================
@@ -460,7 +455,7 @@ def construct_agent_context(
 
 async def generate_ai_response(
     llm_client: AsyncOpenAI, context: str, question: str
-) -> Tuple[str, int, int]:
+) -> Tuple[str, int]:
     """
     Generate an answer to a question using the provided Zep context.
 
@@ -470,7 +465,7 @@ async def generate_ai_response(
         question: Question to answer
 
     Returns:
-        Tuple of (AI-generated answer string, prompt tokens, completion tokens)
+        Tuple of (AI-generated answer string, prompt token count)
     """
     system_prompt = get_response_system_prompt(context)
 
@@ -485,15 +480,10 @@ async def generate_ai_response(
         description=f"generate response for '{question[:60]}'",
     )
 
-    # content is None when the provider returns a choice with no text (safety
-    # block, truncated output) — treat it as an empty answer rather than crashing
-    # the run partway through.
-    message = response.choices[0].message if response.choices else None
-    answer = (getattr(message, "content", "") or "").strip()
+    answer = response.choices[0].message.content.strip() if response.choices else ""
     prompt_tokens = response.usage.prompt_tokens if response.usage else 0
-    completion_tokens = response.usage.completion_tokens if response.usage else 0
 
-    return answer, prompt_tokens, completion_tokens
+    return answer, prompt_tokens
 
 
 # ============================================================================
@@ -516,9 +506,49 @@ async def grade_ai_response(
     Returns:
         Tuple of (is_correct: bool, reasoning: str)
     """
-    system_prompt, grading_prompt = get_accuracy_judge_prompts(
-        question, golden_answer, ai_response
-    )
+    system_prompt = """
+You are an expert grader that determines if AI responses are correct.
+"""
+
+    grading_prompt = f"""
+I will give you a question, the golden (correct) answer, and an AI-generated response.
+
+Please evaluate if the response is semantically equivalent to the golden answer. Return true ONLY if the response contains ALL the essential information from the golden answer.
+
+<QUESTION>
+{question}
+</QUESTION>
+
+<GOLDEN ANSWER>
+{golden_answer}
+</GOLDEN ANSWER>
+
+<AI RESPONSE>
+{ai_response}
+</AI RESPONSE>
+
+Evaluation Guidelines:
+- The response must contain ALL key information from the golden answer (names, locations, actions, etc.)
+- The response doesn't need to match exact wording, but must not omit or change critical details
+- If the golden answer specifies a specific name, the response must include that name, not a generic term. 
+- Some variation is allowed for commonly acceptable names e.g. NYC or New York may be used to refer to New York City
+- If the golden answer includes specific details (location, times, etc.), those must be present
+- If the response is missing ANY critical information from the golden answer, return false
+- If the response adds conversational filler but contains all essential info, return true
+- If the response abstains from answering or says it doesn't know, return false
+
+Examples of INCORRECT responses:
+- Golden includes a specific person's name → Response uses a generic role/relationship term instead
+- Golden includes a specific location → Response omits the location or uses a generic term
+- Golden includes a complete message → Response omits part of the message
+
+Examples of CORRECT responses:
+- Golden and response have same key information with different wording
+- Golden and response have same key information with different, but commonly acceptable names e.g. NYC or New York may be used to refer to New York City
+- Response adds conversational elements but preserves all essential details from golden answer
+
+Provide your evaluation.
+"""
 
     async def _parse():
         response = await llm_client.beta.chat.completions.parse(
@@ -564,9 +594,64 @@ async def evaluate_context_completeness(
         Tuple of (completeness_grade, reasoning, missing_elements, present_elements)
         where completeness_grade is one of: COMPLETE, PARTIAL, INSUFFICIENT
     """
-    system_prompt, completeness_prompt = get_completeness_judge_prompts(
-        question, golden_answer, context
-    )
+    system_prompt = """
+You are an expert evaluator assessing whether retrieved context contains adequate information to answer a question.
+"""
+
+    completeness_prompt = f"""
+Your task is to evaluate whether the provided CONTEXT contains sufficient information to answer the QUESTION according to what the GOLDEN ANSWER requires.
+
+IMPORTANT: You are NOT evaluating an answer. You are evaluating whether the CONTEXT itself has the necessary information.
+
+<QUESTION>
+{question}
+</QUESTION>
+
+<GOLDEN ANSWER>
+{golden_answer}
+</GOLDEN ANSWER>
+
+<CONTEXT>
+{context}
+</CONTEXT>
+
+Evaluation Guidelines:
+
+1. **COMPLETE**: The context contains ALL information needed to fully answer the question according to the golden answer.
+   - All key elements from the golden answer are present
+   - Sufficient detail exists to construct a complete answer
+   - Historical facts (with past date ranges) ARE valid context
+
+2. **PARTIAL**: The context contains SOME relevant information but is missing key details.
+   - Some elements from the golden answer are present
+   - Some critical information is missing or incomplete
+   - Additional context would be needed for a complete answer
+
+3. **INSUFFICIENT**: The context lacks most or all critical information needed.
+   - Key elements from the golden answer are absent
+   - Context is off-topic or irrelevant
+   - No reasonable answer could be constructed from this context
+
+IMPORTANT section equivalence:
+- ALL sections of the context are equally valid sources of information (USER_SUMMARY, FACTS, ENTITIES, EPISODES, DOCUMENT_FACTS, DOCUMENT_ENTITIES, etc.)
+- Information found in ANY section counts as present — do not penalize information for appearing in one section versus another
+- If an element from the golden answer appears anywhere in the context, it is PRESENT
+
+IMPORTANT temporal interpretation:
+- Facts with date ranges (e.g., "2025-10-01 - 2025-10-07") represent WHEN events occurred
+- These historical facts remain VALID context even if dated in the past
+- Only mark information as missing if it is truly ABSENT from the context
+- Do NOT mark facts as "expired" or "outdated" simply because they have past dates
+- Date ranges ending before "present" indicate completed/past events, not invalid information
+
+For your evaluation:
+- Identify which information elements ARE present in the context (present_elements)
+- Identify which information elements are MISSING (truly absent) from the context (missing_elements)
+- Historical facts (past date ranges) count as present information
+- Provide clear reasoning explaining your completeness assessment
+
+Provide your evaluation.
+"""
 
     async def _parse():
         response = await llm_client.beta.chat.completions.parse(
@@ -602,13 +687,6 @@ async def evaluate_context_completeness(
 # ============================================================================
 
 
-async def _timed(coro) -> Tuple[Any, float]:
-    """Await a coroutine and return (result, duration_ms)."""
-    start = time()
-    result = await coro
-    return result, (time() - start) * 1000
-
-
 async def process_single_query(
     zep_client: AsyncZep,
     llm_client: AsyncOpenAI,
@@ -617,132 +695,60 @@ async def process_single_query(
     golden_answer: str,
     doc_graph_id: str | None = None,
     user_summary: str | None = None,
-    use_context_block: bool = True,
-    tool_registry: ToolRegistry | None = None,
-    max_tool_iterations: int = MAX_TOOL_ITERATIONS,
-    max_tool_calls: int = MAX_TOOL_CALLS,
-    require_tool_call: bool = REQUIRE_TOOL_CALL,
 ) -> Dict[str, Any]:
     """
-    Process a single query through the complete pipeline.
-
-    Without tools:
-        Search → Context Completeness (PRIMARY) ∥ Generate Response → Grade Answer (SECONDARY)
-    With tools:
-        [optional Search] → Agent retrieves via tools, then answers
-        → Context Completeness (PRIMARY, over all tool outputs) ∥ Grade Answer (SECONDARY)
+    Process a single query through the complete pipeline:
+    Search → Evaluate Context Completeness (PRIMARY) → Generate Response → Grade Answer (SECONDARY)
 
     Args:
         zep_client: AsyncZep client instance
-        llm_client: AsyncOpenAI client instance
+        openai_client: AsyncOpenAI client instance
         user_id: User ID for graph search
         query: Question to answer
         golden_answer: Expected answer for evaluation
         doc_graph_id: Optional standalone document graph to also search
         user_summary: Optional user summary from the user node
-        use_context_block: Run deterministic retrieval and inject a context block
-        tool_registry: Active tools; None or empty disables agentic retrieval
-        max_tool_iterations: Max LLM turns that may request tools
-        max_tool_calls: Max individual tool calls across all iterations
-        require_tool_call: Force a tool call on the agent's first turn
 
     Returns:
         Dictionary containing all results for this query
     """
-    use_tools = bool(tool_registry)
     start_time = time()
 
-    # Step 1: Deterministic retrieval (user graph + optionally document graph)
-    context_block: str | None = None
-    search_duration_ms = 0.0
-    if use_context_block:
-        include_episodes = USER_EPISODES_LIMIT > 0 or DOC_EPISODES_LIMIT > 0
-        search_results, search_duration_ms = await _timed(
-            perform_graph_search(
-                zep_client,
-                user_id,
-                query,
-                include_episodes=include_episodes,
-                doc_graph_id=doc_graph_id,
-            )
-        )
-        context_block = construct_context_block(search_results, user_summary=user_summary)
-
-    loop_result: AgentLoopResult | None = None
-
-    if use_tools:
-        # Step 2: The agent retrieves what it needs via tools, then answers.
-        loop_result, response_duration_ms = await _timed(
-            run_tool_agent(
-                llm_client,
-                LLM_RESPONSE_MODEL,
-                get_tool_agent_system_prompt(
-                    context_block,
-                    max_iterations=max_tool_iterations,
-                    max_tool_calls=max_tool_calls,
-                ),
-                query,
-                tool_registry,
-                ToolContext(
-                    zep_client=zep_client,
-                    user_id=user_id,
-                    doc_graph_id=doc_graph_id,
-                    user_summary=user_summary,
-                ),
-                max_iterations=max_tool_iterations,
-                max_tool_calls=max_tool_calls,
-                require_tool_call=require_tool_call,
-                has_context_block=context_block is not None,
-            )
-        )
-        ai_answer = loop_result.answer
-        prompt_tokens = loop_result.prompt_tokens
-        completion_tokens = loop_result.completion_tokens
-
-        # Completeness is graded on everything the agent retrieved, not just on
-        # what it used, so it can only run once the agent is done.
-        context = construct_agent_context(loop_result, context_block)
-
-        # Steps 3 & 4: Grade context and answer in parallel
-        (completeness, completeness_duration_ms), (grade, grading_duration_ms) = (
-            await asyncio.gather(
-                _timed(
-                    evaluate_context_completeness(
-                        llm_client, query, golden_answer, context
-                    )
-                ),
-                _timed(grade_ai_response(llm_client, query, golden_answer, ai_answer)),
-            )
-        )
-    else:
-        context = context_block or ""
-
-        # Completeness doesn't depend on the answer, so it overlaps generation.
-        (completeness, completeness_duration_ms), (response, response_duration_ms) = (
-            await asyncio.gather(
-                _timed(
-                    evaluate_context_completeness(
-                        llm_client, query, golden_answer, context
-                    )
-                ),
-                _timed(generate_ai_response(llm_client, context, query)),
-            )
-        )
-        ai_answer, prompt_tokens, completion_tokens = response
-
-        # Step 4: Grade Response (SECONDARY METRIC) - must wait for AI answer
-        grade, grading_duration_ms = await _timed(
-            grade_ai_response(llm_client, query, golden_answer, ai_answer)
-        )
-
-    completeness_grade, completeness_reasoning, missing_elements, present_elements = (
-        completeness
+    # Step 1: Search (user graph + optionally document graph, all in parallel)
+    include_episodes = USER_EPISODES_LIMIT > 0 or DOC_EPISODES_LIMIT > 0
+    search_results = await perform_graph_search(
+        zep_client, user_id, query, include_episodes=include_episodes, doc_graph_id=doc_graph_id
     )
-    answer_grade, answer_reasoning = grade
+    context = construct_context_block(search_results, user_summary=user_summary)
+    search_duration_ms = (time() - start_time) * 1000
+
+    # Steps 2 & 3: Run completeness evaluation and response generation in parallel
+    completeness_start = time()
+    response_start = time()
+
+    # Create coroutines for parallel execution
+    completeness_task = evaluate_context_completeness(
+        llm_client, query, golden_answer, context
+    )
+    response_task = generate_ai_response(llm_client, context, query)
+
+    # Execute in parallel
+    (completeness_grade, completeness_reasoning, missing_elements, present_elements), (
+        ai_answer,
+        prompt_tokens,
+    ) = await asyncio.gather(completeness_task, response_task)
+
+    completeness_duration_ms = (time() - completeness_start) * 1000
+    response_duration_ms = (time() - response_start) * 1000
+
+    # Step 4: Grade Response (SECONDARY METRIC) - must wait for AI answer
+    grading_start = time()
+    answer_grade, answer_reasoning = await grade_ai_response(
+        llm_client, query, golden_answer, ai_answer
+    )
+    grading_duration_ms = (time() - grading_start) * 1000
 
     total_duration_ms = (time() - start_time) * 1000
-    # What a real user would wait for: retrieval + answer, excluding the judges.
-    answer_latency_ms = search_duration_ms + response_duration_ms
 
     # Print result with PRIMARY metric first
     completeness_prefix = {
@@ -755,16 +761,6 @@ async def process_single_query(
 
     print(f"Question: {query}")
     print(f"  Gold: {golden_answer}")
-    if loop_result:
-        calls = ", ".join(
-            f"{name}×{count}" for name, count in loop_result.call_counts().items()
-        )
-        print(
-            f"  [T] Tools: {len(loop_result.executed_calls)} calls in "
-            f"{loop_result.iterations} round(s) [{calls or 'none'}] — "
-            f"{loop_result.tool_wall_ms:.0f}ms in tools, "
-            f"{loop_result.llm_ms:.0f}ms in LLM"
-        )
     print(f"  {completeness_prefix} Context Completeness: {completeness_grade}")
     print(f"     {completeness_reasoning}")
     if missing_elements:
@@ -790,48 +786,10 @@ async def process_single_query(
         # Timing breakdown
         "search_duration_ms": search_duration_ms,
         "response_duration_ms": response_duration_ms,
-        "tool_duration_ms": loop_result.tool_wall_ms if loop_result else 0.0,
-        "tool_call_duration_ms": loop_result.tool_call_ms if loop_result else 0.0,
-        "answer_llm_duration_ms": (
-            loop_result.llm_ms if loop_result else response_duration_ms
-        ),
         "grading_duration_ms": grading_duration_ms,
-        "answer_latency_ms": answer_latency_ms,
         "total_duration_ms": total_duration_ms,
-        # Token usage. In tool mode the prompt count is the SUM over every turn,
-        # and each turn re-sends the history — per-turn counts are kept separately
-        # so the total stays decomposable.
+        # Token usage
         "response_prompt_tokens": prompt_tokens,
-        "response_completion_tokens": completion_tokens,
-        "response_prompt_tokens_per_turn": (
-            loop_result.turn_prompt_tokens if loop_result else [prompt_tokens]
-        ),
-        "llm_turns": loop_result.llm_turns if loop_result else 1,
-        # Tool usage
-        "tool_calls": len(loop_result.calls) if loop_result else 0,
-        "tool_calls_executed": len(loop_result.executed_calls) if loop_result else 0,
-        "tool_calls_retrieved": len(loop_result.retrieved_calls) if loop_result else 0,
-        "tool_iterations": loop_result.iterations if loop_result else 0,
-        "tool_errors": loop_result.count(tool_agent.ERROR) if loop_result else 0,
-        "tool_invalid_calls": loop_result.count(tool_agent.INVALID) if loop_result else 0,
-        "tool_refused_calls": loop_result.count(tool_agent.REFUSED) if loop_result else 0,
-        "tool_choice_downgrades": (
-            loop_result.tool_choice_downgrades if loop_result else 0
-        ),
-        "require_tool_call_unenforced": (
-            loop_result.require_tool_call_unenforced if loop_result else False
-        ),
-        "forced_answer_failed": (
-            loop_result.forced_answer_failed if loop_result else False
-        ),
-        "hit_tool_call_cap": loop_result.hit_call_cap if loop_result else False,
-        "hit_tool_iteration_cap": (
-            loop_result.hit_iteration_cap if loop_result else False
-        ),
-        "answer_empty": loop_result.answer_empty if loop_result else not ai_answer,
-        "tool_trace": [call.summary() for call in loop_result.calls]
-        if loop_result
-        else [],
     }
 
 
@@ -847,11 +805,6 @@ async def evaluate_all_questions(
     test_cases_by_user: Dict[str, List[Dict[str, Any]]],
     doc_graph_id: str | None = None,
     concurrency: int = 15,
-    use_context_block: bool = True,
-    tool_registry: ToolRegistry | None = None,
-    max_tool_iterations: int = MAX_TOOL_ITERATIONS,
-    max_tool_calls: int = MAX_TOOL_CALLS,
-    require_tool_call: bool = REQUIRE_TOOL_CALL,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Run the complete evaluation pipeline for all users and their test cases.
@@ -859,11 +812,6 @@ async def evaluate_all_questions(
     Args:
         doc_graph_id: If provided, also search this standalone document graph
         concurrency: Max concurrent test case evaluations (semaphore limit)
-        use_context_block: Run deterministic retrieval and inject a context block
-        tool_registry: Active tools; None or empty disables agentic retrieval
-        max_tool_iterations: Max LLM turns that may request tools
-        max_tool_calls: Max individual tool calls across all iterations
-        require_tool_call: Force a tool call on the agent's first turn
 
     Returns:
         Dictionary mapping user_id to list of evaluation results
@@ -882,11 +830,9 @@ async def evaluate_all_questions(
     # standalone graphs, so a lightweight search primes the cache)
     if doc_graph_id:
         print(f"Warming document graph {doc_graph_id}...")
-        # No reranker: this primes the cache with a single result, so ranking is
-        # irrelevant — and passing the context block's reranker would drag its
-        # configuration into runs that disabled the context block entirely.
         await zep_client.graph.search(
             graph_id=doc_graph_id, query=".", scope="edges", limit=1,
+            reranker="cross_encoder",
         )
         print(f"✓ Document graph warmed\n")
 
@@ -903,7 +849,6 @@ async def evaluate_all_questions(
         print(f"Concurrency: {concurrency}")
         if doc_graph_id:
             print(f"Document graph: {doc_graph_id}")
-        print(f"Retrieval: {describe_retrieval_mode(use_context_block, tool_registry)}")
         print(f"{'='*80}\n")
 
         # Warm the user's graph cache for low-latency search
@@ -942,16 +887,9 @@ async def evaluate_all_questions(
                     test_case["golden_answer"],
                     doc_graph_id=doc_graph_id,
                     user_summary=user_summary,
-                    use_context_block=use_context_block,
-                    tool_registry=tool_registry,
-                    max_tool_iterations=max_tool_iterations,
-                    max_tool_calls=max_tool_calls,
-                    require_tool_call=require_tool_call,
                 )
             result["test_id"] = test_case.get("id")
-            # Falls back to a string: a None category would break the sorted()
-            # per-category breakdown as soon as one test case omits the field.
-            result["category"] = test_case.get("category") or "unknown"
+            result["category"] = test_case.get("category")
             if "needles" in test_case:
                 result["needles"] = test_case["needles"]
             completed += 1
@@ -973,128 +911,6 @@ async def evaluate_all_questions(
 # ============================================================================
 # Step 6: Save and Analyze Results
 # ============================================================================
-
-
-def _median_stdev(values: List[float]) -> Tuple[float, float]:
-    """Return (median, stdev) for a list of numbers, safe for 0 or 1 samples."""
-    if not values:
-        return 0.0, 0.0
-    if len(values) == 1:
-        return values[0], 0.0
-    return statistics.median(values), statistics.stdev(values)
-
-
-def unsupported_rerankers(
-    use_context_block: bool, tools_enabled: bool
-) -> List[Tuple[str, str]]:
-    """
-    Configured rerankers that the harness cannot use, for the active paths only.
-
-    A disabled path's reranker never reaches Zep, so checking it would couple the
-    two independently toggleable retrieval modes: a tools-only run would fail on
-    the context block's reranker and vice versa.
-
-    Returns:
-        List of (constant name, configured value) for each unusable reranker.
-    """
-    configured = []
-    if use_context_block:
-        configured.append(("CONTEXT_BLOCK_RERANKER", CONTEXT_BLOCK_RERANKER))
-    if tools_enabled:
-        configured.append(("TOOL_SEARCH_RERANKER", TOOL_SEARCH_RERANKER))
-    return [
-        (label, reranker)
-        for label, reranker in configured
-        if reranker not in SUPPORTED_RERANKERS
-    ]
-
-
-def describe_retrieval_mode(
-    use_context_block: bool, tool_registry: Optional[ToolRegistry]
-) -> str:
-    """One-line description of how context is being retrieved."""
-    parts = []
-    if use_context_block:
-        parts.append("context block")
-    if tool_registry:
-        parts.append(f"tools ({', '.join(tool_registry.names())})")
-    return " + ".join(parts) if parts else "none"
-
-
-def _compute_tool_statistics(
-    items: List[Dict[str, Any]], enabled: bool = False
-) -> Dict[str, Any]:
-    """
-    Aggregate tool usage and per-tool latency across all test cases.
-
-    `enabled` records whether tools were configured for the run, which is what
-    the summary keys off — a run where tools were available but never called is a
-    finding, not a reason to hide the tool section.
-    """
-    calls_per_test = [r.get("tool_calls_executed", 0) for r in items]
-    iterations_per_test = [r.get("tool_iterations", 0) for r in items]
-
-    per_tool: Dict[str, Dict[str, Any]] = {}
-    for result in items:
-        for call in result.get("tool_trace", []):
-            if not call.get("executed", True):
-                continue
-            stats = per_tool.setdefault(
-                call["name"], {"calls": 0, "errors": 0, "_latencies": []}
-            )
-            stats["calls"] += 1
-            stats["_latencies"].append(call.get("duration_ms", 0.0))
-            if not call.get("ok", True):
-                stats["errors"] += 1
-
-    for name, stats in per_tool.items():
-        latencies = stats.pop("_latencies")
-        median, stdev = _median_stdev(latencies)
-        stats["latency_median_ms"] = median
-        stats["latency_stdev_ms"] = stdev
-        stats["latency_total_ms"] = sum(latencies)
-
-    calls_median, calls_stdev = _median_stdev(calls_per_test)
-    iterations_median, iterations_stdev = _median_stdev(iterations_per_test)
-
-    return {
-        "enabled": enabled,
-        "total_calls": sum(calls_per_test),
-        "calls_median": calls_median,
-        "calls_stdev": calls_stdev,
-        "iterations_median": iterations_median,
-        "iterations_stdev": iterations_stdev,
-        # Calls that ran and raised
-        "errors": sum(r.get("tool_errors", 0) for r in items),
-        # Calls never dispatched: unknown tool name or unparseable arguments
-        "invalid_calls": sum(r.get("tool_invalid_calls", 0) for r in items),
-        # Calls never dispatched because the call budget was spent
-        "refused_calls": sum(r.get("tool_refused_calls", 0) for r in items),
-        # Turns where the provider rejected tool_choice and it was relaxed
-        "tool_choice_downgrades": sum(
-            r.get("tool_choice_downgrades", 0) for r in items
-        ),
-        # Tests where require_tool_call was asked for but not applied
-        "tests_require_tool_call_unenforced": sum(
-            1 for r in items if r.get("require_tool_call_unenforced")
-        ),
-        # Only meaningful when tools were offered: otherwise every test would
-        # trivially count as "no tool calls".
-        "tests_with_no_calls": (
-            sum(1 for c in calls_per_test if c == 0) if enabled else 0
-        ),
-        "tests_hitting_call_cap": sum(
-            1 for r in items if r.get("hit_tool_call_cap")
-        ),
-        "tests_hitting_iteration_cap": sum(
-            1 for r in items if r.get("hit_tool_iteration_cap")
-        ),
-        # The agent never produced a clean answer — it kept asking for tools
-        "tests_forced_answer_failed": sum(
-            1 for r in items if r.get("forced_answer_failed")
-        ),
-        "per_tool": dict(sorted(per_tool.items())),
-    }
 
 
 def _compute_scores(items: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1131,16 +947,9 @@ def _compute_scores(items: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 def calculate_aggregate_statistics(
     results: Dict[str, List[Dict[str, Any]]],
-    tools_enabled: bool = False,
 ) -> Dict[str, Any]:
     """
     Calculate aggregate statistics across all users and per-user statistics.
-
-    Args:
-        results: Per-user evaluation results
-        tools_enabled: Whether the run gave the model retrieval tools. Recorded
-            so the summary reports tool metrics even when zero calls were made.
-
     Returns structured statistics dictionary.
     """
     # Calculate per-user statistics
@@ -1215,34 +1024,41 @@ def calculate_aggregate_statistics(
     correct_answer_count = sum(1 for r in all_user_results if r["answer_grade"])
     answer_accuracy = correct_answer_count / total_questions * 100
 
-    # Timing statistics — end-to-end, plus each stage in isolation.
-    # answer_latency = search + response, i.e. what a user would wait for.
-    # response splits into tool time and answer-LLM time when tools are on.
-    def _timing(key: str) -> Tuple[float, float]:
-        return _median_stdev([r.get(key, 0.0) for r in all_user_results])
+    # Timing statistics - all four metrics
+    total_durations = [r["total_duration_ms"] for r in all_user_results]
+    search_durations = [r["search_duration_ms"] for r in all_user_results]
+    completeness_durations = [r["completeness_duration_ms"] for r in all_user_results]
+    grading_durations = [r["grading_duration_ms"] for r in all_user_results]
 
-    median_total, stdev_total = _timing("total_duration_ms")
-    median_answer_latency, stdev_answer_latency = _timing("answer_latency_ms")
-    median_search, stdev_search = _timing("search_duration_ms")
-    median_response, stdev_response = _timing("response_duration_ms")
-    median_tool, stdev_tool = _timing("tool_duration_ms")
-    median_tool_calls_time, stdev_tool_calls_time = _timing("tool_call_duration_ms")
-    median_answer_llm, stdev_answer_llm = _timing("answer_llm_duration_ms")
-    median_completeness, stdev_completeness = _timing("completeness_duration_ms")
-    median_grading, stdev_grading = _timing("grading_duration_ms")
+    if total_questions > 1:
+        median_total = statistics.median(total_durations)
+        stdev_total = statistics.stdev(total_durations)
+        median_search = statistics.median(search_durations)
+        stdev_search = statistics.stdev(search_durations)
+        median_completeness = statistics.median(completeness_durations)
+        stdev_completeness = statistics.stdev(completeness_durations)
+        median_grading = statistics.median(grading_durations)
+        stdev_grading = statistics.stdev(grading_durations)
+    else:
+        median_total = total_durations[0]
+        stdev_total = 0
+        median_search = search_durations[0]
+        stdev_search = 0
+        median_completeness = completeness_durations[0]
+        stdev_completeness = 0
+        median_grading = grading_durations[0]
+        stdev_grading = 0
 
     # Token statistics
     prompt_tokens_list = [r["response_prompt_tokens"] for r in all_user_results]
-    completion_tokens_list = [
-        r.get("response_completion_tokens", 0) for r in all_user_results
-    ]
-    median_prompt_tokens, stdev_prompt_tokens = _median_stdev(prompt_tokens_list)
-    median_completion_tokens, stdev_completion_tokens = _median_stdev(
-        completion_tokens_list
-    )
-    median_llm_turns, stdev_llm_turns = _median_stdev(
-        [r.get("llm_turns", 1) for r in all_user_results]
-    )
+    total_prompt_tokens = sum(prompt_tokens_list)
+
+    if total_questions > 1:
+        median_prompt_tokens = statistics.median(prompt_tokens_list)
+        stdev_prompt_tokens = statistics.stdev(prompt_tokens_list)
+    else:
+        median_prompt_tokens = prompt_tokens_list[0]
+        stdev_prompt_tokens = 0
 
     # Correlation analysis
     complete_and_correct = sum(
@@ -1272,28 +1088,10 @@ def calculate_aggregate_statistics(
             "accuracy_rate": answer_accuracy,
         },
         "timing": {
-            # Whole pipeline including the LLM judges (not user-facing latency)
             "total_median_ms": median_total,
             "total_stdev_ms": stdev_total,
-            # User-facing latency: deterministic search + answer generation
-            "answer_latency_median_ms": median_answer_latency,
-            "answer_latency_stdev_ms": stdev_answer_latency,
-            # Deterministic context block retrieval (0 when disabled)
             "search_median_ms": median_search,
             "search_stdev_ms": stdev_search,
-            # Answer generation as a whole (tool loop included when tools are on)
-            "response_median_ms": median_response,
-            "response_stdev_ms": stdev_response,
-            # Tool execution only — wall clock, so parallel calls count once
-            "tool_median_ms": median_tool,
-            "tool_stdev_ms": stdev_tool,
-            # Sum of individual tool call durations (exceeds wall clock when parallel)
-            "tool_calls_summed_median_ms": median_tool_calls_time,
-            "tool_calls_summed_stdev_ms": stdev_tool_calls_time,
-            # Answer generation minus tool execution: the "other" half of response
-            "answer_llm_median_ms": median_answer_llm,
-            "answer_llm_stdev_ms": stdev_answer_llm,
-            # Judges (evaluation overhead, not part of user-facing latency)
             "grading_median_ms": median_grading,
             "grading_stdev_ms": stdev_grading,
             "completeness_median_ms": median_completeness,
@@ -1302,15 +1100,8 @@ def calculate_aggregate_statistics(
         "tokens": {
             "prompt_median": median_prompt_tokens,
             "prompt_stdev": stdev_prompt_tokens,
-            "total_prompt": sum(prompt_tokens_list),
-            "completion_median": median_completion_tokens,
-            "completion_stdev": stdev_completion_tokens,
-            "total_completion": sum(completion_tokens_list),
-            "llm_turns_median": median_llm_turns,
-            "llm_turns_stdev": stdev_llm_turns,
+            "total_prompt": total_prompt_tokens,
         },
-        "tools": _compute_tool_statistics(all_user_results, enabled=tools_enabled),
-        "empty_answers": sum(1 for r in all_user_results if r.get("answer_empty")),
         "correlation": {
             "complete_and_correct": complete_and_correct,
             "complete_but_wrong": complete_but_wrong,
@@ -1358,7 +1149,6 @@ def save_results(
     user_run_dir: str,
     doc_manifest: Optional[Dict[str, Any]] = None,
     doc_run_dir: Optional[str] = None,
-    retrieval_configuration: Optional[Dict[str, Any]] = None,
 ):
     """
     Save evaluation results to runs/evaluations/{number}_{timestamp}/.
@@ -1379,9 +1169,7 @@ def save_results(
     )
 
     # Calculate statistics
-    stats = calculate_aggregate_statistics(
-        results, tools_enabled=bool((retrieval_configuration or {}).get("use_tools"))
-    )
+    stats = calculate_aggregate_statistics(results)
 
     # Build parent run references
     parent_runs = {
@@ -1402,18 +1190,13 @@ def save_results(
         "evaluation_timestamp": timestamp,
         "run_number": run_number,
         "parent_runs": parent_runs,
-        "retrieval_configuration": retrieval_configuration or {},
-        # Context block search settings. Applied only when the context block ran
-        # — see retrieval_configuration.tool_search for what bounded tool searches.
         "search_configuration": {
-            "applied": bool((retrieval_configuration or {}).get("use_context_block", True)),
             "user_facts_limit": USER_FACTS_LIMIT,
             "user_entities_limit": USER_ENTITIES_LIMIT,
             "user_episodes_limit": USER_EPISODES_LIMIT,
             "doc_facts_limit": DOC_FACTS_LIMIT,
             "doc_entities_limit": DOC_ENTITIES_LIMIT,
             "doc_episodes_limit": DOC_EPISODES_LIMIT,
-            "reranker": CONTEXT_BLOCK_RERANKER,
         },
         "model_configuration": {
             "response_model": LLM_RESPONSE_MODEL,
@@ -1511,110 +1294,26 @@ def print_summary(stats: Dict[str, Any]):
             print()
 
     # Timing
-    timing = aggregate["timing"]
-    tools = aggregate.get("tools", {})
-    # Keyed off whether tools were configured, not off whether any were called:
-    # "tools were available and the agent never used them" is the finding that
-    # most needs to be visible.
-    tools_used = tools.get("enabled", tools.get("total_calls", 0) > 0)
-    tokens = aggregate.get("tokens", {})
-
-    # Reads are defensive so a results.json written by an earlier version of the
-    # harness (fewer timing/token keys) can still be summarized.
-    def _t(label: str, key: str, indent: int = 2) -> None:
-        if f"{key}_median_ms" not in timing:
-            return
-        pad = " " * indent
-        print(
-            f"{pad}{label:<{34 - indent}}"
-            f"{timing[f'{key}_median_ms']:.0f} ± {timing.get(f'{key}_stdev_ms', 0):.0f}ms"
-        )
-
-    print(f"\nTiming (median ± stdev per query):")
-    _t("Answer latency (user-facing):", "answer_latency")
-    _t("Context block search:", "search", indent=4)
-    _t("Answer generation:", "response", indent=4)
-    if tools_used:
-        _t("Tool execution (wall):", "tool", indent=6)
-        _t("Tool calls (summed):", "tool_calls_summed", indent=6)
-        _t("Answer LLM (non-tool):", "answer_llm", indent=6)
-    print()
-    _t("Completeness eval (judge):", "completeness")
-    _t("Accuracy eval (judge):", "grading")
-    _t("Total incl. judges:", "total")
-
-    # Tool Usage
-    if tools_used:
-        print(f"\nTool Usage:")
-        print(
-            f"  Calls per query:          {tools['calls_median']:.1f} ± {tools['calls_stdev']:.1f}"
-            f"  (total {tools['total_calls']})"
-        )
-        print(
-            f"  Rounds per query:         {tools['iterations_median']:.1f} ± {tools['iterations_stdev']:.1f}"
-        )
-        no_calls = tools["tests_with_no_calls"]
-        print(
-            f"  Tests with no tool calls: {no_calls}/{total_tests}"
-            + ("   ← agent never retrieved" if no_calls else "")
-        )
-        print(
-            f"  Hit call cap:             {tools['tests_hitting_call_cap']}/{total_tests}"
-            f"   |  Hit round cap: {tools['tests_hitting_iteration_cap']}/{total_tests}"
-        )
-        if tools["errors"] or tools["invalid_calls"] or tools["refused_calls"]:
-            print(
-                f"  Failed calls: {tools['errors']}  |  Invalid (bad name/args): "
-                f"{tools['invalid_calls']}  |  Refused (over budget): {tools['refused_calls']}"
-            )
-        if tools.get("tests_forced_answer_failed"):
-            print(
-                f"  ⚠ Never answered cleanly: {tools['tests_forced_answer_failed']}"
-                f"/{total_tests} kept requesting tools through every forced-answer "
-                f"attempt (any text they produced is a preamble, not an answer)"
-            )
-        if tools["tool_choice_downgrades"]:
-            print(
-                f"  ⚠ tool_choice downgraded on {tools['tool_choice_downgrades']} turn(s) "
-                f"— the provider rejected the requested tool_choice"
-            )
-        if tools.get("tests_require_tool_call_unenforced"):
-            print(
-                f"  ⚠ require_tool_call not applied on "
-                f"{tools['tests_require_tool_call_unenforced']}/{total_tests} tests "
-                f"— the provider either rejected it or answered without retrieving"
-            )
-        if tools["per_tool"]:
-            print(f"\n  Per tool:")
-            for name, stats in tools["per_tool"].items():
-                print(
-                    f"    {name:<24} {stats['calls']:4d} calls, "
-                    f"{stats['latency_median_ms']:.0f} ± {stats['latency_stdev_ms']:.0f}ms"
-                    + (f", {stats['errors']} failed" if stats["errors"] else "")
-                )
-
-    # Empty answers can happen in either mode, so report them unconditionally
-    if aggregate.get("empty_answers"):
-        print(
-            f"\n⚠ Empty answers: {aggregate['empty_answers']}/{total_tests} "
-            f"(graded WRONG — the model returned no text)"
-        )
+    print(f"\nTiming:")
+    print(
+        f"  Total time per query:     {aggregate['timing']['total_median_ms']:.0f} ± {aggregate['timing']['total_stdev_ms']:.0f}ms"
+    )
+    print(
+        f"  Search time:              {aggregate['timing']['search_median_ms']:.0f} ± {aggregate['timing']['search_stdev_ms']:.0f}ms"
+    )
+    print(
+        f"  Accuracy eval:            {aggregate['timing']['grading_median_ms']:.0f} ± {aggregate['timing']['grading_stdev_ms']:.0f}ms"
+    )
+    print(
+        f"  Completeness eval:        {aggregate['timing']['completeness_median_ms']:.0f} ± {aggregate['timing']['completeness_stdev_ms']:.0f}ms"
+    )
 
     # Token Usage
     print(f"\nToken Usage:")
     print(
-        f"  Prompt tokens per query: {tokens.get('prompt_median', 0):.0f} ± {tokens.get('prompt_stdev', 0):.0f}"
-        + ("  (summed across turns)" if tools_used else "")
+        f"  Prompt tokens per query: {aggregate['tokens']['prompt_median']:.0f} ± {aggregate['tokens']['prompt_stdev']:.0f}"
     )
-    print(f"  Total prompt tokens:     {tokens.get('total_prompt', 0)}")
-    if "completion_median" in tokens:
-        print(
-            f"  Completion tokens per query: {tokens['completion_median']:.0f} ± {tokens.get('completion_stdev', 0):.0f}"
-        )
-    if tools_used and "llm_turns_median" in tokens:
-        print(
-            f"  LLM turns per query:     {tokens['llm_turns_median']:.1f} ± {tokens.get('llm_turns_stdev', 0):.1f}"
-        )
+    print(f"  Total prompt tokens:     {aggregate['tokens']['total_prompt']}")
 
     # Per-User Scores
     print(f"\n\n{'='*80}")
@@ -1650,12 +1349,6 @@ def parse_args():
   uv run zep_evaluate.py --user-run 3                       # Evaluate user run #3
   uv run zep_evaluate.py --doc-run 2                        # Latest user run + document run #2
   uv run zep_evaluate.py --user-run 3 --doc-run 2           # Specific user run + document run
-
-Retrieval modes:
-  uv run zep_evaluate.py                                    # Context block only (deterministic search)
-  uv run zep_evaluate.py --tools --no-context-block         # Agent retrieves everything via tools
-  uv run zep_evaluate.py --tools                            # Context block injected, tools available too
-  uv run zep_evaluate.py --tools --max-tool-calls 4 --max-tool-iterations 2
 """,
     )
     parser.add_argument(
@@ -1675,48 +1368,6 @@ Retrieval modes:
         type=int,
         default=15,
         help="Max concurrent test case evaluations (default: 15)",
-    )
-    parser.add_argument(
-        "--tools",
-        action=argparse.BooleanOptionalAction,
-        default=USE_TOOLS,
-        help=(
-            "Give the response model the retrieval tools from "
-            "config/evaluation_config/tools.py and let it retrieve its own "
-            "context before answering"
-        ),
-    )
-    parser.add_argument(
-        "--context-block",
-        action=argparse.BooleanOptionalAction,
-        default=USE_CONTEXT_BLOCK,
-        help=(
-            "Run deterministic graph search up front and inject the context "
-            "block into the prompt. Can be combined with --tools"
-        ),
-    )
-    parser.add_argument(
-        "--max-tool-iterations",
-        type=int,
-        default=MAX_TOOL_ITERATIONS,
-        help=(
-            "Max LLM turns that may request tools; tools called in parallel in one "
-            f"turn count as one iteration (default: {MAX_TOOL_ITERATIONS})"
-        ),
-    )
-    parser.add_argument(
-        "--max-tool-calls",
-        type=int,
-        default=MAX_TOOL_CALLS,
-        help=f"Max individual tool calls per test case (default: {MAX_TOOL_CALLS})",
-    )
-    parser.add_argument(
-        "--require-tool-call",
-        action=argparse.BooleanOptionalAction,
-        default=REQUIRE_TOOL_CALL,
-        help=(
-            "Force the agent to call at least one tool on its first turn"
-        ),
     )
     return parser.parse_args()
 
@@ -1761,119 +1412,21 @@ async def main():
             else:
                 print("Warning: --doc-run specified but no graph_id found in document manifest")
 
-        # Resolve the retrieval mode: context block, tools, or both
-        use_context_block = args.context_block
-        tool_registry = (
-            ToolRegistry.build(TOOL_SPECS, doc_graph_id=doc_graph_id)
-            if args.tools
-            else None
-        )
-
-        if args.tools and not tool_registry:
-            message = (
-                "Tools are enabled but no tools are active — every spec in "
-                "config/evaluation_config/tools.py is either disabled or requires "
-                "a document graph (pass --doc-run)."
-            )
-            if not use_context_block:
-                print(f"Error: {message}")
-                exit(1)
-            print(f"Warning: {message} Continuing with the context block only.\n")
-
-        # Caught here rather than as an API error on every single search.
-        for label, reranker in unsupported_rerankers(
-            use_context_block, bool(tool_registry)
-        ):
-            print(
-                f"Error: {label}='{reranker}' is not supported. Choose one of: "
-                f"{', '.join(SUPPORTED_RERANKERS)}. (mmr and node_distance need "
-                f"extra per-search arguments — see the comment in "
-                f"config/evaluation_config/constants.py.)"
-            )
-            exit(1)
-
-        # Semaphore(0) never admits anyone, so the run would hang after warming
-        # the graphs with no output at all.
-        if args.concurrency < 1:
-            print(f"Error: --concurrency must be at least 1 (got {args.concurrency}).")
-            exit(1)
-
-        # A zero/negative budget silently disables every tool, which would let a
-        # run report use_tools=true while retrieving nothing at all.
-        if tool_registry and (args.max_tool_calls < 1 or args.max_tool_iterations < 1):
-            print(
-                "Error: --max-tool-calls and --max-tool-iterations must be at least 1 "
-                f"when tools are enabled (got {args.max_tool_calls} calls, "
-                f"{args.max_tool_iterations} iterations). Use --no-tools to disable tools."
-            )
-            exit(1)
-
-        if not use_context_block and not tool_registry:
-            print(
-                "Error: no retrieval configured. --no-context-block requires --tools "
-                "with at least one active tool, otherwise the model gets no context."
-            )
-            exit(1)
-
-        retrieval_configuration = {
-            "use_context_block": use_context_block,
-            # What actually happened vs what was asked for: --tools with every
-            # spec inactive is a real run without tools, and both facts are
-            # recorded so the artifact can't be misread either way.
-            "use_tools": bool(tool_registry),
-            "tools_requested": bool(args.tools),
-            "max_tool_iterations": args.max_tool_iterations,
-            "max_tool_calls": args.max_tool_calls,
-            "require_tool_call": args.require_tool_call,
-            "tools": [
-                {"name": spec.name, "description": spec.description}
-                for spec in (tool_registry.specs.values() if tool_registry else [])
-            ],
-            # What actually bounded tool searches. Zep applies max_characters to
-            # scope="auto" and limit/reranker to every other scope, so both are
-            # recorded — the context block's own limits are in
-            # search_configuration and apply only when it ran.
-            "tool_search": {
-                "max_characters_auto_scope": TOOL_SEARCH_MAX_CHARACTERS,
-                "default_limit_other_scopes": TOOL_SEARCH_DEFAULT_LIMIT,
-                "max_limit_other_scopes": TOOL_SEARCH_MAX_LIMIT,
-                "reranker_other_scopes": TOOL_SEARCH_RERANKER,
-            }
-            if tool_registry
-            else {},
-        }
-
         # Load test cases
         test_cases_by_user = await load_all_test_cases()
 
         # Run evaluation
-        print(
-            f"Retrieval mode: "
-            f"{describe_retrieval_mode(use_context_block, tool_registry)}"
-        )
-        if tool_registry:
-            print(
-                f"Tool budget: {args.max_tool_calls} calls across "
-                f"{args.max_tool_iterations} round(s)"
-                + ("; first tool call forced" if args.require_tool_call else "")
-            )
         print(f"Starting evaluation (concurrency={args.concurrency})...\n")
         results = await evaluate_all_questions(
             zep_client, llm_client, manifest, test_cases_by_user,
             doc_graph_id=doc_graph_id,
             concurrency=args.concurrency,
-            use_context_block=use_context_block,
-            tool_registry=tool_registry,
-            max_tool_iterations=args.max_tool_iterations,
-            max_tool_calls=args.max_tool_calls,
-            require_tool_call=args.require_tool_call,
         )
 
         # Save results with aggregate statistics
         results_file, stats = save_results(
             results, manifest, user_run_dir,
             doc_manifest=doc_manifest, doc_run_dir=doc_run_dir,
-            retrieval_configuration=retrieval_configuration,
         )
 
         # Print summary
