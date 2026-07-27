@@ -179,6 +179,19 @@ Rate limits are handled automatically — if you hit limits, the retry backoff w
 3. **Generate Response**: Use LLM with retrieved context to answer questions
 4. **Grade Answer**: Evaluate answers against golden answers using LLM judge (SECONDARY METRIC)
 
+### Scope: Single-Shot Retrieval
+
+**This harness evaluates single-shot retrieval only.** Each test case issues one fixed batch of searches — the raw test question against nodes and edges (plus episodes if enabled), across the user graph and any document graph, all in parallel — assembles the results into a context block, and hands it to the response model in a single turn. There is no second retrieval round and no query reformulation. That mirrors *deterministic/programmatic* retrieval, where your application searches on every turn and injects the context itself.
+
+Production agents are frequently built the other way: Zep is exposed to the model as **tools** — for example `search_graph` from the [Zep MCP server](../mcp/zep-mcp-server/), or your own tool definitions — and the LLM decides when to search, how to phrase each query, and whether to search again after seeing results.
+
+Read the scores accordingly:
+
+- **What they measure**: whether your ingestion and search configuration (ontology, custom instructions, chunking, search limits, reranker) puts the right facts within reach of one well-formed query. Pinning retrieval to a single deterministic search is what keeps runs comparable — the config stays the only variable.
+- **What they do not measure**: agent behavior. A tool-based agent can beat these numbers by issuing several targeted searches and reformulating after a weak result, or fall short of them by not searching at all, phrasing a query poorly, or running out of turns. Tool choice, query formulation, and multi-turn dynamics are untested here.
+
+If your production path exposes Zep through tools, treat a strong result here as a prerequisite rather than a verdict, and evaluate the agent end-to-end as well. See [Evaluate Zep for your use case](https://help.getzep.com/evaluate-zep-for-your-use-case).
+
 ## Configuration
 
 All use-case-specific configuration lives in `config/`, organized by pipeline step:
