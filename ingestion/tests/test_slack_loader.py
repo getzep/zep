@@ -565,6 +565,64 @@ class TestWeakNameWarnings:
         assert any("riley" in w for w in loader.warnings if "no real_name" in w)
 
 
+class TestWeakNamesInDmLabels:
+    """A DM label names its members in every episode without going through
+    _resolve, so a handle-only member reaches the graph even if they never post."""
+
+    @staticmethod
+    def dm_export(root: Path) -> Path:
+        export = root / "export"
+        (export / "general").mkdir(parents=True)
+        (export / "D01ABC234").mkdir()
+        (export / "users.json").write_text(
+            json.dumps(
+                [
+                    {"id": "U1", "name": "morgan", "profile": {"real_name": "Morgan Lee"}},
+                    # handle-only, and never authors or is mentioned anywhere
+                    {"id": "U2", "name": "riley", "profile": {"display_name": "riley"}},
+                ]
+            )
+        )
+        (export / "channels.json").write_text(json.dumps([{"name": "general"}]))
+        (export / "dms.json").write_text(json.dumps([{"id": "D01ABC234", "members": ["U1", "U2"]}]))
+        (export / "general" / "2024-06-14.json").write_text(
+            json.dumps(
+                [{"type": "message", "user": "U1", "text": "public", "ts": "1718355600.000100"}]
+            )
+        )
+        (export / "D01ABC234" / "2024-06-14.json").write_text(
+            json.dumps(
+                [{"type": "message", "user": "U1", "text": "dm text", "ts": "1718355700.000100"}]
+            )
+        )
+        return export
+
+    def test_handle_only_dm_member_is_reported(self, tmp_path):
+        loader = SlackExportLoader(self.dm_export(tmp_path), conversation_types=["dm"])
+        [episode] = list(loader.load())
+        # the handle is in the episode text and metadata, so it reaches extraction
+        assert "riley" in episode.data
+        assert "riley" in episode.metadata["channel"]
+        warning = next(w for w in loader.warnings if "no real_name" in w)
+        assert "riley" in warning
+
+    def test_a_skipped_dm_does_not_report_its_members(self, tmp_path):
+        """Default conversation_types excludes DMs; warning about a conversation the
+        run never read would be noise."""
+        loader = SlackExportLoader(self.dm_export(tmp_path))
+        episodes = list(loader.load())
+        assert all("riley" not in e.data for e in episodes)
+        assert not any("no real_name" in w for w in loader.warnings)
+
+    def test_an_empty_selected_dm_does_not_report_its_members(self, tmp_path):
+        """Selected but produced no episodes, so its label reached nothing."""
+        export = self.dm_export(tmp_path)
+        (export / "D01ABC234" / "2024-06-14.json").write_text(json.dumps([]))
+        loader = SlackExportLoader(export, conversation_types=["dm"])
+        assert list(loader.load()) == []
+        assert not any("no real_name" in w for w in loader.warnings)
+
+
 class TestExtractedWrapper:
     """A zip whose export sits in a single wrapper folder is unwrapped; the same
     export extracted to disk has to be too, or a valid export ingests nothing."""

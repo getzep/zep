@@ -119,6 +119,11 @@ class _Conversation:
     folder: str
     label: str
     kind: ConversationType
+    # roster ids rendered into ``label`` (DMs and group DMs only). The label names
+    # them in every episode without going through _resolve, so they are carried
+    # here and recorded once the conversation is known to be both selected and
+    # non-empty — a skipped conversation must not warn about its members.
+    member_ids: tuple[str, ...] = ()
 
 
 class _DirReader:
@@ -355,7 +360,7 @@ class SlackExportLoader:
         if self._weak_names:
             examples = ", ".join(sorted(self._weak_names.values())[:3])
             self.warnings.append(
-                f"{len(self._weak_names)} Slack user(s) whose content was ingested have "
+                f"{len(self._weak_names)} Slack user(s) named in ingested content have "
                 f"no real_name in the roster, so they are labeled with a display-name "
                 f"handle, a username, or a raw ID instead (e.g. {examples}). Zep merges "
                 "entities by the names it sees, so these may not merge with the same "
@@ -442,9 +447,8 @@ class SlackExportLoader:
                 if folder in seen:
                     continue
                 seen.add(folder)
-                conversations.append(
-                    _Conversation(folder, self._label(entry, folder, kind, users), kind)
-                )
+                label, member_ids = self._label(entry, folder, kind, users)
+                conversations.append(_Conversation(folder, label, kind, member_ids))
         if conversations:
             return conversations
         return self._folder_inventory(reader)
@@ -490,15 +494,19 @@ class SlackExportLoader:
     @staticmethod
     def _label(
         entry: dict[str, Any], folder: str, kind: ConversationType, users: dict[str, str]
-    ) -> str:
+    ) -> tuple[str, tuple[str, ...]]:
         """Channels are labeled by name; DMs and group DMs by their members, since
-        their folders are an opaque id or slug and raw ids degrade extraction."""
+        their folders are an opaque id or slug and raw ids degrade extraction.
+
+        Returns the label and the roster ids it names, so the caller can report a
+        member whose name is only a handle even if they never posted.
+        """
         if kind not in ("dm", "group_dm"):
-            return folder
+            return folder, ()
         members = [m for m in entry.get("members") or [] if isinstance(m, str)]
         if not members:
-            return folder
-        return ", ".join(users.get(member, member) for member in members)
+            return folder, ()
+        return ", ".join(users.get(member, member) for member in members), tuple(members)
 
     def _select(self, inventory: list[_Conversation]) -> list[_Conversation]:
         """conversation_types picks the types; channels= filters by name within them."""
@@ -556,6 +564,10 @@ class SlackExportLoader:
                 seen_ts.add(message.ts)
                 messages.append(message)
         messages.sort(key=lambda m: float(m.ts))
+        if messages:
+            # every episode below carries conversation.label, so the members it
+            # names are now in the graph whether or not they authored anything
+            self._note_label_names(conversation, users)
         if self.grouping == "message":
             for message in messages:
                 yield self._episode([message], conversation)
@@ -613,6 +625,14 @@ class SlackExportLoader:
             conversation_type=conversation.kind,
             user_id=raw.get("user") or None,
         )
+
+    def _note_label_names(self, conversation: _Conversation, users: dict[str, str]) -> None:
+        """Record weak names a DM label puts into the graph. Called only for a
+        selected conversation that yielded episodes, so members of a conversation
+        the run skipped are never reported."""
+        for member in conversation.member_ids:
+            if member in self._weak_name_ids:
+                self._weak_names[member] = users[member]
 
     def _resolve(self, user_id: str, users: dict[str, str]) -> str:
         """Map a Slack user ID to a name, recording IDs the roster misses and the
