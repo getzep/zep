@@ -1,25 +1,6 @@
 import asyncio
 import random
 
-# Statuses that mean "this exact request will never be accepted": retrying only
-# burns the full backoff schedule to arrive at the same rejection. Kept
-# deliberately narrow — everything else, including 404s for a resource that may
-# not be visible yet, still retries exactly as it always did.
-NON_RETRYABLE_STATUSES = {400, 422}
-
-
-def is_retryable(exception) -> bool:
-    """
-    Whether an exception is worth retrying.
-
-    Both the OpenAI and Zep SDKs expose `status_code` on their API errors, so one
-    check covers both. Anything without a recognizable status is retried.
-    """
-    status = getattr(exception, "status_code", None)
-    if isinstance(status, int) and status in NON_RETRYABLE_STATUSES:
-        return False
-    return True
-
 
 async def retry_with_backoff(
     fn,
@@ -33,8 +14,6 @@ async def retry_with_backoff(
     """
     Retry an async callable with exponential backoff and jitter.
 
-    Non-retryable client errors (see is_retryable) are raised immediately.
-
     Args:
         fn: Async function to call
         max_retries: Maximum number of retry attempts (total attempts = max_retries + 1)
@@ -43,8 +22,7 @@ async def retry_with_backoff(
         description: Human-readable label for log messages
 
     Returns: Result of fn(*args, **kwargs)
-    Raises: The last exception if all retries are exhausted, or immediately if
-        the exception is not retryable
+    Raises: The last exception if all retries are exhausted
     """
     last_exception = None
     for attempt in range(max_retries + 1):
@@ -52,9 +30,6 @@ async def retry_with_backoff(
             return await fn(*args, **kwargs)
         except Exception as e:
             last_exception = e
-            if not is_retryable(e):
-                print(f"  ✗ {description} rejected (not retryable): {e}")
-                raise
             if attempt == max_retries:
                 break
             delay = min(initial_delay * (2 ** attempt), max_delay)
