@@ -9,10 +9,5 @@
   "repository": "https://github.com/getzep/zep",
   "keywords": ["zep", "agent-memory", "context-graph", "mcp"],
   "category": "development",
-  "skills": "./skills/",
-  "mcpServers": {
-    "zep-docs": {
-      "url": "https://docs-mcp.getzep.com/mcp"
-    }
-  }
+  "skills": "./skills/"
 }
