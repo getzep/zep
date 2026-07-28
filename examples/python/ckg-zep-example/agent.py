@@ -172,7 +172,7 @@ if __name__ == "__main__":
     try:
         zep.thread.get(THREAD_ID)
     except Exception:
-        zep.thread.add(thread_id=THREAD_ID, user_id=USER_ID)
+        zep.thread.create(thread_id=THREAD_ID, user_id=USER_ID)
 
     result = agent.invoke({
         "query": "What are the prerequisites for using NemoClaw kernel fusion?",
