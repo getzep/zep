@@ -1,0 +1,18 @@
+{
+  "name": "building-with-zep",
+  "version": "0.1.0",
+  "description": "Build and configure applications that use Zep — agent memory built on temporal Context Graphs. Bundles the building-with-zep skill (how to reason about and build on Zep) and the Zep documentation MCP server (real-time docs search).",
+  "author": {
+    "name": "Zep"
+  },
+  "homepage": "https://help.getzep.com",
+  "repository": "https://github.com/getzep/zep",
+  "keywords": ["zep", "agent-memory", "context-graph", "mcp"],
+  "category": "development",
+  "skills": "./skills/",
+  "mcpServers": {
+    "zep-docs": {
+      "url": "https://docs-mcp.getzep.com/mcp"
+    }
+  }
+}
