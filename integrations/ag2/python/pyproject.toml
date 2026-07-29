@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "ag2>=0.9.0",
+    "ag2>=0.9.0,<1",
     "zep-cloud>=3.23.0",
 ]
 

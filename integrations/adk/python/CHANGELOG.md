@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added the `py.typed` marker so installed `zep-adk` packages expose their inline type annotations to PEP 561-compatible type checkers.
+
 ## 0.3.0 (2026-07-06)
 
 ### Added
