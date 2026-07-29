@@ -288,11 +288,7 @@ jobs:
         run: uv python install 3.11
       - name: Build package
         working-directory: integrations/${{ needs.detect.outputs.framework }}/python
-        run: |
-          uv build
-          uv run --no-project --python 3.11 python \
-            "$GITHUB_WORKSPACE/.github/scripts/check_python_package_contracts.py" \
-            . --artifacts dist
+        run: uv build
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:

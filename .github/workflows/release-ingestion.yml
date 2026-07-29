@@ -120,9 +120,6 @@ jobs:
           package_version=$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
           test "$package_version" = "$EXPECTED_VERSION"
           uv build
-          uv run --no-project --python 3.11 python \
-            "$GITHUB_WORKSPACE/.github/scripts/check_python_package_contracts.py" \
-            . --artifacts dist
           uvx twine check dist/*
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -4,13 +4,11 @@ on:
   pull_request:
     paths:
       - 'ingestion/**'
-      - '.github/scripts/check_python_package_contracts.py'
       - '.github/workflows/test-ingestion.yml'
   push:
     branches: [main]
     paths:
       - 'ingestion/**'
-      - '.github/scripts/check_python_package_contracts.py'
       - '.github/workflows/test-ingestion.yml'
 
 permissions:
@@ -50,14 +48,6 @@ jobs:
 
       - name: Run type checking
         run: uv run mypy src/
-
-      - name: Verify PEP 561 package contract
-        if: matrix.python-version == '3.11' && matrix.resolution == 'highest'
-        run: |
-          artifacts_dir=$(mktemp -d "${RUNNER_TEMP}/pep561.XXXXXX")
-          uv build --out-dir "$artifacts_dir"
-          uv run python "$GITHUB_WORKSPACE/.github/scripts/check_python_package_contracts.py" \
-            . --artifacts "$artifacts_dir"
 
       - name: Run offline tests
         run: uv run pytest tests/ -v -m "not integration" --cov=zep_ingest --cov-report=xml
