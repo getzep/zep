@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added the `py.typed` marker so installed `zep-livekit` packages expose their inline type annotations to PEP 561-compatible type checkers.
+
 ## [0.2.0] - 2026-07-07
 
 ### Added

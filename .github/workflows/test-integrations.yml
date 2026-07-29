@@ -4,15 +4,31 @@ on:
   pull_request:
     paths:
       - 'integrations/**'
+      - '.github/actions/test-python/action.yml'
+      - '.github/scripts/check_python_package_contracts.py'
+      - '.github/workflows/test-integrations.yml'
   push:
     branches: [main]
     paths:
       - 'integrations/**'
+      - '.github/actions/test-python/action.yml'
+      - '.github/scripts/check_python_package_contracts.py'
+      - '.github/workflows/test-integrations.yml'
 
 permissions:
   contents: read
 
 jobs:
+  python-package-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check published Python package markers
+        run: python .github/scripts/check_python_package_contracts.py
+
   detect-changes:
     runs-on: ubuntu-latest
     outputs:

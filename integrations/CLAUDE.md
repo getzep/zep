@@ -45,6 +45,7 @@ the key, so a new Python package only needs a `paths-filter` entry.
 integrations/<framework>/python/
 ├── src/zep_<framework>/
 │   ├── __init__.py        # package entry point + __version__
+│   ├── py.typed            # PEP 561 marker; required and included in wheel/sdist
 │   ├── <core>.py          # core integration (memory/context/tools)
 │   └── exceptions.py
 ├── tests/                 # mock-client tests (+ optional live tests gated on ZEP_API_KEY)
@@ -168,7 +169,8 @@ go vet ./... && go test ./... && golangci-lint run
 
 Every integration must: pass ruff + mypy (Python) / tsc + lint (TS) / vet + lint (Go);
 ship mock-based tests; include a runnable example; handle errors gracefully (never crash
-the host agent); target the latest Zep SDK; and document all public APIs.
+the host agent); target the latest Zep SDK; and document all public APIs. Published Python
+packages must ship an empty `py.typed` marker in both the wheel and source distribution.
 
 ## Testing pattern (Python, mock client)
 ```python

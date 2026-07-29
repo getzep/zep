@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added the `py.typed` marker so installed `zep-ag2` packages expose their inline type annotations to PEP 561-compatible type checkers.
+
 ## [0.2.0]
 
 AG2 has no native memory interface -- `ConversableAgent.register_hook` is its only per-turn

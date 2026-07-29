@@ -49,6 +49,16 @@ runs:
       working-directory: ${{ steps.paths.outputs.dir }}
       run: uv run mypy src/
 
+    - name: Verify PEP 561 package contract
+      if: inputs.python-version == '3.11'
+      shell: bash
+      working-directory: ${{ steps.paths.outputs.dir }}
+      run: |
+        artifacts_dir=$(mktemp -d "${RUNNER_TEMP}/pep561.XXXXXX")
+        uv build --out-dir "$artifacts_dir"
+        uv run python "$GITHUB_WORKSPACE/.github/scripts/check_python_package_contracts.py" \
+          . --artifacts "$artifacts_dir"
+
     - name: Run tests
       shell: bash
       working-directory: ${{ steps.paths.outputs.dir }}
