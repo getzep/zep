@@ -1,4 +1,6 @@
-# Zep MCP Server
+# Zep MCP Server (Deprecated)
+
+> **Deprecated:** This MCP server is no longer maintained. Use the [official Zep Memory MCP server](https://help.getzep.com/memory-mcp-server) instead.
 
 A Model Context Protocol (MCP) server for [Zep Cloud](https://www.getzep.com/), providing read-only access to Zep's temporal knowledge graph and memory features.
 
