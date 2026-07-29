@@ -9,7 +9,7 @@ charset-normalizer==3.4.3
 click==8.3.0
 distro==1.9.0
 gitdb==4.0.12
-GitPython==3.1.50
+GitPython==3.1.55
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
@@ -25,7 +25,7 @@ numpy==2.3.3
 openai==1.109.1
 packaging==25.0
 pandas==2.3.2
-pillow==12.2.0
+pillow==12.3.0
 protobuf==6.33.5
 pyarrow==23.0.1
 pydantic==2.11.9
