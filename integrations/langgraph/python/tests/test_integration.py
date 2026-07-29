@@ -7,8 +7,8 @@ node/tool helpers with a prebuilt ``create_react_agent``:
   1. ``build_system_message`` injects the Zep Context Block on every turn.
   2. ``persist_messages`` writes each turn back to the Zep thread.
   3. Both sides of the conversation are captured on the thread.
-  4. Cross-thread memory recall: a second thread for the same user recalls facts
-     seeded in the first thread (proving recall comes from the user graph).
+  4. User-graph recall: the integration's search tool retrieves facts extracted
+     from the conversation (proving recall comes from the user graph).
   5. Zep resource verification via the SDK (user metadata, thread messages).
 
 Requires:
@@ -61,7 +61,6 @@ from zep_langgraph import (  # noqa: E402
 _suffix = uuid4().hex[:8]
 USER_ID = f"langgraph-integ-{_suffix}"
 THREAD_1 = f"langgraph-integ-t1-{_suffix}"
-THREAD_2 = f"langgraph-integ-t2-{_suffix}"
 
 FIRST_NAME = "IntegTest"
 LAST_NAME = "User"
@@ -178,7 +177,7 @@ async def main() -> None:
     print(f"\n{'=' * 70}")
     print("Zep LangGraph Integration Test")
     print(f"  User:    {USER_ID}")
-    print(f"  Threads: {THREAD_1}, {THREAD_2}")
+    print(f"  Thread:  {THREAD_1}")
     print(f"{'=' * 70}\n")
 
     try:
@@ -219,26 +218,21 @@ async def main() -> None:
         # -- Wait for graph ingestion ----------------------------------------
         print("\n[Step 4] Waiting for Zep to process episodes...")
         await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
-        await wait_for_graph_searchable(zep, USER_ID, query="Where does IntegTest work?")
+        searchable = await wait_for_graph_searchable(
+            zep, USER_ID, query="Where does IntegTest work?"
+        )
+        passed &= check("User graph is searchable", searchable)
 
-        # -- Conversation 2: cross-thread memory recall ----------------------
-        print("\n[Step 5] Conversation 2: cross-thread memory recall...")
+        # -- Recall through the integration's graph-search tool --------------
+        print("\n[Step 5] Recalling facts through search_memory...")
         keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
-        recall = ""
-        found: list[str] = []
-        for attempt in range(3):
-            thread_id = f"{THREAD_2}-r{attempt}"
-            await zep.thread.create(thread_id=thread_id, user_id=USER_ID)
-            chat2 = build_agent(zep, thread_id)
-            recall = (await chat2("What do you know about me?")).lower()
-            found = [kw for kw in keywords if kw in recall]
-            if found:
-                break
-            await asyncio.sleep(10)
-        print(f"  Agent: {recall}\n")
+        search_tool = create_graph_search_tool(zep, user_id=USER_ID, scope="edges")
+        recall = str(await search_tool.ainvoke({"query": "Where does IntegTest work?"})).lower()
+        found = [kw for kw in keywords if kw in recall]
+        print(f"  Search results: {recall}\n")
         print(f"  Recalled keywords: {found}")
         passed &= check(
-            "Agent recalled facts from conversation 1",
+            "Search tool recalled facts from conversation 1",
             len(found) > 0,
             f"found={found}",
         )
@@ -286,20 +280,16 @@ async def test_integration_full_lifecycle() -> None:
         assert any(m.role == "assistant" for m in messages)
 
         await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
-        await wait_for_graph_searchable(zep, USER_ID, query="Where does IntegTest work?")
+        assert await wait_for_graph_searchable(zep, USER_ID, query="Where does IntegTest work?"), (
+            "user graph never became searchable"
+        )
 
-        # The recall turn is still LLM-dependent (the model may decline to use
-        # the tool/context), so give it a few attempts on fresh threads.
+        # Exercise the integration's tool directly. Whether an LLM elects to
+        # call an optional tool is nondeterministic and is not a reliable signal
+        # for whether ingestion and graph recall work.
         keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
-        recall = ""
-        for attempt in range(3):
-            thread_id = f"{THREAD_2}-r{attempt}"
-            await zep.thread.create(thread_id=thread_id, user_id=USER_ID)
-            chat2 = build_agent(zep, thread_id)
-            recall = (await chat2("What do you know about me?")).lower()
-            if any(kw in recall for kw in keywords):
-                break
-            await asyncio.sleep(10)
+        search_tool = create_graph_search_tool(zep, user_id=USER_ID, scope="edges")
+        recall = str(await search_tool.ainvoke({"query": "Where does IntegTest work?"})).lower()
         assert any(kw in recall for kw in keywords), f"no recall in: {recall}"
     finally:
         try:
