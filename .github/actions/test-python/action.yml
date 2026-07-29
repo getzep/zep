@@ -42,7 +42,7 @@ runs:
       working-directory: ${{ steps.paths.outputs.dir }}
       run: |
         uv run ruff check .
-        uv run ruff format --check .
+        uv run ruff format --check --extend-exclude '*.md' .
 
     - name: Run type checking
       shell: bash
