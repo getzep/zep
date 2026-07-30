@@ -6,11 +6,6 @@ name: Release Ingestion Package
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version without the v prefix (e.g. 0.1.0)'
-        required: true
-        type: string
 
 concurrency:
   group: release-zep-ingest
@@ -32,14 +27,12 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 1
       - id: release
-        env:
-          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
             echo "Ingestion releases must be dispatched from main (got '$GITHUB_REF')." >&2
             exit 1
           fi
-          VERSION="$INPUT_VERSION"
+          VERSION="$(python3 -c 'import tomllib; print(tomllib.load(open("ingestion/pyproject.toml", "rb"))["project"]["version"])')"
           RELEASE_TAG="zep-ingest-v$VERSION"
 
           if [[ ! "$RELEASE_TAG" =~ ^zep-ingest-v[0-9]+(\.[0-9]+)*([-.][0-9A-Za-z.-]+)?$ ]]; then
@@ -48,11 +41,6 @@ jobs:
           fi
 
           HEAD_SHA="$(git rev-parse HEAD)"
-          PACKAGE_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("ingestion/pyproject.toml", "rb"))["project"]["version"])')"
-          if [[ "$PACKAGE_VERSION" != "$VERSION" ]]; then
-            echo "ingestion/pyproject.toml declares '$PACKAGE_VERSION', not '$VERSION'." >&2
-            exit 1
-          fi
 
           TAG_REF="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG")"
           if [[ -n "$TAG_REF" ]]; then
