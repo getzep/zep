@@ -52,14 +52,13 @@ proxy. For example, ADK version `0.1.0` is consumed with
 
 ### `release-ingestion.yml` — ingestion package releases
 
-Triggered only by a published GitHub Release whose tag matches
-`zep-ingest-v<version>`. The workflow resolves and archives the release event's
-exact commit once, then tests that source on Python 3.11–3.13, builds it, checks
-that `ingestion/pyproject.toml` matches the tag version, and publishes
-`zep-ingest` to PyPI through trusted publishing.
-
-There is no manual arbitrary-ref publishing path. To release version `0.1.0`,
-publish the GitHub Release for tag `zep-ingest-v0.1.0`.
+Triggered only by manual dispatch from `main`. Enter the version from
+`ingestion/pyproject.toml` without the `v` prefix (for example, `0.1.0`). The
+workflow resolves and archives the exact commit once, tests that source on
+Python 3.11–3.13, builds it, and checks that the declared package version
+matches the input. After the `release` environment is approved, it creates the
+`zep-ingest-v<version>` tag and GitHub Release, then publishes `zep-ingest` to
+PyPI through trusted publishing.
 
 ## Setup requirements
 
