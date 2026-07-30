@@ -55,7 +55,7 @@ Quick start (primary path)::
         return {"messages": [response]}
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __author__ = "Zep AI"
 __description__ = "LangGraph integration for Zep"
 

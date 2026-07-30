@@ -56,7 +56,7 @@ Usage:
     )
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 __author__ = "Zep AI"
 __description__ = "Google ADK integration for Zep"
 
