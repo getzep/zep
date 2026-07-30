@@ -1,6 +1,6 @@
 [project]
 name = "zep-crewai"
-version = "1.2.0"
+version = "1.2.1"
 description = "CrewAI integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.1 (2026-07-29)
+
 ### Added
 
 - Added the `py.typed` marker so installed `zep-ms-agent-framework` packages expose their inline type annotations to PEP 561-compatible type checkers.

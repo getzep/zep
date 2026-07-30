@@ -1,6 +1,6 @@
 [project]
 name = "zep-autogen"
-version = "1.2.0"
+version = "1.2.1"
 description = "Autogen integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"

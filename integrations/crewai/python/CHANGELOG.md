@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-07-29
+
 ### Added
 
 - Added the `py.typed` marker so installed `zep-crewai` packages expose their inline type annotations to PEP 561-compatible type checkers.

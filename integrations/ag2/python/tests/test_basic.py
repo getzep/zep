@@ -121,7 +121,7 @@ class TestImports:
         import zep_ag2
 
         assert hasattr(zep_ag2, "__version__")
-        assert zep_ag2.__version__ == "0.2.0"
+        assert zep_ag2.__version__ == "0.2.1"
 
     def test_all_public_symbols(self) -> None:
         assert ZepMemoryManager is not None

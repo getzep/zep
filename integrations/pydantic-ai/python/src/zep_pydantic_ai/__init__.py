@@ -60,7 +60,7 @@ Usage::
 
 from .exceptions import ZepDependencyError
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __author__ = "Zep AI"
 __description__ = "Pydantic AI integration for Zep"
 
