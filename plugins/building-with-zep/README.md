@@ -1,6 +1,21 @@
-# building-with-zep
+# Build with Zep
 
-A plugin for building applications that use [Zep](https://www.getzep.com) — agent memory built on temporal Context Graphs. This one directory is simultaneously a Claude Code plugin, an OpenAI Codex plugin, and a Cursor plugin, wrapping a single shared skill.
+The Build with Zep plugin helps Claude Code, Codex, and Cursor build applications
+with [Zep](https://www.getzep.com).
+
+## User documentation
+
+For installation, usage, supported agents, and an overview of what the plugin
+does, see [Implement Zep with agents](https://help.getzep.com/implement-zep-with-agents).
+That page is the canonical user-facing documentation for this plugin.
+
+This README contains contributor and maintainer information that belongs beside
+the plugin source.
+
+## What this directory contains
+
+This one directory is simultaneously a Claude Code plugin, an OpenAI Codex
+plugin, and a Cursor plugin, wrapping a single shared skill.
 
 It bundles two things:
 
@@ -30,33 +45,6 @@ Declaring the server inline under `mcpServers` in `.cursor-plugin/plugin.json` i
 
 **Both files point at `https://docs-mcp.getzep.com/mcp`. Change one and you must change the other.**
 
-## Install
-
-**Claude Code** — this repo's root is a marketplace named `zep`:
-
-```bash
-/plugin marketplace add getzep/zep
-/plugin install building-with-zep@zep
-```
-
-Local dev: `claude --plugin-dir plugins/building-with-zep`.
-
-**Codex** — install per the [Codex plugins docs](https://learn.chatgpt.com/docs/build-plugins) via the marketplace at `.agents/plugins/marketplace.json`.
-
-**Cursor** — requires Cursor 2.5 or later. In an Agent chat, type the full command; it does not appear in autocomplete:
-
-```
-/add-plugin building-with-zep@https://github.com/getzep/zep
-```
-
-This resolves `building-with-zep` through `.cursor-plugin/marketplace.json` at the repo root, and installs the skill and the `zep-docs` server (from `mcp.json`) together. No Cursor Marketplace listing is involved.
-
-Local dev: symlink the plugin directory into Cursor's local plugin folder, then run **Developer: Reload Window**.
-
-```bash
-ln -s "$PWD/plugins/building-with-zep" ~/.cursor/plugins/local/building-with-zep
-```
-
 ## Contents
 
 ```
@@ -70,8 +58,22 @@ plugins/building-with-zep/
 │   └── building-with-zep/
 │       ├── SKILL.md             # the one shared skill
 │       └── references/          # empty initially
+├── AGENTS.md                    # scoped maintainer instructions for coding agents
+├── CHANGELOG.md
 └── README.md
 ```
+
+Maintainer tooling lives at `scripts/plugin_manifests.py` in the repo root, not here:
+this directory is copied wholesale into every user's plugin cache.
+
+`AGENTS.md` deliberately repeats the maintainer guidance in this README so coding
+agents receive it without another file read. The repository-root `AGENTS.md`
+directs Codex agents launched from the workspace root to load these scoped
+instructions before changing the plugin. Claude Code receives the same guidance
+from the path-scoped `.claude/rules/building-with-zep.md` file at the repository
+root. It lives outside the plugin because Claude's strict plugin validator rejects
+a plugin-root `CLAUDE.md`: installed plugins load agent context from skills, not
+from that file.
 
 > MCP note: `.mcp.json` uses `{"type":"http","url":...}`. Claude requires the
 > `type`; Codex uses the `url` and should ignore the `type` key. Verify the
@@ -79,6 +81,94 @@ plugins/building-with-zep/
 > `type`, move Claude's MCP inline into `.claude-plugin/plugin.json` and keep
 > `.mcp.json` as a bare-`url` Codex-only file. Cursor reads `mcp.json` instead
 > and is unaffected either way.
+
+## Local development
+
+Load the plugin directly in Claude Code:
+
+```bash
+claude --plugin-dir plugins/building-with-zep
+```
+
+For Cursor, symlink the plugin directory into Cursor's local plugin folder, then
+run **Developer: Reload Window**:
+
+```bash
+ln -s "$PWD/plugins/building-with-zep" ~/.cursor/plugins/local/building-with-zep
+```
+
+## Releasing
+
+The marketplace *is* this git repository, so there is no publish step — merging to
+`main` is the release. For Claude Code, the explicit `version` decides whether
+users actually **receive** a new cached copy. Pushing plugin changes without
+increasing it leaves Claude Code users on the old release, including users with
+auto-update enabled. Two changes already shipped under the same `0.1.0` string
+this way ([CHANGELOG.md](CHANGELOG.md)).
+
+`version` lives in the three ecosystem plugin manifests, and one command bumps
+all of them:
+
+```bash
+python3 scripts/plugin_manifests.py set 0.3.0
+```
+
+| File | Read by |
+|---|---|
+| `.claude-plugin/plugin.json` | Claude Code |
+| `.codex-plugin/plugin.json` | Codex |
+| `.cursor-plugin/plugin.json` | Cursor |
+
+The root marketplace entries deliberately declare **no** `version`: each ecosystem
+resolves it from its own `plugin.json`, so a second copy is dead weight that can
+mask a real bump. [`test-plugins.yml`](../../.github/workflows/test-plugins.yml)
+fails if one reappears, if the three managed versions drift apart, or if the two MCP
+configs stop agreeing on the `zep-docs` endpoint. It also fails when a PR changes
+loaded plugin content without a **semantic version increase**, except `README.md`,
+`CHANGELOG.md`, and the maintainer-only `AGENTS.md`. The workflow also verifies
+that `AGENTS.md` and Claude's path-scoped copy contain identical instructions.
+
+That check is **advisory, not required** — a failure shows as a red check on the pull
+request but leaves the merge button enabled. Forgetting step 1 warns you before you
+merge; it does not stop you.
+
+Full procedure:
+
+1. `python3 scripts/plugin_manifests.py set <version>`, from the repo root
+2. Add a [CHANGELOG.md](CHANGELOG.md) entry — no ecosystem has changelog plumbing,
+   so this file is the only release note users get
+3. `claude plugin validate plugins/building-with-zep --strict`
+4. Open the PR; `test-plugins.yml` re-checks agreement and flags a missing increase
+
+Merging step 4 is the release. There is no step 5.
+
+Plugins are deliberately **not tagged**, unlike everything else released from this
+repo. The `zep-ingest-v<version>` and `zep-<framework>-<language>-v<version>` schemes
+are functional: publishing a GitHub Release for one of those tags is what fires the
+PyPI upload, and CI checks the tag against the package metadata before publishing.
+Plugins have no publish workflow for a tag to trigger, so one would be a marker
+nothing reads. `claude plugin tag` would create `building-with-zep--v<version>`, and
+nothing would consume it. If a plugin ever declares a semver-range dependency on this
+one, tag the historical release commits at that point — `git tag` works retroactively
+on any commit.
+
+### Why explicit semver rather than commit SHAs
+
+Omitting `version` everywhere makes Claude Code fall back to the git commit SHA, so
+every merge reaches users with no bump to remember. Tempting, and wrong here:
+
+- **The source is a relative path inside a monorepo.** The SHA that resolves is this
+  repository's, not the plugin directory's, so commits to `ingestion/`,
+  `integrations/`, or the eval harness would each register as a new plugin version —
+  re-downloading the plugin and prompting `/reload-plugins` for changes that touched
+  nothing the user has.
+- **Only Claude Code documents the fallback.** Cursor lists `version` as optional but
+  documents no SHA behavior, and Codex documents neither, so dropping it would leave a
+  split release model across the three ecosystems.
+- **Semver is a support handle.** "Which version are you on?" stays answerable.
+
+The cost is a bump that must not be forgotten — which is what the script and the CI
+check exist to enforce.
 
 ## What goes in the skill vs. the docs
 

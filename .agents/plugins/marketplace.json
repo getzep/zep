@@ -11,8 +11,7 @@
         "source": "local",
         "path": "./plugins/building-with-zep"
       },
-      "description": "Skill plus the Zep documentation MCP server for building apps on Zep.",
-      "version": "0.1.0"
+      "description": "Skill plus the Zep documentation MCP server for building apps on Zep."
     }
   ]
 }

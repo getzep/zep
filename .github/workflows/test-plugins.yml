@@ -1,0 +1,81 @@
+name: Test Plugins
+
+on:
+  pull_request:
+    paths:
+      - 'plugins/**'
+      - '.claude-plugin/marketplace.json'
+      - '.cursor-plugin/marketplace.json'
+      - '.agents/plugins/marketplace.json'
+      - '.claude/rules/building-with-zep.md'
+      - 'scripts/plugin_manifests.py'
+      - '.github/workflows/test-plugins.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0 # the bump check diffs against the base branch
+
+      # Parses every plugin and marketplace manifest, then asserts the values that
+      # are necessarily duplicated across the three ecosystems still agree: the
+      # shared release version and the zep-docs MCP endpoint. It also rejects
+      # redundant marketplace versions. Stdlib only — no setup step needed.
+      - name: Check plugin manifests agree
+        run: python3 scripts/plugin_manifests.py --check
+
+      # Codex reads the nested AGENTS.md, while Claude loads the path-scoped rule.
+      # Keep their actual instructions byte-for-byte identical; the first five
+      # lines of the Claude rule are its path-scoping frontmatter.
+      - name: Check agent instructions agree
+        run: tail -n +6 .claude/rules/building-with-zep.md | diff -u plugins/building-with-zep/AGENTS.md -
+
+      # Claude Code uses the explicit version for update detection. Two changes
+      # already shipped under 0.1.0 (#566, #567), so require a semantic version
+      # increase whenever the plugin's loaded content changes. Maintainer-only
+      # Markdown files are exempt because installed plugins do not load them.
+      - name: Require a newer version when plugin content changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          base="origin/${BASE_REF}"
+          manifest=plugins/building-with-zep/.claude-plugin/plugin.json
+
+          changed=$(git diff --name-only "$base"...HEAD -- plugins/building-with-zep/ \
+            ':!plugins/building-with-zep/README.md' \
+            ':!plugins/building-with-zep/CHANGELOG.md' \
+            ':!plugins/building-with-zep/AGENTS.md')
+          if [ -z "$changed" ]; then
+            echo "No change to the plugin's loaded content; no bump required."
+            exit 0
+          fi
+
+          new=$(python3 scripts/plugin_manifests.py version)
+          old=$(git show "$base:$manifest" 2>/dev/null \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))' \
+            || echo "")
+
+          if [ -z "$old" ]; then
+            echo "No version on $base (new plugin?); nothing to compare."
+            exit 0
+          fi
+          if ! python3 scripts/plugin_manifests.py require-newer "$new" "$old"; then
+            echo "::error::Plugin content changed but its semantic version did not increase ($old -> $new)."
+            echo "::error::Claude Code would not deliver this as a newer explicit release."
+            echo "::error::Run: python3 scripts/plugin_manifests.py set <version>"
+            echo "Changed files:"
+            while IFS= read -r file; do
+              echo "  $file"
+            done <<< "$changed"
+            exit 1
+          fi
+          echo "Version increased for:"
+          while IFS= read -r file; do
+            echo "  $file"
+          done <<< "$changed"
