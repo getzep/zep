@@ -23,16 +23,14 @@ from zep_cloud.client import AsyncZep
 
 from config.constants import GEMINI_BASE_URL
 from config.evaluation_config.constants import (
-    DOC_ENTITIES_LIMIT,
-    DOC_EPISODES_LIMIT,
-    DOC_FACTS_LIMIT,
     LLM_JUDGE_MODEL,
     LLM_RESPONSE_MODEL,
-    USER_ENTITIES_LIMIT,
-    USER_EPISODES_LIMIT,
-    USER_FACTS_LIMIT,
 )
 from config.evaluation_config.response_prompt import get_response_system_prompt
+from config.evaluation_config.retrieval_strategy import (
+    build_context_block,
+    get_search_configuration,
+)
 from retry import retry_with_backoff
 
 
@@ -173,279 +171,9 @@ async def load_all_test_cases() -> Dict[str, List[Dict[str, Any]]]:
 
 
 # ============================================================================
-# Step 2: Graph Search
+# Step 2: Graph Search / Context Retrieval
 # ============================================================================
-
-
-async def perform_graph_search(
-    zep_client: AsyncZep,
-    user_id: str,
-    query: str,
-    include_episodes: bool = False,
-    doc_graph_id: str | None = None,
-) -> Dict[str, Any]:
-    """
-    Perform parallel graph search across the user graph and optionally a
-    standalone document graph. All searches run concurrently.
-
-    Args:
-        zep_client: AsyncZep client instance
-        user_id: User ID for user graph search
-        query: Search query string
-        include_episodes: Whether to search episodes (default: False)
-        doc_graph_id: If provided, also search this standalone graph
-
-    Returns:
-        Dictionary containing search results for all scopes
-    """
-    print(f"Searching [{user_id}]: '{query}'")
-
-    # Build all search tasks for maximum parallelism
-    tasks: dict[str, Any] = {}
-
-    # User graph searches
-    tasks["user_nodes"] = retry_with_backoff(
-        zep_client.graph.search,
-        user_id=user_id,
-        query=query,
-        scope="nodes",
-        limit=USER_ENTITIES_LIMIT,
-        reranker="cross_encoder",
-        description=f"search user nodes [{user_id}]",
-    )
-    tasks["user_edges"] = retry_with_backoff(
-        zep_client.graph.search,
-        user_id=user_id,
-        query=query,
-        scope="edges",
-        limit=USER_FACTS_LIMIT,
-        reranker="cross_encoder",
-        description=f"search user edges [{user_id}]",
-    )
-    if include_episodes:
-        tasks["user_episodes"] = retry_with_backoff(
-            zep_client.graph.search,
-            user_id=user_id,
-            query=query,
-            scope="episodes",
-            limit=USER_EPISODES_LIMIT,
-            reranker="cross_encoder",
-            description=f"search user episodes [{user_id}]",
-        )
-
-    # Standalone document graph searches (if enabled)
-    if doc_graph_id:
-        tasks["doc_nodes"] = retry_with_backoff(
-            zep_client.graph.search,
-            graph_id=doc_graph_id,
-            query=query,
-            scope="nodes",
-            limit=DOC_ENTITIES_LIMIT,
-            reranker="cross_encoder",
-            description=f"search doc nodes [{doc_graph_id}]",
-        )
-        tasks["doc_edges"] = retry_with_backoff(
-            zep_client.graph.search,
-            graph_id=doc_graph_id,
-            query=query,
-            scope="edges",
-            limit=DOC_FACTS_LIMIT,
-            reranker="cross_encoder",
-            description=f"search doc edges [{doc_graph_id}]",
-        )
-        if include_episodes:
-            tasks["doc_episodes"] = retry_with_backoff(
-                zep_client.graph.search,
-                graph_id=doc_graph_id,
-                query=query,
-                scope="episodes",
-                limit=DOC_EPISODES_LIMIT,
-                reranker="cross_encoder",
-                description=f"search doc episodes [{doc_graph_id}]",
-            )
-
-    # Execute all searches in parallel
-    keys = list(tasks.keys())
-    results_list = await asyncio.gather(*tasks.values())
-    results = dict(zip(keys, results_list))
-
-    return {
-        # User graph results
-        "nodes": results["user_nodes"],
-        "edges": results["user_edges"],
-        "episodes": results.get("user_episodes"),
-        # Document graph results (None if not searched)
-        "doc_nodes": results.get("doc_nodes"),
-        "doc_edges": results.get("doc_edges"),
-        "doc_episodes": results.get("doc_episodes"),
-    }
-
-
-def _format_edges(edges) -> list[str]:
-    """Format a list of edge results into context lines."""
-    parts = []
-    if edges:
-        for edge in edges:
-            fact = getattr(edge, "fact", "No fact available")
-            valid_at = getattr(edge, "valid_at", None)
-            invalid_at = getattr(edge, "invalid_at", None)
-            labels = getattr(edge, "labels", None)
-            attributes = getattr(edge, "attributes", None)
-
-            valid_at_str = valid_at if valid_at else "unknown"
-            invalid_at_str = invalid_at if invalid_at else "present"
-
-            parts.append(
-                f"{fact} (Date range: {valid_at_str} - {invalid_at_str})"
-            )
-
-            if labels and len(labels) > 0:
-                parts.append(f"  Labels: {', '.join(labels)}")
-
-            if attributes and isinstance(attributes, dict) and len(attributes) > 0:
-                parts.append(f"  Attributes:")
-                for attr_name, attr_value in attributes.items():
-                    parts.append(f"    {attr_name}: {attr_value}")
-
-            parts.append("")
-    else:
-        parts.append("No relevant facts found")
-    return parts
-
-
-def _format_nodes(nodes) -> list[str]:
-    """Format a list of node results into context lines."""
-    parts = []
-    if nodes:
-        for node in nodes:
-            name = getattr(node, "name", "Unknown")
-            labels = getattr(node, "labels", None)
-            attributes = getattr(node, "attributes", None)
-            summary = getattr(node, "summary", "No summary available")
-
-            parts.append(f"Name: {name}")
-
-            if labels and len(labels) > 0:
-                filtered_labels = (
-                    [l for l in labels if l != "Entity"] if len(labels) > 1 else labels
-                )
-                if filtered_labels:
-                    parts.append(f"Labels: {', '.join(filtered_labels)}")
-
-            if attributes and isinstance(attributes, dict) and len(attributes) > 0:
-                parts.append(f"Attributes:")
-                for attr_name, attr_value in attributes.items():
-                    parts.append(f"  {attr_name}: {attr_value}")
-
-            parts.append(f"Summary: {summary}")
-            parts.append("")
-    else:
-        parts.append("No relevant entities found")
-    return parts
-
-
-def _format_episodes(episodes) -> list[str]:
-    """Format a list of episode results into context lines."""
-    parts = []
-    if episodes:
-        for episode in episodes:
-            content = getattr(episode, "content", "No content available")
-            created_at = getattr(episode, "created_at", "Unknown date")
-            parts.append(f"({created_at}) {content}")
-    else:
-        parts.append("No relevant episodes found")
-    return parts
-
-
-def construct_context_block(
-    search_results: Dict[str, Any],
-    user_summary: str | None = None,
-) -> str:
-    """
-    Construct a context block from graph search results.
-    Includes user summary, user graph results, and optionally document graph results.
-
-    Args:
-        search_results: Dictionary containing user and document graph results
-        user_summary: Optional user summary from the user node
-
-    Returns:
-        Formatted context block string for LLM consumption
-    """
-    context_parts = []
-
-    has_episodes = search_results.get("episodes") is not None
-    has_doc_results = search_results.get("doc_edges") is not None
-
-    # User summary
-    if user_summary:
-        context_parts.append("# High-level summary of the user")
-        context_parts.append("<USER_SUMMARY>")
-        context_parts.append(user_summary)
-        context_parts.append("</USER_SUMMARY>\n")
-
-    # --- User graph results ---
-    context_parts.append(
-        "FACTS, ENTITIES,"
-        + (" and EPISODES " if has_episodes else " ")
-        + "represent relevant context from the user's knowledge graph.\n"
-    )
-
-    # Facts
-    context_parts.append("# These are the most relevant facts about the user")
-    context_parts.append('# Facts ending in "present" are currently valid')
-    context_parts.append("# Facts with a past end date are NO LONGER VALID.")
-    context_parts.append("<FACTS>")
-    edges = getattr(search_results["edges"], "edges", [])
-    context_parts.extend(_format_edges(edges))
-    context_parts.append("</FACTS>\n")
-
-    # Entities
-    context_parts.append(
-        "# These are the most relevant entities (people, locations, organizations, items, and more)."
-    )
-    context_parts.append("<ENTITIES>")
-    nodes = getattr(search_results["nodes"], "nodes", [])
-    context_parts.extend(_format_nodes(nodes))
-    context_parts.append("</ENTITIES>")
-
-    # Episodes (optional)
-    if has_episodes:
-        context_parts.append("\n# These are the most relevant episodes")
-        context_parts.append("<EPISODES>")
-        episodes = getattr(search_results["episodes"], "episodes", [])
-        context_parts.extend(_format_episodes(episodes))
-        context_parts.append("</EPISODES>")
-
-    # --- Document graph results (optional) ---
-    if has_doc_results:
-        has_doc_episodes = search_results.get("doc_episodes") is not None
-
-        context_parts.append("\n")
-        context_parts.append(
-            "The following FACTS and ENTITIES are from shared reference documents.\n"
-        )
-
-        context_parts.append("# Reference document facts")
-        context_parts.append("<DOCUMENT_FACTS>")
-        doc_edges = getattr(search_results["doc_edges"], "edges", [])
-        context_parts.extend(_format_edges(doc_edges))
-        context_parts.append("</DOCUMENT_FACTS>\n")
-
-        context_parts.append("# Reference document entities")
-        context_parts.append("<DOCUMENT_ENTITIES>")
-        doc_nodes = getattr(search_results["doc_nodes"], "nodes", [])
-        context_parts.extend(_format_nodes(doc_nodes))
-        context_parts.append("</DOCUMENT_ENTITIES>")
-
-        if has_doc_episodes:
-            context_parts.append("\n# Reference document episodes")
-            context_parts.append("<DOCUMENT_EPISODES>")
-            doc_episodes = getattr(search_results["doc_episodes"], "episodes", [])
-            context_parts.extend(_format_episodes(doc_episodes))
-            context_parts.append("</DOCUMENT_EPISODES>")
-
-    return "\n".join(context_parts)
+# Implemented by config.evaluation_config.retrieval_strategy.build_context_block
 
 
 # ============================================================================
@@ -694,7 +422,6 @@ async def process_single_query(
     query: str,
     golden_answer: str,
     doc_graph_id: str | None = None,
-    user_summary: str | None = None,
 ) -> Dict[str, Any]:
     """
     Process a single query through the complete pipeline:
@@ -707,19 +434,19 @@ async def process_single_query(
         query: Question to answer
         golden_answer: Expected answer for evaluation
         doc_graph_id: Optional standalone document graph to also search
-        user_summary: Optional user summary from the user node
 
     Returns:
         Dictionary containing all results for this query
     """
     start_time = time()
 
-    # Step 1: Search (user graph + optionally document graph, all in parallel)
-    include_episodes = USER_EPISODES_LIMIT > 0 or DOC_EPISODES_LIMIT > 0
-    search_results = await perform_graph_search(
-        zep_client, user_id, query, include_episodes=include_episodes, doc_graph_id=doc_graph_id
+    # Step 1: Retrieve context (strategy defined in retrieval_strategy.py)
+    context = await build_context_block(
+        zep_client,
+        user_id=user_id,
+        query=query,
+        doc_graph_id=doc_graph_id,
     )
-    context = construct_context_block(search_results, user_summary=user_summary)
     search_duration_ms = (time() - start_time) * 1000
 
     # Steps 2 & 3: Run completeness evaluation and response generation in parallel
@@ -854,21 +581,7 @@ async def evaluate_all_questions(
         # Warm the user's graph cache for low-latency search
         print(f"Warming graph cache for user {zep_user_id}...")
         await zep_client.user.warm(user_id=zep_user_id)
-        print(f"✓ Graph cache warmed for {zep_user_id}")
-
-        # Fetch user summary from the user node
-        user_summary = None
-        try:
-            user_node_response = await zep_client.user.get_node(user_id=zep_user_id)
-            if user_node_response.node:
-                user_summary = getattr(user_node_response.node, "summary", None)
-            if user_summary:
-                print(f"✓ User summary retrieved")
-            else:
-                print(f"  No user summary available")
-        except Exception as e:
-            print(f"  Could not retrieve user summary: {e}")
-        print()
+        print(f"✓ Graph cache warmed for {zep_user_id}\n")
 
         # Process all test cases concurrently, bounded by semaphore
         completed = 0
@@ -886,7 +599,6 @@ async def evaluate_all_questions(
                     query,
                     test_case["golden_answer"],
                     doc_graph_id=doc_graph_id,
-                    user_summary=user_summary,
                 )
             result["test_id"] = test_case.get("id")
             result["category"] = test_case.get("category")
@@ -1190,14 +902,7 @@ def save_results(
         "evaluation_timestamp": timestamp,
         "run_number": run_number,
         "parent_runs": parent_runs,
-        "search_configuration": {
-            "user_facts_limit": USER_FACTS_LIMIT,
-            "user_entities_limit": USER_ENTITIES_LIMIT,
-            "user_episodes_limit": USER_EPISODES_LIMIT,
-            "doc_facts_limit": DOC_FACTS_LIMIT,
-            "doc_entities_limit": DOC_ENTITIES_LIMIT,
-            "doc_episodes_limit": DOC_EPISODES_LIMIT,
-        },
+        "search_configuration": get_search_configuration(),
         "model_configuration": {
             "response_model": LLM_RESPONSE_MODEL,
             "judge_model": LLM_JUDGE_MODEL,
