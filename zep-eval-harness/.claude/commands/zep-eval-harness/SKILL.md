@@ -40,7 +40,7 @@ Metrics are calculated in aggregate, per-category (based on test case `category`
 
 ### Context Block: Auto Search
 
-The evaluation script retrieves context via `build_context_block()` in `config/evaluation_config/retrieval_strategy.py`. The default strategy uses `scope="auto"` with `MAX_CHARACTERS = 10000`, and prepends the user-node summary (fetched separately — auto search does not include it).
+The evaluation script retrieves context via `build_context_block()` in `config/evaluation_config/retrieval_strategy.py`. The default strategy uses `scope="auto"` with `MAX_CHARACTERS = 10000`, and prepends the user-node summary (fetched once per user via `fetch_user_summary` — auto search does not include it).
 
 Auto search packs relevant edges (facts), nodes (entities), episodes, observations, and thread summaries into a pre-assembled context string. ``limit`` and ``reranker`` do not apply under auto — volume is controlled by the character budget.
 

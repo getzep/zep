@@ -398,7 +398,7 @@ Retrieval is defined by a single module: `config/evaluation_config/retrieval_str
 Default strategy:
 - `SCOPE = "auto"`: Zep packs edges, nodes, episodes, observations, and thread summaries into a pre-assembled context string
 - `MAX_CHARACTERS = 10000`: character budget for auto search (``limit`` and ``reranker`` do not apply under auto)
-- User-node summary is fetched via `user.get_node()` and prepended (auto search does not include it)
+- User-node summary is fetched once per user via `fetch_user_summary()` and prepended (auto search does not include it)
 
 LLM models remain in `config/evaluation_config/constants.py`:
 - `LLM_RESPONSE_MODEL`: Model for generating responses

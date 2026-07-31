@@ -8,8 +8,8 @@ change search behavior — there is no separate per-scope limit/reranker config.
 Default: ``scope="auto"`` with a 10k character budget. Auto search packs edges,
 nodes, episodes, observations, and thread summaries into a pre-assembled
 ``result.context`` string. ``limit`` and ``reranker`` do not apply under auto.
-The user-node summary is fetched separately and prepended (auto search does
-not include it).
+The user-node summary is fetched separately (once per user by the eval loop)
+and prepended — auto search does not include it.
 """
 
 from __future__ import annotations
@@ -36,8 +36,12 @@ def get_search_configuration() -> dict:
     }
 
 
-async def _fetch_user_summary(zep_client: AsyncZep, user_id: str) -> str | None:
-    """Fetch the user-node summary, or None if unavailable."""
+async def fetch_user_summary(zep_client: AsyncZep, user_id: str) -> str | None:
+    """Fetch the user-node summary, or None if unavailable.
+
+    Call once per user and pass the result into ``build_context_block`` so
+    concurrent queries do not repeat ``user.get_node``.
+    """
     try:
         user_node_response = await retry_with_backoff(
             zep_client.user.get_node,
@@ -59,17 +63,17 @@ async def build_context_block(
     user_id: str,
     query: str,
     doc_graph_id: str | None = None,
+    user_summary: str | None = None,
 ) -> str:
     """
     Retrieve a context block for ``query`` using the configured strategy.
 
-    Fetches the user-node summary, runs auto search on the user graph, and
-    optionally auto-searches a standalone document graph in parallel. Assembles
-    summary + Zep's materialized ``context`` string(s).
+    Runs auto search on the user graph, and optionally on a standalone document
+    graph in parallel. Prepends ``user_summary`` when provided (fetch it once
+    per user via ``fetch_user_summary``).
     """
     print(f"Searching [{user_id}]: '{query}' (scope={SCOPE}, max_characters={MAX_CHARACTERS})")
 
-    summary_task = _fetch_user_summary(zep_client, user_id)
     user_task = retry_with_backoff(
         zep_client.graph.search,
         user_id=user_id,
@@ -88,11 +92,9 @@ async def build_context_block(
             max_characters=MAX_CHARACTERS,
             description=f"auto search doc [{doc_graph_id}]",
         )
-        user_summary, user_result, doc_result = await asyncio.gather(
-            summary_task, user_task, doc_task
-        )
+        user_result, doc_result = await asyncio.gather(user_task, doc_task)
     else:
-        user_summary, user_result = await asyncio.gather(summary_task, user_task)
+        user_result = await user_task
         doc_result = None
 
     parts: list[str] = []

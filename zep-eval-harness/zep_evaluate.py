@@ -29,6 +29,7 @@ from config.evaluation_config.constants import (
 from config.evaluation_config.response_prompt import get_response_system_prompt
 from config.evaluation_config.retrieval_strategy import (
     build_context_block,
+    fetch_user_summary,
     get_search_configuration,
 )
 from retry import retry_with_backoff
@@ -422,6 +423,7 @@ async def process_single_query(
     query: str,
     golden_answer: str,
     doc_graph_id: str | None = None,
+    user_summary: str | None = None,
 ) -> Dict[str, Any]:
     """
     Process a single query through the complete pipeline:
@@ -434,6 +436,7 @@ async def process_single_query(
         query: Question to answer
         golden_answer: Expected answer for evaluation
         doc_graph_id: Optional standalone document graph to also search
+        user_summary: Optional user-node summary (fetched once per user)
 
     Returns:
         Dictionary containing all results for this query
@@ -446,6 +449,7 @@ async def process_single_query(
         user_id=user_id,
         query=query,
         doc_graph_id=doc_graph_id,
+        user_summary=user_summary,
     )
     search_duration_ms = (time() - start_time) * 1000
 
@@ -581,7 +585,15 @@ async def evaluate_all_questions(
         # Warm the user's graph cache for low-latency search
         print(f"Warming graph cache for user {zep_user_id}...")
         await zep_client.user.warm(user_id=zep_user_id)
-        print(f"✓ Graph cache warmed for {zep_user_id}\n")
+        print(f"✓ Graph cache warmed for {zep_user_id}")
+
+        # Fetch user summary once per user (reused across concurrent queries)
+        user_summary = await fetch_user_summary(zep_client, zep_user_id)
+        if user_summary:
+            print(f"✓ User summary retrieved")
+        else:
+            print(f"  No user summary available")
+        print()
 
         # Process all test cases concurrently, bounded by semaphore
         completed = 0
@@ -599,6 +611,7 @@ async def evaluate_all_questions(
                     query,
                     test_case["golden_answer"],
                     doc_graph_id=doc_graph_id,
+                    user_summary=user_summary,
                 )
             result["test_id"] = test_case.get("id")
             result["category"] = test_case.get("category")
