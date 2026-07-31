@@ -174,20 +174,20 @@ Rate limits are handled automatically — if you hit limits, the retry backoff w
 
 ### Pipeline Steps (automated in zep_evaluate.py)
 
-1. **Search**: Query Zep's knowledge graph (nodes, edges) using cross-encoder reranker
+1. **Search**: Query Zep's knowledge graph with ``scope="auto"`` (character-budgeted context block)
 2. **Evaluate Context**: Assess whether retrieved context contains sufficient information (PRIMARY METRIC)
 3. **Generate Response**: Use LLM with retrieved context to answer questions
 4. **Grade Answer**: Evaluate answers against golden answers using LLM judge (SECONDARY METRIC)
 
 ### Scope: Single-Shot Retrieval
 
-**This harness evaluates single-shot retrieval only.** Each test case issues one fixed batch of searches — the raw test question against nodes and edges (plus episodes if enabled), across the user graph and any document graph, all in parallel — assembles the results into a context block, and hands it to the response model in a single turn. There is no second retrieval round and no query reformulation. That mirrors *deterministic/programmatic* retrieval, where your application searches on every turn and injects the context itself.
+**This harness evaluates single-shot retrieval only.** Each test case issues one retrieval — the raw test question via auto search on the user graph (and any document graph), using the strategy in `config/evaluation_config/retrieval_strategy.py` — and hands the resulting context block to the response model in a single turn. There is no second retrieval round and no query reformulation. That mirrors *deterministic/programmatic* retrieval, where your application searches on every turn and injects the context itself.
 
 Production agents are frequently built the other way: Zep is exposed to the model as **tools** — for example `search_graph` from the [Zep MCP server](../mcp/zep-mcp-server/), or your own tool definitions — and the LLM decides when to search, how to phrase each query, and whether to search again after seeing results.
 
 Read the scores accordingly:
 
-- **What they measure**: whether your ingestion and search configuration (ontology, custom instructions, chunking, search limits, reranker) puts the right facts within reach of one well-formed query. Pinning retrieval to a single deterministic search is what keeps runs comparable — the config stays the only variable.
+- **What they measure**: whether your ingestion and retrieval strategy (ontology, custom instructions, chunking, auto-search character budget) puts the right facts within reach of one well-formed query. Pinning retrieval to a single deterministic search is what keeps runs comparable — the config stays the only variable.
 - **What they do not measure**: agent behavior. A tool-based agent can beat these numbers by issuing several targeted searches and reformulating after a weak result, or fall short of them by not searching at all, phrasing a query poorly, or running out of turns. Tool choice, query formulation, and multi-turn dynamics are untested here.
 
 If your production path exposes Zep through tools, treat a strong result here as a prerequisite rather than a verdict, and evaluate the agent end-to-end as well. See [Evaluate Zep for your use case](https://help.getzep.com/evaluate-zep-for-your-use-case).
@@ -210,11 +210,12 @@ config/
 ├── document_chunking_config/
 │   └── constants.py                          # CHUNK_SIZE, CHUNK_OVERLAP, LLM_CONTEXTUALIZATION_MODEL
 └── evaluation_config/
-    ├── constants.py                          # Search limits, LLM_RESPONSE_MODEL, LLM_JUDGE_MODEL
+    ├── constants.py                          # LLM_RESPONSE_MODEL, LLM_JUDGE_MODEL
+    ├── retrieval_strategy.py                 # build_context_block() — retrieval + context assembly
     └── response_prompt.py                    # get_response_system_prompt() — the system prompt for AI responses
 ```
 
-Each script imports only from its relevant config subfolder. The response prompt used during evaluation is defined in `config/evaluation_config/response_prompt.py` and can be customized independently from the evaluation logic.
+Each script imports only from its relevant config subfolder. The response prompt used during evaluation is defined in `config/evaluation_config/response_prompt.py` and can be customized independently from the evaluation logic. Retrieval behavior lives entirely in `retrieval_strategy.py`.
 
 ## Run Tracking
 
@@ -390,15 +391,16 @@ To add more users:
 
 ## Advanced Evaluation
 
-### Tune Zep Search Parameters
+### Tune Zep Retrieval Strategy
 
-The evaluation script uses `cross_encoder` reranker by default for best accuracy. Search parameters and LLM models are configured in `config/evaluation_config/constants.py`:
-- `USER_FACTS_LIMIT = 20`: Number of facts (edges) from user graph
-- `USER_ENTITIES_LIMIT = 10`: Number of entities (nodes) from user graph
-- `USER_EPISODES_LIMIT = 0`: User episodes disabled by default (set >0 to enable)
-- `DOC_FACTS_LIMIT = 10`: Number of facts from document graph
-- `DOC_ENTITIES_LIMIT = 5`: Number of entities from document graph
-- `DOC_EPISODES_LIMIT = 0`: Document episodes disabled by default
+Retrieval is defined by a single module: `config/evaluation_config/retrieval_strategy.py`. Its `build_context_block()` function is the source of truth — edit that function (and the constants it uses) to change how context is retrieved and assembled.
+
+Default strategy:
+- `SCOPE = "auto"`: Zep packs edges, nodes, episodes, observations, and thread summaries into a pre-assembled context string
+- `MAX_CHARACTERS = 10000`: character budget for auto search (``limit`` and ``reranker`` do not apply under auto)
+- User-node summary is fetched once per user via `fetch_user_summary()` and prepended (auto search does not include it)
+
+LLM models remain in `config/evaluation_config/constants.py`:
 - `LLM_RESPONSE_MODEL`: Model for generating responses
 - `LLM_JUDGE_MODEL`: Model for grading answers
 
@@ -407,20 +409,15 @@ Chunking-specific constants are in `config/document_chunking_config/constants.py
 - `CHUNK_OVERLAP`: Characters of overlap between consecutive chunks (default: 100)
 - `LLM_CONTEXTUALIZATION_MODEL`: Model for document chunk contextualization
 
-You can experiment with different rerankers by modifying the `reranker` parameter in `perform_graph_search()`:
-- `cross_encoder`: Best accuracy, slower (default)
-- `rrf`: Reciprocal Rank Fusion, balanced
-- `mmr`: Maximal Marginal Relevance, diversity-focused
-
-For guidance, check out the [Searching the Graph documentation](https://help.getzep.com/searching-the-graph).
+For guidance, check out the [Searching the Graph documentation](https://help.getzep.com/searching-the-graph) (including Auto Search).
 
 ### Customize Response Prompt
 
 The system prompt used when generating AI responses during evaluation is defined in `config/evaluation_config/response_prompt.py`. Edit the `get_response_system_prompt()` function to customize the AI's persona, response style, or instructions for your use case. This is snapshotted into each evaluation run for reproducibility.
 
-### Customize Context Block
+### Customize Context Block / Retrieval
 
-The harness constructs a custom context block from graph search results. You can modify the `construct_context_block()` function in `zep_evaluate.py` to format results differently. See the [Customize Your Context Block documentation](https://help.getzep.com/cookbook/customize-your-context-block) for best practices.
+Change retrieval by editing `build_context_block()` in `config/evaluation_config/retrieval_strategy.py`. For example, you can switch to manual multi-scope searches with per-type limits and a chosen reranker, or adjust the auto-search character budget. See the [Customize Your Context Block documentation](https://help.getzep.com/cookbook/customize-your-context-block) and [Searching the Graph](https://help.getzep.com/searching-the-graph) for best practices.
 
 ### Add JSON/Text Data
 
@@ -485,12 +482,9 @@ Results are saved to `runs/evaluations/{run_number}_{timestamp}/results.json` wi
     "document_run": { "run_number": 1, "run_dir": "runs/documents/1_20260331T222500", "graph_id": "zep_eval_shared_documents_1d4d9a28" }
   },
   "search_configuration": {
-    "user_facts_limit": 20,
-    "user_entities_limit": 10,
-    "user_episodes_limit": 0,
-    "doc_facts_limit": 10,
-    "doc_entities_limit": 5,
-    "doc_episodes_limit": 0
+    "strategy": "auto_search",
+    "scope": "auto",
+    "max_characters": 10000
   },
   "model_configuration": {
     "response_model": "gemini-2.5-flash-lite",

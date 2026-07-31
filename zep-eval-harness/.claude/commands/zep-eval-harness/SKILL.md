@@ -15,7 +15,7 @@ The pipeline has four steps:
 
 ### Scope: Single-Shot Retrieval
 
-**The harness evaluates single-shot retrieval only.** Every test case issues one fixed batch of scoped searches from the raw test question (nodes + edges, optionally episodes, across the user graph and any document graph), then hands the resulting context block to the response model in a single turn — no second retrieval round, no query reformulation. This mirrors deterministic/programmatic retrieval, not the tool-based pattern where an agent is handed Zep search tools (e.g. `search_graph` from the Zep MCP server) and decides when and what to search.
+**The harness evaluates single-shot retrieval only.** Every test case issues one retrieval from the raw test question via auto search (`config/evaluation_config/retrieval_strategy.py`), then hands the resulting context block to the response model in a single turn — no second retrieval round, no query reformulation. This mirrors deterministic/programmatic retrieval, not the tool-based pattern where an agent is handed Zep search tools (e.g. `search_graph` from the Zep MCP server) and decides when and what to search.
 
 That makes the harness a clean instrument for the ingestion and search configuration, but it says nothing about agent tool-use behavior. A tool-based agent may do better (several targeted searches, reformulating after a weak result) or worse (never searching, poorly phrased queries, running out of turns). When reporting results, scope conclusions to the config under test and never present them as a prediction of production agent performance.
 
@@ -28,7 +28,7 @@ That makes the harness a clean instrument for the ingestion and search configura
 
 This is the metric that matters most. It directly measures Zep's retrieval quality — whether the knowledge graph and search surface the right facts, entities, and relationships.
 
-When completeness is low, the key diagnostic question is: **does the graph contain the right information but search failed to retrieve it, or is the information missing from the graph entirely?** Use `zep_graph_inspect.py` to examine what's actually in the graph. If the information is there but not retrieved, the issue is search configuration (limits, reranker, query phrasing). If the information is absent from the graph, the issue is upstream — ingestion, ontology, or custom instructions need adjustment.
+When completeness is low, the key diagnostic question is: **does the graph contain the right information but search failed to retrieve it, or is the information missing from the graph entirely?** Use `zep_graph_inspect.py` to examine what's actually in the graph. If the information is there but not retrieved, the issue is retrieval strategy (auto-search character budget, query phrasing). If the information is absent from the graph, the issue is upstream — ingestion, ontology, or custom instructions need adjustment.
 
 **Answer Accuracy (SECONDARY)** — Did the LLM produce a correct answer from the retrieved context?
 - **CORRECT**: Answer conveys the same key information as the golden answer
@@ -38,15 +38,13 @@ This measures whether the response model uses the context well. It depends on th
 
 Metrics are calculated in aggregate, per-category (based on test case `category` field), and per-user.
 
-### Context Block: Edges vs Nodes vs Episodes
+### Context Block: Auto Search
 
-The evaluation script constructs a context block from graph search results. Understanding what each component contributes:
+The evaluation script retrieves context via `build_context_block()` in `config/evaluation_config/retrieval_strategy.py`. The default strategy uses `scope="auto"` with `MAX_CHARACTERS = 10000`, and prepends the user-node summary (fetched once per user via `fetch_user_summary` — auto search does not include it).
 
-- **Edges (facts)**: Relationships extracted by Zep between entities — e.g., "Sarah WORKS_FOR TechCorp", "Biscuit IS_OWNED_BY Sarah". These are the primary source of structured knowledge. Controlled by `USER_FACTS_LIMIT` / `DOC_FACTS_LIMIT`.
-- **Nodes (entities)**: Entity summaries — e.g., a Person node with name, relationship type, and a description synthesized from all conversations mentioning them. Controlled by `USER_ENTITIES_LIMIT` / `DOC_ENTITIES_LIMIT`.
-- **Episodes (raw data)**: The original messages, document chunks, or JSON data that was ingested. These provide verbatim source text but are bulkier. Disabled by default (`*_EPISODES_LIMIT = 0`). Enable by setting limits > 0 in `config/evaluation_config/constants.py`.
+Auto search packs relevant edges (facts), nodes (entities), episodes, observations, and thread summaries into a pre-assembled context string. ``limit`` and ``reranker`` do not apply under auto — volume is controlled by the character budget.
 
-Most evaluations work best with edges + nodes (structured, concise). Enable episodes when verbatim source text is needed for answering questions that require exact quotes or details not captured in the graph extraction.
+To change retrieval (e.g. manual multi-scope searches with per-type limits and a reranker), edit `build_context_block` in that module. That function is the source of truth for the strategy.
 
 All commands run from `zep-eval-harness/` using `uv run`. Depending on the user's request, either run the scripts directly or provide the terminal commands for the user.
 
@@ -76,7 +74,8 @@ config/
 ├── document_chunking_config/
 │   └── constants.py                    # CHUNK_SIZE, CHUNK_OVERLAP, LLM_CONTEXTUALIZATION_MODEL
 └── evaluation_config/
-    ├── constants.py                    # Search limits, LLM_RESPONSE_MODEL, LLM_JUDGE_MODEL
+    ├── constants.py                    # LLM_RESPONSE_MODEL, LLM_JUDGE_MODEL
+    ├── retrieval_strategy.py           # build_context_block() — retrieval + context assembly
     └── response_prompt.py              # get_response_system_prompt() — AI persona for eval
 ```
 
