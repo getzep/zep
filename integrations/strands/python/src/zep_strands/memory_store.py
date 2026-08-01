@@ -19,6 +19,30 @@ flush (or an explicit ``memory_manager.flush()``), nothing has been sent to
 Zep, so the graph builds later than turn-by-turn persistence would. After
 messages do reach Zep, ingestion is still asynchronous.
 
+Failure-handling contract
+-------------------------
+
+**Zep SDK errors propagate out of the store methods on purpose. Do not wrap
+them in ``try``/``except`` that returns an empty or ``None`` fallback** — in
+Strands the *framework* owns failure isolation, and swallowing breaks it:
+
+* :meth:`search` — ``MemoryManager.search`` gathers stores with
+  ``return_exceptions=True``, logs a failing store and skips it; context
+  injection additionally fails open. A Zep outage already degrades the turn to
+  a memoryless one without crashing the agent.
+* :meth:`add` — ``MemoryManager.add`` collects per-store failures into an
+  ``AggregateMemoryError`` specifically so a failed write is never silent.
+* :meth:`add_messages` — ``ExtractionCoordinator`` catches store exceptions
+  ("saving must never break the agent loop") and **rolls its per-store
+  high-water mark back so the batch retries**. Returning ``None`` after
+  swallowing an error would be read as success, advancing the mark and
+  discarding that batch permanently.
+
+This mirrors the SDK's own vended stores (``TestMemoryStore``,
+``BedrockKnowledgeBaseStore``), which raise rather than degrade. The one place
+this integration *does* swallow is the model-callable ``zep_search`` tool,
+which returns an error string — a raw tool has no framework layer above it.
+
 Attach it through a ``MemoryManager``::
 
     from strands import Agent
@@ -56,7 +80,11 @@ from strands.types.tools import AgentTool
 from zep_cloud import Message as ZepMessage
 from zep_cloud.client import AsyncZep
 
-from ._text import truncate_graph_data, truncate_message_content
+from ._text import (
+    GRAPH_DATA_TRUNCATE_LIMIT,
+    truncate_graph_data,
+    truncate_message_content,
+)
 from .provisioning import UserSetupHook
 from .provisioning import ensure_thread as _ensure_thread
 from .provisioning import ensure_user as _ensure_user
@@ -460,6 +488,14 @@ class ZepMemoryStore:
     async def add(self, content: str, metadata: Metadata | None = None) -> Any:
         """Add a single piece of content to the Zep graph via ``graph.add``.
 
+        ``text`` and ``message`` payloads over Zep's size limit are truncated
+        with a warning. ``json`` payloads are **not** truncated -- slicing JSON
+        strips its closing syntax and Zep would reject the result -- so an
+        oversize JSON document raises instead; split it before adding.
+
+        A Zep failure propagates to the caller by design; see the module
+        docstring for the failure-handling contract.
+
         Args:
             content: Text (or JSON string) to ingest.
             metadata: Optional metadata. Use ``metadata["type"]`` to select the
@@ -470,7 +506,8 @@ class ZepMemoryStore:
             The Zep episode created by ``graph.add``.
 
         Raises:
-            ValueError: If the store is not writable or ``content`` is empty.
+            ValueError: If the store is not writable, ``content`` is empty, or
+                a ``json`` payload exceeds the ``graph.add`` size limit.
         """
         if not self.writable:
             raise ValueError(
@@ -490,10 +527,20 @@ class ZepMemoryStore:
                 f"got {raw_type!r}"
             )
 
-        payload = str(content)
-        if data_type == "json" and not isinstance(content, str):
-            payload = json.dumps(content)
-        payload = truncate_graph_data(payload, label="add() content")
+        if data_type == "json":
+            payload = content if isinstance(content, str) else json.dumps(content)
+            # Truncating JSON would strip closing syntax and produce a payload Zep
+            # rejects, so the "guard" would guarantee a failed write. Structure-aware
+            # splitting needs the caller's schema knowledge -- surface it instead.
+            if len(payload) > GRAPH_DATA_TRUNCATE_LIMIT:
+                raise ValueError(
+                    f"ZepMemoryStore: JSON content is {len(payload)} characters, exceeding the "
+                    f"{GRAPH_DATA_TRUNCATE_LIMIT}-character graph.add limit. JSON cannot be "
+                    "truncated safely; split it into smaller documents before adding. See "
+                    "https://help.getzep.com/chunking-large-documents"
+                )
+        else:
+            payload = truncate_graph_data(str(content), label="add() content")
 
         add_kwargs: dict[str, Any] = {"type": data_type, "data": payload}
         if meta:

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from zep_strands import ZepMemoryStore
+from zep_strands._text import GRAPH_DATA_TRUNCATE_LIMIT
 from zep_strands.memory_store import _extract_text, _results_to_entries, _role_to_zep
 
 
@@ -168,6 +170,37 @@ class TestAdd:
         assert kwargs["graph_id"] == "kb-1"
         assert "user_id" not in kwargs
 
+    @pytest.mark.asyncio
+    async def test_add_truncates_oversize_text(self) -> None:
+        store = _make_store()
+        await store.add("z" * (GRAPH_DATA_TRUNCATE_LIMIT + 500))
+        kwargs = store._zep.graph.add.await_args.kwargs
+        assert len(kwargs["data"]) == GRAPH_DATA_TRUNCATE_LIMIT
+
+    @pytest.mark.asyncio
+    async def test_add_rejects_oversize_json_instead_of_corrupting_it(self) -> None:
+        """Valid-but-oversize JSON must raise, not be sliced into invalid JSON."""
+        store = _make_store()
+        payload = json.dumps({"notes": ["x" * 200 for _ in range(60)]})
+        assert len(payload) > GRAPH_DATA_TRUNCATE_LIMIT
+        json.loads(payload)  # the input itself is valid JSON
+
+        with pytest.raises(ValueError, match="cannot be truncated safely"):
+            await store.add(payload, metadata={"type": "json"})
+
+        store._zep.graph.add.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_add_allows_json_at_the_limit(self) -> None:
+        store = _make_store()
+        filler = "a" * (GRAPH_DATA_TRUNCATE_LIMIT - len(json.dumps({"k": ""})))
+        payload = json.dumps({"k": filler})
+        assert len(payload) == GRAPH_DATA_TRUNCATE_LIMIT
+
+        await store.add(payload, metadata={"type": "json"})
+        sent = store._zep.graph.add.await_args.kwargs["data"]
+        assert json.loads(sent) == {"k": filler}
+
 
 class TestAddMessages:
     @pytest.mark.asyncio
@@ -210,6 +243,37 @@ class TestAddMessages:
         client = _make_mock_client()
         store = ZepMemoryStore(zep_client=client, graph_id="g1", writable=True)
         with pytest.raises(ValueError, match="user-graph"):
+            await store.add_messages([{"role": "user", "content": [{"text": "hi"}]}])  # type: ignore[arg-type]
+
+
+class TestZepFailuresPropagate:
+    """Zep SDK errors must reach the framework, which owns failure isolation.
+
+    ``MemoryManager.search`` skips failing stores, ``MemoryManager.add`` raises
+    ``AggregateMemoryError``, and ``ExtractionCoordinator`` rolls its high-water
+    mark back so a failed batch retries. Swallowing here would turn a retryable
+    extraction failure into permanent, silent message loss.
+    """
+
+    @pytest.mark.asyncio
+    async def test_search_propagates(self) -> None:
+        store = _make_store()
+        store._zep.graph.search.side_effect = RuntimeError("zep down")
+        with pytest.raises(RuntimeError, match="zep down"):
+            await store.search("anything")
+
+    @pytest.mark.asyncio
+    async def test_add_propagates(self) -> None:
+        store = _make_store()
+        store._zep.graph.add.side_effect = RuntimeError("zep down")
+        with pytest.raises(RuntimeError, match="zep down"):
+            await store.add("a fact")
+
+    @pytest.mark.asyncio
+    async def test_add_messages_propagates_so_the_batch_retries(self) -> None:
+        store = _make_store()
+        store._zep.thread.add_messages.side_effect = RuntimeError("zep down")
+        with pytest.raises(RuntimeError, match="zep down"):
             await store.add_messages([{"role": "user", "content": [{"text": "hi"}]}])  # type: ignore[arg-type]
 
 

@@ -179,6 +179,22 @@ await store.add('{"plan": "premium"}', metadata={"type": "json"})
 
 `metadata["type"]` selects the Zep data type (`text` default, `json`, or `message`). Remaining metadata keys are forwarded as episode metadata.
 
+Oversized `text`/`message` payloads are truncated to Zep's `graph.add` limit with a warning. Oversized `json` is **rejected with a `ValueError`** instead — slicing JSON strips its closing syntax, so a truncated document would just be rejected by Zep. Split large JSON into smaller documents before adding (see [chunking](https://help.getzep.com/chunking-large-documents)).
+
+## Error handling
+
+Zep SDK errors propagate out of the store methods deliberately: in Strands the **framework** owns failure isolation, and swallowing them breaks it.
+
+| Path | Framework behavior on a raise |
+|------|-------------------------------|
+| `search` | `MemoryManager.search` logs and skips the failing store; injection additionally fails open, so the turn proceeds without memory |
+| `add` | Surfaced as `AggregateMemoryError` so a failed write is never silent |
+| `add_messages` | `ExtractionCoordinator` catches it and **rolls back its high-water mark so the batch retries** |
+
+That last one matters most: returning `None` after swallowing an error would be read as success, advancing the mark and discarding those messages permanently. This matches the SDK's own vended stores, which raise rather than degrade.
+
+The one exception is the model-callable `zep_search` tool, which catches Zep errors and returns an error string — a raw tool has no framework layer above it.
+
 ## Identity
 
 Pass real names (`first_name`, `last_name`, `email`) so Zep anchors the user graph node. Display names on persisted messages default to the user's full name / `"Assistant"`.
