@@ -188,7 +188,8 @@ One store instance is bound to one `user_id`/`thread_id` (or `graph_id`) at cons
 ## Features
 
 - Native Strands `MemoryStore` — works with `MemoryManager` injection, tools, and extraction
-- Server-side extraction via Zep threads (`add_messages`)
+- Server-side extraction via Zep threads (`add_messages`); default cadence every 5 turns (delayed graph building)
+- Fail-fast validation when `extraction` is enabled without a writable user/thread
 - Whole-user-graph recall across threads
 - Standalone-graph mode for shared knowledge
 - Optional pin-or-expose `zep_search` tool
