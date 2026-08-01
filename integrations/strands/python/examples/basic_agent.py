@@ -43,6 +43,7 @@ def _message_text(message: Message | object) -> str:
     ]
     return "\n".join(parts) if parts else str(message)
 
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -116,8 +117,7 @@ async def main() -> None:
         # Flush pending extraction writes before moving on.
         if agent1.memory_manager is not None:
             await agent1.memory_manager.flush()
-        text = getattr(result, "message", None) or result
-        print(f"Agent: {text}\n")
+        print(f"Agent: {_message_text(result.message)}\n")
 
     wait_seconds = 20
     print(f"--- Waiting {wait_seconds}s for Zep to process the graph ---\n")
@@ -128,8 +128,7 @@ async def main() -> None:
     recall = "Where do I live, and what do I like to do on weekends?"
     print(f"User:  {recall}")
     result = await agent2.invoke_async(recall)
-    text = getattr(result, "message", None) or result
-    print(f"Agent: {text}\n")
+    print(f"Agent: {_message_text(result.message)}\n")
 
 
 if __name__ == "__main__":
