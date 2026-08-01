@@ -54,9 +54,9 @@ from .provisioning import UserSetupHook
 from .provisioning import ensure_thread as _ensure_thread
 from .provisioning import ensure_user as _ensure_user
 from .search import (
+    _AUTO_INCOMPATIBLE_RERANKERS,
     MAX_SEARCH_LIMIT,
     Scope,
-    _AUTO_INCOMPATIBLE_RERANKERS,
     _name_summary_text,
     create_zep_search_tool,
 )
