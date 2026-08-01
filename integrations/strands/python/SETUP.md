@@ -82,10 +82,13 @@ uv run pytest tests/test_integration.py -v -s -m integration
 
 - **`ZepDependencyError` on import** — Strands Agents is not installed. Run
   `pip install zep-strands` (which pulls `strands-agents`).
-- **Recall returns nothing** — Zep ingestion is asynchronous; a just-added fact
-  is not instantly retrievable. The example waits ~20s; increase the wait if
-  your graph is large or under load.
+- **Recall returns nothing** — two delays apply. First, Strands' default
+  extraction only sends conversation batches to Zep every **5 turns** (or on
+  `memory_manager.flush()`). Second, Zep ingestion is asynchronous after
+  messages arrive. The example waits ~20s after seeding; increase the wait or
+  flush / use an every-turn trigger if your graph is large or under load.
 - **Authentication errors** — confirm `ZEP_API_KEY` is set in the same shell and
   belongs to the intended project.
-- **`add_messages` errors about `thread_id`** — user-graph mode with extraction
-  requires both `user_id` and `thread_id`. Standalone graphs use `add()` only.
+- **`extraction=True` / `add_messages` errors about `thread_id`** — user-graph
+  mode with extraction requires both `user_id` and `thread_id` at construction.
+  Standalone graphs must use `extraction=False` and `add()` only.

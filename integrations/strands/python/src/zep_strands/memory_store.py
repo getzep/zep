@@ -12,6 +12,13 @@ other store:
 * :meth:`initialize` provisions the Zep user and thread out-of-band
 * :meth:`get_tools` optionally registers an on-demand graph-search tool
 
+When ``extraction`` is enabled (the default in writable user/thread mode),
+Strands' ``MemoryManager`` batches conversation turns and only calls
+:meth:`add_messages` on its default cadence — **every 5 turns**. Until that
+flush (or an explicit ``memory_manager.flush()``), nothing has been sent to
+Zep, so the graph builds later than turn-by-turn persistence would. After
+messages do reach Zep, ingestion is still asynchronous.
+
 Attach it through a ``MemoryManager``::
 
     from strands import Agent
@@ -27,7 +34,7 @@ Attach it through a ``MemoryManager``::
         first_name="Jane",
         last_name="Smith",
         writable=True,
-        extraction=True,  # server-side via add_messages
+        extraction=True,  # server-side via add_messages; default cadence = every 5 turns
     )
     agent = Agent(memory_manager=MemoryManager(stores=[store]))
 """
@@ -75,6 +82,39 @@ DEFAULT_MAX_SEARCH_RESULTS = 10
 ADD_TYPE_METADATA_KEY = "type"
 
 GraphAddType = Literal["text", "json", "message"]
+
+
+def _extraction_enabled(extraction: Any) -> bool:
+    """Return whether ``extraction`` enables automatic extraction.
+
+    ``None`` / ``False`` are off; ``True`` or an ``ExtractionConfig`` are on.
+    """
+    return extraction is not None and extraction is not False
+
+
+def _require_extraction_support(
+    *,
+    writable: bool,
+    user_id: str | None,
+    thread_id: str | None,
+) -> None:
+    """Raise if extraction is enabled without a writable user/thread store.
+
+    Server-side extraction is implemented via :meth:`ZepMemoryStore.add_messages`,
+    which requires a Zep user thread. Fail at construction so ``MemoryManager``
+    never schedules extraction that would raise on every cycle.
+    """
+    if not writable:
+        raise ValueError(
+            "ZepMemoryStore: extraction requires writable=True "
+            "(server-side extraction writes via add_messages)."
+        )
+    if not user_id or not thread_id:
+        raise ValueError(
+            "ZepMemoryStore: extraction requires user-graph mode with both "
+            "user_id and thread_id (server-side via add_messages). "
+            "Pass extraction=False for standalone graphs or stores without a thread."
+        )
 
 
 def _extract_text(message: Message) -> str:
@@ -207,7 +247,8 @@ class ZepMemoryStore:
         writable: Whether the store accepts writes.
         extraction: Automatic-extraction config. ``True`` (default when
             writable + user/thread mode) enables server-side extraction via
-            :meth:`add_messages` on the manager's default cadence.
+            :meth:`add_messages` on the manager's default cadence (every 5
+            turns). Requires ``user_id`` and ``thread_id``.
     """
 
     def __init__(
@@ -252,6 +293,13 @@ class ZepMemoryStore:
             extraction: Extraction config shorthand. Defaults to ``True`` when
                 the store is writable and has a ``thread_id`` (so
                 :meth:`add_messages` can run server-side); otherwise ``None``.
+                ``True`` (or an ``ExtractionConfig``) requires writable
+                user-graph mode with ``user_id`` **and** ``thread_id`` —
+                construction fails fast otherwise. With Strands' default
+                trigger, extraction only fires every **5 turns**, so graph
+                building is delayed relative to turn-by-turn persistence;
+                call ``memory_manager.flush()`` (or use an every-turn
+                trigger) when you need messages sent to Zep sooner.
             first_name: User first name — helps Zep anchor identity.
             last_name: User last name.
             email: User email.
@@ -273,7 +321,8 @@ class ZepMemoryStore:
 
         Raises:
             ValueError: On invalid scoping (neither/both of ``user_id``/
-                ``graph_id``, empty ``name``, or ``max_search_results < 1``).
+                ``graph_id``, empty ``name``, ``max_search_results < 1``, or
+                extraction enabled without writable user/thread mode).
         """
         if not user_id and not graph_id:
             raise ValueError("ZepMemoryStore requires either user_id or graph_id")
@@ -298,6 +347,12 @@ class ZepMemoryStore:
             # Server-side extraction needs add_messages, which needs a thread.
             self.extraction = True if (writable and user_id and thread_id) else None
         else:
+            if _extraction_enabled(extraction):
+                _require_extraction_support(
+                    writable=writable,
+                    user_id=user_id,
+                    thread_id=thread_id,
+                )
             self.extraction = extraction
 
         self.first_name = first_name

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- `ZepMemoryStore` now rejects `extraction=True` (or an `ExtractionConfig`) at construction unless the store is writable user-graph mode with both `user_id` and `thread_id`, so `MemoryManager` never schedules extraction that would raise on every cycle.
+
+### Changed
+
+- Documented that Strands' default extraction cadence is every **5 turns**, so conversation batches only reach Zep when the trigger fires (or on `flush()`), delaying graph building relative to turn-by-turn persistence — in addition to Zep's asynchronous ingestion after messages arrive.
+
 ## 0.1.0 (2026-08-01)
 
 ### Added

@@ -47,7 +47,7 @@ agent = Agent(
 )
 ```
 
-With no further configuration, the manager injects relevant Zep context before each user turn and runs server-side extraction every few turns. Enable `add_tool_config=True` on the manager to also let the model call `add_memory`.
+With no further configuration, the manager injects relevant Zep context before each user turn and runs server-side extraction on Strands' default cadence (**every 5 turns**). That means conversation turns are buffered and only sent to Zep when the trigger fires (or when you call `memory_manager.flush()`), so graph building is delayed relative to turn-by-turn persistence — and Zep's own ingestion remains asynchronous after messages arrive. Enable `add_tool_config=True` on the manager to also let the model call `add_memory`.
 
 ## How it works
 
@@ -61,7 +61,33 @@ With no further configuration, the manager injects relevant Zep context before e
 
 Context comes from the **whole user graph**; the thread only scopes relevance and records the conversation. A new thread for the same user still recalls earlier facts.
 
-Ingestion is asynchronous — a just-added fact is not instantly retrievable. Design for eventual availability.
+## Automatic extraction and delayed graph building
+
+`extraction=True` (the default when the store is writable with `user_id` + `thread_id`) opts into Strands' automatic extraction loop. With the manager's defaults that means:
+
+1. Conversation turns are buffered in the manager.
+2. Every **5 turns**, Strands calls `add_messages`, which posts the batch to Zep via `thread.add_messages`.
+3. Zep then processes the batch asynchronously into the user graph.
+
+Until step 2 runs, **nothing has been sent to Zep**, so the graph does not grow turn-by-turn. After step 2, facts are still not instantly searchable (Zep ingestion is async). Plan for both delays:
+
+- Call `await memory_manager.flush()` at session boundaries (required after `invoke_async` / `stream_async` if you need pending turns persisted before shutdown).
+- Or pass an every-turn trigger if you need messages sent to Zep more often:
+
+```python
+from strands.memory.extraction.triggers import InvocationTrigger
+from strands.memory.extraction.types import ExtractionConfig
+
+store = ZepMemoryStore(
+    zep_client=zep,
+    user_id="user-123",
+    thread_id="thread-abc",
+    writable=True,
+    extraction=ExtractionConfig(trigger=InvocationTrigger()),  # after every turn
+)
+```
+
+`extraction=True` (or an `ExtractionConfig`) **requires** writable user-graph mode with both `user_id` and `thread_id`. Construction raises `ValueError` otherwise — use `extraction=False` for standalone graphs or read-only stores.
 
 ## Scoping modes
 

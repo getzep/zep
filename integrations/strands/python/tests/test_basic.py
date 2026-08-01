@@ -90,3 +90,48 @@ class TestZepMemoryStoreInit:
 
         with pytest.raises(ValueError, match="max_search_results"):
             ZepMemoryStore(zep_client=MagicMock(), user_id="u", max_search_results=0)
+
+    def test_rejects_extraction_without_thread(self) -> None:
+        from zep_strands import ZepMemoryStore
+
+        with pytest.raises(ValueError, match="user_id and thread_id"):
+            ZepMemoryStore(
+                zep_client=MagicMock(),
+                user_id="u1",
+                thread_id=None,
+                extraction=True,
+            )
+
+    def test_rejects_extraction_on_standalone_graph(self) -> None:
+        from zep_strands import ZepMemoryStore
+
+        with pytest.raises(ValueError, match="user_id and thread_id"):
+            ZepMemoryStore(
+                zep_client=MagicMock(),
+                graph_id="g1",
+                writable=True,
+                extraction=True,
+            )
+
+    def test_rejects_extraction_when_not_writable(self) -> None:
+        from zep_strands import ZepMemoryStore
+
+        with pytest.raises(ValueError, match="writable=True"):
+            ZepMemoryStore(
+                zep_client=MagicMock(),
+                user_id="u1",
+                thread_id="t1",
+                writable=False,
+                extraction=True,
+            )
+
+    def test_allows_explicit_extraction_false_without_thread(self) -> None:
+        from zep_strands import ZepMemoryStore
+
+        store = ZepMemoryStore(
+            zep_client=MagicMock(),
+            graph_id="g1",
+            writable=True,
+            extraction=False,
+        )
+        assert store.extraction is False
