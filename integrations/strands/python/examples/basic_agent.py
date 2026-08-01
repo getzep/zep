@@ -26,9 +26,22 @@ from uuid import uuid4
 
 from strands import Agent
 from strands.memory import MemoryManager
+from strands.types.content import Message
 from zep_cloud.client import AsyncZep
 
 from zep_strands import ZepMemoryStore, ensure_thread, ensure_user
+
+
+def _message_text(message: Message | object) -> str:
+    """Extract joined text blocks from an agent result message."""
+    if not isinstance(message, dict):
+        return str(message)
+    parts = [
+        block["text"]
+        for block in message.get("content") or []
+        if isinstance(block, dict) and "text" in block
+    ]
+    return "\n".join(parts) if parts else str(message)
 
 # ---------------------------------------------------------------------------
 # Configuration
