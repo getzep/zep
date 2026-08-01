@@ -42,6 +42,8 @@ jobs:
               - 'integrations/langgraph/python/**'
             pydantic-ai:
               - 'integrations/pydantic-ai/python/**'
+            strands:
+              - 'integrations/strands/python/**'
 
       - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: typescript
