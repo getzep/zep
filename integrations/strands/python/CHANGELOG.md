@@ -24,6 +24,10 @@
 - `add()` no longer truncates oversized `json` payloads. Slicing JSON strips its closing syntax, so the size guard produced a document Zep would reject; oversized `json` now raises a `ValueError` pointing at chunking. `text`/`message` payloads are still truncated with a warning.
 - Corrected the `provisioning` module docstring (it incorrectly referred to
   `ZepContextProvider`).
+- `zep_search` no longer returns raw exception text to the model. SDK errors
+  can include URLs, identifiers, or response bodies; the tool now returns a
+  fixed `"Graph search failed."` string and logs only the exception type
+  (and `status_code` when present), with the full traceback at DEBUG.
 - The example and live agent test now pass an explicit `OpenAIModel`. Both
   require `OPENAI_API_KEY` and document `strands-agents[openai]`, but neither
   passed `model=` to `Agent`, so Strands silently fell back to its

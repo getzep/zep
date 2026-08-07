@@ -353,8 +353,17 @@ def create_zep_search_tool(
         try:
             results = await zep_client.graph.search(**search_kwargs)
         except Exception as exc:
-            logger.warning("Zep graph search failed: %s", exc, exc_info=True)
-            return f"Graph search failed: {exc}"
+            status = getattr(exc, "status_code", None)
+            if status is not None:
+                logger.warning(
+                    "Zep graph search failed type=%s status=%s",
+                    type(exc).__name__,
+                    status,
+                )
+            else:
+                logger.warning("Zep graph search failed type=%s", type(exc).__name__)
+            logger.debug("Zep graph search failed", exc_info=True)
+            return "Graph search failed."
 
         return _format_results(results, str(effective_scope))
 
