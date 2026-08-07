@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "zep-docs": {
-      "type": "http",
-      "url": "https://docs-mcp.getzep.com/mcp"
-    }
-  }
-}

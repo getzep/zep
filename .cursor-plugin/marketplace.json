@@ -4,13 +4,7 @@
     "name": "Zep"
   },
   "metadata": {
-    "description": "Cursor plugins for building with Zep."
+    "description": "Cursor plugins for Zep. Import getzep/building-with-zep-plugin as a Cursor team marketplace or install that repository directly; Cursor marketplace catalogs only resolve plugins that live in the same repository."
   },
-  "plugins": [
-    {
-      "name": "building-with-zep",
-      "source": "plugins/building-with-zep",
-      "description": "Skill plus the Zep documentation MCP server for building apps on Zep."
-    }
-  ]
+  "plugins": []
 }
