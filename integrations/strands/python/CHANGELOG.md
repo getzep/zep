@@ -21,8 +21,8 @@
 
 - Documented that Strands' default extraction cadence is every **5 turns**, so conversation batches only reach Zep when the trigger fires (or on `flush()`), delaying graph building relative to turn-by-turn persistence — in addition to Zep's asynchronous ingestion after messages arrive.
 - Documented the failure-handling contract: Zep SDK errors propagate out of `search`/`add`/`add_messages` by design, because `MemoryManager` and `ExtractionCoordinator` own failure isolation (skip-and-log, `AggregateMemoryError`, and high-water-mark rollback for retry). Added tests pinning that behavior.
-- Example and live tests use every-turn extraction (`InvocationTrigger`) plus
-  `flush()` after `invoke_async` so demos are not flaky on the default cadence.
+- Example and live tests flush at the session boundary after `invoke_async`,
+  which `MemoryManager` requires to persist buffered turns on that path.
 
 ## 0.1.0 (2026-08-01)
 

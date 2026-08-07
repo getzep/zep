@@ -45,8 +45,6 @@ if not ZEP_API_KEY:
 
 from strands import Agent  # noqa: E402
 from strands.memory import MemoryManager  # noqa: E402
-from strands.memory.extraction.triggers import InvocationTrigger  # noqa: E402
-from strands.memory.extraction.types import ExtractionConfig  # noqa: E402
 from strands.types.content import Message  # noqa: E402
 from zep_cloud.client import AsyncZep  # noqa: E402
 
@@ -129,8 +127,8 @@ async def build_agent(
 ) -> Agent:
     """Build an agent whose memory is scoped to USER_ID on the given thread.
 
-    Uses every-turn extraction so the test is not flaky on Strands' default
-    5-turn cadence; callers still ``flush()`` after ``invoke_async``.
+    Configured exactly as the example is: default extraction cadence, with
+    callers flushing at the session boundary.
     """
     await ensure_user(
         zep,
@@ -150,7 +148,7 @@ async def build_agent(
         last_name=LAST_NAME,
         email=EMAIL,
         writable=True,
-        extraction=ExtractionConfig(trigger=InvocationTrigger()),
+        extraction=True,
         expose_search_tool=True,
         search_pinned_params={"scope": "auto"},
     )
@@ -165,11 +163,19 @@ async def build_agent(
 
 
 async def chat(agent: Agent, message: str) -> str:
-    """Send one message and flush pending extraction writes."""
+    """Send one message to the agent and return its text reply."""
     result = await agent.invoke_async(message)
+    return _message_text(result.message)
+
+
+async def flush(agent: Agent) -> None:
+    """Force buffered extraction writes out at a session boundary.
+
+    ``invoke_async`` never flushes on its own, and the default trigger only
+    fires every 5 turns, so without this the seeded turns never reach Zep.
+    """
     if agent.memory_manager is not None:
         await agent.memory_manager.flush()
-    return _message_text(result.message)
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +267,7 @@ async def test_integration_full_lifecycle() -> None:
             agent1, "My name is IntegTest. I work at Acme Corp as a data scientist."
         )
         reply2 = await chat(agent1, "I live in Portland, Oregon and I love hiking and photography.")
+        await flush(agent1)
         assert reply1
         assert reply2
         assert hook_calls == [USER_ID]
@@ -324,6 +331,8 @@ async def main() -> None:
             reply = await chat(agent1, msg)
             print(f"  Agent: {reply}\n")
             passed &= check("Agent returned a non-empty response", len(reply) > 0)
+
+        await flush(agent1)
 
         passed &= check(
             "on_user_created hook fired exactly once",
