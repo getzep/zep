@@ -85,18 +85,38 @@ class TestHelpers:
 
 class TestInitialize:
     @pytest.mark.asyncio
-    async def test_initialize_provisions_user_and_thread(self) -> None:
+    async def test_initialize_makes_no_zep_calls(self) -> None:
+        """Strands runs ``initialize`` on a throwaway event loop from
+        ``Agent.__init__``, so it must not touch the caller's client."""
         store = _make_store()
         await store.initialize()
+        store._zep.user.add.assert_not_awaited()
+        store._zep.thread.create.assert_not_awaited()
+        assert store._resources_ready is False
+
+    @pytest.mark.asyncio
+    async def test_first_search_provisions_user_and_thread(self) -> None:
+        store = _make_store()
+        await store.search("anything")
         store._zep.user.add.assert_awaited_once()
         store._zep.thread.create.assert_awaited_once()
         assert store._resources_ready is True
 
     @pytest.mark.asyncio
-    async def test_initialize_graph_mode_is_noop(self) -> None:
+    async def test_provisioning_happens_only_once(self) -> None:
+        store = _make_store()
+        await store.search("first")
+        await store.search("second")
+        await store.add("a fact")
+        store._zep.user.add.assert_awaited_once()
+        store._zep.thread.create.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_graph_mode_never_provisions(self) -> None:
         client = _make_mock_client()
         store = ZepMemoryStore(zep_client=client, graph_id="g1")
         await store.initialize()
+        await store.search("anything")
         client.user.add.assert_not_awaited()
         client.thread.create.assert_not_awaited()
 

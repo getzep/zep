@@ -26,6 +26,7 @@ from uuid import uuid4
 
 from strands import Agent
 from strands.memory import MemoryManager
+from strands.models.openai import OpenAIModel
 from strands.types.content import Message
 from zep_cloud.client import AsyncZep
 
@@ -49,6 +50,7 @@ def _message_text(message: Message | object) -> str:
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5-mini")
 
 if not ZEP_API_KEY:
     raise SystemExit("ZEP_API_KEY is not set.")
@@ -85,6 +87,7 @@ async def build_agent(zep: AsyncZep, thread_id: str) -> Agent:
         search_pinned_params={"scope": "auto"},
     )
     return Agent(
+        model=OpenAIModel(client_args={"api_key": OPENAI_API_KEY}, model_id=OPENAI_MODEL),
         system_prompt=(
             "You are a helpful assistant with access to long-term memory. "
             "When memory context is provided, use it to give personalised, "

@@ -56,7 +56,7 @@ With no further configuration, the manager injects relevant Zep context before e
 | `MemoryStore.search` | `graph.search` | Recall for injection and the `search_memory` tool |
 | `MemoryStore.add_messages` | `thread.add_messages` | Server-side extraction from conversation turns |
 | `MemoryStore.add` | `graph.add` | Single-fact writes (`add_memory` tool / programmatic) |
-| `MemoryStore.initialize` | `user.add` + `thread.create` | Provision resources before the agent runs |
+| First `search` / write | `user.add` + `thread.create` | Provision resources on first use (see below) |
 | `MemoryStore.get_tools` | `create_zep_search_tool` | Optional on-demand graph search (when enabled) |
 
 Context comes from the **whole user graph**; the thread only scopes relevance and records the conversation. A new thread for the same user still recalls earlier facts.
@@ -109,7 +109,9 @@ Provide exactly one of `user_id` or `graph_id`.
 
 `ensure_user` / `ensure_thread` are idempotent create-then-catch-conflict helpers. Both return `True` when newly created and `False` when the resource already exists; genuine failures raise.
 
-Call them out-of-band before the first turn so misconfiguration surfaces loudly. `ZepMemoryStore.initialize()` (invoked by `MemoryManager`) also provisions lazily when you skip the helpers.
+Call them out-of-band before the first turn so misconfiguration surfaces loudly. If you skip them, the store provisions itself on its first search or write instead.
+
+`ZepMemoryStore.initialize()` deliberately makes **no** Zep calls. `Agent.__init__` is synchronous, so Strands runs that hook on a throwaway event loop in a worker thread; calling Zep there would drive your `AsyncZep` client from a second event loop and raise `RuntimeError: ... is bound to a different event loop` for any connection you had already opened. Deferring to first use keeps every Zep call on the agent's own loop, so one client can safely be shared between your application code and the store.
 
 ```python
 from zep_strands import ensure_thread, ensure_user

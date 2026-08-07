@@ -12,10 +12,23 @@
 
 ### Fixed
 
+- `ZepMemoryStore.initialize()` no longer calls Zep. `Agent.__init__` is
+  synchronous, so Strands runs that hook on a throwaway event loop in a worker
+  thread; provisioning there drove the caller's `AsyncZep` client from a second
+  event loop and raised `RuntimeError: ... is bound to a different event loop`
+  whenever the caller had already awaited that client (the pattern the README
+  and example recommend: `ensure_user`, then hand the client to the store).
+  Provisioning now happens on the store's first search or write, which always
+  runs on the agent's own loop.
 - `ZepMemoryStore` now rejects `extraction=True` (or an `ExtractionConfig`) at construction unless the store is writable user-graph mode with both `user_id` and `thread_id`, so `MemoryManager` never schedules extraction that would raise on every cycle.
 - `add()` no longer truncates oversized `json` payloads. Slicing JSON strips its closing syntax, so the size guard produced a document Zep would reject; oversized `json` now raises a `ValueError` pointing at chunking. `text`/`message` payloads are still truncated with a warning.
 - Corrected the `provisioning` module docstring (it incorrectly referred to
   `ZepContextProvider`).
+- The example and live agent test now pass an explicit `OpenAIModel`. Both
+  require `OPENAI_API_KEY` and document `strands-agents[openai]`, but neither
+  passed `model=` to `Agent`, so Strands silently fell back to its
+  `BedrockModel()` default and the run failed on missing AWS credentials. The
+  model ID is overridable via `OPENAI_MODEL` (default `gpt-5-mini`).
 
 ### Changed
 

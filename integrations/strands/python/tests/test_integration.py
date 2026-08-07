@@ -39,12 +39,14 @@ import pytest
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5-mini")
 
 if not ZEP_API_KEY:
     pytest.skip("ZEP_API_KEY required for integration tests", allow_module_level=True)
 
 from strands import Agent  # noqa: E402
 from strands.memory import MemoryManager  # noqa: E402
+from strands.models.openai import OpenAIModel  # noqa: E402
 from strands.types.content import Message  # noqa: E402
 from zep_cloud.client import AsyncZep  # noqa: E402
 
@@ -153,6 +155,7 @@ async def build_agent(
         search_pinned_params={"scope": "auto"},
     )
     return Agent(
+        model=OpenAIModel(client_args={"api_key": OPENAI_API_KEY}, model_id=OPENAI_MODEL),
         system_prompt=(
             "You are a helpful assistant with access to long-term memory. "
             "When memory context is provided, use it to give personalised, "
@@ -173,6 +176,8 @@ async def flush(agent: Agent) -> None:
 
     ``invoke_async`` never flushes on its own, and the default trigger only
     fires every 5 turns, so without this the seeded turns never reach Zep.
+    Flushing also drains in-flight background saves before the agent is
+    discarded.
     """
     if agent.memory_manager is not None:
         await agent.memory_manager.flush()
@@ -286,6 +291,7 @@ async def test_integration_full_lifecycle() -> None:
 
         agent2 = await build_agent(zep, THREAD_2, on_user_created=on_user_created)
         recall = (await chat(agent2, "What do you know about me?")).lower()
+        await flush(agent2)
 
         # Existing user — hook must not fire again.
         assert hook_calls == [USER_ID]
@@ -362,6 +368,7 @@ async def main() -> None:
         agent2 = await build_agent(zep, THREAD_2, on_user_created=on_user_created)
         recall_text = await chat(agent2, "What do you know about me?")
         print(f"  Agent: {recall_text}\n")
+        await flush(agent2)
 
         passed &= check(
             "on_user_created did NOT fire again for existing user",

@@ -9,8 +9,10 @@ other store:
 * :meth:`add_messages` ingests conversation turns for **server-side**
   extraction via ``thread.add_messages`` (user-graph mode)
 * :meth:`add` writes a single text/JSON fact via ``graph.add``
-* :meth:`initialize` provisions the Zep user and thread out-of-band
 * :meth:`get_tools` optionally registers an on-demand graph-search tool
+
+The Zep user and thread are provisioned on the store's first search or write.
+:meth:`initialize` is deliberately inert; see its docstring for why.
 
 When ``extraction`` is enabled (the default in writable user/thread mode),
 Strands' ``MemoryManager`` batches conversation turns and only calls
@@ -413,26 +415,20 @@ class ZepMemoryStore:
     # ------------------------------------------------------------------
 
     async def initialize(self) -> None:
-        """Provision the Zep user and thread when in user-graph mode.
+        """Intentionally performs no Zep calls; provisioning is deferred.
 
-        Called by ``MemoryManager`` during ``init_agent``. Standalone-graph
-        mode is a no-op (the graph must already exist). Genuine provisioning
-        failures propagate so misconfiguration is caught before the agent runs.
+        ``Agent.__init__`` is synchronous, so Strands runs this hook on a
+        throwaway event loop in a worker thread. Issuing Zep calls here would
+        drive the caller's ``AsyncZep`` client from a second event loop, and
+        any connection the caller already opened raises ``RuntimeError: ... is
+        bound to a different event loop``. Provisioning therefore happens on
+        the first search or write, which always runs on the agent's own loop.
+
+        Call :func:`~zep_strands.provisioning.ensure_user` and
+        :func:`~zep_strands.provisioning.ensure_thread` before constructing the
+        agent to provision eagerly instead.
         """
-        if self.graph_id:
-            return
-        assert self.user_id is not None  # validated in __init__
-        await _ensure_user(
-            self._zep,
-            user_id=self.user_id,
-            first_name=self.first_name,
-            last_name=self.last_name,
-            email=self.email,
-            on_created=self.on_user_created,
-        )
-        if self.thread_id:
-            await _ensure_thread(self._zep, thread_id=self.thread_id, user_id=self.user_id)
-        self._resources_ready = True
+        return
 
     async def search(self, query: str, options: SearchOptions | None = None) -> list[MemoryEntry]:
         """Search the Zep graph for entries matching ``query``.
@@ -481,6 +477,8 @@ class ZepMemoryStore:
             search_kwargs["graph_id"] = self.graph_id
         else:
             search_kwargs["user_id"] = self.user_id
+
+        await self._ensure_resources_lazy()
 
         results = await self._zep.graph.search(**search_kwargs)
         return _results_to_entries(results, self.search_scope, limit=limit)
@@ -625,15 +623,26 @@ class ZepMemoryStore:
     # ------------------------------------------------------------------
 
     async def _ensure_resources_lazy(self) -> None:
-        """Ensure user/thread exist; raise on genuine failure.
+        """Provision the Zep user and thread once, on first use.
 
-        ``MemoryManager.initialize`` normally calls :meth:`initialize` first.
-        This lazy path covers programmatic ``add`` / ``add_messages`` calls
-        made without going through the manager.
+        Standalone-graph mode is a no-op (the graph must already exist).
+        Genuine provisioning failures propagate, so misconfiguration surfaces
+        on the first turn rather than being swallowed.
         """
         if self._resources_ready or self.graph_id:
             return
-        await self.initialize()
+        assert self.user_id is not None  # validated in __init__
+        await _ensure_user(
+            self._zep,
+            user_id=self.user_id,
+            first_name=self.first_name,
+            last_name=self.last_name,
+            email=self.email,
+            on_created=self.on_user_created,
+        )
+        if self.thread_id:
+            await _ensure_thread(self._zep, thread_id=self.thread_id, user_id=self.user_id)
+        self._resources_ready = True
 
     def _to_zep_messages(self, messages: list[Message]) -> list[ZepMessage]:
         """Convert Strands messages to Zep ``Message`` objects, dropping empties."""

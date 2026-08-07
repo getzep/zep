@@ -1,12 +1,11 @@
 """
 Explicit, out-of-band Zep resource provisioning.
 
-``ZepMemoryStore.initialize`` (and its lazy ``_ensure_resources_lazy`` path)
-calls these helpers on the hot path and is wrapped so a Zep outage never
-raises into an agent turn. Callers who want provisioning failures (and
-``on_created`` hook failures) to surface loudly -- e.g. during account/session
-onboarding, before the first turn -- should call :func:`ensure_user` and
-:func:`ensure_thread` directly, out-of-band.
+``ZepMemoryStore`` calls these helpers itself on its first search or write.
+Callers who want provisioning failures (and ``on_created`` hook failures) to
+surface loudly -- e.g. during account/session onboarding, before the first
+turn -- should call :func:`ensure_user` and :func:`ensure_thread` directly,
+out-of-band.
 
 Both helpers are **create-then-catch-conflict**: they call the Zep SDK's
 create method directly and treat an "already exists" error as success, rather
