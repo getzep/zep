@@ -1,15 +1,15 @@
 """
 Basic Strands Agents agent with Zep long-term memory via MemoryManager.
 
-This example wires a ``ZepMemoryStore`` into Strands' ``MemoryManager`` so the
-agent automatically:
+Wires a ``ZepMemoryStore`` into Strands' ``MemoryManager`` so the agent:
 
 * injects relevant Zep context before each model call
-* extracts conversation turns into the user graph (server-side, via
-  ``add_messages``) on the manager's default cadence
+* extracts conversation turns into the user graph (server-side via
+  ``add_messages``) on an every-turn trigger, then ``flush()`` after each
+  ``invoke_async`` so nothing is left buffered
 
-Earlier turns seed facts about the user; a later turn -- in a *new* conversation
-thread -- shows the agent recalling those facts from Zep's user graph.
+Earlier turns seed facts about the user; a later turn on a *new* thread shows
+cross-session recall from Zep's user graph.
 
 Prerequisites:
     pip install zep-strands 'strands-agents[openai]'
@@ -26,27 +26,13 @@ from uuid import uuid4
 
 from strands import Agent
 from strands.memory import MemoryManager
+from strands.memory.extraction.triggers import InvocationTrigger
+from strands.memory.extraction.types import ExtractionConfig
 from strands.types.content import Message
 from zep_cloud.client import AsyncZep
 
 from zep_strands import ZepMemoryStore, ensure_thread, ensure_user
 
-
-def _message_text(message: Message | object) -> str:
-    """Extract joined text blocks from an agent result message."""
-    if not isinstance(message, dict):
-        return str(message)
-    parts = [
-        block["text"]
-        for block in message.get("content") or []
-        if isinstance(block, dict) and "text" in block
-    ]
-    return "\n".join(parts) if parts else str(message)
-
-
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
@@ -59,6 +45,18 @@ _suffix = uuid4().hex[:8]
 USER_ID = f"strands-example-user-{_suffix}"
 THREAD_1 = f"strands-example-thread1-{_suffix}"
 THREAD_2 = f"strands-example-thread2-{_suffix}"
+
+
+def _message_text(message: Message | object) -> str:
+    """Extract joined text blocks from an agent result message."""
+    if not isinstance(message, dict):
+        return str(message)
+    parts = [
+        block["text"]
+        for block in message.get("content") or []
+        if isinstance(block, dict) and "text" in block
+    ]
+    return "\n".join(parts) if parts else str(message)
 
 
 async def build_agent(zep: AsyncZep, thread_id: str) -> Agent:
@@ -80,7 +78,9 @@ async def build_agent(zep: AsyncZep, thread_id: str) -> Agent:
         last_name="Nguyen",
         email="alice@example.com",
         writable=True,
-        extraction=True,
+        # Every-turn extraction so the demo does not wait on the default
+        # 5-turn cadence; still flush after invoke_async (see main).
+        extraction=ExtractionConfig(trigger=InvocationTrigger()),
         expose_search_tool=True,
         search_pinned_params={"scope": "auto"},
     )
@@ -92,6 +92,14 @@ async def build_agent(zep: AsyncZep, thread_id: str) -> Agent:
         ),
         memory_manager=MemoryManager(stores=[store], add_tool_config=True),
     )
+
+
+async def chat(agent: Agent, message: str) -> str:
+    """Send one message and flush pending extraction writes."""
+    result = await agent.invoke_async(message)
+    if agent.memory_manager is not None:
+        await agent.memory_manager.flush()
+    return _message_text(result.message)
 
 
 async def main() -> None:
@@ -107,17 +115,12 @@ async def main() -> None:
 
     print("--- Conversation 1: seeding facts ---\n")
     agent1 = await build_agent(zep, THREAD_1)
-    seed_messages = [
+    for message in (
         "Hi! I'm Alice, a data scientist living in Portland, Oregon.",
         "On weekends I love hiking and landscape photography.",
-    ]
-    for message in seed_messages:
+    ):
         print(f"User:  {message}")
-        result = await agent1.invoke_async(message)
-        # Flush pending extraction writes before moving on.
-        if agent1.memory_manager is not None:
-            await agent1.memory_manager.flush()
-        print(f"Agent: {_message_text(result.message)}\n")
+        print(f"Agent: {await chat(agent1, message)}\n")
 
     wait_seconds = 20
     print(f"--- Waiting {wait_seconds}s for Zep to process the graph ---\n")
@@ -127,8 +130,7 @@ async def main() -> None:
     agent2 = await build_agent(zep, THREAD_2)
     recall = "Where do I live, and what do I like to do on weekends?"
     print(f"User:  {recall}")
-    result = await agent2.invoke_async(recall)
-    print(f"Agent: {_message_text(result.message)}\n")
+    print(f"Agent: {await chat(agent2, recall)}\n")
 
 
 if __name__ == "__main__":

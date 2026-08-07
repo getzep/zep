@@ -49,7 +49,7 @@ Framework integration packages live under [`integrations/`](integrations/), orga
 framework-first then language: `integrations/<framework>/<language>/`. Each package is built,
 tested, and released independently.
 
-- **Python**: Google ADK, Microsoft Agent Framework, Microsoft AutoGen, AG2, CrewAI, LangGraph, LiveKit, Pydantic AI
+- **Python**: Google ADK, Microsoft Agent Framework, Microsoft AutoGen, AG2, CrewAI, LangGraph, LiveKit, Pydantic AI, Strands Agents
 - **TypeScript**: Google ADK, Mastra, Vercel AI SDK
 - **Go**: Google ADK
 

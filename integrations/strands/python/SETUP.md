@@ -72,10 +72,15 @@ Mock-based tests (no API keys needed):
 make test
 ```
 
-Live integration test (requires `ZEP_API_KEY`):
+Live integration tests:
 
 ```bash
+# Store round-trip (ZEP_API_KEY only)
+# Full agent lifecycle (also needs OPENAI_API_KEY)
 uv run pytest tests/test_integration.py -v -s -m integration
+
+# Or run the agent lifecycle as a standalone script:
+uv run python tests/test_integration.py
 ```
 
 ## Troubleshooting
