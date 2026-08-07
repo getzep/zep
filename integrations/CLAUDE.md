@@ -30,6 +30,7 @@ Current packages:
 | `mastra/typescript` | `@getzep/zep-mastra` (npm) | `@getzep/zep-mastra` |
 | `ms-agent-framework/python` | `zep-ms-agent-framework` (PyPI) | `zep_ms_agent_framework` |
 | `pydantic-ai/python` | `zep-pydantic-ai` (PyPI) | `zep_pydantic_ai` |
+| `strands/python` | `zep-strands` (PyPI) | `zep_strands` |
 | `vercel-ai/typescript` | `@getzep/zep-vercel-ai` (npm) | `@getzep/zep-vercel-ai` |
 
 **Naming convention (keep CI derivation simple):** the framework directory is the package

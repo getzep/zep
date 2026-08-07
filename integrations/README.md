@@ -23,6 +23,7 @@ New to Zep? Sign up at [getzep.com](https://www.getzep.com) and create an API ke
 | Microsoft Agent Framework | Python | `zep-ms-agent-framework` | [`ms-agent-framework/python/`](ms-agent-framework/python/) |
 | Microsoft AutoGen | Python | [`zep-autogen`](https://pypi.org/p/zep-autogen) | [`autogen/python/`](autogen/python/) |
 | Pydantic AI | Python | `zep-pydantic-ai` | [`pydantic-ai/python/`](pydantic-ai/python/) |
+| Strands Agents | Python | `zep-strands` | [`strands/python/`](strands/python/) |
 | Vercel AI SDK | TypeScript | `@getzep/zep-vercel-ai` | [`vercel-ai/typescript/`](vercel-ai/typescript/) |
 
 Looking for bulk data ingestion (Slack exports, documents, email, CSV/JSON records,
