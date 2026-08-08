@@ -1,8 +1,8 @@
 # Repository Workflows
 
-GitHub Actions workflows for testing and releasing Zep integration packages, the
-`zep-ingest` package, and the agent plugins under `plugins/`.
-Integrations are organized framework-first, then language: `integrations/<framework>/<language>/`.
+GitHub Actions workflows for testing and releasing Zep integration packages and
+the `zep-ingest` package. Integrations are organized framework-first, then
+language: `integrations/<framework>/<language>/`.
 
 ## Workflows
 
@@ -59,44 +59,6 @@ archives the exact commit once, tests that source on Python 3.11–3.13, and
 builds it. After the `release` environment is approved, it creates the
 `zep-ingest-v<version>` tag and GitHub Release, then publishes `zep-ingest` to
 PyPI through trusted publishing.
-
-### `test-plugins.yml` — plugin manifest consistency
-
-Runs on pull requests that touch `plugins/**`, the path-scoped Claude rule, or
-any of the three marketplace manifests — and only there; there is no post-merge
-run.
-`scripts/plugin_manifests.py --check` asserts the two values `building-with-zep` is
-forced to duplicate, because it ships as one directory published into three
-ecosystems (Claude Code, Codex, Cursor):
-
-- **The release version**, in the three ecosystem plugin manifests. Claude Code
-  uses it for update detection, while all three ecosystems expose the same version
-  as the plugin's release and support identity.
-- **The `zep-docs` MCP endpoint**, in `.mcp.json` (Claude, Codex) and `mcp.json`
-  (Cursor).
-
-The check also fails if a `version` appears in any marketplace entry. Each
-ecosystem reads its version from its own `plugin.json`; a marketplace copy is
-redundant and can drift.
-
-A second step verifies that the nested `AGENTS.md` and Claude's path-scoped rule
-contain exactly the same instructions. A third step fails when **the plugin's
-loaded content changes without a semantic version increase** (`README.md`,
-`CHANGELOG.md`, and the maintainer-only `AGENTS.md` are exempt). Without the bump
-check, a PR can change the skill and pass every check while Claude Code keeps
-serving the cached release, which is what happened to #566 and #567 — both
-shipped under `0.1.0`. It diffs against the base branch, so the job checks out
-with `fetch-depth: 0`.
-
-All three steps are **advisory**. Like the other path-filtered test workflows here, this
-is not a required status check: a failure shows as a red check on the pull request
-and does not disable the merge button. It warns the author before merge; it is not a
-gate.
-
-Plugins have no publish step — the marketplace is this git repository, so merging
-to `main` is the release. There is no `release-plugins.yml`. See
-[`plugins/building-with-zep/README.md#releasing`](../../plugins/building-with-zep/README.md#releasing)
-for the release procedure.
 
 ## Setup requirements
 
