@@ -38,8 +38,8 @@ documentation at [help.getzep.com](https://help.getzep.com). Zep's official SDKs
 | [`integrations/`](integrations/) | Agent-framework integration packages |
 | [`ingestion/`](ingestion/) | `zep-ingest` — bulk data ingestion pipeline (Slack, documents, email, JSON/CSV, fact triples) |
 | [`ontology/`](ontology/) | Default ontology definitions |
-| [Build with Zep](https://github.com/getzep/building-with-zep-plugin) | Plugin for Claude Code, Codex, and Cursor (separate repository) |
-| [Zep Memory](https://github.com/getzep/zep-memory-plugin) | Knowledge-work plugin for Claude Desktop/Cowork and ChatGPT Work (separate repository) |
+| [Build with Zep](https://github.com/getzep/building-with-zep-plugin) | Agent plugin for Claude Code, Codex, and Cursor (separate repository) |
+| [Zep Memory](https://github.com/getzep/zep-memory-plugin) | Agent plugin for Claude Desktop/Cowork and ChatGPT Work (separate repository) |
 | [`benchmarks/`](benchmarks/) | Memory benchmarks (LoCoMo, LongMemEval) |
 | [`zep-eval-harness/`](zep-eval-harness/) | Evaluation harness for ingestion and retrieval |
 | [`legacy/`](legacy/) | Deprecated Zep Community Edition (unsupported) |

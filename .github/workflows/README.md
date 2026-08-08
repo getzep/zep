@@ -1,8 +1,8 @@
 # Repository Workflows
 
-GitHub Actions workflows for testing and releasing Zep integration packages, the
-`zep-ingest` package, and the shared Zep plugin marketplace catalogs.
-Integrations are organized framework-first, then language: `integrations/<framework>/<language>/`.
+GitHub Actions workflows for testing and releasing Zep integration packages and
+the `zep-ingest` package. Integrations are organized framework-first, then
+language: `integrations/<framework>/<language>/`.
 
 ## Workflows
 
@@ -59,24 +59,6 @@ archives the exact commit once, tests that source on Python 3.11–3.13, and
 builds it. After the `release` environment is approved, it creates the
 `zep-ingest-v<version>` tag and GitHub Release, then publishes `zep-ingest` to
 PyPI through trusted publishing.
-
-### `test-plugin-marketplaces.yml` — marketplace catalog validation
-
-Runs when one of the Claude, ChatGPT Work/Codex, or Cursor marketplace manifests
-changes. It parses all three catalogs, rejects duplicate marketplace versions,
-and verifies Claude / ChatGPT Work sources point at the dedicated public
-repositories:
-
-- `getzep/building-with-zep-plugin`
-- `getzep/zep-memory-plugin`
-
-Cursor marketplace catalogs only resolve same-repo plugin paths, so the Cursor
-catalog here stays empty; Cursor distribution uses
-`getzep/building-with-zep-plugin` directly.
-
-Plugin package validation and version-bump enforcement live in each plugin's
-own `.github/workflows/test-plugin.yml`; this repository contains only catalog
-pointers and no plugin source or submodules.
 
 ## Setup requirements
 
