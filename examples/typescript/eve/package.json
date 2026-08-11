@@ -1,0 +1,40 @@
+{
+  "name": "zep-eve-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Working example: Zep Cloud long-term memory wired into a Vercel Eve agent",
+  "type": "module",
+  "imports": {
+    "#*": "./agent/*",
+    "#evals/*": "./evals/*"
+  },
+  "scripts": {
+    "build": "eve build",
+    "dev": "eve dev",
+    "start": "eve start",
+    "typecheck": "tsc",
+    "smoke": "node --import tsx scripts/smoke-memory.ts",
+    "seed:company": "node --import tsx scripts/seed-company-graph.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^4.0.41",
+    "@getzep/zep-cloud": "^3.27.0",
+    "@vercel/connect": "0.4.3",
+    "ai": "^7.0.58",
+    "dotenv": "^17.4.2",
+    "eve": "^0.32.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "microsandbox": "^0.5.10",
+    "tsx": "^4.20.0",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "ai": "^7.0.58"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
