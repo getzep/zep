@@ -38,9 +38,10 @@ export default defineHook({
           .catch((error) => {
             console.warn("[zep-persist] user.warm failed", error);
           });
+        // Do not log userId — it can come from env (ZEP_DEMO_USER_ID) and
+        // CodeQL flags clear-text logging of process environment values.
         console.info("[zep-persist] provisioned", {
-          userId: identity.userId,
-          threadId: identity.threadId,
+          sessionId: ctx.session.id,
         });
       } catch (error) {
         console.error("[zep-persist] session.started failed", error);

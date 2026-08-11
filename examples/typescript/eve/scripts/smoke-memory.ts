@@ -55,7 +55,8 @@ async function main() {
       : {}),
   });
 
-  console.log("Provisioning user + thread…", { userId, threadId });
+  // Do not log userId — sourced from env and flagged by CodeQL clear-text logging.
+  console.log("Provisioning user + thread…", { threadId });
 
   try {
     await zep.user.add({

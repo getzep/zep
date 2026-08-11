@@ -33,8 +33,8 @@ export default defineDynamic({
       });
 
       if (!pending) {
+        // Avoid logging userId (may come from ZEP_DEMO_USER_ID / env).
         console.warn("[zep-memory] no stashed utterance for this turn", {
-          userId: identity.userId,
           sessionId: ctx.session.id,
         });
         return null;
@@ -43,7 +43,7 @@ export default defineDynamic({
       if (pending.source === "user") {
         console.warn(
           "[zep-memory] using user-keyed stash fallback (session bind missed)",
-          { userId: identity.userId, sessionId: ctx.session.id },
+          { sessionId: ctx.session.id },
         );
       }
 
@@ -65,7 +65,6 @@ export default defineDynamic({
 
         if (!block) {
           console.warn("[zep-memory] graph.search returned no context", {
-            userId: identity.userId,
             sessionId: ctx.session.id,
             queryChars: pending.text.length,
           });
@@ -73,7 +72,6 @@ export default defineDynamic({
         }
 
         console.info("[zep-memory] turn-relevant recall", {
-          userId: identity.userId,
           sessionId: ctx.session.id,
           contextChars: block.length,
         });
