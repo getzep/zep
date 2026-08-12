@@ -4,7 +4,7 @@ All notable changes to `zep-ingest` are documented here. The project follows
 [Semantic Versioning](https://semver.org); while at `0.x` the public API may
 still change between minor versions.
 
-## 0.2.0 (unreleased)
+## 0.2.0
 
 **Breaking:** Zep assigns node and fact UUIDs server-side. Matches the API
 change that rejects caller-supplied node identity and ignores caller-supplied
