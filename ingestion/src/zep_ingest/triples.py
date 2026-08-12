@@ -45,7 +45,9 @@ class FactTriple:
     ``IngestResult.node_uuids`` (or another prior read) so a re-run cannot
     resolve a slightly different name to a new node. Zep assigns the fact's own
     UUID; it is returned as ``edge_uuid`` in the task params once the task
-    completes and is collected on ``IngestResult.edge_uuids`` after ``wait()``.
+    completes and is collected on ``IngestResult.edge_uuids`` after ``wait()``
+    (parallel to the submitted triples, with ``None`` for a terminal task that
+    assigned none).
     """
 
     fact: str

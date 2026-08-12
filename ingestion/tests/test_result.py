@@ -290,6 +290,42 @@ class TestSequentialResult:
         ]
         assert result.status == "succeeded"
 
+    def test_edge_uuids_keep_later_success_after_earlier_terminal_failure(self, mock_zep):
+        from zep_cloud.types.get_task_response import GetTaskResponse
+
+        result = IngestResult.from_task_ids(mock_zep, ["t1", "t2"])
+        mock_zep.task.get.side_effect = [
+            GetTaskResponse(task_id="t1", status="failed", params={}),
+            GetTaskResponse(
+                task_id="t2",
+                status="succeeded",
+                params={"edge_uuid": "ffffffff-ffff-4fff-8fff-ffffffffffff"},
+            ),
+        ]
+
+        result.refresh()
+
+        assert result.edge_uuids == [None, "ffffffff-ffff-4fff-8fff-ffffffffffff"]
+        assert result.status == "failed"
+
+    def test_node_uuids_keep_later_success_after_earlier_terminal_failure(self, mock_zep):
+        from zep_cloud.types.get_task_response import GetTaskResponse
+
+        result = IngestResult.from_task_ids(mock_zep, ["t1", "t2"])
+        mock_zep.task.get.side_effect = [
+            GetTaskResponse(task_id="t1", status="canceled", params={}),
+            GetTaskResponse(
+                task_id="t2",
+                status="succeeded",
+                params={"node_uuids": ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]},
+            ),
+        ]
+
+        result.refresh()
+
+        assert result.node_uuids == [None, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]
+        assert result.status == "canceled"
+
     def test_refresh_keeps_submit_time_node_uuids_when_task_params_arrive(self, mock_zep):
         from zep_cloud.types.get_task_response import GetTaskResponse
 

@@ -15,7 +15,9 @@ fact identity.
   `IngestResult.node_uuids` (parallel to the submitted nodes, with `None` for
   failed batches; also recovered from completed task params when resuming).
 - `FactTriple` no longer accepts `fact_uuid`; after `wait()`/`refresh()`,
-  assigned fact identities land on `IngestResult.edge_uuids` from task params.
+  assigned fact identities land on `IngestResult.edge_uuids` from task params
+  (parallel to submitted triples, with `None` for a terminal task that
+  assigned none).
 - `source_node_uuid` / `target_node_uuid` remain caller-supplied pins to
   existing nodes.
 - JSON row files that still include `uuid` / `fact_uuid` raise a clear

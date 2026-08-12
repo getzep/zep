@@ -96,7 +96,8 @@ class IngestResult:
     so ``zip`` cannot pin a later success to an earlier failure; when resuming
     from task IDs only, UUIDs are recovered from completed task params in
     ``task_ids`` order. ``edge_uuids`` records fact identities from
-    ``add_fact_triple`` task params, as a contiguous prefix of ``task_ids`` so
+    ``add_fact_triple`` task params in ``task_ids`` order (``None`` when a
+    terminal task assigned none), stopping only before still-in-flight tasks so
     out-of-order completion cannot scramble zip order against the submitted
     triples. ``untracked_items`` records accepted writes for which the API
     returned no completion handle.
@@ -108,7 +109,7 @@ class IngestResult:
     episode_uuids: list[str] = field(default_factory=list)
     task_ids: list[str] = field(default_factory=list)
     node_uuids: list[str | None] = field(default_factory=list)
-    edge_uuids: list[str] = field(default_factory=list)
+    edge_uuids: list[str | None] = field(default_factory=list)
     untracked_items: int = 0
     add_errors: list[AddError] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -171,20 +172,27 @@ class IngestResult:
                 self._task_params[task_id] = getattr(task, "params", None)
             self._sync_identities_from_task_params()
 
-    def _param_identity_prefix(self, *, kind: Literal["node", "edge"]) -> list[str]:
-        """Identities from cached task params as a contiguous ``task_ids`` prefix.
+    def _param_identity_prefix(self, *, kind: Literal["node", "edge"]) -> list[str | None]:
+        """Identities from cached task params in ``task_ids`` order.
 
-        Stops at the first task that does not yet expose the identity key, so a
-        later task finishing first cannot surface its UUID ahead of an earlier
-        submission (which would break zip-against-inputs).
+        Stops only at the first still-in-flight task, so a later finish cannot
+        surface its UUID ahead of an earlier submission. A terminal task with no
+        identity (failed/canceled) leaves a ``None`` gap so later successes are
+        still collected and stay zip-aligned with ``task_ids``.
         """
-        collected: list[str] = []
+        collected: list[str | None] = []
         for task_id in self.task_ids:
             nodes, edges = _identity_from_task_params(self._task_params.get(task_id))
             values = nodes if kind == "node" else edges
-            if not values:
+            if values:
+                collected.extend(values)
+                continue
+            status = self._task_statuses.get(task_id)
+            if status not in _TERMINAL_TASK_STATUSES:
+                # Not finished (or not polled yet) — hide later successes for now.
                 break
-            collected.extend(values)
+            # Terminal without an assigned identity: keep a slot for this task.
+            collected.append(None)
         return collected
 
     def _sync_identities_from_task_params(self) -> None:

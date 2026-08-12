@@ -408,6 +408,7 @@ result = ingest_fact_triples(
 )
 result.wait(timeout=600)
 # Zep assigns the fact UUID; it lands in task params as edge_uuid after completion.
+# Parallel to the submitted triples — failed tasks leave None in that slot.
 result.edge_uuids
 ```
 
@@ -488,7 +489,8 @@ Partial failures never crash a run: pages/episodes that keep failing are
 recorded as `AddError`s (indices and API messages only — never episode content)
 and the run continues. `batch_ids` / `episode_uuids` / `task_ids` are the
 resume handles; `node_uuids` / `edge_uuids` record identities Zep assigned on
-`ingest_nodes` and completed `ingest_fact_triples` tasks. Task IDs are used by
+`ingest_nodes` and completed `ingest_fact_triples` tasks (`None` slots mark
+failures so later successes stay zip-aligned). Task IDs are used by
 asynchronous operations such as fact triples, direct node creation, and
 sequential thread submissions, and `wait()` polls them through `client.task`.
 
