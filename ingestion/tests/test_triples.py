@@ -308,7 +308,33 @@ class TestNodeUuidPinning:
         )
         assert kwargs["source_node_uuid"] == source
         assert kwargs["target_node_uuid"] == target
+        assert "fact_uuid" not in kwargs
 
     def test_invalid_uuid_raises_naming_the_field(self):
         with pytest.raises(ConfigurationError, match="source_node_uuid"):
             triple(source_node_uuid="nope")
+
+    def test_client_supplied_fact_uuid_field_is_rejected(self):
+        with pytest.raises(TypeError, match="fact_uuid"):
+            triple(fact_uuid="f6b6bcbe-6b64-4d3f-9f9e-8f6a6f9f0f47")  # type: ignore[call-arg]
+
+    def test_json_row_with_fact_uuid_is_rejected_before_any_api_call(self, mock_zep, tmp_path):
+        path = tmp_path / "triples.jsonl"
+        path.write_text(
+            json.dumps(
+                {
+                    "fact": "Avery Brown met Blake Carter",
+                    "fact_name": "MET",
+                    "source_node_name": "Avery Brown",
+                    "target_node_name": "Blake Carter",
+                    "fact_uuid": "f6b6bcbe-6b64-4d3f-9f9e-8f6a6f9f0f47",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ConfigurationError, match="fact_uuid cannot be supplied"):
+            ingest_fact_triples(mock_zep, path, graph_id="g1")
+
+        mock_zep.graph.add_fact_triple.assert_not_called()

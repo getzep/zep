@@ -41,9 +41,13 @@ class FactTriple:
     """One fact edge between two named nodes, validated against the API limits.
 
     ``source_node_uuid``/``target_node_uuid`` pin an endpoint to an existing
-    node by identity instead of name resolution — pass them for endpoints with
-    known UUIDs so a re-run cannot resolve a slightly different name to a new
-    node.
+    node by identity instead of name resolution — pass UUIDs from
+    ``IngestResult.node_uuids`` (or another prior read) so a re-run cannot
+    resolve a slightly different name to a new node. Zep assigns the fact's own
+    UUID; it is returned as ``edge_uuid`` in the task params once the task
+    completes and is collected on ``IngestResult.edge_uuids`` after ``wait()``
+    (parallel to the submitted triples, with ``None`` for a terminal task that
+    assigned none).
     """
 
     fact: str
@@ -56,7 +60,6 @@ class FactTriple:
     target_node_labels: list[str] | None = None
     source_node_uuid: str | None = None
     target_node_uuid: str | None = None
-    fact_uuid: str | None = None
     valid_at: str | None = None
     invalid_at: str | None = None
     created_at: str | None = None
@@ -95,7 +98,7 @@ class FactTriple:
                 )
             elif labels:
                 check_len(f"{field}[0]", labels[0], 100, errors)
-        for field in ("source_node_uuid", "target_node_uuid", "fact_uuid"):
+        for field in ("source_node_uuid", "target_node_uuid"):
             value = getattr(self, field)
             if value is not None:
                 try:
@@ -126,7 +129,6 @@ class FactTriple:
             "target_node_labels",
             "source_node_uuid",
             "target_node_uuid",
-            "fact_uuid",
             "valid_at",
             "invalid_at",
             "created_at",
@@ -144,8 +146,16 @@ class FactTriple:
         return kwargs
 
 
+_RETIRED_TRIPLE_FIELDS = {
+    "fact_uuid": (
+        "fact_uuid cannot be supplied: Zep assigns fact UUIDs "
+        "(returned as edge_uuid in task params once the task completes)"
+    ),
+}
+
+
 def _load_triples(path: Path) -> list[FactTriple]:
-    rows = rows_to_fields(load_rows(path), FactTriple)
+    rows = rows_to_fields(load_rows(path), FactTriple, retired_fields=_RETIRED_TRIPLE_FIELDS)
     return [FactTriple(**row) for row in rows]
 
 

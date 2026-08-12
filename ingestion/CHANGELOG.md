@@ -4,7 +4,27 @@ All notable changes to `zep-ingest` are documented here. The project follows
 [Semantic Versioning](https://semver.org); while at `0.x` the public API may
 still change between minor versions.
 
-## 0.1.0 (unreleased)
+## 0.2.0
+
+**Breaking:** Zep assigns node and fact UUIDs server-side. Matches the API
+change that rejects caller-supplied node identity and ignores caller-supplied
+fact identity.
+
+- `NodeItem` no longer accepts a client `uuid`, and `ingest_nodes` no longer
+  has `require_uuids`. Zep assigns node identities and returns them on
+  `IngestResult.node_uuids` (parallel to the submitted nodes, with `None` for
+  failed batches; also recovered from completed task params when resuming).
+- `FactTriple` no longer accepts `fact_uuid`; after `wait()`/`refresh()`,
+  assigned fact identities land on `IngestResult.edge_uuids` from task params
+  (parallel to submitted triples, with `None` for a terminal task that
+  assigned none).
+- `source_node_uuid` / `target_node_uuid` remain caller-supplied pins to
+  existing nodes.
+- JSON row files that still include `uuid` / `fact_uuid` raise a clear
+  ConfigurationError naming the retired field.
+- Requires `zep-cloud>=3.27.0`.
+
+## 0.1.0
 
 First release — everything upstream of the Zep API for getting unstructured and
 structured data into Context Graphs correctly.

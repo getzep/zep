@@ -1,7 +1,5 @@
 """Batch node seeding for canonical entities, independent of episode extraction."""
 
-import uuid as uuid_module
-from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,9 +32,9 @@ MAX_NODES_PER_REQUEST = 100
 class NodeItem:
     """One canonical entity node, validated against the batch-node API limits.
 
-    A supplied ``uuid`` is stored in its canonical spelling, so one UUID
-    written two ways — differing case, braces, no hyphens — stays one identity
-    both in the uniqueness check and on the wire.
+    Zep assigns each node's UUID. Capture the returned values from
+    ``IngestResult.node_uuids`` (parallel to the submitted nodes; ``None`` where
+    a batch failed) if you need them for updates or fact-triple pinning.
     """
 
     name: str
@@ -44,7 +42,6 @@ class NodeItem:
     summary: str | None = None
     attributes: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
-    uuid: str | None = None
     created_at: str | None = None
 
     def __post_init__(self) -> None:
@@ -55,32 +52,16 @@ class NodeItem:
         check_scalar_map("attributes", self.attributes, errors, max_keys=MAX_ATTRIBUTE_KEYS)
         check_scalar_map("metadata", self.metadata, errors, max_keys=MAX_ATTRIBUTE_KEYS)
         check_timestamp("created_at", self.created_at, errors)
-        if self.uuid is not None:
-            try:
-                parsed = uuid_module.UUID(str(self.uuid))
-                if parsed.version != 4:
-                    errors.append(f"uuid must be UUIDv4 (got version {parsed.version})")
-                # A UUID is a 128-bit value, not the text it was typed as; keep
-                # the canonical spelling so identity comparisons and the
-                # submitted value cannot disagree with each other.
-                self.uuid = str(parsed)
-            except (ValueError, AttributeError, TypeError):
-                errors.append(f"uuid is not a valid UUID: {self.uuid!r}")
         if errors:
             raise ConfigurationError(f"Invalid node {str(self.name)[:40]!r}: " + "; ".join(errors))
 
     def to_add_node_item(self) -> AddNodeItem:
         """Build the SDK request model, omitting unset fields.
 
-        Our ``uuid`` maps to the SDK's ``uuid_`` field, which the client
-        serializes to the wire ``uuid`` key. Only fields that are actually set
-        are passed, so an unset field is omitted from the request rather than
-        sent as ``null`` (which matters for upserts, where a null could clobber
-        an existing value).
+        Only fields that are actually set are passed, so an unset field is
+        omitted from the request rather than sent as ``null``.
         """
         fields: dict[str, Any] = {"name": self.name}
-        if self.uuid is not None:
-            fields["uuid_"] = self.uuid
         if self.label is not None:
             fields["label"] = self.label
         if self.summary is not None:
@@ -94,9 +75,39 @@ class NodeItem:
         return AddNodeItem(**fields)
 
 
+_RETIRED_NODE_FIELDS = {
+    "uuid": (
+        "uuid cannot be supplied: Zep assigns node UUIDs "
+        "(use client.graph.node.update with a UUID from IngestResult.node_uuids "
+        "to update an existing node)"
+    ),
+}
+
+
 def _load_nodes(path: Path) -> list[NodeItem]:
-    rows = rows_to_fields(load_rows(path), NodeItem)
+    rows = rows_to_fields(load_rows(path), NodeItem, retired_fields=_RETIRED_NODE_FIELDS)
     return [NodeItem(**row) for row in rows]
+
+
+def _assigned_node_uuids(response: Any, *, expected: int) -> list[str | None]:
+    """Extract Zep-assigned node UUIDs from an ``add_nodes`` response.
+
+    The returned list is always ``expected`` long and aligned with the request
+    batch: a missing entry is ``None`` so callers can zip against the submitted
+    nodes without shifting later identities forward over a gap.
+    """
+    nodes = getattr(response, "nodes", None) or []
+    uuids: list[str | None] = []
+    for index in range(expected):
+        if index >= len(nodes):
+            uuids.append(None)
+            continue
+        node = nodes[index]
+        node_uuid = getattr(node, "uuid_", None)
+        if node_uuid is None and isinstance(node, dict):
+            node_uuid = node.get("uuid") or node.get("uuid_")
+        uuids.append(str(node_uuid) if node_uuid else None)
+    return uuids
 
 
 def ingest_nodes(
@@ -107,43 +118,23 @@ def ingest_nodes(
     user_id: str | None = None,
     batch_size: int = MAX_NODES_PER_REQUEST,
     max_retries: int = 5,
-    require_uuids: bool = True,
 ) -> IngestResult:
-    """Create/upsert canonical nodes via ``client.graph.add_nodes``.
+    """Create canonical nodes via ``client.graph.add_nodes``.
 
-    UUID is the only safe idempotency key. By default every node must have a
-    persisted UUIDv4; callers must explicitly opt out of that protection.
-    UUID uniqueness is checked by value, not by spelling, before the first
-    network call.
-
-    Submission is asynchronous; bind the result, then wait on it, so the resume
-    handles survive a timeout::
+    Zep assigns each node's UUID. ``result.node_uuids`` is parallel to the
+    submitted node list: successes carry the assigned UUID, and a failed batch
+    (or a missing response entry) leaves ``None`` in those slots so a later
+    success cannot shift forward under ``zip``. Submission is asynchronous; bind
+    the result, then wait on it, so the resume handles survive a timeout::
 
         result = ingest_nodes(client, nodes, graph_id="g1")
         result.wait(timeout=600)
+        # result.node_uuids[i] matches the i-th submitted node (or None)
     """
     destination = Destination(graph_id=graph_id, user_id=user_id)
     if not 1 <= batch_size <= MAX_NODES_PER_REQUEST:
         raise ConfigurationError(f"batch_size must be 1..{MAX_NODES_PER_REQUEST}, got {batch_size}")
     materialized = _load_nodes(Path(nodes)) if isinstance(nodes, str | Path) else list(nodes)
-    missing = [node.name for node in materialized if node.uuid is None]
-    if missing and require_uuids:
-        sample = ", ".join(repr(name) for name in missing[:3])
-        raise ConfigurationError(
-            f"{len(missing)} node(s) have no persisted UUIDv4 ({sample}). "
-            "Set require_uuids=False only for an intentionally non-idempotent ingest."
-        )
-    # NodeItem canonicalizes on construction, so this compares identities, not
-    # spellings: one UUID written two ways is one node, and pinning it twice
-    # would silently overwrite the first node with the second.
-    counts = Counter(node.uuid for node in materialized if node.uuid is not None)
-    duplicates = [node_uuid for node_uuid, count in counts.items() if count > 1]
-    if duplicates:
-        sample = ", ".join(repr(node_uuid) for node_uuid in duplicates[:3])
-        raise ConfigurationError(
-            f"{len(duplicates)} node UUID(s) appear on more than one node ({sample}). "
-            "UUIDs are compared as values, not text; give each node its own UUIDv4."
-        )
 
     scope = (
         {"graph_id": destination.graph_id}
@@ -151,8 +142,6 @@ def ingest_nodes(
         else {"user_id": destination.user_id}
     )
     result = IngestResult(method="sequential", client=client)
-    if missing:
-        result.warnings.append(f"{len(missing)} node(s) have no UUID and may duplicate on a rerun.")
     for start in range(0, len(materialized), batch_size):
         batch = materialized[start : start + batch_size]
         items = [node.to_add_node_item() for node in batch]
@@ -160,6 +149,9 @@ def ingest_nodes(
             lambda: client.graph.add_nodes(nodes=items, **scope),  # noqa: B023
             max_retries=max_retries,
         )
+        # Always extend node_uuids by batch length so indices stay aligned with
+        # the submitted list across partial failures.
+        result._node_uuids_from_submit = True
         if error is not None:
             result.add_errors.append(
                 AddError(
@@ -168,8 +160,10 @@ def ingest_nodes(
                     error=format_api_error("graph.add_nodes", error),
                 )
             )
+            result.node_uuids.extend([None] * len(batch))
             continue
         result.items_submitted += len(batch)
+        result.node_uuids.extend(_assigned_node_uuids(response, expected=len(batch)))
         task_id = getattr(response, "task_id", None)
         if task_id and str(task_id) not in result.task_ids:
             result.task_ids.append(str(task_id))

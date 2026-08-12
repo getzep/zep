@@ -229,6 +229,164 @@ class TestSequentialResult:
         assert result.status == "succeeded"
         assert mock_zep.task.get.call_count == 2
 
+    def test_refresh_collects_edge_uuid_from_completed_task_params(self, mock_zep):
+        from zep_cloud.types.get_task_response import GetTaskResponse
+
+        result = IngestResult.from_task_ids(mock_zep, ["t1", "t2"])
+        mock_zep.task.get.side_effect = [
+            GetTaskResponse(
+                task_id="t1",
+                status="succeeded",
+                params={"edge_uuid": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"},
+            ),
+            GetTaskResponse(task_id="t2", status="processing"),
+            GetTaskResponse(
+                task_id="t2",
+                status="succeeded",
+                params={"edge_uuid": "ffffffff-ffff-4fff-8fff-ffffffffffff"},
+            ),
+        ]
+
+        result.refresh()
+        assert result.edge_uuids == ["eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"]
+        assert result.status == "processing"
+
+        result.refresh()
+        assert result.edge_uuids == [
+            "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        ]
+        assert result.status == "succeeded"
+
+    def test_edge_uuids_preserve_task_ids_order_when_later_task_finishes_first(self, mock_zep):
+        from zep_cloud.types.get_task_response import GetTaskResponse
+
+        result = IngestResult.from_task_ids(mock_zep, ["t1", "t2"])
+        mock_zep.task.get.side_effect = [
+            # First refresh: earlier task still running, later task already done.
+            GetTaskResponse(task_id="t1", status="processing"),
+            GetTaskResponse(
+                task_id="t2",
+                status="succeeded",
+                params={"edge_uuid": "ffffffff-ffff-4fff-8fff-ffffffffffff"},
+            ),
+            # Second refresh: earlier task completes. t2 is terminal and skipped.
+            GetTaskResponse(
+                task_id="t1",
+                status="succeeded",
+                params={"edge_uuid": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"},
+            ),
+        ]
+
+        result.refresh()
+        # Contiguous prefix only: do not surface t2's UUID ahead of t1.
+        assert result.edge_uuids == []
+        assert result.status == "processing"
+
+        result.refresh()
+        assert result.edge_uuids == [
+            "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        ]
+        assert result.status == "succeeded"
+
+    def test_edge_uuids_keep_later_success_after_earlier_terminal_failure(self, mock_zep):
+        from zep_cloud.types.get_task_response import GetTaskResponse
+
+        result = IngestResult.from_task_ids(mock_zep, ["t1", "t2"])
+        mock_zep.task.get.side_effect = [
+            GetTaskResponse(task_id="t1", status="failed", params={}),
+            GetTaskResponse(
+                task_id="t2",
+                status="succeeded",
+                params={"edge_uuid": "ffffffff-ffff-4fff-8fff-ffffffffffff"},
+            ),
+        ]
+
+        result.refresh()
+
+        assert result.edge_uuids == [None, "ffffffff-ffff-4fff-8fff-ffffffffffff"]
+        assert result.status == "failed"
+
+    def test_node_uuids_keep_later_success_after_earlier_terminal_failure(self, mock_zep):
+        from zep_cloud.types.get_task_response import GetTaskResponse
+
+        result = IngestResult.from_task_ids(mock_zep, ["t1", "t2"])
+        mock_zep.task.get.side_effect = [
+            GetTaskResponse(task_id="t1", status="canceled", params={}),
+            GetTaskResponse(
+                task_id="t2",
+                status="succeeded",
+                params={"node_uuids": ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]},
+            ),
+        ]
+
+        result.refresh()
+
+        assert result.node_uuids == [None, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]
+        assert result.status == "canceled"
+
+    def test_refresh_keeps_submit_time_node_uuids_when_task_params_arrive(self, mock_zep):
+        from zep_cloud.types.get_task_response import GetTaskResponse
+
+        # ingest_nodes already recorded response UUIDs in submission order; task
+        # params must not extend or reorder that list on refresh.
+        result = IngestResult(
+            method="sequential",
+            task_ids=["t1"],
+            node_uuids=["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
+            client=mock_zep,
+        )
+        result._node_uuids_from_submit = True
+        mock_zep.task.get.return_value = GetTaskResponse(
+            task_id="t1",
+            status="succeeded",
+            params={
+                "node_uuids": [
+                    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                    "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                ]
+            },
+        )
+
+        result.refresh()
+        result.refresh()
+
+        assert result.node_uuids == ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]
+
+    def test_node_uuids_from_task_params_preserve_task_ids_order(self, mock_zep):
+        from zep_cloud.types.get_task_response import GetTaskResponse
+
+        result = IngestResult.from_task_ids(mock_zep, ["t1", "t2"])
+        mock_zep.task.get.side_effect = [
+            GetTaskResponse(task_id="t1", status="processing"),
+            GetTaskResponse(
+                task_id="t2",
+                status="succeeded",
+                params={"node_uuids": ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]},
+            ),
+            GetTaskResponse(
+                task_id="t1",
+                status="succeeded",
+                params={
+                    "node_uuids": [
+                        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab",
+                    ]
+                },
+            ),
+        ]
+
+        result.refresh()
+        assert result.node_uuids == []
+
+        result.refresh()
+        assert result.node_uuids == [
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab",
+            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        ]
+
     def test_failed_task_makes_result_failed(self, mock_zep):
         from zep_cloud.types.get_task_response import GetTaskResponse
 

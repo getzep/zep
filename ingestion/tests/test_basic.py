@@ -1,10 +1,6 @@
-"""Package-level smoke tests: imports, __all__, version."""
+"""Package-level smoke tests: imports and __all__."""
 
 import zep_ingest
-
-
-def test_version():
-    assert zep_ingest.__version__ == "0.1.0"
 
 
 def test_public_api_exports():

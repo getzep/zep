@@ -10,6 +10,7 @@ between the paths.
 """
 
 import json
+from collections.abc import Mapping
 from dataclasses import MISSING, fields
 from pathlib import Path
 from typing import Any
@@ -50,7 +51,12 @@ def load_rows(path: Path) -> list[dict[str, Any]]:
     raise ConfigurationError(f"{path.name} must contain JSON objects, not {type(parsed).__name__}.")
 
 
-def rows_to_fields(rows: list[dict[str, Any]], row_type: type) -> list[dict[str, Any]]:
+def rows_to_fields(
+    rows: list[dict[str, Any]],
+    row_type: type,
+    *,
+    retired_fields: Mapping[str, str] | None = None,
+) -> list[dict[str, Any]]:
     """Validate row shapes against a dataclass and retain supplied fields exactly.
 
     Unknown columns are rejected because silently dropping a misspelled public
@@ -59,6 +65,11 @@ def rows_to_fields(rows: list[dict[str, Any]], row_type: type) -> list[dict[str,
     ``name`` or ``created_at`` names the field and the row rather than surfacing
     as a bare TypeError from the dataclass constructor. Both the allowed and the
     required sets are read off the dataclass, so neither can drift from it.
+
+    ``retired_fields`` maps former public field names to an actionable error
+    message (for example server-owned identity fields that must not be supplied).
+    Those are checked before the generic unknown-field path so the message can
+    name the replacement rather than listing expected columns.
     """
     spec = fields(row_type)
     allowed = frozenset(field.name for field in spec)
@@ -67,10 +78,13 @@ def rows_to_fields(rows: list[dict[str, Any]], row_type: type) -> list[dict[str,
         for field in spec
         if field.default is MISSING and field.default_factory is MISSING
     ]
+    retired = dict(retired_fields or {})
     validated: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
             raise ConfigurationError(f"Row {index} must be a JSON object, got {type(row).__name__}")
+        for name in sorted(set(row) & retired.keys()):
+            raise ConfigurationError(f"Row {index}: {retired[name]}")
         unknown = sorted(set(row) - allowed)
         if unknown:
             raise ConfigurationError(

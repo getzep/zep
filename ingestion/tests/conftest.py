@@ -8,6 +8,7 @@ from zep_cloud.client import Zep
 from zep_cloud.types.add_nodes_response import AddNodesResponse
 from zep_cloud.types.add_thread_messages_response import AddThreadMessagesResponse
 from zep_cloud.types.add_triple_response import AddTripleResponse
+from zep_cloud.types.added_node import AddedNode
 from zep_cloud.types.batch_item_detail import BatchItemDetail
 from zep_cloud.types.batch_item_list_response import BatchItemListResponse
 from zep_cloud.types.batch_progress import BatchProgress
@@ -60,7 +61,12 @@ def mock_zep() -> MagicMock:
     client.graph.get = MagicMock()
     client.graph.set_ontology = MagicMock()
     client.graph.add_fact_triple = MagicMock(return_value=AddTripleResponse(task_id="task-1"))
-    client.graph.add_nodes = MagicMock(return_value=AddNodesResponse(task_id="task-1"))
+    client.graph.add_nodes = MagicMock(
+        return_value=AddNodesResponse(
+            task_id="task-1",
+            nodes=[AddedNode(name="node", uuid_="11111111-1111-4111-8111-111111111111")],
+        )
+    )
     client.graph.node = MagicMock()
     client.graph.edge = MagicMock()
     client.user = MagicMock()
