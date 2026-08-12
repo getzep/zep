@@ -3,7 +3,7 @@
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from zep_ingest._validation import require_int_range, require_nonnegative_number
 from zep_ingest.exceptions import IngestFailedError, IngestTimeoutError, IngestUntrackedError
@@ -50,6 +50,28 @@ def _normalize_task_status(status: str | None) -> str:
     return status
 
 
+def _identity_from_task_params(params: Any) -> tuple[list[str], list[str]]:
+    """Pull server-assigned identities out of completed-task params.
+
+    After ``add_nodes`` succeeds the worker merges ``node_uuids`` into params;
+    after ``add_fact_triple`` succeeds it merges ``edge_uuid``. Pending tasks
+    do not carry these keys yet.
+    """
+    if not isinstance(params, dict):
+        return [], []
+    node_uuids: list[str] = []
+    raw_nodes = params.get("node_uuids")
+    if isinstance(raw_nodes, list):
+        node_uuids = [str(item) for item in raw_nodes if item]
+    elif isinstance(raw_nodes, str) and raw_nodes:
+        node_uuids = [raw_nodes]
+    edge_uuids: list[str] = []
+    edge_uuid = params.get("edge_uuid")
+    if edge_uuid:
+        edge_uuids = [str(edge_uuid)]
+    return node_uuids, edge_uuids
+
+
 @dataclass(slots=True)
 class AddError:
     """A submission failure: where it happened, and what the API said about it.
@@ -68,9 +90,16 @@ class IngestResult:
     """Outcome of an ingestion run.
 
     Stateless by design: everything recoverable comes from Batch API statuses or
-    episode/task processing flags; ``batch_ids``/``episode_uuids``/``task_ids`` are the resume
-    handles a caller can persist. ``untracked_items`` records accepted writes for
-    which the API returned no completion handle.
+    episode/task processing flags; ``batch_ids``/``episode_uuids``/``task_ids`` are the
+    resume handles a caller can persist. ``node_uuids`` is parallel to the
+    ``ingest_nodes`` input (assigned UUID or ``None`` for a failed/missing slot)
+    so ``zip`` cannot pin a later success to an earlier failure; when resuming
+    from task IDs only, UUIDs are recovered from completed task params in
+    ``task_ids`` order. ``edge_uuids`` records fact identities from
+    ``add_fact_triple`` task params, as a contiguous prefix of ``task_ids`` so
+    out-of-order completion cannot scramble zip order against the submitted
+    triples. ``untracked_items`` records accepted writes for which the API
+    returned no completion handle.
     """
 
     method: Literal["batch", "sequential"]
@@ -78,6 +107,8 @@ class IngestResult:
     batch_ids: list[str] = field(default_factory=list)
     episode_uuids: list[str] = field(default_factory=list)
     task_ids: list[str] = field(default_factory=list)
+    node_uuids: list[str | None] = field(default_factory=list)
+    edge_uuids: list[str] = field(default_factory=list)
     untracked_items: int = 0
     add_errors: list[AddError] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -87,6 +118,12 @@ class IngestResult:
     )
     _processed_uuids: set[str] = field(default_factory=set, repr=False, compare=False)
     _task_statuses: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
+    # Cached task.params by task_id so identities can be rebuilt in task_ids order
+    # even when a later task becomes terminal before an earlier one.
+    _task_params: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
+    # True when node_uuids was filled from the add_nodes response (submission order).
+    # Task-param recovery must not overwrite or reorder that list.
+    _node_uuids_from_submit: bool = field(default=False, repr=False, compare=False)
 
     @classmethod
     def from_batch_ids(cls, client: "Zep", batch_ids: "Sequence[str]") -> "IngestResult":
@@ -131,6 +168,30 @@ class IngestResult:
                     continue
                 task = self.client.task.get(task_id)
                 self._task_statuses[task_id] = _normalize_task_status(task.status)
+                self._task_params[task_id] = getattr(task, "params", None)
+            self._sync_identities_from_task_params()
+
+    def _param_identity_prefix(self, *, kind: Literal["node", "edge"]) -> list[str]:
+        """Identities from cached task params as a contiguous ``task_ids`` prefix.
+
+        Stops at the first task that does not yet expose the identity key, so a
+        later task finishing first cannot surface its UUID ahead of an earlier
+        submission (which would break zip-against-inputs).
+        """
+        collected: list[str] = []
+        for task_id in self.task_ids:
+            nodes, edges = _identity_from_task_params(self._task_params.get(task_id))
+            values = nodes if kind == "node" else edges
+            if not values:
+                break
+            collected.extend(values)
+        return collected
+
+    def _sync_identities_from_task_params(self) -> None:
+        """Rebuild param-sourced identities in ``task_ids`` order after each poll."""
+        self.edge_uuids = self._param_identity_prefix(kind="edge")
+        if not self._node_uuids_from_submit:
+            self.node_uuids = self._param_identity_prefix(kind="node")
 
     @property
     def status(self) -> str:

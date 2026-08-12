@@ -374,10 +374,14 @@ graph):
 2. Set the ontology before any data flows: `client.graph.set_ontology(...)`,
    scoped with `graph_ids=`/`user_ids=` (or project-wide by omitting both). It is
    not retroactive, and the ingestion package never sets it for you.
-3. Optionally connect fact triples to existing canonical entities by pinning
-   endpoints with `source_node_uuid`/`target_node_uuid`. Extraction dedups
-   against the existing graph, so known entities anchor resolution.
-4. Ingest the corpus with real `created_at` timestamps and alias
+3. Optionally seed canonical entities with `ingest_nodes` and keep
+   `result.node_uuids` (Zep assigns them; do not supply a client UUID). Use
+   `client.graph.node.update` with those UUIDs for later edits — `add_nodes`
+   always creates new nodes.
+4. Optionally connect fact triples to those entities by pinning endpoints with
+   `source_node_uuid`/`target_node_uuid`. Extraction dedups against the existing
+   graph, so known entities anchor resolution.
+5. Ingest the corpus with real `created_at` timestamps and alias
    canonicalization, then block on the bound result with `result.wait(...)`.
 
 ## Fact triples
@@ -385,7 +389,7 @@ graph):
 ```python
 from zep_ingest import FactTriple, ingest_fact_triples
 
-ingest_fact_triples(
+result = ingest_fact_triples(
     client,
     [
         FactTriple(
@@ -395,17 +399,22 @@ ingest_fact_triples(
             source_node_labels=["Person"],  # ties the node to a declared type
             target_node_name="GTM analytics",
             target_node_labels=["Project"],
+            # Optional: pin endpoints to UUIDs from ingest_nodes / a prior read.
+            # source_node_uuid=..., target_node_uuid=...,
             valid_at="2024-06-15T00:00:00Z",
         ),
     ],
     graph_id="org",
 )
+result.wait(timeout=600)
+# Zep assigns the fact UUID; it lands in task params as edge_uuid after completion.
+result.edge_uuids
 ```
 
 Triples skip extraction entirely, so nodes they create are **untyped unless
 you label them** — pass `source_node_labels`/`target_node_labels` (one
 declared entity type each) or the declared ontology never touches a
-triples-only graph.
+triples-only graph. Do not supply a `fact_uuid`; Zep owns fact identity.
 
 Every documented limit (fact ≤250 chars, names ≤50, summaries ≤500,
 SCREAMING_SNAKE_CASE `fact_name`, string attribute and metadata keys whose
@@ -424,21 +433,27 @@ without relationships — `ingest_nodes` adds them directly via
 ```python
 from zep_ingest import NodeItem, ingest_nodes
 
-ingest_nodes(
+result = ingest_nodes(
     client,
     [
-        NodeItem(name="Ana Azimova", label="Person", uuid="…"),
-        NodeItem(name="GTM analytics", label="Project", uuid="…"),
+        NodeItem(name="Ana Azimova", label="Person"),
+        NodeItem(name="GTM analytics", label="Project"),
     ],
     graph_id="org",
 )
+# Zep assigns each node's UUID — keep them for updates and fact-triple pinning.
+result.node_uuids
 ```
 
-Pass a persisted UUIDv4 per node (required by default): it is the node's only
-identity/dedup key, so a re-run upserts instead of duplicating. Up to 100 nodes
-per request, every documented limit (name ≤50, summary ≤500, label ≤100, ≤10
-attributes, ≤10 metadata keys, each value a scalar or an array of scalars)
-validated client-side at construction.
+Zep assigns node UUIDs; do not supply them (a client `uuid` is rejected).
+`result.node_uuids` is parallel to the submitted list — each success carries
+the assigned UUID, and a failed batch leaves `None` in those slots so a later
+success cannot shift under `zip`. Direct `add_nodes` calls create new nodes
+each time (no name or UUID upsert) — use `client.graph.node.update` with a
+returned UUID to rename, replace a summary, edit attributes, or clear an
+entity type. Up to 100 nodes per request, every documented limit (name ≤50,
+summary ≤500, label ≤100, ≤10 attributes, ≤10 metadata keys, each value a
+scalar or an array of scalars) validated client-side at construction.
 Sequential only (the Batch API doesn't take direct nodes).
 
 ## Monitoring a run
@@ -472,9 +487,10 @@ response = search_when_ready(client, "who runs the pilot?", graph_id="g1")
 Partial failures never crash a run: pages/episodes that keep failing are
 recorded as `AddError`s (indices and API messages only — never episode content)
 and the run continues. `batch_ids` / `episode_uuids` / `task_ids` are the
-resume handles. Task IDs are used by asynchronous operations such as fact
-triples, direct node creation, and sequential thread submissions, and `wait()`
-polls them through `client.task`.
+resume handles; `node_uuids` / `edge_uuids` record identities Zep assigned on
+`ingest_nodes` and completed `ingest_fact_triples` tasks. Task IDs are used by
+asynchronous operations such as fact triples, direct node creation, and
+sequential thread submissions, and `wait()` polls them through `client.task`.
 
 If the API accepts a task-backed submission without returning a completion
 handle, the result reports `status == "untracked"` instead of claiming success.

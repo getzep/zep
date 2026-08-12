@@ -1,6 +1,6 @@
 [project]
 name = "zep-ingest"
-version = "0.1.0"
+version = "0.2.0"
 description = "Bulk data ingestion pipeline for Zep: chunk, contextualize, canonicalize, and submit unstructured and structured data"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -18,7 +18,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "zep-cloud>=3.25.0",
+    "zep-cloud>=3.27.0",
     # Transport errors are classified for retry; zep-cloud's own floor.
     "httpx>=0.21.2",
 ]
