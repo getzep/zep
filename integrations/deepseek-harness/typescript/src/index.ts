@@ -403,5 +403,4 @@ export function installZepMemory(
   return { flush };
 }
 
-export default apply;
 

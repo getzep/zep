@@ -11,6 +11,7 @@ import {
   ZepMemoryRuntime,
   installZepMemory,
 } from "../src/index.js";
+import * as plugin from "../src/index.js";
 
 function clientMock() {
   return {
@@ -170,6 +171,16 @@ describe("ZepMemoryRuntime", () => {
           contextTemplate: "memory",
         }),
     ).toThrow(/exactly one/);
+  });
+});
+
+describe("Cordis plugin exports", () => {
+  it("uses the DeepSeek Harness namespace-plugin shape", () => {
+    expect(plugin.name).toBe("zep-memory");
+    expect(plugin.inject).toEqual(["agents"]);
+    expect(plugin.Config).toBeDefined();
+    expect(plugin.apply).toBeTypeOf("function");
+    expect("default" in plugin).toBe(false);
   });
 });
 
