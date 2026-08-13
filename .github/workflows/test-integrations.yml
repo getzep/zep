@@ -51,6 +51,8 @@ jobs:
           filters: |
             adk:
               - 'integrations/adk/typescript/**'
+            deepseek-harness:
+              - 'integrations/deepseek-harness/typescript/**'
             mastra:
               - 'integrations/mastra/typescript/**'
             vercel-ai:

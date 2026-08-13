@@ -14,6 +14,7 @@ New to Zep? Sign up at [getzep.com](https://www.getzep.com) and create an API ke
 |-----------|----------|---------|----------|
 | AG2 | Python | `zep-ag2` | [`ag2/python/`](ag2/python/) |
 | CrewAI | Python | [`zep-crewai`](https://pypi.org/p/zep-crewai) | [`crewai/python/`](crewai/python/) |
+| DeepSeek Harness | TypeScript | `@getzep/zep-deepseek-harness` | [`deepseek-harness/typescript/`](deepseek-harness/typescript/) |
 | Google ADK | Python | [`zep-adk`](https://pypi.org/p/zep-adk) | [`adk/python/`](adk/python/) |
 | Google ADK | TypeScript | `@getzep/zep-adk` | [`adk/typescript/`](adk/typescript/) |
 | Google ADK | Go | `github.com/getzep/zep/integrations/adk/go` | [`adk/go/`](adk/go/) |
