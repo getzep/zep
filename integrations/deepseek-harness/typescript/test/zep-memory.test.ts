@@ -213,7 +213,7 @@ describe("installZepMemory", () => {
         form: "snapshot",
       });
     }
-    await ctx.dispose();
+    await ctx.fiber.dispose();
   });
 
   it("persists each successful turn-end notification once", async () => {
@@ -233,6 +233,6 @@ describe("installZepMemory", () => {
     await handle.flush();
 
     expect(mock.thread.addMessages).toHaveBeenCalledOnce();
-    await ctx.dispose();
+    await ctx.fiber.dispose();
   });
 });

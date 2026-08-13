@@ -11,7 +11,7 @@
 Install the package into the DeepSeek Harness profile that should use memory:
 
 ```bash
-dsh plugin add --profile headless @getzep/zep-deepseek-harness
+dsh plugin --profile headless add @getzep/zep-deepseek-harness
 ```
 
 Replace `headless` with `web` or another profile name as needed. The package

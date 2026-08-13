@@ -167,7 +167,7 @@ export class ZepMemoryRuntime {
   private readonly logger: ZepMemoryLogger;
   private readonly options: ZepMemoryRuntimeOptions;
   private userReady = false;
-  private userSetup?: Promise<boolean>;
+  private userSetup: Promise<boolean> | undefined;
   private readonly readyThreads = new Set<string>();
   private readonly threadSetups = new Map<string, Promise<boolean>>();
 

@@ -1,5 +1,6 @@
-- id: zep-memory
-  name: '@getzep/zep-deepseek-harness'
-  config:
-    apiKey: !!js process.env.ZEP_API_KEY
-    userId: !!js process.env.ZEP_USER_ID
+- insert:
+    - id: zep-memory
+      name: '@getzep/zep-deepseek-harness'
+      config:
+        apiKey: !!js process.env.ZEP_API_KEY
+        userId: !!js process.env.ZEP_USER_ID

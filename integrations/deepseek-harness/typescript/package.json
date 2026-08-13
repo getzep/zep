@@ -22,7 +22,9 @@
     "agent"
   ],
   "dsh": {
-    "bundle": "./cordis.patch.yml"
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
   },
   "type": "module",
   "main": "./dist/index.js",
@@ -44,7 +46,7 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup src/index.ts --format esm --dts --sourcemap --clean",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

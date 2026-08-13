@@ -22,7 +22,7 @@ model request directly would violate that invariant.
 DeepSeek Harness plugins are installed into a profile:
 
 ```bash
-dsh plugin add --profile headless @getzep/zep-deepseek-harness
+dsh plugin --profile headless add @getzep/zep-deepseek-harness
 ```
 
 Set the values read by the bundled patch:
@@ -35,11 +35,12 @@ export ZEP_USER_ID="stable-user-id"
 The bundle adds this row:
 
 ```yaml
-- id: zep-memory
-  name: '@getzep/zep-deepseek-harness'
-  config:
-    apiKey: !!js process.env.ZEP_API_KEY
-    userId: !!js process.env.ZEP_USER_ID
+- insert:
+    - id: zep-memory
+      name: '@getzep/zep-deepseek-harness'
+      config:
+        apiKey: !!js process.env.ZEP_API_KEY
+        userId: !!js process.env.ZEP_USER_ID
 ```
 
 See [SETUP.md](SETUP.md) for the complete setup.
