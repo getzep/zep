@@ -1,12 +1,12 @@
 """BatchSubmitter: bulk submission via the Zep Batch API.
 
 Pages the episode stream at the API's 350-items-per-add limit and rolls over to
-a new batch at the 50k-items-per-batch limit. Nothing that happens after the
-first batch opens is allowed to crash the run: a page that keeps failing is
-recorded as an AddError and the run continues, and a rollover that cannot open
-its next batch stops the run with the reason recorded — because the batches
-already submitted are still processing, and their ids are the only handle on
-them.
+a new batch at max_items_per_batch (10k by default, up to the API's 50k cap).
+Nothing that happens after the first batch opens is allowed to crash the run:
+a page that keeps failing is recorded as an AddError and the run continues, and
+a rollover that cannot open its next batch stops the run with the reason
+recorded — because the batches already submitted are still processing, and
+their ids are the only handle on them.
 """
 
 from collections.abc import Iterable
@@ -23,6 +23,7 @@ from zep_ingest.exceptions import BatchUnavailableError, InvalidBatchResponseErr
 from zep_ingest.result import AddError, IngestResult
 from zep_ingest.submitters.sequential import call_with_retries
 from zep_ingest.types import (
+    DEFAULT_ITEMS_PER_BATCH,
     MAX_ITEMS_PER_ADD,
     MAX_ITEMS_PER_BATCH,
     Destination,
@@ -98,7 +99,7 @@ class BatchSubmitter:
         client: Zep,
         *,
         page_size: int = MAX_ITEMS_PER_ADD,
-        max_items_per_batch: int = MAX_ITEMS_PER_BATCH,
+        max_items_per_batch: int = DEFAULT_ITEMS_PER_BATCH,
         batch_metadata: dict[str, Any] | None = None,
         max_add_retries: int = 3,
         initial_batch_id: str | None = None,

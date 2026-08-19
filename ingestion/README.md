@@ -131,14 +131,15 @@ ingest_slack_export(
 )
 ```
 
-**Batch vs sequential:** the Batch API (fast, 50k items/batch) is the default
-high-throughput submission path. `method="auto"` tries batch and transparently
-falls back to sequential `graph.add` calls with rate-limit-aware pacing in
-exactly one case: the deployment has no batch endpoint to call (HTTP 404 — an
-older server, a self-hosted or Community deployment, or a base URL that doesn't
-route `/batches`). Authorization and quota errors are raised as errors instead
-of quietly downgrading the run. Every source here ingests fine without the
-Batch API — pass `method="sequential"` to take that path deliberately.
+**Batch vs sequential:** the Batch API is the high-throughput submission path
+(10k items/batch by default, up to the API's 50k cap). `method="auto"` tries
+batch and transparently falls back to sequential `graph.add` calls with
+rate-limit-aware pacing in exactly one case: the deployment has no batch
+endpoint to call (HTTP 404 — an older server, a self-hosted or Community
+deployment, or a base URL that doesn't route `/batches`). Authorization and
+quota errors are raised as errors instead of quietly downgrading the run.
+Every source here ingests fine without the Batch API — pass
+`method="sequential"` to take that path deliberately.
 
 ## The pipeline
 

@@ -19,6 +19,7 @@ def test_public_api_exports():
         "SAFE_EPISODE_CHARS",
         "MAX_ITEMS_PER_ADD",
         "MAX_ITEMS_PER_BATCH",
+        "DEFAULT_ITEMS_PER_BATCH",
         "MAX_METADATA_KEYS",
         # protocols
         "Loader",

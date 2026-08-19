@@ -51,8 +51,8 @@ from zep_ingest.submitters.batch import (
 from zep_ingest.submitters.sequential import call_with_retries
 from zep_ingest.transforms._splitting import split_text
 from zep_ingest.types import (
+    DEFAULT_ITEMS_PER_BATCH,
     MAX_ITEMS_PER_ADD,
-    MAX_ITEMS_PER_BATCH,
     MAX_MESSAGES_PER_THREAD_ADD,
     MAX_METADATA_KEYS,
 )
@@ -215,7 +215,7 @@ def _submit_batch(
         page = list(islice(iterator, MAX_ITEMS_PER_ADD))
         if not page:
             break
-        if batch_id is not None and items_in_batch + len(page) > MAX_ITEMS_PER_BATCH:
+        if batch_id is not None and items_in_batch + len(page) > DEFAULT_ITEMS_PER_BATCH:
             process_batch(client, batch_id, result, max_retries=max_retries)
             batch_id = None
         if batch_id is None:

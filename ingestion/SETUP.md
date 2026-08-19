@@ -23,7 +23,8 @@ Requires Python ≥ 3.11.
 ## 3. Batch API vs sequential
 
 - The **Batch API** is the default submission path and the fastest way to run
-  large backfills (up to 50,000 items per batch).
+  large backfills (10,000 items per batch by default, up to the API's 50,000-item
+  cap).
 - **Everything in this package also works without it**: if the deployment has
   no batch endpoint to call (HTTP 404 — an older server, a self-hosted or
   Community deployment, or a base URL that doesn't route `/batches`), the

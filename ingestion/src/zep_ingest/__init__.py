@@ -65,6 +65,7 @@ from zep_ingest.transforms.contextualizer import DEFAULT_CONTEXT_PROMPT, LLMCont
 from zep_ingest.transforms.limits import LimitGuard
 from zep_ingest.triples import FactTriple, ingest_fact_triples
 from zep_ingest.types import (
+    DEFAULT_ITEMS_PER_BATCH,
     MAX_EPISODE_CHARS,
     MAX_ITEMS_PER_ADD,
     MAX_ITEMS_PER_BATCH,
@@ -82,6 +83,7 @@ except _PackageNotFoundError:  # source tree without an editable install
 
 __all__ = [
     "DEFAULT_CONTEXT_PROMPT",
+    "DEFAULT_ITEMS_PER_BATCH",
     "DEFAULT_RISKY_WORDS",
     "DEFAULT_SKIP_SUBTYPES",
     "MAX_EPISODE_CHARS",
