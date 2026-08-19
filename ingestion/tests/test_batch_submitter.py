@@ -10,7 +10,7 @@ from zep_cloud.types.batch_summary import BatchSummary
 from tests.conftest import make_batch_summary
 from zep_ingest.exceptions import BatchUnavailableError, InvalidBatchResponseError
 from zep_ingest.submitters.batch import BatchSubmitter
-from zep_ingest.types import Destination, Episode
+from zep_ingest.types import DEFAULT_ITEMS_PER_BATCH, Destination, Episode
 
 
 @pytest.fixture(autouse=True)
@@ -60,6 +60,10 @@ class TestPaging:
         mock_zep.batch.add.assert_not_called()
         assert result.items_submitted == 0
         assert result.status == "succeeded"
+
+    def test_default_max_items_per_batch_is_ten_thousand(self, mock_zep):
+        submitter = BatchSubmitter(mock_zep)
+        assert submitter.max_items_per_batch == DEFAULT_ITEMS_PER_BATCH == 10_000
 
     def test_rollover_at_max_items_per_batch(self, mock_zep):
         mock_zep.batch.create.side_effect = [

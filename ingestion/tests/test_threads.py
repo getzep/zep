@@ -289,7 +289,7 @@ class TestSequentialPath:
         # stop the run — never fall back to sequential, which would re-submit the
         # messages already in flight — and must keep the ids of those batches
         monkeypatch.setattr("zep_ingest.threads.MAX_ITEMS_PER_ADD", 1)
-        monkeypatch.setattr("zep_ingest.threads.MAX_ITEMS_PER_BATCH", 1)
+        monkeypatch.setattr("zep_ingest.threads.DEFAULT_ITEMS_PER_BATCH", 1)
         mock_zep.batch.create.side_effect = [
             make_batch_summary("b1", "draft"),
             ApiError(status_code=404),

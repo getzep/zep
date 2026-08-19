@@ -13,7 +13,8 @@ from zep_ingest.exceptions import ConfigurationError
 MAX_EPISODE_CHARS = 10_000
 SAFE_EPISODE_CHARS = 9_500  # LimitGuard target; headroom for context prefixes
 MAX_ITEMS_PER_ADD = 350
-MAX_ITEMS_PER_BATCH = 50_000
+MAX_ITEMS_PER_BATCH = 50_000  # documented API cap
+DEFAULT_ITEMS_PER_BATCH = 10_000  # default rollover; configurable up to MAX_ITEMS_PER_BATCH
 MAX_MESSAGES_PER_THREAD_ADD = 30  # thread.add_messages per call; not MAX_ITEMS_PER_ADD
 MAX_METADATA_KEYS = 10
 

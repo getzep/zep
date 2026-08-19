@@ -7,6 +7,7 @@ from zep_cloud.types.batch_add_item import BatchAddItem
 
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.types import (
+    DEFAULT_ITEMS_PER_BATCH,
     MAX_EPISODE_CHARS,
     MAX_ITEMS_PER_ADD,
     MAX_ITEMS_PER_BATCH,
@@ -24,7 +25,9 @@ class TestConstants:
         assert MAX_EPISODE_CHARS == 10_000
         assert SAFE_EPISODE_CHARS == 9_500
         assert MAX_ITEMS_PER_ADD == 350
+        assert DEFAULT_ITEMS_PER_BATCH == 10_000
         assert MAX_ITEMS_PER_BATCH == 50_000
+        assert DEFAULT_ITEMS_PER_BATCH < MAX_ITEMS_PER_BATCH
         assert MAX_METADATA_KEYS == 10
 
 

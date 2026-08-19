@@ -13,6 +13,7 @@ from zep_ingest.result import IngestResult
 from zep_ingest.submitters.batch import BatchSubmitter, is_batch_unavailable, require_batch_id
 from zep_ingest.submitters.sequential import SequentialSubmitter, call_with_retries
 from zep_ingest.types import (
+    DEFAULT_ITEMS_PER_BATCH,
     MAX_ITEMS_PER_ADD,
     MAX_ITEMS_PER_BATCH,
     Destination,
@@ -33,7 +34,7 @@ def submit_episodes(
     *,
     method: Method = "auto",
     page_size: int = MAX_ITEMS_PER_ADD,
-    max_items_per_batch: int = MAX_ITEMS_PER_BATCH,
+    max_items_per_batch: int = DEFAULT_ITEMS_PER_BATCH,
     batch_metadata: dict[str, Any] | None = None,
     max_add_retries: int = 3,
     max_retries: int = 5,
