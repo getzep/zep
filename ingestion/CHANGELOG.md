@@ -4,7 +4,7 @@ All notable changes to `zep-ingest` are documented here. The project follows
 [Semantic Versioning](https://semver.org); while at `0.x` the public API may
 still change between minor versions.
 
-## Unreleased
+## 0.2.1
 
 - Batch submission now rolls over at 10,000 items by default
   (`DEFAULT_ITEMS_PER_BATCH`) instead of filling to the API's 50,000-item cap.
