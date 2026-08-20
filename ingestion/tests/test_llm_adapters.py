@@ -114,3 +114,68 @@ class TestOpenAICompatibleAdapter:
         monkeypatch.setitem(sys.modules, "openai", None)
         with pytest.raises(ZepDependencyError, match="zep-ingest\\[openai\\]"):
             OpenAICompatibleLLM(model="m", base_url="http://localhost:4000")
+
+
+class TestOrcaRouterAdapter:
+    """Named adapter for OrcaRouter's OpenAI-compatible gateway."""
+
+    def test_defaults_to_orcarouter_base_url_and_model(self, monkeypatch):
+        import sys
+
+        from zep_ingest.llm.orcarouter import OrcaRouterLLM
+
+        fake_openai = MagicMock()
+        monkeypatch.setitem(sys.modules, "openai", fake_openai)
+        monkeypatch.setenv("ORCAROUTER_API_KEY", "sk-orca-test")
+        llm = OrcaRouterLLM()
+        fake_openai.OpenAI.assert_called_once_with(
+            base_url="https://api.orcarouter.ai/v1", api_key="sk-orca-test"
+        )
+        assert llm.model == "orcarouter/auto"
+
+    def test_env_key_used_when_api_key_not_given(self, monkeypatch):
+        import sys
+
+        from zep_ingest.llm.orcarouter import OrcaRouterLLM
+
+        fake_openai = MagicMock()
+        monkeypatch.setitem(sys.modules, "openai", fake_openai)
+        monkeypatch.setenv("ORCAROUTER_API_KEY", "sk-orca-env")
+        OrcaRouterLLM()
+        fake_openai.OpenAI.assert_called_once_with(
+            base_url="https://api.orcarouter.ai/v1", api_key="sk-orca-env"
+        )
+
+    def test_explicit_api_key_overrides_env(self, monkeypatch):
+        import sys
+
+        from zep_ingest.llm.orcarouter import OrcaRouterLLM
+
+        fake_openai = MagicMock()
+        monkeypatch.setitem(sys.modules, "openai", fake_openai)
+        monkeypatch.setenv("ORCAROUTER_API_KEY", "sk-orca-env")
+        OrcaRouterLLM(api_key="sk-orca-explicit")
+        fake_openai.OpenAI.assert_called_once_with(
+            base_url="https://api.orcarouter.ai/v1", api_key="sk-orca-explicit"
+        )
+
+    def test_complete_uses_chat_completions(self):
+        from zep_ingest.llm.orcarouter import OrcaRouterLLM
+
+        client = MagicMock()
+        client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="the context"))]
+        )
+        llm = OrcaRouterLLM(client=client)
+        assert llm.complete("prompt text") == "the context"
+        kwargs = client.chat.completions.create.call_args.kwargs
+        assert kwargs["model"] == "orcarouter/auto"
+
+    def test_missing_sdk_raises_dependency_error(self, monkeypatch):
+        import sys
+
+        from zep_ingest.llm.orcarouter import OrcaRouterLLM
+
+        monkeypatch.setitem(sys.modules, "openai", None)
+        with pytest.raises(ZepDependencyError, match="zep-ingest\\[openai\\]"):
+            OrcaRouterLLM()

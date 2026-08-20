@@ -4,6 +4,13 @@ All notable changes to `zep-ingest` are documented here. The project follows
 [Semantic Versioning](https://semver.org); while at `0.x` the public API may
 still change between minor versions.
 
+## Unreleased
+
+- New named [OrcaRouter](https://www.orcarouter.ai) adapter `OrcaRouterLLM`
+  (`zep_ingest.llm.orcarouter`): pre-fills the OpenAI-compatible gateway
+  `https://api.orcarouter.ai/v1` and the adaptive `orcarouter/auto` model, and
+  reads `ORCAROUTER_API_KEY` (prefix `sk-orca-`).
+
 ## 0.2.1
 
 - Batch submission now rolls over at 10,000 items by default

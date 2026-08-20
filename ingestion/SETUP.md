@@ -18,6 +18,17 @@ pip install zep-ingest
 pip install "zep-ingest[anthropic]"   # and/or "zep-ingest[openai]"
 ```
 
+For [OrcaRouter](https://www.orcarouter.ai) contextualization (the named
+`OrcaRouterLLM` adapter), grab an API key from the [OrcaRouter
+dashboard](https://www.orcarouter.ai) (prefix `sk-orca-`) and export it:
+
+```bash
+export ORCAROUTER_API_KEY="sk-orca-..."
+```
+
+The adapter defaults to `https://api.orcarouter.ai/v1` with the adaptive
+`orcarouter/auto` model; see the README "Bring any LLM" section.
+
 Requires Python ≥ 3.11.
 
 ## 3. Batch API vs sequential

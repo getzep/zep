@@ -226,6 +226,7 @@ own engine — uses for its LLM clients):
 ```python
 from zep_ingest.llm.openai import OpenAILLM, OpenAICompatibleLLM
 from zep_ingest.llm.anthropic import AnthropicLLM
+from zep_ingest.llm.orcarouter import OrcaRouterLLM
 
 OpenAILLM()  # OpenAI (pip install "zep-ingest[openai]")
 AnthropicLLM()  # Anthropic (pip install "zep-ingest[anthropic]")
@@ -235,11 +236,35 @@ OpenAICompatibleLLM(
     base_url="http://localhost:11434/v1",  # OpenRouter, Together, ...
     api_key="ollama",
 )
+# Named gateway adapter — OrcaRouter (https://www.orcarouter.ai):
+OrcaRouterLLM()  # reads ORCAROUTER_API_KEY, defaults to orcarouter/auto
 ```
 
 `OpenAICompatibleLLM` is the docs-recommended route to "any provider":
 LiteLLM alone proxies 100+ models behind this interface, with no extra
 dependency here beyond the `openai` package.
+
+[OrcaRouter](https://www.orcarouter.ai) is an OpenAI-compatible gateway that
+routes to the best model for each request. `OrcaRouterLLM` pre-fills its
+`https://api.orcarouter.ai/v1` base URL and the adaptive `orcarouter/auto`
+model, and reads the API key from `ORCAROUTER_API_KEY` (prefix `sk-orca-`),
+so contextualization needs no endpoint/model plumbing:
+
+```python
+from zep_ingest import LLMContextualizer, ingest_documents
+from zep_ingest.llm.orcarouter import OrcaRouterLLM
+
+ingest_documents(
+    client,
+    "handbook/**/*.md",
+    graph_id="company_kb",
+    llm=LLMContextualizer(OrcaRouterLLM()),
+)
+```
+
+It also runs gateway-level, zero-trust security for AI agents on the same
+endpoint — screening every prompt/response and governing every tool call on a
+default-deny basis, with no application code changes.
 
 ## Entity canonicalization
 
