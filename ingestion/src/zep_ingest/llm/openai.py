@@ -6,6 +6,8 @@ LiteLLM, Ollama, vLLM, OpenRouter, Together, Groq, Azure-compatible proxies —
 which is the pattern Zep's own docs recommend for bring-your-own-provider
 setups. Both are optional conveniences: anything implementing
 ``complete(prompt) -> str`` satisfies the LLMClient protocol directly.
+For a named OrcaRouter gateway adapter (with a pre-filled base URL and
+model), see :mod:`zep_ingest.llm.orcarouter`.
 
 Optional dependency: pip install "zep-ingest[openai]" (not needed when you
 pass a pre-constructed client).
