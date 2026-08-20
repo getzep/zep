@@ -25,6 +25,7 @@ Current packages:
 | `ag2/python` | `zep-ag2` (PyPI) | `zep_ag2` |
 | `autogen/python` | `zep-autogen` (PyPI) | `zep_autogen` |
 | `crewai/python` | `zep-crewai` (PyPI) | `zep_crewai` |
+| `deepseek-harness/typescript` | `@getzep/zep-deepseek-harness` (npm) | `@getzep/zep-deepseek-harness` |
 | `langgraph/python` | `zep-langgraph` (PyPI) | `zep_langgraph` |
 | `livekit/python` | `zep-livekit` (PyPI) | `zep_livekit` |
 | `mastra/typescript` | `@getzep/zep-mastra` (npm) | `@getzep/zep-mastra` |
