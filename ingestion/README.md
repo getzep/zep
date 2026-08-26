@@ -139,7 +139,12 @@ endpoint to call (HTTP 404 — an older server, a self-hosted or Community
 deployment, or a base URL that doesn't route `/batches`). Authorization and
 quota errors are raised as errors instead of quietly downgrading the run.
 Every source here ingests fine without the Batch API — pass
-`method="sequential"` to take that path deliberately.
+`method="sequential"` to take that path deliberately. Sequential does **not**
+mean "wait until this file has finished extracting before submitting the next."
+It only means each item is sent with `graph.add` (or `thread.add_messages`)
+instead of the Batch API. Submit every file into the graph first; `wait()` is
+opt-in and, when used, polls the last episode with a timeout that scales with
+how many episodes were queued.
 
 ## The pipeline
 
@@ -166,7 +171,7 @@ pipeline = Pipeline(
 )
 report = pipeline.preview()  # NO Zep API calls: inspect episodes + warnings first
 result = pipeline.run(client, graph_id="company_kb")
-result.wait(timeout=3600)  # submission returns immediately; blocking is opt-in
+result.wait()  # opt-in; polls the last episode, timeout scales with item count
 ```
 
 `preview()` shows the transformed episodes and validation warnings (including
@@ -383,7 +388,48 @@ graph):
    `source_node_uuid`/`target_node_uuid`. Extraction dedups against the existing
    graph, so known entities anchor resolution.
 5. Ingest the corpus with real `created_at` timestamps and alias
-   canonicalization, then block on the bound result with `result.wait(...)`.
+   canonicalization. Submit every source for a graph before waiting. Then, if
+   you need extraction to finish, block on the bound result with
+   `result.wait()` (or `combined.wait()` after `IngestResult.combine`).
+
+## Many files, one graph
+
+Do not wait for one file (or one graph) to finish processing before submitting
+the next. Create destinations and set ontology, then enqueue everything.
+
+```python
+from zep_ingest import ConcatLoader, ingest, ingest_json_records, ingest_nodes
+
+# Same loader, several files — submitted in this order, one wait:
+result = ingest_json_records(
+    client,
+    ["data/issues.jsonl", "data/prs.jsonl", "data/jira.jsonl"],
+    graph_id="engineering",
+)
+result.wait()  # polls the last episode; timeout scales with items_submitted
+
+# Mixed sources, still one submit stream:
+from zep_ingest import JsonRecordsLoader, TextFileLoader
+
+result = ingest(
+    client,
+    ConcatLoader(
+        [
+            JsonRecordsLoader(["data/issues.jsonl", "data/prs.jsonl"]),
+            TextFileLoader("data/runbooks/**/*.md"),
+        ]
+    ),
+    graph_id="engineering",
+)
+result.wait()
+
+# Already-separate calls (e.g. nodes then episodes): submit all, then wait once.
+nodes = ingest_nodes(client, node_items, graph_id="engineering")
+docs = ingest_json_records(client, ["data/issues.jsonl", "data/prs.jsonl"], graph_id="engineering")
+nodes.combine(docs).wait()
+```
+
+If you are not polling, stop after submit — there is nothing else to do.
 
 ## Fact triples
 
@@ -407,7 +453,7 @@ result = ingest_fact_triples(
     ],
     graph_id="org",
 )
-result.wait(timeout=600)
+result.wait()
 # Zep assigns the fact UUID; it lands in task params as edge_uuid after completion.
 # Parallel to the submitted triples — failed tasks leave None in that slot.
 result.edge_uuids
@@ -463,7 +509,7 @@ Sequential only (the Batch API doesn't take direct nodes).
 ```python
 result = ingest_slack_export(client, "export.zip", graph_id="g1")
 result.status  # queued | processing | untracked | succeeded | partial | failed | canceled
-result.wait(timeout=3600)
+result.wait()
 result.failed_items()  # Batch API item records and/or submission AddErrors
 result.warnings  # everything the pipeline noticed
 result.raise_for_status()  # opt-in strictness

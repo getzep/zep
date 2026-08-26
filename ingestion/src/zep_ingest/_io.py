@@ -9,13 +9,66 @@ does accept CSV. The dispatch lives once, here, so behavior cannot drift
 between the paths.
 """
 
+import glob
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import MISSING, fields
 from pathlib import Path
 from typing import Any
 
 from zep_ingest.exceptions import ConfigurationError
+from zep_ingest.types import SourcePaths
+
+
+def source_paths_label(path_or_glob: SourcePaths) -> str:
+    if isinstance(path_or_glob, str | Path):
+        return str(path_or_glob)
+    return ", ".join(str(path) for path in path_or_glob)
+
+
+def resolve_source_files(
+    path_or_glob: SourcePaths,
+    *,
+    what: str = "files",
+) -> list[Path]:
+    """Resolve a glob, a path, or a sequence of either to existing files.
+
+    A single glob is sorted, matching prior loader behavior. A sequence keeps
+    caller order so issues.jsonl then prs.jsonl stay in that submission order;
+    matches within one glob entry are still sorted. Duplicates are dropped.
+    """
+    if isinstance(path_or_glob, str | Path):
+        patterns: list[str | Path] = [path_or_glob]
+    else:
+        if not isinstance(path_or_glob, Sequence):
+            raise ConfigurationError(
+                f"Source path must be a path, glob, or sequence of those, got "
+                f"{type(path_or_glob).__name__}"
+            )
+        patterns = list(path_or_glob)
+        if not patterns:
+            raise ConfigurationError(f"No {what} were provided.")
+        invalid = [item for item in patterns if not isinstance(item, str | Path)]
+        if invalid:
+            raise ConfigurationError(
+                f"Each source path must be a path or glob string, got {type(invalid[0]).__name__}"
+            )
+
+    files: list[Path] = []
+    seen: set[Path] = set()
+    for pattern in patterns:
+        matched = sorted(
+            Path(path) for path in glob.glob(str(pattern), recursive=True) if Path(path).is_file()
+        )
+        for file in matched:
+            resolved = file if file.is_absolute() else file.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            files.append(file)
+    if not files:
+        raise ConfigurationError(f"No {what} match {source_paths_label(path_or_glob)!r}.")
+    return files
 
 
 def load_rows(path: Path) -> list[dict[str, Any]]:

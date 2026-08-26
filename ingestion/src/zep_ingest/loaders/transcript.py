@@ -4,16 +4,16 @@ Each turn is rendered inline as ``Speaker: text`` so the speaker attribution
 survives even though the episode is ingested as a plain-text episode.
 """
 
-import glob
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
+from zep_ingest._io import resolve_source_files, source_paths_label
 from zep_ingest._validation import require_int_range
 from zep_ingest.exceptions import ConfigurationError
-from zep_ingest.types import Episode
+from zep_ingest.types import Episode, SourcePaths
 
 _TIMESTAMP = re.compile(r"^\s*(?:\*\*)?\[?(\d{1,2}):(\d{2}):(\d{2})\]?(?:\*\*)?\s*$")
 _VTT_TIME = r"(?:(?P<hours>\d{2,}):)?(?P<minutes>[0-5]\d):(?P<seconds>[0-5]\d)\.(?P<millis>\d{3})"
@@ -51,14 +51,14 @@ class _Turn:
 class TranscriptLoader:
     def __init__(
         self,
-        path_or_glob: str | Path,
+        path_or_glob: SourcePaths,
         *,
         chunk_chars: int = DEFAULT_CHUNK_CHARS,
         meeting_start: str | None = None,
         default_start_time: str | None = None,
     ) -> None:
         require_int_range("chunk_chars", chunk_chars, minimum=1)
-        self.pattern = str(path_or_glob)
+        self.pattern = source_paths_label(path_or_glob)
         self.chunk_chars = chunk_chars
         try:
             self._meeting_start = (
@@ -81,11 +81,7 @@ class TranscriptLoader:
         if self._default_start is not None and self._default_start.tzinfo is None:
             raise ConfigurationError("default_start_time must include a timezone offset")
         self.warnings: list[str] = []
-        self.files = sorted(
-            Path(p) for p in glob.glob(self.pattern, recursive=True) if Path(p).is_file()
-        )
-        if not self.files:
-            raise ConfigurationError(f"No transcript files match {self.pattern!r}.")
+        self.files = resolve_source_files(path_or_glob, what="transcript files")
         if meeting_start is not None and len(self.files) > 1:
             raise ConfigurationError("meeting_start can only be used with a single transcript")
 

@@ -19,7 +19,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from itertools import islice
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import httpx
 from zep_cloud.client import Zep
@@ -29,7 +29,7 @@ from zep_cloud.types.batch_add_item import BatchAddItem
 from zep_cloud.types.message import Message
 
 from zep_ingest._errors import format_api_error
-from zep_ingest._io import load_rows, rows_to_fields
+from zep_ingest._io import load_rows, resolve_source_files, rows_to_fields
 from zep_ingest._validation import (
     check_required_string,
     check_scalar_map,
@@ -55,6 +55,7 @@ from zep_ingest.types import (
     MAX_ITEMS_PER_ADD,
     MAX_MESSAGES_PER_THREAD_ADD,
     MAX_METADATA_KEYS,
+    SourcePaths,
 )
 
 logger = logging.getLogger("zep_ingest")
@@ -131,6 +132,22 @@ def _validate_ignore_roles(ignore_roles: Sequence[str] | None) -> list[str] | No
 def _load_messages(path: Path) -> list[ThreadMessage]:
     rows = rows_to_fields(load_rows(path), ThreadMessage)
     return [ThreadMessage(**row) for row in rows]
+
+
+def _is_source_paths(value: object) -> bool:
+    if isinstance(value, str | Path):
+        return True
+    if isinstance(value, Sequence) and not isinstance(value, bytes):
+        items = list(value)
+        return bool(items) and all(isinstance(item, str | Path) for item in items)
+    return False
+
+
+def _load_message_sources(path_or_glob: SourcePaths) -> list[ThreadMessage]:
+    messages: list[ThreadMessage] = []
+    for file in resolve_source_files(path_or_glob):
+        messages.extend(_load_messages(file))
+    return messages
 
 
 def _prepare(messages: list[ThreadMessage], warnings: list[str]) -> list[ThreadMessage]:
@@ -356,7 +373,7 @@ def _submit_sequential(
 
 def ingest_thread_messages(
     client: Zep,
-    messages: Iterable[ThreadMessage] | str | Path,
+    messages: Iterable[ThreadMessage] | SourcePaths,
     *,
     user_id: str | None = None,
     method: Literal["auto", "batch", "sequential"] = "auto",
@@ -368,9 +385,10 @@ def ingest_thread_messages(
 ) -> IngestResult:
     """Backfill chat history into a user's graph via threads.
 
-    Accepts ThreadMessage objects or a JSONL / JSON-object / JSON-array path with columns
-    thread_id/role/name/content/created_at (all required except metadata). The
-    user must already exist; every referenced thread is created if missing (the
+    Accepts ThreadMessage objects, a JSONL / JSON-object / JSON-array path, a
+    glob, or a sequence of those paths (files are submitted in caller order).
+    Columns are thread_id/role/name/content/created_at (all required except metadata).
+    The user must already exist; every referenced thread is created if missing (the
     Batch API requires threads to exist), and per-thread message order is
     preserved on both submission paths.
 
@@ -387,7 +405,7 @@ def ingest_thread_messages(
     handles survive a timeout::
 
         result = ingest_thread_messages(client, messages, user_id="u1")
-        result.wait(timeout=600)
+        result.wait()
     """
     if not user_id:
         raise ConfigurationError(
@@ -408,10 +426,10 @@ def ingest_thread_messages(
     if thread_id_suffix is not None and not isinstance(thread_id_suffix, str):
         raise ConfigurationError("thread_id_suffix must be a string or None")
     normalized_ignore_roles = _validate_ignore_roles(ignore_roles)
-    if isinstance(messages, str | Path):
-        materialized = _load_messages(Path(messages))
+    if _is_source_paths(messages):
+        materialized = _load_message_sources(cast(SourcePaths, messages))
     else:
-        materialized = list(messages)
+        materialized = list(cast(Iterable[ThreadMessage], messages))
     if thread_id_suffix:
         materialized = [
             replace(m, thread_id=f"{m.thread_id}{thread_id_suffix}") for m in materialized

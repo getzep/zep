@@ -36,7 +36,7 @@ from zep_ingest.submitters import Method, submit_episodes
 from zep_ingest.transforms.canonicalizer import DEFAULT_RISKY_WORDS, AliasCanonicalizer
 from zep_ingest.transforms.chunker import TextChunker
 from zep_ingest.transforms.limits import LimitGuard
-from zep_ingest.types import Destination, Episode
+from zep_ingest.types import Destination, Episode, SourcePaths
 
 
 @dataclass
@@ -176,7 +176,7 @@ class Pipeline:
         resume handles survive a timeout::
 
             result = pipeline.run(client, graph_id="company_kb")
-            result.wait(timeout=600)
+            result.wait()
         """
         destination = Destination(graph_id=graph_id, user_id=user_id)
         if self.submitter is not None and (method != "auto" or batch_metadata is not None):
@@ -262,7 +262,7 @@ def ingest_slack_export(
 
 def ingest_documents(
     client: Zep,
-    path_or_glob: str | Path,
+    path_or_glob: SourcePaths,
     *,
     graph_id: str | None = None,
     user_id: str | None = None,
@@ -291,7 +291,7 @@ def ingest_documents(
 
 def ingest_transcripts(
     client: Zep,
-    path_or_glob: str | Path,
+    path_or_glob: SourcePaths,
     *,
     graph_id: str | None = None,
     user_id: str | None = None,
@@ -316,7 +316,7 @@ def ingest_transcripts(
 
 def ingest_emails(
     client: Zep,
-    path_or_glob: str | Path,
+    path_or_glob: SourcePaths,
     *,
     graph_id: str | None = None,
     user_id: str | None = None,
@@ -333,7 +333,7 @@ def ingest_emails(
 
 def ingest_json_records(
     client: Zep,
-    path_or_glob: str | Path,
+    path_or_glob: SourcePaths,
     *,
     graph_id: str | None = None,
     user_id: str | None = None,
@@ -346,7 +346,13 @@ def ingest_json_records(
     record_type: str | None = None,
     **run_kwargs: Any,
 ) -> IngestResult:
-    """One-liner: structured records (JSONL/CSV/JSON array) → one json episode per record."""
+    """One-liner: structured records (JSONL/CSV/JSON array) → one json episode per record.
+
+    ``path_or_glob`` may be one file, a glob, or a sequence of files/globs.
+    Every matching file is submitted together; processing is not waited on
+    between files. Call ``result.wait()`` once after submit if you need the
+    graph to finish extracting.
+    """
     loader = JsonRecordsLoader(
         path_or_glob,
         format=format,

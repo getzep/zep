@@ -6,7 +6,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from zep_ingest._validation import require_int_range, require_nonnegative_number
-from zep_ingest.exceptions import IngestFailedError, IngestTimeoutError, IngestUntrackedError
+from zep_ingest.exceptions import (
+    ConfigurationError,
+    IngestFailedError,
+    IngestTimeoutError,
+    IngestUntrackedError,
+)
 
 if TYPE_CHECKING:
     from zep_cloud.client import Zep
@@ -70,6 +75,23 @@ def _identity_from_task_params(params: Any) -> tuple[list[str], list[str]]:
     if edge_uuid:
         edge_uuids = [str(edge_uuid)]
     return node_uuids, edge_uuids
+
+
+# Graph extraction is queued per destination. Wait budgets scale with how many
+# items still have to drain through that queue, not with how many we poll.
+SECONDS_PER_SUBMITTED_ITEM = 15.0
+MIN_WAIT_TIMEOUT_SECONDS = 120.0
+
+
+def wait_timeout_seconds(item_count: int) -> float:
+    """Timeout for ``IngestResult.wait()`` given how many items were submitted.
+
+    The graph processes episodes in order, so waiting on the last one still has
+    to cover the work ahead of it. Floor is ``MIN_WAIT_TIMEOUT_SECONDS`` so a
+    tiny run is not given an unrealistically short deadline.
+    """
+    require_int_range("item_count", item_count, minimum=0)
+    return max(MIN_WAIT_TIMEOUT_SECONDS, item_count * SECONDS_PER_SUBMITTED_ITEM)
 
 
 @dataclass(slots=True)
@@ -151,26 +173,47 @@ class IngestResult:
         """Fetch the latest processing state from the API."""
         if self.client is None:
             raise RuntimeError("IngestResult has no client; cannot refresh.")
-        if self.method == "batch":
-            for batch_id in self.batch_ids:
-                summary = self._batch_summaries.get(batch_id)
-                if summary is not None and summary.status in _TERMINAL_BATCH_STATUSES:
-                    continue
-                self._batch_summaries[batch_id] = self.client.batch.get(batch_id)
-        else:
-            for uuid in self.episode_uuids:
-                if uuid in self._processed_uuids:
-                    continue
-                episode = self.client.graph.episode.get(uuid_=uuid)
-                if episode.processed:
-                    self._processed_uuids.add(uuid)
-            for task_id in self.task_ids:
-                if self._task_statuses.get(task_id) in _TERMINAL_TASK_STATUSES:
-                    continue
-                task = self.client.task.get(task_id)
-                self._task_statuses[task_id] = _normalize_task_status(task.status)
-                self._task_params[task_id] = getattr(task, "params", None)
-            self._sync_identities_from_task_params()
+        self._refresh_batches()
+        self._refresh_episodes(only_last=False)
+        self._refresh_tasks()
+
+    def _refresh_batches(self, *, only_last: bool = False) -> None:
+        if self.client is None:
+            raise RuntimeError("IngestResult has no client; cannot refresh.")
+        batch_ids = self.batch_ids[-1:] if only_last and self.batch_ids else self.batch_ids
+        for batch_id in batch_ids:
+            summary = self._batch_summaries.get(batch_id)
+            if summary is not None and summary.status in _TERMINAL_BATCH_STATUSES:
+                continue
+            self._batch_summaries[batch_id] = self.client.batch.get(batch_id)
+
+    def _refresh_episodes(self, *, only_last: bool) -> None:
+        if self.client is None:
+            raise RuntimeError("IngestResult has no client; cannot refresh.")
+        if not self.episode_uuids:
+            return
+        uuids = [self.episode_uuids[-1]] if only_last else self.episode_uuids
+        for uuid in uuids:
+            if uuid in self._processed_uuids:
+                continue
+            episode = self.client.graph.episode.get(uuid_=uuid)
+            if episode.processed:
+                self._processed_uuids.add(uuid)
+        if only_last and self.episode_uuids[-1] in self._processed_uuids:
+            # Per-graph processing is ordered: the last episode finishing means
+            # the queue in front of it has already drained.
+            self._processed_uuids.update(self.episode_uuids)
+
+    def _refresh_tasks(self) -> None:
+        if self.client is None:
+            raise RuntimeError("IngestResult has no client; cannot refresh.")
+        for task_id in self.task_ids:
+            if self._task_statuses.get(task_id) in _TERMINAL_TASK_STATUSES:
+                continue
+            task = self.client.task.get(task_id)
+            self._task_statuses[task_id] = _normalize_task_status(task.status)
+            self._task_params[task_id] = getattr(task, "params", None)
+        self._sync_identities_from_task_params()
 
     def _param_identity_prefix(self, *, kind: Literal["node", "edge"]) -> list[str | None]:
         """Identities from cached task params in ``task_ids`` order.
@@ -205,7 +248,7 @@ class IngestResult:
     def status(self) -> str:
         """Aggregate status, including explicit ``untracked`` completion state."""
         statuses: list[str] = []
-        if self.method == "batch":
+        if self.batch_ids:
             for batch_id in self.batch_ids:
                 summary = self._batch_summaries.get(batch_id)
                 raw = summary.status if summary is not None else "queued"
@@ -215,13 +258,12 @@ class IngestResult:
                     statuses.append("failed")
                 else:
                     statuses.append(str(raw))
-        else:
-            if self.episode_uuids:
-                if len(self._processed_uuids) >= len(set(self.episode_uuids)):
-                    statuses.append("succeeded")
-                else:
-                    statuses.append("processing")
-            statuses.extend(self._task_statuses.get(task_id, "queued") for task_id in self.task_ids)
+        if self.episode_uuids:
+            if len(self._processed_uuids) >= len(set(self.episode_uuids)):
+                statuses.append("succeeded")
+            else:
+                statuses.append("processing")
+        statuses.extend(self._task_statuses.get(task_id, "queued") for task_id in self.task_ids)
         if self.untracked_items:
             statuses.append("untracked")
         if self.add_errors:
@@ -233,15 +275,87 @@ class IngestResult:
                 return candidate
         return statuses[0]
 
-    def wait(self, *, poll_interval: float = 10.0, timeout: float | None = None) -> "IngestResult":
+    def combine(self, *others: "IngestResult") -> "IngestResult":
+        """Merge later submits into this result so ``wait()`` can poll once.
+
+        Submission is independent of processing: call every ingest into the same
+        graph, combine the results, then ``wait()`` (or skip waiting entirely).
+        Sequential vs batch only chooses the submit API; it does not mean
+        "finish processing this file before sending the next."
+        """
+        parts = (self, *others)
+        clients = {id(part.client): part.client for part in parts if part.client is not None}
+        if len(clients) > 1:
+            raise ConfigurationError("Cannot combine IngestResults from different Zep clients")
+        client = next(iter(clients.values()), None)
+        has_batches = any(part.batch_ids for part in parts)
+        has_sequential_handles = any(part.episode_uuids or part.task_ids for part in parts)
+        method: Literal["batch", "sequential"] = (
+            "batch" if has_batches and not has_sequential_handles else "sequential"
+        )
+        combined = IngestResult(method=method, client=client)
+        for part in parts:
+            combined.items_submitted += part.items_submitted
+            combined.untracked_items += part.untracked_items
+            combined.batch_ids.extend(part.batch_ids)
+            combined.episode_uuids.extend(part.episode_uuids)
+            combined.task_ids.extend(part.task_ids)
+            combined.node_uuids.extend(part.node_uuids)
+            combined.edge_uuids.extend(part.edge_uuids)
+            combined.add_errors.extend(part.add_errors)
+            combined.warnings.extend(part.warnings)
+            combined._batch_summaries.update(part._batch_summaries)
+            combined._processed_uuids.update(part._processed_uuids)
+            combined._task_statuses.update(part._task_statuses)
+            combined._task_params.update(part._task_params)
+            combined._node_uuids_from_submit = (
+                combined._node_uuids_from_submit or part._node_uuids_from_submit
+            )
+        return combined
+
+    def _queued_item_count(self) -> int | None:
+        """Known queued work, or ``None`` when only opaque batch ids exist."""
+        if self.items_submitted > 0:
+            return self.items_submitted
+        count = len(self.episode_uuids) + len(self.task_ids)
+        if count > 0:
+            return count
+        if self.batch_ids:
+            return None
+        return 0
+
+    def _resolve_wait_timeout(self, timeout: float | Literal["auto"] | None) -> float | None:
+        if timeout is None:
+            return None
+        if timeout == "auto":
+            count = self._queued_item_count()
+            if count is None:
+                # from_batch_ids() has no item count; do not invent a 120s cap.
+                return None
+            return wait_timeout_seconds(count)
+        require_nonnegative_number("timeout", timeout)
+        return timeout
+
+    def wait(
+        self,
+        *,
+        poll_interval: float = 10.0,
+        timeout: float | Literal["auto"] | None = "auto",
+    ) -> "IngestResult":
         """Poll until processing reaches a terminal state.
+
+        Episode ingest polls only the last submitted episode: earlier items
+        share the same per-graph queue, so the tail is a sufficient completion
+        signal. The default timeout scales with how many items were submitted
+        (``wait_timeout_seconds``). Pass ``timeout=None`` to wait without a
+        deadline. Reconstructed ``from_batch_ids()`` results have no item
+        count, so ``timeout="auto"`` also waits without a deadline.
 
         Raises IngestTimeoutError on timeout, or IngestUntrackedError when the
         API returned no completion handle; the result stays usable.
         """
         require_nonnegative_number("poll_interval", poll_interval)
-        if timeout is not None:
-            require_nonnegative_number("timeout", timeout)
+        resolved_timeout = self._resolve_wait_timeout(timeout)
         if self.untracked_items:
             raise IngestUntrackedError(
                 f"Cannot wait for {self.untracked_items} submitted item(s): the API returned "
@@ -250,42 +364,60 @@ class IngestResult:
             )
         start = time.monotonic()
         while True:
-            self.refresh()
+            self._poll_for_wait()
             if self._is_terminal():
                 return self
-            if timeout is not None and time.monotonic() - start >= timeout:
+            if resolved_timeout is not None and time.monotonic() - start >= resolved_timeout:
                 raise IngestTimeoutError(
-                    f"Ingestion still {self.status!r} after {timeout}s; call wait() "
+                    f"Ingestion still {self.status!r} after {resolved_timeout}s; call wait() "
                     "again or inspect progress via refresh()/status."
                 )
             time.sleep(poll_interval)
 
+    def _poll_for_wait(self) -> None:
+        """Poll the tail of the graph queue, and always poll task handles.
+
+        Tasks (nodes, triples, sequential threads) are not the same FIFO as
+        graph episodes, so they are refreshed every tick even while the episode
+        or batch tail is still in flight — otherwise a combined
+        ``nodes.combine(docs).wait()`` would hide a failed seed until the
+        episode batch finished.
+        """
+        if self.episode_uuids:
+            self._refresh_episodes(only_last=True)
+            if self.episode_uuids[-1] in self._processed_uuids:
+                self._refresh_batches()
+        elif self.batch_ids:
+            self._refresh_batches(only_last=True)
+            last = self._batch_summaries.get(self.batch_ids[-1])
+            if last is not None and last.status in _TERMINAL_BATCH_STATUSES:
+                self._refresh_batches()
+        self._refresh_tasks()
+
     def _is_terminal(self) -> bool:
         if self.untracked_items:
             return False
-        if self.method == "batch":
-            return all(
+        if self.batch_ids:
+            batches_terminal = all(
                 (summary := self._batch_summaries.get(batch_id)) is not None
                 and summary.status in _TERMINAL_BATCH_STATUSES
                 for batch_id in self.batch_ids
             )
-        episodes_terminal = len(self._processed_uuids) >= len(set(self.episode_uuids))
-        tasks_terminal = all(
+            if not batches_terminal:
+                return False
+        if self.episode_uuids and len(self._processed_uuids) < len(set(self.episode_uuids)):
+            return False
+        return all(
             self._task_statuses.get(task_id) in _TERMINAL_TASK_STATUSES
             for task_id in set(self.task_ids)
         )
-        return episodes_terminal and tasks_terminal
 
     def failed_items(self, *, limit: int = 100) -> "list[BatchItemDetail | AddError]":
         """Failed item details from submission and server-side batch processing."""
         require_int_range("limit", limit, minimum=1)
-        if self.method == "sequential":
-            sequential_errors: list[BatchItemDetail | AddError] = []
-            sequential_errors.extend(self.add_errors[:limit])
-            return sequential_errors
         collected: list[BatchItemDetail | AddError] = list(self.add_errors[:limit])
-        if len(collected) >= limit:
-            return collected
+        if len(collected) >= limit or not self.batch_ids:
+            return collected[:limit]
         if self.client is None:
             raise RuntimeError("IngestResult has no client; cannot list failed items.")
         for batch_id in self.batch_ids:

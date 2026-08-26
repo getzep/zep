@@ -174,7 +174,7 @@ def ingest_fact_triples(
     handles survive a timeout::
 
         result = ingest_fact_triples(client, triples, graph_id="g1")
-        result.wait(timeout=600)
+        result.wait()
     """
     destination = Destination(graph_id=graph_id, user_id=user_id)
     if isinstance(triples, str | Path):

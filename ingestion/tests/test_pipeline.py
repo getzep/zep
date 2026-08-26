@@ -7,6 +7,8 @@ import pytest
 
 from tests.conftest import make_zep_episode
 from zep_ingest.exceptions import ConfigurationError
+from zep_ingest.loaders.concat import ConcatLoader
+from zep_ingest.loaders.json_records import JsonRecordsLoader
 from zep_ingest.pipeline import (
     Pipeline,
     ingest,
@@ -151,6 +153,27 @@ class TestRun:
         result.wait(poll_interval=0)
         assert result.status == "succeeded"
         mock_zep.batch.get.assert_called()
+
+
+class TestConcatLoader:
+    def test_one_submit_stream_from_several_loaders(self, mock_zep, tmp_path):
+        issues = tmp_path / "issues.jsonl"
+        prs = tmp_path / "prs.jsonl"
+        issues.write_text('{"id": "ISSUE-1"}\n')
+        prs.write_text('{"id": "PR-1"}\n')
+        loader = ConcatLoader(
+            [
+                JsonRecordsLoader(issues),
+                JsonRecordsLoader(prs),
+            ]
+        )
+        result = Pipeline(loader).run(mock_zep, graph_id="g1")
+        assert result.items_submitted == 2
+        [add_call] = mock_zep.batch.add.call_args_list
+        assert [item.data for item in add_call.kwargs["items"]] == [
+            '{"id": "ISSUE-1"}',
+            '{"id": "PR-1"}',
+        ]
 
 
 class TestPreview:
