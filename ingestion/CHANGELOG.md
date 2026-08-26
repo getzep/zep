@@ -13,7 +13,7 @@ still change between minor versions.
   return — `wait()` stays opt-in.
 - `wait()` polls only the last submitted episode (per-graph extraction is
   ordered). The default timeout is `wait_timeout_seconds(items_submitted)` —
-  15s per item, minimum 120s. Pass `timeout=None` to wait without a deadline.
+  60s per item, minimum 120s. Pass `timeout=None` to wait without a deadline.
   `IngestResult.from_batch_ids(...).wait()` has no item count, so auto timeout
   does not invent a 120s cap.
 - File one-liners and loaders accept a sequence of paths/globs in caller order

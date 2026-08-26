@@ -79,7 +79,7 @@ def _identity_from_task_params(params: Any) -> tuple[list[str], list[str]]:
 
 # Graph extraction is queued per destination. Wait budgets scale with how many
 # items still have to drain through that queue, not with how many we poll.
-SECONDS_PER_SUBMITTED_ITEM = 15.0
+SECONDS_PER_SUBMITTED_ITEM = 60.0
 MIN_WAIT_TIMEOUT_SECONDS = 120.0
 
 
