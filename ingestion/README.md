@@ -531,7 +531,7 @@ resuming or diagnosing that run.
 | --- | --- |
 | Batch API (default for episodes and thread backfill) | Last `batch_id` via `batch.get` |
 | Sequential `graph.add` (batch fallback) | Last-submitted episode (`episode_uuids[-1]`) |
-| Sequential `thread.add_messages` | Last message UUID in the last request |
+| Sequential `thread.add_messages` | Last message UUID per thread (`message_uuids`; no `task_id`) |
 | `ingest_nodes` / `ingest_fact_triples` | Every `task_id` (separate queue from episodes) |
 
 Do not mix Batch API and sequential `graph.add` into the same graph and expect
@@ -553,9 +553,9 @@ recorded as `AddError`s (indices and API messages only — never episode content
 and the run continues. `batch_ids` / `episode_uuids` / `task_ids` are the
 resume handles; `node_uuids` / `edge_uuids` record identities Zep assigned on
 `ingest_nodes` and completed `ingest_fact_triples` tasks (`None` slots mark
-failures so later successes stay zip-aligned). Task IDs are used when
-``thread.add_messages`` returns no message UUIDs, and by asynchronous operations
-such as fact triples and direct node creation; ``wait()`` polls every task id.
+failures so later successes stay zip-aligned). Task IDs come from
+``ingest_nodes``, ``ingest_fact_triples``, and ``add_messages_batch`` — not from
+regular ``thread.add_messages``, which returns message UUIDs instead.
 
 If the API accepts a task-backed submission without returning a completion
 handle, the result reports `status == "untracked"` instead of claiming success.

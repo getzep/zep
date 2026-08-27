@@ -14,7 +14,8 @@ still change between minor versions.
 - `wait()` aligns with [Check data ingestion status](https://help.getzep.com/check-data-ingestion-status):
   Batch API paths poll the last batch via `batch.get`; sequential `graph.add`
   polls the last-submitted episode; sequential `thread.add_messages` polls the
-  last message UUID in the last request; nodes/triples poll every task id.
+  last message UUID per thread (regular ``add_messages`` returns message UUIDs,
+  not ``task_id``); nodes/triples poll every task id.
   Default timeout is `wait_timeout_seconds(items_submitted)` — 60s per item,
   minimum 120s. Pass `timeout=None` to wait without a deadline.
   `IngestResult.from_batch_ids(...).wait()` has no item count, so auto timeout

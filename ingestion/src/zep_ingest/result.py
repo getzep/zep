@@ -147,6 +147,9 @@ class IngestResult:
     # True when node_uuids was filled from the add_nodes response (submission order).
     # Task-param recovery must not overwrite or reorder that list.
     _node_uuids_from_submit: bool = field(default=False, repr=False, compare=False)
+    # Plain graph.add (and single-thread backfills) share one per-graph queue, so
+    # polling the last UUID is enough. Multiple threads are independent sagas.
+    _single_queue_episode_poll: bool = field(default=True, repr=False, compare=False)
 
     @classmethod
     def from_batch_ids(cls, client: "Zep", batch_ids: "Sequence[str]") -> "IngestResult":
@@ -192,15 +195,24 @@ class IngestResult:
             raise RuntimeError("IngestResult has no client; cannot refresh.")
         if not self.episode_uuids:
             return
-        uuids = [self.episode_uuids[-1]] if only_last else self.episode_uuids
+        if only_last and self._single_queue_episode_poll:
+            uuids = [self.episode_uuids[-1]]
+        elif only_last:
+            uuids = list(dict.fromkeys(self.episode_uuids))
+        else:
+            uuids = self.episode_uuids
         for uuid in uuids:
             if uuid in self._processed_uuids:
                 continue
             episode = self.client.graph.episode.get(uuid_=uuid)
             if episode.processed:
                 self._processed_uuids.add(uuid)
-        if only_last and self.episode_uuids[-1] in self._processed_uuids:
-            # Plain graph.add and thread backfills are ordered by submission
+        if (
+            only_last
+            and self._single_queue_episode_poll
+            and self.episode_uuids[-1] in self._processed_uuids
+        ):
+            # Plain graph.add and single-thread backfills are ordered by submission
             # (or request-array order within a thread.add_messages call): the
             # tail finishing means the queue in front of it has drained.
             self._processed_uuids.update(self.episode_uuids)
@@ -301,16 +313,14 @@ class IngestResult:
             combined.batch_ids.extend(part.batch_ids)
             combined.episode_uuids.extend(part.episode_uuids)
             combined.task_ids.extend(part.task_ids)
-            combined.node_uuids.extend(part.node_uuids)
-            combined.edge_uuids.extend(part.edge_uuids)
             combined.add_errors.extend(part.add_errors)
             combined.warnings.extend(part.warnings)
             combined._batch_summaries.update(part._batch_summaries)
             combined._processed_uuids.update(part._processed_uuids)
             combined._task_statuses.update(part._task_statuses)
             combined._task_params.update(part._task_params)
-            combined._node_uuids_from_submit = (
-                combined._node_uuids_from_submit or part._node_uuids_from_submit
+            combined._single_queue_episode_poll = (
+                combined._single_queue_episode_poll and part._single_queue_episode_poll
             )
         return combined
 
@@ -357,7 +367,9 @@ class IngestResult:
           ``document_id``, so submission order matches ingestion order for plain
           ``graph.add`` chunks.
         - **Sequential ``thread.add_messages``**: the last message UUID in the
-          last request (``message_uuids[-1]`` from each call is recorded).
+          last request per thread (``message_uuids[-1]``). Regular
+          ``thread.add_messages`` does not return a ``task_id`` — only
+          ``add_messages_batch`` does.
         - **Tasks** (``add_nodes``, ``add_fact_triple``): every ``task_id`` on
           each tick — tasks are not the same FIFO as graph episodes.
 

@@ -318,8 +318,9 @@ def _submit_sequential(
     max_retries: int,
 ) -> IngestResult:
     result = IngestResult(method="sequential", client=client)
-    missing_task_handles = 0
+    missing_message_uuids = 0
     by_thread: dict[str, list[ThreadMessage]] = {}
+    thread_poll_uuids: dict[str, str] = {}
     for message in messages:
         by_thread.setdefault(message.thread_id, []).append(message)
     chunk_index = 0
@@ -355,25 +356,20 @@ def _submit_sequential(
                 result.items_submitted += len(chunk)
                 message_uuids = getattr(response, "message_uuids", None) or []
                 if message_uuids:
-                    # Docs: poll the last message in the last request (request-array
-                    # order within a call; submission order across calls).
-                    result.episode_uuids.append(str(message_uuids[-1]))
+                    # Docs: poll the last message in the last request per thread.
+                    # thread.add_messages does not return task_id (only batch mode does).
+                    thread_poll_uuids[thread_id] = str(message_uuids[-1])
                 else:
-                    task_id = getattr(response, "task_id", None)
-                    if task_id:
-                        normalized_task_id = str(task_id)
-                        if normalized_task_id not in result.task_ids:
-                            result.task_ids.append(normalized_task_id)
-                    else:
-                        missing_task_handles += 1
-                        result.untracked_items += len(chunk)
+                    missing_message_uuids += 1
+                    result.untracked_items += len(chunk)
             chunk_index += 1
-    if missing_task_handles:
+    result.episode_uuids = list(thread_poll_uuids.values())
+    result._single_queue_episode_poll = len(thread_poll_uuids) <= 1
+    if missing_message_uuids:
         result.warnings.append(
-            f"{missing_task_handles} successful thread.add_messages call(s) returned no "
-            "message UUID or task handle; wait()/status cannot track their server-side "
-            "extraction. Poll your own read (e.g. zep_ingest.search_when_ready) before "
-            "querying."
+            f"{missing_message_uuids} successful thread.add_messages call(s) returned no "
+            "message UUIDs; wait()/status cannot track their server-side extraction. "
+            "Poll your own read (e.g. zep_ingest.search_when_ready) before querying."
         )
     return result
 

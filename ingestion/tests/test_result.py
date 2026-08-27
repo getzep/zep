@@ -221,6 +221,26 @@ class TestSequentialResult:
         ]
         assert result.status == "succeeded"
 
+    def test_wait_does_not_mark_all_episodes_done_when_multi_thread_tail_finishes_first(
+        self, mock_zep
+    ):
+        result = IngestResult(
+            method="sequential",
+            episode_uuids=["e-thread-1", "e-thread-2"],
+            items_submitted=2,
+            client=mock_zep,
+            _single_queue_episode_poll=False,
+        )
+        mock_zep.graph.episode.get.side_effect = [
+            make_zep_episode("e-thread-1", processed=False),
+            make_zep_episode("e-thread-2", processed=True),
+        ]
+
+        with pytest.raises(IngestTimeoutError):
+            result.wait(poll_interval=0, timeout=0)
+
+        assert "e-thread-1" not in result._processed_uuids
+
     def test_combine_then_wait_polls_the_combined_tail(self, mock_zep):
         first = IngestResult(
             method="sequential", episode_uuids=["e1"], items_submitted=1, client=mock_zep
@@ -237,6 +257,27 @@ class TestSequentialResult:
         assert combined.episode_uuids == ["e1", "e2"]
         mock_zep.graph.episode.get.assert_called_once_with(uuid_="e2")
         assert combined.status == "succeeded"
+
+    def test_combine_does_not_merge_identity_lists(self, mock_zep):
+        nodes = IngestResult(
+            method="sequential",
+            node_uuids=["node-1"],
+            task_ids=["t1"],
+            client=mock_zep,
+        )
+        docs = IngestResult(
+            method="batch",
+            batch_ids=["b1"],
+            edge_uuids=["edge-1"],
+            client=mock_zep,
+        )
+
+        combined = nodes.combine(docs)
+
+        assert combined.node_uuids == []
+        assert combined.edge_uuids == []
+        assert combined.task_ids == ["t1"]
+        assert combined.batch_ids == ["b1"]
 
     def test_combine_rejects_different_clients(self, mock_zep):
         other = MagicMock()
