@@ -353,20 +353,27 @@ def _submit_sequential(
                 )
             else:
                 result.items_submitted += len(chunk)
-                task_id = getattr(response, "task_id", None)
-                if task_id:
-                    normalized_task_id = str(task_id)
-                    if normalized_task_id not in result.task_ids:
-                        result.task_ids.append(normalized_task_id)
+                message_uuids = getattr(response, "message_uuids", None) or []
+                if message_uuids:
+                    # Docs: poll the last message in the last request (request-array
+                    # order within a call; submission order across calls).
+                    result.episode_uuids.append(str(message_uuids[-1]))
                 else:
-                    missing_task_handles += 1
-                    result.untracked_items += len(chunk)
+                    task_id = getattr(response, "task_id", None)
+                    if task_id:
+                        normalized_task_id = str(task_id)
+                        if normalized_task_id not in result.task_ids:
+                            result.task_ids.append(normalized_task_id)
+                    else:
+                        missing_task_handles += 1
+                        result.untracked_items += len(chunk)
             chunk_index += 1
     if missing_task_handles:
         result.warnings.append(
             f"{missing_task_handles} successful thread.add_messages call(s) returned no "
-            "completion handle; wait()/status cannot track their server-side extraction. "
-            "Poll your own read (e.g. zep_ingest.search_when_ready) before querying."
+            "message UUID or task handle; wait()/status cannot track their server-side "
+            "extraction. Poll your own read (e.g. zep_ingest.search_when_ready) before "
+            "querying."
         )
     return result
 

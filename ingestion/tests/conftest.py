@@ -75,7 +75,7 @@ def mock_zep() -> MagicMock:
     client.thread = MagicMock()
     client.thread.create = MagicMock()
     client.thread.add_messages = MagicMock(
-        return_value=AddThreadMessagesResponse(task_id="thread-task-1")
+        return_value=AddThreadMessagesResponse(message_uuids=["msg-1"], task_id="thread-task-1")
     )
     client.task = MagicMock()
     client.task.get = MagicMock(return_value=GetTaskResponse(task_id="task-1", status="succeeded"))

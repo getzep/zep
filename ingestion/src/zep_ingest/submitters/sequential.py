@@ -5,7 +5,8 @@ off exponentially with jitter. One call at a time also preserves stream order,
 which correct valid_at sequencing depends on. Sequential means the Batch API
 is not used — each episode is submitted with graph.add — not that processing
 must finish before the next episode or file is sent. The HTTP add returns as
-soon as the episode is queued; wait() is opt-in and polls the last episode.
+soon as the episode is queued; wait() is opt-in and polls the last-submitted
+episode (plain graph.add without document_id).
 """
 
 import math

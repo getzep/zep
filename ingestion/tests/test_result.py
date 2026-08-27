@@ -245,6 +245,35 @@ class TestSequentialResult:
         with pytest.raises(ConfigurationError, match="different Zep clients"):
             left.combine(right)
 
+    def test_wait_polls_batch_tail_when_mixed_with_episodes(self, mock_zep):
+        result = IngestResult(
+            method="sequential",
+            batch_ids=["b1"],
+            episode_uuids=["e1"],
+            items_submitted=5,
+            client=mock_zep,
+        )
+        order: list[str] = []
+
+        def get_episode(uuid_: str):
+            order.append("episode")
+            return make_zep_episode(uuid_, processed=order.count("episode") >= 2)
+
+        def get_batch(batch_id: str):
+            order.append("batch")
+            if order.count("batch") <= 1:
+                return make_batch_summary("b1", "processing")
+            return make_batch_summary("b1", "succeeded")
+
+        mock_zep.graph.episode.get.side_effect = get_episode
+        mock_zep.batch.get.side_effect = get_batch
+
+        result.wait(poll_interval=0)
+
+        assert "batch" in order
+        assert "episode" in order
+        assert result.status == "succeeded"
+
     def test_wait_polls_tasks_while_batch_tail_still_in_flight(self, mock_zep):
         from zep_cloud.types.get_task_response import GetTaskResponse
 

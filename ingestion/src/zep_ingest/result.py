@@ -200,8 +200,9 @@ class IngestResult:
             if episode.processed:
                 self._processed_uuids.add(uuid)
         if only_last and self.episode_uuids[-1] in self._processed_uuids:
-            # Per-graph processing is ordered: the last episode finishing means
-            # the queue in front of it has already drained.
+            # Plain graph.add and thread backfills are ordered by submission
+            # (or request-array order within a thread.add_messages call): the
+            # tail finishing means the queue in front of it has drained.
             self._processed_uuids.update(self.episode_uuids)
 
     def _refresh_tasks(self) -> None:
@@ -344,12 +345,30 @@ class IngestResult:
     ) -> "IngestResult":
         """Poll until processing reaches a terminal state.
 
-        Episode ingest polls only the last submitted episode: earlier items
-        share the same per-graph queue, so the tail is a sufficient completion
-        signal. The default timeout scales with how many items were submitted
+        Which handle ``wait()`` polls depends on how the data was submitted
+        (see `Check data ingestion status
+        <https://help.getzep.com/check-data-ingestion-status>`_):
+
+        - **Batch API** (default for ``zep-ingest`` episodes and thread
+          backfills): ``batch.get`` on the last batch id — not per-episode
+          polling.
+        - **Sequential ``graph.add``** (batch fallback): the last-submitted
+          episode's ``processed`` flag. ``zep-ingest`` does not set
+          ``document_id``, so submission order matches ingestion order for plain
+          ``graph.add`` chunks.
+        - **Sequential ``thread.add_messages``**: the last message UUID in the
+          last request (``message_uuids[-1]`` from each call is recorded).
+        - **Tasks** (``add_nodes``, ``add_fact_triple``): every ``task_id`` on
+          each tick — tasks are not the same FIFO as graph episodes.
+
+        The default timeout scales with ``items_submitted``
         (``wait_timeout_seconds``). Pass ``timeout=None`` to wait without a
         deadline. Reconstructed ``from_batch_ids()`` results have no item
         count, so ``timeout="auto"`` also waits without a deadline.
+
+        Do not mix Batch API and sequential ``graph.add`` into the same graph
+        and expect one ``wait()`` to cover both — they are not globally
+        serialized.
 
         Raises IngestTimeoutError on timeout, or IngestUntrackedError when the
         API returned no completion handle; the result stays usable.
@@ -375,23 +394,26 @@ class IngestResult:
             time.sleep(poll_interval)
 
     def _poll_for_wait(self) -> None:
-        """Poll the tail of the graph queue, and always poll task handles.
+        """Poll the tail of each submission path, and always poll task handles.
 
-        Tasks (nodes, triples, sequential threads) are not the same FIFO as
-        graph episodes, so they are refreshed every tick even while the episode
-        or batch tail is still in flight — otherwise a combined
-        ``nodes.combine(docs).wait()`` would hide a failed seed until the
-        episode batch finished.
+        Tasks (nodes, triples) are not the same FIFO as graph episodes, so they
+        are refreshed every tick even while the episode or batch tail is still
+        in flight — otherwise a combined ``nodes.combine(docs).wait()`` would
+        hide a failed seed until the episode batch finished.
         """
         if self.episode_uuids:
             self._refresh_episodes(only_last=True)
             if self.episode_uuids[-1] in self._processed_uuids:
-                self._refresh_batches()
+                self._refresh_batches(only_last=False)
+            if self.batch_ids:
+                # Batch + sequential graph.add on one graph is discouraged, but
+                # poll the batch tail each tick when both handles are present.
+                self._refresh_batches(only_last=True)
         elif self.batch_ids:
             self._refresh_batches(only_last=True)
             last = self._batch_summaries.get(self.batch_ids[-1])
             if last is not None and last.status in _TERMINAL_BATCH_STATUSES:
-                self._refresh_batches()
+                self._refresh_batches(only_last=False)
         self._refresh_tasks()
 
     def _is_terminal(self) -> bool:

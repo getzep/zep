@@ -10,7 +10,7 @@ from zep_cloud.errors.not_found_error import NotFoundError
 from zep_cloud.types.add_thread_messages_response import AddThreadMessagesResponse
 from zep_cloud.types.batch_summary import BatchSummary
 
-from tests.conftest import make_batch_summary
+from tests.conftest import make_batch_summary, make_zep_episode
 from zep_ingest.exceptions import (
     BatchUnavailableError,
     ConfigurationError,
@@ -245,10 +245,11 @@ class TestSequentialPath:
         assert result.method == "batch"
 
     def test_wait_polls_until_terminal(self, mock_zep):
+        mock_zep.graph.episode.get.return_value = make_zep_episode("msg-1", processed=True)
         result = ingest_thread_messages(mock_zep, [message()], user_id="u1", method="sequential")
         result.wait(poll_interval=0)
         assert result.status == "succeeded"
-        mock_zep.task.get.assert_called()
+        mock_zep.graph.episode.get.assert_called_with(uuid_="msg-1")
 
     def test_auto_falls_back_to_sequential_when_endpoint_not_found(self, mock_zep):
         # a 404 means this deployment does not serve the batch endpoint, which
@@ -367,7 +368,24 @@ class TestSequentialPath:
         sizes = [len(c.kwargs["messages"]) for c in mock_zep.thread.add_messages.call_args_list]
         assert sizes == [MAX_MESSAGES_PER_THREAD_ADD, 1]
 
-    def test_sequential_tracks_task_ids_for_waiting(self, mock_zep):
+    def test_sequential_polls_last_message_uuid(self, mock_zep):
+        mock_zep.thread.add_messages.side_effect = [
+            AddThreadMessagesResponse(message_uuids=["msg-a1", "msg-a2"]),
+            AddThreadMessagesResponse(message_uuids=["msg-b1"]),
+        ]
+        msgs = [message(), message(thread_id="support-43")]
+
+        result = ingest_thread_messages(mock_zep, msgs, user_id="avery-brown", method="sequential")
+
+        assert result.episode_uuids == ["msg-a2", "msg-b1"]
+        assert result.task_ids == []
+        mock_zep.graph.episode.get.return_value = make_zep_episode("msg-b1", processed=True)
+        assert result.wait(poll_interval=0) is result
+        assert result.status == "succeeded"
+        mock_zep.graph.episode.get.assert_called_with(uuid_="msg-b1")
+        mock_zep.task.get.assert_not_called()
+
+    def test_sequential_falls_back_to_task_ids_when_no_message_uuids(self, mock_zep):
         mock_zep.thread.add_messages.side_effect = [
             AddThreadMessagesResponse(task_id="thread-task-1"),
             AddThreadMessagesResponse(task_id="thread-task-2"),
@@ -377,13 +395,14 @@ class TestSequentialPath:
         result = ingest_thread_messages(mock_zep, msgs, user_id="avery-brown", method="sequential")
 
         assert result.task_ids == ["thread-task-1", "thread-task-2"]
+        assert result.episode_uuids == []
         assert result.status == "queued"
         assert not any("no completion handle" in warning for warning in result.warnings)
         assert result.wait(poll_interval=0) is result
         assert result.status == "succeeded"
         assert mock_zep.task.get.call_count == 2
 
-    def test_sequential_warns_when_response_has_no_task_id(self, mock_zep):
+    def test_sequential_warns_when_response_has_no_handle(self, mock_zep):
         mock_zep.thread.add_messages.return_value = AddThreadMessagesResponse()
 
         result = ingest_thread_messages(
@@ -393,7 +412,7 @@ class TestSequentialPath:
         assert result.task_ids == []
         assert result.untracked_items == 1
         assert result.status == "untracked"
-        assert any("no completion handle" in warning for warning in result.warnings)
+        assert any("message UUID or task handle" in warning for warning in result.warnings)
         with pytest.raises(IngestUntrackedError):
             result.wait()
 

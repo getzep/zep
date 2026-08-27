@@ -11,11 +11,15 @@ still change between minor versions.
   submit API (`graph.add` vs Batch API); neither waits for one file to finish
   processing before the next is sent. If you do not need to block, submit and
   return — `wait()` stays opt-in.
-- `wait()` polls only the last submitted episode (per-graph extraction is
-  ordered). The default timeout is `wait_timeout_seconds(items_submitted)` —
-  60s per item, minimum 120s. Pass `timeout=None` to wait without a deadline.
+- `wait()` aligns with [Check data ingestion status](https://help.getzep.com/check-data-ingestion-status):
+  Batch API paths poll the last batch via `batch.get`; sequential `graph.add`
+  polls the last-submitted episode; sequential `thread.add_messages` polls the
+  last message UUID in the last request; nodes/triples poll every task id.
+  Default timeout is `wait_timeout_seconds(items_submitted)` — 60s per item,
+  minimum 120s. Pass `timeout=None` to wait without a deadline.
   `IngestResult.from_batch_ids(...).wait()` has no item count, so auto timeout
-  does not invent a 120s cap.
+  does not invent a 120s cap. Do not mix Batch API and sequential `graph.add`
+  on the same graph and expect one `wait()` to cover both.
 - File one-liners and loaders accept a sequence of paths/globs in caller order
   (`ingest_json_records(client, [issues, prs, jira], graph_id=...)`).
 - `ConcatLoader` concatenates heterogeneous loaders into one submit stream.

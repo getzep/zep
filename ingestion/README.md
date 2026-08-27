@@ -143,8 +143,9 @@ Every source here ingests fine without the Batch API — pass
 mean "wait until this file has finished extracting before submitting the next."
 It only means each item is sent with `graph.add` (or `thread.add_messages`)
 instead of the Batch API. Submit every file into the graph first; `wait()` is
-opt-in and, when used, polls the last episode with a timeout that scales with
-how many episodes were queued.
+opt-in. On the default Batch path it monitors `batch.get` on the last batch;
+on sequential fallback it polls the last-submitted episode's `processed` flag
+(see [Check data ingestion status](https://help.getzep.com/check-data-ingestion-status)).
 
 ## The pipeline
 
@@ -171,7 +172,7 @@ pipeline = Pipeline(
 )
 report = pipeline.preview()  # NO Zep API calls: inspect episodes + warnings first
 result = pipeline.run(client, graph_id="company_kb")
-result.wait()  # opt-in; polls the last episode, timeout scales with item count
+result.wait()  # opt-in; batch.get tail or last-submitted episode; timeout scales with item count
 ```
 
 `preview()` shows the transformed episodes and validation warnings (including
@@ -406,7 +407,7 @@ result = ingest_json_records(
     ["data/issues.jsonl", "data/prs.jsonl", "data/jira.jsonl"],
     graph_id="engineering",
 )
-result.wait()  # polls the last episode; timeout scales with items_submitted
+result.wait()  # batch.get on the last batch (default path); timeout scales with items_submitted
 
 # Mixed sources, still one submit stream:
 from zep_ingest import JsonRecordsLoader, TextFileLoader
@@ -423,10 +424,11 @@ result = ingest(
 )
 result.wait()
 
-# Already-separate calls (e.g. nodes then episodes): submit all, then wait once.
+# Already-separate calls: prefer separate wait() for seeding vs episodes.
 nodes = ingest_nodes(client, node_items, graph_id="engineering")
+nodes.wait()
 docs = ingest_json_records(client, ["data/issues.jsonl", "data/prs.jsonl"], graph_id="engineering")
-nodes.combine(docs).wait()
+docs.wait()
 ```
 
 If you are not polling, stop after submit — there is nothing else to do.
@@ -522,6 +524,20 @@ but when it raises — a timeout, or a submission the API left untracked —
 nothing was ever bound, and `batch_ids` / `task_ids` are the only handles for
 resuming or diagnosing that run.
 
+**What `wait()` polls** (aligned with
+[Check data ingestion status](https://help.getzep.com/check-data-ingestion-status)):
+
+| Submission path | Monitor via `wait()` |
+| --- | --- |
+| Batch API (default for episodes and thread backfill) | Last `batch_id` via `batch.get` |
+| Sequential `graph.add` (batch fallback) | Last-submitted episode (`episode_uuids[-1]`) |
+| Sequential `thread.add_messages` | Last message UUID in the last request |
+| `ingest_nodes` / `ingest_fact_triples` | Every `task_id` (separate queue from episodes) |
+
+Do not mix Batch API and sequential `graph.add` into the same graph and expect
+one `wait()` to cover both. Seed nodes/triples first with their own `wait()`,
+then ingest episodes.
+
 Ingestion is asynchronous — a just-added fact is not instantly retrievable,
 even after `wait()`: search indexing lands a few seconds after processing.
 `search_when_ready` owns that gap so scripts don't hand-roll poll loops:
@@ -537,9 +553,9 @@ recorded as `AddError`s (indices and API messages only — never episode content
 and the run continues. `batch_ids` / `episode_uuids` / `task_ids` are the
 resume handles; `node_uuids` / `edge_uuids` record identities Zep assigned on
 `ingest_nodes` and completed `ingest_fact_triples` tasks (`None` slots mark
-failures so later successes stay zip-aligned). Task IDs are used by
-asynchronous operations such as fact triples, direct node creation, and
-sequential thread submissions, and `wait()` polls them through `client.task`.
+failures so later successes stay zip-aligned). Task IDs are used when
+``thread.add_messages`` returns no message UUIDs, and by asynchronous operations
+such as fact triples and direct node creation; ``wait()`` polls every task id.
 
 If the API accepts a task-backed submission without returning a completion
 handle, the result reports `status == "untracked"` instead of claiming success.
