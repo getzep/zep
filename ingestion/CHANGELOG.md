@@ -24,8 +24,15 @@ still change between minor versions.
 - File one-liners and loaders accept a sequence of paths/globs in caller order
   (`ingest_json_records(client, [issues, prs, jira], graph_id=...)`).
 - `ConcatLoader` concatenates heterogeneous loaders into one submit stream.
-- `IngestResult.combine(...)` merges separate submits to the same graph so a
-  single `wait()` can cover all of them.
+- `IngestResult.combine(...)` merges poll handles for separate submits to the same
+  graph (`batch_ids`, `episode_uuids`, `task_ids`); it does not merge
+  `node_uuids` / `edge_uuids` (zip alignment). Prefer separate `wait()` calls
+  for seeding vs episode ingest.
+- Multi-thread sequential backfills poll the last message UUID **per thread**
+  (threads are independent sagas on the server). Regular `thread.add_messages`
+  returns `message_uuids` only — not `task_id`.
+- Production smoke script: `ingestion/scripts/release_smoke_prod.py` (requires
+  `ZEP_API_KEY`; run via KeyBank `zep-prod`).
 
 ## 0.2.1
 

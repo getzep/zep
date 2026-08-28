@@ -627,5 +627,13 @@ make install   # uv sync --extra dev
 make all       # format + lint + type-check + test
 ```
 
+Before a release, run the production smoke script against a throwaway graph
+(requires `ZEP_API_KEY` and `ZEP_API_URL`):
+
+```bash
+keybank run zep-prod -- env ZEP_API_URL=https://api.getzep.com \
+  uv run python scripts/release_smoke_prod.py
+```
+
 Live integration tests run only when `ZEP_API_KEY` is set. See
 [`SETUP.md`](https://github.com/getzep/zep/blob/main/ingestion/SETUP.md) for account setup.
