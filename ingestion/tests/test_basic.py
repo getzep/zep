@@ -21,6 +21,8 @@ def test_public_api_exports():
         "MAX_ITEMS_PER_BATCH",
         "DEFAULT_ITEMS_PER_BATCH",
         "MAX_METADATA_KEYS",
+        "MIN_WAIT_TIMEOUT_SECONDS",
+        "SECONDS_PER_SUBMITTED_ITEM",
         # protocols
         "Loader",
         "Transform",
@@ -45,6 +47,8 @@ def test_public_api_exports():
         "JsonRecordsLoader",
         "EmlLoader",
         "TranscriptLoader",
+        "ConcatLoader",
+        "SourcePaths",
         # transforms
         "TextChunker",
         "LLMContextualizer",
@@ -61,6 +65,7 @@ def test_public_api_exports():
         "NodeItem",
         # verification
         "search_when_ready",
+        "wait_timeout_seconds",
         # exceptions
         "ZepIngestError",
         "ConfigurationError",

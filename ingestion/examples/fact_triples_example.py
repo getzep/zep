@@ -157,7 +157,7 @@ def main() -> None:
     #    already happened at FactTriple construction — before any API call.
     triples = load_triples()
     result = ingest_fact_triples(client, triples, graph_id=graph_id)
-    result.wait(timeout=600)
+    result.wait()
     result.raise_for_status()
     print(f"Molded org_chart.json into {len(triples)} fact triples: {result.status}")
 

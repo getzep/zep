@@ -1,5 +1,7 @@
 """Tests for IngestResult: status aggregation, refresh, wait, failed_items."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from tests.conftest import make_batch_summary, make_item_detail, make_item_list, make_zep_episode
@@ -9,7 +11,13 @@ from zep_ingest.exceptions import (
     IngestTimeoutError,
     IngestUntrackedError,
 )
-from zep_ingest.result import AddError, IngestResult
+from zep_ingest.result import (
+    MIN_WAIT_TIMEOUT_SECONDS,
+    SECONDS_PER_SUBMITTED_ITEM,
+    AddError,
+    IngestResult,
+    wait_timeout_seconds,
+)
 
 
 class TestBatchResult:
@@ -64,6 +72,35 @@ class TestBatchResult:
         assert returned is result
         assert result.status == "succeeded"
         assert mock_zep.batch.get.call_count == 3
+
+    def test_wait_polls_last_batch_until_terminal_then_confirms_others(self, mock_zep):
+        result = IngestResult(method="batch", batch_ids=["b1", "b2"], client=mock_zep)
+        mock_zep.batch.get.side_effect = [
+            make_batch_summary("b2", "processing"),
+            make_batch_summary("b2", "succeeded"),
+            make_batch_summary("b1", "succeeded"),
+        ]
+        result.wait(poll_interval=0)
+        assert [call.args[0] for call in mock_zep.batch.get.call_args_list] == ["b2", "b2", "b1"]
+        assert result.status == "succeeded"
+
+    def test_auto_timeout_scales_with_submitted_items(self, mock_zep, monkeypatch):
+        clock = iter(float(seconds) for seconds in range(0, 10_000_000, 1_000_000))
+        monkeypatch.setattr("zep_ingest.result.time.monotonic", lambda: next(clock))
+        monkeypatch.setattr("zep_ingest.result.time.sleep", lambda _: None)
+        result = IngestResult(method="batch", batch_ids=["b1"], items_submitted=10, client=mock_zep)
+        mock_zep.batch.get.return_value = make_batch_summary("b1", "processing")
+
+        with pytest.raises(IngestTimeoutError) as excinfo:
+            result.wait(poll_interval=0)
+
+        expected = wait_timeout_seconds(10)
+        assert expected == max(MIN_WAIT_TIMEOUT_SECONDS, 10 * SECONDS_PER_SUBMITTED_ITEM)
+        assert f"after {expected}s" in str(excinfo.value)
+
+    def test_from_batch_ids_auto_timeout_is_unlimited(self, mock_zep):
+        result = IngestResult.from_batch_ids(mock_zep, ["b1"])
+        assert result._resolve_wait_timeout("auto") is None
 
     def test_wait_timeout_raises_but_result_usable(self, mock_zep):
         result = IngestResult(method="batch", batch_ids=["b1"], client=mock_zep)
@@ -163,6 +200,150 @@ class TestSequentialResult:
         result.refresh()
         assert result.status == "succeeded"
         assert mock_zep.graph.episode.get.call_count == 3
+
+    def test_wait_polls_only_the_last_episode(self, mock_zep):
+        result = IngestResult(
+            method="sequential",
+            episode_uuids=["e1", "e2", "e3"],
+            items_submitted=3,
+            client=mock_zep,
+        )
+        mock_zep.graph.episode.get.side_effect = [
+            make_zep_episode("e3", processed=False),
+            make_zep_episode("e3", processed=True),
+        ]
+
+        result.wait(poll_interval=0)
+
+        assert [call.kwargs["uuid_"] for call in mock_zep.graph.episode.get.call_args_list] == [
+            "e3",
+            "e3",
+        ]
+        assert result.status == "succeeded"
+
+    def test_wait_does_not_mark_all_episodes_done_when_multi_thread_tail_finishes_first(
+        self, mock_zep
+    ):
+        result = IngestResult(
+            method="sequential",
+            episode_uuids=["e-thread-1", "e-thread-2"],
+            items_submitted=2,
+            client=mock_zep,
+            _single_queue_episode_poll=False,
+        )
+        mock_zep.graph.episode.get.side_effect = [
+            make_zep_episode("e-thread-1", processed=False),
+            make_zep_episode("e-thread-2", processed=True),
+        ]
+
+        with pytest.raises(IngestTimeoutError):
+            result.wait(poll_interval=0, timeout=0)
+
+        assert "e-thread-1" not in result._processed_uuids
+
+    def test_combine_then_wait_polls_the_combined_tail(self, mock_zep):
+        first = IngestResult(
+            method="sequential", episode_uuids=["e1"], items_submitted=1, client=mock_zep
+        )
+        second = IngestResult(
+            method="sequential", episode_uuids=["e2"], items_submitted=1, client=mock_zep
+        )
+        mock_zep.graph.episode.get.return_value = make_zep_episode("e2", processed=True)
+
+        combined = first.combine(second)
+        combined.wait(poll_interval=0)
+
+        assert combined.items_submitted == 2
+        assert combined.episode_uuids == ["e1", "e2"]
+        mock_zep.graph.episode.get.assert_called_once_with(uuid_="e2")
+        assert combined.status == "succeeded"
+
+    def test_combine_does_not_merge_identity_lists(self, mock_zep):
+        nodes = IngestResult(
+            method="sequential",
+            node_uuids=["node-1"],
+            task_ids=["t1"],
+            client=mock_zep,
+        )
+        docs = IngestResult(
+            method="batch",
+            batch_ids=["b1"],
+            edge_uuids=["edge-1"],
+            client=mock_zep,
+        )
+
+        combined = nodes.combine(docs)
+
+        assert combined.node_uuids == []
+        assert combined.edge_uuids == []
+        assert combined.task_ids == ["t1"]
+        assert combined.batch_ids == ["b1"]
+
+    def test_combine_rejects_different_clients(self, mock_zep):
+        other = MagicMock()
+        left = IngestResult(method="sequential", client=mock_zep)
+        right = IngestResult(method="sequential", client=other)
+        with pytest.raises(ConfigurationError, match="different Zep clients"):
+            left.combine(right)
+
+    def test_wait_polls_batch_tail_when_mixed_with_episodes(self, mock_zep):
+        result = IngestResult(
+            method="sequential",
+            batch_ids=["b1"],
+            episode_uuids=["e1"],
+            items_submitted=5,
+            client=mock_zep,
+        )
+        order: list[str] = []
+
+        def get_episode(uuid_: str):
+            order.append("episode")
+            return make_zep_episode(uuid_, processed=order.count("episode") >= 2)
+
+        def get_batch(batch_id: str):
+            order.append("batch")
+            if order.count("batch") <= 1:
+                return make_batch_summary("b1", "processing")
+            return make_batch_summary("b1", "succeeded")
+
+        mock_zep.graph.episode.get.side_effect = get_episode
+        mock_zep.batch.get.side_effect = get_batch
+
+        result.wait(poll_interval=0)
+
+        assert "batch" in order
+        assert "episode" in order
+        assert result.status == "succeeded"
+
+    def test_wait_polls_tasks_while_batch_tail_still_in_flight(self, mock_zep):
+        from zep_cloud.types.get_task_response import GetTaskResponse
+
+        result = IngestResult(
+            method="sequential",
+            batch_ids=["b1"],
+            task_ids=["t1"],
+            items_submitted=5,
+            client=mock_zep,
+        )
+        order: list[str] = []
+
+        def get_batch(batch_id: str):
+            order.append("batch")
+            if order.count("batch") == 1:
+                return make_batch_summary("b1", "processing")
+            return make_batch_summary("b1", "succeeded")
+
+        def get_task(task_id: str):
+            order.append("task")
+            return GetTaskResponse(task_id="t1", status="succeeded")
+
+        mock_zep.batch.get.side_effect = get_batch
+        mock_zep.task.get.side_effect = get_task
+
+        result.wait(poll_interval=0)
+
+        assert order == ["batch", "task", "batch"]
+        assert result.status == "succeeded"
 
     def test_add_errors_make_status_partial(self, mock_zep):
         result = IngestResult(

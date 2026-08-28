@@ -139,7 +139,13 @@ endpoint to call (HTTP 404 — an older server, a self-hosted or Community
 deployment, or a base URL that doesn't route `/batches`). Authorization and
 quota errors are raised as errors instead of quietly downgrading the run.
 Every source here ingests fine without the Batch API — pass
-`method="sequential"` to take that path deliberately.
+`method="sequential"` to take that path deliberately. Sequential does **not**
+mean "wait until this file has finished extracting before submitting the next."
+It only means each item is sent with `graph.add` (or `thread.add_messages`)
+instead of the Batch API. Submit every file into the graph first; `wait()` is
+opt-in. On the default Batch path it monitors `batch.get` on the last batch;
+on sequential fallback it polls the last-submitted episode's `processed` flag
+(see [Check data ingestion status](https://help.getzep.com/check-data-ingestion-status)).
 
 ## The pipeline
 
@@ -166,7 +172,7 @@ pipeline = Pipeline(
 )
 report = pipeline.preview()  # NO Zep API calls: inspect episodes + warnings first
 result = pipeline.run(client, graph_id="company_kb")
-result.wait(timeout=3600)  # submission returns immediately; blocking is opt-in
+result.wait()  # opt-in; batch.get tail or last-submitted episode; timeout scales with item count
 ```
 
 `preview()` shows the transformed episodes and validation warnings (including
@@ -383,7 +389,49 @@ graph):
    `source_node_uuid`/`target_node_uuid`. Extraction dedups against the existing
    graph, so known entities anchor resolution.
 5. Ingest the corpus with real `created_at` timestamps and alias
-   canonicalization, then block on the bound result with `result.wait(...)`.
+   canonicalization. Submit every source for a graph before waiting. Then, if
+   you need extraction to finish, block on the bound result with
+   `result.wait()` (or `combined.wait()` after `IngestResult.combine`).
+
+## Many files, one graph
+
+Do not wait for one file (or one graph) to finish processing before submitting
+the next. Create destinations and set ontology, then enqueue everything.
+
+```python
+from zep_ingest import ConcatLoader, ingest, ingest_json_records, ingest_nodes
+
+# Same loader, several files — submitted in this order, one wait:
+result = ingest_json_records(
+    client,
+    ["data/issues.jsonl", "data/prs.jsonl", "data/jira.jsonl"],
+    graph_id="engineering",
+)
+result.wait()  # batch.get on the last batch (default path); timeout scales with items_submitted
+
+# Mixed sources, still one submit stream:
+from zep_ingest import JsonRecordsLoader, TextFileLoader
+
+result = ingest(
+    client,
+    ConcatLoader(
+        [
+            JsonRecordsLoader(["data/issues.jsonl", "data/prs.jsonl"]),
+            TextFileLoader("data/runbooks/**/*.md"),
+        ]
+    ),
+    graph_id="engineering",
+)
+result.wait()
+
+# Already-separate calls: prefer separate wait() for seeding vs episodes.
+nodes = ingest_nodes(client, node_items, graph_id="engineering")
+nodes.wait()
+docs = ingest_json_records(client, ["data/issues.jsonl", "data/prs.jsonl"], graph_id="engineering")
+docs.wait()
+```
+
+If you are not polling, stop after submit — there is nothing else to do.
 
 ## Fact triples
 
@@ -407,7 +455,7 @@ result = ingest_fact_triples(
     ],
     graph_id="org",
 )
-result.wait(timeout=600)
+result.wait()
 # Zep assigns the fact UUID; it lands in task params as edge_uuid after completion.
 # Parallel to the submitted triples — failed tasks leave None in that slot.
 result.edge_uuids
@@ -463,7 +511,7 @@ Sequential only (the Batch API doesn't take direct nodes).
 ```python
 result = ingest_slack_export(client, "export.zip", graph_id="g1")
 result.status  # queued | processing | untracked | succeeded | partial | failed | canceled
-result.wait(timeout=3600)
+result.wait()
 result.failed_items()  # Batch API item records and/or submission AddErrors
 result.warnings  # everything the pipeline noticed
 result.raise_for_status()  # opt-in strictness
@@ -475,6 +523,20 @@ the only thing that blocks. Bind the result first, as above — don't chain
 but when it raises — a timeout, or a submission the API left untracked —
 nothing was ever bound, and `batch_ids` / `task_ids` are the only handles for
 resuming or diagnosing that run.
+
+**What `wait()` polls** (aligned with
+[Check data ingestion status](https://help.getzep.com/check-data-ingestion-status)):
+
+| Submission path | Monitor via `wait()` |
+| --- | --- |
+| Batch API (default for episodes and thread backfill) | Last `batch_id` via `batch.get` |
+| Sequential `graph.add` (batch fallback) | Last-submitted episode (`episode_uuids[-1]`) |
+| Sequential `thread.add_messages` | Last message UUID per thread (`message_uuids`; no `task_id`) |
+| `ingest_nodes` / `ingest_fact_triples` | Every `task_id` (separate queue from episodes) |
+
+Do not mix Batch API and sequential `graph.add` into the same graph and expect
+one `wait()` to cover both. Seed nodes/triples first with their own `wait()`,
+then ingest episodes.
 
 Ingestion is asynchronous — a just-added fact is not instantly retrievable,
 even after `wait()`: search indexing lands a few seconds after processing.
@@ -491,9 +553,9 @@ recorded as `AddError`s (indices and API messages only — never episode content
 and the run continues. `batch_ids` / `episode_uuids` / `task_ids` are the
 resume handles; `node_uuids` / `edge_uuids` record identities Zep assigned on
 `ingest_nodes` and completed `ingest_fact_triples` tasks (`None` slots mark
-failures so later successes stay zip-aligned). Task IDs are used by
-asynchronous operations such as fact triples, direct node creation, and
-sequential thread submissions, and `wait()` polls them through `client.task`.
+failures so later successes stay zip-aligned). Task IDs come from
+``ingest_nodes``, ``ingest_fact_triples``, and ``add_messages_batch`` — not from
+regular ``thread.add_messages``, which returns message UUIDs instead.
 
 If the API accepts a task-backed submission without returning a completion
 handle, the result reports `status == "untracked"` instead of claiming success.
@@ -563,6 +625,14 @@ async API, and a CLI.
 ```bash
 make install   # uv sync --extra dev
 make all       # format + lint + type-check + test
+```
+
+Before a release, run the production smoke script against a throwaway graph
+(requires `ZEP_API_KEY` and `ZEP_API_URL`):
+
+```bash
+keybank run zep-prod -- env ZEP_API_URL=https://api.getzep.com \
+  uv run python scripts/release_smoke_prod.py
 ```
 
 Live integration tests run only when `ZEP_API_KEY` is set. See

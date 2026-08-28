@@ -7,7 +7,6 @@ carries its real timeline; a missing Date surfaces through the pipeline's
 missing-timestamp warning.
 """
 
-import glob
 import html
 import re
 from collections.abc import Iterator
@@ -15,10 +14,9 @@ from datetime import UTC
 from email import policy
 from email.parser import BytesParser
 from email.utils import parsedate_to_datetime
-from pathlib import Path
 
-from zep_ingest.exceptions import ConfigurationError
-from zep_ingest.types import Episode
+from zep_ingest._io import resolve_source_files, source_paths_label
+from zep_ingest.types import Episode, SourcePaths
 
 _HTML_DROP = re.compile(r"<(script|style)\b.*?</\1>", re.IGNORECASE | re.DOTALL)
 _HTML_BREAK = re.compile(r"</?(?:p|div|br|li|tr|h[1-6])\b[^>]*>", re.IGNORECASE)
@@ -34,13 +32,9 @@ def _html_to_text(markup: str) -> str:
 
 
 class EmlLoader:
-    def __init__(self, path_or_glob: str | Path) -> None:
-        self.pattern = str(path_or_glob)
-        self.files = sorted(
-            Path(p) for p in glob.glob(self.pattern, recursive=True) if Path(p).is_file()
-        )
-        if not self.files:
-            raise ConfigurationError(f"No .eml files match {self.pattern!r}.")
+    def __init__(self, path_or_glob: SourcePaths) -> None:
+        self.pattern = source_paths_label(path_or_glob)
+        self.files = resolve_source_files(path_or_glob, what=".eml files")
 
     def load(self) -> Iterator[Episode]:
         for file in self.files:

@@ -1,6 +1,8 @@
 """Core data model: Episode, Destination, API limits, and API mappings."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal
 
 from zep_cloud.types.batch_add_item import BatchAddItem
@@ -19,6 +21,8 @@ MAX_MESSAGES_PER_THREAD_ADD = 30  # thread.add_messages per call; not MAX_ITEMS_
 MAX_METADATA_KEYS = 10
 
 DataType = Literal["text", "json", "message"]
+#: A glob, a single path, or several globs/paths ingested in caller order.
+SourcePaths = str | Path | Sequence[str | Path]
 
 
 @dataclass(slots=True)

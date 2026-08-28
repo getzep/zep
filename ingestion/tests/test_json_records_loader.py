@@ -88,6 +88,16 @@ class TestFormats:
         episodes = list(JsonRecordsLoader(str(tmp_path / "*.jsonl")).load())
         assert len(episodes) == 2
 
+    def test_sequence_of_files_keeps_caller_order(self, tmp_path):
+        later = tmp_path / "b.jsonl"
+        earlier = tmp_path / "a.jsonl"
+        later.write_text(json.dumps({"id": "prs"}))
+        earlier.write_text(json.dumps({"id": "issues"}))
+
+        episodes = list(JsonRecordsLoader([later, earlier]).load())
+
+        assert [json.loads(episode.data)["id"] for episode in episodes] == ["prs", "issues"]
+
     def test_no_match_raises(self, tmp_path):
         with pytest.raises(ConfigurationError):
             JsonRecordsLoader(str(tmp_path / "*.jsonl"))

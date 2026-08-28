@@ -39,6 +39,7 @@ from zep_ingest.exceptions import (
     ZepDependencyError,
     ZepIngestError,
 )
+from zep_ingest.loaders.concat import ConcatLoader
 from zep_ingest.loaders.email import EmlLoader
 from zep_ingest.loaders.json_records import JsonRecordsLoader
 from zep_ingest.loaders.slack import DEFAULT_SKIP_SUBTYPES, SlackExportLoader, SlackMessage
@@ -56,7 +57,13 @@ from zep_ingest.pipeline import (
     ingest_transcripts,
 )
 from zep_ingest.protocols import LLMClient, Loader, Submitter, Transform
-from zep_ingest.result import AddError, IngestResult
+from zep_ingest.result import (
+    MIN_WAIT_TIMEOUT_SECONDS,
+    SECONDS_PER_SUBMITTED_ITEM,
+    AddError,
+    IngestResult,
+    wait_timeout_seconds,
+)
 from zep_ingest.submitters import BatchSubmitter, SequentialSubmitter
 from zep_ingest.threads import ThreadMessage, ingest_thread_messages
 from zep_ingest.transforms.canonicalizer import DEFAULT_RISKY_WORDS, AliasCanonicalizer
@@ -73,13 +80,14 @@ from zep_ingest.types import (
     SAFE_EPISODE_CHARS,
     Destination,
     Episode,
+    SourcePaths,
 )
 from zep_ingest.verify import search_when_ready
 
 try:
     __version__ = _version("zep-ingest")
 except _PackageNotFoundError:  # source tree without an editable install
-    __version__ = "0.1.0"
+    __version__ = "0.3.0"
 
 __all__ = [
     "DEFAULT_CONTEXT_PROMPT",
@@ -90,11 +98,14 @@ __all__ = [
     "MAX_ITEMS_PER_ADD",
     "MAX_ITEMS_PER_BATCH",
     "MAX_METADATA_KEYS",
+    "MIN_WAIT_TIMEOUT_SECONDS",
     "SAFE_EPISODE_CHARS",
+    "SECONDS_PER_SUBMITTED_ITEM",
     "AddError",
     "AliasCanonicalizer",
     "BatchSubmitter",
     "BatchUnavailableError",
+    "ConcatLoader",
     "ConfigurationError",
     "Destination",
     "EmlLoader",
@@ -117,6 +128,7 @@ __all__ = [
     "SequentialSubmitter",
     "SlackExportLoader",
     "SlackMessage",
+    "SourcePaths",
     "Submitter",
     "TextChunker",
     "TextFileLoader",
@@ -135,4 +147,5 @@ __all__ = [
     "ingest_thread_messages",
     "ingest_transcripts",
     "search_when_ready",
+    "wait_timeout_seconds",
 ]

@@ -72,7 +72,7 @@ def main() -> None:
     )
     # Submission returns immediately; blocking is opt-in. Bind the result first
     # so a wait() timeout still leaves you the ids below to resume from.
-    result.wait(timeout=600)
+    result.wait()
     print(f"Submitted {result.items_submitted} episodes via {result.method}: {result.status}")
     for warning in result.warnings:
         print(f"WARNING: {warning}")

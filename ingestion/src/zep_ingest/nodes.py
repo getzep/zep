@@ -128,7 +128,7 @@ def ingest_nodes(
     the result, then wait on it, so the resume handles survive a timeout::
 
         result = ingest_nodes(client, nodes, graph_id="g1")
-        result.wait(timeout=600)
+        result.wait()
         # result.node_uuids[i] matches the i-th submitted node (or None)
     """
     destination = Destination(graph_id=graph_id, user_id=user_id)

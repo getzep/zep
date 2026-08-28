@@ -6,32 +6,26 @@ only with explicit ``use_file_mtime=True`` because copy time is not a reliable
 factual timestamp.
 """
 
-import glob
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from pathlib import Path
 
-from zep_ingest.exceptions import ConfigurationError
-from zep_ingest.types import Episode
+from zep_ingest._io import resolve_source_files, source_paths_label
+from zep_ingest.types import Episode, SourcePaths
 
 
 class TextFileLoader:
     def __init__(
         self,
-        path_or_glob: str | Path,
+        path_or_glob: SourcePaths,
         *,
         created_at: str | None = None,
         use_file_mtime: bool = False,
     ) -> None:
-        self.pattern = str(path_or_glob)
+        self.pattern = source_paths_label(path_or_glob)
         self.created_at = created_at
         self.use_file_mtime = use_file_mtime
         self.warnings: list[str] = []
-        self.files = sorted(
-            Path(p) for p in glob.glob(self.pattern, recursive=True) if Path(p).is_file()
-        )
-        if not self.files:
-            raise ConfigurationError(f"No files match {self.pattern!r}.")
+        self.files = resolve_source_files(path_or_glob)
 
     def load(self) -> Iterator[Episode]:
         for file in self.files:

@@ -11,7 +11,6 @@ MAX_METADATA_FIELDS fields alongside it.
 """
 
 import csv
-import glob
 import json
 import math
 from collections.abc import Iterator, Sequence
@@ -19,9 +18,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from zep_ingest._io import resolve_source_files, source_paths_label
 from zep_ingest._validation import is_scalar_or_scalar_array
 from zep_ingest.exceptions import ConfigurationError
-from zep_ingest.types import MAX_METADATA_KEYS, Episode
+from zep_ingest.types import MAX_METADATA_KEYS, Episode, SourcePaths
 
 # provenance the loader stamps on every episode; record fields with these
 # names are not liftable, so what the episode reports about its own origin
@@ -74,7 +74,7 @@ def _find_non_finite(value: Any, path: str = "") -> tuple[str, float] | None:
 class JsonRecordsLoader:
     def __init__(
         self,
-        path_or_glob: str | Path,
+        path_or_glob: SourcePaths,
         *,
         format: Literal["auto", "jsonl", "csv", "json"] = "auto",
         id_field: str | None = None,
@@ -88,7 +88,7 @@ class JsonRecordsLoader:
             raise ConfigurationError(
                 f"format must be one of ['auto', 'csv', 'json', 'jsonl'], got {format!r}"
             )
-        self.pattern = str(path_or_glob)
+        self.pattern = source_paths_label(path_or_glob)
         self.format = format
         self.id_field = id_field
         self.name_field = name_field
@@ -110,11 +110,7 @@ class JsonRecordsLoader:
         ]
         self.record_type = record_type
         self.warnings: list[str] = []
-        self.files = sorted(
-            Path(p) for p in glob.glob(self.pattern, recursive=True) if Path(p).is_file()
-        )
-        if not self.files:
-            raise ConfigurationError(f"No files match {self.pattern!r}.")
+        self.files = resolve_source_files(path_or_glob)
 
     def load(self) -> Iterator[Episode]:
         # a collision is a property of metadata_fields, not of the records, so

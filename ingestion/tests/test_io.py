@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from zep_ingest._io import load_rows, rows_to_fields
+from zep_ingest._io import load_rows, resolve_source_files, rows_to_fields
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.threads import ThreadMessage
 
@@ -57,3 +57,19 @@ def test_json_scalar_is_rejected_with_clear_error(tmp_path):
 
     with pytest.raises(ConfigurationError, match="must contain JSON objects"):
         load_rows(path)
+
+
+def test_resolve_source_files_sequence_preserves_order_and_dedupes(tmp_path):
+    first = tmp_path / "issues.jsonl"
+    second = tmp_path / "prs.jsonl"
+    first.write_text("{}\n")
+    second.write_text("{}\n")
+
+    files = resolve_source_files([second, first, second])
+
+    assert files == [second, first]
+
+
+def test_resolve_source_files_empty_sequence_is_rejected():
+    with pytest.raises(ConfigurationError, match="No files were provided"):
+        resolve_source_files([])
