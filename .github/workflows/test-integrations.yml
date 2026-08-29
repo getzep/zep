@@ -51,6 +51,8 @@ jobs:
           filters: |
             adk:
               - 'integrations/adk/typescript/**'
+            deepseek-harness:
+              - 'integrations/deepseek-harness/typescript/**'
             mastra:
               - 'integrations/mastra/typescript/**'
             vercel-ai:
@@ -93,6 +95,9 @@ jobs:
       matrix:
         package: ${{ fromJSON(needs.detect-changes.outputs.typescript) }}
         node-version: ["20", "22"]
+        exclude:
+          - package: deepseek-harness
+            node-version: "20"
     steps:
       - uses: actions/checkout@v4
       - name: Test TypeScript integration
