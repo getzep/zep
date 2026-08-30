@@ -2,8 +2,9 @@
 
 Self-contained and re-runnable: previews then ingests the bundled sample
 export under examples/data/slack_export/, creating a fresh graph and setting
-the starter ontology first. Messages are grouped by thread, join/leave noise
-is skipped, and each episode keeps its real Slack timestamp.
+the starter ontology first. Each message is one episode; Slack threads share a
+``document_id``. Join/leave noise is skipped, and each episode keeps its real
+Slack timestamp.
 
 To run against real data, get an export from Slack (Workspace Admin →
 Settings & administration → Workspace settings → Import/Export Data →

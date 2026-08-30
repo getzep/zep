@@ -8,6 +8,7 @@ from typing import Any, Literal
 from zep_cloud.types.batch_add_item import BatchAddItem
 
 from zep_ingest._validation import check_scalar_map, check_timestamp
+from zep_ingest.documents import validate_document_id
 from zep_ingest.exceptions import ConfigurationError
 
 # Documented Zep API limits (see help.getzep.com/adding-batch-data,
@@ -38,12 +39,17 @@ class Episode:
     ``document`` is internal plumbing: the chunker sets it to the full source
     document when it splits, and the contextualizer consumes it. It is never
     sent to the API.
+
+    ``document_id`` is the Zep document grouping key. Text files, transcripts,
+    and emails always carry one (even as a single episode). Slack messages share
+    one per Slack thread. JSON records omit it. Never a Zep ``thread_id``.
     """
 
     data: str
     data_type: DataType = "text"
     created_at: str | None = None  # RFC3339; loaders populate from source timestamps
     metadata: dict[str, Any] | None = None
+    document_id: str | None = None
     document: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
@@ -58,6 +64,11 @@ class Episode:
         check_scalar_map("metadata", self.metadata, errors, max_keys=MAX_METADATA_KEYS)
         if self.document is not None and not isinstance(self.document, str):
             errors.append(f"document must be a string, got {type(self.document).__name__}")
+        if self.document_id is not None:
+            try:
+                validate_document_id(self.document_id)
+            except ConfigurationError as error:
+                errors.append(str(error))
         if errors:
             raise ConfigurationError("Invalid episode: " + "; ".join(errors))
 
@@ -80,15 +91,18 @@ class Destination:
 
 def to_batch_item(episode: Episode, destination: Destination) -> BatchAddItem:
     """Map a validated Episode to a Batch API item."""
-    return BatchAddItem(
-        type="graph_episode",
-        data=episode.data,
-        data_type=episode.data_type,
-        created_at=episode.created_at,
-        metadata=episode.metadata,
-        graph_id=destination.graph_id,
-        user_id=destination.user_id,
-    )
+    kwargs: dict[str, Any] = {
+        "type": "graph_episode",
+        "data": episode.data,
+        "data_type": episode.data_type,
+        "created_at": episode.created_at,
+        "metadata": episode.metadata,
+        "graph_id": destination.graph_id,
+        "user_id": destination.user_id,
+    }
+    if episode.document_id is not None:
+        kwargs["document_id"] = episode.document_id
+    return BatchAddItem(**kwargs)
 
 
 def to_graph_add_kwargs(episode: Episode, destination: Destination) -> dict[str, Any]:
@@ -102,4 +116,6 @@ def to_graph_add_kwargs(episode: Episode, destination: Destination) -> dict[str,
         kwargs["graph_id"] = destination.graph_id
     if destination.user_id is not None:
         kwargs["user_id"] = destination.user_id
+    if episode.document_id is not None:
+        kwargs["document_id"] = episode.document_id
     return kwargs

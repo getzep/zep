@@ -12,6 +12,7 @@ from zep_ingest.exceptions import (
     IngestTimeoutError,
     IngestUntrackedError,
 )
+from zep_ingest.types import Episode
 
 if TYPE_CHECKING:
     from zep_cloud.client import Zep
@@ -148,8 +149,15 @@ class IngestResult:
     # Task-param recovery must not overwrite or reorder that list.
     _node_uuids_from_submit: bool = field(default=False, repr=False, compare=False)
     # Plain graph.add (and single-thread backfills) share one per-graph queue, so
-    # polling the last UUID is enough. Multiple threads are independent sagas.
+    # polling the last UUID is enough. Multiple threads or document_id sagas are
+    # independent queues.
     _single_queue_episode_poll: bool = field(default=True, repr=False, compare=False)
+    _document_poll_uuids: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
+    _document_poll_created_at: dict[str, str | None] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    _plain_episode_tail: str | None = field(default=None, repr=False, compare=False)
+    _uses_document_grouping: bool = field(default=False, repr=False, compare=False)
 
     @classmethod
     def from_batch_ids(cls, client: "Zep", batch_ids: "Sequence[str]") -> "IngestResult":
@@ -162,6 +170,33 @@ class IngestResult:
     def from_task_ids(cls, client: "Zep", task_ids: "Sequence[str]") -> "IngestResult":
         """Reconstruct a task-backed sequential result from persisted task IDs."""
         return cls(method="sequential", task_ids=list(task_ids), client=client)
+
+    def record_sequential_episode(self, episode: Episode, uuid: str) -> None:
+        """Track a sequential graph.add submission for wait() polling."""
+        self.episode_uuids.append(uuid)
+        if episode.document_id:
+            self._uses_document_grouping = True
+            prior_at = self._document_poll_created_at.get(episode.document_id)
+            new_at = episode.created_at
+            if prior_at is None or new_at is None:
+                # Missing timestamps: fall back to submission order (last wins).
+                self._document_poll_uuids[episode.document_id] = uuid
+                self._document_poll_created_at[episode.document_id] = new_at
+            elif new_at >= prior_at:
+                self._document_poll_uuids[episode.document_id] = uuid
+                self._document_poll_created_at[episode.document_id] = new_at
+        else:
+            self._plain_episode_tail = uuid
+
+    def finalize_sequential_episode_poll(self) -> None:
+        """Collapse sequential episode UUIDs to one tail per independent saga."""
+        if not self._uses_document_grouping:
+            return
+        poll_uuids = list(self._document_poll_uuids.values())
+        if self._plain_episode_tail is not None:
+            poll_uuids.append(self._plain_episode_tail)
+        self.episode_uuids = poll_uuids
+        self._single_queue_episode_poll = len(poll_uuids) <= 1
 
     def mark_batch_failed(self, batch_id: str, error: str) -> None:
         """Record a batch whose processing could not be triggered: an AddError is
@@ -307,11 +342,11 @@ class IngestResult:
             "batch" if has_batches and not has_sequential_handles else "sequential"
         )
         combined = IngestResult(method=method, client=client)
+        uses_document_grouping = False
         for part in parts:
             combined.items_submitted += part.items_submitted
             combined.untracked_items += part.untracked_items
             combined.batch_ids.extend(part.batch_ids)
-            combined.episode_uuids.extend(part.episode_uuids)
             combined.task_ids.extend(part.task_ids)
             combined.add_errors.extend(part.add_errors)
             combined.warnings.extend(part.warnings)
@@ -322,6 +357,33 @@ class IngestResult:
             combined._single_queue_episode_poll = (
                 combined._single_queue_episode_poll and part._single_queue_episode_poll
             )
+            if part._uses_document_grouping:
+                uses_document_grouping = True
+                for document_id, uuid in part._document_poll_uuids.items():
+                    created_at = part._document_poll_created_at.get(document_id)
+                    prior_at = combined._document_poll_created_at.get(document_id)
+                    if prior_at is None or created_at is None:
+                        combined._document_poll_uuids[document_id] = uuid
+                        combined._document_poll_created_at[document_id] = created_at
+                    elif (created_at or "") >= (prior_at or ""):
+                        combined._document_poll_uuids[document_id] = uuid
+                        combined._document_poll_created_at[document_id] = created_at
+                if part._plain_episode_tail is not None:
+                    combined._plain_episode_tail = part._plain_episode_tail
+            else:
+                combined.episode_uuids.extend(part.episode_uuids)
+        combined._uses_document_grouping = uses_document_grouping
+        if uses_document_grouping:
+            poll_uuids = list(combined._document_poll_uuids.values())
+            if combined._plain_episode_tail is not None:
+                poll_uuids.append(combined._plain_episode_tail)
+            if combined.episode_uuids:
+                if combined._single_queue_episode_poll:
+                    poll_uuids.append(combined.episode_uuids[-1])
+                else:
+                    poll_uuids.extend(combined.episode_uuids)
+            combined.episode_uuids = list(dict.fromkeys(poll_uuids))
+            combined._single_queue_episode_poll = len(combined.episode_uuids) <= 1
         return combined
 
     def _queued_item_count(self) -> int | None:
@@ -363,9 +425,9 @@ class IngestResult:
           backfills): ``batch.get`` on the last batch id — not per-episode
           polling.
         - **Sequential ``graph.add``** (batch fallback): the last-submitted
-          episode's ``processed`` flag. ``zep-ingest`` does not set
-          ``document_id``, so submission order matches ingestion order for plain
-          ``graph.add`` chunks.
+          episode's ``processed`` flag per document saga (when ``document_id`` is
+          set) or the last plain episode otherwise. Ingestion order within a
+          document follows ``created_at``, not submission order.
         - **Sequential ``thread.add_messages``**: the last message UUID in the
           last request per thread (``message_uuids[-1]``). Regular
           ``thread.add_messages`` does not return a ``task_id`` — only

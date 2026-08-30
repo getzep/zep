@@ -15,9 +15,12 @@ roster is missing or does not cover every referenced user (either case leaves
 raw Slack IDs in the graph, which degrades entity extraction); the same roster
 labels DMs and group DMs by their members, since Slack names those folders
 with an opaque id (D01ABC234) or slug (mpdm-alice--bob-1). Normalizes Slack
-markup, skips join/leave/bot noise, groups messages by thread (the semantic
-unit Zep extracts best from), and stamps every episode with the original
-message timestamp so backfilled facts carry the correct valid_at timeline.
+markup, skips join/leave/bot noise, emits one episode per message under a Slack-thread ``document_id``, and a second
+copy of each top-level message (thread parent or unthreaded post) under a
+per-channel ``document_id`` so channel-level conversation is visible as its own
+document. Not a Zep ``thread_id`` — those are reserved for agent–user
+conversations on a user graph. Stamps every episode with the original message
+timestamp so backfilled facts carry the correct valid_at timeline.
 """
 
 import html
@@ -30,6 +33,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from zep_ingest.documents import document_id_for_slack_channel, document_id_for_slack_thread
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.types import Episode
 
@@ -276,7 +280,6 @@ class SlackExportLoader:
         *,
         channels: Sequence[str] | None = None,
         conversation_types: Sequence[ConversationType] = DEFAULT_CONVERSATION_TYPES,
-        grouping: Literal["thread", "message"] = "thread",
         include_bots: bool = False,
         skip_subtypes: frozenset[str] = DEFAULT_SKIP_SUBTYPES,
         formatter: Callable[[SlackMessage], str] | None = None,
@@ -284,8 +287,6 @@ class SlackExportLoader:
         self.path = Path(path)
         if not self.path.exists():
             raise ConfigurationError(f"Slack export not found: {self.path}")
-        if grouping not in ("thread", "message"):
-            raise ConfigurationError(f"grouping must be 'thread' or 'message', got {grouping!r}")
         self.conversation_types = tuple(dict.fromkeys(conversation_types))
         if not self.conversation_types or any(
             kind not in CONVERSATION_FILES for kind in self.conversation_types
@@ -296,7 +297,6 @@ class SlackExportLoader:
             )
         # channels= selects by name *within* the selected conversation types
         self.channels = list(channels) if channels is not None else None
-        self.grouping = grouping
         self.include_bots = include_bots
         self.skip_subtypes = skip_subtypes
         self.formatter = formatter or _default_formatter
@@ -574,20 +574,22 @@ class SlackExportLoader:
             # every episode below carries conversation.label, so the members it
             # names are now in the graph whether or not they authored anything
             self._note_label_names(conversation, users)
-        if self.grouping == "message":
-            for message in messages:
-                yield self._episode([message], conversation)
-            return
-        threads: dict[str, list[SlackMessage]] = {}
-        order: list[str] = []
         for message in messages:
-            key = message.thread_ts or message.ts
-            if key not in threads:
-                threads[key] = []
-                order.append(key)
-            threads[key].append(message)
-        for key in sorted(order, key=float):
-            yield self._episode(threads[key], conversation)
+            yield self._episode(
+                message,
+                conversation,
+                document_id=document_id_for_slack_thread(
+                    conversation.label, message.thread_ts or message.ts
+                ),
+            )
+        # Channel-level document: top-level posts in order (thread parents and
+        # unthreaded messages). Same payload as the thread copy; only document_id
+        # differs. Replies stay thread-only.
+        channel_id = document_id_for_slack_channel(conversation.label)
+        for message in messages:
+            if not _is_top_level(message):
+                continue
+            yield self._episode(message, conversation, document_id=channel_id)
 
     def _parse(
         self, raw: dict[str, Any], conversation: _Conversation, users: dict[str, str]
@@ -672,21 +674,26 @@ class SlackExportLoader:
         text = _LINK_BARE.sub(r"\1", text)
         return html.unescape(text)
 
-    def _episode(self, messages: list[SlackMessage], conversation: _Conversation) -> Episode:
-        first = messages[0]
+    def _episode(
+        self, message: SlackMessage, conversation: _Conversation, *, document_id: str
+    ) -> Episode:
         metadata: dict[str, Any] = {
             "source_type": "slack",
             "channel": conversation.label,
             "conversation_type": conversation.kind,
         }
-        # a lone message still belongs to a thread when it carries a thread_ts —
-        # its parent may have been filtered out as a join or bot message — so
-        # message count alone would leave that episode unfilterable by thread
-        if len(messages) > 1 or first.thread_ts:
-            metadata["thread_ts"] = first.thread_ts or first.ts
+        # Slack thread_ts (not a Zep thread_id) is provenance for replies.
+        if message.thread_ts:
+            metadata["thread_ts"] = message.thread_ts
         return Episode(
-            data="\n".join(self.formatter(m) for m in messages),
+            data=self.formatter(message),
             data_type="text",
-            created_at=datetime.fromtimestamp(float(first.ts), tz=UTC).isoformat(),
+            created_at=datetime.fromtimestamp(float(message.ts), tz=UTC).isoformat(),
+            document_id=document_id,
             metadata=metadata,
         )
+
+
+def _is_top_level(message: SlackMessage) -> bool:
+    """True for an unthreaded post or the parent of a Slack thread."""
+    return message.thread_ts is None or message.thread_ts == message.ts

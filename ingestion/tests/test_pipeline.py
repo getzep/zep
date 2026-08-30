@@ -273,11 +273,12 @@ class TestConvenience:
         items = mock_zep.batch.add.call_args.kwargs["items"]
         assert all(i.data_type == "text" for i in items)
         assert all(i.created_at is not None for i in items)
-        assert result.items_submitted == len(items) == 4
+        assert result.items_submitted == len(items) == 10
+        assert all(getattr(i, "document_id", None) for i in items)
 
     def test_ingest_slack_export_channel_filter(self, mock_zep):
         result = ingest_slack_export(mock_zep, FIXTURE, graph_id="g1", channels=["random"])
-        assert result.items_submitted == 1
+        assert result.items_submitted == 2
 
     def test_ingest_documents_chunks_long_files(self, mock_zep, tmp_path):
         (tmp_path / "doc.md").write_text("\n\n".join("sentence here. " * 20 for _ in range(10)))
@@ -290,7 +291,7 @@ class TestConvenience:
     def test_ingest_slack_export_skip_subtypes(self, mock_zep):
         result = ingest_slack_export(mock_zep, FIXTURE, graph_id="g1", skip_subtypes=frozenset())
         items = mock_zep.batch.add.call_args.kwargs["items"]
-        assert result.items_submitted == 5
+        assert result.items_submitted == 12
         assert any("has joined the channel" in i.data for i in items)
 
     def test_ingest_slack_export_risky_words_guard(self, mock_zep):

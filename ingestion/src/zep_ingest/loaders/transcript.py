@@ -12,6 +12,7 @@ from pathlib import Path
 
 from zep_ingest._io import resolve_source_files, source_paths_label
 from zep_ingest._validation import require_int_range
+from zep_ingest.documents import document_id_for_path
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.types import Episode, SourcePaths
 
@@ -98,6 +99,7 @@ class TranscriptLoader:
         start = self._resolve_start(file, headers)
         title = headers.get("MEETING") or headers.get("TITLE") or file.stem
         chunks = self._chunk(turns)
+        document_id = document_id_for_path(file, prefix="transcript")
         for index, chunk in enumerate(chunks, start=1):
             created_at = None
             if start is not None:
@@ -106,6 +108,7 @@ class TranscriptLoader:
                 data="\n".join(f"{turn.speaker}: {turn.text}" for turn in chunk),
                 data_type="text",
                 created_at=created_at,
+                document_id=document_id,
                 metadata={
                     "source_type": "transcript",
                     "meeting": title[:100],
