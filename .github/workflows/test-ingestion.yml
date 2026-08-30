@@ -61,7 +61,7 @@ jobs:
           name: ingestion-coverage
 
   integration:
-    if: github.event_name == 'push'
+    if: false  # superseded by smoke-ingestion.yml (non-blocking post-merge smoke)
     runs-on: ubuntu-latest
     environment: integration
     defaults:

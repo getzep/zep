@@ -4,6 +4,24 @@ All notable changes to `zep-ingest` are documented here. The project follows
 [Semantic Versioning](https://semver.org); while at `0.x` the public API may
 still change between minor versions.
 
+## 0.4.0
+
+- **Document grouping (`document_id`).** Text files, transcripts, and emails
+  always get a `document_id` (even as a single episode). Slack is ingested as
+  one episode per message with a shared `document_id` per Slack thread, plus a
+  second document of each channel's top-level messages in order (thread parents
+  are ingested twice; payload identical except `document_id`). Not a Zep
+  `thread_id`. The Slack `grouping` option is removed. JSON records omit
+  `document_id`. `TextChunker` preserves `document_id` across chunks.
+- Sequential `graph.add` sends `document_id` via a thin API wrapper until the
+  installed `zep-cloud` SDK exposes the field. Batch items pass it through
+  `BatchAddItem` extras.
+- `wait()` polls one tail episode per `document_id` saga (like multi-thread
+  polling). Ingestion order within a document follows `created_at`.
+- Unified live smoke suite: `ingestion/scripts/smoke.py` (also
+  `pytest -m smoke`). Runs post-merge and post-release via
+  `.github/workflows/smoke-ingestion.yml` with `continue-on-error: true`.
+
 ## 0.3.0
 
 - **Submit everything, then wait once.** Multiple files or loaders destined for

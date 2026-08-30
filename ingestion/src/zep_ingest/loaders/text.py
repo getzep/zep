@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 
 from zep_ingest._io import resolve_source_files, source_paths_label
+from zep_ingest.documents import document_id_for_path
 from zep_ingest.types import Episode, SourcePaths
 
 
@@ -40,5 +41,6 @@ class TextFileLoader:
                 data=file.read_text(encoding="utf-8"),
                 data_type="text",
                 created_at=created_at,
+                document_id=document_id_for_path(file),
                 metadata={"source_type": "document", "file_name": file.name},
             )

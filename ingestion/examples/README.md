@@ -24,7 +24,7 @@ the [dashboard](https://app.getzep.com) when you're done.
 | [`documents_example.py`](documents_example.py) | Markdown → ~500-char chunks; optional LLM contextualization (auto-detects `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`) | named graph |
 | [`fact_triples_example.py`](fact_triples_example.py) | molding a realistic directory export (no triple-shaped columns) into explicit fact triples; the manual create → set_ontology → seed lifecycle | named graph |
 | [`json_records_example.py`](json_records_example.py) | structured records with identity-field mapping — Zep extracts the relationships | named graph |
-| [`slack_export_example.py`](slack_export_example.py) | free `preview()` first, then a Slack export with thread grouping, `skip_subtypes`, and the opt-in risky-alias guard | named graph |
+| [`slack_export_example.py`](slack_export_example.py) | free `preview()` first, then a Slack export (one episode per message, thread as `document_id`), `skip_subtypes`, and the opt-in risky-alias guard | named graph |
 | [`user_graph_example.py`](user_graph_example.py) | **combined**: profile fact triples → chat-thread backfill → a document, all on one user's graph | user graph |
 | [`thread_backfill_example.py`](thread_backfill_example.py) | historic chat history (JSONL) → threads that power `thread.get_user_context()` | user graph |
 

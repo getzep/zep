@@ -16,6 +16,7 @@ from email.parser import BytesParser
 from email.utils import parsedate_to_datetime
 
 from zep_ingest._io import resolve_source_files, source_paths_label
+from zep_ingest.documents import document_id_for_email_thread
 from zep_ingest.types import Episode, SourcePaths
 
 _HTML_DROP = re.compile(r"<(script|style)\b.*?</\1>", re.IGNORECASE | re.DOTALL)
@@ -67,6 +68,7 @@ class EmlLoader:
                 data=f"Email from {sender} to {recipient} (subject: {subject}):\n{body}",
                 data_type="text",
                 created_at=created_at,
+                document_id=document_id_for_email_thread(message, file),
                 metadata={
                     "source_type": "email",
                     "subject": subject[:100],

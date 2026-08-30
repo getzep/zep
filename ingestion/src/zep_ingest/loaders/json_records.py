@@ -187,13 +187,14 @@ class JsonRecordsLoader:
         created_at: str | None = None
         timestamp_missing = 0
         metadata: dict[str, Any] = {"source_type": "json_record", "file_name": file.name}
-        if isinstance(record, dict):
+        source_record: dict[str, Any] | None = record if isinstance(record, dict) else None
+        if source_record is not None:
             # every field the caller names is read from the record as they wrote it,
             # never from a key the loader just wrote: with id_field='sku' and
             # name_field='id' the name is still the record's own 'id', and the order
             # of the mappings below carries no meaning
-            original = record
-            record = dict(record)
+            original = source_record
+            record = dict(source_record)
             for target, field in (
                 ("id", self.id_field),
                 ("name", self.name_field),
