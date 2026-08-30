@@ -3,6 +3,7 @@
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
 
 from zep_ingest._validation import require_int_range, require_nonnegative_number
@@ -39,6 +40,32 @@ _STATUS_PRIORITY = [
     "queued",
     "succeeded",
 ]
+
+
+def _parse_created_at(value: str | None) -> datetime | None:
+    """Parse an episode ``created_at`` into a comparable UTC instant."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _is_later_or_equal_created_at(new_at: str | None, prior_at: str | None) -> bool:
+    """Whether ``new_at`` is the later document tail.
+
+    Missing or unparseable timestamps fall back to last-submitted-wins. Offsets
+    are compared as instants, not lexicographic RFC3339 strings.
+    """
+    new_dt = _parse_created_at(new_at)
+    prior_dt = _parse_created_at(prior_at)
+    if new_dt is None or prior_dt is None:
+        return True
+    return new_dt >= prior_dt
 
 
 def _normalize_task_status(status: str | None) -> str:
@@ -178,11 +205,7 @@ class IngestResult:
             self._uses_document_grouping = True
             prior_at = self._document_poll_created_at.get(episode.document_id)
             new_at = episode.created_at
-            if prior_at is None or new_at is None:
-                # Missing timestamps: fall back to submission order (last wins).
-                self._document_poll_uuids[episode.document_id] = uuid
-                self._document_poll_created_at[episode.document_id] = new_at
-            elif new_at >= prior_at:
+            if _is_later_or_equal_created_at(new_at, prior_at):
                 self._document_poll_uuids[episode.document_id] = uuid
                 self._document_poll_created_at[episode.document_id] = new_at
         else:
@@ -362,10 +385,7 @@ class IngestResult:
                 for document_id, uuid in part._document_poll_uuids.items():
                     created_at = part._document_poll_created_at.get(document_id)
                     prior_at = combined._document_poll_created_at.get(document_id)
-                    if prior_at is None or created_at is None:
-                        combined._document_poll_uuids[document_id] = uuid
-                        combined._document_poll_created_at[document_id] = created_at
-                    elif (created_at or "") >= (prior_at or ""):
+                    if _is_later_or_equal_created_at(created_at, prior_at):
                         combined._document_poll_uuids[document_id] = uuid
                         combined._document_poll_created_at[document_id] = created_at
                 if part._plain_episode_tail is not None:
