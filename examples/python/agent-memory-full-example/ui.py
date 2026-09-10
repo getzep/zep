@@ -4,6 +4,7 @@ import asyncio
 import nest_asyncio
 import html
 import base64
+from pathlib import Path
 from datetime import datetime, timezone
 from agents import *
 import os
@@ -19,10 +20,17 @@ load_dotenv()
 # Load and encode Zep logo as base64
 @st.cache_data
 def get_zep_logo_base64():
-    with open("assets/zep-logo.png", "rb") as f:
-        return base64.b64encode(f.read()).decode()
+    logo_path = Path("assets/zep-logo.png")
+    if not logo_path.is_file():
+        return None
+    try:
+        with open(logo_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except OSError:
+        return None
 
-zep_logo_base64 = get_zep_logo_base64()
+
+zep_logo_base64 = get_zep_logo_base64() or ""
 
 # Store Zep API key in session state (we'll create clients as needed)
 if "zep_api_key" not in st.session_state:

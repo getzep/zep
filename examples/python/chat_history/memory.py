@@ -19,7 +19,7 @@ from dotenv import find_dotenv, load_dotenv
 from chat_history_shoe_purchase import history
 
 from zep_cloud.client import AsyncZep
-from zep_cloud.types import Message, FactRatingInstruction, FactRatingExamples
+from zep_cloud.types import Message
 
 load_dotenv(
     dotenv_path=find_dotenv()
@@ -35,15 +35,6 @@ async def main() -> None:
 
     # Create a user
     user_id = uuid.uuid4().hex  # unique user id. can be any alphanum string
-    fact_rating_instruction = """Rate the facts by poignancy. Highly poignant 
-    facts have a significant emotional impact or relevance to the user. 
-    Facts with low poignancy are minimally relevant or of little emotional
-    significance."""
-    fact_rating_examples = FactRatingExamples(
-        high="The user received news of a family member's serious illness.",
-        medium="The user completed a challenging marathon.",
-        low="The user bought a new brand of toothpaste.",
-    )
     await client.user.add(
         user_id=user_id,
         email="user@example.com",
@@ -70,11 +61,9 @@ async def main() -> None:
     for m in history:
         print(f"{m['role']}: {m['content']}")
         await client.thread.add_messages(thread_id=thread_id, messages=[Message(**m)])
-        # await asyncio.sleep(0.5)
 
-    #  Wait for the messages to be processed
+    # Wait for the messages to be processed
     await asyncio.sleep(50)
-
 
     print(f"\n---Get user context for thread: {thread_id}")
     memory = await client.thread.get_user_context(thread_id)

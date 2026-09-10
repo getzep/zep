@@ -23,8 +23,8 @@ This example demonstrates how to integrate Zep memory with an agent built using 
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/getzep/zep-python.git
-cd zep-python/examples/openai-agents-sdk
+git clone https://github.com/getzep/zep.git
+cd zep/examples/python/openai-agents-sdk
 ```
 
 2. Install the required dependencies using uv or poetry:

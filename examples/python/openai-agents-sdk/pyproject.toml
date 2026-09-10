@@ -9,5 +9,5 @@ dependencies = [
     "openai-agents>=0.0.3",
     "packaging>=24.2",
     "python-dotenv>=1.0.1",
-    "zep-cloud>=2.6.1",
+    "zep-cloud>=3.28.0,<4",
 ]

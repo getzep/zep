@@ -39,7 +39,17 @@ OPENAI_API_KEY=your_openai_api_key_here
 - **Zep**: Sign up at [app.getzep.com](https://app.getzep.com) and generate an API key
 - **OpenAI**: Get your key from [platform.openai.com](https://platform.openai.com)
 
-### 3. Pre-populate with Sample Data (Optional)
+### 3. Set Context Templates
+
+Register the example context templates with Zep before chatting:
+
+```bash
+python set-context-templates.py
+```
+
+This creates the context templates used by the dashboard agents.
+
+### 4. Pre-populate with Sample Data (Optional)
 
 Run the ingestion script to create a test user and add sample data to Zep:
 
@@ -54,7 +64,7 @@ This creates:
 
 The sample data is about concerts/music preferences. You can replace the files in `data/` with your own data.
 
-### 4. Launch the Dashboard
+### 5. Launch the Dashboard
 
 ```bash
 streamlit run ui.py

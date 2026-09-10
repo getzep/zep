@@ -52,9 +52,9 @@ async def main() -> None:
         result = await client.thread.create(
             thread_id=thread_id, user_id=user_id
         )
-        print(f"Created session {i+1}: {result}")
+        print(f"Created session: {result}")
     except Exception as e:
-        print(f"Failed to create session {i+1}: {e}")
+        print(f"Failed to create session: {e}")
 
     # Delete the second user
     user_list = await client.user.list_ordered(page_size=1, page_number=1)

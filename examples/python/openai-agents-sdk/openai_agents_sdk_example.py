@@ -172,7 +172,7 @@ class AsyncZepMemoryManager:
                 raise ValueError("Zep client not initialized")
 
             # Use thread.get_user_context to retrieve memory context for the thread
-            context = await self.zep_client.thread.get_user_context(thread_id=self.thread_id, mode="basic")
+            context = await self.zep_client.thread.get_user_context(thread_id=self.thread_id)
 
             # Use the context string provided by Zep instead of creating a summary
             if context.context:
