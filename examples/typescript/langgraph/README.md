@@ -6,8 +6,8 @@ This is a simple CLI agent built with LangGraph.js that can answer questions and
 
 - Node.js 18+ installed
 - OpenAI API key
-- Tavily API key (for search functionality)
 - Zep API key (for memory persistence)
+- Tavily API key (optional — only required for web search; help and non-search memory turns work without it)
 
 ## Setup
 
