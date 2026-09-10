@@ -3,6 +3,9 @@
 #
 # Binaries for programs and plugins
 out/
+
+# Zep MCP server build output (make build -> bin/)
+/mcp/zep-mcp-server/bin/
 *.exe
 *.exe~
 *.dll

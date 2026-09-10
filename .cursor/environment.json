@@ -1,0 +1,11 @@
+{
+  "name": "Zep Examples & Integrations",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "zep-mcp-server",
+      "command": "cd mcp/zep-mcp-server && PATH=\"$HOME/.local/bin:$PATH\" ./bin/zep-mcp-server --port 8080"
+    }
+  ],
+  "ports": [8080]
+}
