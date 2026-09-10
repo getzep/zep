@@ -1,8 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { CreateUserRequest, Message, NotFoundError } from "../../src/api";
-import { ZepClient } from "../../src";
-
-// @ts-ignore
+import { ZepClient, Zep } from "@getzep/zep-cloud";
 import { history } from "./chat_shoe_store_history";
 
 function sleep(ms: number) {
@@ -22,7 +19,7 @@ async function main() {
 
     // Create a user
     const userId = uuidv4();
-    const userRequest: CreateUserRequest = {
+    const userRequest: Zep.CreateUserRequest = {
         userId: `amy${userId}`,
         metadata: { role: "admin" },
         email: "amy@acme.com",
@@ -74,13 +71,13 @@ async function main() {
     // Get newly added memory
     try {
         console.debug("Getting user context for the thread ", threadId);
-        const memory = await client.thread.getUserContext(threadId, {mode: "summary"});
+        const memory = await client.thread.getUserContext(threadId);
         console.log("Context: ", memory.context);
         if (memory.context) {
             console.debug("Memory Context: ", memory.context);
         }
     } catch (error) {
-        if (error instanceof NotFoundError) {
+        if (error instanceof Zep.NotFoundError) {
             console.error("thread not found:", error.message);
         } else {
             console.error("Got error:", error);
@@ -92,7 +89,7 @@ async function main() {
         const threadMessagesResult = await client.thread.get(threadId, { limit: 10, cursor: 1 });
         console.debug("thread messages: ", JSON.stringify(threadMessagesResult));
     } catch (error) {
-        if (error instanceof NotFoundError) {
+        if (error instanceof Zep.NotFoundError) {
             console.error("thread not found:", error.message);
         } else {
             console.error("Got error:", error);

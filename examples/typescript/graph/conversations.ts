@@ -1,8 +1,8 @@
-import { RoleType } from "../../src/api/";
+import { Zep } from "@getzep/zep-cloud";
 
 export const history: {
     name: string;
-    role: RoleType;
+    role: Zep.RoleType;
     content: string;
 }[][] = [
         // Conversation 1: Japan

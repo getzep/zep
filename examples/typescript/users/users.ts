@@ -1,6 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { ZepClient } from "../../src";
-import { CreateUserRequest, UpdateUserRequest } from "../../src/api";
+import { ZepClient, Zep } from "@getzep/zep-cloud";
 
 async function main() {
     const projectApiKey = process.env.ZEP_API_KEY;
@@ -12,7 +11,7 @@ async function main() {
     // Create multiple users
     for (let i = 0; i < 3; i++) {
         const userId = uuidv4();
-        const userRequest: CreateUserRequest = {
+        const userRequest: Zep.CreateUserRequest = {
             userId: userId,
             email: `user${i}@example.com`,
             firstName: `John${i}`,
@@ -34,7 +33,7 @@ async function main() {
         return;
     }
     const userId = firstUser.userId;
-    const userRequest: UpdateUserRequest = {
+    const userRequest: Zep.UpdateUserRequest = {
         email: "updated_user@example.com",
         firstName: "UpdatedJohn",
         lastName: "UpdatedDoe",

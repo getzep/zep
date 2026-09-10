@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { ZepClient } from '../../src';
+import { ZepClient } from '@getzep/zep-cloud';
 
 const API_KEY = process.env.ZEP_API_KEY;
 
