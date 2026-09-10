@@ -219,6 +219,12 @@ def ingest_to_zep(zep_client: Zep, user_id: str, contextualized_chunk: str) -> s
 
 
 
+# Canonical Zep task statuses (see zep_cloud.types.BatchStatus / task responses).
+# Episode completion is driven by episode.processed; task status is used to fail-fast.
+TASK_SUCCESS_STATUSES = {"succeeded", "completed", "complete", "success"}
+TASK_FAILURE_STATUSES = {"failed", "error", "canceled", "cancelled", "partial"}
+
+
 def wait_for_episode(
     zep_client: "Zep",
     episode_uuid: str,
@@ -230,8 +236,9 @@ def wait_for_episode(
     """
     Poll Zep until the episode is processed (or fail/timeout).
 
-    Matches zep-cloud v3.28 episode response shapes: ``episode.processed`` and
-    optional ``episode.task_id`` via ``client.task.get``.
+    Primary completion signal is ``episode.processed``. When a linked
+    ``episode.task_id`` is present, fail fast on terminal unsuccessful task
+    statuses: failed, error, canceled/cancelled, and partial.
     """
     if not episode_uuid:
         raise ValueError("episode_uuid is required")
@@ -247,7 +254,7 @@ def wait_for_episode(
         if task_id and hasattr(zep_client, "task"):
             task = zep_client.task.get(task_id)
             status = (getattr(task, "status", None) or "").lower()
-            if status in {"failed", "error", "cancelled"}:
+            if status in TASK_FAILURE_STATUSES:
                 err = getattr(task, "error", None)
                 raise RuntimeError(
                     f"Episode {episode_uuid} task {task_id} ended with status={status}: {err}"

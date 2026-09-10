@@ -394,7 +394,7 @@ def test_wait_for_episode_success_timeout_and_error():
             self.graph = FakeGraph(episode_api)
             self.task = task_api
 
-    # Success after polling
+    # Success after polling (episode.processed is primary completion signal)
     episode_api = FakeEpisodeAPI([Episode(False), Episode(False), Episode(True)])
     client = FakeClient(episode_api)
     result = wait_for_episode(
@@ -415,17 +415,74 @@ def test_wait_for_episode_success_timeout_and_error():
             sleep_fn=lambda _s: None,
         )
 
-    # Error path via failed task linked on episode
-    episode_api = FakeEpisodeAPI([Episode(False, task_id="task-1")])
-    task_api = FakeTaskAPI(status="failed", error="graph failed")
-    client = FakeClient(episode_api, task_api=task_api)
-    with pytest.raises(RuntimeError, match="(?i)fail|error"):
-        wait_for_episode(
-            client,
-            "ep-3",
-            timeout_seconds=5,
-            poll_interval_seconds=0,
-            sleep_fn=lambda _s: None,
+    # Fail-fast on canonical unsuccessful task statuses
+    for bad_status in ("failed", "error", "canceled", "cancelled", "partial"):
+        episode_api = FakeEpisodeAPI([Episode(False, task_id="task-1")])
+        task_api = FakeTaskAPI(status=bad_status, error=f"{bad_status} boom")
+        client = FakeClient(episode_api, task_api=task_api)
+        with pytest.raises(RuntimeError, match="(?i)fail|error|cancel|partial"):
+            wait_for_episode(
+                client,
+                f"ep-{bad_status}",
+                timeout_seconds=5,
+                poll_interval_seconds=0,
+                sleep_fn=lambda _s: None,
+            )
+
+
+def _extract_status_set_literals(source: str) -> list[set[str]]:
+    """Return set literals assigned/compared in wait helpers (best-effort via AST)."""
+    tree = ast.parse(source)
+    found: list[set[str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Set) and all(isinstance(e, ast.Constant) for e in node.elts):
+            values = {e.value for e in node.elts if isinstance(e.value, str)}
+            if values:
+                found.append(values)
+        if isinstance(node, (ast.List, ast.Tuple)) and all(
+            isinstance(e, ast.Constant) for e in node.elts
+        ):
+            values = {e.value for e in node.elts if isinstance(e.value, str)}
+            # Only keep status-like collections
+            if values & {
+                "failed",
+                "error",
+                "canceled",
+                "cancelled",
+                "partial",
+                "succeeded",
+                "completed",
+                "complete",
+            }:
+                found.append(values)
+    return found
+
+
+def test_chunking_and_notebook_wait_helpers_use_canonical_task_statuses():
+    required_failure = {"failed", "error", "canceled", "cancelled", "partial"}
+    required_success = {"succeeded", "completed", "complete"}
+
+    chunk_src = (PYTHON_ROOT / "chunking-example" / "chunk_and_ingest.py").read_text(
+        encoding="utf-8"
+    )
+    # Chunking fail-fast set must include canceled + partial (episode.processed remains primary success)
+    assert "canceled" in chunk_src and "cancelled" in chunk_src
+    assert "partial" in chunk_src
+    chunk_sets = _extract_status_set_literals(chunk_src)
+    assert any(required_failure <= s for s in chunk_sets), (
+        f"chunking wait helper missing failure statuses {required_failure}; found {chunk_sets}"
+    )
+
+    for nb_name in ("langgraph-agent", "autogen-agent"):
+        source = _notebook_code(PYTHON_ROOT / nb_name / "agent.ipynb")
+        assert "canceled" in source and "cancelled" in source
+        assert "partial" in source
+        sets = _extract_status_set_literals(source)
+        assert any(required_failure <= s for s in sets), (
+            f"{nb_name} missing failure statuses {required_failure}; found {sets}"
+        )
+        assert any(required_success <= s for s in sets), (
+            f"{nb_name} missing success statuses {required_success}; found {sets}"
         )
 
 
