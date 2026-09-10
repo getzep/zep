@@ -218,6 +218,48 @@ def ingest_to_zep(zep_client: Zep, user_id: str, contextualized_chunk: str) -> s
                 raise
 
 
+
+def wait_for_episode(
+    zep_client: "Zep",
+    episode_uuid: str,
+    *,
+    timeout_seconds: float = 180.0,
+    poll_interval_seconds: float = 2.0,
+    sleep_fn=time.sleep,
+):
+    """
+    Poll Zep until the episode is processed (or fail/timeout).
+
+    Matches zep-cloud v3.28 episode response shapes: ``episode.processed`` and
+    optional ``episode.task_id`` via ``client.task.get``.
+    """
+    if not episode_uuid:
+        raise ValueError("episode_uuid is required")
+
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        episode = zep_client.graph.episode.get(episode_uuid)
+        if getattr(episode, "processed", False):
+            print(f"  Episode {episode_uuid} processed")
+            return episode
+
+        task_id = getattr(episode, "task_id", None)
+        if task_id and hasattr(zep_client, "task"):
+            task = zep_client.task.get(task_id)
+            status = (getattr(task, "status", None) or "").lower()
+            if status in {"failed", "error", "cancelled"}:
+                err = getattr(task, "error", None)
+                raise RuntimeError(
+                    f"Episode {episode_uuid} task {task_id} ended with status={status}: {err}"
+                )
+
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"Timed out waiting for episode {episode_uuid} after {timeout_seconds}s"
+            )
+        sleep_fn(poll_interval_seconds)
+
+
 def process_document(
     document_path: str,
     user_id: str,
@@ -304,9 +346,9 @@ def process_document(
             episode_uuid = ingest_to_zep(zep_client, user_id, contextualized)
             print(f"  Created episode: {episode_uuid}")
             success += 1
-            if wait:
+            if wait and episode_uuid:
                 print("  Waiting for episode processing...")
-                time.sleep(2)
+                wait_for_episode(zep_client, episode_uuid)
         except Exception as e:
             print(f"  ERROR ingesting: {e}")
             failed += 1

@@ -5,8 +5,7 @@ This script demonstrates the following functionality:
 - Creating a user.
 - Creating a thread associated with the created user.
 - Adding messages to the thread.
-- Searching the thread memory for a specific query.
-- Searching the thread memory with MMR reranking.
+- Retrieving synthesized user context with thread.get_user_context.
 - optionally deleting the thread.
 """
 

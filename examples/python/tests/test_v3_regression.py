@@ -10,6 +10,7 @@ Run from repo root:
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import os
 import re
@@ -282,3 +283,181 @@ def test_no_invalid_get_user_context_mode_kwarg_in_py_examples():
         if re.search(r"get_user_context\([^\)]*mode\s*=", text, re.S):
             offenders.append(str(path.relative_to(REPO_ROOT)))
     assert not offenders, f"get_user_context(..., mode=) still present in: {offenders}"
+
+
+def test_no_get_user_context_mode_in_readmes():
+    offenders: list[str] = []
+    for path in PYTHON_ROOT.rglob("README.md"):
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"get_user_context\([^\)]*mode\s*=", text, re.S):
+            offenders.append(str(path.relative_to(REPO_ROOT)))
+        if 'mode="basic"' in text or "mode='basic'" in text:
+            # Only flag when adjacent to get_user_context docs
+            if "get_user_context" in text:
+                offenders.append(str(path.relative_to(REPO_ROOT)))
+    assert not offenders, f"README still documents mode= for get_user_context: {offenders}"
+
+
+def test_chat_history_docstring_matches_get_user_context():
+    path = PYTHON_ROOT / "chat_history" / "memory.py"
+    source = path.read_text(encoding="utf-8")
+    doc = ast.get_docstring(ast.parse(source)) or ""
+    assert "get_user_context" in doc or "user context" in doc.lower()
+    assert "MMR" not in doc
+    assert "Searching the thread memory" not in doc
+
+
+def _load_chunking_module():
+    script = PYTHON_ROOT / "chunking-example" / "chunk_and_ingest.py"
+    spec = importlib.util.spec_from_file_location("chunk_and_ingest", script)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    # Avoid executing OpenAI/Zep imports at module level beyond stdlib
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_chunking_wait_helper_exists_and_is_not_sleep_only():
+    script = PYTHON_ROOT / "chunking-example" / "chunk_and_ingest.py"
+    source = script.read_text(encoding="utf-8")
+    assert re.search(r"def wait_for_episode\(", source), (
+        "chunk_and_ingest.py must define wait_for_episode()"
+    )
+    tree = ast.parse(source)
+    fn = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "wait_for_episode"
+        ),
+        None,
+    )
+    assert fn is not None
+    body_src = ast.unparse(fn)
+    assert "episode.get" in body_src or "graph.episode.get" in source
+    assert "processed" in body_src
+    assert "TimeoutError" in body_src or "timeout" in body_src.lower()
+    # Must not be only a bare sleep
+    assert not re.fullmatch(
+        r".*sleep\(\s*\d+(\.\d+)?\s*\).*", body_src.replace("\n", " ")
+    )
+    # process_document must call wait_for_episode when wait=True
+    assert "wait_for_episode(" in source
+
+
+def test_wait_for_episode_success_timeout_and_error():
+    module = _load_chunking_module()
+    wait_for_episode = module.wait_for_episode
+
+    class Episode:
+        def __init__(self, processed=False, task_id=None):
+            self.processed = processed
+            self.task_id = task_id
+
+    class FakeEpisodeAPI:
+        def __init__(self, sequence):
+            self.sequence = list(sequence)
+            self.calls = 0
+
+        def get(self, uuid_: str):
+            self.calls += 1
+            if not self.sequence:
+                return Episode(False)
+            item = self.sequence.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item
+
+    class FakeTaskAPI:
+        def __init__(self, status="failed", error="boom"):
+            self.status = status
+            self.error = error
+            self.calls = 0
+
+        def get(self, task_id: str):
+            self.calls += 1
+
+            class Task:
+                pass
+
+            task = Task()
+            task.status = self.status
+            task.error = self.error
+            return task
+
+    class FakeGraph:
+        def __init__(self, episode_api):
+            self.episode = episode_api
+
+    class FakeClient:
+        def __init__(self, episode_api, task_api=None):
+            self.graph = FakeGraph(episode_api)
+            self.task = task_api
+
+    # Success after polling
+    episode_api = FakeEpisodeAPI([Episode(False), Episode(False), Episode(True)])
+    client = FakeClient(episode_api)
+    result = wait_for_episode(
+        client, "ep-1", timeout_seconds=5, poll_interval_seconds=0, sleep_fn=lambda _s: None
+    )
+    assert result.processed is True
+    assert episode_api.calls == 3
+
+    # Timeout when never processed
+    episode_api = FakeEpisodeAPI([Episode(False)] * 20)
+    client = FakeClient(episode_api)
+    with pytest.raises(TimeoutError):
+        wait_for_episode(
+            client,
+            "ep-2",
+            timeout_seconds=0.01,
+            poll_interval_seconds=0,
+            sleep_fn=lambda _s: None,
+        )
+
+    # Error path via failed task linked on episode
+    episode_api = FakeEpisodeAPI([Episode(False, task_id="task-1")])
+    task_api = FakeTaskAPI(status="failed", error="graph failed")
+    client = FakeClient(episode_api, task_api=task_api)
+    with pytest.raises(RuntimeError, match="(?i)fail|error"):
+        wait_for_episode(
+            client,
+            "ep-3",
+            timeout_seconds=5,
+            poll_interval_seconds=0,
+            sleep_fn=lambda _s: None,
+        )
+
+
+def test_langgraph_notebook_has_tool_loop_search_and_bounded_wait():
+    source = _notebook_code(PYTHON_ROOT / "langgraph-agent" / "agent.ipynb")
+    assert "graph.search" in source
+    assert "@tool" in source or "StructuredTool" in source or "tool(" in source
+    assert "ToolNode" in source or "tools" in source
+    assert "add_conditional_edges" in source or "should_continue" in source
+    assert re.search(r"wait_for_|TimeoutError|poll_interval|timeout_seconds", source)
+    # Non-interactive grounded-recall demo questions
+    assert "dog" in source.lower() or "work" in source.lower()
+    assert "ask(" in source or "graph_invoke(" in source or "ainvoke(" in source
+
+
+def test_autogen_notebook_has_memory_search_wait_and_compatible_pin():
+    nb_path = PYTHON_ROOT / "autogen-agent" / "agent.ipynb"
+    source = _notebook_code(nb_path)
+    nb = json.loads(nb_path.read_text(encoding="utf-8"))
+    all_text = "\n".join("".join(c.get("source", [])) for c in nb["cells"])
+
+    assert "get_user_context" in source
+    assert "graph.search" in source
+    assert re.search(r"wait_for_|TimeoutError|poll_interval|timeout_seconds", source)
+    assert "ConversableAgent" in source or "AssistantAgent" in source
+
+    # Pinned compatible Autogen install (classic ConversableAgent API)
+    pin_match = re.search(
+        r"pyautogen\s*([><=!~][^`\s]+)|autogen==([^\s`]+)|pyautogen==([^\s`]+)",
+        all_text,
+    )
+    assert pin_match, (
+        "autogen notebook must pin a compatible Autogen package "
+        "(e.g. pyautogen>=0.2.35,<0.3)"
+    )
