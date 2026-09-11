@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useConversation } from '@elevenlabs/react';
+import { useConversation } from '@11labs/react';
 import { v4 as uuidv4 } from 'uuid';
 
 // Configuration - set these in your .env file
