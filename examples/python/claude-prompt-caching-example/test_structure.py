@@ -108,7 +108,7 @@ for mode in (MODE_SYSTEM_PROMPT, MODE_SYSTEM_MESSAGE):
         assert reply == "stub reply" and m.cache_read_input_tokens == 200
 
     for call_i, kw in enumerate(captured):
-        assert kw["model"] == "claude-opus-4-8"
+        assert kw["model"] == "claude-opus-5"
         assert kw["tools"] == TOOL_DEFINITIONS, "tool definitions should be in every request"
         assert kw["tool_choice"] == {"type": "none"}, "tool_choice none should accompany the tools"
         sys_blocks, msgs = kw["system"], kw["messages"]

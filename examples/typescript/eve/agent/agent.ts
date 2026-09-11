@@ -7,7 +7,7 @@ import { defineAgent } from "eve";
  * GOOGLE_API_KEY works with @ai-sdk/google instead.
  *
  * If you prefer Vercel AI Gateway credits, set AI_GATEWAY_API_KEY and use a
- * string model id like "google/gemini-2.5-flash" (no provider package needed).
+ * string model id like "google/gemini-3.5-flash" (no provider package needed).
  *
  * Direct LanguageModel objects need an explicit context window so eve can
  * compile compaction without AI Gateway catalog metadata.
@@ -17,7 +17,7 @@ const google = createGoogleGenerativeAI({
 });
 
 export default defineAgent({
-  model: google("gemini-2.5-flash"),
-  // Gemini 2.5 Flash context window (tokens)
+  model: google("gemini-3.5-flash"),
+  // Gemini 3.5 Flash context window (tokens)
   modelContextWindowTokens: 1_048_576,
 });

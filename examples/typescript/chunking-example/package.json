@@ -12,7 +12,7 @@
     "@getzep/zep-cloud": "^3.28.0",
     "commander": "^12.1.0",
     "dotenv": "^16.4.7",
-    "openai": "^4.104.0"
+    "openai": "^7.15.0"
   },
   "devDependencies": {
     "@types/node": "^20.17.30",
