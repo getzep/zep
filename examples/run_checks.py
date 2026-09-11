@@ -4,7 +4,12 @@
 Default mode is **static**: keyless compile / typecheck / unit tests only.
 It never mutates live Zep state.
 
-Live mode (`--live` / `--mode live`) additionally runs explicit smoke commands
+Default also assumes dependencies are **already installed** in the environment.
+Pass ``--install`` (for example ``--install --mode static``) to run the
+structured install phase first — that combination is the clean-environment /
+full static gate. Install steps are optional so the default path stays lightweight.
+
+Live mode (``--live`` / ``--mode live``) additionally runs explicit smoke commands
 only when the required API keys are present in the environment.
 
 Toolchain expectations (explicit):
@@ -12,12 +17,15 @@ Toolchain expectations (explicit):
   - Node.js 18+ for most TypeScript examples; **Node.js 24+ for eve**
   - npm (and yarn for zep-graph-visualization)
   - Go 1.22+
+  - ``uv`` only if you use ``--install`` for python/openai-agents-sdk
 
 Usage (from repo root):
   python3 examples/run_checks.py
   python3 examples/run_checks.py --mode static
+  python3 examples/run_checks.py --install --mode static
   python3 examples/run_checks.py --live
   python3 examples/run_checks.py --mode live --dry-run-plan
+  python3 examples/run_checks.py --install --dry-run-plan
 """
 
 from __future__ import annotations
@@ -36,6 +44,10 @@ from typing import Mapping, Sequence
 EXAMPLES_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = EXAMPLES_ROOT.parent
 DEFAULT_MODE = "static"
+DEFAULT_DEPENDENCY_ASSUMPTION = (
+    "Default static/live runs assume existing example dependencies are already installed; "
+    "use --install (e.g. --install --mode static) for a clean-environment gate."
+)
 
 # Keys that are intentionally out of automated live coverage.
 NOT_LIVE_COVERED: dict[str, str] = {
@@ -43,11 +55,21 @@ NOT_LIVE_COVERED: dict[str, str] = {
         "TypeScript langgraph web-search tool only; help/non-search paths work without it. "
         "Not exercised by this runner's live smokes."
     ),
-    "ELEVENLABS_API_KEY / VITE_ELEVENLABS_AGENT_ID": (
-        "python/elevenlabs-zep-example voice + Conversational AI agent wiring. "
-        "Static syntax/import checks only — not live-covered here."
+    "PROXY_API_KEY / VITE_ELEVENLABS_AGENT_ID": (
+        "python/elevenlabs-zep-example llm-proxy auth (PROXY_API_KEY) and react-app agent id "
+        "(VITE_ELEVENLABS_AGENT_ID). Static syntax/import checks only — not live-covered here."
     ),
 }
+
+
+@dataclass(frozen=True)
+class InstallStep:
+    """One executable install command tied to an on-disk manifest."""
+
+    name: str
+    argv: list[str]
+    cwd: str  # relative to examples/
+    manifest: str  # relative to examples/; must exist
 
 
 @dataclass(frozen=True)
@@ -66,7 +88,7 @@ class Group:
     title: str
     rel_path: str
     language: str
-    install: list[str]
+    install: tuple[InstallStep, ...]
     run: list[str]
     static_test: list[str]
     required_keys_docs: tuple[str, ...]
@@ -74,10 +96,12 @@ class Group:
     live: tuple[Check, ...] = ()
     not_live_covered: bool = False
     notes: str = ""
+    install_notes: str = ""
 
 
 @dataclass
 class Plan:
+    install_steps: list[InstallStep]
     static_checks: list[Check]
     live_checks: list[Check]
     skipped_live: list[Check]
@@ -113,502 +137,505 @@ def _check(
     )
 
 
+def _install(
+    name: str,
+    argv: Sequence[str],
+    cwd: str,
+    manifest: str,
+) -> InstallStep:
+    return InstallStep(name=name, argv=list(argv), cwd=cwd, manifest=manifest)
+
+
 INVENTORY: tuple[Group, ...] = (
-    # ----- Python -----
+
     Group(
-        id="python-root",
-        title="Python root scripts (simple / advanced / user_example)",
-        rel_path="python",
-        language="python",
-        install=["pip install -r requirements.txt"],
-        run=[
-            "python simple.py",
-            "python advanced.py",
-            "python user_example.py",
-        ],
-        static_test=[
-            "python -m compileall -q .",
-            "python -m pytest tests/test_v3_regression.py -q",
-        ],
-        required_keys_docs=("ZEP_API_KEY",),
+        id='python-root',
+        title='Python root scripts (simple / advanced / user_example)',
+        rel_path='python',
+        language='python',
+        install=(
+            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python', 'python/requirements.txt'),
+        ),
+        run=['python simple.py', 'python advanced.py', 'python user_example.py'],
+        static_test=['python -m compileall -q .', 'python -m pytest tests/test_v3_regression.py -q'],
+        required_keys_docs=('ZEP_API_KEY',),
         static=(
-            _check("compileall", _py("-m", "compileall", "-q", "."), "python"),
             _check(
-                "v3-regression",
-                _py("-m", "pytest", "tests/test_v3_regression.py", "-q"),
-                "python",
+                'compileall',
+                _py('-m', 'compileall', '-q', '.'),
+                'python',
+            ),
+            _check(
+                'v3-regression',
+                _py('-m', 'pytest', 'tests/test_v3_regression.py', '-q'),
+                'python',
                 timeout_sec=300,
             ),
         ),
         live=(
             _check(
-                "simple.py",
-                _py("simple.py"),
-                "python",
-                required_keys=("ZEP_API_KEY",),
+                'simple.py',
+                _py('simple.py'),
+                'python',
+                required_keys=('ZEP_API_KEY',),
             ),
         ),
-        notes="Live scripts create users/threads; runner injects ZEP_EXAMPLE_RUN_PREFIX.",
+        notes='Live scripts mint UUID-based user/thread IDs (not ZEP_EXAMPLE_* env consumption).',
     ),
     Group(
-        id="python-graph_example",
-        title="Python graph_example",
-        rel_path="python/graph_example",
-        language="python",
-        install=["pip install -r ../requirements.txt"],
-        run=[
-            "python graph_example.py",
-            "python user_graph_example.py",
-            "python entity_types.py",
-            "python tickets_example.py",
-        ],
-        static_test=["python -m compileall -q ."],
-        required_keys_docs=("ZEP_API_KEY",),
-        static=(
-            _check("compileall", _py("-m", "compileall", "-q", "."), "python/graph_example"),
+        id='python-graph_example',
+        title='Python graph_example',
+        rel_path='python/graph_example',
+        language='python',
+        install=(
+            _install('pip-requirements', ['pip', 'install', '-r', '../requirements.txt'], 'python/graph_example', 'python/requirements.txt'),
         ),
-        live=(
-            _check(
-                "graph_example.py",
-                _py("graph_example.py"),
-                "python/graph_example",
-                required_keys=("ZEP_API_KEY",),
-            ),
-        ),
-    ),
-    Group(
-        id="python-chat_history",
-        title="Python chat_history",
-        rel_path="python/chat_history",
-        language="python",
-        install=["pip install -r ../requirements.txt"],
-        run=["python memory.py"],
-        static_test=["python -m compileall -q ."],
-        required_keys_docs=("ZEP_API_KEY",),
-        static=(
-            _check("compileall", _py("-m", "compileall", "-q", "."), "python/chat_history"),
-        ),
-        live=(
-            _check(
-                "memory.py",
-                _py("memory.py"),
-                "python/chat_history",
-                required_keys=("ZEP_API_KEY",),
-            ),
-        ),
-    ),
-    Group(
-        id="python-chunking-example",
-        title="Python chunking-example",
-        rel_path="python/chunking-example",
-        language="python",
-        install=["pip install -r requirements.txt"],
-        run=[
-            "python chunk_and_ingest.py sample_document.txt --user-id <id>",
-            "python chunk_and_ingest.py sample_document.txt --user-id <id> --dry-run",
-        ],
-        static_test=["python chunk_and_ingest.py --help"],
-        required_keys_docs=("ZEP_API_KEY", "OPENAI_API_KEY"),
+        run=['python graph_example.py', 'python user_graph_example.py', 'python entity_types.py', 'python tickets_example.py'],
+        static_test=['python -m compileall -q .'],
+        required_keys_docs=('ZEP_API_KEY',),
         static=(
             _check(
-                "cli-help",
-                _py("chunk_and_ingest.py", "--help"),
-                "python/chunking-example",
+                'compileall',
+                _py('-m', 'compileall', '-q', '.'),
+                'python/graph_example',
             ),
         ),
         live=(
             _check(
-                "chunk-dry-run",
-                _py(
-                    "chunk_and_ingest.py",
-                    "sample_document.txt",
-                    "--user-id",
-                    "{prefix}-py-chunk",
-                    "--dry-run",
-                ),
-                "python/chunking-example",
-                required_keys=("OPENAI_API_KEY",),
-            ),
-            _check(
-                "chunk-ingest",
-                _py(
-                    "chunk_and_ingest.py",
-                    "sample_document.txt",
-                    "--user-id",
-                    "{prefix}-py-chunk-live",
-                ),
-                "python/chunking-example",
-                required_keys=("ZEP_API_KEY", "OPENAI_API_KEY"),
+                'graph_example.py',
+                _py('graph_example.py'),
+                'python/graph_example',
+                required_keys=('ZEP_API_KEY',),
             ),
         ),
-        notes="OPENAI_API_KEY is required even for --dry-run (contextualization).",
+        notes='Live scripts mint UUID-based identifiers.',
     ),
     Group(
-        id="python-claude-prompt-caching-example",
-        title="Python claude-prompt-caching-example",
-        rel_path="python/claude-prompt-caching-example",
-        language="python",
-        install=["pip install -r requirements.txt"],
-        run=["python ingest.py", "python chat.py"],
-        static_test=["python test_structure.py"],
-        required_keys_docs=("ZEP_API_KEY", "ANTHROPIC_API_KEY"),
+        id='python-chat_history',
+        title='Python chat_history',
+        rel_path='python/chat_history',
+        language='python',
+        install=(
+            _install('pip-requirements', ['pip', 'install', '-r', '../requirements.txt'], 'python/chat_history', 'python/requirements.txt'),
+        ),
+        run=['python memory.py'],
+        static_test=['python -m compileall -q .'],
+        required_keys_docs=('ZEP_API_KEY',),
         static=(
             _check(
-                "structure",
-                _py("test_structure.py"),
-                "python/claude-prompt-caching-example",
+                'compileall',
+                _py('-m', 'compileall', '-q', '.'),
+                'python/chat_history',
             ),
         ),
         live=(
             _check(
-                "ingest.py",
-                _py("ingest.py"),
-                "python/claude-prompt-caching-example",
-                required_keys=("ZEP_API_KEY",),
+                'memory.py',
+                _py('memory.py'),
+                'python/chat_history',
+                required_keys=('ZEP_API_KEY',),
             ),
         ),
-        notes="Full chat/benchmark needs ANTHROPIC_API_KEY; default live smoke is ingest only.",
+        notes='Live scripts mint UUID-based identifiers.',
     ),
     Group(
-        id="python-openai-agents-sdk",
-        title="Python openai-agents-sdk",
-        rel_path="python/openai-agents-sdk",
-        language="python",
-        install=["uv sync  # or: pip install -e ."],
-        run=[
-            "python openai_agents_sdk_example.py",
-            "python openai_agents_sdk_example.py --interactive",
-        ],
-        static_test=["python -m compileall -q ."],
-        required_keys_docs=("ZEP_API_KEY", "OPENAI_API_KEY"),
+        id='python-chunking-example',
+        title='Python chunking-example',
+        rel_path='python/chunking-example',
+        language='python',
+        install=(
+            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python/chunking-example', 'python/chunking-example/requirements.txt'),
+        ),
+        run=['python chunk_and_ingest.py sample_document.txt --user-id <id>', 'python chunk_and_ingest.py sample_document.txt --user-id <id> --dry-run'],
+        static_test=['python chunk_and_ingest.py --help'],
+        required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
         static=(
             _check(
-                "compileall",
-                _py("-m", "compileall", "-q", "."),
-                "python/openai-agents-sdk",
+                'cli-help',
+                _py('chunk_and_ingest.py', '--help'),
+                'python/chunking-example',
             ),
         ),
         live=(
             _check(
-                "one-shot",
-                _py(
-                    "openai_agents_sdk_example.py",
-                    "--username",
-                    "{prefix}-oai",
-                    "--session",
-                    "{prefix}-oai-session",
-                ),
-                "python/openai-agents-sdk",
-                required_keys=("ZEP_API_KEY", "OPENAI_API_KEY"),
+                'chunk-dry-run',
+                _py('chunk_and_ingest.py', 'sample_document.txt', '--user-id', '{prefix}-py-chunk', '--dry-run'),
+                'python/chunking-example',
+                required_keys=('OPENAI_API_KEY',),
+            ),
+            _check(
+                'chunk-ingest',
+                _py('chunk_and_ingest.py', 'sample_document.txt', '--user-id', '{prefix}-py-chunk-live'),
+                'python/chunking-example',
+                required_keys=('ZEP_API_KEY', 'OPENAI_API_KEY'),
             ),
         ),
-        notes="Install deps (`uv sync` / `pip install -e .`) before live runs. Avoid --interactive in automation.",
+        notes='OPENAI_API_KEY is required even for --dry-run (contextualization).',
     ),
     Group(
-        id="python-agent-memory-full-example",
-        title="Python agent-memory-full-example (Streamlit)",
-        rel_path="python/agent-memory-full-example",
-        language="python",
-        install=["pip install -r requirements.txt"],
-        run=["streamlit run ui.py"],
-        static_test=["python -m compileall -q ."],
-        required_keys_docs=("ZEP_API_KEY", "OPENAI_API_KEY"),
-        static=(
-            _check(
-                "compileall",
-                _py("-m", "compileall", "-q", "."),
-                "python/agent-memory-full-example",
-            ),
+        id='python-claude-prompt-caching-example',
+        title='Python claude-prompt-caching-example',
+        rel_path='python/claude-prompt-caching-example',
+        language='python',
+        install=(
+            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python/claude-prompt-caching-example', 'python/claude-prompt-caching-example/requirements.txt'),
         ),
-        notes="Interactive Streamlit UI excluded from default static/live runner.",
-    ),
-    Group(
-        id="python-context-templates-example",
-        title="Python context-templates-example (Streamlit)",
-        rel_path="python/context-templates-example",
-        language="python",
-        install=["pip install -r requirements.txt"],
-        run=[
-            "python set-context-templates.py",
-            "python zep_ingest.py",
-            "streamlit run ui.py",
-        ],
-        static_test=["python -m compileall -q ."],
-        required_keys_docs=("ZEP_API_KEY", "OPENAI_API_KEY"),
+        run=['python ingest.py', 'python chat.py'],
+        static_test=['python test_structure.py'],
+        required_keys_docs=('ZEP_API_KEY', 'ANTHROPIC_API_KEY'),
         static=(
             _check(
-                "compileall",
-                _py("-m", "compileall", "-q", "."),
-                "python/context-templates-example",
+                'structure',
+                _py('test_structure.py'),
+                'python/claude-prompt-caching-example',
             ),
         ),
         live=(
             _check(
-                "set-context-templates.py",
-                _py("set-context-templates.py"),
-                "python/context-templates-example",
-                required_keys=("ZEP_API_KEY",),
+                'ingest.py',
+                _py('ingest.py'),
+                'python/claude-prompt-caching-example',
+                required_keys=('ZEP_API_KEY',),
             ),
         ),
-        notes="streamlit run ui.py is interactive — not in the default gate.",
+        notes='Full chat/benchmark needs ANTHROPIC_API_KEY; default live smoke is ingest only. Ingest honors ZEP_EXAMPLE_USER_PREFIX so live runs do not delete the fixed dana demo user.',
     ),
     Group(
-        id="python-user-summary-instructions-example",
-        title="Python user-summary-instructions-example (Streamlit)",
-        rel_path="python/user-summary-instructions-example",
-        language="python",
-        install=["pip install -r requirements.txt"],
-        run=["python zep_ingest.py", "streamlit run ui.py"],
-        static_test=["python -m compileall -q ."],
-        required_keys_docs=("ZEP_API_KEY", "OPENAI_API_KEY"),
+        id='python-openai-agents-sdk',
+        title='Python openai-agents-sdk',
+        rel_path='python/openai-agents-sdk',
+        language='python',
+        install=(
+            _install('uv-sync', ['uv', 'sync'], 'python/openai-agents-sdk', 'python/openai-agents-sdk/pyproject.toml'),
+        ),
+        run=['python openai_agents_sdk_example.py', 'python openai_agents_sdk_example.py --interactive'],
+        static_test=['python -m compileall -q .'],
+        required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
         static=(
             _check(
-                "compileall",
-                _py("-m", "compileall", "-q", "."),
-                "python/user-summary-instructions-example",
+                'compileall',
+                _py('-m', 'compileall', '-q', '.'),
+                'python/openai-agents-sdk',
             ),
         ),
-        notes="streamlit run ui.py is interactive — not in the default gate.",
+        live=(
+            _check(
+                'one-shot',
+                _py('openai_agents_sdk_example.py', '--username', '{prefix}-oai', '--session', '{prefix}-oai-session'),
+                'python/openai-agents-sdk',
+                required_keys=('ZEP_API_KEY', 'OPENAI_API_KEY'),
+            ),
+        ),
+        notes='Install deps (`uv sync`; alternative: `pip install -e .`) before live runs. Avoid --interactive in automation.',
+        install_notes='Alternative without uv: pip install -e .',
     ),
     Group(
-        id="python-zep-quickstart-dashboard",
-        title="Python zep-quickstart-dashboard (Streamlit)",
-        rel_path="python/zep-quickstart-dashboard",
-        language="python",
-        install=["pip install -r requirements.txt"],
-        run=["python zep_ingest.py", "streamlit run ui.py"],
-        static_test=["python -m compileall -q ."],
-        required_keys_docs=("ZEP_API_KEY", "OPENAI_API_KEY"),
+        id='python-agent-memory-full-example',
+        title='Python agent-memory-full-example (Streamlit)',
+        rel_path='python/agent-memory-full-example',
+        language='python',
+        install=(
+            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python/agent-memory-full-example', 'python/agent-memory-full-example/requirements.txt'),
+        ),
+        run=['streamlit run ui.py'],
+        static_test=['python -m compileall -q .'],
+        required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
         static=(
             _check(
-                "compileall",
-                _py("-m", "compileall", "-q", "."),
-                "python/zep-quickstart-dashboard",
+                'compileall',
+                _py('-m', 'compileall', '-q', '.'),
+                'python/agent-memory-full-example',
             ),
         ),
-        notes="streamlit run ui.py is interactive — not in the default gate.",
+        notes='Interactive Streamlit UI excluded from default static/live runner.',
     ),
     Group(
-        id="python-elevenlabs-zep-example",
-        title="Python elevenlabs-zep-example (NOT live-covered)",
-        rel_path="python/elevenlabs-zep-example",
-        language="python",
-        install=[
-            "pip install -r llm-proxy/requirements.txt",
-            "cd react-app && npm install",
-        ],
-        run=[
-            "cd llm-proxy && python proxy_server.py",
-            "cd react-app && npm run dev",
-        ],
-        static_test=[
-            "python -m py_compile llm-proxy/proxy_server.py",
-            "python -m py_compile llm-proxy/setup_test_user.py",
-        ],
-        required_keys_docs=("ZEP_API_KEY", "OPENAI_API_KEY"),
+        id='python-context-templates-example',
+        title='Python context-templates-example (Streamlit)',
+        rel_path='python/context-templates-example',
+        language='python',
+        install=(
+            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python/context-templates-example', 'python/context-templates-example/requirements.txt'),
+        ),
+        run=['python set-context-templates.py', 'python zep_ingest.py', 'streamlit run ui.py'],
+        static_test=['python -m compileall -q .'],
+        required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
         static=(
             _check(
-                "py_compile_proxy",
-                _py("-m", "py_compile", "llm-proxy/proxy_server.py"),
-                "python/elevenlabs-zep-example",
-            ),
-            _check(
-                "py_compile_setup",
-                _py("-m", "py_compile", "llm-proxy/setup_test_user.py"),
-                "python/elevenlabs-zep-example",
+                'compileall',
+                _py('-m', 'compileall', '-q', '.'),
+                'python/context-templates-example',
             ),
         ),
-        live=(),
+        live=(
+            _check(
+                'set-context-templates.py',
+                _py('set-context-templates.py'),
+                'python/context-templates-example',
+                required_keys=('ZEP_API_KEY',),
+            ),
+        ),
+        notes='streamlit run ui.py is interactive — not in the default gate.',
+    ),
+    Group(
+        id='python-user-summary-instructions-example',
+        title='Python user-summary-instructions-example (Streamlit)',
+        rel_path='python/user-summary-instructions-example',
+        language='python',
+        install=(
+            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python/user-summary-instructions-example', 'python/user-summary-instructions-example/requirements.txt'),
+        ),
+        run=['python zep_ingest.py', 'streamlit run ui.py'],
+        static_test=['python -m compileall -q .'],
+        required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
+        static=(
+            _check(
+                'compileall',
+                _py('-m', 'compileall', '-q', '.'),
+                'python/user-summary-instructions-example',
+            ),
+        ),
+        notes='streamlit run ui.py is interactive — not in the default gate.',
+    ),
+    Group(
+        id='python-zep-quickstart-dashboard',
+        title='Python zep-quickstart-dashboard (Streamlit)',
+        rel_path='python/zep-quickstart-dashboard',
+        language='python',
+        install=(
+            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python/zep-quickstart-dashboard', 'python/zep-quickstart-dashboard/requirements.txt'),
+        ),
+        run=['python zep_ingest.py', 'streamlit run ui.py'],
+        static_test=['python -m compileall -q .'],
+        required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
+        static=(
+            _check(
+                'compileall',
+                _py('-m', 'compileall', '-q', '.'),
+                'python/zep-quickstart-dashboard',
+            ),
+        ),
+        notes='streamlit run ui.py is interactive — not in the default gate.',
+    ),
+    Group(
+        id='python-elevenlabs-zep-example',
+        title='Python elevenlabs-zep-example (NOT live-covered)',
+        rel_path='python/elevenlabs-zep-example',
+        language='python',
+        install=(
+            _install('pip-llm-proxy', ['pip', 'install', '-r', 'requirements.txt'], 'python/elevenlabs-zep-example/llm-proxy', 'python/elevenlabs-zep-example/llm-proxy/requirements.txt'),
+            _install('npm-react-app', ['npm', 'install'], 'python/elevenlabs-zep-example/react-app', 'python/elevenlabs-zep-example/react-app/package.json'),
+        ),
+        run=['cd llm-proxy && python proxy_server.py', 'cd react-app && npm run dev'],
+        static_test=['python -m py_compile llm-proxy/proxy_server.py', 'python -m py_compile llm-proxy/setup_test_user.py'],
+        required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY', 'PROXY_API_KEY', 'VITE_ELEVENLABS_AGENT_ID'),
+        static=(
+            _check(
+                'py_compile_proxy',
+                _py('-m', 'py_compile', 'llm-proxy/proxy_server.py'),
+                'python/elevenlabs-zep-example',
+            ),
+            _check(
+                'py_compile_setup',
+                _py('-m', 'py_compile', 'llm-proxy/setup_test_user.py'),
+                'python/elevenlabs-zep-example',
+            ),
+        ),
         not_live_covered=True,
-        notes="ElevenLabs agent keys are separate and not live-covered by this runner.",
+        notes='Not live-covered. Needs PROXY_API_KEY for the llm-proxy and VITE_ELEVENLABS_AGENT_ID for the react-app, in addition to ZEP_API_KEY and OPENAI_API_KEY.',
     ),
-    # ----- TypeScript -----
     Group(
-        id="typescript-root",
-        title="TypeScript graph / memory / users snippets",
-        rel_path="typescript",
-        language="typescript",
-        install=["npm install"],
-        run=[
-            "npm run example:graph",
-            "npm run example:graph:user",
-            "npm run example:graph:entity-types",
-            "npm run example:memory",
-            "npm run example:users",
-        ],
-        static_test=["npm test"],
-        required_keys_docs=("ZEP_API_KEY",),
+        id='typescript-root',
+        title='TypeScript graph / memory / users snippets',
+        rel_path='typescript',
+        language='typescript',
+        install=(
+            _install('npm-install', ['npm', 'install'], 'typescript', 'typescript/package.json'),
+        ),
+        run=['npm run example:graph', 'npm run example:graph:user', 'npm run example:graph:entity-types', 'npm run example:memory', 'npm run example:users'],
+        static_test=['npm test'],
+        required_keys_docs=('ZEP_API_KEY',),
         static=(
-            _check("npm-test", ["npm", "test"], "typescript", timeout_sec=180),
+            _check(
+                'npm-test',
+                ['npm', 'test'],
+                'typescript',
+                timeout_sec=180,
+            ),
         ),
         live=(
             _check(
-                "example:users",
-                ["npm", "run", "example:users"],
-                "typescript",
-                required_keys=("ZEP_API_KEY",),
+                'example:users',
+                ['npm', 'run', 'example:users'],
+                'typescript',
+                required_keys=('ZEP_API_KEY',),
             ),
         ),
-        notes="Packaged apps (eve, langgraph, chunking-example, zep-graph-visualization) are separate groups.",
+        notes='Packaged apps (eve, langgraph, chunking-example, zep-graph-visualization) are separate groups. Live example:users mints UUID user IDs.',
     ),
     Group(
-        id="typescript-chunking-example",
-        title="TypeScript chunking-example",
-        rel_path="typescript/chunking-example",
-        language="typescript",
-        install=["npm install"],
-        run=[
-            "npx tsx src/index.ts sample_document.txt --user-id <id>",
-            "npx tsx src/index.ts sample_document.txt --user-id <id> --dry-run",
-        ],
-        static_test=["npm test"],
-        required_keys_docs=("ZEP_API_KEY", "OPENAI_API_KEY"),
+        id='typescript-chunking-example',
+        title='TypeScript chunking-example',
+        rel_path='typescript/chunking-example',
+        language='typescript',
+        install=(
+            _install('npm-install', ['npm', 'install'], 'typescript/chunking-example', 'typescript/chunking-example/package.json'),
+        ),
+        run=['npx tsx src/index.ts sample_document.txt --user-id <id>', 'npx tsx src/index.ts sample_document.txt --user-id <id> --dry-run'],
+        static_test=['npm test'],
+        required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
         static=(
-            _check("npm-test", ["npm", "test"], "typescript/chunking-example"),
+            _check(
+                'npm-test',
+                ['npm', 'test'],
+                'typescript/chunking-example',
+            ),
         ),
         live=(
             _check(
-                "chunk-dry-run",
-                [
-                    "npx",
-                    "tsx",
-                    "src/index.ts",
-                    "sample_document.txt",
-                    "--user-id",
-                    "{prefix}-ts-chunk",
-                    "--dry-run",
-                ],
-                "typescript/chunking-example",
-                required_keys=("OPENAI_API_KEY",),
+                'chunk-dry-run',
+                ['npx', 'tsx', 'src/index.ts', 'sample_document.txt', '--user-id', '{prefix}-ts-chunk', '--dry-run'],
+                'typescript/chunking-example',
+                required_keys=('OPENAI_API_KEY',),
             ),
         ),
-        notes="OPENAI_API_KEY required for --dry-run contextualization.",
+        notes='OPENAI_API_KEY required for --dry-run contextualization.',
     ),
     Group(
-        id="typescript-langgraph",
-        title="TypeScript langgraph CLI agent",
-        rel_path="typescript/langgraph",
-        language="typescript",
-        install=["npm install"],
-        run=["npm start -- --userId <id> --threadId <id>"],
-        static_test=["npm test", "npx tsx agent.ts --help"],
-        required_keys_docs=("ZEP_API_KEY", "OPENAI_API_KEY"),
+        id='typescript-langgraph',
+        title='TypeScript langgraph CLI agent',
+        rel_path='typescript/langgraph',
+        language='typescript',
+        install=(
+            _install('npm-install', ['npm', 'install'], 'typescript/langgraph', 'typescript/langgraph/package.json'),
+        ),
+        run=['npm start -- --userId <id> --threadId <id>'],
+        static_test=['npm test', 'npx tsx agent.ts --help'],
+        required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
         static=(
-            _check("npm-test", ["npm", "test"], "typescript/langgraph"),
             _check(
-                "cli-help",
-                ["npx", "tsx", "agent.ts", "--help"],
-                "typescript/langgraph",
+                'npm-test',
+                ['npm', 'test'],
+                'typescript/langgraph',
+            ),
+            _check(
+                'cli-help',
+                ['npx', 'tsx', 'agent.ts', '--help'],
+                'typescript/langgraph',
             ),
         ),
-        live=(),
-        notes=(
-            "TAVILY_API_KEY is optional for web search and is NOT live-covered. "
-            "`npm start` is an interactive readline agent — run manually with unique "
-            "--userId/--threadId prefixes; not auto-started by this runner."
-        ),
+        notes='TAVILY_API_KEY is optional for web search and is NOT live-covered. `npm start` is an interactive readline agent — run manually with unique --userId/--threadId prefixes; not auto-started by this runner.',
     ),
     Group(
-        id="typescript-eve",
-        title="TypeScript eve (Node 24+)",
-        rel_path="typescript/eve",
-        language="typescript",
-        install=["npm install  # requires Node.js 24+"],
-        run=["npm run smoke", "npm run seed:company", "npm run dev"],
-        static_test=["npm run typecheck"],
-        required_keys_docs=("ZEP_API_KEY", "GOOGLE_API_KEY"),
+        id='typescript-eve',
+        title='TypeScript eve (Node 24+)',
+        rel_path='typescript/eve',
+        language='typescript',
+        install=(
+            _install('npm-install', ['npm', 'install'], 'typescript/eve', 'typescript/eve/package.json'),
+        ),
+        run=['npm run smoke', 'npm run seed:company', 'npm run dev'],
+        static_test=['npm run typecheck'],
+        required_keys_docs=('ZEP_API_KEY', 'GOOGLE_API_KEY'),
         static=(
-            _check("typecheck", ["npm", "run", "typecheck"], "typescript/eve", timeout_sec=180),
+            _check(
+                'typecheck',
+                ['npm', 'run', 'typecheck'],
+                'typescript/eve',
+                timeout_sec=180,
+            ),
         ),
         live=(
             _check(
-                "smoke",
-                ["npm", "run", "smoke"],
-                "typescript/eve",
-                required_keys=("ZEP_API_KEY",),
+                'smoke',
+                ['npm', 'run', 'smoke'],
+                'typescript/eve',
+                required_keys=('ZEP_API_KEY',),
+                env={'ZEP_DEMO_USER_ID': '{prefix}-eve-user', 'ZEP_COMPANY_GRAPH_ID': '{prefix}-eve-company'},
                 timeout_sec=240,
             ),
         ),
-        notes=(
-            "Requires Node.js 24+. `npm run smoke` is Zep-only. "
-            "`npm run dev` is an interactive Eve server — not in the default gate. "
-            "GOOGLE_API_KEY is required for the Gemini-backed agent UI."
-        ),
+        notes='Requires Node.js 24+. `npm run smoke` is Zep-only and uses ZEP_DEMO_USER_ID / ZEP_COMPANY_GRAPH_ID from the runner prefix. `npm run dev` is an interactive Eve server — not in the default gate. GOOGLE_API_KEY is required for the Gemini-backed agent UI.',
+        install_notes='Requires Node.js 24+.',
     ),
     Group(
-        id="typescript-zep-graph-visualization",
-        title="TypeScript zep-graph-visualization",
-        rel_path="typescript/zep-graph-visualization",
-        language="typescript",
-        install=["yarn install"],
-        run=["yarn dev"],
-        static_test=["yarn build"],
-        required_keys_docs=("ZEP_API_KEY",),
+        id='typescript-zep-graph-visualization',
+        title='TypeScript zep-graph-visualization',
+        rel_path='typescript/zep-graph-visualization',
+        language='typescript',
+        install=(
+            _install('yarn-install', ['yarn', 'install'], 'typescript/zep-graph-visualization', 'typescript/zep-graph-visualization/package.json'),
+        ),
+        run=['yarn dev'],
+        static_test=['yarn build'],
+        required_keys_docs=('ZEP_API_KEY',),
         static=(
             _check(
-                "yarn-build",
-                ["yarn", "build"],
-                "typescript/zep-graph-visualization",
+                'yarn-build',
+                ['yarn', 'build'],
+                'typescript/zep-graph-visualization',
                 timeout_sec=300,
             ),
         ),
-        notes="yarn dev / yarn start are long-lived servers — excluded from default gate.",
+        notes='yarn dev / yarn start are long-lived servers — excluded from default gate.',
     ),
-    # ----- Go -----
     Group(
-        id="go-root",
-        title="Go graph / ontology snippets",
-        rel_path="go",
-        language="go",
-        install=["go mod download"],
-        run=["go run .", "go run . entity-types"],
-        static_test=["go test ./..."],
-        required_keys_docs=("ZEP_API_KEY",),
+        id='go-root',
+        title='Go graph / ontology snippets',
+        rel_path='go',
+        language='go',
+        install=(
+            _install('go-mod-download', ['go', 'mod', 'download'], 'go', 'go/go.mod'),
+        ),
+        run=['go run .', 'go run . entity-types'],
+        static_test=['go test ./...'],
+        required_keys_docs=('ZEP_API_KEY',),
         static=(
-            _check("go-test", ["go", "test", "./..."], "go"),
+            _check(
+                'go-test',
+                ['go', 'test', './...'],
+                'go',
+            ),
         ),
         live=(
             _check(
-                "user-graph",
-                ["go", "run", "."],
-                "go",
-                required_keys=("ZEP_API_KEY",),
+                'user-graph',
+                ['go', 'run', '.'],
+                'go',
+                required_keys=('ZEP_API_KEY',),
             ),
         ),
-        notes="entity-types replaces project-level ontology — use a disposable project key.",
+        notes='entity-types replaces project-level ontology — use a disposable project key. Live user-graph mints UUID IDs.',
     ),
     Group(
-        id="go-chunking-example",
-        title="Go chunking-example",
-        rel_path="go/chunking-example",
-        language="go",
-        install=["go mod download"],
-        run=[
-            "go run . sample_document.txt --user-id <id>",
-            "go run . sample_document.txt --user-id <id> --dry-run",
-        ],
-        static_test=["go test ./..."],
-        required_keys_docs=("ZEP_API_KEY", "OPENAI_API_KEY"),
+        id='go-chunking-example',
+        title='Go chunking-example',
+        rel_path='go/chunking-example',
+        language='go',
+        install=(
+            _install('go-mod-download', ['go', 'mod', 'download'], 'go/chunking-example', 'go/chunking-example/go.mod'),
+        ),
+        run=['go run . sample_document.txt --user-id <id>', 'go run . sample_document.txt --user-id <id> --dry-run'],
+        static_test=['go test ./...'],
+        required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
         static=(
-            _check("go-test", ["go", "test", "./..."], "go/chunking-example"),
+            _check(
+                'go-test',
+                ['go', 'test', './...'],
+                'go/chunking-example',
+            ),
         ),
         live=(
             _check(
-                "chunk-dry-run",
-                [
-                    "go",
-                    "run",
-                    ".",
-                    "sample_document.txt",
-                    "--user-id",
-                    "{prefix}-go-chunk",
-                    "--dry-run",
-                ],
-                "go/chunking-example",
-                required_keys=("OPENAI_API_KEY",),
+                'chunk-dry-run',
+                ['go', 'run', '.', 'sample_document.txt', '--user-id', '{prefix}-go-chunk', '--dry-run'],
+                'go/chunking-example',
+                required_keys=('OPENAI_API_KEY',),
             ),
         ),
+        notes='OPENAI_API_KEY required for --dry-run contextualization.',
     ),
+
 )
 
 
@@ -635,17 +662,37 @@ def _materialize(check: Check, run_prefix: str) -> Check:
     )
 
 
+def _dedupe_install_steps(steps: Sequence[InstallStep]) -> list[InstallStep]:
+    seen: set[tuple[str, tuple[str, ...]]] = set()
+    out: list[InstallStep] = []
+    for step in steps:
+        key = (step.manifest, tuple(step.argv))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(step)
+    return out
+
+
 def build_plan(
     mode: str,
     env: Mapping[str, str] | None = None,
     run_prefix: str | None = None,
     groups: Sequence[Group] | None = None,
+    include_install: bool = False,
 ) -> Plan:
     if mode not in {"static", "live"}:
         raise ValueError(f"unknown mode: {mode}")
     env = dict(env if env is not None else os.environ)
     prefix = run_prefix or make_run_prefix()
     selected_groups = tuple(groups) if groups is not None else INVENTORY
+
+    install_steps: list[InstallStep] = []
+    if include_install:
+        collected: list[InstallStep] = []
+        for group in selected_groups:
+            collected.extend(group.install)
+        install_steps = _dedupe_install_steps(collected)
 
     static_checks: list[Check] = []
     for group in selected_groups:
@@ -662,12 +709,20 @@ def build_plan(
                 else:
                     skipped_live.append(materialized)
 
-    return Plan(static_checks=static_checks, live_checks=live_checks, skipped_live=skipped_live)
+    return Plan(
+        install_steps=install_steps,
+        static_checks=static_checks,
+        live_checks=live_checks,
+        skipped_live=skipped_live,
+    )
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run static (default) or credential-gated live checks for examples/",
+        description=(
+            "Run static (default) or credential-gated live checks for examples/. "
+            + DEFAULT_DEPENDENCY_ASSUMPTION
+        ),
     )
     parser.add_argument(
         "--mode",
@@ -680,6 +735,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--live",
         action="store_true",
         help="Shortcut for --mode live",
+    )
+    parser.add_argument(
+        "--install",
+        action="store_true",
+        help="Run structured install steps before checks. "
+        "Default assumes deps already exist; use with --mode static for a clean-env gate.",
     )
     parser.add_argument(
         "--group",
@@ -704,10 +765,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def _format_check(check: Check) -> str:
-    cwd = check.cwd
     cmd = " ".join(shlex.quote(a) for a in check.argv)
     keys = ",".join(check.required_keys) if check.required_keys else "-"
-    return f"[{cwd}] {cmd} (keys={keys})"
+    return f"[{check.cwd}] {cmd} (keys={keys})"
+
+
+def _format_install(step: InstallStep) -> str:
+    cmd = " ".join(shlex.quote(a) for a in step.argv)
+    return f"[{step.cwd}] {cmd} (manifest={step.manifest})"
 
 
 def run_check(check: Check) -> int:
@@ -736,6 +801,30 @@ def run_check(check: Check) -> int:
     return int(proc.returncode)
 
 
+def run_install(step: InstallStep) -> int:
+    cwd = EXAMPLES_ROOT / step.cwd
+    print(f"→ install {_format_install(step)}", flush=True)
+    try:
+        proc = subprocess.run(
+            step.argv,
+            cwd=str(cwd),
+            env=os.environ.copy(),
+            timeout=1200,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        print(f"✗ missing executable: {exc}", flush=True)
+        return 127
+    except subprocess.TimeoutExpired:
+        print("✗ install timeout", flush=True)
+        return 124
+    if proc.returncode != 0:
+        print(f"✗ exit {proc.returncode}", flush=True)
+    else:
+        print("✓ ok", flush=True)
+    return int(proc.returncode)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     groups: Sequence[Group] = INVENTORY
@@ -748,17 +837,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
 
     prefix = args.run_prefix or make_run_prefix()
-    plan = build_plan(mode=args.mode, env=os.environ, run_prefix=prefix, groups=groups)
+    plan = build_plan(
+        mode=args.mode,
+        env=os.environ,
+        run_prefix=prefix,
+        groups=groups,
+        include_install=args.install,
+    )
 
-    print(f"examples runner  mode={args.mode}  prefix={prefix}")
-    print(f"static checks: {len(plan.static_checks)}  live checks: {len(plan.live_checks)}  "
-          f"skipped live: {len(plan.skipped_live)}")
+    print(f"examples runner  mode={args.mode}  install={args.install}  prefix={prefix}")
+    print(
+        f"install steps: {len(plan.install_steps)}  "
+        f"static checks: {len(plan.static_checks)}  "
+        f"live checks: {len(plan.live_checks)}  "
+        f"skipped live: {len(plan.skipped_live)}"
+    )
+    if not args.install:
+        print(f"note: {DEFAULT_DEPENDENCY_ASSUMPTION}")
     if plan.skipped_live:
         for skipped in plan.skipped_live:
             missing = [k for k in skipped.required_keys if not str(os.environ.get(k, "")).strip()]
             print(f"  skip live {skipped.name}: missing {', '.join(missing)}")
 
     if args.dry_run_plan:
+        print("\nInstall:")
+        for step in plan.install_steps:
+            print(" ", _format_install(step))
         print("\nStatic:")
         for check in plan.static_checks:
             print(" ", _format_check(check))
@@ -768,6 +872,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     failures = 0
+    for step in plan.install_steps:
+        rc = run_install(step)
+        if rc != 0:
+            failures += 1
     for check in plan.static_checks:
         rc = run_check(check)
         if rc != 0:

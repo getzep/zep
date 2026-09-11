@@ -16,9 +16,8 @@ User speaks → ElevenLabs → This Proxy → OpenAI
 ### 1. Install Dependencies
 
 ```bash
-# From the project root
-source venv/bin/activate
-pip install fastapi uvicorn openai zep-cloud python-dotenv
+# From llm-proxy/
+pip install -r requirements.txt
 ```
 
 ### 2. Set Up Test Data in Zep

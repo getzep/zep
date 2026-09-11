@@ -76,8 +76,10 @@ You'll also need:
 
 3. Install Python dependencies:
    ```bash
-   pip install fastapi uvicorn openai zep-cloud python-dotenv
+   pip install -r requirements.txt
    ```
+
+   The proxy requires `fastapi`, `uvicorn`, `openai`, `zep-cloud>=3.28,<4`, and `python-dotenv` (see `llm-proxy/requirements.txt`).
 
 4. Start the proxy server:
    ```bash

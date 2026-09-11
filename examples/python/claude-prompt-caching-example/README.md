@@ -49,9 +49,18 @@ cp .env.example .env   # then fill in both keys
 python ingest.py
 ```
 
-This creates a fixed demo user (`claude-caching-demo-dana`), ingests **two prior conversations (10 messages each)** into their Zep graph, and polls until entity/fact extraction finishes (a couple of minutes). The CLI and benchmark both use this same user, so the agent starts every session with genuine cross-session memory. The context block Zep returns is its default [Context Block](https://help.getzep.com/retrieving-context#zeps-context-block) — no custom templates.
+This creates a demo user (default `claude-caching-demo-dana`, or
+`ZEP_EXAMPLE_USER_PREFIX` when set for automated unique live runs), ingests
+**two prior conversations (10 messages each)** into their Zep graph, and polls
+until entity/fact extraction finishes (a couple of minutes). The CLI and
+benchmark both use this same user, so the agent starts every session with
+genuine cross-session memory. The context block Zep returns is its default
+[Context Block](https://help.getzep.com/retrieving-context#zeps-context-block)
+— no custom templates.
 
-Re-seed from scratch with `python ingest.py --recreate`.
+Re-seed from scratch with `python ingest.py --recreate` (deletes only the
+resolved demo user id — when `ZEP_EXAMPLE_USER_PREFIX` is set, the shared
+`claude-caching-demo-dana` user is left untouched).
 
 ## 2. Chat with the agent
 
