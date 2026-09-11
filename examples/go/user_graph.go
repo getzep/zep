@@ -14,7 +14,7 @@ import (
 	"github.com/getzep/zep-go/v3/option"
 )
 
-func main() {
+func runUserGraph() {
 	apiKey := os.Getenv("ZEP_API_KEY")
 	if apiKey == "" {
 		fmt.Println("ZEP_API_KEY environment variable is not set")
@@ -72,12 +72,11 @@ func main() {
 
 	fmt.Println("Getting memory for thread")
 
+	// Mode was removed from ThreadGetUserContextRequest in recent zep-go/v3 releases.
 	threadMemory, err := client.Thread.GetUserContext(
 		ctx,
 		threadID,
-		&zep.ThreadGetUserContextRequest{
-			Mode: zep.ThreadGetUserContextRequestModeSummary.Ptr(),
-		},
+		nil,
 	)
 	if err != nil {
 		fmt.Printf("Error getting thread memory: %v\n", err)

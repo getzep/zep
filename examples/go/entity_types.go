@@ -10,7 +10,7 @@ import (
 	"github.com/getzep/zep-go/v3/option"
 )
 
-func entityTypes() {
+func runEntityTypes() {
 	apiKey := os.Getenv("ZEP_API_KEY")
 	if apiKey == "" {
 		fmt.Println("ZEP_API_KEY environment variable is not set")
@@ -47,6 +47,7 @@ func entityTypes() {
 		AirportIATACode string  `description:"The airport IATA code of the destination" json:"airport_iata_code,omitempty"`
 	}
 
+	// WARNING: SetEntityTypes without a user/graph target replaces the project-level ontology.
 	_, err := client.Graph.SetEntityTypes(
 		ctx,
 		[]zep.EntityDefinition{
@@ -71,53 +72,12 @@ func entityTypes() {
 		fmt.Printf("Error setting entity types with base entity: %v\n", err)
 		return
 	}
+	fmt.Println("Entity and edge types set for this project")
 
-	searchFilters := zep.SearchFilters{NodeLabels: []string{"Destination"}}
-	searchResults, err := client.Graph.Search(
-		ctx,
-		&zep.GraphSearchQuery{
-			UserID:        zep.String("<user_id>"),
-			Query:         "destination",
-			Scope:         zep.GraphSearchScopeNodes.Ptr(),
-			SearchFilters: &searchFilters,
-		},
-	)
+	customTypes, err := client.Graph.ListEntityTypes(ctx, nil)
 	if err != nil {
-		fmt.Printf("Error searching graph: %v\n", err)
+		fmt.Printf("Error listing entity types: %v\n", err)
 		return
 	}
-
-	var destinations []Destination
-	for _, node := range searchResults.Nodes {
-		var destination Destination
-		err := zep.UnmarshalNodeAttributes(node.Attributes, &destination)
-		if err != nil {
-			fmt.Printf("Error converting node to struct: %v\n", err)
-			continue
-		}
-
-		destinations = append(destinations, destination)
-	}
-
-	for _, destination := range destinations {
-		fmt.Printf("Destination Country: %s\n", destination.Country)
-		fmt.Printf("Destination Name: %s\n", destination.DestinationName)
-	}
-
-	var travelingToRelations []TravelingTo
-	for _, edge := range searchResults.Edges {
-		var travelingToRelation TravelingTo
-		err := zep.UnmarshalEdgeAttributes(edge.Attributes, &travelingToRelation)
-		if err != nil {
-			fmt.Printf("Error converting edge to struct: %v\n", err)
-			continue
-		}
-
-		travelingToRelations = append(travelingToRelations, travelingToRelation)
-	}
-
-	for _, travelingToRelation := range travelingToRelations {
-		fmt.Printf("Traveling to destination: %s\n", travelingToRelation.TravelDate)
-		fmt.Printf("Traveling to distance: %s\n", travelingToRelation.Purpose)
-	}
+	fmt.Printf("Registered ontology:\n%+v\n", customTypes)
 }
