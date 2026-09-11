@@ -17,7 +17,7 @@ User speaks → ElevenLabs → This Proxy → OpenAI
 
 ```bash
 # From llm-proxy/
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
 ### 2. Set Up Test Data in Zep

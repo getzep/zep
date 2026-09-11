@@ -13,7 +13,11 @@ SDK checkout.
 
 ## Toolchain
 
-- Python 3.10 or newer.
+- Python 3.10 or newer. Each Python example installs its own dependencies, so
+  run `python3 -m pip install -r requirements.txt` from that example's
+  directory. Invoking `pip` directly often targets a different interpreter than
+  `python3`, which surfaces later as `ModuleNotFoundError` when you run the
+  script.
 - Node.js 18 or newer, except `typescript/eve`, which needs Node.js 24.
 - `typescript/zep-graph-visualization` uses yarn; the other TypeScript examples use npm.
 - Go 1.22 or newer.

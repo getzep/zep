@@ -30,7 +30,7 @@ Employees may carry over up to 5 unused PTO days to the following year.
 
 1. Install dependencies:
    ```bash
-   pip install -r requirements.txt
+   python3 -m pip install -r requirements.txt
    ```
 
 2. Configure environment variables in `.env`:

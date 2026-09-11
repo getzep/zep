@@ -34,7 +34,7 @@ The agent (`agent.py`) is identical in both modes — same memory retrieval, sam
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 cp .env.example .env   # then fill in both keys
 ```
 

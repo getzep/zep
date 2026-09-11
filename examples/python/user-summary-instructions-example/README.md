@@ -39,7 +39,7 @@ source venv/bin/activate  # On macOS/Linux
 # venv\Scripts\activate   # On Windows
 
 # Install required packages
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment Variables
