@@ -111,8 +111,20 @@ func runEntityTypes() error {
 		fmt.Printf("Destination Name: %s\n", destination.DestinationName)
 	}
 
+	edgeSearchResults, err := client.Graph.Search(
+		ctx,
+		&zep.GraphSearchQuery{
+			UserID: zep.String(searchUserID),
+			Query:  "traveling to a destination",
+			Scope:  zep.GraphSearchScopeEdges.Ptr(),
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("searching graph edges: %w", err)
+	}
+
 	var travelingToRelations []TravelingTo
-	for _, edge := range searchResults.Edges {
+	for _, edge := range edgeSearchResults.Edges {
 		var travelingToRelation TravelingTo
 		err := zep.UnmarshalEdgeAttributes(edge.Attributes, &travelingToRelation)
 		if err != nil {

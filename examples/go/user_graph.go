@@ -51,15 +51,17 @@ func runUserGraph() error {
 	fmt.Printf("thread %s created\n", threadID)
 
 	// Add messages to the thread
-	for _, message := range history[0] {
-		_, err = client.Thread.AddMessages(ctx, threadID, &zep.AddThreadMessagesRequest{
-			Messages: []*zep.Message{
-				{Role: message.Role, Name: message.Name, Content: message.Content},
-			},
-			ReturnContext: zep.Bool(true),
-		})
-		if err != nil {
-			return fmt.Errorf("adding message: %w", err)
+	for _, conversation := range history {
+		for _, message := range conversation {
+			_, err = client.Thread.AddMessages(ctx, threadID, &zep.AddThreadMessagesRequest{
+				Messages: []*zep.Message{
+					{Role: message.Role, Name: message.Name, Content: message.Content},
+				},
+				ReturnContext: zep.Bool(true),
+			})
+			if err != nil {
+				return fmt.Errorf("adding message: %w", err)
+			}
 		}
 	}
 
