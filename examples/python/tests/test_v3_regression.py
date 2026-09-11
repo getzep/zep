@@ -520,6 +520,51 @@ def test_autogen_notebook_has_memory_search_wait_and_compatible_pin():
     )
 
 
+#: Packages that only publish wheels for newer interpreters than the examples
+#: floor (Python 3.10). They must carry a python_version marker so installing
+#: on a supported interpreter does not fail the whole requirements file.
+NEWER_PYTHON_ONLY_PACKAGES = {"audioop-lts"}
+
+
+def _requirement_files() -> list[Path]:
+    return [
+        PYTHON_ROOT / "requirements.txt",
+        *sorted(PYTHON_ROOT.glob("*/requirements.txt")),
+        *sorted(PYTHON_ROOT.glob("*/*/requirements.txt")),
+        *sorted(PYTHON_ROOT.glob("requirements-dev.txt")),
+    ]
+
+
+@pytest.mark.parametrize(
+    "req_path", _requirement_files(), ids=lambda p: str(p.relative_to(PYTHON_ROOT))
+)
+def test_requirements_guard_newer_python_only_packages(req_path: Path):
+    """Pins needing a newer Python than our floor must be marker-guarded.
+
+    Without a marker, `pip install -r requirements.txt` aborts on Python 3.10-3.12
+    and every downstream check fails.
+    """
+    offenders = []
+    for line in req_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        name = re.split(r"[<>=!~;\[ ]", stripped, maxsplit=1)[0].strip().lower()
+        if name in NEWER_PYTHON_ONLY_PACKAGES and "python_version" not in stripped:
+            offenders.append(stripped)
+    assert not offenders, (
+        f"{req_path.relative_to(REPO_ROOT)} needs a python_version marker for: {offenders}"
+    )
+
+
+def test_requirements_dev_provides_pytest():
+    dev = PYTHON_ROOT / "requirements-dev.txt"
+    assert dev.exists(), "examples/python/requirements-dev.txt must exist"
+    text = dev.read_text(encoding="utf-8")
+    assert "pytest" in text
+    assert "-r requirements.txt" in text
+
+
 def test_simple_py_does_not_wipe_project_ontology():
     source = (PYTHON_ROOT / "simple.py").read_text(encoding="utf-8")
     assert not re.search(r"set_entity_types\(\s*entities\s*=\s*\{\s*\}", source)
