@@ -17,10 +17,10 @@
     "seed:company": "node --import tsx scripts/seed-company-graph.ts"
   },
   "dependencies": {
-    "@ai-sdk/google": "^4.0.41",
+    "@ai-sdk/google": "^4.0.67",
     "@getzep/zep-cloud": "^3.28.0",
     "@vercel/connect": "0.4.3",
-    "ai": "^7.0.58",
+    "ai": "^7.0.97",
     "dotenv": "^17.4.2",
     "eve": "^0.32.0",
     "zod": "4.4.3"
@@ -32,7 +32,7 @@
     "typescript": "7.0.2"
   },
   "overrides": {
-    "ai": "^7.0.58"
+    "ai": "^7.0.97"
   },
   "engines": {
     "node": ">=24"

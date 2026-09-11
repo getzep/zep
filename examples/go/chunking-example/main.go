@@ -16,7 +16,8 @@ import (
 	zepclient "github.com/getzep/zep-go/v3/client"
 	"github.com/getzep/zep-go/v3/option"
 	"github.com/joho/godotenv"
-	openai "github.com/sashabaranov/go-openai"
+	"github.com/openai/openai-go/v3"
+	openaioption "github.com/openai/openai-go/v3/option"
 )
 
 const (
@@ -204,12 +205,12 @@ Please give a short succinct context to situate this chunk within the overall do
 			time.Sleep(waitTime)
 		}
 
-		resp, err := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+		resp, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 			Model: openAIModel,
-			Messages: []openai.ChatCompletionMessage{
-				{Role: openai.ChatMessageRoleUser, Content: prompt},
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				openai.UserMessage(prompt),
 			},
-			MaxCompletionTokens: 256,
+			MaxCompletionTokens: openai.Int(256),
 		})
 		if err != nil {
 			lastErr = err
@@ -375,7 +376,7 @@ func processDocument(opts Options) error {
 	fmt.Printf("Wait: %v\n", opts.Wait)
 
 	ctx := context.Background()
-	openaiClient := openai.NewClient(openaiKey)
+	openaiClient := openai.NewClient(openaioption.WithAPIKey(openaiKey))
 
 	var zepClient *zepclient.Client
 	if !opts.DryRun {
@@ -399,7 +400,7 @@ func processDocument(opts Options) error {
 		fmt.Printf("\nChunk %d/%d (%d chars)\n", i+1, len(chunks), len(chunk))
 		fmt.Println("  Contextualizing with OpenAI...")
 
-		contextualizedChunk, err := contextualizeChunk(ctx, openaiClient, fullDoc, chunk)
+		contextualizedChunk, err := contextualizeChunk(ctx, &openaiClient, fullDoc, chunk)
 		if err != nil {
 			fmt.Printf("  ERROR contextualizing: %v\n", err)
 			failed++

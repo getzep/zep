@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 // Load environment variables from .env file
 dotenv.config();
 
-import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
+import { TavilySearch } from "@langchain/tavily";
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, AIMessage, BaseMessage, SystemMessage } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
@@ -18,7 +18,7 @@ import { ZepMemory } from "./zep-memory";
 // agent still runs against Zep memory alone when TAVILY_API_KEY is unset.
 const tavilyApiKey = process.env.TAVILY_API_KEY?.trim();
 const tools = tavilyApiKey
-  ? [new TavilySearchResults({ maxResults: 3, apiKey: tavilyApiKey })]
+  ? [new TavilySearch({ maxResults: 3, tavilyApiKey })]
   : [];
 const toolNode = new ToolNode(tools);
 

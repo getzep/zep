@@ -13,7 +13,7 @@ If prices change, update the constants below.
 
 from dataclasses import dataclass
 
-MODEL = "claude-opus-4-8"
+MODEL = "claude-opus-5"
 
 # USD per million tokens
 INPUT_PER_MTOK = 5.00
