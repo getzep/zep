@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"math"
@@ -22,7 +23,67 @@ const (
 	zepMaxEpisodeSize = 10000
 	openAIModel       = "gpt-4o-mini"
 	maxRetries        = 3
+
+	defaultChunkSize    = 6000
+	defaultChunkOverlap = 200
+
+	waitTimeout      = 180 * time.Second
+	waitPollInterval = 2 * time.Second
 )
+
+// Options holds CLI configuration for the chunking example.
+type Options struct {
+	Document     string
+	UserID       string
+	ChunkSize    int
+	ChunkOverlap int
+	DryRun       bool
+	Wait         bool
+}
+
+func parseArgs(args []string) (Options, error) {
+	var opts Options
+
+	fs := flag.NewFlagSet("chunking-example", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprint(fs.Output(), "Usage: chunking-example <document> --user-id <id> [options]\n\n")
+		fmt.Fprint(fs.Output(), "Chunk a document, contextualize each chunk with OpenAI, and ingest into Zep.\n\n")
+		fs.PrintDefaults()
+	}
+	fs.StringVar(&opts.UserID, "user-id", "", "Zep user ID for the knowledge graph (required)")
+	fs.IntVar(&opts.ChunkSize, "chunk-size", defaultChunkSize, "Maximum characters per chunk")
+	fs.IntVar(&opts.ChunkOverlap, "chunk-overlap", defaultChunkOverlap, "Character overlap between chunks")
+	fs.BoolVar(&opts.DryRun, "dry-run", false, "Process the document without ingesting to Zep")
+	fs.BoolVar(&opts.Wait, "wait", false, "Wait for Zep to finish processing each chunk")
+
+	// flag stops at the first non-flag argument, so collect the positional
+	// document path and keep parsing whatever follows it.
+	var positional []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return Options{}, err
+		}
+		args = fs.Args()
+		if len(args) == 0 {
+			break
+		}
+		positional = append(positional, args[0])
+		args = args[1:]
+	}
+
+	if len(positional) != 1 || opts.UserID == "" {
+		fs.Usage()
+		return Options{}, fmt.Errorf("document path and --user-id are required")
+	}
+	if opts.ChunkSize <= 0 {
+		return Options{}, fmt.Errorf("--chunk-size must be positive, got %d", opts.ChunkSize)
+	}
+	if opts.ChunkOverlap < 0 {
+		return Options{}, fmt.Errorf("--chunk-overlap must not be negative, got %d", opts.ChunkOverlap)
+	}
+	opts.Document = positional[0]
+	return opts, nil
+}
 
 func chunkDocument(text string, chunkSize, chunkOverlap int) []string {
 	if chunkSize <= 0 {
@@ -232,38 +293,58 @@ func ingestToZep(ctx context.Context, client *zepclient.Client, userID, data str
 	return "", fmt.Errorf("max retries exceeded for Zep ingestion: %w", lastErr)
 }
 
+// taskFailureStatuses are the terminal task statuses that mean ingestion will
+// never complete, so polling should stop instead of running to the timeout.
+var taskFailureStatuses = map[string]bool{
+	"failed":    true,
+	"error":     true,
+	"canceled":  true,
+	"cancelled": true,
+	"partial":   true,
+}
+
 func waitForEpisodeProcessing(ctx context.Context, client *zepclient.Client, episodeUUID string) error {
-	return WaitForEpisode(ctx, episodeUUID, WaitOptions{
-		Timeout:      180 * time.Second,
-		PollInterval: 2 * time.Second,
-		GetEpisode: func(ctx context.Context, id string) (bool, string, error) {
-			ep, err := client.Graph.Episode.Get(ctx, id)
+	if episodeUUID == "" {
+		return fmt.Errorf("episode UUID is required when --wait is set")
+	}
+
+	deadline := time.Now().Add(waitTimeout)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		episode, err := client.Graph.Episode.Get(ctx, episodeUUID)
+		if err != nil {
+			return fmt.Errorf("get episode %s: %w", episodeUUID, err)
+		}
+		if episode.Processed != nil && *episode.Processed {
+			return nil
+		}
+
+		if episode.TaskID != nil && *episode.TaskID != "" {
+			task, err := client.Task.Get(ctx, *episode.TaskID)
 			if err != nil {
-				return false, "", err
-			}
-			processed := ep.Processed != nil && *ep.Processed
-			taskID := ""
-			if ep.TaskID != nil {
-				taskID = *ep.TaskID
-			}
-			return processed, taskID, nil
-		},
-		GetTask: func(ctx context.Context, taskID string) (string, string, error) {
-			task, err := client.Task.Get(ctx, taskID)
-			if err != nil {
-				return "", "", err
+				return fmt.Errorf("get task %s: %w", *episode.TaskID, err)
 			}
 			status := ""
 			if task.Status != nil {
-				status = *task.Status
+				status = strings.ToLower(strings.TrimSpace(*task.Status))
 			}
-			errMsg := ""
-			if task.Error != nil && task.Error.Message != nil {
-				errMsg = *task.Error.Message
+			if taskFailureStatuses[status] {
+				message := ""
+				if task.Error != nil && task.Error.Message != nil {
+					message = *task.Error.Message
+				}
+				return fmt.Errorf("episode %s task %s ended with status=%s: %s", episodeUUID, *episode.TaskID, status, message)
 			}
-			return status, errMsg, nil
-		},
-	})
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for episode %s after %s", episodeUUID, waitTimeout)
+		}
+		time.Sleep(waitPollInterval)
+	}
 }
 
 func processDocument(opts Options) error {
@@ -353,12 +434,6 @@ func processDocument(opts Options) error {
 			continue
 		}
 		fmt.Printf("  Created episode: %s\n", episodeUUID)
-
-		if err := RequireEpisodeUUIDForWait(opts.Wait, episodeUUID); err != nil {
-			fmt.Printf("  ERROR waiting: %v\n", err)
-			failed++
-			continue
-		}
 		success++
 
 		if opts.Wait {
@@ -386,7 +461,10 @@ func processDocument(opts Options) error {
 		fmt.Printf("Size expansion from contextualization: %.1f%%\n", expansion)
 	}
 	fmt.Println(strings.Repeat("=", 60))
-	return ChunkProcessingExitError(failed)
+	if failed > 0 {
+		return fmt.Errorf("%d chunk(s) failed", failed)
+	}
+	return nil
 }
 
 func main() {
@@ -394,14 +472,12 @@ func main() {
 		log.Println("No .env file found, using environment variables")
 	}
 
-	opts, err := ParseArgs(os.Args[1:])
+	opts, err := parseArgs(os.Args[1:])
 	if err != nil {
-		if errors.Is(err, errHelp) {
-			fmt.Fprint(os.Stdout, usage())
+		if errors.Is(err, flag.ErrHelp) {
 			os.Exit(0)
 		}
 		fmt.Fprintln(os.Stderr, "Error:", err)
-		fmt.Fprint(os.Stderr, usage())
 		os.Exit(2)
 	}
 

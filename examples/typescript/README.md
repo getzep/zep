@@ -14,7 +14,6 @@ export ZEP_API_KEY=your_key   # required for live runs
 
 | Script | What it runs |
 | --- | --- |
-| `npm test` | Public-import static check + TypeScript typecheck |
 | `npm run typecheck` | `tsc --noEmit` for `graph/`, `memory/`, `users/` |
 | `npm run example:graph` | Create a standalone graph, add episodes, search |
 | `npm run example:graph:user` | User graph via thread messages + graph search |

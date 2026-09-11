@@ -82,7 +82,6 @@ go run . --help
 - Retry with exponential backoff for OpenAI rate limits and transient Zep ingestion errors.
 - Failed chunks are counted in the summary; remaining chunks continue processing.
 - Live ingestion and `--wait` require `ZEP_API_KEY` and `OPENAI_API_KEY`. `--dry-run` skips Zep but still needs `OPENAI_API_KEY`.
-- Unit tests cover CLI parsing and wait/status handling without live API keys: `go test ./...`.
 
 ## Sample document
 

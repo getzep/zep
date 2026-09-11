@@ -3,17 +3,49 @@ import * as path from "path";
 import { config } from "dotenv";
 import { ZepClient } from "@getzep/zep-cloud";
 import OpenAI from "openai";
-import {
-  CommanderError,
-  parseCliArgs,
-  type CliOptions,
-} from "./cli";
+import { Command } from "commander";
 
 // Load environment variables
 config();
 
+interface CliOptions {
+  document: string;
+  userId: string;
+  chunkSize: number;
+  chunkOverlap: number;
+  dryRun: boolean;
+  wait: boolean;
+}
+
+function parseCliArgs(argv: string[]): CliOptions {
+  const program = new Command()
+    .name("chunking-example")
+    .description(
+      "Chunk a document, contextualize each chunk with OpenAI, and ingest into Zep",
+    )
+    .argument("<document>", "Path to the document to process")
+    .requiredOption("--user-id <id>", "Zep user ID for the knowledge graph")
+    .option("--chunk-size <n>", "Maximum characters per chunk", "6000")
+    .option("--chunk-overlap <n>", "Character overlap between chunks", "200")
+    .option("--dry-run", "Process without ingesting to Zep", false)
+    .option("--wait", "Wait for processing after each chunk", false)
+    .allowExcessArguments(false);
+
+  program.parse(argv);
+  const opts = program.opts();
+
+  return {
+    document: program.args[0],
+    userId: String(opts.userId),
+    chunkSize: Number(opts.chunkSize),
+    chunkOverlap: Number(opts.chunkOverlap),
+    dryRun: Boolean(opts.dryRun),
+    wait: Boolean(opts.wait),
+  };
+}
+
 const ZEP_MAX_EPISODE_SIZE = 10000;
-const OPENAI_MODEL = "gpt-4o-mini";
+const OPENAI_MODEL = "gpt-5-mini-2025-08-07";
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 
@@ -358,19 +390,7 @@ export async function processDocument(options: CliOptions): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  try {
-    const options = parseCliArgs(process.argv);
-    await processDocument(options);
-  } catch (error) {
-    if (
-      error instanceof CommanderError &&
-      (error.code === "commander.helpDisplayed" ||
-        error.code === "commander.version")
-    ) {
-      process.exit(error.exitCode);
-    }
-    throw error;
-  }
+  await processDocument(parseCliArgs(process.argv));
 }
 
 if (require.main === module) {

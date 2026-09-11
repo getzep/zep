@@ -11,36 +11,34 @@ The contextualization step improves retrieval accuracy by situating each
 chunk within the broader document context.
 """
 
-from __future__ import annotations
-
 import argparse
 import os
 import re
 import time
 
-try:
-    from dotenv import load_dotenv
+from dotenv import load_dotenv
+from openai import OpenAI
+from zep_cloud.client import Zep
 
-    load_dotenv()
-except ImportError:
-    pass
+# Load environment variables
+load_dotenv()
 
 DEFAULT_CHUNK_SIZE = 6000  # Characters per chunk
 DEFAULT_CHUNK_OVERLAP = 200  # Overlap between chunks for continuity
 ZEP_MAX_EPISODE_SIZE = 10000  # Zep's maximum episode size
-OPENAI_MODEL = "gpt-4o-mini"
+OPENAI_MODEL = "gpt-5-mini-2025-08-07"
 
 
 def split_into_sentences(text: str) -> list[str]:
     """Split text into sentences using common delimiters."""
-    sentence_pattern = r"(?<=[.!?])\s+"
+    sentence_pattern = r'(?<=[.!?])\s+'
     sentences = re.split(sentence_pattern, text)
     return [s.strip() for s in sentences if s.strip()]
 
 
 def split_into_paragraphs(text: str) -> list[str]:
     """Split text into paragraphs."""
-    paragraphs = re.split(r"\n\n+", text)
+    paragraphs = re.split(r'\n\n+', text)
     return [p.strip() for p in paragraphs if p.strip()]
 
 
@@ -58,7 +56,7 @@ def chunk_document(
     3. Combine small paragraphs/sentences until chunk_size is reached
     4. Maintain overlap between chunks for continuity
     """
-    chunks: list[str] = []
+    chunks = []
     paragraphs = split_into_paragraphs(document)
     current_chunk = ""
 
@@ -67,38 +65,22 @@ def chunk_document(
             sentences = split_into_sentences(paragraph)
             for sentence in sentences:
                 if len(current_chunk) + len(sentence) + 1 <= chunk_size:
-                    current_chunk = (
-                        f"{current_chunk} {sentence}".strip()
-                        if current_chunk
-                        else sentence
-                    )
+                    current_chunk = f"{current_chunk} {sentence}".strip() if current_chunk else sentence
                 else:
                     if current_chunk:
                         chunks.append(current_chunk)
-                        overlap_text = (
-                            current_chunk[-chunk_overlap:]
-                            if len(current_chunk) > chunk_overlap
-                            else current_chunk
-                        )
+                        overlap_text = current_chunk[-chunk_overlap:] if len(current_chunk) > chunk_overlap else current_chunk
                         current_chunk = f"{overlap_text} {sentence}".strip()
                     else:
                         chunks.append(sentence[:chunk_size])
                         current_chunk = ""
         else:
             if len(current_chunk) + len(paragraph) + 2 <= chunk_size:
-                current_chunk = (
-                    f"{current_chunk}\n\n{paragraph}".strip()
-                    if current_chunk
-                    else paragraph
-                )
+                current_chunk = f"{current_chunk}\n\n{paragraph}".strip() if current_chunk else paragraph
             else:
                 if current_chunk:
                     chunks.append(current_chunk)
-                    overlap_text = (
-                        current_chunk[-chunk_overlap:]
-                        if len(current_chunk) > chunk_overlap
-                        else current_chunk
-                    )
+                    overlap_text = current_chunk[-chunk_overlap:] if len(current_chunk) > chunk_overlap else current_chunk
                     current_chunk = f"{overlap_text}\n\n{paragraph}".strip()
                 else:
                     current_chunk = paragraph
@@ -110,7 +92,13 @@ def chunk_document(
 
 
 def contextualize_chunk(openai_client: OpenAI, full_document: str, chunk: str) -> str:
-    """Use OpenAI to situate a chunk within the document context."""
+    """
+    Use OpenAI to situate a chunk within the document context.
+
+    This implements Anthropic's contextualized retrieval technique,
+    which improves search retrieval by adding contextual information
+    to each chunk.
+    """
     prompt = f"""<document>
 {full_document}
 </document>
@@ -152,7 +140,13 @@ in your context. Answer only with the succinct context and nothing else."""
 
 
 def validate_and_truncate_chunk(contextualized_chunk: str) -> str:
-    """Validate chunk size and truncate context if necessary."""
+    """
+    Validate chunk size and truncate if necessary.
+
+    Zep has a 10K character limit for episodes. If the contextualized
+    chunk exceeds this, we truncate the context portion while preserving
+    the original chunk content.
+    """
     if len(contextualized_chunk) <= ZEP_MAX_EPISODE_SIZE:
         return contextualized_chunk
 
@@ -163,7 +157,7 @@ def validate_and_truncate_chunk(contextualized_chunk: str) -> str:
         return contextualized_chunk[:ZEP_MAX_EPISODE_SIZE]
 
     context = contextualized_chunk[:separator_idx]
-    chunk = contextualized_chunk[separator_idx + len(separator) :]
+    chunk = contextualized_chunk[separator_idx + len(separator):]
 
     total_overhead = len(separator) + len(chunk)
     max_context_size = ZEP_MAX_EPISODE_SIZE - total_overhead
@@ -191,8 +185,9 @@ def ensure_user_exists(zep_client: Zep, user_id: str) -> bool:
             except Exception as create_err:
                 print(f"ERROR creating user: {create_err}")
                 return False
-        print(f"ERROR checking user: {e}")
-        return False
+        else:
+            print(f"ERROR checking user: {e}")
+            return False
 
 
 def ingest_to_zep(zep_client: Zep, user_id: str, contextualized_chunk: str) -> str | None:
@@ -207,7 +202,7 @@ def ingest_to_zep(zep_client: Zep, user_id: str, contextualized_chunk: str) -> s
                 type="text",
                 data=contextualized_chunk,
             )
-            return episode.uuid_ if hasattr(episode, "uuid_") else getattr(episode, "uuid", str(episode))
+            return episode.uuid_
         except Exception as e:
             if attempt < max_retries - 1:
                 print(f"  Error ingesting: {e}")
@@ -219,27 +214,19 @@ def ingest_to_zep(zep_client: Zep, user_id: str, contextualized_chunk: str) -> s
 
 
 
-# Canonical Zep task statuses (see zep_cloud.types.BatchStatus / task responses).
-# Episode completion is driven by episode.processed; task status is used to fail-fast.
-TASK_SUCCESS_STATUSES = {"succeeded", "completed", "complete", "success"}
+# Terminal task statuses that mean ingestion will never finish, so polling
+# should stop rather than run to the timeout.
 TASK_FAILURE_STATUSES = {"failed", "error", "canceled", "cancelled", "partial"}
 
 
 def wait_for_episode(
-    zep_client: "Zep",
+    zep_client: Zep,
     episode_uuid: str,
     *,
     timeout_seconds: float = 180.0,
     poll_interval_seconds: float = 2.0,
-    sleep_fn=time.sleep,
 ):
-    """
-    Poll Zep until the episode is processed (or fail/timeout).
-
-    Primary completion signal is ``episode.processed``. When a linked
-    ``episode.task_id`` is present, fail fast on terminal unsuccessful task
-    statuses: failed, error, canceled/cancelled, and partial.
-    """
+    """Poll Zep until the episode is processed, or the wait fails or times out."""
     if not episode_uuid:
         raise ValueError("episode_uuid is required")
 
@@ -251,7 +238,7 @@ def wait_for_episode(
             return episode
 
         task_id = getattr(episode, "task_id", None)
-        if task_id and hasattr(zep_client, "task"):
+        if task_id:
             task = zep_client.task.get(task_id)
             status = (getattr(task, "status", None) or "").lower()
             if status in TASK_FAILURE_STATUSES:
@@ -264,7 +251,7 @@ def wait_for_episode(
             raise TimeoutError(
                 f"Timed out waiting for episode {episode_uuid} after {timeout_seconds}s"
             )
-        sleep_fn(poll_interval_seconds)
+        time.sleep(poll_interval_seconds)
 
 
 def process_document(
@@ -275,7 +262,12 @@ def process_document(
     dry_run: bool = False,
     wait: bool = False,
 ) -> None:
-    """Process a document through chunking, contextualization, and ingestion."""
+    """
+    Process a document through the full pipeline:
+    1. Read and chunk the document
+    2. Contextualize each chunk using OpenAI
+    3. Ingest each contextualized chunk into Zep
+    """
     openai_api_key = os.getenv("OPENAI_API_KEY")
     zep_api_key = os.getenv("ZEP_API_KEY")
 
@@ -283,9 +275,6 @@ def process_document(
         raise ValueError("OPENAI_API_KEY environment variable not set")
     if not dry_run and not zep_api_key:
         raise ValueError("ZEP_API_KEY environment variable not set (or pass --dry-run)")
-
-    from openai import OpenAI
-    from zep_cloud.client import Zep
 
     openai_client = OpenAI(api_key=openai_api_key)
     zep_client = Zep(api_key=zep_api_key) if (zep_api_key and not dry_run) else None
@@ -310,9 +299,7 @@ def process_document(
         document_content = f.read()
     print(f"Document size: {len(document_content):,} characters")
 
-    print(
-        f"\nChunking document (chunk_size={chunk_size}, overlap={chunk_overlap})..."
-    )
+    print(f"\nChunking document (chunk_size={chunk_size}, overlap={chunk_overlap})...")
     chunks = chunk_document(
         document_content, chunk_size=chunk_size, chunk_overlap=chunk_overlap
     )
@@ -329,9 +316,7 @@ def process_document(
         print(f"\nChunk {i + 1}/{len(chunks)} ({len(chunk):,} chars)")
         print("  Contextualizing with OpenAI...")
         try:
-            contextualized = contextualize_chunk(
-                openai_client, document_content, chunk
-            )
+            contextualized = contextualize_chunk(openai_client, document_content, chunk)
             contextualized = validate_and_truncate_chunk(contextualized)
             contextualized_size += len(contextualized)
             context_end = contextualized.find("\n\n---\n\n")

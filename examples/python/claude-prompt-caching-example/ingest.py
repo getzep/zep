@@ -1,18 +1,15 @@
 """Seed the demo user's Zep graph with prior conversations.
 
-Creates a demo user (default ``scenario.DEMO_USER_ID``, or
-``ZEP_EXAMPLE_USER_PREFIX`` when set), ingests two prior conversations into two
-threads, and polls until Zep has finished extracting entities and facts from
-every episode. Run this once before `chat.py` or `benchmark.py` — both should
-use the same user ID, so the agent starts with real cross-session memory.
+Creates the fixed demo user (``scenario.DEMO_USER_ID``), ingests two prior
+conversations into two threads, and polls until Zep has finished extracting
+entities and facts from every episode. Run this once before `chat.py` or
+`benchmark.py` — both use the same user ID, so the agent starts with real
+cross-session memory.
 
 Usage:
 
     python ingest.py              # create + seed the demo user
     python ingest.py --recreate   # delete the demo user first, then re-seed
-
-For automated live smokes, set ``ZEP_EXAMPLE_USER_PREFIX`` to a unique id so
-this script never deletes the shared ``claude-caching-demo-dana`` user.
 """
 
 from __future__ import annotations
@@ -31,12 +28,6 @@ import scenario
 from agent import wait_for_zep_processing
 
 
-def resolve_demo_user_id() -> str:
-    """Return the demo user id, preferring a runner-provided unique prefix."""
-    override = os.getenv("ZEP_EXAMPLE_USER_PREFIX", "").strip()
-    return override or scenario.DEMO_USER_ID
-
-
 def user_exists(zep: Zep, user_id: str) -> bool:
     try:
         zep.user.get(user_id=user_id)
@@ -49,11 +40,7 @@ def user_exists(zep: Zep, user_id: str) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed the demo user's Zep graph with prior conversations.")
-    parser.add_argument(
-        "--recreate",
-        action="store_true",
-        help="Delete the demo user first, then re-seed from scratch.",
-    )
+    parser.add_argument("--recreate", action="store_true", help="Delete the demo user first, then re-seed from scratch.")
     args = parser.parse_args()
 
     load_dotenv()
@@ -62,7 +49,7 @@ def main() -> None:
         sys.exit("Set ZEP_API_KEY in .env first (see .env.example).")
     zep = Zep(api_key=zep_key)
 
-    user_id = resolve_demo_user_id()
+    user_id = scenario.DEMO_USER_ID
     if user_exists(zep, user_id):
         if not args.recreate:
             sys.exit(
@@ -76,20 +63,17 @@ def main() -> None:
 
     zep.user.add(user_id=user_id, first_name="Dana", last_name="Patel")
     print(f"Created user {user_id}")
+
     for i, conversation in enumerate(scenario.PRIOR_CONVERSATIONS, start=1):
         thread_id = f"{user_id}-prior-{i}"
         zep.thread.create(thread_id=thread_id, user_id=user_id)
         zep.thread.add_messages(
             thread_id=thread_id,
             messages=[
-                Message(role=m["role"], name=m.get("name"), content=m["content"])
-                for m in conversation
+                Message(role=m["role"], name=m.get("name"), content=m["content"]) for m in conversation
             ],
         )
-        print(
-            f"Ingested prior conversation {i} ({len(conversation)} messages) "
-            f"into thread {thread_id}"
-        )
+        print(f"Ingested prior conversation {i} ({len(conversation)} messages) into thread {thread_id}")
 
     print("Waiting for Zep to finish extracting entities and facts...")
     ok = wait_for_zep_processing(zep, user_id, timeout_s=900.0)

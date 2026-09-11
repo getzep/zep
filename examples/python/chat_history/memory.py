@@ -37,26 +37,22 @@ async def wait_for_task(
     *,
     timeout_seconds: float = 180.0,
     poll_interval_seconds: float = 2.0,
-    sleep_fn=asyncio.sleep,
 ) -> None:
     """Poll Zep task status until complete, with a bounded timeout."""
-    if not task_id or not hasattr(client, "task"):
-        fallback = float(os.environ.get("ZEP_EXAMPLE_WAIT_SECONDS", "15"))
-        await sleep_fn(fallback)
+    if not task_id:
         return
 
     deadline = time.monotonic() + timeout_seconds
     while True:
         task = await client.task.get(task_id)
-        status = (getattr(task, "status", None) or "").lower()
+        status = (task.status or "").lower()
         if status in TASK_SUCCESS_STATUSES:
             return
         if status in TASK_FAILURE_STATUSES:
-            err = getattr(task, "error", None)
-            raise RuntimeError(f"task {task_id} ended with status={status}: {err}")
+            raise RuntimeError(f"task {task_id} ended with status={status}: {task.error}")
         if time.monotonic() >= deadline:
             raise TimeoutError(f"Timed out waiting for task {task_id} after {timeout_seconds}s")
-        await sleep_fn(poll_interval_seconds)
+        await asyncio.sleep(poll_interval_seconds)
 
 
 async def main() -> None:
@@ -95,7 +91,7 @@ async def main() -> None:
         response = await client.thread.add_messages(
             thread_id=thread_id, messages=[Message(**m)]
         )
-        last_task_id = getattr(response, "task_id", None) or last_task_id
+        last_task_id = response.task_id or last_task_id
 
     await wait_for_task(client, last_task_id)
 

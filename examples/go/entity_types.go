@@ -72,10 +72,60 @@ func runEntityTypes() error {
 	}
 	fmt.Println("Entity and edge types set for this project")
 
-	customTypes, err := client.Graph.ListEntityTypes(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("listing entity types: %w", err)
+	// Searching the new types needs a user whose graph already contains travel
+	// data. Set ZEP_ENTITY_TYPES_USER_ID to run the search half of the example.
+	searchUserID := os.Getenv("ZEP_ENTITY_TYPES_USER_ID")
+	if searchUserID == "" {
+		fmt.Println("Set ZEP_ENTITY_TYPES_USER_ID to also search the graph for these types")
+		return nil
 	}
-	fmt.Printf("Registered ontology:\n%+v\n", customTypes)
+
+	searchFilters := zep.SearchFilters{NodeLabels: []string{"Destination"}}
+	searchResults, err := client.Graph.Search(
+		ctx,
+		&zep.GraphSearchQuery{
+			UserID:        zep.String(searchUserID),
+			Query:         "destination",
+			Scope:         zep.GraphSearchScopeNodes.Ptr(),
+			SearchFilters: &searchFilters,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("searching graph: %w", err)
+	}
+
+	var destinations []Destination
+	for _, node := range searchResults.Nodes {
+		var destination Destination
+		err := zep.UnmarshalNodeAttributes(node.Attributes, &destination)
+		if err != nil {
+			fmt.Printf("Error converting node to struct: %v\n", err)
+			continue
+		}
+
+		destinations = append(destinations, destination)
+	}
+
+	for _, destination := range destinations {
+		fmt.Printf("Destination Country: %s\n", destination.Country)
+		fmt.Printf("Destination Name: %s\n", destination.DestinationName)
+	}
+
+	var travelingToRelations []TravelingTo
+	for _, edge := range searchResults.Edges {
+		var travelingToRelation TravelingTo
+		err := zep.UnmarshalEdgeAttributes(edge.Attributes, &travelingToRelation)
+		if err != nil {
+			fmt.Printf("Error converting edge to struct: %v\n", err)
+			continue
+		}
+
+		travelingToRelations = append(travelingToRelations, travelingToRelation)
+	}
+
+	for _, travelingToRelation := range travelingToRelations {
+		fmt.Printf("Traveling to destination: %s\n", travelingToRelation.TravelDate)
+		fmt.Printf("Traveling to distance: %s\n", travelingToRelation.Purpose)
+	}
 	return nil
 }

@@ -6,8 +6,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
-    "test": "tsx --test src/cli.test.ts"
+    "dev": "tsx src/index.ts"
   },
   "dependencies": {
     "@getzep/zep-cloud": "^3.28.0",

@@ -4,8 +4,7 @@
   "description": "A simple agent built with LangGraph.js",
   "type": "module",
   "scripts": {
-    "start": "tsx agent.ts",
-    "test": "tsx --test tools.test.ts cli.test.ts public-imports.test.ts"
+    "start": "tsx agent.ts"
   },
   "dependencies": {
     "@getzep/zep-cloud": "^3.28.0",

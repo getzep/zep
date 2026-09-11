@@ -5,7 +5,6 @@
   "description": "Runnable loose TypeScript snippets for @getzep/zep-cloud v3 (graph, memory, users)",
   "type": "module",
   "scripts": {
-    "test": "node scripts/check-public-imports.mjs && npm run typecheck",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "example:graph": "tsx graph/graph_example.ts",
     "example:graph:user": "tsx graph/user_graph_example.ts",

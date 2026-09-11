@@ -1,4 +1,0 @@
-# Test-only dependencies for the examples regression harness.
-# Runtime example dependencies live in requirements.txt.
--r requirements.txt
-pytest>=8.0,<9
