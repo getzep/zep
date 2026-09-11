@@ -14,7 +14,7 @@ Imports use published packages only (no local `../../src` SDK checkout).
 
 | Tool | Requirement |
 | --- | --- |
-| Python | 3.10+ (3.12 common in CI/dev images) |
+| Python | 3.10+ (3.12 common in CI/dev images); macOS system `python3` is often 3.9 — see below |
 | Node.js | 18+ for most TypeScript examples |
 | Node.js | **24+ for `typescript/eve`** |
 | Package managers | `pip` / `uv`, `npm`, **`yarn` for `typescript/zep-graph-visualization`** |
@@ -25,6 +25,25 @@ Imports use published packages only (no local `../../src` SDK checkout).
 Lightweight gate: [`run_checks.py`](./run_checks.py) (kept under `examples/`, not `.github`).
 
 Default static/live runs assume existing example dependencies are already installed; use --install (e.g. --install --mode static) for a clean-environment gate.
+
+### Use a Python 3.10+ virtualenv
+
+The runner refuses to start on older interpreters (macOS ships Python 3.9 at
+`/Library/Developer/CommandLineTools/usr/bin/python3`, which cannot parse
+`match` statements and has no `pytest`). Create a virtualenv first so installs
+and checks share one interpreter:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python3 examples/run_checks.py --install --mode static
+```
+
+To use a specific interpreter without activating a virtualenv:
+
+```bash
+python3 examples/run_checks.py --python /opt/homebrew/bin/python3.12 --mode static
+```
 
 ```bash
 # From repo root — default STATIC mode (keyless). Does not mutate live Zep state.

@@ -44,6 +44,16 @@ from typing import Mapping, Sequence
 EXAMPLES_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = EXAMPLES_ROOT.parent
 DEFAULT_MODE = "static"
+
+#: Stand-in for the interpreter chosen at run time (see --python).
+PYTHON_PLACEHOLDER = "{python}"
+
+#: Examples target Python 3.10+; older interpreters cannot parse match statements.
+MIN_PYTHON_VERSION = (3, 10)
+
+#: compileall must skip virtualenvs and vendored trees checked out beside the examples.
+COMPILEALL_EXCLUDE = r"(^|/)(\.?venv[^/]*|\.tox|\.nox|node_modules|site-packages|dist|build)(/|$)"
+
 DEFAULT_DEPENDENCY_ASSUMPTION = (
     "Default static/live runs assume existing example dependencies are already installed; "
     "use --install (e.g. --install --mode static) for a clean-environment gate."
@@ -116,7 +126,62 @@ def default_mutates_zep() -> bool:
 
 
 def _py(*args: str) -> list[str]:
-    return [sys.executable, *args]
+    return [PYTHON_PLACEHOLDER, *args]
+
+
+def _compileall(cwd: str) -> Check:
+    return _check(
+        "compileall",
+        _py("-m", "compileall", "-q", "-x", COMPILEALL_EXCLUDE, "."),
+        cwd,
+    )
+
+
+def resolve_python_argv(argv: Sequence[str], python: str) -> list[str]:
+    """Replace the interpreter placeholder with the selected interpreter."""
+    return [python if arg == PYTHON_PLACEHOLDER else arg for arg in argv]
+
+
+def check_python_version(
+    version: tuple[int, ...],
+    min_version: tuple[int, int] = MIN_PYTHON_VERSION,
+) -> tuple[bool, str]:
+    """Validate an interpreter version, returning (ok, actionable message)."""
+    if tuple(version[: len(min_version)]) >= min_version:
+        return True, ""
+    found = ".".join(str(part) for part in version)
+    want = ".".join(str(part) for part in min_version)
+    return False, (
+        f"Python {want}+ is required to check these examples, but the selected "
+        f"interpreter is {found}.\n"
+        f"Create a virtualenv on a newer Python and re-run, for example:\n"
+        f"  python3.12 -m venv .venv && source .venv/bin/activate\n"
+        f"  python3 examples/run_checks.py --install --mode static\n"
+        f"Or point the runner at another interpreter:\n"
+        f"  python3 examples/run_checks.py --python /path/to/python3.12"
+    )
+
+
+def interpreter_version(python: str) -> tuple[int, ...] | None:
+    """Return the version tuple for an interpreter, or None if unusable."""
+    if python == sys.executable:
+        return sys.version_info[:3]
+    try:
+        proc = subprocess.run(
+            [python, "-c", "import sys; print('.'.join(map(str, sys.version_info[:3])))"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        return tuple(int(part) for part in proc.stdout.strip().split("."))
+    except ValueError:
+        return None
 
 
 def _check(
@@ -154,17 +219,13 @@ INVENTORY: tuple[Group, ...] = (
         rel_path='python',
         language='python',
         install=(
-            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python', 'python/requirements.txt'),
+            _install('pip-requirements', [PYTHON_PLACEHOLDER, '-m', 'pip', 'install', '-r', 'requirements.txt'], 'python', 'python/requirements.txt'),
         ),
         run=['python simple.py', 'python advanced.py', 'python user_example.py'],
-        static_test=['python -m compileall -q .', 'python -m pytest tests/test_v3_regression.py -q'],
+        static_test=['python -m compileall -q -x <venv-exclude> .', 'python -m pytest tests/test_v3_regression.py -q'],
         required_keys_docs=('ZEP_API_KEY',),
         static=(
-            _check(
-                'compileall',
-                _py('-m', 'compileall', '-q', '.'),
-                'python',
-            ),
+            _compileall('python'),
             _check(
                 'v3-regression',
                 _py('-m', 'pytest', 'tests/test_v3_regression.py', '-q'),
@@ -188,17 +249,13 @@ INVENTORY: tuple[Group, ...] = (
         rel_path='python/graph_example',
         language='python',
         install=(
-            _install('pip-requirements', ['pip', 'install', '-r', '../requirements.txt'], 'python/graph_example', 'python/requirements.txt'),
+            _install('pip-requirements', [PYTHON_PLACEHOLDER, '-m', 'pip', 'install', '-r', '../requirements.txt'], 'python/graph_example', 'python/requirements.txt'),
         ),
         run=['python graph_example.py', 'python user_graph_example.py', 'python entity_types.py', 'python tickets_example.py'],
-        static_test=['python -m compileall -q .'],
+        static_test=['python -m compileall -q -x <venv-exclude> .'],
         required_keys_docs=('ZEP_API_KEY',),
         static=(
-            _check(
-                'compileall',
-                _py('-m', 'compileall', '-q', '.'),
-                'python/graph_example',
-            ),
+            _compileall('python/graph_example'),
         ),
         live=(
             _check(
@@ -216,17 +273,13 @@ INVENTORY: tuple[Group, ...] = (
         rel_path='python/chat_history',
         language='python',
         install=(
-            _install('pip-requirements', ['pip', 'install', '-r', '../requirements.txt'], 'python/chat_history', 'python/requirements.txt'),
+            _install('pip-requirements', [PYTHON_PLACEHOLDER, '-m', 'pip', 'install', '-r', '../requirements.txt'], 'python/chat_history', 'python/requirements.txt'),
         ),
         run=['python memory.py'],
-        static_test=['python -m compileall -q .'],
+        static_test=['python -m compileall -q -x <venv-exclude> .'],
         required_keys_docs=('ZEP_API_KEY',),
         static=(
-            _check(
-                'compileall',
-                _py('-m', 'compileall', '-q', '.'),
-                'python/chat_history',
-            ),
+            _compileall('python/chat_history'),
         ),
         live=(
             _check(
@@ -244,7 +297,7 @@ INVENTORY: tuple[Group, ...] = (
         rel_path='python/chunking-example',
         language='python',
         install=(
-            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python/chunking-example', 'python/chunking-example/requirements.txt'),
+            _install('pip-requirements', [PYTHON_PLACEHOLDER, '-m', 'pip', 'install', '-r', 'requirements.txt'], 'python/chunking-example', 'python/chunking-example/requirements.txt'),
         ),
         run=['python chunk_and_ingest.py sample_document.txt --user-id <id>', 'python chunk_and_ingest.py sample_document.txt --user-id <id> --dry-run'],
         static_test=['python chunk_and_ingest.py --help'],
@@ -278,7 +331,7 @@ INVENTORY: tuple[Group, ...] = (
         rel_path='python/claude-prompt-caching-example',
         language='python',
         install=(
-            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python/claude-prompt-caching-example', 'python/claude-prompt-caching-example/requirements.txt'),
+            _install('pip-requirements', [PYTHON_PLACEHOLDER, '-m', 'pip', 'install', '-r', 'requirements.txt'], 'python/claude-prompt-caching-example', 'python/claude-prompt-caching-example/requirements.txt'),
         ),
         run=['python ingest.py', 'python chat.py'],
         static_test=['python test_structure.py'],
@@ -309,14 +362,10 @@ INVENTORY: tuple[Group, ...] = (
             _install('uv-sync', ['uv', 'sync'], 'python/openai-agents-sdk', 'python/openai-agents-sdk/pyproject.toml'),
         ),
         run=['python openai_agents_sdk_example.py', 'python openai_agents_sdk_example.py --interactive'],
-        static_test=['python -m compileall -q .'],
+        static_test=['python -m compileall -q -x <venv-exclude> .'],
         required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
         static=(
-            _check(
-                'compileall',
-                _py('-m', 'compileall', '-q', '.'),
-                'python/openai-agents-sdk',
-            ),
+            _compileall('python/openai-agents-sdk'),
         ),
         live=(
             _check(
@@ -335,17 +384,13 @@ INVENTORY: tuple[Group, ...] = (
         rel_path='python/agent-memory-full-example',
         language='python',
         install=(
-            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python/agent-memory-full-example', 'python/agent-memory-full-example/requirements.txt'),
+            _install('pip-requirements', [PYTHON_PLACEHOLDER, '-m', 'pip', 'install', '-r', 'requirements.txt'], 'python/agent-memory-full-example', 'python/agent-memory-full-example/requirements.txt'),
         ),
         run=['streamlit run ui.py'],
-        static_test=['python -m compileall -q .'],
+        static_test=['python -m compileall -q -x <venv-exclude> .'],
         required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
         static=(
-            _check(
-                'compileall',
-                _py('-m', 'compileall', '-q', '.'),
-                'python/agent-memory-full-example',
-            ),
+            _compileall('python/agent-memory-full-example'),
         ),
         notes='Interactive Streamlit UI excluded from default static/live runner.',
     ),
@@ -355,17 +400,13 @@ INVENTORY: tuple[Group, ...] = (
         rel_path='python/context-templates-example',
         language='python',
         install=(
-            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python/context-templates-example', 'python/context-templates-example/requirements.txt'),
+            _install('pip-requirements', [PYTHON_PLACEHOLDER, '-m', 'pip', 'install', '-r', 'requirements.txt'], 'python/context-templates-example', 'python/context-templates-example/requirements.txt'),
         ),
         run=['python set-context-templates.py', 'python zep_ingest.py', 'streamlit run ui.py'],
-        static_test=['python -m compileall -q .'],
+        static_test=['python -m compileall -q -x <venv-exclude> .'],
         required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
         static=(
-            _check(
-                'compileall',
-                _py('-m', 'compileall', '-q', '.'),
-                'python/context-templates-example',
-            ),
+            _compileall('python/context-templates-example'),
         ),
         live=(
             _check(
@@ -383,17 +424,13 @@ INVENTORY: tuple[Group, ...] = (
         rel_path='python/user-summary-instructions-example',
         language='python',
         install=(
-            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python/user-summary-instructions-example', 'python/user-summary-instructions-example/requirements.txt'),
+            _install('pip-requirements', [PYTHON_PLACEHOLDER, '-m', 'pip', 'install', '-r', 'requirements.txt'], 'python/user-summary-instructions-example', 'python/user-summary-instructions-example/requirements.txt'),
         ),
         run=['python zep_ingest.py', 'streamlit run ui.py'],
-        static_test=['python -m compileall -q .'],
+        static_test=['python -m compileall -q -x <venv-exclude> .'],
         required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
         static=(
-            _check(
-                'compileall',
-                _py('-m', 'compileall', '-q', '.'),
-                'python/user-summary-instructions-example',
-            ),
+            _compileall('python/user-summary-instructions-example'),
         ),
         notes='streamlit run ui.py is interactive — not in the default gate.',
     ),
@@ -403,17 +440,13 @@ INVENTORY: tuple[Group, ...] = (
         rel_path='python/zep-quickstart-dashboard',
         language='python',
         install=(
-            _install('pip-requirements', ['pip', 'install', '-r', 'requirements.txt'], 'python/zep-quickstart-dashboard', 'python/zep-quickstart-dashboard/requirements.txt'),
+            _install('pip-requirements', [PYTHON_PLACEHOLDER, '-m', 'pip', 'install', '-r', 'requirements.txt'], 'python/zep-quickstart-dashboard', 'python/zep-quickstart-dashboard/requirements.txt'),
         ),
         run=['python zep_ingest.py', 'streamlit run ui.py'],
-        static_test=['python -m compileall -q .'],
+        static_test=['python -m compileall -q -x <venv-exclude> .'],
         required_keys_docs=('ZEP_API_KEY', 'OPENAI_API_KEY'),
         static=(
-            _check(
-                'compileall',
-                _py('-m', 'compileall', '-q', '.'),
-                'python/zep-quickstart-dashboard',
-            ),
+            _compileall('python/zep-quickstart-dashboard'),
         ),
         notes='streamlit run ui.py is interactive — not in the default gate.',
     ),
@@ -423,7 +456,7 @@ INVENTORY: tuple[Group, ...] = (
         rel_path='python/elevenlabs-zep-example',
         language='python',
         install=(
-            _install('pip-llm-proxy', ['pip', 'install', '-r', 'requirements.txt'], 'python/elevenlabs-zep-example/llm-proxy', 'python/elevenlabs-zep-example/llm-proxy/requirements.txt'),
+            _install('pip-llm-proxy', [PYTHON_PLACEHOLDER, '-m', 'pip', 'install', '-r', 'requirements.txt'], 'python/elevenlabs-zep-example/llm-proxy', 'python/elevenlabs-zep-example/llm-proxy/requirements.txt'),
             _install('npm-react-app', ['npm', 'install'], 'python/elevenlabs-zep-example/react-app', 'python/elevenlabs-zep-example/react-app/package.json'),
         ),
         run=['cd llm-proxy && python proxy_server.py', 'cd react-app && npm run dev'],
@@ -758,31 +791,39 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Unique user/thread id prefix for live runs (default: generated exrun-...)",
     )
+    parser.add_argument(
+        "--python",
+        default=sys.executable,
+        help="Interpreter used for Python checks and pip installs "
+        f"(default: the launching interpreter). Requires Python "
+        f"{'.'.join(str(p) for p in MIN_PYTHON_VERSION)}+.",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
     if args.live:
         args.mode = "live"
     return args
 
 
-def _format_check(check: Check) -> str:
-    cmd = " ".join(shlex.quote(a) for a in check.argv)
+def _format_check(check: Check, python: str = PYTHON_PLACEHOLDER) -> str:
+    cmd = " ".join(shlex.quote(a) for a in resolve_python_argv(check.argv, python))
     keys = ",".join(check.required_keys) if check.required_keys else "-"
     return f"[{check.cwd}] {cmd} (keys={keys})"
 
 
-def _format_install(step: InstallStep) -> str:
-    cmd = " ".join(shlex.quote(a) for a in step.argv)
+def _format_install(step: InstallStep, python: str = PYTHON_PLACEHOLDER) -> str:
+    cmd = " ".join(shlex.quote(a) for a in resolve_python_argv(step.argv, python))
     return f"[{step.cwd}] {cmd} (manifest={step.manifest})"
 
 
-def run_check(check: Check) -> int:
+def run_check(check: Check, python: str = sys.executable) -> int:
     cwd = EXAMPLES_ROOT / check.cwd
     env = os.environ.copy()
     env.update(check.env)
+    argv = resolve_python_argv(check.argv, python)
     print(f"→ {_format_check(check)}", flush=True)
     try:
         proc = subprocess.run(
-            check.argv,
+            argv,
             cwd=str(cwd),
             env=env,
             timeout=check.timeout_sec,
@@ -801,12 +842,13 @@ def run_check(check: Check) -> int:
     return int(proc.returncode)
 
 
-def run_install(step: InstallStep) -> int:
+def run_install(step: InstallStep, python: str = sys.executable) -> int:
     cwd = EXAMPLES_ROOT / step.cwd
+    argv = resolve_python_argv(step.argv, python)
     print(f"→ install {_format_install(step)}", flush=True)
     try:
         proc = subprocess.run(
-            step.argv,
+            argv,
             cwd=str(cwd),
             env=os.environ.copy(),
             timeout=1200,
@@ -836,6 +878,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Unknown group id(s): {sorted(missing)}", file=sys.stderr)
             return 2
 
+    python = args.python
+    version = interpreter_version(python)
+    if version is None:
+        print(f"Cannot run the selected interpreter: {python}", file=sys.stderr)
+        return 2
+    ok, message = check_python_version(version)
+    if not ok:
+        print(message, file=sys.stderr)
+        return 2
+
     prefix = args.run_prefix or make_run_prefix()
     plan = build_plan(
         mode=args.mode,
@@ -845,7 +897,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         include_install=args.install,
     )
 
-    print(f"examples runner  mode={args.mode}  install={args.install}  prefix={prefix}")
+    print(
+        f"examples runner  mode={args.mode}  install={args.install}  prefix={prefix}\n"
+        f"python: {python} ({'.'.join(str(p) for p in version)})"
+    )
     print(
         f"install steps: {len(plan.install_steps)}  "
         f"static checks: {len(plan.static_checks)}  "
@@ -862,26 +917,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.dry_run_plan:
         print("\nInstall:")
         for step in plan.install_steps:
-            print(" ", _format_install(step))
+            print(" ", _format_install(step, python))
         print("\nStatic:")
         for check in plan.static_checks:
-            print(" ", _format_check(check))
+            print(" ", _format_check(check, python))
         print("\nLive:")
         for check in plan.live_checks:
-            print(" ", _format_check(check))
+            print(" ", _format_check(check, python))
         return 0
 
     failures = 0
     for step in plan.install_steps:
-        rc = run_install(step)
+        rc = run_install(step, python)
         if rc != 0:
             failures += 1
     for check in plan.static_checks:
-        rc = run_check(check)
+        rc = run_check(check, python)
         if rc != 0:
             failures += 1
     for check in plan.live_checks:
-        rc = run_check(check)
+        rc = run_check(check, python)
         if rc != 0:
             failures += 1
 

@@ -7,6 +7,7 @@ Run from repo root:
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -52,6 +53,93 @@ def test_inventory_includes_all_repaired_runnable_groups():
     ids = {g.id for g in run_checks.INVENTORY}
     missing = REQUIRED_GROUP_IDS - ids
     assert not missing, f"inventory missing groups: {sorted(missing)}"
+
+
+def test_compileall_checks_exclude_virtualenvs_and_vendored_code():
+    """compileall must not descend into .venv/site-packages/node_modules.
+
+    Those trees contain third-party sources written for newer Python syntax and
+    are not part of the examples.
+    """
+    compile_checks = [
+        check
+        for group in run_checks.INVENTORY
+        for check in group.static
+        if "compileall" in check.argv
+    ]
+    assert compile_checks, "expected compileall static checks"
+    for check in compile_checks:
+        assert "-x" in check.argv, f"{check.cwd}/{check.name} must pass compileall -x"
+        pattern = check.argv[check.argv.index("-x") + 1]
+        for vendored in (".venv/lib/python3.13/site-packages/anyio/_core/_tasks.py",
+                         "venv/lib/python3.12/site-packages/click/utils.py",
+                         "node_modules/foo/bar.py"):
+            assert re.search(pattern, vendored), (
+                f"exclude pattern {pattern!r} must skip {vendored}"
+            )
+        assert not re.search(pattern, "chunking-example/chunk_and_ingest.py")
+        assert not re.search(pattern, "graph_example/entity_types.py")
+
+
+def test_python_commands_use_placeholder_not_launcher_interpreter():
+    """Python argv must be resolvable to a selected interpreter at run time."""
+    python_checks = [
+        check
+        for group in run_checks.INVENTORY
+        for check in (*group.static, *group.live)
+        if check.argv and check.argv[0] == run_checks.PYTHON_PLACEHOLDER
+    ]
+    assert python_checks, "expected python checks to use the placeholder"
+    for group in run_checks.INVENTORY:
+        for check in (*group.static, *group.live):
+            assert check.argv[0] != sys.executable, (
+                f"{group.id}/{check.name} hardcodes the launching interpreter"
+            )
+
+
+def test_pip_installs_run_through_selected_interpreter():
+    pip_steps = [
+        step
+        for group in run_checks.INVENTORY
+        for step in group.install
+        if "pip" in step.argv
+    ]
+    assert pip_steps, "expected pip install steps"
+    for step in pip_steps:
+        assert step.argv[0] == run_checks.PYTHON_PLACEHOLDER, (
+            f"{step.name} must install via '<python> -m pip', got {step.argv}"
+        )
+        assert step.argv[1:3] == ["-m", "pip"]
+
+
+def test_resolve_python_argv_substitutes_placeholder():
+    check = run_checks._check(
+        "demo", [run_checks.PYTHON_PLACEHOLDER, "-m", "compileall"], "python"
+    )
+    resolved = run_checks.resolve_python_argv(check.argv, "/opt/py/bin/python3")
+    assert resolved[0] == "/opt/py/bin/python3"
+    assert resolved[1:] == ["-m", "compileall"]
+
+
+def test_python_version_preflight_rejects_old_interpreters():
+    ok, message = run_checks.check_python_version((3, 9, 6), min_version=(3, 10))
+    assert ok is False
+    assert "3.10" in message
+    assert "3.9.6" in message
+    # actionable remediation, not just a failure
+    assert "venv" in message.lower()
+
+    ok, message = run_checks.check_python_version((3, 12, 3), min_version=(3, 10))
+    assert ok is True
+    assert message == ""
+
+
+def test_python_flag_selects_interpreter():
+    args = run_checks.parse_args([])
+    assert args.python == sys.executable
+
+    args = run_checks.parse_args(["--python", "/opt/py/bin/python3"])
+    assert args.python == "/opt/py/bin/python3"
 
 
 def test_inventory_paths_exist():
