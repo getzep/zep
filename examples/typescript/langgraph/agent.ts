@@ -24,8 +24,7 @@ const toolNode = new ToolNode(tools);
 
 // Create a model and give it access to the tools
 const baseModel = new ChatOpenAI({
-  model: "gpt-4o-mini",
-  temperature: 0,
+  model: "gpt-5-mini",
 });
 const model = tools.length > 0 ? baseModel.bindTools(tools) : baseModel;
 

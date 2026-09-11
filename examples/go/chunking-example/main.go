@@ -21,7 +21,7 @@ import (
 
 const (
 	zepMaxEpisodeSize = 10000
-	openAIModel       = "gpt-4o-mini"
+	openAIModel       = "gpt-5-mini"
 	maxRetries        = 3
 
 	defaultChunkSize    = 6000
@@ -209,7 +209,7 @@ Please give a short succinct context to situate this chunk within the overall do
 			Messages: []openai.ChatCompletionMessage{
 				{Role: openai.ChatMessageRoleUser, Content: prompt},
 			},
-			MaxTokens: 256,
+			MaxCompletionTokens: 256,
 		})
 		if err != nil {
 			lastErr = err

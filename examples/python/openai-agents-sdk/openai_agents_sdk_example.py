@@ -25,7 +25,7 @@ from zep_cloud import NotFoundError
 dotenv.load_dotenv()
 
 
-MODEL_NAME = "gpt-4o-mini"
+MODEL_NAME = "gpt-5-mini"
 SYSTEM_PROMPT = """
 You are a helpful assistant with memory capabilities. Use the memory search tool to recall important information about the user. 
 

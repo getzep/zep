@@ -119,7 +119,7 @@ Copy the HTTPS URL (e.g., `https://abc123.ngrok-free.app`). You'll need this for
 5. **Configure the Custom LLM settings**:
    - **Server URL**: Your ngrok URL + `/v1/chat/completions`
      - Example: `https://abc123.ngrok-free.app/v1/chat/completions`
-   - **Model ID**: `gpt-4o-mini` (or whichever OpenAI model you want the proxy to use)
+   - **Model ID**: `gpt-5-mini` (or whichever OpenAI model you want the proxy to use)
 
 6. **Add authentication header**:
    - Click "Add Secret Header" or similar

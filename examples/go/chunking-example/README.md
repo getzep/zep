@@ -72,7 +72,7 @@ go run . --help
 ## How it works
 
 1. **Document chunking**: Split by paragraphs, then sentences when needed, with configurable overlap.
-2. **Contextualization**: Each chunk is sent to OpenAI (`gpt-4o-mini`) with the full document; the model returns a short situating context.
+2. **Contextualization**: Each chunk is sent to OpenAI (`gpt-5-mini`) with the full document; the model returns a short situating context.
 3. **Ingestion**: Contextualized chunks are added with `client.Graph.Add` (`type=text`).
 4. **`--wait`**: Bounded polling of `Graph.Episode.Get` using `episode.processed`, with fail-fast on linked task statuses `failed` / `error` / `canceled` / `cancelled` / `partial`.
 

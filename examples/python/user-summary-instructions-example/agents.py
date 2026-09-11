@@ -49,7 +49,7 @@ class RealEstateSalesAgent:
     - No thread management or conversation state
     """
     
-    def __init__(self, zep_client, model: str = "gpt-4o-mini-2024-07-18"):
+    def __init__(self, zep_client, model: str = "gpt-5-mini"):
         """
         Initialize the chat agent.
 

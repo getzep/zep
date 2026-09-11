@@ -45,7 +45,7 @@ function parseCliArgs(argv: string[]): CliOptions {
 }
 
 const ZEP_MAX_EPISODE_SIZE = 10000;
-const OPENAI_MODEL = "gpt-5-mini-2025-08-07";
+const OPENAI_MODEL = "gpt-5-mini";
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 
@@ -60,8 +60,41 @@ function sleep(ms: number): Promise<void> {
  * Split text into sentences
  */
 function splitIntoSentences(text: string): string[] {
-  const sentences = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text];
-  return sentences.map((s) => s.trim()).filter((s) => s.length > 0);
+  const sentences: string[] = [];
+  let start = 0;
+
+  for (let index = 0; index < text.length; index++) {
+    if (text[index] !== "." && text[index] !== "!" && text[index] !== "?") {
+      continue;
+    }
+
+    while (
+      index + 1 < text.length &&
+      (text[index + 1] === "." ||
+        text[index + 1] === "!" ||
+        text[index + 1] === "?")
+    ) {
+      index++;
+    }
+
+    const sentence = text.slice(start, index + 1).trim();
+    if (sentence) {
+      sentences.push(sentence);
+    }
+
+    start = index + 1;
+    while (start < text.length && text[start].trim() === "") {
+      start++;
+    }
+    index = start - 1;
+  }
+
+  const remainder = text.slice(start).trim();
+  if (remainder) {
+    sentences.push(remainder);
+  }
+
+  return sentences;
 }
 
 /**

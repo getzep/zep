@@ -26,7 +26,7 @@ load_dotenv()
 DEFAULT_CHUNK_SIZE = 6000  # Characters per chunk
 DEFAULT_CHUNK_OVERLAP = 200  # Overlap between chunks for continuity
 ZEP_MAX_EPISODE_SIZE = 10000  # Zep's maximum episode size
-OPENAI_MODEL = "gpt-5-mini-2025-08-07"
+OPENAI_MODEL = "gpt-5-mini"
 
 
 def split_into_sentences(text: str) -> list[str]:

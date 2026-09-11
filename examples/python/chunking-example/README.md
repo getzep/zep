@@ -91,7 +91,7 @@ python chunk_and_ingest.py sample_document.txt --user-id user123 --wait
    - If a paragraph exceeds the chunk size, split by sentences
    - Maintain configurable overlap between chunks
 
-2. **Contextualization**: Each chunk is sent to OpenAI's gpt-4o-mini with the full document context. The model generates a brief description situating the chunk within the document.
+2. **Contextualization**: Each chunk is sent to OpenAI's gpt-5-mini with the full document context. The model generates a brief description situating the chunk within the document.
 
 3. **Ingestion**: The contextualized chunk (context + separator + original chunk) is ingested into Zep using `client.graph.add()`.
 
