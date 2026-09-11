@@ -68,7 +68,6 @@ func runUserGraph() error {
 
 	fmt.Println("Getting memory for thread")
 
-	// Mode was removed from ThreadGetUserContextRequest in recent zep-go/v3 releases.
 	threadMemory, err := client.Thread.GetUserContext(
 		ctx,
 		threadID,
