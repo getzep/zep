@@ -353,9 +353,15 @@ func processDocument(opts Options) error {
 			continue
 		}
 		fmt.Printf("  Created episode: %s\n", episodeUUID)
+
+		if err := RequireEpisodeUUIDForWait(opts.Wait, episodeUUID); err != nil {
+			fmt.Printf("  ERROR waiting: %v\n", err)
+			failed++
+			continue
+		}
 		success++
 
-		if opts.Wait && episodeUUID != "" {
+		if opts.Wait {
 			fmt.Println("  Waiting for episode processing...")
 			if err := waitForEpisodeProcessing(ctx, zepClient, episodeUUID); err != nil {
 				fmt.Printf("  ERROR waiting: %v\n", err)
@@ -380,7 +386,7 @@ func processDocument(opts Options) error {
 		fmt.Printf("Size expansion from contextualization: %.1f%%\n", expansion)
 	}
 	fmt.Println(strings.Repeat("=", 60))
-	return nil
+	return ChunkProcessingExitError(failed)
 }
 
 func main() {

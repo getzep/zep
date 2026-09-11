@@ -1,4 +1,4 @@
-module github.com/getzep/zep/examples/go
+module github.com/getzep/zep/examples/zep-go-examples
 
 go 1.22.2
 

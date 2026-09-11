@@ -2,6 +2,8 @@
 
 Runnable snippets for the published [`github.com/getzep/zep-go/v3`](https://pkg.go.dev/github.com/getzep/zep-go/v3) SDK (pinned to **v3.28.x**).
 
+Module path: `github.com/getzep/zep/examples/zep-go-examples` (final segment avoids `go install .` emitting a binary named `go`).
+
 The packaged app under [`chunking-example/`](./chunking-example) keeps its own module and is not part of this package.
 
 ## Setup
@@ -22,6 +24,14 @@ export ZEP_API_KEY=your_key   # required for live runs
 ```bash
 go run .
 go run . entity-types
+```
+
+Unknown arguments print usage and exit nonzero.
+
+Install (binary name `zep-go-examples`):
+
+```bash
+GOBIN=/tmp/zep-bin go install .
 ```
 
 ## Notes
