@@ -1,8 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Example UI uses intentional D3 typing escapes; keep `next build` focused on
-  // TypeScript + production bundling rather than lint-as-errors.
+  // The D3 graph code relies on typing escapes that lint rejects as errors.
   eslint: {
     ignoreDuringBuilds: true,
   },
