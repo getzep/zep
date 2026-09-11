@@ -50,6 +50,23 @@ for (const group of groups) {
   }
 }
 
+const usersSource = await readFile(path.join(root, "users", "users.ts"), "utf8");
+if (
+  /listOrdered\s*\(/.test(usersSource) &&
+  /user\.(update|delete)\s*\(\s*(?:await\s+)?client\.user\.listOrdered/.test(
+    usersSource.replace(/\s+/g, " "),
+  )
+) {
+  violations.push(
+    "users/users.ts: update/delete must not use listOrdered results from the whole project",
+  );
+}
+if (!/createdUserIds/.test(usersSource)) {
+  violations.push(
+    "users/users.ts: must track createdUserIds and only mutate those users",
+  );
+}
+
 if (violations.length > 0) {
   console.error("Public-import check failed:");
   for (const v of violations) {

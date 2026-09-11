@@ -25,4 +25,9 @@ describe("langgraph public SDK imports", () => {
     assert.match(source, /import\s*\{[^}]*Zep[^}]*\}\s*from\s*["']@getzep\/zep-cloud["']/);
     assert.doesNotMatch(source, /from\s+["']@getzep\/zep-cloud\/dist/);
   });
+
+  it("does not pass removed getUserContext mode option", async () => {
+    const source = await readFile(path.join(root, "zep-memory.ts"), "utf8");
+    assert.doesNotMatch(source, /getUserContext\([\s\S]*mode\s*:/);
+  });
 });

@@ -106,7 +106,6 @@ export class ZepMemory {
       if (withContext) {
         const contextResponse = await this.client.thread.getUserContext(
           this.threadId,
-          { mode: "basic" },
         );
         context = contextResponse.context ?? undefined;
       }
@@ -165,7 +164,6 @@ export class ZepMemory {
     try {
       const contextResponse = await this.client.thread.getUserContext(
         this.threadId,
-        { mode: "basic" },
       );
       const messagesResponse = await this.client.thread.get(this.threadId);
 

@@ -11,6 +11,7 @@ This script demonstrates the following functionality:
 
 import asyncio
 import os
+import time
 import uuid
 
 from dotenv import find_dotenv, load_dotenv
@@ -20,11 +21,42 @@ from chat_history_shoe_purchase import history
 from zep_cloud.client import AsyncZep
 from zep_cloud.types import Message
 
+TASK_SUCCESS_STATUSES = {"succeeded", "completed", "complete", "success"}
+TASK_FAILURE_STATUSES = {"failed", "error", "canceled", "cancelled", "partial"}
+
 load_dotenv(
     dotenv_path=find_dotenv()
 )  # load environment variables from .env file, if present
 
 API_KEY = os.environ.get("ZEP_API_KEY") or "YOUR_API_KEY"
+
+
+async def wait_for_task(
+    client: AsyncZep,
+    task_id: str | None,
+    *,
+    timeout_seconds: float = 180.0,
+    poll_interval_seconds: float = 2.0,
+    sleep_fn=asyncio.sleep,
+) -> None:
+    """Poll Zep task status until complete, with a bounded timeout."""
+    if not task_id or not hasattr(client, "task"):
+        fallback = float(os.environ.get("ZEP_EXAMPLE_WAIT_SECONDS", "15"))
+        await sleep_fn(fallback)
+        return
+
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        task = await client.task.get(task_id)
+        status = (getattr(task, "status", None) or "").lower()
+        if status in TASK_SUCCESS_STATUSES:
+            return
+        if status in TASK_FAILURE_STATUSES:
+            err = getattr(task, "error", None)
+            raise RuntimeError(f"task {task_id} ended with status={status}: {err}")
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Timed out waiting for task {task_id} after {timeout_seconds}s")
+        await sleep_fn(poll_interval_seconds)
 
 
 async def main() -> None:
@@ -57,12 +89,15 @@ async def main() -> None:
     print(f"thread details: {thread}")
 
     print(f"\n---Add messages to the thread: {thread_id}")
+    last_task_id = None
     for m in history:
         print(f"{m['role']}: {m['content']}")
-        await client.thread.add_messages(thread_id=thread_id, messages=[Message(**m)])
+        response = await client.thread.add_messages(
+            thread_id=thread_id, messages=[Message(**m)]
+        )
+        last_task_id = getattr(response, "task_id", None) or last_task_id
 
-    # Wait for the messages to be processed
-    await asyncio.sleep(50)
+    await wait_for_task(client, last_task_id)
 
     print(f"\n---Get user context for thread: {thread_id}")
     memory = await client.thread.get_user_context(thread_id)

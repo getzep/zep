@@ -518,3 +518,21 @@ def test_autogen_notebook_has_memory_search_wait_and_compatible_pin():
         "autogen notebook must pin a compatible Autogen package "
         "(e.g. pyautogen>=0.2.35,<0.3)"
     )
+
+
+def test_simple_py_does_not_wipe_project_ontology():
+    source = (PYTHON_ROOT / "simple.py").read_text(encoding="utf-8")
+    assert not re.search(r"set_entity_types\(\s*entities\s*=\s*\{\s*\}", source)
+
+
+def test_user_example_only_mutates_created_users():
+    source = (PYTHON_ROOT / "user_example.py").read_text(encoding="utf-8")
+    assert "created_user_ids" in source
+    assert "list_ordered" not in source
+
+
+def test_chat_history_wait_is_not_fixed_sleep():
+    source = (PYTHON_ROOT / "chat_history" / "memory.py").read_text(encoding="utf-8")
+    assert "asyncio.sleep(50)" not in source
+    assert "wait_for_task" in source
+    assert "TASK_FAILURE_STATUSES" in source

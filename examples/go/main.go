@@ -63,13 +63,18 @@ func main() {
 		os.Exit(2)
 	}
 
+	var runErr error
 	switch cmd {
 	case RootCommandEntityTypes:
 		fmt.Println("WARNING: Setting entity types replaces the project-wide ontology.")
 		fmt.Println("Use a disposable Zep project/API key for this example.")
 		fmt.Println()
-		runEntityTypes()
+		runErr = runEntityTypes()
 	default:
-		runUserGraph()
+		runErr = runUserGraph()
+	}
+	if runErr != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", runErr)
+		os.Exit(1)
 	}
 }

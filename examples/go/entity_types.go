@@ -10,11 +10,10 @@ import (
 	"github.com/getzep/zep-go/v3/option"
 )
 
-func runEntityTypes() {
+func runEntityTypes() error {
 	apiKey := os.Getenv("ZEP_API_KEY")
 	if apiKey == "" {
-		fmt.Println("ZEP_API_KEY environment variable is not set")
-		return
+		return fmt.Errorf("ZEP_API_KEY environment variable is not set")
 	}
 
 	client := zepclient.NewClient(
@@ -69,15 +68,14 @@ func runEntityTypes() {
 		},
 	)
 	if err != nil {
-		fmt.Printf("Error setting entity types with base entity: %v\n", err)
-		return
+		return fmt.Errorf("setting entity types: %w", err)
 	}
 	fmt.Println("Entity and edge types set for this project")
 
 	customTypes, err := client.Graph.ListEntityTypes(ctx, nil)
 	if err != nil {
-		fmt.Printf("Error listing entity types: %v\n", err)
-		return
+		return fmt.Errorf("listing entity types: %w", err)
 	}
 	fmt.Printf("Registered ontology:\n%+v\n", customTypes)
+	return nil
 }

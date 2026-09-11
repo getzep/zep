@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -57,5 +58,22 @@ func TestModulePathFinalSegmentSafeForInstall(t *testing.T) {
 	}
 	if final != "zep-go-examples" {
 		t.Fatalf("module path final segment=%q, want zep-go-examples", final)
+	}
+}
+
+func TestExampleRunnersReturnError(t *testing.T) {
+	userGraph, err := os.ReadFile("user_graph.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(userGraph), "func runUserGraph() error") {
+		t.Fatal("runUserGraph must return error so live failures exit non-zero")
+	}
+	entityTypes, err := os.ReadFile("entity_types.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(entityTypes), "func runEntityTypes() error") {
+		t.Fatal("runEntityTypes must return error so live failures exit non-zero")
 	}
 }
