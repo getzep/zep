@@ -39,6 +39,14 @@ source .venv/bin/activate
 python3 examples/run_checks.py --install --mode static
 ```
 
+`--install` also installs the harness test dependency
+([`python/requirements-dev.txt`](./python/requirements-dev.txt), which provides
+`pytest`). Without `--install`, install it yourself before running the gate:
+
+```bash
+python3 -m pip install -r examples/python/requirements-dev.txt
+```
+
 To use a specific interpreter without activating a virtualenv:
 
 ```bash

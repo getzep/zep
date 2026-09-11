@@ -134,6 +134,65 @@ def test_python_version_preflight_rejects_old_interpreters():
     assert message == ""
 
 
+def test_pytest_is_installed_by_the_group_that_runs_it():
+    """Any group whose static checks run pytest must install pytest."""
+    for group in run_checks.INVENTORY:
+        runs_pytest = any(
+            "pytest" in check.argv for check in group.static
+        )
+        if not runs_pytest:
+            continue
+        install_blob = " ".join(
+            " ".join(step.argv) + " " + step.manifest for step in group.install
+        )
+        manifests = [EXAMPLES_ROOT / step.manifest for step in group.install]
+        declared = any(
+            "pytest" in path.read_text(encoding="utf-8")
+            for path in manifests
+            if path.exists()
+        )
+        assert declared or "pytest" in install_blob, (
+            f"{group.id} runs pytest but no install step provides it"
+        )
+
+
+def test_install_manifests_exist_on_disk():
+    for group in run_checks.INVENTORY:
+        for step in group.install:
+            assert (EXAMPLES_ROOT / step.manifest).exists(), (
+                f"{group.id}/{step.name} manifest missing: {step.manifest}"
+            )
+
+
+def test_formatting_shows_real_interpreter_not_placeholder():
+    check = run_checks._check(
+        "demo", [run_checks.PYTHON_PLACEHOLDER, "-m", "pytest"], "python"
+    )
+    rendered = run_checks._format_check(check, "/opt/py/bin/python3")
+    assert "/opt/py/bin/python3" in rendered
+    assert run_checks.PYTHON_PLACEHOLDER not in rendered
+
+    step = run_checks._install(
+        "demo", [run_checks.PYTHON_PLACEHOLDER, "-m", "pip", "install", "-r", "r.txt"],
+        "python", "python/requirements.txt",
+    )
+    rendered_step = run_checks._format_install(step, "/opt/py/bin/python3")
+    assert "/opt/py/bin/python3" in rendered_step
+    assert run_checks.PYTHON_PLACEHOLDER not in rendered_step
+
+
+def test_failure_summary_lists_failed_checks():
+    failures = [
+        ("install", "python", "pip-requirements"),
+        ("static", "python", "v3-regression"),
+    ]
+    summary = run_checks.format_failure_summary(failures)
+    assert "pip-requirements" in summary
+    assert "v3-regression" in summary
+    assert "python" in summary
+    assert summary.count("\n") >= 2
+
+
 def test_python_flag_selects_interpreter():
     args = run_checks.parse_args([])
     assert args.python == sys.executable

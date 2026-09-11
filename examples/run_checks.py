@@ -220,6 +220,7 @@ INVENTORY: tuple[Group, ...] = (
         language='python',
         install=(
             _install('pip-requirements', [PYTHON_PLACEHOLDER, '-m', 'pip', 'install', '-r', 'requirements.txt'], 'python', 'python/requirements.txt'),
+            _install('pip-requirements-dev', [PYTHON_PLACEHOLDER, '-m', 'pip', 'install', '-r', 'requirements-dev.txt'], 'python', 'python/requirements-dev.txt'),
         ),
         run=['python simple.py', 'python advanced.py', 'python user_example.py'],
         static_test=['python -m compileall -q -x <venv-exclude> .', 'python -m pytest tests/test_v3_regression.py -q'],
@@ -815,12 +816,20 @@ def _format_install(step: InstallStep, python: str = PYTHON_PLACEHOLDER) -> str:
     return f"[{step.cwd}] {cmd} (manifest={step.manifest})"
 
 
+def format_failure_summary(failures: Sequence[tuple[str, str, str]]) -> str:
+    """Render failed (phase, cwd, name) entries so they are readable without scrolling."""
+    lines = [f"\nFAILED: {len(failures)} check(s)"]
+    for phase, cwd, name in failures:
+        lines.append(f"  - {phase} [{cwd}] {name}")
+    return "\n".join(lines)
+
+
 def run_check(check: Check, python: str = sys.executable) -> int:
     cwd = EXAMPLES_ROOT / check.cwd
     env = os.environ.copy()
     env.update(check.env)
     argv = resolve_python_argv(check.argv, python)
-    print(f"→ {_format_check(check)}", flush=True)
+    print(f"→ {_format_check(check, python)}", flush=True)
     try:
         proc = subprocess.run(
             argv,
@@ -845,7 +854,7 @@ def run_check(check: Check, python: str = sys.executable) -> int:
 def run_install(step: InstallStep, python: str = sys.executable) -> int:
     cwd = EXAMPLES_ROOT / step.cwd
     argv = resolve_python_argv(step.argv, python)
-    print(f"→ install {_format_install(step)}", flush=True)
+    print(f"→ install {_format_install(step, python)}", flush=True)
     try:
         proc = subprocess.run(
             argv,
@@ -926,22 +935,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(" ", _format_check(check, python))
         return 0
 
-    failures = 0
+    failures: list[tuple[str, str, str]] = []
     for step in plan.install_steps:
-        rc = run_install(step, python)
-        if rc != 0:
-            failures += 1
+        if run_install(step, python) != 0:
+            failures.append(("install", step.cwd, step.name))
     for check in plan.static_checks:
-        rc = run_check(check, python)
-        if rc != 0:
-            failures += 1
+        if run_check(check, python) != 0:
+            failures.append(("static", check.cwd, check.name))
     for check in plan.live_checks:
-        rc = run_check(check, python)
-        if rc != 0:
-            failures += 1
+        if run_check(check, python) != 0:
+            failures.append(("live", check.cwd, check.name))
 
     if failures:
-        print(f"\nFAILED: {failures} check(s)", flush=True)
+        print(format_failure_summary(failures), flush=True)
         return 1
     print("\nAll scheduled checks passed.", flush=True)
     return 0
