@@ -125,8 +125,7 @@ The `RealEstateSalesAgent` retrieves context using `get_user_context()`, which a
 
 ```python
 results = await zep_client.thread.get_user_context(
-    thread_id=thread_id,
-    mode="basic"
+    thread_id=thread_id
 )
 context_block = results.context  # Includes the user summary
 

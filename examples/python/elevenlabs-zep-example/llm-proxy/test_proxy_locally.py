@@ -25,7 +25,7 @@ async def test_proxy():
 
     # The request format that ElevenLabs sends (OpenAI-compatible)
     test_request = {
-        "model": "gpt-4o-mini",
+        "model": "gpt-5-mini",
         "messages": [
             {
                 "role": "system",

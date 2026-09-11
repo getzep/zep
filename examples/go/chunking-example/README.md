@@ -1,39 +1,22 @@
 # Document Chunking with Contextualized Retrieval for Zep
 
-This example demonstrates how to implement Anthropic's **contextualized retrieval** technique with Zep. The script chunks a document, uses OpenAI to generate contextual descriptions for each chunk, and ingests the contextualized chunks into Zep's knowledge graph.
+This example demonstrates Anthropic's **contextualized retrieval** technique with Zep. The program chunks a document, uses OpenAI to generate contextual descriptions for each chunk, and ingests the contextualized chunks into Zep's knowledge graph via `github.com/getzep/zep-go/v3`.
 
 ## Why Contextualized Retrieval?
 
-Traditional RAG systems chunk documents and embed them directly. This loses important context because each chunk is processed in isolation. For example, a chunk mentioning "the policy" without specifying which policy becomes ambiguous.
-
-Contextualized retrieval solves this by prepending a brief context to each chunk that situates it within the full document. This improves retrieval accuracy by helping the embedding model understand what each chunk is actually about.
-
-**Example:**
-
-Before contextualization:
-```
-Employees may carry over up to 5 unused PTO days to the following year.
-```
-
-After contextualization:
-```
-This chunk describes ACME Corporation's PTO carryover policy from the
-Employee Handbook effective January 1, 2024. It appears in the Time Off
-and Leave Policies section.
-
----
-
-Employees may carry over up to 5 unused PTO days to the following year.
-```
+Traditional RAG systems chunk documents and embed them directly. This loses important context because each chunk is processed in isolation. Contextualized retrieval prepends a brief context to each chunk that situates it within the full document, improving retrieval accuracy.
 
 ## Setup
 
 1. Install dependencies:
+
    ```bash
-   pip install -r requirements.txt
+   cd examples/go/chunking-example
+   go mod download
    ```
 
-2. Configure environment variables in `.env`:
+2. Configure environment variables in `.env` (see `.env.example`):
+
    ```
    ZEP_API_KEY=your_zep_api_key
    OPENAI_API_KEY=your_openai_api_key
@@ -41,39 +24,41 @@ Employees may carry over up to 5 unused PTO days to the following year.
 
 ## Usage
 
-### Basic Usage
-
-Process a document and ingest it into Zep:
+### Basic usage
 
 ```bash
-python chunk_and_ingest.py sample_document.txt --user-id user123
+go run . sample_document.txt --user-id user123
 ```
 
-### Custom Chunk Size
-
-Adjust the chunk size (default is 6000 characters):
+### Custom chunk size
 
 ```bash
-python chunk_and_ingest.py sample_document.txt --user-id user123 --chunk-size 4000
+go run . sample_document.txt --user-id user123 --chunk-size 4000
 ```
 
-### Dry Run
+### Dry run
 
-Test the chunking and contextualization without ingesting to Zep:
+Process chunking/contextualization without ingesting to Zep (still requires `OPENAI_API_KEY`):
 
 ```bash
-python chunk_and_ingest.py sample_document.txt --user-id user123 --dry-run
+go run . sample_document.txt --user-id user123 --dry-run
 ```
 
-### Wait for Processing
+### Wait for processing
 
-Wait for each episode to be processed before continuing:
+Poll each created episode until `processed` is true (or a linked task fails / timeout):
 
 ```bash
-python chunk_and_ingest.py sample_document.txt --user-id user123 --wait
+go run . sample_document.txt --user-id user123 --wait
 ```
 
-## Command Line Options
+### Help
+
+```bash
+go run . --help
+```
+
+## Command line options
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -81,78 +66,23 @@ python chunk_and_ingest.py sample_document.txt --user-id user123 --wait
 | `--user-id` | Zep user ID for the knowledge graph | (required) |
 | `--chunk-size` | Maximum characters per chunk | 6000 |
 | `--chunk-overlap` | Character overlap between chunks | 200 |
-| `--wait` | Wait for processing after each chunk | False |
-| `--dry-run` | Process without ingesting to Zep | False |
+| `--wait` | Wait for processing after each chunk | false |
+| `--dry-run` | Process without ingesting to Zep | false |
 
-## How It Works
+## How it works
 
-1. **Document Chunking**: The document is split into chunks using a paragraph-first strategy:
-   - Split by double newlines (paragraphs)
-   - If a paragraph exceeds the chunk size, split by sentences
-   - Maintain configurable overlap between chunks
-
-2. **Contextualization**: Each chunk is sent to OpenAI's gpt-4o-mini with the full document context. The model generates a brief description situating the chunk within the document.
-
-3. **Ingestion**: The contextualized chunk (context + separator + original chunk) is ingested into Zep using `client.graph.add()`.
-
-## Example Output
-
-```
-============================================================
-DOCUMENT CHUNKING WITH CONTEXTUALIZED RETRIEVAL
-============================================================
-Document: sample_document.txt
-User ID: user123
-Chunk size: 6000
-Chunk overlap: 200
-Dry run: False
-
-Reading document: sample_document.txt
-Document size: 15,432 characters
-
-Chunking document (chunk_size=6000, overlap=200)...
-Created 4 chunks
-
-Processing chunks:
-------------------------------------------------------------
-
-Chunk 1/4 (5,842 chars)
-  Contextualizing with OpenAI...
-  Context: "This chunk covers the introduction and company values..."
-  Ingesting to Zep...
-  Created episode: ep_abc123...
-
-...
-
-============================================================
-PROCESSING SUMMARY
-============================================================
-Total chunks: 4
-Successfully processed: 4
-Failed: 0
-Original document size: 15,432 characters
-Total contextualized size: 16,890 characters
-Size expansion from contextualization: 9.4%
-============================================================
-```
+1. **Document chunking**: Split by paragraphs, then sentences when needed, with configurable overlap.
+2. **Contextualization**: Each chunk is sent to OpenAI (`gpt-5-mini`) with the full document; the model returns a short situating context.
+3. **Ingestion**: Contextualized chunks are added with `client.Graph.Add` (`type=text`).
+4. **`--wait`**: Bounded polling of `Graph.Episode.Get` using `episode.processed`, with fail-fast on linked task statuses `failed` / `error` / `canceled` / `cancelled` / `partial`.
 
 ## Notes
 
-- **Chunk Size**: The default 6000 characters leaves room for the context prefix while staying within Zep's 10K character episode limit.
+- Default chunk size 6000 leaves room for the context prefix under Zep's 10K episode limit.
+- Retry with exponential backoff for OpenAI rate limits and transient Zep ingestion errors.
+- Failed chunks are counted in the summary; remaining chunks continue processing.
+- Live ingestion and `--wait` require `ZEP_API_KEY` and `OPENAI_API_KEY`. `--dry-run` skips Zep but still needs `OPENAI_API_KEY`.
 
-- **Rate Limits**: The script includes retry logic with exponential backoff for OpenAI rate limits.
+## Sample document
 
-- **Error Handling**: Failed chunks are tracked and reported in the summary. The script continues processing remaining chunks after failures.
-
-## Sample Document
-
-The included `sample_document.txt` is a fictional company employee handbook (~3000 words) covering:
-- Remote work policies
-- Time off and leave
-- Professional development
-- Performance management
-- Workplace conduct
-- Information security
-- Benefits
-
-This provides a realistic test document with structured content that benefits from contextualization.
+`sample_document.txt` is a fictional employee handbook (~3000 words) covering remote work, time off, development, performance, conduct, security, and benefits.

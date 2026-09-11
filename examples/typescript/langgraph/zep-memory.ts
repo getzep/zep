@@ -1,6 +1,5 @@
 // zep-memory.ts
-import { ZepClient } from "@getzep/zep-cloud";
-import { Role } from "@getzep/zep-cloud/dist/api";
+import { ZepClient, Zep } from "@getzep/zep-cloud";
 import { BaseMessage, AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { v4 as uuidv4 } from "uuid";
 
@@ -48,8 +47,7 @@ export class ZepMemory {
         userExists = true;
         console.log(`Using existing user: ${userIdToUse}`);
       } catch (error) {
-        console.log(error.constructor.name);
-        if (error.constructor.name === "NotFoundError") {
+        if (error instanceof Zep.NotFoundError) {
           // User doesn't exist, we'll create it
           console.log(`User ${userIdToUse} not found, will create`);
         } else {
@@ -82,7 +80,7 @@ export class ZepMemory {
         threadExists = true;
         console.log(`Using existing thread: ${this.threadId}`);
       } catch (error) {
-        if (error.constructor.name === "NotFoundError") {
+        if (error instanceof Zep.NotFoundError) {
           // Thread doesn't exist, we'll create it
           console.log(`Thread ${this.threadId} not found, will create`);
         } else {
@@ -134,7 +132,7 @@ export class ZepMemory {
       
       let context: string | undefined;
       if (withContext) {
-        const contextResponse = await this.client.thread.getUserContext(this.threadId, { mode: "basic" });
+        const contextResponse = await this.client.thread.getUserContext(this.threadId);
         context = contextResponse.context;
       }
 
@@ -200,7 +198,7 @@ export class ZepMemory {
     }
 
     try {
-      const contextResponse = await this.client.thread.getUserContext(this.threadId, { mode: "basic" });
+      const contextResponse = await this.client.thread.getUserContext(this.threadId);
       const messagesResponse = await this.client.thread.get(this.threadId);
       
       // Convert messages to LangChain format
@@ -235,18 +233,18 @@ export class ZepMemory {
    * @param message - LangChain message to convert
    */
   private convertToZepMessage(message: BaseMessage) {
-    let role: Role;
+    let role: Zep.RoleType;
     let name = "";
 
     if (message instanceof AIMessage) {
-      role = "assistant" as Role;
+      role = "assistant" as Zep.RoleType;
     } else if (message instanceof HumanMessage) {
-      role = "user" as Role;
+      role = "user" as Zep.RoleType;
     } else if (message instanceof SystemMessage) {
-      role = "system" as Role;
+      role = "system" as Zep.RoleType;
     } else {
       // Handle other message types (FunctionMessage, ToolMessage, etc.)
-      role = "function" as Role;
+      role = "function" as Zep.RoleType;
     }
 
     return {

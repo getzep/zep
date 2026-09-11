@@ -5,13 +5,13 @@ This script demonstrates the following functionality:
 - Creating a user.
 - Creating a thread associated with the created user.
 - Adding messages to the thread.
-- Searching the thread memory for a specific query.
-- Searching the thread memory with MMR reranking.
+- Retrieving synthesized user context with thread.get_user_context.
 - optionally deleting the thread.
 """
 
 import asyncio
 import os
+import time
 import uuid
 
 from dotenv import find_dotenv, load_dotenv
@@ -19,13 +19,40 @@ from dotenv import find_dotenv, load_dotenv
 from chat_history_shoe_purchase import history
 
 from zep_cloud.client import AsyncZep
-from zep_cloud.types import Message, FactRatingInstruction, FactRatingExamples
+from zep_cloud.types import Message
+
+TASK_SUCCESS_STATUSES = {"succeeded", "completed", "complete", "success"}
+TASK_FAILURE_STATUSES = {"failed", "error", "canceled", "cancelled", "partial"}
 
 load_dotenv(
     dotenv_path=find_dotenv()
 )  # load environment variables from .env file, if present
 
 API_KEY = os.environ.get("ZEP_API_KEY") or "YOUR_API_KEY"
+
+
+async def wait_for_task(
+    client: AsyncZep,
+    task_id: str | None,
+    *,
+    timeout_seconds: float = 180.0,
+    poll_interval_seconds: float = 2.0,
+) -> None:
+    """Poll Zep task status until complete, with a bounded timeout."""
+    if not task_id:
+        return
+
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        task = await client.task.get(task_id)
+        status = (task.status or "").lower()
+        if status in TASK_SUCCESS_STATUSES:
+            return
+        if status in TASK_FAILURE_STATUSES:
+            raise RuntimeError(f"task {task_id} ended with status={status}: {task.error}")
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Timed out waiting for task {task_id} after {timeout_seconds}s")
+        await asyncio.sleep(poll_interval_seconds)
 
 
 async def main() -> None:
@@ -35,15 +62,6 @@ async def main() -> None:
 
     # Create a user
     user_id = uuid.uuid4().hex  # unique user id. can be any alphanum string
-    fact_rating_instruction = """Rate the facts by poignancy. Highly poignant 
-    facts have a significant emotional impact or relevance to the user. 
-    Facts with low poignancy are minimally relevant or of little emotional
-    significance."""
-    fact_rating_examples = FactRatingExamples(
-        high="The user received news of a family member's serious illness.",
-        medium="The user completed a challenging marathon.",
-        low="The user bought a new brand of toothpaste.",
-    )
     await client.user.add(
         user_id=user_id,
         email="user@example.com",
@@ -67,14 +85,15 @@ async def main() -> None:
     print(f"thread details: {thread}")
 
     print(f"\n---Add messages to the thread: {thread_id}")
+    last_task_id = None
     for m in history:
         print(f"{m['role']}: {m['content']}")
-        await client.thread.add_messages(thread_id=thread_id, messages=[Message(**m)])
-        # await asyncio.sleep(0.5)
+        response = await client.thread.add_messages(
+            thread_id=thread_id, messages=[Message(**m)]
+        )
+        last_task_id = response.task_id or last_task_id
 
-    #  Wait for the messages to be processed
-    await asyncio.sleep(50)
-
+    await wait_for_task(client, last_task_id)
 
     print(f"\n---Get user context for thread: {thread_id}")
     memory = await client.thread.get_user_context(thread_id)

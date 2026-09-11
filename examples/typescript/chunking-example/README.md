@@ -30,13 +30,18 @@ Employees may carry over up to 5 unused PTO days to the following year.
 
 1. Install dependencies:
    ```bash
-   pip install -r requirements.txt
+   npm install
    ```
 
 2. Configure environment variables in `.env`:
    ```
    ZEP_API_KEY=your_zep_api_key
    OPENAI_API_KEY=your_openai_api_key
+   ```
+
+3. Build:
+   ```bash
+   npm run build
    ```
 
 ## Usage
@@ -46,7 +51,13 @@ Employees may carry over up to 5 unused PTO days to the following year.
 Process a document and ingest it into Zep:
 
 ```bash
-python chunk_and_ingest.py sample_document.txt --user-id user123
+npm start -- sample_document.txt --user-id user123
+```
+
+Or during development without building:
+
+```bash
+npm run dev -- sample_document.txt --user-id user123
 ```
 
 ### Custom Chunk Size
@@ -54,7 +65,7 @@ python chunk_and_ingest.py sample_document.txt --user-id user123
 Adjust the chunk size (default is 6000 characters):
 
 ```bash
-python chunk_and_ingest.py sample_document.txt --user-id user123 --chunk-size 4000
+npm start -- sample_document.txt --user-id user123 --chunk-size 4000
 ```
 
 ### Dry Run
@@ -62,7 +73,7 @@ python chunk_and_ingest.py sample_document.txt --user-id user123 --chunk-size 40
 Test the chunking and contextualization without ingesting to Zep:
 
 ```bash
-python chunk_and_ingest.py sample_document.txt --user-id user123 --dry-run
+npm start -- sample_document.txt --user-id user123 --dry-run
 ```
 
 ### Wait for Processing
@@ -70,7 +81,7 @@ python chunk_and_ingest.py sample_document.txt --user-id user123 --dry-run
 Wait for each episode to be processed before continuing:
 
 ```bash
-python chunk_and_ingest.py sample_document.txt --user-id user123 --wait
+npm start -- sample_document.txt --user-id user123 --wait
 ```
 
 ## Command Line Options
@@ -91,50 +102,9 @@ python chunk_and_ingest.py sample_document.txt --user-id user123 --wait
    - If a paragraph exceeds the chunk size, split by sentences
    - Maintain configurable overlap between chunks
 
-2. **Contextualization**: Each chunk is sent to OpenAI's gpt-4o-mini with the full document context. The model generates a brief description situating the chunk within the document.
+2. **Contextualization**: Each chunk is sent to OpenAI's gpt-5-mini with the full document context. The model generates a brief description situating the chunk within the document.
 
 3. **Ingestion**: The contextualized chunk (context + separator + original chunk) is ingested into Zep using `client.graph.add()`.
-
-## Example Output
-
-```
-============================================================
-DOCUMENT CHUNKING WITH CONTEXTUALIZED RETRIEVAL
-============================================================
-Document: sample_document.txt
-User ID: user123
-Chunk size: 6000
-Chunk overlap: 200
-Dry run: False
-
-Reading document: sample_document.txt
-Document size: 15,432 characters
-
-Chunking document (chunk_size=6000, overlap=200)...
-Created 4 chunks
-
-Processing chunks:
-------------------------------------------------------------
-
-Chunk 1/4 (5,842 chars)
-  Contextualizing with OpenAI...
-  Context: "This chunk covers the introduction and company values..."
-  Ingesting to Zep...
-  Created episode: ep_abc123...
-
-...
-
-============================================================
-PROCESSING SUMMARY
-============================================================
-Total chunks: 4
-Successfully processed: 4
-Failed: 0
-Original document size: 15,432 characters
-Total contextualized size: 16,890 characters
-Size expansion from contextualization: 9.4%
-============================================================
-```
 
 ## Notes
 
@@ -143,6 +113,8 @@ Size expansion from contextualization: 9.4%
 - **Rate Limits**: The script includes retry logic with exponential backoff for OpenAI rate limits.
 
 - **Error Handling**: Failed chunks are tracked and reported in the summary. The script continues processing remaining chunks after failures.
+
+- **Live API keys**: Full ingestion and `--wait` require `ZEP_API_KEY` and `OPENAI_API_KEY`. `--dry-run` still needs `OPENAI_API_KEY` for contextualization.
 
 ## Sample Document
 

@@ -66,7 +66,7 @@ python populate-memories.py
 ```
 
 This script will:
-- Create a test user with ID `John-1234`
+- Create a test user with ID `John-12345`
 - Add 25 conversation threads with realistic dialogue
 - Add 10 structured JSON data pieces (venues, artists, transportation info, etc.)
 - Build a comprehensive knowledge graph that you can immediately test with

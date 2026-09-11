@@ -25,7 +25,7 @@ from zep_cloud import NotFoundError
 dotenv.load_dotenv()
 
 
-MODEL_NAME = "gpt-4o-mini"
+MODEL_NAME = "gpt-5-mini"
 SYSTEM_PROMPT = """
 You are a helpful assistant with memory capabilities. Use the memory search tool to recall important information about the user. 
 
@@ -172,7 +172,7 @@ class AsyncZepMemoryManager:
                 raise ValueError("Zep client not initialized")
 
             # Use thread.get_user_context to retrieve memory context for the thread
-            context = await self.zep_client.thread.get_user_context(thread_id=self.thread_id, mode="basic")
+            context = await self.zep_client.thread.get_user_context(thread_id=self.thread_id)
 
             # Use the context string provided by Zep instead of creating a summary
             if context.context:

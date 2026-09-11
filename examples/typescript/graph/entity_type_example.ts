@@ -1,5 +1,10 @@
-import { ZepClient } from "../../src";
-import { EntityData, entityFields, EntityType, EdgeType } from "../../src/wrapper/ontology";
+import {
+    ZepClient,
+    entityFields,
+    type EntityData,
+    type EntityType,
+    type EdgeType,
+} from "@getzep/zep-cloud";
 
 const API_KEY = process.env.ZEP_API_KEY;
 

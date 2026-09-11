@@ -10,11 +10,10 @@ import (
 	"github.com/getzep/zep-go/v3/option"
 )
 
-func entityTypes() {
+func runEntityTypes() error {
 	apiKey := os.Getenv("ZEP_API_KEY")
 	if apiKey == "" {
-		fmt.Println("ZEP_API_KEY environment variable is not set")
-		return
+		return fmt.Errorf("ZEP_API_KEY environment variable is not set")
 	}
 
 	client := zepclient.NewClient(
@@ -47,6 +46,7 @@ func entityTypes() {
 		AirportIATACode string  `description:"The airport IATA code of the destination" json:"airport_iata_code,omitempty"`
 	}
 
+	// WARNING: SetEntityTypes without a user/graph target replaces the project-level ontology.
 	_, err := client.Graph.SetEntityTypes(
 		ctx,
 		[]zep.EntityDefinition{
@@ -68,23 +68,30 @@ func entityTypes() {
 		},
 	)
 	if err != nil {
-		fmt.Printf("Error setting entity types with base entity: %v\n", err)
-		return
+		return fmt.Errorf("setting entity types: %w", err)
+	}
+	fmt.Println("Entity and edge types set for this project")
+
+	// Searching the new types needs a user whose graph already contains travel
+	// data. Set ZEP_ENTITY_TYPES_USER_ID to run the search half of the example.
+	searchUserID := os.Getenv("ZEP_ENTITY_TYPES_USER_ID")
+	if searchUserID == "" {
+		fmt.Println("Set ZEP_ENTITY_TYPES_USER_ID to also search the graph for these types")
+		return nil
 	}
 
 	searchFilters := zep.SearchFilters{NodeLabels: []string{"Destination"}}
 	searchResults, err := client.Graph.Search(
 		ctx,
 		&zep.GraphSearchQuery{
-			UserID:        zep.String("<user_id>"),
+			UserID:        zep.String(searchUserID),
 			Query:         "destination",
 			Scope:         zep.GraphSearchScopeNodes.Ptr(),
 			SearchFilters: &searchFilters,
 		},
 	)
 	if err != nil {
-		fmt.Printf("Error searching graph: %v\n", err)
-		return
+		return fmt.Errorf("searching graph: %w", err)
 	}
 
 	var destinations []Destination
@@ -120,4 +127,5 @@ func entityTypes() {
 		fmt.Printf("Traveling to destination: %s\n", travelingToRelation.TravelDate)
 		fmt.Printf("Traveling to distance: %s\n", travelingToRelation.Purpose)
 	}
+	return nil
 }

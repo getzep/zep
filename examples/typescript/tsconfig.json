@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
+  },
+  "include": ["graph/**/*.ts", "memory/**/*.ts", "users/**/*.ts"],
+  "exclude": ["node_modules", "eve", "langgraph", "chunking-example", "zep-graph-visualization"]
+}

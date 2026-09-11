@@ -256,16 +256,25 @@ async def stream_openai_response(
     try:
         # Prepare the request for OpenAI
         openai_request = {
-            "model": request_body.get("model", "gpt-4o-mini"),
+            "model": request_body.get("model", "gpt-5-mini"),
             "messages": messages,
             "stream": True,
         }
 
-        # Add optional parameters if present
-        if "temperature" in request_body:
+        # GPT-5 only accepts its default temperature, and uses
+        # max_completion_tokens instead of the deprecated max_tokens field.
+        if (
+            "temperature" in request_body
+            and not openai_request["model"].startswith("gpt-5")
+        ):
             openai_request["temperature"] = request_body["temperature"]
         if "max_tokens" in request_body:
-            openai_request["max_tokens"] = request_body["max_tokens"]
+            token_field = (
+                "max_completion_tokens"
+                if openai_request["model"].startswith("gpt-5")
+                else "max_tokens"
+            )
+            openai_request[token_field] = request_body["max_tokens"]
 
         # Handle tools if ElevenLabs sends them
         if "tools" in request_body:

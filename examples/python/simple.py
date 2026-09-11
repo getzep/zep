@@ -14,10 +14,6 @@ zep_user_role = f"{first_name} {last_name}"
 zep_assistant_role = "ShoeSalesSupportBot"
 ignore_roles = []
 
-client.graph.set_entity_types(
-    entities={}
-)
-
 uuid_value = uuid.uuid4().hex[:4]
 user_id = "default-graph-simple-" + uuid_value
 client.user.add(

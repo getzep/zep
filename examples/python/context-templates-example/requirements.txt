@@ -50,4 +50,4 @@ typing_extensions==4.15.0
 tzdata==2025.2
 urllib3==2.7.0
 watchdog==6.0.0
-zep-cloud
+zep-cloud>=3.28.0,<4

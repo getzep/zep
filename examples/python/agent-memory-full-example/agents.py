@@ -26,7 +26,7 @@ class ChatAgent:
     - No thread management or conversation state
     """
     
-    def __init__(self, zep_client, model: str = "gpt-4o-mini-2024-07-18"):
+    def __init__(self, zep_client, model: str = "gpt-5-mini"):
         """
         Initialize the chat agent.
 
@@ -79,8 +79,7 @@ class ChatAgent:
             # Retrieve user context from Zep and track timing
             zep_start = time.perf_counter()
             results = await self.zep_client.thread.get_user_context(
-                thread_id=thread_id,
-                mode="basic"
+                thread_id=thread_id
             )
             context_block = results.context
             zep_end = time.perf_counter()

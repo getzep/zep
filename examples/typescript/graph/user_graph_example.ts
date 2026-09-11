@@ -1,8 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { ZepClient } from '../../src';
-import { CreateUserRequest } from '../../src/api';
-
-// @ts-ignore
+import { ZepClient, Zep } from '@getzep/zep-cloud';
 import { history } from './conversations';
 
 const API_KEY = process.env.ZEP_API_KEY
@@ -16,7 +13,7 @@ async function main() {
     const threadId = uuidv4();
 
     // Create a user
-    const userRequest: CreateUserRequest = {
+    const userRequest: Zep.CreateUserRequest = {
         userId: userId,
         firstName: 'Paul',
     };

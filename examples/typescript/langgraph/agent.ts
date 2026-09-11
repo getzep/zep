@@ -14,15 +14,19 @@ import path from "path";
 import { Command } from "commander";
 import { ZepMemory } from "./zep-memory";
 
-// Define the tools for the agent to use
-const tools = [new TavilySearchResults({ maxResults: 3 })];
+// Define the tools for the agent to use. Tavily web search is optional, so the
+// agent still runs against Zep memory alone when TAVILY_API_KEY is unset.
+const tavilyApiKey = process.env.TAVILY_API_KEY?.trim();
+const tools = tavilyApiKey
+  ? [new TavilySearchResults({ maxResults: 3, apiKey: tavilyApiKey })]
+  : [];
 const toolNode = new ToolNode(tools);
 
 // Create a model and give it access to the tools
-const model = new ChatOpenAI({
-  model: "gpt-4o-mini",
-  temperature: 0,
-}).bindTools(tools);
+const baseModel = new ChatOpenAI({
+  model: "gpt-5-mini",
+});
+const model = tools.length > 0 ? baseModel.bindTools(tools) : baseModel;
 
 // Define the function that determines whether to continue or not
 function shouldContinue({ messages }: typeof MessagesAnnotation.State) {
@@ -129,6 +133,9 @@ if (isMainModule()) {
     const systemMessage = args.systemMessage;
     
     console.log("🦜🔗 LangGraph Agent CLI");
+    if (tools.length === 0) {
+      console.log("Tavily search disabled (set TAVILY_API_KEY to enable web search)");
+    }
     if (args.userId) {
       console.log(`User ID: ${args.userId}`);
     }

@@ -114,10 +114,10 @@
   resolved "https://registry.yarnpkg.com/@floating-ui/utils/-/utils-0.2.9.tgz#50dea3616bc8191fb8e112283b49eaff03e78429"
   integrity sha512-MDWhGtE+eHw5JW7lq4qhc5yRLS11ERl1c7Z6Xd0a58DozHES6EnNNwUWbMiG4J9Cgj053Bhk8zvlhFYKVhULwg==
 
-"@getzep/zep-cloud@^3.1.0":
-  version "3.1.0"
-  resolved "https://registry.yarnpkg.com/@getzep/zep-cloud/-/zep-cloud-3.1.0.tgz#3b54733f9f55bcff5492588afe49a91152c80a2b"
-  integrity sha512-TF0TayHXLpZKRZSeO/LgahH7M8DD+Ls2N0+d+6WWJI9F4rMMJ+iNvQLuIQnVp5SMJU7/c2XuOkyutSHtQYxtWw==
+"@getzep/zep-cloud@^3.28.0":
+  version "3.28.0"
+  resolved "https://registry.yarnpkg.com/@getzep/zep-cloud/-/zep-cloud-3.28.0.tgz#5cd2b959606a17d9a8a34eac1c3bf0a6abc7b4f6"
+  integrity sha512-OcvQzq7Fq3W3zxeZsCM8RMsvx3Kim6sBrfJGFpAMAkDgAllU7+x7Gl5l6MnmFN9ZEhYBECqYSGwlDxjWRzdz6g==
   dependencies:
     zod "^3.23.8"
 
