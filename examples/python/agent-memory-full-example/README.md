@@ -17,7 +17,7 @@ source venv/bin/activate
 # venv\Scripts\activate
 
 # Install required packages
-python3 -m pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ### 2. Create ENV File and Set API Keys
