@@ -1,0 +1,83 @@
+{
+  "name": "@getzep/zep-deepseek-harness",
+  "version": "0.1.0",
+  "description": "Zep long-term memory plugin for DeepSeek Harness.",
+  "license": "Apache-2.0",
+  "author": "Zep AI, Inc.",
+  "homepage": "https://www.getzep.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getzep/zep.git",
+    "directory": "integrations/deepseek-harness/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/getzep/zep/issues"
+  },
+  "keywords": [
+    "zep",
+    "deepseek",
+    "deepseek-harness",
+    "dsh-plugin",
+    "memory",
+    "agent"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "cordis.patch.yml",
+    "README.md",
+    "SETUP.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --sourcemap --clean",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "example": "dsh --profile headless --patch examples/cordis.yml",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "@getzep/zep-cloud": "^3.28.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-agent": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-session": "^0.1.0-rc.6"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-agent": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-session": "^0.1.0-rc.6",
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.39.4",
+    "tsup": "^8.3.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.61.1",
+    "vitest": "^3.2.6"
+  },
+  "overrides": {
+    "esbuild": ">=0.28.1"
+  }
+}
