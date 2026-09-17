@@ -10,6 +10,13 @@
 export ZEP_API_KEY=your_key_here
 ```
 
+The package targets the Zep v4 API and the `zep-cloud` 4.x Python SDK. The v4
+API addresses a graph, a user, and a thread by a server-generated UUID, so
+every public parameter of the package takes a UUID (`graph_uuid`,
+`thread_uuid`). Create the graph, the user, and the thread one time with the
+SDK, store each returned UUID in your own database, and pass the UUID to the
+ingestion calls.
+
 ## 2. Install
 
 ```bash
@@ -28,7 +35,7 @@ Requires Python ≥ 3.11.
 - **Everything in this package also works without it**: if the deployment has
   no batch endpoint to call (HTTP 404 — an older server, a self-hosted or
   Community deployment, or a base URL that doesn't route `/batches`), the
-  default `method="auto"` falls back to sequential `graph.add` ingestion with
+  default `method="auto"` falls back to sequential `graph.episode.add` ingestion with
   rate-limit-aware pacing. That 404 is the only trigger; authorization and
   quota errors are raised rather than quietly downgraded. Force a path with
   `method="batch"` or `method="sequential"`.

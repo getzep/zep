@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from zep_cloud.client import Zep
+from zep_cloud.types.edge_node_ref import EdgeNodeRef
 
 from zep_ingest._errors import format_api_error
 from zep_ingest._io import load_rows, rows_to_fields
@@ -24,7 +25,7 @@ from zep_ingest._validation import (
     check_timestamp,
 )
 from zep_ingest.exceptions import ConfigurationError
-from zep_ingest.result import AddError, IngestResult
+from zep_ingest.result import AddError, IngestResult, task_uuid_of
 from zep_ingest.submitters.sequential import call_with_retries
 from zep_ingest.types import MAX_METADATA_KEYS, Destination
 
@@ -44,7 +45,7 @@ class FactTriple:
     node by identity instead of name resolution — pass UUIDs from
     ``IngestResult.node_uuids`` (or another prior read) so a re-run cannot
     resolve a slightly different name to a new node. Zep assigns the fact's own
-    UUID; it is returned as ``edge_uuid`` in the task params once the task
+    UUID; it is returned as ``edge_uuid`` in the task result once the task
     completes and is collected on ``IngestResult.edge_uuids`` after ``wait()``
     (parallel to the submitted triples, with ``None`` for a terminal task that
     assigned none).
@@ -62,7 +63,6 @@ class FactTriple:
     target_node_uuid: str | None = None
     valid_at: str | None = None
     invalid_at: str | None = None
-    created_at: str | None = None
     attributes: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
 
@@ -107,7 +107,6 @@ class FactTriple:
                     errors.append(f"{field} is not a valid UUID: {value!r}")
         check_timestamp("valid_at", self.valid_at, errors)
         check_timestamp("invalid_at", self.invalid_at, errors)
-        check_timestamp("created_at", self.created_at, errors)
         check_scalar_map("attributes", self.attributes, errors)
         check_scalar_map("metadata", self.metadata, errors, max_keys=MAX_METADATA_KEYS)
         if errors:
@@ -115,41 +114,43 @@ class FactTriple:
                 f"Invalid fact triple ({str(self.fact)[:60]!r}): " + "; ".join(errors)
             )
 
+    def _node_ref(self, side: str) -> EdgeNodeRef:
+        fields: dict[str, Any] = {"name": getattr(self, f"{side}_node_name")}
+        summary = getattr(self, f"{side}_node_summary")
+        if summary is not None:
+            fields["summary"] = summary
+        labels = getattr(self, f"{side}_node_labels")
+        if labels is not None:
+            fields["labels"] = labels
+        node_uuid = getattr(self, f"{side}_node_uuid")
+        if node_uuid is not None:
+            fields["uuid_"] = node_uuid
+        return EdgeNodeRef(**fields)
+
     def to_api_kwargs(self, destination: Destination) -> dict[str, Any]:
+        """Build the ``graph.edge.add`` keyword arguments for this triple."""
         kwargs: dict[str, Any] = {
+            "graph_uuid": destination.graph,
             "fact": self.fact,
             "fact_name": self.fact_name,
-            "source_node_name": self.source_node_name,
-            "target_node_name": self.target_node_name,
+            "source_node": self._node_ref("source"),
+            "target_node": self._node_ref("target"),
         }
-        for field in (
-            "source_node_summary",
-            "target_node_summary",
-            "source_node_labels",
-            "target_node_labels",
-            "source_node_uuid",
-            "target_node_uuid",
-            "valid_at",
-            "invalid_at",
-            "created_at",
-            "metadata",
-        ):
+        for field in ("valid_at", "invalid_at", "metadata", "attributes"):
             value = getattr(self, field)
             if value is not None:
                 kwargs[field] = value
-        if self.attributes is not None:
-            kwargs["edge_attributes"] = self.attributes
-        if destination.graph_id is not None:
-            kwargs["graph_id"] = destination.graph_id
-        else:
-            kwargs["user_id"] = destination.user_id
         return kwargs
 
 
 _RETIRED_TRIPLE_FIELDS = {
     "fact_uuid": (
         "fact_uuid cannot be supplied: Zep assigns fact UUIDs "
-        "(returned as edge_uuid in task params once the task completes)"
+        "(returned as edge_uuid in the task result once the task completes)"
+    ),
+    "created_at": (
+        "created_at cannot be supplied: the v4 edge model has no reference time "
+        "(use valid_at for when the fact became true)"
     ),
 }
 
@@ -163,29 +164,28 @@ def ingest_fact_triples(
     client: Zep,
     triples: Iterable[FactTriple] | str | Path,
     *,
-    graph_id: str | None = None,
-    user_id: str | None = None,
+    graph_uuid: str | None = None,
     max_retries: int = 5,
 ) -> IngestResult:
-    """Submit fact triples via graph.add_fact_triple (sequential; the Batch API
+    """Submit fact triples via graph.edge.add (sequential; the Batch API
     does not accept triples). All triples are validated before the first call.
 
     Submission is asynchronous; bind the result, then wait on it, so the resume
     handles survive a timeout::
 
-        result = ingest_fact_triples(client, triples, graph_id="g1")
+        result = ingest_fact_triples(client, triples, graph_uuid=graph_uuid)
         result.wait()
     """
-    destination = Destination(graph_id=graph_id, user_id=user_id)
+    destination = Destination(graph_uuid=graph_uuid)
     if isinstance(triples, str | Path):
         materialized = _load_triples(Path(triples))
     else:
         materialized = list(triples)
-    result = IngestResult(method="sequential", client=client)
+    result = IngestResult(method="sequential", client=client, graph_uuid=destination.graph)
     for index, triple in enumerate(materialized):
         kwargs = triple.to_api_kwargs(destination)
         response, error = call_with_retries(
-            lambda: client.graph.add_fact_triple(**kwargs),  # noqa: B023
+            lambda: client.graph.edge.add(**kwargs),  # noqa: B023
             max_retries=max_retries,
         )
         if error is not None:
@@ -193,14 +193,14 @@ def ingest_fact_triples(
                 AddError(
                     index=index,
                     item_count=1,
-                    error=format_api_error("graph.add_fact_triple", error),
+                    error=format_api_error("graph.edge.add", error),
                 )
             )
         else:
             result.items_submitted += 1
-            task_id = getattr(response, "task_id", None)
-            if task_id and str(task_id) not in result.task_ids:
-                result.task_ids.append(str(task_id))
+            task_id = task_uuid_of(response.task)
+            if task_id and task_id not in result.task_ids:
+                result.task_ids.append(task_id)
             elif not task_id:
                 result.untracked_items += 1
     return result

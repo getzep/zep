@@ -1,10 +1,10 @@
-"""Tests for SequentialSubmitter (the graph.add path)."""
+"""Tests for SequentialSubmitter (the graph.episode.add path)."""
 
 import httpx
 import pytest
 from zep_cloud.core.api_error import ApiError
 
-from tests.conftest import make_zep_episode
+from tests.conftest import GRAPH_UUID, make_episode_result
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.submitters.sequential import (
     MAX_RETRY_WAIT_SECONDS,
@@ -14,7 +14,7 @@ from zep_ingest.submitters.sequential import (
 )
 from zep_ingest.types import Destination, Episode
 
-DEST = Destination(user_id="u1")
+DEST = Destination(graph_uuid=GRAPH_UUID)
 
 
 @pytest.fixture
@@ -30,18 +30,22 @@ def episodes(n: int) -> list[Episode]:
 
 class TestSubmission:
     def test_order_and_payload(self, mock_zep, sleeps):
-        mock_zep.graph.add.side_effect = [make_zep_episode(f"uuid-{i}") for i in range(3)]
+        mock_zep.graph.episode.add.side_effect = [
+            make_episode_result(f"uuid-{i}") for i in range(3)
+        ]
         result = SequentialSubmitter(mock_zep).submit(episodes(3), DEST)
-        datas = [c.kwargs["data"] for c in mock_zep.graph.add.call_args_list]
+        datas = [c.kwargs["data"] for c in mock_zep.graph.episode.add.call_args_list]
         assert datas == ["episode 0", "episode 1", "episode 2"]
-        assert all(c.kwargs["user_id"] == "u1" for c in mock_zep.graph.add.call_args_list)
+        assert all(
+            c.kwargs["graph_uuid"] == GRAPH_UUID for c in mock_zep.graph.episode.add.call_args_list
+        )
         assert result.method == "sequential"
         assert result.items_submitted == 3
         assert result.episode_uuids == ["uuid-0", "uuid-1", "uuid-2"]
 
     def test_empty_stream_no_calls(self, mock_zep, sleeps):
         result = SequentialSubmitter(mock_zep).submit([], DEST)
-        mock_zep.graph.add.assert_not_called()
+        mock_zep.graph.episode.add.assert_not_called()
         assert result.status == "succeeded"
 
 
@@ -79,9 +83,9 @@ class TestRateLimits:
         assert _retry_after_seconds(error) is None
 
     def test_429_honors_retry_after_then_succeeds(self, mock_zep, sleeps):
-        mock_zep.graph.add.side_effect = [
+        mock_zep.graph.episode.add.side_effect = [
             ApiError(status_code=429, headers={"Retry-After": "3"}),
-            make_zep_episode("uuid-0"),
+            make_episode_result("uuid-0"),
         ]
         result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
         assert result.add_errors == []
@@ -89,10 +93,10 @@ class TestRateLimits:
         assert sleeps[0] == 3.0
 
     def test_429_without_header_uses_backoff(self, mock_zep, sleeps):
-        mock_zep.graph.add.side_effect = [
+        mock_zep.graph.episode.add.side_effect = [
             ApiError(status_code=429),
             ApiError(status_code=429),
-            make_zep_episode("uuid-0"),
+            make_episode_result("uuid-0"),
         ]
         result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
         assert result.add_errors == []
@@ -105,39 +109,41 @@ class TestRateLimits:
         def side_effect(**kwargs):
             if kwargs["data"] == "episode 0":
                 raise ApiError(status_code=429, body="rate limited")
-            return make_zep_episode(kwargs["data"])
+            return make_episode_result(kwargs["data"])
 
-        mock_zep.graph.add.side_effect = side_effect
+        mock_zep.graph.episode.add.side_effect = side_effect
         result = SequentialSubmitter(mock_zep, max_retries=2).submit(episodes(2), DEST)
         assert len(result.add_errors) == 1
         assert result.add_errors[0].index == 0
         assert result.items_submitted == 1
 
     def test_client_error_not_retried(self, mock_zep, sleeps):
-        mock_zep.graph.add.side_effect = [
+        mock_zep.graph.episode.add.side_effect = [
             ApiError(status_code=400, body="bad request"),
-            make_zep_episode("uuid-1"),
+            make_episode_result("uuid-1"),
         ]
         result = SequentialSubmitter(mock_zep).submit(episodes(2), DEST)
-        assert mock_zep.graph.add.call_count == 2
+        assert mock_zep.graph.episode.add.call_count == 2
         assert len(result.add_errors) == 1
-        assert result.add_errors[0].error == "graph.add failed: status=400, body=bad request"
+        assert (
+            result.add_errors[0].error == "graph.episode.add failed: status=400, body=bad request"
+        )
         assert sleeps == []
 
     def test_server_error_is_not_retried_without_idempotency(self, mock_zep, sleeps):
-        mock_zep.graph.add.side_effect = [
+        mock_zep.graph.episode.add.side_effect = [
             ApiError(status_code=503),
-            make_zep_episode("uuid-0"),
+            make_episode_result("uuid-0"),
         ]
         result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
         assert len(result.add_errors) == 1
-        assert mock_zep.graph.add.call_count == 1
+        assert mock_zep.graph.episode.add.call_count == 1
         assert sleeps == []
 
     def test_absurd_retry_after_is_capped(self, mock_zep, sleeps):
-        mock_zep.graph.add.side_effect = [
+        mock_zep.graph.episode.add.side_effect = [
             ApiError(status_code=429, headers={"Retry-After": "86400"}),
-            make_zep_episode("uuid-0"),
+            make_episode_result("uuid-0"),
         ]
         result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
         assert result.episode_uuids == ["uuid-0"]
@@ -157,9 +163,9 @@ class TestRateLimits:
         [("-1", 0.0), ("2", 2.0)],
     )
     def test_out_of_range_retry_after_still_retries(self, mock_zep, sleeps, header, expected_sleep):
-        mock_zep.graph.add.side_effect = [
+        mock_zep.graph.episode.add.side_effect = [
             ApiError(status_code=429, headers={"Retry-After": header}),
-            make_zep_episode("uuid-0"),
+            make_episode_result("uuid-0"),
         ]
         result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
         assert result.add_errors == []
@@ -187,26 +193,26 @@ class TestTransportErrors:
         def side_effect(**kwargs):
             if kwargs["data"] == "episode 2":
                 raise httpx.ReadTimeout("response never arrived")
-            return make_zep_episode(kwargs["data"])
+            return make_episode_result(kwargs["data"])
 
-        mock_zep.graph.add.side_effect = side_effect
+        mock_zep.graph.episode.add.side_effect = side_effect
         result = SequentialSubmitter(mock_zep).submit(episodes(4), DEST)
         # the caller still gets a result carrying every episode already written
         assert result.episode_uuids == ["episode 0", "episode 1", "episode 3"]
         assert result.items_submitted == 3
         [error] = result.add_errors
         assert error.index == 2
-        assert error.error == "graph.add failed: transport error ReadTimeout"
+        assert error.error == "graph.episode.add failed: transport error ReadTimeout"
         assert result.status == "partial"
 
     def test_read_timeout_is_not_retried_without_idempotency(self, mock_zep, sleeps):
         # the request went out, so the write may already have landed
-        mock_zep.graph.add.side_effect = [
+        mock_zep.graph.episode.add.side_effect = [
             httpx.ReadTimeout("response never arrived"),
-            make_zep_episode("uuid-0"),
+            make_episode_result("uuid-0"),
         ]
         result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
-        assert mock_zep.graph.add.call_count == 1
+        assert mock_zep.graph.episode.add.call_count == 1
         assert len(result.add_errors) == 1
         assert sleeps == []
 
@@ -220,9 +226,9 @@ class TestTransportErrors:
     )
     def test_unsent_transport_error_is_retried(self, mock_zep, sleeps, error):
         # the request never reached the server, so retrying cannot duplicate it
-        mock_zep.graph.add.side_effect = [error, make_zep_episode("uuid-0")]
+        mock_zep.graph.episode.add.side_effect = [error, make_episode_result("uuid-0")]
         result = SequentialSubmitter(mock_zep).submit(episodes(1), DEST)
-        assert mock_zep.graph.add.call_count == 2
+        assert mock_zep.graph.episode.add.call_count == 2
         assert result.add_errors == []
         assert result.episode_uuids == ["uuid-0"]
         assert len(sleeps) == 1
@@ -231,14 +237,14 @@ class TestTransportErrors:
         def side_effect(**kwargs):
             if kwargs["data"] == "episode 0":
                 raise httpx.ConnectError("connection refused")
-            return make_zep_episode(kwargs["data"])
+            return make_episode_result(kwargs["data"])
 
-        mock_zep.graph.add.side_effect = side_effect
+        mock_zep.graph.episode.add.side_effect = side_effect
         result = SequentialSubmitter(mock_zep, max_retries=2).submit(episodes(2), DEST)
         assert len(result.add_errors) == 1
         assert result.episode_uuids == ["episode 1"]
 
     def test_transport_error_does_not_contain_episode_data(self, mock_zep, sleeps):
-        mock_zep.graph.add.side_effect = httpx.ReadTimeout("SENSITIVE-CONTENT")
+        mock_zep.graph.episode.add.side_effect = httpx.ReadTimeout("SENSITIVE-CONTENT")
         result = SequentialSubmitter(mock_zep).submit([Episode(data="SENSITIVE-CONTENT")], DEST)
         assert "SENSITIVE-CONTENT" not in result.add_errors[0].error

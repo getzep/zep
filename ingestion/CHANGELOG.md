@@ -4,6 +4,39 @@ All notable changes to `zep-ingest` are documented here. The project follows
 [Semantic Versioning](https://semver.org); while at `0.x` the public API may
 still change between minor versions.
 
+## Unreleased
+
+- **The package targets the Zep v4 API and the `zep-cloud` 4.x SDK.** The
+  dependency is pinned to `zep-cloud==4.0.0a5`. The package gives no v3
+  compatibility path.
+- **Every destination is a UUID.** v4 addresses a graph, a user, and a thread
+  by a server-generated UUID, so every public parameter takes a UUID. Episode
+  ingestion takes `graph_uuid=` in place of `graph_id=`/`user_id=`, and
+  `ThreadMessage` takes `thread_uuid` in place of `thread_id`. The application
+  creates the graph, the user, and the thread one time, stores each returned
+  UUID, and passes the UUID here. The package does no identifier lookup at run
+  time and creates no user or thread.
+- **v4 submission methods.** Episodes go to `graph.episode.add`, batches go to
+  `batch.create` + `batch.add_items` + `batch.process`, nodes go to
+  `graph.node.add`, and fact triples go to `graph.edge.add`.
+- **Search uses the v4 scope methods.** `search_when_ready` calls
+  `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`,
+  `graph.search_observations`, or `graph.search_thread_summaries`, and returns
+  the first page of items.
+- **Reference time on paths that v4 does not support.** A v4 batch item and a
+  v4 thread message have no reference-time field. The sequential episode path
+  still sends `created_at`. On the batch episode path and on every thread
+  message path the value is validated, not sent, and counted in
+  `result.warnings`. Put the source timestamp in `metadata` when the
+  application must read it later.
+- **Sequential thread ingestion is task-tracked.** v4 `thread.add_messages`
+  returns a task, so `wait()` polls the returned task instead of message UUIDs.
+- **Known gaps in the current v4 deployment.** Batch items for a standalone
+  graph and the direct `thread.add_messages` and `thread.get_context` calls
+  return 404 against `api.getzep.com`. The batch path works for user graphs
+  and thread messages; submit standalone-graph episodes with
+  `method="sequential"`.
+
 ## 0.3.0
 
 - **Submit everything, then wait once.** Multiple files or loaders destined for

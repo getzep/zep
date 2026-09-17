@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from zep_cloud.client import Zep
-from zep_cloud.types import Message
+from zep_cloud.types import AddMessage
 
 from zep_ingest import Episode, NodeItem, ingest, ingest_json_records, ingest_nodes
 from zep_ingest.exceptions import BatchUnavailableError
@@ -46,8 +46,8 @@ def instrument_client(client: Zep) -> PollStats:
         return orig_batch_get(batch_id, *args, **kwargs)
 
     def episode_get(*args: Any, **kwargs: Any):
-        uuid_ = kwargs.get("uuid_") or (args[0] if args else "?")
-        stats.episode_get[str(uuid_)] += 1
+        episode_uuid = kwargs.get("episode_uuid") or (args[-1] if args else "?")
+        stats.episode_get[str(episode_uuid)] += 1
         return orig_episode_get(*args, **kwargs)
 
     def task_get(task_id: str, *args: Any, **kwargs: Any):
@@ -98,39 +98,35 @@ def main() -> int:
     client = Zep()
     stats_holder: list[PollStats] = []
 
-    graph_id = f"ingest-smoke-{run_id}"
-    user_id = f"ingest-smoke-user-{run_id}"
-    client.graph.create(graph_id=graph_id, name=f"ingest smoke {run_id}")
-    client.user.add(
-        user_id=user_id,
+    # v4 addresses a graph, a user, and a thread by the UUID that the create
+    # call returns.
+    graph_uuid = client.graph.create(name=f"ingest smoke {run_id}").uuid_
+    user = client.user.create(
         first_name="Ingest",
         last_name="Smoke",
-        email=f"{user_id}@example.com",
+        email=f"ingest-smoke-{run_id}@example.com",
     )
+    user_uuid = user.uuid_
 
     results: list[CaseResult] = []
 
-    def case_thread_add_messages_no_task_id() -> str:
-        thread_id = f"probe-{run_id}"
-        client.thread.create(thread_id=thread_id, user_id=user_id)
+    def case_thread_add_messages_returns_task() -> str:
+        thread_uuid = client.thread.create(user_uuid=user_uuid).uuid_
         response = client.thread.add_messages(
-            thread_id,
+            thread_uuid,
             messages=[
-                Message(
+                AddMessage(
                     role="user",
                     name="Smoke Tester",
                     content="Probe: sequential thread.add_messages response shape.",
-                    created_at="2025-06-01T12:00:00Z",
                 )
             ],
         )
-        uuids = getattr(response, "message_uuids", None) or []
-        task_id = getattr(response, "task_id", None)
-        if not uuids:
-            raise AssertionError("expected message_uuids from thread.add_messages")
-        if task_id is not None:
-            raise AssertionError(f"expected task_id=None, got {task_id!r}")
-        return f"message_uuids={len(uuids)}, task_id=null"
+        messages = response.messages or []
+        task = response.task
+        if not messages:
+            raise AssertionError("expected messages from thread.add_messages")
+        return f"messages={len(messages)}, task={task.uuid_ if task else None}"
 
     def case_batch_submit_all_wait_once() -> str:
         stats = instrument_client(client)
@@ -144,7 +140,7 @@ def main() -> int:
         ]
         t0 = time.monotonic()
         try:
-            result = ingest(client, ListLoader(episodes), graph_id=graph_id, method="batch")
+            result = ingest(client, ListLoader(episodes), graph_uuid=graph_uuid, method="batch")
         except BatchUnavailableError as exc:
             raise AssertionError("production must support batch API") from exc
         submit_s = time.monotonic() - t0
@@ -173,7 +169,7 @@ def main() -> int:
             )
             for i in range(3)
         ]
-        result = ingest(client, ListLoader(episodes), graph_id=graph_id, method="sequential")
+        result = ingest(client, ListLoader(episodes), graph_uuid=graph_uuid, method="sequential")
         assert len(result.episode_uuids) == 3
         tail = result.episode_uuids[-1]
         pre = sum(stats.episode_get.values())
@@ -199,7 +195,7 @@ def main() -> int:
                 NodeItem(name=f"Smoke Entity A {run_id}", label="Entity"),
                 NodeItem(name=f"Smoke Entity B {run_id}", label="Entity"),
             ],
-            graph_id=graph_id,
+            graph_uuid=graph_uuid,
         )
         assert nodes.task_ids, "add_nodes should return task_ids"
         assert not nodes.episode_uuids
@@ -221,7 +217,7 @@ def main() -> int:
                     )
                 ]
             ),
-            graph_id=graph_id,
+            graph_uuid=graph_uuid,
             method="batch",
         )
         t1 = time.monotonic()
@@ -256,7 +252,7 @@ def main() -> int:
             result = ingest_json_records(
                 client,
                 paths,
-                graph_id=graph_id,
+                graph_uuid=graph_uuid,
                 id_field="id",
                 created_at_field="date",
             )
@@ -274,63 +270,54 @@ def main() -> int:
     def case_multi_thread_sequential_wait() -> str:
         stats = instrument_client(client)
         stats_holder.append(stats)
-        t1 = f"thread-a-{run_id}"
-        t2 = f"thread-b-{run_id}"
-        client.thread.create(thread_id=t1, user_id=user_id)
-        client.thread.create(thread_id=t2, user_id=user_id)
+        t1 = client.thread.create(user_uuid=user_uuid).uuid_
+        t2 = client.thread.create(user_uuid=user_uuid).uuid_
         messages = [
             ThreadMessage(
-                thread_id=t1,
+                thread_uuid=t1,
                 role="user",
                 name="Alice",
                 content=f"Thread A message 1 for {run_id}.",
-                created_at="2025-01-01T10:00:00Z",
             ),
             ThreadMessage(
-                thread_id=t2,
+                thread_uuid=t2,
                 role="user",
                 name="Bob",
                 content=f"Thread B message 1 for {run_id}.",
-                created_at="2025-01-01T10:01:00Z",
             ),
             ThreadMessage(
-                thread_id=t1,
+                thread_uuid=t1,
                 role="user",
                 name="Alice",
                 content=f"Thread A message 2 for {run_id}.",
-                created_at="2025-01-01T10:02:00Z",
             ),
         ]
-        result = ingest_thread_messages(client, messages, user_id=user_id, method="sequential")
-        assert result.task_ids == []
-        assert len(result.episode_uuids) == 2
+        result = ingest_thread_messages(client, messages, method="sequential")
+        assert result.task_ids, "v4 thread.add_messages should return a task"
+        assert not result.episode_uuids
         assert result._single_queue_episode_poll is False
         result.wait(poll_interval=5.0, timeout=600)
         assert result.status == "succeeded"
-        polled = set(stats.episode_get.keys())
-        assert polled == set(result.episode_uuids), f"polled {polled} vs {result.episode_uuids}"
         return (
-            f"threads=2 poll_uuids={result.episode_uuids} "
-            f"episode.get total={sum(stats.episode_get.values())} status={result.status}"
+            f"threads=2 task_ids={len(result.task_ids)} "
+            f"task.get total={stats.task_get} status={result.status}"
         )
 
     def case_thread_batch_backfill() -> str:
         stats = instrument_client(client)
         stats_holder.append(stats)
-        thread_id = f"batch-thread-{run_id}"
-        client.thread.create(thread_id=thread_id, user_id=user_id)
+        thread_uuid = client.thread.create(user_uuid=user_uuid).uuid_
         messages = [
             ThreadMessage(
-                thread_id=thread_id,
+                thread_uuid=thread_uuid,
                 role="user",
                 name="Carol",
                 content=f"Batch thread message {i} for {run_id}.",
-                created_at=f"2025-02-{10 + i:02d}T12:00:00Z",
             )
             for i in range(4)
         ]
         try:
-            result = ingest_thread_messages(client, messages, user_id=user_id, method="batch")
+            result = ingest_thread_messages(client, messages, method="batch")
         except BatchUnavailableError as exc:
             raise AssertionError("production must support batch for thread backfill") from exc
         assert result.batch_ids
@@ -343,16 +330,16 @@ def main() -> int:
         )
 
     cases = [
-        ("thread.add_messages has message_uuids not task_id", case_thread_add_messages_no_task_id),
+        ("thread.add_messages returns messages and a task", case_thread_add_messages_returns_task),
         ("batch: submit 5 episodes then wait once", case_batch_submit_all_wait_once),
-        ("sequential graph.add: tail episode poll", case_sequential_tail_episode_poll),
+        ("sequential graph.episode.add: tail episode poll", case_sequential_tail_episode_poll),
         ("phased: nodes.wait then episodes.wait", case_phased_nodes_then_episodes),
         ("multi-file json: one submit one wait", case_multi_file_one_wait),
         ("multi-thread sequential: poll each thread tail", case_multi_thread_sequential_wait),
         ("thread batch backfill: batch.get wait", case_thread_batch_backfill),
     ]
 
-    print(f"zep-ingest production smoke  run_id={run_id}  graph_id={graph_id}")
+    print(f"zep-ingest production smoke  run_id={run_id}  graph_uuid={graph_uuid}")
     print("-" * 72)
     for name, fn in cases:
         result = run_case(name, fn)
@@ -366,9 +353,9 @@ def main() -> int:
     print(f"{passed}/{len(results)} passed")
 
     try:
-        client.graph.delete(graph_id)
+        client.graph.delete(graph_uuid)
     except Exception:  # noqa: BLE001
-        print(f"warning: could not delete graph {graph_id}")
+        print(f"warning: could not delete graph {graph_uuid}")
 
     return 0 if passed == len(results) else 1
 

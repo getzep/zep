@@ -26,7 +26,7 @@ the [dashboard](https://app.getzep.com) when you're done.
 | [`json_records_example.py`](json_records_example.py) | structured records with identity-field mapping — Zep extracts the relationships | named graph |
 | [`slack_export_example.py`](slack_export_example.py) | free `preview()` first, then a Slack export with thread grouping, `skip_subtypes`, and the opt-in risky-alias guard | named graph |
 | [`user_graph_example.py`](user_graph_example.py) | **combined**: profile fact triples → chat-thread backfill → a document, all on one user's graph | user graph |
-| [`thread_backfill_example.py`](thread_backfill_example.py) | historic chat history (JSONL) → threads that power `thread.get_user_context()` | user graph |
+| [`thread_backfill_example.py`](thread_backfill_example.py) | historic chat history (JSONL) → threads that feed the user context block | user graph |
 
 `example_ontology.py` is the starter ontology every example applies with
 `client.graph.set_ontology(...)` before ingesting — copy it and adapt the types
@@ -41,13 +41,22 @@ handbook, a directory export, a catalog, a Slack export, and chat histories so
 the resulting graph contains useful cross-source relationships.
 
 Thread-message files (`chat_history.jsonl`, `combined_threads.jsonl`) are one
-JSON object per line with columns matching `ThreadMessage`; a JSON array with
-the same columns also works:
+JSON object per line. Each row carries a local thread name in `thread_id`,
+which is how a historic export identifies its conversations:
 
 ```json
 {"thread_id": "support-1", "role": "user", "name": "Morgan Lee",
  "content": "...", "created_at": "2025-04-10T15:02:00Z"}
 ```
 
-Every row is validated client-side before the first API call — role, RFC3339
-`created_at`, metadata limits — so a bad line 500 fails fast, not mid-run.
+The v4 API addresses a thread by its UUID, so each example creates one thread
+for each local name, keeps the returned `uuid_`, and builds a `ThreadMessage`
+with that `thread_uuid`. A `ThreadMessage` file that already carries a
+`thread_uuid` column can go directly to `ingest_thread_messages`.
+
+v4 has no reference-time field for a thread message, so the examples copy the
+source `created_at` into the message `metadata`.
+
+Every message is validated client-side before the first API call — thread
+UUID, role, RFC3339 `created_at`, metadata limits — so a bad line 500 fails
+fast, not mid-run.

@@ -12,7 +12,8 @@ pip install "zep-ingest[anthropic]"   # or [openai]
 ```
 
 ```python
-from example_ontology import ONTOLOGY  # copy examples/example_ontology.py, adapt it
+# copy examples/example_ontology.py, adapt it
+from example_ontology import EDGE_TYPES, ENTITY_TYPES
 from zep_cloud.client import Zep
 from zep_ingest import ingest_slack_export, ingest_documents, ingest_json_records
 
@@ -21,16 +22,23 @@ client = Zep(api_key="...")
 # Setup is yours, once per graph: zep-ingest writes only into graphs that
 # already exist and already carry their ontology (see Ontology below). The
 # ontology is not retroactive, so set it before the first ingest.
-for graph_id in ("team_knowledge", "company_kb", "catalog"):
-    client.graph.create(graph_id=graph_id)
-    client.graph.set_ontology(
-        entities=ONTOLOGY["entities"], edges=ONTOLOGY["edges"], graph_ids=[graph_id]
-    )
+graph_uuids = {}
+for name in ("team_knowledge", "company_kb", "catalog"):
+    graph = client.graph.create(name=name)
+    graph_uuids[name] = graph.uuid_
+    client.graph.set_ontology(graph.uuid_, entity_types=ENTITY_TYPES, edge_types=EDGE_TYPES)
 
-ingest_slack_export(client, "slack-export.zip", graph_id="team_knowledge")
-ingest_documents(client, "handbook/**/*.md", graph_id="company_kb")
-ingest_json_records(client, "products.csv", graph_id="catalog", id_field="sku")
+ingest_slack_export(client, "slack-export.zip", graph_uuid=graph_uuids["team_knowledge"])
+ingest_documents(client, "handbook/**/*.md", graph_uuid=graph_uuids["company_kb"])
+ingest_json_records(client, "products.csv", graph_uuid=graph_uuids["catalog"], id_field="sku")
 ```
+
+The v4 API addresses a graph, a user, and a thread by a server-generated UUID.
+A `graph_id`, a `user_id`, and a `thread_id` are names, not addresses. Every
+public parameter of this package therefore takes a UUID: `graph_uuid` and
+`thread_uuid`. The application creates the graph, the user, and the thread one
+time, stores each returned UUID, and passes the UUID here. The package does no
+identifier lookup at run time.
 
 ## Why this package exists
 
@@ -54,7 +62,7 @@ yourself, once, then ingest into it. See
 | Email exports (.eml files) | `ingest_emails` | `text`, with sender/recipient/subject inline, dated by the `Date:` header |
 | A user's own chat history (app conversations) | `ingest_thread_messages` | thread messages on the **user graph** |
 | Records (CSV / JSONL / JSON array; CRM rows, catalogs) | `ingest_json_records` | one `json` episode per record, as you provide it (shaping is yours) |
-| Known, exact relationships (org chart, entity seeding) | `ingest_fact_triples` | fact triples via `graph.add_fact_triple` |
+| Known, exact relationships (org chart, entity seeding) | `ingest_fact_triples` | fact triples via `graph.edge.add` |
 | Anything else | implement a `Loader`, use `ingest(...)` | you decide |
 
 **Extraction vs explicit facts:** narrative content (conversations, documents)
@@ -63,22 +71,30 @@ relationship ("Avery Brown is RESPONSIBLE for OPERATIONS-DASHBOARD"), assert it 
 triple instead — no extraction variance, and pre-seeded canonical entities
 anchor later extraction.
 
-**User graph vs named graph:** pass exactly one of `user_id=` (memory about one
-user) or `graph_id=` (a shared/business graph). Passing both or neither is a
-`ConfigurationError` before any API call. For a user's own conversations,
-use `ingest_thread_messages` — messages land on the user graph via threads
-(the same store `thread.get_user_context()` reads). Every message requires
-`thread_id`, `role`, `name`, `content`, and `created_at` (only `metadata` is
-optional). The user must already exist; missing threads are created for you
-(they are backfill-owned), messages over the 4,096-character thread-message
-limit are split at sentence boundaries, and per-thread order is preserved.
-`method="auto"` uses the Batch API and transparently falls back to sequential
-`thread.add_messages` only when the deployment doesn't serve the batch endpoint
-at all. Thread ids are global to a project — pass `thread_id_suffix=` to
-namespace a backfill without rewriting the source data.
+**User graph vs named graph:** every episode one-liner takes `graph_uuid=`. A
+user graph has a UUID too: `client.user.create(...)` returns `graph_uuid` for
+that user, so business data and user data use the same parameter. A missing
+`graph_uuid` is a `ConfigurationError` before any API call. For a user's own
+conversations, use `ingest_thread_messages` — messages land on the user graph
+via threads (the same store `thread.get_context()` reads). Every message
+requires `thread_uuid`, `role`, `name`, and `content` (`metadata` and
+`created_at` are optional). The user and the thread must already exist: the
+package creates no user and no thread, and it resolves no name at run time.
+Messages over the 4,096-character thread-message limit are split at sentence
+boundaries, and per-thread order is preserved. `method="auto"` uses the Batch
+API and transparently falls back to sequential `thread.add_messages` only when
+the deployment doesn't serve the batch endpoint at all.
 Pass `ignore_roles=["assistant"]` to keep assistant turns as conversational
 context but exclude them from graph extraction (they stay in thread history);
 it applies on both the batch and sequential paths.
+
+**Thread messages and `created_at`:** v4 has no reference-time field for a
+thread message. `ThreadMessage.created_at` is still validated, and the value is
+not sent. The result reports the number of messages whose timestamp was
+dropped. Keep the original timestamp in `metadata` when the application must
+read it later. An episode keeps its reference time on the sequential path
+(`graph.episode.add` takes `created_at`); the v4 batch item has no such field,
+so the batch path reports the same kind of warning.
 
 **Slack conversation types:** a Slack export indexes its conversations in four
 files — `channels.json` (public channels), `groups.json` (private channels),
@@ -91,13 +107,13 @@ works:
 
 ```python
 # Public channels only — the default, e.g. a company-wide standalone graph:
-ingest_slack_export(client, "export.zip", graph_id="company_wide")
+ingest_slack_export(client, "export.zip", graph_uuid=company_wide_uuid)
 
 # DMs only, into their own graph:
 ingest_slack_export(
     client,
     "export.zip",
-    graph_id="dm_history",
+    graph_uuid=dm_history_uuid,
     conversation_types=["dm", "group_dm"],
 )
 ```
@@ -126,14 +142,14 @@ roster is thin, `formatter=` receives each `SlackMessage` — including its raw
 ingest_slack_export(
     client,
     "export.zip",
-    graph_id="team_knowledge",
+    graph_uuid=team_knowledge_uuid,
     formatter=lambda m: f"{DIRECTORY.get(m.user_id, m.sender)}: {m.text}",
 )
 ```
 
 **Batch vs sequential:** the Batch API is the high-throughput submission path
 (10k items/batch by default, up to the API's 50k cap). `method="auto"` tries
-batch and transparently falls back to sequential `graph.add` calls with
+batch and transparently falls back to sequential `graph.episode.add` calls with
 rate-limit-aware pacing in exactly one case: the deployment has no batch
 endpoint to call (HTTP 404 — an older server, a self-hosted or Community
 deployment, or a base URL that doesn't route `/batches`). Authorization and
@@ -141,11 +157,19 @@ quota errors are raised as errors instead of quietly downgrading the run.
 Every source here ingests fine without the Batch API — pass
 `method="sequential"` to take that path deliberately. Sequential does **not**
 mean "wait until this file has finished extracting before submitting the next."
-It only means each item is sent with `graph.add` (or `thread.add_messages`)
+It only means each item is sent with `graph.episode.add` (or `thread.add_messages`)
 instead of the Batch API. Submit every file into the graph first; `wait()` is
 opt-in. On the default Batch path it monitors `batch.get` on the last batch;
 on sequential fallback it polls the last-submitted episode's `processed` flag
 (see [Check data ingestion status](https://help.getzep.com/check-data-ingestion-status)).
+
+**Known gaps in the current v4 deployment** (`zep-cloud==4.0.0a5` against
+`api.getzep.com`): batch items for a standalone graph return 404 — the batch
+path works for user graphs and thread messages, so submit standalone-graph
+episodes with `method="sequential"`; `thread.add_messages` and
+`thread.get_context` return 404 — `auto` still backfills threads through the
+batch path, and `graph.get_context` returns the user context block. These are
+server-side gaps in the alpha, not package behavior.
 
 ## The pipeline
 
@@ -171,7 +195,7 @@ pipeline = Pipeline(
     ],
 )
 report = pipeline.preview()  # NO Zep API calls: inspect episodes + warnings first
-result = pipeline.run(client, graph_id="company_kb")
+result = pipeline.run(client, graph_uuid=company_kb_uuid)
 result.wait()  # opt-in; batch.get tail or last-submitted episode; timeout scales with item count
 ```
 
@@ -223,7 +247,7 @@ class MyLLM:
     def complete(self, prompt: str) -> str: ...
 
 
-ingest_documents(client, "docs/**/*.md", graph_id="kb", llm=MyLLM())
+ingest_documents(client, "docs/**/*.md", graph_uuid=kb_uuid, llm=MyLLM())
 ```
 
 Three adapters ship as conveniences (mirroring the pattern Graphiti — Zep's
@@ -303,24 +327,31 @@ Two facts drive everything here:
    before your first ingest run:
 
    ```python
-   from zep_cloud import EntityEdgeSourceTarget
+   from zep_cloud import EdgeSourceTarget, EdgeType, EntityProperty, EntityType
 
    client.graph.set_ontology(
-       entities={"Person": Person, "Organization": Organization},
-       edges={
-           "WORKS_AT": (
-               WorksAt,
-               [EntityEdgeSourceTarget(source="Person", target="Organization")],
+       graph_uuid,  # the UUID that graph.create or user.create returned
+       entity_types=[
+           EntityType(
+               name="Person",
+               description="A named individual.",
+               properties=[EntityProperty(name="role", type="Text", description="Job role.")],
            ),
-       },
-       graph_ids=["org"],  # or user_ids=[...]; omit both to apply project-wide
+       ],
+       edge_types=[
+           EdgeType(
+               name="WORKS_AT",
+               description="A person works at an organization.",
+               source_targets=[EdgeSourceTarget(source="Person", target="Organization")],
+           ),
+       ],
    )
    ```
 
    The ontology is a property of the **graph**, not of an ingest run, so
    `zep-ingest` has no `ontology=` parameter — running several one-liners
    against one graph would otherwise re-declare it per call, and
-   `set_ontology` *replaces* the whole ontology for its scope, so the last
+   `set_ontology` *replaces* the whole ontology of the graph, so the last
    call would silently win. Configure the graph first; then ingest into it.
 2. **The ontology guides classification; it is not enforced.** Extraction
    reuses a declared type when it confidently matches and derives a new name
@@ -352,10 +383,11 @@ graph kind:
   declares Location and LOCATED_AT itself.
 - **User graphs:** your custom types are *additive* to the defaults; a same-name
   declaration overrides how that type classifies, and the defaults can be turned
-  off with `user.add(disable_default_ontology=True)`.
+  off with `user.create(disable_default_ontology=True)`.
 
 Either way, avoid the reserved field names (`uuid`, `name`, `graph_id`,
-`name_embedding`, `summary`, `created_at`).
+`name_embedding`, `summary`, `created_at`). `graph_id` stays reserved as a
+property name on a node, although v4 addresses the graph itself by UUID.
 
 **Don't start from a blank page:**
 [`examples/example_ontology.py`](https://github.com/getzep/zep/blob/main/ingestion/examples/example_ontology.py) ships a starter
@@ -375,16 +407,17 @@ for a named graph and
 [`examples/user_graph_example.py`](https://github.com/getzep/zep/blob/main/ingestion/examples/user_graph_example.py) for a user
 graph):
 
-1. Create the graph: `client.graph.create(graph_id=...)` (or `client.user.add(...)`
-   for a user graph). The ingestion package writes only into existing graphs —
-   it never creates them.
-2. Set the ontology before any data flows: `client.graph.set_ontology(...)`,
-   scoped with `graph_ids=`/`user_ids=` (or project-wide by omitting both). It is
-   not retroactive, and the ingestion package never sets it for you.
+1. Create the graph: `client.graph.create(name=...)` (or `client.user.create(...)`
+   for a user graph, which returns the user's `graph_uuid`). Keep the returned
+   UUID: it addresses the graph in every later call. The ingestion package
+   writes only into existing graphs — it never creates them.
+2. Set the ontology before any data flows:
+   `client.graph.set_ontology(graph_uuid, entity_types=..., edge_types=...)`. It
+   is not retroactive, and the ingestion package never sets it for you.
 3. Optionally seed canonical entities with `ingest_nodes` and keep
    `result.node_uuids` (Zep assigns them; do not supply a client UUID). Use
-   `client.graph.node.update` with those UUIDs for later edits — `add_nodes`
-   always creates new nodes.
+   `client.graph.node.update` with those UUIDs for later edits —
+   `graph.node.add` always creates new nodes.
 4. Optionally connect fact triples to those entities by pinning endpoints with
    `source_node_uuid`/`target_node_uuid`. Extraction dedups against the existing
    graph, so known entities anchor resolution.
@@ -405,7 +438,7 @@ from zep_ingest import ConcatLoader, ingest, ingest_json_records, ingest_nodes
 result = ingest_json_records(
     client,
     ["data/issues.jsonl", "data/prs.jsonl", "data/jira.jsonl"],
-    graph_id="engineering",
+    graph_uuid=engineering_uuid,
 )
 result.wait()  # batch.get on the last batch (default path); timeout scales with items_submitted
 
@@ -420,14 +453,16 @@ result = ingest(
             TextFileLoader("data/runbooks/**/*.md"),
         ]
     ),
-    graph_id="engineering",
+    graph_uuid=engineering_uuid,
 )
 result.wait()
 
 # Already-separate calls: prefer separate wait() for seeding vs episodes.
-nodes = ingest_nodes(client, node_items, graph_id="engineering")
+nodes = ingest_nodes(client, node_items, graph_uuid=engineering_uuid)
 nodes.wait()
-docs = ingest_json_records(client, ["data/issues.jsonl", "data/prs.jsonl"], graph_id="engineering")
+docs = ingest_json_records(
+    client, ["data/issues.jsonl", "data/prs.jsonl"], graph_uuid=engineering_uuid
+)
 docs.wait()
 ```
 
@@ -453,10 +488,10 @@ result = ingest_fact_triples(
             valid_at="2024-06-15T00:00:00Z",
         ),
     ],
-    graph_id="org",
+    graph_uuid=org_uuid,
 )
 result.wait()
-# Zep assigns the fact UUID; it lands in task params as edge_uuid after completion.
+# Zep assigns the fact UUID; it is in the task result as edge_uuid after completion.
 # Parallel to the submitted triples — failed tasks leave None in that slot.
 result.edge_uuids
 ```
@@ -478,7 +513,7 @@ Batch API doesn't take triples).
 
 When you have canonical entities to create up front — before any extraction, and
 without relationships — `ingest_nodes` adds them directly via
-`client.graph.add_nodes`:
+`client.graph.node.add`:
 
 ```python
 from zep_ingest import NodeItem, ingest_nodes
@@ -489,7 +524,7 @@ result = ingest_nodes(
         NodeItem(name="Ana Azimova", label="Person"),
         NodeItem(name="GTM analytics", label="Project"),
     ],
-    graph_id="org",
+    graph_uuid=org_uuid,
 )
 # Zep assigns each node's UUID — keep them for updates and fact-triple pinning.
 result.node_uuids
@@ -498,7 +533,7 @@ result.node_uuids
 Zep assigns node UUIDs; do not supply them (a client `uuid` is rejected).
 `result.node_uuids` is parallel to the submitted list — each success carries
 the assigned UUID, and a failed batch leaves `None` in those slots so a later
-success cannot shift under `zip`. Direct `add_nodes` calls create new nodes
+success cannot shift under `zip`. Direct `graph.node.add` calls create new nodes
 each time (no name or UUID upsert) — use `client.graph.node.update` with a
 returned UUID to rename, replace a summary, edit attributes, or clear an
 entity type. Up to 100 nodes per request, every documented limit (name ≤50,
@@ -509,7 +544,7 @@ Sequential only (the Batch API doesn't take direct nodes).
 ## Monitoring a run
 
 ```python
-result = ingest_slack_export(client, "export.zip", graph_id="g1")
+result = ingest_slack_export(client, "export.zip", graph_uuid=graph_uuid)
 result.status  # queued | processing | untracked | succeeded | partial | failed | canceled
 result.wait()
 result.failed_items()  # Batch API item records and/or submission AddErrors
@@ -530,11 +565,11 @@ resuming or diagnosing that run.
 | Submission path | Monitor via `wait()` |
 | --- | --- |
 | Batch API (default for episodes and thread backfill) | Last `batch_id` via `batch.get` |
-| Sequential `graph.add` (batch fallback) | Last-submitted episode (`episode_uuids[-1]`) |
-| Sequential `thread.add_messages` | Last message UUID per thread (`message_uuids`; no `task_id`) |
+| Sequential `graph.episode.add` (batch fallback) | Last-submitted episode (`episode_uuids[-1]`) |
+| Sequential `thread.add_messages` | Every returned `task_id` |
 | `ingest_nodes` / `ingest_fact_triples` | Every `task_id` (separate queue from episodes) |
 
-Do not mix Batch API and sequential `graph.add` into the same graph and expect
+Do not mix Batch API and sequential `graph.episode.add` into the same graph and expect
 one `wait()` to cover both. Seed nodes/triples first with their own `wait()`,
 then ingest episodes.
 
@@ -545,7 +580,7 @@ even after `wait()`: search indexing lands a few seconds after processing.
 ```python
 from zep_ingest import search_when_ready
 
-response = search_when_ready(client, "who runs the pilot?", graph_id="g1")
+items = search_when_ready(client, "who runs the pilot?", graph_uuid=graph_uuid)
 ```
 
 Partial failures never crash a run: pages/episodes that keep failing are
@@ -554,8 +589,8 @@ and the run continues. `batch_ids` / `episode_uuids` / `task_ids` are the
 resume handles; `node_uuids` / `edge_uuids` record identities Zep assigned on
 `ingest_nodes` and completed `ingest_fact_triples` tasks (`None` slots mark
 failures so later successes stay zip-aligned). Task IDs come from
-``ingest_nodes``, ``ingest_fact_triples``, and ``add_messages_batch`` — not from
-regular ``thread.add_messages``, which returns message UUIDs instead.
+``ingest_nodes``, ``ingest_fact_triples``, and ``thread.add_messages``, which
+returns the task that tracks extraction in v4.
 
 If the API accepts a task-backed submission without returning a completion
 handle, the result reports `status == "untracked"` instead of claiming success.
