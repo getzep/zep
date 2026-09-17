@@ -30,6 +30,7 @@ import logging
 import os
 import sys
 import time
+from uuid import uuid4
 
 import pytest
 
@@ -54,6 +55,11 @@ from zep_ag2 import ZepMemoryManager, create_thread, create_user, register_all_t
 
 FIRST_NAME = "IntegTest"
 LAST_NAME = "User"
+
+# The v4 server cannot add a message to a thread whose user has no ``user_id``,
+# so the live test gives the user a unique label. The package API stays
+# UUID-only.
+USER_LABEL = f"integtest-{uuid4().hex[:8]}"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("test_integration")
@@ -148,7 +154,9 @@ async def main() -> None:
 
     try:
         # -- One-time Zep setup: create the user and thread out-of-band. ------
-        user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME)
+        user = await create_user(
+            zep, user_id=USER_LABEL, first_name=FIRST_NAME, last_name=LAST_NAME
+        )
         user_uuid = user.uuid_ or ""
         graph_uuid = user.graph_uuid or ""
         thread_1 = await create_thread(zep, user_uuid=user_uuid)
@@ -253,7 +261,9 @@ async def test_integration_full_lifecycle() -> None:
     user_uuid = ""
 
     try:
-        user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME)
+        user = await create_user(
+            zep, user_id=USER_LABEL, first_name=FIRST_NAME, last_name=LAST_NAME
+        )
         user_uuid = user.uuid_ or ""
         graph_uuid = user.graph_uuid or ""
         thread_1 = await create_thread(zep, user_uuid=user_uuid)

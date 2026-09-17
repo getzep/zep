@@ -57,6 +57,10 @@ _suffix = uuid4().hex[:8]
 FIRST_NAME = "IntegTest"
 LAST_NAME = "User"
 EMAIL = f"integtest-{_suffix}@example.com"
+# The v4 server cannot add a message to a thread whose user has no ``user_id``,
+# so the live test gives the user a unique label. The package API stays
+# UUID-only.
+USER_LABEL = f"integtest-{_suffix}"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("test_integration")
@@ -128,7 +132,9 @@ def main() -> None:
 
     try:
         # -- One-time Zep setup: create the user and thread out-of-band. ------
-        user = zep.user.create(first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+        user = zep.user.create(
+            user_id=USER_LABEL, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL
+        )
         user_uuid = user.uuid_ or ""
         graph_uuid = user.graph_uuid or ""
         thread_1 = zep.thread.create(user_uuid=user_uuid)
@@ -240,7 +246,9 @@ def test_integration_full_lifecycle() -> None:
     user_uuid = ""
 
     try:
-        user = zep.user.create(first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+        user = zep.user.create(
+            user_id=USER_LABEL, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL
+        )
         user_uuid = user.uuid_ or ""
         graph_uuid = user.graph_uuid or ""
         thread_1 = zep.thread.create(user_uuid=user_uuid)

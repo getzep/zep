@@ -50,7 +50,6 @@ from zep_cloud.client import AsyncZep  # noqa: E402
 from zep_pydantic_ai import (  # noqa: E402
     ZepDeps,
     create_thread,
-    create_user,
     create_zep_search_tool,
     persist_run,
     zep_history_processor,
@@ -63,6 +62,10 @@ _suffix = uuid4().hex[:8]
 FIRST_NAME = "IntegTest"
 LAST_NAME = "User"
 EMAIL = f"integtest-{_suffix}@example.com"
+# The v4 server cannot add a message to a thread whose user has no ``user_id``,
+# so the live test creates the user with a unique label through the SDK. The
+# package API stays UUID-only, and ``create_user`` keeps its unit-test cover.
+USER_LABEL = f"integtest-{_suffix}"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("test_integration")
@@ -147,7 +150,9 @@ async def main() -> None:
     print("Zep Pydantic AI Integration Test")
     print(f"{'=' * 70}\n")
 
-    user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+    user = await zep.user.create(
+        user_id=USER_LABEL, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL
+    )
     user_uuid = user.uuid_
     assert user_uuid is not None
     thread_1 = await create_thread(zep, user_uuid=user_uuid)
@@ -229,7 +234,9 @@ async def test_integration_full_lifecycle() -> None:
     """Pytest entry point for the live integration test."""
     zep = AsyncZep(api_key=ZEP_API_KEY)
 
-    user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+    user = await zep.user.create(
+        user_id=USER_LABEL, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL
+    )
     user_uuid = user.uuid_
     assert user_uuid is not None
     thread_1 = await create_thread(zep, user_uuid=user_uuid)

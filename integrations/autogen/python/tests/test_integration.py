@@ -52,13 +52,17 @@ from autogen_core.memory import MemoryContent, MemoryMimeType  # noqa: E402
 from autogen_ext.models.openai import OpenAIChatCompletionClient  # noqa: E402
 from zep_cloud.client import AsyncZep  # noqa: E402
 
-from zep_autogen import ZepUserMemory, create_thread, create_user  # noqa: E402
+from zep_autogen import ZepUserMemory, create_thread  # noqa: E402
 
 _suffix = uuid4().hex[:8]
 
 FIRST_NAME = "IntegTest"
 LAST_NAME = "User"
 EMAIL = f"integtest-{_suffix}@example.com"
+# The v4 server cannot add a message to a thread whose user has no ``user_id``,
+# so the live test creates the user with a unique label through the SDK. The
+# package API stays UUID-only, and ``create_user`` keeps its unit-test cover.
+USER_LABEL = f"integtest-{_suffix}"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("test_integration")
@@ -144,7 +148,9 @@ async def main() -> None:
 
     try:
         # -- One-time Zep setup: create the user and thread out-of-band. ------
-        user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+        user = await zep.user.create(
+            user_id=USER_LABEL, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL
+        )
         user_uuid = str(user.uuid_)
         graph_uuid = str(user.graph_uuid)
         thread1 = await create_thread(zep, user_uuid=user_uuid)
@@ -237,7 +243,9 @@ async def test_integration_full_lifecycle() -> None:
     user_uuid = ""
 
     try:
-        user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+        user = await zep.user.create(
+            user_id=USER_LABEL, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL
+        )
         user_uuid = str(user.uuid_)
         graph_uuid = str(user.graph_uuid)
         thread1 = await create_thread(zep, user_uuid=user_uuid)

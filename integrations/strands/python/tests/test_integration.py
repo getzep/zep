@@ -161,6 +161,10 @@ async def provision(
     """Create one user and one thread, and return their UUIDs."""
     user = await create_user(
         zep,
+        # The v4 server cannot add a message to a thread whose user has no
+        # ``user_id``, so the live test gives the user a label. The package
+        # API stays UUID-only.
+        user_id=f"integtest-{uuid4().hex[:8]}",
         first_name=FIRST_NAME,
         last_name=LAST_NAME,
         email=EMAIL,

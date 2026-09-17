@@ -19,6 +19,10 @@ describeLive("live Zep integration", () => {
 
     const identity = await createZepUserAndThread({
       client,
+      // The v4 server cannot add a message to a thread whose user has no
+      // userId, so the live test gives the user a unique label. The package
+      // API stays UUID-only.
+      userId: `integtest-${crypto.randomUUID().slice(0, 8)}`,
       firstName: "Test",
       lastName: "User",
     });

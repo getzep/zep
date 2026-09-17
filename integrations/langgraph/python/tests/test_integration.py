@@ -59,7 +59,6 @@ from zep_langgraph import (  # noqa: E402
     build_system_message,
     create_graph_search_tool,
     create_thread,
-    create_user,
     persist_messages,
 )
 
@@ -68,6 +67,10 @@ _suffix = uuid4().hex[:8]
 FIRST_NAME = "IntegTest"
 LAST_NAME = "User"
 EMAIL = f"integtest-{_suffix}@example.com"
+# The v4 server cannot add a message to a thread whose user has no ``user_id``,
+# so the live test creates the user with a unique label through the SDK. The
+# package API stays UUID-only, and ``create_user`` keeps its unit-test cover.
+USER_LABEL = f"integtest-{_suffix}"
 
 BASE_INSTRUCTIONS = (
     "You are a helpful assistant with long-term memory. When memory context is "
@@ -183,7 +186,9 @@ async def main() -> None:
 
     try:
         # -- One-time Zep setup: create the user and the thread. -------------
-        user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+        user = await zep.user.create(
+            user_id=USER_LABEL, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL
+        )
         user_uuid = user.uuid_
         graph_uuid = user.graph_uuid or ""
         thread = await create_thread(zep, user_uuid=user_uuid)
@@ -275,7 +280,9 @@ async def test_integration_full_lifecycle() -> None:
     user_uuid = ""
 
     try:
-        user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+        user = await zep.user.create(
+            user_id=USER_LABEL, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL
+        )
         user_uuid = user.uuid_
         graph_uuid = user.graph_uuid or ""
         assert graph_uuid, "user.create must return the UUID of the user graph"
