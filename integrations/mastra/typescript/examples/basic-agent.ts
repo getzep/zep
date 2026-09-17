@@ -50,8 +50,9 @@ async function main(): Promise<void> {
   //    the UUIDs; a real application stores them in its own database.
   const identity = await createZepUserAndThread({
     client,
-    // The Zep v4 API returns 404 from the thread message and context routes
-    // when the user has no userId. The userId is a name, not an address.
+    // Temporary workaround for a production Zep v4 defect: the thread message
+    // and context routes return 404 when the user has no userId. The label is
+    // a name only; Zep addresses the user by its UUID.
     userId: `zep-mastra-example-${randomUUID().slice(0, 8)}`,
     firstName: "Alice",
     lastName: "Smith",

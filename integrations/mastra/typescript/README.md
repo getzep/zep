@@ -152,10 +152,6 @@ thrown, so a Zep outage never crashes the caller.
 not use them as addresses. Supply a `userId` if you want a human-readable name in the
 Zep application.
 
-> **Known Zep v4 API defect.** The thread message and context routes return 404 when
-> the user has no `userId`. Pass a `userId` until the API is corrected. The example
-> and the live test pass a generated name.
-
 ## Tools
 
 The pre-0.2.0 tool-only surface is still available and fully supported — use it when you

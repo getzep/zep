@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import { ZepClient } from "@getzep/zep-cloud";
 import {
@@ -20,9 +19,6 @@ describeLive("live Zep integration", () => {
 
     const identity = await createZepUserAndThread({
       client,
-      // The Zep v4 API returns 404 from the thread message and context routes
-      // when the user has no userId. The userId is a name, not an address.
-      userId: `zep-mastra-live-${randomUUID().slice(0, 8)}`,
       firstName: "Test",
       lastName: "User",
     });
