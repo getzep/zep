@@ -2,6 +2,7 @@
 
 import pytest
 
+from tests.conftest import GRAPH_UUID
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.loaders.email import EmlLoader
 
@@ -107,7 +108,7 @@ def test_no_match_raises_eagerly(tmp_path):
 def test_ingest_emails_one_liner(mock_zep, eml_dir):
     from zep_ingest.pipeline import ingest_emails
 
-    result = ingest_emails(mock_zep, str(eml_dir / "*.eml"), graph_id="mail")
+    result = ingest_emails(mock_zep, str(eml_dir / "*.eml"), graph_uuid=GRAPH_UUID)
     assert result.items_submitted == 2
-    items = mock_zep.batch.add.call_args.kwargs["items"]
+    items = mock_zep.batch.add_items.call_args.kwargs["items"]
     assert all(i.data_type == "text" for i in items)

@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from zep_cloud.types.batch_add_item import BatchAddItem
+from zep_cloud.types.batch_item_input import BatchItemInput
 
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.types import (
@@ -16,8 +16,10 @@ from zep_ingest.types import (
     Destination,
     Episode,
     to_batch_item,
-    to_graph_add_kwargs,
+    to_episode_add_kwargs,
 )
+
+GRAPH_UUID = "55555555-5555-4555-8555-555555555555"
 
 
 class TestConstants:
@@ -179,27 +181,23 @@ class TestMetadataKeys:
 
 
 class TestDestination:
-    def test_graph_id_only_is_valid(self):
-        dest = Destination(graph_id="g1")
-        assert dest.graph_id == "g1"
-        assert dest.user_id is None
+    def test_graph_uuid_is_the_only_address(self):
+        dest = Destination(graph_uuid=GRAPH_UUID)
+        assert dest.graph_uuid == GRAPH_UUID
+        assert dest.graph == GRAPH_UUID
 
-    def test_user_id_only_is_valid(self):
-        dest = Destination(user_id="u1")
-        assert dest.user_id == "u1"
-
-    def test_both_raises(self):
-        with pytest.raises(ConfigurationError):
-            Destination(graph_id="g1", user_id="u1")
-
-    def test_neither_raises(self):
-        with pytest.raises(ConfigurationError):
+    def test_missing_graph_uuid_raises(self):
+        with pytest.raises(ConfigurationError, match="graph_uuid"):
             Destination()
 
+    def test_blank_graph_uuid_raises(self):
+        with pytest.raises(ConfigurationError, match="graph_uuid"):
+            Destination(graph_uuid="   ")
+
     def test_frozen(self):
-        dest = Destination(graph_id="g1")
+        dest = Destination(graph_uuid=GRAPH_UUID)
         with pytest.raises(AttributeError):
-            dest.graph_id = "other"  # type: ignore[misc]
+            dest.graph_uuid = "other"  # type: ignore[misc]
 
 
 class TestToBatchItem:
@@ -210,20 +208,20 @@ class TestToBatchItem:
             created_at="2024-06-15T10:30:00Z",
             metadata={"source_type": "slack", "channel": "general"},
         )
-        item = to_batch_item(ep, Destination(graph_id="g1"))
-        assert isinstance(item, BatchAddItem)
+        item = to_batch_item(ep, Destination(graph_uuid=GRAPH_UUID))
+        assert isinstance(item, BatchItemInput)
         assert item.type == "graph_episode"
         assert item.data == "hello"
         assert item.data_type == "message"
-        assert item.created_at == "2024-06-15T10:30:00Z"
         assert item.metadata == {"source_type": "slack", "channel": "general"}
-        assert item.graph_id == "g1"
-        assert item.user_id is None
+        assert item.graph_uuid == GRAPH_UUID
+        assert item.user_uuid is None
 
-    def test_user_destination(self):
-        item = to_batch_item(Episode(data="x"), Destination(user_id="u1"))
-        assert item.user_id == "u1"
-        assert item.graph_id is None
+    def test_reference_time_is_not_carried_by_a_batch_item(self):
+        # v4 has no created_at on a batch item; the sequential path keeps it.
+        ep = Episode(data="hello", created_at="2024-06-15T10:30:00Z")
+        item = to_batch_item(ep, Destination(graph_uuid=GRAPH_UUID))
+        assert not hasattr(item, "created_at")
 
     def test_metadata_over_limit_rejected(self):
         metadata = {f"k{i}": i for i in range(12)}
@@ -231,7 +229,7 @@ class TestToBatchItem:
             Episode(data="x", metadata=metadata)
 
 
-class TestToGraphAddKwargs:
+class TestToEpisodeAddKwargs:
     def test_maps_all_fields(self):
         ep = Episode(
             data="hello",
@@ -239,18 +237,18 @@ class TestToGraphAddKwargs:
             created_at="2024-06-15T10:30:00Z",
             metadata={"source_type": "document", "file_name": "handbook.md"},
         )
-        kwargs = to_graph_add_kwargs(ep, Destination(user_id="u1"))
+        kwargs = to_episode_add_kwargs(ep, Destination(graph_uuid=GRAPH_UUID))
         assert kwargs == {
             "data": "hello",
             "type": "text",
             "created_at": "2024-06-15T10:30:00Z",
             "metadata": {"source_type": "document", "file_name": "handbook.md"},
-            "user_id": "u1",
+            "graph_uuid": GRAPH_UUID,
         }
 
     def test_omits_unset_optional_fields(self):
-        kwargs = to_graph_add_kwargs(Episode(data="x"), Destination(graph_id="g1"))
-        assert kwargs == {"data": "x", "type": "text", "graph_id": "g1"}
+        kwargs = to_episode_add_kwargs(Episode(data="x"), Destination(graph_uuid=GRAPH_UUID))
+        assert kwargs == {"data": "x", "type": "text", "graph_uuid": GRAPH_UUID}
 
     def test_metadata_over_limit_rejected(self):
         metadata = {f"k{i}": i for i in range(11)}

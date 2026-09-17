@@ -26,7 +26,7 @@ import json
 import time
 from pathlib import Path
 
-from example_ontology import ONTOLOGY
+from example_ontology import EDGE_TYPES, ENTITY_TYPES
 from zep_cloud.client import Zep
 
 from zep_ingest import FactTriple, ingest_fact_triples, search_when_ready
@@ -140,36 +140,34 @@ def load_triples() -> list[FactTriple]:
 
 def main() -> None:
     client = Zep()  # reads ZEP_API_KEY
-    graph_id = f"example-triples-{int(time.time())}"
+    graph_name = f"example-triples-{int(time.time())}"
 
-    # 1. Create the graph.
-    client.graph.create(graph_id=graph_id)
+    # 1. Create the graph. v4 addresses a graph by the UUID that graph.create
+    #    returns; graph_name is only a label.
+    graph = client.graph.create(name=graph_name)
+    graph_uuid = graph.uuid_
 
     # 2. Set the ontology BEFORE any data flows — it is not retroactive, and
     #    the fact_name values below are its declared edge types.
-    client.graph.set_ontology(
-        entities=ONTOLOGY["entities"],
-        edges=ONTOLOGY["edges"],
-        graph_ids=[graph_id],
-    )
+    client.graph.set_ontology(graph_uuid, entity_types=ENTITY_TYPES, edge_types=EDGE_TYPES)
 
     # 3. Mold the directory export into triples, then ingest. All validation
     #    already happened at FactTriple construction — before any API call.
     triples = load_triples()
-    result = ingest_fact_triples(client, triples, graph_id=graph_id)
+    result = ingest_fact_triples(client, triples, graph_uuid=graph_uuid)
     result.wait()
     result.raise_for_status()
     print(f"Molded org_chart.json into {len(triples)} fact triples: {result.status}")
 
     # search indexing lags ingestion slightly; search_when_ready absorbs that
     query = "Who works at Alder Ridge Robotics?"
-    response = search_when_ready(client, query, graph_id=graph_id, limit=5)
+    edges = search_when_ready(client, query, graph_uuid=graph_uuid, limit=5)
     print(f"\nSearch: {query}")
-    for edge in response.edges or []:
+    for edge in edges:
         print(f"  - {edge.fact}")
 
-    print(f"\nGraph: {graph_id}")
-    print(f"Explore it at https://app.getzep.com (Graph -> {graph_id})")
+    print(f"\nGraph: {graph_name} ({graph_uuid})")
+    print(f"Explore it at https://app.getzep.com (Graph -> {graph_name})")
 
 
 if __name__ == "__main__":

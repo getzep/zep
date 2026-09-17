@@ -165,8 +165,7 @@ class Pipeline:
         self,
         client: Zep,
         *,
-        graph_id: str | None = None,
-        user_id: str | None = None,
+        graph_uuid: str | None = None,
         method: Method = "auto",
         batch_metadata: dict[str, Any] | None = None,
     ) -> IngestResult:
@@ -175,10 +174,10 @@ class Pipeline:
         Submission is asynchronous; bind the result, then wait on it, so the
         resume handles survive a timeout::
 
-            result = pipeline.run(client, graph_id="company_kb")
+            result = pipeline.run(client, graph_uuid=graph_uuid)
             result.wait()
         """
-        destination = Destination(graph_id=graph_id, user_id=user_id)
+        destination = Destination(graph_uuid=graph_uuid)
         if self.submitter is not None and (method != "auto" or batch_metadata is not None):
             raise ConfigurationError(
                 "method and batch_metadata cannot be used with a custom Pipeline submitter"
@@ -227,8 +226,7 @@ def ingest_slack_export(
     client: Zep,
     path: str | Path,
     *,
-    graph_id: str | None = None,
-    user_id: str | None = None,
+    graph_uuid: str | None = None,
     channels: Sequence[str] | None = None,
     conversation_types: Sequence[ConversationType] = DEFAULT_CONVERSATION_TYPES,
     grouping: Literal["thread", "message"] = "thread",
@@ -255,17 +253,14 @@ def ingest_slack_export(
         formatter=formatter,
     )
     transforms = _alias_transforms(aliases, risky_words)
-    return Pipeline(loader, transforms=transforms).run(
-        client, graph_id=graph_id, user_id=user_id, **run_kwargs
-    )
+    return Pipeline(loader, transforms=transforms).run(client, graph_uuid=graph_uuid, **run_kwargs)
 
 
 def ingest_documents(
     client: Zep,
     path_or_glob: SourcePaths,
     *,
-    graph_id: str | None = None,
-    user_id: str | None = None,
+    graph_uuid: str | None = None,
     llm: LLMClient | None = None,
     chunk_size: int = 500,
     overlap: int = 50,
@@ -284,17 +279,14 @@ def ingest_documents(
         from zep_ingest.transforms.contextualizer import LLMContextualizer
 
         transforms.append(LLMContextualizer(llm))
-    return Pipeline(loader, transforms=transforms).run(
-        client, graph_id=graph_id, user_id=user_id, **run_kwargs
-    )
+    return Pipeline(loader, transforms=transforms).run(client, graph_uuid=graph_uuid, **run_kwargs)
 
 
 def ingest_transcripts(
     client: Zep,
     path_or_glob: SourcePaths,
     *,
-    graph_id: str | None = None,
-    user_id: str | None = None,
+    graph_uuid: str | None = None,
     chunk_chars: int = DEFAULT_CHUNK_CHARS,
     meeting_start: str | None = None,
     default_start_time: str | None = None,
@@ -310,7 +302,7 @@ def ingest_transcripts(
         default_start_time=default_start_time,
     )
     return Pipeline(loader, transforms=_alias_transforms(aliases, risky_words)).run(
-        client, graph_id=graph_id, user_id=user_id, **run_kwargs
+        client, graph_uuid=graph_uuid, **run_kwargs
     )
 
 
@@ -318,8 +310,7 @@ def ingest_emails(
     client: Zep,
     path_or_glob: SourcePaths,
     *,
-    graph_id: str | None = None,
-    user_id: str | None = None,
+    graph_uuid: str | None = None,
     aliases: dict[str, Sequence[str]] | None = None,
     risky_words: frozenset[str] | None = None,
     **run_kwargs: Any,
@@ -327,7 +318,7 @@ def ingest_emails(
     """One-liner: .eml files → text episodes dated by their Date headers."""
     transforms = _alias_transforms(aliases, risky_words)
     return Pipeline(EmlLoader(path_or_glob), transforms=transforms).run(
-        client, graph_id=graph_id, user_id=user_id, **run_kwargs
+        client, graph_uuid=graph_uuid, **run_kwargs
     )
 
 
@@ -335,8 +326,7 @@ def ingest_json_records(
     client: Zep,
     path_or_glob: SourcePaths,
     *,
-    graph_id: str | None = None,
-    user_id: str | None = None,
+    graph_uuid: str | None = None,
     format: Literal["auto", "jsonl", "csv", "json"] = "auto",
     id_field: str | None = None,
     name_field: str | None = None,
@@ -363,6 +353,4 @@ def ingest_json_records(
         metadata_fields=metadata_fields,
         record_type=record_type,
     )
-    return Pipeline(loader, transforms=()).run(
-        client, graph_id=graph_id, user_id=user_id, **run_kwargs
-    )
+    return Pipeline(loader, transforms=()).run(client, graph_uuid=graph_uuid, **run_kwargs)

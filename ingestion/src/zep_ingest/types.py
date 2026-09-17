@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from zep_cloud.types.batch_add_item import BatchAddItem
+from zep_cloud.types.batch_item_input import BatchItemInput
 
 from zep_ingest._validation import check_scalar_map, check_timestamp
 from zep_ingest.exceptions import ConfigurationError
@@ -64,42 +64,54 @@ class Episode:
 
 @dataclass(frozen=True, slots=True)
 class Destination:
-    """Target graph for an ingestion run: exactly one of graph_id or user_id."""
+    """Target graph for an ingestion run, addressed by its UUID.
 
-    graph_id: str | None = None
-    user_id: str | None = None
+    Zep v4 addresses every graph by a server-generated UUID. A user graph is
+    addressed by the same field: read ``user.graph_uuid`` one time, store it,
+    and pass it here. A ``graph_id`` is a name, not an address.
+    """
+
+    graph_uuid: str | None = None
 
     def __post_init__(self) -> None:
-        if bool(self.graph_id) == bool(self.user_id):
+        if not self.graph_uuid or not self.graph_uuid.strip():
             raise ConfigurationError(
-                "Destination requires exactly one of graph_id (a named graph) or "
-                "user_id (a user graph). "
-                f"Got graph_id={self.graph_id!r}, user_id={self.user_id!r}."
+                "Destination requires graph_uuid, the UUID of the target graph. "
+                "For a user graph, pass the user's graph_uuid. "
+                f"Got graph_uuid={self.graph_uuid!r}."
             )
 
+    @property
+    def graph(self) -> str:
+        """The target graph UUID, narrowed for the API calls that require it."""
+        return str(self.graph_uuid)
 
-def to_batch_item(episode: Episode, destination: Destination) -> BatchAddItem:
-    """Map a validated Episode to a Batch API item."""
-    return BatchAddItem(
+
+def to_batch_item(episode: Episode, destination: Destination) -> BatchItemInput:
+    """Map a validated Episode to a Batch API item.
+
+    The v4 batch item model has no ``created_at`` field, so an episode's
+    reference time is not carried on this path. Submit such episodes with
+    ``method="sequential"`` to keep their reference time.
+    """
+    return BatchItemInput(
         type="graph_episode",
         data=episode.data,
         data_type=episode.data_type,
-        created_at=episode.created_at,
         metadata=episode.metadata,
-        graph_id=destination.graph_id,
-        user_id=destination.user_id,
+        graph_uuid=destination.graph_uuid,
     )
 
 
-def to_graph_add_kwargs(episode: Episode, destination: Destination) -> dict[str, Any]:
-    """Map an Episode to graph.add(**kwargs) (unset optional fields omitted)."""
-    kwargs: dict[str, Any] = {"data": episode.data, "type": episode.data_type}
+def to_episode_add_kwargs(episode: Episode, destination: Destination) -> dict[str, Any]:
+    """Map an Episode to graph.episode.add(**kwargs) (unset fields omitted)."""
+    kwargs: dict[str, Any] = {
+        "graph_uuid": destination.graph,
+        "data": episode.data,
+        "type": episode.data_type,
+    }
     if episode.created_at is not None:
         kwargs["created_at"] = episode.created_at
     if episode.metadata is not None:
         kwargs["metadata"] = episode.metadata
-    if destination.graph_id is not None:
-        kwargs["graph_id"] = destination.graph_id
-    if destination.user_id is not None:
-        kwargs["user_id"] = destination.user_id
     return kwargs

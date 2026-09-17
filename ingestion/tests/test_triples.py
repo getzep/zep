@@ -4,10 +4,12 @@ import json
 
 import pytest
 from zep_cloud.core.api_error import ApiError
-from zep_cloud.types.add_triple_response import AddTripleResponse
+from zep_cloud.types.add_edge_result import AddEdgeResult
 
+from tests.conftest import GRAPH_UUID, TASK_UUID
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.triples import FactTriple, ingest_fact_triples
+from zep_ingest.types import Destination
 
 
 @pytest.fixture(autouse=True)
@@ -115,10 +117,10 @@ class TestValidation:
             source_node_labels=["Person"],
             target_node_labels=["Organization"],
         )
-        ingest_fact_triples(mock_zep, [triple], graph_id="g1")
-        kwargs = mock_zep.graph.add_fact_triple.call_args.kwargs
-        assert kwargs["source_node_labels"] == ["Person"]
-        assert kwargs["target_node_labels"] == ["Organization"]
+        ingest_fact_triples(mock_zep, [triple], graph_uuid=GRAPH_UUID)
+        kwargs = mock_zep.graph.edge.add.call_args.kwargs
+        assert kwargs["source_node"].labels == ["Person"]
+        assert kwargs["target_node"].labels == ["Organization"]
 
     def test_more_than_one_label_raises(self):
         with pytest.raises(ConfigurationError, match="labels"):
@@ -140,28 +142,28 @@ class TestIngest:
             triple(fact="A met B", attributes={"confidence": "high"}),
             triple(fact="C met D"),
         ]
-        result = ingest_fact_triples(mock_zep, triples, graph_id="g1")
+        result = ingest_fact_triples(mock_zep, triples, graph_uuid=GRAPH_UUID)
         assert result.method == "sequential"
         assert result.items_submitted == 2
-        calls = mock_zep.graph.add_fact_triple.call_args_list
+        calls = mock_zep.graph.edge.add.call_args_list
         assert [c.kwargs["fact"] for c in calls] == ["A met B", "C met D"]
         assert calls[0].kwargs["fact_name"] == "MET"
-        assert calls[0].kwargs["source_node_name"] == "Avery Brown"
-        assert calls[0].kwargs["edge_attributes"] == {"confidence": "high"}
-        assert all(c.kwargs["graph_id"] == "g1" for c in calls)
-        assert result.task_ids == ["task-1"]
+        assert calls[0].kwargs["source_node"].name == "Avery Brown"
+        assert calls[0].kwargs["attributes"] == {"confidence": "high"}
+        assert all(c.kwargs["graph_uuid"] == GRAPH_UUID for c in calls)
+        assert result.task_ids == [TASK_UUID]
         assert result.status == "queued"
 
     def test_wait_polls_until_terminal(self, mock_zep):
-        result = ingest_fact_triples(mock_zep, [triple()], graph_id="g1")
+        result = ingest_fact_triples(mock_zep, [triple()], graph_uuid=GRAPH_UUID)
         result.wait(poll_interval=0)
         assert result.status == "succeeded"
         mock_zep.task.get.assert_called()
 
     def test_submission_without_task_id_is_untracked(self, mock_zep):
-        mock_zep.graph.add_fact_triple.return_value = AddTripleResponse()
+        mock_zep.graph.edge.add.return_value = AddEdgeResult()
 
-        result = ingest_fact_triples(mock_zep, [triple()], graph_id="g1")
+        result = ingest_fact_triples(mock_zep, [triple()], graph_uuid=GRAPH_UUID)
 
         assert result.items_submitted == 1
         assert result.untracked_items == 1
@@ -184,24 +186,24 @@ class TestIngest:
         ]
         file.write_text("\n".join(json.dumps(r) for r in rows))
         with pytest.raises(ConfigurationError):
-            ingest_fact_triples(mock_zep, file, graph_id="g1")
-        mock_zep.graph.add_fact_triple.assert_not_called()
+            ingest_fact_triples(mock_zep, file, graph_uuid=GRAPH_UUID)
+        mock_zep.graph.edge.add.assert_not_called()
 
     def test_429_retried(self, mock_zep):
-        mock_zep.graph.add_fact_triple.side_effect = [
+        mock_zep.graph.edge.add.side_effect = [
             ApiError(status_code=429, headers={"Retry-After": "1"}),
-            None,
+            AddEdgeResult(),
         ]
-        result = ingest_fact_triples(mock_zep, [triple()], graph_id="g1")
+        result = ingest_fact_triples(mock_zep, [triple()], graph_uuid=GRAPH_UUID)
         assert result.add_errors == []
         assert result.items_submitted == 1
 
     def test_failure_recorded_and_continues(self, mock_zep):
-        mock_zep.graph.add_fact_triple.side_effect = [
+        mock_zep.graph.edge.add.side_effect = [
             ApiError(status_code=400, body="bad"),
-            None,
+            AddEdgeResult(),
         ]
-        result = ingest_fact_triples(mock_zep, [triple(), triple()], graph_id="g1")
+        result = ingest_fact_triples(mock_zep, [triple(), triple()], graph_uuid=GRAPH_UUID)
         assert len(result.add_errors) == 1
         assert result.add_errors[0].index == 0
         assert result.items_submitted == 1
@@ -223,9 +225,9 @@ class TestIngest:
             },
         ]
         file.write_text("\n".join(json.dumps(r) for r in rows))
-        result = ingest_fact_triples(mock_zep, file, user_id="u1")
+        result = ingest_fact_triples(mock_zep, file, graph_uuid=GRAPH_UUID)
         assert result.items_submitted == 2
-        assert mock_zep.graph.add_fact_triple.call_args.kwargs["fact_name"] == "RESPONSIBLE"
+        assert mock_zep.graph.edge.add.call_args.kwargs["fact_name"] == "RESPONSIBLE"
 
     def test_json_array_file_source(self, mock_zep, tmp_path):
         file = tmp_path / "triples.json"
@@ -244,9 +246,9 @@ class TestIngest:
             },
         ]
         file.write_text(json.dumps(rows, indent=2))
-        result = ingest_fact_triples(mock_zep, file, graph_id="g1")
+        result = ingest_fact_triples(mock_zep, file, graph_uuid=GRAPH_UUID)
         assert result.items_submitted == 2
-        assert mock_zep.graph.add_fact_triple.call_args.kwargs["fact_name"] == "RESPONSIBLE"
+        assert mock_zep.graph.edge.add.call_args.kwargs["fact_name"] == "RESPONSIBLE"
 
     def test_csv_file_source_rejected_with_clear_error(self, mock_zep, tmp_path):
         # CSV cannot express the list/mapping fields (labels, attributes,
@@ -258,8 +260,8 @@ class TestIngest:
             "Avery Brown met Blake Carter,MET,Avery Brown,Blake Carter\n"
         )
         with pytest.raises(ConfigurationError, match="CSV"):
-            ingest_fact_triples(mock_zep, file, graph_id="g1")
-        mock_zep.graph.add_fact_triple.assert_not_called()
+            ingest_fact_triples(mock_zep, file, graph_uuid=GRAPH_UUID)
+        mock_zep.graph.edge.add.assert_not_called()
 
     def test_file_with_invalid_row_names_the_row(self, mock_zep, tmp_path):
         file = tmp_path / "triples.jsonl"
@@ -274,7 +276,7 @@ class TestIngest:
             )
         )
         with pytest.raises(ConfigurationError, match="fact"):
-            ingest_fact_triples(mock_zep, file, graph_id="g1")
+            ingest_fact_triples(mock_zep, file, graph_uuid=GRAPH_UUID)
 
     def test_row_missing_required_field_names_the_field_and_row(self, mock_zep, tmp_path):
         # an omitted column is a ConfigurationError pointing at the row, not the
@@ -293,8 +295,8 @@ class TestIngest:
         with pytest.raises(
             ConfigurationError, match=r"Row 1 is missing required field\(s\): target_node_name"
         ):
-            ingest_fact_triples(mock_zep, file, graph_id="g1")
-        mock_zep.graph.add_fact_triple.assert_not_called()
+            ingest_fact_triples(mock_zep, file, graph_uuid=GRAPH_UUID)
+        mock_zep.graph.edge.add.assert_not_called()
 
 
 class TestNodeUuidPinning:
@@ -303,11 +305,10 @@ class TestNodeUuidPinning:
 
         source, target = str(uuid_module.uuid4()), str(uuid_module.uuid4())
         t = triple(source_node_uuid=source, target_node_uuid=target)
-        kwargs = t.to_api_kwargs(
-            __import__("zep_ingest.types", fromlist=["Destination"]).Destination(graph_id="g")
-        )
-        assert kwargs["source_node_uuid"] == source
-        assert kwargs["target_node_uuid"] == target
+        kwargs = t.to_api_kwargs(Destination(graph_uuid=GRAPH_UUID))
+        assert kwargs["source_node"].uuid_ == source
+        assert kwargs["target_node"].uuid_ == target
+        assert kwargs["graph_uuid"] == GRAPH_UUID
         assert "fact_uuid" not in kwargs
 
     def test_invalid_uuid_raises_naming_the_field(self):
@@ -335,6 +336,6 @@ class TestNodeUuidPinning:
         )
 
         with pytest.raises(ConfigurationError, match="fact_uuid cannot be supplied"):
-            ingest_fact_triples(mock_zep, path, graph_id="g1")
+            ingest_fact_triples(mock_zep, path, graph_uuid=GRAPH_UUID)
 
-        mock_zep.graph.add_fact_triple.assert_not_called()
+        mock_zep.graph.edge.add.assert_not_called()
