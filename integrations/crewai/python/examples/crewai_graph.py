@@ -8,33 +8,45 @@ for structured knowledge organization.
 import os
 import sys
 import time
-import uuid
 
 from crewai import Agent, Crew, Process, Task
-from pydantic import Field
 from zep_cloud import SearchFilters
 from zep_cloud.client import Zep
-from zep_cloud.external_clients.ontology import EntityModel, EntityText
+from zep_cloud.types import EntityProperty, EntityType
 
 from zep_crewai import ZepGraphStorage, create_search_tool
 
+# Zep v4 declares an ontology with the typed EntityType model. The v3
+# EntityModel/EntityText classes are not in the v4 SDK.
+TECHNOLOGY_ENTITY = EntityType(
+    name="Technology",
+    description="a technology, such as a language, a framework, or a tool",
+    properties=[
+        EntityProperty(
+            name="category",
+            type="text",
+            description="technology category (for example programming, framework, tool)",
+        ),
+        EntityProperty(name="use_case", type="text", description="primary use cases"),
+        EntityProperty(name="difficulty", type="text", description="learning difficulty level"),
+    ],
+)
 
-class TechnologyEntity(EntityModel):
-    """Define a technology entity for our knowledge graph."""
-
-    category: EntityText = Field(
-        description="technology category (e.g., programming, framework, tool)"
-    )
-    use_case: EntityText = Field(description="primary use cases")
-    difficulty: EntityText = Field(description="learning difficulty level")
-
-
-class CompanyEntity(EntityModel):
-    """Define a company entity for our knowledge graph."""
-
-    industry: EntityText = Field(description="company industry")
-    size: EntityText = Field(description="company size (startup, mid-size, enterprise)")
-    tech_stack: EntityText = Field(description="technologies used by the company")
+COMPANY_ENTITY = EntityType(
+    name="Company",
+    description="a company that uses technologies",
+    properties=[
+        EntityProperty(name="industry", type="text", description="company industry"),
+        EntityProperty(
+            name="size",
+            type="text",
+            description="company size (startup, mid-size, enterprise)",
+        ),
+        EntityProperty(
+            name="tech_stack", type="text", description="technologies that the company uses"
+        ),
+    ],
+)
 
 
 def main():
@@ -51,23 +63,18 @@ def main():
     print("\n🤖 CrewAI + Zep Graph Storage with Ontology Example")
     print("=" * 60)
 
-    # Create a unique graph ID for this example
-    graph_id = f"tech_knowledge_{uuid.uuid4().hex[:8]}"
-    zep_client.graph.create(
-        graph_id=graph_id,
-    )
-    print(f"📊 Graph ID: {graph_id}")
+    # Create the graph. Zep v4 gives the graph a server-generated UUID, and
+    # the application stores that UUID.
+    graph = zep_client.graph.create(name="tech knowledge")
+    graph_uuid = graph.uuid_ or ""
+    print(f"📊 Graph UUID: {graph_uuid}")
 
     # Set up ontology for the graph
     print("\n📚 Setting up graph ontology...")
     try:
         zep_client.graph.set_ontology(
-            graph_ids=[graph_id],
-            entities={
-                "Technology": TechnologyEntity,
-                "Company": CompanyEntity,
-            },
-            edges={},
+            graph_uuid,
+            entity_types=[TECHNOLOGY_ENTITY, COMPANY_ENTITY],
         )
         print("✅ Ontology configured with Technology and Company entities")
     except Exception as e:
@@ -76,7 +83,7 @@ def main():
     # Initialize Zep graph storage
     graph_storage = ZepGraphStorage(
         client=zep_client,
-        graph_id=graph_id,
+        graph_uuid=graph_uuid,
         search_filters=SearchFilters(node_labels=["Technology", "Company"]),
     )
 
@@ -141,7 +148,7 @@ def main():
     time.sleep(20)
 
     # Give the agents a Zep search tool bound to the knowledge graph.
-    search_tool = create_search_tool(zep_client, graph_id=graph_id)
+    search_tool = create_search_tool(zep_client, graph_uuid=graph_uuid)
 
     # Create specialized agents
     tech_analyst = Agent(

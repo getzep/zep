@@ -8,7 +8,6 @@ searching and adding data to both user and graph storage.
 import os
 import sys
 import time
-import uuid
 
 from crewai import Agent, Crew, Process, Task
 from zep_cloud.client import Zep
@@ -30,33 +29,30 @@ def main():
     print("\n🤖 CrewAI + Zep Tools Example")
     print("=" * 60)
 
-    # Set up both user and graph storage
-    user_id = f"bob_{uuid.uuid4().hex[:8]}"
-    graph_id = f"company_knowledge_{uuid.uuid4().hex[:8]}"
-
-    print(f"👤 User ID: {user_id}")
-    print(f"📊 Graph ID: {graph_id}")
-
-    zep_client.user.add(
-        user_id=user_id,
+    # Create the user and the company graph. Zep v4 gives every resource a
+    # server-generated UUID, and the application stores that UUID.
+    user = zep_client.user.create(
         first_name="Bob",
         last_name="Smith",
         email="bob.smith@example.com",
     )
+    user_graph_uuid = user.graph_uuid or ""
     print("✅ User created")
 
-    zep_client.graph.create(
-        graph_id=graph_id,
-    )
+    graph = zep_client.graph.create(name="company knowledge")
+    company_graph_uuid = graph.uuid_ or ""
     print("✅ Graph created")
 
-    # Create tools for user-specific storage
-    user_search_tool = create_search_tool(zep_client, user_id=user_id)
-    user_add_tool = create_add_data_tool(zep_client, user_id=user_id)
+    print(f"👤 User graph UUID: {user_graph_uuid}")
+    print(f"📊 Company graph UUID: {company_graph_uuid}")
 
-    # Create tools for graph storage
-    graph_search_tool = create_search_tool(zep_client, graph_id=graph_id)
-    graph_add_tool = create_add_data_tool(zep_client, graph_id=graph_id)
+    # Create tools for the user graph
+    user_search_tool = create_search_tool(zep_client, graph_uuid=user_graph_uuid)
+    user_add_tool = create_add_data_tool(zep_client, graph_uuid=user_graph_uuid)
+
+    # Create tools for the company graph
+    graph_search_tool = create_search_tool(zep_client, graph_uuid=company_graph_uuid)
+    graph_add_tool = create_add_data_tool(zep_client, graph_uuid=company_graph_uuid)
 
     print("✅ Tools created:")
     print(f"   • User tools: {user_search_tool.name}, {user_add_tool.name}")

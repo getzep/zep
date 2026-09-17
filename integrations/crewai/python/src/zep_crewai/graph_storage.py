@@ -12,7 +12,7 @@ from zep_cloud.client import Zep
 from zep_cloud.types import SearchFilters
 
 from .limits import truncate_graph_data
-from .utils import DEFAULT_CONTEXT_TEMPLATE, search_graph_and_compose_context
+from .utils import DEFAULT_CONTEXT_TEMPLATE, compose_graph_context
 
 
 class ZepGraphStorage:
@@ -29,19 +29,19 @@ class ZepGraphStorage:
 
     Note:
         **No ``on_created`` hook.** Unlike :class:`~zep_crewai.user_storage.ZepUserStorage`,
-        this class has no lazy user provisioning and accepts no ``on_created``
-        hook: it is scoped to a standalone ``graph_id``, not a Zep user, so
-        there is no "user created" event to hook into. Provision the graph
-        itself out-of-band (e.g. via ``client.graph.create``) if needed.
+        this class has no user provisioning and accepts no ``on_created``
+        hook: it is scoped to a standalone graph, not a Zep user, so
+        there is no "user created" event to hook into. Create the graph
+        out-of-band with ``client.graph.create`` and store the returned
+        ``graph.uuid_``.
     """
 
     def __init__(
         self,
         client: Zep,
-        graph_id: str,
+        graph_uuid: str,
         search_filters: SearchFilters | None = None,
-        facts_limit: int = 20,
-        entity_limit: int = 5,
+        max_characters: int | None = None,
         *,
         context_template: str = DEFAULT_CONTEXT_TEMPLATE,
         **kwargs: Any,
@@ -51,10 +51,10 @@ class ZepGraphStorage:
 
         Args:
             client: An initialized Zep instance (sync client)
-            graph_id: Identifier for the knowledge graph
+            graph_uuid: The UUID of the knowledge graph
             search_filters: Optional filters for search operations
-            facts_limit: Maximum number of facts (edges) to retrieve for context
-            entity_limit: Maximum number of entities (nodes) to retrieve for context
+            max_characters: Optional maximum length of the Context Block that
+                :meth:`search` retrieves
             context_template: Template used to wrap the composed context
                 string returned by :meth:`search`. Must contain a literal
                 ``{context}`` placeholder, replaced via plain string
@@ -70,21 +70,20 @@ class ZepGraphStorage:
         if not isinstance(client, Zep):
             raise TypeError("client must be an instance of Zep")
 
-        if not graph_id:
-            raise ValueError("graph_id is required")
+        if not graph_uuid:
+            raise ValueError("graph_uuid is required")
 
         if "on_created" in kwargs:
             raise TypeError(
                 "ZepGraphStorage does not support 'on_created': it is scoped to a "
-                "standalone graph_id, not a Zep user. Use ZepUserStorage for "
+                "standalone graph, not a Zep user. Use ZepUserStorage for "
                 "user-scoped provisioning hooks."
             )
 
         self._client = client
-        self._graph_id = graph_id
+        self._graph_uuid = graph_uuid
         self._search_filters = search_filters
-        self._facts_limit = facts_limit
-        self._entity_limit = entity_limit
+        self._max_characters = max_characters
         self._context_template = context_template
         self._config = kwargs
 
@@ -112,15 +111,15 @@ class ZepGraphStorage:
             content_type = "text"
 
         try:
-            # Add data to the graph
-            self._client.graph.add(
-                graph_id=self._graph_id,
+            # Add an episode to the graph
+            self._client.graph.episode.add(
+                self._graph_uuid,
                 data=truncate_graph_data(content_str),
                 type=content_type,
             )
 
             self._logger.debug(
-                f"Saved {content_type} data to graph {self._graph_id}: {content_str[:100]}..."
+                f"Saved {content_type} data to graph {self._graph_uuid}: {content_str[:100]}..."
             )
 
         except Exception as e:
@@ -133,28 +132,27 @@ class ZepGraphStorage:
         self, query: str, limit: int = 10, score_threshold: float = 0.0
     ) -> dict[str, Any] | list[Any]:
         """
-        Search the Zep knowledge graph and return composed context.
+        Search the Zep knowledge graph and return a Context Block.
 
-        Performs parallel searches across edges, nodes, and episodes,
-        then returns a composed context string wrapped in ``context_template``.
+        Zep assembles the Context Block on the server through
+        ``graph.get_context``. The method returns the block wrapped in
+        ``context_template``.
 
         Args:
             query: Search query string from the agent
-            limit: Maximum number of results per scope
+            limit: Accepted for interface compatibility. Zep v4 controls the
+                size of the Context Block with ``max_characters``.
             score_threshold: Minimum relevance score (not used in Zep, kept for interface compatibility)
 
         Returns:
-            List with a single dict containing the composed context string
+            List with a single dict containing the Context Block
         """
         try:
-            # Use the shared utility function for graph search and context composition
-            context = search_graph_and_compose_context(
+            context = compose_graph_context(
                 client=self._client,
                 query=query,
-                graph_id=self._graph_id,
-                facts_limit=self._facts_limit,
-                entity_limit=self._entity_limit,
-                episodes_limit=limit,
+                graph_uuid=self._graph_uuid,
+                max_characters=self._max_characters,
                 search_filters=self._search_filters,
                 context_template=self._context_template,
             )
@@ -177,6 +175,6 @@ class ZepGraphStorage:
         pass
 
     @property
-    def graph_id(self) -> str:
-        """Get the graph ID."""
-        return self._graph_id
+    def graph_uuid(self) -> str:
+        """Get the graph UUID."""
+        return self._graph_uuid
