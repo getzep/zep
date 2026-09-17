@@ -43,9 +43,9 @@ export default eveChannel({
 
     if (!identity && !ctx.eve.sessionId) {
       // localDev principals are not principalType "user"; without
-      // ZEP_DEMO_USER_ID the create-session turn has nothing to key the stash.
+      // ZEP_DEMO_USER_KEY the create-session turn has nothing to key the stash.
       console.warn(
-        "[zep-channel] cannot stash utterance for recall: set ZEP_DEMO_USER_ID or use authenticated user auth",
+        "[zep-channel] cannot stash utterance for recall: set ZEP_DEMO_USER_KEY or use authenticated user auth",
       );
       return { auth };
     }
@@ -53,7 +53,7 @@ export default eveChannel({
     stashPendingUtterance({
       text,
       sessionId: ctx.eve.sessionId,
-      userId: identity?.userId,
+      userKey: identity?.userKey,
     });
 
     return { auth };

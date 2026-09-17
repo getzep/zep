@@ -79,7 +79,7 @@ You'll also need:
    pip install -r requirements.txt
    ```
 
-   The proxy requires `fastapi`, `uvicorn`, `openai`, `zep-cloud>=3.28,<4`, and `python-dotenv` (see `llm-proxy/requirements.txt`).
+   The proxy requires `fastapi`, `uvicorn`, `openai`, `zep-cloud==4.0.0a5`, and `python-dotenv` (see `llm-proxy/requirements.txt`).
 
 4. Start the proxy server:
    ```bash
@@ -135,7 +135,7 @@ Copy the HTTPS URL (e.g., `https://abc123.ngrok-free.app`). You'll need this for
    - **Toggle it ON**
    - Save the agent
 
-   > This setting allows the React app to pass `user_id` and `conversation_id` to your proxy. Without it, the integration won't work.
+   > This setting allows the React app to pass `user_uuid` and `conversation_id` to your proxy. Without it, the integration won't work.
 
 8. **Copy your Agent ID** from the URL:
    - The URL looks like: `elevenlabs.io/app/conversational-ai/agents/AGENT_ID_HERE`
@@ -210,10 +210,10 @@ Copy the HTTPS URL (e.g., `https://abc123.ngrok-free.app`). You'll need this for
 
 ### User Identification
 
-The React app generates and persists a `user_id` in localStorage:
-- Format: `user-{8-char-uuid}` (e.g., `user-a1b2c3d4`)
-- Persists across browser sessions
-- Can be reset via UI button for testing
+Zep v4 gives every user a server-generated UUID. The React app asks the proxy to create the user, and then keeps the `user_uuid` in localStorage:
+- The proxy calls `user.create()` and returns the UUID
+- The UUID persists across browser sessions
+- A UI button creates a new user for testing
 
 ### Conversation Tracking
 
@@ -233,7 +233,7 @@ ElevenLabs generates its own conversation_id, but it's only available **after** 
 
 ## Troubleshooting
 
-### "No user_id in request" error
+### "No user_uuid in request" error
 Make sure you enabled **"Custom LLM extra body"** in the agent's Security settings (Step 3.7).
 
 ### Proxy authentication fails (401)

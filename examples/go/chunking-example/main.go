@@ -12,9 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/getzep/zep-go/v3"
-	zepclient "github.com/getzep/zep-go/v3/client"
-	"github.com/getzep/zep-go/v3/option"
+	zep "github.com/getzep/zep-go/v4"
+	zepclient "github.com/getzep/zep-go/v4/client"
+	"github.com/getzep/zep-go/v4/graph"
+	"github.com/getzep/zep-go/v4/option"
 	"github.com/joho/godotenv"
 	"github.com/openai/openai-go/v3"
 	openaioption "github.com/openai/openai-go/v3/option"
@@ -35,7 +36,7 @@ const (
 // Options holds CLI configuration for the chunking example.
 type Options struct {
 	Document     string
-	UserID       string
+	UserUUID     string
 	ChunkSize    int
 	ChunkOverlap int
 	DryRun       bool
@@ -47,11 +48,11 @@ func parseArgs(args []string) (Options, error) {
 
 	fs := flag.NewFlagSet("chunking-example", flag.ContinueOnError)
 	fs.Usage = func() {
-		fmt.Fprint(fs.Output(), "Usage: chunking-example <document> --user-id <id> [options]\n\n")
+		fmt.Fprint(fs.Output(), "Usage: chunking-example <document> [--user-uuid <uuid>] [options]\n\n")
 		fmt.Fprint(fs.Output(), "Chunk a document, contextualize each chunk with OpenAI, and ingest into Zep.\n\n")
 		fs.PrintDefaults()
 	}
-	fs.StringVar(&opts.UserID, "user-id", "", "Zep user ID for the knowledge graph (required)")
+	fs.StringVar(&opts.UserUUID, "user-uuid", "", "The UUID of an existing Zep user. The tool creates a user if you do not give one.")
 	fs.IntVar(&opts.ChunkSize, "chunk-size", defaultChunkSize, "Maximum characters per chunk")
 	fs.IntVar(&opts.ChunkOverlap, "chunk-overlap", defaultChunkOverlap, "Character overlap between chunks")
 	fs.BoolVar(&opts.DryRun, "dry-run", false, "Process the document without ingesting to Zep")
@@ -72,9 +73,9 @@ func parseArgs(args []string) (Options, error) {
 		args = args[1:]
 	}
 
-	if len(positional) != 1 || opts.UserID == "" {
+	if len(positional) != 1 {
 		fs.Usage()
-		return Options{}, fmt.Errorf("document path and --user-id are required")
+		return Options{}, fmt.Errorf("a document path is required")
 	}
 	if opts.ChunkSize <= 0 {
 		return Options{}, fmt.Errorf("--chunk-size must be positive, got %d", opts.ChunkSize)
@@ -252,23 +253,33 @@ func validateAndTruncate(contextualizedChunk, originalChunk string) string {
 	return fmt.Sprintf("%s%s%s", truncatedContext, separator, originalChunk)
 }
 
-func ensureUserExists(ctx context.Context, client *zepclient.Client, userID string) error {
-	_, err := client.User.Get(ctx, userID)
-	if err == nil {
-		log.Printf("User %s already exists", userID)
-		return nil
+// resolveGraphUUID returns the graph UUID of an existing user, or of a user
+// that this function creates. v4 addresses a user and a graph by a
+// server-generated UUID, so no developer identifier is sent.
+func resolveGraphUUID(ctx context.Context, client *zepclient.Client, userUUID string) (string, string, error) {
+	var user *zep.User
+	var err error
+	if userUUID != "" {
+		user, err = client.User.Get(ctx, userUUID)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to get user %s: %w", userUUID, err)
+		}
+	} else {
+		user, err = client.User.Create(ctx, &zep.CreateUserRequest{})
+		if err != nil {
+			return "", "", fmt.Errorf("failed to create user: %w", err)
+		}
 	}
-
-	log.Printf("Creating user %s", userID)
-	_, err = client.User.Add(ctx, &zep.CreateUserRequest{UserID: userID})
-	if err != nil {
-		return fmt.Errorf("failed to create user: %w", err)
+	if user.GetUUID() == nil || user.GetGraphUUID() == nil {
+		return "", "", fmt.Errorf("the server did not return a user UUID and a graph UUID")
 	}
-	log.Printf("User %s created successfully", userID)
-	return nil
+	log.Printf("User %s uses graph %s", *user.GetUUID(), *user.GetGraphUUID())
+	return *user.GetUUID(), *user.GetGraphUUID(), nil
 }
 
-func ingestToZep(ctx context.Context, client *zepclient.Client, userID, data string) (string, error) {
+// ingestToZep adds one episode and returns the episode UUID with the UUID of
+// the asynchronous task that tracks its extraction.
+func ingestToZep(ctx context.Context, client *zepclient.Client, graphUUID, data string) (string, string, error) {
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
@@ -277,21 +288,24 @@ func ingestToZep(ctx context.Context, client *zepclient.Client, userID, data str
 			time.Sleep(waitTime)
 		}
 
-		episode, err := client.Graph.Add(ctx, &zep.AddDataRequest{
-			UserID: zep.String(userID),
-			Type:   zep.GraphDataTypeText,
-			Data:   data,
+		result, err := client.Graph.Episode.Add(ctx, graphUUID, &graph.AddEpisodeRequest{
+			Type: graph.V4AddEpisodeRequestTypeText.Ptr(),
+			Data: data,
 		})
 		if err == nil {
-			if episode == nil {
-				return "", nil
+			if result == nil || result.GetEpisode() == nil || result.GetEpisode().GetUUID() == nil {
+				return "", "", nil
 			}
-			return episode.UUID, nil
+			taskUUID := ""
+			if result.GetTask() != nil && result.GetTask().GetUUID() != nil {
+				taskUUID = *result.GetTask().GetUUID()
+			}
+			return *result.GetEpisode().GetUUID(), taskUUID, nil
 		}
 		lastErr = err
 		log.Printf("Zep ingestion attempt %d failed: %v", attempt+1, err)
 	}
-	return "", fmt.Errorf("max retries exceeded for Zep ingestion: %w", lastErr)
+	return "", "", fmt.Errorf("max retries exceeded for Zep ingestion: %w", lastErr)
 }
 
 // taskFailureStatuses are the terminal task statuses that mean ingestion will
@@ -304,7 +318,7 @@ var taskFailureStatuses = map[string]bool{
 	"partial":   true,
 }
 
-func waitForEpisodeProcessing(ctx context.Context, client *zepclient.Client, episodeUUID string) error {
+func waitForEpisodeProcessing(ctx context.Context, client *zepclient.Client, graphUUID, episodeUUID, taskUUID string) error {
 	if episodeUUID == "" {
 		return fmt.Errorf("episode UUID is required when --wait is set")
 	}
@@ -315,29 +329,29 @@ func waitForEpisodeProcessing(ctx context.Context, client *zepclient.Client, epi
 			return err
 		}
 
-		episode, err := client.Graph.Episode.Get(ctx, episodeUUID)
+		episode, err := client.Graph.Episode.Get(ctx, graphUUID, episodeUUID)
 		if err != nil {
 			return fmt.Errorf("get episode %s: %w", episodeUUID, err)
 		}
-		if episode.Processed != nil && *episode.Processed {
+		if episode.GetProcessed() != nil && *episode.GetProcessed() {
 			return nil
 		}
 
-		if episode.TaskID != nil && *episode.TaskID != "" {
-			task, err := client.Task.Get(ctx, *episode.TaskID)
+		if taskUUID != "" {
+			task, err := client.Task.Get(ctx, taskUUID)
 			if err != nil {
-				return fmt.Errorf("get task %s: %w", *episode.TaskID, err)
+				return fmt.Errorf("get task %s: %w", taskUUID, err)
 			}
 			status := ""
-			if task.Status != nil {
-				status = strings.ToLower(strings.TrimSpace(*task.Status))
+			if task.GetStatus() != nil {
+				status = strings.ToLower(strings.TrimSpace(*task.GetStatus()))
 			}
 			if taskFailureStatuses[status] {
 				message := ""
-				if task.Error != nil && task.Error.Message != nil {
-					message = *task.Error.Message
+				if task.GetError() != nil && task.GetError().GetMessage() != nil {
+					message = *task.GetError().GetMessage()
 				}
-				return fmt.Errorf("episode %s task %s ended with status=%s: %s", episodeUUID, *episode.TaskID, status, message)
+				return fmt.Errorf("episode %s task %s ended with status=%s: %s", episodeUUID, taskUUID, status, message)
 			}
 		}
 
@@ -369,7 +383,7 @@ func processDocument(opts Options) error {
 	fmt.Println("DOCUMENT CHUNKING WITH CONTEXTUALIZED RETRIEVAL")
 	fmt.Println(strings.Repeat("=", 60))
 	fmt.Printf("Document: %s\n", opts.Document)
-	fmt.Printf("User ID: %s\n", opts.UserID)
+	fmt.Printf("User UUID: %s\n", opts.UserUUID)
 	fmt.Printf("Chunk size: %d\n", opts.ChunkSize)
 	fmt.Printf("Chunk overlap: %d\n", opts.ChunkOverlap)
 	fmt.Printf("Dry run: %v\n", opts.DryRun)
@@ -379,10 +393,12 @@ func processDocument(opts Options) error {
 	openaiClient := openai.NewClient(openaioption.WithAPIKey(openaiKey))
 
 	var zepClient *zepclient.Client
+	var graphUUID string
 	if !opts.DryRun {
 		zepClient = zepclient.NewClient(option.WithAPIKey(zepAPIKey))
-		if err := ensureUserExists(ctx, zepClient, opts.UserID); err != nil {
-			return fmt.Errorf("error ensuring user exists: %w", err)
+		_, graphUUID, err = resolveGraphUUID(ctx, zepClient, opts.UserUUID)
+		if err != nil {
+			return fmt.Errorf("error resolving the graph of the user: %w", err)
 		}
 	}
 
@@ -428,7 +444,7 @@ func processDocument(opts Options) error {
 		}
 
 		fmt.Println("  Ingesting to Zep...")
-		episodeUUID, err := ingestToZep(ctx, zepClient, opts.UserID, finalChunk)
+		episodeUUID, taskUUID, err := ingestToZep(ctx, zepClient, graphUUID, finalChunk)
 		if err != nil {
 			fmt.Printf("  ERROR ingesting: %v\n", err)
 			failed++
@@ -439,7 +455,7 @@ func processDocument(opts Options) error {
 
 		if opts.Wait {
 			fmt.Println("  Waiting for episode processing...")
-			if err := waitForEpisodeProcessing(ctx, zepClient, episodeUUID); err != nil {
+			if err := waitForEpisodeProcessing(ctx, zepClient, graphUUID, episodeUUID, taskUUID); err != nil {
 				fmt.Printf("  ERROR waiting: %v\n", err)
 				failed++
 				success--

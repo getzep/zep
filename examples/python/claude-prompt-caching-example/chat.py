@@ -29,7 +29,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import uuid
 
 from anthropic import Anthropic
 from dotenv import load_dotenv
@@ -60,7 +59,7 @@ def stats_line(m: TurnMetrics) -> str:
     )
 
 
-def restore_history(zep: Zep, thread_id: str) -> list[dict]:
+def restore_history(zep: Zep, thread_uuid: str) -> list[dict]:
     """Rebuild the agent's in-context history from a Zep thread's stored
     messages, so resuming a thread shows Claude the conversation so far.
 
@@ -68,7 +67,7 @@ def restore_history(zep: Zep, thread_id: str) -> list[dict]:
     from an interrupted session is dropped so the messages array stays
     well-formed once the next user turn is appended.
     """
-    messages = zep.thread.get(thread_id=thread_id).messages or []
+    messages = list(zep.thread.list_messages(thread_uuid))
     history = [
         {"role": m.role, "content": [{"type": "text", "text": m.content}]}
         for m in messages
@@ -93,11 +92,10 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--user-id",
-        default=scenario.DEMO_USER_ID,
-        help=f"Zep user ID to chat as (default: {scenario.DEMO_USER_ID}, seeded by ingest.py).",
+        "--user-uuid",
+        help="UUID of the Zep user to chat as (default: the demo user that ingest.py seeded).",
     )
-    parser.add_argument("--thread-id", help="Existing Zep thread ID to continue (default: start a new thread).")
+    parser.add_argument("--thread-uuid", help="UUID of an existing Zep thread to continue (default: start a new thread).")
     parser.add_argument("--max-tokens", type=int, default=1024)
     parser.add_argument("--show-context", action="store_true", help="Print the retrieved context block each turn.")
     args = parser.parse_args()
@@ -111,25 +109,27 @@ def main() -> None:
     anthropic_client = Anthropic(api_key=anthropic_key)
 
     # --- resolve user + thread ----------------------------------------------
-    user_id = args.user_id
+    demo_user_uuid = scenario.load_demo_user_uuid()
+    user_uuid = args.user_uuid or demo_user_uuid
+    if user_uuid is None:
+        sys.exit("No demo user found. Run `python ingest.py` first, or give --user-uuid.")
     try:
-        zep.user.get(user_id=user_id)
+        zep.user.get(user_uuid)
     except ApiError as e:
         if e.status_code == 404:
-            sys.exit(f"Zep user '{user_id}' not found. Run `python ingest.py` first to seed the demo user.")
+            sys.exit(f"Zep user '{user_uuid}' not found. Run `python ingest.py` first to seed the demo user.")
         raise
 
-    thread_id = args.thread_id
-    if thread_id is None:
-        thread_id = f"{user_id}-chat-{uuid.uuid4().hex[:6]}"
-        zep.thread.create(thread_id=thread_id, user_id=user_id)
-    print(f"User {BOLD}{user_id}{RESET} | thread {BOLD}{thread_id}{RESET} | context mode: {BOLD}{args.context_mode}{RESET}")
+    thread_uuid = args.thread_uuid
+    if thread_uuid is None:
+        thread_uuid = zep.thread.create(user_uuid=user_uuid).uuid_
+    print(f"User {BOLD}{user_uuid}{RESET} | thread {BOLD}{thread_uuid}{RESET} | context mode: {BOLD}{args.context_mode}{RESET}")
     print(f"{DIM}Commands: /context (show last retrieved memory), /stats (session totals), /quit{RESET}\n")
 
-    user_name = "Dana" if user_id == scenario.DEMO_USER_ID else "User"
+    user_name = "Dana" if user_uuid == demo_user_uuid else "User"
     agent = ZepMemoryAgent(
         anthropic_client=anthropic_client,
-        memory=ZepMemory(zep, thread_id, user_name=user_name),
+        memory=ZepMemory(zep, thread_uuid, user_name=user_name),
         mode=args.context_mode,
         max_tokens=args.max_tokens,
     )
@@ -138,8 +138,8 @@ def main() -> None:
     # in-context history so Claude sees the conversation so far. (Zep memory
     # persists across sessions regardless; this restores the literal chat
     # transcript, which lives only in the request's messages array.)
-    if args.thread_id is not None:
-        resumed = restore_history(zep, thread_id)
+    if args.thread_uuid is not None:
+        resumed = restore_history(zep, thread_uuid)
         agent.history = resumed
         if resumed:
             print(f"{DIM}Resumed {len(resumed)} prior message(s) from this thread.{RESET}\n")
@@ -181,7 +181,7 @@ def main() -> None:
             print(f"{DIM}--- context block ---\n{agent.last_context or '(empty)'}\n---{RESET}")
         print(stats_line(metrics) + "\n")
 
-    print(f"\nUser: {user_id}  Thread: {thread_id}  (pass --thread-id to resume this conversation)")
+    print(f"\nUser: {user_uuid}  Thread: {thread_uuid}  (pass --thread-uuid to resume this conversation)")
 
 
 if __name__ == "__main__":
