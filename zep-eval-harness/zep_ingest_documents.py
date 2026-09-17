@@ -3,7 +3,7 @@ Zep Eval Harness — Document Graph Ingestion Script
 
 Ingests pre-prepared document chunks into a standalone Zep graph. Reads chunks
 from a chunk set directory (produced by zep_chunk_documents.py) and sends them
-to Zep via graph.add().
+to Zep as graph episodes.
 
 Supports "follow" mode: if the targeted chunk set is still being generated
 (status: "in_progress"), the script tails the JSONL file and ingests chunks
@@ -16,7 +16,6 @@ writes the chunk set, then ingests from it.
 import os
 import json
 import glob
-import uuid
 import shutil
 import asyncio
 import argparse
@@ -24,10 +23,9 @@ from time import time
 from datetime import datetime
 from dotenv import load_dotenv
 from zep_cloud.client import AsyncZep
-from zep_cloud import EpisodeData
 
 from config.constants import POLL_INTERVAL, POLL_TIMEOUT_PER_EPISODE
-from config.document_ingestion_config.constants import DOCUMENTS_GRAPH_ID
+from config.document_ingestion_config.constants import DOCUMENTS_GRAPH_NAME
 from config.document_chunking_config.constants import CHUNK_SIZE
 from retry import retry_with_backoff
 from checkpoint import save_checkpoint, load_checkpoint, delete_checkpoint
@@ -63,16 +61,19 @@ CHECKPOINT_DIR = "runs/checkpoints"
 CHUNK_SETS_DIR = "runs/chunk_sets"
 FOLLOW_POLL_INTERVAL = 3  # seconds between checks when tailing in-progress chunk set
 
+# Number of episodes that the script adds at the same time.
+CONCURRENT_EPISODES = 20
+
 
 # ============================================================================
 # Checkpoint Management
 # ============================================================================
 
 
-def checkpoint_path_for_graph(graph_id: str) -> str:
-    """Return the checkpoint file path for a given graph ID."""
+def checkpoint_path_for_graph(graph_uuid: str) -> str:
+    """Return the checkpoint file path for a given graph UUID."""
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
-    return os.path.join(CHECKPOINT_DIR, f"doc_{graph_id}.json")
+    return os.path.join(CHECKPOINT_DIR, f"doc_{graph_uuid}.json")
 
 
 # ============================================================================
@@ -102,14 +103,34 @@ def read_chunk_set_meta(chunk_set_dir: str) -> dict:
         return json.load(f)
 
 
-
 FOLLOW_TIMEOUT = 3600  # 1 hour max wait for an in-progress chunk set
+
+
+async def add_episode(
+    zep_client: AsyncZep,
+    graph_uuid: str,
+    data: str,
+    source_description: str | None,
+    label: str,
+) -> str | None:
+    """
+    Add one JSON episode to a graph. Returns the UUID of the processing task.
+    """
+    result = await retry_with_backoff(
+        zep_client.graph.episode.add,
+        graph_uuid,
+        data=data,
+        type="json",
+        source_description=source_description,
+        description=f"add episode for {label}",
+    )
+    return result.task.uuid_ if result.task else None
 
 
 async def follow_and_ingest(
     zep_client: AsyncZep,
     chunk_set_dir: str,
-    graph_id: str,
+    graph_uuid: str,
     run_number: int = 0,
     ingested_count: int = 0,
     prior_tasks: list[tuple[str, int]] | None = None,
@@ -117,30 +138,29 @@ async def follow_and_ingest(
 ) -> tuple[int, list[tuple[str, int]]]:
     """
     Tail a chunk set's JSONL file and ingest chunks as they appear.
-    Handles both complete and in-progress chunk sets. Uses graph.add_batch
-    with a maximum batch size of 20.
+    Handles both complete and in-progress chunk sets. Each chunk becomes one
+    graph episode.
 
     Args:
         zep_client: AsyncZep client instance
         chunk_set_dir: Path to chunk set directory
-        graph_id: Zep graph ID to ingest into
+        graph_uuid: UUID of the Zep graph to ingest into
         run_number: Run number for checkpoint persistence
         ingested_count: Number of chunks already ingested (for resume)
-        prior_tasks: Tasks from a previous run as (task_id, num_episodes) tuples
+        prior_tasks: Tasks from a previous run as (task_uuid, num_episodes) tuples
         config: Ontology/instruction config flags to persist in checkpoint
 
     Returns tuple of (total chunks ingested, all tasks including prior).
     """
     jsonl_path = os.path.join(chunk_set_dir, "chunks.jsonl")
 
-    cp_path = checkpoint_path_for_graph(graph_id)
+    cp_path = checkpoint_path_for_graph(graph_uuid)
     total_ingested = ingested_count
     tasks = list(prior_tasks or [])
-    seen_task_ids = set(t[0] for t in tasks)
     last_line_read = ingested_count
     file_offset = 0  # Track read position to avoid re-reading entire file
     follow_start = time()
-    batch_size = 20  # Max batch size for graph.add_batch
+    batch_size = CONCURRENT_EPISODES
 
     while True:
         # Read new lines from where we left off
@@ -162,12 +182,15 @@ async def follow_and_ingest(
                         file_offset += len(line.encode())
                         continue
 
-        # Process new chunks in batches of 20
+        # Process new chunks in concurrent groups
         for batch_start in range(0, len(new_chunks), batch_size):
             batch = new_chunks[batch_start : batch_start + batch_size]
 
-            # Build EpisodeData objects for this batch
-            episodes = []
+            first_idx = batch[0]["chunk_index"] + 1
+            last_idx = batch[-1]["chunk_index"] + 1
+            batch_label = f"chunks {first_idx}-{last_idx} of '{batch[0]['filename']}'"
+
+            episode_calls = []
             for chunk in batch:
                 data_dict = {
                     "document_title": chunk["title"],
@@ -176,57 +199,54 @@ async def follow_and_ingest(
                 }
                 if chunk.get("context"):
                     data_dict["chunk_context"] = chunk["context"]
-                episodes.append(EpisodeData(
-                    data=json.dumps(data_dict),
-                    type="json",
-                    source_description=chunk.get("source_description"),
-                ))
-
-            first_idx = batch[0]["chunk_index"] + 1
-            last_idx = batch[-1]["chunk_index"] + 1
-            batch_label = f"chunks {first_idx}-{last_idx} of '{batch[0]['filename']}'"
+                episode_calls.append(
+                    add_episode(
+                        zep_client,
+                        graph_uuid,
+                        json.dumps(data_dict),
+                        chunk.get("source_description"),
+                        f"chunk {chunk['chunk_index'] + 1} of '{chunk['filename']}'",
+                    )
+                )
 
             try:
-                result = await retry_with_backoff(
-                    zep_client.graph.add_batch,
-                    episodes=episodes,
-                    graph_id=graph_id,
-                    description=f"ingest {batch_label}",
-                )
+                task_uuids = await asyncio.gather(*episode_calls)
                 total_ingested += len(batch)
                 last_line_read += len(batch)
 
-                # Collect unique task_ids with episode counts from this batch
-                batch_task_counts = {}
-                for ep in result:
-                    if ep.task_id:
-                        batch_task_counts[ep.task_id] = batch_task_counts.get(ep.task_id, 0) + 1
-                for tid, count in batch_task_counts.items():
-                    if tid not in seen_task_ids:
-                        tasks.append((tid, count))
-                        seen_task_ids.add(tid)
+                for task_uuid in task_uuids:
+                    if task_uuid:
+                        tasks.append((task_uuid, 1))
 
                 # Checkpoint after each batch
-                save_checkpoint(cp_path, {
-                    "graph_id": graph_id,
-                    "run_number": run_number,
-                    "chunk_set_dir": chunk_set_dir,
-                    "chunks_ingested": total_ingested,
-                    "tasks": tasks,
-                    "config": config or {},
-                })
+                save_checkpoint(
+                    cp_path,
+                    {
+                        "graph_uuid": graph_uuid,
+                        "run_number": run_number,
+                        "chunk_set_dir": chunk_set_dir,
+                        "chunks_ingested": total_ingested,
+                        "tasks": tasks,
+                        "config": config or {},
+                    },
+                )
             except Exception as e:
                 print(f"  ✗ Failed {batch_label} after retries: {e}")
-                save_checkpoint(cp_path, {
-                    "graph_id": graph_id,
-                    "run_number": run_number,
-                    "chunk_set_dir": chunk_set_dir,
-                    "chunks_ingested": total_ingested,
-                    "tasks": tasks,
-                    "config": config or {},
-                })
+                save_checkpoint(
+                    cp_path,
+                    {
+                        "graph_uuid": graph_uuid,
+                        "run_number": run_number,
+                        "chunk_set_dir": chunk_set_dir,
+                        "chunks_ingested": total_ingested,
+                        "tasks": tasks,
+                        "config": config or {},
+                    },
+                )
                 print(f"\n  ✗ Ingestion halted. Checkpoint saved to: {cp_path}")
-                print(f"    Resume with: uv run zep_ingest_documents.py --resume {cp_path}")
+                print(
+                    f"    Resume with: uv run zep_ingest_documents.py --resume {cp_path}"
+                )
                 raise
 
         # Check if chunk set is complete (with graceful handling for missing/partial meta)
@@ -243,7 +263,9 @@ async def follow_and_ingest(
             if elapsed > FOLLOW_TIMEOUT:
                 print(f"  ⚠ Follow mode timed out after {FOLLOW_TIMEOUT}s")
                 break
-            print(f"  Waiting for chunks... ({total_ingested} ingested, chunk set in progress)")
+            print(
+                f"  Waiting for chunks... ({total_ingested} ingested, chunk set in progress)"
+            )
             await asyncio.sleep(FOLLOW_POLL_INTERVAL)
         else:
             # Reset timeout when we're making progress
@@ -262,38 +284,39 @@ async def follow_and_ingest(
 
 async def setup_graph(
     zep_client: AsyncZep,
-    graph_id: str,
     use_custom_ontology: bool = False,
     use_custom_instructions: bool = False,
-):
-    """Create the standalone graph and apply ontology/instructions."""
-    try:
-        await zep_client.graph.create(
-            graph_id=graph_id,
-            name="Shared Documents",
-            description="Shared reference documents for all users",
-        )
-        print(f"✓ Created standalone graph: {graph_id}")
-    except Exception:
-        print(f"  Standalone graph {graph_id} already exists")
+) -> str:
+    """
+    Create the standalone graph and apply ontology/instructions.
+    Returns the server-generated graph UUID.
+    """
+    graph = await zep_client.graph.create(
+        name=DOCUMENTS_GRAPH_NAME,
+        description="Shared reference documents for all users",
+    )
+    graph_uuid = graph.uuid_
+    print(f"✓ Created standalone graph: {graph_uuid}")
 
     if use_custom_ontology:
-        print(f"\nSetting document custom ontology for graph: {graph_id}")
+        print(f"\nSetting document custom ontology for graph: {graph_uuid}")
         try:
-            await set_document_custom_ontology(zep_client, graph_ids=[graph_id])
+            await set_document_custom_ontology(zep_client, graph_uuids=[graph_uuid])
             print("✓ Document custom ontology applied successfully")
         except Exception as e:
             print(f"Error setting document ontology: {e}")
             raise
 
     if use_custom_instructions:
-        print(f"Setting document custom instructions for graph: {graph_id}")
+        print(f"Setting document custom instructions for graph: {graph_uuid}")
         try:
-            await set_document_custom_instructions(zep_client, graph_ids=[graph_id])
+            await set_document_custom_instructions(zep_client, graph_uuids=[graph_uuid])
             print("✓ Document custom instructions applied successfully")
         except Exception as e:
             print(f"Error setting document custom instructions: {e}")
             raise
+
+    return graph_uuid
 
 
 # ============================================================================
@@ -301,7 +324,7 @@ async def setup_graph(
 # ============================================================================
 
 
-async def poll_task_ids(
+async def poll_task_uuids(
     zep_client: AsyncZep, tasks: list[tuple[str, int]], label: str
 ) -> dict:
     """
@@ -314,8 +337,11 @@ async def poll_task_ids(
     if not tasks:
         print(f"  [{label}] No tasks to poll")
         return {
-            "succeeded": 0, "failed": 0, "total_episodes": 0,
-            "elapsed_seconds": 0, "avg_seconds_per_episode": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "total_episodes": 0,
+            "elapsed_seconds": 0,
+            "avg_seconds_per_episode": 0,
         }
 
     total_tasks = len(tasks)
@@ -324,13 +350,13 @@ async def poll_task_ids(
     failed_count = 0
     poll_start = time()
 
-    for task_id, num_episodes in tasks:
+    for task_uuid, num_episodes in tasks:
         task_timeout = num_episodes * POLL_TIMEOUT_PER_EPISODE
         start = time()
 
         while time() - start < task_timeout:
             try:
-                task = await zep_client.task.get(task_id)
+                task = await zep_client.task.get(task_uuid)
                 if task.status == "succeeded":
                     succeeded_count += 1
                     done = succeeded_count + failed_count
@@ -340,7 +366,9 @@ async def poll_task_ids(
                     failed_count += 1
                     done = succeeded_count + failed_count
                     error_msg = task.error.message if task.error else "unknown error"
-                    print(f"  ⚠ [{label}] Task {done}/{total_tasks} FAILED: {error_msg}")
+                    print(
+                        f"  ⚠ [{label}] Task {done}/{total_tasks} FAILED: {error_msg}"
+                    )
                     break
             except Exception:
                 pass  # Task may not be available yet
@@ -349,13 +377,14 @@ async def poll_task_ids(
             elapsed = time() - poll_start
             avg = elapsed / total_episodes if total_episodes else 0
             print(
-                f"  ⚠ [{label}] Task {task_id} ({num_episodes} episodes) "
+                f"  ⚠ [{label}] Task {task_uuid} ({num_episodes} episodes) "
                 f"timed out after {task_timeout}s"
             )
             done = succeeded_count + failed_count
             print(f"  ⚠ [{label}] Stopping poll — {done}/{total_tasks} done")
             return {
-                "succeeded": succeeded_count, "failed": failed_count,
+                "succeeded": succeeded_count,
+                "failed": failed_count,
                 "total_episodes": total_episodes,
                 "elapsed_seconds": round(elapsed, 1),
                 "avg_seconds_per_episode": round(avg, 1),
@@ -373,7 +402,8 @@ async def poll_task_ids(
         print(f"  ✓ [{label}] All {total_tasks} tasks succeeded")
 
     return {
-        "succeeded": succeeded_count, "failed": failed_count,
+        "succeeded": succeeded_count,
+        "failed": failed_count,
         "total_episodes": total_episodes,
         "elapsed_seconds": round(elapsed, 1),
         "avg_seconds_per_episode": round(avg, 1),
@@ -405,7 +435,7 @@ def get_next_run_number():
 
 def write_run_manifest(
     run_number,
-    graph_id,
+    graph_uuid,
     num_chunks,
     chunk_set_number=None,
     chunk_size=None,
@@ -421,7 +451,8 @@ def write_run_manifest(
     # Snapshot the document ingestion config used for this run
     snapshot_dir = os.path.join(run_dir, "document_ingestion_config_snapshot")
     shutil.copytree(
-        "config/document_ingestion_config", snapshot_dir,
+        "config/document_ingestion_config",
+        snapshot_dir,
         ignore=shutil.ignore_patterns("__pycache__"),
     )
 
@@ -429,20 +460,25 @@ def write_run_manifest(
         "run_number": run_number,
         "type": "documents",
         "timestamp": timestamp,
-        "graph_id": graph_id,
+        "graph_uuid": graph_uuid,
+        "graph_name": DOCUMENTS_GRAPH_NAME,
         "num_chunks": num_chunks,
         "chunk_set": chunk_set_number,
         "chunk_size": chunk_size,
         "ontology": {
-            "type": (
-                "custom" if use_document_custom_ontology else "default_zep"
-            ),
-            "custom_entity_types": DOCUMENT_ENTITY_TYPES if use_document_custom_ontology else [],
-            "custom_edge_types": DOCUMENT_EDGE_TYPES if use_document_custom_ontology else [],
+            "type": ("custom" if use_document_custom_ontology else "default_zep"),
+            "custom_entity_types": DOCUMENT_ENTITY_TYPES
+            if use_document_custom_ontology
+            else [],
+            "custom_edge_types": DOCUMENT_EDGE_TYPES
+            if use_document_custom_ontology
+            else [],
         },
         "custom_instructions": {
             "enabled": use_document_custom_instructions,
-            "instruction_names": DOCUMENT_INSTRUCTION_NAMES if use_document_custom_instructions else [],
+            "instruction_names": DOCUMENT_INSTRUCTION_NAMES
+            if use_document_custom_instructions
+            else [],
         },
     }
 
@@ -534,13 +570,15 @@ async def main():
         chunk_set_dir = checkpoint_data["chunk_set_dir"]
         is_resuming = True
         print(f"✓ Loaded checkpoint from: {args.resume}")
-        print(f"  Graph ID: {checkpoint_data['graph_id']}")
+        print(f"  Graph UUID: {checkpoint_data['graph_uuid']}")
         print(f"  Chunks ingested: {checkpoint_data.get('chunks_ingested', 0)}")
 
         # Restore config from checkpoint
         config = checkpoint_data.get("config", {})
         args.custom_ontology = config.get("custom_ontology", args.custom_ontology)
-        args.custom_instructions = config.get("custom_instructions", args.custom_instructions)
+        args.custom_instructions = config.get(
+            "custom_instructions", args.custom_instructions
+        )
 
     elif args.chunk_size is not None:
         # Inline mode: run chunking first
@@ -569,7 +607,9 @@ async def main():
         print("=" * 80)
 
         chunk_set_dir = await run_chunking(
-            openai_client, documents, args.chunk_size,
+            openai_client,
+            documents,
+            args.chunk_size,
             chunk_overlap=CHUNK_OVERLAP,
         )
         chunk_set_number = int(os.path.basename(chunk_set_dir).split("_")[0])
@@ -619,7 +659,9 @@ async def main():
         print("  Ontology: Custom document ontology")
     else:
         print("  Ontology: Default Zep ontology")
-    print(f"  Custom instructions: {'enabled' if args.custom_instructions else 'disabled'}")
+    print(
+        f"  Custom instructions: {'enabled' if args.custom_instructions else 'disabled'}"
+    )
     print(f"  Polling: {'enabled' if should_poll else 'disabled'}")
     print("=" * 80)
 
@@ -630,29 +672,32 @@ async def main():
         }
 
         if is_resuming:
-            graph_id = checkpoint_data["graph_id"]
+            graph_uuid = checkpoint_data["graph_uuid"]
             run_number = checkpoint_data.get("run_number", get_next_run_number())
             ingested_count = checkpoint_data.get("chunks_ingested", 0)
             prior_tasks = checkpoint_data.get("tasks", [])
         else:
             run_number = get_next_run_number()
-            graph_id = f"{DOCUMENTS_GRAPH_ID}_{uuid.uuid4().hex[:8]}"
             ingested_count = 0
             prior_tasks = []
 
             # Create graph and apply ontology/instructions
-            await setup_graph(
-                zep_client, graph_id,
+            graph_uuid = await setup_graph(
+                zep_client,
                 use_custom_ontology=args.custom_ontology,
                 use_custom_instructions=args.custom_instructions,
             )
 
-        print(f"\n{'Resuming' if is_resuming else 'Starting'} document run #{run_number}")
-        print(f"Graph ID: {graph_id}\n")
+        print(
+            f"\n{'Resuming' if is_resuming else 'Starting'} document run #{run_number}"
+        )
+        print(f"Graph UUID: {graph_uuid}\n")
 
         # Ingest chunks (with follow mode for in-progress chunk sets)
         num_ingested, tasks = await follow_and_ingest(
-            zep_client, chunk_set_dir, graph_id,
+            zep_client,
+            chunk_set_dir,
+            graph_uuid,
             run_number=run_number,
             ingested_count=ingested_count,
             prior_tasks=prior_tasks,
@@ -661,7 +706,9 @@ async def main():
 
         # Write run manifest
         run_dir = write_run_manifest(
-            run_number, graph_id, num_ingested,
+            run_number,
+            graph_uuid,
+            num_ingested,
             chunk_set_number=chunk_set_number,
             chunk_size=chunk_size,
             use_document_custom_ontology=args.custom_ontology,
@@ -680,17 +727,17 @@ async def main():
             print("\n" + "=" * 80)
             print("POLLING FOR PROCESSING COMPLETION")
             print("=" * 80)
-            print(f"Checking every {POLL_INTERVAL}s (timeout: {POLL_TIMEOUT_PER_EPISODE}s per episode)\n")
+            print(
+                f"Checking every {POLL_INTERVAL}s (timeout: {POLL_TIMEOUT_PER_EPISODE}s per episode)\n"
+            )
 
             if tasks:
                 poll_start = time()
-                result = await poll_task_ids(zep_client, tasks, graph_id)
+                result = await poll_task_uuids(zep_client, tasks, graph_uuid)
                 poll_elapsed = time() - poll_start
 
                 total_episodes = result["total_episodes"]
-                avg_per_episode = (
-                    poll_elapsed / total_episodes if total_episodes else 0
-                )
+                avg_per_episode = poll_elapsed / total_episodes if total_episodes else 0
 
                 print("\n✓ Document graph finished processing")
                 print(f"\n  Ingestion processing time: {poll_elapsed:.1f}s")
@@ -702,14 +749,18 @@ async def main():
                     "total_seconds": round(poll_elapsed, 1),
                     "total_episodes": total_episodes,
                     "avg_seconds_per_episode": round(avg_per_episode, 1),
-                    "per_graph": [{
-                        "graph_id": graph_id,
-                        "total_seconds": result["elapsed_seconds"],
-                        "total_episodes": result["total_episodes"],
-                        "avg_seconds_per_episode": result["avg_seconds_per_episode"],
-                        "succeeded": result["succeeded"],
-                        "failed": result["failed"],
-                    }],
+                    "per_graph": [
+                        {
+                            "graph_uuid": graph_uuid,
+                            "total_seconds": result["elapsed_seconds"],
+                            "total_episodes": result["total_episodes"],
+                            "avg_seconds_per_episode": result[
+                                "avg_seconds_per_episode"
+                            ],
+                            "succeeded": result["succeeded"],
+                            "failed": result["failed"],
+                        }
+                    ],
                 }
                 manifest_path = os.path.join(run_dir, "manifest.json")
                 with open(manifest_path, "r") as f:
@@ -722,8 +773,12 @@ async def main():
 
             print(f"\nYou can now run: uv run zep_evaluate.py --doc-run {run_number}")
         else:
-            print("\nGraph processing happens asynchronously and may take several minutes.")
-            print(f"You can run zep_evaluate.py with --doc-run {run_number} once processing is complete.")
+            print(
+                "\nGraph processing happens asynchronously and may take several minutes."
+            )
+            print(
+                f"You can run zep_evaluate.py with --doc-run {run_number} once processing is complete."
+            )
 
     except Exception as e:
         print(f"\nScript failed: {e}")

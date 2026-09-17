@@ -22,6 +22,10 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
    - Get your Google API key (for document contextualization and LLM evaluation)
    - Add both keys to your `.env` file
 
+   The harness uses the Zep v4 API through the `zep-cloud` v4 Python SDK. The
+   SDK sends requests to `https://api.getzep.com/api/v4` by default. For a
+   different environment, give `AsyncZep` an explicit `base_url` value.
+
 3. **Run user ingestion**
    ```bash
    # Ingest all users and poll until processing completes
@@ -87,16 +91,20 @@ An end-to-end evaluation framework for testing Zep's memory retrieval and questi
    Saves results to `runs/evaluations/{N}_{timestamp}/results.json` with an `evaluation_config_snapshot/`. Each evaluation run references its parent user and document ingestion runs.
 
 7. **Inspect a graph** (optional)
+
+   v4 addresses every user and graph by a server-generated UUID. Use the
+   `zep_user_uuid` and the `graph_uuid` values from `manifest.json`.
+
    ```bash
-   # Inspect a user graph (use the full zep_user_id from manifest.json)
-   uv run zep_graph_inspect.py --user zep_eval_test_user_001_a7390b47
+   # Inspect a user graph (use zep_user_uuid from manifest.json)
+   uv run zep_graph_inspect.py --user 4aee03c9-ae30-4720-bc75-dd1c9f482452
 
-   # Inspect the shared documents graph (use graph_id from manifest.json)
-   uv run zep_graph_inspect.py --graph zep_eval_shared_documents_f1a2b3c4
+   # Inspect the shared documents graph (use graph_uuid from manifest.json)
+   uv run zep_graph_inspect.py --graph 539cc10f-52da-41a5-841a-8c135828fdff
 
-   # Show only nodes or only edges
-   uv run zep_graph_inspect.py --user zep_eval_test_user_001_a7390b47 --nodes-only
-   uv run zep_graph_inspect.py --user zep_eval_test_user_001_a7390b47 --edges-only
+   # Show only entities or only edges
+   uv run zep_graph_inspect.py --user 4aee03c9-ae30-4720-bc75-dd1c9f482452 --include entities
+   uv run zep_graph_inspect.py --user 4aee03c9-ae30-4720-bc75-dd1c9f482452 --include edges
    ```
 
 ## Overview
@@ -144,7 +152,7 @@ This avoids re-ingesting identical graphs just to test different pairings.
 Document ingestion is split into two steps to avoid redundant LLM calls:
 
 1. **Chunking** (`zep_chunk_documents.py`): Splits documents, generates summaries and per-chunk contextualizations via LLM. Writes results to `runs/chunk_sets/{N}_{timestamp}/chunks.jsonl`. This is the expensive step.
-2. **Ingestion** (`zep_ingest_documents.py`): Reads a chunk set and sends chunks to Zep via `graph.add()`. No LLM calls — just API calls.
+2. **Ingestion** (`zep_ingest_documents.py`): Reads a chunk set and sends chunks to Zep via `graph.episode.add()`. No LLM calls — just API calls.
 
 A single chunk set can be reused across multiple ingestion runs with different ontology/instruction configurations:
 ```bash
@@ -174,20 +182,20 @@ Rate limits are handled automatically — if you hit limits, the retry backoff w
 
 ### Pipeline Steps (automated in zep_evaluate.py)
 
-1. **Search**: Query Zep's knowledge graph with ``scope="auto"`` (character-budgeted context block)
+1. **Search**: Query Zep's knowledge graph with ``graph.get_context`` (character-budgeted context block)
 2. **Evaluate Context**: Assess whether retrieved context contains sufficient information (PRIMARY METRIC)
 3. **Generate Response**: Use LLM with retrieved context to answer questions
 4. **Grade Answer**: Evaluate answers against golden answers using LLM judge (SECONDARY METRIC)
 
 ### Scope: Single-Shot Retrieval
 
-**This harness evaluates single-shot retrieval only.** Each test case issues one retrieval — the raw test question via auto search on the user graph (and any document graph), using the strategy in `config/evaluation_config/retrieval_strategy.py` — and hands the resulting context block to the response model in a single turn. There is no second retrieval round and no query reformulation. That mirrors *deterministic/programmatic* retrieval, where your application searches on every turn and injects the context itself.
+**This harness evaluates single-shot retrieval only.** Each test case issues one retrieval — the raw test question through the context endpoint on the user graph (and any document graph), using the strategy in `config/evaluation_config/retrieval_strategy.py` — and hands the resulting context block to the response model in a single turn. There is no second retrieval round and no query reformulation. That mirrors *deterministic/programmatic* retrieval, where your application searches on every turn and injects the context itself.
 
 Production agents are frequently built the other way: Zep is exposed to the model as **tools** — for example `search_graph` from the [Zep MCP server](../mcp/zep-mcp-server/), or your own tool definitions — and the LLM decides when to search, how to phrase each query, and whether to search again after seeing results.
 
 Read the scores accordingly:
 
-- **What they measure**: whether your ingestion and retrieval strategy (ontology, custom instructions, chunking, auto-search character budget) puts the right facts within reach of one well-formed query. Pinning retrieval to a single deterministic search is what keeps runs comparable — the config stays the only variable.
+- **What they measure**: whether your ingestion and retrieval strategy (ontology, custom instructions, chunking, context character budget) puts the right facts within reach of one well-formed query. Pinning retrieval to a single deterministic search is what keeps runs comparable — the config stays the only variable.
 - **What they do not measure**: agent behavior. A tool-based agent can beat these numbers by issuing several targeted searches and reformulating after a weak result, or fall short of them by not searching at all, phrasing a query poorly, or running out of turns. Tool choice, query formulation, and multi-turn dynamics are untested here.
 
 If your production path exposes Zep through tools, treat a strong result here as a prerequisite rather than a verdict, and evaluate the agent end-to-end as well. See [Evaluate Zep for your use case](https://help.getzep.com/evaluate-zep-for-your-use-case).
@@ -204,7 +212,7 @@ config/
 │   ├── custom_instructions.py                # User graph custom instructions + set_custom_instructions()
 │   └── user_summary_instructions.py          # User node summary instructions
 ├── document_ingestion_config/
-│   ├── constants.py                          # DOCUMENTS_GRAPH_ID
+│   ├── constants.py                          # DOCUMENTS_GRAPH_NAME
 │   ├── ontology.py                           # Document graph entity/edge types + set_document_custom_ontology()
 │   └── custom_instructions.py                # Document graph custom instructions
 ├── document_chunking_config/
@@ -267,10 +275,11 @@ runs/
   "users": [
     {
       "base_user_id": "zep_eval_test_user_001",
-      "zep_user_id": "zep_eval_test_user_001_3f701979",
+      "zep_user_uuid": "4aee03c9-ae30-4720-bc75-dd1c9f482452",
+      "zep_user_graph_uuid": "5ceb02ec-7d3a-41c6-bcdd-a1cb08bfe1bc",
       "first_name": "Sarah",
       "last_name": "Chen",
-      "thread_ids": ["conv_002_3f701979", "conv_001_3f701979"],
+      "thread_uuids": ["15808e8e-bc2e-42bf-ad42-9f4ba286121c", "3bd3e641-2689-43c3-8582-d4b65475afc3"],
       "num_conversations": 2,
       "num_telemetry_files": 1
     }
@@ -284,7 +293,8 @@ runs/
   "run_number": 1,
   "type": "documents",
   "timestamp": "2026-03-31T22:25:00.282382",
-  "graph_id": "zep_eval_shared_documents_1d4d9a28",
+  "graph_uuid": "539cc10f-52da-41a5-841a-8c135828fdff",
+  "graph_name": "Zep eval shared documents",
   "num_chunks": 10,
   "ontology": {
     "type": "custom",
@@ -321,7 +331,8 @@ The harness automatically discovers and processes data files based on naming con
   ]
   ```
 - Used to create users in Zep with full names
-- Random suffixes added during ingestion for idempotency
+- The Zep server gives each user a UUID. The harness stores that UUID in the
+  run manifest and uses it for all later API calls.
 
 ### Conversations
 - Location: `data/conversations/`
@@ -345,7 +356,7 @@ The harness automatically discovers and processes data files based on naming con
 - Location: `data/telemetry/`
 - Format: `{user_id}_*.json`
 - Structure: Any JSON data
-- Ingested using `graph.add(type="json")` into the user's graph
+- Ingested as a JSON graph episode into the user's graph
 - Example: User preferences, activity history, structured data
 
 ### Documents (Optional)
@@ -396,9 +407,9 @@ To add more users:
 Retrieval is defined by a single module: `config/evaluation_config/retrieval_strategy.py`. Its `build_context_block()` function is the source of truth — edit that function (and the constants it uses) to change how context is retrieved and assembled.
 
 Default strategy:
-- `SCOPE = "auto"`: Zep packs edges, nodes, episodes, observations, and thread summaries into a pre-assembled context string
-- `MAX_CHARACTERS = 10000`: character budget for auto search (``limit`` and ``reranker`` do not apply under auto)
-- User-node summary is fetched once per user via `fetch_user_summary()` and prepended (auto search does not include it)
+- `graph.get_context`: Zep packs edges, nodes, episodes, observations, and thread summaries into a pre-assembled context string
+- `MAX_CHARACTERS = 10000`: character budget for the context block
+- User-node summary is fetched once per user via `fetch_user_summary()` and prepended (the context endpoint does not include it)
 
 LLM models remain in `config/evaluation_config/constants.py`:
 - `LLM_RESPONSE_MODEL`: Model for generating responses
@@ -417,7 +428,7 @@ The system prompt used when generating AI responses during evaluation is defined
 
 ### Customize Context Block / Retrieval
 
-Change retrieval by editing `build_context_block()` in `config/evaluation_config/retrieval_strategy.py`. For example, you can switch to manual multi-scope searches with per-type limits and a chosen reranker, or adjust the auto-search character budget. See the [Customize Your Context Block documentation](https://help.getzep.com/cookbook/customize-your-context-block) and [Searching the Graph](https://help.getzep.com/searching-the-graph) for best practices.
+Change retrieval by editing `build_context_block()` in `config/evaluation_config/retrieval_strategy.py`. For example, you can switch to manual `graph.search` calls with per-type limits and a chosen reranker, or adjust the context character budget. See the [Customize Your Context Block documentation](https://help.getzep.com/cookbook/customize-your-context-block) and [Searching the Graph](https://help.getzep.com/searching-the-graph) for best practices.
 
 ### Add JSON/Text Data
 
@@ -479,11 +490,10 @@ Results are saved to `runs/evaluations/{run_number}_{timestamp}/results.json` wi
   "run_number": 1,
   "parent_runs": {
     "user_run": { "run_number": 1, "run_dir": "runs/users/1_20260331T222436" },
-    "document_run": { "run_number": 1, "run_dir": "runs/documents/1_20260331T222500", "graph_id": "zep_eval_shared_documents_1d4d9a28" }
+    "document_run": { "run_number": 1, "run_dir": "runs/documents/1_20260331T222500", "graph_uuid": "539cc10f-52da-41a5-841a-8c135828fdff" }
   },
   "search_configuration": {
-    "strategy": "auto_search",
-    "scope": "auto",
+    "strategy": "graph_context",
     "max_characters": 10000
   },
   "model_configuration": {
@@ -542,9 +552,9 @@ Results are saved to `runs/evaluations/{run_number}_{timestamp}/results.json` wi
 ## Troubleshooting
 
 ### User Already Exists Error
-The ingestion script uses randomized user ID suffixes, so this shouldn't happen. If it does:
-1. Delete existing users via Zep API or dashboard
-2. Or modify the user_id in `data/users.json`
+The ingestion script does not send a user ID. The Zep server creates a new user
+and gives it a UUID on each run, so this error must not occur. If it does,
+delete the user with the Zep API or the dashboard.
 
 ### Episode Processing Time
 Graph processing is asynchronous and can take 5-20 seconds per message. By default the ingestion scripts poll until all episodes are processed. Use `--no-poll` to skip waiting.

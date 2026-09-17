@@ -1,2 +1,3 @@
 # Standalone graph for shared documents (ingested once, accessible to all users)
-DOCUMENTS_GRAPH_ID = "zep_eval_shared_documents"
+# v4 addresses a graph by its server-generated UUID, so this is a display name.
+DOCUMENTS_GRAPH_NAME = "Zep eval shared documents"

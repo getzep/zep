@@ -1,7 +1,6 @@
 import os
 import json
 import glob
-import uuid
 import shutil
 import asyncio
 import argparse
@@ -9,8 +8,7 @@ from time import time
 from datetime import datetime
 from dotenv import load_dotenv
 from zep_cloud.client import AsyncZep
-from zep_cloud.types import Message
-from zep_cloud import EpisodeData
+from zep_cloud.types import BatchItemInput
 
 from config.constants import (
     POLL_INTERVAL,
@@ -22,7 +20,11 @@ from checkpoint import save_checkpoint, load_checkpoint, delete_checkpoint
 
 # Import ontology module (user only)
 try:
-    from config.user_ingestion_config.ontology import set_custom_ontology, ENTITY_TYPES, EDGE_TYPES
+    from config.user_ingestion_config.ontology import (
+        set_custom_ontology,
+        ENTITY_TYPES,
+        EDGE_TYPES,
+    )
 
     CUSTOM_ONTOLOGY_AVAILABLE = True
 except (ImportError, NotImplementedError):
@@ -33,7 +35,9 @@ except (ImportError, NotImplementedError):
 # Import custom instructions module (user only)
 try:
     from config.user_ingestion_config.custom_instructions import set_custom_instructions
-    from config.user_ingestion_config.custom_instructions import INSTRUCTION_NAMES as CUSTOM_INSTRUCTION_NAMES
+    from config.user_ingestion_config.custom_instructions import (
+        INSTRUCTION_NAMES as CUSTOM_INSTRUCTION_NAMES,
+    )
 
     CUSTOM_INSTRUCTIONS_AVAILABLE = True
 except (ImportError, NotImplementedError):
@@ -42,8 +46,12 @@ except (ImportError, NotImplementedError):
 
 # Import user summary instructions module
 try:
-    from config.user_ingestion_config.user_summary_instructions import set_user_summary_instructions
-    from config.user_ingestion_config.user_summary_instructions import INSTRUCTION_NAMES as USER_SUMMARY_INSTRUCTION_NAMES
+    from config.user_ingestion_config.user_summary_instructions import (
+        set_user_summary_instructions,
+    )
+    from config.user_ingestion_config.user_summary_instructions import (
+        INSTRUCTION_NAMES as USER_SUMMARY_INSTRUCTION_NAMES,
+    )
 
     USER_SUMMARY_INSTRUCTIONS_AVAILABLE = True
 except (ImportError, NotImplementedError):
@@ -52,6 +60,9 @@ except (ImportError, NotImplementedError):
 
 
 CHECKPOINT_DIR = "runs/checkpoints"
+
+# The v4 Batch API accepts up to 350 items in one batch.add_items call.
+BATCH_ITEM_LIMIT = 350
 
 
 def checkpoint_path_for_run(run_number: int) -> str:
@@ -111,7 +122,9 @@ def load_conversations_for_user(user_id):
     )
     if all_have_timestamps and len(conversations) > 1:
         conversations.sort(key=lambda c: c["messages"][0]["timestamp"])
-        print(f"✓ Loaded {len(conversations)} conversation(s) for user {user_id} (sorted by timestamp)")
+        print(
+            f"✓ Loaded {len(conversations)} conversation(s) for user {user_id} (sorted by timestamp)"
+        )
     else:
         print(f"✓ Loaded {len(conversations)} conversation(s) for user {user_id}")
 
@@ -152,51 +165,49 @@ async def create_user(
     use_user_summary_instructions=False,
 ):
     """
-    Create a new user with a randomized ID suffix to make ingestion idempotent.
+    Create a new user. v4 gives each user a server-generated UUID, so every run
+    creates an independent user and no identifier suffix is necessary.
     Applies custom ontology, custom instructions, and/or user summary instructions
     to the user before returning.
 
-    Returns tuple of (actual_user_id, base_user_id, random_suffix).
+    Returns tuple of (user_uuid, user_graph_uuid).
     """
     base_user_id = user_definition["user_id"]
 
-    # Add random suffix to make each ingestion run unique
-    random_suffix = uuid.uuid4().hex[:8]
-    user_id = f"{base_user_id}_{random_suffix}"
-
-    user = await zep_client.user.add(
-        user_id=user_id,
+    user = await zep_client.user.create(
         first_name=user_definition["first_name"],
         last_name=user_definition.get("last_name"),
         email=user_definition.get("email"),
         disable_default_ontology=disable_default_ontology,
     )
+    user_uuid = user.uuid_
+    graph_uuid = user.graph_uuid
 
-    print(f"✓ User {user_id} created successfully")
+    print(f"✓ User {user_uuid} created successfully")
     print(
         f"   Name: {user_definition['first_name']} {user_definition.get('last_name', '')}"
     )
     print(f"   Base ID: {base_user_id}")
-    print(f"   Suffix: {random_suffix}")
+    print(f"   Graph UUID: {graph_uuid}")
     if disable_default_ontology:
-        print(f"   Default ontology: DISABLED")
+        print("   Default ontology: DISABLED")
 
-    # Apply custom ontology to this user BEFORE ingesting data
+    # Apply custom ontology to this user graph BEFORE ingesting data
     if disable_default_ontology:
         print("\nSetting up custom ontology...")
-        print(f"Applying to user: {user_id}")
+        print(f"Applying to graph: {graph_uuid}")
         try:
-            await set_custom_ontology(zep_client, user_ids=[user_id])
+            await set_custom_ontology(zep_client, graph_uuids=[graph_uuid])
             print("✓ Custom ontology applied successfully\n")
         except Exception as e:
             print(f"Error setting ontology: {e}")
             raise
 
-    # Apply custom instructions to this user BEFORE ingesting data
+    # Apply custom instructions to this user graph BEFORE ingesting data
     if use_custom_instructions:
-        print(f"Setting custom instructions for user: {user_id}")
+        print(f"Setting custom instructions for graph: {graph_uuid}")
         try:
-            await set_custom_instructions(zep_client, user_ids=[user_id])
+            await set_custom_instructions(zep_client, graph_uuids=[graph_uuid])
             print("✓ Custom instructions applied successfully")
         except Exception as e:
             print(f"Error setting custom instructions: {e}")
@@ -204,15 +215,46 @@ async def create_user(
 
     # Apply user summary instructions to this user BEFORE ingesting data
     if use_user_summary_instructions:
-        print(f"Setting user summary instructions for user: {user_id}")
+        print(f"Setting user summary instructions for user: {user_uuid}")
         try:
-            await set_user_summary_instructions(zep_client, user_ids=[user_id])
+            await set_user_summary_instructions(zep_client, user_uuids=[user_uuid])
             print("✓ User summary instructions applied successfully")
         except Exception as e:
             print(f"Error setting user summary instructions: {e}")
             raise
 
-    return user_id, base_user_id, random_suffix
+    return user_uuid, graph_uuid
+
+
+# ============================================================================
+# Ingestion: Batch API
+# ============================================================================
+
+
+async def submit_batch(
+    zep_client: AsyncZep, items: list[BatchItemInput], label: str
+) -> str | None:
+    """
+    Send one group of items through the v4 Batch API: create, add items,
+    and process. Returns the UUID of the processing task.
+    """
+    batch = await retry_with_backoff(
+        zep_client.batch.create,
+        metadata={"description": label},
+        description=f"create batch for {label}",
+    )
+    await retry_with_backoff(
+        zep_client.batch.add_items,
+        batch.uuid_,
+        items=items,
+        description=f"add items to {label}",
+    )
+    result = await retry_with_backoff(
+        zep_client.batch.process,
+        batch.uuid_,
+        description=f"process {label}",
+    )
+    return result.task.uuid_ if result.task else None
 
 
 # ============================================================================
@@ -222,25 +264,24 @@ async def create_user(
 
 async def add_conversations_to_zep(
     zep_client: AsyncZep,
-    user_id: str,
+    user_uuid: str,
     conversations: list[dict],
-    suffix: str,
     user_name: str | None = None,
 ) -> tuple[list[str], list[tuple[str, int]]]:
     """
-    Add conversations to Zep as separate threads using batch ingestion.
-    Returns tuple of (thread_ids, tasks) where tasks is a list of
-    (task_id, num_episodes) tuples for sequential polling.
+    Add conversations to Zep as separate threads through the Batch API.
+    Returns tuple of (thread_uuids, tasks) where tasks is a list of
+    (task_uuid, num_episodes) tuples for sequential polling.
     """
     total_messages = 0
-    thread_ids = []
+    thread_uuids = []
     tasks = []
 
     # Count total messages
     for conversation in conversations:
         total_messages += len(conversation.get("messages", []))
 
-    print(f"\nTotal messages to add for {user_id}: {total_messages}")
+    print(f"\nTotal messages to add for user {user_uuid}: {total_messages}")
 
     # Process each conversation as a separate thread
     for idx, conversation in enumerate(conversations, 1):
@@ -254,48 +295,42 @@ async def add_conversations_to_zep(
             continue
 
         try:
-            # Create thread for this conversation with unique suffix
-            thread_id = f"{conversation_id}_{suffix}"
-            await zep_client.thread.create(thread_id=thread_id, user_id=user_id)
-            print(f"Created thread: {thread_id}")
-            thread_ids.append(thread_id)
+            # v4 addresses a thread by UUID, so the thread needs no identifier
+            thread = await zep_client.thread.create(user_uuid=user_uuid)
+            thread_uuid = thread.uuid_
+            print(f"Created thread: {thread_uuid}")
+            thread_uuids.append(thread_uuid)
 
-            # Convert messages to Zep Message objects
-            zep_messages = []
-            for msg in messages_data:
-                zep_message = Message(
+            # Convert messages to batch items for this thread
+            items = [
+                BatchItemInput(
+                    type="thread_message",
+                    thread_uuid=thread_uuid,
                     role=msg["role"],
                     content=msg["content"],
-                    created_at=msg.get("timestamp"),  # Optional timestamp
                     name=user_name if msg["role"] == "user" and user_name else None,
                 )
-                zep_messages.append(zep_message)
+                for msg in messages_data
+            ]
 
-            # Batch in groups of 30 messages (max batch size)
-            batch_size = 30
             total_added = 0
-            for i in range(0, len(zep_messages), batch_size):
-                batch = zep_messages[i : i + batch_size]
-                batch_label = f"batch {i // batch_size + 1} for thread {thread_id}"
-                response = await retry_with_backoff(
-                    zep_client.thread.add_messages_batch,
-                    thread_id=thread_id,
-                    messages=batch,
-                    description=batch_label,
+            for i in range(0, len(items), BATCH_ITEM_LIMIT):
+                group = items[i : i + BATCH_ITEM_LIMIT]
+                batch_label = (
+                    f"batch {i // BATCH_ITEM_LIMIT + 1} for thread {thread_uuid}"
                 )
-                total_added += len(batch)
+                task_uuid = await submit_batch(zep_client, group, batch_label)
+                total_added += len(group)
+                if task_uuid:
+                    tasks.append((task_uuid, len(group)))
 
-                # Capture task_id with episode count for polling
-                if response and response.task_id:
-                    tasks.append((response.task_id, len(batch)))
-
-            print(f"✓ Added {total_added} messages to thread {thread_id}")
+            print(f"✓ Added {total_added} messages to thread {thread_uuid}")
 
         except Exception as e:
             print(f"Error processing conversation {conversation_id}: {e}")
             continue
 
-    return thread_ids, tasks
+    return thread_uuids, tasks
 
 
 # ============================================================================
@@ -304,49 +339,41 @@ async def add_conversations_to_zep(
 
 
 async def add_telemetry_to_zep(
-    zep_client: AsyncZep, user_id: str, telemetry_data: list[dict]
+    zep_client: AsyncZep, graph_uuid: str, telemetry_data: list[dict]
 ) -> list[tuple[str, int]]:
     """
-    Add telemetry data to Zep using graph.add_batch.
-    Returns list of (task_id, num_episodes) tuples for sequential polling.
+    Add telemetry data to the user graph through the Batch API.
+    Returns list of (task_uuid, num_episodes) tuples for sequential polling.
     """
     if not telemetry_data:
         return []
 
-    print(f"\nAdding {len(telemetry_data)} telemetry file(s) for {user_id}")
+    print(f"\nAdding {len(telemetry_data)} telemetry file(s) to graph {graph_uuid}")
 
     total_added = 0
     tasks = []
-    seen_task_ids = set()
-    batch_size = 20  # Max batch size for graph.add_batch
 
-    for i in range(0, len(telemetry_data), batch_size):
-        batch = telemetry_data[i : i + batch_size]
-        episodes = [
-            EpisodeData(data=json.dumps(t), type="json")
+    for i in range(0, len(telemetry_data), BATCH_ITEM_LIMIT):
+        batch = telemetry_data[i : i + BATCH_ITEM_LIMIT]
+        items = [
+            BatchItemInput(
+                type="graph_episode",
+                graph_uuid=graph_uuid,
+                data=json.dumps(t),
+                data_type="json",
+            )
             for t in batch
         ]
-        batch_num = i // batch_size + 1
-        batch_label = f"telemetry batch {batch_num} ({len(batch)} episodes) for {user_id}"
+        batch_num = i // BATCH_ITEM_LIMIT + 1
+        batch_label = (
+            f"telemetry batch {batch_num} ({len(batch)} episodes) for {graph_uuid}"
+        )
 
         try:
-            result = await retry_with_backoff(
-                zep_client.graph.add_batch,
-                episodes=episodes,
-                user_id=user_id,
-                description=batch_label,
-            )
+            task_uuid = await submit_batch(zep_client, items, batch_label)
             total_added += len(batch)
-
-            # Collect unique task_ids with episode counts from this batch
-            batch_task_counts = {}
-            for ep in result:
-                if ep.task_id:
-                    batch_task_counts[ep.task_id] = batch_task_counts.get(ep.task_id, 0) + 1
-            for tid, count in batch_task_counts.items():
-                if tid not in seen_task_ids:
-                    tasks.append((tid, count))
-                    seen_task_ids.add(tid)
+            if task_uuid:
+                tasks.append((task_uuid, len(batch)))
 
             print(f"✓ Added telemetry batch {batch_num} ({len(batch)} episodes)")
         except Exception as e:
@@ -362,7 +389,7 @@ async def add_telemetry_to_zep(
 # ============================================================================
 
 
-async def poll_task_ids(
+async def poll_task_uuids(
     zep_client: AsyncZep, tasks: list[tuple[str, int]], label: str
 ) -> dict:
     """
@@ -375,8 +402,11 @@ async def poll_task_ids(
     if not tasks:
         print(f"  [{label}] No tasks to poll")
         return {
-            "succeeded": 0, "failed": 0, "total_episodes": 0,
-            "elapsed_seconds": 0, "avg_seconds_per_episode": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "total_episodes": 0,
+            "elapsed_seconds": 0,
+            "avg_seconds_per_episode": 0,
         }
 
     total_tasks = len(tasks)
@@ -385,13 +415,13 @@ async def poll_task_ids(
     failed_count = 0
     poll_start = time()
 
-    for task_id, num_episodes in tasks:
+    for task_uuid, num_episodes in tasks:
         task_timeout = num_episodes * POLL_TIMEOUT_PER_EPISODE
         start = time()
 
         while time() - start < task_timeout:
             try:
-                task = await zep_client.task.get(task_id)
+                task = await zep_client.task.get(task_uuid)
                 if task.status == "succeeded":
                     succeeded_count += 1
                     done = succeeded_count + failed_count
@@ -401,7 +431,9 @@ async def poll_task_ids(
                     failed_count += 1
                     done = succeeded_count + failed_count
                     error_msg = task.error.message if task.error else "unknown error"
-                    print(f"  ⚠ [{label}] Task {done}/{total_tasks} FAILED: {error_msg}")
+                    print(
+                        f"  ⚠ [{label}] Task {done}/{total_tasks} FAILED: {error_msg}"
+                    )
                     break
             except Exception:
                 pass  # Task may not be available yet
@@ -410,13 +442,14 @@ async def poll_task_ids(
             elapsed = time() - poll_start
             avg = elapsed / total_episodes if total_episodes else 0
             print(
-                f"  ⚠ [{label}] Task {task_id} ({num_episodes} episodes) "
+                f"  ⚠ [{label}] Task {task_uuid} ({num_episodes} episodes) "
                 f"timed out after {task_timeout}s"
             )
             done = succeeded_count + failed_count
             print(f"  ⚠ [{label}] Stopping poll — {done}/{total_tasks} done")
             return {
-                "succeeded": succeeded_count, "failed": failed_count,
+                "succeeded": succeeded_count,
+                "failed": failed_count,
                 "total_episodes": total_episodes,
                 "elapsed_seconds": round(elapsed, 1),
                 "avg_seconds_per_episode": round(avg, 1),
@@ -434,12 +467,12 @@ async def poll_task_ids(
         print(f"  ✓ [{label}] All {total_tasks} tasks succeeded")
 
     return {
-        "succeeded": succeeded_count, "failed": failed_count,
+        "succeeded": succeeded_count,
+        "failed": failed_count,
         "total_episodes": total_episodes,
         "elapsed_seconds": round(elapsed, 1),
         "avg_seconds_per_episode": round(avg, 1),
     }
-
 
 
 # ============================================================================
@@ -461,13 +494,11 @@ async def ingest_user(
     """
     base_user_id = user_def["user_id"]
     print("=" * 80)
-    print(
-        f"Processing user: {user_def['first_name']} {user_def.get('last_name', '')}"
-    )
+    print(f"Processing user: {user_def['first_name']} {user_def.get('last_name', '')}")
     print("=" * 80)
 
     # Create user
-    actual_user_id, base_user_id, suffix = await create_user(
+    user_uuid, graph_uuid = await create_user(
         zep_client,
         user_def,
         disable_default_ontology=use_custom_ontology,
@@ -480,18 +511,17 @@ async def ingest_user(
     telemetry_data = load_telemetry_for_user(base_user_id)
 
     # Add conversations
-    thread_ids = []
-    conversation_tasks = []
+    thread_uuids: list[str] = []
+    conversation_tasks: list[tuple[str, int]] = []
     if conversations:
         first = user_def.get("first_name", "")
         last = user_def.get("last_name", "")
         full_name = f"{first} {last}".strip() or None
 
-        thread_ids, conversation_tasks = await add_conversations_to_zep(
+        thread_uuids, conversation_tasks = await add_conversations_to_zep(
             zep_client,
-            actual_user_id,
+            user_uuid,
             conversations,
-            suffix,
             user_name=full_name,
         )
 
@@ -499,17 +529,18 @@ async def ingest_user(
     telemetry_tasks = []
     if telemetry_data:
         telemetry_tasks = await add_telemetry_to_zep(
-            zep_client, actual_user_id, telemetry_data
+            zep_client, graph_uuid, telemetry_data
         )
 
-    print(f"✓ Data submitted for user {actual_user_id}\n")
+    print(f"✓ Data submitted for user {user_uuid}\n")
 
     return {
         "base_user_id": base_user_id,
-        "zep_user_id": actual_user_id,
+        "zep_user_uuid": user_uuid,
+        "zep_user_graph_uuid": graph_uuid,
         "first_name": user_def["first_name"],
         "last_name": user_def.get("last_name"),
-        "thread_ids": thread_ids,
+        "thread_uuids": thread_uuids,
         "conversation_tasks": conversation_tasks,
         "telemetry_tasks": telemetry_tasks,
         "num_conversations": len(conversations),
@@ -570,7 +601,8 @@ def write_run_manifest(
     # Snapshot the user ingestion config used for this run
     snapshot_dir = os.path.join(run_dir, "user_ingestion_config_snapshot")
     shutil.copytree(
-        "config/user_ingestion_config", snapshot_dir,
+        "config/user_ingestion_config",
+        snapshot_dir,
         ignore=shutil.ignore_patterns("__pycache__"),
     )
 
@@ -579,20 +611,22 @@ def write_run_manifest(
         "type": "users",
         "timestamp": timestamp,
         "ontology": {
-            "type": (
-                "custom" if use_custom_ontology else "default_zep"
-            ),
+            "type": ("custom" if use_custom_ontology else "default_zep"),
             "default_ontology_disabled": use_custom_ontology,
             "custom_entity_types": ENTITY_TYPES if use_custom_ontology else [],
             "custom_edge_types": EDGE_TYPES if use_custom_ontology else [],
         },
         "custom_instructions": {
             "enabled": use_custom_instructions,
-            "instruction_names": CUSTOM_INSTRUCTION_NAMES if use_custom_instructions else [],
+            "instruction_names": CUSTOM_INSTRUCTION_NAMES
+            if use_custom_instructions
+            else [],
         },
         "user_summary_instructions": {
             "enabled": use_user_summary_instructions,
-            "instruction_names": USER_SUMMARY_INSTRUCTION_NAMES if use_user_summary_instructions else [],
+            "instruction_names": USER_SUMMARY_INSTRUCTION_NAMES
+            if use_user_summary_instructions
+            else [],
         },
         "users": run_data,
     }
@@ -680,7 +714,9 @@ async def main():
             exit(1)
         checkpoint_data = load_checkpoint(args.resume)
         print(f"✓ Loaded checkpoint from: {args.resume}")
-        completed_user_ids = {u["base_user_id"] for u in checkpoint_data.get("completed_users", [])}
+        completed_user_ids = {
+            u["base_user_id"] for u in checkpoint_data.get("completed_users", [])
+        }
         print(f"  Completed users: {len(completed_user_ids)}")
 
         # Restore config from checkpoint
@@ -730,20 +766,22 @@ async def main():
 
     if args.graphs:
         selected = set(g.strip() for g in args.graphs.split(","))
-        selected_user_defs = [
-            u for u in user_definitions if u["user_id"] in selected
-        ]
+        selected_user_defs = [u for u in user_definitions if u["user_id"] in selected]
         unknown = selected - {u["user_id"] for u in user_definitions}
         if unknown:
             print(f"Warning: Unknown user IDs (not in users.json): {unknown}")
 
     # Filter out already-completed users when resuming
     if checkpoint_data:
-        completed_user_ids = {u["base_user_id"] for u in checkpoint_data.get("completed_users", [])}
+        completed_user_ids = {
+            u["base_user_id"] for u in checkpoint_data.get("completed_users", [])
+        }
         remaining_user_defs = [
             u for u in selected_user_defs if u["user_id"] not in completed_user_ids
         ]
-        print(f"  Skipping {len(selected_user_defs) - len(remaining_user_defs)} already-completed users")
+        print(
+            f"  Skipping {len(selected_user_defs) - len(remaining_user_defs)} already-completed users"
+        )
         selected_user_defs = remaining_user_defs
 
     # Print header
@@ -754,8 +792,12 @@ async def main():
         print("  Ontology: Custom (default ontology suppressed)")
     else:
         print("  Ontology: Default Zep ontology")
-    print(f"  Custom instructions: {'enabled' if args.custom_instructions else 'disabled'}")
-    print(f"  User summary instructions: {'enabled' if args.user_summary_instructions else 'disabled'}")
+    print(
+        f"  Custom instructions: {'enabled' if args.custom_instructions else 'disabled'}"
+    )
+    print(
+        f"  User summary instructions: {'enabled' if args.user_summary_instructions else 'disabled'}"
+    )
     print(f"  Polling: {'enabled' if should_poll else 'disabled'}")
     print(f"  Users: {len(selected_user_defs)}")
     print("=" * 80)
@@ -786,31 +828,31 @@ async def main():
             )
             async with checkpoint_lock:
                 completed_users.append(result)
-                save_checkpoint(cp_path, {
-                    "run_number": run_number,
-                    "config": {
-                        "custom_ontology": args.custom_ontology,
-                        "custom_instructions": args.custom_instructions,
-                        "user_summary_instructions": args.user_summary_instructions,
+                save_checkpoint(
+                    cp_path,
+                    {
+                        "run_number": run_number,
+                        "config": {
+                            "custom_ontology": args.custom_ontology,
+                            "custom_instructions": args.custom_instructions,
+                            "user_summary_instructions": args.user_summary_instructions,
+                        },
+                        "completed_users": completed_users,
                     },
-                    "completed_users": completed_users,
-                })
+                )
             return result
 
         print(f"\n{'Resuming' if checkpoint_data else 'Starting'} run #{run_number}\n")
 
         # Launch all ingestion tasks in parallel
         user_tasks = [
-            ingest_user_with_checkpoint(user_def)
-            for user_def in selected_user_defs
+            ingest_user_with_checkpoint(user_def) for user_def in selected_user_defs
         ]
 
         # Gather all tasks concurrently (return_exceptions so one failure
         # doesn't cancel the rest)
         if user_tasks:
-            raw_user_results = await asyncio.gather(
-                *user_tasks, return_exceptions=True
-            )
+            raw_user_results = await asyncio.gather(*user_tasks, return_exceptions=True)
         else:
             raw_user_results = []
 
@@ -826,7 +868,9 @@ async def main():
                 run_data.append(result)
 
         if failed_users:
-            print(f"\n⚠ {len(failed_users)} user(s) failed. Checkpoint saved to: {cp_path}")
+            print(
+                f"\n⚠ {len(failed_users)} user(s) failed. Checkpoint saved to: {cp_path}"
+            )
             print(f"  Resume with: uv run zep_ingest_users.py --resume {cp_path}")
         else:
             # All succeeded — clean up checkpoint
@@ -859,44 +903,43 @@ async def main():
 
             async def poll_user_graph(user_data):
                 """Poll all tasks for a single user graph, return per-graph timing."""
-                user_id = user_data["zep_user_id"]
+                graph_uuid = user_data["zep_user_graph_uuid"]
                 conv_tasks = user_data.get("conversation_tasks", [])
                 tele_tasks = user_data.get("telemetry_tasks", [])
                 if not conv_tasks and not tele_tasks:
                     return None
                 graph_start = time()
                 conv_result = (
-                    await poll_task_ids(
-                        zep_client, conv_tasks, f"{user_id} conversations"
+                    await poll_task_uuids(
+                        zep_client, conv_tasks, f"{graph_uuid} conversations"
                     )
-                    if conv_tasks else None
+                    if conv_tasks
+                    else None
                 )
                 tele_result = (
-                    await poll_task_ids(
-                        zep_client, tele_tasks, f"{user_id} telemetry"
+                    await poll_task_uuids(
+                        zep_client, tele_tasks, f"{graph_uuid} telemetry"
                     )
-                    if tele_tasks else None
+                    if tele_tasks
+                    else None
                 )
                 graph_elapsed = time() - graph_start
-                total_ep = (
-                    (conv_result["total_episodes"] if conv_result else 0)
-                    + (tele_result["total_episodes"] if tele_result else 0)
+                total_ep = (conv_result["total_episodes"] if conv_result else 0) + (
+                    tele_result["total_episodes"] if tele_result else 0
                 )
-                succeeded = (
-                    (conv_result["succeeded"] if conv_result else 0)
-                    + (tele_result["succeeded"] if tele_result else 0)
+                succeeded = (conv_result["succeeded"] if conv_result else 0) + (
+                    tele_result["succeeded"] if tele_result else 0
                 )
-                failed = (
-                    (conv_result["failed"] if conv_result else 0)
-                    + (tele_result["failed"] if tele_result else 0)
+                failed = (conv_result["failed"] if conv_result else 0) + (
+                    tele_result["failed"] if tele_result else 0
                 )
                 avg = graph_elapsed / total_ep if total_ep else 0
                 print(
-                    f"  [{user_id}] Graph total: {graph_elapsed:.1f}s | "
+                    f"  [{graph_uuid}] Graph total: {graph_elapsed:.1f}s | "
                     f"{total_ep} episodes | {avg:.1f}s avg/episode"
                 )
                 return {
-                    "graph_id": user_id,
+                    "graph_uuid": graph_uuid,
                     "total_seconds": round(graph_elapsed, 1),
                     "total_episodes": total_ep,
                     "avg_seconds_per_episode": round(avg, 1),
@@ -905,7 +948,8 @@ async def main():
                 }
 
             poll_coros = [
-                poll_user_graph(ud) for ud in run_data
+                poll_user_graph(ud)
+                for ud in run_data
                 if ud.get("conversation_tasks") or ud.get("telemetry_tasks")
             ]
 
@@ -916,9 +960,7 @@ async def main():
 
                 per_graph = [r for r in raw_results if r is not None]
                 total_episodes = sum(r["total_episodes"] for r in per_graph)
-                avg_per_episode = (
-                    poll_elapsed / total_episodes if total_episodes else 0
-                )
+                avg_per_episode = poll_elapsed / total_episodes if total_episodes else 0
 
                 print("\n✓ All user graphs finished processing")
                 print(f"\n  Overall ingestion processing time: {poll_elapsed:.1f}s")
@@ -941,11 +983,11 @@ async def main():
             else:
                 print("No graphs to poll.")
 
-            print(
-                f"\nYou can now run: uv run zep_evaluate.py --user-run {run_number}"
-            )
+            print(f"\nYou can now run: uv run zep_evaluate.py --user-run {run_number}")
         else:
-            print("\nGraph processing happens asynchronously and may take several minutes.")
+            print(
+                "\nGraph processing happens asynchronously and may take several minutes."
+            )
             print(
                 f"You can run zep_evaluate.py with --user-run {run_number} once processing is complete."
             )
