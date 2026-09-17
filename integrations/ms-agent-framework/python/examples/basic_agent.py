@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+import uuid
 
 from agent_framework import Agent
 from agent_framework.openai import OpenAIChatClient
@@ -92,8 +93,13 @@ async def main() -> None:
     zep = AsyncZep(api_key=ZEP_API_KEY)
 
     # --- One-time provisioning: the server returns the UUIDs ---------------
+    # The user_id label is a temporary workaround for a production v4 defect:
+    # for a user with no label, thread.add_messages and thread.get_context
+    # give a 404. The label is not used for addressing. The example addresses
+    # every resource by the UUID that the server returns.
     user = await create_user(
         zep,
+        user_id=f"af-example-{uuid.uuid4().hex[:8]}",
         first_name="Alice",
         last_name="Nguyen",
         email="alice@example.com",
