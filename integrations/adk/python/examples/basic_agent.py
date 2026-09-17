@@ -2,8 +2,8 @@
 Basic Google ADK agent with Zep long-term memory.
 
 This example shows the shared-agent pattern: one Agent definition is created
-once and shared across all users.  Per-user identity (user ID, name, email)
-is passed via ADK session state.
+once and shared across all users.  Per-user identity (the Zep user UUID, the
+Zep thread UUID, and the display name) is passed through ADK session state.
 
 ZepContextTool and create_after_model_callback work together so that:
 
@@ -11,11 +11,10 @@ ZepContextTool and create_after_model_callback work together so that:
   - Relevant context from Zep's knowledge graph is injected into prompts.
   - Assistant responses are persisted to Zep after each model call.
 
-The Zep user and thread are provisioned explicitly, out-of-band, via
-``ensure_user`` and ``ensure_thread`` -- before the agent runs its first
-turn.  ``ensure_user``'s ``on_created`` hook demonstrates one-time per-user
-setup (here, seeding a user summary instruction) that only runs when the
-user is genuinely new.
+Zep v4 addresses every user, thread, and graph by a server-generated UUID.
+The example creates the user and the thread out-of-band with ``create_user``
+and ``create_thread``, and it keeps the returned UUIDs.  A production
+application stores the same UUIDs in its own database.
 
 Prerequisites:
     pip install zep-adk
@@ -37,7 +36,7 @@ from google.genai import types
 from zep_cloud import UserInstruction
 from zep_cloud.client import AsyncZep
 
-from zep_adk import ZepContextTool, create_after_model_callback, ensure_thread, ensure_user
+from zep_adk import ZepContextTool, create_after_model_callback, create_thread, create_user
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -50,12 +49,13 @@ if not ZEP_API_KEY:
 if not GOOGLE_API_KEY:
     raise OSError("GOOGLE_API_KEY is not set.")
 
-# Generate unique IDs for this demo session
-_suffix = uuid4().hex[:8]
-USER_ID = f"adk-example-user-{_suffix}"
-SESSION_ID = f"adk-example-session-{_suffix}"
-SESSION_ID_2 = f"adk-example-session-2-{_suffix}"
 APP_NAME = "zep-adk-example"
+
+# A human-readable name for the Zep user.  It is a name, not an address: every
+# call below addresses the user by the UUID that Zep generates.  The Zep v4 API
+# rejects `thread.add_messages` for a user that has no `user_id` name, thus the
+# example gives one at create time.
+USER_NAME_ID = f"adk-example-user-{uuid4().hex[:8]}"
 
 
 async def send_message(runner: Runner, session_id: str, user_id: str, text: str) -> str:
@@ -76,15 +76,16 @@ async def send_message(runner: Runner, session_id: str, user_id: str, text: str)
     return " ".join(response_parts).strip()
 
 
-async def setup_new_user(zep: AsyncZep, user_id: str) -> None:
-    """One-time setup for a newly created Zep user.
+async def setup_new_user(zep: AsyncZep, user_uuid: str) -> None:
+    """One-time setup for a new Zep user.
 
-    Fires only when ``ensure_user`` actually creates the user -- never for a
-    user that already existed.  This is the place to configure per-user
-    ontology, custom instructions, or (as here) a user summary instruction.
+    This is the place to configure a per-user ontology, custom instructions,
+    or (as here) a user summary instruction.
     """
-    print(f"  [on_created] New Zep user {user_id} -- seeding summary instructions.")
-    await zep.user.add_user_summary_instructions(
+    print(f"  [setup] New Zep user {user_uuid} -- seeding summary instructions.")
+    await zep.user.set_summary_instructions(
+        user_uuid,
+        inherited=False,
         instructions=[
             UserInstruction(
                 name="professional-background",
@@ -94,33 +95,33 @@ async def setup_new_user(zep: AsyncZep, user_id: str) -> None:
                 ),
             )
         ],
-        user_ids=[user_id],
     )
 
 
 async def main() -> None:
     zep_client = AsyncZep(api_key=ZEP_API_KEY)
 
-    print(f"\n{'=' * 60}")
-    print("ADK + Zep Memory Example (Shared-Agent Pattern)")
-    print(f"{'=' * 60}")
-    print(f"  User ID:    {USER_ID}")
-    print(f"  Session ID: {SESSION_ID}")
-    print(f"{'=' * 60}\n")
-
     # --- Provision the Zep user and thread out-of-band, before the first
-    # turn.  This replaces the old lazy in-band creation: the agent's turn
-    # path (ZepContextTool) never creates users or threads itself.
-    print("--- Provisioning Zep user + thread ---\n")
-    await ensure_user(
+    # turn.  The agent's turn path (ZepContextTool) never creates users or
+    # threads itself.  Zep generates the UUIDs; the application stores them.
+    print("--- Provisioning the Zep user and thread ---\n")
+    user = await create_user(
         zep_client,
-        user_id=USER_ID,
+        user_id=USER_NAME_ID,
         first_name="Alice",
         last_name="Smith",
         email="alice@example.com",
-        on_created=setup_new_user,
     )
-    await ensure_thread(zep_client, thread_id=SESSION_ID, user_id=USER_ID)
+    await setup_new_user(zep_client, user.uuid_)
+    thread = await create_thread(zep_client, user_uuid=user.uuid_)
+
+    print(f"\n{'=' * 60}")
+    print("ADK + Zep Memory Example (Shared-Agent Pattern)")
+    print(f"{'=' * 60}")
+    print(f"  User UUID:   {user.uuid_}")
+    print(f"  Graph UUID:  {user.graph_uuid}")
+    print(f"  Thread UUID: {thread.uuid_}")
+    print(f"{'=' * 60}\n")
 
     # --- One-time agent setup (shared across all users) ---
     agent = Agent(
@@ -145,10 +146,11 @@ async def main() -> None:
     # round-trip, pass a `context_builder` to `ZepContextTool`:
     #
     #   async def my_builder(ctx: ContextInput) -> str | None:
-    #       results = await ctx.zep.graph.search(
-    #           user_id=ctx.user_id, query=ctx.user_message, scope="edges"
+    #       user = await ctx.zep.user.get(ctx.user_uuid)
+    #       pager = await ctx.zep.graph.search_edges(
+    #           user.graph_uuid, query=ctx.user_message
     #       )
-    #       return "\n".join(e.fact for e in results.edges or [])
+    #       return "\n".join(e.fact for e in pager.items or [] if e.fact)
     #
     #   ZepContextTool(zep_client=zep_client, context_builder=my_builder)
     #
@@ -163,17 +165,19 @@ async def main() -> None:
     )
 
     # --- Per-user session (identity in state) ---
-    # user_id is automatically used as the Zep user ID.
-    # session_id is automatically used as the Zep thread ID.
-    # Only the display name needs to be in state; email goes to ensure_user.
+    # The Zep UUIDs travel in session state.  The display name lets Zep
+    # resolve identity in the graph; the email goes to `create_user`.
     session_state = {
+        "zep_user_uuid": user.uuid_,
+        "zep_thread_uuid": thread.uuid_,
+        "zep_graph_uuid": user.graph_uuid,
         "zep_first_name": "Alice",
         "zep_last_name": "Smith",
     }
     await session_service.create_session(
         app_name=APP_NAME,
-        user_id=USER_ID,
-        session_id=SESSION_ID,
+        user_id=user.uuid_,
+        session_id=thread.uuid_,
         state=session_state,
     )
 
@@ -185,13 +189,13 @@ async def main() -> None:
     ]
     for msg in seed_messages:
         print(f"User:  {msg}")
-        response = await send_message(runner, SESSION_ID, USER_ID, msg)
+        response = await send_message(runner, thread.uuid_, user.uuid_, msg)
         print(f"Agent: {response}\n")
 
-    # Phase 2: Wait for Zep graph processing
-    wait_seconds = 15
-    print(f"--- Waiting {wait_seconds}s for Zep graph processing ---\n")
-    await asyncio.sleep(wait_seconds)
+    # Phase 2: Wait for Zep graph processing.  Ingestion is asynchronous, so
+    # poll the episodes of the user graph until Zep has processed them.
+    print("--- Phase 2: Waiting for Zep graph processing ---\n")
+    await wait_for_episodes(zep_client, user.graph_uuid)
 
     # Phase 3: Test memory recall
     print("--- Phase 3: Testing memory recall ---\n")
@@ -201,26 +205,47 @@ async def main() -> None:
     ]
     for msg in recall_messages:
         print(f"User:  {msg}")
-        response = await send_message(runner, SESSION_ID, USER_ID, msg)
+        response = await send_message(runner, thread.uuid_, user.uuid_, msg)
         print(f"Agent: {response}\n")
 
     # Phase 4: Cross-thread recall -- a brand-new thread for the same user.
     # Facts are fused into the user's graph (not the thread), so a second,
     # never-before-seen thread can recall them immediately.
     print("--- Phase 4: Cross-thread recall (new thread, same user) ---\n")
-    await ensure_thread(zep_client, thread_id=SESSION_ID_2, user_id=USER_ID)
+    thread_2 = await create_thread(zep_client, user_uuid=user.uuid_)
     await session_service.create_session(
         app_name=APP_NAME,
-        user_id=USER_ID,
-        session_id=SESSION_ID_2,
-        state=session_state,
+        user_id=user.uuid_,
+        session_id=thread_2.uuid_,
+        state={**session_state, "zep_thread_uuid": thread_2.uuid_},
     )
     msg = "What do you know about me?"
     print(f"User:  {msg}")
-    response = await send_message(runner, SESSION_ID_2, USER_ID, msg)
+    response = await send_message(runner, thread_2.uuid_, user.uuid_, msg)
     print(f"Agent: {response}\n")
 
     print("Done!")
+
+
+async def wait_for_episodes(
+    zep: AsyncZep,
+    graph_uuid: str,
+    timeout_seconds: float = 180.0,
+    poll_interval: float = 3.0,
+) -> None:
+    """Poll the episodes of a graph until Zep has processed all of them."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+    while loop.time() < deadline:
+        pager = await zep.graph.episode.list(graph_uuid, limit=20)
+        episodes = pager.items or []
+        if episodes and all(episode.processed for episode in episodes):
+            print(f"  All {len(episodes)} episodes are processed.\n")
+            return
+        unprocessed = [episode for episode in episodes if not episode.processed]
+        print(f"  {len(unprocessed)} of {len(episodes)} episodes are still in process...")
+        await asyncio.sleep(poll_interval)
+    print("  Timed out while the episodes were in process. The example continues.\n")
 
 
 if __name__ == "__main__":

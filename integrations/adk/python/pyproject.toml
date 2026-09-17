@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "google-adk>=1.19.0,<3",
     "typing-extensions>=4.0.0",
-    "zep-cloud>=3.23.0",
+    "zep-cloud==4.0.0a5",
 ]
 
 [project.urls]

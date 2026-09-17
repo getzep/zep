@@ -5,7 +5,7 @@ Used alongside ``ZepContextTool`` (which handles user messages + context
 retrieval).  Together they ensure both sides of the conversation are persisted
 to Zep in real-time.
 
-The callback resolves the Zep thread ID from ADK session state at runtime,
+The callback resolves the Zep thread UUID from ADK session state at runtime,
 allowing a single callback instance to be shared across all users/sessions.
 """
 
@@ -15,7 +15,7 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING
 
-from zep_cloud import Message
+from zep_cloud import AddMessage
 from zep_cloud.client import AsyncZep
 
 from .limits import truncate_message_content
@@ -39,9 +39,10 @@ def create_after_model_callback(
     text from each model response, deduplicates it, and persists it to the
     Zep thread identified by session state.
 
-    The thread ID is resolved at runtime from ``zep_thread_id`` in session
-    state, falling back to the ADK session ID.  This allows a single callback
-    to be shared across all users/sessions.
+    The thread UUID is resolved at runtime from ``zep_thread_uuid`` in session
+    state, falling back to the ADK session ID.  The ADK fallback applies only
+    when the application sets the ADK ``session_id`` to the Zep thread UUID.
+    This allows a single callback to be shared across all users/sessions.
 
     Args:
         zep_client: An initialised ``AsyncZep`` client.
@@ -83,21 +84,21 @@ def create_after_model_callback(
 
         full_text = truncate_message_content(" ".join(text_parts), label="assistant")
 
-        # Resolve thread_id from session state
+        # Resolve the thread UUID from session state
         state = callback_context.state
-        thread_id = state.get("zep_thread_id") if state is not None else None
-        if not thread_id:
+        thread_uuid = state.get("zep_thread_uuid") if state is not None else None
+        if not thread_uuid:
             try:
-                thread_id = callback_context.session.id
+                thread_uuid = callback_context.session.id
             except AttributeError:
-                logger.warning("Cannot resolve Zep thread_id — skipping persist")
+                logger.warning("Cannot resolve the Zep thread UUID — skipping persist")
                 return None
 
         try:
             await zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid,
                 messages=[
-                    Message(
+                    AddMessage(
                         role="assistant",
                         content=full_text,
                         name=assistant_name,
@@ -107,7 +108,7 @@ def create_after_model_callback(
             )
             logger.info(
                 "Persisted assistant response to Zep thread %s (%d chars)",
-                thread_id,
+                thread_uuid,
                 len(full_text),
             )
         except Exception:

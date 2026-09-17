@@ -39,7 +39,10 @@ cd zep/integrations/adk/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `google-adk>=1.19.0,<3`, `zep-cloud>=3.23.0`.
+Requirements: Python 3.11+, `google-adk>=1.19.0,<3`, `zep-cloud==4.0.0a5`.
+
+`zep-cloud` 4.x is a pre-release. With `pip`, install it with `pip install --pre
+zep-cloud==4.0.0a5`. With `uv`, use `uv add "zep-cloud==4.0.0a5"`.
 
 ## 4. Configure environment variables
 
@@ -64,11 +67,13 @@ python examples/basic_agent.py
 
 The example:
 
-1. Provisions the Zep user and thread out-of-band with `ensure_user` /
-   `ensure_thread` before the first turn — the agent's turn path
-   (`ZepContextTool`) never creates them itself. When wiring your own agent,
-   call these once (e.g. during account or session onboarding) before running
-   any turns.
+1. Provisions the Zep user and thread out-of-band with `create_user` /
+   `create_thread` before the first turn — the agent's turn path
+   (`ZepContextTool`) never creates them itself. Zep v4 generates the user,
+   graph, and thread UUIDs; the example keeps them and puts them into ADK
+   session state. When you wire your own agent, call these helpers once (for
+   example during account or session onboarding) and store the UUIDs in your
+   own database.
 2. Seeds facts about a user across two turns in one thread.
 3. Waits for Zep to process the knowledge graph (ingestion is asynchronous).
 4. Asks recall questions in that same thread.
@@ -84,8 +89,8 @@ Mock-based tests (no API keys needed):
 make test
 ```
 
-Live integration test (requires `ZEP_API_KEY` and `GOOGLE_API_KEY`). It runs as a
-standalone script — not under pytest — and exits non-zero if any check fails:
+Live integration test (requires `ZEP_API_KEY` and `GOOGLE_API_KEY`). It also
+runs as a standalone script and exits non-zero if any check fails:
 
 ```bash
 uv run python tests/test_integration.py
@@ -102,3 +107,6 @@ uv run python tests/test_integration.py
   increase the wait if your graph is large or under load.
 - **Authentication errors** — confirm `ZEP_API_KEY` is set in the same shell and
   belongs to the intended project.
+- **`NotFoundError` from `thread.add_messages`** — the Zep v4 API rejects
+  messages for a user that has no `user_id` name. Give a `user_id` name to
+  `create_user`. The name is not an address: all subsequent calls use the UUID.
