@@ -6,8 +6,8 @@ import { ensureZepUserAndThread } from "../lib/zep-memory";
 import { truncateSearchQuery } from "../lib/zep-recall";
 
 /**
- * On-demand graph search (Zep Pattern 3). userId is pinned from session auth —
- * the model never chooses whose memory to search.
+ * On-demand graph search (Zep Pattern 3). The graph UUID is pinned from session
+ * auth — the model never chooses whose memory to search.
  */
 export default defineTool({
   description:
@@ -22,26 +22,23 @@ export default defineTool({
   }),
   async execute({ query, limit }, ctx) {
     const identity = resolveZepIdentity(ctx);
-    await ensureZepUserAndThread(identity);
+    const { graphUuid } = await ensureZepUserAndThread(identity);
     const searchQuery = truncateSearchQuery(query);
 
-    const results = await getZepClient().graph.search({
-      userId: identity.userId,
+    const results = await getZepClient().graph.getContext(graphUuid, {
       query: searchQuery,
-      // auto: hybrid recall + composed context (`limit` is ignored for auto)
-      scope: "auto",
       maxCharacters: Math.min(50_000, Math.max(1_500, limit * 400)),
-      returnRawResults: true,
+      includeResults: true,
     });
 
-    const facts = (results.edges ?? []).map((edge) => ({
+    const facts = (results.results?.edges ?? []).map((edge) => ({
       fact: edge.fact,
       validAt: edge.validAt ?? null,
       invalidAt: edge.invalidAt ?? null,
     }));
 
     return {
-      userId: identity.userId,
+      graphUuid,
       query: searchQuery,
       context: results.context ?? null,
       facts,

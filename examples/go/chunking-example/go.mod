@@ -3,7 +3,7 @@ module chunking-example-go
 go 1.22
 
 require (
-	github.com/getzep/zep-go/v3 v3.28.0
+	github.com/getzep/zep-go/v4 v4.0.0-alpha.5
 	github.com/joho/godotenv v1.5.1
 	github.com/openai/openai-go/v3 v3.44.0
 )

@@ -79,18 +79,18 @@ You'll get a URL like `https://abc123.ngrok.io`
 5. Enter your proxy URL: `https://your-ngrok-url.ngrok.io/v1/chat/completions`
 6. Save the agent
 
-### Step 4: Pass the User ID
+### Step 4: Pass the User UUID
 
-To identify which user's context to fetch, you need to pass the `user_id` when starting conversations. There are several ways:
+To identify which user's context to fetch, you need to pass the `user_uuid` when starting conversations. Zep v4 gives every user a server-generated UUID. Create the user with the `POST /create-user` endpoint of the proxy, and then keep the UUID. There are several ways to send it:
 
 **Via SDK (recommended):**
 ```javascript
 const conversation = await Conversation.startSession({
     agentId: 'your_agent_id',
-    // Pass user_id and conversation_id via customLlmExtraBody
+    // Pass user_uuid and conversation_id via customLlmExtraBody
     // This gets forwarded as "elevenlabs_extra_body" to your proxy
     customLlmExtraBody: {
-        user_id: 'your-zep-user-id',
+        user_uuid: 'your-zep-user-uuid',
         conversation_id: 'your-zep-conversation-id'
     }
 });
@@ -102,7 +102,7 @@ In your agent config, you can pass dynamic variables that get included in the re
 ## How It Works
 
 1. **ElevenLabs sends a request** to your proxy with the conversation messages
-2. **The proxy extracts the user_id** from the request
+2. **The proxy extracts the user_uuid** from the request
 3. **The proxy calls Zep** to get context (facts, memories) for that user
 4. **The proxy injects the context** into the system prompt
 5. **The proxy forwards to OpenAI** and streams the response back
@@ -139,8 +139,8 @@ The `get_zep_context()` function controls what's fetched from Zep. You can:
 
 ## Troubleshooting
 
-### "No user_id provided"
-Make sure you're passing the user_id when starting the ElevenLabs conversation.
+### "No user_uuid provided"
+Make sure you're passing the user_uuid when starting the ElevenLabs conversation.
 
 ### Slow responses
 - Check Zep latency in the logs

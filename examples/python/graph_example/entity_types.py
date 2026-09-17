@@ -1,12 +1,11 @@
 import asyncio
 import os
-import uuid
 from dotenv import find_dotenv, load_dotenv
 
-from zep_cloud import EntityEdgeSourceTarget, SearchFilters, Message
+from zep_cloud import AddMessage, EdgeSourceTarget, SearchFilters
 from zep_cloud.client import AsyncZep
 from pydantic import Field
-from zep_cloud.external_clients.ontology import EntityModel, EntityText, EdgeModel
+from zep_cloud.ontology import EntityModel, EntityText, EdgeModel, build_ontology
 
 load_dotenv(
     dotenv_path=find_dotenv()
@@ -53,7 +52,7 @@ async def main() -> None:
             description="The purpose of travel (Business, Leisure, etc.)",
             default=None
         )
-    await client.graph.set_entity_types(
+    entity_types, edge_types = build_ontology(
         entities={
             "Destination": Destination,
         },
@@ -61,7 +60,7 @@ async def main() -> None:
             "TRAVELING_TO": (
                 TravelingTo,
                 [
-                    EntityEdgeSourceTarget(
+                    EdgeSourceTarget(
                         source="User",
                         target="Destination"
                     )
@@ -69,21 +68,20 @@ async def main() -> None:
             ),
         }
     )
+    await client.project.set_ontology(entity_types=entity_types, edge_types=edge_types)
 
     messages = [
-        Message(content="I'm planning to visit Tokyo, Japan next month for a business trip. Tokyo is in the Kanto region and it's such a vibrant metropolitan city with amazing technology and culture.", role="user", name="John Doe"),
-        Message(content="That sounds like an exciting business trip! Tokyo is indeed a fascinating destination. When are you planning to travel there exactly?", role="assistant", name="Assistant"),
-        Message(content="I'll be traveling to Tokyo on March 15th, 2024 for business meetings. After that, I'm thinking of taking a leisure trip to Bali, Indonesia in April. Bali is in the Lesser Sunda Islands region and is known for its beautiful beaches and temples.", role="user", name="John Doe"),
-        Message(content="Great planning! Tokyo for business in March and then Bali for leisure in April - that's a nice combination of work and relaxation.", role="assistant", name="Assistant"),
+        AddMessage(content="I'm planning to visit Tokyo, Japan next month for a business trip. Tokyo is in the Kanto region and it's such a vibrant metropolitan city with amazing technology and culture.", role="user", name="John Doe"),
+        AddMessage(content="That sounds like an exciting business trip! Tokyo is indeed a fascinating destination. When are you planning to travel there exactly?", role="assistant", name="Assistant"),
+        AddMessage(content="I'll be traveling to Tokyo on March 15th, 2024 for business meetings. After that, I'm thinking of taking a leisure trip to Bali, Indonesia in April. Bali is in the Lesser Sunda Islands region and is known for its beautiful beaches and temples.", role="user", name="John Doe"),
+        AddMessage(content="Great planning! Tokyo for business in March and then Bali for leisure in April - that's a nice combination of work and relaxation.", role="assistant", name="Assistant"),
     ]
 
-    user_id = f"user-{uuid.uuid4()}"
-    await client.user.add(user_id=user_id, first_name="John", last_name="Doe", email="john.doe@example.com")
-    thread_id = f"thread-{uuid.uuid4()}"
-    await client.thread.create(thread_id=thread_id, user_id=user_id)
+    user = await client.user.create(first_name="John", last_name="Doe", email="john.doe@example.com")
+    thread = await client.thread.create(user_uuid=user.uuid_)
 
     await client.thread.add_messages(
-        thread_id=thread_id,
+        thread.uuid_,
         messages=messages,
     )
 
@@ -91,27 +89,23 @@ async def main() -> None:
     print("Waiting for graph processing...")
     await asyncio.sleep(10)
 
-    results = await client.graph.search(
-        user_id=user_id,
-        query="travel",
-        # scope="nodes",
-        scope="edges",
-        search_filters=SearchFilters(
-            edge_types=["TRAVELING_TO"]
-            # node_labels=["Destination"]
+    edges = [
+        edge
+        async for edge in await client.graph.search_edges(
+            user.graph_uuid,
+            query="travel",
+            filters=SearchFilters(
+                edge_types=["TRAVELING_TO"]
+            ),
         )
-    )
+    ]
 
-    if results.nodes:
-        for node in results.nodes:
-            print(Destination(**node.attributes))
-    if results.edges:
-        for edge in results.edges:
+    for edge in edges:
+        if edge.attributes:
             print(TravelingTo(**edge.attributes))
 
-
-    enntl = await client.graph.list_entity_types()
-    print(enntl)
+    ontology = await client.project.get_ontology()
+    print(ontology)
 
 if __name__ == "__main__":
     asyncio.run(main())

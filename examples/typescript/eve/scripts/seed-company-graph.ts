@@ -10,7 +10,7 @@ import { ZepClient } from "@getzep/zep-cloud";
  * Re-runs are skipped when the graph already has at least as many episodes
  * as this seed list (avoids duplicate-fact pollution).
  */
-const GRAPH_ID = process.env.ZEP_COMPANY_GRAPH_ID?.trim() || "eve-demo-company";
+const GRAPH_UUID = process.env.ZEP_COMPANY_GRAPH_UUID?.trim();
 
 const EPISODES: string[] = [
   "Acme Platform is a B2B SaaS company that sells Service A, Service B, and Capability X.",
@@ -25,36 +25,50 @@ const EPISODES: string[] = [
   "Internal escalation channel for production incidents is the company Slack channel named incidents.",
 ];
 
-async function ensureGraph(client: ZepClient, graphId: string): Promise<void> {
-  try {
-    await client.graph.create({
-      graphId,
-      name: "Acme company knowledge",
-      description: "Standalone graph of company-wide product and policy facts for the Eve demo.",
-    });
-    console.log(`Created graph: ${graphId}`);
-  } catch (error) {
-    try {
-      await client.graph.get(graphId);
-      console.log(`Graph already exists: ${graphId}`);
-    } catch {
-      throw error;
-    }
+async function ensureGraph(
+  client: ZepClient,
+  graphUuid?: string,
+): Promise<string> {
+  // v4 addresses a graph by a server-generated UUID. The seed creates the
+  // graph one time, and the application keeps the UUID.
+  if (graphUuid) {
+    const graph = await client.graph.get(graphUuid);
+    console.log(`Graph already exists: ${graph.uuid}`);
+    return graphUuid;
   }
+
+  const graph = await client.graph.create({
+    name: "Acme company knowledge",
+    description: "Standalone graph of company-wide product and policy facts for the Eve demo.",
+  });
+  if (!graph.uuid) {
+    throw new Error("Zep did not return a graph UUID");
+  }
+  console.log(`Created graph: ${graph.uuid}`);
+  return graph.uuid;
+}
+
+async function listEpisodes(client: ZepClient, graphUuid: string) {
+  const episodes = [];
+  for await (const episode of await client.graph.episode.list(graphUuid, {
+    limit: 50,
+    body: {},
+  })) {
+    episodes.push(episode);
+    if (episodes.length >= 50) break;
+  }
+  return episodes;
 }
 
 async function waitUntilProcessed(
   client: ZepClient,
-  graphId: string,
+  graphUuid: string,
   expectedMin: number,
 ): Promise<void> {
   const started = Date.now();
   let lastPending = expectedMin;
   while (Date.now() - started < 240_000) {
-    const response = await client.graph.episode.getByGraphId(graphId, {
-      lastn: 50,
-    });
-    const episodes = response.episodes ?? [];
+    const episodes = await listEpisodes(client, graphUuid);
     const processed = episodes.filter((e) => e.processed).length;
     const pending = episodes.length - processed;
     lastPending = pending;
@@ -92,52 +106,48 @@ async function main() {
       : {}),
   });
 
-  console.log(`Seeding company graph: ${GRAPH_ID}`);
-  await ensureGraph(client, GRAPH_ID);
+  console.log("Seeding the company graph…");
+  const graphUuid = await ensureGraph(client, GRAPH_UUID);
 
-  const existing = await client.graph.episode.getByGraphId(GRAPH_ID, {
-    lastn: 50,
-  });
-  const existingCount = existing.episodes?.length ?? 0;
+  const existing = await listEpisodes(client, graphUuid);
+  const existingCount = existing.length;
   if (existingCount >= EPISODES.length) {
     console.log(
       `Graph already has ${existingCount} episodes (≥ ${EPISODES.length}). Skipping ingest to avoid duplicates.`,
     );
     console.log(
-      `To re-seed, delete graph "${GRAPH_ID}" in the Zep app (or use a new ZEP_COMPANY_GRAPH_ID) and re-run.`,
+      `To re-seed, delete graph "${graphUuid}" in the Zep app (or clear ZEP_COMPANY_GRAPH_UUID) and re-run.`,
     );
   } else {
     for (const [index, data] of EPISODES.entries()) {
-      const episode = await client.graph.add({
-        graphId: GRAPH_ID,
+      const result = await client.graph.episode.add(graphUuid, {
         type: "text",
         data,
         sourceDescription: `company-seed-${index + 1}`,
       });
-      console.log(`Added episode ${index + 1}/${EPISODES.length}: ${episode.uuid}`);
+      console.log(
+        `Added episode ${index + 1}/${EPISODES.length}: ${result.episode?.uuid}`,
+      );
     }
 
     console.log("Waiting for graph processing…");
-    await waitUntilProcessed(client, GRAPH_ID, EPISODES.length);
+    await waitUntilProcessed(client, graphUuid, EPISODES.length);
   }
 
-  const sample = await client.graph.search({
-    graphId: GRAPH_ID,
+  const sample = await client.graph.getContext(graphUuid, {
     query: "refund policy Service A billing",
-    scope: "auto",
-    limit: 5,
-    returnRawResults: true,
+    includeResults: true,
   });
   console.log("\nSample search:");
   if (sample.context?.trim()) {
     console.log(sample.context.trim());
   } else {
-    for (const edge of sample.edges ?? []) {
+    for (const edge of sample.results?.edges ?? []) {
       console.log(`- ${edge.fact}`);
     }
   }
 
-  console.log(`\nDone. Set ZEP_COMPANY_GRAPH_ID=${GRAPH_ID} in .env (already the default).`);
+  console.log(`\nDone. Set ZEP_COMPANY_GRAPH_UUID=${graphUuid} in .env.`);
 }
 
 main().catch((error) => {

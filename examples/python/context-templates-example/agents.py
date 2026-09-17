@@ -10,11 +10,14 @@ from openai import AsyncOpenAI
 from dotenv import load_dotenv
 import os
 import time
-from zep_cloud.types import Message, EntityEdge
+from zep_cloud import AddMessage
 import inspect
 
 # Load environment variables
 load_dotenv()
+
+# The name of the context template that set-context-templates.py creates.
+CONTEXT_TEMPLATE_NAME = "requirements-and-preferences-1"
 
 
 def get_all_agent_classes():
@@ -60,9 +63,25 @@ class ChatAgent:
         self.openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.model = model
         self.zep_client = zep_client
+        self.template_uuid = None
 
+    async def _get_template_uuid(self) -> str | None:
+        """Resolve the UUID of the context template one time.
 
-    async def on_receive_message(self, current_user_message: str, message_history: List[Dict[str, str]], thread_id: str, user_full_name: str, user_id: str, use_zep: bool = True) -> AsyncGenerator[Tuple[str, dict], None]:
+        v4 selects a context template by its UUID. The name resolves to the
+        UUID one time, and the agent keeps the UUID.
+        """
+        if self.template_uuid is not None:
+            return self.template_uuid
+        async for template in await self.zep_client.context.list_templates(
+            name=CONTEXT_TEMPLATE_NAME
+        ):
+            if template.name == CONTEXT_TEMPLATE_NAME:
+                self.template_uuid = template.uuid_
+                break
+        return self.template_uuid
+
+    async def on_receive_message(self, current_user_message: str, message_history: List[Dict[str, str]], thread_uuid: str, user_full_name: str, user_uuid: str, use_zep: bool = True) -> AsyncGenerator[Tuple[str, dict], None]:
         """
         Receive a new message and generate a streaming response from the AI.
 
@@ -70,9 +89,9 @@ class ChatAgent:
             current_user_message: The new message from the user
             message_history: Previous conversation history as list of message dicts
                            with 'role' and 'content' keys (formatted for OpenAI API)
-            thread_id: The Zep thread ID to add messages to
+            thread_uuid: The UUID of the Zep thread to add messages to
             user_full_name: The full name of the user (first name + last name)
-            user_id: The Zep user ID
+            user_uuid: The UUID of the Zep user
             use_zep: Whether to use Zep for memory storage and context retrieval
 
         Yields:
@@ -89,26 +108,26 @@ class ChatAgent:
         ######################################################################
         if use_zep:
             # Add user message to Zep thread
-            user_message = Message(
+            user_message = AddMessage(
                 name=user_full_name,
                 content=current_user_message,
                 role="user"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid,
                 messages=[user_message]
             )
 
             # Retrieve user context from Zep using context template and track timing
             zep_start = time.perf_counter()
 
+            results = await self.zep_client.thread.get_context(
+                thread_uuid,
+                template_uuid=await self._get_template_uuid()
+            )
+            context_block = results.context
 
-            context_block = await self.zep_client.thread.get_user_context(
-                thread_id=thread_id,
-                template_id="requirements-and-preferences-1"
-            ).context
 
-            
             zep_end = time.perf_counter()
             zep_retrieval_ms = round((zep_end - zep_start) * 1000, 2)
         ######################################################################
@@ -156,13 +175,13 @@ class ChatAgent:
         ######################################################################
         if use_zep:
             # Add agent response to Zep thread
-            assistant_message = Message(
+            assistant_message = AddMessage(
                 name="AI Assistant",
                 content=full_response,
                 role="assistant"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid,
                 messages=[assistant_message]
             )
         ######################################################################
