@@ -51,8 +51,8 @@ export interface ZepCallbacks {
  *
  * const zep = new ZepClient({ apiKey: process.env.ZEP_API_KEY! });
  * const { beforeModelCallback, afterModelCallback } = createZepCallbacks(zep, {
- *   userId: "user-123",
- *   threadId: "thread-abc",
+ *   userUuid,
+ *   threadUuid,
  * });
  * const agent = new LlmAgent({
  *   name: "memory_agent",

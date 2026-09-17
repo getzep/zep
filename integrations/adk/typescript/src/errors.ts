@@ -22,7 +22,7 @@ export class ZepIdentityError extends Error {
 /**
  * Detect whether `error` represents a Zep "not found" failure (404) — the
  * shape returned when a persist call targets a user or thread that was
- * never provisioned with `ensureUser()` / `ensureThread()`.
+ * never provisioned with `createUser()` / `createThread()`.
  *
  * Internal to the package; not exported from `index.ts`.
  */

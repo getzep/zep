@@ -8,18 +8,22 @@ describe("resolveIdentity", () => {
     const id = resolveIdentity(
       fakeContext({ userId: "adk-u", sessionId: "adk-s" }),
     );
-    expect(id.userId).toBe("adk-u");
-    expect(id.threadId).toBe("adk-s");
+    expect(id.userUuid).toBe("adk-u");
+    expect(id.threadUuid).toBe("adk-s");
   });
 
   it("prefers explicit options, then state, then ADK session", () => {
     const ctx = fakeContext({
       userId: "adk-u",
       sessionId: "adk-s",
-      state: { zep_user_id: "state-u", zep_thread_id: "state-s" },
+      state: { zep_user_uuid: "state-u", zep_thread_uuid: "state-s" },
     });
-    expect(resolveIdentity(ctx).userId).toBe("state-u");
-    expect(resolveIdentity(ctx, { userId: "opt-u" }).userId).toBe("opt-u");
+    expect(resolveIdentity(ctx).userUuid).toBe("state-u");
+    expect(resolveIdentity(ctx).threadUuid).toBe("state-s");
+    expect(resolveIdentity(ctx, { userUuid: "opt-u" }).userUuid).toBe("opt-u");
+    expect(resolveIdentity(ctx, { threadUuid: "opt-s" }).threadUuid).toBe(
+      "opt-s",
+    );
   });
 
   it("builds a display name from first and last name", () => {
@@ -35,14 +39,14 @@ describe("resolveIdentity", () => {
     expect(id.displayName).toBeUndefined();
   });
 
-  it("throws ZepIdentityError when no userId can be resolved", () => {
+  it("throws ZepIdentityError when no user UUID can be resolved", () => {
     const ctx = fakeContext({ userId: "", sessionId: "s" });
     expect(() => resolveIdentity(ctx)).toThrow(ZepIdentityError);
   });
 
-  it("throws ZepIdentityError when no threadId can be resolved", () => {
+  it("throws ZepIdentityError when no thread UUID can be resolved", () => {
     const ctx = fakeContext({ userId: "u", sessionId: "" });
-    expect(() => resolveIdentity(ctx)).toThrow(/thread ID/);
+    expect(() => resolveIdentity(ctx)).toThrow(/thread UUID/);
   });
 });
 

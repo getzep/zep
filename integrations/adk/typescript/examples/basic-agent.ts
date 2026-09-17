@@ -7,11 +7,13 @@
  * facts and recalls them.
  *
  * The Zep user and thread are provisioned explicitly, out-of-band, via
- * `ensureUser` and `ensureThread` — before the agent runs its first turn.
- * `ensureUser`'s `onCreated` hook demonstrates one-time per-user setup (here,
- * seeding a user summary instruction) that only runs when the user is
- * genuinely new. The turn path itself (the before/after-model callbacks)
- * never creates the user or thread.
+ * `createUser` and `createThread` — before the agent runs its first turn.
+ * Zep v4 assigns the UUID of the user and of the thread on the server, so
+ * this example reads the UUIDs from the create responses and passes them to
+ * the callbacks as `userUuid` and `threadUuid`. A real application stores
+ * these UUIDs in its own database. `createUser`'s `onCreated` hook shows
+ * one-time per-user setup (here, a user summary instruction). The turn path
+ * itself (the before/after-model callbacks) never creates the user or thread.
  *
  * The agent's model is Gemini, so a live run requires GOOGLE_API_KEY in
  * addition to ZEP_API_KEY. When GOOGLE_API_KEY is absent, the example builds
@@ -37,10 +39,10 @@ import {
 } from "@google/adk";
 import type { Content } from "@google/genai";
 import {
+  createThread,
+  createUser,
   createZepAfterModelCallback,
   createZepBeforeModelCallback,
-  ensureThread,
-  ensureUser,
 } from "../src/index.js";
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
@@ -52,8 +54,8 @@ if (!ZEP_API_KEY) {
 }
 
 const suffix = randomUUID().slice(0, 8);
-const USER_ID = `adk-ts-example-user-${suffix}`;
-const SESSION_ID = `adk-ts-example-session-${suffix}`;
+const ADK_USER_ID = `adk-ts-example-user-${suffix}`;
+const ADK_SESSION_ID = `adk-ts-example-session-${suffix}`;
 const APP_NAME = "zep-adk-ts-example";
 
 async function collectResponse(
@@ -63,8 +65,8 @@ async function collectResponse(
   const newMessage: Content = { role: "user", parts: [{ text }] };
   const chunks: string[] = [];
   for await (const event of runner.runAsync({
-    userId: USER_ID,
-    sessionId: SESSION_ID,
+    userId: ADK_USER_ID,
+    sessionId: ADK_SESSION_ID,
     newMessage,
   }) as AsyncGenerator<Event>) {
     if (isFinalResponse(event) && event.content?.parts) {
@@ -79,15 +81,15 @@ async function collectResponse(
 /**
  * One-time setup for a newly created Zep user.
  *
- * Fires only when `ensureUser` actually creates the user — never for a user
- * that already existed. This is the place to configure per-user ontology,
- * custom instructions, or (as here) a user summary instruction.
+ * `createUser` awaits this hook with the UUID of the new user. This is the
+ * place to configure per-user ontology, custom instructions, or (as here) a
+ * user summary instruction.
  */
-async function onUserCreated(zep: ZepClient, userId: string): Promise<void> {
+async function onUserCreated(zep: ZepClient, userUuid: string): Promise<void> {
   console.log(
-    `  [onCreated] New Zep user ${userId} — seeding summary instructions.`,
+    `  [onCreated] New Zep user ${userUuid} — seeding summary instructions.`,
   );
-  await zep.user.addUserSummaryInstructions({
+  await zep.user.setSummaryInstructions(userUuid, {
     instructions: [
       {
         name: "professional-background",
@@ -96,26 +98,31 @@ async function onUserCreated(zep: ZepClient, userId: string): Promise<void> {
           "living situation in a concise paragraph.",
       },
     ],
-    userIds: [userId],
   });
 }
 
 async function main(): Promise<void> {
   const zep = new ZepClient({ apiKey: ZEP_API_KEY });
 
-  // Provision the Zep user and thread out-of-band, before the first turn.
-  // The agent's turn path (the before/after-model callbacks) never creates
-  // users or threads itself — see README.md's "Migrating from 0.1.x" section.
+  // Provision the Zep user and thread out-of-band, before the first turn,
+  // and keep the UUIDs that Zep returns. An application stores these UUIDs
+  // in its own database and passes them back on each turn. The agent's turn
+  // path (the before/after-model callbacks) never creates users or threads.
   console.log("--- Provisioning Zep user + thread ---\n");
+  let userUuid: string;
+  let threadUuid: string;
   try {
-    await ensureUser(zep, {
-      userId: USER_ID,
+    const user = await createUser(zep, {
+      // The Zep v4 thread message endpoints reject a user that has no
+      // `userId`, so the example gives the user a developer-assigned name.
+      userId: `adk-ts-example-${suffix}`,
       firstName: "Alice",
       lastName: "Smith",
       email: "alice@example.com",
       onCreated: onUserCreated,
     });
-    await ensureThread(zep, { threadId: SESSION_ID, userId: USER_ID });
+    userUuid = user.userUuid;
+    threadUuid = (await createThread(zep, { userUuid })).threadUuid;
   } catch (error) {
     console.error("Provisioning Zep user/thread failed:", error);
     process.exit(1);
@@ -131,22 +138,23 @@ async function main(): Promise<void> {
       "is present in your system instruction, use it to answer with " +
       "personalised, memory-aware responses.",
     beforeModelCallback: createZepBeforeModelCallback(zep, {
-      userId: USER_ID,
-      threadId: SESSION_ID,
+      userUuid,
+      threadUuid,
       firstName: "Alice",
       lastName: "Smith",
     }),
     afterModelCallback: createZepAfterModelCallback(zep, {
-      userId: USER_ID,
-      threadId: SESSION_ID,
+      userUuid,
+      threadUuid,
     }),
   });
 
   console.log("=".repeat(60));
   console.log("ADK + Zep Memory Example (TypeScript)");
   console.log("=".repeat(60));
-  console.log(`  User ID:    ${USER_ID}`);
-  console.log(`  Session ID: ${SESSION_ID}`);
+  console.log(`  Zep user UUID:   ${userUuid}`);
+  console.log(`  Zep thread UUID: ${threadUuid}`);
+  console.log(`  ADK session ID:  ${ADK_SESSION_ID}`);
   console.log("=".repeat(60));
 
   if (!GOOGLE_API_KEY) {
@@ -161,8 +169,8 @@ async function main(): Promise<void> {
   const runner = new InMemoryRunner({ agent, appName: APP_NAME });
   await runner.sessionService.createSession({
     appName: APP_NAME,
-    userId: USER_ID,
-    sessionId: SESSION_ID,
+    userId: ADK_USER_ID,
+    sessionId: ADK_SESSION_ID,
   });
 
   console.log("\n--- Phase 1: Seeding facts ---\n");
@@ -174,7 +182,7 @@ async function main(): Promise<void> {
     console.log(`Agent: ${await collectResponse(runner, message)}\n`);
   }
 
-  const waitSeconds = 15;
+  const waitSeconds = 30;
   console.log(`--- Waiting ${waitSeconds}s for Zep graph processing ---\n`);
   await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
 

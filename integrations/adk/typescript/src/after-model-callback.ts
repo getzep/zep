@@ -43,7 +43,7 @@ export type ZepAfterModelCallback = (params: {
  * are skipped, so only one clean assistant message per turn reaches Zep.
  *
  * This callback never creates the Zep user or thread. Provision them
- * out-of-band before the first turn with `ensureUser()` / `ensureThread()`
+ * out-of-band before the first turn with `createUser()` / `createThread()`
  * (see `src/provisioning.ts`) — e.g. during account/session onboarding. If
  * the user/thread do not exist, persistence for that turn is skipped and a
  * warning is logged naming the fix.
@@ -82,7 +82,7 @@ export function createZepAfterModelCallback(
       identity = resolveIdentity(context, options);
     } catch (error) {
       logger.warn(
-        "Skipping assistant persistence — could not resolve Zep thread ID",
+        "Skipping assistant persistence — could not resolve Zep thread UUID",
         error,
       );
       return undefined;
@@ -91,18 +91,18 @@ export function createZepAfterModelCallback(
     const content = truncateMessageContent(text, logger, "assistant");
 
     try {
-      await zep.thread.addMessages(identity.threadId, {
+      await zep.thread.addMessages(identity.threadUuid, {
         messages: [{ role: "assistant", content, name: assistantName }],
         ignoreRoles: options.ignoreRoles,
       });
       logger.info(
-        `Persisted assistant response to Zep (thread=${identity.threadId}, ${content.length} chars)`,
+        `Persisted assistant response to Zep (thread=${identity.threadUuid}, ${content.length} chars)`,
       );
     } catch (error) {
       if (isNotFoundError(error)) {
         logger.warn(
-          `Zep user/thread not found (thread=${identity.threadId}) — ` +
-            "call ensureUser()/ensureThread() before the first turn",
+          `Zep user/thread not found (thread=${identity.threadUuid}) — ` +
+            "call createUser()/createThread() before the first turn",
           error,
         );
       } else {

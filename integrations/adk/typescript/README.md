@@ -2,13 +2,17 @@
 
 Long-term memory for [Google ADK](https://github.com/google/adk) TypeScript agents, powered by [Zep](https://www.getzep.com). The integration persists conversation turns to Zep and injects a relevant, prompt-ready Context Block into every model call, so your agent remembers users across sessions.
 
-Built on the official [`@google/adk`](https://www.npmjs.com/package/@google/adk) and [`@getzep/zep-cloud`](https://www.npmjs.com/package/@getzep/zep-cloud) SDKs (Zep V3).
+Built on the official [`@google/adk`](https://www.npmjs.com/package/@google/adk) and [`@getzep/zep-cloud`](https://www.npmjs.com/package/@getzep/zep-cloud) SDKs (Zep v4).
+
+Zep v4 addresses every user, thread, and graph by a server-generated UUID. A `userId` or a `threadId` is a name, not an address. The public API of this package takes `userUuid` and `threadUuid`. Your application creates the user and the thread one time, stores the UUIDs from the responses in its own database, and passes the UUIDs back on each turn. The integration never looks a user or a thread up at run time.
 
 ## Installation
 
 ```bash
-npm install @getzep/zep-adk @google/adk @getzep/zep-cloud
+npm install @getzep/zep-adk @google/adk @getzep/zep-cloud@preview
 ```
+
+The v4 SDK is a pre-release. The npm `preview` dist-tag points to `4.0.0-alpha.5`.
 
 `@google/adk` is a peer dependency (`^1.2.0`) — install the version your app uses; this package is built and tested against `@google/adk@1.2.0` and verified stable across the `1.x` line.
 
@@ -20,7 +24,7 @@ zep-adk ships the same set of capabilities across Python, TypeScript, and Go, th
 |---|---|---|---|
 | guaranteed context injection | `ZepContextTool` | `ZepContextTool` or `createZepBeforeModelCallback` | `NewBeforeModelCallback` |
 | assistant-turn persistence | `create_after_model_callback` | `createZepAfterModelCallback` | `NewAfterModelCallback` |
-| explicit provisioning + created signal | `ensure_user`/`ensure_thread` | `ensureUser`/`ensureThread` | `EnsureUser`/`EnsureThread` |
+| explicit provisioning | `create_user`/`create_thread` | `createUser`/`createThread` | `CreateUser`/`CreateThread` |
 | custom context block | `context_builder` | `contextBuilder` | `WithContextBuilder` |
 | injection template | `context_template` | `contextTemplate` | `WithContextTemplate` |
 | model-callable graph search (pin-or-expose, 6 scopes) | `ZepGraphSearchTool` | `ZepGraphSearchTool` | `NewGraphSearchTool` |
@@ -28,7 +32,7 @@ zep-adk ships the same set of capabilities across Python, TypeScript, and Go, th
 
 Note: Go intentionally has no tool-based injection (callbacks are the Go-ADK-idiomatic hook).
 
-Note: Go has no `onCreated` hook -- use the `created` bool returned by `EnsureUser`/`EnsureThread` instead. Go's `EnsureUser` takes positional `firstName`, `lastName`, `email` strings (pass `""` to omit).
+Note: Go has no `onCreated` hook. Go's `CreateUser` takes positional `firstName`, `lastName`, `email` strings (pass `""` to omit).
 
 ## Quick start
 
@@ -37,24 +41,24 @@ Provision the Zep user and thread once, out-of-band, before the first turn — t
 ```ts
 import { LlmAgent } from "@google/adk";
 import { ZepClient } from "@getzep/zep-cloud";
-import { createZepCallbacks, ensureUser, ensureThread } from "@getzep/zep-adk";
+import { createZepCallbacks, createUser, createThread } from "@getzep/zep-adk";
 
 const zep = new ZepClient({ apiKey: process.env.ZEP_API_KEY! });
 
 // Provision once, e.g. during account/session onboarding — NOT on every turn.
-await ensureUser(zep, {
-  userId: "user-123",
+// Store `userUuid` and `threadUuid` in your own database.
+const { userUuid } = await createUser(zep, {
   firstName: "Jane",
   lastName: "Smith",
   email: "jane@example.com",
 });
-await ensureThread(zep, { threadId: "thread-abc", userId: "user-123" });
+const { threadUuid } = await createThread(zep, { userUuid });
 
 // createZepCallbacks builds the before/after pair sharing one dedup guard —
 // the recommended way to wire both callbacks together.
 const { beforeModelCallback, afterModelCallback } = createZepCallbacks(zep, {
-  userId: "user-123",
-  threadId: "thread-abc",
+  userUuid,
+  threadUuid,
   firstName: "Jane",
   lastName: "Smith",
 });
@@ -74,13 +78,13 @@ See [`examples/basic-agent.ts`](examples/basic-agent.ts) for a complete, runnabl
 
 The Zep loop is: create user → create thread → add messages → retrieve context. This package splits that loop in two: explicit, out-of-band provisioning (once, before the first turn) and the ADK request lifecycle (every turn).
 
-### `ensureUser` / `ensureThread` (explicit provisioning)
+### `createUser` / `createThread` (explicit provisioning)
 
-Idempotent, out-of-band helpers. Call these once — during onboarding, account creation, or before the first turn of a new conversation — **before** the agent runs. They are create-then-catch-conflict: each calls the Zep SDK's create method directly and resolves to `true` if the resource was newly created, `false` if it already existed. Genuine failures (auth, network, 5xx) throw, so misconfiguration is caught immediately rather than silently swallowed.
+Out-of-band helpers. Call these once — during onboarding, account creation, or before the first turn of a new conversation — **before** the agent runs. Each calls the Zep v4 SDK create method and returns the server-generated UUIDs: `createUser` returns `{ userUuid, graphUuid }` and `createThread` returns `{ threadUuid, graphUuid }`. Store the UUIDs in your own database. Failures (auth, network, 5xx) throw, so misconfiguration is caught immediately rather than silently swallowed.
 
-`ensureUser` accepts an optional `onCreated` hook that runs exactly once, only for genuinely new users — the place to configure per-user ontology, custom instructions, or a user summary instruction. If the hook throws, the exception propagates (the user was still created; write `onCreated` to be idempotent so a retry is safe).
+`createUser` accepts an optional `onCreated` hook that runs exactly once, with the UUID of the new user — the place to configure per-user ontology, custom instructions, or a user summary instruction. If the hook throws, the exception propagates (the user was still created; write `onCreated` to be idempotent so a retry is safe).
 
-**The ADK turn path (`createZepBeforeModelCallback`, `createZepAfterModelCallback`, `ZepContextTool`) never creates users or threads itself** — it assumes they already exist. If a persist call targets a user/thread that hasn't been provisioned, it logs a warning naming `ensureUser()`/`ensureThread()` and the turn continues without Zep memory.
+**The ADK turn path (`createZepBeforeModelCallback`, `createZepAfterModelCallback`, `ZepContextTool`) never creates users or threads itself** — it assumes they already exist. If a persist call targets a user/thread that hasn't been provisioned, it logs a warning naming `createUser()`/`createThread()` and the turn continues without Zep memory.
 
 ### `createZepBeforeModelCallback` (primary hook)
 
@@ -104,16 +108,16 @@ import type { ContextBuilderInput } from "@getzep/zep-adk";
 
 async function multiGraphBuilder(input: ContextBuilderInput): Promise<string | undefined> {
   const [userGraph, orgGraph] = await Promise.all([
-    input.zep.graph.search({ userId: input.userId, query: input.userMessage, scope: "edges" }),
-    input.zep.graph.search({ graphId: "org-kb", query: input.userMessage, scope: "edges" }),
+    input.zep.graph.searchEdges(userGraphUuid, { body: { query: input.userMessage } }),
+    input.zep.graph.searchEdges(orgGraphUuid, { body: { query: input.userMessage } }),
   ]);
-  const facts = [...(userGraph.edges ?? []), ...(orgGraph.edges ?? [])].map((e) => e.fact);
+  const facts = [...userGraph.data, ...orgGraph.data].map((e) => e.fact);
   return facts.length > 0 ? facts.join("\n") : undefined;
 }
 
 const beforeModelCallback = createZepBeforeModelCallback(zep, {
-  userId: "user-123",
-  threadId: "thread-abc",
+  userUuid,
+  threadUuid,
   contextBuilder: multiGraphBuilder,
 });
 ```
@@ -161,14 +165,14 @@ Pick **either** `createZepBeforeModelCallback` **or** `ZepContextTool` — runni
 
 ### `ZepGraphSearchTool`
 
-A model-callable `BaseTool` that searches a Zep knowledge graph on demand. Set `graphId` to search a standalone graph, or omit it to search the current user's graph.
+A model-callable `BaseTool` that searches a Zep Context Graph on demand. Set `graphUuid` to the UUID of the graph to search. `createUser` returns the `graphUuid` of the user's graph, and `createThread` returns the same value for the thread's graph. When `graphUuid` is omitted, the tool resolves the graph of the identity's `userUuid` one time with `zep.user.get` and caches the result.
 
 Every search parameter is **tri-state** at construction time:
 
 | State | How to set it | Effect |
 |-------|----------------|--------|
 | **Pinned** | a concrete value, e.g. `scope: "edges"` | Hidden from the model's tool schema. Always used, even if the model sends a different value for that argument. |
-| **Hidden** | `null` | Hidden from the model's tool schema AND omitted from the `graph.search` call entirely. |
+| **Hidden** | `null` | Hidden from the model's tool schema AND omitted from the search call entirely. |
 | **Exposed** (default) | omit the option (`undefined`) | Included in the model's tool schema with the default below, so the model chooses a value per call. |
 
 | Option | Model param | Default when exposed | Notes |
@@ -179,21 +183,23 @@ Every search parameter is **tri-state** at construction time:
 | `mmrLambda` | `mmrLambda` | — (no default; omitted unless set) | Diversity (`0.0`) vs. relevance (`1.0`); only used when `reranker` is `"mmr"` |
 | `centerNodeUuid` | `centerNodeUuid` | — (no default; omitted unless set) | Required when `reranker` is `"node_distance"` |
 
-`searchFilters` and `bfsOriginNodeUuids` are always constructor-only — never exposed to the model, always applied to every search when set.
+`searchFilters` and `bfsOriginNodeUuids` are always constructor-only — never exposed to the model, always applied to every search when set. `searchFilters` takes the v4 `Zep.SearchFilters` shape, whose fields are camelCase (`nodeLabels`, `edgeTypes`, `createdAt`, and the other v4 filter fields).
+
+Each scope calls its own v4 SDK method: `edges` calls `graph.searchEdges`, `nodes` calls `graph.searchNodes`, `episodes` calls `graph.searchEpisodes`, `observations` calls `graph.searchObservations`, and `thread_summaries` calls `graph.searchThreadSummaries`. The `auto` scope calls `graph.getContext` and returns Zep's assembled Context Block. The search methods return one page, and the tool reads that page.
 
 An invalid enum value sent by the model (e.g. an unsupported `scope`) falls back to the documented default and logs a warning; it never throws.
 
 ```ts
 // Fully dynamic: the model chooses scope, reranker, limit, mmrLambda, centerNodeUuid.
-new ZepGraphSearchTool({ zep, userId: "user-123" });
+new ZepGraphSearchTool({ zep, graphUuid });
 
 // Pin scope + limit, but let the model choose the reranker.
-new ZepGraphSearchTool({ zep, userId: "user-123", scope: "edges", limit: 5 });
+new ZepGraphSearchTool({ zep, graphUuid, scope: "edges", limit: 5 });
 
 // Restore the pre-0.2.0 behavior: model only ever sees `query`.
 new ZepGraphSearchTool({
   zep,
-  userId: "user-123",
+  graphUuid,
   scope: "edges",
   reranker: "rrf",
   limit: 10,
@@ -224,7 +230,7 @@ const runner = new Runner({
   agent,
   appName: "my_app",
   sessionService: new InMemorySessionService(),
-  memoryService: new ZepMemoryService({ zep, scope: "edges" }),
+  memoryService: new ZepMemoryService({ zep, graphUuid, scope: "edges" }),
 });
 ```
 
@@ -250,7 +256,8 @@ ADK calls `addSessionToMemory` to flush a session's conversation into a memory s
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `zep` | `ZepClient` | required | An initialised client. The caller owns its lifecycle. |
-| `scope` | `Zep.GraphSearchScope` | `"edges"` | Search scope for every `searchMemory` call: `"edges"`, `"nodes"`, `"episodes"`, `"observations"`, `"thread_summaries"`, or `"auto"` (Zep's pre-assembled Context Block, returned as a single memory entry). |
+| `graphUuid` | `string` | — | The UUID of the graph to search. When it is omitted, the service resolves the graph of the session's `userUuid` one time with `zep.user.get` and caches the result. |
+| `scope` | `ZepGraphSearchScope` | `"edges"` | Search scope for every `searchMemory` call: `"edges"`, `"nodes"`, `"episodes"`, `"observations"`, `"thread_summaries"`, or `"auto"` (Zep's assembled Context Block, returned as a single memory entry). |
 | `limit` | `number` | SDK default | Maximum results per search. |
 | `logger` | `Logger` | `console`-backed | Logger for Zep failures and unsupported-scope warnings. |
 
@@ -258,31 +265,31 @@ ADK calls `addSessionToMemory` to flush a session's conversation into a memory s
 
 ## Identity resolution
 
-Both callbacks and tools resolve a Zep `userId` and `threadId` per turn, in this order:
+Both callbacks and tools resolve a Zep `userUuid` and `threadUuid` per turn, in this order:
 
-1. Explicit options passed at construction (`userId` / `threadId`).
-2. Session-state keys (`zep_user_id` / `zep_thread_id`).
-3. The ADK session's `userId` / `sessionId`.
+1. Explicit options passed at construction (`userUuid` / `threadUuid`).
+2. Session-state keys (`zep_user_uuid` / `zep_thread_uuid`).
+3. The ADK session's `userId` / `sessionId`. These two ADK fields are used only when they hold Zep UUIDs.
 
-Omitting the IDs lets one callback or tool serve every user in a shared-agent deployment — set the per-user identity in ADK session state instead.
+Omitting the UUIDs lets one callback or tool serve every user in a shared-agent deployment — set the per-user identity in ADK session state instead.
 
 ### Session-state keys
 
 | Key | Purpose | Default |
 |-----|---------|---------|
-| `zep_user_id` | Override the Zep user ID | ADK `userId` |
-| `zep_thread_id` | Override the Zep thread ID | ADK `sessionId` |
+| `zep_user_uuid` | The Zep user UUID | ADK `userId` |
+| `zep_thread_uuid` | The Zep thread UUID | ADK `sessionId` |
 | `zep_first_name` | First name (anchors the user's graph node) | — |
 | `zep_last_name` | Last name | — |
 
-Always provide a name so persisted messages are attributed to the user in the graph. The user's email lives on the Zep user profile — pass it to `ensureUser` during provisioning, not session state.
+Always provide a name so persisted messages are attributed to the user in the graph. The user's email is on the Zep user profile — pass it to `createUser` during provisioning, not session state.
 
 ## API
 
 | Export | Kind | Description |
 |--------|------|-------------|
-| `ensureUser(zep, options)` | function | Explicit, idempotent, out-of-band user provisioning. Returns `true` if newly created. |
-| `ensureThread(zep, options)` | function | Explicit, idempotent, out-of-band thread provisioning. Returns `true` if newly created. |
+| `createUser(zep, options?)` | function | Explicit, out-of-band user provisioning. Returns `{ userUuid, graphUuid }`. |
+| `createThread(zep, options)` | function | Explicit, out-of-band thread provisioning. Returns `{ threadUuid, graphUuid }`. |
 | `createZepBeforeModelCallback(zep, options?)` | factory | Primary hook: persist user turn + inject Context Block. |
 | `createZepAfterModelCallback(zep, options?)` | factory | Persist the assistant response. |
 | `createZepCallbacks(zep, options?)` | factory | Recommended: builds the before/after callback pair sharing one `TurnDedup` guard. |
@@ -296,37 +303,65 @@ Always provide a name so persisted messages are attributed to the user in the gr
 | `TurnDedup` | class | Same-turn dedup guard used by `createZepBeforeModelCallback`'s `dedup` option; share one instance across multiple callback calls if you construct them independently instead of via `createZepCallbacks`. |
 | `ZepIdentityError` | error | Thrown only when identity cannot be resolved. |
 
-Constructor options for the callbacks and tools share `userId`, `threadId`, `firstName`, `lastName`, `ignoreRoles`, `contextBuilder`, `contextTemplate`, and `logger`. See the inline TSDoc for full signatures.
+Constructor options for the callbacks and tools share `userUuid`, `threadUuid`, `firstName`, `lastName`, `ignoreRoles`, `contextBuilder`, `contextTemplate`, and `logger`. See the inline TSDoc for full signatures.
 
-### `ensureUser` options
-
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `userId` | `string` | Yes | The Zep user ID to create. |
-| `firstName` | `string` | No | Passed through to `zep.user.add`. |
-| `lastName` | `string` | No | Passed through to `zep.user.add`. |
-| `email` | `string` | No | Passed through to `zep.user.add`. |
-| `onCreated` | `(zep, userId) => Promise<void>` | No | Runs exactly once, only when the user is newly created; awaited before `ensureUser` returns; errors propagate. |
-
-Returns `Promise<boolean>` — `true` if newly created, `false` if it already existed. Throws on genuine failures (auth, network, 5xx).
-
-### `ensureThread` options
+### `createUser` options
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
-| `threadId` | `string` | Yes | The Zep thread ID to create. |
-| `userId` | `string` | Yes | The Zep user ID that owns the thread (must already exist). |
+| `userId` | `string` | No | A developer-assigned name for the user. It is not an address. |
+| `firstName` | `string` | No | Passed through to `zep.user.create`. |
+| `lastName` | `string` | No | Passed through to `zep.user.create`. |
+| `email` | `string` | No | Passed through to `zep.user.create`. |
+| `onCreated` | `(zep, userUuid) => Promise<void>` | No | Runs exactly once with the new user UUID; awaited before `createUser` returns; errors propagate. |
 
-Returns `Promise<boolean>` — `true` if newly created, `false` if it already existed. Throws on genuine failures (auth, network, 5xx).
+Returns `Promise<{ userUuid: string; graphUuid?: string }>`. Throws on failures (auth, network, 5xx).
+
+### `createThread` options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `userUuid` | `string` | Yes | The UUID of the Zep user that owns the thread. |
+| `threadId` | `string` | No | A developer-assigned name for the thread. It is not an address. |
+
+Returns `Promise<{ threadUuid: string; graphUuid?: string }>`. Throws on failures (auth, network, 5xx).
 
 ## Error handling
 
 Two different error philosophies apply, by design:
 
-- **Provisioning (`ensureUser` / `ensureThread`)** is meant to fail loudly. Genuine failures (auth, network, 5xx) throw, so misconfiguration is caught before the agent ever runs rather than silently swallowed. Only an "already exists" conflict is treated as success (returns `false`).
-- **The turn path** (the callbacks and tools) never throws a Zep error. Every Zep API call there is wrapped: failures are logged through the configured `logger` (defaults to `console`) and swallowed. A Zep outage degrades the agent to no-memory behaviour — it never crashes the host agent. The only thrown error on the turn path is `ZepIdentityError`, and only from the standalone `resolveIdentity` helper; inside the callbacks and tools it is caught and the turn proceeds. If a persist call targets a user/thread that was never provisioned, a warning naming `ensureUser()`/`ensureThread()` is logged instead.
+- **Provisioning (`createUser` / `createThread`)** is meant to fail loudly. Failures (auth, network, 5xx) throw, so misconfiguration is caught before the agent ever runs rather than silently swallowed.
+- **The turn path** (the callbacks and tools) never throws a Zep error. Every Zep API call there is wrapped: failures are logged through the configured `logger` (defaults to `console`) and swallowed. A Zep outage degrades the agent to no-memory behaviour — it never crashes the host agent. The only thrown error on the turn path is `ZepIdentityError`, and only from the standalone `resolveIdentity` helper; inside the callbacks and tools it is caught and the turn proceeds. If a persist call targets a user/thread that was never provisioned, a warning naming `createUser()`/`createThread()` is logged instead.
 
 Zep ingestion is asynchronous — a just-added message is not instantly retrievable. Design for eventual availability (the example waits before testing recall).
+
+## Migrating to the Zep v4 SDK
+
+The unreleased version of this package targets `@getzep/zep-cloud@4.0.0-alpha.5`. Zep v4 addresses a user, a thread, and a graph by a server-generated UUID, so the public API changed with it:
+
+| Before (v3) | After (v4) |
+|---|---|
+| `ensureUser(zep, { userId, ... })` | `createUser(zep, { firstName, ... })`, which returns `{ userUuid, graphUuid }` |
+| `ensureThread(zep, { threadId, userId })` | `createThread(zep, { userUuid })`, which returns `{ threadUuid, graphUuid }` |
+| `userId` / `threadId` options | `userUuid` / `threadUuid` options |
+| `zep_user_id` / `zep_thread_id` state keys | `zep_user_uuid` / `zep_thread_uuid` state keys |
+| `ZepGraphSearchTool({ graphId })` | `ZepGraphSearchTool({ graphUuid })` |
+| one `graph.search` call with a `scope` | one v4 method for each scope, and `graph.getContext` for `auto` |
+| snake_case search filters | camelCase `Zep.SearchFilters` fields |
+
+Resolve a v3 `user_id` or `thread_id` to its UUID one time with the v4 `lookup` methods, then store the UUID in your own database. The integration never calls `lookup` on the turn path.
+
+```ts
+// Before (v3)
+await ensureUser(zep, { userId, firstName, lastName, email });
+await ensureThread(zep, { threadId, userId });
+createZepCallbacks(zep, { userId, threadId });
+
+// After (v4)
+const { userUuid } = await createUser(zep, { firstName, lastName, email });
+const { threadUuid } = await createThread(zep, { userUuid });
+createZepCallbacks(zep, { userUuid, threadUuid });
+```
 
 ## Migrating from 0.1.x
 
@@ -338,12 +373,12 @@ Zep ingestion is asynchronous — a just-added message is not instantly retrieva
 
   ```ts
   // Before (0.1.x): implicit — the model never saw more than `query`.
-  new ZepGraphSearchTool({ zep, userId: "user-123" });
+  new ZepGraphSearchTool({ zep, graphUuid });
 
   // After (0.2.0+): pin everything explicitly to reproduce the old behavior.
   new ZepGraphSearchTool({
     zep,
-    userId: "user-123",
+    graphUuid,
     scope: "edges",
     reranker: "rrf",
     limit: 10,
@@ -352,7 +387,7 @@ Zep ingestion is asynchronous — a just-added message is not instantly retrieva
   });
   ```
 
-- **New constructor-only options** `searchFilters` and `bfsOriginNodeUuids` are additive — they were not previously supported and default to unset (omitted from every `graph.search` call).
+- **New constructor-only options** `searchFilters` and `bfsOriginNodeUuids` are additive — they were not previously supported and default to unset (omitted from every search call).
 
 0.2.0 also introduces a configurable `contextTemplate` and changes the default injection wording to `DEFAULT_CONTEXT_TEMPLATE`, the string canonical across Python, Go, and TypeScript:
 
@@ -361,17 +396,17 @@ Zep ingestion is asynchronous — a just-added message is not instantly retrieva
 
 0.2.0 also removes lazy, in-band Zep user/thread creation from the ADK turn path in favor of explicit, out-of-band provisioning:
 
-- **Lazy creation is gone.** `createZepBeforeModelCallback`, `createZepAfterModelCallback`, and `ZepContextTool` no longer call `zep.user.add` / `zep.thread.create`. If the user/thread don't exist yet, persistence for that turn fails with a logged warning (the turn continues without Zep memory) instead of silently creating them.
-- **Call `ensureUser` / `ensureThread` yourself**, once, before the first turn — typically in your app's account or session onboarding code:
+- **Lazy creation is gone.** `createZepBeforeModelCallback`, `createZepAfterModelCallback`, and `ZepContextTool` no longer create the Zep user or the Zep thread. If the user/thread don't exist yet, persistence for that turn fails with a logged warning (the turn continues without Zep memory) instead of silently creating them.
+- **Call `createUser` / `createThread` yourself**, once, before the first turn — typically in your app's account or session onboarding code:
 
   ```ts
-  import { ensureUser, ensureThread } from "@getzep/zep-adk";
+  import { createUser, createThread } from "@getzep/zep-adk";
 
-  await ensureUser(zep, { userId, firstName, lastName, email });
-  await ensureThread(zep, { threadId, userId });
+  const { userUuid } = await createUser(zep, { firstName, lastName, email });
+  const { threadUuid } = await createThread(zep, { userUuid });
   ```
 
-- **`ZepResourceManager` is gone.** The class that used to own lazy creation and same-turn dedup has been replaced by two independent pieces: the `ensureUser` / `ensureThread` functions above (provisioning) and the exported `TurnDedup` guard (used only by `createZepBeforeModelCallback` — the after-model callback has no dedup state of its own). If you passed a shared `resources: ZepResourceManager` instance to keep the before/after callbacks in sync, pass a `TurnDedup` instance as `dedup` instead — or just use `createZepCallbacks`, which creates and wires one automatically:
+- **`ZepResourceManager` is gone.** The class that used to own lazy creation and same-turn dedup has been replaced by two independent pieces: the `createUser` / `createThread` functions above (provisioning) and the exported `TurnDedup` guard (used only by `createZepBeforeModelCallback` — the after-model callback has no dedup state of its own). If you passed a shared `resources: ZepResourceManager` instance to keep the before/after callbacks in sync, pass a `TurnDedup` instance as `dedup` instead — or just use `createZepCallbacks`, which creates and wires one automatically:
 
   ```ts
   // Before (0.1.x)
@@ -385,14 +420,13 @@ Zep ingestion is asynchronous — a just-added message is not instantly retrieva
   const { beforeModelCallback, afterModelCallback } = createZepCallbacks(zep, identity);
   ```
 
-- **Any prior per-user setup pattern is replaced by `onCreated`.** If you previously ran one-time setup for new users right after your own `user.add` call, move it into `ensureUser`'s `onCreated` hook — it fires exactly once, only for genuinely new users, and its errors propagate (create it to be idempotent so a retry is safe):
+- **Any prior per-user setup pattern is replaced by `onCreated`.** If you previously ran one-time setup for new users right after your own create call, move it into `createUser`'s `onCreated` hook — it fires exactly once, with the UUID of the new user, and its errors propagate (write it to be idempotent so a retry is safe):
 
   ```ts
-  await ensureUser(zep, {
-    userId,
+  await createUser(zep, {
     firstName,
     lastName,
-    onCreated: async (zep, userId) => {
+    onCreated: async (zep, userUuid) => {
       // one-time setup: ontology, custom instructions, summary instructions, ...
     },
   });
@@ -412,7 +446,7 @@ npm run example     # run examples/basic-agent.ts
 
 - Node.js >= 20
 - `@google/adk` ^1.2.0 (peer)
-- `@getzep/zep-cloud` >= 3.23.0
+- `@getzep/zep-cloud` 4.0.0-alpha.5 (npm dist-tag `preview`)
 
 ## License
 

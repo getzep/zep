@@ -19,8 +19,8 @@ function run(
 ) {
   const cb = createZepAfterModelCallback(client as unknown as ZepClient, {
     logger: silentLogger,
-    userId: "u",
-    threadId: "t",
+    userUuid: "u",
+    threadUuid: "t",
     ...options,
   });
   return cb({
@@ -96,15 +96,15 @@ describe("createZepAfterModelCallback", () => {
     expect(warning).not.toContain("zzzzz");
   });
 
-  it("never calls user.add or thread.create on the turn path", async () => {
+  it("never calls user.create or thread.create on the turn path", async () => {
     const { client, mocks } = mockZepClient();
     await run(client, fakeLlmResponse({ text: "Hello there." }));
 
-    expect(mocks.userAdd).not.toHaveBeenCalled();
-    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.userCreate).not.toHaveBeenCalled();
+    expect(mocks.threadCreate).not.toHaveBeenCalled();
   });
 
-  it("logs a warning naming ensureUser/ensureThread on a Zep NotFound error and resolves without throwing", async () => {
+  it("logs a warning naming createUser/createThread on a Zep NotFound error and resolves without throwing", async () => {
     const { client, mocks } = mockZepClient();
     const notFound = Object.assign(new Error("thread not found"), {
       statusCode: 404,
@@ -116,8 +116,8 @@ describe("createZepAfterModelCallback", () => {
       run(client, fakeLlmResponse({ text: "hi" }), { logger }),
     ).resolves.toBeUndefined();
 
-    const warning = logger.warns.find((w) => w.includes("ensureUser"));
+    const warning = logger.warns.find((w) => w.includes("createUser"));
     expect(warning).toBeDefined();
-    expect(warning).toContain("ensureThread");
+    expect(warning).toContain("createThread");
   });
 });
