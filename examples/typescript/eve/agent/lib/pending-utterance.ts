@@ -9,7 +9,7 @@
  * `turn.started`.
  *
  * Create-session calls `onMessage` without a `sessionId`, so the first
- * utterance is queued by `userId` until `session.started` rebinds it to
+ * utterance is queued by the application user key until `session.started` rebinds it to
  * the new session id (FIFO if several sessions share a demo user).
  *
  * In-process only — requires `onMessage` and `turn.started` in the same
@@ -47,7 +47,7 @@ function prune(now: number): void {
 export function stashPendingUtterance(options: {
   text: string;
   sessionId?: string | null;
-  userId?: string | null;
+  userKey?: string | null;
 }): void {
   const text = options.text.trim();
   if (!text) return;
@@ -63,10 +63,10 @@ export function stashPendingUtterance(options: {
   }
 
   // Create-session: no session id yet — FIFO queue per user.
-  if (!options.userId) return;
-  const queue = byUser.get(options.userId) ?? [];
+  if (!options.userKey) return;
+  const queue = byUser.get(options.userKey) ?? [];
   queue.push(entry);
-  byUser.set(options.userId, queue);
+  byUser.set(options.userKey, queue);
 }
 
 /**
@@ -77,7 +77,7 @@ export function stashPendingUtterance(options: {
  */
 export function bindPendingUtteranceToSession(options: {
   sessionId: string;
-  userId: string;
+  userKey: string;
 }): void {
   const now = Date.now();
   prune(now);
@@ -90,12 +90,12 @@ export function bindPendingUtteranceToSession(options: {
     return;
   }
 
-  const queue = byUser.get(options.userId);
+  const queue = byUser.get(options.userKey);
   if (!queue || queue.length === 0) return;
 
   const entry = queue.shift()!;
-  if (queue.length === 0) byUser.delete(options.userId);
-  else byUser.set(options.userId, queue);
+  if (queue.length === 0) byUser.delete(options.userKey);
+  else byUser.set(options.userKey, queue);
 
   bySession.set(options.sessionId, {
     text: entry.text,
@@ -111,7 +111,7 @@ export function bindPendingUtteranceToSession(options: {
  */
 export function peekPendingUtterance(options: {
   sessionId: string;
-  userId: string;
+  userKey: string;
 }): { text: string; source: "session" | "user" } | undefined {
   const now = Date.now();
   prune(now);
@@ -125,27 +125,27 @@ export function peekPendingUtterance(options: {
     return { text: fromSession.text, source: "session" };
   }
 
-  const queue = byUser.get(options.userId);
+  const queue = byUser.get(options.userKey);
   const head = queue?.[0];
   if (!head) return undefined;
   queue[0] = { text: head.text, expiresAt: now + TTL_MS };
-  byUser.set(options.userId, queue);
+  byUser.set(options.userKey, queue);
   return { text: head.text, source: "user" };
 }
 
 /** Drop the stashed utterance after recall has finished (success or empty). */
 export function clearPendingUtterance(options: {
   sessionId: string;
-  userId: string;
+  userKey: string;
   source: "session" | "user";
 }): void {
   if (options.source === "session") {
     bySession.delete(options.sessionId);
     return;
   }
-  const queue = byUser.get(options.userId);
+  const queue = byUser.get(options.userKey);
   if (!queue || queue.length === 0) return;
   queue.shift();
-  if (queue.length === 0) byUser.delete(options.userId);
-  else byUser.set(options.userId, queue);
+  if (queue.length === 0) byUser.delete(options.userKey);
+  else byUser.set(options.userKey, queue);
 }

@@ -28,17 +28,17 @@ export default defineHook({
         // session.started fire before turn.started in the same preamble).
         bindPendingUtteranceToSession({
           sessionId: ctx.session.id,
-          userId: identity.userId,
+          userKey: identity.userKey,
         });
-        await ensureZepUserAndThread(identity);
+        const { graphUuid } = await ensureZepUserAndThread(identity);
         // Warm is best-effort and must not delay turn.started (stash TTL /
         // first-turn recall). Fire-and-forget after provision.
         void getZepClient()
-          .user.warm(identity.userId)
+          .graph.warm(graphUuid)
           .catch((error) => {
             console.warn("[zep-persist] user.warm failed", error);
           });
-        // Do not log userId — it can come from env (ZEP_DEMO_USER_ID) and
+        // Do not log the user key — it can come from env (ZEP_DEMO_USER_KEY) and
         // CodeQL flags clear-text logging of process environment values.
         console.info("[zep-persist] provisioned", {
           sessionId: ctx.session.id,
@@ -54,9 +54,9 @@ export default defineHook({
         if (!text) return;
 
         const identity = resolveZepIdentity(ctx);
-        await ensureZepUserAndThread(identity);
+        const { threadUuid } = await ensureZepUserAndThread(identity);
 
-        await getZepClient().thread.addMessages(identity.threadId, {
+        await getZepClient().thread.addMessages(threadUuid, {
           messages: [
             {
               role: "user",
@@ -81,9 +81,9 @@ export default defineHook({
         if (!text) return;
 
         const identity = resolveZepIdentity(ctx);
-        await ensureZepUserAndThread(identity);
+        const { threadUuid } = await ensureZepUserAndThread(identity);
 
-        await getZepClient().thread.addMessages(identity.threadId, {
+        await getZepClient().thread.addMessages(threadUuid, {
           messages: [
             {
               role: "assistant",

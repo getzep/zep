@@ -6,31 +6,47 @@ import { v4 as uuidv4 } from 'uuid';
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID;
 const PROXY_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:8080';
 
-// Generate or retrieve persistent user ID
-function getUserId() {
-  let userId = localStorage.getItem('zep_user_id');
-  if (!userId) {
-    userId = `user-${uuidv4().slice(0, 8)}`;
-    localStorage.setItem('zep_user_id', userId);
+// Zep v4 gives every user a server-generated UUID. The browser asks the proxy
+// to create the user, and then keeps the UUID.
+async function createUserUuid() {
+  const response = await fetch(`${PROXY_URL}/create-user`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!response.ok) {
+    throw new Error(`The proxy could not create a user: ${response.status}`);
   }
-  return userId;
+  const result = await response.json();
+  return result.user_uuid;
 }
 
 export default function App() {
-  const [userId, setUserId] = useState(getUserId);
+  const [userUuid, setUserUuid] = useState(() => localStorage.getItem('zep_user_uuid'));
   const [conversationId, setConversationId] = useState(null);
   const [status, setStatus] = useState('disconnected');
   const [messages, setMessages] = useState([]);
   const [error, setError] = useState(null);
 
-  // Reset to a new user ID
-  const resetUserId = useCallback(() => {
-    const newUserId = `user-${uuidv4().slice(0, 8)}`;
-    localStorage.setItem('zep_user_id', newUserId);
-    setUserId(newUserId);
-    setMessages([]);
-    setConversationId(null);
+  // Create a new user and keep its UUID
+  const resetUser = useCallback(async () => {
+    try {
+      const newUserUuid = await createUserUuid();
+      localStorage.setItem('zep_user_uuid', newUserUuid);
+      setUserUuid(newUserUuid);
+      setMessages([]);
+      setConversationId(null);
+    } catch (err) {
+      setError(err.message);
+    }
   }, []);
+
+  // Create the user one time if the browser has no UUID
+  useEffect(() => {
+    if (!userUuid) {
+      resetUser();
+    }
+  }, [userUuid, resetUser]);
 
   // PERFORMANCE OPTIMIZATION: Warm the Zep cache when the user arrives on the page.
   // This moves the user's data into Zep's "hot" cache before they start speaking,
@@ -38,15 +54,18 @@ export default function App() {
   // where inactive user data moves to slower storage after a few hours.
   // Call this whenever the user may soon speak with the agent.
   useEffect(() => {
+    if (!userUuid) {
+      return;
+    }
     const warmUserCache = async () => {
       try {
-        console.log(`Warming Zep cache for user: ${userId}`);
+        console.log(`Warming Zep cache for user: ${userUuid}`);
         const response = await fetch(`${PROXY_URL}/warm-user-cache`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ user_id: userId }),
+          body: JSON.stringify({ user_uuid: userUuid }),
         });
 
         if (response.ok) {
@@ -61,9 +80,9 @@ export default function App() {
       }
     };
 
-    // Warm the cache when component mounts or when userId changes
+    // Warm the cache when component mounts or when the user UUID changes
     warmUserCache();
-  }, [userId]);
+  }, [userUuid]);
 
   // Initialize the ElevenLabs conversation hook
   const conversation = useConversation({
@@ -102,12 +121,12 @@ export default function App() {
       // until after startSession() returns
       const zepConversationId = `conv-${uuidv4().slice(0, 12)}`;
 
-      // Start the session with user_id and conversation_id in customLlmExtraBody
+      // Start the session with user_uuid and conversation_id in customLlmExtraBody
       // This gets forwarded as "elevenlabs_extra_body" to our proxy
       const elevenLabsConvId = await conversation.startSession({
         agentId: AGENT_ID,
         customLlmExtraBody: {
-          user_id: userId,
+          user_uuid: userUuid,
           conversation_id: zepConversationId,  // Our pre-generated ID for Zep
         },
       });
@@ -121,7 +140,7 @@ export default function App() {
       setError(err.message || 'Failed to start conversation');
       setStatus('error');
     }
-  }, [conversation, userId]);
+  }, [conversation, userUuid]);
 
   // End the conversation session
   const endConversation = useCallback(async () => {
@@ -139,9 +158,9 @@ export default function App() {
 
       <div style={styles.infoBox}>
         <p>
-          <strong>User ID:</strong> {userId}
+          <strong>User UUID:</strong> {userUuid || 'Creating...'}
           <button
-            onClick={resetUserId}
+            onClick={resetUser}
             style={styles.resetButton}
             disabled={status === 'connected' || status === 'connecting'}
           >

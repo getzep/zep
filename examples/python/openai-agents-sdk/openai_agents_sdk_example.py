@@ -7,9 +7,7 @@ It creates an assistant that can remember previous conversations using Zep's asy
 
 import os
 import asyncio
-import time
 from typing import Dict, List, Optional, Any
-import uuid
 import dotenv
 import click
 
@@ -18,7 +16,7 @@ from agents import Agent, Runner, function_tool, set_default_openai_key
 
 # Zep Cloud imports
 from zep_cloud.client import AsyncZep
-from zep_cloud.types import Message as ZepMessage
+from zep_cloud import AddMessage as ZepAddMessage
 from zep_cloud import NotFoundError
 
 
@@ -64,8 +62,8 @@ class AsyncZepMemoryManager:
 
     def __init__(
         self,
-        session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        thread_uuid: Optional[str] = None,
+        user_uuid: Optional[str] = None,
         email: Optional[str] = None,
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
@@ -75,18 +73,19 @@ class AsyncZepMemoryManager:
         Initialize the AsyncZepMemoryManager.
 
         Args:
-            session_id: Optional session ID. If not provided, a new one will be generated.
-            user_id: Optional user ID. If not provided, a new one will be generated.
+            thread_uuid: Optional UUID of an existing thread. If not provided, a new thread will be created.
+            user_uuid: Optional UUID of an existing user. If not provided, a new user will be created.
             email: Optional email address for the user.
             first_name: Optional first name for the user.
             last_name: Optional last name for the user.
         """
-        self.thread_id = session_id or str(uuid.uuid4())
-        self.user_id = user_id or f"user-{str(uuid.uuid4())[:8]}"
+        self.thread_uuid = thread_uuid
+        self.user_uuid = user_uuid
         self.email = email
         self.first_name = first_name
         self.last_name = last_name
         self.ignore_assistant = ignore_assistant
+        self.graph_uuid: Optional[str] = None
         self.zep_client: AsyncZep | None = None
 
     async def initialize(self):
@@ -101,31 +100,28 @@ class AsyncZepMemoryManager:
 
         self.zep_client = AsyncZep(api_key=ZEP_API_KEY)
 
-        # Create or get the user
-        try:
-            # Try to get the user first
-            await self.zep_client.user.get(self.user_id)
-            print(f"Using existing user: {self.user_id}")
-
-        except NotFoundError:
-            await self.zep_client.user.add(
-                user_id=self.user_id,
+        # Get the given user, or create a new user. v4 gives every user a
+        # server-generated UUID, so a create call does not send a user_id.
+        if self.user_uuid:
+            user = await self.zep_client.user.get(self.user_uuid)
+            print(f"Using existing user: {user.uuid_}")
+        else:
+            user = await self.zep_client.user.create(
                 first_name=self.first_name,
                 last_name=self.last_name,
                 email=self.email,
             )
-            print(f"Created new user with ID: {self.user_id}")
+            print(f"Created new user with UUID: {user.uuid_}")
+        self.user_uuid = user.uuid_
+        self.graph_uuid = user.graph_uuid
 
-        # Generate a timestamp-based thread ID for a new thread each time
-        timestamp = int(time.time())
-        self.thread_id = f"{self.thread_id}-{timestamp}"
-        print(f"Creating new thread with ID: {self.thread_id}")
-
-        # Always create a new thread with the user ID
-        await self.zep_client.thread.create(
-            thread_id=self.thread_id,
-            user_id=self.user_id,
-        )
+        # Create a new thread if the caller did not give one
+        if not self.thread_uuid:
+            thread = await self.zep_client.thread.create(
+                user_uuid=self.user_uuid,
+            )
+            self.thread_uuid = thread.uuid_
+            print(f"Created new thread with UUID: {self.thread_uuid}")
 
     async def add_message(self, message: dict) -> None:
         """
@@ -143,7 +139,7 @@ class AsyncZepMemoryManager:
             if self.last_name:
                 zep_message_role += " " + self.last_name
 
-        zep_message = ZepMessage(
+        zep_message = ZepAddMessage(
             name=zep_message_role
             if zep_message_role
             else "assistant",  # name in Zep is the name of the user
@@ -156,7 +152,7 @@ class AsyncZepMemoryManager:
             raise ValueError("Zep client not initialized")
 
         await self.zep_client.thread.add_messages(
-            thread_id=self.thread_id,
+            self.thread_uuid,
             messages=[zep_message],
         )
 
@@ -171,8 +167,8 @@ class AsyncZepMemoryManager:
             if not self.zep_client:
                 raise ValueError("Zep client not initialized")
 
-            # Use thread.get_user_context to retrieve memory context for the thread
-            context = await self.zep_client.thread.get_user_context(thread_id=self.thread_id)
+            # Use thread.get_context to retrieve memory context for the thread
+            context = await self.zep_client.thread.get_context(self.thread_uuid)
 
             # Use the context string provided by Zep instead of creating a summary
             if context.context:
@@ -206,21 +202,23 @@ class AsyncZepMemoryManager:
             if not self.zep_client:
                 raise ValueError("Zep client not initialized")
 
-            # Use the user_id property directly instead of getting it from the session
-            if self.user_id:
-                # Use graph.search to find relevant edges. Facts reside on graph edges
-                search_response = await self.zep_client.graph.search(
-                    query=query, user_id=self.user_id, scope="edges", limit=limit
-                )
+            # Use the UUID of the graph of the user. Facts reside on graph edges.
+            if self.graph_uuid:
+                # Use graph.search_edges to find relevant edges
+                edges = []
+                async for edge in await self.zep_client.graph.search_edges(
+                    self.graph_uuid, query=query, limit=limit
+                ):
+                    edges.append(edge)
 
-                if search_response and search_response.edges:
+                if edges:
                     # Convert graph search results to the expected format
                     formatted_messages = [
                         {
                             "role": "assistant",  # These are facts, so mark them as from the assistant
                             "content": edge.fact,
                         }
-                        for edge in search_response.edges[:limit]
+                        for edge in edges[:limit]
                     ]
                     print(
                         f"Memory search found {len(formatted_messages)} relevant facts from graph search"
@@ -251,8 +249,8 @@ class AsyncZepMemoryAgent:
 
     def __init__(
         self,
-        session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        thread_uuid: Optional[str] = None,
+        user_uuid: Optional[str] = None,
         email: Optional[str] = None,
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
@@ -262,15 +260,15 @@ class AsyncZepMemoryAgent:
         Initialize the AsyncZepMemoryAgent.
 
         Args:
-            session_id: Optional session ID. If not provided, a new one will be generated.
-            user_id: Optional user ID. If not provided, a new one will be generated.
+            thread_uuid: Optional UUID of an existing thread. If not provided, a new thread will be created.
+            user_uuid: Optional UUID of an existing user. If not provided, a new user will be created.
             email: Optional email address for the user.
             first_name: Optional first name for the user.
             last_name: Optional last name for the user.
             ignore_assistant: Optional flag to indicate whether to persist the assistant's response to the user graph.
         """
         self.memory_manager = AsyncZepMemoryManager(
-            session_id, user_id, email, first_name, last_name, ignore_assistant
+            thread_uuid, user_uuid, email, first_name, last_name, ignore_assistant
         )
         self.agent = None
 
@@ -349,8 +347,8 @@ class AsyncZepMemoryAgent:
 
 
 async def run_agent(
-    session_id: Optional[str] = None,
-    user_id: Optional[str] = None,
+    thread_uuid: Optional[str] = None,
+    user_uuid: Optional[str] = None,
     email: Optional[str] = None,
     first_name: Optional[str] = None,
     last_name: Optional[str] = None,
@@ -360,8 +358,8 @@ async def run_agent(
     Run the AsyncZepMemoryAgent with the specified parameters.
 
     Args:
-        session_id: Optional session ID. If not provided, a new one will be generated.
-        user_id: Optional user ID. If not provided, a new one will be generated.
+        thread_uuid: Optional UUID of an existing thread. If not provided, a new thread will be created.
+        user_uuid: Optional UUID of an existing user. If not provided, a new user will be created.
         email: Optional email address for the user.
         first_name: Optional first name for the user.
         last_name: Optional last name for the user.
@@ -369,11 +367,8 @@ async def run_agent(
     print("\nInitializing AsyncZep Memory Agent with OpenAI Agents SDK...")
 
     # Create a memory agent with the provided parameters
-    if not session_id:
-        session_id = f"demo-session-{int(time.time())}"
-
     memory_agent = AsyncZepMemoryAgent(
-        session_id, user_id, email, first_name, last_name, ignore_assistant
+        thread_uuid, user_uuid, email, first_name, last_name, ignore_assistant
     )
 
     # Initialize the agent (sets up AsyncZep client and OpenAI Agents SDK)
@@ -440,8 +435,8 @@ async def run_agent(
 
 
 async def run_interactive_agent(
-    session_id: Optional[str] = None,
-    user_id: Optional[str] = None,
+    thread_uuid: Optional[str] = None,
+    user_uuid: Optional[str] = None,
     email: Optional[str] = None,
     first_name: Optional[str] = None,
     last_name: Optional[str] = None,
@@ -451,8 +446,8 @@ async def run_interactive_agent(
     Run the AsyncZepMemoryAgent in interactive mode for continuous conversation.
 
     Args:
-        session_id: Optional session ID. If not provided, a new one will be generated.
-        user_id: Optional user ID. If not provided, a new one will be generated.
+        thread_uuid: Optional UUID of an existing thread. If not provided, a new thread will be created.
+        user_uuid: Optional UUID of an existing user. If not provided, a new user will be created.
         email: Optional email address for the user.
         first_name: Optional first name for the user.
         last_name: Optional last name for the user.
@@ -463,11 +458,8 @@ async def run_interactive_agent(
     )
 
     # Create a memory agent with the provided parameters
-    if not session_id:
-        session_id = f"interactive-session-{int(time.time())}"
-
     memory_agent = AsyncZepMemoryAgent(
-        session_id, user_id, email, first_name, last_name, ignore_assistant
+        thread_uuid, user_uuid, email, first_name, last_name, ignore_assistant
     )
 
     # Initialize the agent
@@ -499,11 +491,11 @@ async def run_interactive_agent(
 
 
 @click.command()
-@click.option("--username", help="Username for the Zep user")
+@click.option("--user-uuid", help="UUID of an existing Zep user")
 @click.option("--email", help="Email address for the Zep user")
 @click.option("--firstname", help="First name for the Zep user")
 @click.option("--lastname", help="Last name for the Zep user")
-@click.option("--session", help="Session ID for the conversation")
+@click.option("--thread-uuid", help="UUID of an existing Zep thread")
 @click.option(
     "--interactive",
     is_flag=True,
@@ -515,11 +507,11 @@ async def run_interactive_agent(
     help="Don't persist the assistant's response to the user graph",
 )
 def main(
-    username: Optional[str] = None,
+    user_uuid: Optional[str] = None,
     email: Optional[str] = None,
     firstname: Optional[str] = None,
     lastname: Optional[str] = None,
-    session: Optional[str] = None,
+    thread_uuid: Optional[str] = None,
     interactive: bool = False,
     ignore_assistant: bool = False,
 ):
@@ -527,16 +519,16 @@ def main(
     Run the AsyncZepMemoryAgent with optional user information.
     """
     # Display the provided parameters
-    if username:
-        click.echo(f"Username: {username}")
+    if user_uuid:
+        click.echo(f"User UUID: {user_uuid}")
     if email:
         click.echo(f"Email: {email}")
     if firstname:
         click.echo(f"First Name: {firstname}")
     if lastname:
         click.echo(f"Last Name: {lastname}")
-    if session:
-        click.echo(f"Session ID: {session}")
+    if thread_uuid:
+        click.echo(f"Thread UUID: {thread_uuid}")
     if interactive:
         click.echo("Running in interactive mode")
     if ignore_assistant:
@@ -546,8 +538,8 @@ def main(
         # Run the agent in interactive mode
         asyncio.run(
             run_interactive_agent(
-                session,
-                username,
+                thread_uuid,
+                user_uuid,
                 email,
                 firstname,
                 lastname,
@@ -558,8 +550,8 @@ def main(
         # Run the agent in demo mode
         asyncio.run(
             run_agent(
-                session,
-                username,
+                thread_uuid,
+                user_uuid,
                 email,
                 firstname,
                 lastname,

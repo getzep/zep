@@ -21,31 +21,31 @@ import { GraphRef } from "@/components/graph/Graph";
 import { RawTriplet } from "@/lib/types/graph";
 
 interface UserDetailsProps {
-  userID?: string;
+  userUuid?: string;
 }
 
-export function GraphClient({ userID: initialUserID }: UserDetailsProps) {
+export function GraphClient({ userUuid: initialUserUuid }: UserDetailsProps) {
   const [isLoadingGraph, setIsLoadingGraph] = useState(false);
   const [triplets, setTriplets] = useState<RawTriplet[]>([]);
   const [graphDialogOpen, setGraphDialogOpen] = useState(false);
   const graphRef = useRef<GraphRef>(null);
 
-  // New state for user/group switch and ID input
-  const [isGroupMode, setIsGroupMode] = useState(false);
-  const [entityId, setEntityId] = useState(initialUserID || "");
+  // New state for the user/graph switch and the UUID input
+  const [isGraphMode, setIsGraphMode] = useState(false);
+  const [entityUuid, setEntityUuid] = useState(initialUserUuid || "");
 
   const handleLoadGraph = async () => {
-    if (!entityId.trim()) {
-      toast.error("Please enter an ID");
+    if (!entityUuid.trim()) {
+      toast.error("Please enter a UUID");
       return;
     }
 
     setIsLoadingGraph(true);
     try {
       // Determine the endpoint based on mode
-      const endpointType = isGroupMode ? "group" : "user";
+      const endpointType = isGraphMode ? "graph" : "user";
       const response = await fetch(
-        `/api/graph/${endpointType}/${encodeURIComponent(entityId)}/triplets`
+        `/api/graph/${endpointType}/${encodeURIComponent(entityUuid)}/triplets`
       );
 
       if (!response.ok) {
@@ -75,26 +75,26 @@ export function GraphClient({ userID: initialUserID }: UserDetailsProps) {
           <div className="flex items-center space-x-2">
             <Switch
               id="mode-switch"
-              checked={isGroupMode}
-              onCheckedChange={setIsGroupMode}
+              checked={isGraphMode}
+              onCheckedChange={setIsGraphMode}
             />
             <Label htmlFor="mode-switch">
-              {isGroupMode ? "Group Mode" : "User Mode"}
+              {isGraphMode ? "Graph Mode" : "User Mode"}
             </Label>
           </div>
 
           <div className="flex-1 grid gap-2">
             <Label htmlFor="entity-id">
-              {isGroupMode ? "Group ID" : "User ID"}
+              {isGraphMode ? "Graph UUID" : "User UUID"}
             </Label>
             <Input
               id="entity-id"
               placeholder={
-                isGroupMode ? "Enter group ID..." : "Enter user ID..."
+                isGraphMode ? "Enter graph UUID..." : "Enter user UUID..."
               }
-              value={entityId}
+              value={entityUuid}
               onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                setEntityId(e.target.value)
+                setEntityUuid(e.target.value)
               }
             />
           </div>
@@ -123,10 +123,10 @@ export function GraphClient({ userID: initialUserID }: UserDetailsProps) {
         <DialogContent className="max-w-none sm:max-w-none md:max-w-none lg:max-w-none w-[100vw] h-[100vh]">
           <DialogHeader>
             <DialogTitle>
-              {isGroupMode ? "Group" : "User"} Relationship Graph
+              {isGraphMode ? "Graph" : "User"} Relationship Graph
             </DialogTitle>
             <DialogDescription>
-              Visualization of {isGroupMode ? "group" : "user"} relationships
+              Visualization of {isGraphMode ? "graph" : "user"} relationships
               and connections
             </DialogDescription>
           </DialogHeader>

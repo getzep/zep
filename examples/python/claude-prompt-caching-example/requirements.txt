@@ -1,3 +1,3 @@
 anthropic>=1.5.0,<2
-zep-cloud>=3.28.0,<4
+zep-cloud==4.0.0a5
 python-dotenv>=1.0.0

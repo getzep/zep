@@ -51,8 +51,9 @@ async def load_users_from_zep() -> list:
 
     try:
         # Get all users (ordered by most recent)
-        users_response = await zep_client.user.list_ordered(page_size=100, page_number=1)
-        users = users_response.users if hasattr(users_response, 'users') else []
+        users = []
+        async for user in await zep_client.user.list(limit=100):
+            users.append(user)
         return users
 
     except Exception as e:
@@ -70,53 +71,51 @@ async def create_new_user(first_name: str, last_name: str = "", email: str = "")
         email: User's email (optional)
 
     Returns:
-        str: The newly created user ID
+        str: The UUID of the new user
     """
-    # Generate a unique user ID
-    user_id = f"{first_name.lower()}_{uuid.uuid4().hex[:8]}"
-
     # Create a fresh AsyncZep client for this operation
     zep_client = AsyncZep(api_key=st.session_state.zep_api_key)
 
     try:
-        await zep_client.user.add(
-            user_id=user_id,
+        # v4 gives every user a server-generated UUID. The example does not
+        # send a user_id.
+        user = await zep_client.user.create(
             first_name=first_name,
             last_name=last_name,
-            email=email if email else f"{user_id}@example.com"
+            email=email if email else f"{first_name.lower()}.{uuid.uuid4().hex[:8]}@example.com"
         )
-        return user_id
+        return user.uuid_
     except Exception as e:
         import traceback
         traceback.print_exc()
         return None
 
-async def create_zep_thread(user_id: str) -> str:
+async def create_zep_thread(user_uuid: str) -> str:
     """
     Create a new Zep thread for a specific user.
     Assumes the user already exists in Zep.
 
     Args:
-        user_id: The Zep user ID to create the thread for
+        user_uuid: The UUID of the Zep user to create the thread for
 
     Returns:
-        str: The newly created thread ID
+        str: The UUID of the new thread
     """
-    # Generate a unique thread ID
-    thread_id = str(uuid.uuid4())
-
     # Create a fresh AsyncZep client for this operation
     zep_client = AsyncZep(api_key=st.session_state.zep_api_key)
 
+    thread_uuid = ""
     try:
-        await zep_client.thread.create(
-            thread_id=thread_id,
-            user_id=user_id
+        # v4 creates the thread with the UUID of the user and returns the
+        # UUID of the thread.
+        thread = await zep_client.thread.create(
+            user_uuid=user_uuid
         )
+        thread_uuid = thread.uuid_ or ""
     except Exception as e:
         import traceback
         traceback.print_exc()
-    return thread_id
+    return thread_uuid
 
 # Initialize users list in session state
 if "users" not in st.session_state:
@@ -124,12 +123,12 @@ if "users" not in st.session_state:
     st.session_state.users = loaded_users
 
 # Initialize current user ID in session state
-if "current_user_id" not in st.session_state:
+if "current_user_uuid" not in st.session_state:
     # If we have users, set current to the first one (most recent)
     if st.session_state.users:
-        st.session_state.current_user_id = st.session_state.users[0].user_id
+        st.session_state.current_user_uuid = st.session_state.users[0].uuid_
     else:
-        st.session_state.current_user_id = None
+        st.session_state.current_user_uuid = None
 
 # Initialize agent class in session state
 if "agent_class" not in st.session_state:
@@ -141,12 +140,12 @@ if "agent" not in st.session_state and st.session_state.agent_class:
     agent_zep_client = AsyncZep(api_key=st.session_state.zep_api_key)
     st.session_state.agent = st.session_state.agent_class(agent_zep_client)
 
-async def load_threads_from_zep(user_id: str) -> dict:
+async def load_threads_from_zep(user_uuid: str) -> dict:
     """
     Load all threads and their messages from Zep for a specific user.
 
     Args:
-        user_id: The Zep user ID to load threads for
+        user_uuid: The UUID of the Zep user to load threads for
 
     Returns:
         dict: Dictionary of threads with their messages
@@ -158,25 +157,23 @@ async def load_threads_from_zep(user_id: str) -> dict:
 
     try:
         # Get all threads for the user
-        user_threads = await zep_client.user.get_threads(user_id=user_id)
+        user_threads = []
+        async for zep_thread in await zep_client.thread.list(user_uuid=user_uuid, limit=100):
+            user_threads.append(zep_thread)
 
         # For each thread, load its messages
         for zep_thread in user_threads:
-            thread_id = zep_thread.thread_id
+            thread_uuid = zep_thread.uuid_
 
             try:
-                # Get messages for this thread
-                messages_response = await zep_client.thread.get(thread_id=thread_id)
-
-                # Convert Zep messages to our format
+                # Get the messages of this thread with the v4 cursor pager
                 messages = []
-                if messages_response.messages:
-                    for msg in messages_response.messages:
-                        messages.append({
-                            "role": msg.role,
-                            "content": msg.content,
-                            "timestamp": msg.created_at if hasattr(msg, 'created_at') else datetime.now()
-                        })
+                async for msg in await zep_client.thread.list_messages(thread_uuid, limit=100):
+                    messages.append({
+                        "role": msg.role,
+                        "content": msg.content,
+                        "timestamp": msg.created_at if hasattr(msg, 'created_at') else datetime.now()
+                    })
 
                 # Determine thread name (use first user message or default)
                 thread_name = "New Chat"
@@ -187,12 +184,12 @@ async def load_threads_from_zep(user_id: str) -> dict:
                             break
 
                 # Add to threads dict
-                threads[thread_id] = {
-                    "id": thread_id,
+                threads[thread_uuid] = {
+                    "id": thread_uuid,
                     "name": thread_name,
                     "created_at": zep_thread.created_at if hasattr(zep_thread, 'created_at') else datetime.now(),
                     "messages": messages,
-                    "zep_thread_id": thread_id  # The thread_id IS the zep_thread_id
+                    "zep_thread_uuid": thread_uuid  # The thread_uuid IS the zep_thread_uuid
                 }
 
             except Exception as e:
@@ -210,13 +207,13 @@ if "threads" not in st.session_state:
     st.session_state.threads = {}
 
 # Load threads for current user if we have one
-if st.session_state.current_user_id and not st.session_state.threads:
+if st.session_state.current_user_uuid and not st.session_state.threads:
     # Load all existing threads from Zep for the current user
-    loaded_threads = asyncio.run(load_threads_from_zep(st.session_state.current_user_id))
+    loaded_threads = asyncio.run(load_threads_from_zep(st.session_state.current_user_uuid))
     st.session_state.threads = loaded_threads
 
 if "no_zep_responses" not in st.session_state:
-    st.session_state.no_zep_responses = {}  # {thread_id: {user_msg_idx: {"role": "assistant", "content": "...", "timestamp": ...}}}
+    st.session_state.no_zep_responses = {}  # {thread_uuid: {user_msg_idx: {"role": "assistant", "content": "...", "timestamp": ...}}}
 
 if "display_mode" not in st.session_state:
     st.session_state.display_mode = "zep_only"  # Options: "both", "zep_only", "no_zep_only"
@@ -228,9 +225,9 @@ if "pending_prompt" not in st.session_state:
     st.session_state.pending_prompt = None
 
 if "latency_metrics" not in st.session_state:
-    st.session_state.latency_metrics = {}  # {thread_id: {user_msg_idx: {zep_retrieval_ms, no_zep_llm_ms, zep_llm_ms}}}
+    st.session_state.latency_metrics = {}  # {thread_uuid: {user_msg_idx: {zep_retrieval_ms, no_zep_llm_ms, zep_llm_ms}}}
 
-if "current_thread_id" not in st.session_state:
+if "current_thread_uuid" not in st.session_state:
     # If we have threads, set current to the most recent one
     if st.session_state.threads:
         def get_datetime_for_init(thread):
@@ -248,9 +245,9 @@ if "current_thread_id" not in st.session_state:
             st.session_state.threads.values(),
             key=get_datetime_for_init
         )
-        st.session_state.current_thread_id = most_recent_thread["id"]
+        st.session_state.current_thread_uuid = most_recent_thread["id"]
     else:
-        st.session_state.current_thread_id = None
+        st.session_state.current_thread_uuid = None
 
 # Initialize pending_thread flag
 if "pending_thread" not in st.session_state:
@@ -267,32 +264,32 @@ agent = st.session_state.agent
 
 def create_new_thread():
     """Prepare for a new chat thread (actual creation happens on first message)"""
-    if not st.session_state.current_user_id:
+    if not st.session_state.current_user_uuid:
         st.error("Please select or create a user first")
         return
 
     # Set up a pending thread state
-    st.session_state.current_thread_id = "pending"
+    st.session_state.current_thread_uuid = "pending"
     st.session_state.pending_thread = True
     st.rerun()
 
-def switch_thread(thread_id):
+def switch_thread(thread_uuid):
     """Switch to a different thread"""
-    st.session_state.current_thread_id = thread_id
+    st.session_state.current_thread_uuid = thread_uuid
     st.session_state.pending_thread = False
     st.rerun()
 
-def switch_user(user_id):
+def switch_user(user_uuid):
     """Switch to a different user and load their threads"""
-    st.session_state.current_user_id = user_id
+    st.session_state.current_user_uuid = user_uuid
     st.session_state.pending_thread = False
 
     # Clear current threads and load threads for the new user
     st.session_state.threads = {}
-    st.session_state.current_thread_id = None
+    st.session_state.current_thread_uuid = None
 
     # Load threads for the new user
-    loaded_threads = asyncio.run(load_threads_from_zep(user_id))
+    loaded_threads = asyncio.run(load_threads_from_zep(user_uuid))
     st.session_state.threads = loaded_threads
 
     # Set current thread to most recent if any exist
@@ -309,7 +306,7 @@ def switch_user(user_id):
                 dt = dt.replace(tzinfo=timezone.utc)
             return dt
         most_recent_thread = max(loaded_threads.values(), key=get_datetime_for_sort)
-        st.session_state.current_thread_id = most_recent_thread["id"]
+        st.session_state.current_thread_uuid = most_recent_thread["id"]
 
     st.rerun()
 
@@ -319,29 +316,29 @@ def handle_new_user_creation():
     st.session_state.show_new_user_form = True
     st.rerun()
 
-def update_thread_name(thread_id, name):
+def update_thread_name(thread_uuid, name):
     """Update thread name based on first message"""
-    if thread_id in st.session_state.threads:
-        st.session_state.threads[thread_id]["name"] = name
+    if thread_uuid in st.session_state.threads:
+        st.session_state.threads[thread_uuid]["name"] = name
 
 def get_current_thread():
     """Get the current active thread"""
-    if st.session_state.current_thread_id == "pending":
+    if st.session_state.current_thread_uuid == "pending":
         # Return a mock thread for pending state
         return {
             "id": "pending",
             "name": "New Chat",
             "messages": [],
-            "zep_thread_id": None
+            "zep_thread_uuid": None
         }
-    return st.session_state.threads.get(st.session_state.current_thread_id, None)
+    return st.session_state.threads.get(st.session_state.current_thread_uuid, None)
 
-def get_conversation_history(thread_id):
+def get_conversation_history(thread_uuid):
     """Get conversation history formatted for OpenAI API (excludes context messages)"""
-    if thread_id not in st.session_state.threads:
+    if thread_uuid not in st.session_state.threads:
         return []
 
-    messages = st.session_state.threads[thread_id]["messages"]
+    messages = st.session_state.threads[thread_uuid]["messages"]
     # Filter out context messages and take last 8 user/assistant messages
     conversation_messages = [msg for msg in messages if msg["role"] != "context"]
     return [
@@ -349,30 +346,30 @@ def get_conversation_history(thread_id):
         for msg in conversation_messages[-8:]
     ]
 
-def add_message_to_thread(thread_id, role, content):
+def add_message_to_thread(thread_uuid, role, content):
     """Add a message to a thread"""
-    if thread_id in st.session_state.threads:
-        st.session_state.threads[thread_id]["messages"].append({
+    if thread_uuid in st.session_state.threads:
+        st.session_state.threads[thread_uuid]["messages"].append({
             "role": role,
             "content": content,
             "timestamp": datetime.now(timezone.utc)
         })
 
-def add_no_zep_response(thread_id, user_message_index, content):
+def add_no_zep_response(thread_uuid, user_message_index, content):
     """Add a non-Zep response to the thread's no_zep_responses dict keyed by user message index"""
-    if thread_id not in st.session_state.no_zep_responses:
-        st.session_state.no_zep_responses[thread_id] = {}
-    st.session_state.no_zep_responses[thread_id][user_message_index] = {
+    if thread_uuid not in st.session_state.no_zep_responses:
+        st.session_state.no_zep_responses[thread_uuid] = {}
+    st.session_state.no_zep_responses[thread_uuid][user_message_index] = {
         "role": "assistant",
         "content": content,
         "timestamp": datetime.now(timezone.utc)
     }
 
-def add_latency_metrics(thread_id, user_message_index, zep_retrieval_ms, no_zep_llm_ms, zep_llm_ms):
+def add_latency_metrics(thread_uuid, user_message_index, zep_retrieval_ms, no_zep_llm_ms, zep_llm_ms):
     """Add latency metrics for a response to the thread's latency_metrics dict"""
-    if thread_id not in st.session_state.latency_metrics:
-        st.session_state.latency_metrics[thread_id] = {}
-    st.session_state.latency_metrics[thread_id][user_message_index] = {
+    if thread_uuid not in st.session_state.latency_metrics:
+        st.session_state.latency_metrics[thread_uuid] = {}
+    st.session_state.latency_metrics[thread_uuid][user_message_index] = {
         "zep_retrieval_ms": zep_retrieval_ms,
         "no_zep_llm_ms": no_zep_llm_ms,
         "zep_llm_ms": zep_llm_ms
@@ -564,16 +561,16 @@ def render_context_block(context_content):
     </script>
     </body>'''
 
-def get_no_zep_responses(thread_id):
+def get_no_zep_responses(thread_uuid):
     """Get the dict of no-Zep responses for a thread"""
-    return st.session_state.no_zep_responses.get(thread_id, {})
+    return st.session_state.no_zep_responses.get(thread_uuid, {})
 
 def display_messages_by_mode(thread, display_mode):
     """Display thread messages based on the selected display mode"""
-    thread_id = thread["id"]
+    thread_uuid = thread["id"]
     zep_messages = thread["messages"]  # List of messages with role: user/context/assistant
-    no_zep_responses = get_no_zep_responses(thread_id)  # Dict of assistant responses keyed by user message index
-    latency_metrics = st.session_state.latency_metrics.get(thread_id, {})  # Dict of latency metrics keyed by user message index
+    no_zep_responses = get_no_zep_responses(thread_uuid)  # Dict of assistant responses keyed by user message index
+    latency_metrics = st.session_state.latency_metrics.get(thread_uuid, {})  # Dict of latency metrics keyed by user message index
 
     # Build a list of user messages and their corresponding responses
     user_message_indices = [i for i, msg in enumerate(zep_messages) if msg["role"] == "user"]
@@ -819,14 +816,14 @@ with st.sidebar:
 
             if submit and first_name:
                 # Create the new user
-                new_user_id = asyncio.run(create_new_user(first_name, last_name, email))
-                if new_user_id:
+                new_user_uuid = asyncio.run(create_new_user(first_name, last_name, email))
+                if new_user_uuid:
                     # Reload users list
                     st.session_state.users = asyncio.run(load_users_from_zep())
                     # Set as current user and prepare for a pending thread
-                    st.session_state.current_user_id = new_user_id
+                    st.session_state.current_user_uuid = new_user_uuid
                     st.session_state.threads = {}
-                    st.session_state.current_thread_id = "pending"
+                    st.session_state.current_thread_uuid = "pending"
                     st.session_state.pending_thread = True
                     st.session_state.show_new_user_form = False
                     st.rerun()
@@ -837,13 +834,13 @@ with st.sidebar:
     # User selection dropdown with "New User" as first option
     if st.session_state.users:
         # Create user ID list with "New User" option at the top
-        user_options = ["➕ New User"] + [user.user_id for user in st.session_state.users]
+        user_options = ["➕ New User"] + [user.uuid_ for user in st.session_state.users]
 
         # Find current user index (add 1 to account for "New User" option)
         current_user_index = 0
-        if st.session_state.current_user_id:
+        if st.session_state.current_user_uuid:
             for i, user in enumerate(st.session_state.users):
-                if user.user_id == st.session_state.current_user_id:
+                if user.uuid_ == st.session_state.current_user_uuid:
                     current_user_index = i + 1  # +1 because "New User" is at index 0
                     break
 
@@ -858,7 +855,7 @@ with st.sidebar:
         # Handle selection
         if selected_option == "➕ New User":
             handle_new_user_creation()
-        elif selected_option != st.session_state.current_user_id:
+        elif selected_option != st.session_state.current_user_uuid:
             switch_user(selected_option)
     else:
         # No users exist - show only "New User" option
@@ -898,12 +895,12 @@ with st.sidebar:
 
     # Display threads (don't display pending threads)
     for thread in sorted_threads:
-        thread_id = thread["id"]
-        if thread_id == "pending":
+        thread_uuid = thread["id"]
+        if thread_uuid == "pending":
             continue
 
         thread_name = thread["name"]
-        is_current = thread_id == st.session_state.current_thread_id
+        is_current = thread_uuid == st.session_state.current_thread_uuid
 
         # Truncate thread name for sidebar display
         display_name = thread_name[:40] + "..." if len(thread_name) > 40 else thread_name
@@ -913,17 +910,17 @@ with st.sidebar:
 
         if st.button(
             display_name,
-            key=f"thread_{thread_id}",
+            key=f"thread_{thread_uuid}",
             use_container_width=True,
             type=button_type,
             disabled=is_current
         ):
-            switch_thread(thread_id)
+            switch_thread(thread_uuid)
 
 # Main chat interface
 current_thread = get_current_thread()
 
-if not st.session_state.current_user_id:
+if not st.session_state.current_user_uuid:
     # No user selected
     st.info("Please create or select a user to start chatting.")
 elif current_thread:
@@ -956,25 +953,25 @@ elif current_thread:
         thread_just_created = False
 
         # If this is a pending thread, create it now
-        if st.session_state.current_thread_id == "pending":
-            zep_thread_id = asyncio.run(create_zep_thread(st.session_state.current_user_id))
+        if st.session_state.current_thread_uuid == "pending":
+            zep_thread_uuid = asyncio.run(create_zep_thread(st.session_state.current_user_uuid))
 
             # Create the thread in session state
             thread_name = prompt[:50]  # Use first 50 chars of first message as name
-            st.session_state.threads[zep_thread_id] = {
-                "id": zep_thread_id,
+            st.session_state.threads[zep_thread_uuid] = {
+                "id": zep_thread_uuid,
                 "name": thread_name,
                 "created_at": datetime.now(timezone.utc),
                 "messages": [],
-                "zep_thread_id": zep_thread_id
+                "zep_thread_uuid": zep_thread_uuid
             }
-            st.session_state.current_thread_id = zep_thread_id
+            st.session_state.current_thread_uuid = zep_thread_uuid
             st.session_state.pending_thread = False
-            current_thread = st.session_state.threads[zep_thread_id]
+            current_thread = st.session_state.threads[zep_thread_uuid]
             thread_just_created = True
 
         # Add user message to current thread
-        add_message_to_thread(st.session_state.current_thread_id, "user", prompt)
+        add_message_to_thread(st.session_state.current_thread_uuid, "user", prompt)
 
         # Display user message immediately - right-aligned with gray background
         st.markdown(f"""
@@ -996,15 +993,15 @@ elif current_thread:
         """, height=0)
 
         # Get conversation history for the agent
-        conversation_history = get_conversation_history(st.session_state.current_thread_id)
+        conversation_history = get_conversation_history(st.session_state.current_thread_uuid)
 
         # Generate and stream response using the agent
         try:
             # Use the Zep thread ID
-            zep_thread_id = current_thread["zep_thread_id"]
+            zep_thread_uuid = current_thread["zep_thread_uuid"]
 
             # Get current user's name
-            current_user = next((user for user in st.session_state.users if user.user_id == st.session_state.current_user_id), None)
+            current_user = next((user for user in st.session_state.users if user.uuid_ == st.session_state.current_user_uuid), None)
             user_full_name = f"{current_user.first_name} {current_user.last_name}".strip()
 
             # Get current display mode
@@ -1071,8 +1068,8 @@ elif current_thread:
             # Async function to stream both responses in parallel
             async def stream_both_responses():
                 # Create both generators
-                generator_no_zep = agent.on_receive_message(prompt, conversation_history, zep_thread_id, user_full_name, st.session_state.current_user_id, use_zep=False)
-                generator_with_zep = agent.on_receive_message(prompt, conversation_history, zep_thread_id, user_full_name, st.session_state.current_user_id, use_zep=True)
+                generator_no_zep = agent.on_receive_message(prompt, conversation_history, zep_thread_uuid, user_full_name, st.session_state.current_user_uuid, use_zep=False)
+                generator_with_zep = agent.on_receive_message(prompt, conversation_history, zep_thread_uuid, user_full_name, st.session_state.current_user_uuid, use_zep=True)
 
                 # Get context blocks (first yield from each generator) - now returns tuples
                 context_no_zep, _ = await generator_no_zep.__anext__()
@@ -1145,19 +1142,19 @@ elif current_thread:
             context_block, full_response, no_zep_response, timing_no_zep, timing_with_zep = asyncio.run(stream_both_responses())
 
             # Calculate the user message index (count of user messages in thread before adding response)
-            user_message_count = len([msg for msg in st.session_state.threads[st.session_state.current_thread_id]["messages"] if msg["role"] == "user"])
+            user_message_count = len([msg for msg in st.session_state.threads[st.session_state.current_thread_uuid]["messages"] if msg["role"] == "user"])
             user_message_index = user_message_count - 1  # 0-indexed
 
             # Add context and assistant response to current thread (Zep version only)
-            add_message_to_thread(st.session_state.current_thread_id, "context", context_block)
-            add_message_to_thread(st.session_state.current_thread_id, "assistant", full_response)
+            add_message_to_thread(st.session_state.current_thread_uuid, "context", context_block)
+            add_message_to_thread(st.session_state.current_thread_uuid, "assistant", full_response)
 
             # Store the no-Zep response in separate state (not persisted to Zep)
-            add_no_zep_response(st.session_state.current_thread_id, user_message_index, no_zep_response)
+            add_no_zep_response(st.session_state.current_thread_uuid, user_message_index, no_zep_response)
 
             # Store latency metrics
             add_latency_metrics(
-                st.session_state.current_thread_id,
+                st.session_state.current_thread_uuid,
                 user_message_index,
                 zep_retrieval_ms=timing_with_zep.get("zep_retrieval_ms"),
                 no_zep_llm_ms=timing_no_zep.get("llm_first_token_ms"),
@@ -1190,7 +1187,7 @@ elif current_thread:
 
             with st.chat_message("assistant"):
                 st.markdown(error_message)
-                add_message_to_thread(st.session_state.current_thread_id, "assistant", error_message)
+                add_message_to_thread(st.session_state.current_thread_uuid, "assistant", error_message)
 
             # Rerun to re-enable display mode selector
             st.rerun()

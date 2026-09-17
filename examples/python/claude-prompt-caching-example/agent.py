@@ -37,8 +37,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from zep_cloud import AddMessage
 from zep_cloud.client import Zep
-from zep_cloud.types import Message
 
 import pricing
 from scenario import STATIC_SYSTEM_PROMPT, TOOL_DEFINITIONS
@@ -100,9 +100,9 @@ class ZepMemory:
     """Live memory backend: persists messages to a Zep thread and retrieves
     the context block in the same call as the user-message write."""
 
-    def __init__(self, zep: Zep, thread_id: str, user_name: str = "User"):
+    def __init__(self, zep: Zep, thread_uuid: str, user_name: str = "User"):
         self.zep = zep
-        self.thread_id = thread_id
+        self.thread_uuid = thread_uuid
         self.user_name = user_name
 
     def on_user_message(self, text: str) -> str | None:
@@ -112,16 +112,16 @@ class ZepMemory:
         so this is one round trip, not two.
         """
         response = self.zep.thread.add_messages(
-            thread_id=self.thread_id,
-            messages=[Message(role="user", name=self.user_name, content=text)],
+            self.thread_uuid,
+            messages=[AddMessage(role="user", name=self.user_name, content=text)],
             return_context=True,
         )
         return response.context
 
     def on_assistant_message(self, text: str) -> None:
         self.zep.thread.add_messages(
-            thread_id=self.thread_id,
-            messages=[Message(role="assistant", name="Assistant", content=text)],
+            self.thread_uuid,
+            messages=[AddMessage(role="assistant", name="Assistant", content=text)],
         )
 
 
@@ -304,7 +304,7 @@ class ZepMemoryAgent:
 
 def wait_for_zep_processing(
     zep: Zep,
-    user_id: str,
+    graph_uuid: str,
     timeout_s: float = 300.0,
     poll_interval_s: float = 4.0,
     quiet: bool = False,
@@ -320,7 +320,7 @@ def wait_for_zep_processing(
     """
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        episodes = zep.graph.episode.get_by_user_id(user_id=user_id, lastn=100).episodes or []
+        episodes = list(zep.graph.episode.list(graph_uuid, limit=100))
         pending = sum(1 for e in episodes if not e.processed)
         if pending == 0:
             if not quiet:

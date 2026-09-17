@@ -1,5 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
-import { ZepClient } from '@getzep/zep-cloud';
+import { ZepClient, Zep } from '@getzep/zep-cloud';
 
 const API_KEY = process.env.ZEP_API_KEY;
 
@@ -8,33 +7,30 @@ async function main() {
         apiKey: API_KEY,
     });
 
-    const graphId = uuidv4();
-    console.log(`Creating graph ${graphId}...`);
+    // v4 gives every graph a server-generated UUID.
+    console.log("Creating a graph...");
     const graph = await client.graph.create({
-        graphId: graphId,
         name: "My graph",
         description: "This is my graph",
     });
-    console.log(`graph ${graphId} created`, graph);
+    const graphUuid = graph.uuid!;
+    console.log(`graph ${graphUuid} created`, graph);
 
-    console.log(`Adding episode to graph ${graphId}...`);
-    await client.graph.add({
-        graphId: graphId,
+    console.log(`Adding episode to graph ${graphUuid}...`);
+    await client.graph.episode.add(graphUuid, {
         type: "text",
         data: "This is a test episode",
     });
 
-    console.log(`Adding more meaningful episode to graph ${graphId}...`);
-    await client.graph.add({
-        graphId: graphId,
+    console.log(`Adding more meaningful episode to graph ${graphUuid}...`);
+    await client.graph.episode.add(graphUuid, {
         type: "text",
         data: "Eric Clapton is a rock star",
     });
 
-    console.log(`Adding a JSON episode to graph ${graphId}...`);
+    console.log(`Adding a JSON episode to graph ${graphUuid}...`);
     const jsonString = '{"name": "Eric Clapton", "age": 78, "genre": "Rock"}';
-    await client.graph.add({
-        graphId: graphId,
+    await client.graph.episode.add(graphUuid, {
         type: "json",
         data: jsonString,
     });
@@ -42,20 +38,40 @@ async function main() {
     console.log("Waiting for the graph to be updated...");
     await new Promise(resolve => setTimeout(resolve, 10000));
 
-    console.log(`Getting nodes from graph ${graphId}...`);
-    const nodes = await client.graph.node.getByGraphId(graphId, {limit: 10});
-    console.log(`Nodes from graph ${graphId}`, nodes);
+    console.log(`Getting nodes from graph ${graphUuid}...`);
+    const nodes: Zep.Node[] = [];
+    for await (const node of await client.graph.node.list(graphUuid, { limit: 10, body: {} })) {
+        nodes.push(node);
+        if (nodes.length >= 10) {
+            break;
+        }
+    }
+    console.log(`Nodes from graph ${graphUuid}`, nodes);
 
-    console.log(`Getting edges from graph ${graphId}...`);
-    const edges = await client.graph.edge.getByGraphId(graphId, {limit: 10});
-    console.log(`Edges from graph ${graphId}`, edges);
+    console.log(`Getting edges from graph ${graphUuid}...`);
+    const edges: Zep.Edge[] = [];
+    for await (const edge of await client.graph.edge.list(graphUuid, { limit: 10, body: {} })) {
+        edges.push(edge);
+        if (edges.length >= 10) {
+            break;
+        }
+    }
+    console.log(`Edges from graph ${graphUuid}`, edges);
 
-    console.log(`Searching graph ${graphId}...`);
-    const searchResults = await client.graph.search({
-        graphId: graphId,
-        query: "Eric Clapton",
-    });
-    console.log(`Search results from graph ${graphId}`, searchResults);
+    console.log(`Searching graph ${graphUuid}...`);
+    const searchResults: Zep.Edge[] = [];
+    for await (const edge of await client.graph.searchEdges(graphUuid, {
+        limit: 10,
+        body: {
+            query: "Eric Clapton",
+        },
+    })) {
+        searchResults.push(edge);
+        if (searchResults.length >= 10) {
+            break;
+        }
+    }
+    console.log(`Search results from graph ${graphUuid}`, searchResults);
 }
 
 main().catch(console.error);

@@ -23,27 +23,26 @@ export function truncateSearchQuery(
 
 /**
  * Turn-relevant recall against a user graph (Zep Pattern 3 / advanced context).
- * Prefer this when you have the current user utterance — `getUserContext` only
- * queries from messages already stored on the Zep thread.
+ * Prefer this when you have the current user utterance — `thread.getContext`
+ * only queries from messages already stored on the Zep thread.
  */
 export async function searchUserMemory(options: {
-  userId: string;
+  graphUuid: string;
   query: string;
   maxCharacters?: number;
 }): Promise<string | undefined> {
   const query = truncateSearchQuery(options.query);
   if (!query) return undefined;
 
-  const search = await getZepClient().graph.search({
-    userId: options.userId,
+  const context = await getZepClient().graph.getContext(options.graphUuid, {
     query,
-    scope: "auto",
     maxCharacters: options.maxCharacters ?? 4000,
+    includeResults: true,
   });
 
-  if (search.context?.trim()) return search.context.trim();
+  if (context.context?.trim()) return context.context.trim();
 
-  const facts = (search.edges ?? [])
+  const facts = (context.results?.edges ?? [])
     .map((e) => e.fact?.trim())
     .filter((f): f is string => Boolean(f));
   if (facts.length === 0) return undefined;

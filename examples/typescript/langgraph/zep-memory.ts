@@ -1,7 +1,6 @@
 // zep-memory.ts
 import { ZepClient, Zep } from "@getzep/zep-cloud";
 import { BaseMessage, AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { v4 as uuidv4 } from "uuid";
 
 /**
  * ZepMemory adapter for LangGraph
@@ -9,99 +8,57 @@ import { v4 as uuidv4 } from "uuid";
  */
 export class ZepMemory {
   private client: ZepClient;
-  private threadId: string;
+  private threadUuid?: string;
   private initialized: boolean = false;
-  private userId?: string;
+  private userUuid?: string;
 
   /**
    * Create a new ZepMemory instance
    * @param apiKey - Zep API key
-   * @param threadId - Optional thread ID, will generate a new one if not provided
-   * @param userId - Optional user ID to associate with the thread
+   * @param threadUuid - Optional thread UUID. The adapter creates a thread if you do not give one.
+   * @param userUuid - Optional user UUID. The adapter creates a user if you do not give one.
    */
-  constructor(apiKey: string, threadId?: string, userId?: string) {
+  constructor(apiKey: string, threadUuid?: string, userUuid?: string) {
     this.client = new ZepClient({
       apiKey,
     });
-    this.threadId = threadId || uuidv4();
-    this.userId = userId;
+    this.threadUuid = threadUuid;
+    this.userUuid = userUuid;
   }
 
   /**
    * Initialize the memory thread
-   * @param userId - Optional user ID to associate with the thread
+   * @param userUuid - Optional user UUID to associate with the thread
    */
-  async initialize(userId?: string): Promise<void> {
+  async initialize(userUuid?: string): Promise<void> {
     if (this.initialized) return;
 
     try {
-      // Use provided userId or the one from constructor or generate a new one
-      const userIdToUse = userId || this.userId || `user-${uuidv4()}`;
-      this.userId = userIdToUse;
-
-      // Check if user exists, create if not
-      let userExists = false;
-      try {
-        console.log("userIdToUse", userIdToUse);
-        await this.client.user.get(userIdToUse);
-        userExists = true;
-        console.log(`Using existing user: ${userIdToUse}`);
-      } catch (error) {
-        if (error instanceof Zep.NotFoundError) {
-          // User doesn't exist, we'll create it
-          console.log(`User ${userIdToUse} not found, will create`);
-        } else {
-          // For other errors, log and rethrow
-          console.error(`Error checking if user exists: ${userIdToUse}:`, error);
-          throw error;
-        }
+      // v4 addresses a user by a server-generated UUID. The adapter creates a
+      // user when the caller has no UUID yet.
+      const requestedUserUuid = userUuid || this.userUuid;
+      if (requestedUserUuid) {
+        await this.client.user.get(requestedUserUuid);
+        this.userUuid = requestedUserUuid;
+        console.log(`Using existing user: ${requestedUserUuid}`);
+      } else {
+        const user = await this.client.user.create({
+          firstName: "Sarah",
+          lastName: "Smith",
+        });
+        this.userUuid = user.uuid;
+        console.log(`Created new user: ${this.userUuid}`);
       }
 
-      // Create user if it doesn't exist
-      if (!userExists) {
-        try {
-          await this.client.user.add({
-            userId: userIdToUse,
-            firstName: 'Sarah',
-            lastName: 'Smith',
-            email: `${userIdToUse}@example.com`, // Placeholder email
-          });
-          console.log(`Created new user: ${userIdToUse}`);
-        } catch (error) {
-          console.error(`Failed to create user ${userIdToUse}:`, error);
-          throw error;
-        }
-      }
-
-      // Check if thread exists
-      let threadExists = false;
-      try {
-        await this.client.thread.get(this.threadId);
-        threadExists = true;
-        console.log(`Using existing thread: ${this.threadId}`);
-      } catch (error) {
-        if (error instanceof Zep.NotFoundError) {
-          // Thread doesn't exist, we'll create it
-          console.log(`Thread ${this.threadId} not found, will create`);
-        } else {
-          // For other errors, log and rethrow
-          console.error(`Error checking if thread exists ${this.threadId}:`, error);
-          throw error;
-        }
-      }
-
-      // Create thread if it doesn't exist
-      if (!threadExists) {
-        try {
-          await this.client.thread.create({
-            threadId: this.threadId,
-            userId: userIdToUse,
-          });
-          console.log(`Created new thread: ${this.threadId}`);
-        } catch (error) {
-          console.error(`Failed to create thread ${this.threadId}:`, error);
-          throw error;
-        }
+      if (this.threadUuid) {
+        await this.client.thread.get(this.threadUuid);
+        console.log(`Using existing thread: ${this.threadUuid}`);
+      } else {
+        const thread = await this.client.thread.create({
+          userUuid: this.userUuid!,
+        });
+        this.threadUuid = thread.uuid;
+        console.log(`Created new thread: ${this.threadUuid}`);
       }
 
       this.initialized = true;
@@ -117,22 +74,22 @@ export class ZepMemory {
    * @param withContext - Whether to return the Zep context string from memory
    */
   async addMessage(message: BaseMessage, withContext: boolean = false): Promise<string | undefined> {
-    if (!this.initialized) {
+    if (!this.initialized || !this.threadUuid) {
       throw new Error("Memory not initialized");
     }
 
     try {
       // Convert LangChain message to Zep message format
       const zepMessage = this.convertToZepMessage(message);
-      
+
       // Add message to Zep memory
-      await this.client.thread.addMessages(this.threadId, {
+      await this.client.thread.addMessages(this.threadUuid, {
         messages: [zepMessage],
       });
-      
+
       let context: string | undefined;
       if (withContext) {
-        const contextResponse = await this.client.thread.getUserContext(this.threadId);
+        const contextResponse = await this.client.thread.getContext(this.threadUuid);
         context = contextResponse.context;
       }
 
@@ -148,16 +105,16 @@ export class ZepMemory {
    * @param messages - Array of LangChain messages to add
    */
   async addMessages(messages: BaseMessage[]): Promise<void> {
-    if (!this.initialized) {
+    if (!this.initialized || !this.threadUuid) {
       throw new Error("Memory not initialized");
     }
 
     try {
       // Convert LangChain messages to Zep message format
       const zepMessages = messages.map(msg => this.convertToZepMessage(msg));
-      
+
       // Add messages to Zep memory
-      await this.client.thread.addMessages(this.threadId, {
+      await this.client.thread.addMessages(this.threadUuid, {
         messages: zepMessages,
       });
     } catch (error) {
@@ -171,17 +128,23 @@ export class ZepMemory {
    * @param limit - Maximum number of messages to retrieve
    */
   async getMessages(limit: number = 10): Promise<BaseMessage[]> {
-    if (!this.initialized) {
+    if (!this.initialized || !this.threadUuid) {
       throw new Error("Memory not initialized");
     }
 
     try {
-      const response = await this.client.thread.get(this.threadId, {
+      const messages: Zep.Message[] = [];
+      for await (const message of await this.client.thread.listMessages(this.threadUuid, {
         limit,
-      });
+      })) {
+        messages.push(message);
+        if (messages.length >= limit) {
+          break;
+        }
+      }
 
       // Convert Zep messages to LangChain messages
-      return (response.messages || []).map(msg => this.convertToLangChainMessage(msg));
+      return messages.map(msg => this.convertToLangChainMessage(msg));
     } catch (error) {
       console.error("Failed to get messages from Zep memory:", error);
       throw error;
@@ -193,17 +156,14 @@ export class ZepMemory {
    * This retrieves messages along with any context
    */
   async getMemoryWithContext(): Promise<{ messages: BaseMessage[], context?: string }> {
-    if (!this.initialized) {
+    if (!this.initialized || !this.threadUuid) {
         throw new Error("Memory not initialized");
     }
 
     try {
-      const contextResponse = await this.client.thread.getUserContext(this.threadId);
-      const messagesResponse = await this.client.thread.get(this.threadId);
-      
-      // Convert messages to LangChain format
-      const messages = (messagesResponse.messages || []).map(msg => this.convertToLangChainMessage(msg));
-      
+      const contextResponse = await this.client.thread.getContext(this.threadUuid);
+      const messages = await this.getMessages();
+
       return {
         messages,
         context: contextResponse.context,
@@ -215,17 +175,17 @@ export class ZepMemory {
   }
 
   /**
-   * Get the thread ID
+   * Get the thread UUID
    */
-  getThreadId(): string {
-    return this.threadId;
+  getThreadUuid(): string | undefined {
+    return this.threadUuid;
   }
 
   /**
-   * Get the user ID
+   * Get the user UUID
    */
-  getUserId(): string | undefined {
-    return this.userId;
+  getUserUuid(): string | undefined {
+    return this.userUuid;
   }
 
   /**
@@ -272,4 +232,4 @@ export class ZepMemory {
       return new HumanMessage(content);
     }
   }
-} 
+}

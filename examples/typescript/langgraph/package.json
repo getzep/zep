@@ -7,7 +7,7 @@
     "start": "tsx agent.ts"
   },
   "dependencies": {
-    "@getzep/zep-cloud": "^3.28.0",
+    "@getzep/zep-cloud": "4.0.0-alpha.5",
     "@langchain/core": "^1.2.10",
     "@langchain/langgraph": "^1.4.14",
     "@langchain/openai": "^1.5.12",
