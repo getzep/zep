@@ -58,8 +58,12 @@ async function main(): Promise<void> {
   // 1. Create the identity before the first turn. Zep v4 assigns every UUID,
   //    so the example reads them from the response and keeps them in scope.
   //    A real application stores them in its own database.
+  //    The `userId` label is a temporary workaround for a production v4
+  //    defect: the thread message and context routes return 404 for a user
+  //    that has no `userId`. The label is not used for addressing.
   const identity = await createZepUserAndThread({
     client,
+    userId: `vercel-ai-example-${Date.now()}`,
     firstName: "Alice",
     lastName: "Smith",
     email: "alice@example.com",

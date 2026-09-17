@@ -90,11 +90,12 @@ middleware, persist the completed turn from `onFinish` with `createZepOnFinish`.
 > **Known v4 API defect.** On `https://api.getzep.com/api/v4`, the thread message
 > route and the thread context route return HTTP 404 for a user that was created
 > without a `userId`, although `thread.create` and `thread.get` succeed for the
-> same thread UUID. The examples create the user without a `userId`, as the v4
-> identifier convention requires, so the context and persistence steps log a 404
-> and degrade to "no memory" until the server is fixed. A user that has a `userId`
-> is not affected. The graph routes (`graph.episode.add`, `graph.getContext`, and
-> the `graph.search*` methods) work in both cases.
+> same thread UUID. The graph routes (`graph.episode.add`, `graph.getContext`,
+> and the `graph.search*` methods) work in both cases. As a temporary workaround,
+> the committed examples set a generated `userId` label on the `user.create`
+> call so that they complete end to end. The label is a name, not an address:
+> the package still uses only the returned UUIDs. A user that has a `userId` is
+> not affected by the defect.
 
 ## 6. Run the tests
 
