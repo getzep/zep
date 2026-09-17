@@ -43,7 +43,10 @@ cd zep/integrations/livekit/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `livekit-agents[openai,silero]>=1.0.0`, `zep-cloud>=3.23.0`.
+Requirements: Python 3.11+, `livekit-agents[openai,silero]>=1.0.0`, `zep-cloud==4.0.0a5`.
+
+`zep-cloud` 4.0.0a5 is a pre-release. Install it with `pip install --pre
+zep-cloud==4.0.0a5`, or with `uv add "zep-cloud==4.0.0a5" --prerelease=allow`.
 
 ## 5. Configure environment variables
 
@@ -68,6 +71,11 @@ uv run python examples/voice_assistant.py dev
 Then connect a client (e.g. the [LiveKit Agents Playground](https://agents-playground.livekit.io))
 to talk to the agent. As the conversation proceeds, `ZepUserAgent` persists turns
 to Zep and injects recalled context on later turns.
+
+Zep v4 addresses a user, a thread, and a graph by a server-generated UUID. Each
+example creates the resources and reads the UUID from the response. The example
+prints the UUID of the user or the graph. Store the UUID in your own database and
+give it to the agent on the next run.
 
 Other runnable examples live in [`examples/`](examples):
 

@@ -18,17 +18,19 @@ This document captures the complete development journey, architecture, and imple
 
 - **`ZepUserAgent`** (`agent.py`): Thread-based conversational memory
   - Extends LiveKit's `Agent` class
-  - Stores conversations in Zep threads using `thread.add_messages()`
-  - Retrieves context using `thread.get_user_context()`
+  - Stores conversations in Zep threads using `thread.add_messages(thread_uuid, ...)`
+  - Retrieves context from `thread.add_messages(return_context=True)`, or from
+    `thread.get_context(thread_uuid)`
+  - Takes `user_uuid` and `thread_uuid`, because Zep v4 addresses a resource by a
+    server-generated UUID
   - Perfect for personal assistant scenarios with conversation history
-  - Supports context modes: "basic" or "summary"
   - Optional message naming for user and assistant attribution
 
 - **`ZepGraphAgent`** (`agent.py`): Knowledge graph-based memory
   - Extends LiveKit's `Agent` class
-  - Stores information in Zep knowledge graphs using `graph.add()`
-  - Performs hybrid search across facts, entities, and episodes
-  - Uses `compose_context_string()` for smart context composition
+  - Stores information in Zep knowledge graphs using `graph.episode.add(graph_uuid, ...)`
+  - Retrieves an assembled context block with `graph.get_context(graph_uuid, ...)`
+  - Takes `graph_uuid`
   - Perfect for shared knowledge scenarios across multiple users
   - Optional user name prefixing for message attribution
 
@@ -50,8 +52,11 @@ This document captures the complete development journey, architecture, and imple
 **Memory Retrieval:**
 - Context-aware memory injection in `on_user_turn_completed`
 - Thread context retrieval for conversational memory
-- Parallel graph search (edges, nodes, episodes) for knowledge memory
-- Smart context composition using Zep's utility functions
+- Server-side context assembly with `graph.get_context` for knowledge memory
+- Dedicated v4 search methods (`graph.search_edges`, `graph.search_nodes`,
+  `graph.search_episodes`, `graph.search_observations`,
+  `graph.search_thread_summaries`) in the model-callable search tool. Each method
+  returns a pager, so the caller reads `.items` or iterates the pager.
 
 **LiveKit Integration:**
 - Full compatibility with LiveKit Agent ecosystem
@@ -101,14 +106,12 @@ This document captures the complete development journey, architecture, and imple
 
 **Thread Memory Pattern (ZepUserAgent):**
 ```python
-# Storage
-zep_message = Message(content=user_text.strip(), role="user", name=self._user_message_name)
-await self._zep_client.thread.add_messages(thread_id=self._thread_id, messages=[zep_message])
-
-# Retrieval
-memory_result = await self._zep_client.thread.get_user_context(
-    thread_id=self._thread_id, mode=self._context_mode
+# Storage and retrieval in one round-trip
+zep_message = AddMessage(content=user_text.strip(), role="user", name=self._user_message_name)
+response = await self._zep_client.thread.add_messages(
+    self._thread_uuid, messages=[zep_message], return_context=True
 )
+context = response.context
 ```
 
 **Knowledge Graph Pattern (ZepGraphAgent):**
@@ -116,15 +119,18 @@ memory_result = await self._zep_client.thread.get_user_context(
 # Storage with user attribution
 if self._user_name:
     message_data = f"[{self._user_name}]: {user_text}"
-await self._zep_client.graph.add(graph_id=self._graph_id, type="message", data=message_data)
-
-# Hybrid retrieval
-results = await asyncio.gather(
-    graph.search(scope="edges", limit=facts_limit),
-    graph.search(scope="nodes", limit=entity_limit),
-    graph.search(scope="episodes", limit=episode_limit)
+await self._zep_client.graph.episode.add(
+    self._graph_uuid, type="message", data=message_data
 )
-context = compose_context_string(edges, nodes, episodes)
+
+# Retrieval: Zep assembles the context block on the server
+response = await self._zep_client.graph.get_context(
+    self._graph_uuid,
+    query=query,
+    filters=self._search_filters,
+    max_characters=self._max_characters,
+)
+context = response.context
 ```
 
 
@@ -134,7 +140,10 @@ context = compose_context_string(edges, nodes, episodes)
 zep_livekit/
 ├── src/zep_livekit/
 │   ├── __init__.py           # Exports ZepUserAgent, ZepGraphAgent
-│   ├── agent.py              # Dual agent classes (424 lines)
+│   ├── agent.py              # Dual agent classes
+│   ├── provisioning.py       # create_user / create_thread helpers
+│   ├── tools.py              # create_graph_search_tool
+│   ├── limits.py             # payload truncation
 │   └── exceptions.py         # Custom exception classes
 ├── examples/
 │   ├── voice_assistant.py    # ZepUserAgent example with thread memory
@@ -156,9 +165,12 @@ async def create_voice_session(user_id: str, user_name: str):
     
 # Separate agent worker process
 async def entrypoint(ctx: agents.JobContext):
-    # Per-user agent instantiation
-    user_id = extract_from_room_context(ctx)
-    agent = ZepUserAgent(zep_client=zep_client, user_id=user_id, ...)
+    # Per-user agent instantiation. The application stores the Zep UUIDs in its
+    # own database and reads them here. The agent does not resolve a name.
+    user_uuid, thread_uuid = lookup_stored_uuids(ctx)
+    agent = ZepUserAgent(
+        zep_client=zep_client, user_uuid=user_uuid, thread_uuid=thread_uuid, ...
+    )
 ```
 
 ### Deployment Environments

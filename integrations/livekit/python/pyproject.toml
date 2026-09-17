@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "livekit-agents[openai,silero]>=1.0.0",
-    "zep-cloud>=3.23.0",
+    "zep-cloud==4.0.0a5",
     "typing-extensions>=4.0.0",
 ]
 

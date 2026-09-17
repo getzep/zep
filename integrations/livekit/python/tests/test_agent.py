@@ -1,7 +1,6 @@
 """
-Tests for ``ZepUserAgent`` / ``ZepGraphAgent``: lazy resource creation,
-``on_created``, ``context_builder`` / ``GraphContextBuilder``,
-``context_template``, and truncation.
+Tests for ``ZepUserAgent`` / ``ZepGraphAgent``: ``context_builder`` /
+``GraphContextBuilder``, ``context_template``, and truncation.
 
 Agents are constructed directly (no LiveKit session/room) -- the same pattern
 ``tests/test_integration.py`` uses to drive ``on_user_turn_completed``
@@ -28,16 +27,22 @@ from zep_livekit.limits import GRAPH_MAX_CHARS, MESSAGE_CONTENT_MAX
 INSTRUCTIONS = "You are a helpful assistant."
 
 
+USER_UUID = "11111111-1111-1111-1111-111111111111"
+THREAD_UUID = "22222222-2222-2222-2222-222222222222"
+GRAPH_UUID = "33333333-3333-3333-3333-333333333333"
+
+
 def make_mock_client() -> MagicMock:
     client = MagicMock(spec=AsyncZep)
     client.user = MagicMock()
-    client.user.add = AsyncMock()
+    client.user.create = AsyncMock()
     client.thread = MagicMock()
     client.thread.create = AsyncMock()
     client.thread.add_messages = AsyncMock()
     client.graph = MagicMock()
-    client.graph.add = AsyncMock()
-    client.graph.search = AsyncMock()
+    client.graph.episode = MagicMock()
+    client.graph.episode.add = AsyncMock()
+    client.graph.get_context = AsyncMock(return_value=MagicMock(context=None))
     return client
 
 
@@ -50,8 +55,8 @@ def add_messages_response(context: str | None) -> MagicMock:
 def make_user_agent(client: MagicMock | None = None, **kwargs: Any) -> ZepUserAgent:
     params: dict[str, Any] = {
         "zep_client": client or make_mock_client(),
-        "user_id": "user-1",
-        "thread_id": "thread-1",
+        "user_uuid": USER_UUID,
+        "thread_uuid": THREAD_UUID,
         "instructions": INSTRUCTIONS,
     }
     params.update(kwargs)
@@ -61,7 +66,7 @@ def make_user_agent(client: MagicMock | None = None, **kwargs: Any) -> ZepUserAg
 def make_graph_agent(client: MagicMock | None = None, **kwargs: Any) -> ZepGraphAgent:
     params: dict[str, Any] = {
         "zep_client": client or make_mock_client(),
-        "graph_id": "graph-1",
+        "graph_uuid": GRAPH_UUID,
         "instructions": INSTRUCTIONS,
     }
     params.update(kwargs)
@@ -94,97 +99,34 @@ def system_messages(turn_ctx: ChatContext) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Ensure-resources / on_created (constraint 3)
+# UUID addressing
 # ---------------------------------------------------------------------------
 
 
-class TestEnsureResources:
+class TestUuidAddressing:
     @pytest.mark.asyncio
-    async def test_ensure_resources_fires_hook_on_create(self) -> None:
+    async def test_thread_uuid_is_the_address(self) -> None:
+        """The thread UUID is the first positional argument of add_messages,
+        and the agent does not look a resource up at run time."""
         client = make_mock_client()
-        hook = AsyncMock()
-        agent = make_user_agent(client, on_created=hook, first_name="Jane")
-
-        ready = await agent._ensure_resources()
-
-        assert ready is True
-        hook.assert_called_once_with(client, "user-1")
-        client.thread.create.assert_called_once_with(thread_id="thread-1", user_id="user-1")
-
-    @pytest.mark.asyncio
-    async def test_ensure_resources_conflict_no_hook(self) -> None:
-        """User already exists -> hook must not fire, but thread creation still runs."""
-        client = make_mock_client()
-        client.user.add.side_effect = Exception("already exists")
-        hook = AsyncMock()
-        agent = make_user_agent(client, on_created=hook)
-
-        ready = await agent._ensure_resources()
-
-        assert ready is True
-        hook.assert_not_called()
-        client.thread.create.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_ensure_resources_swallows_errors(self) -> None:
-        """A genuine failure (or hook failure) is logged and returns False,
-        never raised into the voice session."""
-        client = make_mock_client()
-        client.user.add.side_effect = RuntimeError("boom")
-        agent = make_user_agent(client)
-
-        ready = await agent._ensure_resources()
-
-        assert ready is False
-
-    @pytest.mark.asyncio
-    async def test_ensure_resources_swallows_hook_errors(self) -> None:
-        client = make_mock_client()
-
-        async def failing_hook(_client: Any, _user_id: str) -> None:
-            raise RuntimeError("hook boom")
-
-        agent = make_user_agent(client, on_created=failing_hook)
-
-        ready = await agent._ensure_resources()
-
-        assert ready is False
-
-    @pytest.mark.asyncio
-    async def test_ensure_resources_cached_after_success(self) -> None:
-        client = make_mock_client()
-        agent = make_user_agent(client)
-
-        assert await agent._ensure_resources() is True
-        assert await agent._ensure_resources() is True
-
-        client.user.add.assert_called_once()
-        client.thread.create.assert_called_once()
-
-    def test_user_agent_accepts_new_params(self) -> None:
-        """Constructor accepts the new keyword-only params without error."""
-        agent = make_user_agent(
-            first_name="Jane",
-            last_name="Smith",
-            email="jane@example.com",
-            on_created=AsyncMock(),
-            context_builder=AsyncMock(),
-            context_template="Custom: {context}",
-        )
-        assert agent._first_name == "Jane"
-        assert agent._context_template == "Custom: {context}"
-
-    @pytest.mark.asyncio
-    async def test_turn_skipped_when_resources_not_ready(self) -> None:
-        """on_user_turn_completed must not attempt persistence when
-        _ensure_resources fails."""
-        client = make_mock_client()
-        client.user.add.side_effect = RuntimeError("boom")
+        client.thread.add_messages.return_value = add_messages_response(None)
         agent = make_user_agent(client)
 
         await user_turn(agent, "hello")
 
-        client.thread.add_messages.assert_not_called()
+        assert client.thread.add_messages.call_args.args[0] == THREAD_UUID
+        client.user.create.assert_not_called()
+        client.thread.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_graph_uuid_is_the_address(self) -> None:
+        client = make_mock_client()
+        agent = make_graph_agent(client)
+
+        await user_turn(agent, "hello graph")
+
+        assert client.graph.episode.add.call_args.args[0] == GRAPH_UUID
+        assert client.graph.get_context.call_args.args[0] == GRAPH_UUID
 
 
 # ---------------------------------------------------------------------------
@@ -215,8 +157,8 @@ class TestUserAgentContextBuilder:
         assert len(received) == 1
         built = received[0]
         assert built.zep is client
-        assert built.user_id == "user-1"
-        assert built.thread_id == "thread-1"
+        assert built.user_uuid == USER_UUID
+        assert built.thread_uuid == THREAD_UUID
         assert built.user_message == "What's up?"
 
         messages = system_messages(turn_ctx)
@@ -256,8 +198,7 @@ class TestUserAgentContextBuilder:
     @pytest.mark.asyncio
     async def test_default_path_single_roundtrip(self) -> None:
         """Default path: add_messages(return_context=True) once; no separate
-        get_user_context call. context_mode has no add_messages-equivalent,
-        so it is not forwarded (see agent.py's on_user_turn_completed note)."""
+        get_context call."""
         client = make_mock_client()
         client.thread.add_messages.return_value = add_messages_response("Some context")
         agent = make_user_agent(client)
@@ -267,10 +208,7 @@ class TestUserAgentContextBuilder:
         client.thread.add_messages.assert_called_once()
         call_kwargs = client.thread.add_messages.call_args.kwargs
         assert call_kwargs["return_context"] is True
-        assert (
-            not hasattr(client.thread, "get_user_context")
-            or not client.thread.get_user_context.called
-        )
+        assert not hasattr(client.thread, "get_context") or not client.thread.get_context.called
 
         messages = system_messages(turn_ctx)
         assert any("Some context" in m for m in messages)
@@ -298,11 +236,11 @@ class TestGraphAgentContextBuilder:
         assert len(received) == 1
         built = received[0]
         assert built.zep is client
-        assert built.graph_id == "graph-1"
+        assert built.graph_uuid == GRAPH_UUID
         assert built.user_message == "hello graph"
 
-        # Default hybrid search must not run when a builder is set.
-        client.graph.search.assert_not_called()
+        # Default context retrieval must not run when a builder is set.
+        client.graph.get_context.assert_not_called()
 
         messages = system_messages(turn_ctx)
         assert any("Graph builder context" in m for m in messages)
@@ -319,7 +257,7 @@ class TestGraphAgentContextBuilder:
         turn_ctx = await user_turn(agent, "hello")
 
         # Message persistence to the graph still happens.
-        client.graph.add.assert_called_once()
+        client.graph.episode.add.assert_called_once()
         assert system_messages(turn_ctx) == []
 
     def test_graph_agent_rejects_on_created(self) -> None:
@@ -384,13 +322,12 @@ class TestTruncation:
     @pytest.mark.asyncio
     async def test_graph_add_truncates_oversize(self) -> None:
         client = make_mock_client()
-        client.graph.search.return_value = MagicMock(edges=[], nodes=[], episodes=[])
         agent = make_graph_agent(client)
 
         oversize = "z" * (GRAPH_MAX_CHARS + 500)
         await user_turn(agent, oversize)
 
-        sent_data = client.graph.add.call_args.kwargs["data"]
+        sent_data = client.graph.episode.add.call_args.kwargs["data"]
         assert len(sent_data) <= GRAPH_MAX_CHARS
 
     @pytest.mark.asyncio
@@ -401,7 +338,7 @@ class TestTruncation:
         oversize = "w" * (GRAPH_MAX_CHARS + 500)
         await agent._store_assistant_message(oversize, _ConversationItem())
 
-        sent_data = client.graph.add.call_args.kwargs["data"]
+        sent_data = client.graph.episode.add.call_args.kwargs["data"]
         assert len(sent_data) <= GRAPH_MAX_CHARS
 
 
@@ -411,10 +348,14 @@ class TestTruncation:
 
 
 class TestConstructionGuards:
-    def test_user_agent_rejects_empty_user_id(self) -> None:
+    def test_user_agent_rejects_empty_user_uuid(self) -> None:
         with pytest.raises(AgentConfigurationError):
-            make_user_agent(user_id="")
+            make_user_agent(user_uuid="")
 
-    def test_graph_agent_rejects_empty_graph_id(self) -> None:
+    def test_user_agent_rejects_empty_thread_uuid(self) -> None:
         with pytest.raises(AgentConfigurationError):
-            make_graph_agent(graph_id="")
+            make_user_agent(thread_uuid="")
+
+    def test_graph_agent_rejects_empty_graph_uuid(self) -> None:
+        with pytest.raises(AgentConfigurationError):
+            make_graph_agent(graph_uuid="")

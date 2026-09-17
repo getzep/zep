@@ -47,10 +47,14 @@ Both approaches work with the same underlying temporal knowledge graph - threads
 
 Using structured conversation threads that automatically contribute to your unified graph.
 
-> **Per-session identity.** `user_id`/`thread_id` (and `graph_id` for `ZepGraphAgent`) are
-> fixed constructor arguments, resolved once and not re-resolved per turn. This is
-> idiomatic for voice: construct one agent (and typically one `AgentSession`) per
-> user/call rather than sharing a single instance across users.
+> **UUID addressing.** Zep v4 addresses every user, thread, and graph by a
+> server-generated UUID. A `user_id` or a `thread_id` is a name, not an address. Create
+> each resource one time, store the UUID in your own database, and give the stored UUID
+> to the agent. The integration does not resolve a name at run time.
+>
+> **Per-session identity.** `user_uuid` and `thread_uuid` (and `graph_uuid` for
+> `ZepGraphAgent`) are fixed constructor arguments. Construct one agent, and normally one
+> `AgentSession`, for each user or call.
 
 ### Basic Setup
 
@@ -64,18 +68,16 @@ from zep_livekit import ZepUserAgent
 async def entrypoint(ctx: agents.JobContext):
     # Initialize Zep client
     zep_client = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
-    
-    # Create user and thread
-    user_id = "user_123"
-    thread_id = f"conversation_{user_id}"
-    
-    try:
-        await zep_client.user.get(user_id=user_id)
-    except:
-        await zep_client.user.add(user_id=user_id, first_name="Alice")
-    
-    await zep_client.thread.create(thread_id=thread_id, user_id=user_id)
-    
+
+    # Create the user one time and keep the UUID. A production application reads
+    # the stored UUID from its own database instead.
+    user = await zep_client.user.create(first_name="Alice")
+    user_uuid = user.uuid_
+
+    # Create a thread for this call and keep the UUID
+    thread = await zep_client.thread.create(user_uuid=user_uuid)
+    thread_uuid = thread.uuid_
+
     # Connect to room
     await ctx.connect()
     
@@ -90,8 +92,8 @@ async def entrypoint(ctx: agents.JobContext):
     # Create memory-enabled agent
     agent = ZepUserAgent(
         zep_client=zep_client,
-        user_id=user_id,
-        thread_id=thread_id,
+        user_uuid=user_uuid,
+        thread_uuid=thread_uuid,
         instructions="You are a helpful assistant with persistent memory."
     )
     
@@ -105,8 +107,8 @@ async def entrypoint(ctx: agents.JobContext):
 # Enhanced user agent with message attribution
 agent = ZepUserAgent(
     zep_client=zep_client,
-    user_id="user_123",
-    thread_id="conversation_456",
+    user_uuid=user_uuid,
+    thread_uuid=thread_uuid,
     user_message_name="Alice",  # Name for user messages in Zep
     assistant_message_name="Assistant",  # Name for assistant messages
     instructions="You remember our previous conversations and preferences."
@@ -115,36 +117,35 @@ agent = ZepUserAgent(
 
 ## Provisioning
 
-Prefer explicit, out-of-band provisioning with `ensure_user`/`ensure_thread` before the
-first turn -- e.g. during account/session onboarding. Both are idempotent
-(create-then-catch-conflict) and return whether the resource was newly created; genuine
-failures (auth, network, 5xx) always raise:
+Provision the Zep user and thread out of band, before the first turn. `create_user` and
+`create_thread` create the resources and return the response objects. Read `uuid_` from
+each response and store the value in your own database. The helpers raise on failure, so
+a misconfiguration is visible during onboarding:
 
 ```python
-from zep_livekit import ensure_thread, ensure_user
+from zep_livekit import create_thread, create_user
 
-async def seed_new_user(zep_client, user_id: str) -> None:
-    """Runs exactly once, right after the user is first created."""
+async def seed_new_user(zep_client, user_uuid: str) -> None:
+    """Runs one time, directly after the user is created."""
     ...  # seed initial facts, set custom instructions, configure ontology, etc.
 
-created = await ensure_user(
+user = await create_user(
     zep_client,
-    user_id="user_123",
     first_name="Alice",
-    on_created=seed_new_user,  # fires only for a genuinely new user
+    on_created=seed_new_user,
 )
-await ensure_thread(zep_client, thread_id="conversation_456", user_id="user_123")
+user_uuid = user.uuid_
+graph_uuid = user.graph_uuid  # the personal graph of the user
+
+thread = await create_thread(zep_client, user_uuid=user_uuid)
+thread_uuid = thread.uuid_
 ```
 
-`ZepUserAgent` also accepts `first_name`/`last_name`/`email`/`on_created` directly and
-lazily calls the same helpers on the first turn (cached per agent instance) -- convenient
-for prototyping, but this lazy path always logs and swallows failures rather than raising
-into the voice session. Prefer the explicit out-of-band call above when you need
-provisioning failures to surface loudly.
+`ZepUserAgent` takes the stored UUIDs. The agent does not create a resource on the hot
+path and does not resolve a name at run time.
 
-`ZepGraphAgent` does **not** accept `on_created`: it is scoped to a standalone `graph_id`,
-not a Zep user, so there is no "user created" event to hook into. Passing it raises
-`TypeError`.
+`ZepGraphAgent` does **not** accept `on_created`: it is scoped to a graph, not to a Zep
+user, so there is no "user created" event for a hook. Passing it raises `TypeError`.
 
 ## Direct Graph Memory Access
 
@@ -159,17 +160,13 @@ async def entrypoint(ctx: agents.JobContext):
     # Initialize Zep client
     zep_client = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
     
-    # Create or get knowledge graph
-    graph_id = "company_knowledge_base"
-    try:
-        await zep_client.graph.get(graph_id)
-    except:
-        await zep_client.graph.create(
-            graph_id=graph_id,
-            name="Company Knowledge Base",
-            description="Shared knowledge across all conversations"
-        )
-    
+    # Create the knowledge graph one time and keep the UUID
+    graph = await zep_client.graph.create(
+        name="Company Knowledge Base",
+        description="Shared knowledge across all conversations"
+    )
+    graph_uuid = graph.uuid_
+
     # Connect to room
     await ctx.connect()
     
@@ -184,11 +181,9 @@ async def entrypoint(ctx: agents.JobContext):
     # Create knowledge-enabled agent
     agent = ZepGraphAgent(
         zep_client=zep_client,
-        graph_id=graph_id,
-        user_name="Alice",  # Optional: for message attribution
-        facts_limit=15,     # Max facts to retrieve
-        entity_limit=5,     # Max entities to retrieve
-        episode_limit=3,    # Max episodes to retrieve
+        graph_uuid=graph_uuid,
+        user_name="Alice",     # Optional: for message attribution
+        max_characters=4000,   # Size limit of the assembled context block
         instructions="""
             You have access to a shared knowledge graph. 
             Store important facts for future reference and 
@@ -203,28 +198,26 @@ async def entrypoint(ctx: agents.JobContext):
 ## Custom Context Builders
 
 By default, `ZepUserAgent` folds persistence and retrieval into a single
-`thread.add_messages(return_context=True)` round-trip, and `ZepGraphAgent` runs a hybrid
-search across edges, nodes, and episodes. Pass `context_builder` to replace either with
-custom logic -- e.g. a filtered graph search, a different graph entirely, or a
-multi-source context assembly:
+`thread.add_messages(return_context=True)` round-trip, and `ZepGraphAgent` calls
+`graph.get_context`. Pass `context_builder` to replace either with custom logic, for
+example a filtered graph search, a different graph, or a multi-source context assembly:
 
 ```python
 from zep_livekit import ContextInput
 
 async def my_builder(ctx: ContextInput) -> str | None:
-    results = await ctx.zep.graph.search(
-        user_id=ctx.user_id,
+    page = await ctx.zep.graph.search_edges(
+        graph_uuid,
         query=ctx.user_message,
-        scope="edges",
     )
-    if not results.edges:
+    if not page.items:
         return None
-    return "\n".join(edge.fact for edge in results.edges)
+    return "\n".join(edge.fact for edge in page.items if edge.fact)
 
 agent = ZepUserAgent(
     zep_client=zep_client,
-    user_id="user_123",
-    thread_id="conversation_456",
+    user_uuid=user_uuid,
+    thread_uuid=thread_uuid,
     context_builder=my_builder,
 )
 ```
@@ -235,10 +228,10 @@ logged and skips injection for that turn but does not stop persistence; a persis
 error is logged but a successful builder result is still injected.
 
 `ZepGraphAgent` takes the analogous `context_builder` typed as `GraphContextBuilder`,
-receiving a `GraphContextInput` (`zep`, `graph_id`, `user_message`, `session`) in place of
-`ContextInput`. Unlike `ZepUserAgent`, setting it fully replaces the default hybrid search
-rather than running concurrently with anything (graph message persistence already happens
-independently, earlier in the turn).
+receiving a `GraphContextInput` (`zep`, `graph_uuid`, `user_message`, `session`) in place
+of `ContextInput`. On `ZepGraphAgent` the builder fully replaces the default
+`graph.get_context` call. Graph message persistence already happens independently,
+earlier in the turn.
 
 ### Context template
 
@@ -250,8 +243,8 @@ containing `{`, `}`, or `%` is always safe to inject):
 ```python
 agent = ZepUserAgent(
     zep_client=zep_client,
-    user_id="user_123",
-    thread_id="conversation_456",
+    user_uuid=user_uuid,
+    thread_uuid=thread_uuid,
     context_template="Known facts about the user:\n{context}",
 )
 ```
@@ -264,16 +257,16 @@ tool that lets the agent search a Zep graph on demand:
 ```python
 from zep_livekit import create_graph_search_tool
 
-# Search a user's personal graph...
-search_tool = create_graph_search_tool(zep_client, user_id="user_123")
+# Search the personal graph of a user. Read `graph_uuid` from the user object.
+search_tool = create_graph_search_tool(zep_client, graph_uuid=user.graph_uuid)
 
-# ...or a shared standalone graph. Exactly one of graph_id/user_id is required.
-search_tool = create_graph_search_tool(zep_client, graph_id="company_knowledge_base")
+# ...or a shared standalone graph.
+search_tool = create_graph_search_tool(zep_client, graph_uuid=graph_uuid)
 
 agent = ZepUserAgent(
     zep_client=zep_client,
-    user_id="user_123",
-    thread_id="conversation_456",
+    user_uuid=user_uuid,
+    thread_uuid=thread_uuid,
     tools=[search_tool],
     instructions="...",
 )
@@ -288,7 +281,7 @@ applies):
 ```python
 search_tool = create_graph_search_tool(
     zep_client,
-    user_id="user_123",
+    graph_uuid=graph_uuid,
     pinned_params={"scope": "edges", "limit": 5},
     hidden_params={"center_node_uuid"},
 )
@@ -304,9 +297,7 @@ voice session.
 
 ```python
 # Get conversation context assembled from the unified graph
-memory_result = await zep_client.thread.get_user_context(
-    thread_id="conversation_123",
-)
+memory_result = await zep_client.thread.get_context(thread_uuid)
 
 if memory_result and memory_result.context:
     print(f"Context from unified graph: {memory_result.context}")
@@ -315,22 +306,27 @@ if memory_result and memory_result.context:
 ### Direct Graph Search
 
 ```python
-# Search directly across the temporal knowledge graph
-search_results = await zep_client.graph.search(
-    graph_id="company_knowledge_base",
+# Search directly across the temporal knowledge graph. v4 has one method for each
+# scope, and each method returns a pager. Read `.items`, or iterate the pager.
+edges = await zep_client.graph.search_edges(
+    graph_uuid,
     query="Python programming best practices",
     limit=10,
-    scope="edges"  # facts, or "nodes" (entities), "episodes"
 )
+for edge in edges.items or []:
+    print(edge.fact)
 
-# Use Zep's utility to compose context
-from zep_cloud.graph.utils import compose_context_string
-context = compose_context_string(
-    search_results.edges,
-    search_results.nodes, 
-    search_results.episodes
+# Or let Zep assemble a prompt-ready context block from the graph
+response = await zep_client.graph.get_context(
+    graph_uuid,
+    query="Python programming best practices",
 )
+print(response.context)
 ```
+
+Ingestion in Zep is asynchronous. A message or an episode that you add is not
+immediately retrievable. Give Zep time to process the data, or poll
+`graph.episode.list` until each episode reports `processed`.
 
 ## Agent Comparison
 
@@ -377,15 +373,10 @@ class ZepUserAgent(agents.Agent):
         self,
         *,
         zep_client: AsyncZep,
-        user_id: str,
-        thread_id: str,
-        context_mode: Literal["basic", "summary"] | None = None,  # Deprecated, ignored
+        user_uuid: str,
+        thread_uuid: str,
         user_message_name: str | None = None,
         assistant_message_name: str | None = None,
-        first_name: str | None = None,
-        last_name: str | None = None,
-        email: str | None = None,
-        on_created: UserSetupHook | None = None,
         context_builder: ContextBuilder | None = None,
         context_template: str = DEFAULT_CONTEXT_TEMPLATE,
         **kwargs: Any  # All LiveKit Agent parameters
@@ -400,14 +391,11 @@ class ZepGraphAgent(agents.Agent):
         self,
         *,
         zep_client: AsyncZep,
-        graph_id: str,
+        graph_uuid: str,
         user_name: str | None = None,
-        facts_limit: int = 15,
-        entity_limit: int = 5, 
-        episode_limit: int = 2,
         search_filters: SearchFilters | None = None,
-        reranker: Reranker | None = "rrf",
-        context_builder: GraphContextBuilder | None = None,  # cannot combine with on_created
+        max_characters: int | None = None,
+        context_builder: GraphContextBuilder | None = None,
         context_template: str = DEFAULT_CONTEXT_TEMPLATE,
         **kwargs: Any  # All LiveKit Agent parameters
     )
@@ -416,17 +404,19 @@ class ZepGraphAgent(agents.Agent):
 ### Provisioning
 
 ```python
-async def ensure_user(
+async def create_user(
     client: AsyncZep,
     *,
-    user_id: str,
+    user_id: str | None = None,      # a name for the user, not an address
     first_name: str | None = None,
     last_name: str | None = None,
     email: str | None = None,
     on_created: UserSetupHook | None = None,
-) -> bool: ...  # True iff newly created
+) -> User: ...  # read `uuid_` and `graph_uuid` from the response
 
-async def ensure_thread(client: AsyncZep, *, thread_id: str, user_id: str) -> bool: ...
+async def create_thread(
+    client: AsyncZep, *, user_uuid: str, thread_id: str | None = None
+) -> Thread: ...  # read `uuid_` from the response
 ```
 
 ### create_graph_search_tool
@@ -435,8 +425,7 @@ async def ensure_thread(client: AsyncZep, *, thread_id: str, user_id: str) -> bo
 def create_graph_search_tool(
     zep_client: AsyncZep,
     *,
-    graph_id: str | None = None,   # exactly one of graph_id/user_id required
-    user_id: str | None = None,
+    graph_uuid: str,
     pinned_params: dict[str, Any] | None = None,
     hidden_params: set[str] | None = None,
     search_filters: dict[str, Any] | None = None,

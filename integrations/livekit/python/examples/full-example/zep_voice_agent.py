@@ -1,19 +1,19 @@
 import os
-import uuid
 
 from dotenv import load_dotenv
 from livekit import agents
 from livekit.plugins import openai, silero
 from zep_cloud.client import AsyncZep
 
-from zep_livekit import ZepUserAgent
+from zep_livekit import ZepUserAgent, create_thread, create_user
 
 # Load environment variables
 load_dotenv()
 
-# Constants
-USER_ID = "John-1234"
-THREAD_ID = f"conversation-{uuid.uuid4().hex[:8]}"
+# Constants. In Zep v4 a user_id is a name, not an address. Set
+# ZEP_USER_UUID to reuse a user that exists. If it is empty, the example
+# creates a user and prints the UUID for later runs.
+USER_UUID = os.getenv("ZEP_USER_UUID", "")
 USER_FIRST_NAME = "John"
 USER_LAST_NAME = "Doe"
 USER_EMAIL = "john.doe@example.com"
@@ -25,19 +25,22 @@ async def entrypoint(ctx: agents.JobContext):
     # Step 1: Initialize Zep client
     zep_client = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
 
-    # Step 2: Create or get user
-    try:
-        await zep_client.user.get(user_id=USER_ID)
-    except Exception:
-        await zep_client.user.add(
-            user_id=USER_ID,
+    # Step 2: Get the user by UUID, or create the user one time
+    if USER_UUID:
+        user = await zep_client.user.get(USER_UUID)
+    else:
+        user = await create_user(
+            zep_client,
             first_name=USER_FIRST_NAME,
             last_name=USER_LAST_NAME,
             email=USER_EMAIL,
         )
+        print(f"Created Zep user. Set ZEP_USER_UUID={user.uuid_} for the next run.")
+    user_uuid = user.uuid_ or ""
 
-    # Step 3: Create new thread for this session
-    await zep_client.thread.create(thread_id=THREAD_ID, user_id=USER_ID)
+    # Step 3: Create a new thread for this session and keep its UUID
+    thread = await create_thread(zep_client, user_uuid=user_uuid)
+    thread_uuid = thread.uuid_ or ""
 
     # Step 4: Connect to LiveKit room
     await ctx.connect()
@@ -53,8 +56,8 @@ async def entrypoint(ctx: agents.JobContext):
     # Step 6: Create the memory-enabled agent
     agent = ZepUserAgent(
         zep_client=zep_client,
-        user_id=USER_ID,
-        thread_id=THREAD_ID,
+        user_uuid=user_uuid,
+        thread_uuid=thread_uuid,
         user_message_name=USER_FIRST_NAME,
         assistant_message_name="Assistant",
         instructions="""You are a helpful assistant who responds concisely in at most 1 sentence for each response. If the user asks you to complete a task of any kind, such as playing music or using any other kind of tool, pretend that you can in fact do that task for simulation purposes.""",

@@ -20,7 +20,6 @@ Usage:
 
 import logging
 import os
-import uuid
 
 from livekit import agents
 from livekit.plugins import openai, silero
@@ -32,30 +31,27 @@ from zep_livekit import ZepGraphAgent, create_graph_search_tool
 logging.basicConfig(level=logging.DEBUG)  # Changed to DEBUG to see participant detection
 logger = logging.getLogger(__name__)
 
-# Configuration
-ZEP_GRAPH_ID = f"knowledge_graph_{uuid.uuid4().hex[:8]}"
+# Configuration. A graph_id is a name in Zep v4, not an address.
+ZEP_GRAPH_NAME = "Knowledge Graph for Voice Assistant"
 
 
 async def entrypoint(ctx: agents.JobContext):
     """Main entrypoint for the LiveKit agent job."""
 
-    logger.info(f"Starting Zep graph-enabled agent for graph: {ZEP_GRAPH_ID}")
+    logger.info(f"Starting Zep graph-enabled agent for graph: {ZEP_GRAPH_NAME}")
 
     # Initialize Zep client
     zep_client = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
 
-    # Create graph if it doesn't exist
-    try:
-        await zep_client.graph.get(ZEP_GRAPH_ID)
-        logger.info(f"✅ Graph {ZEP_GRAPH_ID} exists")
-    except Exception:
-        # Create graph if doesn't exist
-        await zep_client.graph.create(
-            graph_id=ZEP_GRAPH_ID,
-            name="Knowledge Graph for Voice Assistant",
-            description="Graph-based knowledge storage for conversational AI",
-        )
-        logger.info(f"✅ Created graph {ZEP_GRAPH_ID}")
+    # Create the graph one time and keep its UUID. A production application
+    # stores this UUID in its own database and reads it on each run, because
+    # Zep v4 addresses a graph by its UUID.
+    graph = await zep_client.graph.create(
+        name=ZEP_GRAPH_NAME,
+        description="Graph-based knowledge storage for conversational AI",
+    )
+    graph_uuid = graph.uuid_ or ""
+    logger.info(f"Created graph {graph_uuid}")
 
     # Connect to room
     await ctx.connect()
@@ -70,16 +66,14 @@ async def entrypoint(ctx: agents.JobContext):
 
     # A model-callable tool letting the agent search the shared graph on
     # demand, in addition to the hybrid-search context injected every turn.
-    search_tool = create_graph_search_tool(zep_client, graph_id=ZEP_GRAPH_ID)
+    search_tool = create_graph_search_tool(zep_client, graph_uuid=graph_uuid)
 
     # Create the graph-based memory agent
     agent = ZepGraphAgent(
         zep_client=zep_client,
-        graph_id=ZEP_GRAPH_ID,
+        graph_uuid=graph_uuid,
         user_name="Mark",
-        facts_limit=15,  # Number of facts to retrieve
-        entity_limit=5,  # Number of entities to retrieve
-        episode_limit=2,  # Number of episodes to retrieve
+        max_characters=4000,  # Size limit of the assembled context block
         tools=[search_tool],
         instructions="""
             You are a knowledgeable assistant with access to a persistent knowledge graph.
