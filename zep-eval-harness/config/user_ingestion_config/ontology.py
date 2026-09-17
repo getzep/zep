@@ -20,7 +20,8 @@ Edge types model relationships and enable sophisticated queries.
 """
 
 from pydantic import Field
-from zep_cloud.external_clients.ontology import EntityModel, EdgeModel, EntityText
+from zep_cloud.ontology import EntityModel, EdgeModel, EntityText, build_ontology
+from zep_cloud.types import EdgeSourceTarget
 
 
 # ============================================================================
@@ -107,8 +108,7 @@ class LocatedAt(EdgeModel):
 
     context: EntityText = Field(
         default=None,
-        description="lives_at, works_at, located_in, visits, other. "
-        + EMPTY_STRING,
+        description="lives_at, works_at, located_in, visits, other. " + EMPTY_STRING,
         max_length=MAX_LENGTH,
     )
 
@@ -118,8 +118,7 @@ class WorksFor(EdgeModel):
 
     role: EntityText = Field(
         default=None,
-        description="The person's role or title at the organization. "
-        + EMPTY_STRING,
+        description="The person's role or title at the organization. " + EMPTY_STRING,
         max_length=MAX_LENGTH,
     )
 
@@ -129,8 +128,7 @@ class Owns(EdgeModel):
 
     ownership_type: EntityText = Field(
         default=None,
-        description="owns, leases, rents, borrowed, other. "
-        + EMPTY_STRING,
+        description="owns, leases, rents, borrowed, other. " + EMPTY_STRING,
         max_length=MAX_LENGTH,
     )
 
@@ -140,8 +138,7 @@ class ScheduledAt(EdgeModel):
 
     timing: EntityText = Field(
         default=None,
-        description="The date, time, or timeframe of the event. "
-        + EMPTY_STRING,
+        description="The date, time, or timeframe of the event. " + EMPTY_STRING,
         max_length=MAX_LENGTH,
     )
 
@@ -180,9 +177,9 @@ EDGE_TYPES = [
 # ============================================================================
 
 
-async def set_custom_ontology(zep_client, user_ids=None):
+async def set_custom_ontology(zep_client, graph_uuids=None):
     """
-    Set a custom ontology for a Zep project.
+    Set a custom ontology for user graphs or for the whole project.
 
     This ontology is designed for general conversational assistants and captures:
     - People and their relationships
@@ -193,71 +190,76 @@ async def set_custom_ontology(zep_client, user_ids=None):
 
     Args:
         zep_client: AsyncZep client instance
-        user_ids: Optional list of user IDs to apply ontology to.
-                 If None, applies to entire project.
+        graph_uuids: Optional list of graph UUIDs to apply the ontology to.
+                 A user graph UUID is the ``graph_uuid`` of the user.
+                 If None, applies to the project default.
 
     Returns:
-        Response from set_ontology call
+        The last response from a set_ontology call
     """
-    from zep_cloud import EntityEdgeSourceTarget
-
-    kwargs = {
-        "entities": {
+    entity_types, edge_types = build_ontology(
+        entities={
             "Person": Person,
             "Location": Location,
             "Organization": Organization,
             "Event": Event,
             "Item": Item,
         },
-        "edges": {
+        edges={
             "RELATED_TO": (
                 RelatedTo,
                 [
-                    EntityEdgeSourceTarget(source="User", target="Person"),
-                    EntityEdgeSourceTarget(source="Person", target="Person"),
+                    EdgeSourceTarget(source="User", target="Person"),
+                    EdgeSourceTarget(source="Person", target="Person"),
                 ],
             ),
             "LOCATED_AT": (
                 LocatedAt,
                 [
-                    EntityEdgeSourceTarget(source="Person", target="Location"),
-                    EntityEdgeSourceTarget(source="Item", target="Location"),
-                    EntityEdgeSourceTarget(source="Organization", target="Location"),
+                    EdgeSourceTarget(source="Person", target="Location"),
+                    EdgeSourceTarget(source="Item", target="Location"),
+                    EdgeSourceTarget(source="Organization", target="Location"),
                 ],
             ),
             "WORKS_FOR": (
                 WorksFor,
                 [
-                    EntityEdgeSourceTarget(source="User", target="Organization"),
-                    EntityEdgeSourceTarget(source="Person", target="Organization"),
+                    EdgeSourceTarget(source="User", target="Organization"),
+                    EdgeSourceTarget(source="Person", target="Organization"),
                 ],
             ),
             "OWNS": (
                 Owns,
                 [
-                    EntityEdgeSourceTarget(source="User", target="Item"),
-                    EntityEdgeSourceTarget(source="Person", target="Item"),
+                    EdgeSourceTarget(source="User", target="Item"),
+                    EdgeSourceTarget(source="Person", target="Item"),
                 ],
             ),
             "SCHEDULED_AT": (
                 ScheduledAt,
                 [
-                    EntityEdgeSourceTarget(source="Event", target="Location"),
+                    EdgeSourceTarget(source="Event", target="Location"),
                 ],
             ),
             "INVOLVES": (
                 Involves,
                 [
-                    EntityEdgeSourceTarget(source="Event", target="Person"),
-                    EntityEdgeSourceTarget(source="Event", target="Item"),
-                    EntityEdgeSourceTarget(source="Event", target="Organization"),
+                    EdgeSourceTarget(source="Event", target="Person"),
+                    EdgeSourceTarget(source="Event", target="Item"),
+                    EdgeSourceTarget(source="Event", target="Organization"),
                 ],
             ),
         },
-    }
+    )
 
-    if user_ids:
-        kwargs["user_ids"] = user_ids
+    if not graph_uuids:
+        return await zep_client.project.set_ontology(
+            entity_types=entity_types, edge_types=edge_types
+        )
 
-    response = await zep_client.graph.set_ontology(**kwargs)
+    response = None
+    for graph_uuid in graph_uuids:
+        response = await zep_client.graph.set_ontology(
+            graph_uuid, entity_types=entity_types, edge_types=edge_types
+        )
     return response

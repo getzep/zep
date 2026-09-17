@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "python-dotenv",
-    "zep-cloud",
+    "zep-cloud==4.0.0a5",
     "openai",
     "pydantic",
     "chonkie",
