@@ -19,14 +19,15 @@ from zep_cloud.client import AsyncZep
 from zep_ms_agent_framework import ZepContextProvider
 from zep_ms_agent_framework.context_provider import ContextInput
 
+USER_UUID = "11111111-1111-1111-1111-111111111111"
+GRAPH_UUID = "22222222-2222-2222-2222-222222222222"
+THREAD_UUID = "33333333-3333-3333-3333-333333333333"
+
 
 def make_mock_client() -> MagicMock:
-    """Create a mock AsyncZep client with async user/thread methods."""
+    """Create a mock AsyncZep client with async thread methods."""
     client = MagicMock(spec=AsyncZep)
-    client.user = MagicMock()
-    client.user.add = AsyncMock()
     client.thread = MagicMock()
-    client.thread.create = AsyncMock()
     client.thread.add_messages = AsyncMock()
     return client
 
@@ -52,8 +53,9 @@ def make_provider(client: MagicMock | None = None, **kwargs: Any) -> ZepContextP
     """Construct a ZepContextProvider with sensible test defaults."""
     params: dict[str, Any] = {
         "zep_client": client or make_mock_client(),
-        "user_id": "user-1",
-        "thread_id": "thread-1",
+        "user_uuid": USER_UUID,
+        "thread_uuid": THREAD_UUID,
+        "graph_uuid": GRAPH_UUID,
     }
     params.update(kwargs)
     return ZepContextProvider(**params)
@@ -95,8 +97,9 @@ class TestContextBuilderGathering:
         assert len(received) == 1
         built = received[0]
         assert built.zep is client
-        assert built.user_id == "user-1"
-        assert built.thread_id == "thread-1"
+        assert built.user_uuid == USER_UUID
+        assert built.thread_uuid == THREAD_UUID
+        assert built.graph_uuid == GRAPH_UUID
         assert built.user_message == "What's up?"
         assert built.session_context is ctx
 

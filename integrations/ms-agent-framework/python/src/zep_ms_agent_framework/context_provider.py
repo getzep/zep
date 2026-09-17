@@ -18,8 +18,12 @@ Persistence and retrieval are folded into a single ``thread.add_messages(
 return_context=True)`` round-trip on the way in, matching Zep's recommended
 low-latency pattern.
 
-The Zep user and thread are created lazily on the first run and the result is
-cached per provider instance, so repeated runs incur no extra setup calls.
+Zep v4 addresses a user, a thread, and a graph by a server-generated UUID.
+The provider therefore takes ``user_uuid`` and ``thread_uuid``, and it does
+not create Zep resources. Create the user and the thread out-of-band with
+:func:`~zep_ms_agent_framework.provisioning.create_user` and
+:func:`~zep_ms_agent_framework.provisioning.create_thread`, store the UUIDs
+in your own database, and give them to the provider.
 
 Every Zep call is wrapped so that a Zep failure is logged but never propagates
 into the host agent: a memory outage degrades the agent to a memoryless one
@@ -35,13 +39,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from agent_framework import ContextProvider
-from zep_cloud import Message as ZepMessage
+from zep_cloud import AddMessage
 from zep_cloud.client import AsyncZep
 
 from ._text import truncate_message_content
-from .provisioning import UserSetupHook
-from .provisioning import ensure_thread as _ensure_thread
-from .provisioning import ensure_user as _ensure_user
 from .search import create_zep_search_tool
 
 if TYPE_CHECKING:
@@ -88,8 +89,11 @@ class ContextInput:
 
     Attributes:
         zep: The ``AsyncZep`` client in use by the provider.
-        user_id: The Zep user ID this provider is scoped to.
-        thread_id: The Zep thread ID this provider records the conversation in.
+        user_uuid: The UUID of the Zep user this provider is scoped to.
+        thread_uuid: The UUID of the Zep thread this provider records the
+            conversation in.
+        graph_uuid: The UUID of the graph of the user, when the application
+            supplied it.  ``None`` if it was not supplied.
         user_message: The user's message text for this turn.
         session_context: The Agent Framework ``SessionContext`` for this turn
             (add instructions/tools/messages here if the builder needs to).
@@ -99,27 +103,30 @@ class ContextInput:
         thread's default context retrieval::
 
             async def my_builder(ctx: ContextInput) -> str | None:
-                results = await ctx.zep.graph.search(
-                    user_id=ctx.user_id,
-                    query=ctx.user_message,
-                    scope="edges",
-                )
-                if not results.edges:
+                if ctx.graph_uuid is None:
                     return None
-                return "\\n".join(edge.fact for edge in results.edges)
+                edges = await ctx.zep.graph.search_edges(
+                    ctx.graph_uuid,
+                    query=ctx.user_message,
+                )
+                if not edges.items:
+                    return None
+                return "\\n".join(edge.fact for edge in edges.items if edge.fact)
 
             provider = ZepContextProvider(
                 zep_client=zep,
-                user_id="user-123",
-                thread_id="thread-abc",
+                user_uuid=user.uuid_,
+                thread_uuid=thread.uuid_,
+                graph_uuid=user.graph_uuid,
                 context_builder=my_builder,
             )
     """
 
     zep: AsyncZep
-    user_id: str
-    thread_id: str
+    user_uuid: str
+    thread_uuid: str
     user_message: str
+    graph_uuid: str | None = None
     session_context: SessionContext | None = None
 
 
@@ -155,11 +162,8 @@ class ZepContextProvider(ContextProvider):
             context_providers=[
                 ZepContextProvider(
                     zep_client=zep,
-                    user_id="user-123",
-                    thread_id="thread-abc",
-                    first_name="Jane",
-                    last_name="Smith",
-                    email="jane@example.com",
+                    user_uuid="1f0f8b1e-...",
+                    thread_uuid="3a2c4d5e-...",
                 )
             ],
         )
@@ -167,10 +171,9 @@ class ZepContextProvider(ContextProvider):
     On every run the provider:
 
     1. Reads the latest user message from ``context.input_messages``.
-    2. Lazily creates the Zep user and thread (once per instance).
-    3. Persists the message via ``thread.add_messages(return_context=True)`` and
+    2. Persists the message via ``thread.add_messages(return_context=True)`` and
        injects the returned Context Block into the model's instructions.
-    4. After the model responds, persists the assistant reply.
+    3. After the model responds, persists the assistant reply.
 
     The provider is **async-only**: it requires an :class:`~zep_cloud.client.AsyncZep`
     client, which it does not own -- the caller is responsible for the client's
@@ -178,17 +181,19 @@ class ZepContextProvider(ContextProvider):
 
     Args:
         zep_client: An initialised :class:`~zep_cloud.client.AsyncZep` client.
-        user_id: The Zep user ID this provider's memory is scoped to.  A user
-            graph is created for this ID on first use.
-        thread_id: The Zep thread ID used to record the conversation.  The
-            thread scopes *relevance* for the Context Block; facts are still
+        user_uuid: The UUID of the Zep user this provider's memory is scoped
+            to.  Zep returns it from ``user.create``; the application stores
+            it.  The provider does not create the user.
+        thread_uuid: The UUID of the Zep thread used to record the
+            conversation.  Zep returns it from ``thread.create``.  The thread
+            scopes *relevance* for the Context Block; facts are still
             extracted into the whole user graph.
-        first_name: Optional user first name.  Passing real names helps Zep
-            resolve the user's identity node in the graph.  Defaults to ``None``.
-        last_name: Optional user last name.  Defaults to ``None``.
-        email: Optional user email.  Defaults to ``None``.
+        graph_uuid: The UUID of the graph of the user, from ``user.create``.
+            It is required when ``expose_search_tool=True``, because Zep v4
+            addresses a graph search by graph UUID.  It is also passed to a
+            ``context_builder`` in :class:`ContextInput`.
         user_message_name: Display name attached to persisted user messages.
-            Defaults to the user's full name when available, otherwise ``None``.
+            Defaults to ``None``.
         assistant_message_name: Display name attached to persisted assistant
             messages.  Defaults to ``"Assistant"``.
         source_id: The Agent Framework ``source_id`` used to attribute this
@@ -196,19 +201,6 @@ class ZepContextProvider(ContextProvider):
         ignore_roles: An optional list of message roles to exclude from Zep's
             knowledge-graph ingestion.  Messages with these roles are still
             stored in the thread history but are not processed into the graph.
-        on_user_created: An optional async callable invoked exactly once, right
-            after a new Zep user is created.  Use it to set up per-user
-            ontology, custom instructions, or user summary instructions.  It
-            does **not** fire for users that already exist.  Passed through
-            to :func:`~zep_ms_agent_framework.provisioning.ensure_user` as its
-            ``on_created`` hook, so a hook failure is treated the same as a
-            genuine provisioning failure: it is logged and this turn's Zep
-            persistence is skipped (never raised into the run), and resource
-            creation is retried on the next turn.  Contrast this with calling
-            :func:`~zep_ms_agent_framework.provisioning.ensure_user` directly,
-            out-of-band, where a hook failure **propagates** to the caller --
-            the in-provider lazy path always swallows, out-of-band callers
-            always see the error.
         context_builder: An optional async callable that constructs the
             context block to inject into the agent's instructions, in place
             of the default ``thread.add_messages(return_context=True)``
@@ -227,13 +219,13 @@ class ZepContextProvider(ContextProvider):
             then decide when to search the graph for specific facts,
             entities, or prior episodes, in addition to the context
             automatically injected on every turn.  Defaults to ``False``.
-        search_pinned_params: Optional mapping of ``graph.search`` parameter
-            name (``scope``, ``reranker``, ``limit``, ``mmr_lambda``,
+        search_pinned_params: Optional mapping of search parameter name
+            (``scope``, ``reranker``, ``limit``, ``mmr_lambda``,
             ``center_node_uuid``) to a fixed value.  Pinned parameters are
             hidden from the model's tool schema and always sent with the
             given value.  Only meaningful when ``expose_search_tool=True``.
-        search_hidden_params: Optional set of ``graph.search`` parameter
-            names to hide from the model's tool schema without pinning them
+        search_hidden_params: Optional set of search parameter names to hide
+            from the model's tool schema without pinning them
             -- omitted from the SDK call so Zep's own default applies.  Only
             meaningful when ``expose_search_tool=True``.
         search_filters: Optional Zep search filters (constructor-only, never
@@ -246,7 +238,7 @@ class ZepContextProvider(ContextProvider):
 
     Note:
         **Per-run identity is bound at construction, not resolved per-run.**
-        ``user_id``/``thread_id`` are fixed constructor arguments; they are
+        ``user_uuid``/``thread_uuid`` are fixed constructor arguments; they are
         *not* re-resolved from ``before_run``'s ``session``/``state``
         keyword arguments on each call. This was investigated when adding
         the graph-search tool (dimension H): the Agent Framework's
@@ -289,16 +281,13 @@ class ZepContextProvider(ContextProvider):
         self,
         *,
         zep_client: AsyncZep,
-        user_id: str,
-        thread_id: str,
-        first_name: str | None = None,
-        last_name: str | None = None,
-        email: str | None = None,
+        user_uuid: str,
+        thread_uuid: str,
+        graph_uuid: str | None = None,
         user_message_name: str | None = None,
         assistant_message_name: str = "Assistant",
         source_id: str = DEFAULT_SOURCE_ID,
         ignore_roles: list[str] | None = None,
-        on_user_created: UserSetupHook | None = None,
         context_builder: ContextBuilder | None = None,
         context_template: str = DEFAULT_CONTEXT_TEMPLATE,
         expose_search_tool: bool = False,
@@ -309,27 +298,22 @@ class ZepContextProvider(ContextProvider):
     ) -> None:
         super().__init__(source_id=source_id)
 
-        if not user_id:
-            raise ValueError("user_id must be a non-empty string")
-        if not thread_id:
-            raise ValueError("thread_id must be a non-empty string")
+        if not user_uuid:
+            raise ValueError("user_uuid must be a non-empty string")
+        if not thread_uuid:
+            raise ValueError("thread_uuid must be a non-empty string")
+        if expose_search_tool and not graph_uuid:
+            raise ValueError("graph_uuid is required when expose_search_tool is True")
 
         self._zep: AsyncZep = zep_client
-        self._user_id: str = user_id
-        self._thread_id: str = thread_id
-        self._first_name: str | None = first_name
-        self._last_name: str | None = last_name
-        self._email: str | None = email
+        self._user_uuid: str = user_uuid
+        self._thread_uuid: str = thread_uuid
+        self._graph_uuid: str | None = graph_uuid
 
-        # Default the user message display name to the user's full name when one
-        # was supplied, so the graph can anchor identity even without an explicit
-        # name override.
-        full_name = " ".join(part for part in (first_name, last_name) if part).strip()
-        self._user_message_name: str | None = user_message_name or (full_name or None)
+        self._user_message_name: str | None = user_message_name
         self._assistant_message_name: str = assistant_message_name
 
         self._ignore_roles: list[str] | None = ignore_roles
-        self._on_user_created: UserSetupHook | None = on_user_created
         self._context_builder: ContextBuilder | None = context_builder
         self._context_template: str = context_template
 
@@ -339,20 +323,15 @@ class ZepContextProvider(ContextProvider):
         self._search_tool: ZepSearchTool | None = (
             create_zep_search_tool(
                 zep_client=self._zep,
-                user_id=self._user_id,
+                graph_uuid=graph_uuid,
                 search_pinned_params=search_pinned_params,
                 search_hidden_params=search_hidden_params,
                 search_filters=search_filters,
                 bfs_origin_node_uuids=bfs_origin_node_uuids,
             )
-            if expose_search_tool
+            if expose_search_tool and graph_uuid
             else None
         )
-
-        # Whether the Zep user + thread have been created (or confirmed to
-        # already exist) for this provider instance.  Cached so repeated runs
-        # do not re-issue setup calls.
-        self._resources_ready: bool = False
 
         # Whether THIS run's user turn was actually persisted in before_run.
         # Reset at the start of every before_run and gated on in after_run so an
@@ -366,68 +345,19 @@ class ZepContextProvider(ContextProvider):
     # ------------------------------------------------------------------
 
     @property
-    def user_id(self) -> str:
-        """The Zep user ID this provider is scoped to."""
-        return self._user_id
+    def user_uuid(self) -> str:
+        """The UUID of the Zep user this provider is scoped to."""
+        return self._user_uuid
 
     @property
-    def thread_id(self) -> str:
-        """The Zep thread ID this provider records the conversation in."""
-        return self._thread_id
+    def thread_uuid(self) -> str:
+        """The UUID of the Zep thread this provider records the conversation in."""
+        return self._thread_uuid
 
-    # ------------------------------------------------------------------
-    # Lazy resource creation
-    # ------------------------------------------------------------------
-
-    async def _ensure_resources(self) -> bool:
-        """Create the Zep user and thread if they do not already exist.
-
-        Delegates to :func:`~zep_ms_agent_framework.provisioning.ensure_user`
-        and :func:`~zep_ms_agent_framework.provisioning.ensure_thread`, the
-        same create-then-catch-conflict helpers available for out-of-band
-        provisioning. Idempotent and cached: succeeds for users/threads that
-        already exist and only runs the ``on_user_created`` hook for
-        genuinely new users.
-
-        This is the hot path: unlike calling :func:`~.provisioning.ensure_user`
-        directly (where a genuine failure or an ``on_created`` hook error
-        propagates to the caller), here every failure -- including a hook
-        failure -- is logged and swallowed so a Zep or setup-code outage
-        never raises into ``before_run``/``after_run``. Out-of-band callers
-        that need loud failures should call ``ensure_user``/``ensure_thread``
-        directly instead of relying on this lazy path.
-
-        Returns:
-            ``True`` if the user and thread are ready (created or pre-existing),
-            ``False`` on a genuine failure (so the caller can skip this turn and
-            retry on the next).
-        """
-        if self._resources_ready:
-            return True
-
-        try:
-            await _ensure_user(
-                self._zep,
-                user_id=self._user_id,
-                first_name=self._first_name,
-                last_name=self._last_name,
-                email=self._email,
-                on_created=self._on_user_created,
-            )
-        except Exception as exc:
-            # Covers both a genuine SDK failure and an on_user_created hook
-            # error -- either way, the hot path must degrade, not raise.
-            logger.warning("Failed to create Zep user %s: %s", self._user_id, exc)
-            return False
-
-        try:
-            await _ensure_thread(self._zep, thread_id=self._thread_id, user_id=self._user_id)
-        except Exception as exc:
-            logger.warning("Failed to create Zep thread %s: %s", self._thread_id, exc)
-            return False
-
-        self._resources_ready = True
-        return True
+    @property
+    def graph_uuid(self) -> str | None:
+        """The UUID of the graph of the user, when the application supplied it."""
+        return self._graph_uuid
 
     # ------------------------------------------------------------------
     # Message extraction
@@ -491,7 +421,7 @@ class ZepContextProvider(ContextProvider):
 
         A Zep failure is logged and the run continues without injected memory.
 
-        Note on identity: this provider resolves ``user_id``/``thread_id``
+        Note on identity: this provider resolves ``user_uuid``/``thread_uuid``
         from constructor arguments, not from ``session``/``state``. See the
         class docstring's "per-run identity" note for why and what to do in
         multi-user deployments.
@@ -505,9 +435,6 @@ class ZepContextProvider(ContextProvider):
 
         user_text = self._latest_user_text(context.input_messages)
         if not user_text:
-            return
-
-        if not await self._ensure_resources():
             return
 
         # Guard against Zep's 4,096-char message limit: truncate (never silently
@@ -539,9 +466,9 @@ class ZepContextProvider(ContextProvider):
         """
         try:
             response = await self._zep.thread.add_messages(
-                thread_id=self._thread_id,
+                self._thread_uuid,
                 messages=[
-                    ZepMessage(
+                    AddMessage(
                         role="user",
                         content=user_text,
                         name=self._user_message_name,
@@ -553,7 +480,7 @@ class ZepContextProvider(ContextProvider):
             context_block = response.context if response else None
             logger.info(
                 "Persisted user message to Zep (thread=%s). Context length: %s",
-                self._thread_id,
+                self._thread_uuid,
                 len(context_block) if context_block else 0,
             )
             return True, context_block
@@ -590,9 +517,9 @@ class ZepContextProvider(ContextProvider):
 
         async def _persist() -> None:
             await self._zep.thread.add_messages(
-                thread_id=self._thread_id,
+                self._thread_uuid,
                 messages=[
-                    ZepMessage(
+                    AddMessage(
                         role="user",
                         content=user_text,
                         name=self._user_message_name,
@@ -600,14 +527,15 @@ class ZepContextProvider(ContextProvider):
                 ],
                 ignore_roles=self._ignore_roles,
             )
-            logger.info("Persisted user message to Zep (thread=%s).", self._thread_id)
+            logger.info("Persisted user message to Zep (thread=%s).", self._thread_uuid)
 
         async def _build() -> str | None:
             context_input = ContextInput(
                 zep=self._zep,
-                user_id=self._user_id,
-                thread_id=self._thread_id,
+                user_uuid=self._user_uuid,
+                thread_uuid=self._thread_uuid,
                 user_message=user_text,
+                graph_uuid=self._graph_uuid,
                 session_context=session_context,
             )
             return await context_builder(context_input)
@@ -664,7 +592,7 @@ class ZepContextProvider(ContextProvider):
         if not self._user_turn_persisted:
             logger.debug(
                 "Skipping assistant persist: this run's user turn was not persisted (thread=%s).",
-                self._thread_id,
+                self._thread_uuid,
             )
             return
 
@@ -674,9 +602,9 @@ class ZepContextProvider(ContextProvider):
 
         try:
             await self._zep.thread.add_messages(
-                thread_id=self._thread_id,
+                self._thread_uuid,
                 messages=[
-                    ZepMessage(
+                    AddMessage(
                         role="assistant",
                         content=assistant_text,
                         name=self._assistant_message_name,
@@ -686,7 +614,7 @@ class ZepContextProvider(ContextProvider):
             )
             logger.info(
                 "Persisted assistant response to Zep thread %s (%d chars)",
-                self._thread_id,
+                self._thread_uuid,
                 len(assistant_text),
             )
         except Exception:

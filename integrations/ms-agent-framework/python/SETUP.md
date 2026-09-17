@@ -34,7 +34,11 @@ cd zep/integrations/ms-agent-framework/python
 make install        # uv sync --extra dev (includes agent-framework-openai)
 ```
 
-Requirements: Python 3.11+, `agent-framework-core>=1.8.1`, `zep-cloud>=3.23.0`.
+Requirements: Python 3.11+, `agent-framework-core>=1.8.1`, `zep-cloud==4.0.0a5`.
+
+`zep-cloud` 4.0.0a5 is a pre-release. With `pip`, install it with
+`pip install --pre "zep-cloud==4.0.0a5"`. With `uv`, install it with
+`uv add "zep-cloud==4.0.0a5" --prerelease=allow`.
 
 ## 4. Configure environment variables
 
@@ -62,10 +66,16 @@ python examples/basic_agent.py
 
 The example:
 
-1. Seeds facts about a user across two turns in one thread.
-2. Waits for Zep to process the knowledge graph (ingestion is asynchronous).
-3. Starts a **new** thread for the same user and asks recall questions — the
+1. Creates a Zep user and two threads, and reads the UUIDs from the create
+   responses. Zep v4 addresses a user, a thread, and a graph by a
+   server-generated UUID.
+2. Seeds facts about the user across two turns in the first thread.
+3. Polls the graph episodes until Zep processes them, because ingestion is
+   asynchronous.
+4. Starts a **new** thread for the same user and asks recall questions — the
    agent answers using facts fused into the user's graph from the first thread.
+5. Checks the answers for the seeded facts and fails if the agent recalls none
+   of them.
 
 ## 6. Run the tests
 
@@ -89,7 +99,7 @@ uv run pytest tests/test_integration.py -v -s -m integration
 - **`ModuleNotFoundError: agent_framework.openai`** — install the model
   provider used by the example: `pip install agent-framework-openai`.
 - **Recall returns nothing** — Zep ingestion is asynchronous; a just-added fact
-  is not instantly retrievable. The example waits ~20s; increase the wait if
-  your graph is large or under load.
+  is not instantly retrievable. The example polls the episodes for up to 180
+  seconds; increase the timeout if your graph is large or under load.
 - **Authentication errors** — confirm `ZEP_API_KEY` is set in the same shell and
   belongs to the intended project.
