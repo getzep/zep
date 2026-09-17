@@ -5,6 +5,10 @@ Demonstrates registering all Zep tools (search memory, add memory,
 search graph, add graph data) and using them in a GroupChat with
 multiple agents.
 
+Zep v4 addresses every user, thread, and graph by a server-generated UUID.
+The example creates the user and the thread one time and keeps the UUIDs
+from the responses.
+
 Prerequisites:
     export ZEP_API_KEY="your-zep-cloud-api-key"
     export OPENAI_API_KEY="your-openai-api-key"
@@ -12,25 +16,22 @@ Prerequisites:
 
 import asyncio
 import os
-import uuid
 
 from autogen import AssistantAgent, GroupChat, GroupChatManager, LLMConfig, UserProxyAgent
 from zep_cloud.client import AsyncZep
 
-from zep_ag2 import register_all_tools
+from zep_ag2 import create_thread, create_user, register_all_tools
 
 
 async def main() -> None:
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
-    user_id = f"user_{uuid.uuid4().hex[:16]}"
-    session_id = f"thread_{uuid.uuid4().hex[:16]}"
 
-    # Create user and thread
-    try:
-        await zep.user.add(user_id=user_id, email="bob@example.com", first_name="Bob")
-        await zep.thread.create(thread_id=session_id, user_id=user_id)
-    except Exception as e:
-        print(f"Setup: {e}")
+    # Create the user and the thread one time, and keep their UUIDs.
+    user = await create_user(zep, first_name="Bob", email="bob@example.com")
+    thread = await create_thread(zep, user_uuid=user.uuid_ or "")
+
+    graph_uuid = user.graph_uuid or ""
+    thread_uuid = thread.uuid_ or ""
 
     llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
 
@@ -52,8 +53,8 @@ async def main() -> None:
     )
 
     # Register all tools on both agents, with user_proxy as executor
-    register_all_tools(researcher, user_proxy, zep, user_id=user_id, session_id=session_id)
-    register_all_tools(writer, user_proxy, zep, user_id=user_id, session_id=session_id)
+    register_all_tools(researcher, user_proxy, zep, graph_uuid, thread_uuid)
+    register_all_tools(writer, user_proxy, zep, graph_uuid, thread_uuid)
 
     # Create a group chat
     group_chat = GroupChat(

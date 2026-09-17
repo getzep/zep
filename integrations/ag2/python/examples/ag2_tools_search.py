@@ -4,6 +4,10 @@ AG2 + Zep Search Tool Example.
 Demonstrates registering only the search tool on an AG2 agent,
 useful for read-only knowledge retrieval scenarios.
 
+The tool searches the graph of one Zep user. Zep v4 addresses that graph
+by a server-generated UUID, which the application stores when it creates
+the user. Set ZEP_USER_UUID to the UUID of an existing user.
+
 Prerequisites:
     export ZEP_API_KEY="your-zep-cloud-api-key"
     export OPENAI_API_KEY="your-openai-api-key"
@@ -20,7 +24,9 @@ from zep_ag2 import create_search_memory_tool
 
 async def main() -> None:
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
-    user_id = "user_alice"
+
+    user = await zep.user.get(os.environ["ZEP_USER_UUID"])
+    graph_uuid = user.graph_uuid or ""
 
     llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
 
@@ -37,7 +43,7 @@ async def main() -> None:
     )
 
     # Register only the search tool
-    search_fn = create_search_memory_tool(zep, user_id=user_id)
+    search_fn = create_search_memory_tool(zep, graph_uuid)
     assistant.register_for_llm(description="Search memory for relevant information")(search_fn)
     user_proxy.register_for_execution()(search_fn)
 

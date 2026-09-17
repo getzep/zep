@@ -10,6 +10,10 @@ Exercises the full lifecycle against live Zep and OpenAI:
   4. A live AG2 agent, enriched with Zep context, recalls those facts in its reply.
   5. Zep resource verification via the SDK (user metadata, thread messages).
 
+Zep v4 addresses every user, thread, and graph by a server-generated UUID. The
+test creates the user and the threads one time and keeps the UUIDs from the
+responses.
+
 Requires:
     ZEP_API_KEY and OPENAI_API_KEY environment variables.
 
@@ -26,7 +30,6 @@ import logging
 import os
 import sys
 import time
-from uuid import uuid4
 
 import pytest
 
@@ -36,6 +39,7 @@ import pytest
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+ZEP_BASE_URL = os.environ.get("ZEP_BASE_URL", "https://api.getzep.com/api/v4")
 
 if not ZEP_API_KEY or not OPENAI_API_KEY:
     pytest.skip(
@@ -46,22 +50,37 @@ if not ZEP_API_KEY or not OPENAI_API_KEY:
 from autogen import AssistantAgent, LLMConfig, UserProxyAgent  # noqa: E402
 from zep_cloud.client import AsyncZep  # noqa: E402
 
-from zep_ag2 import ZepMemoryManager, register_all_tools  # noqa: E402
-
-# Unique IDs per run to avoid collisions.
-_suffix = uuid4().hex[:8]
-USER_ID = f"ag2-integ-{_suffix}"
-THREAD_1 = f"ag2-integ-t1-{_suffix}"
-THREAD_2 = f"ag2-integ-t2-{_suffix}"
+from zep_ag2 import ZepMemoryManager, create_thread, create_user, register_all_tools  # noqa: E402
 
 FIRST_NAME = "IntegTest"
 LAST_NAME = "User"
-EMAIL = f"integtest-{_suffix}@example.com"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("test_integration")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("openai").setLevel(logging.WARNING)
+
+KEYWORDS = ["acme", "data scientist", "portland", "hiking", "photography"]
+
+SEED_MESSAGES = [
+    {
+        "role": "user",
+        "name": FIRST_NAME,
+        "content": "My name is IntegTest. I work at Acme Corp as a data scientist.",
+    },
+    {"role": "assistant", "content": "Noted -- a data scientist at Acme Corp."},
+    {
+        "role": "user",
+        "name": FIRST_NAME,
+        "content": "I live in Portland, Oregon and I love hiking and photography.",
+    },
+    {"role": "assistant", "content": "Got it -- Portland, Oregon, hiking and photography."},
+]
+
+
+def make_client() -> AsyncZep:
+    """Create the v4 client with an explicit v4 base URL."""
+    return AsyncZep(api_key=ZEP_API_KEY, base_url=ZEP_BASE_URL)
 
 
 def check(description: str, condition: bool, detail: str = "") -> bool:
@@ -76,7 +95,7 @@ def check(description: str, condition: bool, detail: str = "") -> bool:
 
 async def wait_for_episodes_processed(
     zep: AsyncZep,
-    user_id: str,
+    graph_uuid: str,
     timeout_seconds: int = 300,
     poll_interval: float = 3.0,
 ) -> None:
@@ -87,19 +106,21 @@ async def wait_for_episodes_processed(
             logger.warning("Timed out waiting for episode processing; continuing.")
             return
         try:
-            resp = await zep.graph.episode.get_by_user_id(user_id=user_id, lastn=20)
+            pager = await zep.graph.episode.list(graph_uuid, limit=20)
         except Exception as exc:
             logger.warning("Episode poll failed (%s); retrying.", exc)
             await asyncio.sleep(poll_interval)
             continue
-        episodes = resp.episodes or []
+        episodes = pager.items or []
         if episodes and all(e.processed for e in episodes):
             logger.info("All %d episodes processed.", len(episodes))
             return
         await asyncio.sleep(poll_interval)
 
 
-def build_agent(zep: AsyncZep, thread_id: str) -> tuple[AssistantAgent, UserProxyAgent]:
+def build_agent(
+    zep: AsyncZep, graph_uuid: str, thread_uuid: str
+) -> tuple[AssistantAgent, UserProxyAgent]:
     """Build an AG2 assistant/user pair wired to Zep memory on the given thread."""
     llm_config = LLMConfig({"model": OPENAI_MODEL, "api_key": OPENAI_API_KEY})
     assistant = AssistantAgent(
@@ -116,57 +137,51 @@ def build_agent(zep: AsyncZep, thread_id: str) -> tuple[AssistantAgent, UserProx
         code_execution_config=False,
         is_termination_msg=lambda msg: "TERMINATE" in (msg.get("content") or ""),
     )
-    register_all_tools(assistant, user_proxy, zep, user_id=USER_ID, session_id=thread_id)
+    register_all_tools(assistant, user_proxy, zep, graph_uuid, thread_uuid)
     return assistant, user_proxy
 
 
 async def main() -> None:
-    zep = AsyncZep(api_key=ZEP_API_KEY)
+    zep = make_client()
     passed = True
-
-    print(f"\n{'=' * 70}")
-    print("Zep AG2 Integration Test")
-    print(f"  User:    {USER_ID}")
-    print(f"  Threads: {THREAD_1}, {THREAD_2}")
-    print(f"{'=' * 70}\n")
+    user_uuid = ""
 
     try:
         # -- One-time Zep setup: create the user and thread out-of-band. ------
-        await zep.user.add(user_id=USER_ID, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
-        await zep.thread.create(thread_id=THREAD_1, user_id=USER_ID)
+        user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME)
+        user_uuid = user.uuid_ or ""
+        graph_uuid = user.graph_uuid or ""
+        thread_1 = await create_thread(zep, user_uuid=user_uuid)
+        thread_1_uuid = thread_1.uuid_ or ""
+
+        print(f"\n{'=' * 70}")
+        print("Zep AG2 Integration Test")
+        print(f"  User UUID:   {user_uuid}")
+        print(f"  Graph UUID:  {graph_uuid}")
+        print(f"  Thread UUID: {thread_1_uuid}")
+        print(f"{'=' * 70}\n")
 
         # -- Conversation 1: seed facts via the integration. -----------------
         print("[Step 1] Conversation 1: seeding facts...")
-        manager1 = ZepMemoryManager(zep, user_id=USER_ID, session_id=THREAD_1)
-        seeds = [
-            ("user", "My name is IntegTest. I work at Acme Corp as a data scientist."),
-            (
-                "assistant",
-                "Nice to meet you, IntegTest -- noted that you're a data scientist at Acme Corp.",
-            ),
-            ("user", "I live in Portland, Oregon and I love hiking and photography."),
-            ("assistant", "Got it -- Portland, Oregon, plus hiking and photography."),
-        ]
-        await manager1.add_messages(
-            [
-                {"role": role, "content": content, "name": FIRST_NAME if role == "user" else None}
-                for role, content in seeds
-            ]
-        )
-        for role, content in seeds:
-            print(f"  {role.capitalize()}: {content}")
+        manager1 = ZepMemoryManager(zep, user_uuid, thread_1_uuid, graph_uuid=graph_uuid)
+        await manager1.add_messages(SEED_MESSAGES)
+        for message in SEED_MESSAGES:
+            print(f"  {message['role'].capitalize()}: {message['content']}")
 
         # -- Verify user metadata --------------------------------------------
         print("\n[Step 2] Verifying Zep user metadata...")
-        user = await zep.user.get(user_id=USER_ID)
-        passed &= check("first_name matches", user.first_name == FIRST_NAME, str(user.first_name))
-        passed &= check("last_name matches", user.last_name == LAST_NAME, str(user.last_name))
-        passed &= check("email matches", user.email == EMAIL, str(user.email))
+        stored_user = await zep.user.get(user_uuid)
+        passed &= check(
+            "first_name matches", stored_user.first_name == FIRST_NAME, str(stored_user.first_name)
+        )
+        passed &= check(
+            "last_name matches", stored_user.last_name == LAST_NAME, str(stored_user.last_name)
+        )
 
         # -- Verify thread 1 captured both sides -----------------------------
         print("\n[Step 3] Verifying thread 1 messages...")
-        t1 = await zep.thread.get(thread_id=THREAD_1, lastn=20)
-        messages = t1.messages or []
+        pager = await zep.thread.list_messages(thread_1_uuid, limit=20)
+        messages = pager.items or []
         user_msgs = [m for m in messages if m.role == "user"]
         asst_msgs = [m for m in messages if m.role == "assistant"]
         print(f"  {len(user_msgs)} user, {len(asst_msgs)} assistant messages")
@@ -175,18 +190,18 @@ async def main() -> None:
 
         # -- Wait for graph ingestion ----------------------------------------
         print("\n[Step 4] Waiting for Zep to process episodes...")
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
+        await wait_for_episodes_processed(zep, graph_uuid, timeout_seconds=300)
 
         # -- Conversation 2: cross-thread memory recall ----------------------
         print("\n[Step 5] Conversation 2: cross-thread memory recall...")
-        await zep.thread.create(thread_id=THREAD_2, user_id=USER_ID)
-        manager2 = ZepMemoryManager(zep, user_id=USER_ID, session_id=THREAD_2)
+        thread_2 = await create_thread(zep, user_uuid=user_uuid)
+        thread_2_uuid = thread_2.uuid_ or ""
+        manager2 = ZepMemoryManager(zep, user_uuid, thread_2_uuid, graph_uuid=graph_uuid)
         context = await manager2.get_memory_context(
             query="What do we know about IntegTest's job, location, and hobbies?"
         )
         recalled = context.lower()
-        keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
-        found = [kw for kw in keywords if kw in recalled]
+        found = [kw for kw in KEYWORDS if kw in recalled]
         print(f"  Recalled keywords (context block): {found}")
         passed &= check(
             "Zep context recalls facts from conversation 1",
@@ -194,7 +209,7 @@ async def main() -> None:
             f"found={found}",
         )
 
-        assistant, user_proxy = build_agent(zep, THREAD_2)
+        assistant, user_proxy = build_agent(zep, graph_uuid, thread_2_uuid)
         await manager2.enrich_system_message(assistant, query="IntegTest profile and hobbies")
         result = user_proxy.initiate_chat(
             assistant,
@@ -207,7 +222,7 @@ async def main() -> None:
         transcript = " ".join(
             str(m.get("content") or "") for m in (result.chat_history or [])
         ).lower()
-        agent_found = [kw for kw in keywords if kw in transcript]
+        agent_found = [kw for kw in KEYWORDS if kw in transcript]
         print(f"  Agent recalled keywords: {agent_found}")
         passed &= check(
             "Agent recalled facts from conversation 1",
@@ -218,8 +233,9 @@ async def main() -> None:
     finally:
         print("\n[Cleanup] Deleting test user...")
         try:
-            await zep.user.delete(user_id=USER_ID)
-            print(f"  Deleted {USER_ID}")
+            if user_uuid:
+                await zep.user.delete(user_uuid)
+                print(f"  Deleted {user_uuid}")
         except Exception as exc:
             print(f"  Warning: could not delete user: {exc}")
 
@@ -233,53 +249,39 @@ async def main() -> None:
 @pytest.mark.asyncio
 async def test_integration_full_lifecycle() -> None:
     """Pytest entry point for the live integration test."""
-    zep = AsyncZep(api_key=ZEP_API_KEY)
+    zep = make_client()
+    user_uuid = ""
 
     try:
-        await zep.user.add(user_id=USER_ID, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
-        await zep.thread.create(thread_id=THREAD_1, user_id=USER_ID)
+        user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME)
+        user_uuid = user.uuid_ or ""
+        graph_uuid = user.graph_uuid or ""
+        thread_1 = await create_thread(zep, user_uuid=user_uuid)
+        thread_1_uuid = thread_1.uuid_ or ""
 
-        manager1 = ZepMemoryManager(zep, user_id=USER_ID, session_id=THREAD_1)
-        await manager1.add_messages(
-            [
-                {
-                    "role": "user",
-                    "name": FIRST_NAME,
-                    "content": "My name is IntegTest. I work at Acme Corp as a data scientist.",
-                },
-                {"role": "assistant", "content": "Noted -- a data scientist at Acme Corp."},
-                {
-                    "role": "user",
-                    "name": FIRST_NAME,
-                    "content": "I live in Portland, Oregon and I love hiking and photography.",
-                },
-                {
-                    "role": "assistant",
-                    "content": "Got it -- Portland, Oregon, hiking and photography.",
-                },
-            ]
-        )
+        manager1 = ZepMemoryManager(zep, user_uuid, thread_1_uuid, graph_uuid=graph_uuid)
+        await manager1.add_messages(SEED_MESSAGES)
 
-        user = await zep.user.get(user_id=USER_ID)
-        assert user.first_name == FIRST_NAME
-        assert user.email == EMAIL
+        stored_user = await zep.user.get(user_uuid)
+        assert stored_user.first_name == FIRST_NAME
+        assert stored_user.last_name == LAST_NAME
 
-        t1 = await zep.thread.get(thread_id=THREAD_1, lastn=20)
-        messages = t1.messages or []
+        pager = await zep.thread.list_messages(thread_1_uuid, limit=20)
+        messages = pager.items or []
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)
 
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
+        await wait_for_episodes_processed(zep, graph_uuid, timeout_seconds=300)
 
-        await zep.thread.create(thread_id=THREAD_2, user_id=USER_ID)
-        manager2 = ZepMemoryManager(zep, user_id=USER_ID, session_id=THREAD_2)
+        thread_2 = await create_thread(zep, user_uuid=user_uuid)
+        thread_2_uuid = thread_2.uuid_ or ""
+        manager2 = ZepMemoryManager(zep, user_uuid, thread_2_uuid, graph_uuid=graph_uuid)
         context = await manager2.get_memory_context(
             query="What do we know about IntegTest's job, location, and hobbies?"
         )
-        keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
-        assert any(kw in context.lower() for kw in keywords), f"no recall in context: {context}"
+        assert any(kw in context.lower() for kw in KEYWORDS), f"no recall in context: {context}"
 
-        assistant, user_proxy = build_agent(zep, THREAD_2)
+        assistant, user_proxy = build_agent(zep, graph_uuid, thread_2_uuid)
         await manager2.enrich_system_message(assistant, query="IntegTest profile and hobbies")
         result = user_proxy.initiate_chat(
             assistant,
@@ -292,10 +294,11 @@ async def test_integration_full_lifecycle() -> None:
         transcript = " ".join(
             str(m.get("content") or "") for m in (result.chat_history or [])
         ).lower()
-        assert any(kw in transcript for kw in keywords), f"no recall in: {transcript}"
+        assert any(kw in transcript for kw in KEYWORDS), f"no recall in: {transcript}"
     finally:
         try:
-            await zep.user.delete(user_id=USER_ID)
+            if user_uuid:
+                await zep.user.delete(user_uuid)
         except Exception:
             pass
 

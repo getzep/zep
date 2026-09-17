@@ -3,6 +3,9 @@ Manual integration test for zep-ag2.
 
 Run this to verify the integration works end-to-end with real Zep and OpenAI APIs.
 
+Zep v4 addresses every user, thread, and graph by a server-generated UUID.
+Each test creates its resources and keeps the UUIDs from the responses.
+
 Prerequisites:
     export ZEP_API_KEY="your-zep-cloud-api-key"
     export OPENAI_API_KEY="your-openai-api-key"
@@ -16,7 +19,6 @@ Usage:
 import asyncio
 import os
 import sys
-import uuid
 
 
 def check_env() -> bool:
@@ -42,6 +44,8 @@ async def test_1_imports() -> bool:
             create_add_memory_tool,
             create_search_graph_tool,
             create_search_memory_tool,
+            create_thread,
+            create_user,
             register_all_tools,
         )
 
@@ -70,16 +74,18 @@ async def test_2_zep_connection() -> bool:
     print("\n=== Test 2: Zep API Connection ===")
     from zep_cloud.client import AsyncZep
 
+    from zep_ag2 import create_user
+
     try:
         zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
-        # Try listing users as a connectivity check
-        user_id = f"test_ag2_{uuid.uuid4().hex[:8]}"
-        await zep.user.add(user_id=user_id, first_name="TestUser")
-        print(f"  OK: Created test user '{user_id}'")
+        # Create and delete one user as a connectivity check
+        user = await create_user(zep, first_name="TestUser")
+        user_uuid = user.uuid_ or ""
+        print(f"  OK: Created test user '{user_uuid}'")
 
         # Clean up
-        await zep.user.delete(user_id)
-        print(f"  OK: Deleted test user '{user_id}'")
+        await zep.user.delete(user_uuid)
+        print(f"  OK: Deleted test user '{user_uuid}'")
         return True
     except Exception as e:
         print(f"  FAIL: {e}")
@@ -91,21 +97,23 @@ async def test_3_memory_manager() -> bool:
     print("\n=== Test 3: ZepMemoryManager ===")
     from zep_cloud.client import AsyncZep
 
-    from zep_ag2 import ZepMemoryManager
+    from zep_ag2 import ZepMemoryManager, create_thread, create_user
 
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
-    user_id = f"test_ag2_{uuid.uuid4().hex[:8]}"
-    thread_id = f"thread_{uuid.uuid4().hex[:8]}"
+    user_uuid = ""
+    thread_uuid = ""
 
     try:
         # Setup
-        await zep.user.add(user_id=user_id, first_name="Alice")
-        await zep.thread.create(thread_id=thread_id, user_id=user_id)
-        print(f"  OK: Created user '{user_id}' and thread '{thread_id}'")
+        user = await create_user(zep, first_name="Alice")
+        user_uuid = user.uuid_ or ""
+        thread = await create_thread(zep, user_uuid=user_uuid)
+        thread_uuid = thread.uuid_ or ""
+        print(f"  OK: Created user '{user_uuid}' and thread '{thread_uuid}'")
 
         # Create manager
-        mgr = ZepMemoryManager(zep, user_id=user_id, session_id=thread_id)
-        print(f"  OK: ZepMemoryManager created (user={mgr.user_id}, session={mgr.session_id})")
+        mgr = ZepMemoryManager(zep, user_uuid, thread_uuid, graph_uuid=user.graph_uuid)
+        print(f"  OK: ZepMemoryManager created (user={mgr.user_uuid}, thread={mgr.thread_uuid})")
 
         # Add messages
         await mgr.add_messages(
@@ -152,8 +160,10 @@ async def test_3_memory_manager() -> bool:
         return False
     finally:
         try:
-            await zep.thread.delete(thread_id)
-            await zep.user.delete(user_id)
+            if thread_uuid:
+                await zep.thread.delete(thread_uuid)
+            if user_uuid:
+                await zep.user.delete(user_uuid)
             print("  OK: Cleaned up user and thread")
         except Exception:
             pass
@@ -169,21 +179,26 @@ async def test_4_tool_factories() -> bool:
         create_add_memory_tool,
         create_search_graph_tool,
         create_search_memory_tool,
+        create_thread,
+        create_user,
     )
 
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
-    user_id = f"test_ag2_{uuid.uuid4().hex[:8]}"
-    thread_id = f"thread_{uuid.uuid4().hex[:8]}"
+    user_uuid = ""
+    thread_uuid = ""
 
     try:
-        await zep.user.add(user_id=user_id, first_name="Bob")
-        await zep.thread.create(thread_id=thread_id, user_id=user_id)
+        user = await create_user(zep, first_name="Bob")
+        user_uuid = user.uuid_ or ""
+        graph_uuid = user.graph_uuid or ""
+        thread = await create_thread(zep, user_uuid=user_uuid)
+        thread_uuid = thread.uuid_ or ""
 
         # Create tools
-        search_mem = create_search_memory_tool(zep, user_id=user_id)
-        add_mem = create_add_memory_tool(zep, user_id=user_id, session_id=thread_id)
-        search_graph = create_search_graph_tool(zep, user_id=user_id)
-        add_graph = create_add_graph_data_tool(zep, user_id=user_id)
+        search_mem = create_search_memory_tool(zep, graph_uuid)
+        add_mem = create_add_memory_tool(zep, graph_uuid, thread_uuid)
+        search_graph = create_search_graph_tool(zep, graph_uuid)
+        add_graph = create_add_graph_data_tool(zep, graph_uuid)
         print("  OK: All 4 tool factories created tools")
 
         # Test add_memory tool
@@ -215,8 +230,10 @@ async def test_4_tool_factories() -> bool:
         return False
     finally:
         try:
-            await zep.thread.delete(thread_id)
-            await zep.user.delete(user_id)
+            if thread_uuid:
+                await zep.thread.delete(thread_uuid)
+            if user_uuid:
+                await zep.user.delete(user_uuid)
             print("  OK: Cleaned up")
         except Exception:
             pass
@@ -227,16 +244,19 @@ async def test_5_ag2_agent_with_tools() -> bool:
     print("\n=== Test 5: AG2 Agent with Zep Tools ===")
     from zep_cloud.client import AsyncZep
 
-    from zep_ag2 import ZepMemoryManager, register_all_tools
+    from zep_ag2 import ZepMemoryManager, create_thread, create_user, register_all_tools
 
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
-    user_id = f"test_ag2_{uuid.uuid4().hex[:8]}"
-    thread_id = f"thread_{uuid.uuid4().hex[:8]}"
+    user_uuid = ""
+    thread_uuid = ""
 
     try:
-        await zep.user.add(user_id=user_id, first_name="Charlie")
-        await zep.thread.create(thread_id=thread_id, user_id=user_id)
-        print(f"  OK: Created user '{user_id}' and thread '{thread_id}'")
+        user = await create_user(zep, first_name="Charlie")
+        user_uuid = user.uuid_ or ""
+        graph_uuid = user.graph_uuid or ""
+        thread = await create_thread(zep, user_uuid=user_uuid)
+        thread_uuid = thread.uuid_ or ""
+        print(f"  OK: Created user '{user_uuid}' and thread '{thread_uuid}'")
 
         from autogen import AssistantAgent, LLMConfig, UserProxyAgent
 
@@ -267,13 +287,11 @@ async def test_5_ag2_agent_with_tools() -> bool:
         print("  OK: AG2 agents created")
 
         # Register all Zep tools
-        tools = register_all_tools(
-            assistant, user_proxy, zep, user_id=user_id, session_id=thread_id
-        )
+        tools = register_all_tools(assistant, user_proxy, zep, graph_uuid, thread_uuid)
         print(f"  OK: Registered {len(tools)} tools: {list(tools.keys())}")
 
         # Enrich with any existing memory
-        mgr = ZepMemoryManager(zep, user_id=user_id, session_id=thread_id)
+        mgr = ZepMemoryManager(zep, user_uuid, thread_uuid, graph_uuid=graph_uuid)
         await mgr.enrich_system_message(assistant)
         print("  OK: System message enriched")
 
@@ -299,8 +317,10 @@ async def test_5_ag2_agent_with_tools() -> bool:
         return False
     finally:
         try:
-            await zep.thread.delete(thread_id)
-            await zep.user.delete(user_id)
+            if thread_uuid:
+                await zep.thread.delete(thread_uuid)
+            if user_uuid:
+                await zep.user.delete(user_uuid)
         except Exception:
             pass
 

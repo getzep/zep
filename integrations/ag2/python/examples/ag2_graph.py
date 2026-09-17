@@ -4,6 +4,10 @@ AG2 + Zep Knowledge Graph Example.
 Demonstrates how to use ZepGraphMemoryManager to enrich an AG2 agent
 with knowledge graph context and manage structured knowledge.
 
+Zep v4 addresses every graph by a server-generated UUID. The example
+creates the graph one time and keeps the UUID from the response. A
+production application stores that UUID in its own database.
+
 Prerequisites:
     export ZEP_API_KEY="your-zep-cloud-api-key"
     export OPENAI_API_KEY="your-openai-api-key"
@@ -20,7 +24,9 @@ from zep_ag2 import ZepGraphMemoryManager, create_add_graph_data_tool, create_se
 
 async def main() -> None:
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
-    graph_id = "company_knowledge_base"
+
+    graph = await zep.graph.create(name="company_knowledge_base")
+    graph_uuid = graph.uuid_ or ""
 
     # Configure AG2 agents
     llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
@@ -38,8 +44,8 @@ async def main() -> None:
     )
 
     # Create and register graph tools
-    search_tool = create_search_graph_tool(zep, graph_id=graph_id)
-    add_tool = create_add_graph_data_tool(zep, graph_id=graph_id)
+    search_tool = create_search_graph_tool(zep, graph_uuid)
+    add_tool = create_add_graph_data_tool(zep, graph_uuid)
 
     assistant.register_for_llm(description="Search the knowledge graph")(search_tool)
     user_proxy.register_for_execution()(search_tool)
@@ -48,7 +54,7 @@ async def main() -> None:
     user_proxy.register_for_execution()(add_tool)
 
     # Optionally enrich system message with existing knowledge
-    graph_mgr = ZepGraphMemoryManager(zep, graph_id=graph_id)
+    graph_mgr = ZepGraphMemoryManager(zep, graph_uuid)
     await graph_mgr.enrich_system_message(assistant, query="company policies")
 
     # Run conversation

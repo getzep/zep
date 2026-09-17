@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The package now uses the Zep v4 SDK (`zep-cloud==4.0.0a5`). The package targets v4 only and gives no v3 compatibility.
+- The public API takes server-generated UUIDs. `ZepMemoryManager` takes `client`, `user_uuid`, and an optional `thread_uuid`, with an optional `graph_uuid` keyword. `ZepGraphMemoryManager` takes `client` and `graph_uuid`. Every tool factory and `register_all_tools` take `graph_uuid` and, where a thread is needed, `thread_uuid`.
+- Graph search calls the scope-specific v4 methods `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, and `graph.search_thread_summaries`. The new `auto` scope calls `graph.get_context`, which accepts neither a reranker nor a limit.
+- Conversation context comes from `thread.get_context`, and messages go to `thread.add_messages` with the `AddMessage` model.
+- Graph ingestion calls `graph.episode.add`, and the recent-episode read calls `graph.episode.list`.
+- The examples, the README, and SETUP.md show the UUID workflow.
+
+### Added
+
+- `create_user` and `create_thread` in `zep_ag2.provisioning`. Both create the resource and return the SDK object, so the application can store `user.uuid_`, `user.graph_uuid`, and `thread.uuid_`. `create_user` keeps the optional `on_created` hook, which now receives the UUID of the user.
+
+### Removed
+
+- `ensure_user`, `ensure_thread`, and the lazy provisioning path of `ZepMemoryManager` (`ensure_user_and_thread`, and the constructor arguments `first_name`, `last_name`, `email`, and `on_created`). v4 resources have server-generated UUIDs, so the integration cannot create a resource from a name at run time. Create the user and the thread out-of-band, and give the manager the UUIDs.
+
 ## [0.2.1] - 2026-07-29
 
 ### Added
