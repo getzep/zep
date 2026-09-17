@@ -77,6 +77,7 @@ def _validated_replay(episodes: Iterable[Episode]) -> Iterator[Iterator[Episode]
                 episode.data_type,
                 episode.created_at,
                 episode.metadata,
+                episode.document_id,
                 episode.document,
             )
             pickle.dump(record, spool, protocol=pickle.HIGHEST_PROTOCOL)
@@ -85,7 +86,9 @@ def _validated_replay(episodes: Iterable[Episode]) -> Iterator[Iterator[Episode]
         def replay() -> Iterator[Episode]:
             while True:
                 try:
-                    data, data_type, created_at, metadata, document = pickle.load(spool)
+                    data, data_type, created_at, metadata, document_id, document = pickle.load(
+                        spool
+                    )
                 except EOFError:
                     return
                 yield Episode(
@@ -93,6 +96,7 @@ def _validated_replay(episodes: Iterable[Episode]) -> Iterator[Iterator[Episode]
                     data_type=data_type,
                     created_at=created_at,
                     metadata=metadata,
+                    document_id=document_id,
                     document=document,
                 )
 
@@ -231,7 +235,6 @@ def ingest_slack_export(
     user_id: str | None = None,
     channels: Sequence[str] | None = None,
     conversation_types: Sequence[ConversationType] = DEFAULT_CONVERSATION_TYPES,
-    grouping: Literal["thread", "message"] = "thread",
     include_bots: bool = False,
     skip_subtypes: frozenset[str] = DEFAULT_SKIP_SUBTYPES,
     formatter: Callable[..., str] | None = None,
@@ -241,6 +244,8 @@ def ingest_slack_export(
 ) -> IngestResult:
     """One-liner: Slack workspace export (.zip or directory) → Zep graph.
 
+    One episode per message under a Slack-thread ``document_id``, plus a
+    channel-level document of top-level messages in order.
     Ingests public channels only unless ``conversation_types`` says otherwise;
     private channels, DMs and group DMs found in the export but not selected
     are reported in ``result.warnings``.
@@ -249,7 +254,6 @@ def ingest_slack_export(
         path,
         channels=channels,
         conversation_types=conversation_types,
-        grouping=grouping,
         include_bots=include_bots,
         skip_subtypes=skip_subtypes,
         formatter=formatter,

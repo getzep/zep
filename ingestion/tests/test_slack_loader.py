@@ -23,6 +23,18 @@ def general(episodes: list[Episode]) -> list[Episode]:
     return [e for e in episodes if e.metadata and e.metadata.get("channel") == "general"]
 
 
+def thread_pass(episodes: list[Episode]) -> list[Episode]:
+    """The first copy of each message (Slack-thread document), excluding the
+    per-channel top-level duplicate."""
+    return [
+        e
+        for e in episodes
+        if e.document_id
+        and e.document_id.startswith("slack:")
+        and not e.document_id.startswith("slack-channel:")
+    ]
+
+
 def iso(ts: str) -> str:
     return datetime.fromtimestamp(float(ts), tz=UTC).isoformat()
 
@@ -136,11 +148,11 @@ class TestBasics:
 
     def test_general_channel_episode_order_and_count(self):
         eps = general(load())
-        # hello, thread (parent + 2 replies), markup message — join/bot/empty skipped
-        assert len(eps) == 3
+        # 5 thread-document episodes, then 3 top-level copies on the channel document
+        assert len(eps) == 8
         assert "Hello world" in eps[0].data
         assert "Should we deprioritize PROTOTYPE-202?" in eps[1].data
-        assert "check" in eps[2].data
+        assert "check" in eps[4].data
 
     def test_created_at_is_rfc3339_from_ts(self):
         eps = general(load())
@@ -150,27 +162,28 @@ class TestBasics:
         with pytest.raises(ConfigurationError):
             SlackExportLoader(FIXTURE / "does-not-exist")
 
-    def test_invalid_grouping_is_rejected_eagerly(self):
-        with pytest.raises(ConfigurationError, match="grouping"):
-            SlackExportLoader(FIXTURE, grouping="messages")  # type: ignore[arg-type]
 
+class TestThreadAsDocument:
+    def test_one_episode_per_message_shares_document_id(self):
+        eps = general(load())
+        parent = next(e for e in eps if "Should we deprioritize PROTOTYPE-202?" in e.data)
+        reply = next(e for e in eps if "yes, let's do that" in e.data)
+        later = next(e for e in eps if "Actually PROTOTYPE-202 stays active" in e.data)
+        hello = next(e for e in eps if "Hello world" in e.data)
+        assert parent.document_id == reply.document_id == later.document_id
+        assert parent.document_id is not None
+        assert hello.document_id != parent.document_id
 
-class TestThreadGrouping:
-    def test_thread_grouped_into_one_episode_across_day_files(self):
-        thread = general(load())[1]
-        lines = thread.data.split("\n")
-        assert len(lines) == 3  # parent + reply + cross-day reply (broadcast deduped)
-        assert "Should we deprioritize PROTOTYPE-202?" in lines[0]
-        assert "yes, let's do that" in lines[1]
-        assert "Actually PROTOTYPE-202 stays active" in lines[2]
+    def test_thread_reply_created_at_is_its_own_ts(self):
+        reply = next(e for e in general(load()) if "yes, let's do that" in e.data)
+        assert reply.created_at == iso("1718356100.000300")
 
-    def test_thread_created_at_is_parent_ts(self):
-        thread = general(load())[1]
-        assert thread.created_at == iso("1718356000.000200")
-
-    def test_thread_metadata_has_thread_ts(self):
-        thread = general(load())[1]
-        assert thread.metadata["thread_ts"] == "1718356000.000200"
+    def test_thread_metadata_has_slack_thread_ts_not_zep_thread(self):
+        parent = next(
+            e for e in general(load()) if "Should we deprioritize PROTOTYPE-202?" in e.data
+        )
+        assert parent.metadata["thread_ts"] == "1718356000.000200"
+        assert not hasattr(parent, "thread_id")
 
     def test_lone_reply_keeps_thread_ts_when_its_parent_was_filtered(self, tmp_path):
         """Message count is not the test for "is a thread": a reply whose parent was
@@ -195,14 +208,33 @@ class TestThreadGrouping:
         orphan = next(e for e in episodes if "orphan reply" in e.data)
         standalone = next(e for e in episodes if "standalone" in e.data)
         assert orphan.metadata["thread_ts"] == "1718400000.1"
-        assert "thread_ts" not in standalone.metadata  # not part of any thread
+        assert orphan.document_id == next(
+            e.document_id for e in episodes if e.metadata.get("thread_ts") == "1718400000.1"
+        )
+        assert "thread_ts" not in standalone.metadata  # not part of any Slack thread
 
-    def test_message_grouping_yields_one_episode_per_message(self):
-        eps = general(load(grouping="message"))
-        # hello + 3 thread messages + markup (broadcast deduped, join/bot/empty skipped)
-        assert len(eps) == 5
+    def test_channel_document_duplicates_top_level_only(self):
+        from zep_ingest.documents import document_id_for_slack_channel, document_id_for_slack_thread
+
+        eps = general(load())
+        channel_id = document_id_for_slack_channel("general")
+        channel_eps = [e for e in eps if e.document_id == channel_id]
+        assert [e.data for e in channel_eps] == [
+            next(e.data for e in eps if "Hello world" in e.data),
+            next(e.data for e in eps if "Should we deprioritize PROTOTYPE-202?" in e.data),
+            next(e.data for e in eps if "https://example.com" in e.data),
+        ]
         reply = next(e for e in eps if "yes, let's do that" in e.data)
-        assert reply.created_at == iso("1718356100.000300")
+        assert reply.document_id != channel_id
+        parent = next(e for e in eps if "Should we deprioritize PROTOTYPE-202?" in e.data)
+        parent_channel = next(
+            e for e in channel_eps if "Should we deprioritize PROTOTYPE-202?" in e.data
+        )
+        assert parent.document_id == document_id_for_slack_thread("general", "1718356000.000200")
+        assert parent.data == parent_channel.data
+        assert parent.created_at == parent_channel.created_at
+        assert parent.metadata == parent_channel.metadata
+        assert parent.document_id != parent_channel.document_id
 
 
 class TestFiltering:
@@ -274,12 +306,12 @@ class TestFiltering:
         assert not any("has joined" in e.data for e in load())
 
     def test_empty_messages_skipped(self):
-        for ep in load(grouping="message"):
+        for ep in load():
             assert ep.data.strip()
 
     def test_channel_filter(self):
         episodes = load(channels=["random"])
-        assert len(episodes) == 1
+        assert len(episodes) == 2
         assert "Random note" in episodes[0].data
         assert episodes[0].metadata["channel"] == "random"
 
@@ -287,7 +319,7 @@ class TestFiltering:
 class TestConversationTypes:
     def test_default_ingests_public_channels_only(self, tmp_path):
         episodes = load(mixed_export(tmp_path))
-        assert [e.metadata["conversation_type"] for e in episodes] == ["public_channel"]
+        assert {e.metadata["conversation_type"] for e in episodes} == {"public_channel"}
         assert "public channel message" in episodes[0].data
 
     def test_skipped_types_warn_with_counts_and_remedy(self, tmp_path):
@@ -312,7 +344,7 @@ class TestConversationTypes:
             conversation_types=["public_channel", "private_channel", "dm", "group_dm"],
         )
         episodes = list(loader.load())
-        assert len(episodes) == 4
+        assert len(episodes) == 8
         assert not any("conversation_types" in w for w in loader.warnings)
 
     def test_dms_only_selection(self, tmp_path):
@@ -322,7 +354,7 @@ class TestConversationTypes:
 
     def test_private_channels_only_selection(self, tmp_path):
         episodes = load(mixed_export(tmp_path), conversation_types=["private_channel"])
-        assert len(episodes) == 1
+        assert len(episodes) == 2
         assert episodes[0].metadata["channel"] == "leadership"
         assert episodes[0].data == (
             "Blake Carter (Slack #leadership, 2024-06-14 09:01 UTC): private channel message"
@@ -364,7 +396,7 @@ class TestConversationTypes:
             conversation_types=["public_channel", "private_channel"],
             channels=["leadership"],
         )
-        assert len(episodes) == 1
+        assert len(episodes) == 2
         assert episodes[0].metadata["channel"] == "leadership"
 
     def test_channel_of_unselected_type_raises_with_remedy(self, tmp_path):
@@ -378,7 +410,7 @@ class TestConversationTypes:
         export = mixed_export(tmp_path)
         by_id = load(export, conversation_types=["dm"], channels=["D01ABC234"])
         by_label = load(export, conversation_types=["dm"], channels=["Avery Brown, Blake Carter"])
-        assert len(by_id) == 1
+        assert len(thread_pass(by_id)) == 1
         assert [e.data for e in by_id] == [e.data for e in by_label]
 
     def test_unknown_channel_error_lists_dm_ids_with_their_labels(self, tmp_path):
@@ -430,10 +462,10 @@ class TestFormatting:
         assert "avery (" not in eps[0].data
 
     def test_name_source_fallbacks(self):
-        eps = general(load())
+        bodies = " ".join(e.data for e in general(load()))
         # Blake Carter has empty display_name -> real_name; charlie has neither -> name
-        assert "Blake Carter" in eps[1].data
-        assert "charlie" in eps[1].data
+        assert "Blake Carter" in bodies
+        assert "charlie" in bodies
 
     def test_display_name_is_used_when_no_real_name_exists(self, tmp_path):
         export = tmp_path / "export"
@@ -446,7 +478,7 @@ class TestFormatting:
             json.dumps([{"type": "message", "user": "U1", "text": "Hi", "ts": "1718355600.000100"}])
         )
         loader = SlackExportLoader(export)
-        [episode] = list(loader.load())
+        episode = thread_pass(list(loader.load()))[0]
         assert "Morgan Lee" in episode.data
         # a full name, handle-shaped or not, is not worth warning about
         assert not any("no real_name" in w for w in loader.warnings)
@@ -468,7 +500,7 @@ class TestFormatting:
         assert None in captured  # the fixture's bot post carries a username, not an id
 
     def test_markup_normalization(self):
-        markup = general(load())[2].data
+        markup = next(e.data for e in general(load()) if "https://example.com" in e.data)
         assert markup == (
             "Blake Carter (Slack #general, 2024-06-15 09:08 UTC): "
             "@Avery Brown and @U999 check #random @here & see "
@@ -560,7 +592,7 @@ class TestWeakNameWarnings:
             )
         )
         loader = SlackExportLoader(export)
-        [episode] = list(loader.load())
+        episode = thread_pass(list(loader.load()))[0]
         assert "@riley" in episode.data
         assert any("riley" in w for w in loader.warnings if "no real_name" in w)
 
@@ -595,7 +627,7 @@ class TestWeakNamesFromSkippedMessages:
             ],
         )
         loader = SlackExportLoader(export)
-        [episode] = list(loader.load())
+        episode = thread_pass(list(loader.load()))[0]
         assert "riley" not in episode.data
         assert any("not a number" in w for w in loader.warnings)  # it really was dropped
         assert not any("no real_name" in w for w in loader.warnings)
@@ -632,7 +664,7 @@ class TestWeakNamesFromSkippedMessages:
             tmp_path, [{"user": "U1", "text": "ask <@U2>", "ts": "1718355600.000100"}]
         )
         loader = SlackExportLoader(export)
-        [episode] = list(loader.load())
+        episode = thread_pass(list(loader.load()))[0]
         assert "@riley" in episode.data
         assert any("riley" in w for w in loader.warnings if "no real_name" in w)
 
@@ -684,7 +716,7 @@ class TestWeakNamesInDmLabels:
 
     def test_handle_only_dm_member_is_reported(self, tmp_path):
         loader = SlackExportLoader(self.dm_export(tmp_path), conversation_types=["dm"])
-        [episode] = list(loader.load())
+        episode = thread_pass(list(loader.load()))[0]
         # the handle is in the episode text and metadata, so it reaches extraction
         assert "riley" in episode.data
         assert "riley" in episode.metadata["channel"]
@@ -720,7 +752,7 @@ class TestExtractedWrapper:
         loader = SlackExportLoader(root)
         episodes = list(loader.load())
 
-        assert [e.metadata["channel"] for e in episodes] == ["general"]
+        assert [e.metadata["channel"] for e in thread_pass(episodes)] == ["general"]
         assert not any("declares no conversations" in w for w in loader.warnings)
 
     def test_extracted_wrapper_still_honors_the_public_only_default(self, tmp_path):
@@ -817,8 +849,11 @@ class TestZipAndFallbacks:
     def test_wrapped_grid_archive_typed_correctly_when_requested(self, tmp_path):
         archive = wrapped_grid_export(tmp_path)
         episodes = load(archive, conversation_types=["private_channel", "dm"])
-        assert [e.metadata["conversation_type"] for e in episodes] == ["private_channel", "dm"]
-        assert [e.metadata["channel"] for e in episodes] == [
+        assert [e.metadata["conversation_type"] for e in thread_pass(episodes)] == [
+            "private_channel",
+            "dm",
+        ]
+        assert [e.metadata["channel"] for e in thread_pass(episodes)] == [
             "leadership",
             "Avery Brown, Blake Carter",
         ]
@@ -845,7 +880,7 @@ class TestZipAndFallbacks:
                 ),
             )
         # unstripped, the only conversation would be the wrapper folder itself
-        assert [e.metadata["channel"] for e in load(archive)] == ["general"]
+        assert [e.metadata["channel"] for e in thread_pass(load(archive))] == ["general"]
 
     def test_nested_json_is_not_read_as_a_day_file(self, tmp_path):
         export = tmp_path / "export"
@@ -868,7 +903,7 @@ class TestZipAndFallbacks:
         archive = shutil.make_archive(str(tmp_path / "nested"), "zip", export)
         for source in (export, Path(archive)):
             episodes = load(source)
-            assert len(episodes) == 1
+            assert len(episodes) == 2
             assert "nested" not in episodes[0].data
 
 
@@ -879,7 +914,7 @@ class TestIndexLessExport:
 
     def test_dm_shaped_folders_are_not_ingested_as_public_channels(self, tmp_path):
         episodes = load(index_less_export(tmp_path))
-        assert [e.metadata["channel"] for e in episodes] == ["general", "leadership"]
+        assert [e.metadata["channel"] for e in thread_pass(episodes)] == ["general", "leadership"]
         assert not any("direct message" in e.data or "group dm message" in e.data for e in episodes)
 
     def test_undetermined_types_are_warned_about(self, tmp_path):
@@ -897,8 +932,11 @@ class TestIndexLessExport:
 
     def test_dm_shaped_folders_ingested_on_explicit_request(self, tmp_path):
         episodes = load(index_less_export(tmp_path), conversation_types=["dm", "group_dm"])
-        assert [e.metadata["conversation_type"] for e in episodes] == ["dm", "group_dm"]
-        assert [e.metadata["channel"] for e in episodes] == [
+        assert [e.metadata["conversation_type"] for e in thread_pass(episodes)] == [
+            "dm",
+            "group_dm",
+        ]
+        assert [e.metadata["channel"] for e in thread_pass(episodes)] == [
             "D01ABC234",
             "mpdm-avery--blake--charlie-1",
         ]

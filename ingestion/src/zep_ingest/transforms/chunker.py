@@ -78,5 +78,6 @@ class TextChunker:
                     data_type=episode.data_type,
                     created_at=episode.created_at,
                     metadata=metadata,
+                    document_id=episode.document_id,
                     document=document,
                 )

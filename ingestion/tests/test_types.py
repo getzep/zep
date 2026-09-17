@@ -40,9 +40,10 @@ class TestEpisode:
         assert ep.metadata is None
         assert ep.document is None
 
-    def test_document_excluded_from_repr(self):
+    def test_internal_document_excluded_from_repr(self):
         ep = Episode(data="chunk", document="a" * 100)
-        assert "document" not in repr(ep)
+        assert "document=" not in repr(ep)
+        assert "document_id" in repr(ep)
 
 
 class TestMetadataValues:
