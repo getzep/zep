@@ -62,8 +62,10 @@ from zep_adk import (  # noqa: E402
     create_user,
 )
 
-# Unique names per run to avoid collisions.  In v4 these are names, not
-# addresses: every call below uses a server-generated UUID.
+# Unique names per run to avoid collisions.  In v4 these are labels, not
+# addresses: every call below uses a server-generated UUID.  The user label is
+# a temporary workaround for a production v4 defect: the API rejects
+# `thread.add_messages` with a 404 for a user that has no `user_id`.
 _suffix = uuid4().hex[:8]
 USER_NAME_ID = f"adk-integ-{_suffix}"
 APP_NAME = "zep-adk-integ-test"

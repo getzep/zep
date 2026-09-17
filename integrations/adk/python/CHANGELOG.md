@@ -11,10 +11,6 @@
 - `ZepContextTool` and the after-model callback now call `thread.add_messages(thread_uuid, ...)` with `zep_cloud.AddMessage` objects, and `thread.get_context` replaces `thread.get_user_context`.
 - `ZepMemoryService` takes an optional `graph_uuid` and otherwise resolves the graph UUID of the user through `user.get`.
 
-### Notes
-
-- The Zep v4 API rejects `thread.add_messages` with a 404 for a user that has no `user_id` name. Give a `user_id` name to `create_user`. The name is a label only; all later calls use the UUID.
-
 ## 0.3.1 (2026-07-29)
 
 ### Added

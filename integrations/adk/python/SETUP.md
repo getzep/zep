@@ -107,6 +107,3 @@ uv run python tests/test_integration.py
   increase the wait if your graph is large or under load.
 - **Authentication errors** — confirm `ZEP_API_KEY` is set in the same shell and
   belongs to the intended project.
-- **`NotFoundError` from `thread.add_messages`** — the Zep v4 API rejects
-  messages for a user that has no `user_id` name. Give a `user_id` name to
-  `create_user`. The name is not an address: all subsequent calls use the UUID.

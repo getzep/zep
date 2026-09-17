@@ -34,10 +34,6 @@ Provision the Zep resources one time, read the UUIDs from the responses, and
 store the UUIDs in your own database. The integration does not look an
 identifier up at run time.
 
-The Zep v4 API rejects `thread.add_messages` with a 404 for a user that has no
-`user_id` name. Give a `user_id` name to `create_user`. The name is a label
-only; every later call uses the UUID.
-
 ## Quick Start
 
 Define one agent, shared across all users. Per-user identity is passed via ADK session state.
@@ -69,7 +65,6 @@ runner = Runner(agent=agent, app_name="my_app", session_service=session_service)
 # e.g. during account/session onboarding in your app. Zep generates the UUIDs.
 user = await create_user(
     zep,
-    user_id="user_123",  # a name, not an address
     first_name="Jane",
     last_name="Smith",
     email="jane@example.com",  # optional
@@ -193,7 +188,7 @@ agent = Agent(
 ```python
 from zep_adk import create_user, create_thread
 
-user = await create_user(zep, user_id=name_id, first_name=first_name, last_name=last_name)
+user = await create_user(zep, first_name=first_name, last_name=last_name)
 thread = await create_thread(zep, user_uuid=user.uuid_)
 ```
 
@@ -227,16 +222,14 @@ This version targets `zep-cloud` 4.x only. There is no v3 compatibility layer.
   ```python
   from zep_adk import create_user, create_thread
 
-  user = await create_user(
-      zep, user_id=name_id, first_name=first_name, last_name=last_name, email=email
-  )
+  user = await create_user(zep, first_name=first_name, last_name=last_name, email=email)
   thread = await create_thread(zep, user_uuid=user.uuid_)
   ```
 
 - **The `on_created` hook and the `UserSetupHook` type are removed.** Run one-time user setup after `create_user` returns:
 
   ```python
-  user = await create_user(zep, user_id=name_id)
+  user = await create_user(zep)
   await my_setup_hook(zep, user.uuid_)
   ```
 
@@ -319,7 +312,7 @@ export GOOGLE_API_KEY="your-google-api-key"
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `client` | `AsyncZep` | Yes | -- | Initialised Zep async client |
-| `user_id` | `str` | No | `None` | A human-readable name for the user. It is not an address. Give one: the v4 API rejects `thread.add_messages` for a user without it. |
+| `user_id` | `str` | No | `None` | An optional human-readable name for the user. It is not an address, and the integration never uses it to address the user. |
 | `first_name` | `str` | No | `None` | User's first name |
 | `last_name` | `str` | No | `None` | User's last name |
 | `email` | `str` | No | `None` | User's email |

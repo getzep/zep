@@ -51,10 +51,11 @@ if not GOOGLE_API_KEY:
 
 APP_NAME = "zep-adk-example"
 
-# A human-readable name for the Zep user.  It is a name, not an address: every
-# call below addresses the user by the UUID that Zep generates.  The Zep v4 API
-# rejects `thread.add_messages` for a user that has no `user_id` name, thus the
-# example gives one at create time.
+# A human-readable label for the Zep user.  It is not an address: every call
+# below addresses the user by the UUID that Zep generates.  The label is a
+# temporary workaround for a production v4 defect: the API rejects
+# `thread.add_messages` with a 404 for a user that has no `user_id`.  Remove the
+# label after the defect is corrected.
 USER_NAME_ID = f"adk-example-user-{uuid4().hex[:8]}"
 
 
