@@ -21,6 +21,7 @@ Prerequisites:
 
 import asyncio
 import os
+import uuid
 
 from autogen import AssistantAgent, LLMConfig, UserProxyAgent
 from zep_cloud.client import AsyncZep
@@ -28,17 +29,50 @@ from zep_cloud.client import AsyncZep
 from zep_ag2 import ZepMemoryManager, create_thread, create_user, register_all_tools
 
 
-async def main() -> None:
+async def provision() -> tuple[str, str, str]:
+    """Create the user and the thread, and return their UUIDs.
+
+    This function uses its own client, because an AsyncZep client binds to
+    the event loop that first drives a request. The synchronous AG2 hooks
+    use a background loop, so the chat phase makes a second client.
+    """
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
 
     # One-time provisioning. Pass first_name/last_name/email so Zep can
     # anchor the identity node of the user in the graph.
-    user = await create_user(zep, first_name="Alice", email="alice@example.com")
+    #
+    # The user_id label is a temporary workaround for a defect in the
+    # production v4 API, which rejects thread.add_messages and
+    # thread.get_context for a user that has no label. The label is not an
+    # address: the example uses user.uuid_ for every later call.
+    user = await create_user(
+        zep,
+        user_id=f"ag2-basic-{uuid.uuid4().hex[:8]}",
+        first_name="Alice",
+        email="alice@example.com",
+    )
     thread = await create_thread(zep, user_uuid=user.uuid_ or "")
+    return user.uuid_ or "", user.graph_uuid or "", thread.uuid_ or ""
 
-    user_uuid = user.uuid_ or ""
-    graph_uuid = user.graph_uuid or ""
-    thread_uuid = thread.uuid_ or ""
+
+async def show_context(thread_uuid: str) -> None:
+    """Poll the thread context, because Zep ingestion is asynchronous."""
+    zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
+    for _ in range(12):
+        response = await zep.thread.get_context(thread_uuid)
+        context = (response.context or "").strip()
+        if context:
+            print("\n=== Zep Context Block ===")
+            print(context)
+            return
+        await asyncio.sleep(10)
+    print("\nNo context is available yet. Zep ingestion is asynchronous.")
+
+
+def main() -> None:
+    user_uuid, graph_uuid, thread_uuid = asyncio.run(provision())
+
+    zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
 
     # Configure AG2 agents
     llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
@@ -78,6 +112,8 @@ async def main() -> None:
     except Exception as e:
         print(f"Conversation error: {e}")
 
+    asyncio.run(show_context(thread_uuid))
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

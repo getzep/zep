@@ -22,11 +22,22 @@ from zep_cloud.client import AsyncZep
 from zep_ag2 import ZepGraphMemoryManager, create_add_graph_data_tool, create_search_graph_tool
 
 
-async def main() -> None:
-    zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
+async def provision() -> str:
+    """Create the graph and return its UUID.
 
+    This function uses its own client, because an AsyncZep client binds to
+    the event loop that first drives a request. The synchronous AG2 tools
+    use a background loop, so the chat phase makes a second client.
+    """
+    zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
     graph = await zep.graph.create(name="company_knowledge_base")
-    graph_uuid = graph.uuid_ or ""
+    return graph.uuid_ or ""
+
+
+def main() -> None:
+    graph_uuid = asyncio.run(provision())
+
+    zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
 
     # Configure AG2 agents
     llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
@@ -54,8 +65,15 @@ async def main() -> None:
     user_proxy.register_for_execution()(add_tool)
 
     # Optionally enrich system message with existing knowledge
+    # The chat runs in synchronous code, so the example uses the
+    # synchronous search wrapper, which drives the background loop.
     graph_mgr = ZepGraphMemoryManager(zep, graph_uuid)
-    await graph_mgr.enrich_system_message(assistant, query="company policies")
+    results = graph_mgr.search_sync("company policies", limit=5)
+    if results:
+        facts = "\n".join(f"- {r['content']}" for r in results)
+        assistant.update_system_message(
+            f"{assistant.system_message}\n\n## Knowledge Graph Context\n{facts}"
+        )
 
     # Run conversation
     try:
@@ -70,4 +88,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

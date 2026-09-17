@@ -6,6 +6,11 @@ Run this to verify the integration works end-to-end with real Zep and OpenAI API
 Zep v4 addresses every user, thread, and graph by a server-generated UUID.
 Each test creates its resources and keeps the UUIDs from the responses.
 
+Each user that keeps a conversation thread also gets a user_id label. The
+label is a temporary workaround for a defect in the production v4 API, which
+rejects thread.add_messages and thread.get_context for a user that has no
+label. The label is not an address: each test uses the UUIDs.
+
 Prerequisites:
     export ZEP_API_KEY="your-zep-cloud-api-key"
     export OPENAI_API_KEY="your-openai-api-key"
@@ -19,6 +24,7 @@ Usage:
 import asyncio
 import os
 import sys
+import uuid
 
 
 def check_env() -> bool:
@@ -105,7 +111,9 @@ async def test_3_memory_manager() -> bool:
 
     try:
         # Setup
-        user = await create_user(zep, first_name="Alice")
+        user = await create_user(
+            zep, user_id=f"ag2-manual-{uuid.uuid4().hex[:8]}", first_name="Alice"
+        )
         user_uuid = user.uuid_ or ""
         thread = await create_thread(zep, user_uuid=user_uuid)
         thread_uuid = thread.uuid_ or ""
@@ -188,7 +196,9 @@ async def test_4_tool_factories() -> bool:
     thread_uuid = ""
 
     try:
-        user = await create_user(zep, first_name="Bob")
+        user = await create_user(
+            zep, user_id=f"ag2-manual-{uuid.uuid4().hex[:8]}", first_name="Bob"
+        )
         user_uuid = user.uuid_ or ""
         graph_uuid = user.graph_uuid or ""
         thread = await create_thread(zep, user_uuid=user_uuid)
@@ -251,7 +261,9 @@ async def test_5_ag2_agent_with_tools() -> bool:
     thread_uuid = ""
 
     try:
-        user = await create_user(zep, first_name="Charlie")
+        user = await create_user(
+            zep, user_id=f"ag2-manual-{uuid.uuid4().hex[:8]}", first_name="Charlie"
+        )
         user_uuid = user.uuid_ or ""
         graph_uuid = user.graph_uuid or ""
         thread = await create_thread(zep, user_uuid=user_uuid)

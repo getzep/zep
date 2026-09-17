@@ -16,6 +16,7 @@ Prerequisites:
 
 import asyncio
 import os
+import uuid
 
 from autogen import AssistantAgent, GroupChat, GroupChatManager, LLMConfig, UserProxyAgent
 from zep_cloud.client import AsyncZep
@@ -23,15 +24,35 @@ from zep_cloud.client import AsyncZep
 from zep_ag2 import create_thread, create_user, register_all_tools
 
 
-async def main() -> None:
+async def provision() -> tuple[str, str]:
+    """Create the user and the thread, and return the graph and thread UUIDs.
+
+    This function uses its own client, because an AsyncZep client binds to
+    the event loop that first drives a request. The synchronous AG2 tools
+    use a background loop, so the chat phase makes a second client.
+    """
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
 
     # Create the user and the thread one time, and keep their UUIDs.
-    user = await create_user(zep, first_name="Bob", email="bob@example.com")
+    #
+    # The user_id label is a temporary workaround for a defect in the
+    # production v4 API, which rejects thread.add_messages and
+    # thread.get_context for a user that has no label. The label is not an
+    # address: the example uses user.uuid_ for every later call.
+    user = await create_user(
+        zep,
+        user_id=f"ag2-tools-full-{uuid.uuid4().hex[:8]}",
+        first_name="Bob",
+        email="bob@example.com",
+    )
     thread = await create_thread(zep, user_uuid=user.uuid_ or "")
+    return user.graph_uuid or "", thread.uuid_ or ""
 
-    graph_uuid = user.graph_uuid or ""
-    thread_uuid = thread.uuid_ or ""
+
+def main() -> None:
+    graph_uuid, thread_uuid = asyncio.run(provision())
+
+    zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
 
     llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
 
@@ -74,4 +95,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
