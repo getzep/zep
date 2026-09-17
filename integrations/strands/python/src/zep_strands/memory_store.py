@@ -5,14 +5,20 @@
 standalone graph) plugs into :class:`~strands.memory.MemoryManager` like any
 other store:
 
-* :meth:`search` recalls relevant knowledge via ``graph.search``
+* :meth:`search` recalls relevant knowledge via ``graph.get_context`` or the
+  scoped ``graph.search_*`` methods
 * :meth:`add_messages` ingests conversation turns for **server-side**
   extraction via ``thread.add_messages`` (user-graph mode)
-* :meth:`add` writes a single text/JSON fact via ``graph.add``
+* :meth:`add` writes a single text/JSON fact via ``graph.episode.add``
 * :meth:`get_tools` optionally registers an on-demand graph-search tool
 
-The Zep user and thread are provisioned on the store's first search or write.
-:meth:`initialize` is deliberately inert; see its docstring for why.
+Zep v4 addresses a user, a thread, and a graph by UUID, so the store takes
+``user_uuid``, ``thread_uuid``, or ``graph_uuid``. The store never creates a
+resource and never resolves a name. Create the user and the thread one time
+with :func:`~zep_strands.provisioning.create_user` and
+:func:`~zep_strands.provisioning.create_thread`, store the UUIDs, and give
+them to the store. :meth:`initialize` is deliberately inert; see its docstring
+for why.
 
 When ``extraction`` is enabled (the default in writable user/thread mode),
 Strands' ``MemoryManager`` batches conversation turns and only calls
@@ -55,8 +61,8 @@ Attach it through a ``MemoryManager``::
     zep = AsyncZep(api_key="...")
     store = ZepMemoryStore(
         zep_client=zep,
-        user_id="user-123",
-        thread_id="thread-abc",
+        user_uuid=user_uuid,
+        thread_uuid=thread_uuid,
         first_name="Jane",
         last_name="Smith",
         writable=True,
@@ -79,23 +85,23 @@ from strands.memory.types import (
 )
 from strands.types.content import Message
 from strands.types.tools import AgentTool
-from zep_cloud import Message as ZepMessage
+from zep_cloud import AddMessage
 from zep_cloud.client import AsyncZep
 
+from ._graph import GraphUuidResolver
 from ._text import (
     GRAPH_DATA_TRUNCATE_LIMIT,
     truncate_graph_data,
     truncate_message_content,
 )
-from .provisioning import UserSetupHook
-from .provisioning import ensure_thread as _ensure_thread
-from .provisioning import ensure_user as _ensure_user
 from .search import (
     _AUTO_INCOMPATIBLE_RERANKERS,
     MAX_SEARCH_LIMIT,
     Scope,
-    _name_summary_text,
+    SearchResults,
     create_zep_search_tool,
+    result_text,
+    run_graph_search,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,7 +113,7 @@ DEFAULT_STORE_DESCRIPTION = (
 )
 DEFAULT_MAX_SEARCH_RESULTS = 10
 
-#: Metadata key that selects the ``graph.add`` data type for :meth:`ZepMemoryStore.add`.
+#: Metadata key that selects the ``graph.episode.add`` data type for :meth:`ZepMemoryStore.add`.
 #: Values: ``"text"`` (default), ``"json"``, or ``"message"``.
 ADD_TYPE_METADATA_KEY = "type"
 
@@ -125,8 +131,8 @@ def _extraction_enabled(extraction: Any) -> bool:
 def _require_extraction_support(
     *,
     writable: bool,
-    user_id: str | None,
-    thread_id: str | None,
+    user_uuid: str | None,
+    thread_uuid: str | None,
 ) -> None:
     """Raise if extraction is enabled without a writable user/thread store.
 
@@ -139,10 +145,10 @@ def _require_extraction_support(
             "ZepMemoryStore: extraction requires writable=True "
             "(server-side extraction writes via add_messages)."
         )
-    if not user_id or not thread_id:
+    if not user_uuid or not thread_uuid:
         raise ValueError(
             "ZepMemoryStore: extraction requires user-graph mode with both "
-            "user_id and thread_id (server-side via add_messages). "
+            "user_uuid and thread_uuid (server-side via add_messages). "
             "Pass extraction=False for standalone graphs or stores without a thread."
         )
 
@@ -158,102 +164,42 @@ def _extract_text(message: Message) -> str:
 
 
 def _role_to_zep(role: str) -> str:
-    """Map a Strands message role onto a Zep thread-message role."""
-    normalised = role.lower().strip()
-    if normalised in {"user", "assistant", "system", "tool", "function", "norole"}:
-        return normalised
-    # Strands may emit other roles; keep them as free-text under norole rather
-    # than dropping the turn.
-    return "norole"
+    """Map a Strands message role onto a Zep thread-message role.
 
-
-def _results_to_entries(result: Any, scope: str, *, limit: int) -> list[MemoryEntry]:
-    """Convert a Zep ``graph.search`` response into Strands ``MemoryEntry`` rows.
-
-    For ``scope="auto"``, prefer Zep's assembled Context Block as a single
-    entry (the shape Zep designs for prompt injection). For scoped searches,
-    expand individual edges / nodes / episodes / observations / thread
-    summaries into separate entries so ``MemoryManager`` can cap and format
-    them independently.
+    Zep v4 accepts ``user``, ``assistant``, ``system``, ``tool``, and
+    ``function``. There is no ``norole``, so an unknown role becomes ``user``
+    rather than the turn being dropped.
     """
-    if scope == "auto":
-        context = getattr(result, "context", None)
-        if context and str(context).strip():
-            return [MemoryEntry(content=str(context).strip(), metadata={"scope": "auto"})]
-        # Fall through to expand any populated collections when context is empty.
+    normalised = role.lower().strip()
+    if normalised in {"user", "assistant", "system", "tool", "function"}:
+        return normalised
+    return "user"
+
+
+def _results_to_entries(results: SearchResults, *, limit: int) -> list[MemoryEntry]:
+    """Convert Zep search results into Strands ``MemoryEntry`` rows.
+
+    For ``scope="auto"``, Zep's assembled Context Block becomes one entry (the
+    shape Zep designs for prompt injection). A scoped search expands each
+    result into its own entry, so ``MemoryManager`` can cap and format the
+    results independently.
+    """
+    if results.scope == "auto":
+        context = results.context
+        if context and context.strip():
+            return [MemoryEntry(content=context.strip(), metadata={"scope": "auto"})]
+        return []
 
     entries: list[MemoryEntry] = []
-
-    if result.edges:
-        for edge in result.edges:
-            fact = getattr(edge, "fact", None)
-            if fact:
-                entries.append(
-                    MemoryEntry(
-                        content=str(fact),
-                        metadata={
-                            "scope": "edges",
-                            "uuid": getattr(edge, "uuid_", None) or getattr(edge, "uuid", None),
-                        },
-                    )
+    for item in results.items:
+        text = result_text(item, results.scope)
+        if text:
+            entries.append(
+                MemoryEntry(
+                    content=text,
+                    metadata={"scope": results.scope, "uuid": item.uuid_},
                 )
-
-    if result.nodes:
-        for node in result.nodes:
-            text = _name_summary_text(getattr(node, "name", None), getattr(node, "summary", None))
-            if text:
-                entries.append(
-                    MemoryEntry(
-                        content=text,
-                        metadata={
-                            "scope": "nodes",
-                            "uuid": getattr(node, "uuid_", None) or getattr(node, "uuid", None),
-                        },
-                    )
-                )
-
-    if result.episodes:
-        for ep in result.episodes:
-            content = getattr(ep, "content", None)
-            if content:
-                entries.append(
-                    MemoryEntry(
-                        content=str(content),
-                        metadata={
-                            "scope": "episodes",
-                            "uuid": getattr(ep, "uuid_", None) or getattr(ep, "uuid", None),
-                        },
-                    )
-                )
-
-    if getattr(result, "observations", None):
-        for obs in result.observations:
-            text = _name_summary_text(getattr(obs, "name", None), getattr(obs, "summary", None))
-            if text:
-                entries.append(
-                    MemoryEntry(
-                        content=text,
-                        metadata={
-                            "scope": "observations",
-                            "uuid": getattr(obs, "uuid_", None) or getattr(obs, "uuid", None),
-                        },
-                    )
-                )
-
-    if getattr(result, "thread_summaries", None):
-        for ts in result.thread_summaries:
-            summary = getattr(ts, "summary", None) or getattr(ts, "name", None)
-            if summary:
-                entries.append(
-                    MemoryEntry(
-                        content=str(summary),
-                        metadata={
-                            "scope": "thread_summaries",
-                            "uuid": getattr(ts, "uuid_", None) or getattr(ts, "uuid", None),
-                        },
-                    )
-                )
-
+            )
     return entries[:limit]
 
 
@@ -262,13 +208,13 @@ class ZepMemoryStore:
 
     Two scoping modes:
 
-    * **User graph** (``user_id``, optionally ``thread_id``) — conversational
-      agent memory. ``thread_id`` is required for :meth:`add_messages`
-      (server-side extraction).
-    * **Standalone graph** (``graph_id``) — shared / domain knowledge. Supports
-      :meth:`search` and :meth:`add` only.
+    * **User graph** (``user_uuid``, optionally ``thread_uuid``) —
+      conversational agent memory. ``thread_uuid`` is required for
+      :meth:`add_messages` (server-side extraction).
+    * **Standalone graph** (``graph_uuid``) — shared / domain knowledge.
+      Supports :meth:`search` and :meth:`add` only.
 
-    Provide exactly one of ``user_id`` or ``graph_id``.
+    Provide exactly one of ``user_uuid`` or ``graph_uuid``.
 
     Attributes:
         name: Unique store identifier used by ``MemoryManager`` tools.
@@ -278,16 +224,16 @@ class ZepMemoryStore:
         extraction: Automatic-extraction config. ``True`` (default when
             writable + user/thread mode) enables server-side extraction via
             :meth:`add_messages` on the manager's default cadence (every 5
-            turns). Requires ``user_id`` and ``thread_id``.
+            turns). Requires ``user_uuid`` and ``thread_uuid``.
     """
 
     def __init__(
         self,
         *,
         zep_client: AsyncZep,
-        user_id: str | None = None,
-        thread_id: str | None = None,
-        graph_id: str | None = None,
+        user_uuid: str | None = None,
+        thread_uuid: str | None = None,
+        graph_uuid: str | None = None,
         name: str = DEFAULT_STORE_NAME,
         description: str | None = DEFAULT_STORE_DESCRIPTION,
         max_search_results: int | None = DEFAULT_MAX_SEARCH_RESULTS,
@@ -295,11 +241,9 @@ class ZepMemoryStore:
         extraction: Any = None,
         first_name: str | None = None,
         last_name: str | None = None,
-        email: str | None = None,
         user_message_name: str | None = None,
         assistant_message_name: str = "Assistant",
         ignore_roles: list[str] | None = None,
-        on_user_created: UserSetupHook | None = None,
         search_scope: Scope = "auto",
         search_reranker: str | None = None,
         search_filters: dict[str, Any] | None = None,
@@ -312,35 +256,37 @@ class ZepMemoryStore:
 
         Args:
             zep_client: An initialised ``AsyncZep`` client (caller owns lifecycle).
-            user_id: Zep user ID for user-graph mode.
-            thread_id: Zep thread ID used by :meth:`add_messages`. Required for
-                server-side extraction in user-graph mode.
-            graph_id: Standalone graph ID (mutually exclusive with ``user_id``).
+            user_uuid: The UUID of the Zep user for user-graph mode.
+            thread_uuid: The UUID of the Zep thread used by
+                :meth:`add_messages`. Required for server-side extraction in
+                user-graph mode.
+            graph_uuid: The UUID of a standalone graph (mutually exclusive
+                with ``user_uuid``).
             name: Store name exposed to ``MemoryManager`` tools.
             description: Store description exposed to ``MemoryManager`` tools.
             max_search_results: Default search result cap.
             writable: Whether writes are accepted.
             extraction: Extraction config shorthand. Defaults to ``True`` when
-                the store is writable and has a ``thread_id`` (so
+                the store is writable and has a ``thread_uuid`` (so
                 :meth:`add_messages` can run server-side); otherwise ``None``.
                 ``True`` (or an ``ExtractionConfig``) requires writable
-                user-graph mode with ``user_id`` **and** ``thread_id`` —
+                user-graph mode with ``user_uuid`` **and** ``thread_uuid`` —
                 construction fails fast otherwise. With Strands' default
                 trigger, extraction only fires every **5 turns**, so graph
                 building is delayed relative to turn-by-turn persistence;
                 call ``memory_manager.flush()`` (or use an every-turn
                 trigger) when you need messages sent to Zep sooner.
-            first_name: User first name — helps Zep anchor identity.
+            first_name: User first name — used for the display name on
+                persisted user messages.
             last_name: User last name.
-            email: User email.
             user_message_name: Display name on persisted user messages.
                 Defaults to the user's full name when available.
             assistant_message_name: Display name on persisted assistant messages.
             ignore_roles: Roles to exclude from graph ingestion (still stored in
                 thread history).
-            on_user_created: Async hook run once after a new user is created.
-            search_scope: Default ``graph.search`` scope for :meth:`search`.
-                Defaults to ``"auto"`` (Zep's assembled Context Block).
+            search_scope: Default search scope for :meth:`search`. Defaults to
+                ``"auto"`` (Zep's assembled Context Block from
+                ``graph.get_context``).
             search_reranker: Optional default reranker for :meth:`search`.
             search_filters: Optional filters applied to every search.
             bfs_origin_node_uuids: Optional BFS seed node UUIDs for search.
@@ -350,23 +296,23 @@ class ZepMemoryStore:
             search_hidden_params: Hide search-tool parameters without pinning.
 
         Raises:
-            ValueError: On invalid scoping (neither/both of ``user_id``/
-                ``graph_id``, empty ``name``, ``max_search_results < 1``, or
+            ValueError: On invalid scoping (neither/both of ``user_uuid``/
+                ``graph_uuid``, empty ``name``, ``max_search_results < 1``, or
                 extraction enabled without writable user/thread mode).
         """
-        if not user_id and not graph_id:
-            raise ValueError("ZepMemoryStore requires either user_id or graph_id")
-        if user_id and graph_id:
-            raise ValueError("ZepMemoryStore accepts only one of user_id or graph_id")
+        if not user_uuid and not graph_uuid:
+            raise ValueError("ZepMemoryStore requires either user_uuid or graph_uuid")
+        if user_uuid and graph_uuid:
+            raise ValueError("ZepMemoryStore accepts only one of user_uuid or graph_uuid")
         if not name.strip():
             raise ValueError("ZepMemoryStore: name must not be empty")
         if max_search_results is not None and max_search_results < 1:
             raise ValueError("ZepMemoryStore: max_search_results must be at least 1")
 
         self._zep = zep_client
-        self.user_id = user_id
-        self.thread_id = thread_id
-        self.graph_id = graph_id
+        self.user_uuid = user_uuid
+        self.thread_uuid = thread_uuid
+        self.graph_uuid = graph_uuid
 
         self.name = name
         self.description = description
@@ -375,21 +321,19 @@ class ZepMemoryStore:
 
         if extraction is None:
             # Server-side extraction needs add_messages, which needs a thread.
-            self.extraction = True if (writable and user_id and thread_id) else None
+            self.extraction = True if (writable and user_uuid and thread_uuid) else None
         else:
             if _extraction_enabled(extraction):
                 _require_extraction_support(
                     writable=writable,
-                    user_id=user_id,
-                    thread_id=thread_id,
+                    user_uuid=user_uuid,
+                    thread_uuid=thread_uuid,
                 )
             self.extraction = extraction
 
         self.first_name = first_name
         self.last_name = last_name
-        self.email = email
         self.ignore_roles = ignore_roles
-        self.on_user_created = on_user_created
         self.assistant_message_name = assistant_message_name
 
         resolved_user_name: str | None
@@ -408,7 +352,7 @@ class ZepMemoryStore:
         self.search_pinned_params = search_pinned_params
         self.search_hidden_params = search_hidden_params
 
-        self._resources_ready = False
+        self._graph = GraphUuidResolver(zep_client, user_uuid=user_uuid, graph_uuid=graph_uuid)
 
     # ------------------------------------------------------------------
     # MemoryStore contract
@@ -421,12 +365,13 @@ class ZepMemoryStore:
         throwaway event loop in a worker thread. Issuing Zep calls here would
         drive the caller's ``AsyncZep`` client from a second event loop, and
         any connection the caller already opened raises ``RuntimeError: ... is
-        bound to a different event loop``. Provisioning therefore happens on
+        bound to a different event loop``. Every Zep call therefore happens on
         the first search or write, which always runs on the agent's own loop.
 
-        Call :func:`~zep_strands.provisioning.ensure_user` and
-        :func:`~zep_strands.provisioning.ensure_thread` before constructing the
-        agent to provision eagerly instead.
+        Create the user and the thread out of band with
+        :func:`~zep_strands.provisioning.create_user` and
+        :func:`~zep_strands.provisioning.create_thread`, and give their UUIDs
+        to the store.
         """
         return
 
@@ -459,6 +404,10 @@ class ZepMemoryStore:
             "scope": self.search_scope,
             "limit": limit,
         }
+        if self.search_scope == "auto":
+            # graph.get_context assembles the Context Block itself and takes
+            # no result cap.
+            del search_kwargs["limit"]
         if self.search_reranker is not None:
             if self.search_scope == "auto" and self.search_reranker in _AUTO_INCOMPATIBLE_RERANKERS:
                 logger.warning(
@@ -469,22 +418,19 @@ class ZepMemoryStore:
                 search_kwargs["reranker"] = self.search_reranker
             # auto + compatible reranker: still omit — auto ignores it.
         if self.search_filters is not None:
-            search_kwargs["search_filters"] = self.search_filters
-        if self.bfs_origin_node_uuids is not None:
+            search_kwargs["filters"] = self.search_filters
+        if self.bfs_origin_node_uuids is not None and self.search_scope != "auto":
             search_kwargs["bfs_origin_node_uuids"] = self.bfs_origin_node_uuids
 
-        if self.graph_id:
-            search_kwargs["graph_id"] = self.graph_id
-        else:
-            search_kwargs["user_id"] = self.user_id
-
-        await self._ensure_resources_lazy()
-
-        results = await self._zep.graph.search(**search_kwargs)
-        return _results_to_entries(results, self.search_scope, limit=limit)
+        results = await run_graph_search(
+            self._zep,
+            graph_uuid=await self._graph.resolve(),
+            **search_kwargs,
+        )
+        return _results_to_entries(results, limit=limit)
 
     async def add(self, content: str, metadata: Metadata | None = None) -> Any:
-        """Add a single piece of content to the Zep graph via ``graph.add``.
+        """Add a single piece of content to the Zep graph via ``graph.episode.add``.
 
         ``text`` and ``message`` payloads over Zep's size limit are truncated
         with a warning. ``json`` payloads are **not** truncated -- slicing JSON
@@ -501,11 +447,11 @@ class ZepMemoryStore:
                 Remaining keys are forwarded as episode metadata when present.
 
         Returns:
-            The Zep episode created by ``graph.add``.
+            The result of ``graph.episode.add``.
 
         Raises:
             ValueError: If the store is not writable, ``content`` is empty, or
-                a ``json`` payload exceeds the ``graph.add`` size limit.
+                a ``json`` payload exceeds the episode size limit.
         """
         if not self.writable:
             raise ValueError(
@@ -533,7 +479,7 @@ class ZepMemoryStore:
             if len(payload) > GRAPH_DATA_TRUNCATE_LIMIT:
                 raise ValueError(
                     f"ZepMemoryStore: JSON content is {len(payload)} characters, exceeding the "
-                    f"{GRAPH_DATA_TRUNCATE_LIMIT}-character graph.add limit. JSON cannot be "
+                    f"{GRAPH_DATA_TRUNCATE_LIMIT}-character episode limit. JSON cannot be "
                     "truncated safely; split it into smaller documents before adding. See "
                     "https://help.getzep.com/chunking-large-documents"
                 )
@@ -543,13 +489,8 @@ class ZepMemoryStore:
         add_kwargs: dict[str, Any] = {"type": data_type, "data": payload}
         if meta:
             add_kwargs["metadata"] = meta
-        if self.graph_id:
-            add_kwargs["graph_id"] = self.graph_id
-        else:
-            await self._ensure_resources_lazy()
-            add_kwargs["user_id"] = self.user_id
 
-        return await self._zep.graph.add(**add_kwargs)
+        return await self._zep.graph.episode.add(await self._graph.resolve(), **add_kwargs)
 
     async def add_messages(
         self, messages: list[Message], context: AddMessagesContext | None = None
@@ -557,7 +498,8 @@ class ZepMemoryStore:
         """Ingest a batch of conversation messages for server-side extraction.
 
         Converts Strands messages to Zep thread messages and calls
-        ``thread.add_messages``. Requires user-graph mode with a ``thread_id``.
+        ``thread.add_messages``. Requires user-graph mode with a
+        ``thread_uuid``.
 
         Args:
             messages: Strands conversation messages (role + content blocks).
@@ -569,38 +511,33 @@ class ZepMemoryStore:
             to persist.
 
         Raises:
-            ValueError: If the store is not writable, has no ``thread_id``, or
-                is in standalone-graph mode.
+            ValueError: If the store is not writable, has no ``thread_uuid``,
+                or is in standalone-graph mode.
         """
         del context  # reserved for future idempotency keys
         if not self.writable:
             raise ValueError(
                 "ZepMemoryStore: store is not writable. Set writable=True to enable add_messages()."
             )
-        if self.graph_id or not self.user_id:
+        if self.graph_uuid or not self.user_uuid:
             raise ValueError(
-                "ZepMemoryStore.add_messages requires user-graph mode (user_id); "
+                "ZepMemoryStore.add_messages requires user-graph mode (user_uuid); "
                 "standalone graphs use add() instead."
             )
-        if not self.thread_id:
+        if not self.thread_uuid:
             raise ValueError(
-                "ZepMemoryStore.add_messages requires thread_id for conversation ingestion."
+                "ZepMemoryStore.add_messages requires thread_uuid for conversation ingestion."
             )
 
         zep_messages = self._to_zep_messages(messages)
         if not zep_messages:
             return None
 
-        await self._ensure_resources_lazy()
-
-        add_kwargs: dict[str, Any] = {
-            "thread_id": self.thread_id,
-            "messages": zep_messages,
-        }
+        add_kwargs: dict[str, Any] = {"messages": zep_messages}
         if self.ignore_roles:
             add_kwargs["ignore_roles"] = self.ignore_roles
 
-        return await self._zep.thread.add_messages(**add_kwargs)
+        return await self._zep.thread.add_messages(self.thread_uuid, **add_kwargs)
 
     def get_tools(self) -> list[AgentTool]:
         """Return store-specific tools when ``expose_search_tool`` is enabled."""
@@ -609,8 +546,8 @@ class ZepMemoryStore:
         return [
             create_zep_search_tool(
                 zep_client=self._zep,
-                user_id=self.user_id,
-                graph_id=self.graph_id,
+                user_uuid=self.user_uuid,
+                graph_uuid=self.graph_uuid,
                 search_pinned_params=self.search_pinned_params,
                 search_hidden_params=self.search_hidden_params,
                 search_filters=self.search_filters,
@@ -622,33 +559,11 @@ class ZepMemoryStore:
     # Internals
     # ------------------------------------------------------------------
 
-    async def _ensure_resources_lazy(self) -> None:
-        """Provision the Zep user and thread once, on first use.
-
-        Standalone-graph mode is a no-op (the graph must already exist).
-        Genuine provisioning failures propagate, so misconfiguration surfaces
-        on the first turn rather than being swallowed.
-        """
-        if self._resources_ready or self.graph_id:
-            return
-        assert self.user_id is not None  # validated in __init__
-        await _ensure_user(
-            self._zep,
-            user_id=self.user_id,
-            first_name=self.first_name,
-            last_name=self.last_name,
-            email=self.email,
-            on_created=self.on_user_created,
-        )
-        if self.thread_id:
-            await _ensure_thread(self._zep, thread_id=self.thread_id, user_id=self.user_id)
-        self._resources_ready = True
-
-    def _to_zep_messages(self, messages: list[Message]) -> list[ZepMessage]:
-        """Convert Strands messages to Zep ``Message`` objects, dropping empties."""
-        converted: list[ZepMessage] = []
+    def _to_zep_messages(self, messages: list[Message]) -> list[AddMessage]:
+        """Convert Strands messages to Zep ``AddMessage`` objects, dropping empties."""
+        converted: list[AddMessage] = []
         for message in messages:
-            role = _role_to_zep(str(message.get("role", "norole")))
+            role = _role_to_zep(str(message.get("role", "user")))
             text = _extract_text(message)
             if not text:
                 continue
@@ -658,7 +573,7 @@ class ZepMemoryStore:
                 name = self.user_message_name
             elif role == "assistant":
                 name = self.assistant_message_name
-            converted.append(ZepMessage(role=role, content=text, name=name))
+            converted.append(AddMessage(role=role, content=text, name=name))
         return converted
 
 

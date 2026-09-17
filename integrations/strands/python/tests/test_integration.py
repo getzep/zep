@@ -4,14 +4,17 @@ End-to-end integration tests for the Zep Strands Agents integration.
 Two layers:
 
   1. ``test_store_round_trip`` — store-only against live Zep (``ZEP_API_KEY``).
-     Exercises ``ensure_user`` / ``ensure_thread``, ``add_messages``, ``add``,
+     Exercises ``create_user`` / ``create_thread``, ``add_messages``, ``add``,
      and ``search`` without a model provider.
   2. ``test_integration_full_lifecycle`` — full agent loop against live Zep and
      OpenAI (``ZEP_API_KEY`` + ``OPENAI_API_KEY``):
        * ``MemoryManager`` + ``ZepMemoryStore`` inject context and extract turns
        * Both sides of the conversation land on the thread after ``flush()``
        * Cross-thread recall from the user graph
-       * ``on_user_created`` fires exactly once
+       * ``on_created`` fires one time when the user is created
+
+Zep v4 addresses a user, a thread, and a graph by UUID, so the tests create the
+resources one time and keep the UUIDs.
 
 Requires:
     ZEP_API_KEY (all tests) and OPENAI_API_KEY (agent-driven tests only).
@@ -52,17 +55,14 @@ from zep_cloud.client import AsyncZep  # noqa: E402
 
 from zep_strands import (  # noqa: E402
     ZepMemoryStore,
-    ensure_thread,
-    ensure_user,
+    create_thread,
+    create_user,
 )
 from zep_strands.provisioning import UserSetupHook  # noqa: E402
 
 pytestmark = pytest.mark.integration
 
 _suffix = uuid4().hex[:8]
-USER_ID = f"strands-integ-{_suffix}"
-THREAD_1 = f"strands-integ-t1-{_suffix}"
-THREAD_2 = f"strands-integ-t2-{_suffix}"
 
 FIRST_NAME = "IntegTest"
 LAST_NAME = "User"
@@ -98,7 +98,7 @@ def _message_text(message: Message | object) -> str:
 
 async def wait_for_episodes_processed(
     zep: AsyncZep,
-    user_id: str,
+    graph_uuid: str,
     timeout_seconds: int = 120,
     poll_interval: float = 3.0,
 ) -> None:
@@ -109,12 +109,12 @@ async def wait_for_episodes_processed(
             logger.warning("Timed out waiting for episode processing; continuing.")
             return
         try:
-            resp = await zep.graph.episode.get_by_user_id(user_id=user_id, lastn=20)
+            pager = await zep.graph.episode.list(graph_uuid, limit=20)
         except Exception as exc:
             logger.warning("Episode poll failed (%s); retrying.", exc)
             await asyncio.sleep(poll_interval)
             continue
-        episodes = resp.episodes or []
+        episodes = list(pager.items or [])
         if episodes and all(e.processed for e in episodes):
             logger.info("All %d episodes processed.", len(episodes))
             return
@@ -123,32 +123,20 @@ async def wait_for_episodes_processed(
 
 async def build_agent(
     zep: AsyncZep,
-    thread_id: str,
-    *,
-    on_user_created: UserSetupHook | None = None,
+    user_uuid: str,
+    thread_uuid: str,
 ) -> Agent:
-    """Build an agent whose memory is scoped to USER_ID on the given thread.
+    """Build an agent whose memory is scoped to the user on the given thread.
 
     Configured exactly as the example is: default extraction cadence, with
     callers flushing at the session boundary.
     """
-    await ensure_user(
-        zep,
-        user_id=USER_ID,
-        first_name=FIRST_NAME,
-        last_name=LAST_NAME,
-        email=EMAIL,
-        on_created=on_user_created,
-    )
-    await ensure_thread(zep, thread_id=thread_id, user_id=USER_ID)
-
     store = ZepMemoryStore(
         zep_client=zep,
-        user_id=USER_ID,
-        thread_id=thread_id,
+        user_uuid=user_uuid,
+        thread_uuid=thread_uuid,
         first_name=FIRST_NAME,
         last_name=LAST_NAME,
-        email=EMAIL,
         writable=True,
         extraction=True,
         expose_search_tool=True,
@@ -163,6 +151,25 @@ async def build_agent(
         ),
         memory_manager=MemoryManager(stores=[store], add_tool_config=True),
     )
+
+
+async def provision(
+    zep: AsyncZep,
+    *,
+    on_created: UserSetupHook | None = None,
+) -> tuple[str, str]:
+    """Create one user and one thread, and return their UUIDs."""
+    user = await create_user(
+        zep,
+        first_name=FIRST_NAME,
+        last_name=LAST_NAME,
+        email=EMAIL,
+        on_created=on_created,
+    )
+    assert user.uuid_ is not None
+    thread = await create_thread(zep, user_uuid=user.uuid_)
+    assert thread.uuid_ is not None
+    return user.uuid_, thread.uuid_
 
 
 async def chat(agent: Agent, message: str) -> str:
@@ -192,27 +199,15 @@ async def flush(agent: Agent) -> None:
 async def test_store_round_trip() -> None:
     """Exercise store methods against live Zep without a model provider."""
     zep = AsyncZep(api_key=ZEP_API_KEY)
-    user_id = f"{USER_ID}-store"
-    thread_id = f"{THREAD_1}-store"
+    user_uuid = ""
 
     try:
-        created_user = await ensure_user(
-            zep,
-            user_id=user_id,
-            first_name=FIRST_NAME,
-            last_name=LAST_NAME,
-            email=f"store-{_suffix}@example.com",
-        )
-        assert created_user is True
-        assert await ensure_user(zep, user_id=user_id) is False
-
-        created_thread = await ensure_thread(zep, thread_id=thread_id, user_id=user_id)
-        assert created_thread is True
+        user_uuid, thread_uuid = await provision(zep)
 
         store = ZepMemoryStore(
             zep_client=zep,
-            user_id=user_id,
-            thread_id=thread_id,
+            user_uuid=user_uuid,
+            thread_uuid=thread_uuid,
             first_name=FIRST_NAME,
             last_name=LAST_NAME,
             writable=True,
@@ -238,15 +233,16 @@ async def test_store_round_trip() -> None:
         entries = await store.search("ceramics")
         assert isinstance(entries, list)
 
-        t = await zep.thread.get(thread_id=thread_id, lastn=20)
-        messages = t.messages or []
+        pager = await zep.thread.list_messages(thread_uuid, limit=20)
+        messages = list(pager.items or [])
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)
     finally:
-        try:
-            await zep.user.delete(user_id=user_id)
-        except Exception:
-            pass
+        if user_uuid:
+            try:
+                await zep.user.delete(user_uuid)
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -262,12 +258,16 @@ async def test_integration_full_lifecycle() -> None:
 
     zep = AsyncZep(api_key=ZEP_API_KEY)
     hook_calls: list[str] = []
+    user_uuid = ""
 
-    async def on_user_created(client: AsyncZep, user_id: str) -> None:
-        hook_calls.append(user_id)
+    async def on_created(client: AsyncZep, created_user_uuid: str) -> None:
+        hook_calls.append(created_user_uuid)
 
     try:
-        agent1 = await build_agent(zep, THREAD_1, on_user_created=on_user_created)
+        user_uuid, thread_1 = await provision(zep, on_created=on_created)
+        assert hook_calls == [user_uuid]
+
+        agent1 = await build_agent(zep, user_uuid, thread_1)
         reply1 = await chat(
             agent1, "My name is IntegTest. I work at Acme Corp as a data scientist."
         )
@@ -275,34 +275,34 @@ async def test_integration_full_lifecycle() -> None:
         await flush(agent1)
         assert reply1
         assert reply2
-        assert hook_calls == [USER_ID]
 
-        user = await zep.user.get(user_id=USER_ID)
+        user = await zep.user.get(user_uuid)
         assert user.first_name == FIRST_NAME
         assert user.last_name == LAST_NAME
         assert user.email == EMAIL
+        assert user.graph_uuid is not None
 
-        t1 = await zep.thread.get(thread_id=THREAD_1, lastn=20)
-        messages = t1.messages or []
+        pager = await zep.thread.list_messages(thread_1, limit=20)
+        messages = list(pager.items or [])
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)
 
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=120)
+        await wait_for_episodes_processed(zep, user.graph_uuid, timeout_seconds=120)
 
-        agent2 = await build_agent(zep, THREAD_2, on_user_created=on_user_created)
+        thread_2 = await create_thread(zep, user_uuid=user_uuid)
+        assert thread_2.uuid_ is not None
+        agent2 = await build_agent(zep, user_uuid, thread_2.uuid_)
         recall = (await chat(agent2, "What do you know about me?")).lower()
         await flush(agent2)
-
-        # Existing user — hook must not fire again.
-        assert hook_calls == [USER_ID]
 
         keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
         assert any(kw in recall for kw in keywords), f"no recall in: {recall}"
     finally:
-        try:
-            await zep.user.delete(user_id=USER_ID)
-        except Exception:
-            pass
+        if user_uuid:
+            try:
+                await zep.user.delete(user_uuid)
+            except Exception:
+                pass
 
 
 async def main() -> None:
@@ -314,20 +314,23 @@ async def main() -> None:
     zep = AsyncZep(api_key=ZEP_API_KEY)
     passed = True
     hook_calls: list[str] = []
+    user_uuid = ""
 
-    async def on_user_created(client: AsyncZep, user_id: str) -> None:
-        hook_calls.append(user_id)
-        logger.info("on_user_created fired for %s", user_id)
+    async def on_created(client: AsyncZep, created_user_uuid: str) -> None:
+        hook_calls.append(created_user_uuid)
+        logger.info("on_created fired for %s", created_user_uuid)
 
     print(f"\n{'=' * 70}")
     print("Zep Strands Agents Integration Test")
-    print(f"  User:    {USER_ID}")
-    print(f"  Threads: {THREAD_1}, {THREAD_2}")
+    print(f"  User email: {EMAIL}")
     print(f"{'=' * 70}\n")
 
     try:
         print("[Step 1] Conversation 1: seeding facts...")
-        agent1 = await build_agent(zep, THREAD_1, on_user_created=on_user_created)
+        user_uuid, thread_1 = await provision(zep, on_created=on_created)
+        print(f"  User UUID:   {user_uuid}")
+        print(f"  Thread UUID: {thread_1}")
+        agent1 = await build_agent(zep, user_uuid, thread_1)
         seeds = [
             "My name is IntegTest. I work at Acme Corp as a data scientist.",
             "I live in Portland, Oregon and I love hiking and photography.",
@@ -341,20 +344,21 @@ async def main() -> None:
         await flush(agent1)
 
         passed &= check(
-            "on_user_created hook fired exactly once",
-            len(hook_calls) == 1 and hook_calls[0] == USER_ID,
+            "on_created hook fired exactly once",
+            hook_calls == [user_uuid],
             f"calls={hook_calls}",
         )
 
         print("[Step 2] Verifying Zep user metadata...")
-        user = await zep.user.get(user_id=USER_ID)
+        user = await zep.user.get(user_uuid)
         passed &= check("first_name matches", user.first_name == FIRST_NAME, str(user.first_name))
         passed &= check("last_name matches", user.last_name == LAST_NAME, str(user.last_name))
         passed &= check("email matches", user.email == EMAIL, str(user.email))
+        passed &= check("user has a graph", user.graph_uuid is not None, str(user.graph_uuid))
 
         print("\n[Step 3] Verifying thread 1 messages...")
-        t1 = await zep.thread.get(thread_id=THREAD_1, lastn=20)
-        messages = t1.messages or []
+        pager = await zep.thread.list_messages(thread_1, limit=20)
+        messages = list(pager.items or [])
         user_msgs = [m for m in messages if m.role == "user"]
         asst_msgs = [m for m in messages if m.role == "assistant"]
         print(f"  {len(user_msgs)} user, {len(asst_msgs)} assistant messages")
@@ -362,19 +366,16 @@ async def main() -> None:
         passed &= check("Thread 1 has assistant messages", len(asst_msgs) >= 2, f"{len(asst_msgs)}")
 
         print("\n[Step 4] Waiting for Zep to process episodes...")
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=120)
+        if user.graph_uuid is not None:
+            await wait_for_episodes_processed(zep, user.graph_uuid, timeout_seconds=120)
 
         print("\n[Step 5] Conversation 2: cross-thread memory recall...")
-        agent2 = await build_agent(zep, THREAD_2, on_user_created=on_user_created)
+        thread_2 = await create_thread(zep, user_uuid=user_uuid)
+        assert thread_2.uuid_ is not None
+        agent2 = await build_agent(zep, user_uuid, thread_2.uuid_)
         recall_text = await chat(agent2, "What do you know about me?")
         print(f"  Agent: {recall_text}\n")
         await flush(agent2)
-
-        passed &= check(
-            "on_user_created did NOT fire again for existing user",
-            len(hook_calls) == 1,
-            f"calls={len(hook_calls)}",
-        )
 
         recall = recall_text.lower()
         keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
@@ -389,8 +390,9 @@ async def main() -> None:
     finally:
         print("\n[Cleanup] Deleting test user...")
         try:
-            await zep.user.delete(user_id=USER_ID)
-            print(f"  Deleted {USER_ID}")
+            if user_uuid:
+                await zep.user.delete(user_uuid)
+                print(f"  Deleted {user_uuid}")
         except Exception as exc:
             print(f"  Warning: could not delete user: {exc}")
 
