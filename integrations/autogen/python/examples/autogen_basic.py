@@ -1,42 +1,34 @@
 import asyncio
 import os
-import uuid
 
 from autogen_agentchat.agents import AssistantAgent
 from autogen_core.memory import MemoryContent, MemoryMimeType
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from zep_cloud.client import AsyncZep
 
-from zep_autogen import ZepUserMemory
+from zep_autogen import ZepUserMemory, create_thread, create_user
 
 
 async def main():
     # Initialize AsyncZep client
     zep_client = AsyncZep(api_key=os.environ.get("ZEP_API_KEY"))
 
-    user_id = f"user_{uuid.uuid4().hex[:16]}"
-    thread_id = f"thread_{uuid.uuid4().hex[:16]}"
+    # Zep assigns the UUID of the user and of the thread. Keep these UUIDs in
+    # your own database, and use them to address the resources later.
+    user = await create_user(
+        zep_client,
+        email="alice@agents.local",
+        first_name="Alice",
+    )
+    user_uuid = str(user.uuid_)
+    print(f"Created user: {user_uuid}")
 
-    try:
-        # Create user for the user (upfront initialization)
-        await zep_client.user.add(
-            user_id=user_id,
-            email="alice@agents.local",
-            first_name="Alice",
-        )
-        print(f"Created user: {user_id}")
-    except Exception as e:
-        print(f"User might already exist: {e}")
-
-    try:
-        # Create thread for this conversation
-        await zep_client.thread.create(thread_id=thread_id, user_id=user_id)
-        print(f"Created thread: {thread_id}")
-    except Exception as e:
-        print(f"Thread creation failed: {e}")
+    thread = await create_thread(zep_client, user_uuid=user_uuid)
+    thread_uuid = str(thread.uuid_)
+    print(f"Created thread: {thread_uuid}")
 
     # Initialize Zep memory bound to the assistant
-    memory = ZepUserMemory(client=zep_client, thread_id=thread_id, user_id=user_id)
+    memory = ZepUserMemory(client=zep_client, user_uuid=user_uuid, thread_uuid=thread_uuid)
 
     # Create assistant agent with Zep memory
     agent = AssistantAgent(

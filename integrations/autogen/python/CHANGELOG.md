@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: the package targets the Zep v4 API and requires `zep-cloud==4.0.0a5`.** Zep v4 assigns the UUID of every user, thread, and graph. The public API takes UUIDs instead of names.
+- **Breaking: the resource parameters are renamed.** `ZepUserMemory` takes `user_uuid`, `thread_uuid`, and the optional `graph_uuid`. `ZepGraphMemory` takes `graph_uuid`. `create_search_graph_tool` and `create_add_graph_data_tool` take `graph_uuid` or `user_uuid`. The `ContextInput` dataclass gives `user_uuid`, `thread_uuid`, and `graph_uuid`.
+- **Breaking: `ensure_user` and `ensure_thread` are replaced by `create_user` and `create_thread`.** Zep v4 creates a resource and returns its UUID, so the create-then-catch-conflict pattern no longer applies. `create_user` returns the `User` model and `create_thread` returns the `Thread` model. Read `uuid_` from the response and store it in your own database.
+- **Breaking: `ZepUserMemory` no longer creates the Zep user.** The application creates the user one time with `create_user`, or with `client.user.create`. `add()` still creates a thread when the constructor did not get a `thread_uuid`.
+- **Breaking: `ZepGraphMemory` replaces `facts_limit` and `entity_limit` with `max_characters`.** Context retrieval calls `graph.get_context`, which returns an assembled context block and takes a character budget in place of a fact count and an entity count.
+- **Breaking: `ZepUserMemory` replaces `context_template_id` with `context_template_uuid`.** The value is sent as `template_uuid` to `thread.get_context`.
+- The default context retrieval calls `thread.get_context(thread_uuid)` in place of the v3 `thread.get_user_context`.
+- Message ingestion calls `thread.add_messages(thread_uuid, messages=[...])`.
+- Graph ingestion calls `graph.episode.add(graph_uuid, type=..., data=...)` in place of `graph.add`.
+- Graph search calls the v4 scope-specific methods `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, and `graph.search_thread_summaries`. The `auto` scope calls `graph.get_context`. Each search method returns a pager, and the integration collects results up to the requested limit.
+- Episode retrieval calls `graph.episode.list(graph_uuid)` and iterates the pager.
+- Graph deletion calls `graph.delete(graph_uuid)`.
+- The search limit is clamped to the range 1 to 50.
+
+### Removed
+
+- The v3 types and helpers that Zep v4 does not give: `GraphSearchResults` and `zep_cloud.graph.utils.compose_context_string`. The package formats the search results itself.
+
 ## [1.2.1] - 2026-07-29
 
 ### Added
@@ -36,7 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ```python
 # Before (1.1.x) -- scope only had 3 documented values, limit had no pin/expose control
-tool = create_search_graph_tool(client, user_id="user-1", scope="nodes", limit=5)  # positional style
+tool = create_search_graph_tool(
+    client, user_id="user-1", scope="nodes", limit=5
+)  # positional style
 
 # After (1.2.0) -- legacy kwargs still work as pins, or be explicit:
 tool = create_search_graph_tool(client, user_id="user-1", scope="nodes", limit=5)  # still works
