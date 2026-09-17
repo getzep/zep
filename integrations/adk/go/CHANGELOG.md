@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Breaking:** the package now targets the Zep v4 SDK
+  (`github.com/getzep/zep-go/v4` v4.0.0-alpha.5). The module path of this
+  integration does not change.
+- **Breaking:** Zep v4 addresses every user, thread, and graph by a
+  server-generated UUID, so the package takes UUIDs instead of names. The
+  before-model callback takes a thread UUID and a user UUID
+  (`WithThreadUUID`, `WithThreadUUIDResolver`, `WithUserUUID`,
+  `WithUserUUIDResolver`). The after-model callback takes a thread UUID
+  (`WithAfterThreadUUID`, `WithAfterThreadUUIDResolver`). The search tool and
+  the memory service take a graph UUID (`WithGraphUUID`,
+  `WithGraphUUIDResolver`, `WithMemoryGraphUUID`,
+  `WithMemoryGraphUUIDResolver`). The package no longer maps the ADK session
+  ID to a Zep thread and the ADK user ID to a Zep user, because neither ADK
+  value is a UUID. The package makes no lookup call at run time. A component
+  without a UUID logs an error and returns no result.
+- **Breaking:** `EnsureUser` and `EnsureThread` are replaced by `CreateUser`
+  and `CreateThread`. `CreateUser` returns the UUID of the user and the UUID
+  of the graph of the user. `CreateThread` returns the UUID of the thread.
+  The application calls each function one time and stores the UUIDs in its
+  own database. The functions are not idempotent, because a create call in v4
+  always creates a new resource. The `created` signal and the already-exists
+  detection are therefore removed.
+- **Breaking:** `WithGraphID` is replaced by `WithGraphUUID`.
+- **Breaking:** the search scope is now the package type `zepadk.SearchScope`
+  (`SearchScopeEdges`, `SearchScopeNodes`, `SearchScopeEpisodes`,
+  `SearchScopeObservations`, `SearchScopeThreadSummaries`, and
+  `SearchScopeAuto`), because Zep v4 has one search method for each scope and
+  exports no scope enum. The reranker is now `zep.V4SearchRequestReranker`.
+- The memory service and the search tool read every page of a Zep v4 search
+  result, up to the configured limit. Zep v4 returns a cursor-based page.
+
 ## 0.2.0 (2026-07-06)
 
 ### Added

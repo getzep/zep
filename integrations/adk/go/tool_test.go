@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	zep "github.com/getzep/zep-go/v3"
+	zep "github.com/getzep/zep-go/v4"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/memory"
@@ -232,9 +232,9 @@ func TestGraphSearchToolSchemaDefaultExposesAllFiveParams(t *testing.T) {
 
 func TestGraphSearchToolSchemaPinnedParamsAreAbsent(t *testing.T) {
 	schema := declarationSchema(t, buildSearchTool(t,
-		WithToolSearchScope(zep.GraphSearchScopeNodes),
+		WithToolSearchScope(SearchScopeNodes),
 		WithToolSearchLimit(5),
-		WithToolReranker(zep.RerankerMmr),
+		WithToolReranker(zep.V4SearchRequestRerankerMmr),
 		WithToolMMRLambda(0.5),
 		WithToolCenterNodeUUID("node-1"),
 	))
@@ -307,7 +307,8 @@ type searchToolFixture struct {
 
 func newSearchToolFixture(t *testing.T, opts ...GraphSearchToolOption) *searchToolFixture {
 	t.Helper()
-	api := &fakeZepAPI{searchRes: &zep.GraphSearchResults{Edges: []*zep.EntityEdge{{Fact: "f"}}}}
+	api := &fakeZepAPI{edges: []*zep.Edge{{Fact: zep.String("f")}}}
+	opts = append([]GraphSearchToolOption{WithGraphUUID("graph-uuid-1")}, opts...)
 	handler := newGraphSearchHandler(api, opts...)
 	return &searchToolFixture{
 		api: api,
@@ -319,13 +320,13 @@ func newSearchToolFixture(t *testing.T, opts ...GraphSearchToolOption) *searchTo
 
 func TestGraphSearchHandlerMergePrecedence(t *testing.T) {
 	t.Run("pinned beats model arg", func(t *testing.T) {
-		f := newSearchToolFixture(t, WithToolSearchScope(zep.GraphSearchScopeNodes))
+		f := newSearchToolFixture(t, WithToolSearchScope(SearchScopeNodes))
 		modelScope := "episodes"
 		if _, err := f.run(context.Background(), SearchArgs{Query: "q", Scope: &modelScope}); err != nil {
 			t.Fatalf("run err = %v", err)
 		}
-		if f.api.lastQuery.Scope == nil || *f.api.lastQuery.Scope != zep.GraphSearchScopeNodes {
-			t.Fatalf("scope = %v, want pinned nodes", f.api.lastQuery.Scope)
+		if f.api.lastSearchScope != SearchScopeNodes {
+			t.Fatalf("scope = %v, want pinned nodes", f.api.lastSearchScope)
 		}
 	})
 
@@ -335,8 +336,8 @@ func TestGraphSearchHandlerMergePrecedence(t *testing.T) {
 		if _, err := f.run(context.Background(), SearchArgs{Query: "q", Scope: &modelScope}); err != nil {
 			t.Fatalf("run err = %v", err)
 		}
-		if f.api.lastQuery.Scope == nil || *f.api.lastQuery.Scope != zep.GraphSearchScopeEpisodes {
-			t.Fatalf("scope = %v, want model-provided episodes", f.api.lastQuery.Scope)
+		if f.api.lastSearchScope != SearchScopeEpisodes {
+			t.Fatalf("scope = %v, want model-provided episodes", f.api.lastSearchScope)
 		}
 	})
 
@@ -345,14 +346,14 @@ func TestGraphSearchHandlerMergePrecedence(t *testing.T) {
 		if _, err := f.run(context.Background(), SearchArgs{Query: "q"}); err != nil {
 			t.Fatalf("run err = %v", err)
 		}
-		if f.api.lastQuery.Scope == nil || *f.api.lastQuery.Scope != zep.GraphSearchScopeEdges {
-			t.Fatalf("scope = %v, want default edges", f.api.lastQuery.Scope)
+		if f.api.lastSearchScope != SearchScopeEdges {
+			t.Fatalf("scope = %v, want default edges", f.api.lastSearchScope)
 		}
-		if f.api.lastQuery.Reranker == nil || *f.api.lastQuery.Reranker != zep.RerankerRrf {
-			t.Fatalf("reranker = %v, want default rrf", f.api.lastQuery.Reranker)
+		if f.api.lastSearchBody.Reranker == nil || *f.api.lastSearchBody.Reranker != zep.V4SearchRequestRerankerRrf {
+			t.Fatalf("reranker = %v, want default rrf", f.api.lastSearchBody.Reranker)
 		}
-		if f.api.lastQuery.Limit == nil || *f.api.lastQuery.Limit != 10 {
-			t.Fatalf("limit = %v, want default 10", f.api.lastQuery.Limit)
+		if f.api.lastSearchLimit == nil || *f.api.lastSearchLimit != 10 {
+			t.Fatalf("limit = %v, want default 10", f.api.lastSearchLimit)
 		}
 	})
 
@@ -370,8 +371,8 @@ func TestGraphSearchHandlerMergePrecedence(t *testing.T) {
 		if _, err := f.run(context.Background(), SearchArgs{Query: "q", Scope: &badScope}); err != nil {
 			t.Fatalf("run err = %v", err)
 		}
-		if f.api.lastQuery.Scope == nil || *f.api.lastQuery.Scope != zep.GraphSearchScopeEdges {
-			t.Fatalf("scope = %v, want fallback default edges", f.api.lastQuery.Scope)
+		if f.api.lastSearchScope != SearchScopeEdges {
+			t.Fatalf("scope = %v, want fallback default edges", f.api.lastSearchScope)
 		}
 		if !strings.Contains(buf.String(), "invalid") {
 			t.Fatalf("expected a warning to be logged for invalid scope, got: %s", buf.String())
@@ -384,19 +385,22 @@ func TestGraphSearchHandlerMergePrecedence(t *testing.T) {
 		if _, err := f.run(context.Background(), SearchArgs{Query: "q", Reranker: &bad}); err != nil {
 			t.Fatalf("run err = %v", err)
 		}
-		if f.api.lastQuery.Reranker == nil || *f.api.lastQuery.Reranker != zep.RerankerRrf {
-			t.Fatalf("reranker = %v, want fallback default rrf", f.api.lastQuery.Reranker)
+		if f.api.lastSearchBody.Reranker == nil || *f.api.lastSearchBody.Reranker != zep.V4SearchRequestRerankerRrf {
+			t.Fatalf("reranker = %v, want fallback default rrf", f.api.lastSearchBody.Reranker)
 		}
 	})
 
-	t.Run("hidden param omitted from query even if model supplies it", func(t *testing.T) {
+	t.Run("hidden scope falls back to the default scope", func(t *testing.T) {
+		// Zep v4 has one search method for each scope, so a search always
+		// has a scope. A hidden scope parameter therefore means "the model
+		// cannot choose", not "no scope".
 		f := newSearchToolFixture(t, WithHiddenParams(SearchParamScope))
 		modelScope := "nodes"
 		if _, err := f.run(context.Background(), SearchArgs{Query: "q", Scope: &modelScope}); err != nil {
 			t.Fatalf("run err = %v", err)
 		}
-		if f.api.lastQuery.Scope != nil {
-			t.Fatalf("scope = %v, want omitted (nil) because hidden", f.api.lastQuery.Scope)
+		if f.api.lastSearchScope != SearchScopeEdges {
+			t.Fatalf("scope = %v, want default edges because the parameter is hidden", f.api.lastSearchScope)
 		}
 	})
 
@@ -405,11 +409,11 @@ func TestGraphSearchHandlerMergePrecedence(t *testing.T) {
 		if _, err := f.run(context.Background(), SearchArgs{Query: "q"}); err != nil {
 			t.Fatalf("run err = %v", err)
 		}
-		if f.api.lastQuery.MmrLambda != nil {
-			t.Fatalf("mmr_lambda = %v, want nil (no default, not provided)", f.api.lastQuery.MmrLambda)
+		if f.api.lastSearchBody.MmrLambda != nil {
+			t.Fatalf("mmr_lambda = %v, want nil (no default, not provided)", f.api.lastSearchBody.MmrLambda)
 		}
-		if f.api.lastQuery.CenterNodeUUID != nil {
-			t.Fatalf("center_node_uuid = %v, want nil", f.api.lastQuery.CenterNodeUUID)
+		if f.api.lastSearchBody.CenterNodeUUID != nil {
+			t.Fatalf("center_node_uuid = %v, want nil", f.api.lastSearchBody.CenterNodeUUID)
 		}
 	})
 
@@ -420,11 +424,11 @@ func TestGraphSearchHandlerMergePrecedence(t *testing.T) {
 		if _, err := f.run(context.Background(), SearchArgs{Query: "q", MMRLambda: &lambda, CenterNodeUUID: &center}); err != nil {
 			t.Fatalf("run err = %v", err)
 		}
-		if f.api.lastQuery.MmrLambda == nil || *f.api.lastQuery.MmrLambda != 0.7 {
-			t.Fatalf("mmr_lambda = %v, want 0.7", f.api.lastQuery.MmrLambda)
+		if f.api.lastSearchBody.MmrLambda == nil || *f.api.lastSearchBody.MmrLambda != 0.7 {
+			t.Fatalf("mmr_lambda = %v, want 0.7", f.api.lastSearchBody.MmrLambda)
 		}
-		if f.api.lastQuery.CenterNodeUUID == nil || *f.api.lastQuery.CenterNodeUUID != "node-99" {
-			t.Fatalf("center_node_uuid = %v, want node-99", f.api.lastQuery.CenterNodeUUID)
+		if f.api.lastSearchBody.CenterNodeUUID == nil || *f.api.lastSearchBody.CenterNodeUUID != "node-99" {
+			t.Fatalf("center_node_uuid = %v, want node-99", f.api.lastSearchBody.CenterNodeUUID)
 		}
 	})
 
@@ -435,11 +439,11 @@ func TestGraphSearchHandlerMergePrecedence(t *testing.T) {
 		if _, err := f.run(context.Background(), SearchArgs{Query: "q", MMRLambda: &lambda, CenterNodeUUID: &center}); err != nil {
 			t.Fatalf("run err = %v", err)
 		}
-		if f.api.lastQuery.MmrLambda != nil {
-			t.Fatalf("mmr_lambda = %v, want nil (hidden)", f.api.lastQuery.MmrLambda)
+		if f.api.lastSearchBody.MmrLambda != nil {
+			t.Fatalf("mmr_lambda = %v, want nil (hidden)", f.api.lastSearchBody.MmrLambda)
 		}
-		if f.api.lastQuery.CenterNodeUUID != nil {
-			t.Fatalf("center_node_uuid = %v, want nil (hidden)", f.api.lastQuery.CenterNodeUUID)
+		if f.api.lastSearchBody.CenterNodeUUID != nil {
+			t.Fatalf("center_node_uuid = %v, want nil (hidden)", f.api.lastSearchBody.CenterNodeUUID)
 		}
 	})
 }
@@ -456,63 +460,37 @@ func TestGraphSearchHandlerFiltersAndBFSAlwaysApplied(t *testing.T) {
 	if _, err := f.run(context.Background(), SearchArgs{Query: "q"}); err != nil {
 		t.Fatalf("run err = %v", err)
 	}
-	if f.api.lastQuery.SearchFilters != filters {
-		t.Fatalf("SearchFilters = %v, want the pinned filters", f.api.lastQuery.SearchFilters)
+	if f.api.lastSearchBody.Filters != filters {
+		t.Fatalf("Filters = %v, want the pinned filters", f.api.lastSearchBody.Filters)
 	}
-	if len(f.api.lastQuery.BfsOriginNodeUUIDs) != 2 {
-		t.Fatalf("BfsOriginNodeUUIDs = %v, want %v", f.api.lastQuery.BfsOriginNodeUUIDs, bfs)
+	if len(f.api.lastSearchBody.BfsOriginNodeUUIDs) != 2 {
+		t.Fatalf("BfsOriginNodeUUIDs = %v, want %v", f.api.lastSearchBody.BfsOriginNodeUUIDs, bfs)
 	}
 }
 
 // --- thread_summaries scope mapping -----------------------------------------
 
 func TestGraphSearchHandlerThreadSummariesScope(t *testing.T) {
-	f := newSearchToolFixture(t, WithToolSearchScope(zep.GraphSearchScopeThreadSummaries))
-	f.api.searchRes = &zep.GraphSearchResults{
-		ThreadSummaries: []*zep.GraphitiSagaNode{
-			{Name: "thread-1", Summary: zep.String("Discussed hiking plans.")},
-			{Name: "thread-2", Summary: nil},
-		},
+	f := newSearchToolFixture(t, WithToolSearchScope(SearchScopeThreadSummaries))
+	f.api.threadSummaries = []*zep.ThreadSummary{
+		{Summary: zep.String("Discussed hiking plans.")},
+		{Summary: nil},
 	}
 	res, err := f.run(context.Background(), SearchArgs{Query: "q"})
 	if err != nil {
 		t.Fatalf("run err = %v", err)
 	}
-	if len(res.Facts) != 2 {
-		t.Fatalf("Facts = %v, want 2 entries", res.Facts)
+	if len(res.Facts) != 1 {
+		t.Fatalf("Facts = %v, want 1 entry", res.Facts)
 	}
-	if res.Facts[0] != "thread-1: Discussed hiking plans." {
-		t.Fatalf("Facts[0] = %q, want %q", res.Facts[0], "thread-1: Discussed hiking plans.")
-	}
-	if res.Facts[1] != "thread-2" {
-		t.Fatalf("Facts[1] = %q, want %q (name-only fallback)", res.Facts[1], "thread-2")
+	if res.Facts[0] != "Discussed hiking plans." {
+		t.Fatalf("Facts[0] = %q, want %q", res.Facts[0], "Discussed hiking plans.")
 	}
 }
 
 func TestSearchScopeSupportedIncludesThreadSummaries(t *testing.T) {
-	if !searchScopeSupported(zep.GraphSearchScopeThreadSummaries) {
+	if !searchScopeSupported(SearchScopeThreadSummaries) {
 		t.Fatal("expected thread_summaries to be a supported scope")
-	}
-}
-
-func TestMapSearchResultsThreadSummaries(t *testing.T) {
-	res := &zep.GraphSearchResults{
-		ThreadSummaries: []*zep.GraphitiSagaNode{
-			{Name: "t1", Summary: zep.String("summary one")},
-			{Name: "", Summary: zep.String("summary two")},
-			{Name: "t3", Summary: nil},
-			nil,
-		},
-	}
-	got := mapSearchResults(zep.GraphSearchScopeThreadSummaries, res)
-	want := []string{"t1: summary one", "summary two", "t3"}
-	if len(got) != len(want) {
-		t.Fatalf("mapSearchResults = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("mapSearchResults[%d] = %q, want %q", i, got[i], want[i])
-		}
 	}
 }
 
@@ -539,22 +517,39 @@ func TestGraphSearchHandlerEmptyQueryReturnsEmptyResult(t *testing.T) {
 	if len(res.Facts) != 0 {
 		t.Fatalf("Facts = %v, want empty", res.Facts)
 	}
-	if f.api.lastQuery != nil {
+	if f.api.searchCalls != 0 {
 		t.Fatal("expected Search not to be called for an empty query")
 	}
 }
 
-// --- WithHiddenParams / GraphID / UserID target resolution -----------------
+// --- Graph UUID target resolution ------------------------------------------
 
-func TestGraphSearchHandlerGraphIDOverridesUserID(t *testing.T) {
-	f := newSearchToolFixture(t, WithGraphID("graph-1"))
+func TestGraphSearchHandlerUsesConfiguredGraphUUID(t *testing.T) {
+	f := newSearchToolFixture(t, WithGraphUUID("graph-uuid-2"))
 	if _, err := f.run(context.Background(), SearchArgs{Query: "q"}); err != nil {
 		t.Fatalf("run err = %v", err)
 	}
-	if f.api.lastQuery.GraphID == nil || *f.api.lastQuery.GraphID != "graph-1" {
-		t.Fatalf("GraphID = %v, want graph-1", f.api.lastQuery.GraphID)
+	if f.api.lastGraphUUID != "graph-uuid-2" {
+		t.Fatalf("graph UUID = %q, want graph-uuid-2", f.api.lastGraphUUID)
 	}
-	if f.api.lastQuery.UserID != nil {
-		t.Fatalf("UserID = %v, want nil when GraphID is set", f.api.lastQuery.UserID)
+}
+
+// TestGraphSearchHandlerResolverReceivesToolContext asserts that the resolver
+// gets the ADK tool context, so an application can map its own key to a Zep
+// graph UUID.
+func TestGraphSearchHandlerResolverReceivesToolContext(t *testing.T) {
+	var gotUserID string
+	f := newSearchToolFixture(t, WithGraphUUIDResolver(func(tc agent.ToolContext) string {
+		gotUserID = tc.UserID()
+		return "graph-uuid-3"
+	}))
+	if _, err := f.run(context.Background(), SearchArgs{Query: "q"}); err != nil {
+		t.Fatalf("run err = %v", err)
+	}
+	if gotUserID != "u1" {
+		t.Fatalf("resolver saw user ID %q, want u1", gotUserID)
+	}
+	if f.api.lastGraphUUID != "graph-uuid-3" {
+		t.Fatalf("graph UUID = %q, want graph-uuid-3", f.api.lastGraphUUID)
 	}
 }

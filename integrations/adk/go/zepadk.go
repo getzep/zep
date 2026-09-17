@@ -13,12 +13,17 @@
 //     persists the assistant's text reply to the same Zep thread so the user
 //     graph sees both halves of the conversation. Attach it via
 //     [llmagent.Config.AfterModelCallbacks].
-//   - [NewMemoryService] returns an ADK [memory.Service] backed by Zep's
-//     user-graph search. Attach it at the runner via
-//     [runner.Config.MemoryService]; ADK tools reach it through
-//     ToolContext.SearchMemory.
+//   - [NewMemoryService] returns an ADK [memory.Service] backed by Zep graph
+//     search. Attach it at the runner via [runner.Config.MemoryService]; ADK
+//     tools reach it through ToolContext.SearchMemory.
 //   - [NewGraphSearchTool] returns a [tool.Tool] the model can call to search
-//     the user's Zep knowledge graph on demand.
+//     a Zep graph on demand.
+//
+// Zep v4 addresses every user, thread, and graph by a server-generated UUID.
+// A user ID or a thread ID is a name, not an address. The application creates
+// the Zep user and thread out of band (see [CreateUser] and [CreateThread]),
+// stores the returned UUIDs in its own database, and gives them to this
+// package for each turn. The package never resolves a name at run time.
 //
 // All Zep calls are guarded so that a Zep failure never crashes the host
 // agent: when the client is nil (for example because ZEP_API_KEY is unset) the
@@ -40,8 +45,8 @@ import (
 	"strings"
 	"sync"
 
-	zep "github.com/getzep/zep-go/v3"
-	zepclient "github.com/getzep/zep-go/v3/client"
+	zep "github.com/getzep/zep-go/v4"
+	zepclient "github.com/getzep/zep-go/v4/client"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
@@ -82,10 +87,11 @@ type ContextInput struct {
 	// Client is the concrete Zep client in use by the callback (the same
 	// value passed to [NewBeforeModelCallback]).
 	Client *zepclient.Client
-	// UserID is the resolved Zep user ID for this turn.
-	UserID string
-	// ThreadID is the resolved Zep thread ID for this turn.
-	ThreadID string
+	// UserUUID is the Zep user UUID for this turn, or "" when the
+	// application configured no user UUID.
+	UserUUID string
+	// ThreadUUID is the Zep thread UUID for this turn.
+	ThreadUUID string
 	// UserMessage is the user's message text for this turn (after
 	// truncation to Zep's per-message limit).
 	UserMessage string
@@ -107,11 +113,25 @@ type ContextInput struct {
 // persistence and the builder.
 type ContextBuilder func(ctx context.Context, in ContextInput) (string, error)
 
+// ThreadUUIDResolver returns the Zep thread UUID for the ADK turn described
+// by cc. An application that keeps one Zep thread for each ADK session reads
+// the UUID from its own database with the ADK session ID as the key. The
+// resolver returns "" when the application has no thread UUID for the turn,
+// and the callback then persists nothing for that turn.
+type ThreadUUIDResolver func(cc agent.CallbackContext) string
+
+// UserUUIDResolver returns the Zep user UUID for the ADK turn described by
+// cc. The callback passes the value to a custom [ContextBuilder] through
+// [ContextInput.UserUUID]; it sends no user UUID to Zep itself.
+type UserUUIDResolver func(cc agent.CallbackContext) string
+
 // callbackOptions holds the resolved configuration for a BeforeModelCallback.
 type callbackOptions struct {
 	contextTemplate string
 	contextBuilder  ContextBuilder
 	userName        string
+	threadUUID      ThreadUUIDResolver
+	userUUID        UserUUIDResolver
 	logger          *slog.Logger
 }
 
@@ -165,6 +185,45 @@ func WithContextBuilder(b ContextBuilder) CallbackOption {
 	return func(o *callbackOptions) { o.contextBuilder = b }
 }
 
+// WithThreadUUID sets the Zep thread UUID that the callback writes to. Use
+// it when one agent instance serves one thread. An application that serves
+// many threads passes [WithThreadUUIDResolver] instead.
+func WithThreadUUID(threadUUID string) CallbackOption {
+	return func(o *callbackOptions) {
+		o.threadUUID = func(agent.CallbackContext) string { return threadUUID }
+	}
+}
+
+// WithThreadUUIDResolver sets the resolver that maps each ADK turn to a Zep
+// thread UUID. The resolver reads the UUID from the application's own store.
+// It must not call Zep, because a lookup on every turn adds a round-trip to
+// the request path.
+func WithThreadUUIDResolver(resolver ThreadUUIDResolver) CallbackOption {
+	return func(o *callbackOptions) {
+		if resolver != nil {
+			o.threadUUID = resolver
+		}
+	}
+}
+
+// WithUserUUID sets the Zep user UUID passed to a custom [ContextBuilder]
+// through [ContextInput.UserUUID].
+func WithUserUUID(userUUID string) CallbackOption {
+	return func(o *callbackOptions) {
+		o.userUUID = func(agent.CallbackContext) string { return userUUID }
+	}
+}
+
+// WithUserUUIDResolver sets the resolver that maps each ADK turn to a Zep
+// user UUID for [ContextInput.UserUUID]. The resolver must not call Zep.
+func WithUserUUIDResolver(resolver UserUUIDResolver) CallbackOption {
+	return func(o *callbackOptions) {
+		if resolver != nil {
+			o.userUUID = resolver
+		}
+	}
+}
+
 // WithUserMessageName sets the optional display name attached to the user
 // message persisted to Zep. Supplying a real name helps Zep resolve the
 // user's identity in the graph.
@@ -209,9 +268,10 @@ func renderContextTemplate(template, contextBlock string) string {
 //  1. Extracts the user's latest message from the callback context.
 //  2. Truncates it to Zep's per-message limit if needed (logging a
 //     lengths-only warning; content is never dropped or logged).
-//  3. Persists it to the Zep thread whose ID equals the ADK session ID and
-//     retrieves the context to inject — either via a single
-//     Thread.AddMessages(ReturnContext=true) round-trip (the default), or,
+//  3. Persists it to the Zep thread whose UUID comes from [WithThreadUUID]
+//     or [WithThreadUUIDResolver], and retrieves the context to inject —
+//     either via a single Thread.AddMessages(ReturnContext=true)
+//     round-trip (the default), or,
 //     when [WithContextBuilder] is configured, by persisting
 //     (Thread.AddMessages without ReturnContext) and running the custom
 //     [ContextBuilder] concurrently. See [WithContextBuilder] for the
@@ -234,9 +294,11 @@ func renderContextTemplate(template, contextBlock string) string {
 // failures are logged via the configured logger and never propagated, so the
 // agent continues without memory rather than crashing.
 //
-// The integration contract is: ADK session ID maps to the Zep thread ID and
-// ADK user ID maps to the Zep user ID. Create the Zep user and thread out of
-// band before the first turn (see [EnsureUser] and [EnsureThread]).
+// The integration contract is: the application creates the Zep user and
+// thread out of band (see [CreateUser] and [CreateThread]), stores the
+// returned UUIDs, and supplies the thread UUID through [WithThreadUUID] or
+// [WithThreadUUIDResolver]. Without a thread UUID the callback persists
+// nothing and injects nothing.
 func NewBeforeModelCallback(client *zepclient.Client, opts ...CallbackOption) llmagent.BeforeModelCallback {
 	return newBeforeModelCallback(client, newZepAPI(client), opts...)
 }
@@ -261,16 +323,20 @@ func newBeforeModelCallback(client *zepclient.Client, api zepAPI, opts ...Callba
 			return nil, nil
 		}
 
-		threadID := cc.SessionID()
+		threadUUID := resolveThreadUUID(cfg.threadUUID, cc)
 		latest := LastUserText(cc.UserContent())
-		if threadID == "" || latest == "" {
+		if latest == "" {
+			return nil, nil
+		}
+		if threadUUID == "" {
+			cfg.logger.Error("zepadk: no Zep thread UUID for this turn; proceeding without memory")
 			return nil, nil
 		}
 
-		truncated := truncateMessageContent(cfg.logger, threadID, latest)
-		message := &zep.Message{
-			Role:    zep.RoleTypeUserRole,
-			Content: truncated,
+		truncated := truncateMessageContent(cfg.logger, threadUUID, latest)
+		message := &zep.AddMessage{
+			Role:    zep.RoleTypeUser.Ptr(),
+			Content: zep.String(truncated),
 		}
 		if cfg.userName != "" {
 			message.Name = zep.String(cfg.userName)
@@ -278,9 +344,9 @@ func newBeforeModelCallback(client *zepclient.Client, api zepAPI, opts ...Callba
 
 		var contextBlock string
 		if cfg.contextBuilder != nil {
-			contextBlock = persistAndBuildContext(cc, client, api, cfg, threadID, truncated, message, req)
+			contextBlock = persistAndBuildContext(cc, client, api, cfg, threadUUID, truncated, message, req)
 		} else {
-			contextBlock = persistWithReturnContext(cc, api, cfg, threadID, message)
+			contextBlock = persistWithReturnContext(cc, api, cfg, threadUUID, message)
 		}
 
 		if contextBlock != "" {
@@ -293,16 +359,16 @@ func newBeforeModelCallback(client *zepclient.Client, api zepAPI, opts ...Callba
 // persistWithReturnContext is the default (no custom builder) persist path: a
 // single Thread.AddMessages(ReturnContext=true) round-trip. It returns the
 // context block to inject, or "" on failure or when Zep returned none.
-func persistWithReturnContext(cc agent.CallbackContext, api zepAPI, cfg callbackOptions, threadID string, message *zep.Message) string {
-	resp, err := api.AddMessages(cc, threadID, &zep.AddThreadMessagesRequest{
+func persistWithReturnContext(cc agent.CallbackContext, api zepAPI, cfg callbackOptions, threadUUID string, message *zep.AddMessage) string {
+	resp, err := api.AddMessages(cc, threadUUID, &zep.AddMessagesRequest{
 		ReturnContext: zep.Bool(true),
-		Messages:      []*zep.Message{message},
+		Messages:      []*zep.AddMessage{message},
 	})
 	if err != nil {
 		// Never crash the host agent on a Zep failure: log and proceed
 		// without injecting memory for this turn.
 		cfg.logger.Error("zepadk: persisting user message failed; proceeding without memory",
-			slog.String("thread_id", threadID), slog.Any("error", err))
+			slog.String("thread_uuid", threadUUID), slog.Any("error", err))
 		return ""
 	}
 	if resp != nil && resp.Context != nil {
@@ -320,7 +386,7 @@ func persistWithReturnContext(cc agent.CallbackContext, api zepAPI, cfg callback
 // catches and logs its own failure independently, so one side's error can
 // neither block nor mask the other's result. It returns the context block to
 // inject ("" when the builder failed, returned "", or was skipped).
-func persistAndBuildContext(cc agent.CallbackContext, client *zepclient.Client, api zepAPI, cfg callbackOptions, threadID, userMessage string, message *zep.Message, req *model.LLMRequest) string {
+func persistAndBuildContext(cc agent.CallbackContext, client *zepclient.Client, api zepAPI, cfg callbackOptions, threadUUID, userMessage string, message *zep.AddMessage, req *model.LLMRequest) string {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -332,16 +398,16 @@ func persistAndBuildContext(cc agent.CallbackContext, client *zepclient.Client, 
 		defer func() {
 			if r := recover(); r != nil {
 				cfg.logger.Error("zepadk: panic while persisting user message; proceeding without memory",
-					slog.String("thread_id", threadID), slog.Any("panic", r))
+					slog.String("thread_uuid", threadUUID), slog.Any("panic", r))
 			}
 		}()
-		if _, err := api.AddMessages(cc, threadID, &zep.AddThreadMessagesRequest{
-			Messages: []*zep.Message{message},
+		if _, err := api.AddMessages(cc, threadUUID, &zep.AddMessagesRequest{
+			Messages: []*zep.AddMessage{message},
 		}); err != nil {
 			// Isolated from the builder's outcome: log and proceed. The
 			// builder's result (if any) may still be injected below.
 			cfg.logger.Error("zepadk: persisting user message failed; proceeding without memory",
-				slog.String("thread_id", threadID), slog.Any("error", err))
+				slog.String("thread_uuid", threadUUID), slog.Any("error", err))
 		}
 	}()
 
@@ -355,13 +421,13 @@ func persistAndBuildContext(cc agent.CallbackContext, client *zepclient.Client, 
 		defer func() {
 			if r := recover(); r != nil {
 				cfg.logger.Warn("zepadk: context builder panicked; skipping context injection for this turn",
-					slog.String("thread_id", threadID), slog.Any("panic", r))
+					slog.String("thread_uuid", threadUUID), slog.Any("panic", r))
 			}
 		}()
 		out, err := cfg.contextBuilder(cc, ContextInput{
 			Client:      client,
-			UserID:      cc.UserID(),
-			ThreadID:    threadID,
+			UserUUID:    resolveUserUUID(cfg.userUUID, cc),
+			ThreadUUID:  threadUUID,
 			UserMessage: userMessage,
 			Callback:    cc,
 			Request:     req,
@@ -370,7 +436,7 @@ func persistAndBuildContext(cc agent.CallbackContext, client *zepclient.Client, 
 			// Isolated from the persist outcome: log and skip injection.
 			// Persistence still completes independently of this failure.
 			cfg.logger.Warn("zepadk: context builder failed; skipping context injection for this turn",
-				slog.String("thread_id", threadID), slog.Any("error", err))
+				slog.String("thread_uuid", threadUUID), slog.Any("error", err))
 			return
 		}
 		contextBlock = out
@@ -387,7 +453,28 @@ type AfterCallbackOption func(*afterCallbackOptions)
 // AfterModelCallback.
 type afterCallbackOptions struct {
 	assistantName string
+	threadUUID    ThreadUUIDResolver
 	logger        *slog.Logger
+}
+
+// WithAfterThreadUUID sets the Zep thread UUID that the after-model callback
+// writes the assistant reply to. It must name the same thread as the
+// before-model callback.
+func WithAfterThreadUUID(threadUUID string) AfterCallbackOption {
+	return func(o *afterCallbackOptions) {
+		o.threadUUID = func(agent.CallbackContext) string { return threadUUID }
+	}
+}
+
+// WithAfterThreadUUIDResolver sets the resolver that maps each ADK turn to
+// the Zep thread UUID for the assistant reply. The resolver must not call
+// Zep.
+func WithAfterThreadUUIDResolver(resolver ThreadUUIDResolver) AfterCallbackOption {
+	return func(o *afterCallbackOptions) {
+		if resolver != nil {
+			o.threadUUID = resolver
+		}
+	}
 }
 
 // WithAssistantMessageName sets the optional display name attached to the
@@ -451,25 +538,29 @@ func newAfterModelCallback(api zepAPI, opts ...AfterCallbackOption) llmagent.Aft
 			return nil, nil
 		}
 
-		threadID := cc.SessionID()
+		threadUUID := resolveThreadUUID(cfg.threadUUID, cc)
 		reply := AssistantText(resp.Content)
-		if threadID == "" || reply == "" {
+		if reply == "" {
+			return nil, nil
+		}
+		if threadUUID == "" {
+			cfg.logger.Error("zepadk: no Zep thread UUID for this turn; assistant reply not persisted")
 			return nil, nil
 		}
 
-		message := &zep.Message{
-			Role:    zep.RoleTypeAssistantRole,
-			Content: truncateMessageContent(cfg.logger, threadID, reply),
+		message := &zep.AddMessage{
+			Role:    zep.RoleTypeAssistant.Ptr(),
+			Content: zep.String(truncateMessageContent(cfg.logger, threadUUID, reply)),
 		}
 		if cfg.assistantName != "" {
 			message.Name = zep.String(cfg.assistantName)
 		}
 
-		if _, err := api.AddMessages(cc, threadID, &zep.AddThreadMessagesRequest{
-			Messages: []*zep.Message{message},
+		if _, err := api.AddMessages(cc, threadUUID, &zep.AddMessagesRequest{
+			Messages: []*zep.AddMessage{message},
 		}); err != nil {
 			cfg.logger.Error("zepadk: persisting assistant message failed; reply unaffected",
-				slog.String("thread_id", threadID), slog.Any("error", err))
+				slog.String("thread_uuid", threadUUID), slog.Any("error", err))
 		}
 		return nil, nil
 	}
@@ -574,41 +665,51 @@ func contentHasFunctionResponse(c *genai.Content) bool {
 	return false
 }
 
-// EnsureUser idempotently ensures the Zep user exists.
-//
-// It calls User.Add directly (create-then-catch-conflict) rather than
-// checking for existence first, which would be racy and cost an extra
-// round-trip. Passing a real first name, last name, and email helps Zep
-// resolve the user's identity in the graph.
-//
-// Returns created=true iff the user was newly created by this call. When the
-// user already exists (an "already exists" conflict — see [isAlreadyExists])
-// it returns (false, nil): this is not an error, since EnsureUser is meant to
-// be called on every session start. Any other failure (auth, network, 5xx)
-// is returned as (false, err) and never swallowed. It is a no-op — (false,
-// nil), no calls made — when client is nil.
-//
-// There is no OnCreated hook: the Go idiom is to branch on the returned bool,
-// e.g.:
-//
-//	created, err := EnsureUser(ctx, client, userID, firstName, lastName, email)
-//	if err != nil {
-//	    // handle genuine failure
-//	}
-//	if created {
-//	    // one-time per-user setup: ontology, custom instructions, etc.
-//	}
-func EnsureUser(ctx context.Context, client *zepclient.Client, userID, firstName, lastName, email string) (created bool, err error) {
-	if client == nil || userID == "" {
-		return false, nil
+// resolveThreadUUID returns the thread UUID for the turn described by cc, or
+// "" when no resolver is configured.
+func resolveThreadUUID(resolver ThreadUUIDResolver, cc agent.CallbackContext) string {
+	if resolver == nil {
+		return ""
 	}
-	return ensureUserWithAPI(ctx, newZepAPI(client), userID, firstName, lastName, email)
+	return resolver(cc)
 }
 
-// ensureUserWithAPI is the seam-friendly core of [EnsureUser]. api is assumed
-// non-nil; callers (EnsureUser) handle the nil-client no-op case.
-func ensureUserWithAPI(ctx context.Context, api zepAPI, userID, firstName, lastName, email string) (created bool, err error) {
-	req := &zep.CreateUserRequest{UserID: userID}
+// resolveUserUUID returns the user UUID for the turn described by cc, or ""
+// when no resolver is configured.
+func resolveUserUUID(resolver UserUUIDResolver, cc agent.CallbackContext) string {
+	if resolver == nil {
+		return ""
+	}
+	return resolver(cc)
+}
+
+// CreateUser creates a Zep user and returns the UUID of the user and the UUID
+// of the graph of the user.
+//
+// Zep v4 addresses a user by a server-generated UUID. The application calls
+// this function one time for each user, stores both UUIDs in its own
+// database, and gives them to this package on each turn. Do not call it on
+// every session start, because Zep creates a new user on each call.
+//
+// A real first name, last name, and email help Zep to resolve the identity of
+// the user in the graph. The userID parameter is an optional
+// developer-assigned name. It is not an address, and Zep does not require it.
+//
+// The function returns ("", "", nil) and makes no call when client is nil.
+func CreateUser(ctx context.Context, client *zepclient.Client, userID, firstName, lastName, email string) (userUUID, graphUUID string, err error) {
+	if client == nil {
+		return "", "", nil
+	}
+	return createUserWithAPI(ctx, newZepAPI(client), userID, firstName, lastName, email)
+}
+
+// createUserWithAPI is the seam-friendly core of [CreateUser]. api is assumed
+// non-nil.
+func createUserWithAPI(ctx context.Context, api zepAPI, userID, firstName, lastName, email string) (userUUID, graphUUID string, err error) {
+	req := &zep.CreateUserRequest{}
+	if userID != "" {
+		req.UserID = zep.String(userID)
+	}
 	if firstName != "" {
 		req.FirstName = zep.String(firstName)
 	}
@@ -618,56 +719,50 @@ func ensureUserWithAPI(ctx context.Context, api zepAPI, userID, firstName, lastN
 	if email != "" {
 		req.Email = zep.String(email)
 	}
-	if _, err := api.AddUser(ctx, req); err != nil {
-		if isAlreadyExists(err) {
-			return false, nil
-		}
-		return false, err
+	user, err := api.CreateUser(ctx, req)
+	if err != nil {
+		return "", "", err
 	}
-	return true, nil
+	if user == nil {
+		return "", "", errNoUserUUID
+	}
+	if deref(user.UUID) == "" {
+		return "", "", errNoUserUUID
+	}
+	return deref(user.UUID), deref(user.GraphUUID), nil
 }
 
-// EnsureThread idempotently ensures the Zep thread exists.
+// CreateThread creates a Zep thread for the user with UUID userUUID and
+// returns the UUID of the thread.
 //
-// It calls Thread.Create directly (create-then-catch-conflict). The thread ID
-// should equal the ADK session ID, and the user must already exist (see
-// [EnsureUser]).
+// The application calls this function one time for each conversation, stores
+// the UUID in its own database, and gives it to the callbacks through
+// [WithThreadUUID], [WithThreadUUIDResolver], [WithAfterThreadUUID], or
+// [WithAfterThreadUUIDResolver]. The threadID parameter is an optional
+// developer-assigned name, for example the ADK session ID. It is not an
+// address.
 //
-// Returns created=true iff the thread was newly created by this call. When
-// the thread already exists (see [isAlreadyExists]) it returns (false, nil):
-// this is not an error, since EnsureThread is meant to be called on every
-// session start. Any other failure (auth, network, 5xx) is returned as
-// (false, err). It is a no-op — (false, nil), no calls made — when client is
-// nil.
-//
-// There is no OnCreated hook: the Go idiom is to branch on the returned bool,
-// e.g.:
-//
-//	created, err := EnsureThread(ctx, client, threadID, userID)
-//	if err != nil {
-//	    // handle genuine failure
-//	}
-//	if created {
-//	    // one-time per-thread setup, if any.
-//	}
-func EnsureThread(ctx context.Context, client *zepclient.Client, threadID, userID string) (created bool, err error) {
-	if client == nil || threadID == "" || userID == "" {
-		return false, nil
+// The function returns ("", nil) and makes no call when client is nil.
+func CreateThread(ctx context.Context, client *zepclient.Client, threadID, userUUID string) (threadUUID string, err error) {
+	if client == nil || userUUID == "" {
+		return "", nil
 	}
-	return ensureThreadWithAPI(ctx, newZepAPI(client), threadID, userID)
+	return createThreadWithAPI(ctx, newZepAPI(client), threadID, userUUID)
 }
 
-// ensureThreadWithAPI is the seam-friendly core of [EnsureThread]. api is
-// assumed non-nil; callers (EnsureThread) handle the nil-client no-op case.
-func ensureThreadWithAPI(ctx context.Context, api zepAPI, threadID, userID string) (created bool, err error) {
-	if _, err := api.CreateThread(ctx, &zep.CreateThreadRequest{
-		ThreadID: threadID,
-		UserID:   userID,
-	}); err != nil {
-		if isAlreadyExists(err) {
-			return false, nil
-		}
-		return false, err
+// createThreadWithAPI is the seam-friendly core of [CreateThread]. api is
+// assumed non-nil.
+func createThreadWithAPI(ctx context.Context, api zepAPI, threadID, userUUID string) (threadUUID string, err error) {
+	req := &zep.CreateThreadRequest{UserUUID: userUUID}
+	if threadID != "" {
+		req.ThreadID = zep.String(threadID)
 	}
-	return true, nil
+	thread, err := api.CreateThread(ctx, req)
+	if err != nil {
+		return "", err
+	}
+	if thread == nil || deref(thread.UUID) == "" {
+		return "", errNoThreadUUID
+	}
+	return deref(thread.UUID), nil
 }

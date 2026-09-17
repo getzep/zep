@@ -3,7 +3,7 @@ module github.com/getzep/zep/integrations/adk/go
 go 1.25.0
 
 require (
-	github.com/getzep/zep-go/v3 v3.23.0
+	github.com/getzep/zep-go/v4 v4.0.0-alpha.5
 	github.com/google/jsonschema-go v0.4.2
 	google.golang.org/adk v1.4.0
 	google.golang.org/genai v1.57.0

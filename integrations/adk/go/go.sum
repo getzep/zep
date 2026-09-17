@@ -10,8 +10,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
-github.com/getzep/zep-go/v3 v3.23.0 h1:QpPX2+X/dmWQ3dZxrU5RRUsArVGyRmoTxqss5mZN1nI=
-github.com/getzep/zep-go/v3 v3.23.0/go.mod h1:gTP6uw5RPlcFSs5z0pGUzhOpx8+w/S2swSc08efsSyQ=
+github.com/getzep/zep-go/v4 v4.0.0-alpha.5 h1:LebIX3MBuYHsS+SxDUt5Su8oBes4yK8+5CaYXKHoHko=
+github.com/getzep/zep-go/v4 v4.0.0-alpha.5/go.mod h1:+z4Yv+XAUTW0/r6J9hv6DfD7R0OnEOxyt1VvEctNIvQ=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=
 github.com/go-logr/logr v1.4.3/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=

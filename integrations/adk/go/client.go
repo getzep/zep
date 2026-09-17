@@ -3,13 +3,17 @@ package zepadk
 import (
 	"os"
 
-	zepclient "github.com/getzep/zep-go/v3/client"
-	zepoption "github.com/getzep/zep-go/v3/option"
+	zepclient "github.com/getzep/zep-go/v4/client"
+	zepoption "github.com/getzep/zep-go/v4/option"
 )
 
 // NewClient constructs a Zep client authenticated with apiKey. It is a thin
 // convenience wrapper over [zepclient.NewClient]; callers who need additional
-// options (a custom base URL, for example) can build the client directly.
+// options can build the client directly.
+//
+// The client calls the Zep v4 API. The SDK default base URL is
+// https://api.getzep.com/api/v4. Pass [zepoption.WithBaseURL] to target
+// another deployment.
 //
 // The returned client should be reused across the lifetime of the process.
 func NewClient(apiKey string, opts ...zepoption.RequestOption) *zepclient.Client {

@@ -7,8 +7,7 @@ import (
 	"testing"
 	"time"
 
-	zep "github.com/getzep/zep-go/v3"
-	zepoption "github.com/getzep/zep-go/v3/option"
+	zep "github.com/getzep/zep-go/v4"
 
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
@@ -34,7 +33,7 @@ func TestBuilderReceivesFullyPopulatedInput(t *testing.T) {
 		return "BUILT CONTEXT", nil
 	}
 
-	cb := newBeforeModelCallback(client, api, WithContextBuilder(builder), WithUserMessageName("Jane"))
+	cb := newBeforeModelCallback(client, api, WithThreadUUID("thread-uuid-1"), WithUserUUID("user-uuid-1"), WithContextBuilder(builder), WithUserMessageName("Jane"))
 
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("hi there", genai.RoleUser))
 	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi there", genai.RoleUser)}}
@@ -46,11 +45,11 @@ func TestBuilderReceivesFullyPopulatedInput(t *testing.T) {
 	if got.Client != client {
 		t.Fatalf("ContextInput.Client = %p, want %p (the client passed to NewBeforeModelCallback)", got.Client, client)
 	}
-	if got.UserID != "u1" {
-		t.Fatalf("ContextInput.UserID = %q, want u1", got.UserID)
+	if got.UserUUID != "user-uuid-1" {
+		t.Fatalf("ContextInput.UserUUID = %q, want user-uuid-1", got.UserUUID)
 	}
-	if got.ThreadID != "thread-1" {
-		t.Fatalf("ContextInput.ThreadID = %q, want thread-1", got.ThreadID)
+	if got.ThreadUUID != "thread-uuid-1" {
+		t.Fatalf("ContextInput.ThreadUUID = %q, want thread-uuid-1", got.ThreadUUID)
 	}
 	if got.UserMessage != "hi there" {
 		t.Fatalf("ContextInput.UserMessage = %q, want %q", got.UserMessage, "hi there")
@@ -77,7 +76,7 @@ func TestBuilderSetPersistsWithoutReturnContext(t *testing.T) {
 		return "BUILDER FACTS", nil
 	}
 
-	cb := newBeforeModelCallback(client, api, WithContextBuilder(builder))
+	cb := newBeforeModelCallback(client, api, WithThreadUUID("thread-uuid-1"), WithUserUUID("user-uuid-1"), WithContextBuilder(builder))
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("hi", genai.RoleUser))
 	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)}}
 
@@ -114,7 +113,7 @@ func TestBuilderEmptyStringSkipsInjection(t *testing.T) {
 		return "", nil
 	}
 
-	cb := newBeforeModelCallback(client, api, WithContextBuilder(builder))
+	cb := newBeforeModelCallback(client, api, WithThreadUUID("thread-uuid-1"), WithUserUUID("user-uuid-1"), WithContextBuilder(builder))
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("hi", genai.RoleUser))
 	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)}}
 
@@ -141,7 +140,7 @@ func TestBuilderErrorSkipsInjectionButPersists(t *testing.T) {
 		return "", errors.New("builder boom")
 	}
 
-	cb := newBeforeModelCallback(client, api, WithContextBuilder(builder))
+	cb := newBeforeModelCallback(client, api, WithThreadUUID("thread-uuid-1"), WithUserUUID("user-uuid-1"), WithContextBuilder(builder))
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("hi", genai.RoleUser))
 	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)}}
 
@@ -169,7 +168,7 @@ func TestBuilderPanicSkipsInjectionButPersists(t *testing.T) {
 		panic("builder panic boom")
 	}
 
-	cb := newBeforeModelCallback(client, api, WithContextBuilder(builder))
+	cb := newBeforeModelCallback(client, api, WithThreadUUID("thread-uuid-1"), WithUserUUID("user-uuid-1"), WithContextBuilder(builder))
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("hi", genai.RoleUser))
 	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)}}
 
@@ -197,7 +196,7 @@ func TestPersistErrorBuilderSuccessSkipsDedupButInjects(t *testing.T) {
 		return "BUILDER FACTS", nil
 	}
 
-	cb := newBeforeModelCallback(client, api, WithContextBuilder(builder))
+	cb := newBeforeModelCallback(client, api, WithThreadUUID("thread-uuid-1"), WithUserUUID("user-uuid-1"), WithContextBuilder(builder))
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("hi", genai.RoleUser))
 	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)}}
 
@@ -238,7 +237,7 @@ func TestPersistAndBuilderRunConcurrently(t *testing.T) {
 		return "FACTS", nil
 	}
 
-	cb := newBeforeModelCallback(client, api, WithContextBuilder(builder))
+	cb := newBeforeModelCallback(client, api, WithThreadUUID("thread-uuid-1"), WithUserUUID("user-uuid-1"), WithContextBuilder(builder))
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("hi", genai.RoleUser))
 	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)}}
 
@@ -276,10 +275,10 @@ type blockingFakeZepAPI struct {
 	blockAddUntil chan struct{}
 }
 
-func (b *blockingFakeZepAPI) AddMessages(ctx context.Context, threadID string, req *zep.AddThreadMessagesRequest, opts ...zepoption.RequestOption) (*zep.AddThreadMessagesResponse, error) {
+func (b *blockingFakeZepAPI) AddMessages(ctx context.Context, threadUUID string, req *zep.AddMessagesRequest) (*zep.AddMessagesResult, error) {
 	close(b.onAddMessages)
 	<-b.blockAddUntil
-	return b.fakeZepAPI.AddMessages(ctx, threadID, req, opts...)
+	return b.fakeZepAPI.AddMessages(ctx, threadUUID, req)
 }
 
 // --- Template tests --------------------------------------------------------
@@ -297,7 +296,7 @@ func TestWithContextTemplateOverride(t *testing.T) {
 	api := &fakeZepAPI{contextOut: "USER FACTS"}
 	client := NewClient("test-key")
 
-	cb := newBeforeModelCallback(client, api, WithContextTemplate("CUSTOM: {context}"))
+	cb := newBeforeModelCallback(client, api, WithThreadUUID("thread-uuid-1"), WithUserUUID("user-uuid-1"), WithContextTemplate("CUSTOM: {context}"))
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("hi", genai.RoleUser))
 	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)}}
 
@@ -318,7 +317,7 @@ func TestTemplateRenderingIsSafe(t *testing.T) {
 	api := &fakeZepAPI{contextOut: tricky}
 	client := NewClient("test-key")
 
-	cb := newBeforeModelCallback(client, api)
+	cb := newBeforeModelCallback(client, api, WithThreadUUID("thread-uuid-1"), WithUserUUID("user-uuid-1"))
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("hi", genai.RoleUser))
 	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)}}
 
@@ -337,7 +336,7 @@ func TestWithContextPrefixShim(t *testing.T) {
 	api := &fakeZepAPI{contextOut: "USER FACTS"}
 	client := NewClient("test-key")
 
-	cb := newBeforeModelCallback(client, api, WithContextPrefix("LEGACY PREFIX: "))
+	cb := newBeforeModelCallback(client, api, WithThreadUUID("thread-uuid-1"), WithUserUUID("user-uuid-1"), WithContextPrefix("LEGACY PREFIX: "))
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("hi", genai.RoleUser))
 	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi", genai.RoleUser)}}
 

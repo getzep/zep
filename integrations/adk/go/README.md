@@ -29,7 +29,17 @@ import zepadk "github.com/getzep/zep/integrations/adk/go"
 ```
 
 Requirements: Go 1.25+ (`google.golang.org/adk` v1.4.0 requires Go 1.25),
-`google.golang.org/adk` v1.4.0, `github.com/getzep/zep-go/v3` v3.23.0.
+`google.golang.org/adk` v1.4.0, `github.com/getzep/zep-go/v4` v4.0.0-alpha.5.
+
+## Identifiers in Zep v4
+
+Zep v4 addresses every user, thread, and graph by a server-generated UUID. A
+user ID or a thread ID is a name, not an address.
+
+The application creates the Zep user and thread one time with `CreateUser` and
+`CreateThread`, stores the returned UUIDs in its own database, and gives them
+to this package on each turn. The package never resolves a name at run time,
+because a lookup on every turn adds a round-trip to the request path.
 
 ## Choosing a component
 
@@ -39,7 +49,7 @@ zep-adk ships the same set of capabilities across Python, TypeScript, and Go, th
 |---|---|---|---|
 | guaranteed context injection | `ZepContextTool` | `ZepContextTool` or `createZepBeforeModelCallback` | `NewBeforeModelCallback` |
 | assistant-turn persistence | `create_after_model_callback` | `createZepAfterModelCallback` | `NewAfterModelCallback` |
-| explicit provisioning + created signal | `ensure_user`/`ensure_thread` | `ensureUser`/`ensureThread` | `EnsureUser`/`EnsureThread` |
+| explicit creation that returns UUIDs | `create_user`/`create_thread` | `createUser`/`createThread` | `CreateUser`/`CreateThread` |
 | custom context block | `context_builder` | `contextBuilder` | `WithContextBuilder` |
 | injection template | `context_template` | `contextTemplate` | `WithContextTemplate` |
 | model-callable graph search (pin-or-expose, 6 scopes) | `ZepGraphSearchTool` | `ZepGraphSearchTool` | `NewGraphSearchTool` |
@@ -47,52 +57,65 @@ zep-adk ships the same set of capabilities across Python, TypeScript, and Go, th
 
 Note: Go intentionally has no tool-based injection (callbacks are the Go-ADK-idiomatic hook).
 
-Note: Go has no `onCreated`/`on_created` hook -- use the `created` bool returned by `EnsureUser`/`EnsureThread` instead. `EnsureUser` takes positional `firstName`, `lastName`, `email` strings (pass `""` to omit).
+Note: `CreateUser` takes positional `userID`, `firstName`, `lastName`, and `email` strings (pass `""` to omit). It returns the UUID of the user and the UUID of the graph of the user.
 
 ## Quick start
 
 ```go
 zep := zepadk.NewClientFromEnv() // nil when ZEP_API_KEY is unset -> no-op
 
-// Provision the Zep user and thread out of band, before the first turn --
-// e.g. during account/session onboarding. Both calls are idempotent.
-created, _ := zepadk.EnsureUser(ctx, zep, userID, "Jane", "Smith", "jane@example.com")
-if created {
-    // One-time per-user setup goes here (ontology, custom instructions, etc.).
-}
-zepadk.EnsureThread(ctx, zep, sessionID, userID)
+// Create the Zep user and thread out of band, before the first turn -- for
+// example during account or session onboarding. Store the UUIDs in your own
+// database. Each call creates a new resource, so do not call it on every
+// session start.
+userUUID, graphUUID, _ := zepadk.CreateUser(ctx, zep, userID, "Jane", "Smith", "jane@example.com")
+threadUUID, _ := zepadk.CreateThread(ctx, zep, sessionID, userUUID)
+
+searchTool, _ := zepadk.NewGraphSearchTool(zep, zepadk.WithGraphUUID(graphUUID))
 
 agent, _ := llmagent.New(llmagent.Config{
-    Name:                 "assistant",
-    Model:                llm, // a model.LLM, e.g. gemini.NewModel(...)
-    BeforeModelCallbacks: []llmagent.BeforeModelCallback{zepadk.NewBeforeModelCallback(zep)},
-    AfterModelCallbacks:  []llmagent.AfterModelCallback{zepadk.NewAfterModelCallback(zep)},
-    Tools:                []tool.Tool{searchTool}, // from zepadk.NewGraphSearchTool(zep)
+    Name:  "assistant",
+    Model: llm, // a model.LLM, for example gemini.NewModel(...)
+    BeforeModelCallbacks: []llmagent.BeforeModelCallback{
+        zepadk.NewBeforeModelCallback(zep,
+            zepadk.WithThreadUUID(threadUUID),
+            zepadk.WithUserUUID(userUUID)),
+    },
+    AfterModelCallbacks: []llmagent.AfterModelCallback{
+        zepadk.NewAfterModelCallback(zep, zepadk.WithAfterThreadUUID(threadUUID)),
+    },
+    Tools: []tool.Tool{searchTool},
 })
 
 run, _ := runner.New(runner.Config{
     AppName:        "my_app",
     Agent:          agent,
     SessionService: sessions,
-    MemoryService:  zepadk.NewMemoryService(zep),
+    MemoryService:  zepadk.NewMemoryService(zep, zepadk.WithMemoryGraphUUID(graphUUID)),
 })
 ```
 
-See [`examples/main.go`](examples/main.go) for a complete, runnable wiring of the
-agent, runner, session service, and Zep user/thread provisioning.
+An application that serves many users passes a resolver instead of a fixed
+UUID: `WithThreadUUIDResolver`, `WithUserUUIDResolver`,
+`WithAfterThreadUUIDResolver`, `WithGraphUUIDResolver`, and
+`WithMemoryGraphUUIDResolver`. Each resolver reads the UUID from the store of
+the application with the ADK session ID or the ADK user ID as the key.
+
+See [`examples/main.go`](examples/main.go) for a complete, runnable wiring of
+the agent, runner, session service, and Zep user and thread creation.
 
 ## How it works
 
-The integration contract maps ADK identifiers to Zep identifiers:
+The application maps its own ADK identifiers to Zep UUIDs:
 
 | ADK | Zep |
 |-----|-----|
-| session ID | thread ID |
-| user ID | user ID (user graph) |
+| session ID | thread UUID, from `CreateThread` |
+| user ID | user UUID and graph UUID, from `CreateUser` |
 
-Provision the Zep user and thread out of band before the first turn with
-`EnsureUser` and `EnsureThread` (both idempotent). Then, on a genuinely new user
-turn, the callback returned by `NewBeforeModelCallback`:
+Create the Zep user and thread out of band before the first turn with
+`CreateUser` and `CreateThread`, and store the UUIDs. Then, on a genuinely new
+user turn, the callback returned by `NewBeforeModelCallback`:
 
 1. Reads the user's latest message from the ADK callback context.
 2. Truncates it to Zep's 4,096-character per-message limit if needed (logging a
@@ -131,22 +154,26 @@ does not prevent a successful builder result from being injected.
 
 ```go
 builder := func(ctx context.Context, in zepadk.ContextInput) (string, error) {
-    results, err := in.Client.Graph.Search(ctx, &zep.GraphSearchQuery{
-        UserID: zep.String(in.UserID),
-        Query:  in.UserMessage,
-        Scope:  zep.GraphSearchScopeEdges.Ptr(),
+    page, err := in.Client.Graph.SearchEdges(ctx, graphUUID, &zep.GraphSearchEdgesRequest{
+        Limit: zep.Int(10),
+        Body:  &zep.SearchRequest{Query: in.UserMessage},
     })
     if err != nil {
         return "", err
     }
     var facts []string
-    for _, e := range results.Edges {
-        facts = append(facts, e.Fact)
+    for _, edge := range page.Results {
+        if edge.Fact != nil {
+            facts = append(facts, *edge.Fact)
+        }
     }
     return strings.Join(facts, "\n"), nil
 }
 
-before := zepadk.NewBeforeModelCallback(zep, zepadk.WithContextBuilder(builder))
+before := zepadk.NewBeforeModelCallback(zep,
+    zepadk.WithThreadUUID(threadUUID),
+    zepadk.WithUserUUID(userUUID),
+    zepadk.WithContextBuilder(builder))
 ```
 
 `WithContextTemplate` overrides how the retrieved (or built) context block is
@@ -166,11 +193,11 @@ existing callers.
 The public surface lives in:
 
 - [`zepadk.go`](zepadk.go) — `NewBeforeModelCallback`, `NewAfterModelCallback`,
-  `EnsureUser`, `EnsureThread`, `ContextInput`, `ContextBuilder`, and the
+  `CreateUser`, `CreateThread`, `ContextInput`, `ContextBuilder`, and the
   helpers `InjectSystemInstruction`, `LastUserText`, `AssistantText`,
   `IsToolLoopContinuation`.
 - [`memory.go`](memory.go) — `NewMemoryService` (the ADK `memory.Service` over
-  Zep `Graph.Search`).
+  the Zep graph search methods).
 - [`tool.go`](tool.go) — `NewGraphSearchTool` (the on-demand `search_memory` tool).
 - [`search.go`](search.go) — scope-aware mapping of Zep search results.
 - [`client.go`](client.go) — `NewClient` / `NewClientFromEnv`.
@@ -187,11 +214,12 @@ other scopes:
 | `nodes` | entity summaries (`name: summary`) |
 | `episodes` | message/data content |
 | `observations` | derived memories |
-| `thread_summaries` | incremental thread summaries (`name: summary`) |
+| `thread_summaries` | incremental thread summaries |
 | `auto` | the pre-materialized Context Block |
 
-An unsupported scope (a future value the Zep SDK adds before this package's
-mapping is updated) is rejected loudly: the service or tool logs an error and
+Zep v4 has one search method for each scope, and it exports no scope enum, so
+this package defines the `zepadk.SearchScope` values in the table above. An
+unsupported scope value is rejected loudly: the service or tool logs an error and
 returns no results rather than silently swallowing them.
 
 ### Graph search tool: pin-or-expose parameters
@@ -219,17 +247,19 @@ never exposed to the model, always applied to every search when set.
 ```go
 // Fully open: the model chooses scope, reranker, limit, mmr_lambda, and
 // center_node_uuid for every call.
-tool, _ := zepadk.NewGraphSearchTool(zep)
+tool, _ := zepadk.NewGraphSearchTool(zep, zepadk.WithGraphUUID(graphUUID))
 
 // Pin scope and limit; leave reranker/mmr_lambda/center_node_uuid exposed.
 tool, _ := zepadk.NewGraphSearchTool(zep,
-    zepadk.WithToolSearchScope(zep.GraphSearchScopeNodes),
+    zepadk.WithGraphUUID(graphUUID),
+    zepadk.WithToolSearchScope(zepadk.SearchScopeNodes),
     zepadk.WithToolSearchLimit(5),
 )
 
 // Hide mmr_lambda and center_node_uuid without pinning them to a value
 // (useful when the reranker is never "mmr" or "node_distance").
 tool, _ := zepadk.NewGraphSearchTool(zep,
+    zepadk.WithGraphUUID(graphUUID),
     zepadk.WithHiddenParams(zepadk.SearchParamMMRLambda, zepadk.SearchParamCenterNodeUUID),
 )
 ```
@@ -242,7 +272,7 @@ old always-pinned behavior, pin every parameter explicitly:
 
 ```go
 tool, _ := zepadk.NewGraphSearchTool(zep,
-    zepadk.WithToolSearchScope(zep.GraphSearchScopeEdges),
+    zepadk.WithToolSearchScope(zepadk.SearchScopeEdges),
     zepadk.WithToolSearchLimit(10),
     zepadk.WithHiddenParams(
         zepadk.SearchParamReranker,
@@ -258,13 +288,15 @@ Each constructor accepts functional options:
 
 | Constructor | Options |
 |-------------|---------|
-| `NewBeforeModelCallback` | `WithContextBuilder`, `WithContextTemplate`, `WithContextPrefix` (deprecated), `WithUserMessageName`, `WithLogger` |
-| `NewAfterModelCallback` | `WithAssistantMessageName`, `WithAfterLogger` |
-| `NewMemoryService` | `WithSearchScope`, `WithSearchLimit`, `WithMemoryLogger` |
-| `NewGraphSearchTool` | `WithToolName`, `WithToolDescription`, `WithGraphID`, `WithToolSearchScope`, `WithToolSearchLimit`, `WithToolReranker`, `WithToolMMRLambda`, `WithToolCenterNodeUUID`, `WithToolSearchFilters`, `WithToolBFSOriginNodeUUIDs`, `WithHiddenParams`, `WithToolLogger` |
+| `NewBeforeModelCallback` | `WithThreadUUID`, `WithThreadUUIDResolver`, `WithUserUUID`, `WithUserUUIDResolver`, `WithContextBuilder`, `WithContextTemplate`, `WithContextPrefix` (deprecated), `WithUserMessageName`, `WithLogger` |
+| `NewAfterModelCallback` | `WithAfterThreadUUID`, `WithAfterThreadUUIDResolver`, `WithAssistantMessageName`, `WithAfterLogger` |
+| `NewMemoryService` | `WithMemoryGraphUUID`, `WithMemoryGraphUUIDResolver`, `WithSearchScope`, `WithSearchLimit`, `WithMemoryLogger` |
+| `NewGraphSearchTool` | `WithToolName`, `WithToolDescription`, `WithGraphUUID`, `WithGraphUUIDResolver`, `WithToolSearchScope`, `WithToolSearchLimit`, `WithToolReranker`, `WithToolMMRLambda`, `WithToolCenterNodeUUID`, `WithToolSearchFilters`, `WithToolBFSOriginNodeUUIDs`, `WithHiddenParams`, `WithToolLogger` |
 
-`WithGraphID` scopes the search tool to a standalone graph instead of the calling
-user's graph (`UserID` and `GraphID` are mutually exclusive in Zep).
+`WithGraphUUID` selects the graph that the search tool reads. The UUID of the
+graph of a user is the second value that `CreateUser` returns. A standalone
+graph has its own UUID. Without a graph UUID the tool returns no facts and
+logs an error.
 
 When a pinning option (e.g. `WithToolSearchScope`) and `WithHiddenParams` target
 the same parameter, whichever is passed later to `NewGraphSearchTool` wins —
@@ -275,7 +307,8 @@ options are applied in call order, last write wins.
 A Zep failure never crashes the host agent:
 
 - A `nil` client (for example when `ZEP_API_KEY` is unset) makes the callback,
-  memory service, and tool safe no-ops.
+  memory service, and tool safe no-ops. A missing thread UUID or graph UUID
+  has the same effect for the affected component.
 - Transient Zep errors are logged via the configured `slog.Logger` and swallowed;
   the callback proceeds to the model without injected memory, and the memory
   service and tool return empty results.
@@ -286,8 +319,8 @@ A Zep failure never crashes the host agent:
   to be retrievable within that same turn; the returned Context Block reflects
   prior turns. Design for eventual availability.
 - **Reuse one client** across the lifetime of the process.
-- Pass real user names (and ideally last name + email) to `EnsureUser` so Zep
-  resolves the user's identity in the graph.
+- Pass real user names (and ideally a last name and an email) to `CreateUser`,
+  so that Zep resolves the identity of the user in the graph.
 
 ## Development
 
