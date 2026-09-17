@@ -113,8 +113,9 @@ async function main(): Promise<void> {
   let threadUuid: string;
   try {
     const user = await createUser(zep, {
-      // The Zep v4 thread message endpoints reject a user that has no
-      // `userId`, so the example gives the user a developer-assigned name.
+      // Temporary workaround for a production v4 defect: the thread message
+      // endpoints reject a user that has no `userId`. The label is a name
+      // only. Zep addresses the user by the UUID that it returns.
       userId: `adk-ts-example-${suffix}`,
       firstName: "Alice",
       lastName: "Smith",
