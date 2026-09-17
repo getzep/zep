@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from pydantic_ai.messages import (
@@ -29,11 +29,8 @@ from pydantic_ai.messages import (
     TextPart,
     UserPromptPart,
 )
-from zep_cloud import Message
+from zep_cloud import AddMessage
 from zep_cloud.client import AsyncZep
-
-from .provisioning import UserSetupHook, _is_already_exists_error
-from .provisioning import ensure_thread as _provision_thread
 
 if TYPE_CHECKING:
     from pydantic_ai import RunContext
@@ -73,32 +70,43 @@ class ContextInput:
 
     Attributes:
         zep: The ``AsyncZep`` client in use (``ctx.deps.client``).
-        user_id: The Zep user ID for this turn.
-        thread_id: The Zep thread ID for this turn.
+        user_uuid: The UUID of the Zep user for this turn.
+        thread_uuid: The UUID of the Zep thread for this turn.
+        graph_uuid: The UUID of the user's graph, or ``None`` when the
+            application does not carry the value on ``ZepDeps``.
         user_message: The user's message text for this turn.
         run_context: The Pydantic AI ``RunContext`` for this turn.
 
     Example:
-        A builder that searches a per-user graph instead of using the
+        A builder that searches the user's graph instead of using the
         thread's default context retrieval::
 
             async def my_builder(ctx: ContextInput) -> str | None:
-                results = await ctx.zep.graph.search(
-                    user_id=ctx.user_id,
-                    query=ctx.user_message,
-                    scope="edges",
-                )
-                if not results.edges:
+                if ctx.graph_uuid is None:
                     return None
-                return "\\n".join(edge.fact for edge in results.edges)
+                pager = await ctx.zep.graph.search_edges(
+                    ctx.graph_uuid,
+                    query=ctx.user_message,
+                )
+                edges = pager.items or []
+                if not edges:
+                    return None
+                return "\\n".join(edge.fact for edge in edges if edge.fact)
 
-            deps = ZepDeps(client=zep, user_id="u", thread_id="t", context_builder=my_builder)
+            deps = ZepDeps(
+                client=zep,
+                user_uuid="...",
+                thread_uuid="...",
+                graph_uuid="...",
+                context_builder=my_builder,
+            )
     """
 
     zep: AsyncZep
-    user_id: str
-    thread_id: str
+    user_uuid: str
+    thread_uuid: str
     user_message: str
+    graph_uuid: str | None = None
     run_context: RunContext[Any] | None = None
 
 
@@ -121,25 +129,28 @@ class ZepDeps:
     """Dependencies passed to a Pydantic AI agent that uses Zep memory.
 
     Construct one ``ZepDeps`` per conversation turn (or reuse it across turns
-    for the same user/thread) and pass it to ``agent.run(..., deps=deps)``.
+    for the same user and thread) and pass it to ``agent.run(..., deps=deps)``.
     The history processor and the ``zep_search`` tool both read the client and
-    identity from here via ``RunContext.deps``.
+    the identity from here via ``RunContext.deps``.
 
-    The Zep user and thread are created lazily on first use (see
-    :func:`zep_pydantic_ai.history_processor.zep_history_processor`), so you do
-    **not** have to pre-create them -- though doing so out-of-band is fine and
-    slightly faster on the first turn.
+    Zep v4 addresses a user, a thread, and a graph by a server-generated UUID.
+    Create the user and the thread out of band with
+    :func:`zep_pydantic_ai.provisioning.create_user` and
+    :func:`~zep_pydantic_ai.provisioning.create_thread`, store the UUIDs in
+    the application database, and pass the stored UUIDs here.
 
     Attributes:
         client: An initialised ``AsyncZep`` client.  The integration never
             closes this client -- the caller owns its lifecycle.
-        user_id: The Zep user ID.  Maps to one user graph; reused across all of
-            that user's threads.
-        thread_id: The Zep thread ID for the current conversation.
-        first_name: Optional user first name.  Passed to ``user.add`` so Zep can
-            anchor the user's identity node in the graph.  Strongly recommended.
+        user_uuid: The UUID of the Zep user.  One user has one graph, which
+            all of that user's threads share.
+        thread_uuid: The UUID of the Zep thread for the current conversation.
+        graph_uuid: The UUID of the user's graph, from ``user.graph_uuid``.
+            The ``zep_search`` tool searches this graph when the tool is
+            built without a ``graph_uuid`` of its own.
+        first_name: Optional user first name.  Composes the display name of
+            persisted user messages.
         last_name: Optional user last name.
-        email: Optional user email.  Helps Zep resolve identity.
         user_name: Optional display name attached to persisted *user* messages.
             Defaults to ``"{first_name} {last_name}"`` when names are provided,
             otherwise ``None``.
@@ -164,20 +175,16 @@ class ZepDeps:
     """
 
     client: AsyncZep
-    user_id: str
-    thread_id: str
+    user_uuid: str
+    thread_uuid: str
+    graph_uuid: str | None = None
     first_name: str | None = None
     last_name: str | None = None
-    email: str | None = None
     user_name: str | None = None
     assistant_name: str = "Assistant"
     ignore_roles: list[str] | None = None
     context_builder: ContextBuilder | None = None
     context_template: str = DEFAULT_CONTEXT_TEMPLATE
-
-    #: Internal: tracks whether the user/thread have been created this process,
-    #: keyed by ``(user_id, thread_id)``, to avoid redundant create calls.
-    _created: set[tuple[str, str]] = field(default_factory=set, repr=False)
 
     @property
     def display_name(self) -> str | None:
@@ -265,7 +272,7 @@ def model_messages_to_zep(
     *,
     user_name: str | None,
     assistant_name: str,
-) -> list[Message]:
+) -> list[AddMessage]:
     """Convert Pydantic AI messages into Zep ``Message`` objects.
 
     Only conversational text is persisted:
@@ -283,9 +290,9 @@ def model_messages_to_zep(
         assistant_name: Display name for assistant messages.
 
     Returns:
-        A list of Zep ``Message`` objects ready for ``thread.add_messages``.
+        A list of Zep ``AddMessage`` objects ready for ``thread.add_messages``.
     """
-    out: list[Message] = []
+    out: list[AddMessage] = []
     for message in messages:
         if isinstance(message, ModelRequest):
             for part in message.parts:
@@ -293,7 +300,7 @@ def model_messages_to_zep(
                     text = " ".join(_user_part_texts(part)).strip()
                     if text:
                         out.append(
-                            Message(
+                            AddMessage(
                                 role="user",
                                 content=truncate_message_content(text, label="user turn"),
                                 name=user_name,
@@ -308,7 +315,7 @@ def model_messages_to_zep(
             text = " ".join(texts).strip()
             if text:
                 out.append(
-                    Message(
+                    AddMessage(
                         role="assistant",
                         content=truncate_message_content(text, label="assistant turn"),
                         name=assistant_name,
@@ -337,86 +344,3 @@ def make_context_request(context: str, *, template: str = DEFAULT_CONTEXT_TEMPLA
     """
     instruction = template.replace("{context}", context)
     return ModelRequest(parts=[SystemPromptPart(content=instruction)])
-
-
-async def ensure_user_and_thread(
-    deps: ZepDeps,
-    *,
-    on_created: UserSetupHook | None = None,
-) -> bool:
-    """Create the Zep user and thread if they do not already exist.
-
-    Uses the same create-then-catch-conflict semantics as
-    :func:`zep_pydantic_ai.provisioning.ensure_user` and
-    :func:`~.provisioning.ensure_thread`.  Creation is idempotent: "already
-    exists" conflicts are treated as success, and the ``(user_id, thread_id)``
-    pair is cached on ``deps`` so subsequent turns skip the round-trips.
-
-    This function is called from the history processor's hot path, where a
-    genuine failure (network, auth) must never raise into the agent run --
-    such failures are logged and ``False`` is returned instead.  An
-    ``on_created`` hook error, however, indicates the caller's own setup code
-    is broken and **does** propagate, same as :func:`~.provisioning.ensure_user`.
-
-    Args:
-        deps: The dependency object carrying the client and identity.
-        on_created: Optional async hook run exactly once, only when the user
-            is newly created.  See :func:`~.provisioning.ensure_user`.
-
-    Returns:
-        ``True`` if the user and thread are ready, ``False`` on genuine failure.
-
-    Raises:
-        Exception: Any exception raised by ``on_created``.
-    """
-    key = (deps.user_id, deps.thread_id)
-    if key in deps._created:
-        return True
-
-    try:
-        user_created = await _create_user(deps)
-    except Exception as exc:
-        logger.warning("Failed to create Zep user %s: %s", deps.user_id, exc)
-        return False
-
-    if user_created and on_created is not None:
-        # A hook error indicates the caller's own setup code is broken; let
-        # it propagate rather than swallowing it like a genuine SDK failure.
-        await on_created(deps.client, deps.user_id)
-        logger.info("on_created hook completed for user %s", deps.user_id)
-
-    try:
-        await _provision_thread(deps.client, thread_id=deps.thread_id, user_id=deps.user_id)
-    except Exception as exc:
-        logger.warning("Failed to create Zep thread %s: %s", deps.thread_id, exc)
-        return False
-
-    deps._created.add(key)
-    return True
-
-
-async def _create_user(deps: ZepDeps) -> bool:
-    """Create the Zep user, treating "already exists" as success.
-
-    Returns:
-        ``True`` if the user was newly created, ``False`` if it already
-        existed.
-
-    Raises:
-        Exception: Any genuine failure from the Zep SDK (auth, network, 5xx).
-    """
-    try:
-        await deps.client.user.add(
-            user_id=deps.user_id,
-            first_name=deps.first_name,
-            last_name=deps.last_name,
-            email=deps.email,
-        )
-    except Exception as exc:
-        if _is_already_exists_error(exc):
-            logger.debug("Zep user %s already exists", deps.user_id)
-            return False
-        raise
-
-    logger.info("Created Zep user: %s", deps.user_id)
-    return True

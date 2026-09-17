@@ -29,7 +29,7 @@ def _clear_cache() -> None:
 def _make_mock_client(context: str | None = None) -> MagicMock:
     client = MagicMock()
     client.user = MagicMock()
-    client.user.add = AsyncMock()
+    client.user.create = AsyncMock()
     client.thread = MagicMock()
     client.thread.create = AsyncMock()
     response = MagicMock()
@@ -39,7 +39,7 @@ def _make_mock_client(context: str | None = None) -> MagicMock:
 
 
 def _make_deps(client: MagicMock, **kwargs: object) -> ZepDeps:
-    base = {"user_id": "user-1", "thread_id": "thread-1"}
+    base = {"user_uuid": "user-uuid-1", "thread_uuid": "thread-uuid-1"}
     base.update(kwargs)
     return ZepDeps(client=client, **base)  # type: ignore[arg-type]
 
@@ -78,8 +78,8 @@ class TestPersistAndContext:
         await zep_history_processor(ctx, _user_history("Hi there"))
 
         client.thread.add_messages.assert_called_once()
+        assert client.thread.add_messages.call_args.args[0] == "thread-uuid-1"
         kwargs = client.thread.add_messages.call_args.kwargs
-        assert kwargs["thread_id"] == "thread-1"
         assert kwargs["return_context"] is True
         assert len(kwargs["messages"]) == 1
         assert kwargs["messages"][0].role == "user"
@@ -87,15 +87,17 @@ class TestPersistAndContext:
         assert kwargs["messages"][0].name == "Jane Smith"
 
     @pytest.mark.asyncio
-    async def test_creates_user_and_thread_lazily(self) -> None:
+    async def test_does_not_create_resources(self) -> None:
+        """v4 addresses a user and a thread by UUID. The turn path never
+        creates them."""
         client = _make_mock_client(context=None)
         deps = _make_deps(client)
         ctx = _make_ctx(deps)
 
         await zep_history_processor(ctx, _user_history())
 
-        client.user.add.assert_called_once()
-        client.thread.create.assert_called_once()
+        client.user.create.assert_not_called()
+        client.thread.create.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_prepends_context_block(self) -> None:
@@ -163,7 +165,7 @@ class TestPersistAndContext:
 
     @pytest.mark.asyncio
     async def test_dedupe_falls_back_to_thread_without_run_id(self) -> None:
-        """If RunContext has no run_id, dedupe degrades to (user_id, thread_id)
+        """If RunContext has no run_id, dedupe degrades to (user_uuid, thread_uuid)
         so within-turn re-invocations still persist only once."""
         client = _make_mock_client(context="ctx")
         deps = _make_deps(client)
@@ -233,8 +235,8 @@ class TestDedupeGuard:
     @pytest.mark.asyncio
     async def test_distinct_threads_tracked_separately(self) -> None:
         client = _make_mock_client(context="ctx")
-        deps_a = _make_deps(client, user_id="user-A", thread_id="thread-A")
-        deps_b = _make_deps(client, user_id="user-B", thread_id="thread-B")
+        deps_a = _make_deps(client, user_uuid="user-A", thread_uuid="thread-A")
+        deps_b = _make_deps(client, user_uuid="user-B", thread_uuid="thread-B")
 
         await zep_history_processor(_make_ctx(deps_a), _user_history("hi"))
         await zep_history_processor(_make_ctx(deps_b), _user_history("hi"))
@@ -299,20 +301,6 @@ class TestErrorHandling:
         result = await zep_history_processor(ctx, messages)
 
         client.thread.add_messages.assert_not_called()
-        assert result == messages
-
-    @pytest.mark.asyncio
-    async def test_resource_creation_failure_skips_persist(self) -> None:
-        client = _make_mock_client()
-        client.user.add.side_effect = RuntimeError("auth error")
-        deps = _make_deps(client)
-        ctx = _make_ctx(deps)
-
-        messages = _user_history()
-        result = await zep_history_processor(ctx, messages)
-
-        client.thread.add_messages.assert_not_called()
-        # No context injected; the same history object is returned unchanged.
         assert result == messages
 
 
@@ -400,8 +388,8 @@ class TestContextBuilder:
         assert len(received) == 1
         built = received[0]
         assert built.zep is client
-        assert built.user_id == "user-1"
-        assert built.thread_id == "thread-1"
+        assert built.user_uuid == "user-uuid-1"
+        assert built.thread_uuid == "thread-uuid-1"
         assert built.user_message == "What's up?"
         assert isinstance(r1[0], ModelRequest)
         assert "Built context" in r1[0].parts[0].content

@@ -3,7 +3,11 @@ Basic Pydantic AI agent with Zep long-term memory.
 
 This example wires Zep into a Pydantic AI agent using three pieces:
 
-  - ``ZepDeps``               -- carries the Zep client + user/thread identity.
+  - ``create_user`` /
+    ``create_thread``         -- create the Zep resources one time and return
+                                 the server-generated UUIDs.
+  - ``ZepDeps``               -- carries the Zep client + the user, thread, and
+                                 graph UUIDs.
   - ``zep_capabilities``      -- bundles the history processor (persists each
                                  user turn and injects Zep's context block)
                                  with automatic assistant-reply persistence.
@@ -29,12 +33,19 @@ from __future__ import annotations
 
 import asyncio
 import os
-from uuid import uuid4
+import sys
+import time
 
 from pydantic_ai import Agent
 from zep_cloud.client import AsyncZep
 
-from zep_pydantic_ai import ZepDeps, create_zep_search_tool, zep_capabilities
+from zep_pydantic_ai import (
+    ZepDeps,
+    create_thread,
+    create_user,
+    create_zep_search_tool,
+    zep_capabilities,
+)
 
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -44,10 +55,29 @@ if not ZEP_API_KEY:
 if not OPENAI_API_KEY:
     raise OSError("OPENAI_API_KEY is not set.")
 
-# Unique IDs for this demo run so repeated runs don't collide.
-_suffix = uuid4().hex[:8]
-USER_ID = f"pydantic-ai-example-user-{_suffix}"
-THREAD_ID = f"pydantic-ai-example-thread-{_suffix}"
+
+async def wait_for_ingestion(
+    zep: AsyncZep,
+    graph_uuid: str,
+    *,
+    minimum_episodes: int = 2,
+    timeout_seconds: int = 180,
+    poll_seconds: float = 5.0,
+) -> None:
+    """Poll the graph until its episodes are processed, or the timeout ends.
+
+    Zep ingests asynchronously, so a fact is not retrievable immediately.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        pager = await zep.graph.episode.list(graph_uuid, limit=20)
+        episodes = pager.items or []
+        processed = [episode for episode in episodes if episode.processed]
+        if len(processed) >= minimum_episodes:
+            print(f"  {len(processed)} episodes are processed.\n")
+            return
+        await asyncio.sleep(poll_seconds)
+    print("  The timeout ended before all episodes were processed.\n")
 
 
 async def chat(agent: Agent, deps: ZepDeps, message: str) -> str:
@@ -60,15 +90,26 @@ async def chat(agent: Agent, deps: ZepDeps, message: str) -> str:
 async def main() -> None:
     zep = AsyncZep(api_key=ZEP_API_KEY)
 
+    # Zep v4 addresses every resource by a server-generated UUID. A real
+    # application creates the user and the thread one time, and stores the
+    # UUIDs in its own database.
+    user = await create_user(
+        zep,
+        first_name="Alice",
+        last_name="Smith",
+        email="alice@example.com",
+    )
+    thread = await create_thread(zep, user_uuid=user.uuid_)
+
     # ZepDeps must exist before the agent: zep_capabilities(deps) closes over
     # it to wire up automatic assistant persistence via Hooks(after_run=...).
     deps = ZepDeps(
         client=zep,
-        user_id=USER_ID,
-        thread_id=THREAD_ID,
+        user_uuid=user.uuid_,
+        thread_uuid=thread.uuid_,
+        graph_uuid=user.graph_uuid,
         first_name="Alice",
         last_name="Smith",
-        email="alice@example.com",
     )
 
     agent = Agent(
@@ -88,8 +129,9 @@ async def main() -> None:
     print(f"\n{'=' * 60}")
     print("Pydantic AI + Zep Memory Example")
     print(f"{'=' * 60}")
-    print(f"  User ID:   {USER_ID}")
-    print(f"  Thread ID: {THREAD_ID}")
+    print(f"  User UUID:   {user.uuid_}")
+    print(f"  Thread UUID: {thread.uuid_}")
+    print(f"  Graph UUID:  {user.graph_uuid}")
     print(f"{'=' * 60}\n")
 
     # Phase 1: seed some facts.
@@ -101,19 +143,33 @@ async def main() -> None:
         print(f"User:  {msg}")
         print(f"Agent: {await chat(agent, deps, msg)}\n")
 
-    # Phase 2: let Zep's async ingestion build the graph.
-    wait_seconds = 15
-    print(f"--- Waiting {wait_seconds}s for Zep graph processing ---\n")
-    await asyncio.sleep(wait_seconds)
+    # Phase 2: let Zep's asynchronous ingestion build the graph.
+    print("--- Phase 2: Waiting for Zep graph processing ---\n")
+    if user.graph_uuid:
+        await wait_for_ingestion(zep, user.graph_uuid)
 
     # Phase 3: test memory recall in the same thread.
     print("--- Phase 3: Testing memory recall ---\n")
-    for msg in (
-        "What do I do for work?",
-        "Where do I live?",
-    ):
+    checks = (
+        ("What do I do for work?", ("engineer", "software")),
+        ("Where do I live?", ("portland",)),
+    )
+    failures = []
+    for msg, expected in checks:
+        answer = await chat(agent, deps, msg)
         print(f"User:  {msg}")
-        print(f"Agent: {await chat(agent, deps, msg)}\n")
+        print(f"Agent: {answer}\n")
+        if not any(word in answer.lower() for word in expected):
+            failures.append(f"{msg!r} did not recall any of {expected}")
+
+    # Phase 4: clean up the resources that this example created.
+    print("--- Phase 4: Cleanup ---\n")
+    await zep.user.delete(user.uuid_)
+
+    if failures:
+        for failure in failures:
+            print(f"FAIL: {failure}")
+        sys.exit(1)
 
     print("Done!")
 

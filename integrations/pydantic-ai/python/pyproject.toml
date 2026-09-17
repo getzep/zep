@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic-ai>=1.107,<2",
-    "zep-cloud>=3.23.0",
+    "zep-cloud==4.0.0a5",
 ]
 
 [project.urls]

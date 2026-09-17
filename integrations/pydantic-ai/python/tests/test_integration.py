@@ -49,16 +49,16 @@ from zep_cloud.client import AsyncZep  # noqa: E402
 
 from zep_pydantic_ai import (  # noqa: E402
     ZepDeps,
+    create_thread,
+    create_user,
     create_zep_search_tool,
     persist_run,
     zep_history_processor,
 )
 
-# Unique IDs per run to avoid collisions.
+# A unique email per run avoids collisions. Zep v4 gives every user and every
+# thread a server-generated UUID, so the test does not send identifiers.
 _suffix = uuid4().hex[:8]
-USER_ID = f"pydantic-integ-{_suffix}"
-THREAD_1 = f"pydantic-integ-t1-{_suffix}"
-THREAD_2 = f"pydantic-integ-t2-{_suffix}"
 
 FIRST_NAME = "IntegTest"
 LAST_NAME = "User"
@@ -82,7 +82,7 @@ def check(description: str, condition: bool, detail: str = "") -> bool:
 
 async def wait_for_episodes_processed(
     zep: AsyncZep,
-    user_id: str,
+    graph_uuid: str,
     timeout_seconds: int = 120,
     poll_interval: float = 3.0,
 ) -> None:
@@ -93,12 +93,12 @@ async def wait_for_episodes_processed(
             logger.warning("Timed out waiting for episode processing; continuing.")
             return
         try:
-            resp = await zep.graph.episode.get_by_user_id(user_id=user_id, lastn=20)
+            pager = await zep.graph.episode.list(graph_uuid, limit=20)
         except Exception as exc:
             logger.warning("Episode poll failed (%s); retrying.", exc)
             await asyncio.sleep(poll_interval)
             continue
-        episodes = resp.episodes or []
+        episodes = pager.items or []
         if episodes and all(e.processed for e in episodes):
             logger.info("All %d episodes processed.", len(episodes))
             return
@@ -121,14 +121,14 @@ def build_agent() -> Agent:
     )
 
 
-def make_deps(zep: AsyncZep, thread_id: str) -> ZepDeps:
+def make_deps(zep: AsyncZep, user_uuid: str, thread_uuid: str, graph_uuid: str | None) -> ZepDeps:
     return ZepDeps(
         client=zep,
-        user_id=USER_ID,
-        thread_id=thread_id,
+        user_uuid=user_uuid,
+        thread_uuid=thread_uuid,
+        graph_uuid=graph_uuid,
         first_name=FIRST_NAME,
         last_name=LAST_NAME,
-        email=EMAIL,
     )
 
 
@@ -145,16 +145,24 @@ async def main() -> None:
 
     print(f"\n{'=' * 70}")
     print("Zep Pydantic AI Integration Test")
-    print(f"  User:    {USER_ID}")
-    print(f"  Threads: {THREAD_1}, {THREAD_2}")
     print(f"{'=' * 70}\n")
+
+    user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+    user_uuid = user.uuid_
+    assert user_uuid is not None
+    thread_1 = await create_thread(zep, user_uuid=user_uuid)
+    thread_2 = await create_thread(zep, user_uuid=user_uuid)
+    assert thread_1.uuid_ is not None
+    assert thread_2.uuid_ is not None
+    print(f"  User UUID:    {user_uuid}")
+    print(f"  Thread UUIDs: {thread_1.uuid_}, {thread_2.uuid_}")
 
     try:
         agent = build_agent()
 
-        # -- Conversation 1: seed facts (history processor creates user/thread).
+        # -- Conversation 1: seed facts.
         print("[Step 1] Conversation 1: seeding facts...")
-        deps1 = make_deps(zep, THREAD_1)
+        deps1 = make_deps(zep, user_uuid, thread_1.uuid_, user.graph_uuid)
         seeds = [
             "My name is IntegTest. I work at Acme Corp as a data scientist.",
             "I live in Portland, Oregon and I love hiking and photography.",
@@ -167,15 +175,15 @@ async def main() -> None:
 
         # -- Verify user metadata --------------------------------------------
         print("[Step 2] Verifying Zep user metadata...")
-        user = await zep.user.get(user_id=USER_ID)
-        passed &= check("first_name matches", user.first_name == FIRST_NAME, str(user.first_name))
-        passed &= check("last_name matches", user.last_name == LAST_NAME, str(user.last_name))
-        passed &= check("email matches", user.email == EMAIL, str(user.email))
+        fetched = await zep.user.get(user_uuid)
+        passed &= check("first_name matches", fetched.first_name == FIRST_NAME)
+        passed &= check("last_name matches", fetched.last_name == LAST_NAME)
+        passed &= check("email matches", fetched.email == EMAIL)
 
         # -- Verify thread 1 captured both sides -----------------------------
         print("\n[Step 3] Verifying thread 1 messages...")
-        t1 = await zep.thread.get(thread_id=THREAD_1, lastn=20)
-        messages = t1.messages or []
+        pager = await zep.thread.list_messages(thread_1.uuid_, limit=20)
+        messages = pager.items or []
         user_msgs = [m for m in messages if m.role == "user"]
         asst_msgs = [m for m in messages if m.role == "assistant"]
         print(f"  {len(user_msgs)} user, {len(asst_msgs)} assistant messages")
@@ -184,11 +192,12 @@ async def main() -> None:
 
         # -- Wait for graph ingestion ----------------------------------------
         print("\n[Step 4] Waiting for Zep to process episodes...")
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=120)
+        if user.graph_uuid is not None:
+            await wait_for_episodes_processed(zep, user.graph_uuid, timeout_seconds=120)
 
         # -- Conversation 2: cross-thread memory recall ----------------------
         print("\n[Step 5] Conversation 2: cross-thread memory recall...")
-        deps2 = make_deps(zep, THREAD_2)
+        deps2 = make_deps(zep, user_uuid, thread_2.uuid_, user.graph_uuid)
         recall = (await chat(agent, deps2, "What do you know about me?")).lower()
         print(f"  Agent: {recall}\n")
         keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
@@ -203,8 +212,8 @@ async def main() -> None:
     finally:
         print("\n[Cleanup] Deleting test user...")
         try:
-            await zep.user.delete(user_id=USER_ID)
-            print(f"  Deleted {USER_ID}")
+            await zep.user.delete(user_uuid)
+            print(f"  Deleted {user_uuid}")
         except Exception as exc:
             print(f"  Warning: could not delete user: {exc}")
 
@@ -220,31 +229,40 @@ async def test_integration_full_lifecycle() -> None:
     """Pytest entry point for the live integration test."""
     zep = AsyncZep(api_key=ZEP_API_KEY)
 
+    user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+    user_uuid = user.uuid_
+    assert user_uuid is not None
+    thread_1 = await create_thread(zep, user_uuid=user_uuid)
+    thread_2 = await create_thread(zep, user_uuid=user_uuid)
+    assert thread_1.uuid_ is not None
+    assert thread_2.uuid_ is not None
+
     try:
         agent = build_agent()
 
-        deps1 = make_deps(zep, THREAD_1)
+        deps1 = make_deps(zep, user_uuid, thread_1.uuid_, user.graph_uuid)
         await chat(agent, deps1, "My name is IntegTest. I work at Acme Corp as a data scientist.")
         await chat(agent, deps1, "I live in Portland, Oregon and I love hiking and photography.")
 
-        user = await zep.user.get(user_id=USER_ID)
-        assert user.first_name == FIRST_NAME
-        assert user.email == EMAIL
+        fetched = await zep.user.get(user_uuid)
+        assert fetched.first_name == FIRST_NAME
+        assert fetched.email == EMAIL
 
-        t1 = await zep.thread.get(thread_id=THREAD_1, lastn=20)
-        messages = t1.messages or []
+        pager = await zep.thread.list_messages(thread_1.uuid_, limit=20)
+        messages = pager.items or []
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)
 
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=120)
+        if user.graph_uuid is not None:
+            await wait_for_episodes_processed(zep, user.graph_uuid, timeout_seconds=120)
 
-        deps2 = make_deps(zep, THREAD_2)
+        deps2 = make_deps(zep, user_uuid, thread_2.uuid_, user.graph_uuid)
         recall = (await chat(agent, deps2, "What do you know about me?")).lower()
         keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
         assert any(kw in recall for kw in keywords), f"no recall in: {recall}"
     finally:
         try:
-            await zep.user.delete(user_id=USER_ID)
+            await zep.user.delete(user_uuid)
         except Exception:
             pass
 

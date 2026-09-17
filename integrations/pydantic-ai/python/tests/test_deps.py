@@ -1,11 +1,9 @@
 """
-Tests for the message-conversion helpers and lazy resource creation in
-``zep_pydantic_ai.deps``.
+Tests for the message-conversion helpers in ``zep_pydantic_ai.deps``.
 """
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
@@ -16,24 +14,18 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
-from zep_pydantic_ai import ZepDeps
 from zep_pydantic_ai.deps import (
     MAX_MESSAGE_CHARS,
-    ensure_user_and_thread,
     latest_user_text,
     make_context_request,
     model_messages_to_zep,
 )
 
 
-def _make_deps(client: MagicMock | None = None) -> ZepDeps:
-    return ZepDeps(client=client or _make_mock_client(), user_id="u", thread_id="t")
-
-
 def _make_mock_client() -> MagicMock:
     client = MagicMock()
     client.user = MagicMock()
-    client.user.add = AsyncMock()
+    client.user.create = AsyncMock()
     client.thread = MagicMock()
     client.thread.create = AsyncMock()
     client.thread.add_messages = AsyncMock()
@@ -123,107 +115,3 @@ class TestMakeContextRequest:
         assert isinstance(part, SystemPromptPart)
         assert "<ZEP_CONTEXT>" in part.content
         assert "User likes blue." in part.content
-
-
-class TestEnsureUserAndThread:
-    @pytest.mark.asyncio
-    async def test_creates_user_and_thread(self) -> None:
-        client = _make_mock_client()
-        deps = _make_deps(client)
-
-        ok = await ensure_user_and_thread(deps)
-
-        assert ok is True
-        client.user.add.assert_called_once_with(
-            user_id="u", first_name=None, last_name=None, email=None
-        )
-        client.thread.create.assert_called_once_with(thread_id="t", user_id="u")
-
-    @pytest.mark.asyncio
-    async def test_caches_after_first_creation(self) -> None:
-        client = _make_mock_client()
-        deps = _make_deps(client)
-
-        await ensure_user_and_thread(deps)
-        await ensure_user_and_thread(deps)
-
-        assert client.user.add.call_count == 1
-        assert client.thread.create.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_already_exists_is_success(self) -> None:
-        client = _make_mock_client()
-        client.user.add.side_effect = Exception("user already exists")
-        client.thread.create.side_effect = Exception("409 conflict")
-        deps = _make_deps(client)
-
-        ok = await ensure_user_and_thread(deps)
-        assert ok is True
-
-    @pytest.mark.asyncio
-    async def test_genuine_user_failure_returns_false_and_not_cached(self) -> None:
-        client = _make_mock_client()
-        client.user.add.side_effect = RuntimeError("network timeout")
-        deps = _make_deps(client)
-
-        ok = await ensure_user_and_thread(deps)
-        assert ok is False
-        # thread.create should not have been attempted
-        client.thread.create.assert_not_called()
-
-        # retry succeeds after the transient error clears
-        client.user.add.side_effect = None
-        ok2 = await ensure_user_and_thread(deps)
-        assert ok2 is True
-
-    @pytest.mark.asyncio
-    async def test_passes_identity_fields(self) -> None:
-        client = _make_mock_client()
-        deps = ZepDeps(
-            client=client,
-            user_id="u",
-            thread_id="t",
-            first_name="Jane",
-            last_name="Smith",
-            email="jane@example.com",
-        )
-
-        await ensure_user_and_thread(deps)
-
-        client.user.add.assert_called_once_with(
-            user_id="u", first_name="Jane", last_name="Smith", email="jane@example.com"
-        )
-
-    @pytest.mark.asyncio
-    async def test_on_created_fires_on_actual_creation(self) -> None:
-        client = _make_mock_client()
-        deps = _make_deps(client)
-        hook = AsyncMock()
-
-        ok = await ensure_user_and_thread(deps, on_created=hook)
-
-        assert ok is True
-        hook.assert_called_once_with(client, "u")
-
-    @pytest.mark.asyncio
-    async def test_on_created_not_fired_when_user_exists(self) -> None:
-        client = _make_mock_client()
-        client.user.add.side_effect = Exception("already exists")
-        deps = _make_deps(client)
-        hook = AsyncMock()
-
-        ok = await ensure_user_and_thread(deps, on_created=hook)
-
-        assert ok is True
-        hook.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_hook_error_propagates_from_ensure_user_and_thread(self) -> None:
-        client = _make_mock_client()
-        deps = _make_deps(client)
-
-        async def _failing_hook(_client: MagicMock, _user_id: str) -> None:
-            raise RuntimeError("setup failed")
-
-        with pytest.raises(RuntimeError, match="setup failed"):
-            await ensure_user_and_thread(deps, on_created=_failing_hook)
