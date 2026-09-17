@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ZepClient } from "@getzep/zep-cloud";
-import { randomUUID } from "node:crypto";
 import {
-  ensureZepUserAndThread,
+  createZepUserAndThread,
   getZepContext,
   persistZepTurn,
   createZepTools,
@@ -17,32 +16,29 @@ const apiKey = process.env.ZEP_API_KEY;
 const describeLive = apiKey ? describe : describe.skip;
 
 describeLive("live Zep integration", () => {
-  it("provisions identity, persists, and retrieves without throwing", async () => {
+  it("creates identity, persists, and retrieves without throwing", async () => {
     const client = new ZepClient({ apiKey });
-    const userId = `zep-vercel-test-${randomUUID()}`;
-    const threadId = `thread-${randomUUID()}`;
 
-    const ready = await ensureZepUserAndThread({
+    const identity = await createZepUserAndThread({
       client,
-      userId,
-      threadId,
       firstName: "Test",
       lastName: "User",
     });
-    expect(ready).toBe(true);
+    expect(identity).not.toBeNull();
+    const { graphUuid, threadUuid } = identity!;
 
     const ctx = await persistZepTurn(
       client,
-      threadId,
+      threadUuid,
       { user: "My favorite color is teal.", userName: "Test User" },
       { returnContext: true },
     );
     expect(ctx === null || typeof ctx === "string").toBe(true);
 
-    const context = await getZepContext(client, threadId);
+    const context = await getZepContext(client, threadUuid);
     expect(typeof context).toBe("string");
 
-    const { zepSearch } = createZepTools(client, { binding: { userId, threadId } });
+    const { zepSearch } = createZepTools(client, { binding: { graphUuid, threadUuid } });
     const result = await run(zepSearch, { query: "favorite color" });
     expect(Array.isArray(result.facts)).toBe(true);
   }, 30_000);

@@ -25,14 +25,13 @@
  *   npx tsx examples/stream-text.ts
  */
 
-import { randomUUID } from "node:crypto";
 import { ZepClient } from "@getzep/zep-cloud";
 import { openai } from "@ai-sdk/openai";
 import { streamText, wrapLanguageModel } from "ai";
 import {
   createZepMiddleware,
   createZepOnFinish,
-  ensureZepUserAndThread,
+  createZepUserAndThread,
 } from "../src/index.js";
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
@@ -41,26 +40,25 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 if (!ZEP_API_KEY) throw new Error("ZEP_API_KEY is not set.");
 if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set.");
 
-const userId = `zep-vercel-stream-${randomUUID().slice(0, 8)}`;
-const threadId = `thread-${randomUUID().slice(0, 8)}`;
-
 async function main(): Promise<void> {
   const client = new ZepClient({ apiKey: ZEP_API_KEY });
 
-  await ensureZepUserAndThread({
+  // Zep v4 assigns every UUID. A real application stores the returned UUIDs in
+  // its own database and reuses them on later turns.
+  const identity = await createZepUserAndThread({
     client,
-    userId,
-    threadId,
     firstName: "Bob",
     lastName: "Jones",
   });
+  if (!identity) throw new Error("The Zep user and thread were not created.");
+  const { threadUuid } = identity;
 
   const userInput = "Hi! I just adopted a beagle named Cooper.";
 
   // 1. Wrap the model: inject the Context Block on each new user turn.
   const model = wrapLanguageModel({
     model: openai("gpt-5-mini"),
-    middleware: createZepMiddleware({ client, threadId }),
+    middleware: createZepMiddleware({ client, threadUuid }),
   });
 
   // 2. Stream the response. Persist the completed turn from onFinish, which
@@ -69,7 +67,7 @@ async function main(): Promise<void> {
     model,
     system: "You are a helpful assistant.",
     prompt: userInput,
-    onFinish: createZepOnFinish({ client, threadId, user: userInput, userName: "Bob" }),
+    onFinish: createZepOnFinish({ client, threadUuid, user: userInput, userName: "Bob" }),
   });
 
   process.stdout.write("Agent: ");
