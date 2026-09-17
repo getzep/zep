@@ -60,7 +60,7 @@
     "js-yaml": "4.3.0"
   },
   "dependencies": {
-    "@getzep/zep-cloud": "^3.23.0",
+    "@getzep/zep-cloud": "4.0.0-alpha.5",
     "zod": "^3.25.0"
   },
   "devDependencies": {

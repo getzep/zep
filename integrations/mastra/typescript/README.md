@@ -28,17 +28,25 @@ up for Zep and create an API key.
 ```ts
 import { ZepClient } from "@getzep/zep-cloud";
 import { Agent } from "@mastra/core/agent";
-import { createZepProcessors, ensureZepUserAndThread } from "@getzep/zep-mastra";
+import { createZepProcessors, createZepUserAndThread } from "@getzep/zep-mastra";
 
 const client = new ZepClient({ apiKey: process.env.ZEP_API_KEY! });
-const userId = "user-123";
-const threadId = "thread-abc";
 
-// 1. Provision the Zep user + thread before the first turn.
-await ensureZepUserAndThread({ client, userId, threadId, firstName: "Jane", lastName: "Smith" });
+// 1. Create the Zep user + thread before the first turn. Zep generates the
+//    UUIDs. Store them in your own database and reuse them on every turn.
+const identity = await createZepUserAndThread({
+  client,
+  firstName: "Jane",
+  lastName: "Smith",
+});
+if (!identity) throw new Error("Could not create the Zep user and thread.");
 
-// 2. Build the processor pair bound to that user + thread.
-const { inputProcessor, outputProcessor } = createZepProcessors({ client, userId, threadId });
+// 2. Build the processor pair bound to that graph + thread.
+const { inputProcessor, outputProcessor } = createZepProcessors({
+  client,
+  graphUuid: identity.graphUuid,
+  threadUuid: identity.threadUuid,
+});
 
 // 3. Attach to a Mastra agent (id AND name are both required).
 const agent = new Agent({
@@ -54,7 +62,7 @@ const agent = new Agent({
 On every call:
 
 1. **`ZepInputProcessor`** (`processInput`) extracts the latest user message, retrieves a
-   Zep Context Block (`thread.getUserContext`, or a custom `contextBuilder`), wraps it with
+   Zep Context Block (`thread.getContext`, or a custom `contextBuilder`), wraps it with
    `contextTemplate`/`formatContext`, and injects it as a system message — before the model
    is called.
 2. **`ZepOutputProcessor`** (`processOutputResult`) persists the completed turn (the latest
@@ -67,7 +75,7 @@ Because the input and output processors sit on **opposite sides of the model cal
 running both together is naturally concurrency-safe — the same guarantee ADK's
 `beforeModelCallback`/`afterModelCallback` pair provides, for free.
 
-Every Zep call is wrapped: a missing `threadId` or any Zep failure degrades gracefully
+Every Zep call is wrapped: a missing `threadUuid` or any Zep failure degrades gracefully
 (messages pass through unchanged, a warning is logged) and **never** calls `abort()` or
 throws into the agent loop.
 
@@ -78,12 +86,13 @@ import { DEFAULT_CONTEXT_TEMPLATE, createZepProcessors } from "@getzep/zep-mastr
 
 const { inputProcessor, outputProcessor } = createZepProcessors({
   client,
-  userId,
-  threadId,
-  // Replace thread.getUserContext with your own retrieval:
-  contextBuilder: async ({ client, userId, threadId, userMessage }) => {
-    const result = await client.graph.search({ userId, query: userMessage, scope: "edges" });
-    return result.edges?.map((e) => e.fact).join("\n");
+  graphUuid,
+  threadUuid,
+  // Replace thread.getContext with your own retrieval:
+  contextBuilder: async ({ client, graphUuid, userMessage }) => {
+    if (!graphUuid) return undefined;
+    const result = await client.graph.searchEdges(graphUuid, { body: { query: userMessage } });
+    return result.data.map((e) => e.fact).join("\n");
   },
   // Or just customize the wrapping template (must contain a literal `{context}`):
   contextTemplate: "Known facts about the user:\n{context}",
@@ -94,7 +103,7 @@ const { inputProcessor, outputProcessor } = createZepProcessors({
 
 ### Per-call identity
 
-Pass `resolveIdentity` to resolve `userId`/`threadId` per call from Mastra's
+Pass `resolveIdentity` to resolve `graphUuid`/`threadUuid` per call from Mastra's
 `requestContext`, instead of binding a fixed identity at construction time — useful when a
 single processor instance serves many end users:
 
@@ -102,8 +111,8 @@ single processor instance serves many end users:
 const { inputProcessor, outputProcessor } = createZepProcessors({
   client,
   resolveIdentity: (requestContext) => ({
-    userId: (requestContext as { userId?: string } | undefined)?.userId,
-    threadId: (requestContext as { threadId?: string } | undefined)?.threadId,
+    graphUuid: (requestContext as { graphUuid?: string } | undefined)?.graphUuid,
+    threadUuid: (requestContext as { threadUuid?: string } | undefined)?.threadUuid,
   }),
 });
 ```
@@ -112,34 +121,40 @@ The same `resolveIdentity` option is accepted by `createZepSearchTool`,
 `createZepRememberTool`, and `createZepContextTool` (resolved from each tool call's
 `context.requestContext`).
 
-## Provisioning: `ensureZepUserAndThread`
+## Provisioning: `createZepUserAndThread`
 
 Zep requires the user and thread to exist before messages are added. Call
-`ensureZepUserAndThread` once, out-of-band, before the first turn — it's
-create-then-catch-conflict, so calling it repeatedly for the same user/thread is safe:
+`createZepUserAndThread` once, out-of-band, before the first turn, then store the
+returned UUIDs in your own database. Zep v4 addresses every later call by UUID, so
+this function is **not** idempotent on a name: a second call creates a second user.
 
 ```ts
-await ensureZepUserAndThread({
+const identity = await createZepUserAndThread({
   client,
-  userId,
-  threadId,
   firstName: "Jane",
   lastName: "Smith",
   email: "jane@example.com",
-  // Fires exactly once, only when the user is genuinely newly created —
+  // Runs exactly once, immediately after the user is created —
   // e.g. configure per-user summary instructions:
-  onUserCreated: async (client, userId) => {
-    await client.user.addUserSummaryInstructions({
-      userIds: [userId],
+  onUserCreated: async (client, userUuid) => {
+    await client.user.setSummaryInstructions(userUuid, {
       instructions: [{ name: "diet", text: "Track the user's dietary preferences." }],
     });
   },
 });
+// identity: { userUuid, graphUuid, threadUuid } | null
 ```
 
-Genuine failures (auth, network, 5xx) are logged at `warn` and reported via a `false`
-return — they are never mistaken for an "already exists" conflict, and never thrown, so
-this is safe to call at the start of every turn on a hot path.
+A failure (auth, network, 5xx) is logged at `warn` and reported as `null` rather than
+thrown, so a Zep outage never crashes the caller.
+
+`createZepUserAndThread` also accepts optional `userId` and `threadId` names. Zep does
+not use them as addresses. Supply a `userId` if you want a human-readable name in the
+Zep application.
+
+> **Known Zep v4 API defect.** The thread message and context routes return 404 when
+> the user has no `userId`. Pass a `userId` until the API is corrected. The example
+> and the live test pass a generated name.
 
 ## Tools
 
@@ -147,11 +162,12 @@ The pre-0.2.0 tool-only surface is still available and fully supported — use i
 want the model itself to decide when to persist or recall, or alongside the processors.
 
 ```ts
-import { createZepToolset, ensureZepUserAndThread } from "@getzep/zep-mastra";
+import { createZepToolset, createZepUserAndThread } from "@getzep/zep-mastra";
 
-const binding = { userId, threadId };
-await ensureZepUserAndThread({ client, ...binding, firstName: "Jane", lastName: "Smith" });
+const identity = await createZepUserAndThread({ client, firstName: "Jane", lastName: "Smith" });
+if (!identity) throw new Error("Could not create the Zep user and thread.");
 
+const binding = { graphUuid: identity.graphUuid, threadUuid: identity.threadUuid };
 const { zepRemember, zepSearch, zepContext } = createZepToolset({ client, binding });
 
 const agent = new Agent({
@@ -165,9 +181,9 @@ const agent = new Agent({
 
 | Tool key | Zep operation | What it does |
 |----------|---------------|--------------|
-| `zepRemember` | `thread.addMessages` / `graph.add` | Persists a message or fact. Conversational content (a `role` + a bound thread) is recorded via `thread.addMessages`; everything else is ingested via `graph.add`. See [`src/remember-tool.ts`](./src/remember-tool.ts). |
-| `zepSearch` | `graph.search` | Model-callable search over the bound graph; returns relevant facts. See "Pin-or-expose search" below. See [`src/search-tool.ts`](./src/search-tool.ts). |
-| `zepContext` | `thread.getUserContext` | Returns the prompt-ready Context Block assembled from the *whole* user graph. See [`src/context-tool.ts`](./src/context-tool.ts). |
+| `zepRemember` | `thread.addMessages` / `graph.episode.add` | Persists a message or fact. Conversational content (a `role` + a bound thread) is recorded via `thread.addMessages`; everything else is ingested via `graph.episode.add`. See [`src/remember-tool.ts`](./src/remember-tool.ts). |
+| `zepSearch` | `graph.searchEdges` and the other scope methods | Model-callable search over the bound graph; returns relevant facts. See "Pin-or-expose search" below. See [`src/search-tool.ts`](./src/search-tool.ts). |
+| `zepContext` | `thread.getContext` | Returns the prompt-ready Context Block assembled from the *whole* user graph. See [`src/context-tool.ts`](./src/context-tool.ts). |
 
 Each tool is also exported as a standalone factory (`createZepRememberTool`,
 `createZepSearchTool`, `createZepContextTool`) for when you want to wire one tool
@@ -187,49 +203,47 @@ applies):
 // Model only ever sees `query`; scope/reranker/limit are fixed.
 createZepSearchTool({
   client,
-  binding: { userId },
+  binding: { graphUuid },
   pinnedParams: { scope: "edges", reranker: "rrf", limit: 10 },
 });
 
 // Hide mmrLambda/centerNodeUuid from the schema without fixing a value.
 createZepSearchTool({
   client,
-  binding: { userId },
+  binding: { graphUuid },
   hiddenParams: new Set(["mmrLambda", "centerNodeUuid"]),
 });
 ```
 
-`searchFilters` and the new `bfsOriginNodeUuids` are always constructor-only — never
-exposed to the model — and applied whenever set.
-
-#### Migrating to 0.2.0
-
-The legacy `scope`/`reranker`/`limit` constructor args still work and now pin (and hide)
-their parameter exactly as before 0.2.0 — no code changes required to keep the old,
-fully-pinned behavior. To make that explicit, use `pinnedParams` instead.
+`filters` and `bfsOriginNodeUuids` are always constructor-only — never exposed to the
+model — and applied whenever set.
 
 ## Binding: user graph vs standalone graph
 
-Tools and processors are bound to a graph via `userId`/`graphId` (tools take these on a
-`ZepBinding`; the processors take them directly as `userId`/`threadId`):
+Zep v4 addresses every graph by its server-generated UUID, so a user graph and a
+standalone graph are the same kind of address. Bind the tools and the processors with
+`graphUuid`, and bind the thread-scoped surfaces with `threadUuid`:
 
-- **`userId`** targets a **user graph** — the home for personalized agent memory.
-  Use this for a conversational agent that remembers an end user. Context retrieval and
-  the `zepContext` tool require a `threadId` too (the thread scopes relevance; retrieval
-  still spans the whole user graph).
-- **`graphId`** targets a **standalone graph** — shared or domain knowledge (a
-  product knowledge base, runbooks). No user node, no user summary. (Standalone graphs
-  are supported by the tools; the processors are thread-oriented and expect a `userId`.)
+- The `graphUuid` of a **user graph** is the `graphUuid` field of the `User` that
+  `user.create` returns. A user graph is the home for personalized agent memory.
+- The `graphUuid` of a **standalone graph** is the `uuid` field of the `Graph` that
+  `graph.create` returns. A standalone graph holds shared or domain knowledge, such as
+  a product knowledge base. It has no user node and no user summary.
+- The `threadUuid` is the `uuid` field of the `Thread` that `thread.create` returns.
+  Context retrieval and the `zepContext` tool require it. The thread scopes relevance;
+  retrieval still spans the whole user graph.
 
-If both are set, `userId` wins. If neither is set (or `threadId` can't be resolved),
-tools/processors degrade gracefully instead of throwing.
+Resolve a v3 `userId` or `graphId` name to its UUID one time, then store the UUID in
+your own database. The integration never calls `lookup` at run time. If no `graphUuid`
+or no `threadUuid` is available, the tools and the processors degrade gracefully
+instead of throwing.
 
 ## Roles
 
 `zepRemember` accepts an arbitrary `role` string and maps it onto Zep's closed
-`RoleType` enum (`user | assistant | system | tool | function | norole`), so
-host-framework role names like `human` or `ai` are coerced safely; unknown roles
-fall back to `norole`. The mapper is exported as `toRoleType`.
+`RoleType` enum (`user | assistant | system | tool | function`), so host-framework
+role names like `human` or `ai` are coerced safely; an unknown role is omitted. The
+mapper is exported as `toRoleType`.
 
 ## Error handling
 
@@ -258,7 +272,7 @@ npm run build       # tsup → dist (ESM + CJS + d.ts)
 ## Requirements
 
 - Node.js >= 20
-- `@getzep/zep-cloud` >= 3.23.0 (Zep V3)
+- `@getzep/zep-cloud` 4.0.0-alpha.5 (Zep v4)
 - `@mastra/core` >= 1.42.0 (peer)
 
 ## Links

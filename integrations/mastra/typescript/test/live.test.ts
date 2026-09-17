@@ -1,9 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import { ZepClient } from "@getzep/zep-cloud";
-import { randomUUID } from "node:crypto";
 import {
   createZepToolset,
-  ensureZepUserAndThread,
+  createZepUserAndThread,
 } from "../src/index.js";
 import { run } from "./helpers.js";
 
@@ -17,21 +17,21 @@ const describeLive = apiKey ? describe : describe.skip;
 describeLive("live Zep integration", () => {
   it("provisions identity and persists/retrieves without throwing", async () => {
     const client = new ZepClient({ apiKey });
-    const userId = `zep-mastra-test-${randomUUID()}`;
-    const threadId = `thread-${randomUUID()}`;
 
-    const ready = await ensureZepUserAndThread({
+    const identity = await createZepUserAndThread({
       client,
-      userId,
-      threadId,
+      // The Zep v4 API returns 404 from the thread message and context routes
+      // when the user has no userId. The userId is a name, not an address.
+      userId: `zep-mastra-live-${randomUUID().slice(0, 8)}`,
       firstName: "Test",
       lastName: "User",
     });
-    expect(ready).toBe(true);
+    expect(identity).not.toBeNull();
+    if (!identity) return;
 
     const { zepRemember, zepContext } = createZepToolset({
       client,
-      binding: { userId, threadId },
+      binding: { graphUuid: identity.graphUuid, threadUuid: identity.threadUuid },
       defaultMessageName: "Test User",
     });
 

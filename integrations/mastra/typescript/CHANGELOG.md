@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Breaking: the package targets the Zep v4 SDK (`@getzep/zep-cloud` 4.0.0-alpha.5).** Zep v4 addresses every user, thread, and graph by a server-generated UUID. The public API of the integration takes UUIDs, and the integration never calls `lookup` at run time. Resolve a v3 name to its UUID one time and store the UUID in your own database.
+- **Breaking: the bindings take UUIDs.** `ZepBinding` takes `graphUuid` in place of `userId`/`graphId`, and `ZepThreadBinding` takes `threadUuid` in place of `threadId`. A user graph and a standalone graph are now the same kind of address: the `graphUuid` of a user is the `graphUuid` field of the `User` that `user.create` returns; the `graphUuid` of a standalone graph is the `uuid` field of the `Graph` that `graph.create` returns.
+- **Breaking: `createZepProcessors`, `ZepInputProcessor`, and `ZepOutputProcessor` take `graphUuid` and `threadUuid`** in place of `userId` and `threadId`. `ZepContextBuilderInput` gives `graphUuid` and `threadUuid` to a custom context builder.
+- **Breaking: `ResolvedZepIdentity` returns `graphUuid` and `threadUuid`.** A resolver that returns names no longer compiles.
+- **Breaking: `ensureZepUserAndThread` is replaced by `createZepUserAndThread`.** Zep v4 has no name-addressed create, so the old idempotent create-then-catch-conflict behavior is not possible. The new function calls `user.create` and `thread.create`, and returns the new `ZepIdentity` (`{ userUuid, graphUuid, threadUuid }`), or `null` after a failure. The `onUserCreated` hook now receives the `userUuid`.
+- **Breaking: `createZepContextTool` and the processors take `templateUuid`** in place of `templateId`, because `thread.getContext` takes a template UUID in v4.
+- **Breaking: `createZepSearchTool` takes `filters`** in place of `searchFilters`, which matches the `filters` field of the v4 search body.
+- `resolveGraphTarget` is renamed to `resolveGraphUuid` and returns the bound `graphUuid`.
+- The Zep calls are migrated to their v4 replacements: `thread.getUserContext` to `thread.getContext`, `graph.add` to `graph.episode.add`, `user.add` to `user.create`, and `graph.search` to the scope methods `graph.searchEdges`, `graph.searchNodes`, `graph.searchEpisodes`, `graph.searchObservations`, `graph.searchThreadSummaries`, and `graph.getContext` for the `auto` scope. The `zepSearch` tool keeps the model-visible `scope` parameter and maps each paginated result to its facts.
+- `toRoleType` no longer maps an unknown role to `norole`, because Zep v4 removed that role. An unknown role is omitted, and the tool records the message without a role name.
+
 ## 0.2.0 (2026-07-07)
 
 ### Added

@@ -9,8 +9,9 @@ export interface ZepContextToolOptions {
   /** A shared, initialized Zep client. The caller owns its lifecycle. */
   client: ZepClient;
   /**
-   * The thread binding. `threadId` is required; the Context Block is assembled
-   * from the **entire user graph** with the thread used only to scope relevance.
+   * The thread binding. `threadUuid` is required; the Context Block is
+   * assembled from the **entire user graph** with the thread used only to
+   * scope relevance.
    */
   binding: ZepThreadBinding;
   /** Override the tool id (default `"zep-context"`). */
@@ -18,21 +19,21 @@ export interface ZepContextToolOptions {
   /** Override the tool description shown to the model. */
   description?: string;
   /**
-   * Optional Zep context template ID for custom Context Block formatting.
+   * Optional Zep context template UUID for custom Context Block formatting.
    * When omitted, Zep's default Smart Context Assembly layout is used.
    *
    * Note: a client-side `contextBuilder` (see `ZepInputProcessor`) is *not*
    * offered here because `ZepContextBuilderInput` requires the latest user
    * message text, and this tool is invoked by the model with an empty input
    * schema — it has no access to the turn's user message. Server-side
-   * `templateId` is the customization point for the tool path; use
+   * `templateUuid` is the customization point for the tool path; use
    * `ZepInputProcessor` with `contextBuilder` for client-side assembly.
    */
-  templateId?: string;
+  templateUuid?: string;
   /**
-   * Resolve the `threadId` (and optional `userId`) per call from the tool's
-   * `requestContext`, overriding the constructor-bound `binding`. Return
-   * `undefined` (or omit `threadId`) to fall back to `binding`.
+   * Resolve the `threadUuid` (and optional `graphUuid`) per call from the
+   * tool's `requestContext`, overriding the constructor-bound `binding`.
+   * Return `undefined` (or omit `threadUuid`) to fall back to `binding`.
    */
   resolveIdentity?: ZepIdentityResolver;
   /** Logger for Zep failures. Defaults to `console`. */
@@ -57,7 +58,7 @@ type ContextOutput = z.infer<typeof outputSchema>;
 
 /**
  * Build a model-callable Mastra tool that returns the **Context Block** for the
- * bound user via `thread.getUserContext`.
+ * bound user via `thread.getContext`.
  *
  * This is the default recall path for conversational agents: a single call
  * returns an optimized, prompt-ready string (user summary + relevant facts and
@@ -86,15 +87,15 @@ export function createZepContextTool(options: ZepContextToolOptions) {
       context?: { requestContext?: unknown },
     ): Promise<ContextOutput> => {
       const identity = await resolveToolIdentity(binding, resolveIdentity, context);
-      if (!identity.threadId) {
-        logger.warn("[zep-context] No threadId bound; skipping context retrieval.");
+      if (!identity.threadUuid) {
+        logger.warn("[zep-context] No threadUuid bound; skipping context retrieval.");
         return { context: "", found: false };
       }
 
       try {
-        const response = await client.thread.getUserContext(
-          identity.threadId,
-          options.templateId ? { templateId: options.templateId } : {},
+        const response = await client.thread.getContext(
+          identity.threadUuid,
+          options.templateUuid ? { templateUuid: options.templateUuid } : {},
         );
         const context = response.context?.trim() ?? "";
         return { context, found: context.length > 0 };

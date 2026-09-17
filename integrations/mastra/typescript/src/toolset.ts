@@ -1,6 +1,7 @@
-import type { ZepClient, Zep } from "@getzep/zep-cloud";
+import type { ZepClient } from "@getzep/zep-cloud";
 import type { ZepIdentityResolver, ZepThreadBinding, ZepLogger } from "./types.js";
 import { createZepRememberTool } from "./remember-tool.js";
+import type { ZepSearchScope } from "./search-tool.js";
 import { createZepSearchTool } from "./search-tool.js";
 import { createZepContextTool } from "./context-tool.js";
 import { errorMessage, resolveLogger } from "./zep-utils.js";
@@ -10,13 +11,12 @@ export interface ZepToolsetOptions {
   /** A shared, initialized Zep client. The caller owns its lifecycle. */
   client: ZepClient;
   /**
-   * Identity + thread binding for the tools. For a personalized conversational
-   * agent, supply `userId` and `threadId`; for a shared knowledge base, supply
-   * `graphId` (the context tool still requires a `threadId`).
+   * Graph + thread binding for the tools. Supply the `graphUuid` of a user
+   * graph or of a standalone graph, and the `threadUuid` of the conversation.
    */
   binding: ZepThreadBinding;
   /** Pin the search scope (default `"edges"`). */
-  searchScope?: Zep.GraphSearchScope;
+  searchScope?: ZepSearchScope;
   /** Pin the search result limit. */
   searchLimit?: number;
   /** Default speaker name recorded on conversational messages persisted by `zep-remember`. */
@@ -83,27 +83,33 @@ export function createZepToolset(options: ZepToolsetOptions): ZepToolset {
 }
 
 /**
- * Hook run exactly once, immediately after a Zep user is newly created (never
- * on an already-exists conflict).
+ * Hook run exactly once, immediately after a Zep user is created.
  *
  * Use this to configure per-user ontology, custom instructions, or user
- * summary instructions. Errors thrown by the hook are logged (at warn) and
- * swallowed — they never cause {@link ensureZepUserAndThread} to report
- * failure, since the user itself was created successfully.
+ * summary instructions. The hook receives the UUID of the new user. Errors
+ * thrown by the hook are logged (at warn) and swallowed — they never cause
+ * {@link createZepUserAndThread} to report failure, because the user itself
+ * was created successfully.
  */
 export type ZepUserCreatedHook = (
   client: ZepClient,
-  userId: string,
+  userUuid: string,
 ) => void | Promise<void>;
 
-/** Options for {@link ensureZepUserAndThread}. */
-export interface EnsureIdentityOptions {
+/** Options for {@link createZepUserAndThread}. */
+export interface CreateIdentityOptions {
   /** A shared, initialized Zep client. */
   client: ZepClient;
-  /** The Zep user ID. */
-  userId: string;
-  /** The Zep thread ID to create for this conversation. */
-  threadId: string;
+  /**
+   * An optional developer-assigned name for the user. Zep does not use it as
+   * an address; the returned `userUuid` is the address.
+   */
+  userId?: string;
+  /**
+   * An optional developer-assigned name for the thread. Zep does not use it
+   * as an address; the returned `threadUuid` is the address.
+   */
+  threadId?: string;
   /** User's first name — pass a real name to help Zep resolve identity. */
   firstName?: string;
   /** User's last name. */
@@ -111,10 +117,8 @@ export interface EnsureIdentityOptions {
   /** User's email. */
   email?: string;
   /**
-   * Runs exactly once, only when the user was newly created (not on an
-   * already-exists conflict). Awaited immediately after user creation,
-   * before the thread step; a rejection is logged and does not affect the
-   * return value.
+   * Runs exactly once, immediately after the user is created and before the
+   * thread step. A rejection is logged and does not affect the return value.
    */
   onUserCreated?: ZepUserCreatedHook;
   /** Logger for failures. Defaults to `console`. */
@@ -122,101 +126,80 @@ export interface EnsureIdentityOptions {
 }
 
 /**
- * Detect whether `error` represents a "resource already exists" conflict.
+ * The server-generated addresses of a new Zep user and thread.
  *
- * Handles both typed and message-based shapes returned by the Zep SDK:
- *
- * - A 409 status code (`ConflictError`, or any `ZepError`-like object
- *   exposing `statusCode === 409`).
- * - A 400 `BadRequestError` (or similar) whose message mentions "already
- *   exists".
- * - An **untyped** error (no `statusCode`) whose string representation
- *   mentions "already exists" or "conflict" (fallback for untyped/legacy
- *   error shapes).
- *
- * A typed error with any other status code (e.g. a 500 whose message happens
- * to mention "conflict") is a genuine failure, not an already-exists
- * conflict.
+ * Store all three values in your own database. Every later call to Zep and
+ * to this integration takes a UUID, never a name.
  */
-function isAlreadyExistsError(error: unknown): boolean {
-  const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
-  if (statusCode === 409) {
-    return true;
-  }
-
-  const text = errorMessage(error).toLowerCase();
-  if (statusCode === 400 && text.includes("already exists")) {
-    return true;
-  }
-
-  // Fallback heuristic for untyped/legacy error shapes only: an error that
-  // carries a known non-conflict status code is a genuine failure, no matter
-  // what its message says.
-  if (statusCode !== undefined) {
-    return false;
-  }
-  return text.includes("already exists") || text.includes("conflict");
+export interface ZepIdentity {
+  /** The UUID of the new user. */
+  userUuid: string;
+  /** The UUID of the user's graph. Bind the tools to it. */
+  graphUuid: string;
+  /** The UUID of the new thread. */
+  threadUuid: string;
 }
 
 /**
- * Idempotently create the Zep user and thread for a conversation.
+ * Create the Zep user and thread for a conversation, and return their UUIDs.
  *
- * Zep requires the user and thread to exist before messages are added. Call this
- * once, out-of-band, before the first turn (the Zep "create user → create thread"
- * step).
+ * Zep requires the user and thread to exist before messages are added. Call
+ * this once, out-of-band, before the first turn (the Zep "create user →
+ * create thread" step), then store the returned UUIDs in your own database.
+ * Zep v4 addresses every later call by UUID, so this function is **not**
+ * idempotent on a name: a second call creates a second user.
  *
- * Each step is create-then-catch-conflict: an "already exists" conflict
- * (see {@link isAlreadyExistsError}) is treated as success and does not run
- * {@link EnsureIdentityOptions.onUserCreated}. Any other failure (auth,
- * network, 5xx) is a genuine failure — it is logged at `warn` and this
- * function returns `false` rather than throwing, so callers on a hot path
- * (e.g. the start of every turn) are never crashed by a Zep outage.
+ * A failure (auth, network, 5xx) is logged at `warn` and reported as `null`
+ * rather than thrown, so a Zep outage never crashes the caller.
  *
- * @returns `true` if the user and thread are ready, `false` if setup failed.
+ * @returns The new {@link ZepIdentity}, or `null` when the setup failed.
  */
-export async function ensureZepUserAndThread(
-  options: EnsureIdentityOptions,
-): Promise<boolean> {
-  const { client, userId, threadId, onUserCreated } = options;
+export async function createZepUserAndThread(
+  options: CreateIdentityOptions,
+): Promise<ZepIdentity | null> {
+  const { client, onUserCreated } = options;
   const logger = resolveLogger(options.logger);
 
-  let userCreated = false;
+  let userUuid: string;
+  let graphUuid: string;
   try {
-    await client.user.add({
-      userId,
+    const user = await client.user.create({
+      ...(options.userId !== undefined ? { userId: options.userId } : {}),
       ...(options.firstName !== undefined ? { firstName: options.firstName } : {}),
       ...(options.lastName !== undefined ? { lastName: options.lastName } : {}),
       ...(options.email !== undefined ? { email: options.email } : {}),
     });
-    userCreated = true;
-  } catch (error) {
-    if (!isAlreadyExistsError(error)) {
-      logger.warn(`[zep] Failed to ensure user: ${errorMessage(error)}`);
-      return false;
+    if (!user.uuid || !user.graphUuid) {
+      logger.warn("[zep] The created user has no uuid or graphUuid.");
+      return null;
     }
-    // Already exists — proceed to ensure the thread.
+    userUuid = user.uuid;
+    graphUuid = user.graphUuid;
+  } catch (error) {
+    logger.warn(`[zep] Failed to create the user: ${errorMessage(error)}`);
+    return null;
   }
 
-  // The hook must run before the thread step: a transient thread.create
-  // failure would otherwise skip it forever (a retry hits the already-exists
-  // path with userCreated=false).
-  if (userCreated && onUserCreated) {
+  if (onUserCreated) {
     try {
-      await onUserCreated(client, userId);
+      await onUserCreated(client, userUuid);
     } catch (error) {
       logger.warn(`[zep] onUserCreated hook failed: ${errorMessage(error)}`);
     }
   }
 
   try {
-    await client.thread.create({ threadId, userId });
-  } catch (error) {
-    if (!isAlreadyExistsError(error)) {
-      logger.warn(`[zep] Failed to ensure thread: ${errorMessage(error)}`);
-      return false;
+    const thread = await client.thread.create({
+      userUuid,
+      ...(options.threadId !== undefined ? { threadId: options.threadId } : {}),
+    });
+    if (!thread.uuid) {
+      logger.warn("[zep] The created thread has no uuid.");
+      return null;
     }
-    // Already exists — that's fine.
+    return { userUuid, graphUuid, threadUuid: thread.uuid };
+  } catch (error) {
+    logger.warn(`[zep] Failed to create the thread: ${errorMessage(error)}`);
+    return null;
   }
-
-  return true;
 }

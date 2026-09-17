@@ -4,12 +4,19 @@ import { z } from "zod";
 import type { ZepBinding, ZepIdentityResolver, ZepLogger } from "./types.js";
 import {
   errorMessage,
-  resolveGraphTarget,
+  resolveGraphUuid,
   resolveLogger,
   resolveToolIdentity,
 } from "./zep-utils.js";
 
-/** Zep's supported search scopes (`GraphSearchScope`), all six, in schema order. */
+/**
+ * The search scopes this tool supports, one for each scope-specific Zep v4
+ * search method, plus `auto` for `graph.getContext`.
+ *
+ * Zep v4 replaced the single `graph.search` call and its `scope` argument
+ * with one method for each result type. The tool keeps `scope` as a
+ * model-visible parameter and dispatches to the matching method.
+ */
 const SCOPE_VALUES = [
   "edges",
   "nodes",
@@ -17,40 +24,46 @@ const SCOPE_VALUES = [
   "observations",
   "thread_summaries",
   "auto",
-] as const satisfies readonly Zep.GraphSearchScope[];
+] as const;
 
-/** Zep's supported rerankers (`Reranker`), all five, in schema order. */
+/** A search scope accepted by {@link createZepSearchTool}. */
+export type ZepSearchScope = (typeof SCOPE_VALUES)[number];
+
+/** Zep's supported rerankers, all five, in schema order. */
 const RERANKER_VALUES = [
   "rrf",
   "mmr",
   "node_distance",
   "episode_mentions",
   "cross_encoder",
-] as const satisfies readonly Zep.Reranker[];
+] as const satisfies readonly Zep.V4SearchRequestReranker[];
 
-const DEFAULT_SCOPE: Zep.GraphSearchScope = "edges";
-const DEFAULT_RERANKER: Zep.Reranker = "rrf";
+type Reranker = Zep.V4SearchRequestReranker;
+
+const DEFAULT_SCOPE: ZepSearchScope = "edges";
+const DEFAULT_RERANKER: Reranker = "rrf";
 const DEFAULT_LIMIT = 10;
 
-/** Zep caps `graph.search` at 50 results; a higher limit is rejected with a 400. */
+/** Zep caps a search page at 50 results; a higher limit is rejected with a 400. */
 const MAX_SEARCH_LIMIT = 50;
 
 /**
- * Rerankers Zep rejects outright when `scope` is `"auto"` (auto search always
- * uses RRF internally and ignores `reranker` entirely).
+ * Rerankers Zep rejects outright when `scope` is `"auto"` (context assembly
+ * always uses RRF internally and ignores `reranker` entirely).
  */
-const AUTO_INCOMPATIBLE_RERANKERS: readonly Zep.Reranker[] = [
+const AUTO_INCOMPATIBLE_RERANKERS: readonly Reranker[] = [
   "node_distance",
   "episode_mentions",
 ];
 
 /**
- * Every `graph.search` parameter that can be pinned, hidden, or exposed to
- * the model. Keys match the Zep SDK's `graph.search()` field names.
+ * Every search parameter that can be pinned, hidden, or exposed to the model.
+ * Keys match the Zep v4 SDK's search field names, except `scope`, which
+ * selects the search method.
  */
 export interface ZepSearchPinnableParams {
-  scope?: Zep.GraphSearchScope;
-  reranker?: Zep.Reranker;
+  scope?: ZepSearchScope;
+  reranker?: Reranker;
   limit?: number;
   mmrLambda?: number;
   centerNodeUuid?: string;
@@ -69,7 +82,7 @@ type PinnableParamName = (typeof PINNABLE_PARAM_NAMES)[number];
 export interface ZepSearchToolOptions {
   /** A shared, initialized Zep client. The caller owns its lifecycle. */
   client: ZepClient;
-  /** The graph to search — a user graph (`userId`) or standalone graph (`graphId`). */
+  /** The graph to search, addressed by its UUID (`graphUuid`). */
   binding: ZepBinding;
   /** Override the tool id (default `"zep-search"`). */
   id?: string;
@@ -85,16 +98,16 @@ export interface ZepSearchToolOptions {
   /**
    * Remove one or more of `scope`, `reranker`, `limit`, `mmrLambda`,
    * `centerNodeUuid` from the model's tool schema *without* pinning them —
-   * the parameter is simply omitted from the `graph.search` call, so Zep's
-   * own server-side default applies.
+   * the parameter is simply omitted from the search call, so Zep's own
+   * server-side default applies.
    */
   hiddenParams?: Set<PinnableParamName>;
   /**
-   * Optional Zep search filters (entity/edge types, properties, dates).
-   * Always constructor-only — never exposed to the model — and applied
-   * whenever set.
+   * Optional Zep search filters (entity/edge types, properties, dates), sent
+   * as the `filters` field of the v4 search body. Always constructor-only —
+   * never exposed to the model — and applied whenever set.
    */
-  searchFilters?: Zep.SearchFilters;
+  filters?: Zep.SearchFilters;
   /**
    * Node UUIDs seeding a breadth-first search. Always constructor-only —
    * never exposed to the model — and applied whenever set.
@@ -104,11 +117,11 @@ export interface ZepSearchToolOptions {
    * Deprecated back-compat alias for `pinnedParams.scope`. If set, pins (and
    * hides) `scope`, same as passing it via `pinnedParams`.
    */
-  scope?: Zep.GraphSearchScope;
+  scope?: ZepSearchScope;
   /** Deprecated back-compat alias for `pinnedParams.limit`. */
   limit?: number;
   /** Deprecated back-compat alias for `pinnedParams.reranker`. */
-  reranker?: Zep.Reranker;
+  reranker?: Reranker;
   /**
    * Resolve the search target per call from the tool's `requestContext`,
    * overriding the constructor-bound `binding`. Return `undefined` (or omit
@@ -137,38 +150,58 @@ function nameAndSummary(n: { name?: string; summary?: string }): string | undefi
 const isNonEmpty = (s: string | undefined): s is string => Boolean(s);
 
 /**
- * Extract human-readable strings from a Zep search result for the active scope.
+ * Run the Zep v4 search method for `scope` and extract human-readable strings
+ * from the returned page.
  *
- * - `edges` → facts on edges
- * - `nodes` → "name: summary" for entity nodes
- * - `episodes` → raw episode content
- * - `thread_summaries` → "name: summary" for thread summary nodes
- * - `observations` → "name: summary" for derived observation nodes
- * - `auto` → the materialized context block as a single entry
+ * - `edges` → `graph.searchEdges`, facts on edges
+ * - `nodes` → `graph.searchNodes`, "name: summary" for entity nodes
+ * - `episodes` → `graph.searchEpisodes`, raw episode content
+ * - `observations` → `graph.searchObservations`, "name: summary"
+ * - `thread_summaries` → `graph.searchThreadSummaries`, summary text
+ * - `auto` → `graph.getContext`, the assembled context block as one entry
  *
- * The switch is exhaustive over every {@link Zep.GraphSearchScope} the public
- * type allows; the `never` default makes a new SDK scope a compile error rather
- * than a silently-empty result.
+ * The switch is exhaustive over {@link ZepSearchScope}; the `never` default
+ * makes a new scope a compile error rather than a silently-empty result.
  */
-function extractResults(result: Zep.GraphSearchResults, scope: Zep.GraphSearchScope): string[] {
+async function runSearch(
+  client: ZepClient,
+  graphUuid: string,
+  scope: ZepSearchScope,
+  body: Zep.SearchRequest,
+  limit: number | undefined,
+): Promise<string[]> {
+  const page = limit !== undefined ? { limit } : {};
   switch (scope) {
     case "auto": {
+      const request: Zep.GraphContextRequest = { query: body.query };
+      if (body.filters !== undefined) request.filters = body.filters;
+      const result = await client.graph.getContext(graphUuid, request);
       const ctx = result.context?.trim();
       return ctx ? [ctx] : [];
     }
-    case "edges":
-      return (result.edges ?? []).map((e) => e.fact).filter(isNonEmpty);
-    case "nodes":
-      return (result.nodes ?? []).map(nameAndSummary).filter(isNonEmpty);
-    case "episodes":
-      return (result.episodes ?? []).map((e) => e.content).filter(isNonEmpty);
-    case "thread_summaries":
-      return (result.threadSummaries ?? []).map(nameAndSummary).filter(isNonEmpty);
-    case "observations":
-      return (result.observations ?? []).map(nameAndSummary).filter(isNonEmpty);
+    case "edges": {
+      const result = await client.graph.searchEdges(graphUuid, { ...page, body });
+      return result.data.map((e) => e.fact).filter(isNonEmpty);
+    }
+    case "nodes": {
+      const result = await client.graph.searchNodes(graphUuid, { ...page, body });
+      return result.data.map(nameAndSummary).filter(isNonEmpty);
+    }
+    case "episodes": {
+      const result = await client.graph.searchEpisodes(graphUuid, { ...page, body });
+      return result.data.map((e) => e.content).filter(isNonEmpty);
+    }
+    case "observations": {
+      const result = await client.graph.searchObservations(graphUuid, { ...page, body });
+      return result.data.map(nameAndSummary).filter(isNonEmpty);
+    }
+    case "thread_summaries": {
+      const result = await client.graph.searchThreadSummaries(graphUuid, { ...page, body });
+      return result.data.map((s) => s.summary?.trim()).filter(isNonEmpty);
+    }
     default: {
-      // Exhaustiveness guard: if a new GraphSearchScope is added to the SDK,
-      // this line fails to compile until a branch above handles it.
+      // Exhaustiveness guard: if a new scope is added above, this line fails
+      // to compile until a branch handles it.
       const _exhaustive: never = scope;
       return _exhaustive;
     }
@@ -198,14 +231,14 @@ function resolvePinState<T>(
  * model can decide *when* and *what* to look up — ideal for targeted recall
  * during a tool-use loop.
  *
- * **Pin-or-expose.** Every `graph.search` knob (`scope`, `reranker`, `limit`,
+ * **Pin-or-expose.** Every search knob (`scope`, `reranker`, `limit`,
  * `mmrLambda`, `centerNodeUuid`) is exposed to the model in the tool's input
  * schema by default, with Zep's documented defaults (`scope: "edges"`,
  * `reranker: "rrf"`, `limit: 10`). Use `pinnedParams` to fix a parameter to a
  * constant value and remove it from the schema (the model can no longer
  * choose it); use `hiddenParams` to remove a parameter from the schema
  * *without* pinning it — Zep's own server-side default applies, and the
- * parameter is omitted from the SDK call entirely. `searchFilters` and
+ * parameter is omitted from the SDK call entirely. `filters` and
  * `bfsOriginNodeUuids` are always constructor-only.
  *
  * A Zep failure is logged and returned as `found: false` with an empty list;
@@ -257,8 +290,8 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
     }
   }
 
-  const scopeState = resolvePinState<Zep.GraphSearchScope>("scope", pinned, hidden);
-  const rerankerState = resolvePinState<Zep.Reranker>("reranker", pinned, hidden);
+  const scopeState = resolvePinState<ZepSearchScope>("scope", pinned, hidden);
+  const rerankerState = resolvePinState<Reranker>("reranker", pinned, hidden);
   const limitState = resolvePinState<number>("limit", pinned, hidden);
   const mmrLambdaState = resolvePinState<number>("mmrLambda", pinned, hidden);
   const centerNodeUuidState = resolvePinState<string>("centerNodeUuid", pinned, hidden);
@@ -323,8 +356,8 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
 
   const inputSchema = z.object(schemaFields);
   type SearchInput = z.infer<typeof inputSchema> & {
-    scope?: Zep.GraphSearchScope;
-    reranker?: Zep.Reranker;
+    scope?: ZepSearchScope;
+    reranker?: Reranker;
     limit?: number;
     mmrLambda?: number;
     centerNodeUuid?: string;
@@ -360,9 +393,9 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
       }
 
       const identity = await resolveToolIdentity(binding, resolveIdentity, context);
-      const target = resolveGraphTarget({ userId: identity.userId, graphId: binding.graphId });
-      if (!target) {
-        logger.warn("[zep-search] No userId or graphId bound; skipping search.");
+      const graphUuid = resolveGraphUuid({ graphUuid: identity.graphUuid });
+      if (!graphUuid) {
+        logger.warn("[zep-search] No graphUuid bound; skipping search.");
         return { facts: [], found: false };
       }
 
@@ -391,21 +424,18 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
       }
 
       try {
-        const searchRequest: Zep.GraphSearchQuery = { ...target, query };
-        if (scope !== undefined) searchRequest.scope = scope;
-        if (reranker !== undefined) searchRequest.reranker = reranker;
-        if (limit !== undefined) searchRequest.limit = limit;
-        if (mmrLambda !== undefined) searchRequest.mmrLambda = mmrLambda;
-        if (centerNodeUuid !== undefined) searchRequest.centerNodeUuid = centerNodeUuid;
-        if (options.searchFilters !== undefined) {
-          searchRequest.searchFilters = options.searchFilters;
+        const body: Zep.SearchRequest = { query };
+        if (reranker !== undefined) body.reranker = reranker;
+        if (mmrLambda !== undefined) body.mmrLambda = mmrLambda;
+        if (centerNodeUuid !== undefined) body.centerNodeUuid = centerNodeUuid;
+        if (options.filters !== undefined) {
+          body.filters = options.filters;
         }
         if (options.bfsOriginNodeUuids !== undefined) {
-          searchRequest.bfsOriginNodeUuids = options.bfsOriginNodeUuids;
+          body.bfsOriginNodeUuids = options.bfsOriginNodeUuids;
         }
 
-        const result = await client.graph.search(searchRequest);
-        const facts = extractResults(result, scope ?? DEFAULT_SCOPE);
+        const facts = await runSearch(client, graphUuid, scope ?? DEFAULT_SCOPE, body, limit);
         return { facts, found: facts.length > 0 };
       } catch (error) {
         logger.warn(`[zep-search] Zep graph search failed: ${errorMessage(error)}`);
