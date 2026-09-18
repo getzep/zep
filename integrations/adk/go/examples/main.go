@@ -68,14 +68,11 @@ func main() {
 		// each call, so an application must not call CreateUser on each
 		// session start.
 		//
-		// The user_id label below is a temporary workaround for a defect in
-		// the production v4 API: a thread of a user that has no user_id
-		// label makes Thread.AddMessages return HTTP 404. The label is a
-		// name only. Zep does not use it to address the user, and the
-		// package addresses each resource by its UUID.
-		zepUserLabel := fmt.Sprintf("zep-adk-go-example-%d", time.Now().UnixNano())
+		// Note: ZEPAI-3605. Until the fix is deployed, a thread of a user
+		// that has no user_id cannot receive a message, and the API returns
+		// HTTP 404.
 		var err error
-		userUUID, graphUUID, err = zepadk.CreateUser(ctx, zep, zepUserLabel, "Jane", "Smith", "jane@example.com")
+		userUUID, graphUUID, err = zepadk.CreateUser(ctx, zep, "", "Jane", "Smith", "jane@example.com")
 		if err != nil {
 			log.Fatalf("creating Zep user: %v", err)
 		}

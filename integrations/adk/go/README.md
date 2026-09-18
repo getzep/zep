@@ -57,7 +57,9 @@ zep-adk ships the same set of capabilities across Python, TypeScript, and Go, th
 
 Note: Go intentionally has no tool-based injection (callbacks are the Go-ADK-idiomatic hook).
 
-Note: `CreateUser` takes positional `userID`, `firstName`, `lastName`, and `email` strings (pass `""` to omit). It returns the UUID of the user and the UUID of the graph of the user.
+Note: `CreateUser` takes positional `userID`, `firstName`, `lastName`, and `email` strings (pass `""` to omit). It returns the UUID of the user and the UUID of the graph of the user. Zep v4 addresses each resource by its UUID, so an application does not need to supply a `userID`.
+
+Note: ZEPAI-3605. Until the fix is deployed, a thread of a user that has no `user_id` cannot receive a message, and the API returns HTTP 404.
 
 ## Quick start
 
@@ -68,8 +70,8 @@ zep := zepadk.NewClientFromEnv() // nil when ZEP_API_KEY is unset -> no-op
 // example during account or session onboarding. Store the UUIDs in your own
 // database. Each call creates a new resource, so do not call it on every
 // session start.
-userUUID, graphUUID, _ := zepadk.CreateUser(ctx, zep, userID, "Jane", "Smith", "jane@example.com")
-threadUUID, _ := zepadk.CreateThread(ctx, zep, sessionID, userUUID)
+userUUID, graphUUID, _ := zepadk.CreateUser(ctx, zep, "", "Jane", "Smith", "jane@example.com")
+threadUUID, _ := zepadk.CreateThread(ctx, zep, "", userUUID)
 
 searchTool, _ := zepadk.NewGraphSearchTool(zep, zepadk.WithGraphUUID(graphUUID))
 
