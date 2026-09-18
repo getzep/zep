@@ -62,12 +62,10 @@ from zep_adk import (  # noqa: E402
     create_user,
 )
 
-# Unique names per run to avoid collisions.  In v4 these are labels, not
-# addresses: every call below uses a server-generated UUID.  The user label is
-# a temporary workaround for a production v4 defect: the API rejects
-# `thread.add_messages` with a 404 for a user that has no `user_id`.
+# A unique suffix per run to avoid collisions.  Zep v4 addresses the user, the
+# thread, and the graph by a server-generated UUID, thus the test creates the
+# user with no client-supplied identifier.
 _suffix = uuid4().hex[:8]
-USER_NAME_ID = f"adk-integ-{_suffix}"
 APP_NAME = "zep-adk-integ-test"
 
 FIRST_NAME = "IntegTest"
@@ -210,7 +208,6 @@ async def main() -> None:
 
         user = await create_user(
             zep_client,
-            user_id=USER_NAME_ID,
             first_name=FIRST_NAME,
             last_name=LAST_NAME,
             email=EMAIL,
@@ -657,6 +654,13 @@ async def main() -> None:
     assert passed, "One or more integration checks failed — see PASS/FAIL lines above"
 
 
+@pytest.mark.skip(
+    reason=(
+        "ZEPAI-3605: the v4 API returns a 404 for a thread message add when the "
+        "user has no user_id. This test adds thread messages, thus it cannot "
+        "pass until the fix is deployed."
+    )
+)
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_integration_full_lifecycle() -> None:

@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-from uuid import uuid4
 
 from google.adk.agents import Agent
 from google.adk.runners import Runner
@@ -50,13 +49,6 @@ if not GOOGLE_API_KEY:
     raise OSError("GOOGLE_API_KEY is not set.")
 
 APP_NAME = "zep-adk-example"
-
-# A human-readable label for the Zep user.  It is not an address: every call
-# below addresses the user by the UUID that Zep generates.  The label is a
-# temporary workaround for a production v4 defect: the API rejects
-# `thread.add_messages` with a 404 for a user that has no `user_id`.  Remove the
-# label after the defect is corrected.
-USER_NAME_ID = f"adk-example-user-{uuid4().hex[:8]}"
 
 
 async def send_message(runner: Runner, session_id: str, user_id: str, text: str) -> str:
@@ -108,7 +100,6 @@ async def main() -> None:
     print("--- Provisioning the Zep user and thread ---\n")
     user = await create_user(
         zep_client,
-        user_id=USER_NAME_ID,
         first_name="Alice",
         last_name="Smith",
         email="alice@example.com",
