@@ -44,13 +44,9 @@ async function main(): Promise<void> {
   const client = new ZepClient({ apiKey: ZEP_API_KEY });
 
   // Zep v4 assigns every UUID. A real application stores the returned UUIDs in
-  // its own database and reuses them on later turns. The `userId` label is
-  // a temporary workaround for a production v4 defect: the thread message and
-  // context routes return 404 for a user that has no `userId`. The label is
-  // not used for addressing.
+  // its own database and reuses them on later turns.
   const identity = await createZepUserAndThread({
     client,
-    userId: `vercel-ai-example-${Date.now()}`,
     firstName: "Bob",
     lastName: "Jones",
   });

@@ -10,10 +10,12 @@ import { run } from "./helpers.js";
 
 const apiKey = process.env.ZEP_API_KEY;
 
-// These tests hit the real Zep API and only run when ZEP_API_KEY is set.
-// Ingestion is asynchronous, so they assert the calls succeed — not that a
-// just-written fact is instantly retrievable.
-const describeLive = apiKey ? describe : describe.skip;
+// These tests hit the real Zep API. They are skipped until ZEPAI-3605 is
+// fixed: the thread message and context routes return 404 for a user that
+// has no `userId`, and the test creates the user without one, as the v4
+// convention requires. Ingestion is asynchronous, so the test asserts the
+// calls succeed — not that a just-written fact is instantly retrievable.
+const describeLive = describe.skip;
 
 describeLive("live Zep integration", () => {
   it("creates identity, persists, and retrieves without throwing", async () => {
