@@ -89,6 +89,10 @@ The example:
 4. Asks recall questions — the agent answers using facts fused into the user's
    graph, injected automatically into the system prompt.
 
+> **Note (ZEPAI-3605):** a user that is created without a `user_id` cannot
+> receive a thread message until the fix is deployed. Until then, this example
+> cannot complete its recall step.
+
 To see the secondary `ZepStore` path (a `BaseStore` backed by Zep), run:
 
 ```bash
