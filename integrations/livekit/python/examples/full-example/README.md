@@ -32,6 +32,18 @@ LIVEKIT_API_KEY=your_livekit_api_key_here
 LIVEKIT_API_SECRET=your_livekit_api_secret_here
 ```
 
+## Identifiers in Zep v4
+
+Zep v4 addresses a user, a thread, and a graph by a server-generated UUID. A
+`user_id` and a `graph_id` are names, not addresses. Each agent creates the
+resource one time and prints the UUID. Add the UUID to your `.env` file to reuse
+the same resource on the next run:
+
+```bash
+ZEP_USER_UUID=the_uuid_that_zep_voice_agent_printed
+ZEP_GRAPH_UUID=the_uuid_that_zep_graph_voice_agent_printed
+```
+
 ## Usage
 
 1. Run the agent:
@@ -45,7 +57,8 @@ python zep_voice_agent.py dev
 
 ## Optional: Pre-populate graph first
 
-Run the following to add coversations from `conversations.json` to the user graph specified in `populate_memory.py`:
+Run the following to add conversations from `conversations.json` to the graph of
+the user that `ZEP_USER_UUID` identifies:
 ```bash
 python populate_memory.py
 ```

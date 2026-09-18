@@ -5,6 +5,12 @@
  * `ZepGraphSearchTool` (the model decides when to search the user's graph).
  * This is an alternative to the callback wiring in `basic-agent.ts`.
  *
+ * Zep v4 addresses a user, a thread, and a graph by a server-generated UUID,
+ * so the example creates the user and the thread first and keeps the UUIDs
+ * from the responses. The graph UUID comes from the same user response, and
+ * it is given to `ZepGraphSearchTool` explicitly: the tool then searches the
+ * graph directly and never looks the user up at run time.
+ *
  * A live run requires GOOGLE_API_KEY (Gemini) in addition to ZEP_API_KEY.
  * Without GOOGLE_API_KEY the example builds and inspects the agent without a
  * model call.
@@ -18,12 +24,13 @@
  *   npx tsx examples/graph-search-agent.ts
  */
 
-import { randomUUID } from "node:crypto";
 import { ZepClient } from "@getzep/zep-cloud";
 import { LlmAgent } from "@google/adk";
 import {
   ZepContextTool,
   ZepGraphSearchTool,
+  createThread,
+  createUser,
   createZepAfterModelCallback,
 } from "../src/index.js";
 
@@ -33,12 +40,19 @@ if (!ZEP_API_KEY) {
   process.exit(1);
 }
 
-const suffix = randomUUID().slice(0, 8);
-const USER_ID = `adk-ts-search-user-${suffix}`;
-const SESSION_ID = `adk-ts-search-session-${suffix}`;
-
 async function main(): Promise<void> {
   const zep = new ZepClient({ apiKey: ZEP_API_KEY });
+
+  // Provision out-of-band and keep the UUIDs. An application stores them in
+  // its own database and passes them back on each turn.
+  // ZEPAI-3605: a user that is created without a `user_id` cannot receive a
+  // thread message until the fix is deployed.
+  const { userUuid, graphUuid } = await createUser(zep, {
+    firstName: "Alice",
+    lastName: "Smith",
+    email: "alice@example.com",
+  });
+  const { threadUuid } = await createThread(zep, { userUuid });
 
   const agent = new LlmAgent({
     name: "zep_search_agent",
@@ -49,20 +63,22 @@ async function main(): Promise<void> {
       "facts the user shared in earlier conversations when it helps.",
     tools: [
       // Automatic context injection on every turn (not model-callable).
-      new ZepContextTool({ zep, userId: USER_ID, threadId: SESSION_ID }),
+      new ZepContextTool({ zep, userUuid, threadUuid }),
       // On-demand graph search (model-callable).
-      new ZepGraphSearchTool({ zep, userId: USER_ID, scope: "edges", limit: 5 }),
+      new ZepGraphSearchTool({ zep, graphUuid, scope: "edges", limit: 5 }),
     ],
     afterModelCallback: createZepAfterModelCallback(zep, {
-      userId: USER_ID,
-      threadId: SESSION_ID,
+      userUuid,
+      threadUuid,
     }),
   });
 
   console.log("Built ADK agent with Zep tools:");
-  console.log(`  agent.name = ${agent.name}`);
-  console.log(`  tools      = ${agent.tools.length}`);
-  console.log(`  user_id    = ${USER_ID}`);
+  console.log(`  agent.name  = ${agent.name}`);
+  console.log(`  tools       = ${agent.tools.length}`);
+  console.log(`  user UUID   = ${userUuid}`);
+  console.log(`  thread UUID = ${threadUuid}`);
+  console.log(`  graph UUID  = ${graphUuid}`);
 
   if (!process.env.GOOGLE_API_KEY) {
     console.log(

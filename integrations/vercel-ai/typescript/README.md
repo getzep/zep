@@ -43,23 +43,26 @@ import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import {
   createZepMiddleware,
   createZepTools,
-  ensureZepUserAndThread,
+  createZepUserAndThread,
 } from "@getzep/zep-vercel-ai";
 
 const client = new ZepClient({ apiKey: process.env.ZEP_API_KEY! });
 
-// 1. Provision the Zep user + thread before the first turn.
-await ensureZepUserAndThread({ client, userId: "u1", threadId: "t1", firstName: "Jane" });
+// 1. Create the Zep user + thread before the first turn. Zep v4 assigns the
+//    UUIDs. Store them in your own database and reuse them on later turns.
+const identity = await createZepUserAndThread({ client, firstName: "Jane" });
+if (!identity) throw new Error("The Zep user and thread were not created.");
+const { graphUuid, threadUuid } = identity;
 
 // 2. Wrap the model: inject the Context Block on each new user turn AND
 //    guarantee the turn is persisted — no onFinish wiring needed.
 const model = wrapLanguageModel({
   model: openai("gpt-5-mini"),
-  middleware: createZepMiddleware({ client, threadId: "t1", persist: true }),
+  middleware: createZepMiddleware({ client, threadUuid, persist: true }),
 });
 
 // 3. Optionally let the model search/store memory explicitly.
-const tools = createZepTools(client, { binding: { userId: "u1", threadId: "t1" } });
+const tools = createZepTools(client, { binding: { graphUuid, threadUuid } });
 
 const { text } = await generateText({
   model,
@@ -78,7 +81,7 @@ middleware stays injection-only) and pair it with `createZepOnFinish`:
 ```ts
 const model = wrapLanguageModel({
   model: openai("gpt-5-mini"),
-  middleware: createZepMiddleware({ client, threadId: "t1" }), // injection only
+  middleware: createZepMiddleware({ client, threadUuid }), // injection only
 });
 
 const prompt = "What do you remember about me?";
@@ -87,7 +90,7 @@ const { text } = await generateText({
   tools,
   stopWhen: stepCountIs(5),
   prompt,
-  onFinish: createZepOnFinish({ client, threadId: "t1", user: prompt }),
+  onFinish: createZepOnFinish({ client, threadUuid, user: prompt }),
 });
 ```
 
@@ -110,7 +113,7 @@ import { createZepMiddleware } from "@getzep/zep-vercel-ai";
 
 const model = wrapLanguageModel({
   model: openai("gpt-5-mini"),
-  middleware: createZepMiddleware({ client, threadId: "t1", persist: true }),
+  middleware: createZepMiddleware({ client, threadUuid, persist: true }),
 });
 
 const result = streamText({
@@ -127,12 +130,12 @@ block with `getZepContext` and persist with `persistZepTurn` (or
 
 ## The layers in detail
 
-### `createZepMiddleware({ client, threadId, ... })`
+### `createZepMiddleware({ client, threadUuid, ... })`
 
 Returns a Vercel AI SDK `LanguageModelMiddleware` (`specificationVersion: "v3"`)
 for `wrapLanguageModel`.
 
-- `transformParams` fetches the Context Block (`thread.getUserContext`, or a
+- `transformParams` fetches the Context Block (`thread.getContext`, or a
   custom `contextBuilder`) and prepends it as a `system` message to the
   provider prompt — on both `generate` and `stream` calls — **only on a
   genuine new user turn** (detected by the last prompt message being a `user`
@@ -153,19 +156,19 @@ for `wrapLanguageModel`.
   `thread.addMessages` call. When unset, `wrapGenerate`/`wrapStream` are
   `undefined` on the returned middleware (today's injection-only contract) —
   persist yourself with `createZepOnFinish`.
-- `contextBuilder` replaces the default `thread.getUserContext` retrieval with
+- `contextBuilder` replaces the default `thread.getContext` retrieval with
   a custom async function: `(input: ZepContextBuilderInput) => Promise<string | undefined>`,
-  where `input` is `{ client, userId?, threadId, userMessage, params }`. Return
+  where `input` is `{ client, userUuid?, threadUuid, userMessage, params }`. Return
   `undefined` to inject nothing for that turn. Runs inside the same try/catch
   as the default retrieval — a rejection is logged and degrades to "no context
   injected", never crashing the call. The builder's result is still passed
   through `formatContext`.
 
-Other options: `userId` (threaded to `contextBuilder`), `templateId` (custom
+Other options: `userUuid` (threaded to `contextBuilder`), `templateUuid` (custom
 Zep Context Block layout; ignored when `contextBuilder` is set), and `logger`.
 Implementation: [`src/middleware.ts`](./src/middleware.ts).
 
-### `createZepOnFinish({ client, threadId, user?, userId?, ... })`
+### `createZepOnFinish({ client, threadUuid, user?, userUuid?, ... })`
 
 Returns an AI SDK `onFinish` callback that persists the whole turn **once** —
 the user's input plus the final assistant text from the event — via
@@ -179,7 +182,7 @@ Use this **or** `createZepMiddleware({ ..., persist: true })` — not both. Both
 paths write one `thread.addMessages` call per turn; enabling both persists
 every turn twice.
 
-### `getZepContext(client, threadId, options?)` and `persistZepTurn(client, threadId, turn, options?)`
+### `getZepContext(client, threadUuid, options?)` and `persistZepTurn(client, threadUuid, turn, options?)`
 
 Plain async functions, no framework coupling.
 
@@ -199,9 +202,9 @@ record so the model can decide when to retrieve or persist.
 
 | Tool | Zep operation | What it does |
 |------|---------------|--------------|
-| `zepSearch` | `graph.search` | Free-text search over the bound graph; returns relevant facts. See "Pin-or-expose search parameters" below. |
-| `zepRemember` | `thread.addMessages` / `graph.add` | Persists a message (a `role` + bound thread; capped at Zep's 4,096-char message limit) or a general fact (`graph.add`; capped at Zep's 10,000-char limit). Over-long content is truncated with a lengths-only warning, never dropped. |
-| `zepContext` | `thread.getUserContext` | Returns the whole-user-graph Context Block on demand. |
+| `zepSearch` | `graph.searchEdges`, `graph.searchNodes`, `graph.searchEpisodes`, `graph.searchObservations`, `graph.searchThreadSummaries`, `graph.getContext` | Free-text search over the bound graph; returns relevant facts. The `scope` selects the v4 method. See "Pin-or-expose search parameters" below. |
+| `zepRemember` | `thread.addMessages` / `graph.episode.add` | Persists a message (a `role` + bound thread; capped at Zep's 4,096-char message limit) or a general fact (`graph.episode.add`; capped at Zep's 10,000-char limit). Over-long content is truncated with a lengths-only warning, never dropped. |
+| `zepContext` | `thread.getContext` | Returns the whole-user-graph Context Block on demand. |
 
 Each tool is also exported as a standalone factory (`createZepSearchTool`,
 `createZepRememberTool`, `createZepContextTool`). Implementation:
@@ -210,7 +213,7 @@ Each tool is also exported as a standalone factory (`createZepSearchTool`,
 #### Pin-or-expose search parameters (`createZepSearchTool`)
 
 By default, `createZepSearchTool`'s Zod input schema exposes every
-`graph.search` knob to the model — `scope` (`edges`, `nodes`, `episodes`,
+search knob to the model — `scope` (`edges`, `nodes`, `episodes`,
 `observations`, `thread_summaries`, `auto`), `reranker` (`rrf`, `mmr`,
 `node_distance`, `episode_mentions`, `cross_encoder`), `limit`, `mmrLambda`,
 and `centerNodeUuid` — alongside the always-required `query`. Each parameter
@@ -219,63 +222,72 @@ is independently tri-state at construction time:
 - **`pinnedParams: { scope: "edges" }`** — fixes the value; hidden from the
   model's schema; always sent.
 - **`hiddenParams: ["mmrLambda", "centerNodeUuid"]`** — removed from the
-  model's schema *without* pinning; simply omitted from the `graph.search`
-  call, so Zep's own server-side default applies.
+  model's schema *without* pinning; omitted from the search request, so Zep's
+  own server-side default applies.
 - **Omitted from both** — exposed to the model with the documented default
   (e.g. `scope` defaults to `"edges"`).
 
-`searchFilters` and the new `bfsOriginNodeUuids` are always constructor-only —
+`filters` and `bfsOriginNodeUuids` are always constructor-only —
 never exposed to the model, always applied when set. The legacy `scope`,
 `reranker`, and `limit` constructor arguments still work; they pin (and hide)
 their parameter, equivalent to the corresponding `pinnedParams` entry.
 
 ```ts
 // Model chooses scope/reranker/limit/mmrLambda/centerNodeUuid (new default).
-const tool = createZepSearchTool({ client, binding: { userId: "u1" } });
+const tool = createZepSearchTool({ client, binding: { graphUuid } });
 
 // Restore the pre-0.2.0 "model only sees query" behavior.
 const pinnedTool = createZepSearchTool({
   client,
-  binding: { userId: "u1" },
+  binding: { graphUuid },
   pinnedParams: { scope: "edges", limit: 10 },
   hiddenParams: ["reranker", "mmrLambda", "centerNodeUuid"],
 });
 ```
 
-## Binding: user graph vs standalone graph
+## Binding and identifiers
+
+Zep v4 addresses every user, thread, and graph by a server-generated UUID. A
+`userId` or a `threadId` is a developer-assigned name, not an address. The
+public API of this package takes UUIDs only, and the package never calls a
+lookup method at run time. Your application resolves a name to a UUID one time
+and stores the UUID in its own database.
 
 Tools and `createZepTools` are bound to a graph via a `ZepBinding`:
 
-- **`userId`** targets a **user graph** — the home for personalized agent memory.
-  Use it for a conversational agent that remembers an end user. `zepContext`
-  (and the middleware) also need a `threadId` — the thread scopes relevance;
-  retrieval still spans the whole user graph.
-- **`graphId`** targets a **standalone graph** — shared or domain knowledge (a
-  product knowledge base, runbooks). No user node, no user summary.
+- **`graphUuid`** is the UUID of the graph that the tools read and write. A
+  user graph UUID (the `graphUuid` field of the created user) gives
+  personalized agent memory. A standalone graph UUID gives shared or domain
+  knowledge, such as a product knowledge base.
+- **`threadUuid`** binds the conversational path. `zepContext`, the
+  middleware, and the message path of `zepRemember` need the thread UUID.
 
-If both are set, `userId` wins. If neither is set, tools return a graceful "not
-configured" result instead of throwing.
+If neither field is set, the tools return a graceful "not configured" result
+instead of throwing.
 
-## Provisioning: `ensureZepUserAndThread({ client, userId, threadId, ..., onUserCreated? })`
+## Identity: `createZepUserAndThread({ client, ..., onUserCreated? })`
 
-Idempotently creates the Zep user and thread before the first turn
-(create-then-catch-conflict — an already-exists response is treated as
-success). Pass `onUserCreated: async (client, userId) => { ... }` to run
-one-time setup — per-user ontology, custom instructions, seeding a user
-summary — **exactly once**, immediately after the user is genuinely created
-(never on an already-exists path). Hook errors are logged, not thrown: the
-function's `Promise<boolean>` keeps meaning "the user and thread are ready",
-not "the hook succeeded".
+Creates the Zep user and the thread before the first turn, and returns the
+server-generated UUIDs as `{ userUuid, graphUuid, threadUuid }`. The function
+returns `null` when Zep does not create both resources. Optional `userId` and
+`threadId` fields set your own names on the new resources; the returned UUIDs
+remain the addresses.
+
+Pass `onUserCreated: async (client, userUuid) => { ... }` to run one-time
+setup, such as a per-user ontology, custom instructions, or a seeded fact. The
+hook runs exactly once, immediately after Zep creates the user. Hook errors are
+logged, not thrown.
 
 ```ts
-await ensureZepUserAndThread({
+const identity = await createZepUserAndThread({
   client,
-  userId: "u1",
-  threadId: "t1",
   firstName: "Jane",
-  onUserCreated: async (zep, userId) => {
-    // e.g. seed an initial graph fact or send a welcome event for this user.
-    await zep.graph.add({ userId, type: "text", data: "New user onboarded." });
+  onUserCreated: async (zep, userUuid) => {
+    const user = await zep.user.get(userUuid);
+    await zep.graph.episode.add(user.graphUuid!, {
+      type: "text",
+      data: "New user onboarded.",
+    });
   },
 });
 ```
@@ -283,9 +295,10 @@ await ensureZepUserAndThread({
 ## Roles
 
 `zepRemember` accepts an arbitrary `role` string and maps it onto Zep's closed
-`RoleType` enum (`user | assistant | system | tool | function | norole`), so
-loose role names like `human` or `ai` are coerced safely; unknown roles fall
-back to `norole`. The mapper is exported as `toRoleType`.
+`RoleType` enum (`user | assistant | system | tool | function`), so loose role
+names like `human` or `ai` are coerced safely. Zep v4 removed the `norole`
+member. An unrecognized role maps to `undefined`, and the package omits the
+role from the message. The mapper is exported as `toRoleType`.
 
 ## Ingestion is asynchronous
 
@@ -309,7 +322,7 @@ npm run build       # tsup → dist (ESM + CJS + d.ts)
 - `ai` >= 6 (peer) — the Vercel AI SDK v6 (this package targets the v3
   middleware/provider interfaces; it is **not** compatible with AI SDK v5)
 - `zod` 3 or 4 (peer; `^3.25.0 || ^4.0.0`)
-- `@getzep/zep-cloud` >= 3.23.0 (Zep V3)
+- `@getzep/zep-cloud` >= 4.0.0-alpha.5 (Zep v4)
 
 ## Links
 

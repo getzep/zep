@@ -2,15 +2,20 @@
  * Tests for explicit, out-of-band Zep provisioning helpers
  * (`src/provisioning.ts`).
  *
- * `ensureUser` / `ensureThread` idempotently provision Zep resources
- * out-of-band (before the first agent turn), returning whether the resource
- * was newly created and throwing on genuine failures.
+ * `createUser` / `createThread` provision Zep resources out-of-band (before
+ * the first agent turn). Zep v4 assigns every UUID on the server, so each
+ * helper returns the UUIDs of the new resource and throws on any failure.
  */
 
 import { describe, expect, it, vi } from "vitest";
 import type { ZepClient } from "@getzep/zep-cloud";
-import { ensureThread, ensureUser } from "../src/provisioning.js";
-import { mockZepClient } from "./helpers.js";
+import { createThread, createUser } from "../src/provisioning.js";
+import {
+  MOCK_GRAPH_UUID,
+  MOCK_THREAD_UUID,
+  MOCK_USER_UUID,
+  mockZepClient,
+} from "./helpers.js";
 
 class FakeApiError extends Error {
   constructor(
@@ -22,19 +27,22 @@ class FakeApiError extends Error {
   }
 }
 
-describe("ensureUser", () => {
-  it("ensureUser returns true when created", async () => {
+describe("createUser", () => {
+  it("returns the UUID of the user and of its graph", async () => {
     const { client, mocks } = mockZepClient();
 
-    const result = await ensureUser(client as unknown as ZepClient, {
+    const result = await createUser(client as unknown as ZepClient, {
       userId: "user-1",
       firstName: "Jane",
       lastName: "Smith",
       email: "jane@example.com",
     });
 
-    expect(result).toBe(true);
-    expect(mocks.userAdd).toHaveBeenCalledWith({
+    expect(result).toEqual({
+      userUuid: MOCK_USER_UUID,
+      graphUuid: MOCK_GRAPH_UUID,
+    });
+    expect(mocks.userCreate).toHaveBeenCalledWith({
       userId: "user-1",
       firstName: "Jane",
       lastName: "Smith",
@@ -42,144 +50,80 @@ describe("ensureUser", () => {
     });
   });
 
-  it("ensureUser returns true when created with only userId (fields default to undefined)", async () => {
+  it("creates a user without any developer-assigned name", async () => {
     const { client, mocks } = mockZepClient();
 
-    const result = await ensureUser(client as unknown as ZepClient, {
-      userId: "user-1",
-    });
+    const result = await createUser(client as unknown as ZepClient);
 
-    expect(result).toBe(true);
-    expect(mocks.userAdd).toHaveBeenCalledWith({
-      userId: "user-1",
+    expect(result.userUuid).toBe(MOCK_USER_UUID);
+    expect(mocks.userCreate).toHaveBeenCalledWith({
+      userId: undefined,
       firstName: undefined,
       lastName: undefined,
       email: undefined,
     });
   });
 
-  it("ensureUser returns false on 409 conflict (already-exists shape)", async () => {
+  it("throws when the response carries no UUID", async () => {
     const { client, mocks } = mockZepClient();
-    mocks.userAdd.mockRejectedValueOnce(
-      new FakeApiError("User already exists", 409),
-    );
+    mocks.userCreate.mockResolvedValueOnce({ userId: "user-1" });
 
-    const result = await ensureUser(client as unknown as ZepClient, {
-      userId: "user-1",
-    });
-
-    expect(result).toBe(false);
+    await expect(
+      createUser(client as unknown as ZepClient, { userId: "user-1" }),
+    ).rejects.toThrow("did not return a UUID");
   });
 
-  it("ensureUser returns false on 400 'already exists' message shape", async () => {
+  it("throws on a genuine failure (5xx)", async () => {
     const { client, mocks } = mockZepClient();
-    mocks.userAdd.mockRejectedValueOnce(
-      new FakeApiError("user already exists", 400),
-    );
-
-    const result = await ensureUser(client as unknown as ZepClient, {
-      userId: "user-1",
-    });
-
-    expect(result).toBe(false);
-  });
-
-  it("ensureUser throws on a genuine failure (5xx)", async () => {
-    const { client, mocks } = mockZepClient();
-    mocks.userAdd.mockRejectedValueOnce(
+    mocks.userCreate.mockRejectedValueOnce(
       new FakeApiError("internal error", 500),
     );
 
     await expect(
-      ensureUser(client as unknown as ZepClient, { userId: "user-1" }),
+      createUser(client as unknown as ZepClient, { userId: "user-1" }),
     ).rejects.toThrow("internal error");
   });
 
-  it("ensureUser throws on a typed 5xx whose message mentions 'conflict'", async () => {
-    // The message-substring fallback applies to untyped errors only: a known
-    // non-conflict status code is a genuine failure regardless of wording.
+  it("throws on a generic exception", async () => {
     const { client, mocks } = mockZepClient();
-    mocks.userAdd.mockRejectedValueOnce(
-      new FakeApiError("transaction conflict, please retry", 500),
-    );
+    mocks.userCreate.mockRejectedValueOnce(new Error("network timeout"));
 
     await expect(
-      ensureUser(client as unknown as ZepClient, { userId: "user-1" }),
-    ).rejects.toThrow("transaction conflict");
-  });
-
-  it("ensureUser returns false on an untyped 'already exists' error (legacy shape)", async () => {
-    const { client, mocks } = mockZepClient();
-    mocks.userAdd.mockRejectedValueOnce(new Error("user already exists"));
-
-    const result = await ensureUser(client as unknown as ZepClient, {
-      userId: "user-1",
-    });
-
-    expect(result).toBe(false);
-  });
-
-  it("ensureUser throws on a generic non-conflict exception", async () => {
-    const { client, mocks } = mockZepClient();
-    mocks.userAdd.mockRejectedValueOnce(new Error("network timeout"));
-
-    await expect(
-      ensureUser(client as unknown as ZepClient, { userId: "user-1" }),
+      createUser(client as unknown as ZepClient, { userId: "user-1" }),
     ).rejects.toThrow("network timeout");
   });
 
-  it("ensureUser does not throw on a 404 not-found shape treated as genuine failure", async () => {
-    const { client, mocks } = mockZepClient();
-    mocks.userAdd.mockRejectedValueOnce(new FakeApiError("not found", 404));
-
-    await expect(
-      ensureUser(client as unknown as ZepClient, { userId: "user-1" }),
-    ).rejects.toThrow("not found");
-  });
-
-  it("onCreated runs exactly once when the user is newly created", async () => {
+  it("runs onCreated exactly once with the UUID of the new user", async () => {
     const { client } = mockZepClient();
     const onCreated = vi.fn().mockResolvedValue(undefined);
 
-    const result = await ensureUser(client as unknown as ZepClient, {
-      userId: "user-1",
-      onCreated,
-    });
+    await createUser(client as unknown as ZepClient, { onCreated });
 
-    expect(result).toBe(true);
     expect(onCreated).toHaveBeenCalledTimes(1);
-    expect(onCreated).toHaveBeenCalledWith(client, "user-1");
+    expect(onCreated).toHaveBeenCalledWith(client, MOCK_USER_UUID);
   });
 
-  it("onCreated is not called when the user already exists", async () => {
+  it("does not run onCreated when the create call fails", async () => {
     const { client, mocks } = mockZepClient();
-    mocks.userAdd.mockRejectedValueOnce(
-      new FakeApiError("already exists", 409),
-    );
+    mocks.userCreate.mockRejectedValueOnce(new Error("internal error"));
     const onCreated = vi.fn().mockResolvedValue(undefined);
 
-    const result = await ensureUser(client as unknown as ZepClient, {
-      userId: "user-1",
-      onCreated,
-    });
-
-    expect(result).toBe(false);
+    await expect(
+      createUser(client as unknown as ZepClient, { onCreated }),
+    ).rejects.toThrow("internal error");
     expect(onCreated).not.toHaveBeenCalled();
   });
 
-  it("onCreated errors propagate out of ensureUser", async () => {
+  it("propagates an error from onCreated", async () => {
     const { client } = mockZepClient();
     const onCreated = vi.fn().mockRejectedValue(new Error("setup failed"));
 
     await expect(
-      ensureUser(client as unknown as ZepClient, {
-        userId: "user-1",
-        onCreated,
-      }),
+      createUser(client as unknown as ZepClient, { onCreated }),
     ).rejects.toThrow("setup failed");
   });
 
-  it("onCreated is awaited before ensureUser resolves", async () => {
+  it("awaits onCreated before it returns", async () => {
     const { client } = mockZepClient();
     let hookCompleted = false;
     const onCreated = vi.fn().mockImplementation(async () => {
@@ -187,93 +131,66 @@ describe("ensureUser", () => {
       hookCompleted = true;
     });
 
-    await ensureUser(client as unknown as ZepClient, {
-      userId: "user-1",
-      onCreated,
-    });
+    await createUser(client as unknown as ZepClient, { onCreated });
 
     expect(hookCompleted).toBe(true);
   });
-
-  it("a racing conflict on ensureUser returns false", async () => {
-    const { client, mocks } = mockZepClient();
-    mocks.userAdd.mockRejectedValueOnce(new FakeApiError("conflict", 409));
-
-    const result = await ensureUser(client as unknown as ZepClient, {
-      userId: "racer",
-    });
-
-    expect(result).toBe(false);
-  });
 });
 
-describe("ensureThread", () => {
-  it("ensureThread returns true when created", async () => {
+describe("createThread", () => {
+  it("returns the UUID of the thread and of its graph", async () => {
     const { client, mocks } = mockZepClient();
 
-    const result = await ensureThread(client as unknown as ZepClient, {
+    const result = await createThread(client as unknown as ZepClient, {
+      userUuid: MOCK_USER_UUID,
       threadId: "thread-1",
-      userId: "user-1",
     });
 
-    expect(result).toBe(true);
-    expect(mocks.create).toHaveBeenCalledWith({
+    expect(result).toEqual({
+      threadUuid: MOCK_THREAD_UUID,
+      graphUuid: MOCK_GRAPH_UUID,
+    });
+    expect(mocks.threadCreate).toHaveBeenCalledWith({
+      userUuid: MOCK_USER_UUID,
       threadId: "thread-1",
-      userId: "user-1",
     });
   });
 
-  it("ensureThread returns false on 409 conflict (already-exists shape)", async () => {
+  it("creates a thread without any developer-assigned name", async () => {
     const { client, mocks } = mockZepClient();
-    mocks.create.mockRejectedValueOnce(
-      new FakeApiError("Thread already exists", 409),
-    );
 
-    const result = await ensureThread(client as unknown as ZepClient, {
-      threadId: "thread-1",
-      userId: "user-1",
+    const result = await createThread(client as unknown as ZepClient, {
+      userUuid: MOCK_USER_UUID,
     });
 
-    expect(result).toBe(false);
-  });
-
-  it("ensureThread returns false on 400 'already exists' message shape", async () => {
-    const { client, mocks } = mockZepClient();
-    mocks.create.mockRejectedValueOnce(
-      new FakeApiError("thread already exists", 400),
-    );
-
-    const result = await ensureThread(client as unknown as ZepClient, {
-      threadId: "thread-1",
-      userId: "user-1",
+    expect(result.threadUuid).toBe(MOCK_THREAD_UUID);
+    expect(mocks.threadCreate).toHaveBeenCalledWith({
+      userUuid: MOCK_USER_UUID,
+      threadId: undefined,
     });
-
-    expect(result).toBe(false);
   });
 
-  it("ensureThread throws on a genuine failure (5xx)", async () => {
+  it("throws when the response carries no UUID", async () => {
     const { client, mocks } = mockZepClient();
-    mocks.create.mockRejectedValueOnce(
+    mocks.threadCreate.mockResolvedValueOnce({ userUuid: MOCK_USER_UUID });
+
+    await expect(
+      createThread(client as unknown as ZepClient, {
+        userUuid: MOCK_USER_UUID,
+      }),
+    ).rejects.toThrow("did not return a UUID");
+  });
+
+  it("throws on a genuine failure (5xx)", async () => {
+    const { client, mocks } = mockZepClient();
+    mocks.threadCreate.mockRejectedValueOnce(
       new FakeApiError("internal error", 500),
     );
 
     await expect(
-      ensureThread(client as unknown as ZepClient, {
-        threadId: "thread-1",
-        userId: "user-1",
+      createThread(client as unknown as ZepClient, {
+        userUuid: MOCK_USER_UUID,
       }),
     ).rejects.toThrow("internal error");
-  });
-
-  it("a racing conflict on ensureThread returns false", async () => {
-    const { client, mocks } = mockZepClient();
-    mocks.create.mockRejectedValueOnce(new FakeApiError("conflict", 409));
-
-    const result = await ensureThread(client as unknown as ZepClient, {
-      threadId: "thread-1",
-      userId: "user-1",
-    });
-
-    expect(result).toBe(false);
   });
 });

@@ -2,11 +2,12 @@ package zepadk
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
-	zep "github.com/getzep/zep-go/v3"
-	zepclient "github.com/getzep/zep-go/v3/client"
-	zepoption "github.com/getzep/zep-go/v3/option"
+	zep "github.com/getzep/zep-go/v4"
+	zepclient "github.com/getzep/zep-go/v4/client"
+	zepcore "github.com/getzep/zep-go/v4/core"
 )
 
 // maxMessageContentChars is Zep's hard limit on the content of a single thread
@@ -22,25 +23,29 @@ const messageTruncateChars = 4000
 
 // zepAPI is the minimal seam over the concrete *zepclient.Client used by this
 // package. Introducing it lets the success paths (persist / inject / dedup /
-// edge-mapping) be table-tested with an in-memory fake instead of requiring a
-// live Zep account or HTTP mocking.
+// result mapping) be table-tested with an in-memory fake instead of requiring
+// a live Zep account or HTTP mocking.
 //
-// The methods mirror the subset of the Zep SDK this package calls:
-//
-//   - AddMessages persists a thread turn (and can return the Context Block).
-//   - GetUserContext fetches the Context Block for a thread without writing.
-//   - Search runs a graph search.
-//   - AddUser creates a Zep user (used by EnsureUser).
-//   - CreateThread creates a Zep thread (used by EnsureThread).
+// The methods mirror the subset of the Zep v4 SDK this package calls. Zep v4
+// addresses every thread and graph by a server-generated UUID, and it splits
+// the single v3 graph search method into one method for each scope, so the
+// seam carries one method for each supported scope.
 type zepAPI interface {
-	AddMessages(ctx context.Context, threadID string, req *zep.AddThreadMessagesRequest, opts ...zepoption.RequestOption) (*zep.AddThreadMessagesResponse, error)
-	Search(ctx context.Context, req *zep.GraphSearchQuery, opts ...zepoption.RequestOption) (*zep.GraphSearchResults, error)
-	AddUser(ctx context.Context, req *zep.CreateUserRequest, opts ...zepoption.RequestOption) (*zep.User, error)
-	CreateThread(ctx context.Context, req *zep.CreateThreadRequest, opts ...zepoption.RequestOption) (*zep.Thread, error)
+	AddMessages(ctx context.Context, threadUUID string, req *zep.AddMessagesRequest) (*zep.AddMessagesResult, error)
+	SearchEdges(ctx context.Context, graphUUID string, req *zep.GraphSearchEdgesRequest) ([]*zep.Edge, error)
+	SearchNodes(ctx context.Context, graphUUID string, req *zep.GraphSearchNodesRequest) ([]*zep.Node, error)
+	SearchEpisodes(ctx context.Context, graphUUID string, req *zep.GraphSearchEpisodesRequest) ([]*zep.Episode, error)
+	SearchObservations(ctx context.Context, graphUUID string, req *zep.GraphSearchObservationsRequest) ([]*zep.Observation, error)
+	SearchThreadSummaries(ctx context.Context, graphUUID string, req *zep.GraphSearchThreadSummariesRequest) ([]*zep.ThreadSummary, error)
+	GetGraphContext(ctx context.Context, graphUUID string, req *zep.GraphContextRequest) (*zep.GraphContextResponse, error)
+	CreateUser(ctx context.Context, req *zep.CreateUserRequest) (*zep.User, error)
+	CreateThread(ctx context.Context, req *zep.CreateThreadRequest) (*zep.Thread, error)
 }
 
 // clientAdapter adapts the concrete *zepclient.Client to the zepAPI seam by
-// flattening the Thread / Graph sub-clients into top-level methods.
+// flattening the Thread / Graph / User sub-clients into top-level methods.
+// Zep v4 returns a cursor page for each search, so each search method follows
+// the pages until it collects the requested number of results.
 type clientAdapter struct {
 	client *zepclient.Client
 }
@@ -54,20 +59,78 @@ func newZepAPI(client *zepclient.Client) zepAPI {
 	return &clientAdapter{client: client}
 }
 
-func (a *clientAdapter) AddMessages(ctx context.Context, threadID string, req *zep.AddThreadMessagesRequest, opts ...zepoption.RequestOption) (*zep.AddThreadMessagesResponse, error) {
-	return a.client.Thread.AddMessages(ctx, threadID, req, opts...)
+func (a *clientAdapter) AddMessages(ctx context.Context, threadUUID string, req *zep.AddMessagesRequest) (*zep.AddMessagesResult, error) {
+	return a.client.Thread.AddMessages(ctx, threadUUID, req)
 }
 
-func (a *clientAdapter) Search(ctx context.Context, req *zep.GraphSearchQuery, opts ...zepoption.RequestOption) (*zep.GraphSearchResults, error) {
-	return a.client.Graph.Search(ctx, req, opts...)
+func (a *clientAdapter) SearchEdges(ctx context.Context, graphUUID string, req *zep.GraphSearchEdgesRequest) ([]*zep.Edge, error) {
+	page, err := a.client.Graph.SearchEdges(ctx, graphUUID, req)
+	if err != nil {
+		return nil, err
+	}
+	return collectPage(ctx, page, req.Limit)
 }
 
-func (a *clientAdapter) AddUser(ctx context.Context, req *zep.CreateUserRequest, opts ...zepoption.RequestOption) (*zep.User, error) {
-	return a.client.User.Add(ctx, req, opts...)
+func (a *clientAdapter) SearchNodes(ctx context.Context, graphUUID string, req *zep.GraphSearchNodesRequest) ([]*zep.Node, error) {
+	page, err := a.client.Graph.SearchNodes(ctx, graphUUID, req)
+	if err != nil {
+		return nil, err
+	}
+	return collectPage(ctx, page, req.Limit)
 }
 
-func (a *clientAdapter) CreateThread(ctx context.Context, req *zep.CreateThreadRequest, opts ...zepoption.RequestOption) (*zep.Thread, error) {
-	return a.client.Thread.Create(ctx, req, opts...)
+func (a *clientAdapter) SearchEpisodes(ctx context.Context, graphUUID string, req *zep.GraphSearchEpisodesRequest) ([]*zep.Episode, error) {
+	page, err := a.client.Graph.SearchEpisodes(ctx, graphUUID, req)
+	if err != nil {
+		return nil, err
+	}
+	return collectPage(ctx, page, req.Limit)
+}
+
+func (a *clientAdapter) SearchObservations(ctx context.Context, graphUUID string, req *zep.GraphSearchObservationsRequest) ([]*zep.Observation, error) {
+	page, err := a.client.Graph.SearchObservations(ctx, graphUUID, req)
+	if err != nil {
+		return nil, err
+	}
+	return collectPage(ctx, page, req.Limit)
+}
+
+func (a *clientAdapter) SearchThreadSummaries(ctx context.Context, graphUUID string, req *zep.GraphSearchThreadSummariesRequest) ([]*zep.ThreadSummary, error) {
+	page, err := a.client.Graph.SearchThreadSummaries(ctx, graphUUID, req)
+	if err != nil {
+		return nil, err
+	}
+	return collectPage(ctx, page, req.Limit)
+}
+
+// collectPage reads results from a Zep v4 cursor page, and it follows the
+// pages until it collects limit results or no page remains. A nil limit
+// collects every result.
+func collectPage[C comparable, T any, R any](ctx context.Context, page *zepcore.Page[C, T, R], limit *int) ([]T, error) {
+	var out []T
+	iter := page.Iterator()
+	for iter.Next(ctx) {
+		if limit != nil && len(out) >= *limit {
+			break
+		}
+		out = append(out, iter.Current())
+	}
+	if err := iter.Err(); err != nil && !errors.Is(err, zepcore.ErrNoPages) {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (a *clientAdapter) GetGraphContext(ctx context.Context, graphUUID string, req *zep.GraphContextRequest) (*zep.GraphContextResponse, error) {
+	return a.client.Graph.GetContext(ctx, graphUUID, req)
+}
+
+func (a *clientAdapter) CreateUser(ctx context.Context, req *zep.CreateUserRequest) (*zep.User, error) {
+	return a.client.User.Create(ctx, req)
+}
+
+func (a *clientAdapter) CreateThread(ctx context.Context, req *zep.CreateThreadRequest) (*zep.Thread, error) {
+	return a.client.Thread.Create(ctx, req)
 }
 
 // truncateMessageContent returns content trimmed to Zep's per-message character
@@ -76,7 +139,7 @@ func (a *clientAdapter) CreateThread(ctx context.Context, req *zep.CreateThreadR
 // PII) so the caller can observe that a turn was clipped.
 //
 // The original (untruncated) content is returned unchanged when it already fits.
-func truncateMessageContent(logger *slog.Logger, threadID, content string) string {
+func truncateMessageContent(logger *slog.Logger, threadUUID, content string) string {
 	if len(content) <= maxMessageContentChars {
 		return content
 	}
@@ -86,7 +149,7 @@ func truncateMessageContent(logger *slog.Logger, threadID, content string) strin
 	// Truncate on a rune boundary so we never emit invalid UTF-8.
 	truncated := truncateRunes(content, messageTruncateChars)
 	logger.Warn("zepadk: message content exceeds Zep limit; truncating before persist",
-		slog.String("thread_id", threadID),
+		slog.String("thread_uuid", threadUUID),
 		slog.Int("original_chars", len(content)),
 		slog.Int("truncated_chars", len(truncated)),
 		slog.Int("limit_chars", maxMessageContentChars))
@@ -112,4 +175,13 @@ func truncateRunes(s string, maxBytes int) string {
 // 0b10xxxxxx continuation byte).
 func utf8RuneStart(b byte) bool {
 	return b&0xC0 != 0x80
+}
+
+// deref returns the value behind s, or "" when s is nil. Zep v4 models most
+// string fields as pointers.
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

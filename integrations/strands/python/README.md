@@ -10,7 +10,9 @@ Add long-term agent memory to [Strands Agents](https://strandsagents.com) via Ze
 pip install zep-strands
 ```
 
-Requires Python 3.11+, `strands-agents>=1.45.0`, `zep-cloud>=3.23.0`, and a Zep Cloud API key from [app.getzep.com](https://app.getzep.com/).
+Requires Python 3.11+, `strands-agents>=1.45.0`, `zep-cloud==4.0.0a5`, and a Zep Cloud API key from [app.getzep.com](https://app.getzep.com/).
+
+Zep v4 addresses a user, a thread, and a graph by a server-generated UUID. A `user_id` or a `thread_id` is a name, not an address. Create each resource one time, keep the UUID from the response in your own database, and give the UUID to the store.
 
 ## Quick start
 
@@ -18,23 +20,22 @@ Requires Python 3.11+, `strands-agents>=1.45.0`, `zep-cloud>=3.23.0`, and a Zep 
 from strands import Agent
 from strands.memory import MemoryManager
 from zep_cloud.client import AsyncZep
-from zep_strands import ZepMemoryStore, ensure_thread, ensure_user
+from zep_strands import ZepMemoryStore, create_thread, create_user
 
 zep = AsyncZep(api_key="your-api-key")
 
-await ensure_user(
+user = await create_user(
     zep,
-    user_id="user-123",
     first_name="Jane",
     last_name="Smith",
     email="jane@example.com",
 )
-await ensure_thread(zep, thread_id="thread-abc", user_id="user-123")
+thread = await create_thread(zep, user_uuid=user.uuid_)
 
 store = ZepMemoryStore(
     zep_client=zep,
-    user_id="user-123",
-    thread_id="thread-abc",
+    user_uuid=user.uuid_,
+    thread_uuid=thread.uuid_,
     first_name="Jane",
     last_name="Smith",
     writable=True,
@@ -53,17 +54,17 @@ With no further configuration, the manager injects relevant Zep context before e
 
 | Strands hook | Zep call | Purpose |
 |--------------|----------|---------|
-| `MemoryStore.search` | `graph.search` | Recall for injection and the `search_memory` tool |
+| `MemoryStore.search` | `graph.get_context` or `graph.search_*` | Recall for injection and the `search_memory` tool |
 | `MemoryStore.add_messages` | `thread.add_messages` | Server-side extraction from conversation turns |
-| `MemoryStore.add` | `graph.add` | Single-fact writes (`add_memory` tool / programmatic) |
-| First `search` / write | `user.add` + `thread.create` | Provision resources on first use (see below) |
+| `MemoryStore.add` | `graph.episode.add` | Single-fact writes (`add_memory` tool / programmatic) |
+| First `search` / write in user-graph mode | `user.get` | One read of the user record for the graph UUID, then cached |
 | `MemoryStore.get_tools` | `create_zep_search_tool` | Optional on-demand graph search (when enabled) |
 
 Context comes from the **whole user graph**; the thread only scopes relevance and records the conversation. A new thread for the same user still recalls earlier facts.
 
 ## Automatic extraction and delayed graph building
 
-`extraction=True` (the default when the store is writable with `user_id` + `thread_id`) opts into Strands' automatic extraction loop. With the manager's defaults that means:
+`extraction=True` (the default when the store is writable with `user_uuid` + `thread_uuid`) opts into Strands' automatic extraction loop. With the manager's defaults that means:
 
 1. Conversation turns are buffered in the manager.
 2. Every **5 turns**, Strands calls `add_messages`, which posts the batch to Zep via `thread.add_messages`.
@@ -80,51 +81,54 @@ from strands.memory.extraction.types import ExtractionConfig
 
 store = ZepMemoryStore(
     zep_client=zep,
-    user_id="user-123",
-    thread_id="thread-abc",
+    user_uuid=user_uuid,
+    thread_uuid=thread_uuid,
     writable=True,
     extraction=ExtractionConfig(trigger=InvocationTrigger()),  # after every turn
 )
 ```
 
-`extraction=True` (or an `ExtractionConfig`) **requires** writable user-graph mode with both `user_id` and `thread_id`. Construction raises `ValueError` otherwise — use `extraction=False` for standalone graphs or read-only stores.
+`extraction=True` (or an `ExtractionConfig`) **requires** writable user-graph mode with both `user_uuid` and `thread_uuid`. Construction raises `ValueError` otherwise — use `extraction=False` for standalone graphs or read-only stores.
 
 ## Scoping modes
 
-**User graph** (default for conversational agents) — pass `user_id` and `thread_id`:
+**User graph** (default for conversational agents) — pass `user_uuid` and `thread_uuid`:
 
 ```python
-ZepMemoryStore(zep_client=zep, user_id="user-123", thread_id="thread-abc", ...)
+ZepMemoryStore(zep_client=zep, user_uuid=user_uuid, thread_uuid=thread_uuid, ...)
 ```
 
-**Standalone graph** (shared / domain knowledge) — pass `graph_id`. Supports `search` and `add` only (no `add_messages`):
+**Standalone graph** (shared / domain knowledge) — pass `graph_uuid`. Supports `search` and `add` only (no `add_messages`):
 
 ```python
-ZepMemoryStore(zep_client=zep, graph_id="company-kb", writable=True, extraction=False)
+ZepMemoryStore(zep_client=zep, graph_uuid=graph_uuid, writable=True, extraction=False)
 ```
 
-Provide exactly one of `user_id` or `graph_id`.
+Provide exactly one of `user_uuid` or `graph_uuid`.
 
 ## Provisioning users and threads
 
-`ensure_user` / `ensure_thread` are idempotent create-then-catch-conflict helpers. Both return `True` when newly created and `False` when the resource already exists; genuine failures raise.
+`create_user` and `create_thread` create a resource one time and return the object that Zep created. Read `uuid_` from the response and store it in your own database; failures raise.
 
-Call them out-of-band before the first turn so misconfiguration surfaces loudly. If you skip them, the store provisions itself on its first search or write instead.
+The store never creates a resource and never resolves a name at run time, so you must create the user and the thread out of band before the first turn.
 
 `ZepMemoryStore.initialize()` deliberately makes **no** Zep calls. `Agent.__init__` is synchronous, so Strands runs that hook on a throwaway event loop in a worker thread; calling Zep there would drive your `AsyncZep` client from a second event loop and raise `RuntimeError: ... is bound to a different event loop` for any connection you had already opened. Deferring to first use keeps every Zep call on the agent's own loop, so one client can safely be shared between your application code and the store.
 
 ```python
-from zep_strands import ensure_thread, ensure_user
+from zep_strands import create_thread, create_user
 
-created = await ensure_user(
+user = await create_user(
     zep,
-    user_id="user-123",
     first_name="Jane",
     last_name="Smith",
-    on_created=configure_ontology,  # optional async hook
+    on_created=configure_ontology,  # optional async hook, receives the user UUID
 )
-await ensure_thread(zep, thread_id="thread-abc", user_id="user-123")
+thread = await create_thread(zep, user_uuid=user.uuid_)
+
+# Keep user.uuid_ and thread.uuid_ in your own database.
 ```
+
+> **Known issue (ZEPAI-3605):** a user that has no `user_id` cannot receive a thread message. `thread.add_messages` returns 404 until the fix is deployed.
 
 ## Search and injection
 
@@ -133,8 +137,8 @@ By default `search_scope="auto"`, so injection receives Zep's assembled Context 
 ```python
 store = ZepMemoryStore(
     zep_client=zep,
-    user_id="user-123",
-    thread_id="thread-abc",
+    user_uuid=user_uuid,
+    thread_uuid=thread_uuid,
     search_scope="edges",
     search_filters={"edge_types": ["PREFERS"]},
 )
@@ -147,8 +151,8 @@ Set `expose_search_tool=True` to register a model-callable `zep_search` tool via
 ```python
 store = ZepMemoryStore(
     zep_client=zep,
-    user_id="user-123",
-    thread_id="thread-abc",
+    user_uuid=user_uuid,
+    thread_uuid=thread_uuid,
     expose_search_tool=True,
     search_pinned_params={"scope": "auto", "limit": 10},
 )
@@ -161,13 +165,13 @@ from zep_strands import create_zep_search_tool
 
 tool = create_zep_search_tool(
     zep_client=zep,
-    user_id="user-123",
+    user_uuid=user_uuid,
     search_pinned_params={"scope": "edges"},
 )
 agent = Agent(tools=[tool])
 ```
 
-**Pin-or-expose.** Every `graph.search` parameter (`scope`, `reranker`, `limit`, `mmr_lambda`, `center_node_uuid`) is model-exposed by default. `search_pinned_params` fixes a value and hides it; `search_hidden_params` hides without pinning (Zep's default applies). `search_filters` and `bfs_origin_node_uuids` are always constructor-only.
+**Pin-or-expose.** Every search parameter (`scope`, `reranker`, `limit`, `mmr_lambda`, `center_node_uuid`) is model-exposed by default. `search_pinned_params` fixes a value and hides it; `search_hidden_params` hides without pinning (Zep's default applies). `search_filters` and `bfs_origin_node_uuids` are always constructor-only.
 
 ## Writing facts
 
@@ -181,7 +185,7 @@ await store.add('{"plan": "premium"}', metadata={"type": "json"})
 
 `metadata["type"]` selects the Zep data type (`text` default, `json`, or `message`). Remaining metadata keys are forwarded as episode metadata.
 
-Oversized `text`/`message` payloads are truncated to Zep's `graph.add` limit with a warning. Oversized `json` is **rejected with a `ValueError`** instead — slicing JSON strips its closing syntax, so a truncated document would just be rejected by Zep. Split large JSON into smaller documents before adding (see [chunking](https://help.getzep.com/chunking-large-documents)).
+Oversized `text`/`message` payloads are truncated to Zep's episode limit with a warning. Oversized `json` is **rejected with a `ValueError`** instead — slicing JSON strips its closing syntax, so a truncated document would just be rejected by Zep. Split large JSON into smaller documents before adding (see [chunking](https://help.getzep.com/chunking-large-documents)).
 
 ## Error handling
 
@@ -199,9 +203,9 @@ The one exception is the model-callable `zep_search` tool, which catches Zep err
 
 ## Identity
 
-Pass real names (`first_name`, `last_name`, `email`) so Zep anchors the user graph node. Display names on persisted messages default to the user's full name / `"Assistant"`.
+Pass real names (`first_name`, `last_name`, `email`) to `create_user` so Zep anchors the user graph node. The store takes `first_name` and `last_name` for the display names on persisted messages; they default to the user's full name and to `"Assistant"`.
 
-One store instance is bound to one `user_id`/`thread_id` (or `graph_id`) at construction.
+One store instance is bound to one `user_uuid`/`thread_uuid` (or `graph_uuid`) at construction.
 
 ## Features
 
@@ -211,7 +215,7 @@ One store instance is bound to one `user_id`/`thread_id` (or `graph_id`) at cons
 - Whole-user-graph recall across threads
 - Standalone-graph mode for shared knowledge
 - Optional pin-or-expose `zep_search` tool
-- Idempotent `ensure_user` / `ensure_thread` provisioning
+- `create_user` / `create_thread` provisioning helpers that give back the server UUIDs
 - Message and graph payload truncation with length-only warnings
 
 ## Configuration
@@ -236,7 +240,7 @@ make all          # format + lint + type-check + test
 
 - Python 3.11+
 - `strands-agents>=1.45.0`
-- `zep-cloud>=3.23.0`
+- `zep-cloud==4.0.0a5`
 
 ## Support
 

@@ -13,7 +13,6 @@ and let the agent retrieve it on demand through the Zep search tool.
 import os
 import sys
 import time
-import uuid
 
 from crewai import Agent, Crew, Process, Task
 from zep_cloud.client import Zep
@@ -35,34 +34,28 @@ def main():
     print("\n🤖 CrewAI + Zep Memory Integration Example")
     print("=" * 50)
 
-    # Set up user and thread
-    user_id = "demo_user_" + str(uuid.uuid4())
-    thread_id = "demo_thread_" + str(uuid.uuid4())
+    # Create the user. Zep v4 gives every user a server-generated UUID, and
+    # the application stores that UUID. Keep the UUID in your own database.
+    user = zep_client.user.create(first_name="John", last_name="Doe", email="john.doe@example.com")
+    user_uuid = user.uuid_ or ""
+    graph_uuid = user.graph_uuid or ""
+    print("✅ User created successfully")
 
-    print(f"👤 User ID: {user_id}")
-    print(f"🧵 Thread ID: {thread_id}")
+    # Create the thread. The response carries the thread UUID.
+    thread = zep_client.thread.create(user_uuid=user_uuid)
+    thread_uuid = thread.uuid_ or ""
+    print("✅ Thread created successfully")
 
-    # Create user in Zep
-    try:
-        zep_client.user.add(
-            user_id=user_id, first_name="John", last_name="Doe", email="john.doe@example.com"
-        )
-        print("✅ User created successfully")
-    except Exception as e:
-        if "already exists" in str(e).lower():
-            print("✅ User already exists")
-        else:
-            print(f"⚠️  User creation issue: {e}")
-
-    # Create thread
-    try:
-        zep_client.thread.create(user_id=user_id, thread_id=thread_id)
-        print("✅ Thread created successfully")
-    except Exception as e:
-        print(f"⚠️  Thread creation issue: {e}")
+    print(f"👤 User UUID: {user_uuid}")
+    print(f"🧵 Thread UUID: {thread_uuid}")
 
     # Initialize the Zep storage adapter
-    zep_storage = ZepStorage(client=zep_client, user_id=user_id, thread_id=thread_id)
+    zep_storage = ZepStorage(
+        client=zep_client,
+        user_uuid=user_uuid,
+        thread_uuid=thread_uuid,
+        graph_uuid=graph_uuid,
+    )
 
     # Save conversation context and data (demonstrates metadata-based routing)
     print("\n💾 Saving conversation and business context to Zep...")
@@ -111,7 +104,7 @@ def main():
     time.sleep(20)
 
     # Give the agent a Zep search tool so it can retrieve the saved context.
-    search_tool = create_search_tool(zep_client, user_id=user_id)
+    search_tool = create_search_tool(zep_client, graph_uuid=graph_uuid)
 
     travel_agent = Agent(
         role="Travel Planning Assistant",

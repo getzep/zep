@@ -55,11 +55,11 @@ def _latest_human_text(messages: list[BaseMessage]) -> str:
 def create_zep_pre_model_hook(
     zep_client: AsyncZep,
     *,
-    user_id: str,
-    thread_id: str,
+    thread_uuid: str,
+    graph_uuid: str = "",
     base_instructions: str | None = None,
     template: str = DEFAULT_CONTEXT_TEMPLATE,
-    template_id: str | None = None,
+    template_uuid: str | None = None,
     context_builder: ContextBuilder | None = None,
 ) -> ZepPreModelHook:
     """Build a ``pre_model_hook`` that injects Zep context via ``llm_input_messages``.
@@ -73,13 +73,14 @@ def create_zep_pre_model_hook(
             model=model,
             tools=[...],
             pre_model_hook=create_zep_pre_model_hook(
-                zep, user_id="user-1", thread_id="thread-1",
+                zep,
+                thread_uuid=thread.uuid_,
                 base_instructions="You are a helpful assistant.",
             ),
         )
 
-    On every model call, the hook fetches the Context Block for
-    (``user_id``, ``thread_id``) -- via ``thread.get_user_context`` by
+    On every model call, the hook fetches the Context Block of
+    ``thread_uuid`` -- via ``thread.get_context`` by
     default, or ``context_builder`` if set -- wraps it with
     ``base_instructions`` using ``template``, and prepends the result as a
     ``SystemMessage`` to the messages sent to the model **for this step
@@ -94,18 +95,19 @@ def create_zep_pre_model_hook(
 
     Args:
         zep_client: An initialised :class:`~zep_cloud.client.AsyncZep` client.
-        user_id: The Zep user ID for this agent/graph. Only used to populate
-            ``ContextInput`` when ``context_builder`` is set.
-        thread_id: The Zep thread ID to retrieve context for.
+        thread_uuid: The UUID of the Zep thread to retrieve context for.
+        graph_uuid: The UUID of the graph to search. Only used to populate
+            ``ContextInput`` when ``context_builder`` is set. Use
+            ``User.graph_uuid`` for a user's personal graph.
         base_instructions: Optional fixed system instructions placed before
             the memory block.
         template: Template string wrapping the Context Block, rendered via
             plain string replacement (see
             :func:`~zep_langgraph.context.format_context_block`).
-        template_id: Optional ID of a Zep context template. Ignored when
+        template_uuid: Optional UUID of a Zep context template. Ignored when
             ``context_builder`` is set.
         context_builder: Optional async callable that *replaces*
-            ``thread.get_user_context`` for this call (see
+            ``thread.get_context`` for this call (see
             :func:`~zep_langgraph.context.get_zep_context`). Receives a
             :class:`~zep_langgraph.context.ContextInput` whose
             ``user_message`` is the latest ``HumanMessage`` text in state.
@@ -124,10 +126,10 @@ def create_zep_pre_model_hook(
 
         context = await get_zep_context(
             zep_client,
-            thread_id,
-            template_id=template_id,
+            thread_uuid,
+            template_uuid=template_uuid,
             context_builder=context_builder,
-            user_id=user_id,
+            graph_uuid=graph_uuid,
             user_message=user_message,
         )
         content = format_context_block(

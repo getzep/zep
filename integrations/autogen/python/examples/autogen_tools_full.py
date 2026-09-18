@@ -1,36 +1,30 @@
 import asyncio
 import os
-import uuid
 
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.ui import Console
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from zep_cloud.client import AsyncZep
 
-from zep_autogen import create_add_graph_data_tool, create_search_graph_tool
+from zep_autogen import create_add_graph_data_tool, create_search_graph_tool, create_user
 
 
 async def main():
     # Initialize AsyncZep client
     zep_client = AsyncZep(api_key=os.environ.get("ZEP_API_KEY"))
 
-    user_id = f"user_{uuid.uuid4().hex[:16]}"
-
-    try:
-        # Create user for the example
-        await zep_client.user.add(
-            user_id=user_id,
-            email="alice@example.com",
-            first_name="Alice",
-        )
-        print(f"Created user: {user_id}")
-
-    except Exception as e:
-        print(f"User creation failed or user already exists: {e}")
+    # Zep assigns the UUID of the user. Keep this UUID in your own database.
+    user = await create_user(
+        zep_client,
+        email="alice@example.com",
+        first_name="Alice",
+    )
+    user_uuid = str(user.uuid_)
+    print(f"Created user: {user_uuid}")
 
     # Create both tools bound to the user
-    search_tool = create_search_graph_tool(zep_client, user_id=user_id)
-    add_tool = create_add_graph_data_tool(zep_client, user_id=user_id)
+    search_tool = create_search_graph_tool(zep_client, user_uuid=user_uuid)
+    add_tool = create_add_graph_data_tool(zep_client, user_uuid=user_uuid)
 
     # Create assistant agent with both tools and reflection
     model_client = OpenAIChatCompletionClient(model="gpt-4.1-mini")

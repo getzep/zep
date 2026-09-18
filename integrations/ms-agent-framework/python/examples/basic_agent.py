@@ -9,6 +9,11 @@ shows the agent recalling those facts from Zep's user graph.
 The provider persists every user and assistant turn to Zep and injects Zep's
 Context Block into the model's instructions before each response.
 
+Zep v4 addresses a user, a thread, and a graph by a server-generated UUID.
+The example creates the user and the two threads one time, reads the UUIDs
+from the create responses, and gives the UUIDs to the provider.  An
+application stores the same UUIDs in its own database.
+
 Prerequisites:
     pip install zep-ms-agent-framework agent-framework-openai
 
@@ -20,13 +25,13 @@ from __future__ import annotations
 
 import asyncio
 import os
-from uuid import uuid4
+import time
 
 from agent_framework import Agent
 from agent_framework.openai import OpenAIChatClient
 from zep_cloud.client import AsyncZep
 
-from zep_ms_agent_framework import ZepContextProvider
+from zep_ms_agent_framework import ZepContextProvider, create_thread, create_user
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -40,15 +45,9 @@ if not ZEP_API_KEY:
 if not OPENAI_API_KEY:
     raise SystemExit("OPENAI_API_KEY is not set.")
 
-# Unique identity for this demo run so repeated runs do not collide.
-_suffix = uuid4().hex[:8]
-USER_ID = f"af-example-user-{_suffix}"
-THREAD_1 = f"af-example-thread1-{_suffix}"
-THREAD_2 = f"af-example-thread2-{_suffix}"
 
-
-def build_agent(zep: AsyncZep, thread_id: str) -> Agent:
-    """Build an agent whose memory is scoped to USER_ID on the given thread."""
+def build_agent(zep: AsyncZep, user_uuid: str, thread_uuid: str, graph_uuid: str) -> Agent:
+    """Build an agent whose memory is scoped to the given user and thread."""
     return Agent(
         OpenAIChatClient(model=OPENAI_MODEL, api_key=OPENAI_API_KEY),
         instructions=(
@@ -59,30 +58,65 @@ def build_agent(zep: AsyncZep, thread_id: str) -> Agent:
         context_providers=[
             ZepContextProvider(
                 zep_client=zep,
-                user_id=USER_ID,
-                thread_id=thread_id,
-                first_name="Alice",
-                last_name="Nguyen",
-                email="alice@example.com",
+                user_uuid=user_uuid,
+                thread_uuid=thread_uuid,
+                graph_uuid=graph_uuid,
             )
         ],
     )
 
 
+async def wait_for_ingestion(
+    zep: AsyncZep,
+    graph_uuid: str,
+    timeout_seconds: float = 180.0,
+    poll_interval: float = 3.0,
+) -> None:
+    """Poll the graph episodes until Zep processes all of them.
+
+    Ingestion in Zep is asynchronous. A fact is retrievable only after Zep
+    processes the episode that carries it.
+    """
+    start = time.monotonic()
+    while time.monotonic() - start < timeout_seconds:
+        pager = await zep.graph.episode.list(graph_uuid, limit=20)
+        episodes = pager.items or []
+        if episodes and all(episode.processed for episode in episodes):
+            print(f"Zep processed {len(episodes)} episodes.\n")
+            return
+        await asyncio.sleep(poll_interval)
+    print("Timed out while the example waited for episode processing.\n")
+
+
 async def main() -> None:
     zep = AsyncZep(api_key=ZEP_API_KEY)
+
+    # --- One-time provisioning: the server returns the UUIDs ---------------
+    # A user without a user_id cannot receive a thread message until the fix
+    # for ZEPAI-3605 is deployed.
+    user = await create_user(
+        zep,
+        first_name="Alice",
+        last_name="Nguyen",
+        email="alice@example.com",
+    )
+    user_uuid = str(user.uuid_)
+    graph_uuid = str(user.graph_uuid)
+    thread_1 = str((await create_thread(zep, user_uuid=user_uuid)).uuid_)
+    thread_2 = str((await create_thread(zep, user_uuid=user_uuid)).uuid_)
 
     print("=" * 64)
     print("Microsoft Agent Framework + Zep Memory Example")
     print("=" * 64)
-    print(f"  User ID:   {USER_ID}")
-    print(f"  Thread 1:  {THREAD_1}")
-    print(f"  Thread 2:  {THREAD_2}")
+    print(f"  User UUID:   {user_uuid}")
+    print(f"  Graph UUID:  {graph_uuid}")
+    print(f"  Thread 1:    {thread_1}")
+    print(f"  Thread 2:    {thread_2}")
     print("=" * 64, "\n")
 
     # --- Conversation 1: seed facts ----------------------------------------
     print("--- Conversation 1: seeding facts ---\n")
-    agent1 = build_agent(zep, THREAD_1)
+    agent1 = build_agent(zep, user_uuid, thread_1, graph_uuid)
     seed_messages = [
         "Hi! I'm Alice, a data scientist living in Portland, Oregon.",
         "On weekends I love hiking and landscape photography.",
@@ -93,23 +127,32 @@ async def main() -> None:
         print(f"Agent: {result.text}\n")
 
     # --- Wait for asynchronous graph ingestion -----------------------------
-    wait_seconds = 20
-    print(f"--- Waiting {wait_seconds}s for Zep to process the graph ---\n")
-    await asyncio.sleep(wait_seconds)
+    print("--- Waiting for Zep to process the graph ---\n")
+    await wait_for_ingestion(zep, graph_uuid)
 
     # --- Conversation 2: recall in a brand-new thread ----------------------
     # A different thread for the SAME user proves recall comes from the user
     # graph (fused across threads), not from local conversation history.
     print("--- Conversation 2: memory recall in a new thread ---\n")
-    agent2 = build_agent(zep, THREAD_2)
+    agent2 = build_agent(zep, user_uuid, thread_2, graph_uuid)
     recall_messages = [
         "What do I do for work, and where do I live?",
         "What are my hobbies?",
     ]
+    answers: list[str] = []
     for message in recall_messages:
         print(f"User:  {message}")
         result = await agent2.run(message)
         print(f"Agent: {result.text}\n")
+        answers.append(result.text.lower())
+
+    # --- Verify the recall --------------------------------------------------
+    transcript = " ".join(answers)
+    keywords = ["data scientist", "portland", "hiking", "photography"]
+    recalled = [keyword for keyword in keywords if keyword in transcript]
+    print(f"Recalled keywords: {recalled}")
+    if not recalled:
+        raise SystemExit("The agent did not recall any seeded fact.")
 
     print("Done.")
 

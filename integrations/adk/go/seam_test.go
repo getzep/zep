@@ -10,8 +10,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	zep "github.com/getzep/zep-go/v3"
-	zepoption "github.com/getzep/zep-go/v3/option"
+	zep "github.com/getzep/zep-go/v4"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/memory"
@@ -32,61 +31,118 @@ func validUTF8(s string) bool { return utf8.ValidString(s) }
 // table-test the success paths (persist / inject / dedup / scope-mapping)
 // without a live Zep account or HTTP mocking.
 type fakeZepAPI struct {
-	added         []*zep.Message
-	contextOut    string // returned as resp.Context from AddMessages
-	addErr        error
-	searchRes     *zep.GraphSearchResults
-	searchErr     error
-	lastQuery     *zep.GraphSearchQuery
-	addMsgCalls   int
-	lastAddMsgReq *zep.AddThreadMessagesRequest
+	added          []*zep.AddMessage
+	contextOut     string // returned as resp.Context from AddMessages
+	addErr         error
+	addMsgCalls    int
+	lastAddMsgReq  *zep.AddMessagesRequest
+	lastThreadUUID string
 
-	addUserErr          error
-	addUserCalls        int
-	lastAddUserReq      *zep.CreateUserRequest
+	edges           []*zep.Edge
+	nodes           []*zep.Node
+	episodes        []*zep.Episode
+	observations    []*zep.Observation
+	threadSummaries []*zep.ThreadSummary
+	graphContext    string
+	searchErr       error
+	searchCalls     int
+	lastSearchScope SearchScope
+	lastGraphUUID   string
+	lastSearchBody  *zep.SearchRequest
+	lastSearchLimit *int
+
+	createUserErr       error
+	createUserCalls     int
+	lastCreateUserReq   *zep.CreateUserRequest
 	createThreadErr     error
 	createThreadCalls   int
 	lastCreateThreadReq *zep.CreateThreadRequest
 }
 
-func (f *fakeZepAPI) AddMessages(_ context.Context, _ string, req *zep.AddThreadMessagesRequest, _ ...zepoption.RequestOption) (*zep.AddThreadMessagesResponse, error) {
+func (f *fakeZepAPI) AddMessages(_ context.Context, threadUUID string, req *zep.AddMessagesRequest) (*zep.AddMessagesResult, error) {
 	f.addMsgCalls++
 	f.lastAddMsgReq = req
+	f.lastThreadUUID = threadUUID
 	if f.addErr != nil {
 		return nil, f.addErr
 	}
 	f.added = append(f.added, req.Messages...)
-	resp := &zep.AddThreadMessagesResponse{}
+	res := &zep.AddMessagesResult{}
 	if f.contextOut != "" {
-		resp.Context = zep.String(f.contextOut)
+		res.Context = zep.String(f.contextOut)
 	}
-	return resp, nil
+	return res, nil
 }
 
-func (f *fakeZepAPI) Search(_ context.Context, req *zep.GraphSearchQuery, _ ...zepoption.RequestOption) (*zep.GraphSearchResults, error) {
-	f.lastQuery = req
-	if f.searchErr != nil {
-		return nil, f.searchErr
-	}
-	return f.searchRes, nil
+// recordSearch stores the arguments of a search call and reports whether the
+// fake must return an error.
+func (f *fakeZepAPI) recordSearch(scope SearchScope, graphUUID string, limit *int, body *zep.SearchRequest) error {
+	f.searchCalls++
+	f.lastSearchScope = scope
+	f.lastGraphUUID = graphUUID
+	f.lastSearchLimit = limit
+	f.lastSearchBody = body
+	return f.searchErr
 }
 
-func (f *fakeZepAPI) AddUser(_ context.Context, req *zep.CreateUserRequest, _ ...zepoption.RequestOption) (*zep.User, error) {
-	f.addUserCalls++
-	f.lastAddUserReq = req
-	if f.addUserErr != nil {
-		return nil, f.addUserErr
+func (f *fakeZepAPI) SearchEdges(_ context.Context, graphUUID string, req *zep.GraphSearchEdgesRequest) ([]*zep.Edge, error) {
+	if err := f.recordSearch(SearchScopeEdges, graphUUID, req.Limit, req.Body); err != nil {
+		return nil, err
 	}
-	return &zep.User{UserID: &req.UserID}, nil
+	return f.edges, nil
 }
 
-func (f *fakeZepAPI) CreateThread(_ context.Context, req *zep.CreateThreadRequest, _ ...zepoption.RequestOption) (*zep.Thread, error) {
+func (f *fakeZepAPI) SearchNodes(_ context.Context, graphUUID string, req *zep.GraphSearchNodesRequest) ([]*zep.Node, error) {
+	if err := f.recordSearch(SearchScopeNodes, graphUUID, req.Limit, req.Body); err != nil {
+		return nil, err
+	}
+	return f.nodes, nil
+}
+
+func (f *fakeZepAPI) SearchEpisodes(_ context.Context, graphUUID string, req *zep.GraphSearchEpisodesRequest) ([]*zep.Episode, error) {
+	if err := f.recordSearch(SearchScopeEpisodes, graphUUID, req.Limit, req.Body); err != nil {
+		return nil, err
+	}
+	return f.episodes, nil
+}
+
+func (f *fakeZepAPI) SearchObservations(_ context.Context, graphUUID string, req *zep.GraphSearchObservationsRequest) ([]*zep.Observation, error) {
+	if err := f.recordSearch(SearchScopeObservations, graphUUID, req.Limit, req.Body); err != nil {
+		return nil, err
+	}
+	return f.observations, nil
+}
+
+func (f *fakeZepAPI) SearchThreadSummaries(_ context.Context, graphUUID string, req *zep.GraphSearchThreadSummariesRequest) ([]*zep.ThreadSummary, error) {
+	if err := f.recordSearch(SearchScopeThreadSummaries, graphUUID, req.Limit, req.Body); err != nil {
+		return nil, err
+	}
+	return f.threadSummaries, nil
+}
+
+func (f *fakeZepAPI) GetGraphContext(_ context.Context, graphUUID string, req *zep.GraphContextRequest) (*zep.GraphContextResponse, error) {
+	if err := f.recordSearch(SearchScopeAuto, graphUUID, nil, &zep.SearchRequest{Query: req.Query, Filters: req.Filters}); err != nil {
+		return nil, err
+	}
+	return &zep.GraphContextResponse{Context: zep.String(f.graphContext)}, nil
+}
+
+func (f *fakeZepAPI) CreateUser(_ context.Context, req *zep.CreateUserRequest) (*zep.User, error) {
+	f.createUserCalls++
+	f.lastCreateUserReq = req
+	if f.createUserErr != nil {
+		return nil, f.createUserErr
+	}
+	return &zep.User{UUID: zep.String("user-uuid-1"), GraphUUID: zep.String("graph-uuid-1")}, nil
+}
+
+func (f *fakeZepAPI) CreateThread(_ context.Context, req *zep.CreateThreadRequest) (*zep.Thread, error) {
 	f.createThreadCalls++
 	f.lastCreateThreadReq = req
 	if f.createThreadErr != nil {
 		return nil, f.createThreadErr
 	}
-	return &zep.Thread{ThreadID: &req.ThreadID}, nil
+	return &zep.Thread{UUID: zep.String("thread-uuid-1"), UserUUID: zep.String(req.UserUUID)}, nil
 }
 
 // --- minimal CallbackContext stub ---------------------------------------
@@ -121,7 +177,7 @@ var _ agent.CallbackContext = (*fakeCallbackContext)(nil)
 
 func TestBeforeModelCallbackPersistsAndInjects(t *testing.T) {
 	api := &fakeZepAPI{contextOut: "USER FACTS"}
-	cb := newBeforeModelCallback(nil, api, WithUserMessageName("Jane"))
+	cb := newBeforeModelCallback(nil, api, WithThreadUUID("thread-uuid-1"), WithUserMessageName("Jane"))
 
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("hi there", genai.RoleUser))
 	req := &model.LLMRequest{Contents: []*genai.Content{genai.NewContentFromText("hi there", genai.RoleUser)}}
@@ -134,7 +190,7 @@ func TestBeforeModelCallbackPersistsAndInjects(t *testing.T) {
 		t.Fatalf("want exactly one persisted message, got calls=%d added=%d", api.addMsgCalls, len(api.added))
 	}
 	msg := api.added[0]
-	if msg.Role != zep.RoleTypeUserRole || msg.Content != "hi there" {
+	if msg.Role == nil || *msg.Role != zep.RoleTypeUser || deref(msg.Content) != "hi there" {
 		t.Fatalf("persisted message = %+v, want user role with content", msg)
 	}
 	if msg.Name == nil || *msg.Name != "Jane" {
@@ -151,7 +207,7 @@ func TestBeforeModelCallbackPersistsAndInjects(t *testing.T) {
 
 func TestBeforeModelCallbackSkipsToolLoopContinuation(t *testing.T) {
 	api := &fakeZepAPI{contextOut: "USER FACTS"}
-	cb := newBeforeModelCallback(nil, api)
+	cb := newBeforeModelCallback(nil, api, WithThreadUUID("thread-uuid-1"))
 
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText("what do you know about me?", genai.RoleUser))
 
@@ -215,7 +271,7 @@ func TestIsToolLoopContinuation(t *testing.T) {
 
 func TestBeforeModelCallbackTruncatesOversizeMessage(t *testing.T) {
 	api := &fakeZepAPI{}
-	cb := newBeforeModelCallback(nil, api)
+	cb := newBeforeModelCallback(nil, api, WithThreadUUID("thread-uuid-1"))
 
 	huge := strings.Repeat("a", maxMessageContentChars+500)
 	cc := newFakeCallbackContext("thread-1", "u1", genai.NewContentFromText(huge, genai.RoleUser))
@@ -227,7 +283,7 @@ func TestBeforeModelCallbackTruncatesOversizeMessage(t *testing.T) {
 	if len(api.added) != 1 {
 		t.Fatalf("want one persisted message, got %d", len(api.added))
 	}
-	got := api.added[0].Content
+	got := deref(api.added[0].Content)
 	if len(got) > maxMessageContentChars {
 		t.Fatalf("persisted content len = %d, exceeds limit %d", len(got), maxMessageContentChars)
 	}
@@ -244,7 +300,7 @@ func TestBeforeModelCallbackTruncatesOversizeMessage(t *testing.T) {
 
 func TestAfterModelCallbackPersistsAssistantReply(t *testing.T) {
 	api := &fakeZepAPI{}
-	cb := newAfterModelCallback(api, WithAssistantMessageName("assistant"))
+	cb := newAfterModelCallback(api, WithAfterThreadUUID("thread-uuid-1"), WithAssistantMessageName("assistant"))
 
 	cc := newFakeCallbackContext("thread-1", "u1", nil)
 	resp := &model.LLMResponse{Content: genai.NewContentFromText("here is your answer", genai.RoleModel)}
@@ -257,11 +313,11 @@ func TestAfterModelCallbackPersistsAssistantReply(t *testing.T) {
 		t.Fatalf("want one persisted assistant message, got %d", len(api.added))
 	}
 	msg := api.added[0]
-	if msg.Role != zep.RoleTypeAssistantRole {
-		t.Fatalf("role = %q, want assistant", msg.Role)
+	if msg.Role == nil || *msg.Role != zep.RoleTypeAssistant {
+		t.Fatalf("role = %v, want assistant", msg.Role)
 	}
-	if msg.Content != "here is your answer" {
-		t.Fatalf("content = %q, want assistant reply", msg.Content)
+	if deref(msg.Content) != "here is your answer" {
+		t.Fatalf("content = %q, want assistant reply", deref(msg.Content))
 	}
 	if msg.Name == nil || *msg.Name != "assistant" {
 		t.Fatalf("name = %v, want assistant", msg.Name)
@@ -287,7 +343,7 @@ func TestAfterModelCallbackSkips(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			api := &fakeZepAPI{}
-			cb := newAfterModelCallback(api)
+			cb := newAfterModelCallback(api, WithAfterThreadUUID("thread-uuid-1"))
 			cc := newFakeCallbackContext("thread-1", "u1", nil)
 			if _, err := cb(cc, tc.resp, tc.err); err != nil {
 				t.Fatalf("cb err: %v", err)
@@ -301,7 +357,7 @@ func TestAfterModelCallbackSkips(t *testing.T) {
 
 func TestAfterModelCallbackTruncatesOversizeReply(t *testing.T) {
 	api := &fakeZepAPI{}
-	cb := newAfterModelCallback(api)
+	cb := newAfterModelCallback(api, WithAfterThreadUUID("thread-uuid-1"))
 
 	huge := strings.Repeat("b", maxMessageContentChars+200)
 	cc := newFakeCallbackContext("thread-1", "u1", nil)
@@ -313,7 +369,7 @@ func TestAfterModelCallbackTruncatesOversizeReply(t *testing.T) {
 	if len(api.added) != 1 {
 		t.Fatalf("want one persisted message, got %d", len(api.added))
 	}
-	if got := len(api.added[0].Content); got > maxMessageContentChars || got != messageTruncateChars {
+	if got := len(deref(api.added[0].Content)); got > maxMessageContentChars || got != messageTruncateChars {
 		t.Fatalf("persisted reply len = %d, want %d (<= %d)", got, messageTruncateChars, maxMessageContentChars)
 	}
 }
@@ -367,55 +423,66 @@ func TestAssistantText(t *testing.T) {
 func TestMemoryServiceScopeMapping(t *testing.T) {
 	tests := []struct {
 		name  string
-		scope zep.GraphSearchScope
-		res   *zep.GraphSearchResults
+		scope SearchScope
+		api   *fakeZepAPI
 		want  []string
 	}{
 		{
 			name:  "edges -> facts",
-			scope: zep.GraphSearchScopeEdges,
-			res:   &zep.GraphSearchResults{Edges: []*zep.EntityEdge{{Fact: "f1"}, {Fact: ""}, nil, {Fact: "f2"}}},
+			scope: SearchScopeEdges,
+			api:   &fakeZepAPI{edges: []*zep.Edge{{Fact: zep.String("f1")}, {Fact: zep.String("")}, nil, {Fact: zep.String("f2")}}},
 			want:  []string{"f1", "f2"},
 		},
 		{
 			name:  "nodes -> name and summary",
-			scope: zep.GraphSearchScopeNodes,
-			res:   &zep.GraphSearchResults{Nodes: []*zep.EntityNode{{Name: "Jane", Summary: "vegetarian"}, {Name: "Bob"}, nil}},
-			want:  []string{"Jane: vegetarian", "Bob"},
+			scope: SearchScopeNodes,
+			api: &fakeZepAPI{nodes: []*zep.Node{
+				{Name: zep.String("Jane"), Summary: zep.String("vegetarian")},
+				{Name: zep.String("Bob")},
+				nil,
+			}},
+			want: []string{"Jane: vegetarian", "Bob"},
 		},
 		{
 			name:  "episodes -> content",
-			scope: zep.GraphSearchScopeEpisodes,
-			res:   &zep.GraphSearchResults{Episodes: []*zep.Episode{{Content: "ep1"}, {Content: ""}, {Content: "ep2"}}},
+			scope: SearchScopeEpisodes,
+			api:   &fakeZepAPI{episodes: []*zep.Episode{{Content: zep.String("ep1")}, {Content: zep.String("")}, {Content: zep.String("ep2")}}},
 			want:  []string{"ep1", "ep2"},
 		},
 		{
-			name:  "auto -> context block",
-			scope: zep.GraphSearchScopeAuto,
-			res:   &zep.GraphSearchResults{Context: zep.String("THE CONTEXT BLOCK")},
-			want:  []string{"THE CONTEXT BLOCK"},
-		},
-		{
-			name:  "auto with empty edges still reads context",
-			scope: zep.GraphSearchScopeAuto,
-			res:   &zep.GraphSearchResults{Context: zep.String("CTX"), Edges: nil},
-			want:  []string{"CTX"},
-		},
-		{
-			name:  "thread_summaries -> name and summary",
-			scope: zep.GraphSearchScopeThreadSummaries,
-			res: &zep.GraphSearchResults{ThreadSummaries: []*zep.GraphitiSagaNode{
-				{Name: "thread-1", Summary: zep.String("Discussed hiking plans.")},
-				{Name: "thread-2"},
+			name:  "observations -> name and summary",
+			scope: SearchScopeObservations,
+			api: &fakeZepAPI{observations: []*zep.Observation{
+				{Name: zep.String("diet"), Summary: zep.String("Jane is a vegetarian.")},
 				nil,
 			}},
-			want: []string{"thread-1: Discussed hiking plans.", "thread-2"},
+			want: []string{"diet: Jane is a vegetarian."},
+		},
+		{
+			name:  "thread_summaries -> summary",
+			scope: SearchScopeThreadSummaries,
+			api: &fakeZepAPI{threadSummaries: []*zep.ThreadSummary{
+				{Summary: zep.String("Discussed hiking plans.")},
+				{},
+				nil,
+			}},
+			want: []string{"Discussed hiking plans."},
+		},
+		{
+			name:  "auto -> context block",
+			scope: SearchScopeAuto,
+			api:   &fakeZepAPI{graphContext: "THE CONTEXT BLOCK"},
+			want:  []string{"THE CONTEXT BLOCK"},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			api := &fakeZepAPI{searchRes: tc.res}
-			svc := &memoryService{api: api, scope: tc.scope, logger: discardLogger()}
+			svc := &memoryService{
+				api:       tc.api,
+				scope:     tc.scope,
+				graphUUID: func(*memory.SearchRequest) string { return "graph-uuid-1" },
+				logger:    discardLogger(),
+			}
 			resp, err := svc.SearchMemory(context.Background(), &memory.SearchRequest{UserID: "u1", Query: "q"})
 			if err != nil {
 				t.Fatalf("SearchMemory err: %v", err)
@@ -424,21 +491,29 @@ func TestMemoryServiceScopeMapping(t *testing.T) {
 			if !equalStrings(got, tc.want) {
 				t.Fatalf("memories = %v, want %v", got, tc.want)
 			}
-			// The configured scope must reach the query.
-			if api.lastQuery == nil || api.lastQuery.Scope == nil || *api.lastQuery.Scope != tc.scope {
-				t.Fatalf("query scope not propagated: %+v", api.lastQuery)
+			// The configured scope must select the matching search method,
+			// and the graph UUID must reach it.
+			if tc.api.lastSearchScope != tc.scope {
+				t.Fatalf("search scope = %q, want %q", tc.api.lastSearchScope, tc.scope)
+			}
+			if tc.api.lastGraphUUID != "graph-uuid-1" {
+				t.Fatalf("graph UUID = %q, want graph-uuid-1", tc.api.lastGraphUUID)
 			}
 		})
 	}
 }
 
 func TestMemoryServiceRejectsUnsupportedScope(t *testing.T) {
-	// All GraphSearchScope constants are currently supported by this
-	// package; searchScopeSupported exists to reject any future values the
-	// SDK adds before this package's mapping is updated. Exercise that path
-	// directly via an out-of-range scope value rather than a real constant.
-	api := &fakeZepAPI{searchRes: &zep.GraphSearchResults{Edges: []*zep.EntityEdge{{Fact: "f"}}}}
-	svc := &memoryService{api: api, scope: zep.GraphSearchScope("not_a_real_scope"), logger: discardLogger()}
+	// Every SearchScope constant is supported by this package;
+	// searchScopeSupported exists to reject a value that a caller builds from
+	// a string. Exercise that path directly with an out-of-range scope.
+	api := &fakeZepAPI{edges: []*zep.Edge{{Fact: zep.String("f")}}}
+	svc := &memoryService{
+		api:       api,
+		scope:     SearchScope("not_a_real_scope"),
+		graphUUID: func(*memory.SearchRequest) string { return "graph-uuid-1" },
+		logger:    discardLogger(),
+	}
 
 	resp, err := svc.SearchMemory(context.Background(), &memory.SearchRequest{UserID: "u1", Query: "q"})
 	if err != nil {
@@ -448,8 +523,28 @@ func TestMemoryServiceRejectsUnsupportedScope(t *testing.T) {
 		t.Fatalf("unsupported scope must return no memories, got %d", len(resp.Memories))
 	}
 	// Must short-circuit before issuing the search.
-	if api.lastQuery != nil {
+	if api.searchCalls != 0 {
 		t.Fatal("unsupported scope must not issue a search")
+	}
+}
+
+// TestMemoryServiceWithoutGraphUUID asserts that the memory service returns
+// no memories, and issues no search, when the application configured no
+// graph UUID. Zep v4 addresses a graph by UUID, and the ADK user ID is not
+// one.
+func TestMemoryServiceWithoutGraphUUID(t *testing.T) {
+	api := &fakeZepAPI{edges: []*zep.Edge{{Fact: zep.String("f")}}}
+	svc := &memoryService{api: api, scope: SearchScopeEdges, logger: discardLogger()}
+
+	resp, err := svc.SearchMemory(context.Background(), &memory.SearchRequest{UserID: "u1", Query: "q"})
+	if err != nil {
+		t.Fatalf("SearchMemory err: %v", err)
+	}
+	if len(resp.Memories) != 0 {
+		t.Fatalf("want no memories without a graph UUID, got %d", len(resp.Memories))
+	}
+	if api.searchCalls != 0 {
+		t.Fatal("a missing graph UUID must not issue a search")
 	}
 }
 
@@ -459,10 +554,11 @@ func TestMemoryServiceRejectsUnsupportedScope(t *testing.T) {
 // (TestGraphSearchHandler*, TestGraphSearchToolSchema*).
 
 func TestGraphSearchToolScopeMapping(t *testing.T) {
-	api := &fakeZepAPI{searchRes: &zep.GraphSearchResults{
-		Nodes: []*zep.EntityNode{{Name: "Jane", Summary: "likes hiking"}},
-	}}
-	handler := newGraphSearchHandler(api, WithToolSearchScope(zep.GraphSearchScopeNodes), WithToolLogger(discardLogger()))
+	api := &fakeZepAPI{nodes: []*zep.Node{{Name: zep.String("Jane"), Summary: zep.String("likes hiking")}}}
+	handler := newGraphSearchHandler(api,
+		WithGraphUUID("graph-uuid-1"),
+		WithToolSearchScope(SearchScopeNodes),
+		WithToolLogger(discardLogger()))
 
 	out, err := handler(fakeSearchToolContext{Context: context.Background(), userID: "u1"}, SearchArgs{Query: "jane"})
 	if err != nil {
@@ -471,16 +567,18 @@ func TestGraphSearchToolScopeMapping(t *testing.T) {
 	if !equalStrings(out.Facts, []string{"Jane: likes hiking"}) {
 		t.Fatalf("facts = %v, want node mapping", out.Facts)
 	}
+	if api.lastGraphUUID != "graph-uuid-1" {
+		t.Fatalf("graph UUID = %q, want graph-uuid-1", api.lastGraphUUID)
+	}
 }
 
 func TestGraphSearchToolRejectsUnsupportedScope(t *testing.T) {
-	// All GraphSearchScope constants are currently supported by this
-	// package; searchScopeSupported exists to reject any future values the
-	// SDK adds before this package's mapping is updated. Exercise that path
-	// directly via an out-of-range scope value rather than a real constant.
-	api := &fakeZepAPI{searchRes: &zep.GraphSearchResults{Edges: []*zep.EntityEdge{{Fact: "f"}}}}
-	unsupported := zep.GraphSearchScope("not_a_real_scope")
-	handler := newGraphSearchHandler(api, WithToolSearchScope(unsupported), WithToolLogger(discardLogger()))
+	// See TestMemoryServiceRejectsUnsupportedScope.
+	api := &fakeZepAPI{edges: []*zep.Edge{{Fact: zep.String("f")}}}
+	handler := newGraphSearchHandler(api,
+		WithGraphUUID("graph-uuid-1"),
+		WithToolSearchScope(SearchScope("not_a_real_scope")),
+		WithToolLogger(discardLogger()))
 
 	out, err := handler(fakeSearchToolContext{Context: context.Background(), userID: "u1"}, SearchArgs{Query: "x"})
 	if err != nil {
@@ -489,8 +587,26 @@ func TestGraphSearchToolRejectsUnsupportedScope(t *testing.T) {
 	if len(out.Facts) != 0 {
 		t.Fatalf("unsupported scope must return no facts, got %v", out.Facts)
 	}
-	if api.lastQuery != nil {
+	if api.searchCalls != 0 {
 		t.Fatal("unsupported scope must not issue a search")
+	}
+}
+
+// TestGraphSearchToolWithoutGraphUUID asserts that the tool returns no facts,
+// and issues no search, when the application configured no graph UUID.
+func TestGraphSearchToolWithoutGraphUUID(t *testing.T) {
+	api := &fakeZepAPI{edges: []*zep.Edge{{Fact: zep.String("f")}}}
+	handler := newGraphSearchHandler(api, WithToolLogger(discardLogger()))
+
+	out, err := handler(fakeSearchToolContext{Context: context.Background(), userID: "u1"}, SearchArgs{Query: "x"})
+	if err != nil {
+		t.Fatalf("handler err: %v", err)
+	}
+	if len(out.Facts) != 0 {
+		t.Fatalf("want no facts without a graph UUID, got %v", out.Facts)
+	}
+	if api.searchCalls != 0 {
+		t.Fatal("a missing graph UUID must not issue a search")
 	}
 }
 

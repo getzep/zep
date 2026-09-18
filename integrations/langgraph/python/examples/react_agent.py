@@ -9,8 +9,17 @@ This example wires Zep into a prebuilt ReAct agent using the node/tool helpers:
     the knowledge graph on demand,
   * :func:`persist_messages` writes each turn back to Zep.
 
-It seeds a couple of facts, waits for Zep to build the graph, then asks a recall
-question to show memory working across turns.
+It seeds a couple of facts, polls Zep until the graph is searchable, then asks
+a recall question to show memory working across turns.
+
+Zep v4 addresses every user, thread, and graph by a server-generated UUID. The
+example creates the user and the thread, reads ``user.uuid_``,
+``user.graph_uuid``, and ``thread.uuid_`` from the responses, and passes those
+UUIDs to the integration.
+
+Note: ZEPAI-3605. A user that is created without a ``user_id`` cannot receive a
+thread message until the fix is deployed, so this example cannot complete the
+recall step against production yet.
 
 Prerequisites::
 
@@ -27,17 +36,20 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
-from zep_cloud import Message
+from zep_cloud import AddMessage
 from zep_cloud.client import AsyncZep
 
 from zep_langgraph import (
     build_system_message,
     create_graph_search_tool,
+    create_thread,
+    create_user,
     persist_messages,
 )
 
@@ -49,11 +61,9 @@ if not ZEP_API_KEY:
 if not OPENAI_API_KEY:
     raise OSError("OPENAI_API_KEY is not set.")
 
-_suffix = uuid4().hex[:8]
-USER_ID = f"langgraph-example-{_suffix}"
-THREAD_ID = f"langgraph-example-thread-{_suffix}"
 FIRST_NAME = "Alice"
 LAST_NAME = "Smith"
+EMAIL = f"alice.smith+{uuid4().hex[:8]}@example.com"
 
 BASE_INSTRUCTIONS = (
     "You are a helpful assistant with long-term memory. When memory context is "
@@ -62,29 +72,53 @@ BASE_INSTRUCTIONS = (
 )
 
 
+async def wait_for_graph_searchable(
+    zep: AsyncZep,
+    graph_uuid: str,
+    query: str,
+    timeout_seconds: float = 180.0,
+    poll_interval: float = 5.0,
+) -> bool:
+    """Poll the graph until a search returns at least one edge.
+
+    Zep ingestion is asynchronous, so a new fact is not immediately
+    retrievable. Poll with the SDK instead of a fixed wait.
+    """
+    start = time.monotonic()
+    while time.monotonic() - start <= timeout_seconds:
+        page = await zep.graph.search_edges(graph_uuid, query=query, limit=5)
+        if page.items:
+            return True
+        await asyncio.sleep(poll_interval)
+    return False
+
+
 async def main() -> None:
     zep = AsyncZep(api_key=ZEP_API_KEY)
 
+    # --- One-time Zep setup: create the user and thread out-of-band. Zep
+    # assigns every UUID; store them in your own database. ---
+    user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+    thread = await create_thread(zep, user_uuid=user.uuid_)
+    user_graph_uuid = user.graph_uuid or ""
+
     print("=" * 60)
     print("LangGraph + Zep (create_react_agent, primary path)")
-    print(f"  user_id={USER_ID}  thread_id={THREAD_ID}")
+    print(f"  user_uuid={user.uuid_}  thread_uuid={thread.uuid_}")
+    print(f"  graph_uuid={user_graph_uuid}")
     print("=" * 60)
-
-    # --- One-time Zep setup: create the user and thread out-of-band. ---
-    await zep.user.add(user_id=USER_ID, first_name=FIRST_NAME, last_name=LAST_NAME)
-    await zep.thread.create(thread_id=THREAD_ID, user_id=USER_ID)
 
     # --- Prompt callable: inject the Zep Context Block on every turn. ---
     async def prompt(state: dict) -> list:
         system = await build_system_message(
             zep,
-            thread_id=THREAD_ID,
+            thread_uuid=thread.uuid_,
             base_instructions=BASE_INSTRUCTIONS,
         )
         return [system, *state["messages"]]
 
     # --- On-demand graph search over the user's personal graph. ---
-    search_tool = create_graph_search_tool(zep, user_id=USER_ID, scope="edges")
+    search_tool = create_graph_search_tool(zep, graph_uuid=user_graph_uuid, scope="edges")
 
     # gpt-5 family models are reasoning models and reject an explicit ``temperature``; omit it.
     model = ChatOpenAI(model="gpt-5-mini")
@@ -99,9 +133,9 @@ async def main() -> None:
         # Persist the user turn and the assistant reply to Zep.
         await persist_messages(
             zep,
-            thread_id=THREAD_ID,
+            thread_uuid=thread.uuid_,
             messages=[
-                Message(role="user", content=user_text, name=f"{FIRST_NAME} {LAST_NAME}"),
+                AddMessage(role="user", content=user_text, name=f"{FIRST_NAME} {LAST_NAME}"),
                 AIMessage(content=reply_text),
             ],
         )
@@ -117,8 +151,9 @@ async def main() -> None:
         print(f"Agent: {await chat(text)}\n")
 
     # --- Phase 2: wait for asynchronous graph ingestion ---
-    print("--- Waiting 15s for Zep to build the graph ---\n")
-    await asyncio.sleep(15)
+    print("--- Waiting for Zep to build the graph ---")
+    searchable = await wait_for_graph_searchable(zep, user_graph_uuid, "Where does Alice work?")
+    print(f"Graph searchable: {searchable}\n")
 
     # --- Phase 3: recall ---
     print("--- Testing recall ---")

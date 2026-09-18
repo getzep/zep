@@ -8,6 +8,11 @@ A comprehensive integration package that enables [Zep](https://getzep.com) to wo
 pip install zep-autogen
 ```
 
+This release targets the Zep v4 API. Zep v4 addresses every user, thread, and
+graph by a UUID that the server assigns. The public API of this package takes
+`user_uuid`, `thread_uuid`, and `graph_uuid`. Your application creates the user
+and the thread one time, and keeps the UUIDs in its own database.
+
 ## Quick Start
 
 ### Basic Memory Integration
@@ -24,18 +29,19 @@ async def main():
     # Initialize Zep client
     zep_client = AsyncZep(api_key="your-zep-api-key")
 
-    # Create Zep memory for your agent
+    # Create Zep memory for your agent. Zep assigned these UUIDs when your
+    # application created the user and the thread.
     memory = ZepUserMemory(
         client=zep_client,
-        user_id="user_123",
-        thread_id="conversation_456"
+        user_uuid="018f6e3c-...",
+        thread_uuid="018f6e40-...",
     )
 
     # Create AutoGen agent with Zep memory
     agent = AssistantAgent(
         name="MemoryAwareAssistant",
         model_client=OpenAIChatCompletionClient(model="gpt-4.1-mini"),
-        memory=[memory]  # Add Zep memory to the agent
+        memory=[memory],  # Add Zep memory to the agent
     )
 
     # Your agent now has persistent memory across conversations!
@@ -62,8 +68,8 @@ async def main():
     zep_client = AsyncZep(api_key="your-zep-api-key")
     
     # Create tools bound to your graph
-    search_tool = create_search_graph_tool(zep_client, graph_id="my_knowledge_base")
-    add_tool = create_add_graph_data_tool(zep_client, graph_id="my_knowledge_base")
+    search_tool = create_search_graph_tool(zep_client, graph_uuid="018f6e44-...")
+    add_tool = create_add_graph_data_tool(zep_client, graph_uuid="018f6e44-...")
 
     # Create agent with tools and reflection
     agent = AssistantAgent(
@@ -111,7 +117,7 @@ The canonical wiring for a full turn:
 ```python
 from autogen_core.memory import MemoryContent, MemoryMimeType
 
-memory = ZepUserMemory(client=zep_client, user_id="user_123", thread_id="conversation_456")
+memory = ZepUserMemory(client=zep_client, user_uuid=user_uuid, thread_uuid=thread_uuid)
 agent = AssistantAgent(name="Assistant", model_client=model_client, memory=[memory])
 
 user_text = "What's the weather like for my trip?"
@@ -143,68 +149,76 @@ If you skip step 1/3, the agent still gets Zep's *existing* Context Block on eve
 `update_context()`), but that turn's messages are never written to Zep and will not be
 recallable later.
 
-### Lazy provisioning
+### Provisioning
 
-The Zep user and thread are created lazily, on first use, by whichever of `add()` /
-`update_context()` runs first -- you do not have to pre-create them. Creation is idempotent
-and cached per `ZepUserMemory` instance. Pass `first_name`, `last_name`, and `email` to the
-constructor so Zep can anchor the user's identity node in the graph, and `on_created` to run
-one-time setup (ontology, custom instructions) the first time the user is actually created:
+Zep assigns the UUID of a user and of a thread at creation time. Create both one
+time, out of band, and keep the UUIDs in your own database. The package gives two
+helpers for this step:
 
 ```python
-async def setup_new_user(zep, user_id: str) -> None:
-    await zep.user.add_ontology(user_id=user_id, ...)  # example one-time setup
+from zep_autogen import create_thread, create_user
 
-memory = ZepUserMemory(
-    client=zep_client,
-    user_id="user_123",
-    thread_id="conversation_456",
+
+async def setup_new_user(zep, user_uuid: str) -> None:
+    # One-time setup for a new user, such as an ontology on the graph of the user.
+    user = await zep.user.get(user_uuid)
+    await zep.graph.set_ontology(user.graph_uuid, entity_types=entity_types)
+
+
+user = await create_user(
+    zep_client,
     first_name="Jane",
     last_name="Smith",
     email="jane@example.com",
     on_created=setup_new_user,
 )
+thread = await create_thread(zep_client, user_uuid=user.uuid_)
+
+memory = ZepUserMemory(
+    client=zep_client,
+    user_uuid=user.uuid_,
+    thread_uuid=thread.uuid_,
+)
 ```
 
-This lazy path is hot-path-wrapped: a genuine provisioning failure (or an `on_created` hook
-failure) is logged and swallowed -- it never raises into `add()`/`update_context()`. If you
-want provisioning failures to surface loudly (e.g. during account onboarding, before the
-first turn), call `ensure_user`/`ensure_thread` directly, out-of-band:
+Pass `first_name`, `last_name`, and `email` so Zep can anchor the identity node of
+the user in the graph. `create_user` and `create_thread` raise on failure, which
+makes a provisioning error visible during onboarding.
 
-```python
-from zep_autogen import ensure_user, ensure_thread
+If you construct `ZepUserMemory` without a `thread_uuid`, the first call to `add()`
+creates a thread for the user and keeps its UUID for the life of the instance. Read
+the UUID from the `thread_uuid` property if you want to store it.
 
-await ensure_user(zep_client, user_id="user_123", first_name="Jane", on_created=setup_new_user)
-await ensure_thread(zep_client, thread_id="conversation_456", user_id="user_123")
-```
-
-`ZepGraphMemory` has no equivalent `on_created` hook: it is scoped to a standalone
-`graph_id` (e.g. a shared knowledge base), not a Zep user, so there is no per-user setup step
-to run. Create the graph out-of-band via `client.graph.create(graph_id=...)` if needed.
+`ZepGraphMemory` is scoped to a standalone `graph_uuid`, such as a shared knowledge
+base, and not to a Zep user. Create the graph out of band with
+`client.graph.create(name=...)` and read `uuid_` from the response.
 
 ### Custom context retrieval with `context_builder`
 
-By default, `update_context()` retrieves context via `thread.get_user_context(...)`. Pass
+By default, `update_context()` retrieves context via `thread.get_context(...)`. Pass
 `context_builder` to replace this with custom logic -- e.g. a filtered graph search, or a
 different graph entirely:
 
 ```python
 from zep_autogen.memory import ContextInput
 
+
 async def my_builder(ctx: ContextInput) -> str | None:
-    results = await ctx.zep.graph.search(
-        user_id=ctx.user_id,
+    pager = await ctx.zep.graph.search_edges(
+        ctx.graph_uuid,
         query=ctx.user_message,
-        scope="edges",
+        limit=10,
     )
-    if not results.edges:
+    facts = [edge.fact async for edge in pager if edge.fact]
+    if not facts:
         return None
-    return "\n".join(edge.fact for edge in results.edges)
+    return "\n".join(facts)
+
 
 memory = ZepUserMemory(
     client=zep_client,
-    user_id="user_123",
-    thread_id="conversation_456",
+    user_uuid=user_uuid,
+    thread_uuid=thread_uuid,
     context_builder=my_builder,
 )
 ```
@@ -226,8 +240,8 @@ it with your own wording, as long as it contains a literal `{context}` placehold
 ```python
 memory = ZepUserMemory(
     client=zep_client,
-    user_id="user_123",
-    thread_id="conversation_456",
+    user_uuid=user_uuid,
+    thread_uuid=thread_uuid,
     context_template="Relevant background:\n{context}",
 )
 ```
@@ -244,18 +258,23 @@ The template is rendered via `template.replace("{context}", context_text)` -- ne
 export ZEP_API_KEY="your-zep-api-key"
 ```
 
+The SDK sends requests to the Zep v4 API at `https://api.getzep.com/api/v4` by
+default. Set `ZEP_API_URL=https://api.getzep.com` only if your environment needs
+an explicit value; the SDK appends the `/api/v4` path.
+
 ### Memory Classes
 
 #### ZepUserMemory
 For conversational memory that persists across threads:
 
 - `client` (AsyncZep): Your Zep client instance
-- `user_id` (str): Unique identifier for the user
-- `thread_id` (str, optional): Thread/conversation identifier
-- `first_name`, `last_name`, `email` (str, optional): Passed to `user.add` during lazy
-  provisioning; helps Zep anchor the user's identity node in the graph
-- `on_created` (optional): Async hook run exactly once, only when the user is newly created
-  during lazy provisioning
+- `user_uuid` (str): UUID of the Zep user
+- `thread_uuid` (str, optional): UUID of the Zep thread. `add()` creates a thread when
+  this value is not given.
+- `graph_uuid` (str, optional): UUID of the graph of the user. The memory reads it from
+  the user record when this value is not given.
+- `context_template_uuid` (str, optional): UUID of a Zep context template used by
+  `thread.get_context`
 - `context_builder` (optional): Async callable replacing the default context retrieval in
   `update_context()` -- see "Custom context retrieval" below
 - `context_template` (str, optional): Template wrapping injected context (default:
@@ -265,7 +284,9 @@ For conversational memory that persists across threads:
 For knowledge graph storage and retrieval:
 
 - `client` (AsyncZep): Your Zep client instance
-- `graph_id` (str): Identifier for the knowledge graph
+- `graph_uuid` (str): UUID of the knowledge graph
+- `search_filters` (SearchFilters, optional): Filters applied to context retrieval
+- `max_characters` (int, optional): Maximum size of the retrieved context
 
 ### Tool Functions
 
@@ -273,9 +294,9 @@ For knowledge graph storage and retrieval:
 Creates a search tool bound to a graph or user:
 
 - `client` (AsyncZep): Your Zep client instance
-- `graph_id` (str, optional): Graph to search (for general knowledge graphs)
-- `user_id` (str, optional): User to search (for user knowledge graphs)
-- `pinned_params` (dict, optional): Fix a `graph.search` parameter to a constant value,
+- `graph_uuid` (str, optional): UUID of the graph to search (for standalone knowledge graphs)
+- `user_uuid` (str, optional): UUID of the user to search (for user knowledge graphs)
+- `pinned_params` (dict, optional): Fix a search parameter to a constant value,
   hiding it from the model's tool schema.
 - `hidden_params` (set, optional): Hide a parameter from the model's tool schema without
   pinning it -- Zep's own server-side default applies.
@@ -284,12 +305,12 @@ Creates a search tool bound to a graph or user:
 - `scope`, `limit` (optional): Legacy back-compat aliases that pin (and hide) the
   corresponding parameter -- equivalent to `pinned_params={"scope": ..., "limit": ...}`.
 
-**Pin-or-expose schema.** By default, the tool exposes five `graph.search` parameters to the
+**Pin-or-expose schema.** By default, the tool exposes five search parameters to the
 model, each with a documented default:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `scope` | `"edges"` | One of `edges`, `nodes`, `episodes`, `observations`, `thread_summaries`, `auto` |
+| `scope` | `"edges"` | One of `edges`, `nodes`, `episodes`, `observations`, `thread_summaries`, `auto`. Each scope calls its own v4 method, such as `graph.search_edges`. The `auto` scope calls `graph.get_context`. |
 | `reranker` | `"rrf"` | One of `rrf`, `mmr`, `node_distance`, `episode_mentions`, `cross_encoder` |
 | `limit` | `10` | Maximum number of results |
 | `mmr_lambda` | `None` | Diversity/relevance balance (only used when `reranker="mmr"`) |
@@ -297,19 +318,17 @@ model, each with a documented default:
 
 ```python
 # Expose everything to the model (default)
-tool = create_search_graph_tool(zep_client, user_id="user_123")
+tool = create_search_graph_tool(zep_client, user_uuid=user_uuid)
 
 # Pin scope and limit -- hidden from the model, always sent as given
 tool = create_search_graph_tool(
     zep_client,
-    user_id="user_123",
+    user_uuid=user_uuid,
     pinned_params={"scope": "nodes", "limit": 5},
 )
 
 # Hide mmr_lambda from the schema without pinning it -- Zep's own default applies
-tool = create_search_graph_tool(
-    zep_client, user_id="user_123", hidden_params={"mmr_lambda"}
-)
+tool = create_search_graph_tool(zep_client, user_uuid=user_uuid, hidden_params={"mmr_lambda"})
 ```
 
 > AutoGen's `FunctionTool` derives its JSON schema strictly from the wrapped Python
@@ -323,8 +342,8 @@ tool = create_search_graph_tool(
 Creates a data addition tool bound to a graph or user:
 
 - `client` (AsyncZep): Your Zep client instance
-- `graph_id` (str, optional): Graph to add data to
-- `user_id` (str, optional): User to add data for
+- `graph_uuid` (str, optional): UUID of the graph to add data to
+- `user_uuid` (str, optional): UUID of the user to add data for
 
 ### Size limits
 
@@ -334,7 +353,7 @@ letting the call fail, logging only the before/after lengths (never the content)
 - Thread messages (`ZepUserMemory.add`, message type): truncated to 4,000 characters
   (Zep's hard limit is 4,096).
 - Graph data (`ZepGraphMemory.add`, `create_add_graph_data_tool`): truncated to 9,900
-  characters, a safety margin under Zep's `graph.add` ceiling.
+  characters, a safety margin under Zep's `graph.episode.add` ceiling.
 
 ## Examples
 
@@ -352,23 +371,11 @@ letting the call fail, logging only the before/after lengths (never the content)
 
 ```python
 # Multiple agents can share the same memory context
-shared_memory = ZepUserMemory(
-    client=zep_client,
-    user_id="team_project", 
-    thread_id="brainstorm_session"
-)
+shared_memory = ZepUserMemory(client=zep_client, user_uuid=user_uuid, thread_uuid=thread_uuid)
 
-researcher = AssistantAgent(
-    name="Researcher",
-    model_client=model_client,
-    memory=[shared_memory]
-)
+researcher = AssistantAgent(name="Researcher", model_client=model_client, memory=[shared_memory])
 
-writer = AssistantAgent(
-    name="Writer",
-    model_client=model_client, 
-    memory=[shared_memory]
-)
+writer = AssistantAgent(name="Writer", model_client=model_client, memory=[shared_memory])
 ```
 
 ## Advanced Usage
@@ -378,23 +385,26 @@ writer = AssistantAgent(
 Define structured entities for better knowledge organization:
 
 ```python
-from zep_cloud.external_clients.ontology import EntityModel, EntityText
-from pydantic import Field
+from zep_cloud import EntityProperty, EntityType, SearchFilters
 
-class ProgrammingLanguage(EntityModel):
-    paradigm: EntityText = Field(description="programming paradigm")  
-    use_case: EntityText = Field(description="primary use cases")
+entity_types = [
+    EntityType(
+        name="ProgrammingLanguage",
+        description="A programming language entity.",
+        properties=[
+            EntityProperty(name="paradigm", type="text", description="programming paradigm"),
+            EntityProperty(name="use_case", type="text", description="primary use cases"),
+        ],
+    ),
+]
 
-# Set graph ontology
-await zep_client.graph.set_ontology(
-    entities={"ProgrammingLanguage": ProgrammingLanguage},
-    edges={}
-)
+# Set the ontology of one graph. v4 applies an ontology per graph UUID.
+await zep_client.graph.set_ontology(graph_uuid, entity_types=entity_types)
 
 # Use graph memory with ontology
 memory = ZepGraphMemory(
     client=zep_client,
-    graph_id="tech_knowledge",
+    graph_uuid=graph_uuid,
     search_filters=SearchFilters(
         node_labels=["ProgrammingLanguage"],
     ),
@@ -403,12 +413,11 @@ memory = ZepGraphMemory(
 
 ### Tool Usage
 ```python
-
 agent = AssistantAgent(
     name="Assistant",
     model_client=model_client,
     tools=[search_tool],
-    reflect_on_tool_use=True, 
+    reflect_on_tool_use=True,
 )
 
 # Use streaming console for tool visualization
@@ -436,7 +445,7 @@ make pre-commit
 ## Requirements
 
 - Python 3.11+
-- `zep-cloud>=3.23.0`
+- `zep-cloud==4.0.0a5`
 - `autogen-agentchat>=0.7.0`
 - `autogen-ext[azure,openai]>=0.7.0`
 

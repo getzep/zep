@@ -1,43 +1,49 @@
 import { describe, it, expect, vi } from "vitest";
-import { Zep, ZepError } from "@getzep/zep-cloud";
+import { ZepError } from "@getzep/zep-cloud";
 import {
   getZepContext,
   persistZepTurn,
   createZepOnFinish,
-  ensureZepUserAndThread,
+  createZepUserAndThread,
 } from "../src/index.js";
-import { makeFakeZep, asZep } from "./helpers.js";
+import {
+  makeFakeZep,
+  asZep,
+  USER_UUID,
+  GRAPH_UUID,
+  THREAD_UUID,
+} from "./helpers.js";
 
 describe("getZepContext", () => {
   it("returns the trimmed context block", async () => {
     const zep = makeFakeZep();
-    zep.thread.getUserContext.mockResolvedValueOnce({ context: "  BLOCK  " });
+    zep.thread.getContext.mockResolvedValueOnce({ context: "  BLOCK  " });
     const context = await getZepContext(asZep(zep), "t1");
     expect(context).toBe("BLOCK");
-    expect(zep.thread.getUserContext).toHaveBeenCalledWith("t1", {});
+    expect(zep.thread.getContext).toHaveBeenCalledWith("t1", {});
   });
 
-  it("passes a templateId when provided", async () => {
+  it("passes a templateUuid when provided", async () => {
     const zep = makeFakeZep();
-    await getZepContext(asZep(zep), "t1", { templateId: "tmpl-1" });
-    expect(zep.thread.getUserContext).toHaveBeenCalledWith("t1", { templateId: "tmpl-1" });
+    await getZepContext(asZep(zep), "t1", { templateUuid: "tmpl-1" });
+    expect(zep.thread.getContext).toHaveBeenCalledWith("t1", { templateUuid: "tmpl-1" });
   });
 
   it("returns an empty string and warns when Zep fails", async () => {
     const zep = makeFakeZep();
-    zep.thread.getUserContext.mockRejectedValueOnce(new Error("boom"));
+    zep.thread.getContext.mockRejectedValueOnce(new Error("boom"));
     const warn = vi.fn();
     const context = await getZepContext(asZep(zep), "t1", { logger: { warn } });
     expect(context).toBe("");
     expect(warn).toHaveBeenCalledOnce();
   });
 
-  it("skips and warns when threadId is empty", async () => {
+  it("skips and warns when threadUuid is empty", async () => {
     const zep = makeFakeZep();
     const warn = vi.fn();
     const context = await getZepContext(asZep(zep), "", { logger: { warn } });
     expect(context).toBe("");
-    expect(zep.thread.getUserContext).not.toHaveBeenCalled();
+    expect(zep.thread.getContext).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledOnce();
   });
 });
@@ -50,8 +56,8 @@ describe("persistZepTurn", () => {
       assistant: "Hello!",
       userName: "Jane",
     });
-    const [threadId, req] = zep.thread.addMessages.mock.calls[0]!;
-    expect(threadId).toBe("t1");
+    const [threadUuid, req] = zep.thread.addMessages.mock.calls[0]!;
+    expect(threadUuid).toBe("t1");
     expect(req.messages).toEqual([
       { role: "user", content: "Hi there", name: "Jane" },
       { role: "assistant", content: "Hello!" },
@@ -122,7 +128,7 @@ describe("createZepOnFinish", () => {
     const zep = makeFakeZep();
     const onFinish = createZepOnFinish({
       client: asZep(zep),
-      threadId: "t1",
+      threadUuid: "t1",
       user: "What do you know about me?",
       userName: "Jane",
     });
@@ -146,7 +152,7 @@ describe("createZepOnFinish", () => {
     const zep = makeFakeZep();
     const onFinish = createZepOnFinish({
       client: asZep(zep),
-      threadId: "t1",
+      threadUuid: "t1",
       user: "Find my last order.",
     });
 
@@ -166,7 +172,7 @@ describe("createZepOnFinish", () => {
     const zep = makeFakeZep();
     const onFinish = createZepOnFinish({
       client: asZep(zep),
-      threadId: "t1",
+      threadUuid: "t1",
       user: () => "resolved user input",
     });
     await onFinish({ text: "reply" });
@@ -179,7 +185,7 @@ describe("createZepOnFinish", () => {
 
   it("persists assistant-only when no user is supplied", async () => {
     const zep = makeFakeZep();
-    const onFinish = createZepOnFinish({ client: asZep(zep), threadId: "t1" });
+    const onFinish = createZepOnFinish({ client: asZep(zep), threadUuid: "t1" });
     await onFinish({ text: "reply only" });
     const req = zep.thread.addMessages.mock.calls[0]![1];
     expect(req.messages).toEqual([{ role: "assistant", content: "reply only" }]);
@@ -187,7 +193,7 @@ describe("createZepOnFinish", () => {
 
   it("does nothing when both sides are empty", async () => {
     const zep = makeFakeZep();
-    const onFinish = createZepOnFinish({ client: asZep(zep), threadId: "t1", user: "  " });
+    const onFinish = createZepOnFinish({ client: asZep(zep), threadUuid: "t1", user: "  " });
     await onFinish({ text: "   " });
     expect(zep.thread.addMessages).not.toHaveBeenCalled();
   });
@@ -198,7 +204,7 @@ describe("createZepOnFinish", () => {
     const warn = vi.fn();
     const onFinish = createZepOnFinish({
       client: asZep(zep),
-      threadId: "t1",
+      threadUuid: "t1",
       user: "hi",
       logger: { warn },
     });
@@ -207,120 +213,107 @@ describe("createZepOnFinish", () => {
   });
 });
 
-describe("ensureZepUserAndThread", () => {
-  it("creates the user and thread and returns true", async () => {
+describe("createZepUserAndThread", () => {
+  it("creates the user and thread and returns their UUIDs", async () => {
     const zep = makeFakeZep();
-    const ok = await ensureZepUserAndThread({
+    const identity = await createZepUserAndThread({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
       firstName: "Jane",
       lastName: "Smith",
       email: "jane@example.com",
     });
-    expect(ok).toBe(true);
-    expect(zep.user.add).toHaveBeenCalledWith({
-      userId: "u1",
+    expect(identity).toEqual({
+      userUuid: USER_UUID,
+      graphUuid: GRAPH_UUID,
+      threadUuid: THREAD_UUID,
+    });
+    expect(zep.user.create).toHaveBeenCalledWith({
       firstName: "Jane",
       lastName: "Smith",
       email: "jane@example.com",
     });
-    expect(zep.thread.create).toHaveBeenCalledWith({ threadId: "t1", userId: "u1" });
+    expect(zep.thread.create).toHaveBeenCalledWith({ userUuid: USER_UUID });
   });
 
-  it("treats a typed 409 Conflict on user.add as success (debug, no warn)", async () => {
+  it("passes the optional developer-assigned names through", async () => {
     const zep = makeFakeZep();
-    zep.user.add.mockRejectedValueOnce(new Zep.ConflictError({}));
-    const warn = vi.fn();
-    const debug = vi.fn();
-    const ok = await ensureZepUserAndThread({
+    await createZepUserAndThread({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
-      logger: { warn, debug },
+      userId: "app-user-1",
+      threadId: "app-thread-1",
     });
-    expect(ok).toBe(true);
-    expect(zep.thread.create).toHaveBeenCalledOnce();
-    // A genuine "already exists" is tolerated quietly, not warned.
-    expect(warn).not.toHaveBeenCalled();
-    expect(debug).toHaveBeenCalledOnce();
+    expect(zep.user.create).toHaveBeenCalledWith({ userId: "app-user-1" });
+    expect(zep.thread.create).toHaveBeenCalledWith({
+      userUuid: USER_UUID,
+      threadId: "app-thread-1",
+    });
   });
 
-  it("surfaces a non-conflict user.add error (e.g. 401) as a warning", async () => {
+  it("returns null and warns when user.create fails", async () => {
     const zep = makeFakeZep();
-    // Not a 409 — must NOT be swallowed as "already exists".
-    zep.user.add.mockRejectedValueOnce(
+    zep.user.create.mockRejectedValueOnce(
       new ZepError({ message: "unauthorized", statusCode: 401 }),
     );
     const warn = vi.fn();
-    const ok = await ensureZepUserAndThread({
+    const identity = await createZepUserAndThread({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
       logger: { warn },
     });
-    // thread.create still succeeds, so identity is ready overall.
-    expect(ok).toBe(true);
+    expect(identity).toBeNull();
+    expect(zep.thread.create).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledOnce();
-    const warnArg = warn.mock.calls[0]![0] as string;
-    expect(warnArg).toContain("user.add failed");
+    expect(warn.mock.calls[0]![0] as string).toContain("user.create failed");
   });
 
-  it("treats a typed 409 Conflict on thread.create as success", async () => {
+  it("returns null when the created user has no uuid or graphUuid", async () => {
     const zep = makeFakeZep();
-    zep.thread.create.mockRejectedValueOnce(new Zep.ConflictError({}));
+    zep.user.create.mockResolvedValueOnce({});
     const warn = vi.fn();
-    const ok = await ensureZepUserAndThread({
+    const identity = await createZepUserAndThread({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
       logger: { warn },
     });
-    expect(ok).toBe(true);
-    expect(warn).not.toHaveBeenCalled();
+    expect(identity).toBeNull();
+    expect(zep.thread.create).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledOnce();
   });
 
-  it("returns false (not throw) when thread creation hard-fails", async () => {
+  it("returns null (not throw) when thread creation hard-fails", async () => {
     const zep = makeFakeZep();
     zep.thread.create.mockRejectedValueOnce(
       new ZepError({ message: "internal", statusCode: 500 }),
     );
     const warn = vi.fn();
-    const ok = await ensureZepUserAndThread({
+    const identity = await createZepUserAndThread({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
       logger: { warn },
     });
-    expect(ok).toBe(false);
+    expect(identity).toBeNull();
     expect(warn).toHaveBeenCalledOnce();
   });
 
-  it("onUserCreated fires once when user.add succeeds", async () => {
+  it("onUserCreated fires once with the new user UUID", async () => {
     const zep = makeFakeZep();
     const onUserCreated = vi.fn().mockResolvedValue(undefined);
-    const ok = await ensureZepUserAndThread({
+    const identity = await createZepUserAndThread({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
       onUserCreated,
     });
-    expect(ok).toBe(true);
+    expect(identity?.userUuid).toBe(USER_UUID);
     expect(onUserCreated).toHaveBeenCalledTimes(1);
-    expect(onUserCreated).toHaveBeenCalledWith(asZep(zep), "u1");
+    expect(onUserCreated).toHaveBeenCalledWith(asZep(zep), USER_UUID);
   });
 
-  it("onUserCreated does not fire on 409 already-exists", async () => {
+  it("onUserCreated does not fire when user.create fails", async () => {
     const zep = makeFakeZep();
-    zep.user.add.mockRejectedValueOnce(new Zep.ConflictError({}));
+    zep.user.create.mockRejectedValueOnce(new Error("boom"));
     const onUserCreated = vi.fn().mockResolvedValue(undefined);
-    const ok = await ensureZepUserAndThread({
+    const identity = await createZepUserAndThread({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
       onUserCreated,
+      logger: { warn: vi.fn() },
     });
-    expect(ok).toBe(true);
+    expect(identity).toBeNull();
     expect(onUserCreated).not.toHaveBeenCalled();
   });
 
@@ -328,14 +321,12 @@ describe("ensureZepUserAndThread", () => {
     const zep = makeFakeZep();
     const onUserCreated = vi.fn().mockRejectedValue(new Error("hook exploded"));
     const warn = vi.fn();
-    const ok = await ensureZepUserAndThread({
+    const identity = await createZepUserAndThread({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
       onUserCreated,
       logger: { warn },
     });
-    expect(ok).toBe(true);
+    expect(identity?.threadUuid).toBe(THREAD_UUID);
     expect(onUserCreated).toHaveBeenCalledOnce();
     expect(warn).toHaveBeenCalled();
     const warnArg = warn.mock.calls.at(-1)![0] as string;

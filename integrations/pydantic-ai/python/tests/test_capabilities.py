@@ -23,7 +23,7 @@ def _clear_cache() -> None:
 def _make_mock_client(context: str | None = None) -> MagicMock:
     client = MagicMock()
     client.user = MagicMock()
-    client.user.add = AsyncMock()
+    client.user.create = AsyncMock()
     client.thread = MagicMock()
     client.thread.create = AsyncMock()
     response = MagicMock()
@@ -33,7 +33,7 @@ def _make_mock_client(context: str | None = None) -> MagicMock:
 
 
 def _make_deps(client: MagicMock, **kwargs: object) -> ZepDeps:
-    base = {"user_id": "user-1", "thread_id": "thread-1"}
+    base = {"user_uuid": "user-uuid-1", "thread_uuid": "thread-uuid-1"}
     base.update(kwargs)
     return ZepDeps(client=client, **base)  # type: ignore[arg-type]
 
@@ -87,22 +87,6 @@ class TestCreateZepAfterRunHook:
         # Should not raise, and should still return the original result.
         returned = await hook(_make_ctx(deps), result=result)
         assert returned is result
-
-    @pytest.mark.asyncio
-    async def test_after_run_hook_swallows_provisioning_errors(self) -> None:
-        """A genuine provisioning failure (e.g. auth error creating the user)
-        must also be swallowed, not just the add_messages call."""
-        client = _make_mock_client()
-        client.user.add.side_effect = RuntimeError("auth error")
-        deps = _make_deps(client)
-        hook = create_zep_after_run_hook(deps)
-
-        new_messages = [ModelResponse(parts=[TextPart(content="answer")])]
-        result = _make_result(new_messages)
-
-        returned = await hook(_make_ctx(deps), result=result)
-        assert returned is result
-        client.thread.add_messages.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_noop_when_no_assistant_text(self) -> None:

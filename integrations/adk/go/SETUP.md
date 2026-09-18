@@ -42,7 +42,7 @@ go mod download
 ```
 
 Requirements: Go 1.25+ (`google.golang.org/adk` v1.4.0 requires Go 1.25),
-`google.golang.org/adk` v1.4.0, `github.com/getzep/zep-go/v3` v3.23.0.
+`google.golang.org/adk` v1.4.0, `github.com/getzep/zep-go/v4` v4.0.0-alpha.5.
 
 ## 4. Configure environment variables
 
@@ -50,6 +50,10 @@ Requirements: Go 1.25+ (`google.golang.org/adk` v1.4.0 requires Go 1.25),
 export ZEP_API_KEY="your-zep-api-key"
 export GOOGLE_API_KEY="your-google-api-key"
 ```
+
+The client calls the Zep v4 API at the SDK default base URL,
+`https://api.getzep.com/api/v4`. To target another deployment, build the
+client with `zepadk.NewClient(apiKey, option.WithBaseURL(url))`.
 
 If `ZEP_API_KEY` is unset, the integration disables itself (the Zep client is
 `nil` and every Zep call becomes a no-op), so the agent still runs — useful for
@@ -64,10 +68,12 @@ go run ./examples
 
 The example:
 
-1. Provisions the Zep user and thread out-of-band with `EnsureUser` /
-   `EnsureThread` before the first turn — the before/after-model callbacks
-   never create them themselves. When wiring your own agent, call these once
-   (e.g. during account or session onboarding) before running any turns.
+1. Creates the Zep user and thread out of band with `CreateUser` and
+   `CreateThread` before the first turn, and keeps the returned UUIDs. The
+   before-model and after-model callbacks never create them. When you wire
+   your own agent, call these functions one time (for example during account
+   or session onboarding), store the UUIDs in your own database, and give
+   them to the callbacks, the tool, and the memory service.
 2. Builds an `llmagent` whose `BeforeModelCallback` persists each new user turn
    to Zep and injects the user's Context Block into the prompt, and whose
    `AfterModelCallback` persists the assistant's reply back to the same thread.
@@ -95,6 +101,10 @@ make test            # or: go test ./...
 - **Recall returns nothing** — Zep ingestion is asynchronous; a just-added fact
   is not instantly retrievable. Recall improves on subsequent turns and across
   sessions for the same user.
+- **No context and no facts** — Zep v4 addresses a user, a thread, and a graph
+  by a server-generated UUID. Confirm that the callbacks get a thread UUID and
+  that the tool and the memory service get a graph UUID. Without a UUID the
+  component logs an error and does nothing.
 - **Authentication errors** — confirm `ZEP_API_KEY` is set in the same shell and
   belongs to the intended project.
 - **Agent runs but has no memory** — verify `ZEP_API_KEY` is exported; an unset

@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Migrated the package to the Zep v4 SDK (`zep-cloud==4.0.0a5`). The package
+  targets v4 only. It does not support v3.
+- The public API takes UUIDs. Zep v4 addresses every user, thread, and graph by
+  a server-generated UUID, and a `user_id` or a `thread_id` is a name, not an
+  address. `ZepUserStorage` and `ZepStorage` take `user_uuid` and `thread_uuid`
+  (with an optional `graph_uuid`), and `ZepGraphStorage`, `create_search_tool`,
+  and `create_add_data_tool` take `graph_uuid`. The application creates each
+  resource one time, reads the UUID from the create response, and stores the
+  UUID in its own database.
+- The integration does not resolve a name at run time. The storage adapters no
+  longer create a user or a thread on the turn path. Use `ensure_user` and
+  `ensure_thread` one time, during onboarding.
+- `ensure_thread` takes `user_uuid` in place of `user_id`, and both helpers
+  return the created or existing resource together with a flag that shows
+  whether the resource was newly created.
+- The `on_created` hook signature is now `Callable[[Zep, User], None]`. The
+  hook receives the created `User`, which carries `uuid_` and `graph_uuid`.
+- Message and graph writes use the v4 methods `thread.add_messages(thread_uuid,
+  ...)` and `graph.episode.add(graph_uuid, ...)`.
+- Thread context uses `thread.get_context(thread_uuid)`.
+- Graph context uses `graph.get_context(graph_uuid, ...)`, which Zep assembles
+  on the server. The v3 client-side helper `compose_context_string` is not in
+  the v4 SDK.
+- The search tool calls one v4 method for each scope: `graph.search_edges`,
+  `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`,
+  and `graph.search_thread_summaries`. Scope `auto` calls `graph.get_context`.
+  Each search method returns a pager, which the tool reads up to `limit`.
+- `ZepUserStorage` and `ZepGraphStorage` replace `facts_limit` and
+  `entity_limit` with `max_characters`. Zep v4 controls the size of the Context
+  Block on the server, so the two client-side counts have no v4 equivalent.
+
+### Removed
+
+- Removed lazy provisioning from `ZepUserStorage` and `ZepStorage`, together
+  with their `first_name`, `last_name`, `email`, and `on_created` constructor
+  arguments. A UUID identifies a resource that already exists.
+
 ## [1.2.1] - 2026-07-29
 
 ### Added

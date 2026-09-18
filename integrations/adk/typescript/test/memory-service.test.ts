@@ -1,13 +1,22 @@
 import { describe, expect, it } from "vitest";
-import type { Zep, ZepClient } from "@getzep/zep-cloud";
+import type { ZepClient } from "@getzep/zep-cloud";
 import type { BaseMemoryService, SearchMemoryRequest } from "@google/adk";
 import { ZepMemoryService } from "../src/memory-service.js";
-import { capturingLogger, mockZepClient, silentLogger } from "./helpers.js";
+import type { ZepGraphSearchScope } from "../src/graph-search-tool.js";
+import {
+  capturingLogger,
+  mockZepClient,
+  silentLogger,
+  MOCK_GRAPH_UUID,
+  MOCK_USER_UUID,
+} from "./helpers.js";
+
+const GRAPH_UUID = "44444444-4444-4444-4444-444444444444";
 
 function request(overrides?: Partial<SearchMemoryRequest>): SearchMemoryRequest {
   return {
     appName: "my-app",
-    userId: "alice",
+    userId: MOCK_USER_UUID,
     query: "where does alice live",
     ...overrides,
   };
@@ -16,9 +25,10 @@ function request(overrides?: Partial<SearchMemoryRequest>): SearchMemoryRequest 
 describe("ZepMemoryService — searchMemory result mapping", () => {
   it("maps edges scope results to MemoryEntry[] with model authorship", async () => {
     const { client } = mockZepClient({
-      searchResults: {
-        edges: [{ fact: "Alice lives in Portland." }, { fact: "Alice hikes." }],
-      },
+      searchData: [
+        { fact: "Alice lives in Portland." },
+        { fact: "Alice hikes." },
+      ],
     });
     const service = new ZepMemoryService({
       zep: client as unknown as ZepClient,
@@ -37,7 +47,7 @@ describe("ZepMemoryService — searchMemory result mapping", () => {
 
   it("maps nodes scope results to MemoryEntry[] using name/summary text", async () => {
     const { client } = mockZepClient({
-      searchResults: { nodes: [{ name: "Zep", summary: "A memory service." }] },
+      searchData: [{ name: "Zep", summary: "A memory service." }],
     });
     const service = new ZepMemoryService({
       zep: client as unknown as ZepClient,
@@ -54,8 +64,8 @@ describe("ZepMemoryService — searchMemory result mapping", () => {
   });
 
   it("maps auto scope's pre-assembled context block to a single MemoryEntry", async () => {
-    const { client } = mockZepClient({
-      searchResults: { context: "  assembled context block  " },
+    const { client, mocks } = mockZepClient({
+      autoContext: "  assembled context block  ",
     });
     const service = new ZepMemoryService({
       zep: client as unknown as ZepClient,
@@ -65,6 +75,10 @@ describe("ZepMemoryService — searchMemory result mapping", () => {
 
     const response = await service.searchMemory(request());
 
+    expect(mocks.getContext).toHaveBeenCalledWith(MOCK_GRAPH_UUID, {
+      query: "where does alice live",
+      filters: undefined,
+    });
     expect(response.memories).toHaveLength(1);
     expect(response.memories[0]?.content.parts?.[0]?.text).toBe(
       "assembled context block",
@@ -72,7 +86,7 @@ describe("ZepMemoryService — searchMemory result mapping", () => {
   });
 
   it("returns no memories when auto scope's context is empty", async () => {
-    const { client } = mockZepClient({ searchResults: { context: "   " } });
+    const { client } = mockZepClient({ autoContext: "   " });
     const service = new ZepMemoryService({
       zep: client as unknown as ZepClient,
       scope: "auto",
@@ -87,18 +101,14 @@ describe("ZepMemoryService — searchMemory result mapping", () => {
   it.each(["episodes", "observations", "thread_summaries"] as const)(
     "maps %s scope results to MemoryEntry[]",
     async (scope) => {
-      const key =
-        scope === "episodes"
-          ? "episodes"
-          : scope === "observations"
-            ? "observations"
-            : "threadSummaries";
       const item =
         scope === "episodes"
           ? { content: "raw episode text" }
-          : { name: "Name", summary: "Summary" };
+          : scope === "observations"
+            ? { name: "Name", summary: "Summary" }
+            : { summary: "Summary" };
 
-      const { client } = mockZepClient({ searchResults: { [key]: [item] } });
+      const { client } = mockZepClient({ searchData: [item] });
       const service = new ZepMemoryService({
         zep: client as unknown as ZepClient,
         scope,
@@ -109,15 +119,19 @@ describe("ZepMemoryService — searchMemory result mapping", () => {
 
       expect(response.memories).toHaveLength(1);
       const expectedText =
-        scope === "episodes" ? "raw episode text" : "Name: Summary";
+        scope === "episodes"
+          ? "raw episode text"
+          : scope === "observations"
+            ? "Name: Summary"
+            : "Summary";
       expect(response.memories[0]?.content.parts?.[0]?.text).toBe(expectedText);
     },
   );
 });
 
-describe("ZepMemoryService — pass-through to graph.search", () => {
-  it("passes userId, query, scope, and limit through to graph.search", async () => {
-    const { client, mocks } = mockZepClient({ searchResults: { edges: [] } });
+describe("ZepMemoryService — graph addressing", () => {
+  it("reads the graph UUID of the user named by the request", async () => {
+    const { client, mocks } = mockZepClient();
     const service = new ZepMemoryService({
       zep: client as unknown as ZepClient,
       scope: "edges",
@@ -125,15 +139,48 @@ describe("ZepMemoryService — pass-through to graph.search", () => {
       logger: silentLogger,
     });
 
-    await service.searchMemory(request({ userId: "bob", query: "likes" }));
+    await service.searchMemory(request({ query: "likes" }));
 
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "bob", query: "likes", scope: "edges", limit: 5 }),
+    expect(mocks.userGet).toHaveBeenCalledWith(MOCK_USER_UUID);
+    expect(mocks.searchEdges).toHaveBeenCalledWith(MOCK_GRAPH_UUID, {
+      limit: 5,
+      body: { query: "likes" },
+    });
+  });
+
+  it("reads the graph UUID of a user only once", async () => {
+    const { client, mocks } = mockZepClient();
+    const service = new ZepMemoryService({
+      zep: client as unknown as ZepClient,
+      logger: silentLogger,
+    });
+
+    await service.searchMemory(request());
+    await service.searchMemory(request());
+
+    expect(mocks.userGet).toHaveBeenCalledTimes(1);
+    expect(mocks.searchEdges).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses a configured graphUuid and never reads the user", async () => {
+    const { client, mocks } = mockZepClient();
+    const service = new ZepMemoryService({
+      zep: client as unknown as ZepClient,
+      graphUuid: GRAPH_UUID,
+      logger: silentLogger,
+    });
+
+    await service.searchMemory(request());
+
+    expect(mocks.userGet).not.toHaveBeenCalled();
+    expect(mocks.searchEdges).toHaveBeenCalledWith(
+      GRAPH_UUID,
+      expect.objectContaining({ body: { query: "where does alice live" } }),
     );
   });
 
-  it("omits limit from the graph.search call when not configured", async () => {
-    const { client, mocks } = mockZepClient({ searchResults: { edges: [] } });
+  it("omits limit from the search call when not configured", async () => {
+    const { client, mocks } = mockZepClient();
     const service = new ZepMemoryService({
       zep: client as unknown as ZepClient,
       logger: silentLogger,
@@ -141,12 +188,15 @@ describe("ZepMemoryService — pass-through to graph.search", () => {
 
     await service.searchMemory(request());
 
-    const call = mocks.search.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(call).not.toHaveProperty("limit");
+    const call = mocks.searchEdges.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(call.limit).toBeUndefined();
   });
 
   it("defaults scope to edges when not configured", async () => {
-    const { client, mocks } = mockZepClient({ searchResults: { edges: [] } });
+    const { client, mocks } = mockZepClient();
     const service = new ZepMemoryService({
       zep: client as unknown as ZepClient,
       logger: silentLogger,
@@ -154,13 +204,12 @@ describe("ZepMemoryService — pass-through to graph.search", () => {
 
     await service.searchMemory(request());
 
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: "edges" }),
-    );
+    expect(mocks.searchEdges).toHaveBeenCalled();
+    expect(mocks.searchNodes).not.toHaveBeenCalled();
   });
 
-  it("does not forward appName to graph.search (Zep has no app-scoped memory)", async () => {
-    const { client, mocks } = mockZepClient({ searchResults: { edges: [] } });
+  it("does not forward appName to Zep (Zep has no app-scoped memory)", async () => {
+    const { client, mocks } = mockZepClient();
     const service = new ZepMemoryService({
       zep: client as unknown as ZepClient,
       logger: silentLogger,
@@ -168,20 +217,38 @@ describe("ZepMemoryService — pass-through to graph.search", () => {
 
     await service.searchMemory(request({ appName: "some-app" }));
 
-    const call = mocks.search.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(call).not.toHaveProperty("appName");
+    const call = mocks.searchEdges.mock.calls[0]?.[1] as {
+      body: Record<string, unknown>;
+    };
+    expect(call.body).not.toHaveProperty("appName");
+  });
+
+  it("returns no memories when the user has no graph UUID", async () => {
+    const { client, mocks } = mockZepClient();
+    mocks.userGet.mockResolvedValueOnce({ uuid: MOCK_USER_UUID });
+    const logger = capturingLogger();
+    const service = new ZepMemoryService({
+      zep: client as unknown as ZepClient,
+      logger,
+    });
+
+    const response = await service.searchMemory(request());
+
+    expect(response.memories).toEqual([]);
+    expect(mocks.searchEdges).not.toHaveBeenCalled();
+    expect(logger.warns.length).toBeGreaterThan(0);
   });
 });
 
 describe("ZepMemoryService — unsupported scope", () => {
-  it("rejects an unsupported scope before calling graph.search, warns, and returns no memories", async () => {
+  it("rejects an unsupported scope before it searches, warns, and returns no memories", async () => {
     const { client, mocks } = mockZepClient();
     const logger = capturingLogger();
     const options: ConstructorParameters<typeof ZepMemoryService>[0] = {
       zep: client as unknown as ZepClient,
       // Cast needed: intentionally passing a value outside the supported enum
       // to exercise the fail-fast guard.
-      scope: "unsupported_scope" as unknown as Zep.GraphSearchScope,
+      scope: "unsupported_scope" as unknown as ZepGraphSearchScope,
       logger,
     };
     const service = new ZepMemoryService(options);
@@ -189,15 +256,16 @@ describe("ZepMemoryService — unsupported scope", () => {
     const response = await service.searchMemory(request());
 
     expect(response.memories).toEqual([]);
-    expect(mocks.search).not.toHaveBeenCalled();
+    expect(mocks.searchEdges).not.toHaveBeenCalled();
+    expect(mocks.userGet).not.toHaveBeenCalled();
     expect(logger.warns.length).toBeGreaterThan(0);
   });
 });
 
 describe("ZepMemoryService — error handling", () => {
-  it("returns empty memories and warns (without leaking query/result content) when graph.search rejects", async () => {
+  it("returns empty memories and warns (without leaking query/result content) when the search rejects", async () => {
     const { client, mocks } = mockZepClient();
-    mocks.search.mockRejectedValueOnce(new Error("boom"));
+    mocks.searchEdges.mockRejectedValueOnce(new Error("boom"));
     const logger = capturingLogger();
     const service = new ZepMemoryService({
       zep: client as unknown as ZepClient,
@@ -205,7 +273,7 @@ describe("ZepMemoryService — error handling", () => {
     });
 
     const response = await service.searchMemory(
-      request({ userId: "alice", query: "some sensitive query text" }),
+      request({ query: "some sensitive query text" }),
     );
 
     expect(response.memories).toEqual([]);
@@ -215,9 +283,9 @@ describe("ZepMemoryService — error handling", () => {
     }
   });
 
-  it("never rejects even when graph.search throws", async () => {
+  it("never rejects even when the search throws", async () => {
     const { client, mocks } = mockZepClient();
-    mocks.search.mockRejectedValueOnce(new Error("boom"));
+    mocks.searchEdges.mockRejectedValueOnce(new Error("boom"));
     const service = new ZepMemoryService({
       zep: client as unknown as ZepClient,
       logger: silentLogger,
@@ -239,10 +307,10 @@ describe("ZepMemoryService — addSessionToMemory", () => {
       service.addSessionToMemory({ id: "session-1" } as never),
     ).resolves.toBeUndefined();
 
-    expect(mocks.search).not.toHaveBeenCalled();
+    expect(mocks.searchEdges).not.toHaveBeenCalled();
     expect(mocks.addMessages).not.toHaveBeenCalled();
-    expect(mocks.create).not.toHaveBeenCalled();
-    expect(mocks.userAdd).not.toHaveBeenCalled();
+    expect(mocks.threadCreate).not.toHaveBeenCalled();
+    expect(mocks.userCreate).not.toHaveBeenCalled();
   });
 });
 

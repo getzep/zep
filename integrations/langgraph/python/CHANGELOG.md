@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changed
+
+- **Breaking: the package targets the Zep v4 SDK (`zep-cloud==4.0.0a5`) only.** There is no compatibility layer for v3.
+- **Breaking: every public API takes a server-generated UUID.** `thread_id` becomes `thread_uuid`, `user_id` becomes `user_uuid`, and `graph_id` becomes `graph_uuid`. `get_zep_context`, `build_system_message`, `persist_messages`, `create_zep_pre_model_hook`, `create_graph_search_tool`, `ZepStore`, and their synchronous twins are affected. The integration never resolves an application identifier at run time: resolve a v3 identifier one time with `user.lookup` or `thread.lookup`, store the UUID, and pass the UUID from then on.
+- **Breaking: `ensure_user` / `ensure_thread` (and their synchronous twins) become `create_user` / `create_thread` (and `create_user_sync` / `create_thread_sync`).** A v4 create call does not take an application identifier and cannot collide with an existing resource, so an idempotent "ensure" has no meaning. Each helper creates unconditionally and returns the created object, so the caller can read `User.uuid_`, `User.graph_uuid`, and `Thread.uuid_`. The `on_created` hook now receives the created `User` instead of an application identifier, and it runs after every successful create.
+- **Breaking: `ContextInput` carries `graph_uuid` and `thread_uuid` instead of `user_id` and `thread_id`.**
+- Context retrieval uses `thread.get_context(thread_uuid)` in place of the v3 `thread.get_user_context(thread_id)`, and the template argument becomes `template_uuid`.
+- Persistence uses the v4 `AddMessage` type in place of the v3 `Message` type. `to_zep_message` and `to_zep_messages` return `AddMessage` objects.
+- `create_graph_search_tool` and `ZepStore` use the dedicated v4 search methods in place of the v3 aggregate `graph.search`. The `scope` selects the method: `edges`, `nodes`, `episodes`, `observations`, and `thread_summaries` call `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, and `graph.search_thread_summaries`; `auto` calls `graph.get_context`, which accepts neither a `reranker` nor a `limit`. Results are read from the first page of a pager (`page.items`). The constructor-only `search_filters` argument is sent as the v4 `filters` argument.
+- `ZepStore` ingestion uses `graph.episode.add(graph_uuid, data=..., type="json")` in place of the v3 `graph.add`. `ZepStore` now requires a `graph_uuid`, and `namespace_target` maps a namespace to the UUID of a graph instead of to a v3 target.
+
 ## 0.2.1 (2026-07-29)
 
 ### Added

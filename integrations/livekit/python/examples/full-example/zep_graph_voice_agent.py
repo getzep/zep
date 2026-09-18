@@ -6,41 +6,54 @@ from livekit.plugins import openai, silero
 from pydantic import Field
 from zep_cloud import SearchFilters
 from zep_cloud.client import AsyncZep
-from zep_cloud.external_clients.ontology import EdgeModel, EntityModel, EntityText
+from zep_cloud.ontology import EdgeModel, EntityModel, EntityText, build_ontology
+from zep_cloud.types import EdgeSourceTarget
 
 from zep_livekit import ZepGraphAgent
 
 
 class Restaurant(EntityModel):
-    """
-    Represents a specific restaurant.
-    """
+    """Represents a specific restaurant."""
 
     cuisine_type: EntityText = Field(
-        description="The cuisine type of the restaurant, for example: American, Mexican, Indian, etc.",
+        description=("The cuisine type of the restaurant, for example: American, Mexican, Indian."),
         default=None,
     )
     dietary_accommodation: EntityText = Field(
-        description="The dietary accommodation of the restaurant, if any, for example: vegetarian, vegan, etc.",
+        description=(
+            "The dietary accommodation of the restaurant, if any, for example: vegetarian, vegan."
+        ),
         default=None,
     )
 
 
 class RestaurantVisit(EdgeModel):
-    """
-    Represents the fact that a person visited a restaurant.
-    """
+    """Represents the fact that a person visited a restaurant."""
 
     restaurant_name: EntityText = Field(
-        description="The name of the restaurant the person visited", default=None
+        description="The name of the restaurant that the person visited.",
+        default=None,
     )
 
+
+entity_types, edge_types = build_ontology(
+    entities={"Restaurant": Restaurant},
+    edges={
+        "RESTAURANT_VISIT": (
+            RestaurantVisit,
+            [EdgeSourceTarget(source="User", target="Restaurant")],
+        )
+    },
+)
 
 # Load environment variables
 load_dotenv()
 
-# Constants
-GRAPH_ID = "graph-1234"
+# Constants. Zep v4 addresses a graph by a UUID. Set ZEP_GRAPH_UUID to reuse
+# a graph that exists. If it is empty, the example creates a graph and prints
+# the UUID for later runs.
+GRAPH_UUID = os.getenv("ZEP_GRAPH_UUID", "")
+GRAPH_NAME = "Travel Knowledge Graph"
 USER_NAME = "John"
 
 
@@ -50,20 +63,19 @@ async def entrypoint(ctx: agents.JobContext):
     # Step 1: Initialize Zep client
     zep_client = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
 
-    # Step 2: Create or get graph (if it doesn't exist)
-    try:
-        await zep_client.graph.get(graph_id=GRAPH_ID)
-    except Exception:
-        # Graph doesn't exist, create it
-        await zep_client.graph.create(graph_id=GRAPH_ID)
+    # Step 2: Get the graph by UUID, or create the graph one time
+    if GRAPH_UUID:
+        graph = await zep_client.graph.get(GRAPH_UUID)
+    else:
+        graph = await zep_client.graph.create(name=GRAPH_NAME)
+        print(f"Created Zep graph. Set ZEP_GRAPH_UUID={graph.uuid_} for the next run.")
+    graph_uuid = graph.uuid_ or ""
 
     # Step 3: Set custom ontology for the graph (if needed)
     await zep_client.graph.set_ontology(
-        graph_ids=[GRAPH_ID],
-        entities={"Restaurant": Restaurant},
-        edges={
-            "RESTAURANT_VISIT": (RestaurantVisit),
-        },
+        graph_uuid,
+        entity_types=entity_types,
+        edge_types=edge_types,
     )
 
     # Step 4: Connect to LiveKit room
@@ -86,13 +98,10 @@ async def entrypoint(ctx: agents.JobContext):
     # Step 7: Create the graph memory-enabled agent with all possible arguments
     agent = ZepGraphAgent(
         zep_client=zep_client,
-        graph_id=GRAPH_ID,
+        graph_uuid=graph_uuid,
         user_name=USER_NAME,
-        facts_limit=10,
-        entity_limit=5,
-        episode_limit=5,
+        max_characters=4000,
         search_filters=search_filters,
-        reranker="rrf",
         instructions="""You are a helpful assistant who responds concisely in at most 1 sentence for each response. If the user asks you to complete a task of any kind, such as playing music or using any other kind of tool, pretend that you can in fact do that task for simulation purposes.""",
     )
 

@@ -15,6 +15,10 @@ LiveKit server, validating the integration's memory layer end-to-end:
   5. Zep resource verification via the SDK (user metadata, thread messages,
      context block, graph search).
 
+The test follows the v4 identifier convention: it creates each resource one
+time, reads the UUID from the response, and addresses every later call by
+that UUID.
+
 Only ZEP_API_KEY is required -- no LLM key, since no model is invoked.
 
 Requires:
@@ -51,14 +55,18 @@ if not ZEP_API_KEY:
 from livekit.agents.llm.chat_context import ChatContext  # noqa: E402
 from zep_cloud.client import AsyncZep  # noqa: E402
 
-from zep_livekit import ZepGraphAgent, ZepUserAgent  # noqa: E402
+from zep_livekit import (  # noqa: E402
+    ZepGraphAgent,
+    ZepUserAgent,
+    create_thread,
+    create_user,
+)
 from zep_livekit.exceptions import AgentConfigurationError  # noqa: E402
 
-# Unique IDs per run to avoid collisions.
+# A unique name per run keeps the Zep dashboard readable. A name is not an
+# address: every call below uses a UUID.
 _suffix = uuid4().hex[:8]
-USER_ID = f"livekit-integ-{_suffix}"
-THREAD_1 = f"livekit-integ-t1-{_suffix}"
-THREAD_2 = f"livekit-integ-t2-{_suffix}"
+USER_NAME = f"livekit-integ-{_suffix}"
 
 FIRST_NAME = "IntegTest"
 LAST_NAME = "User"
@@ -83,7 +91,7 @@ def check(description: str, condition: bool, detail: str = "") -> bool:
 
 async def wait_for_episodes_processed(
     zep: AsyncZep,
-    user_id: str,
+    graph_uuid: str,
     timeout_seconds: int = 300,
     poll_interval: float = 3.0,
 ) -> None:
@@ -94,24 +102,24 @@ async def wait_for_episodes_processed(
             logger.warning("Timed out waiting for episode processing; continuing.")
             return
         try:
-            resp = await zep.graph.episode.get_by_user_id(user_id=user_id, lastn=20)
+            page = await zep.graph.episode.list(graph_uuid, limit=20)
         except Exception as exc:
             logger.warning("Episode poll failed (%s); retrying.", exc)
             await asyncio.sleep(poll_interval)
             continue
-        episodes = resp.episodes or []
+        episodes = page.items or []
         if episodes and all(e.processed for e in episodes):
             logger.info("All %d episodes processed.", len(episodes))
             return
         await asyncio.sleep(poll_interval)
 
 
-def build_agent(zep: AsyncZep, thread_id: str) -> ZepUserAgent:
+def build_agent(zep: AsyncZep, user_uuid: str, thread_uuid: str) -> ZepUserAgent:
     """Build a ZepUserAgent bound to the given thread (no LiveKit session)."""
     return ZepUserAgent(
         zep_client=zep,
-        user_id=USER_ID,
-        thread_id=thread_id,
+        user_uuid=user_uuid,
+        thread_uuid=thread_uuid,
         user_message_name=FIRST_NAME,
         assistant_message_name="Assistant",
         instructions=INSTRUCTIONS,
@@ -138,48 +146,60 @@ async def user_turn(agent: ZepUserAgent, text: str) -> ChatContext:
     return turn_ctx
 
 
+SEEDS = (
+    (
+        "My name is IntegTest. I work at Acme Corp as a data scientist.",
+        "Noted -- a data scientist at Acme Corp.",
+    ),
+    (
+        "I live in Portland, Oregon and I love hiking and photography.",
+        "Got it -- Portland, Oregon, hiking and photography.",
+    ),
+)
+
+KEYWORDS = ["acme", "data scientist", "portland", "hiking", "photography"]
+
+
 async def main() -> None:
     zep = AsyncZep(api_key=ZEP_API_KEY)
     passed = True
+    user_uuid = ""
 
     print(f"\n{'=' * 70}")
     print("Zep LiveKit Integration Test (memory layer, no voice server)")
-    print(f"  User:    {USER_ID}")
-    print(f"  Threads: {THREAD_1}, {THREAD_2}")
+    print(f"  User name: {USER_NAME}")
     print(f"{'=' * 70}\n")
 
     # -- Constructor validation (no network). --------------------------------
     print("[Step 0] Validating agent configuration guards...")
     try:
-        ZepUserAgent(zep_client=zep, user_id="", thread_id=THREAD_1, instructions=INSTRUCTIONS)
-        passed &= check("ZepUserAgent rejects empty user_id", False)
+        ZepUserAgent(zep_client=zep, user_uuid="", thread_uuid="t", instructions=INSTRUCTIONS)
+        passed &= check("ZepUserAgent rejects empty user_uuid", False)
     except AgentConfigurationError:
-        passed &= check("ZepUserAgent rejects empty user_id", True)
+        passed &= check("ZepUserAgent rejects empty user_uuid", True)
     try:
-        ZepGraphAgent(zep_client=zep, graph_id="", instructions=INSTRUCTIONS)
-        passed &= check("ZepGraphAgent rejects empty graph_id", False)
+        ZepGraphAgent(zep_client=zep, graph_uuid="", instructions=INSTRUCTIONS)
+        passed &= check("ZepGraphAgent rejects empty graph_uuid", False)
     except AgentConfigurationError:
-        passed &= check("ZepGraphAgent rejects empty graph_id", True)
+        passed &= check("ZepGraphAgent rejects empty graph_uuid", True)
 
     try:
         # -- One-time Zep setup: create the user and thread out-of-band. ------
-        await zep.user.add(user_id=USER_ID, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
-        await zep.thread.create(thread_id=THREAD_1, user_id=USER_ID)
+        user = await create_user(
+            zep, user_id=USER_NAME, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL
+        )
+        user_uuid = user.uuid_ or ""
+        graph_uuid = user.graph_uuid or ""
+        thread_1 = await create_thread(zep, user_uuid=user_uuid)
+        thread_1_uuid = thread_1.uuid_ or ""
+        print(f"  user_uuid={user_uuid}")
+        print(f"  graph_uuid={graph_uuid}")
+        print(f"  thread_uuid={thread_1_uuid}")
 
         # -- Conversation 1: seed facts via the agent's memory hooks. --------
         print("\n[Step 1] Conversation 1: seeding facts...")
-        agent1 = build_agent(zep, THREAD_1)
-        seeds = [
-            (
-                "My name is IntegTest. I work at Acme Corp as a data scientist.",
-                "Nice to meet you, IntegTest -- noted that you're a data scientist at Acme Corp.",
-            ),
-            (
-                "I live in Portland, Oregon and I love hiking and photography.",
-                "Great -- Portland, Oregon, plus hiking and photography.",
-            ),
-        ]
-        for user_text, assistant_text in seeds:
+        agent1 = build_agent(zep, user_uuid, thread_1_uuid)
+        for user_text, assistant_text in SEEDS:
             print(f"  User:  {user_text}")
             await user_turn(agent1, user_text)
             await agent1._store_assistant_message(assistant_text, _AssistantItem())
@@ -187,15 +207,19 @@ async def main() -> None:
 
         # -- Verify user metadata --------------------------------------------
         print("[Step 2] Verifying Zep user metadata...")
-        user = await zep.user.get(user_id=USER_ID)
-        passed &= check("first_name matches", user.first_name == FIRST_NAME, str(user.first_name))
-        passed &= check("last_name matches", user.last_name == LAST_NAME, str(user.last_name))
-        passed &= check("email matches", user.email == EMAIL, str(user.email))
+        stored_user = await zep.user.get(user_uuid)
+        passed &= check(
+            "first_name matches", stored_user.first_name == FIRST_NAME, str(stored_user.first_name)
+        )
+        passed &= check(
+            "last_name matches", stored_user.last_name == LAST_NAME, str(stored_user.last_name)
+        )
+        passed &= check("email matches", stored_user.email == EMAIL, str(stored_user.email))
 
         # -- Verify thread 1 captured both sides -----------------------------
         print("\n[Step 3] Verifying thread 1 messages...")
-        t1 = await zep.thread.get(thread_id=THREAD_1, lastn=20)
-        messages = t1.messages or []
+        message_page = await zep.thread.list_messages(thread_1_uuid, limit=20)
+        messages = message_page.items or []
         user_msgs = [m for m in messages if m.role == "user"]
         asst_msgs = [m for m in messages if m.role == "assistant"]
         print(f"  {len(user_msgs)} user, {len(asst_msgs)} assistant messages")
@@ -204,20 +228,20 @@ async def main() -> None:
 
         # -- Wait for graph ingestion ----------------------------------------
         print("\n[Step 4] Waiting for Zep to process episodes...")
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
+        await wait_for_episodes_processed(zep, graph_uuid, timeout_seconds=300)
 
         # -- Conversation 2: cross-thread memory recall ----------------------
         print("\n[Step 5] Conversation 2: cross-thread memory recall...")
-        await zep.thread.create(thread_id=THREAD_2, user_id=USER_ID)
-        agent2 = build_agent(zep, THREAD_2)
+        thread_2 = await create_thread(zep, user_uuid=user_uuid)
+        thread_2_uuid = thread_2.uuid_ or ""
+        agent2 = build_agent(zep, user_uuid, thread_2_uuid)
         # Driving a user turn on a fresh thread should inject the recalled
         # context block (assembled from the shared user graph).
         await user_turn(agent2, "What do you know about me?")
 
-        keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
-        ctx_result = await zep.thread.get_user_context(thread_id=THREAD_2)
+        ctx_result = await zep.thread.get_context(thread_2_uuid)
         context = (ctx_result.context or "").lower()
-        found = [kw for kw in keywords if kw in context]
+        found = [kw for kw in KEYWORDS if kw in context]
         print(f"  Recalled keywords (context block): {found}")
         passed &= check(
             "Context block recalls facts from conversation 1",
@@ -225,9 +249,9 @@ async def main() -> None:
             f"found={found}",
         )
 
-        search = await zep.graph.search(user_id=USER_ID, query="job, location, hobbies", limit=10)
-        search_text = " ".join(e.fact for e in (search.edges or [])).lower()
-        search_found = [kw for kw in keywords if kw in search_text]
+        search = await zep.graph.search_edges(graph_uuid, query="job, location, hobbies", limit=10)
+        search_text = " ".join(e.fact for e in (search.items or []) if e.fact).lower()
+        search_found = [kw for kw in KEYWORDS if kw in search_text]
         print(f"  Recalled keywords (graph search): {search_found}")
         passed &= check(
             "Graph search recalls facts from conversation 1",
@@ -238,8 +262,9 @@ async def main() -> None:
     finally:
         print("\n[Cleanup] Deleting test user...")
         try:
-            await zep.user.delete(user_id=USER_ID)
-            print(f"  Deleted {USER_ID}")
+            if user_uuid:
+                await zep.user.delete(user_uuid)
+                print(f"  Deleted {user_uuid}")
         except Exception as exc:
             print(f"  Warning: could not delete user: {exc}")
 
@@ -257,54 +282,52 @@ async def test_integration_full_lifecycle() -> None:
 
     # Config guards (no network).
     with pytest.raises(AgentConfigurationError):
-        ZepUserAgent(zep_client=zep, user_id="", thread_id=THREAD_1, instructions=INSTRUCTIONS)
+        ZepUserAgent(zep_client=zep, user_uuid="", thread_uuid="t", instructions=INSTRUCTIONS)
     with pytest.raises(AgentConfigurationError):
-        ZepGraphAgent(zep_client=zep, graph_id="", instructions=INSTRUCTIONS)
+        ZepGraphAgent(zep_client=zep, graph_uuid="", instructions=INSTRUCTIONS)
 
+    user_uuid = ""
     try:
-        await zep.user.add(user_id=USER_ID, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
-        await zep.thread.create(thread_id=THREAD_1, user_id=USER_ID)
+        user = await create_user(
+            zep, user_id=USER_NAME, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL
+        )
+        user_uuid = user.uuid_ or ""
+        graph_uuid = user.graph_uuid or ""
+        thread_1 = await create_thread(zep, user_uuid=user_uuid)
+        thread_1_uuid = thread_1.uuid_ or ""
 
-        agent1 = build_agent(zep, THREAD_1)
-        for user_text, assistant_text in (
-            (
-                "My name is IntegTest. I work at Acme Corp as a data scientist.",
-                "Noted -- a data scientist at Acme Corp.",
-            ),
-            (
-                "I live in Portland, Oregon and I love hiking and photography.",
-                "Got it -- Portland, Oregon, hiking and photography.",
-            ),
-        ):
+        agent1 = build_agent(zep, user_uuid, thread_1_uuid)
+        for user_text, assistant_text in SEEDS:
             await user_turn(agent1, user_text)
             await agent1._store_assistant_message(assistant_text, _AssistantItem())
 
-        user = await zep.user.get(user_id=USER_ID)
-        assert user.first_name == FIRST_NAME
-        assert user.email == EMAIL
+        stored_user = await zep.user.get(user_uuid)
+        assert stored_user.first_name == FIRST_NAME
+        assert stored_user.email == EMAIL
 
-        t1 = await zep.thread.get(thread_id=THREAD_1, lastn=20)
-        messages = t1.messages or []
+        message_page = await zep.thread.list_messages(thread_1_uuid, limit=20)
+        messages = message_page.items or []
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)
 
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
+        await wait_for_episodes_processed(zep, graph_uuid, timeout_seconds=300)
 
-        await zep.thread.create(thread_id=THREAD_2, user_id=USER_ID)
-        agent2 = build_agent(zep, THREAD_2)
+        thread_2 = await create_thread(zep, user_uuid=user_uuid)
+        thread_2_uuid = thread_2.uuid_ or ""
+        agent2 = build_agent(zep, user_uuid, thread_2_uuid)
         await user_turn(agent2, "What do you know about me?")
 
-        keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
-        ctx_result = await zep.thread.get_user_context(thread_id=THREAD_2)
+        ctx_result = await zep.thread.get_context(thread_2_uuid)
         context = (ctx_result.context or "").lower()
-        search = await zep.graph.search(user_id=USER_ID, query="job, location, hobbies", limit=10)
-        search_text = " ".join(e.fact for e in (search.edges or [])).lower()
-        assert any(kw in context or kw in search_text for kw in keywords), (
+        search = await zep.graph.search_edges(graph_uuid, query="job, location, hobbies", limit=10)
+        search_text = " ".join(e.fact for e in (search.items or []) if e.fact).lower()
+        assert any(kw in context or kw in search_text for kw in KEYWORDS), (
             f"no recall in context/search: {context} / {search_text}"
         )
     finally:
         try:
-            await zep.user.delete(user_id=USER_ID)
+            if user_uuid:
+                await zep.user.delete(user_uuid)
         except Exception:
             pass
 

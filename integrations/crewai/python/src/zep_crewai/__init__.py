@@ -8,24 +8,40 @@ Installation:
     pip install zep-crewai
 
 Usage:
-    from zep_crewai import ZepGraphStorage, ZepUserStorage, create_search_tool
+    from zep_crewai import (
+        ZepGraphStorage,
+        ZepUserStorage,
+        create_search_tool,
+        ensure_thread,
+        ensure_user,
+    )
     from zep_cloud.client import Zep
     from crewai import Agent
 
     # Initialize Zep client
     zep_client = Zep(api_key="your-api-key")
 
+    # Create the user and the thread one time, and store the UUIDs
+    user, _ = ensure_user(zep_client, user_id="user123", first_name="Alice")
+    thread, _ = ensure_thread(zep_client, thread_id="thread123", user_uuid=user.uuid_)
+
     # For user-specific storage (standalone Zep adapter: save / search / reset)
-    user_storage = ZepUserStorage(client=zep_client, user_id="user123", thread_id="thread123")
+    user_storage = ZepUserStorage(
+        client=zep_client,
+        user_uuid=user.uuid_,
+        thread_uuid=thread.uuid_,
+        graph_uuid=user.graph_uuid,
+    )
 
     # For generic knowledge graphs
-    graph_storage = ZepGraphStorage(client=zep_client, graph_id="knowledge_base")
+    graph = zep_client.graph.create(name="knowledge base")
+    graph_storage = ZepGraphStorage(client=zep_client, graph_uuid=graph.uuid_)
 
     # Persist conversation turns and business data
     user_storage.save("Hi there!", metadata={"type": "message", "role": "user"})
 
     # Create tools to let an agent search and write to Zep
-    search_tool = create_search_tool(zep_client, user_id="user123")
+    search_tool = create_search_tool(zep_client, graph_uuid=user.graph_uuid)
 
     # Create agent with tools
     agent = Agent(

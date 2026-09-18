@@ -10,6 +10,9 @@ function's signature*: exposed params become real typed parameters (so they
 show up in ``tool.schema["parameters"]["properties"]``), while pinned/hidden
 params are simply not parameters of the wrapped function at all -- they are
 merged in as constants when the tool executes.
+
+Zep v4 has one search method for each scope, and each method returns a pager.
+``scope`` therefore selects the method instead of becoming a request field.
 """
 
 from __future__ import annotations
@@ -18,34 +21,28 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from autogen_core import CancellationToken
+from conftest import FakePager
 from zep_cloud.client import AsyncZep
 
 from zep_autogen.tools import create_search_graph_tool
 
+USER_UUID = "11111111-1111-1111-1111-111111111111"
+GRAPH_UUID = "33333333-3333-3333-3333-333333333333"
+DOCS_GRAPH_UUID = "44444444-4444-4444-4444-444444444444"
+
 
 def _make_mock_client() -> MagicMock:
     client = MagicMock(spec=AsyncZep)
+    client.user = MagicMock()
+    client.user.get = AsyncMock(return_value=MagicMock(graph_uuid=GRAPH_UUID))
     client.graph = MagicMock()
-    client.graph.search = AsyncMock()
+    client.graph.search_edges = AsyncMock(return_value=FakePager([]))
+    client.graph.search_nodes = AsyncMock(return_value=FakePager([]))
+    client.graph.search_episodes = AsyncMock(return_value=FakePager([]))
+    client.graph.search_observations = AsyncMock(return_value=FakePager([]))
+    client.graph.search_thread_summaries = AsyncMock(return_value=FakePager([]))
+    client.graph.get_context = AsyncMock(return_value=MagicMock(context="ctx"))
     return client
-
-
-def _make_result(
-    edges=None,
-    nodes=None,
-    episodes=None,
-    context=None,
-    observations=None,
-    thread_summaries=None,
-) -> MagicMock:
-    result = MagicMock()
-    result.edges = edges
-    result.nodes = nodes
-    result.episodes = episodes
-    result.context = context
-    result.observations = observations
-    result.thread_summaries = thread_summaries
-    return result
 
 
 async def _run(tool, **kwargs: object):
@@ -57,7 +54,7 @@ class TestPinOrExposeSchema:
         """By default (no pins), scope/reranker/limit/mmr_lambda/center_node_uuid
         are all in the model-facing schema alongside query."""
         client = _make_mock_client()
-        tool = create_search_graph_tool(client, user_id="user-1")
+        tool = create_search_graph_tool(client, user_uuid=USER_UUID)
         schema = tool.schema
         properties = schema["parameters"]["properties"]
 
@@ -87,10 +84,9 @@ class TestPinOrExposeSchema:
     @pytest.mark.asyncio
     async def test_search_tool_pinned_params_hidden_and_sent(self) -> None:
         client = _make_mock_client()
-        client.graph.search.return_value = _make_result(nodes=[])
         tool = create_search_graph_tool(
             client,
-            user_id="user-1",
+            user_uuid=USER_UUID,
             pinned_params={"scope": "nodes", "limit": 5},
         )
 
@@ -101,16 +97,14 @@ class TestPinOrExposeSchema:
 
         await _run(tool, query="query")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["scope"] == "nodes"
-        assert kwargs["limit"] == 5
+        client.graph.search_nodes.assert_called_once()
+        assert client.graph.search_nodes.call_args.kwargs["limit"] == 5
 
     @pytest.mark.asyncio
     async def test_search_tool_hidden_params_omitted_from_sdk_call(self) -> None:
         client = _make_mock_client()
-        client.graph.search.return_value = _make_result(edges=[])
         tool = create_search_graph_tool(
-            client, user_id="user-1", hidden_params={"mmr_lambda", "center_node_uuid"}
+            client, user_uuid=USER_UUID, hidden_params={"mmr_lambda", "center_node_uuid"}
         )
 
         properties = tool.schema["parameters"]["properties"]
@@ -120,7 +114,7 @@ class TestPinOrExposeSchema:
 
         await _run(tool, query="query")
 
-        kwargs = client.graph.search.call_args.kwargs
+        kwargs = client.graph.search_edges.call_args.kwargs
         assert "mmr_lambda" not in kwargs
         assert "center_node_uuid" not in kwargs
 
@@ -129,8 +123,7 @@ class TestPinOrExposeSchema:
         """Legacy factory args (scope/limit) pin the corresponding param,
         same as passing it via pinned_params -- back-compat."""
         client = _make_mock_client()
-        client.graph.search.return_value = _make_result(nodes=[])
-        tool = create_search_graph_tool(client, user_id="user-1", scope="nodes", limit=3)
+        tool = create_search_graph_tool(client, user_uuid=USER_UUID, scope="nodes", limit=3)
 
         properties = tool.schema["parameters"]["properties"]
         assert "scope" not in properties
@@ -138,13 +131,12 @@ class TestPinOrExposeSchema:
 
         await _run(tool, query="query")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["scope"] == "nodes"
-        assert kwargs["limit"] == 3
+        client.graph.search_nodes.assert_called_once()
+        assert client.graph.search_nodes.call_args.kwargs["limit"] == 3
 
     def test_search_tool_six_scopes(self) -> None:
         client = _make_mock_client()
-        tool = create_search_graph_tool(client, user_id="user-1")
+        tool = create_search_graph_tool(client, user_uuid=USER_UUID)
         properties = tool.schema["parameters"]["properties"]
         assert set(properties["scope"]["enum"]) == {
             "edges",
@@ -165,15 +157,14 @@ class TestPinOrExposeSchema:
         sent with their default value.
         """
         client = _make_mock_client()
-        client.graph.search.return_value = _make_result(edges=[])
-        tool = create_search_graph_tool(client, user_id="user-1")
+        tool = create_search_graph_tool(client, user_uuid=USER_UUID)
 
         await _run(tool, query="query")
 
-        kwargs = client.graph.search.call_args.kwargs
+        client.graph.search_edges.assert_called_once()
+        kwargs = client.graph.search_edges.call_args.kwargs
         assert "mmr_lambda" not in kwargs
         assert "center_node_uuid" not in kwargs
-        assert kwargs["scope"] == "edges"
         assert kwargs["limit"] == 10
         assert kwargs["reranker"] == "rrf"
 
@@ -182,36 +173,42 @@ class TestSearchTargeting:
     @pytest.mark.asyncio
     async def test_searches_user_graph_by_default(self) -> None:
         client = _make_mock_client()
-        client.graph.search.return_value = _make_result(edges=[])
-        tool = create_search_graph_tool(client, user_id="user-1")
+        tool = create_search_graph_tool(client, user_uuid=USER_UUID)
 
         await _run(tool, query="q")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["user_id"] == "user-1"
-        assert "graph_id" not in kwargs
+        client.user.get.assert_called_once_with(USER_UUID)
+        assert client.graph.search_edges.call_args.args[0] == GRAPH_UUID
 
     @pytest.mark.asyncio
-    async def test_searches_graph_id_when_set(self) -> None:
+    async def test_user_graph_uuid_is_resolved_once(self) -> None:
         client = _make_mock_client()
-        client.graph.search.return_value = _make_result(edges=[])
-        tool = create_search_graph_tool(client, graph_id="docs-graph")
+        tool = create_search_graph_tool(client, user_uuid=USER_UUID)
+
+        await _run(tool, query="q")
+        await _run(tool, query="q2")
+
+        client.user.get.assert_called_once_with(USER_UUID)
+
+    @pytest.mark.asyncio
+    async def test_searches_graph_uuid_when_set(self) -> None:
+        client = _make_mock_client()
+        tool = create_search_graph_tool(client, graph_uuid=DOCS_GRAPH_UUID)
 
         await _run(tool, query="q")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["graph_id"] == "docs-graph"
-        assert "user_id" not in kwargs
+        client.user.get.assert_not_called()
+        assert client.graph.search_edges.call_args.args[0] == DOCS_GRAPH_UUID
 
-    def test_requires_graph_id_or_user_id(self) -> None:
+    def test_requires_graph_uuid_or_user_uuid(self) -> None:
         client = _make_mock_client()
-        with pytest.raises(ValueError, match="Either graph_id or user_id"):
+        with pytest.raises(ValueError, match="Either graph_uuid or user_uuid"):
             create_search_graph_tool(client)
 
-    def test_rejects_both_graph_id_and_user_id(self) -> None:
+    def test_rejects_both_graph_uuid_and_user_uuid(self) -> None:
         client = _make_mock_client()
         with pytest.raises(ValueError, match="Only one of"):
-            create_search_graph_tool(client, graph_id="g", user_id="u")
+            create_search_graph_tool(client, graph_uuid=DOCS_GRAPH_UUID, user_uuid=USER_UUID)
 
 
 class TestConstructorOnlyParams:
@@ -219,7 +216,7 @@ class TestConstructorOnlyParams:
         client = _make_mock_client()
         tool = create_search_graph_tool(
             client,
-            user_id="user-1",
+            user_uuid=USER_UUID,
             search_filters={"node_labels": ["Person"]},
             bfs_origin_node_uuids=["uuid-1"],
         )
@@ -230,18 +227,17 @@ class TestConstructorOnlyParams:
     @pytest.mark.asyncio
     async def test_search_filters_and_bfs_sent_to_sdk(self) -> None:
         client = _make_mock_client()
-        client.graph.search.return_value = _make_result(edges=[])
         tool = create_search_graph_tool(
             client,
-            user_id="user-1",
+            user_uuid=USER_UUID,
             search_filters={"node_labels": ["Person"]},
             bfs_origin_node_uuids=["uuid-1"],
         )
 
         await _run(tool, query="query")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["search_filters"] == {"node_labels": ["Person"]}
+        kwargs = client.graph.search_edges.call_args.kwargs
+        assert kwargs["filters"] == {"node_labels": ["Person"]}
         assert kwargs["bfs_origin_node_uuids"] == ["uuid-1"]
 
 
@@ -249,12 +245,12 @@ class TestUnknownParams:
     def test_unknown_pinned_param_raises(self) -> None:
         client = _make_mock_client()
         with pytest.raises(ValueError, match="Unknown pinned parameters"):
-            create_search_graph_tool(client, user_id="user-1", pinned_params={"bogus": 1})
+            create_search_graph_tool(client, user_uuid=USER_UUID, pinned_params={"bogus": 1})
 
     def test_unknown_hidden_param_raises(self) -> None:
         client = _make_mock_client()
         with pytest.raises(ValueError, match="Unknown hidden parameters"):
-            create_search_graph_tool(client, user_id="user-1", hidden_params={"bogus"})
+            create_search_graph_tool(client, user_uuid=USER_UUID, hidden_params={"bogus"})
 
 
 class TestLimitClamping:
@@ -263,82 +259,94 @@ class TestLimitClamping:
         """A pinned limit above Zep's ceiling is clamped at construction time
         (with a warning) so the call never 400s."""
         client = _make_mock_client()
-        client.graph.search.return_value = _make_result(edges=[])
-        with caplog.at_level("WARNING", logger="zep_autogen.tools"):
-            tool = create_search_graph_tool(client, user_id="user-1", pinned_params={"limit": 100})
-        assert any("clamping" in record.message for record in caplog.records)
+        with caplog.at_level("WARNING", logger="zep_autogen.search"):
+            tool = create_search_graph_tool(
+                client, user_uuid=USER_UUID, pinned_params={"limit": 100}
+            )
+        assert any("clamped" in record.message for record in caplog.records)
 
         await _run(tool, query="query")
 
-        assert client.graph.search.call_args.kwargs["limit"] == 50
+        assert client.graph.search_edges.call_args.kwargs["limit"] == 50
 
     @pytest.mark.asyncio
     async def test_model_provided_limit_clamped_at_call_time(self) -> None:
         """A model-provided limit above Zep's ceiling is clamped (not
         rejected) when building the SDK kwargs."""
         client = _make_mock_client()
-        client.graph.search.return_value = _make_result(edges=[])
-        tool = create_search_graph_tool(client, user_id="user-1")
+        tool = create_search_graph_tool(client, user_uuid=USER_UUID)
 
         await _run(tool, query="query", limit=200)
 
-        assert client.graph.search.call_args.kwargs["limit"] == 50
+        assert client.graph.search_edges.call_args.kwargs["limit"] == 50
 
     @pytest.mark.asyncio
     async def test_model_provided_limit_clamped_to_at_least_one(self) -> None:
         client = _make_mock_client()
-        client.graph.search.return_value = _make_result(edges=[])
-        tool = create_search_graph_tool(client, user_id="user-1")
+        tool = create_search_graph_tool(client, user_uuid=USER_UUID)
 
         await _run(tool, query="query", limit=0)
 
-        assert client.graph.search.call_args.kwargs["limit"] == 1
+        assert client.graph.search_edges.call_args.kwargs["limit"] == 1
 
 
-class TestAutoScopeReranker:
+class TestAutoScope:
     @pytest.mark.asyncio
     async def test_pinned_auto_scope_drops_incompatible_pinned_reranker(self, caplog) -> None:
         """scope pinned to 'auto' + a pinned auto-incompatible reranker: the
-        reranker is dropped (with a warning) and never sent to graph.search."""
+        reranker is dropped (with a warning) and never sent to Zep."""
         client = _make_mock_client()
-        client.graph.search.return_value = _make_result(context="ctx")
         with caplog.at_level("WARNING", logger="zep_autogen.tools"):
             tool = create_search_graph_tool(
                 client,
-                user_id="user-1",
+                user_uuid=USER_UUID,
                 pinned_params={"scope": "auto", "reranker": "node_distance"},
             )
+            await _run(tool, query="query")
         assert any("invalid for scope='auto'" in record.message for record in caplog.records)
 
-        await _run(tool, query="query")
-
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["scope"] == "auto"
-        assert "reranker" not in kwargs
+        client.graph.get_context.assert_called_once()
+        assert "reranker" not in client.graph.get_context.call_args.kwargs
 
     @pytest.mark.asyncio
-    async def test_model_provided_auto_scope_drops_incompatible_reranker(self) -> None:
-        """When the model itself chooses scope='auto' + an incompatible
-        reranker, the reranker is dropped at call time."""
+    async def test_model_provided_auto_scope_calls_get_context(self) -> None:
+        """When the model itself chooses scope='auto', the tool calls
+        graph.get_context and drops an incompatible reranker."""
         client = _make_mock_client()
-        client.graph.search.return_value = _make_result(context="ctx")
-        tool = create_search_graph_tool(client, user_id="user-1")
+        tool = create_search_graph_tool(client, user_uuid=USER_UUID)
 
         await _run(tool, query="query", scope="auto", reranker="node_distance")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["scope"] == "auto"
+        client.graph.get_context.assert_called_once()
+        args, kwargs = client.graph.get_context.call_args
+        assert args[0] == GRAPH_UUID
+        assert kwargs["query"] == "query"
         assert "reranker" not in kwargs
+        assert "limit" not in kwargs
 
 
 class TestResultFormatting:
     @pytest.mark.asyncio
     async def test_auto_scope_returns_context(self) -> None:
         client = _make_mock_client()
-        client.graph.search.return_value = _make_result(context="Assembled context block")
-        tool = create_search_graph_tool(client, user_id="user-1", pinned_params={"scope": "auto"})
+        client.graph.get_context = AsyncMock(
+            return_value=MagicMock(context="Assembled context block")
+        )
+        tool = create_search_graph_tool(
+            client, user_uuid=USER_UUID, pinned_params={"scope": "auto"}
+        )
         out = await _run(tool, query="q")
         assert out == "Assembled context block"
+
+    @pytest.mark.asyncio
+    async def test_formats_edges(self) -> None:
+        client = _make_mock_client()
+        edge = MagicMock()
+        edge.fact = "Jane works at Acme"
+        client.graph.search_edges = AsyncMock(return_value=FakePager([edge]))
+        tool = create_search_graph_tool(client, user_uuid=USER_UUID)
+        out = await _run(tool, query="q")
+        assert "Jane works at Acme" in str(out)
 
     @pytest.mark.asyncio
     async def test_formats_observations(self) -> None:
@@ -346,9 +354,9 @@ class TestResultFormatting:
         obs = MagicMock()
         obs.name = "Prefers async updates"
         obs.summary = "Communication pattern"
-        client.graph.search.return_value = _make_result(observations=[obs])
+        client.graph.search_observations = AsyncMock(return_value=FakePager([obs]))
         tool = create_search_graph_tool(
-            client, user_id="user-1", pinned_params={"scope": "observations"}
+            client, user_uuid=USER_UUID, pinned_params={"scope": "observations"}
         )
         out = await _run(tool, query="q")
         assert "Prefers async updates" in str(out)
@@ -358,10 +366,9 @@ class TestResultFormatting:
         client = _make_mock_client()
         ts = MagicMock()
         ts.summary = "User discussed Q3 roadmap"
-        ts.name = "thread"
-        client.graph.search.return_value = _make_result(thread_summaries=[ts])
+        client.graph.search_thread_summaries = AsyncMock(return_value=FakePager([ts]))
         tool = create_search_graph_tool(
-            client, user_id="user-1", pinned_params={"scope": "thread_summaries"}
+            client, user_uuid=USER_UUID, pinned_params={"scope": "thread_summaries"}
         )
         out = await _run(tool, query="q")
         assert "User discussed Q3 roadmap" in str(out)
@@ -369,7 +376,7 @@ class TestResultFormatting:
     @pytest.mark.asyncio
     async def test_search_errors_return_gracefully(self) -> None:
         client = _make_mock_client()
-        client.graph.search.side_effect = RuntimeError("boom")
-        tool = create_search_graph_tool(client, user_id="user-1")
+        client.graph.search_edges = AsyncMock(side_effect=RuntimeError("boom"))
+        tool = create_search_graph_tool(client, user_uuid=USER_UUID)
         out = await _run(tool, query="q")
         assert "failed" in str(out).lower() or "error" in str(out).lower()

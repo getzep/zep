@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Breaking: the package targets the Zep v4 SDK (`@getzep/zep-cloud`
+  `4.0.0-alpha.5`).** The v3 SDK is no longer supported, and the package does
+  not contain a compatibility layer.
+- **Breaking: the public API takes UUIDs.** Zep v4 addresses every user,
+  thread, and graph by a server-generated UUID. `userId`, `threadId`, and
+  `graphId` are developer-assigned names, not addresses. `ZepBinding` now has
+  `graphUuid` and `threadUuid`. `createZepMiddleware`, `createZepOnFinish`,
+  `createZepContextTool`, `getZepContext`, and `persistZepTurn` take
+  `threadUuid`, `userUuid`, and `templateUuid`. The package does not call a
+  lookup method at run time. An application resolves a name to a UUID one time
+  and stores the UUID in its own database.
+- **Breaking: `ensureZepUserAndThread` is replaced by
+  `createZepUserAndThread`.** The new function creates the user and the thread,
+  and returns `{ userUuid, graphUuid, threadUuid }` from the Zep responses, or
+  `null` when Zep does not create both resources. `EnsureIdentityOptions` is
+  replaced by `CreateIdentityOptions`, and the new `ZepIdentity` type is
+  exported. The `onUserCreated` hook now receives the new user UUID.
+- **Breaking: `toRoleType` can return `undefined`.** Zep v4 removed the
+  `norole` member of `RoleType`. An unrecognized or absent role maps to
+  `undefined`, and the package omits the role from the message.
+- **Breaking: `resolveGraphTarget` returns `string | null`.** The function
+  returns the bound graph UUID.
+- **Breaking: the `searchFilters` option of `createZepSearchTool` is renamed to
+  `filters`**, which matches the v4 search request body.
+- Zep calls now use the v4 methods: `user.create`, `thread.create` with a
+  `userUuid`, `thread.getContext`, `graph.episode.add`, and the scope-specific
+  search methods `graph.searchEdges`, `graph.searchNodes`,
+  `graph.searchEpisodes`, `graph.searchObservations`, and
+  `graph.searchThreadSummaries`. The `auto` search scope calls
+  `graph.getContext`. The search request carries `limit` at the top level and
+  the query, the reranker, and the filters in a nested `body`.
+- The examples, the tests, the README, and SETUP.md show the v4 API and the
+  UUID identifier convention.
+
 ## 0.2.0 (2026-07-07)
 
 ### Added

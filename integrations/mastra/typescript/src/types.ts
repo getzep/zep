@@ -3,37 +3,39 @@ import type { Zep } from "@getzep/zep-cloud";
 /**
  * A binding identifies *which* Zep graph a tool reads from and writes to.
  *
- * Exactly one of {@link userId} or {@link graphId} should be supplied:
+ * Zep v4 addresses every graph by its server-generated UUID. A user graph and
+ * a standalone graph are therefore the same kind of address:
  *
- * - `userId` targets a **user graph** — the home for personalized agent memory.
- *   This is the right choice for a conversational agent that remembers an end
- *   user across sessions. User graphs carry a user summary and fuse every thread
- *   and business record for that user into one picture.
- * - `graphId` targets a **standalone graph** — shared or domain knowledge (a
- *   product knowledge base, runbooks, etc.). Standalone graphs have no user node
- *   and no user summary.
+ * - The UUID of a **user graph** is the `graphUuid` field of the `User` that
+ *   `user.create` returns (it is also on every `Thread` of that user). A user
+ *   graph is the home for personalized agent memory.
+ * - The UUID of a **standalone graph** is the `uuid` field of the `Graph` that
+ *   `graph.create` returns. A standalone graph holds shared or domain
+ *   knowledge, such as a product knowledge base. It has no user node and no
+ *   user summary.
  *
- * If both are supplied, `userId` wins. If neither is supplied a tool surfaces a
- * graceful error message to the model rather than throwing.
+ * Resolve a v3 `userId` or `graphId` name to its UUID one time, then store the
+ * UUID in your own database. The integration never calls `lookup`.
+ *
+ * When no `graphUuid` is bound, a tool gives a graceful message to the model
+ * instead of a thrown error.
  */
 export interface ZepBinding {
-  /** The Zep user ID whose user graph the tools operate on. */
-  userId?: string;
-  /** The Zep standalone graph ID the tools operate on. */
-  graphId?: string;
+  /** The UUID of the Zep graph that the tools operate on. */
+  graphUuid?: string;
 }
 
 /**
  * A binding that also identifies the conversation thread.
  *
- * `threadId` is required by the context tools ({@link ZepBinding} alone is not
- * enough) because Zep scopes "what is relevant right now" to a thread's most
- * recent messages. The thread does not partition memory — retrieval still spans
- * the whole user graph — it only focuses relevance.
+ * `threadUuid` is the `uuid` field of the `Thread` that `thread.create`
+ * returns. The context tools require it, because Zep scopes "what is relevant
+ * right now" to the most recent messages of a thread. The thread does not
+ * partition memory. Retrieval still spans the whole user graph.
  */
 export interface ZepThreadBinding extends ZepBinding {
-  /** The Zep thread ID used to scope relevance and record conversation history. */
-  threadId: string;
+  /** The UUID of the Zep thread that records conversation and scopes relevance. */
+  threadUuid: string;
 }
 
 /**
@@ -50,10 +52,10 @@ export interface ZepLogger {
 /** Re-export of Zep's closed role enum for convenience. */
 export type RoleType = Zep.RoleType;
 
-/** Resolved per-call identity: which Zep user/thread a call should use. */
+/** Resolved per-call identity: which Zep graph and thread a call should use. */
 export interface ResolvedZepIdentity {
-  userId?: string;
-  threadId?: string;
+  graphUuid?: string;
+  threadUuid?: string;
 }
 
 /**

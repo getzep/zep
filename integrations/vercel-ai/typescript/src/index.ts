@@ -33,18 +33,23 @@
  * import {
  *   createZepMiddleware,
  *   createZepTools,
- *   ensureZepUserAndThread,
+ *   createZepUserAndThread,
  * } from "@getzep/zep-vercel-ai";
  *
  * const client = new ZepClient({ apiKey: process.env.ZEP_API_KEY! });
- * await ensureZepUserAndThread({ client, userId: "u1", threadId: "t1", firstName: "Jane" });
+ *
+ * // Create the Zep user and thread once, then store the UUIDs in your own
+ * // database. Zep v4 addresses every resource by a server-generated UUID.
+ * const identity = await createZepUserAndThread({ client, firstName: "Jane" });
+ * if (!identity) throw new Error("Zep identity is not ready.");
+ * const { graphUuid, threadUuid } = identity;
  *
  * const model = wrapLanguageModel({
  *   model: openai("gpt-4o-mini"),
- *   middleware: createZepMiddleware({ client, threadId: "t1", persist: true }),
+ *   middleware: createZepMiddleware({ client, threadUuid, persist: true }),
  * });
  *
- * const tools = createZepTools(client, { binding: { userId: "u1", threadId: "t1" } });
+ * const tools = createZepTools(client, { binding: { graphUuid, threadUuid } });
  * const { text } = await generateText({
  *   model,
  *   tools,
@@ -63,9 +68,13 @@ export {
   getZepContext,
   persistZepTurn,
   createZepOnFinish,
-  ensureZepUserAndThread,
+  createZepUserAndThread,
 } from "./helpers.js";
-export type { EnsureIdentityOptions, ZepOnFinishOptions } from "./helpers.js";
+export type {
+  CreateIdentityOptions,
+  ZepIdentity,
+  ZepOnFinishOptions,
+} from "./helpers.js";
 
 export {
   createZepTools,
@@ -78,6 +87,7 @@ export type {
   ZepToolsOptions,
   ZepSearchToolOptions,
   ZepSearchParamName,
+  ZepSearchScope,
   ZepRememberToolOptions,
   ZepContextToolOptions,
 } from "./tools.js";

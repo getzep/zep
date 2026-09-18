@@ -22,34 +22,40 @@ interface BaseToolOptions {
 }
 
 /**
- * Every `graph.search` parameter that can be pinned or exposed to the model,
- * by name. Keys match the Zep SDK's `graph.search()` camelCase kwargs.
+ * Every search parameter that can be pinned or exposed to the model, by name.
+ * `scope` selects the Zep v4 search method (`graph.searchEdges`,
+ * `graph.searchNodes`, and the other scope methods). The remaining keys match
+ * the camelCase fields of the SDK's `SearchRequest`, except `limit`, which is
+ * the page size of the search request.
  */
 export type ZepSearchParamName = "scope" | "reranker" | "limit" | "mmrLambda" | "centerNodeUuid";
 
+/** The search scopes this tool supports. Each scope selects one v4 method. */
+export type ZepSearchScope = (typeof SCOPE_VALUES)[number];
+
 /** Options for {@link createZepSearchTool}. */
 export interface ZepSearchToolOptions extends BaseToolOptions {
-  /** The graph to search — a user graph (`userId`) or standalone graph (`graphId`). */
+  /** The graph to search, addressed by its UUID. */
   binding: ZepBinding;
   /** Override the tool description shown to the model. */
   description?: string;
   /**
-   * Pin a `graph.search` parameter to a fixed value: hidden from the model's
-   * tool schema and always sent with the given value, regardless of what the
-   * model would otherwise choose.
+   * Pin a search parameter to a fixed value: hidden from the model's tool
+   * schema and always sent with the given value, regardless of what the model
+   * would otherwise choose.
    */
   pinnedParams?: Partial<Record<ZepSearchParamName, unknown>>;
   /**
-   * Hide a `graph.search` parameter from the model's tool schema WITHOUT
-   * pinning it — the parameter is simply omitted from the SDK call, so Zep's
-   * own server-side default applies.
+   * Hide a search parameter from the model's tool schema WITHOUT pinning it —
+   * the parameter is simply omitted from the SDK call, so Zep's own
+   * server-side default applies.
    */
   hiddenParams?: Set<ZepSearchParamName> | ZepSearchParamName[];
   /**
    * Optional Zep search filters (entity/edge types, properties, dates).
    * Constructor-only — never exposed to the model.
    */
-  searchFilters?: Zep.SearchFilters;
+  filters?: Zep.SearchFilters;
   /**
    * Node UUIDs seeding a breadth-first search. Constructor-only — never
    * exposed to the model.
@@ -60,11 +66,11 @@ export interface ZepSearchToolOptions extends BaseToolOptions {
    * `"edges"` remain the model's default when this and `pinnedParams.scope`
    * are both unset — the parameter stays exposed.
    */
-  scope?: Zep.GraphSearchScope;
+  scope?: ZepSearchScope;
   /** Deprecated back-compat alias for `pinnedParams.limit`. */
   limit?: number;
   /** Deprecated back-compat alias for `pinnedParams.reranker`. */
-  reranker?: Zep.Reranker;
+  reranker?: Zep.V4SearchRequestReranker;
 }
 
 /** Options for {@link createZepRememberTool}. */
@@ -72,14 +78,13 @@ export interface ZepRememberToolOptions extends BaseToolOptions {
   /**
    * The graph this tool writes to, plus the thread used to record conversation.
    *
-   * - When `threadId` and `userId` are present, conversational content (a
-   *   `role` is supplied) is persisted via `thread.addMessages` (records history
-   *   *and* ingests into the user graph). Non-conversational data always uses
-   *   `graph.add`.
-   * - When only `graphId` (or `userId` without a thread) is present, everything
-   *   is ingested via `graph.add`.
+   * - When `threadUuid` is present, conversational content (a `role` is
+   *   supplied) is persisted via `thread.addMessages` (records history *and*
+   *   ingests into the user graph). Non-conversational data always uses
+   *   `graph.episode.add`.
+   * - When no thread is bound, everything is ingested via `graph.episode.add`.
    */
-  binding: ZepBinding & { threadId?: string };
+  binding: ZepBinding & { threadUuid?: string };
   /** Override the tool description shown to the model. */
   description?: string;
   /** Default `name` recorded on conversational messages (e.g. the user's real name). */
@@ -92,14 +97,14 @@ export interface ZepContextToolOptions extends BaseToolOptions {
    * The thread whose Context Block to fetch. The block is assembled from the
    * **entire user graph**; the thread only scopes relevance.
    */
-  threadId: string;
+  threadUuid: string;
   /** Override the tool description shown to the model. */
   description?: string;
-  /** Optional Zep context template ID for custom Context Block formatting. */
-  templateId?: string;
+  /** Optional UUID of a Zep context template for custom Context Block formatting. */
+  templateUuid?: string;
 }
 
-/** Zep's supported search scopes (`GraphSearchScope`), model-exposable subset. */
+/** The search scopes this tool supports, exposed to the model. */
 const SCOPE_VALUES = [
   "edges",
   "nodes",
@@ -109,12 +114,12 @@ const SCOPE_VALUES = [
   "auto",
 ] as const;
 
-/** Zep's supported rerankers (`Reranker`). */
+/** Zep's supported rerankers (`V4SearchRequestReranker`). */
 const RERANKER_VALUES = ["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"] as const;
 
-const DEFAULT_SEARCH_SCOPE: Zep.GraphSearchScope = "edges";
+const DEFAULT_SEARCH_SCOPE: ZepSearchScope = "edges";
 
-/** Zep's server-side ceiling for the `graph.search` result `limit`. */
+/** Zep's server-side ceiling for the search result `limit`. */
 const MAX_SEARCH_LIMIT = 50;
 
 /**
@@ -151,7 +156,7 @@ const queryField = z
   );
 
 /**
- * Zod field builders for each pin-or-exposable `graph.search` parameter,
+ * Zod field builders for each pin-or-exposable search parameter,
  * matching the pydantic-ai sibling's `_SEARCH_PARAM_SPECS` shape (description,
  * default) so the model-facing contract stays consistent across languages.
  */
@@ -233,31 +238,51 @@ function nameAndSummary(n: { name?: string; summary?: string }): string | undefi
 const isNonEmpty = (s: string | undefined): s is string => Boolean(s);
 
 /**
- * Extract human-readable strings from a Zep search result for the active scope.
+ * Run the Zep v4 search method for the active scope and extract
+ * human-readable strings from the first page of results.
  *
- * The switch is exhaustive over every {@link Zep.GraphSearchScope}; the `never`
- * default makes a new SDK scope a compile error rather than a silently-empty
+ * Zep v4 has one method for each scope instead of a single `graph.search` call
+ * with a `scope` field. Scope `auto` has no search method; it maps to
+ * `graph.getContext`, which assembles one context block across every context
+ * type. The switch is exhaustive over {@link ZepSearchScope}; the `never`
+ * default makes a new scope a compile error rather than a silently-empty
  * result.
  */
-function extractResults(
-  result: Zep.GraphSearchResults,
-  scope: Zep.GraphSearchScope,
-): string[] {
+async function searchByScope(
+  client: ZepClient,
+  graphUuid: string,
+  scope: ZepSearchScope,
+  request: { limit?: number; body: Zep.SearchRequest },
+): Promise<string[]> {
   switch (scope) {
     case "auto": {
-      const ctx = result.context?.trim();
-      return ctx ? [ctx] : [];
+      const response = await client.graph.getContext(graphUuid, {
+        query: request.body.query,
+        ...(request.body.filters !== undefined ? { filters: request.body.filters } : {}),
+      });
+      const context = response.context?.trim();
+      return context ? [context] : [];
     }
-    case "edges":
-      return (result.edges ?? []).map((e) => e.fact).filter(isNonEmpty);
-    case "nodes":
-      return (result.nodes ?? []).map(nameAndSummary).filter(isNonEmpty);
-    case "episodes":
-      return (result.episodes ?? []).map((e) => e.content).filter(isNonEmpty);
-    case "thread_summaries":
-      return (result.threadSummaries ?? []).map(nameAndSummary).filter(isNonEmpty);
-    case "observations":
-      return (result.observations ?? []).map(nameAndSummary).filter(isNonEmpty);
+    case "edges": {
+      const page = await client.graph.searchEdges(graphUuid, request);
+      return page.data.map((edge) => edge.fact).filter(isNonEmpty);
+    }
+    case "nodes": {
+      const page = await client.graph.searchNodes(graphUuid, request);
+      return page.data.map(nameAndSummary).filter(isNonEmpty);
+    }
+    case "episodes": {
+      const page = await client.graph.searchEpisodes(graphUuid, request);
+      return page.data.map((episode) => episode.content).filter(isNonEmpty);
+    }
+    case "thread_summaries": {
+      const page = await client.graph.searchThreadSummaries(graphUuid, request);
+      return page.data.map((summary) => summary.summary).filter(isNonEmpty);
+    }
+    case "observations": {
+      const page = await client.graph.searchObservations(graphUuid, request);
+      return page.data.map(nameAndSummary).filter(isNonEmpty);
+    }
     default: {
       const _exhaustive: never = scope;
       return _exhaustive;
@@ -279,13 +304,13 @@ function toParamSet(
  * Drop it into `generateText`/`streamText`'s `tools` record so the model can
  * decide *when* and *what* to recall during a tool loop.
  *
- * **Pin-or-expose.** Every `graph.search` parameter (`scope`, `reranker`,
- * `limit`, `mmrLambda`, `centerNodeUuid`) is exposed to the model in the
- * tool's Zod input schema by default. Use `pinnedParams` to fix a parameter
- * to a constant value and remove it from the schema (the model can no longer
- * choose it); use `hiddenParams` to remove a parameter from the schema
- * *without* pinning it — Zep's own server-side default applies, and the
- * parameter is simply omitted from the SDK call. `searchFilters` and
+ * **Pin-or-expose.** Every search parameter (`scope`, `reranker`, `limit`,
+ * `mmrLambda`, `centerNodeUuid`) is exposed to the model in the tool's Zod
+ * input schema by default. Use `pinnedParams` to fix a parameter to a constant
+ * value and remove it from the schema (the model can no longer choose it); use
+ * `hiddenParams` to remove a parameter from the schema *without* pinning it —
+ * Zep's own server-side default applies, and the parameter is simply omitted
+ * from the SDK call. `filters` and
  * `bfsOriginNodeUuids` are always constructor-only. The legacy `scope` /
  * `reranker` / `limit` constructor args pin (and thus hide) their parameter,
  * same as passing it via `pinnedParams` — back-compat for the pre-pin-or-expose
@@ -342,7 +367,7 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
       const trimmed = typeof input.query === "string" ? input.query.trim() : "";
       if (!trimmed) return { facts: [], found: false };
       if (!target) {
-        logger.warn("[zep-search] No userId or graphId bound; skipping search.");
+        logger.warn("[zep-search] No graphUuid bound; skipping search.");
         return { facts: [], found: false };
       }
 
@@ -361,7 +386,7 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
         }
       }
 
-      const effectiveScope = (resolved.scope as Zep.GraphSearchScope | undefined) ?? DEFAULT_SEARCH_SCOPE;
+      const effectiveScope = (resolved.scope as ZepSearchScope | undefined) ?? DEFAULT_SEARCH_SCOPE;
 
       // Clamp a model-provided limit to Zep's ceiling — clamp, never reject:
       // the tool must not 400 on limit. (A pinned limit was already clamped at
@@ -386,26 +411,28 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
 
       try {
         // None/undefined-omission guard: only send a key when a value is
-        // actually resolved — never an explicit null/undefined.
-        const requestFields: Record<string, unknown> = { ...target, query: trimmed };
+        // actually resolved — never an explicit null/undefined. `scope` selects
+        // the method and `limit` is the page size, so neither belongs in the
+        // search body.
+        const bodyFields: Record<string, unknown> = { query: trimmed };
         for (const [name, value] of Object.entries(resolved)) {
+          if (name === "scope" || name === "limit") continue;
           if (value !== undefined && value !== null) {
-            requestFields[name] = value;
+            bodyFields[name] = value;
           }
         }
-        if (!("scope" in requestFields)) {
-          requestFields.scope = effectiveScope;
-        }
-        if (options.searchFilters !== undefined) {
-          requestFields.searchFilters = options.searchFilters;
+        if (options.filters !== undefined) {
+          bodyFields.filters = options.filters;
         }
         if (options.bfsOriginNodeUuids !== undefined) {
-          requestFields.bfsOriginNodeUuids = options.bfsOriginNodeUuids;
+          bodyFields.bfsOriginNodeUuids = options.bfsOriginNodeUuids;
         }
-        const request = requestFields as unknown as Zep.GraphSearchQuery;
+        const request = {
+          ...(typeof resolved.limit === "number" ? { limit: resolved.limit } : {}),
+          body: bodyFields as unknown as Zep.SearchRequest,
+        };
 
-        const result = await client.graph.search(request);
-        const facts = extractResults(result, effectiveScope);
+        const facts = await searchByScope(client, target, effectiveScope, request);
         return { facts, found: facts.length > 0 };
       } catch (error) {
         logger.warn(`[zep-search] Zep graph search failed: ${errorMessage(error)}`);
@@ -418,9 +445,10 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
 /**
  * Build a model-callable AI SDK tool that **persists** information into Zep.
  *
- * Conversational content (a `role` is provided and a thread + user are bound) is
+ * Conversational content (a `role` is provided and a thread is bound) is
  * written with `thread.addMessages`, which records history and ingests into the
- * user graph. Everything else is ingested with `graph.add` (`type: "text"`).
+ * user graph. Everything else is ingested with `graph.episode.add`
+ * (`type: "text"`).
  *
  * Zep ingestion is **asynchronous**: a just-stored fact is not instantly
  * retrievable. The tool reports success once Zep accepts the data.
@@ -432,7 +460,7 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
   const { client, binding } = options;
   const logger = resolveLogger(options.logger);
   const target = resolveGraphTarget(binding);
-  const threadId = binding.threadId;
+  const threadUuid = binding.threadUuid;
 
   return tool({
     description:
@@ -449,21 +477,22 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
         return { stored: false, message: "Nothing to remember: content was empty." };
       }
       if (!target) {
-        logger.warn("[zep-remember] No userId or graphId bound; skipping persist.");
+        logger.warn("[zep-remember] No graphUuid bound; skipping persist.");
         return {
           stored: false,
-          message: "Memory is not configured (no user or graph bound).",
+          message: "Memory is not configured (no graph bound).",
         };
       }
 
       try {
-        // Conversational content with a bound thread + user → thread.addMessages.
+        // Conversational content with a bound thread → thread.addMessages.
         // Capped at Zep's 4,096-char message limit.
-        if (role && threadId && binding.userId) {
-          await client.thread.addMessages(threadId, {
+        const roleType = toRoleType(role, logger);
+        if (role && threadUuid) {
+          await client.thread.addMessages(threadUuid, {
             messages: [
               {
-                role: toRoleType(role, logger),
+                ...(roleType !== undefined ? { role: roleType } : {}),
                 content: truncateForZep(trimmed, MESSAGE_MAX_CHARS, "zep-remember", logger),
                 ...(options.defaultMessageName !== undefined
                   ? { name: options.defaultMessageName }
@@ -474,10 +503,10 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
           return { stored: true, message: "Saved to conversation memory." };
         }
 
-        // Everything else → graph.add as text. Capped at Zep's 10,000-char
-        // graph.add limit (never silently dropped — truncate with a warning).
-        await client.graph.add({
-          ...target,
+        // Everything else → graph.episode.add as text. Capped at Zep's
+        // 10,000-char episode limit (never silently dropped — truncate with a
+        // warning).
+        await client.graph.episode.add(target, {
           type: "text",
           data: truncateForZep(trimmed, GRAPH_MAX_CHARS, "zep-remember", logger),
         });
@@ -495,7 +524,7 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
 
 /**
  * Build a model-callable AI SDK tool that returns the **Context Block** for the
- * bound user via `thread.getUserContext`.
+ * bound user via `thread.getContext`.
  *
  * One call returns a prompt-ready string (user summary + relevant facts and
  * entities) assembled from the *whole* user graph, with the thread's most recent
@@ -507,7 +536,7 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
  * string; it never throws.
  */
 export function createZepContextTool(options: ZepContextToolOptions) {
-  const { client, threadId } = options;
+  const { client, threadUuid } = options;
   const logger = resolveLogger(options.logger);
 
   return tool({
@@ -517,14 +546,14 @@ export function createZepContextTool(options: ZepContextToolOptions) {
         "relevant facts from previous conversations — to ground your response.",
     inputSchema: contextInputSchema,
     execute: async (): Promise<{ context: string; found: boolean }> => {
-      if (!threadId) {
-        logger.warn("[zep-context] No threadId bound; skipping context retrieval.");
+      if (!threadUuid) {
+        logger.warn("[zep-context] No threadUuid bound; skipping context retrieval.");
         return { context: "", found: false };
       }
       try {
-        const response = await client.thread.getUserContext(
-          threadId,
-          options.templateId ? { templateId: options.templateId } : {},
+        const response = await client.thread.getContext(
+          threadUuid,
+          options.templateUuid ? { templateUuid: options.templateUuid } : {},
         );
         const context = response.context?.trim() ?? "";
         return { context, found: context.length > 0 };
@@ -539,14 +568,14 @@ export function createZepContextTool(options: ZepContextToolOptions) {
 /** Options for {@link createZepTools}. */
 export interface ZepToolsOptions extends Omit<BaseToolOptions, "client"> {
   /**
-   * Identity + thread binding. For a personalized conversational agent supply
-   * `userId` and `threadId`; for a shared knowledge base supply `graphId`.
-   * `zepContext` requires a `threadId`; without one it returns a graceful empty
-   * result.
+   * Graph + thread binding. For a personalized conversational agent supply the
+   * user's `graphUuid` and the `threadUuid`; for a shared knowledge base supply
+   * the standalone `graphUuid`. `zepContext` requires a `threadUuid`; without
+   * one it returns a graceful empty result.
    */
-  binding: ZepBinding & { threadId?: string };
+  binding: ZepBinding & { threadUuid?: string };
   /** Pin the search scope (default `"edges"`). */
-  searchScope?: Zep.GraphSearchScope;
+  searchScope?: ZepSearchScope;
   /** Pin the search result limit. */
   searchLimit?: number;
   /** Default speaker name recorded on conversational messages persisted by `zepRemember`. */
@@ -558,16 +587,16 @@ export interface ZepToolsOptions extends Omit<BaseToolOptions, "client"> {
  * `tools` record:
  *
  * ```ts
- * const tools = createZepTools(client, { userId, threadId });
+ * const tools = createZepTools(client, { binding: { graphUuid, threadUuid } });
  * await generateText({ model, prompt, tools, stopWhen: stepCountIs(5) });
  * ```
  */
 export type ZepTools = ToolSet & {
-  /** Search the bound graph for relevant facts (`graph.search`). */
+  /** Search the bound graph for relevant facts (`graph.search*`). */
   zepSearch: ReturnType<typeof createZepSearchTool>;
-  /** Persist a message or fact (`thread.addMessages` / `graph.add`). */
+  /** Persist a message or fact (`thread.addMessages` / `graph.episode.add`). */
   zepRemember: ReturnType<typeof createZepRememberTool>;
-  /** Retrieve the whole-user-graph Context Block (`thread.getUserContext`). */
+  /** Retrieve the whole-user-graph Context Block (`thread.getContext`). */
   zepContext: ReturnType<typeof createZepContextTool>;
 };
 
@@ -576,8 +605,8 @@ export type ZepTools = ToolSet & {
  *
  * Spread the result into a `generateText`/`streamText` `tools` record. Each tool
  * handles Zep failures gracefully and never throws — a memory outage cannot
- * crash the host call. `zepContext` is included only when a `threadId` is bound
- * (it has no meaning without one).
+ * crash the host call. `zepContext` is included only when a `threadUuid` is
+ * bound (it has no meaning without one).
  *
  * @param client - A shared, initialized Zep client.
  * @param options - The binding plus optional search/persist configuration.
@@ -604,7 +633,7 @@ export function createZepTools(client: ZepClient, options: ZepToolsOptions): Zep
     }),
     zepContext: createZepContextTool({
       client,
-      threadId: binding.threadId ?? "",
+      threadUuid: binding.threadUuid ?? "",
       logger,
     }),
   };

@@ -16,7 +16,7 @@
  *
  * This function never creates the Zep user or thread. Callers must
  * provision them out-of-band before the first turn — see
- * `ensureUser` / `ensureThread` in `src/provisioning.ts`. If a persist call
+ * `createUser` / `createThread` in `src/provisioning.ts`. If a persist call
  * fails with a Zep "not found" error (the user/thread was never
  * provisioned), a warning is logged naming the fix.
  *
@@ -87,10 +87,10 @@ export function formatContextInstruction(
 export interface ContextBuilderInput {
   /** The `ZepClient` in use by the integration. */
   zep: ZepClient;
-  /** The resolved Zep user ID for this turn. */
-  userId: string;
-  /** The resolved Zep thread ID for this turn. */
-  threadId: string;
+  /** The resolved Zep user UUID for this turn. */
+  userUuid: string;
+  /** The resolved Zep thread UUID for this turn. */
+  threadUuid: string;
   /** The user's message text for this turn. */
   userMessage: string;
   /** The ADK context for this turn (session state, invocation metadata). */
@@ -245,7 +245,7 @@ export async function persistAndInject(params: {
   // re-persisting the user message for an invocation we already persisted to
   // this thread; otherwise the same user turn is stored two or more times.
   const { invocationId } = context;
-  if (dedup.alreadyPersisted(identity.threadId, invocationId)) {
+  if (dedup.alreadyPersisted(identity.threadUuid, invocationId)) {
     return undefined;
   }
 
@@ -267,7 +267,7 @@ export async function persistAndInject(params: {
   } else {
     // Default: single round-trip.
     try {
-      const response = await zep.thread.addMessages(identity.threadId, {
+      const response = await zep.thread.addMessages(identity.threadUuid, {
         messages: [
           {
             role: "user",
@@ -281,11 +281,11 @@ export async function persistAndInject(params: {
       contextBlock = response.context;
       persistOk = true;
       logger.info(
-        `Persisted user message to Zep (thread=${identity.threadId}); ` +
+        `Persisted user message to Zep (thread=${identity.threadUuid}); ` +
           `context length: ${contextBlock?.length ?? 0}`,
       );
     } catch (error) {
-      logPersistFailure(logger, error, identity.threadId);
+      logPersistFailure(logger, error, identity.threadUuid);
       contextBlock = undefined;
       persistOk = false;
     }
@@ -294,7 +294,7 @@ export async function persistAndInject(params: {
   // Mark as persisted only AFTER the API call succeeded, so that a transient
   // failure does not permanently suppress this turn's user message.
   if (persistOk) {
-    dedup.markPersisted(identity.threadId, invocationId);
+    dedup.markPersisted(identity.threadUuid, invocationId);
   }
 
   if (!contextBlock) {
@@ -312,12 +312,12 @@ export async function persistAndInject(params: {
 function logPersistFailure(
   logger: Logger,
   error: unknown,
-  threadId: string,
+  threadUuid: string,
 ): void {
   if (isNotFoundError(error)) {
     logger.warn(
-      `Zep user/thread not found (thread=${threadId}) — ` +
-        "call ensureUser()/ensureThread() before the first turn",
+      `Zep user/thread not found (thread=${threadUuid}) — ` +
+        "call createUser()/createThread() before the first turn",
       error,
     );
   } else {
@@ -354,7 +354,7 @@ async function persistAndBuildContext(params: {
   }
 
   const persist = async (): Promise<boolean> => {
-    await zep.thread.addMessages(identity.threadId, {
+    await zep.thread.addMessages(identity.threadUuid, {
       messages: [
         {
           role: "user",
@@ -364,15 +364,17 @@ async function persistAndBuildContext(params: {
       ],
       ignoreRoles: options.ignoreRoles,
     });
-    logger.info(`Persisted user message to Zep (thread=${identity.threadId}).`);
+    logger.info(
+      `Persisted user message to Zep (thread=${identity.threadUuid}).`,
+    );
     return true;
   };
 
   const buildContext = async (): Promise<string | undefined> => {
     const input: ContextBuilderInput = {
       zep,
-      userId: identity.userId,
-      threadId: identity.threadId,
+      userUuid: identity.userUuid,
+      threadUuid: identity.threadUuid,
       userMessage: userText,
       context,
       llmRequest,
@@ -389,7 +391,7 @@ async function persistAndBuildContext(params: {
   if (persistResult.status === "fulfilled") {
     persistOk = persistResult.value;
   } else {
-    logPersistFailure(logger, persistResult.reason, identity.threadId);
+    logPersistFailure(logger, persistResult.reason, identity.threadUuid);
     persistOk = false;
   }
 

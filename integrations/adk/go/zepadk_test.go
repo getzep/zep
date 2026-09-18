@@ -5,9 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	zep "github.com/getzep/zep-go/v3"
-	zepcore "github.com/getzep/zep-go/v3/core"
-
 	"google.golang.org/adk/memory"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
@@ -92,67 +89,42 @@ func TestInjectSystemInstruction(t *testing.T) {
 	})
 }
 
-func TestIsAlreadyExists(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-		want bool
-	}{
-		{name: "nil", err: nil, want: false},
-		{name: "unrelated error", err: errors.New("boom"), want: false},
-		{name: "conflict error", err: &zep.ConflictError{APIError: zepcore.NewAPIError(409, nil, errors.New("exists"))}, want: true},
-		{name: "api error 409", err: zepcore.NewAPIError(409, nil, errors.New("conflict")), want: true},
-		{name: "api error 500", err: zepcore.NewAPIError(500, nil, errors.New("server")), want: false},
-		{name: "wrapped conflict", err: errors.Join(errors.New("ctx"), &zep.ConflictError{APIError: zepcore.NewAPIError(409, nil, nil)}), want: true},
-		// Zep returns HTTP 400 (not 409) for a duplicate user; the message
-		// carries the signal. Verified against the live API.
-		{name: "bad request user already exists", err: zepcore.NewAPIError(400, nil, errors.New(`{"message":"bad request: user already exists with user_id: u1"}`)), want: true},
-		{name: "bad request other", err: zepcore.NewAPIError(400, nil, errors.New(`{"message":"bad request: invalid email"}`)), want: false},
-		// Generic lowercase "conflict" substring fallback for an untyped error
-		// with no structured status code, matching Python's
-		// _is_already_exists_error and TypeScript's isAlreadyExistsError.
-		{name: "untyped error mentioning conflict", err: errors.New("conflict: resource already provisioned"), want: true},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := isAlreadyExists(tc.err); got != tc.want {
-				t.Fatalf("isAlreadyExists() = %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestEnsureUserAndThreadNilClient(t *testing.T) {
-	ctx := context.Background()
-	if created, err := EnsureUser(ctx, nil, "u1", "Jane", "Smith", "jane@example.com"); created || err != nil {
-		t.Fatalf("EnsureUser(nil client) = (%v, %v), want (false, nil)", created, err)
-	}
-	if created, err := EnsureThread(ctx, nil, "t1", "u1"); created || err != nil {
-		t.Fatalf("EnsureThread(nil client) = (%v, %v), want (false, nil)", created, err)
-	}
-}
-
-// --- EnsureUser/EnsureThread created signal --------------------------------
+// --- CreateUser / CreateThread ---------------------------------------------
 //
-// These exercise the seam-friendly cores (ensureUserWithAPI /
-// ensureThreadWithAPI) directly with a fakeZepAPI so the created / already-exists /
-// genuine-failure paths can be table-tested without a live Zep account.
+// These exercise the seam-friendly cores (createUserWithAPI /
+// createThreadWithAPI) with a fakeZepAPI, so the UUID results and the failure
+// paths can be tested without a live Zep account.
 
-func TestEnsureUserCreated(t *testing.T) {
+func TestCreateUserAndThreadNilClient(t *testing.T) {
+	ctx := context.Background()
+	userUUID, graphUUID, err := CreateUser(ctx, nil, "u1", "Jane", "Smith", "jane@example.com")
+	if userUUID != "" || graphUUID != "" || err != nil {
+		t.Fatalf("CreateUser(nil client) = (%q, %q, %v), want empty values and nil", userUUID, graphUUID, err)
+	}
+	threadUUID, err := CreateThread(ctx, nil, "t1", "user-uuid-1")
+	if threadUUID != "" || err != nil {
+		t.Fatalf("CreateThread(nil client) = (%q, %v), want empty value and nil", threadUUID, err)
+	}
+}
+
+func TestCreateUserReturnsUUIDs(t *testing.T) {
 	api := &fakeZepAPI{}
-	created, err := ensureUserWithAPI(context.Background(), api, "u1", "Jane", "Smith", "jane@example.com")
-	if err != nil || !created {
-		t.Fatalf("ensureUserWithAPI = (%v, %v), want (true, nil)", created, err)
+	userUUID, graphUUID, err := createUserWithAPI(context.Background(), api, "u1", "Jane", "Smith", "jane@example.com")
+	if err != nil {
+		t.Fatalf("createUserWithAPI err = %v", err)
 	}
-	if api.addUserCalls != 1 {
-		t.Fatalf("AddUser calls = %d, want 1", api.addUserCalls)
+	if userUUID != "user-uuid-1" || graphUUID != "graph-uuid-1" {
+		t.Fatalf("createUserWithAPI = (%q, %q), want the UUIDs from the response", userUUID, graphUUID)
 	}
-	req := api.lastAddUserReq
+	if api.createUserCalls != 1 {
+		t.Fatalf("CreateUser calls = %d, want 1", api.createUserCalls)
+	}
+	req := api.lastCreateUserReq
 	if req == nil {
-		t.Fatal("AddUser was not called with a request")
+		t.Fatal("CreateUser was not called with a request")
 	}
-	if req.UserID != "u1" {
-		t.Fatalf("UserID = %q, want u1", req.UserID)
+	if req.UserID == nil || *req.UserID != "u1" {
+		t.Fatalf("UserID = %v, want u1", req.UserID)
 	}
 	if req.FirstName == nil || *req.FirstName != "Jane" {
 		t.Fatalf("FirstName = %v, want Jane", req.FirstName)
@@ -165,65 +137,26 @@ func TestEnsureUserCreated(t *testing.T) {
 	}
 }
 
-func TestEnsureUserAlreadyExists(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-	}{
-		{name: "409 conflict", err: &zep.ConflictError{APIError: zepcore.NewAPIError(409, nil, errors.New("exists"))}},
-		{name: "400 user already exists", err: zepcore.NewAPIError(400, nil, errors.New(`{"message":"bad request: user already exists with user_id: u1"}`))},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			api := &fakeZepAPI{addUserErr: tc.err}
-			created, err := ensureUserWithAPI(context.Background(), api, "u1", "Jane", "Smith", "jane@example.com")
-			if err != nil || created {
-				t.Fatalf("ensureUserWithAPI = (%v, %v), want (false, nil)", created, err)
-			}
-		})
-	}
-}
-
-func TestEnsureUserGenuineFailure(t *testing.T) {
+func TestCreateUserPropagatesError(t *testing.T) {
 	wantErr := errors.New("boom")
-	api := &fakeZepAPI{addUserErr: wantErr}
-	created, err := ensureUserWithAPI(context.Background(), api, "u1", "Jane", "Smith", "jane@example.com")
-	if created {
-		t.Fatalf("created = %v, want false", created)
+	api := &fakeZepAPI{createUserErr: wantErr}
+	userUUID, graphUUID, err := createUserWithAPI(context.Background(), api, "u1", "Jane", "Smith", "")
+	if userUUID != "" || graphUUID != "" {
+		t.Fatalf("createUserWithAPI = (%q, %q), want empty values on error", userUUID, graphUUID)
 	}
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("err = %v, want %v", err, wantErr)
 	}
 }
 
-func TestEnsureUserNilClient(t *testing.T) {
-	created, err := EnsureUser(context.Background(), nil, "u1", "Jane", "Smith", "jane@example.com")
-	if created || err != nil {
-		t.Fatalf("EnsureUser(nil client) = (%v, %v), want (false, nil)", created, err)
-	}
-}
-
-func TestEnsureUserRacingConflict(t *testing.T) {
-	// Simulates two concurrent callers racing to create the same user: the
-	// first call creates it, the second observes an already-exists conflict.
+func TestCreateThreadReturnsUUID(t *testing.T) {
 	api := &fakeZepAPI{}
-	created1, err1 := ensureUserWithAPI(context.Background(), api, "u1", "Jane", "Smith", "jane@example.com")
-	if err1 != nil || !created1 {
-		t.Fatalf("first call = (%v, %v), want (true, nil)", created1, err1)
+	threadUUID, err := createThreadWithAPI(context.Background(), api, "t1", "user-uuid-1")
+	if err != nil {
+		t.Fatalf("createThreadWithAPI err = %v", err)
 	}
-
-	api.addUserErr = &zep.ConflictError{APIError: zepcore.NewAPIError(409, nil, errors.New("exists"))}
-	created2, err2 := ensureUserWithAPI(context.Background(), api, "u1", "Jane", "Smith", "jane@example.com")
-	if err2 != nil || created2 {
-		t.Fatalf("second (racing) call = (%v, %v), want (false, nil)", created2, err2)
-	}
-}
-
-func TestEnsureThreadCreated(t *testing.T) {
-	api := &fakeZepAPI{}
-	created, err := ensureThreadWithAPI(context.Background(), api, "t1", "u1")
-	if err != nil || !created {
-		t.Fatalf("ensureThreadWithAPI = (%v, %v), want (true, nil)", created, err)
+	if threadUUID != "thread-uuid-1" {
+		t.Fatalf("threadUUID = %q, want thread-uuid-1", threadUUID)
 	}
 	if api.createThreadCalls != 1 {
 		t.Fatalf("CreateThread calls = %d, want 1", api.createThreadCalls)
@@ -232,60 +165,33 @@ func TestEnsureThreadCreated(t *testing.T) {
 	if req == nil {
 		t.Fatal("CreateThread was not called with a request")
 	}
-	if req.ThreadID != "t1" || req.UserID != "u1" {
-		t.Fatalf("req = %+v, want ThreadID=t1 UserID=u1", req)
+	if req.ThreadID == nil || *req.ThreadID != "t1" {
+		t.Fatalf("ThreadID = %v, want t1", req.ThreadID)
+	}
+	if req.UserUUID != "user-uuid-1" {
+		t.Fatalf("UserUUID = %q, want user-uuid-1", req.UserUUID)
 	}
 }
 
-func TestEnsureThreadAlreadyExists(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-	}{
-		{name: "409 conflict", err: &zep.ConflictError{APIError: zepcore.NewAPIError(409, nil, errors.New("exists"))}},
-		{name: "400 already exists", err: zepcore.NewAPIError(400, nil, errors.New(`{"message":"bad request: thread already exists with thread_id: t1"}`))},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			api := &fakeZepAPI{createThreadErr: tc.err}
-			created, err := ensureThreadWithAPI(context.Background(), api, "t1", "u1")
-			if err != nil || created {
-				t.Fatalf("ensureThreadWithAPI = (%v, %v), want (false, nil)", created, err)
-			}
-		})
-	}
-}
-
-func TestEnsureThreadGenuineFailure(t *testing.T) {
+func TestCreateThreadPropagatesError(t *testing.T) {
 	wantErr := errors.New("boom")
 	api := &fakeZepAPI{createThreadErr: wantErr}
-	created, err := ensureThreadWithAPI(context.Background(), api, "t1", "u1")
-	if created {
-		t.Fatalf("created = %v, want false", created)
+	threadUUID, err := createThreadWithAPI(context.Background(), api, "t1", "user-uuid-1")
+	if threadUUID != "" {
+		t.Fatalf("threadUUID = %q, want empty on error", threadUUID)
 	}
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("err = %v, want %v", err, wantErr)
 	}
 }
 
-func TestEnsureThreadNilClient(t *testing.T) {
-	created, err := EnsureThread(context.Background(), nil, "t1", "u1")
-	if created || err != nil {
-		t.Fatalf("EnsureThread(nil client) = (%v, %v), want (false, nil)", created, err)
-	}
-}
-
-func TestEnsureThreadRacingConflict(t *testing.T) {
-	api := &fakeZepAPI{}
-	created1, err1 := ensureThreadWithAPI(context.Background(), api, "t1", "u1")
-	if err1 != nil || !created1 {
-		t.Fatalf("first call = (%v, %v), want (true, nil)", created1, err1)
-	}
-
-	api.createThreadErr = &zep.ConflictError{APIError: zepcore.NewAPIError(409, nil, errors.New("exists"))}
-	created2, err2 := ensureThreadWithAPI(context.Background(), api, "t1", "u1")
-	if err2 != nil || created2 {
-		t.Fatalf("second (racing) call = (%v, %v), want (false, nil)", created2, err2)
+// TestCreateThreadWithoutUserUUID asserts that the helper makes no call when
+// the application supplies no user UUID. Zep v4 attaches a thread to a user
+// by UUID.
+func TestCreateThreadWithoutUserUUID(t *testing.T) {
+	threadUUID, err := CreateThread(context.Background(), nil, "t1", "")
+	if threadUUID != "" || err != nil {
+		t.Fatalf("CreateThread without a user UUID = (%q, %v), want empty value and nil", threadUUID, err)
 	}
 }
 
@@ -394,14 +300,14 @@ func TestMemoryServiceSearchGuards(t *testing.T) {
 
 func TestMemoryServiceOptions(t *testing.T) {
 	svc, ok := NewMemoryService(nil,
-		WithSearchScope(zep.GraphSearchScopeNodes),
+		WithSearchScope(SearchScopeNodes),
 		WithSearchLimit(5),
 		WithMemoryLogger(nil),
 	).(*memoryService)
 	if !ok {
 		t.Fatal("NewMemoryService did not return *memoryService")
 	}
-	if svc.scope != zep.GraphSearchScopeNodes {
+	if svc.scope != SearchScopeNodes {
 		t.Fatalf("scope = %q, want nodes", svc.scope)
 	}
 	if svc.limit == nil || *svc.limit != 5 {
@@ -433,8 +339,8 @@ func TestNewGraphSearchTool(t *testing.T) {
 		tl, err := NewGraphSearchTool(nil,
 			WithToolName("recall"),
 			WithToolDescription("custom"),
-			WithGraphID("graph-1"),
-			WithToolSearchScope(zep.GraphSearchScopeAuto),
+			WithGraphUUID("graph-uuid-1"),
+			WithToolSearchScope(SearchScopeAuto),
 			WithToolSearchLimit(3),
 			WithToolLogger(nil),
 		)

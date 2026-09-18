@@ -16,8 +16,8 @@ describe("createZepCallbacks", () => {
     const { beforeModelCallback, afterModelCallback, dedup } =
       createZepCallbacks(client as unknown as ZepClient, {
         logger: silentLogger,
-        userId: "u",
-        threadId: "t",
+        userUuid: "u",
+        threadUuid: "t",
       });
 
     expect(typeof beforeModelCallback).toBe("function");
@@ -25,11 +25,11 @@ describe("createZepCallbacks", () => {
     expect(dedup).toBeDefined();
   });
 
-  it("never calls user.add or thread.create via either paired callback", async () => {
+  it("never calls user.create or thread.create via either paired callback", async () => {
     const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
     const { beforeModelCallback, afterModelCallback } = createZepCallbacks(
       client as unknown as ZepClient,
-      { logger: silentLogger, userId: "u", threadId: "t" },
+      { logger: silentLogger, userUuid: "u", threadUuid: "t" },
     );
 
     await beforeModelCallback({
@@ -51,8 +51,8 @@ describe("createZepCallbacks", () => {
     });
 
     // The turn path never provisions resources.
-    expect(mocks.userAdd).not.toHaveBeenCalled();
-    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.userCreate).not.toHaveBeenCalled();
+    expect(mocks.threadCreate).not.toHaveBeenCalled();
 
     // One user message + one assistant message persisted.
     expect(mocks.addMessages).toHaveBeenCalledTimes(2);
@@ -62,7 +62,7 @@ describe("createZepCallbacks", () => {
     const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
     const { beforeModelCallback } = createZepCallbacks(
       client as unknown as ZepClient,
-      { logger: silentLogger, userId: "u", threadId: "t" },
+      { logger: silentLogger, userUuid: "u", threadUuid: "t" },
     );
 
     const userContent = {

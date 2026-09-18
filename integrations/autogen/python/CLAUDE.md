@@ -24,14 +24,25 @@ does in the ADK / Microsoft Agent Framework / Pydantic AI ports -- there is no
 builder against. See the README's "Zep memory loop, precisely" section for the full wiring
 snippet.
 
+## Identifiers: Zep v4 UUIDs
+
+The package targets the Zep v4 API (`zep-cloud==4.0.0a5`). Zep v4 assigns the UUID of
+every user, thread, and graph, and a `user_id` or a `thread_id` is a name, not an address.
+The public API takes `user_uuid`, `thread_uuid`, and `graph_uuid`. The integration never
+calls a run-time `lookup`. The application resolves a v3 identifier one time and stores the
+UUID in its own database.
+
 ## Provisioning
 
-`zep_autogen.provisioning` exports `ensure_user`/`ensure_thread` (create-then-catch-conflict,
-identical contract to the ADK/ms-agent-framework/pydantic-ai ports -- copy that module
-verbatim when porting to a new framework, don't reinvent it). `ZepUserMemory` calls these
-lazily from both `add()` and `update_context()`, hot-path-wrapped (log + swallow, never
-raise). `ZepGraphMemory` has no lazy provisioning or `on_created` hook -- it is scoped to a
-standalone `graph_id`, not a Zep user.
+`zep_autogen.provisioning` exports `create_user`/`create_thread`. Both call the v4 create
+method and return the SDK model, so the caller reads `uuid_` from the response and stores
+it. A creation call does not pass a caller-made `user_id` or `thread_id`. `create_user`
+accepts an `on_created` hook (`UserSetupHook`) that receives the client and the new user
+UUID.
+
+`ZepUserMemory` creates a thread from `add()` when the constructor did not get a
+`thread_uuid`, hot-path-wrapped (log + swallow, never raise). It does not create the user.
+`ZepGraphMemory` is scoped to a standalone `graph_uuid`, not to a Zep user.
 
 ## Pin-or-expose tool schema: AutoGen-specific constraint
 
@@ -42,7 +53,7 @@ signature via `args_base_model_from_signature`/pydantic `model_json_schema()`. S
 the wrapped function's `inspect.Signature`*: parameters that should be model-visible become
 real `inspect.Parameter`s (assigned to `func.__signature__`/`func.__annotations__`), while
 pinned/hidden parameters are simply never parameters of the function -- they're merged in as
-constants (or omitted) inside the function body before calling `graph.search`. If you touch
+constants (or omitted) inside the function body before calling the v4 search method. If you touch
 this code, re-verify `FunctionTool`'s introspection behavior against the installed
 `autogen_core` version; don't assume the hand-crafted-JSON-schema pattern from
 `zep_ms_agent_framework.search`/`zep_pydantic_ai.search` applies here.
@@ -55,17 +66,9 @@ For conversational memory that persists across sessions:
 ```python
 from zep_autogen import ZepUserMemory
 
-memory = ZepUserMemory(
-    client=zep_client,
-    thread_id="conversation_123",
-    user_id="user_456"
-)
+memory = ZepUserMemory(client=zep_client, user_uuid=user_uuid, thread_uuid=thread_uuid)
 
-agent = AssistantAgent(
-    name="Assistant",
-    model_client=model_client,
-    memory=[memory]
-)
+agent = AssistantAgent(name="Assistant", model_client=model_client, memory=[memory])
 ```
 
 ### Graph Memory
@@ -74,16 +77,9 @@ For knowledge storage and retrieval:
 ```python
 from zep_autogen import ZepGraphMemory
 
-memory = ZepGraphMemory(
-    client=zep_client,
-    graph_id="graph_123"
-)
+memory = ZepGraphMemory(client=zep_client, graph_uuid=graph_uuid)
 
-agent = AssistantAgent(
-    name="Assistant", 
-    model_client=model_client,
-    memory=[memory]
-)
+agent = AssistantAgent(name="Assistant", model_client=model_client, memory=[memory])
 ```
 
 ## Tool Integration
@@ -96,13 +92,13 @@ The integration provides pre-built AutoGen tools that agents can use autonomousl
 from zep_autogen import create_search_graph_tool, create_add_graph_data_tool
 
 # Create tools bound to specific resources
-search_tool = create_search_graph_tool(zep_client, graph_id="my_graph")
-add_tool = create_add_graph_data_tool(zep_client, user_id="user_123")
+search_tool = create_search_graph_tool(zep_client, graph_uuid=graph_uuid)
+add_tool = create_add_graph_data_tool(zep_client, user_uuid=user_uuid)
 
 # Create agent with tools and reflection
 agent = AssistantAgent(
     name="KnowledgeAssistant",
-    model_client=OpenAIChatCompletionClient(model="gpt-4o-mini"), 
+    model_client=OpenAIChatCompletionClient(model="gpt-4o-mini"),
     tools=[search_tool, add_tool],
     system_message="You can search and add information to knowledge bases.",
     reflect_on_tool_use=True,  # Critical for natural language responses
@@ -111,7 +107,7 @@ agent = AssistantAgent(
 
 ### Key AutoGen Tool Patterns
 
-1. **Tool Binding**: Tools are bound to specific resources (graph_id or user_id) at creation time
+1. **Tool Binding**: Tools are bound to specific resources (graph_uuid or user_uuid) at creation time
 2. **Reflection Required**: Always use `reflect_on_tool_use=True` for natural language responses
 3. **Console Streaming**: Use `Console(agent.run_stream(task))` for proper tool flow visualization
 
@@ -133,7 +129,8 @@ zep_autogen/
 │   ├── memory.py            # ZepUserMemory implementation (ContextInput/ContextBuilder/DEFAULT_CONTEXT_TEMPLATE live here)
 │   ├── graph_memory.py      # ZepGraphMemory implementation
 │   ├── tools.py             # AutoGen tool functions (pin-or-expose create_search_graph_tool)
-│   ├── provisioning.py      # ensure_user / ensure_thread / UserSetupHook (copy verbatim from sibling ports)
+│   ├── provisioning.py      # create_user / create_thread / UserSetupHook
+│   ├── search.py            # v4 scope-specific search, pager collection, result formatting
 │   ├── limits.py            # truncate_message_content (4096/4000) / truncate_graph_data (9900)
 │   └── exceptions.py        # Custom exceptions
 ├── examples/
@@ -143,7 +140,7 @@ zep_autogen/
 │   └── autogen_tools_full.py    # Search + add tools
 └── tests/
     ├── test_basic.py             # Basic functionality tests
-    ├── test_provisioning.py      # ensure_user/ensure_thread + lazy provisioning in add()
+    ├── test_provisioning.py      # create_user/create_thread + thread creation in add()
     ├── test_context_builder.py   # context_builder + ContextInput
     ├── test_context_template.py  # context_template override + str.replace contract
     ├── test_search.py            # pin-or-expose create_search_graph_tool
@@ -173,9 +170,14 @@ the exception -- per the pin-or-expose section above, its signature is built dyn
 so exposed params become real, model-visible parameters:
 
 ```python
-def create_search_graph_tool(client: AsyncZep, graph_id: str | None = None, user_id: str | None = None, *,
-                              pinned_params: dict[str, Any] | None = None,
-                              hidden_params: set[str] | None = None) -> FunctionTool:
+def create_search_graph_tool(
+    client: AsyncZep,
+    graph_uuid: str | None = None,
+    user_uuid: str | None = None,
+    *,
+    pinned_params: dict[str, Any] | None = None,
+    hidden_params: set[str] | None = None,
+) -> FunctionTool:
     # Validate parameters, resolve exposed = all params minus pinned/hidden
     signature, annotations = _build_search_signature(exposed)
 
@@ -193,7 +195,8 @@ def create_search_graph_tool(client: AsyncZep, graph_id: str | None = None, user
                 value = call_args[param_name]
                 if value is not None:  # never forward explicit None on the wire
                     search_kwargs[param_name] = value
-        return _format_results(await client.graph.search(**search_kwargs), ...)
+        # search_scope() maps the scope to the v4 method, such as graph.search_edges.
+        return _format_results(await search_scope(client, **search_kwargs), ...)
 
     zep_search.__signature__ = signature  # what FunctionTool introspects
     return FunctionTool(zep_search, description="Search Zep memory")
@@ -212,15 +215,15 @@ against the sibling ports' `search_kwargs` construction in
 
 ```python
 # Create user-specific tools
-user_search = create_search_graph_tool(zep_client, user_id="alice")
-user_add = create_add_graph_data_tool(zep_client, user_id="alice")
+user_search = create_search_graph_tool(zep_client, user_uuid=user_uuid)
+user_add = create_add_graph_data_tool(zep_client, user_uuid=user_uuid)
 
 # Agent can manage personal information
 agent = AssistantAgent(
     name="PersonalAssistant",
     model_client=model_client,
     tools=[user_search, user_add],
-    reflect_on_tool_use=True
+    reflect_on_tool_use=True,
 )
 
 # Natural conversations
@@ -231,15 +234,15 @@ await Console(agent.run_stream(task="What do you know about my professional back
 ### 2. Knowledge Base Management
 
 ```python
-# Create graph-specific tools  
-kb_search = create_search_graph_tool(zep_client, graph_id="company_kb")
-kb_add = create_add_graph_data_tool(zep_client, graph_id="company_kb")
+# Create graph-specific tools
+kb_search = create_search_graph_tool(zep_client, graph_uuid=kb_graph_uuid)
+kb_add = create_add_graph_data_tool(zep_client, graph_uuid=kb_graph_uuid)
 
 agent = AssistantAgent(
     name="KnowledgeManager",
     model_client=model_client,
     tools=[kb_search, kb_add],
-    reflect_on_tool_use=True
+    reflect_on_tool_use=True,
 )
 
 # Agent can maintain shared knowledge
@@ -258,14 +261,20 @@ export ZEP_API_KEY="your-zep-cloud-api-key"
 Define structured entities for better knowledge organization:
 
 ```python
-class ProgrammingLanguage(EntityModel):
-    paradigm: EntityText = Field(description="programming paradigm")
-    use_case: EntityText = Field(description="primary use cases")
+from zep_cloud import EntityProperty, EntityType
 
-await zep_client.graph.set_ontology(
-    entities={"ProgrammingLanguage": ProgrammingLanguage},
-    edges={}
-)
+entity_types = [
+    EntityType(
+        name="ProgrammingLanguage",
+        description="A programming language entity.",
+        properties=[
+            EntityProperty(name="paradigm", type="text", description="programming paradigm"),
+        ],
+    ),
+]
+
+# v4 applies an ontology per graph UUID.
+await zep_client.graph.set_ontology(graph_uuid, entity_types=entity_types)
 ```
 
 ## Development Commands
@@ -316,7 +325,7 @@ make ci               # Strict checks without auto-fixing
    - Solution: Ensure `reflect_on_tool_use=True` is set
 
 2. **Tool creation errors**
-   - Solution: Verify either `graph_id` or `user_id` is provided (not both)
+   - Solution: Verify either `graph_uuid` or `user_uuid` is provided (not both)
 
 3. **Memory not persisting**
    - Solution: Check Zep client credentials and network connectivity

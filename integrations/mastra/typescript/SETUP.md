@@ -34,7 +34,7 @@ export OPENAI_API_KEY="your-openai-api-key"
 ```
 
 Only `ZEP_API_KEY` is required by the integration itself; `OPENAI_API_KEY` is
-needed by the example agent's model (`openai/gpt-4o-mini`). Swap in any model
+needed by the example agent's model (`openai/gpt-5-mini`). Swap in any model
 Mastra supports if you prefer a different provider.
 
 ## 5. Run the example
@@ -48,8 +48,10 @@ npm run example
 
 The example ([`examples/basic-agent.ts`](./examples/basic-agent.ts)):
 
-1. Provisions a Zep user and thread.
-2. Builds the Zep tool set and attaches it to a Mastra `Agent`.
+1. Creates a Zep user and a Zep thread, and reads the server-generated UUIDs
+   from the responses.
+2. Builds the Zep processors from those UUIDs and attaches them to a Mastra
+   `Agent`.
 3. Seeds a couple of facts, waits ~15s for Zep's asynchronous graph ingestion,
    then asks the agent to recall them.
 
@@ -59,7 +61,14 @@ The example ([`examples/basic-agent.ts`](./examples/basic-agent.ts)):
 > OpenAI/account constraint, not a Zep issue. Use a non-ZDR key or a different
 > model provider to run the example end-to-end.
 
-## 6. Run the tests
+## 6. Identifiers in Zep v4
+
+Zep v4 addresses every user, thread, and graph by a server-generated UUID. A
+`userId` or a `threadId` is a name, not an address. Store the `userUuid`,
+`graphUuid`, and `threadUuid` that the create calls return in your own database,
+and give them to the integration on every later turn.
+
+## 7. Run the tests
 
 ```bash
 npm test

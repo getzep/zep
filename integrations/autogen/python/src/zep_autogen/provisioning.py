@@ -1,19 +1,13 @@
-"""
-Explicit, out-of-band Zep resource provisioning.
+"""Explicit, out-of-band Zep resource creation.
 
-``ZepUserMemory``'s lazy call into these helpers (see
-``ZepUserMemory._ensure_resources``) is hot-path-wrapped and will never raise
-into ``add()``/``update_context()``. Callers who want provisioning failures
-(and ``on_created`` hook failures) to surface loudly -- e.g. during
-account/session onboarding, before the first turn -- should call
-:func:`ensure_user` and :func:`ensure_thread` directly, out-of-band.
+Zep v4 assigns the UUID of every user, thread, and graph. A create call does
+not accept an address from the caller, so the v3 create-then-catch-conflict
+pattern no longer applies. Each helper creates the resource and returns the
+created object. The application stores ``uuid_`` in its own database and
+gives the UUID to :class:`zep_autogen.ZepUserMemory` and to the tools.
 
-Both helpers are **create-then-catch-conflict**: they call the Zep SDK's
-create method directly and treat an "already exists" error as success, rather
-than checking for existence first (which is racy and costs an extra
-round-trip). Genuine failures (auth, network, 5xx) always raise -- out-of-band
-provisioning is meant to fail loudly so misconfiguration is caught before the
-agent ever runs, not swallowed into a silent no-op.
+A genuine failure (auth, network, 5xx) propagates to the caller. Creation runs
+during onboarding, before the first turn, so a misconfiguration fails loudly.
 """
 
 from __future__ import annotations
@@ -23,144 +17,89 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from zep_cloud.client import AsyncZep
+from zep_cloud.types import Thread, User
 
 logger = logging.getLogger(__name__)
 
-#: Type alias for a user-setup hook that runs once after a Zep user is created.
+#: Type alias for a user-setup hook that runs once after Zep creates a user.
 #:
-#: Receives the Zep client and the newly created user ID.  Use this to configure
-#: per-user ontology, custom instructions, or user summary instructions.
+#: The hook receives the Zep client and the UUID of the new user. Use the hook
+#: to configure the ontology of the user graph, custom instructions, or user
+#: summary instructions.
 UserSetupHook = Callable[[AsyncZep, str], Awaitable[None]]
 
 
-def _is_already_exists_error(exc: Exception) -> bool:
-    """Detect whether ``exc`` represents a "resource already exists" conflict.
-
-    Handles both typed and message-based shapes returned by the Zep SDK:
-
-    * A 409 status code (``zep_cloud.errors.ConflictError``, or any
-      ``ApiError``-like object exposing ``status_code == 409``).
-    * A 400 ``BadRequestError`` (or similar) whose message mentions
-      "already exists".
-    * An **untyped** exception (no ``status_code``) whose string
-      representation mentions "already exists" or "conflict" (fallback for
-      untyped/legacy error shapes).
-
-    A plain 404 (not found) or any other genuine failure is **not** treated
-    as an already-exists conflict.  In particular, a typed error with any
-    other status code (e.g. a 500 whose message happens to mention
-    "conflict") is a genuine failure and must propagate.
-    """
-    status_code: Any = getattr(exc, "status_code", None)
-    if status_code == 409:
-        return True
-
-    text = str(exc).lower()
-    if status_code == 400 and "already exists" in text:
-        return True
-
-    # Fallback heuristic for untyped/legacy error shapes only: an error that
-    # carries a known non-conflict status code is a genuine failure, no
-    # matter what its message says.
-    if status_code is not None:
-        return False
-    return "already exists" in text or "conflict" in text
-
-
-async def ensure_user(
+async def create_user(
     client: AsyncZep,
     *,
-    user_id: str,
     first_name: str | None = None,
     last_name: str | None = None,
     email: str | None = None,
     on_created: UserSetupHook | None = None,
-) -> bool:
-    """Idempotently ensure the Zep user exists.
+) -> User:
+    """Create a Zep user and return it.
 
-    Calls ``client.user.add(...)`` directly (create-then-catch-conflict).  If
-    the call fails with an "already exists" conflict, the user is assumed to
-    already be provisioned and the call returns ``False`` without raising.
-    Any other failure (auth, network, 5xx) propagates to the caller -- this
-    function never swallows genuine errors.
+    Zep assigns ``user.uuid_`` and the UUID of the user graph
+    (``user.graph_uuid``). Store both values in your own database. Give
+    ``user.uuid_`` to :class:`zep_autogen.ZepUserMemory`.
 
-    When the user is newly created and ``on_created`` is provided, the hook is
-    awaited (with ``(client, user_id)``) **before** this function returns.  If
-    the hook raises, the exception propagates to the caller even though the
-    user was successfully created.  A later ``ensure_user`` call will **not**
-    re-run the hook -- the user now exists, so it takes the already-exists
-    path.  To recover from a hook failure, re-run the hook logic directly
-    against the user (make it idempotent, i.e. safe to run against a user
-    whose setup only partially completed).
+    When ``on_created`` is provided, the hook is awaited before this function
+    returns. An exception from the hook propagates to the caller, even though
+    Zep created the user. Make the hook idempotent so that you can run the
+    setup logic again against a user whose setup only partially completed.
 
     Args:
         client: An initialised ``AsyncZep`` client.
-        user_id: The Zep user ID to create.
-        first_name: Optional first name, passed through to ``user.add``.
-        last_name: Optional last name, passed through to ``user.add``.
-        email: Optional email, passed through to ``user.add``.
-        on_created: Optional async hook run exactly once, only when the user
-            is newly created.
+        first_name: Optional first name of the user.
+        last_name: Optional last name of the user.
+        email: Optional email address of the user.
+        on_created: Optional async hook that runs once after Zep creates the
+            user.
 
     Returns:
-        ``True`` if the user was newly created, ``False`` if it already
-        existed.
+        The created ``User``, with ``uuid_`` and ``graph_uuid`` set by Zep.
 
     Raises:
-        Exception: Any genuine failure from the Zep SDK (auth, network, 5xx),
-            or any exception raised by ``on_created``.
+        Exception: Any failure from the Zep SDK, or any exception from
+            ``on_created``.
     """
-    try:
-        await client.user.add(
-            user_id=user_id,
-            first_name=first_name,
-            last_name=last_name,
-            email=email,
-        )
-    except Exception as exc:
-        if _is_already_exists_error(exc):
-            logger.debug("Zep user %s already exists", user_id)
-            return False
-        raise
+    create_args: dict[str, Any] = {}
+    if first_name is not None:
+        create_args["first_name"] = first_name
+    if last_name is not None:
+        create_args["last_name"] = last_name
+    if email is not None:
+        create_args["email"] = email
 
-    logger.info("Created Zep user: %s", user_id)
+    user: User = await client.user.create(**create_args)
+    logger.info("Created Zep user: %s", user.uuid_)
 
     if on_created is not None:
-        await on_created(client, user_id)
-        logger.info("on_created hook completed for user %s", user_id)
+        if not user.uuid_:
+            raise ValueError("Zep did not return a user UUID")
+        await on_created(client, user.uuid_)
+        logger.info("on_created hook completed for user %s", user.uuid_)
 
-    return True
+    return user
 
 
-async def ensure_thread(client: AsyncZep, *, thread_id: str, user_id: str) -> bool:
-    """Idempotently ensure the Zep thread exists.
+async def create_thread(client: AsyncZep, *, user_uuid: str) -> Thread:
+    """Create a Zep thread for a user and return it.
 
-    Calls ``client.thread.create(...)`` directly (create-then-catch-conflict).
-    If the call fails with an "already exists" conflict, the thread is
-    assumed to already be provisioned and the call returns ``False`` without
-    raising.  Any other failure (auth, network, 5xx) propagates to the
-    caller.
+    Zep assigns ``thread.uuid_``. Store the value in your own database and
+    give it to :class:`zep_autogen.ZepUserMemory`.
 
     Args:
         client: An initialised ``AsyncZep`` client.
-        thread_id: The Zep thread ID to create.
-        user_id: The Zep user ID that owns the thread.  The user must already
-            exist (see :func:`ensure_user`).
+        user_uuid: The UUID of the user that owns the thread. The user must
+            already exist (see :func:`create_user`).
 
     Returns:
-        ``True`` if the thread was newly created, ``False`` if it already
-        existed.
+        The created ``Thread``, with ``uuid_`` set by Zep.
 
     Raises:
-        Exception: Any genuine failure from the Zep SDK (auth, network, 5xx).
+        Exception: Any failure from the Zep SDK.
     """
-    try:
-        await client.thread.create(thread_id=thread_id, user_id=user_id)
-    except Exception as exc:
-        if _is_already_exists_error(exc):
-            logger.debug("Zep thread %s already exists", thread_id)
-            return False
-        raise
-
-    logger.info("Created Zep thread: %s", thread_id)
-    return True
+    thread: Thread = await client.thread.create(user_uuid=user_uuid)
+    logger.info("Created Zep thread: %s", thread.uuid_)
+    return thread

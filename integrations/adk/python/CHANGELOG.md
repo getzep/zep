@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- **Breaking: migrated to the Zep v4 SDK (`zep-cloud==4.0.0a5`).** The integration targets v4 only. There is no v3 compatibility layer.
+- **Breaking: the public API takes UUIDs.** Zep v4 addresses every user, thread, and graph by a server-generated UUID. A `user_id` or a `thread_id` is a name, not an address. The session-state keys are now `zep_user_uuid`, `zep_thread_uuid`, and `zep_graph_uuid` (previously `zep_user_id` and `zep_thread_id`), and `ContextInput` carries `user_uuid` and `thread_uuid` (previously `user_id` and `thread_id`). The integration never calls `lookup` at run time: the application resolves a v3 identifier one time and stores the UUID.
+- **Breaking: `ensure_user` / `ensure_thread` are replaced by `create_user` / `create_thread`.** The v3 helpers were idempotent and returned whether the resource was new, which has no meaning when the server generates a new UUID for every create call. The new helpers return the `User` and `Thread` objects, so a caller reads `user.uuid_`, `user.graph_uuid`, and `thread.uuid_`. The `on_created` hook and the `UserSetupHook` type are removed; run one-time user setup after `create_user` returns.
+- `ZepGraphSearchTool` and `ZepMemoryService` now call the v4 split search methods (`graph.search_edges`, `search_nodes`, `search_episodes`, `search_observations`, `search_thread_summaries`) and `graph.get_context` for the `auto` scope. The supported scopes are unchanged. The v4 search methods return a pager; the tools read the items of the first page.
+- `ZepContextTool` and the after-model callback now call `thread.add_messages(thread_uuid, ...)` with `zep_cloud.AddMessage` objects, and `thread.get_context` replaces `thread.get_user_context`.
+- `ZepMemoryService` takes an optional `graph_uuid` and otherwise resolves the graph UUID of the user through `user.get`.
+
 ## 0.3.1 (2026-07-29)
 
 ### Added

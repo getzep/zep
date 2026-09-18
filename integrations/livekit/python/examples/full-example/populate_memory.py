@@ -1,16 +1,17 @@
 import json
 import os
-import uuid
 
 from dotenv import load_dotenv
 from zep_cloud.client import Zep
-from zep_cloud.types import Message
+from zep_cloud.types import AddMessage
 
 # Load environment variables
 load_dotenv()
 
-# Constants - assume this user already exists in Zep
-USER_ID = "John-1234"
+# Constants. Zep v4 addresses a user by a UUID. Put the UUID of the user that
+# the voice agent uses here. The agent prints the UUID when it creates the
+# user, and a production application stores it in its own database.
+USER_UUID = os.getenv("ZEP_USER_UUID", "")
 USER_FULL_NAME = "John Doe"
 
 
@@ -30,33 +31,35 @@ def populate_user_memory():
     user_data = load_json_file("user_data.json")
     conversations = load_json_file("conversations.json")
 
-    # Get user, if it doesn't exist, throw error
+    # Get the user. The call fails if the UUID is unknown.
     try:
-        zep_client.user.get(user_id=USER_ID)
+        user = zep_client.user.get(USER_UUID)
     except Exception:
-        # Throw error
         print(
-            f"❌ User with ID {USER_ID} does not exist. Please create the user before populating memory."
+            f"❌ User with UUID {USER_UUID} does not exist. "
+            "Create the user before you populate memory."
         )
         return
 
-    # Add user JSON data to graph in pieces
+    graph_uuid = user.graph_uuid or ""
+
+    # Add user JSON data to the graph of the user, in pieces
     for key, value in user_data.items():
-        zep_client.graph.add(user_id=USER_ID, data=json.dumps({key: value}), type="json")
+        zep_client.graph.episode.add(graph_uuid, data=json.dumps({key: value}), type="json")
 
     # Process each conversation thread
     for conversation in conversations:
-        thread_id = f"conversation-{uuid.uuid4().hex[:8]}"
         messages_data = conversation["messages"]
 
         try:
-            # Create thread
-            zep_client.thread.create(thread_id=thread_id, user_id=USER_ID)
+            # Create the thread and keep its UUID
+            thread = zep_client.thread.create(user_uuid=USER_UUID)
+            thread_uuid = thread.uuid_ or ""
 
-            # Convert message data to Zep Message objects
+            # Convert message data to Zep message objects
             zep_messages = []
             for msg_data in messages_data:
-                zep_message = Message(
+                zep_message = AddMessage(
                     role=msg_data["role"],
                     content=msg_data["content"],
                     name=USER_FULL_NAME if msg_data["role"] == "user" else "Assistant",
@@ -64,10 +67,10 @@ def populate_user_memory():
                 zep_messages.append(zep_message)
 
             # Add messages to thread
-            zep_client.thread.add_messages(thread_id=thread_id, messages=zep_messages)
+            zep_client.thread.add_messages(thread_uuid, messages=zep_messages)
 
         except Exception as e:
-            print(f"❌ Error processing thread {thread_id}: {e}")
+            print(f"❌ Error processing a thread: {e}")
             continue
 
 
@@ -75,8 +78,13 @@ if __name__ == "__main__":
     # Validate environment variables
     if not os.getenv("ZEP_API_KEY"):
         print("❌ Missing ZEP_API_KEY environment variable")
-        print("Please ensure your .env file contains:")
+        print("Make sure that your .env file contains:")
         print("  ZEP_API_KEY=your_zep_api_key_here")
+        exit(1)
+
+    if not USER_UUID:
+        print("❌ Missing ZEP_USER_UUID environment variable")
+        print("Set it to the UUID of the Zep user that the voice agent uses.")
         exit(1)
 
     populate_user_memory()

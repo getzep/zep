@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Breaking: the package targets the Zep v4 SDK (`@getzep/zep-cloud@4.0.0-alpha.5`).** Zep v4 addresses a user, a thread, and a graph by a server-generated UUID.
+- **Breaking: the public API takes UUIDs.** The `userId` and `threadId` options on the callbacks and the tools are replaced by `userUuid` and `threadUuid`. The session-state keys `zep_user_id` and `zep_thread_id` are replaced by `zep_user_uuid` and `zep_thread_uuid`.
+- **Breaking: `ensureUser` / `ensureThread` are replaced by `createUser` / `createThread`.** `createUser` returns `{ userUuid, graphUuid }` and `createThread` returns `{ threadUuid, graphUuid }`. Store the UUIDs in your own database and pass them back on each turn. The v4 create methods have no conflict semantics, so neither helper reports whether the resource already existed. The `onCreated` hook of `createUser` now receives the UUID of the new user.
+- **Breaking: `ZepGraphSearchTool` takes `graphUuid` instead of `graphId`.** When `graphUuid` is omitted, the tool resolves the graph of the identity's `userUuid` one time with `zep.user.get` and caches the result.
+- **Breaking: graph search uses the v4 methods.** Each scope calls its own method: `graph.searchEdges`, `graph.searchNodes`, `graph.searchEpisodes`, `graph.searchObservations`, and `graph.searchThreadSummaries`. The `auto` scope calls `graph.getContext`. `searchFilters` takes the camelCase v4 `Zep.SearchFilters` shape.
+- `ZepGraphSearchTool` and `ZepMemoryService` read one page of results from the v4 search methods, which replaces the v3 page number and cursor behavior.
+
+### Added
+
+- `graphUuid` option on `ZepMemoryService`, which sets a fixed graph for every `searchMemory` call.
+- `lint` script (`eslint .`) and an ESLint 9 configuration.
+
 ## 0.2.0 (2026-07-06)
 
 ### Added

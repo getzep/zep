@@ -2,7 +2,8 @@
  * Basic Mastra agent with automatic Zep long-term memory.
  *
  * Demonstrates the full loop:
- *   1. Provision a Zep user + thread (`ensureZepUserAndThread`).
+ *   1. Create a Zep user + thread and read their server-generated UUIDs
+ *      (`createZepUserAndThread`).
  *   2. Build the Zep input/output processor pair (`createZepProcessors`).
  *   3. Attach the processors to a Mastra `Agent` via `inputProcessors` /
  *      `outputProcessors` — no tool-calling round-trip needed.
@@ -10,6 +11,10 @@
  *      processor), wait for asynchronous ingestion, then ask a question that
  *      requires recalling them (answered using context the input processor
  *      injects automatically).
+ *
+ * Known defect (ZEPAI-3605): a user that is created without a `userId` cannot
+ * receive a thread message until the fix is deployed. The output processor
+ * reports the failure and the agent continues.
  *
  * Prerequisites:
  *   npm install
@@ -20,19 +25,15 @@
  *   npm run example
  */
 
-import { randomUUID } from "node:crypto";
 import { ZepClient } from "@getzep/zep-cloud";
 import { Agent } from "@mastra/core/agent";
-import { createZepProcessors, ensureZepUserAndThread } from "../src/index.js";
+import { createZepProcessors, createZepUserAndThread } from "../src/index.js";
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 if (!ZEP_API_KEY) throw new Error("ZEP_API_KEY is not set.");
 if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set.");
-
-const userId = `zep-mastra-example-${randomUUID().slice(0, 8)}`;
-const threadId = `thread-${randomUUID().slice(0, 8)}`;
 
 async function ask(agent: Agent, prompt: string): Promise<string> {
   console.log(`\nUser:  ${prompt}`);
@@ -46,25 +47,26 @@ async function main(): Promise<void> {
 
   console.log("=".repeat(60));
   console.log("Mastra + Zep Automatic Memory Example");
-  console.log(`  User ID:   ${userId}`);
-  console.log(`  Thread ID: ${threadId}`);
   console.log("=".repeat(60));
 
-  // 1. Provision identity before the first turn.
-  await ensureZepUserAndThread({
+  // 1. Create the user and the thread before the first turn. Zep generates
+  //    the UUIDs; a real application stores them in its own database.
+  const identity = await createZepUserAndThread({
     client,
-    userId,
-    threadId,
     firstName: "Alice",
     lastName: "Smith",
     email: "alice@example.com",
   });
+  if (!identity) throw new Error("Could not create the Zep user and thread.");
+  console.log(`  User UUID:   ${identity.userUuid}`);
+  console.log(`  Graph UUID:  ${identity.graphUuid}`);
+  console.log(`  Thread UUID: ${identity.threadUuid}`);
 
-  // 2. Build the Zep input/output processor pair bound to this user + thread.
+  // 2. Build the Zep input/output processor pair bound to these UUIDs.
   const { inputProcessor, outputProcessor } = createZepProcessors({
     client,
-    userId,
-    threadId,
+    graphUuid: identity.graphUuid,
+    threadUuid: identity.threadUuid,
   });
 
   // 3. Attach to a Mastra agent (id AND name are both required). No tools
