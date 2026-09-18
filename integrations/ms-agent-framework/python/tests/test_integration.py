@@ -242,6 +242,12 @@ async def main() -> None:
     sys.exit(0 if passed else 1)
 
 
+@pytest.mark.skip(
+    reason=(
+        "ZEPAI-3605: a user created without a user_id cannot receive a thread "
+        "message. Enable this test after the fix is deployed."
+    )
+)
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_provisioning_and_before_after_run() -> None:
@@ -316,6 +322,12 @@ async def test_provisioning_and_before_after_run() -> None:
             pass
 
 
+@pytest.mark.skip(
+    reason=(
+        "ZEPAI-3605: a user created without a user_id cannot receive a thread "
+        "message. Enable this test after the fix is deployed."
+    )
+)
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_integration_full_lifecycle() -> None:
