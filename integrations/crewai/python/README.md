@@ -367,6 +367,11 @@ user_storage.save(
 user_storage.save("Project Alpha requires Python and React expertise", metadata={"type": "text"})
 ```
 
+> **Note:** ZEPAI-3605 — a user without a `user_id` cannot receive a thread
+> message until the fix is deployed. `type: "message"` saves for such a user
+> are logged as failures; `json` and `text` saves to the graph are not
+> affected.
+
 ## Examples
 
 ### Complete Examples
