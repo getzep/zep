@@ -35,7 +35,6 @@ import asyncio
 import os
 import sys
 import time
-import uuid
 
 from pydantic_ai import Agent
 from zep_cloud.client import AsyncZep
@@ -43,6 +42,7 @@ from zep_cloud.client import AsyncZep
 from zep_pydantic_ai import (
     ZepDeps,
     create_thread,
+    create_user,
     create_zep_search_tool,
     zep_capabilities,
 )
@@ -93,13 +93,11 @@ async def main() -> None:
     # Zep v4 addresses every resource by a server-generated UUID. A real
     # application creates the user and the thread one time, and stores the
     # UUIDs in its own database.
-    # WORKAROUND: the example gives the user a generated ``user_id`` label,
-    # because a v4 production defect makes ``thread.add_messages`` return 404
-    # for a user that has no label. The label is a name, not an address: every
-    # call below uses the server-generated UUIDs. Remove the label when the
-    # defect is corrected, and use ``create_user`` from this package instead.
-    user = await zep.user.create(
-        user_id=f"example-{uuid.uuid4()}",
+    #
+    # Note: ZEPAI-3605 -- a user that is created without a ``user_id`` cannot
+    # receive a thread message until the fix is deployed.
+    user = await create_user(
+        zep,
         first_name="Alice",
         last_name="Smith",
         email="alice@example.com",
