@@ -21,7 +21,6 @@ Prerequisites:
 
 import asyncio
 import os
-import uuid
 
 from autogen import AssistantAgent, LLMConfig, UserProxyAgent
 from zep_cloud.client import AsyncZep
@@ -41,13 +40,10 @@ async def provision() -> tuple[str, str, str]:
     # One-time provisioning. Pass first_name/last_name/email so Zep can
     # anchor the identity node of the user in the graph.
     #
-    # The user_id label is a temporary workaround for a defect in the
-    # production v4 API, which rejects thread.add_messages and
-    # thread.get_context for a user that has no label. The label is not an
-    # address: the example uses user.uuid_ for every later call.
+    # ZEPAI-3605: a user that has no user_id cannot receive a thread
+    # message until the fix is deployed.
     user = await create_user(
         zep,
-        user_id=f"ag2-basic-{uuid.uuid4().hex[:8]}",
         first_name="Alice",
         email="alice@example.com",
     )

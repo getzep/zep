@@ -14,6 +14,9 @@ Zep v4 addresses every user, thread, and graph by a server-generated UUID. The
 test creates the user and the threads one time and keeps the UUIDs from the
 responses.
 
+ZEPAI-3605: a user that has no user_id cannot receive a thread message until
+the fix is deployed. The test is skipped until then.
+
 Requires:
     ZEP_API_KEY and OPENAI_API_KEY environment variables.
 
@@ -253,6 +256,12 @@ async def main() -> None:
     sys.exit(0 if passed else 1)
 
 
+@pytest.mark.skip(
+    reason=(
+        "ZEPAI-3605: a user that has no user_id cannot receive a thread message "
+        "until the fix is deployed."
+    )
+)
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_integration_full_lifecycle() -> None:

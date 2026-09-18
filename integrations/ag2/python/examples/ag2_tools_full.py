@@ -16,7 +16,6 @@ Prerequisites:
 
 import asyncio
 import os
-import uuid
 
 from autogen import AssistantAgent, GroupChat, GroupChatManager, LLMConfig, UserProxyAgent
 from zep_cloud.client import AsyncZep
@@ -35,13 +34,10 @@ async def provision() -> tuple[str, str]:
 
     # Create the user and the thread one time, and keep their UUIDs.
     #
-    # The user_id label is a temporary workaround for a defect in the
-    # production v4 API, which rejects thread.add_messages and
-    # thread.get_context for a user that has no label. The label is not an
-    # address: the example uses user.uuid_ for every later call.
+    # ZEPAI-3605: a user that has no user_id cannot receive a thread
+    # message until the fix is deployed.
     user = await create_user(
         zep,
-        user_id=f"ag2-tools-full-{uuid.uuid4().hex[:8]}",
         first_name="Bob",
         email="bob@example.com",
     )
