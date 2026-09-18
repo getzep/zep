@@ -12,6 +12,10 @@
  *      requires recalling them (answered using context the input processor
  *      injects automatically).
  *
+ * Known defect (ZEPAI-3605): a user that is created without a `userId` cannot
+ * receive a thread message until the fix is deployed. The output processor
+ * reports the failure and the agent continues.
+ *
  * Prerequisites:
  *   npm install
  *   export ZEP_API_KEY="your-zep-api-key"
@@ -21,7 +25,6 @@
  *   npm run example
  */
 
-import { randomUUID } from "node:crypto";
 import { ZepClient } from "@getzep/zep-cloud";
 import { Agent } from "@mastra/core/agent";
 import { createZepProcessors, createZepUserAndThread } from "../src/index.js";
@@ -50,10 +53,6 @@ async function main(): Promise<void> {
   //    the UUIDs; a real application stores them in its own database.
   const identity = await createZepUserAndThread({
     client,
-    // Temporary workaround for a production Zep v4 defect: the thread message
-    // and context routes return 404 when the user has no userId. The label is
-    // a name only; Zep addresses the user by its UUID.
-    userId: `zep-mastra-example-${randomUUID().slice(0, 8)}`,
     firstName: "Alice",
     lastName: "Smith",
     email: "alice@example.com",

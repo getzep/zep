@@ -152,6 +152,9 @@ thrown, so a Zep outage never crashes the caller.
 not use them as addresses. Supply a `userId` if you want a human-readable name in the
 Zep application.
 
+> **Known defect (ZEPAI-3605).** A user that is created without a `userId` cannot
+> receive a thread message until the fix is deployed.
+
 ## Tools
 
 The pre-0.2.0 tool-only surface is still available and fully supported — use it when you
