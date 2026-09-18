@@ -1,13 +1,12 @@
 import asyncio
 import os
-import uuid
 
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.ui import Console
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from zep_cloud.client import AsyncZep
 
-from zep_autogen import create_add_graph_data_tool, create_search_graph_tool
+from zep_autogen import create_add_graph_data_tool, create_search_graph_tool, create_user
 
 
 async def main():
@@ -15,11 +14,8 @@ async def main():
     zep_client = AsyncZep(api_key=os.environ.get("ZEP_API_KEY"))
 
     # Zep assigns the UUID of the user. Keep this UUID in your own database.
-    # The user_id label is a temporary workaround for a production v4 defect:
-    # a user created without a user_id gets 404 on thread operations. The label
-    # is a name, not an address; the UUID still addresses the user.
-    user = await zep_client.user.create(
-        user_id=f"alice_{uuid.uuid4().hex[:8]}",
+    user = await create_user(
+        zep_client,
         email="alice@example.com",
         first_name="Alice",
     )

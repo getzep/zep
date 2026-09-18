@@ -1,13 +1,12 @@
 import asyncio
 import os
-import uuid
 
 from autogen_agentchat.agents import AssistantAgent
 from autogen_core.memory import MemoryContent, MemoryMimeType
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from zep_cloud.client import AsyncZep
 
-from zep_autogen import ZepUserMemory, create_thread
+from zep_autogen import ZepUserMemory, create_thread, create_user
 
 
 async def main():
@@ -16,11 +15,10 @@ async def main():
 
     # Zep assigns the UUID of the user and of the thread. Keep these UUIDs in
     # your own database, and use them to address the resources later.
-    # The user_id label is a temporary workaround for a production v4 defect:
-    # a user created without a user_id gets 404 on thread operations. The label
-    # is a name, not an address; the UUID still addresses the user.
-    user = await zep_client.user.create(
-        user_id=f"alice_{uuid.uuid4().hex[:8]}",
+    # Note: a user created without a user_id cannot receive a thread message
+    # until the ZEPAI-3605 fix is deployed.
+    user = await create_user(
+        zep_client,
         email="alice@agents.local",
         first_name="Alice",
     )

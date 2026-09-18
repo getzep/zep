@@ -236,6 +236,12 @@ async def main() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.skip(
+    reason=(
+        "ZEPAI-3605: a user created without a user_id cannot receive a thread "
+        "message until the v4 fix is deployed"
+    )
+)
 @pytest.mark.asyncio
 async def test_integration_full_lifecycle() -> None:
     """Pytest entry point for the live integration test."""
