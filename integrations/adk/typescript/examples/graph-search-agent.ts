@@ -24,7 +24,6 @@
  *   npx tsx examples/graph-search-agent.ts
  */
 
-import { randomUUID } from "node:crypto";
 import { ZepClient } from "@getzep/zep-cloud";
 import { LlmAgent } from "@google/adk";
 import {
@@ -46,11 +45,9 @@ async function main(): Promise<void> {
 
   // Provision out-of-band and keep the UUIDs. An application stores them in
   // its own database and passes them back on each turn.
+  // ZEPAI-3605: a user that is created without a `user_id` cannot receive a
+  // thread message until the fix is deployed.
   const { userUuid, graphUuid } = await createUser(zep, {
-    // Temporary workaround for a production v4 defect: the thread message
-    // endpoints reject a user that has no `userId`. The label is a name
-    // only. Zep addresses the user by the UUID that it returns.
-    userId: `adk-ts-search-${randomUUID().slice(0, 8)}`,
     firstName: "Alice",
     lastName: "Smith",
     email: "alice@example.com",

@@ -23,7 +23,9 @@ const apiKey = process.env.ZEP_API_KEY;
 const describeLive = apiKey ? describe : describe.skip;
 
 describeLive("live Zep integration", () => {
-  it("provisions identity out-of-band, persists, and injects context without throwing", async () => {
+  // Skipped because of ZEPAI-3605: a user that is created without a
+  // `user_id` cannot receive a thread message until the fix is deployed.
+  it.skip("provisions identity out-of-band, persists, and injects context without throwing", async () => {
     const client = new ZepClient({ apiKey });
     let userUuid: string | undefined;
 
