@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-from uuid import uuid4
 
 from strands import Agent
 from strands.memory import MemoryManager
@@ -61,9 +60,6 @@ if not ZEP_API_KEY:
 if not OPENAI_API_KEY:
     raise SystemExit("OPENAI_API_KEY is not set.")
 
-_suffix = uuid4().hex[:8]
-USER_NAME = f"strands-example-user-{_suffix}"
-
 
 async def build_agent(zep: AsyncZep, user_uuid: str, thread_uuid: str) -> Agent:
     """Build an agent whose memory is scoped to the user on the given thread."""
@@ -97,9 +93,6 @@ async def main() -> None:
     print("=" * 64)
     user = await create_user(
         zep,
-        # Temporary workaround for a production v4 defect: thread.add_messages
-        # returns 404 when the user has no user_id. The label is not an address.
-        user_id=USER_NAME,
         first_name="Alice",
         last_name="Nguyen",
         email="alice@example.com",

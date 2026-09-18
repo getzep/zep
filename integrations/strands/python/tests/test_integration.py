@@ -199,6 +199,10 @@ async def flush(agent: Agent) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(
+    reason="ZEPAI-3605: a user without a user_id cannot receive a thread message "
+    "until the fix is deployed."
+)
 @pytest.mark.asyncio
 async def test_store_round_trip() -> None:
     """Exercise store methods against live Zep without a model provider."""
@@ -254,6 +258,10 @@ async def test_store_round_trip() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(
+    reason="ZEPAI-3605: a user without a user_id cannot receive a thread message "
+    "until the fix is deployed."
+)
 @pytest.mark.asyncio
 async def test_integration_full_lifecycle() -> None:
     """Pytest entry point for the live agent integration test."""
