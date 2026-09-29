@@ -148,12 +148,12 @@ const identity = await createZepUserAndThread({
 A failure (auth, network, 5xx) is logged at `warn` and reported as `null` rather than
 thrown, so a Zep outage never crashes the caller.
 
-`createZepUserAndThread` also accepts optional `userId` and `threadId` names. Zep does
-not use them as addresses. Supply a `userId` if you want a human-readable name in the
-Zep application.
+Zep v4 accepts no client-chosen identifier on a create call, so a new user, thread,
+or graph has no name. The returned UUIDs are the only addresses.
 
-> **Known defect (ZEPAI-3605).** A user that is created without a `userId` cannot
-> receive a thread message until the fix is deployed.
+> **Known defect (ZEPAI-3605).** A thread whose owner has no `userId` cannot receive
+> a thread message. Every v4 user has no `userId`, so the defect applies to every v4
+> thread until the fix is deployed.
 
 ## Tools
 

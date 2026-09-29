@@ -100,16 +100,6 @@ export type ZepUserCreatedHook = (
 export interface CreateIdentityOptions {
   /** A shared, initialized Zep client. */
   client: ZepClient;
-  /**
-   * An optional developer-assigned name for the user. Zep does not use it as
-   * an address; the returned `userUuid` is the address.
-   */
-  userId?: string;
-  /**
-   * An optional developer-assigned name for the thread. Zep does not use it
-   * as an address; the returned `threadUuid` is the address.
-   */
-  threadId?: string;
   /** User's first name — pass a real name to help Zep resolve identity. */
   firstName?: string;
   /** User's last name. */
@@ -146,8 +136,8 @@ export interface ZepIdentity {
  * Zep requires the user and thread to exist before messages are added. Call
  * this once, out-of-band, before the first turn (the Zep "create user →
  * create thread" step), then store the returned UUIDs in your own database.
- * Zep v4 addresses every later call by UUID, so this function is **not**
- * idempotent on a name: a second call creates a second user.
+ * Zep v4 accepts no client-chosen identifier on a create call, and it
+ * addresses every later call by UUID. A second call creates a second user.
  *
  * A failure (auth, network, 5xx) is logged at `warn` and reported as `null`
  * rather than thrown, so a Zep outage never crashes the caller.
@@ -164,7 +154,6 @@ export async function createZepUserAndThread(
   let graphUuid: string;
   try {
     const user = await client.user.create({
-      ...(options.userId !== undefined ? { userId: options.userId } : {}),
       ...(options.firstName !== undefined ? { firstName: options.firstName } : {}),
       ...(options.lastName !== undefined ? { lastName: options.lastName } : {}),
       ...(options.email !== undefined ? { email: options.email } : {}),
@@ -189,10 +178,7 @@ export async function createZepUserAndThread(
   }
 
   try {
-    const thread = await client.thread.create({
-      userUuid,
-      ...(options.threadId !== undefined ? { threadId: options.threadId } : {}),
-    });
+    const thread = await client.thread.create({ userUuid });
     if (!thread.uuid) {
       logger.warn("[zep] The created thread has no uuid.");
       return null;

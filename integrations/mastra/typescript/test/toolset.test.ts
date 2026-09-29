@@ -84,18 +84,11 @@ describe("createZepUserAndThread", () => {
     expect(zep.thread.create).toHaveBeenCalledWith({ userUuid: "user-uuid" });
   });
 
-  it("forwards the optional developer-assigned names", async () => {
+  it("sends no client-chosen identifier on either create call", async () => {
     const zep = makeFakeZep();
-    await createZepUserAndThread({
-      client: asZep(zep),
-      userId: "name-of-user",
-      threadId: "name-of-thread",
-    });
-    expect(zep.user.create).toHaveBeenCalledWith({ userId: "name-of-user" });
-    expect(zep.thread.create).toHaveBeenCalledWith({
-      userUuid: "u1",
-      threadId: "name-of-thread",
-    });
+    await createZepUserAndThread({ client: asZep(zep), firstName: "Jane" });
+    expect(zep.user.create).toHaveBeenCalledWith({ firstName: "Jane" });
+    expect(zep.thread.create).toHaveBeenCalledWith({ userUuid: "u1" });
   });
 
   it("returns null (not throw) when user creation fails", async () => {

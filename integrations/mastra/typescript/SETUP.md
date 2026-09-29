@@ -64,9 +64,10 @@ The example ([`examples/basic-agent.ts`](./examples/basic-agent.ts)):
 ## 6. Identifiers in Zep v4
 
 Zep v4 addresses every user, thread, and graph by a server-generated UUID. A
-`userId` or a `threadId` is a name, not an address. Store the `userUuid`,
-`graphUuid`, and `threadUuid` that the create calls return in your own database,
-and give them to the integration on every later turn.
+create call accepts no client-chosen identifier, so a new user, thread, or graph
+has no name. Store the `userUuid`, `graphUuid`, and `threadUuid` that the create
+calls return in your own database, and give them to the integration on every
+later turn.
 
 ## 7. Run the tests
 

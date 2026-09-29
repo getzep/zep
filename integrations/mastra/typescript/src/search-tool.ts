@@ -125,7 +125,7 @@ export interface ZepSearchToolOptions {
   /**
    * Resolve the search target per call from the tool's `requestContext`,
    * overriding the constructor-bound `binding`. Return `undefined` (or omit
-   * `userId`) to fall back to `binding`.
+   * `graphUuid`) to fall back to `binding`.
    */
   resolveIdentity?: ZepIdentityResolver;
   /** Logger for Zep failures. Defaults to `console`. */

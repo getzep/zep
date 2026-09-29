@@ -14,18 +14,14 @@ const apiKey = process.env.ZEP_API_KEY;
 const describeLive = apiKey ? describe : describe.skip;
 
 describeLive("live Zep integration", () => {
-  // Skipped for ZEPAI-3605: a user that is created without a userId cannot
-  // receive a thread message, so thread.addMessages returns 404. The test will
-  // run again when the fix is deployed.
+  // Skipped for ZEPAI-3605: thread.addMessages returns 404 when the thread
+  // owner has no userId. Zep v4 creates every user without one, so the test
+  // will run again when the fix is deployed.
   it.skip("provisions identity and persists/retrieves without throwing", async () => {
     const client = new ZepClient({ apiKey });
 
     const identity = await createZepUserAndThread({
       client,
-      // The v4 server cannot add a message to a thread whose user has no
-      // userId, so the live test gives the user a unique label. The package
-      // API stays UUID-only.
-      userId: `integtest-${crypto.randomUUID().slice(0, 8)}`,
       firstName: "Test",
       lastName: "User",
     });

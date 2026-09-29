@@ -9,6 +9,7 @@
 - **Breaking: `createZepProcessors`, `ZepInputProcessor`, and `ZepOutputProcessor` take `graphUuid` and `threadUuid`** in place of `userId` and `threadId`. `ZepContextBuilderInput` gives `graphUuid` and `threadUuid` to a custom context builder.
 - **Breaking: `ResolvedZepIdentity` returns `graphUuid` and `threadUuid`.** A resolver that returns names no longer compiles.
 - **Breaking: `ensureZepUserAndThread` is replaced by `createZepUserAndThread`.** Zep v4 has no name-addressed create, so the old idempotent create-then-catch-conflict behavior is not possible. The new function calls `user.create` and `thread.create`, and returns the new `ZepIdentity` (`{ userUuid, graphUuid, threadUuid }`), or `null` after a failure. The `onUserCreated` hook now receives the `userUuid`.
+- **Breaking: `createZepUserAndThread` accepts no `userId` and no `threadId`.** The v4 create endpoints reject a client-chosen identifier, so the function creates the user and the thread with no name and returns their UUIDs.
 - **Breaking: `createZepContextTool` and the processors take `templateUuid`** in place of `templateId`, because `thread.getContext` takes a template UUID in v4.
 - **Breaking: `createZepSearchTool` takes `filters`** in place of `searchFilters`, which matches the `filters` field of the v4 search body.
 - `resolveGraphTarget` is renamed to `resolveGraphUuid` and returns the bound `graphUuid`.
