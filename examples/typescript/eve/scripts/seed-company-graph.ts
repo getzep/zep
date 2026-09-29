@@ -28,13 +28,13 @@ const EPISODES: string[] = [
 async function ensureGraph(
   client: ZepClient,
   graphUuid?: string,
-): Promise<string> {
+): Promise<{ uuid: string; created: boolean }> {
   // v4 addresses a graph by a server-generated UUID. The seed creates the
   // graph one time, and the application keeps the UUID.
   if (graphUuid) {
-    const graph = await client.graph.get(graphUuid);
-    console.log(`Graph already exists: ${graph.uuid}`);
-    return graphUuid;
+    await client.graph.get(graphUuid);
+    console.log("Graph already exists for ZEP_COMPANY_GRAPH_UUID.");
+    return { uuid: graphUuid, created: false };
   }
 
   const graph = await client.graph.create({
@@ -45,7 +45,7 @@ async function ensureGraph(
     throw new Error("Zep did not return a graph UUID");
   }
   console.log(`Created graph: ${graph.uuid}`);
-  return graph.uuid;
+  return { uuid: graph.uuid, created: true };
 }
 
 async function listEpisodes(client: ZepClient, graphUuid: string) {
@@ -107,7 +107,7 @@ async function main() {
   });
 
   console.log("Seeding the company graph…");
-  const graphUuid = await ensureGraph(client, GRAPH_UUID);
+  const { uuid: graphUuid, created } = await ensureGraph(client, GRAPH_UUID);
 
   const existing = await listEpisodes(client, graphUuid);
   const existingCount = existing.length;
@@ -116,7 +116,7 @@ async function main() {
       `Graph already has ${existingCount} episodes (≥ ${EPISODES.length}). Skipping ingest to avoid duplicates.`,
     );
     console.log(
-      `To re-seed, delete graph "${graphUuid}" in the Zep app (or clear ZEP_COMPANY_GRAPH_UUID) and re-run.`,
+      "To re-seed, delete the company graph in the Zep app (or clear ZEP_COMPANY_GRAPH_UUID) and re-run.",
     );
   } else {
     for (const [index, data] of EPISODES.entries()) {
@@ -147,7 +147,11 @@ async function main() {
     }
   }
 
-  console.log(`\nDone. Set ZEP_COMPANY_GRAPH_UUID=${graphUuid} in .env.`);
+  if (created) {
+    console.log(`\nDone. Set ZEP_COMPANY_GRAPH_UUID=${graphUuid} in .env.`);
+  } else {
+    console.log("\nDone. ZEP_COMPANY_GRAPH_UUID in .env is unchanged.");
+  }
 }
 
 main().catch((error) => {
