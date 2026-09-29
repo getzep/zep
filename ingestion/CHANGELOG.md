@@ -16,6 +16,10 @@ still change between minor versions.
   creates the graph, the user, and the thread one time, stores each returned
   UUID, and passes the UUID here. The package does no identifier lookup at run
   time and creates no user or thread.
+- **Create calls carry no client-chosen identifier.** v4 rejects `user_id`,
+  `thread_id`, `graph_id`, and `target_graph_id` on the create endpoints with
+  `400 invalid_request`. The package passes none of them: create the resource
+  with no name and store the UUID the response returns.
 - **v4 submission methods.** Episodes go to `graph.episode.add`, batches go to
   `batch.create` + `batch.add_items` + `batch.process`, nodes go to
   `graph.node.add`, and fact triples go to `graph.edge.add`.
@@ -33,9 +37,11 @@ still change between minor versions.
   returns a task, so `wait()` polls the returned task instead of message UUIDs.
 - **Known gaps in the current v4 deployment.** Batch items for a standalone
   graph and the direct `thread.add_messages` and `thread.get_context` calls
-  return 404 against `api.getzep.com`. The batch path works for user graphs
-  and thread messages; submit standalone-graph episodes with
-  `method="sequential"`.
+  return 404 against `api.getzep.com`. `thread.add_messages` is defect
+  ZEPAI-3605, which applies to every v4 thread because every v4 user has no
+  `user_id`; the production smoke script skips the two sequential thread cases
+  under that defect. The batch path works for user graphs and thread
+  messages; submit standalone-graph episodes with `method="sequential"`.
 
 ## 0.3.0
 

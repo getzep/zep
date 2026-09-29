@@ -167,9 +167,11 @@ on sequential fallback it polls the last-submitted episode's `processed` flag
 `api.getzep.com`): batch items for a standalone graph return 404 — the batch
 path works for user graphs and thread messages, so submit standalone-graph
 episodes with `method="sequential"`; `thread.add_messages` and
-`thread.get_context` return 404 — `auto` still backfills threads through the
-batch path, and `graph.get_context` returns the user context block. These are
-server-side gaps in the alpha, not package behavior.
+`thread.get_context` return 404 — `thread.add_messages` is defect ZEPAI-3605
+and now applies to every v4 thread because every v4 user has no `user_id`, but
+`auto` still backfills threads through the batch path, and `graph.get_context`
+returns the user context block. These are server-side gaps in the alpha, not
+package behavior.
 
 ## The pipeline
 
