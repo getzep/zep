@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Conversation context comes from `thread.get_context`, and messages go to `thread.add_messages` with the `AddMessage` model.
 - Graph ingestion calls `graph.episode.add`, and the recent-episode read calls `graph.episode.list`.
 - The examples, the README, and SETUP.md show the UUID workflow.
+- `create_user` and `create_thread` take no client-chosen name. The v4 create operations reject `user_id` and `thread_id`, and a v4 resource has no name.
 
 ### Added
 

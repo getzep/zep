@@ -11,8 +11,8 @@ pip install zep-ag2
 ## Identifiers in Zep v4
 
 Zep v4 addresses every user, thread, and graph by a server-generated UUID. A
-`user_id` or a `thread_id` is a name, not an address. The public API of this
-package takes `user_uuid`, `thread_uuid`, and `graph_uuid`.
+create call takes no client-chosen name. The public API of this package takes
+`user_uuid`, `thread_uuid`, and `graph_uuid`.
 
 Create the user and the thread one time with `create_user` and `create_thread`,
 read the UUIDs from the responses, and store them in your own database. The
@@ -311,8 +311,8 @@ Manages Zep knowledge graph for AG2 agents.
 
 ### Provisioning
 
-- `await create_user(client, *, user_id=None, first_name=None, last_name=None, email=None, on_created=None)` — Create a Zep user and return it; read `user.uuid_` and `user.graph_uuid`
-- `await create_thread(client, *, user_uuid, thread_id=None)` — Create a Zep thread and return it; read `thread.uuid_`
+- `await create_user(client, *, first_name=None, last_name=None, email=None, on_created=None)` — Create a Zep user and return it; read `user.uuid_` and `user.graph_uuid`
+- `await create_thread(client, *, user_uuid)` — Create a Zep thread and return it; read `thread.uuid_`
 
 ### Tool Factories
 
