@@ -4,7 +4,7 @@ Long-term memory for [Google ADK](https://github.com/google/adk) TypeScript agen
 
 Built on the official [`@google/adk`](https://www.npmjs.com/package/@google/adk) and [`@getzep/zep-cloud`](https://www.npmjs.com/package/@getzep/zep-cloud) SDKs (Zep v4).
 
-Zep v4 addresses every user, thread, and graph by a server-generated UUID. A `userId` or a `threadId` is a name, not an address. The public API of this package takes `userUuid` and `threadUuid`. Your application creates the user and the thread one time, stores the UUIDs from the responses in its own database, and passes the UUIDs back on each turn. The integration never looks a user or a thread up at run time.
+Zep v4 addresses every user, thread, and graph by a server-generated UUID. A v4 create call accepts no client-chosen identifier, and a v4 resource has no name. The public API of this package takes `userUuid` and `threadUuid`. Your application creates the user and the thread one time, stores the UUIDs from the responses in its own database, and passes the UUIDs back on each turn. The integration never looks a user or a thread up at run time.
 
 ## Installation
 
@@ -309,7 +309,6 @@ Constructor options for the callbacks and tools share `userUuid`, `threadUuid`, 
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
-| `userId` | `string` | No | A developer-assigned name for the user. It is not an address. |
 | `firstName` | `string` | No | Passed through to `zep.user.create`. |
 | `lastName` | `string` | No | Passed through to `zep.user.create`. |
 | `email` | `string` | No | Passed through to `zep.user.create`. |
@@ -322,7 +321,6 @@ Returns `Promise<{ userUuid: string; graphUuid?: string }>`. Throws on failures 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
 | `userUuid` | `string` | Yes | The UUID of the Zep user that owns the thread. |
-| `threadId` | `string` | No | A developer-assigned name for the thread. It is not an address. |
 
 Returns `Promise<{ threadUuid: string; graphUuid?: string }>`. Throws on failures (auth, network, 5xx).
 
@@ -344,6 +342,7 @@ The unreleased version of this package targets `@getzep/zep-cloud@4.0.0-alpha.5`
 | `ensureUser(zep, { userId, ... })` | `createUser(zep, { firstName, ... })`, which returns `{ userUuid, graphUuid }` |
 | `ensureThread(zep, { threadId, userId })` | `createThread(zep, { userUuid })`, which returns `{ threadUuid, graphUuid }` |
 | `userId` / `threadId` options | `userUuid` / `threadUuid` options |
+| a client-chosen `userId` / `threadId` on a create call | no name on a create call; v4 rejects one |
 | `zep_user_id` / `zep_thread_id` state keys | `zep_user_uuid` / `zep_thread_uuid` state keys |
 | `ZepGraphSearchTool({ graphId })` | `ZepGraphSearchTool({ graphUuid })` |
 | one `graph.search` call with a `scope` | one v4 method for each scope, and `graph.getContext` for `auto` |

@@ -10,8 +10,9 @@
  *
  * Zep v4 assigns the UUID of a user, of its graph, and of a thread on the
  * server, so a create call is not idempotent and there is no "already
- * exists" conflict to absorb. Each helper returns the UUIDs of the new
- * resource. Store them in your own database and pass them back to the
+ * exists" conflict to absorb. A v4 create call accepts no client-chosen
+ * name, and a v4 resource has no name. Each helper returns the UUIDs of
+ * the new resource. Store them in your own database and pass them back to the
  * integration as `userUuid` / `threadUuid`. Every failure (auth, network,
  * 5xx) throws — out-of-band provisioning is meant to fail loudly so
  * misconfiguration is caught before the agent ever runs.
@@ -36,11 +37,6 @@ export type UserSetupHook = (
 
 /** Options accepted by {@link createUser}. */
 export interface CreateUserOptions {
-  /**
-   * Optional developer-assigned name for the user. It is a label only: the
-   * address of the user is the UUID that Zep returns.
-   */
-  userId?: string;
   /** Optional first name, passed through to `zep.user.create`. */
   firstName?: string;
   /** Optional last name, passed through to `zep.user.create`. */
@@ -87,9 +83,9 @@ export async function createUser(
   zep: ZepClient,
   options: CreateUserOptions = {},
 ): Promise<CreatedUser> {
-  const { userId, firstName, lastName, email, onCreated } = options;
+  const { firstName, lastName, email, onCreated } = options;
 
-  const user = await zep.user.create({ userId, firstName, lastName, email });
+  const user = await zep.user.create({ firstName, lastName, email });
   if (!user.uuid) {
     throw new Error("Zep did not return a UUID for the new user.");
   }
@@ -105,11 +101,6 @@ export async function createUser(
 export interface CreateThreadOptions {
   /** The UUID of the Zep user that owns the thread. */
   userUuid: string;
-  /**
-   * Optional developer-assigned name for the thread. It is a label only:
-   * the address of the thread is the UUID that Zep returns.
-   */
-  threadId?: string;
 }
 
 /** The UUIDs that Zep assigns to a new thread. */
@@ -124,7 +115,7 @@ export interface CreatedThread {
  * Create a Zep thread for a user and return its server-generated UUID.
  *
  * @param zep An initialised `ZepClient`. The caller owns its lifecycle.
- * @param options The UUID of the owning user and an optional thread name.
+ * @param options The UUID of the owning user.
  * @returns The UUID of the thread and the UUID of the graph it writes to.
  * @throws Any failure from the Zep SDK (auth, network, 5xx), or an error
  *   when the response carries no UUID.
@@ -133,9 +124,9 @@ export async function createThread(
   zep: ZepClient,
   options: CreateThreadOptions,
 ): Promise<CreatedThread> {
-  const { userUuid, threadId } = options;
+  const { userUuid } = options;
 
-  const thread = await zep.thread.create({ userUuid, threadId });
+  const thread = await zep.thread.create({ userUuid });
   if (!thread.uuid) {
     throw new Error("Zep did not return a UUID for the new thread.");
   }

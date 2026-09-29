@@ -32,7 +32,6 @@ describe("createUser", () => {
     const { client, mocks } = mockZepClient();
 
     const result = await createUser(client as unknown as ZepClient, {
-      userId: "user-1",
       firstName: "Jane",
       lastName: "Smith",
       email: "jane@example.com",
@@ -43,21 +42,19 @@ describe("createUser", () => {
       graphUuid: MOCK_GRAPH_UUID,
     });
     expect(mocks.userCreate).toHaveBeenCalledWith({
-      userId: "user-1",
       firstName: "Jane",
       lastName: "Smith",
       email: "jane@example.com",
     });
   });
 
-  it("creates a user without any developer-assigned name", async () => {
+  it("sends no client-chosen name to the create call", async () => {
     const { client, mocks } = mockZepClient();
 
     const result = await createUser(client as unknown as ZepClient);
 
     expect(result.userUuid).toBe(MOCK_USER_UUID);
     expect(mocks.userCreate).toHaveBeenCalledWith({
-      userId: undefined,
       firstName: undefined,
       lastName: undefined,
       email: undefined,
@@ -66,10 +63,10 @@ describe("createUser", () => {
 
   it("throws when the response carries no UUID", async () => {
     const { client, mocks } = mockZepClient();
-    mocks.userCreate.mockResolvedValueOnce({ userId: "user-1" });
+    mocks.userCreate.mockResolvedValueOnce({});
 
     await expect(
-      createUser(client as unknown as ZepClient, { userId: "user-1" }),
+      createUser(client as unknown as ZepClient),
     ).rejects.toThrow("did not return a UUID");
   });
 
@@ -79,18 +76,18 @@ describe("createUser", () => {
       new FakeApiError("internal error", 500),
     );
 
-    await expect(
-      createUser(client as unknown as ZepClient, { userId: "user-1" }),
-    ).rejects.toThrow("internal error");
+    await expect(createUser(client as unknown as ZepClient)).rejects.toThrow(
+      "internal error",
+    );
   });
 
   it("throws on a generic exception", async () => {
     const { client, mocks } = mockZepClient();
     mocks.userCreate.mockRejectedValueOnce(new Error("network timeout"));
 
-    await expect(
-      createUser(client as unknown as ZepClient, { userId: "user-1" }),
-    ).rejects.toThrow("network timeout");
+    await expect(createUser(client as unknown as ZepClient)).rejects.toThrow(
+      "network timeout",
+    );
   });
 
   it("runs onCreated exactly once with the UUID of the new user", async () => {
@@ -139,24 +136,19 @@ describe("createUser", () => {
 
 describe("createThread", () => {
   it("returns the UUID of the thread and of its graph", async () => {
-    const { client, mocks } = mockZepClient();
+    const { client } = mockZepClient();
 
     const result = await createThread(client as unknown as ZepClient, {
       userUuid: MOCK_USER_UUID,
-      threadId: "thread-1",
     });
 
     expect(result).toEqual({
       threadUuid: MOCK_THREAD_UUID,
       graphUuid: MOCK_GRAPH_UUID,
     });
-    expect(mocks.threadCreate).toHaveBeenCalledWith({
-      userUuid: MOCK_USER_UUID,
-      threadId: "thread-1",
-    });
   });
 
-  it("creates a thread without any developer-assigned name", async () => {
+  it("sends no client-chosen name to the create call", async () => {
     const { client, mocks } = mockZepClient();
 
     const result = await createThread(client as unknown as ZepClient, {
@@ -166,7 +158,6 @@ describe("createThread", () => {
     expect(result.threadUuid).toBe(MOCK_THREAD_UUID);
     expect(mocks.threadCreate).toHaveBeenCalledWith({
       userUuid: MOCK_USER_UUID,
-      threadId: undefined,
     });
   });
 
