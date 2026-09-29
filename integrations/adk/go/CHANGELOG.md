@@ -25,7 +25,9 @@
   The application calls each function one time and stores the UUIDs in its
   own database. The functions are not idempotent, because a create call in v4
   always creates a new resource. The `created` signal and the already-exists
-  detection are therefore removed.
+  detection are therefore removed. Neither function takes a client-chosen
+  name, because the Zep v4 create endpoints reject a `user_id` and a
+  `thread_id`.
 - **Breaking:** `WithGraphID` is replaced by `WithGraphUUID`.
 - **Breaking:** the search scope is now the package type `zepadk.SearchScope`
   (`SearchScopeEdges`, `SearchScopeNodes`, `SearchScopeEpisodes`,

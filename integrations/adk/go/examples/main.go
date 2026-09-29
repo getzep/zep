@@ -72,15 +72,14 @@ func main() {
 		// that has no user_id cannot receive a message, and the API returns
 		// HTTP 404.
 		var err error
-		userUUID, graphUUID, err = zepadk.CreateUser(ctx, zep, "", "Jane", "Smith", "jane@example.com")
+		userUUID, graphUUID, err = zepadk.CreateUser(ctx, zep, "Jane", "Smith", "jane@example.com")
 		if err != nil {
 			log.Fatalf("creating Zep user: %v", err)
 		}
 		log.Printf("Zep user created: user_uuid=%s graph_uuid=%s", userUUID, graphUUID)
 
-		// The thread needs no name. Zep addresses the thread by the UUID
-		// that it returns.
-		threadUUID, err = zepadk.CreateThread(ctx, zep, "", userUUID)
+		// Zep addresses the thread by the UUID that it returns.
+		threadUUID, err = zepadk.CreateThread(ctx, zep, userUUID)
 		if err != nil {
 			log.Fatalf("creating Zep thread: %v", err)
 		}

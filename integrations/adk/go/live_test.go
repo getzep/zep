@@ -66,7 +66,7 @@ func TestLiveCreateAndPersist(t *testing.T) {
 	adkUserID := "zepadk-live-user-" + suffix
 	adkSessionID := "zepadk-live-thread-" + suffix
 
-	userUUID, graphUUID, err := CreateUser(ctx, client, "", "Live", "Tester", "live-"+suffix+"@example.com")
+	userUUID, graphUUID, err := CreateUser(ctx, client, "Live", "Tester", "live-"+suffix+"@example.com")
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestLiveCreateAndPersist(t *testing.T) {
 		t.Fatalf("CreateUser returned user_uuid=%q graph_uuid=%q, want both", userUUID, graphUUID)
 	}
 
-	threadUUID, err := CreateThread(ctx, client, "", userUUID)
+	threadUUID, err := CreateThread(ctx, client, userUUID)
 	if err != nil {
 		t.Fatalf("CreateThread: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestLiveGraphSearchTool(t *testing.T) {
 	suffix := time.Now().UTC().Format("20060102150405")
 	adkUserID := "zepadk-live-search-user-" + suffix
 
-	userUUID, graphUUID, err := CreateUser(ctx, client, "", "Live", "Searcher", "")
+	userUUID, graphUUID, err := CreateUser(ctx, client, "Live", "Searcher", "")
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestLiveMemoryServiceSearch(t *testing.T) {
 	ctx := context.Background()
 
 	suffix := time.Now().UTC().Format("20060102150405")
-	userUUID, graphUUID, err := CreateUser(ctx, client, "", "Live", "Memory", "")
+	userUUID, graphUUID, err := CreateUser(ctx, client, "Live", "Memory", "")
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}

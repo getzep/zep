@@ -97,11 +97,11 @@ func TestInjectSystemInstruction(t *testing.T) {
 
 func TestCreateUserAndThreadNilClient(t *testing.T) {
 	ctx := context.Background()
-	userUUID, graphUUID, err := CreateUser(ctx, nil, "u1", "Jane", "Smith", "jane@example.com")
+	userUUID, graphUUID, err := CreateUser(ctx, nil, "Jane", "Smith", "jane@example.com")
 	if userUUID != "" || graphUUID != "" || err != nil {
 		t.Fatalf("CreateUser(nil client) = (%q, %q, %v), want empty values and nil", userUUID, graphUUID, err)
 	}
-	threadUUID, err := CreateThread(ctx, nil, "t1", "user-uuid-1")
+	threadUUID, err := CreateThread(ctx, nil, "user-uuid-1")
 	if threadUUID != "" || err != nil {
 		t.Fatalf("CreateThread(nil client) = (%q, %v), want empty value and nil", threadUUID, err)
 	}
@@ -109,7 +109,7 @@ func TestCreateUserAndThreadNilClient(t *testing.T) {
 
 func TestCreateUserReturnsUUIDs(t *testing.T) {
 	api := &fakeZepAPI{}
-	userUUID, graphUUID, err := createUserWithAPI(context.Background(), api, "u1", "Jane", "Smith", "jane@example.com")
+	userUUID, graphUUID, err := createUserWithAPI(context.Background(), api, "Jane", "Smith", "jane@example.com")
 	if err != nil {
 		t.Fatalf("createUserWithAPI err = %v", err)
 	}
@@ -123,8 +123,8 @@ func TestCreateUserReturnsUUIDs(t *testing.T) {
 	if req == nil {
 		t.Fatal("CreateUser was not called with a request")
 	}
-	if req.UserID == nil || *req.UserID != "u1" {
-		t.Fatalf("UserID = %v, want u1", req.UserID)
+	if req.UserID != nil {
+		t.Fatalf("UserID = %v, want nil; Zep v4 accepts no user ID on create", *req.UserID)
 	}
 	if req.FirstName == nil || *req.FirstName != "Jane" {
 		t.Fatalf("FirstName = %v, want Jane", req.FirstName)
@@ -140,7 +140,7 @@ func TestCreateUserReturnsUUIDs(t *testing.T) {
 func TestCreateUserPropagatesError(t *testing.T) {
 	wantErr := errors.New("boom")
 	api := &fakeZepAPI{createUserErr: wantErr}
-	userUUID, graphUUID, err := createUserWithAPI(context.Background(), api, "u1", "Jane", "Smith", "")
+	userUUID, graphUUID, err := createUserWithAPI(context.Background(), api, "Jane", "Smith", "")
 	if userUUID != "" || graphUUID != "" {
 		t.Fatalf("createUserWithAPI = (%q, %q), want empty values on error", userUUID, graphUUID)
 	}
@@ -151,7 +151,7 @@ func TestCreateUserPropagatesError(t *testing.T) {
 
 func TestCreateThreadReturnsUUID(t *testing.T) {
 	api := &fakeZepAPI{}
-	threadUUID, err := createThreadWithAPI(context.Background(), api, "t1", "user-uuid-1")
+	threadUUID, err := createThreadWithAPI(context.Background(), api, "user-uuid-1")
 	if err != nil {
 		t.Fatalf("createThreadWithAPI err = %v", err)
 	}
@@ -165,8 +165,8 @@ func TestCreateThreadReturnsUUID(t *testing.T) {
 	if req == nil {
 		t.Fatal("CreateThread was not called with a request")
 	}
-	if req.ThreadID == nil || *req.ThreadID != "t1" {
-		t.Fatalf("ThreadID = %v, want t1", req.ThreadID)
+	if req.ThreadID != nil {
+		t.Fatalf("ThreadID = %v, want nil; Zep v4 accepts no thread ID on create", *req.ThreadID)
 	}
 	if req.UserUUID != "user-uuid-1" {
 		t.Fatalf("UserUUID = %q, want user-uuid-1", req.UserUUID)
@@ -176,7 +176,7 @@ func TestCreateThreadReturnsUUID(t *testing.T) {
 func TestCreateThreadPropagatesError(t *testing.T) {
 	wantErr := errors.New("boom")
 	api := &fakeZepAPI{createThreadErr: wantErr}
-	threadUUID, err := createThreadWithAPI(context.Background(), api, "t1", "user-uuid-1")
+	threadUUID, err := createThreadWithAPI(context.Background(), api, "user-uuid-1")
 	if threadUUID != "" {
 		t.Fatalf("threadUUID = %q, want empty on error", threadUUID)
 	}
@@ -189,7 +189,7 @@ func TestCreateThreadPropagatesError(t *testing.T) {
 // the application supplies no user UUID. Zep v4 attaches a thread to a user
 // by UUID.
 func TestCreateThreadWithoutUserUUID(t *testing.T) {
-	threadUUID, err := CreateThread(context.Background(), nil, "t1", "")
+	threadUUID, err := CreateThread(context.Background(), nil, "")
 	if threadUUID != "" || err != nil {
 		t.Fatalf("CreateThread without a user UUID = (%q, %v), want empty value and nil", threadUUID, err)
 	}

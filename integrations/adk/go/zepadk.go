@@ -692,24 +692,21 @@ func resolveUserUUID(resolver UserUUIDResolver, cc agent.CallbackContext) string
 // every session start, because Zep creates a new user on each call.
 //
 // A real first name, last name, and email help Zep to resolve the identity of
-// the user in the graph. The userID parameter is an optional
-// developer-assigned name. It is not an address, and Zep does not require it.
+// the user in the graph. Zep v4 accepts no client-chosen name on a create
+// call, so this function sends no user ID.
 //
 // The function returns ("", "", nil) and makes no call when client is nil.
-func CreateUser(ctx context.Context, client *zepclient.Client, userID, firstName, lastName, email string) (userUUID, graphUUID string, err error) {
+func CreateUser(ctx context.Context, client *zepclient.Client, firstName, lastName, email string) (userUUID, graphUUID string, err error) {
 	if client == nil {
 		return "", "", nil
 	}
-	return createUserWithAPI(ctx, newZepAPI(client), userID, firstName, lastName, email)
+	return createUserWithAPI(ctx, newZepAPI(client), firstName, lastName, email)
 }
 
 // createUserWithAPI is the seam-friendly core of [CreateUser]. api is assumed
 // non-nil.
-func createUserWithAPI(ctx context.Context, api zepAPI, userID, firstName, lastName, email string) (userUUID, graphUUID string, err error) {
+func createUserWithAPI(ctx context.Context, api zepAPI, firstName, lastName, email string) (userUUID, graphUUID string, err error) {
 	req := &zep.CreateUserRequest{}
-	if userID != "" {
-		req.UserID = zep.String(userID)
-	}
 	if firstName != "" {
 		req.FirstName = zep.String(firstName)
 	}
@@ -738,25 +735,21 @@ func createUserWithAPI(ctx context.Context, api zepAPI, userID, firstName, lastN
 // The application calls this function one time for each conversation, stores
 // the UUID in its own database, and gives it to the callbacks through
 // [WithThreadUUID], [WithThreadUUIDResolver], [WithAfterThreadUUID], or
-// [WithAfterThreadUUIDResolver]. The threadID parameter is an optional
-// developer-assigned name, for example the ADK session ID. It is not an
-// address.
+// [WithAfterThreadUUIDResolver]. Zep v4 accepts no client-chosen name on a
+// create call, so this function sends no thread ID.
 //
 // The function returns ("", nil) and makes no call when client is nil.
-func CreateThread(ctx context.Context, client *zepclient.Client, threadID, userUUID string) (threadUUID string, err error) {
+func CreateThread(ctx context.Context, client *zepclient.Client, userUUID string) (threadUUID string, err error) {
 	if client == nil || userUUID == "" {
 		return "", nil
 	}
-	return createThreadWithAPI(ctx, newZepAPI(client), threadID, userUUID)
+	return createThreadWithAPI(ctx, newZepAPI(client), userUUID)
 }
 
 // createThreadWithAPI is the seam-friendly core of [CreateThread]. api is
 // assumed non-nil.
-func createThreadWithAPI(ctx context.Context, api zepAPI, threadID, userUUID string) (threadUUID string, err error) {
+func createThreadWithAPI(ctx context.Context, api zepAPI, userUUID string) (threadUUID string, err error) {
 	req := &zep.CreateThreadRequest{UserUUID: userUUID}
-	if threadID != "" {
-		req.ThreadID = zep.String(threadID)
-	}
 	thread, err := api.CreateThread(ctx, req)
 	if err != nil {
 		return "", err
