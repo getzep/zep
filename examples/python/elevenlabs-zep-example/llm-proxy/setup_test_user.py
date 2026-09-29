@@ -21,8 +21,8 @@ async def setup_test_user():
     print("Setting up test user")
     print("=" * 50)
 
-    # 1. Create the user. v4 gives every user a server-generated UUID, so a
-    # create call does not send a user_id.
+    # 1. Create the user. v4 gives every user a server-generated UUID, and a
+    # create call accepts no user_id.
     print("Creating new user...")
     user = await zep.user.create(
         first_name="Randy",

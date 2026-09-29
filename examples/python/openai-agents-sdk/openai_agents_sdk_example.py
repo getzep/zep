@@ -101,7 +101,7 @@ class AsyncZepMemoryManager:
         self.zep_client = AsyncZep(api_key=ZEP_API_KEY)
 
         # Get the given user, or create a new user. v4 gives every user a
-        # server-generated UUID, so a create call does not send a user_id.
+        # server-generated UUID, and a create call accepts no user_id.
         if self.user_uuid:
             user = await self.zep_client.user.get(self.user_uuid)
             print(f"Using existing user: {user.uuid_}")

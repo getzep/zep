@@ -32,6 +32,7 @@ point them at a disposable project key.
 ## Identifiers
 
 v4 gives every user, thread, and graph a server-generated UUID. The UUID is
-the address of the resource. A `user_id` or a `thread_id` is a name only. The
+the address of the resource. A v4 create call accepts no client-chosen name,
+so a new resource has no `user_id`, no `thread_id`, and no `graph_id`. The
 examples create a resource, read the UUID from the response, and use that UUID
 in all later calls.

@@ -11,7 +11,7 @@ from ontology import *
 def create_user(zep_client):
     """Load the user config and create the user.
 
-    v4 gives every user a server-generated UUID. The example does not send a
+    v4 gives every user a server-generated UUID. A create call accepts no
     user_id.
     """
     # Load user configuration

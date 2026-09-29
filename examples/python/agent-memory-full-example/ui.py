@@ -76,8 +76,8 @@ async def create_new_user(first_name: str, last_name: str = "", email: str = "")
     zep_client = AsyncZep(api_key=st.session_state.zep_api_key)
 
     try:
-        # v4 gives every user a server-generated UUID. The example does not
-        # send a user_id.
+        # v4 gives every user a server-generated UUID. A create call accepts
+        # no user_id.
         user = await zep_client.user.create(
             first_name=first_name,
             last_name=last_name,
