@@ -12,7 +12,7 @@ pip install zep-strands
 
 Requires Python 3.11+, `strands-agents>=1.45.0`, `zep-cloud==4.0.0a5`, and a Zep Cloud API key from [app.getzep.com](https://app.getzep.com/).
 
-Zep v4 addresses a user, a thread, and a graph by a server-generated UUID. A `user_id` or a `thread_id` is a name, not an address. Create each resource one time, keep the UUID from the response in your own database, and give the UUID to the store.
+Zep v4 addresses a user, a thread, and a graph by a server-generated UUID. A v4 create operation accepts no client-chosen name. Create each resource one time, keep the UUID from the response in your own database, and give the UUID to the store.
 
 ## Quick start
 
@@ -128,7 +128,7 @@ thread = await create_thread(zep, user_uuid=user.uuid_)
 # Keep user.uuid_ and thread.uuid_ in your own database.
 ```
 
-> **Known issue (ZEPAI-3605):** a user that has no `user_id` cannot receive a thread message. `thread.add_messages` returns 404 until the fix is deployed.
+> **Known issue (ZEPAI-3605):** `thread.add_messages` returns 404 for a thread whose user has no legacy name. Every v4 user has no name, so this applies to every v4 thread until the fix is deployed.
 
 ## Search and injection
 

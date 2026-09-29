@@ -1,10 +1,10 @@
 """
 Explicit, out-of-band Zep resource provisioning.
 
-Zep v4 addresses a user, a thread, and a graph by a server-generated UUID. A
-``user_id`` or a ``thread_id`` is a name, not an address. The application
-creates the user and the thread one time, stores the returned UUIDs in its own
-database, and gives those UUIDs to :class:`~zep_strands.memory_store.ZepMemoryStore`.
+Zep v4 addresses a user, a thread, and a graph by a server-generated UUID. A v4
+create operation accepts no client-chosen name. The application creates the
+user and the thread one time, stores the returned UUIDs in its own database,
+and gives those UUIDs to :class:`~zep_strands.memory_store.ZepMemoryStore`.
 
 :func:`create_user` and :func:`create_thread` do the creation. They return the
 created object, so the caller can read ``uuid_`` from the response. The store
@@ -35,7 +35,6 @@ UserSetupHook = Callable[[AsyncZep, str], Awaitable[None]]
 async def create_user(
     client: AsyncZep,
     *,
-    user_id: str | None = None,
     first_name: str | None = None,
     last_name: str | None = None,
     email: str | None = None,
@@ -53,8 +52,6 @@ async def create_user(
 
     Args:
         client: An initialised ``AsyncZep`` client.
-        user_id: Optional name for the user. The name is a label. It is not an
-            address, and Zep rejects a name that is already in use.
         first_name: Optional first name.
         last_name: Optional last name.
         email: Optional email address.
@@ -68,7 +65,6 @@ async def create_user(
             ``on_created``.
     """
     user: User = await client.user.create(
-        user_id=user_id,
         first_name=first_name,
         last_name=last_name,
         email=email,
@@ -86,7 +82,6 @@ async def create_thread(
     client: AsyncZep,
     *,
     user_uuid: str,
-    thread_id: str | None = None,
 ) -> Thread:
     """Create a Zep thread for a user and return it.
 
@@ -96,8 +91,6 @@ async def create_thread(
     Args:
         client: An initialised ``AsyncZep`` client.
         user_uuid: The UUID of the user that owns the thread.
-        thread_id: Optional name for the thread. The name is a label, not an
-            address.
 
     Returns:
         The created ``Thread``. Read ``uuid_`` from it.
@@ -105,6 +98,6 @@ async def create_thread(
     Raises:
         Exception: Any failure from the Zep SDK.
     """
-    thread: Thread = await client.thread.create(user_uuid=user_uuid, thread_id=thread_id)
+    thread: Thread = await client.thread.create(user_uuid=user_uuid)
     logger.info("Created Zep thread: %s", thread.uuid_)
     return thread

@@ -16,6 +16,8 @@
   the other scopes. A scoped search returns a pager, and the store reads the
   items of the first page.
 - `add` now calls `graph.episode.add`.
+- `create_user` and `create_thread` no longer accept a `user_id` or a
+  `thread_id`. A Zep v4 create operation accepts no client-chosen name.
 - An unknown message role now becomes `user`. Zep v4 accepts the roles
   `user`, `assistant`, `system`, `tool`, and `function`.
 

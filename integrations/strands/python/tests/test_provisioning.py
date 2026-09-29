@@ -36,11 +36,11 @@ class TestCreateUser:
     async def test_create_user_returns_the_server_uuid(self) -> None:
         client = _make_mock_client()
 
-        user = await create_user(client, user_id="u1", email="ada@example.com")
+        user = await create_user(client, email="ada@example.com")
 
         assert user.uuid_ == USER_UUID
         client.user.create.assert_awaited_once_with(
-            user_id="u1", first_name=None, last_name=None, email="ada@example.com"
+            first_name=None, last_name=None, email="ada@example.com"
         )
 
     @pytest.mark.asyncio
@@ -72,10 +72,10 @@ class TestCreateThread:
     async def test_create_thread_returns_the_server_uuid(self) -> None:
         client = _make_mock_client()
 
-        thread = await create_thread(client, user_uuid=USER_UUID, thread_id="t1")
+        thread = await create_thread(client, user_uuid=USER_UUID)
 
         assert thread.uuid_ == THREAD_UUID
-        client.thread.create.assert_awaited_once_with(user_uuid=USER_UUID, thread_id="t1")
+        client.thread.create.assert_awaited_once_with(user_uuid=USER_UUID)
 
     @pytest.mark.asyncio
     async def test_create_thread_propagates_failure(self) -> None:
