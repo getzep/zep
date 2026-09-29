@@ -26,9 +26,9 @@ Note: Go intentionally has no tool-based injection (callbacks are the Go-ADK-idi
 
 ## Identifiers
 
-Zep v4 addresses every user, thread, and graph by a server-generated UUID. A
-`user_id` or a `thread_id` is a name, not an address. The public API of this
-package takes `user_uuid` and `thread_uuid`.
+Zep v4 addresses every user, thread, and graph by a server-generated UUID. A v4
+create call takes no client-chosen identifier, thus a v4 resource has no name.
+The public API of this package takes `user_uuid` and `thread_uuid`.
 
 Provision the Zep resources one time, read the UUIDs from the responses, and
 store the UUIDs in your own database. The integration does not look an
@@ -312,7 +312,6 @@ export GOOGLE_API_KEY="your-google-api-key"
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `client` | `AsyncZep` | Yes | -- | Initialised Zep async client |
-| `user_id` | `str` | No | `None` | An optional human-readable name for the user. It is not an address, and the integration never uses it to address the user. |
 | `first_name` | `str` | No | `None` | User's first name |
 | `last_name` | `str` | No | `None` | User's last name |
 | `email` | `str` | No | `None` | User's email |
@@ -325,7 +324,6 @@ Returns the created `User`. Read `user.uuid_` and `user.graph_uuid` and store th
 |-----------|------|----------|---------|-------------|
 | `client` | `AsyncZep` | Yes | -- | Initialised Zep async client |
 | `user_uuid` | `str` | Yes | -- | The UUID of the Zep user that owns the thread |
-| `thread_id` | `str` | No | `None` | A human-readable name for the thread. It is not an address. |
 
 Returns the created `Thread`. Read `thread.uuid_` and store it. Raises on failures (auth, network, 5xx).
 

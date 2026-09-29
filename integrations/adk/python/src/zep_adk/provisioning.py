@@ -7,15 +7,15 @@ provision the Zep user and thread once, out-of-band, before the first turn
 (e.g. during account/session onboarding), with :func:`create_user` and
 :func:`create_thread`.
 
-Zep v4 addresses every user and thread by a server-generated UUID.  Both
-helpers return the created SDK object, so the caller reads ``uuid_`` (and,
-for a user, ``graph_uuid``) from the response and stores the value in its own
-database.  The integration never resolves a ``user_id`` or a ``thread_id``
-back to a UUID at run time.
+Zep v4 addresses every user and thread by a server-generated UUID.  A v4
+create call takes no client-chosen identifier, thus both helpers create a
+resource that has no name.  Both helpers return the created SDK object, so
+the caller reads ``uuid_`` (and, for a user, ``graph_uuid``) from the
+response and stores the value in its own database.  The integration never
+resolves a name back to a UUID at run time.
 
-Both helpers fail loudly.  Any failure (auth, network, 5xx, a duplicate
-``user_id``) propagates, so a misconfiguration is caught before the agent
-ever runs.
+Both helpers fail loudly.  Any failure (auth, network, 5xx) propagates, so a
+misconfiguration is caught before the agent ever runs.
 """
 
 from __future__ import annotations
@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 async def create_user(
     client: AsyncZep,
     *,
-    user_id: str | None = None,
     first_name: str | None = None,
     last_name: str | None = None,
     email: str | None = None,
@@ -50,9 +49,6 @@ async def create_user(
 
     Args:
         client: An initialised ``AsyncZep`` client.
-        user_id: An optional human-readable name for the user.  The name is
-            not an address.  Zep rejects a duplicate ``user_id`` with a
-            conflict error.
         first_name: An optional first name.
         last_name: An optional last name.
         email: An optional email address.
@@ -61,10 +57,9 @@ async def create_user(
         The created ``User``.
 
     Raises:
-        Exception: Any failure from the Zep SDK (auth, network, conflict, 5xx).
+        Exception: Any failure from the Zep SDK (auth, network, 5xx).
     """
     user: User = await client.user.create(
-        user_id=user_id,
         first_name=first_name,
         last_name=last_name,
         email=email,
@@ -77,7 +72,6 @@ async def create_thread(
     client: AsyncZep,
     *,
     user_uuid: str,
-    thread_id: str | None = None,
 ) -> Thread:
     """Create the Zep thread and return the created ``Thread``.
 
@@ -88,15 +82,13 @@ async def create_thread(
         client: An initialised ``AsyncZep`` client.
         user_uuid: The UUID of the Zep user that owns the thread.  The user
             must already exist (see :func:`create_user`).
-        thread_id: An optional human-readable name for the thread.  The name
-            is not an address.
 
     Returns:
         The created ``Thread``.
 
     Raises:
-        Exception: Any failure from the Zep SDK (auth, network, conflict, 5xx).
+        Exception: Any failure from the Zep SDK (auth, network, 5xx).
     """
-    thread: Thread = await client.thread.create(user_uuid=user_uuid, thread_id=thread_id)
+    thread: Thread = await client.thread.create(user_uuid=user_uuid)
     logger.info("Created Zep thread: %s", thread.uuid_)
     return thread

@@ -12,7 +12,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from zep_cloud.core.api_error import ApiError
-from zep_cloud.errors import ConflictError
 
 from zep_adk.provisioning import create_thread, create_user
 
@@ -50,7 +49,6 @@ class TestCreateUser:
 
         user = await create_user(
             client,
-            user_id="user-1",
             first_name="Jane",
             last_name="Smith",
             email="jane@example.com",
@@ -59,7 +57,6 @@ class TestCreateUser:
         assert user.uuid_ == USER_UUID
         assert user.graph_uuid == GRAPH_UUID
         client.user.create.assert_called_once_with(
-            user_id="user-1",
             first_name="Jane",
             last_name="Smith",
             email="jane@example.com",
@@ -74,20 +71,10 @@ class TestCreateUser:
 
         assert user.uuid_ == USER_UUID
         client.user.create.assert_called_once_with(
-            user_id=None,
             first_name=None,
             last_name=None,
             email=None,
         )
-
-    @pytest.mark.asyncio
-    async def test_create_user_conflict_raises(self) -> None:
-        """A duplicate user_id is a failure; the helper does not swallow it."""
-        client = _make_client()
-        client.user.create.side_effect = ConflictError(body={"message": "user already exists"})
-
-        with pytest.raises(ConflictError):
-            await create_user(client, user_id="user-1")
 
     @pytest.mark.asyncio
     async def test_create_user_server_error_raises(self) -> None:
@@ -96,7 +83,7 @@ class TestCreateUser:
         client.user.create.side_effect = _server_error()
 
         with pytest.raises(ApiError):
-            await create_user(client, user_id="user-1")
+            await create_user(client)
 
     @pytest.mark.asyncio
     async def test_create_user_generic_exception_raises(self) -> None:
@@ -116,20 +103,10 @@ class TestCreateThread:
         """The helper returns the created thread, which carries the UUID."""
         client = _make_client()
 
-        thread = await create_thread(client, user_uuid=USER_UUID, thread_id="thread-1")
-
-        assert thread.uuid_ == THREAD_UUID
-        client.thread.create.assert_called_once_with(user_uuid=USER_UUID, thread_id="thread-1")
-
-    @pytest.mark.asyncio
-    async def test_create_thread_without_name(self) -> None:
-        """The human-readable thread_id is optional."""
-        client = _make_client()
-
         thread = await create_thread(client, user_uuid=USER_UUID)
 
         assert thread.uuid_ == THREAD_UUID
-        client.thread.create.assert_called_once_with(user_uuid=USER_UUID, thread_id=None)
+        client.thread.create.assert_called_once_with(user_uuid=USER_UUID)
 
     @pytest.mark.asyncio
     async def test_create_thread_server_error_raises(self) -> None:
