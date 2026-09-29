@@ -22,8 +22,8 @@ Usage:
     zep_client = Zep(api_key="your-api-key")
 
     # Create the user and the thread one time, and store the UUIDs
-    user, _ = ensure_user(zep_client, user_id="user123", first_name="Alice")
-    thread, _ = ensure_thread(zep_client, thread_id="thread123", user_uuid=user.uuid_)
+    user, _ = ensure_user(zep_client, first_name="Alice")
+    thread, _ = ensure_thread(zep_client, user_uuid=user.uuid_)
 
     # For user-specific storage (standalone Zep adapter: save / search / reset)
     user_storage = ZepUserStorage(

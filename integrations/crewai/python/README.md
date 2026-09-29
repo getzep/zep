@@ -201,12 +201,16 @@ add_tool = create_add_data_tool(
 
 ### Provisioning: `ensure_user` / `ensure_thread` and `on_created`
 
-`ensure_user(client, *, user_id, first_name=None, last_name=None, email=None,
-on_created=None)` and `ensure_thread(client, *, thread_id, user_uuid)` are idempotent,
-create-then-catch-conflict helpers for **onboarding only**. Each returns a tuple of the
-resource and a flag: the flag is `True` when the resource was newly created and `False`
-when the resource already existed. Genuine failures (auth, network, 5xx) always raise.
-Read `user.uuid_`, `user.graph_uuid`, and `thread.uuid_` from the result and store them
+`ensure_user(client, *, first_name=None, last_name=None, email=None,
+on_created=None)` and `ensure_thread(client, *, user_uuid)` are
+create-then-catch-conflict helpers for **onboarding only**. Zep v4 accepts no
+client-chosen identifier on create, so a successful call always creates a new
+resource. Each returns a tuple of the resource and a flag: the flag is `True`
+when the resource was newly created and `False` when the create conflicted and
+the returned resource already existed (the helper resolves the UUID of the
+existing resource from `details.uuid` of the conflict response — never a
+`lookup`). Genuine failures (auth, network, 5xx) always raise. Read
+`user.uuid_`, `user.graph_uuid`, and `thread.uuid_` from the result and store them
 in your own database.
 
 `on_created` (a sync `Callable[[Zep, User], None]`) fires exactly once, only when the
@@ -221,10 +225,8 @@ def setup_new_user(client, user):
     client.graph.set_ontology(user.graph_uuid, entity_types=[...])  # one-time setup
 
 
-user, created = ensure_user(
-    zep_client, user_id="alice_123", first_name="Alice", on_created=setup_new_user
-)
-thread, _ = ensure_thread(zep_client, thread_id="project_456", user_uuid=user.uuid_)
+user, created = ensure_user(zep_client, first_name="Alice", on_created=setup_new_user)
+thread, _ = ensure_thread(zep_client, user_uuid=user.uuid_)
 ```
 
 The storage adapters never create a user or a thread. They take UUIDs of resources that

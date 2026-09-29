@@ -82,14 +82,14 @@ class TestEnsureUser:
         user already exists."""
         client = _make_mock_client()
 
-        user, created = ensure_user(client, user_id="u1")
+        user, created = ensure_user(client)
         assert created is True
         assert user.uuid_ == USER_UUID
-        client.user.create.assert_called_once_with(user_id="u1")
+        client.user.create.assert_called_once_with()
 
         client.user.create.side_effect = _ConflictError(USER_UUID)
         client.user.get = MagicMock(return_value=MagicMock(uuid_=USER_UUID))
-        existing, already_existed = ensure_user(client, user_id="u1")
+        existing, already_existed = ensure_user(client)
         assert already_existed is False
         assert existing.uuid_ == USER_UUID
         client.user.get.assert_called_once_with(USER_UUID)
@@ -99,7 +99,7 @@ class TestEnsureUser:
         client.user.create.side_effect = _ConflictError(USER_UUID)
         client.user.get = MagicMock(return_value=MagicMock(uuid_=USER_UUID))
 
-        ensure_user(client, user_id="u1")
+        ensure_user(client)
 
         client.user.lookup.assert_not_called()
 
@@ -110,17 +110,15 @@ class TestEnsureUser:
         client.user.create.side_effect = _ConflictError(None)
 
         with pytest.raises(_ConflictError):
-            ensure_user(client, user_id="u1")
+            ensure_user(client)
 
     def test_passes_identity_fields(self) -> None:
         client = _make_mock_client()
 
-        ensure_user(
-            client, user_id="u1", first_name="Jane", last_name="Smith", email="jane@example.com"
-        )
+        ensure_user(client, first_name="Jane", last_name="Smith", email="jane@example.com")
 
         client.user.create.assert_called_once_with(
-            user_id="u1", first_name="Jane", last_name="Smith", email="jane@example.com"
+            first_name="Jane", last_name="Smith", email="jane@example.com"
         )
 
     def test_on_created_not_fired_when_exists(self) -> None:
@@ -129,7 +127,7 @@ class TestEnsureUser:
         client.user.get = MagicMock(return_value=MagicMock(uuid_=USER_UUID))
         hook = MagicMock()
 
-        _user, created = ensure_user(client, user_id="u1", on_created=hook)
+        _user, created = ensure_user(client, on_created=hook)
 
         assert created is False
         hook.assert_not_called()
@@ -138,7 +136,7 @@ class TestEnsureUser:
         client = _make_mock_client()
         hook = MagicMock()
 
-        user, created = ensure_user(client, user_id="u1", on_created=hook)
+        user, created = ensure_user(client, on_created=hook)
 
         assert created is True
         hook.assert_called_once_with(client, user)
@@ -150,7 +148,7 @@ class TestEnsureUser:
         client.user.create.side_effect = _ApiError(401, "unauthorized")
 
         with pytest.raises(_ApiError):
-            ensure_user(client, user_id="u1")
+            ensure_user(client)
 
     def test_hook_error_propagates_from_ensure_user(self) -> None:
         client = _make_mock_client()
@@ -159,25 +157,25 @@ class TestEnsureUser:
             raise RuntimeError("setup failed")
 
         with pytest.raises(RuntimeError, match="setup failed"):
-            ensure_user(client, user_id="u1", on_created=_failing_hook)
+            ensure_user(client, on_created=_failing_hook)
 
 
 class TestEnsureThread:
     def test_returns_thread_on_actual_creation(self) -> None:
         client = _make_mock_client()
 
-        thread, created = ensure_thread(client, thread_id="t1", user_uuid=USER_UUID)
+        thread, created = ensure_thread(client, user_uuid=USER_UUID)
 
         assert created is True
         assert thread.uuid_ == THREAD_UUID
-        client.thread.create.assert_called_once_with(user_uuid=USER_UUID, thread_id="t1")
+        client.thread.create.assert_called_once_with(user_uuid=USER_UUID)
 
     def test_returns_false_when_already_exists(self) -> None:
         client = _make_mock_client()
         client.thread.create.side_effect = _ConflictError(THREAD_UUID)
         client.thread.get = MagicMock(return_value=MagicMock(uuid_=THREAD_UUID))
 
-        thread, created = ensure_thread(client, thread_id="t1", user_uuid=USER_UUID)
+        thread, created = ensure_thread(client, user_uuid=USER_UUID)
 
         assert created is False
         assert thread.uuid_ == THREAD_UUID
@@ -188,7 +186,7 @@ class TestEnsureThread:
         client.thread.create.side_effect = _ConflictError(THREAD_UUID)
         client.thread.get = MagicMock(return_value=MagicMock(uuid_=THREAD_UUID))
 
-        ensure_thread(client, thread_id="t1", user_uuid=USER_UUID)
+        ensure_thread(client, user_uuid=USER_UUID)
 
         client.thread.lookup.assert_not_called()
 
@@ -197,14 +195,14 @@ class TestEnsureThread:
         client.thread.create.side_effect = _ConflictError(None)
 
         with pytest.raises(_ConflictError):
-            ensure_thread(client, thread_id="t1", user_uuid=USER_UUID)
+            ensure_thread(client, user_uuid=USER_UUID)
 
     def test_propagates_genuine_errors(self) -> None:
         client = _make_mock_client()
         client.thread.create.side_effect = _ApiError(500, "internal error")
 
         with pytest.raises(_ApiError):
-            ensure_thread(client, thread_id="t1", user_uuid=USER_UUID)
+            ensure_thread(client, user_uuid=USER_UUID)
 
 
 class TestStorageDoesNotProvision:

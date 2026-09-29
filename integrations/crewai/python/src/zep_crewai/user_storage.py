@@ -208,7 +208,7 @@ class ZepUserStorage:
         Save data to the user's graph or thread.
 
         Routes storage based on metadata.type:
-        - "message": Store as thread message (requires thread_id)
+        - "message": Store as thread message (requires thread_uuid)
         - "json": Store as JSON data in user graph
         - "text": Store as text data in user graph (default)
 
