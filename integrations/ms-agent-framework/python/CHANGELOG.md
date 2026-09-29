@@ -22,6 +22,9 @@
   user and the thread out-of-band, and give the UUIDs to the provider.
 - The `first_name`, `last_name`, `email`, and `on_user_created` parameters of
   `ZepContextProvider`. Give these values to `create_user`.
+- The `user_id` parameter of `create_user` and the `thread_id` parameter of
+  `create_thread`. A v4 create call takes no client-chosen name, and the
+  server rejects one with `400 invalid_request`.
 
 ## 0.2.1 (2026-07-29)
 

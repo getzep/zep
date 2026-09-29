@@ -103,6 +103,7 @@ uv run pytest tests/test_integration.py -v -s -m integration
   seconds; increase the timeout if your graph is large or under load.
 - **Authentication errors** — confirm `ZEP_API_KEY` is set in the same shell and
   belongs to the intended project.
-- **404 on a thread message add** — a user created without a `user_id` cannot
-  receive a thread message until the fix for ZEPAI-3605 is deployed. The live
-  integration tests are skipped for this reason.
+- **404 on a thread message add** — defect ZEPAI-3605 makes
+  `thread.add_messages` give a 404 when the thread owner has no `user_id`, and
+  a v4 create call gives every user no `user_id`. The live integration tests
+  are skipped for this reason until the fix is deployed.

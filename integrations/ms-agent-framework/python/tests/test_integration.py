@@ -66,16 +66,6 @@ LAST_NAME = "User"
 EMAIL = f"integtest-{_suffix}@example.com"
 
 
-def new_user_label() -> str:
-    """Return a unique ``user_id`` label for a live test user.
-
-    The v4 server cannot add a message to a thread whose user has no
-    ``user_id``, so the live test gives each user a label. The package API
-    stays UUID-only.
-    """
-    return f"integtest-{uuid4().hex[:8]}"
-
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("test_integration")
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -152,7 +142,6 @@ async def main() -> None:
 
     user = await create_user(
         zep,
-        user_id=new_user_label(),
         first_name=FIRST_NAME,
         last_name=LAST_NAME,
         email=EMAIL,
@@ -244,8 +233,9 @@ async def main() -> None:
 
 @pytest.mark.skip(
     reason=(
-        "ZEPAI-3605: a user created without a user_id cannot receive a thread "
-        "message. Enable this test after the fix is deployed."
+        "ZEPAI-3605: thread.add_messages gives a 404 when the thread owner has "
+        "no user_id, and a v4 user has no user_id. Enable this test after the "
+        "fix is deployed."
     )
 )
 @pytest.mark.integration
@@ -265,7 +255,6 @@ async def test_provisioning_and_before_after_run() -> None:
 
     user = await create_user(
         zep,
-        user_id=new_user_label(),
         first_name=FIRST_NAME,
         last_name=LAST_NAME,
         email=f"provision-{_suffix}@example.com",
@@ -324,8 +313,9 @@ async def test_provisioning_and_before_after_run() -> None:
 
 @pytest.mark.skip(
     reason=(
-        "ZEPAI-3605: a user created without a user_id cannot receive a thread "
-        "message. Enable this test after the fix is deployed."
+        "ZEPAI-3605: thread.add_messages gives a 404 when the thread owner has "
+        "no user_id, and a v4 user has no user_id. Enable this test after the "
+        "fix is deployed."
     )
 )
 @pytest.mark.integration
@@ -339,7 +329,6 @@ async def test_integration_full_lifecycle() -> None:
 
     user = await create_user(
         zep,
-        user_id=new_user_label(),
         first_name=FIRST_NAME,
         last_name=LAST_NAME,
         email=EMAIL,

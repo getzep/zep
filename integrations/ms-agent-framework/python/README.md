@@ -16,7 +16,7 @@ pip install zep-ms-agent-framework agent-framework-openai
 
 ## Identifiers
 
-Zep v4 addresses a user, a thread, and a graph by a server-generated UUID. A `user_id` or a `thread_id` is a name, not an address. The provider takes `user_uuid`, `thread_uuid`, and an optional `graph_uuid`.
+Zep v4 addresses a user, a thread, and a graph by a server-generated UUID. A v4 create call takes no client-chosen name, and the create response carries the UUID. The provider takes `user_uuid`, `thread_uuid`, and an optional `graph_uuid`.
 
 Create the user and the thread one time, read the UUIDs from the create responses, and store the UUIDs in your own database. The provider does not look up a UUID at run time.
 
@@ -133,7 +133,7 @@ Defaults to `DEFAULT_CONTEXT_TEMPLATE`, an explicit `<ZEP_CONTEXT>...</ZEP_CONTE
 
 ## Provisioning
 
-`create_user` and `create_thread` (in `zep_ms_agent_framework.provisioning`) provision the Zep user and thread out-of-band, before the first run. The server generates the UUIDs, and the create response carries them:
+`create_user` and `create_thread` (in `zep_ms_agent_framework.provisioning`) provision the Zep user and thread out-of-band, before the first run. A v4 create call takes no client-chosen name. The server generates the UUIDs, and the create response carries them:
 
 ```python
 from zep_ms_agent_framework import create_thread, create_user

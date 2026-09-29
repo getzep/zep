@@ -2,8 +2,8 @@
 Explicit, out-of-band Zep resource provisioning.
 
 Zep v4 addresses every user, thread, and graph by a server-generated UUID. A
-``user_id`` or a ``thread_id`` is a name, not an address. A create call returns
-the new resource, and the application stores its ``uuid_`` for all later calls.
+create call takes no client-chosen name. It returns the new resource, and the
+application stores its ``uuid_`` for all later calls.
 
 ``ZepContextProvider`` therefore does not create Zep resources. Create the user
 and the thread out-of-band, before the first run, and give the provider the
@@ -34,7 +34,6 @@ UserSetupHook = Callable[[AsyncZep, str], Awaitable[None]]
 async def create_user(
     client: AsyncZep,
     *,
-    user_id: str | None = None,
     first_name: str | None = None,
     last_name: str | None = None,
     email: str | None = None,
@@ -56,9 +55,6 @@ async def create_user(
 
     Args:
         client: An initialised ``AsyncZep`` client.
-        user_id: Optional name for the user. Zep does not use it as an
-            address, and it does not need to be unique for a create call to
-            succeed.
         first_name: Optional first name. Real names help Zep resolve the
             identity of the user in the graph.
         last_name: Optional last name.
@@ -76,7 +72,6 @@ async def create_user(
     # The v4 SDK leaves its sub-client properties unannotated, so ``client.user``
     # is ``Any`` to a type checker.  The annotation restores the static type.
     user: User = await client.user.create(
-        user_id=user_id,
         first_name=first_name,
         last_name=last_name,
         email=email,
@@ -94,7 +89,6 @@ async def create_thread(
     client: AsyncZep,
     *,
     user_uuid: str,
-    thread_id: str | None = None,
 ) -> Thread:
     """Create a Zep thread for a user and return it.
 
@@ -105,8 +99,6 @@ async def create_thread(
     Args:
         client: An initialised ``AsyncZep`` client.
         user_uuid: The UUID of the user that owns the thread.
-        thread_id: Optional name for the thread. Zep does not use it as an
-            address.
 
     Returns:
         The created ``Thread``.
@@ -114,6 +106,6 @@ async def create_thread(
     Raises:
         Exception: Any failure from the Zep SDK.
     """
-    thread: Thread = await client.thread.create(user_uuid=user_uuid, thread_id=thread_id)
+    thread: Thread = await client.thread.create(user_uuid=user_uuid)
     logger.info("Created Zep thread: %s", thread.uuid_)
     return thread

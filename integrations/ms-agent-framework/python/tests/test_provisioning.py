@@ -40,9 +40,7 @@ class TestCreateUser:
 
         assert user.uuid_ == USER_UUID
         assert user.graph_uuid == GRAPH_UUID
-        client.user.create.assert_called_once_with(
-            user_id=None, first_name=None, last_name=None, email=None
-        )
+        client.user.create.assert_called_once_with(first_name=None, last_name=None, email=None)
 
     @pytest.mark.asyncio
     async def test_passes_identity_fields(self) -> None:
@@ -50,14 +48,13 @@ class TestCreateUser:
 
         await create_user(
             client,
-            user_id="jane",
             first_name="Jane",
             last_name="Smith",
             email="jane@example.com",
         )
 
         client.user.create.assert_called_once_with(
-            user_id="jane", first_name="Jane", last_name="Smith", email="jane@example.com"
+            first_name="Jane", last_name="Smith", email="jane@example.com"
         )
 
     @pytest.mark.asyncio
@@ -96,15 +93,7 @@ class TestCreateThread:
         thread = await create_thread(client, user_uuid=USER_UUID)
 
         assert thread.uuid_ == THREAD_UUID
-        client.thread.create.assert_called_once_with(user_uuid=USER_UUID, thread_id=None)
-
-    @pytest.mark.asyncio
-    async def test_passes_the_thread_name(self) -> None:
-        client = _make_mock_client()
-
-        await create_thread(client, user_uuid=USER_UUID, thread_id="support")
-
-        client.thread.create.assert_called_once_with(user_uuid=USER_UUID, thread_id="support")
+        client.thread.create.assert_called_once_with(user_uuid=USER_UUID)
 
     @pytest.mark.asyncio
     async def test_propagates_sdk_errors(self) -> None:
