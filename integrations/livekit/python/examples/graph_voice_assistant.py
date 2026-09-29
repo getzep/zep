@@ -31,7 +31,8 @@ from zep_livekit import ZepGraphAgent, create_graph_search_tool
 logging.basicConfig(level=logging.DEBUG)  # Changed to DEBUG to see participant detection
 logger = logging.getLogger(__name__)
 
-# Configuration. A graph_id is a name in Zep v4, not an address.
+# Configuration. Zep v4 addresses a graph by a server-generated UUID; a create
+# call takes no client-chosen name.
 ZEP_GRAPH_NAME = "Knowledge Graph for Voice Assistant"
 
 

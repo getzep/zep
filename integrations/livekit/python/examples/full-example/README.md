@@ -35,7 +35,7 @@ LIVEKIT_API_SECRET=your_livekit_api_secret_here
 ## Identifiers in Zep v4
 
 Zep v4 addresses a user, a thread, and a graph by a server-generated UUID. A
-`user_id` and a `graph_id` are names, not addresses. Each agent creates the
+create call takes no client-chosen name. Each agent creates the
 resource one time and prints the UUID. Add the UUID to your `.env` file to reuse
 the same resource on the next run:
 

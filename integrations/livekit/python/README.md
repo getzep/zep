@@ -48,7 +48,7 @@ Both approaches work with the same underlying temporal knowledge graph - threads
 Using structured conversation threads that automatically contribute to your unified graph.
 
 > **UUID addressing.** Zep v4 addresses every user, thread, and graph by a
-> server-generated UUID. A `user_id` or a `thread_id` is a name, not an address. Create
+> server-generated UUID, and a create call takes no client-chosen name. Create
 > each resource one time, store the UUID in your own database, and give the stored UUID
 > to the agent. The integration does not resolve a name at run time.
 >
@@ -407,7 +407,6 @@ class ZepGraphAgent(agents.Agent):
 async def create_user(
     client: AsyncZep,
     *,
-    user_id: str | None = None,      # a name for the user, not an address
     first_name: str | None = None,
     last_name: str | None = None,
     email: str | None = None,
@@ -415,7 +414,7 @@ async def create_user(
 ) -> User: ...  # read `uuid_` and `graph_uuid` from the response
 
 async def create_thread(
-    client: AsyncZep, *, user_uuid: str, thread_id: str | None = None
+    client: AsyncZep, *, user_uuid: str
 ) -> Thread: ...  # read `uuid_` from the response
 ```
 

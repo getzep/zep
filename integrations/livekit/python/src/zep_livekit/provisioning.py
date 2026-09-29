@@ -2,11 +2,10 @@
 Explicit, out-of-band Zep resource provisioning.
 
 Zep v4 addresses a user, a thread, and a graph by a server-generated UUID.
-A ``user_id`` or a ``thread_id`` is a name, not an address, so an
-integration cannot resolve a resource by name on the hot path. Create the
-resources one time with :func:`create_user` and :func:`create_thread`, store
-the returned UUIDs in your own database, and pass the stored UUIDs to
-``ZepUserAgent``.
+A create call takes no client-chosen identifier, so an integration cannot
+resolve a resource by name on the hot path. Create the resources one time
+with :func:`create_user` and :func:`create_thread`, store the returned UUIDs
+in your own database, and pass the stored UUIDs to ``ZepUserAgent``.
 
 These helpers raise on failure. Call them during account or session
 onboarding, before the first turn, so misconfiguration is loud.
@@ -32,7 +31,6 @@ UserSetupHook = Callable[[AsyncZep, str], Awaitable[None]]
 async def create_user(
     client: AsyncZep,
     *,
-    user_id: str | None = None,
     first_name: str | None = None,
     last_name: str | None = None,
     email: str | None = None,
@@ -51,10 +49,6 @@ async def create_user(
 
     Args:
         client: An initialised ``AsyncZep`` client.
-        user_id: Optional name for the user. A name is not an address, and
-            v4 does not require one. Set it only when your application
-            already has an identifier that a person must recognise in the
-            Zep dashboard.
         first_name: Optional first name.
         last_name: Optional last name.
         email: Optional email.
@@ -71,7 +65,6 @@ async def create_user(
     # The v4 SDK exposes each sub-client through an unannotated property, so
     # the result is untyped. The annotation restores the type.
     user: User = await client.user.create(
-        user_id=user_id,
         first_name=first_name,
         last_name=last_name,
         email=email,
@@ -85,9 +78,7 @@ async def create_user(
     return user
 
 
-async def create_thread(
-    client: AsyncZep, *, user_uuid: str, thread_id: str | None = None
-) -> Thread:
+async def create_thread(client: AsyncZep, *, user_uuid: str) -> Thread:
     """Create a Zep thread for a user and return it.
 
     Read ``uuid_`` from the returned :class:`~zep_cloud.types.thread.Thread`
@@ -96,7 +87,6 @@ async def create_thread(
     Args:
         client: An initialised ``AsyncZep`` client.
         user_uuid: The UUID of the user that owns the thread.
-        thread_id: Optional name for the thread. A name is not an address.
 
     Returns:
         The created ``Thread``.
@@ -104,6 +94,6 @@ async def create_thread(
     Raises:
         Exception: Any failure from the Zep SDK.
     """
-    thread: Thread = await client.thread.create(user_uuid=user_uuid, thread_id=thread_id)
+    thread: Thread = await client.thread.create(user_uuid=user_uuid)
     logger.info("Created Zep thread: %s", thread.uuid_)
     return thread

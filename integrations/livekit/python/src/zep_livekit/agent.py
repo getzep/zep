@@ -167,8 +167,8 @@ class ZepUserAgent(agents.Agent):
 
     Note:
         **UUID addressing.** Zep v4 addresses a user and a thread by a
-        server-generated UUID. A ``user_id`` or a ``thread_id`` is a name,
-        not an address. Create the user and the thread out-of-band with
+        server-generated UUID, and a create call takes no client-chosen
+        name. Create the user and the thread out-of-band with
         :func:`~zep_livekit.provisioning.create_user` and
         :func:`~zep_livekit.provisioning.create_thread`, store the returned
         UUIDs in your own database, and pass them here. The agent does not

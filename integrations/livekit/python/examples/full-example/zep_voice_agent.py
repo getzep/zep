@@ -10,9 +10,10 @@ from zep_livekit import ZepUserAgent, create_thread, create_user
 # Load environment variables
 load_dotenv()
 
-# Constants. In Zep v4 a user_id is a name, not an address. Set
-# ZEP_USER_UUID to reuse a user that exists. If it is empty, the example
-# creates a user and prints the UUID for later runs.
+# Constants. Zep v4 addresses a user by a server-generated UUID; a create call
+# takes no client-chosen name. Set ZEP_USER_UUID to reuse a user that exists.
+# If it is empty, the example creates a user and prints the UUID for later
+# runs.
 USER_UUID = os.getenv("ZEP_USER_UUID", "")
 USER_FIRST_NAME = "John"
 USER_LAST_NAME = "Doe"
