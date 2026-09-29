@@ -22,9 +22,10 @@ running the example end to end.
 
 ## Identifiers: Zep v4 uses UUIDs
 
-Zep v4 addresses every user, thread, and graph by a server-generated UUID. A
-`user_id` or a `thread_id` is a name, not an address. The public API of this
-package therefore takes `user_uuid`, `thread_uuid`, and `graph_uuid`, and the
+Zep v4 addresses every user, thread, and graph by a server-generated UUID. A v4
+create call accepts no client-chosen name, and a resource that v4 creates has
+no `user_id`, `thread_id`, or `graph_id`. The public API of this package
+therefore takes `user_uuid`, `thread_uuid`, and `graph_uuid`, and the
 integration never resolves an application identifier at run time.
 
 Create the user and the thread out-of-band, read the UUIDs from the responses,

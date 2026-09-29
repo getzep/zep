@@ -17,9 +17,9 @@ example creates the user and the thread, reads ``user.uuid_``,
 ``user.graph_uuid``, and ``thread.uuid_`` from the responses, and passes those
 UUIDs to the integration.
 
-Note: ZEPAI-3605. A user that is created without a ``user_id`` cannot receive a
-thread message until the fix is deployed, so this example cannot complete the
-recall step against production yet.
+Note: ZEPAI-3605. ``thread.add_messages`` returns 404 because a v4 user has no
+``user_id``, so this example cannot complete the recall step against production
+until the fix is deployed.
 
 Prerequisites::
 
