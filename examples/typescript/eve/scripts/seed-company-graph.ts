@@ -28,13 +28,13 @@ const EPISODES: string[] = [
 async function ensureGraph(
   client: ZepClient,
   graphUuid?: string,
-): Promise<{ uuid: string; created: boolean }> {
+): Promise<{ uuid: string; createdUuid?: string }> {
   // v4 addresses a graph by a server-generated UUID. The seed creates the
   // graph one time, and the application keeps the UUID.
   if (graphUuid) {
     await client.graph.get(graphUuid);
     console.log("Graph already exists for ZEP_COMPANY_GRAPH_UUID.");
-    return { uuid: graphUuid, created: false };
+    return { uuid: graphUuid };
   }
 
   const graph = await client.graph.create({
@@ -45,7 +45,7 @@ async function ensureGraph(
     throw new Error("Zep did not return a graph UUID");
   }
   console.log(`Created graph: ${graph.uuid}`);
-  return { uuid: graph.uuid, created: true };
+  return { uuid: graph.uuid, createdUuid: graph.uuid };
 }
 
 async function listEpisodes(client: ZepClient, graphUuid: string) {
@@ -107,7 +107,7 @@ async function main() {
   });
 
   console.log("Seeding the company graph…");
-  const { uuid: graphUuid, created } = await ensureGraph(client, GRAPH_UUID);
+  const { uuid: graphUuid, createdUuid } = await ensureGraph(client, GRAPH_UUID);
 
   const existing = await listEpisodes(client, graphUuid);
   const existingCount = existing.length;
@@ -147,8 +147,8 @@ async function main() {
     }
   }
 
-  if (created) {
-    console.log(`\nDone. Set ZEP_COMPANY_GRAPH_UUID=${graphUuid} in .env.`);
+  if (createdUuid) {
+    console.log(`\nDone. Set ZEP_COMPANY_GRAPH_UUID=${createdUuid} in .env.`);
   } else {
     console.log("\nDone. ZEP_COMPANY_GRAPH_UUID in .env is unchanged.");
   }
