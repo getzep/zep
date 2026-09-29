@@ -244,17 +244,6 @@ export function createZepOnFinish(
 export interface CreateIdentityOptions {
   /** A shared, initialized Zep client. */
   client: ZepClient;
-  /**
-   * An optional developer-assigned name for the user, for example the
-   * application's own user identifier. Zep v4 addresses the user by the UUID
-   * that it returns, so this name is a label only.
-   */
-  userId?: string;
-  /**
-   * An optional developer-assigned name for the thread. Zep v4 addresses the
-   * thread by the UUID that it returns, so this name is a label only.
-   */
-  threadId?: string;
   /** User's first name — pass a real name to help Zep resolve identity. */
   firstName?: string;
   /** User's last name. */
@@ -315,7 +304,6 @@ export async function createZepUserAndThread(
   let user: Zep.User;
   try {
     user = await client.user.create({
-      ...(options.userId !== undefined ? { userId: options.userId } : {}),
       ...(options.firstName !== undefined ? { firstName: options.firstName } : {}),
       ...(options.lastName !== undefined ? { lastName: options.lastName } : {}),
       ...(options.email !== undefined ? { email: options.email } : {}),
@@ -341,10 +329,7 @@ export async function createZepUserAndThread(
   }
 
   try {
-    const thread = await client.thread.create({
-      userUuid,
-      ...(options.threadId !== undefined ? { threadId: options.threadId } : {}),
-    });
+    const thread = await client.thread.create({ userUuid });
     if (!thread.uuid) {
       logger.warn("[zep] thread.create returned no uuid; identity is not ready.");
       return null;

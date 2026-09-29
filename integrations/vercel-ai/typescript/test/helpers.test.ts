@@ -235,20 +235,6 @@ describe("createZepUserAndThread", () => {
     expect(zep.thread.create).toHaveBeenCalledWith({ userUuid: USER_UUID });
   });
 
-  it("passes the optional developer-assigned names through", async () => {
-    const zep = makeFakeZep();
-    await createZepUserAndThread({
-      client: asZep(zep),
-      userId: "app-user-1",
-      threadId: "app-thread-1",
-    });
-    expect(zep.user.create).toHaveBeenCalledWith({ userId: "app-user-1" });
-    expect(zep.thread.create).toHaveBeenCalledWith({
-      userUuid: USER_UUID,
-      threadId: "app-thread-1",
-    });
-  });
-
   it("returns null and warns when user.create fails", async () => {
     const zep = makeFakeZep();
     zep.user.create.mockRejectedValueOnce(

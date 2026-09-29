@@ -8,19 +8,19 @@
   `4.0.0-alpha.5`).** The v3 SDK is no longer supported, and the package does
   not contain a compatibility layer.
 - **Breaking: the public API takes UUIDs.** Zep v4 addresses every user,
-  thread, and graph by a server-generated UUID. `userId`, `threadId`, and
-  `graphId` are developer-assigned names, not addresses. `ZepBinding` now has
-  `graphUuid` and `threadUuid`. `createZepMiddleware`, `createZepOnFinish`,
-  `createZepContextTool`, `getZepContext`, and `persistZepTurn` take
-  `threadUuid`, `userUuid`, and `templateUuid`. The package does not call a
-  lookup method at run time. An application resolves a name to a UUID one time
-  and stores the UUID in its own database.
+  thread, and graph by a server-generated UUID, and a create call takes no
+  client-chosen identifier. `ZepBinding` now has `graphUuid` and `threadUuid`.
+  `createZepMiddleware`, `createZepOnFinish`, `createZepContextTool`,
+  `getZepContext`, and `persistZepTurn` take `threadUuid`, `userUuid`, and
+  `templateUuid`. The package does not call a lookup method at run time. An
+  application stores the returned UUIDs in its own database.
 - **Breaking: `ensureZepUserAndThread` is replaced by
-  `createZepUserAndThread`.** The new function creates the user and the thread,
-  and returns `{ userUuid, graphUuid, threadUuid }` from the Zep responses, or
-  `null` when Zep does not create both resources. `EnsureIdentityOptions` is
-  replaced by `CreateIdentityOptions`, and the new `ZepIdentity` type is
-  exported. The `onUserCreated` hook now receives the new user UUID.
+  `createZepUserAndThread`.** The new function creates the user and the thread
+  with no client-chosen identifier, and returns `{ userUuid, graphUuid,
+  threadUuid }` from the Zep responses, or `null` when Zep does not create
+  both resources. `EnsureIdentityOptions` is replaced by
+  `CreateIdentityOptions`, and the new `ZepIdentity` type is exported. The
+  `onUserCreated` hook now receives the new user UUID.
 - **Breaking: `toRoleType` can return `undefined`.** Zep v4 removed the
   `norole` member of `RoleType`. An unrecognized or absent role maps to
   `undefined`, and the package omits the role from the message.

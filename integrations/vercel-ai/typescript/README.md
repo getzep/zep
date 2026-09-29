@@ -248,10 +248,10 @@ const pinnedTool = createZepSearchTool({
 ## Binding and identifiers
 
 Zep v4 addresses every user, thread, and graph by a server-generated UUID. A
-`userId` or a `threadId` is a developer-assigned name, not an address. The
-public API of this package takes UUIDs only, and the package never calls a
-lookup method at run time. Your application resolves a name to a UUID one time
-and stores the UUID in its own database.
+create call takes no client-chosen identifier: the server assigns the UUID and
+the resource has no name. The public API of this package takes UUIDs only, and
+the package never calls a lookup method at run time. Your application stores
+the returned UUIDs in its own database.
 
 Tools and `createZepTools` are bound to a graph via a `ZepBinding`:
 
@@ -269,9 +269,8 @@ instead of throwing.
 
 Creates the Zep user and the thread before the first turn, and returns the
 server-generated UUIDs as `{ userUuid, graphUuid, threadUuid }`. The function
-returns `null` when Zep does not create both resources. Optional `userId` and
-`threadId` fields set your own names on the new resources; the returned UUIDs
-remain the addresses.
+returns `null` when Zep does not create both resources. The returned UUIDs
+are the addresses for every later call.
 
 Pass `onUserCreated: async (client, userUuid) => { ... }` to run one-time
 setup, such as a per-user ontology, custom instructions, or a seeded fact. The
