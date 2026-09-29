@@ -1,35 +1,44 @@
-import { v4 as uuidv4 } from 'uuid';
 import { ZepClient, Zep } from '@getzep/zep-cloud';
 import { history } from './conversations';
 
 const API_KEY = process.env.ZEP_API_KEY
+
+async function collect<T>(pager: AsyncIterable<T>, limit: number): Promise<T[]> {
+    const items: T[] = [];
+    for await (const item of pager) {
+        items.push(item);
+        if (items.length >= limit) {
+            break;
+        }
+    }
+    return items;
+}
 
 async function main() {
     const client = new ZepClient({
         apiKey: API_KEY,
     });
 
-    const userId = uuidv4();
-    const threadId = uuidv4();
-
-    // Create a user
+    // Create a user. v4 gives every user a server-generated UUID and a graph
+    // UUID.
     const userRequest: Zep.CreateUserRequest = {
-        userId: userId,
         firstName: 'Paul',
     };
-    await client.user.add(userRequest);
-    console.log(`User ${userId} created`);
+    const user = await client.user.create(userRequest);
+    const userUuid = user.uuid!;
+    const graphUuid = user.graphUuid!;
+    console.log(`User ${userUuid} created`);
 
     // Create a thread
-    await client.thread.create({
-        threadId: threadId,
-        userId: userId,
+    const thread = await client.thread.create({
+        userUuid: userUuid,
     });
-    console.log(`thread ${threadId} created`);
+    const threadUuid = thread.uuid!;
+    console.log(`thread ${threadUuid} created`);
 
     // Add messages to the thread
     for (const message of history[2]) {
-        await client.thread.addMessages(threadId, {
+        await client.thread.addMessages(threadUuid, {
             messages: [
                 {
                     role: message.role,
@@ -43,49 +52,52 @@ async function main() {
     console.log("Waiting for the graph to be updated...");
     await new Promise(resolve => setTimeout(resolve, 10000));
 
-    console.log("Getting memory for thread");
-    const threadMemory = await client.thread.getUserContext(threadId);
-    console.log(threadMemory);
+    console.log("Getting the context for the thread");
+    const threadContext = await client.thread.getContext(threadUuid);
+    console.log(threadContext);
 
-    console.log("Getting episodes for user");
-    const episodeResult = await client.graph.episode.getByUserId(userId, { lastn: 3 });
-    const episodes = episodeResult.episodes;
-    console.log(`Episodes for user ${userId}:`);
+    console.log("Getting episodes for the user graph");
+    const episodes = await collect(await client.graph.episode.list(graphUuid, { limit: 3, body: {} }), 3);
+    console.log(`Episodes for graph ${graphUuid}:`);
     console.log(episodes);
 
-    if (episodes && episodes.length > 0) {
-        const episode = await client.graph.episode.get(episodes[0].uuid!);
+    if (episodes.length > 0) {
+        const episode = await client.graph.episode.get(graphUuid, episodes[0].uuid!);
         console.log(episode);
     }
 
-    const edges = await client.graph.edge.getByUserId(userId, { limit: 10 });
-    console.log(`Edges for user ${userId}:`);
+    const edges = await collect(await client.graph.edge.list(graphUuid, { limit: 10, body: {} }), 10);
+    console.log(`Edges for graph ${graphUuid}:`);
     console.log(edges);
 
-    if (edges && edges.length > 0) {
-        const edge = await client.graph.edge.get(edges[0].uuid);
+    if (edges.length > 0) {
+        const edge = await client.graph.edge.get(graphUuid, edges[0].uuid!);
         console.log(edge);
     }
 
-    const nodes = await client.graph.node.getByUserId(userId, { limit: 10 });
-    console.log(`Nodes for user ${userId}:`);
+    const nodes = await collect(await client.graph.node.list(graphUuid, { limit: 10, body: {} }), 10);
+    console.log(`Nodes for graph ${graphUuid}:`);
     console.log(nodes);
 
-    if (nodes && nodes.length > 0) {
-        const node = await client.graph.node.get(nodes[0].uuid);
+    if (nodes.length > 0) {
+        const node = await client.graph.node.get(graphUuid, nodes[0].uuid!);
         console.log(node);
     }
 
-    console.log("Searching user graph memory...");
-    const graphSearchResults = await client.graph.search({
-        userId: userId,
-        query: "What is the weather in San Francisco?",
-    });
-    console.log(graphSearchResults.edges);
+    console.log("Searching the user graph...");
+    const graphSearchResults = await collect(
+        await client.graph.searchEdges(graphUuid, {
+            limit: 10,
+            body: {
+                query: "What is the weather in San Francisco?",
+            },
+        }),
+        10,
+    );
+    console.log(graphSearchResults);
 
     console.log("Adding a new text episode to the graph...");
-    await client.graph.add({
-        userId: userId,
+    await client.graph.episode.add(graphUuid, {
         type: "text",
         data: "The user is an avid fan of Eric Clapton",
     });
@@ -93,8 +105,7 @@ async function main() {
 
     console.log("Adding a new JSON episode to the graph...");
     const jsonString = '{"name": "Eric Clapton", "age": 78, "genre": "Rock"}';
-    await client.graph.add({
-        userId: userId,
+    await client.graph.episode.add(graphUuid, {
         type: "json",
         data: jsonString,
     });
@@ -102,8 +113,7 @@ async function main() {
 
     console.log("Adding a new message episode to the graph...");
     const message = "Paul (user): I went to Eric Clapton concert last night";
-    await client.graph.add({
-        userId: userId,
+    await client.graph.episode.add(graphUuid, {
         type: "message",
         data: message,
     });
@@ -113,7 +123,7 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 30000));
 
     console.log("Getting nodes from the graph...");
-    const updatedNodes = await client.graph.node.getByUserId(userId, { limit: 10 });
+    const updatedNodes = await collect(await client.graph.node.list(graphUuid, { limit: 10, body: {} }), 10);
     console.log(updatedNodes);
 
     console.log("Finding Eric Clapton in the graph...");
@@ -122,34 +132,47 @@ async function main() {
 
     if (claptonNode) {
         console.log("Performing Eric Clapton centered edge search...");
-        const edgeSearchResults = await client.graph.search({
-            userId: userId,
-            query: "Eric Clapton",
-            centerNodeUuid: claptonNode.uuid,
-            scope: "edges",
-        });
-        console.log(edgeSearchResults.edges);
+        const edgeSearchResults = await collect(
+            await client.graph.searchEdges(graphUuid, {
+                limit: 10,
+                body: {
+                    query: "Eric Clapton",
+                    centerNodeUuid: claptonNode.uuid,
+                },
+            }),
+            10,
+        );
+        console.log(edgeSearchResults);
 
         console.log("Performing Eric Clapton centered node search...");
-        const nodeSearchResults = await client.graph.search({
-            userId: userId,
-            query: "Eric Clapton",
-            centerNodeUuid: claptonNode.uuid,
-            scope: "nodes",
-        });
-        console.log(nodeSearchResults.nodes);
+        const nodeSearchResults = await collect(
+            await client.graph.searchNodes(graphUuid, {
+                limit: 10,
+                body: {
+                    query: "Eric Clapton",
+                    centerNodeUuid: claptonNode.uuid,
+                },
+            }),
+            10,
+        );
+        console.log(nodeSearchResults);
     }
 
-    const {node: userNode} = await client.user.getNode(userId)
+    const userNode = await client.user.getNode(userUuid);
     if (userNode) {
         console.log("User node: ", userNode)
-        const userCenteredSearch = await client.graph.search({
-            userId,
-            query: "User preferences",
-            centerNodeUuid: userNode.uuid,
-            reranker: "node_distance",
-        })
-        console.log("User centered search results", userCenteredSearch.edges)
+        const userCenteredSearch = await collect(
+            await client.graph.searchEdges(graphUuid, {
+                limit: 10,
+                body: {
+                    query: "User preferences",
+                    centerNodeUuid: userNode.uuid,
+                    reranker: "node_distance",
+                },
+            }),
+            10,
+        );
+        console.log("User centered search results", userCenteredSearch)
     }
 
 }

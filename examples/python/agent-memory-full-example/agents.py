@@ -10,7 +10,8 @@ from openai import AsyncOpenAI
 from dotenv import load_dotenv
 import os
 import time
-from zep_cloud.types import Message, EntityEdge
+from zep_cloud import AddMessage
+from zep_cloud.types import Edge
 
 # Load environment variables
 load_dotenv()
@@ -39,7 +40,7 @@ class ChatAgent:
         self.zep_client = zep_client
 
 
-    async def on_receive_message(self, current_user_message: str, message_history: List[Dict[str, str]], thread_id: str, user_full_name: str, user_id: str, use_zep: bool = True) -> AsyncGenerator[Tuple[str, dict], None]:
+    async def on_receive_message(self, current_user_message: str, message_history: List[Dict[str, str]], thread_uuid: str, user_full_name: str, user_uuid: str, use_zep: bool = True) -> AsyncGenerator[Tuple[str, dict], None]:
         """
         Receive a new message and generate a streaming response from the AI.
 
@@ -47,9 +48,9 @@ class ChatAgent:
             current_user_message: The new message from the user
             message_history: Previous conversation history as list of message dicts
                            with 'role' and 'content' keys (formatted for OpenAI API)
-            thread_id: The Zep thread ID to add messages to
+            thread_uuid: The Zep thread ID to add messages to
             user_full_name: The full name of the user (first name + last name)
-            user_id: The Zep user ID
+            user_uuid: The Zep user ID
             use_zep: Whether to use Zep for memory storage and context retrieval
 
         Yields:
@@ -66,20 +67,20 @@ class ChatAgent:
         ######################################################################
         if use_zep:
             # Add user message to Zep thread
-            user_message = Message(
+            user_message = AddMessage(
                 name=user_full_name,
                 content=current_user_message,
                 role="user"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid,
                 messages=[user_message]
             )
 
             # Retrieve user context from Zep and track timing
             zep_start = time.perf_counter()
-            results = await self.zep_client.thread.get_user_context(
-                thread_id=thread_id
+            results = await self.zep_client.thread.get_context(
+                thread_uuid
             )
             context_block = results.context
             zep_end = time.perf_counter()
@@ -128,13 +129,13 @@ class ChatAgent:
         ######################################################################
         if use_zep:
             # Add agent response to Zep thread
-            assistant_message = Message(
+            assistant_message = AddMessage(
                 name="AI Assistant",
                 content=full_response,
                 role="assistant"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid,
                 messages=[assistant_message]
             )
         ######################################################################
@@ -174,30 +175,32 @@ class ChatAgent_GraphSearch:
         self.model = model
         self.zep_client = zep_client
 
-    async def _get_user_preferences_context(self, user_id: str, user_message: str) -> str:
+    async def _get_user_preferences_context(self, user_uuid: str, user_message: str) -> str:
         """
         Retrieve user preferences using graph search and construct a custom context block.
 
         Args:
-            user_id: The user ID to search for
+            user_uuid: The user ID to search for
             user_message: The current user message to search context for
 
         Returns:
             str: A formatted context block containing user preferences
         """
-        # Search the graph for user preferences, likes, dislikes, etc.
-        search_results = await self.zep_client.graph.search(
-            user_id=user_id,
-            query=user_message,
-            scope="edges",
-            limit=4
-        )
+        # v4 searches a graph by its UUID. The graph of a user is on the
+        # user record.
+        user = await self.zep_client.user.get(user_uuid)
 
-        # Extract edges from search results
-        edges: List[EntityEdge] = search_results.edges or []
+        # Search the graph for user preferences, likes, dislikes, etc.
+        edges: List[Edge] = []
+        async for edge in await self.zep_client.graph.search_edges(
+            user.graph_uuid,
+            query=user_message,
+            limit=4
+        ):
+            edges.append(edge)
 
         # Format facts from edges
-        def format_fact(edge: EntityEdge) -> str:
+        def format_fact(edge: Edge) -> str:
             valid_at = edge.valid_at or "unknown"
             invalid_at = edge.invalid_at or "present"
             return f"  - {edge.fact} (Date range: {valid_at} - {invalid_at})"
@@ -212,7 +215,7 @@ Relevant facts about the user with validity date ranges:
         return context_block
 
 
-    async def on_receive_message(self, current_user_message: str, message_history: List[Dict[str, str]], thread_id: str, user_full_name: str, user_id: str, use_zep: bool = True) -> AsyncGenerator[Tuple[str, dict], None]:
+    async def on_receive_message(self, current_user_message: str, message_history: List[Dict[str, str]], thread_uuid: str, user_full_name: str, user_uuid: str, use_zep: bool = True) -> AsyncGenerator[Tuple[str, dict], None]:
         """
         Receive a new message and generate a streaming response from the AI.
 
@@ -220,9 +223,9 @@ Relevant facts about the user with validity date ranges:
             current_user_message: The new message from the user
             message_history: Previous conversation history as list of message dicts
                            with 'role' and 'content' keys (formatted for OpenAI API)
-            thread_id: The Zep thread ID to add messages to
+            thread_uuid: The Zep thread ID to add messages to
             user_full_name: The full name of the user (first name + last name)
-            user_id: The Zep user ID
+            user_uuid: The Zep user ID
             use_zep: Whether to use Zep for memory storage and context retrieval
 
         Yields:
@@ -239,19 +242,19 @@ Relevant facts about the user with validity date ranges:
         ######################################################################
         if use_zep:
             # Add user message to Zep thread
-            user_message = Message(
+            user_message = AddMessage(
                 name=user_full_name,
                 content=current_user_message,
                 role="user"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid,
                 messages=[user_message]
             )
 
             # Retrieve user context from Zep using graph search and track timing
             zep_start = time.perf_counter()
-            context_block = await self._get_user_preferences_context(user_id, current_user_message)
+            context_block = await self._get_user_preferences_context(user_uuid, current_user_message)
             zep_end = time.perf_counter()
             zep_retrieval_ms = round((zep_end - zep_start) * 1000, 2)
         ######################################################################
@@ -294,13 +297,13 @@ Relevant facts about the user with validity date ranges:
         ######################################################################
         if use_zep:
             # Add agent response to Zep thread
-            assistant_message = Message(
+            assistant_message = AddMessage(
                 name="AI Assistant",
                 content=full_response,
                 role="assistant"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid,
                 messages=[assistant_message]
             )
         ######################################################################

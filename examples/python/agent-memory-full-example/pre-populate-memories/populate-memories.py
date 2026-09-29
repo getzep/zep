@@ -1,29 +1,22 @@
 
 import os
+from zep_cloud import AddMessage
 from zep_cloud.client import Zep
-from zep_cloud.types import Message
 from dotenv import load_dotenv
-import uuid
 import json
 
-USER_ID = "John-12345"
 USER_EMAIL = "john@example.com"
 USER_FIRST_NAME = "John"
 USER_LAST_NAME = "Doe"
 
-def get_or_create_user(zep_client):
-    """Get an existing user or create a new one if they don't exist."""
-    try:
-        user = zep_client.user.get(user_id=USER_ID)
-        print(f"User {USER_ID} already exists. Continuing with existing user.")
-    except Exception:
-        user = zep_client.user.add(
-            user_id=USER_ID,
-            email=USER_EMAIL,
-            first_name=USER_FIRST_NAME,
-            last_name=USER_LAST_NAME,
-        )
-        print(f"User {USER_ID} created.")
+def create_user(zep_client):
+    """Create the demo user. v4 returns the UUID of the new user."""
+    user = zep_client.user.create(
+        email=USER_EMAIL,
+        first_name=USER_FIRST_NAME,
+        last_name=USER_LAST_NAME,
+    )
+    print(f"User {user.uuid_} created.")
     return user
 
 
@@ -45,15 +38,15 @@ def populate_user_memory(zep_client):
     conversations = load_conversations()
     user_data = load_user_data()
 
-    # Ensure user exists
-    user = get_or_create_user(zep_client)
+    # Create the user
+    user = create_user(zep_client)
 
     # Add user data to graph in pieces
     print("\n📊 Adding user data to graph...")
     for item in user_data:
         try:
-            zep_client.graph.add(
-                user_id=USER_ID,
+            zep_client.graph.episode.add(
+                user.graph_uuid,
                 data=json.dumps(item),
                 type="json"
             )
@@ -67,35 +60,35 @@ def populate_user_memory(zep_client):
     print("\n💬 Adding conversations to threads...")
     # Process each conversation thread
     for conversation in conversations:
-        thread_id = f"conversation-{uuid.uuid4().hex[:8]}"
         messages_data = conversation["messages"]
-        
+        thread_uuid = None
+
         try:
-            # Create thread
-            zep_client.thread.create(
-                thread_id=thread_id,
-                user_id=USER_ID
+            # Create thread with the UUID of the user
+            thread = zep_client.thread.create(
+                user_uuid=user.uuid_
             )
-            
-            # Convert message data to Zep Message objects
+            thread_uuid = thread.uuid_
+
+            # Convert message data to Zep AddMessage objects
             zep_messages = []
             for msg_data in messages_data:
-                zep_message = Message(
+                zep_message = AddMessage(
                     role=msg_data["role"],
                     content=msg_data["content"],
                     name=f"{USER_FIRST_NAME} {USER_LAST_NAME}" if msg_data["role"] == "user" else "Assistant"
                 )
                 zep_messages.append(zep_message)
-            
+
             # Add messages to thread
-            zep_client.thread.add_messages_batch(
-                thread_id=thread_id,
+            zep_client.thread.add_messages(
+                thread_uuid,
                 messages=zep_messages
             )
-            print(f"✅ Successfully added messages to thread {thread_id}")
-            
+            print(f"✅ Added messages to thread {thread_uuid}")
+
         except Exception as e:
-            print(f"❌ Error processing thread {thread_id}: {e}")
+            print(f"❌ Error processing thread {thread_uuid}: {e}")
             continue
 
 if __name__ == "__main__":

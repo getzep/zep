@@ -1,9 +1,8 @@
 import {
     ZepClient,
+    buildOntology,
     entityFields,
     type EntityData,
-    type EntityType,
-    type EdgeType,
 } from "@getzep/zep-cloud";
 
 const API_KEY = process.env.ZEP_API_KEY;
@@ -13,16 +12,16 @@ async function main() {
         apiKey: API_KEY,
     });
 
-    const travelDestinationSchema: EntityType = {
+    const travelDestinationSchema = {
         description: "A travel destination entity",
         fields: {
             destination_name: entityFields.text("The name of travel destination"),
         },
-    };
+    } as const;
 
     type TravelDestination = EntityData<typeof travelDestinationSchema>;
 
-    const isTravelingTo: EdgeType = {
+    const isTravelingTo = {
         description: "An edge representing a traveler going to a destination.",
         fields: {
             travel_date: entityFields.text("The date of the travel"),
@@ -34,15 +33,18 @@ async function main() {
                 target: "TravelDestination",
             }
         ]
-    }
+    } as const;
 
-    await client.graph.setEntityTypes({
-        TravelDestination: travelDestinationSchema,
-    }, {
-        IS_TRAVELING_TO: isTravelingTo,
+    const ontology = buildOntology({
+        entities: { TravelDestination: travelDestinationSchema },
+        edges: { IS_TRAVELING_TO: isTravelingTo },
     });
 
-    const customTypes = await client.graph.listEntityTypes();
+    // v4 sets an ontology for one scope at a time. The project scope applies
+    // the ontology to every graph of the project.
+    await client.project.setOntology(ontology);
+
+    const customTypes = await client.project.getOntology();
     console.log(JSON.stringify(customTypes, null, 2));
 }
 

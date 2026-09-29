@@ -6,12 +6,10 @@ mixing chat messages and purchase events to build a knowledge graph.
 
 import asyncio
 import os
-import uuid
 import json
 from dotenv import find_dotenv, load_dotenv
 
 from zep_cloud.client import AsyncZep
-from zep_cloud.types import Message
 
 load_dotenv(dotenv_path=find_dotenv())
 
@@ -20,10 +18,12 @@ API_KEY = os.environ.get("ZEP_API_KEY") or "YOUR_API_KEY"
 async def create_ticket_playground() -> None:
     client = AsyncZep(api_key=API_KEY)
     
-    # Create a user for the playground
-    user_id = uuid.uuid4().hex
-    await client.user.add(user_id=user_id, first_name="Sarah", last_name="Smith", email="sarah.smith@example.com")
-    print(f"Created playground user: {user_id}")
+    # Create a user for the playground. Zep returns the UUID of the user and
+    # the UUID of the graph of the user.
+    user = await client.user.create(first_name="Sarah", last_name="Smith", email="sarah.smith@example.com")
+    user_uuid = user.uuid_
+    graph_uuid = user.graph_uuid
+    print(f"Created playground user: {user_uuid}")
 
 
     # Sample user interactions and system events
@@ -36,7 +36,7 @@ async def create_ticket_playground() -> None:
             "type": "json",
             "data": {
                 "event_type": "search_performed",
-                "user_id": user_id,
+                "user_uuid": user_uuid,
                 "artist": "Taylor Swift",
                 "location": "New York",
                 "date_range": "2024-07",
@@ -55,7 +55,7 @@ async def create_ticket_playground() -> None:
             "type": "json",
             "data": {
                 "event_type": "ticket_purchase",
-                "user_id": user_id,
+                "user_uuid": user_uuid,
                 "email": "sarah.smith@example.com",
                 "concert_id": "TS-MSG-0715",
                 "artist": "Taylor Swift",
@@ -77,7 +77,7 @@ async def create_ticket_playground() -> None:
             "type": "json",
             "data": {
                 "event_type": "search_performed",
-                "user_id": user_id,
+                "user_uuid": user_uuid,
                 "artist": "Arctic Monkeys",
                 "timestamp": "2024-01-15T10:40:00Z"
             }
@@ -94,7 +94,7 @@ async def create_ticket_playground() -> None:
             "type": "json",
             "data": {
                 "event_type": "waitlist_addition",
-                "user_id": user_id,
+                "user_uuid": user_uuid,
                 "concert_id": "AM-BC-0805",
                 "artist": "Arctic Monkeys",
                 "venue": "Barclays Center",
@@ -110,7 +110,7 @@ async def create_ticket_playground() -> None:
             "type": "json",
             "data": {
                 "event_type": "ticket_purchase",
-                "user_id": user_id,
+                "user_uuid": user_uuid,
                 "concert_id": "AM-BC-0805",
                 "artist": "Arctic Monkeys",
                 "venue": "Barclays Center",
@@ -128,29 +128,30 @@ async def create_ticket_playground() -> None:
     # Add all episodes to the graph
     for episode in episodes:
         if episode["type"] == "json":
-            await client.graph.add(
-                user_id=user_id,
+            await client.graph.episode.add(
+                graph_uuid,
                 type="json",
                 data=json.dumps(episode["data"]),
             )
         else:  # message type
-            await client.graph.add(
-                user_id=user_id,
+            await client.graph.episode.add(
+                graph_uuid,
                 type="message",
                 data=episode["data"],
             )
-    
+
     print("Added all ticket purchase episodes to the graph")
     print("Waiting for graph processing...")
     await asyncio.sleep(30)
 
-    episodes = await client.graph.episode.get_by_user_id(user_id=user_id)
-    print(episodes)
-    
-    
-    return user_id
+    stored_episodes = [
+        episode async for episode in await client.graph.episode.list(graph_uuid)
+    ]
+    print(stored_episodes)
+
+    return user_uuid
 
 if __name__ == "__main__":
-    user_id = asyncio.run(create_ticket_playground())
-    print(f"\nPlayground ready! User ID: {user_id}")
+    user_uuid = asyncio.run(create_ticket_playground())
+    print(f"\nPlayground ready! User UUID: {user_uuid}")
     print("You can now explore the ticket purchase graph and add new episodes!") 

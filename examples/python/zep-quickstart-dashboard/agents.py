@@ -10,7 +10,7 @@ from openai import AsyncOpenAI
 from dotenv import load_dotenv
 import os
 import time
-from zep_cloud.types import Message, EntityEdge
+from zep_cloud import AddMessage
 import inspect
 
 # Load environment variables
@@ -62,7 +62,7 @@ class ChatAgent:
         self.zep_client = zep_client
 
 
-    async def on_receive_message(self, current_user_message: str, message_history: List[Dict[str, str]], thread_id: str, user_full_name: str, user_id: str, use_zep: bool = True) -> AsyncGenerator[Tuple[str, dict], None]:
+    async def on_receive_message(self, current_user_message: str, message_history: List[Dict[str, str]], thread_uuid: str, user_full_name: str, user_uuid: str, use_zep: bool = True) -> AsyncGenerator[Tuple[str, dict], None]:
         """
         Receive a new message and generate a streaming response from the AI.
 
@@ -70,9 +70,9 @@ class ChatAgent:
             current_user_message: The new message from the user
             message_history: Previous conversation history as list of message dicts
                            with 'role' and 'content' keys (formatted for OpenAI API)
-            thread_id: The Zep thread ID to add messages to
+            thread_uuid: The UUID of the Zep thread to add messages to
             user_full_name: The full name of the user (first name + last name)
-            user_id: The Zep user ID
+            user_uuid: The UUID of the Zep user
             use_zep: Whether to use Zep for memory storage and context retrieval
 
         Yields:
@@ -89,20 +89,20 @@ class ChatAgent:
         ######################################################################
         if use_zep:
             # Add user message to Zep thread
-            user_message = Message(
+            user_message = AddMessage(
                 name=user_full_name,
                 content=current_user_message,
                 role="user"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid,
                 messages=[user_message]
             )
 
             # Retrieve user context from Zep and track timing
             zep_start = time.perf_counter()
-            results = await self.zep_client.thread.get_user_context(
-                thread_id=thread_id
+            results = await self.zep_client.thread.get_context(
+                thread_uuid
             )
             context_block = results.context
             zep_end = time.perf_counter()
@@ -152,13 +152,13 @@ class ChatAgent:
         ######################################################################
         if use_zep:
             # Add agent response to Zep thread
-            assistant_message = Message(
+            assistant_message = AddMessage(
                 name="AI Assistant",
                 content=full_response,
                 role="assistant"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid,
                 messages=[assistant_message]
             )
         ######################################################################

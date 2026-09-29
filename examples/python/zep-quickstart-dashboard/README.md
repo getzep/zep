@@ -68,7 +68,7 @@ The dashboard will open in your browser at `http://localhost:8501`.
 
 **Agent Selector** (in sidebar)
 - Choose from available agent types defined in `agents.py`
-- Default agent: `ChatAgent` (uses `thread.get_user_context()`)
+- Default agent: `ChatAgent` (uses `thread.get_context()`)
 - All agent classes with an `on_receive_message` method automatically appear in this dropdown
 - Add your own custom agents by copying and modifying the default agent
 

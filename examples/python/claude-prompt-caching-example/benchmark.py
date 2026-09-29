@@ -50,9 +50,9 @@ from pathlib import Path
 
 from anthropic import Anthropic
 from dotenv import load_dotenv
+from zep_cloud import AddMessage
 from zep_cloud.client import Zep
 from zep_cloud.core.api_error import ApiError
-from zep_cloud.types import Message
 
 import pricing
 import scenario
@@ -74,38 +74,39 @@ RESULTS_DIR = Path(__file__).parent / "results"
 
 
 def capture_contexts(zep: Zep, turns: list[dict], wait_between_turns: bool) -> tuple[str, list[str | None]]:
-    user_id = scenario.DEMO_USER_ID
+    user_uuid = scenario.load_demo_user_uuid()
+    if user_uuid is None:
+        sys.exit("No demo user found. Run `python ingest.py` first to seed the demo user.")
     try:
-        zep.user.get(user_id=user_id)
+        user = zep.user.get(user_uuid)
     except ApiError as e:
         if e.status_code == 404:
-            sys.exit(f"Zep user '{user_id}' not found. Run `python ingest.py` first to seed the demo user.")
+            sys.exit(f"Zep user '{user_uuid}' not found. Run `python ingest.py` first to seed the demo user.")
         raise
 
-    thread_id = f"{user_id}-bench-{uuid.uuid4().hex[:6]}"
-    zep.thread.create(thread_id=thread_id, user_id=user_id)
+    thread_uuid = zep.thread.create(user_uuid=user_uuid).uuid_
 
-    print(f"Capture: playing {len(turns)} turns into thread {thread_id}...")
+    print(f"Capture: playing {len(turns)} turns into thread {thread_uuid}...")
     contexts: list[str | None] = []
     for i, turn in enumerate(turns, start=1):
         # Persist the user message and get the default Zep context block in
-        # the same call (one round trip instead of add + get_user_context).
+        # the same call (one round trip instead of add + get_context).
         response = zep.thread.add_messages(
-            thread_id=thread_id,
-            messages=[Message(role="user", name="Dana", content=turn["user"])],
+            thread_uuid,
+            messages=[AddMessage(role="user", name="Dana", content=turn["user"])],
             return_context=True,
         )
         contexts.append(response.context)
         zep.thread.add_messages(
-            thread_id=thread_id,
-            messages=[Message(role="assistant", name="Mira", content=turn["assistant"])],
+            thread_uuid,
+            messages=[AddMessage(role="assistant", name="Mira", content=turn["assistant"])],
         )
         print(f"Capture: turn {i}/{len(turns)} — context block {len(response.context or ''):,} chars")
         if wait_between_turns and i < len(turns):
             # Let extraction keep pace, like a real-paced conversation, so
             # later turns retrieve facts established in earlier ones.
-            wait_for_zep_processing(zep, user_id, timeout_s=90.0)
-    return thread_id, contexts
+            wait_for_zep_processing(zep, user.graph_uuid, timeout_s=90.0)
+    return thread_uuid, contexts
 
 
 # ---------------------------------------------------------------------------
@@ -247,7 +248,7 @@ def main() -> None:
         saved = json.loads(Path(args.reuse).read_text())
         conversation_name = saved["conversation"]
         contexts = saved["contexts"]
-        bench_thread_id = saved.get("bench_thread_id", "(reused)")
+        bench_thread_uuid = saved.get("bench_thread_uuid", "(reused)")
         turns = scenario.CONVERSATIONS[conversation_name]
         print(f"Reusing {len(contexts)} captured context blocks from {args.reuse}")
     else:
@@ -256,7 +257,7 @@ def main() -> None:
             sys.exit("Set ZEP_API_KEY in .env first (see .env.example).")
         conversation_name = args.conversation
         turns = scenario.CONVERSATIONS[conversation_name]
-        bench_thread_id, contexts = capture_contexts(Zep(api_key=zep_key), turns, wait_between_turns=not args.no_wait)
+        bench_thread_uuid, contexts = capture_contexts(Zep(api_key=zep_key), turns, wait_between_turns=not args.no_wait)
 
     if len(contexts) != len(turns):
         sys.exit(f"Context count ({len(contexts)}) does not match turn count ({len(turns)}).")
@@ -270,8 +271,8 @@ def main() -> None:
         "model": pricing.MODEL,
         "conversation": conversation_name,
         "max_tokens": args.max_tokens,
-        "zep_user_id": scenario.DEMO_USER_ID,
-        "bench_thread_id": bench_thread_id,
+        "zep_user_uuid": scenario.load_demo_user_uuid(),
+        "bench_thread_uuid": bench_thread_uuid,
         "contexts": contexts,
     }
     out_path.write_text(json.dumps(payload, indent=2))

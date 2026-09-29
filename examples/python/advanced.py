@@ -1,11 +1,9 @@
 import os
-import uuid
 from dotenv import find_dotenv, load_dotenv
 from zep_cloud.client import Zep
-from zep_cloud.types import Message
 from pydantic import Field
-from zep_cloud import EntityEdgeSourceTarget
-from zep_cloud.external_clients.ontology import EntityModel, EntityText, EntityInt, EdgeModel
+from zep_cloud import AddMessage, EdgeSourceTarget
+from zep_cloud.ontology import EntityModel, EntityText, EntityInt, EdgeModel, build_ontology
 
 
 load_dotenv(dotenv_path=find_dotenv())
@@ -109,8 +107,8 @@ class Recommends(EdgeModel):
     recommendation_date: EntityText = Field(description="When the recommendation was made", default=None)
     traveler_response: EntityText = Field(description="How the traveler responded to the recommendation", default=None)
 
-# Set the ontology with custom entity and edge types
-client.graph.set_ontology(
+# Build the ontology payload from the custom entity and edge types
+entity_types, edge_types = build_ontology(
     entities={
         "Person": Person,
         "Destination": Destination,
@@ -121,30 +119,33 @@ client.graph.set_ontology(
     edges={
         "VISITS": (
             Visits,
-            [EntityEdgeSourceTarget(source="User", target="Destination")]
+            [EdgeSourceTarget(source="User", target="Destination")]
         ),
         "STAYS_AT": (
             StaysAt,
-            [EntityEdgeSourceTarget(source="User", target="Accommodation")]
+            [EdgeSourceTarget(source="User", target="Accommodation")]
         ),
         "PARTICIPATES": (
             Participates,
-            [EntityEdgeSourceTarget(source="User", target="Experience"),
-             EntityEdgeSourceTarget(source="Person", target="Experience")]
+            [EdgeSourceTarget(source="User", target="Experience"),
+             EdgeSourceTarget(source="Person", target="Experience")]
         ),
         "BOOKS": (
             Books,
-            [EntityEdgeSourceTarget(source="User", target="TravelService")]
+            [EdgeSourceTarget(source="User", target="TravelService")]
         ),
         "RECOMMENDS": (
             Recommends,
-            [EntityEdgeSourceTarget(source="User", target="Destination"),
-             EntityEdgeSourceTarget(source="User", target="Accommodation"),
-             EntityEdgeSourceTarget(source="User", target="Experience"),
-             EntityEdgeSourceTarget(source="User", target="TravelService")]
+            [EdgeSourceTarget(source="User", target="Destination"),
+             EdgeSourceTarget(source="User", target="Accommodation"),
+             EdgeSourceTarget(source="User", target="Experience"),
+             EdgeSourceTarget(source="User", target="TravelService")]
         )
     }
 )
+
+# Apply the ontology to the project, so that every graph inherits it
+client.project.set_ontology(entity_types=entity_types, edge_types=edge_types)
 
 first_name = "John"
 last_name = "Doe"
@@ -153,14 +154,12 @@ zep_user_role = f"{first_name} {last_name}"
 zep_assistant_role = "TravelAssistantBot"
 ignore_roles = []
 
-uuid_value = uuid.uuid4().hex[:4]
-user_id = "default-graph-advanced-" + uuid_value
-client.user.add(
-    user_id=user_id,
+user = client.user.create(
     first_name = first_name,
     last_name = last_name,
     email=email
 )
+print(f"Created user {user.uuid_}")
 
 threads = [
     # Session 1: Italian Food Tour Planning - Showcases initial spicy food preference and past travel
@@ -249,14 +248,9 @@ threads = [
     ]
 ]
 
-for thread in threads:
-    uuid_value = uuid.uuid4().hex[:4]
-    thread_id = "thread-" + uuid_value
-    
-    client.thread.create(
-        thread_id=thread_id,
-        user_id=user_id
-    )
-    
-    for m in thread:
-        client.thread.add_messages(thread_id=thread_id, messages=[Message(**m)])
+for messages in threads:
+    thread = client.thread.create(user_uuid=user.uuid_)
+    print(f"Created thread {thread.uuid_}")
+
+    for m in messages:
+        client.thread.add_messages(thread.uuid_, messages=[AddMessage(**m)])
