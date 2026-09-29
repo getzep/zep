@@ -11,6 +11,8 @@ All notable changes to the Zep examples are in this file.
 - The Go examples use `github.com/getzep/zep-go/v4` v4.0.0-alpha.5.
 - Every example addresses a user, a thread, and a graph by the
   server-generated UUID that the create call returns.
+- No create call sends a `user_id`, a `thread_id`, or a `graph_id`, because
+  the v4 create operations accept no client-chosen name.
 - The graph examples use the v4 episode, node, and edge clients, and the
   separate edge search and node search methods.
 - The ontology examples use the v4 ontology builder.

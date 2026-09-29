@@ -12,8 +12,8 @@ async function main() {
 
     const createdUserUuids: string[] = [];
 
-    // Create multiple users. v4 gives every user a server-generated UUID, so a
-    // create call does not send a userId.
+    // Create multiple users. v4 gives every user a server-generated UUID, and a
+    // create call accepts no userId.
     for (let i = 0; i < 3; i++) {
         const userRequest: Zep.CreateUserRequest = {
             email: `user${i}@example.com`,

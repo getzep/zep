@@ -25,7 +25,7 @@ func runUserGraph() error {
 	ctx := context.Background()
 
 	// v4 addresses every user, thread and graph by a server-generated UUID.
-	// The create calls below do not send a developer identifier. The example
+	// The create calls below accept no developer identifier. The example
 	// keeps the UUIDs that the server returns and uses them as addresses.
 	user, err := client.User.Create(ctx, &zep.CreateUserRequest{
 		FirstName: zep.String("Paul"),
