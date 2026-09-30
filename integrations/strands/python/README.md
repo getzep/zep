@@ -128,8 +128,6 @@ thread = await create_thread(zep, user_uuid=user.uuid_)
 # Keep user.uuid_ and thread.uuid_ in your own database.
 ```
 
-> **Known issue (ZEPAI-3605):** `thread.add_messages` returns 404 for a thread whose user has no legacy name. Every v4 user has no name, so this applies to every v4 thread until the fix is deployed.
-
 ## Search and injection
 
 By default `search_scope="auto"`, so injection receives Zep's assembled Context Block as a single `MemoryEntry`. Pin a scoped search when you want discrete facts:
