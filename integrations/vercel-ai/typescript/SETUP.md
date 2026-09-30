@@ -87,14 +87,6 @@ middleware, persist the completed turn from `onFinish` with `createZepOnFinish`.
 > constraint, not a Zep issue — using the Chat Completions API (or a non-ZDR key)
 > avoids it.
 
-> **Known v4 API defect (ZEPAI-3605).** On `https://api.getzep.com/api/v4`, a
-> user that has no `userId` cannot receive a thread message or a thread context
-> block until the fix is deployed: `thread.addMessages` and `thread.getContext`
-> return HTTP 404 for that user, although `thread.create` and `thread.get`
-> succeed. Every v4 user has no `userId`, so the defect applies to every v4
-> thread. The graph routes are not affected. Until the fix, the context and
-> persistence steps of the examples log a 404 and degrade to "no memory".
-
 ## 6. Run the tests
 
 ```bash
