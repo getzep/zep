@@ -654,13 +654,6 @@ async def main() -> None:
     assert passed, "One or more integration checks failed — see PASS/FAIL lines above"
 
 
-@pytest.mark.skip(
-    reason=(
-        "ZEPAI-3605: the v4 API returns a 404 for a thread message add when the "
-        "user has no user_id. This test adds thread messages, thus it cannot "
-        "pass until the fix is deployed."
-    )
-)
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_integration_full_lifecycle() -> None:
