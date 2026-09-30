@@ -1,12 +1,15 @@
 package zepadk
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	zep "github.com/getzep/zep-go/v4"
 	zepclient "github.com/getzep/zep-go/v4/client"
 
 	"google.golang.org/adk/memory"
@@ -83,13 +86,20 @@ func TestLiveCreateAndPersist(t *testing.T) {
 
 	// --- Drive the real before/after callbacks against the live client ----
 
+	// The callbacks log and swallow a Zep error, so capture the error log to
+	// detect a failed persist.
+	var errLog bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&errLog, &slog.HandlerOptions{Level: slog.LevelError}))
+
 	beforeCB := NewBeforeModelCallback(client,
 		WithThreadUUID(threadUUID),
 		WithUserUUID(userUUID),
-		WithUserMessageName("Live Tester"))
+		WithUserMessageName("Live Tester"),
+		WithLogger(logger))
 	afterCB := NewAfterModelCallback(client,
 		WithAfterThreadUUID(threadUUID),
-		WithAssistantMessageName("assistant"))
+		WithAssistantMessageName("assistant"),
+		WithAfterLogger(logger))
 
 	cc := newFakeCallbackContext(adkSessionID, adkUserID,
 		genai.NewContentFromText("My name is Live Tester and my favorite language is Go.", genai.RoleUser))
@@ -103,6 +113,10 @@ func TestLiveCreateAndPersist(t *testing.T) {
 	}
 	if resp != nil {
 		t.Fatalf("before-model callback returned a response %+v, want nil (pass-through)", resp)
+	}
+	if errLog.Len() > 0 {
+		t.Errorf("before-model callback logged an error: %s", errLog.String())
+		errLog.Reset()
 	}
 	if req.Config != nil && req.Config.SystemInstruction != nil {
 		got := LastUserText(req.Config.SystemInstruction)
@@ -124,6 +138,28 @@ func TestLiveCreateAndPersist(t *testing.T) {
 	}
 	if afterResp != nil {
 		t.Fatalf("after-model callback returned a response %+v, want nil (pass-through)", afterResp)
+	}
+	if errLog.Len() > 0 {
+		t.Errorf("after-model callback logged an error: %s", errLog.String())
+	}
+
+	// Read the thread back to confirm that both turns were persisted.
+	page, err := client.Thread.ListMessages(ctx, threadUUID, &zep.ThreadListMessagesRequest{})
+	if err != nil {
+		t.Fatalf("Thread.ListMessages: %v", err)
+	}
+	messages, err := collectPage(ctx, page, nil)
+	if err != nil {
+		t.Fatalf("Thread.ListMessages pages: %v", err)
+	}
+	roles := map[zep.RoleType]int{}
+	for _, m := range messages {
+		if m != nil && m.Role != nil {
+			roles[*m.Role]++
+		}
+	}
+	if len(messages) != 2 || roles[zep.RoleTypeUser] != 1 || roles[zep.RoleTypeAssistant] != 1 {
+		t.Fatalf("thread messages = %d with roles %v, want one user and one assistant message", len(messages), roles)
 	}
 }
 
