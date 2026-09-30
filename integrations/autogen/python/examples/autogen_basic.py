@@ -15,8 +15,6 @@ async def main():
 
     # Zep assigns the UUID of the user and of the thread. Keep these UUIDs in
     # your own database, and use them to address the resources later.
-    # Note: a user created without a user_id cannot receive a thread message
-    # until the ZEPAI-3605 fix is deployed.
     user = await create_user(
         zep_client,
         email="alice@agents.local",
