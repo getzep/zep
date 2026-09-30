@@ -6,9 +6,6 @@ Run this to verify the integration works end-to-end with real Zep and OpenAI API
 Zep v4 addresses every user, thread, and graph by a server-generated UUID.
 Each test creates its resources and keeps the UUIDs from the responses.
 
-ZEPAI-3605: a user that has no user_id cannot receive a thread message until
-the fix is deployed. The tests that add a thread message will fail until then.
-
 Prerequisites:
     export ZEP_API_KEY="your-zep-cloud-api-key"
     export OPENAI_API_KEY="your-openai-api-key"

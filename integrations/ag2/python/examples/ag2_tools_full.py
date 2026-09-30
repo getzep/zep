@@ -33,9 +33,6 @@ async def provision() -> tuple[str, str]:
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
 
     # Create the user and the thread one time, and keep their UUIDs.
-    #
-    # ZEPAI-3605: a user that has no user_id cannot receive a thread
-    # message until the fix is deployed.
     user = await create_user(
         zep,
         first_name="Bob",

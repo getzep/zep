@@ -39,9 +39,6 @@ async def provision() -> tuple[str, str, str]:
 
     # One-time provisioning. Pass first_name/last_name/email so Zep can
     # anchor the identity node of the user in the graph.
-    #
-    # ZEPAI-3605: a user that has no user_id cannot receive a thread
-    # message until the fix is deployed.
     user = await create_user(
         zep,
         first_name="Alice",
