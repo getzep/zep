@@ -2,10 +2,11 @@
 
 import pytest
 from zep_cloud.core.api_error import ApiError
-from zep_cloud.types.add_node_item import AddNodeItem
-from zep_cloud.types.add_nodes_response import AddNodesResponse
+from zep_cloud.types.add_nodes_result import AddNodesResult
 from zep_cloud.types.added_node import AddedNode
+from zep_cloud.types.node_input import NodeInput
 
+from tests.conftest import GRAPH_UUID, make_task
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.nodes import NodeItem, ingest_nodes
 
@@ -21,38 +22,38 @@ def test_non_string_node_fields_raise_configuration_error(field, value):
 
 
 def test_node_task_id_is_tracked_and_assigned_uuids_are_recorded(mock_zep):
-    mock_zep.graph.add_nodes.return_value = AddNodesResponse(
-        task_id="node-task-1",
+    mock_zep.graph.node.add.return_value = AddNodesResult(
+        task=make_task("node-task-1"),
         nodes=[AddedNode(name="Avery Brown", uuid_="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")],
     )
     node = NodeItem(name="Avery Brown")
 
-    result = ingest_nodes(mock_zep, [node], graph_id="g1")
+    result = ingest_nodes(mock_zep, [node], graph_uuid=GRAPH_UUID)
 
     assert result.task_ids == ["node-task-1"]
     assert result.node_uuids == ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]
     assert result.batch_ids == []
     assert result.status == "queued"
     # Submitted through the typed SDK method — not a raw transport.
-    _, kwargs = mock_zep.graph.add_nodes.call_args
-    assert kwargs["graph_id"] == "g1"
+    _, kwargs = mock_zep.graph.node.add.call_args
+    assert kwargs["graph_uuid"] == GRAPH_UUID
     (item,) = kwargs["nodes"]
-    assert isinstance(item, AddNodeItem)
+    assert isinstance(item, NodeInput)
     assert item.name == "Avery Brown"
     assert "uuid_" not in item.model_fields_set
 
 
 def test_node_uuids_preserve_batch_submission_order(mock_zep):
-    mock_zep.graph.add_nodes.side_effect = [
-        AddNodesResponse(
-            task_id="task-a",
+    mock_zep.graph.node.add.side_effect = [
+        AddNodesResult(
+            task=make_task("task-a"),
             nodes=[
                 AddedNode(name="Avery Brown", uuid_="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
                 AddedNode(name="Blake Carter", uuid_="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
             ],
         ),
-        AddNodesResponse(
-            task_id="task-b",
+        AddNodesResult(
+            task=make_task("task-b"),
             nodes=[AddedNode(name="Casey Diaz", uuid_="cccccccc-cccc-4ccc-8ccc-cccccccccccc")],
         ),
     ]
@@ -62,7 +63,7 @@ def test_node_uuids_preserve_batch_submission_order(mock_zep):
         NodeItem(name="Casey Diaz"),
     ]
 
-    result = ingest_nodes(mock_zep, nodes, graph_id="g1", batch_size=2)
+    result = ingest_nodes(mock_zep, nodes, graph_uuid=GRAPH_UUID, batch_size=2)
 
     assert result.node_uuids == [
         "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -74,10 +75,10 @@ def test_node_uuids_preserve_batch_submission_order(mock_zep):
 
 
 def test_node_uuids_keep_none_gaps_when_earlier_batch_fails(mock_zep):
-    mock_zep.graph.add_nodes.side_effect = [
+    mock_zep.graph.node.add.side_effect = [
         ApiError(status_code=500, body="boom"),
-        AddNodesResponse(
-            task_id="task-b",
+        AddNodesResult(
+            task=make_task("task-b"),
             nodes=[
                 AddedNode(name="Casey Diaz", uuid_="cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
                 AddedNode(name="Drew Ellis", uuid_="dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
@@ -91,7 +92,7 @@ def test_node_uuids_keep_none_gaps_when_earlier_batch_fails(mock_zep):
         NodeItem(name="Drew Ellis"),
     ]
 
-    result = ingest_nodes(mock_zep, nodes, graph_id="g1", batch_size=2)
+    result = ingest_nodes(mock_zep, nodes, graph_uuid=GRAPH_UUID, batch_size=2)
 
     assert result.node_uuids == [
         None,
@@ -112,13 +113,13 @@ def test_node_uuids_keep_none_gaps_when_earlier_batch_fails(mock_zep):
 
 
 def test_node_uuids_pad_none_when_response_omits_an_entry(mock_zep):
-    mock_zep.graph.add_nodes.return_value = AddNodesResponse(
-        task_id="task-a",
+    mock_zep.graph.node.add.return_value = AddNodesResult(
+        task=make_task("task-a"),
         nodes=[AddedNode(name="Avery Brown", uuid_="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")],
     )
     nodes = [NodeItem(name="Avery Brown"), NodeItem(name="Blake Carter")]
 
-    result = ingest_nodes(mock_zep, nodes, graph_id="g1")
+    result = ingest_nodes(mock_zep, nodes, graph_uuid=GRAPH_UUID)
 
     assert result.node_uuids == ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", None]
     assert result.items_submitted == 2
@@ -137,18 +138,18 @@ def test_json_row_with_uuid_is_rejected_before_any_api_call(mock_zep, tmp_path):
     )
 
     with pytest.raises(ConfigurationError, match="uuid cannot be supplied"):
-        ingest_nodes(mock_zep, path, graph_id="g1")
+        ingest_nodes(mock_zep, path, graph_uuid=GRAPH_UUID)
 
-    mock_zep.graph.add_nodes.assert_not_called()
+    mock_zep.graph.node.add.assert_not_called()
 
 
 def test_node_submission_without_task_id_is_untracked(mock_zep):
-    mock_zep.graph.add_nodes.return_value = AddNodesResponse(
+    mock_zep.graph.node.add.return_value = AddNodesResult(
         nodes=[AddedNode(name="Avery Brown", uuid_="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")]
     )
     node = NodeItem(name="Avery Brown")
 
-    result = ingest_nodes(mock_zep, [node], graph_id="g1")
+    result = ingest_nodes(mock_zep, [node], graph_uuid=GRAPH_UUID)
 
     assert result.items_submitted == 1
     assert result.untracked_items == 1
@@ -159,7 +160,7 @@ def test_node_submission_without_task_id_is_untracked(mock_zep):
 def test_node_wait_polls_until_terminal(mock_zep):
     node = NodeItem(name="Avery Brown")
 
-    result = ingest_nodes(mock_zep, [node], graph_id="g1")
+    result = ingest_nodes(mock_zep, [node], graph_uuid=GRAPH_UUID)
     result.wait(poll_interval=0)
 
     assert result.status == "succeeded"
@@ -175,7 +176,7 @@ def test_scalar_arrays_accepted_in_both_node_maps():
         metadata={"teams": ["sales", "support"]},
     )
 
-    item = node.to_add_node_item()
+    item = node.to_node_input()
 
     assert item.attributes == {"aliases": ["Avery B.", "A. Brown"]}
     assert item.metadata == {"teams": ["sales", "support"]}
@@ -221,9 +222,9 @@ def test_non_string_map_key_fails_before_any_api_call(mock_zep):
     # while the plan is still being materialized — nothing reaches the wire, so
     # there is no half-submitted run to reconcile.
     with pytest.raises(ConfigurationError, match="metadata keys must be strings, got int: 1"):
-        ingest_nodes(mock_zep, plan(), graph_id="g1")
+        ingest_nodes(mock_zep, plan(), graph_uuid=GRAPH_UUID)
 
-    mock_zep.graph.add_nodes.assert_not_called()
+    mock_zep.graph.node.add.assert_not_called()
 
 
 @pytest.mark.parametrize("field", ["attributes", "metadata"])
@@ -237,9 +238,9 @@ def test_non_finite_map_value_fails_before_any_api_call(mock_zep, field, value):
         yield NodeItem(name="Blake Carter", **{field: {"score": value}})
 
     with pytest.raises(ConfigurationError, match="not valid JSON"):
-        ingest_nodes(mock_zep, plan(), graph_id="g1")
+        ingest_nodes(mock_zep, plan(), graph_uuid=GRAPH_UUID)
 
-    mock_zep.graph.add_nodes.assert_not_called()
+    mock_zep.graph.node.add.assert_not_called()
 
 
 def test_non_finite_attribute_from_a_json_file_fails_before_any_api_call(mock_zep, tmp_path):
@@ -253,19 +254,19 @@ def test_non_finite_attribute_from_a_json_file_fails_before_any_api_call(mock_ze
     )
 
     with pytest.raises(ConfigurationError) as error:
-        ingest_nodes(mock_zep, path, graph_id="g1")
+        ingest_nodes(mock_zep, path, graph_uuid=GRAPH_UUID)
 
     assert "attributes['score']" in str(error.value)
     assert "not valid JSON" in str(error.value)
-    mock_zep.graph.add_nodes.assert_not_called()
+    mock_zep.graph.node.add.assert_not_called()
 
 
 def test_finite_float_attributes_are_accepted(mock_zep):
     # the guard is finiteness, not magnitude
     node = NodeItem(name="Avery Brown", attributes={"score": 1e308})
-    ingest_nodes(mock_zep, [node], graph_id="g1")
+    ingest_nodes(mock_zep, [node], graph_uuid=GRAPH_UUID)
 
-    assert mock_zep.graph.add_nodes.call_args.kwargs["nodes"][0].attributes == {"score": 1e308}
+    assert mock_zep.graph.node.add.call_args.kwargs["nodes"][0].attributes == {"score": 1e308}
 
 
 def test_empty_node_maps_are_sent_to_clear_existing_values():
@@ -275,7 +276,7 @@ def test_empty_node_maps_are_sent_to_clear_existing_values():
         metadata={},
     )
 
-    item = node.to_add_node_item()
+    item = node.to_node_input()
 
     assert item.attributes == {}
     assert item.metadata == {}

@@ -4,7 +4,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tests.conftest import make_batch_summary, make_item_detail, make_item_list, make_zep_episode
+from tests.conftest import (
+    GRAPH_UUID,
+    make_batch_summary,
+    make_item_detail,
+    make_item_list,
+    make_task,
+    make_zep_episode,
+)
 from zep_ingest.exceptions import (
     ConfigurationError,
     IngestFailedError,
@@ -134,20 +141,24 @@ class TestBatchResult:
         with pytest.raises(IngestTimeoutError):
             result.wait(poll_interval=0, timeout=30.0)
 
-    def test_failed_items_pages_across_batches(self, mock_zep):
+    def test_failed_items_keeps_only_failed_items_of_every_batch(self, mock_zep):
+        # v4 batch.list_items has no status filter, so the result pages through
+        # each batch and keeps the failed items itself.
         result = IngestResult(method="batch", batch_ids=["b1", "b2"], client=mock_zep)
         mock_zep.batch.list_items.side_effect = [
-            make_item_list([make_item_detail(status="failed", sequence_index=3)], next_cursor=7),
-            make_item_list([make_item_detail(status="failed", sequence_index=9)]),
+            make_item_list(
+                [
+                    make_item_detail(status="failed", sequence_index=3),
+                    make_item_detail(status="succeeded", sequence_index=4),
+                ]
+            ),
             make_item_list([make_item_detail(status="failed", sequence_index=1)]),
         ]
+
         items = result.failed_items()
-        assert len(items) == 3
-        first_call = mock_zep.batch.list_items.call_args_list[0]
-        assert first_call.args == ("b1",)
-        assert first_call.kwargs["status"] == "failed"
-        second_call = mock_zep.batch.list_items.call_args_list[1]
-        assert second_call.kwargs["cursor"] == 7
+
+        assert [item.sequence_index for item in items] == [3, 1]
+        assert [call.args[0] for call in mock_zep.batch.list_items.call_args_list] == ["b1", "b2"]
 
     def test_failed_items_respects_limit(self, mock_zep):
         result = IngestResult(method="batch", batch_ids=["b1"], client=mock_zep)
@@ -172,7 +183,12 @@ class TestBatchResult:
 
 class TestSequentialResult:
     def test_status_processing_until_all_processed(self, mock_zep):
-        result = IngestResult(method="sequential", episode_uuids=["e1", "e2"], client=mock_zep)
+        result = IngestResult(
+            method="sequential",
+            episode_uuids=["e1", "e2"],
+            graph_uuid=GRAPH_UUID,
+            client=mock_zep,
+        )
         mock_zep.graph.episode.get.side_effect = [
             make_zep_episode("e1", processed=True),
             make_zep_episode("e2", processed=False),
@@ -181,7 +197,12 @@ class TestSequentialResult:
         assert result.status == "processing"
 
     def test_status_succeeded_when_all_processed(self, mock_zep):
-        result = IngestResult(method="sequential", episode_uuids=["e1", "e2"], client=mock_zep)
+        result = IngestResult(
+            method="sequential",
+            episode_uuids=["e1", "e2"],
+            graph_uuid=GRAPH_UUID,
+            client=mock_zep,
+        )
         mock_zep.graph.episode.get.side_effect = [
             make_zep_episode("e1", processed=True),
             make_zep_episode("e2", processed=True),
@@ -190,7 +211,12 @@ class TestSequentialResult:
         assert result.status == "succeeded"
 
     def test_refresh_skips_already_processed_uuids(self, mock_zep):
-        result = IngestResult(method="sequential", episode_uuids=["e1", "e2"], client=mock_zep)
+        result = IngestResult(
+            method="sequential",
+            episode_uuids=["e1", "e2"],
+            graph_uuid=GRAPH_UUID,
+            client=mock_zep,
+        )
         mock_zep.graph.episode.get.side_effect = [
             make_zep_episode("e1", processed=True),
             make_zep_episode("e2", processed=False),
@@ -206,6 +232,7 @@ class TestSequentialResult:
             method="sequential",
             episode_uuids=["e1", "e2", "e3"],
             items_submitted=3,
+            graph_uuid=GRAPH_UUID,
             client=mock_zep,
         )
         mock_zep.graph.episode.get.side_effect = [
@@ -215,7 +242,9 @@ class TestSequentialResult:
 
         result.wait(poll_interval=0)
 
-        assert [call.kwargs["uuid_"] for call in mock_zep.graph.episode.get.call_args_list] == [
+        assert [
+            call.kwargs["episode_uuid"] for call in mock_zep.graph.episode.get.call_args_list
+        ] == [
             "e3",
             "e3",
         ]
@@ -228,6 +257,7 @@ class TestSequentialResult:
             method="sequential",
             episode_uuids=["e-thread-1", "e-thread-2"],
             items_submitted=2,
+            graph_uuid=GRAPH_UUID,
             client=mock_zep,
             _single_queue_episode_poll=False,
         )
@@ -243,10 +273,18 @@ class TestSequentialResult:
 
     def test_combine_then_wait_polls_the_combined_tail(self, mock_zep):
         first = IngestResult(
-            method="sequential", episode_uuids=["e1"], items_submitted=1, client=mock_zep
+            method="sequential",
+            episode_uuids=["e1"],
+            items_submitted=1,
+            graph_uuid=GRAPH_UUID,
+            client=mock_zep,
         )
         second = IngestResult(
-            method="sequential", episode_uuids=["e2"], items_submitted=1, client=mock_zep
+            method="sequential",
+            episode_uuids=["e2"],
+            items_submitted=1,
+            graph_uuid=GRAPH_UUID,
+            client=mock_zep,
         )
         mock_zep.graph.episode.get.return_value = make_zep_episode("e2", processed=True)
 
@@ -255,7 +293,7 @@ class TestSequentialResult:
 
         assert combined.items_submitted == 2
         assert combined.episode_uuids == ["e1", "e2"]
-        mock_zep.graph.episode.get.assert_called_once_with(uuid_="e2")
+        mock_zep.graph.episode.get.assert_called_once_with(graph_uuid=GRAPH_UUID, episode_uuid="e2")
         assert combined.status == "succeeded"
 
     def test_combine_does_not_merge_identity_lists(self, mock_zep):
@@ -292,13 +330,14 @@ class TestSequentialResult:
             batch_ids=["b1"],
             episode_uuids=["e1"],
             items_submitted=5,
+            graph_uuid=GRAPH_UUID,
             client=mock_zep,
         )
         order: list[str] = []
 
-        def get_episode(uuid_: str):
+        def get_episode(*, graph_uuid: str, episode_uuid: str):
             order.append("episode")
-            return make_zep_episode(uuid_, processed=order.count("episode") >= 2)
+            return make_zep_episode(episode_uuid, processed=order.count("episode") >= 2)
 
         def get_batch(batch_id: str):
             order.append("batch")
@@ -316,8 +355,6 @@ class TestSequentialResult:
         assert result.status == "succeeded"
 
     def test_wait_polls_tasks_while_batch_tail_still_in_flight(self, mock_zep):
-        from zep_cloud.types.get_task_response import GetTaskResponse
-
         result = IngestResult(
             method="sequential",
             batch_ids=["b1"],
@@ -335,7 +372,7 @@ class TestSequentialResult:
 
         def get_task(task_id: str):
             order.append("task")
-            return GetTaskResponse(task_id="t1", status="succeeded")
+            return make_task(uuid="t1", status="succeeded")
 
         mock_zep.batch.get.side_effect = get_batch
         mock_zep.task.get.side_effect = get_task
@@ -349,6 +386,7 @@ class TestSequentialResult:
         result = IngestResult(
             method="sequential",
             episode_uuids=["e1"],
+            graph_uuid=GRAPH_UUID,
             add_errors=[AddError(index=5, item_count=1, error="boom")],
             client=mock_zep,
         )
@@ -396,13 +434,11 @@ class TestSequentialResult:
         mock_zep.task.get.assert_not_called()
 
     def test_task_ids_are_polled_until_succeeded(self, mock_zep):
-        from zep_cloud.types.get_task_response import GetTaskResponse
-
         result = IngestResult(method="sequential", task_ids=["t1"], client=mock_zep)
         assert result.status == "queued"
         mock_zep.task.get.side_effect = [
-            GetTaskResponse(task_id="t1", status="processing"),
-            GetTaskResponse(task_id="t1", status="succeeded"),
+            make_task(uuid="t1", status="processing"),
+            make_task(uuid="t1", status="succeeded"),
         ]
 
         result.wait(poll_interval=0)
@@ -411,20 +447,18 @@ class TestSequentialResult:
         assert mock_zep.task.get.call_count == 2
 
     def test_refresh_collects_edge_uuid_from_completed_task_params(self, mock_zep):
-        from zep_cloud.types.get_task_response import GetTaskResponse
-
         result = IngestResult.from_task_ids(mock_zep, ["t1", "t2"])
         mock_zep.task.get.side_effect = [
-            GetTaskResponse(
-                task_id="t1",
+            make_task(
+                uuid="t1",
                 status="succeeded",
-                params={"edge_uuid": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"},
+                result={"edge_uuid": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"},
             ),
-            GetTaskResponse(task_id="t2", status="processing"),
-            GetTaskResponse(
-                task_id="t2",
+            make_task(uuid="t2", status="processing"),
+            make_task(
+                uuid="t2",
                 status="succeeded",
-                params={"edge_uuid": "ffffffff-ffff-4fff-8fff-ffffffffffff"},
+                result={"edge_uuid": "ffffffff-ffff-4fff-8fff-ffffffffffff"},
             ),
         ]
 
@@ -440,22 +474,20 @@ class TestSequentialResult:
         assert result.status == "succeeded"
 
     def test_edge_uuids_preserve_task_ids_order_when_later_task_finishes_first(self, mock_zep):
-        from zep_cloud.types.get_task_response import GetTaskResponse
-
         result = IngestResult.from_task_ids(mock_zep, ["t1", "t2"])
         mock_zep.task.get.side_effect = [
             # First refresh: earlier task still running, later task already done.
-            GetTaskResponse(task_id="t1", status="processing"),
-            GetTaskResponse(
-                task_id="t2",
+            make_task(uuid="t1", status="processing"),
+            make_task(
+                uuid="t2",
                 status="succeeded",
-                params={"edge_uuid": "ffffffff-ffff-4fff-8fff-ffffffffffff"},
+                result={"edge_uuid": "ffffffff-ffff-4fff-8fff-ffffffffffff"},
             ),
             # Second refresh: earlier task completes. t2 is terminal and skipped.
-            GetTaskResponse(
-                task_id="t1",
+            make_task(
+                uuid="t1",
                 status="succeeded",
-                params={"edge_uuid": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"},
+                result={"edge_uuid": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"},
             ),
         ]
 
@@ -472,15 +504,13 @@ class TestSequentialResult:
         assert result.status == "succeeded"
 
     def test_edge_uuids_keep_later_success_after_earlier_terminal_failure(self, mock_zep):
-        from zep_cloud.types.get_task_response import GetTaskResponse
-
         result = IngestResult.from_task_ids(mock_zep, ["t1", "t2"])
         mock_zep.task.get.side_effect = [
-            GetTaskResponse(task_id="t1", status="failed", params={}),
-            GetTaskResponse(
-                task_id="t2",
+            make_task(uuid="t1", status="failed", result={}),
+            make_task(
+                uuid="t2",
                 status="succeeded",
-                params={"edge_uuid": "ffffffff-ffff-4fff-8fff-ffffffffffff"},
+                result={"edge_uuid": "ffffffff-ffff-4fff-8fff-ffffffffffff"},
             ),
         ]
 
@@ -490,15 +520,13 @@ class TestSequentialResult:
         assert result.status == "failed"
 
     def test_node_uuids_keep_later_success_after_earlier_terminal_failure(self, mock_zep):
-        from zep_cloud.types.get_task_response import GetTaskResponse
-
         result = IngestResult.from_task_ids(mock_zep, ["t1", "t2"])
         mock_zep.task.get.side_effect = [
-            GetTaskResponse(task_id="t1", status="canceled", params={}),
-            GetTaskResponse(
-                task_id="t2",
+            make_task(uuid="t1", status="canceled", result={}),
+            make_task(
+                uuid="t2",
                 status="succeeded",
-                params={"node_uuids": ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]},
+                result={"node_uuids": ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]},
             ),
         ]
 
@@ -508,8 +536,6 @@ class TestSequentialResult:
         assert result.status == "canceled"
 
     def test_refresh_keeps_submit_time_node_uuids_when_task_params_arrive(self, mock_zep):
-        from zep_cloud.types.get_task_response import GetTaskResponse
-
         # ingest_nodes already recorded response UUIDs in submission order; task
         # params must not extend or reorder that list on refresh.
         result = IngestResult(
@@ -519,10 +545,10 @@ class TestSequentialResult:
             client=mock_zep,
         )
         result._node_uuids_from_submit = True
-        mock_zep.task.get.return_value = GetTaskResponse(
-            task_id="t1",
+        mock_zep.task.get.return_value = make_task(
+            uuid="t1",
             status="succeeded",
-            params={
+            result={
                 "node_uuids": [
                     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
                     "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
@@ -536,20 +562,18 @@ class TestSequentialResult:
         assert result.node_uuids == ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]
 
     def test_node_uuids_from_task_params_preserve_task_ids_order(self, mock_zep):
-        from zep_cloud.types.get_task_response import GetTaskResponse
-
         result = IngestResult.from_task_ids(mock_zep, ["t1", "t2"])
         mock_zep.task.get.side_effect = [
-            GetTaskResponse(task_id="t1", status="processing"),
-            GetTaskResponse(
-                task_id="t2",
+            make_task(uuid="t1", status="processing"),
+            make_task(
+                uuid="t2",
                 status="succeeded",
-                params={"node_uuids": ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]},
+                result={"node_uuids": ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]},
             ),
-            GetTaskResponse(
-                task_id="t1",
+            make_task(
+                uuid="t1",
                 status="succeeded",
-                params={
+                result={
                     "node_uuids": [
                         "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
                         "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab",
@@ -569,10 +593,8 @@ class TestSequentialResult:
         ]
 
     def test_failed_task_makes_result_failed(self, mock_zep):
-        from zep_cloud.types.get_task_response import GetTaskResponse
-
         result = IngestResult.from_task_ids(mock_zep, ["t1"])
-        mock_zep.task.get.return_value = GetTaskResponse(task_id="t1", status="failed")
+        mock_zep.task.get.return_value = make_task(uuid="t1", status="failed")
 
         result.refresh()
 
@@ -605,10 +627,8 @@ class TestRaiseForStatus:
         assert "0 submission error" not in message
 
     def test_raises_on_canceled_task(self, mock_zep):
-        from zep_cloud.types.get_task_response import GetTaskResponse
-
         result = IngestResult.from_task_ids(mock_zep, ["t1"])
-        mock_zep.task.get.return_value = GetTaskResponse(task_id="t1", status="cancelled")
+        mock_zep.task.get.return_value = make_task(uuid="t1", status="cancelled")
 
         result.wait(poll_interval=0)
 

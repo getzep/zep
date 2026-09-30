@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_zep_episode
+from tests.conftest import GRAPH_UUID, make_zep_episode
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.loaders.concat import ConcatLoader
 from zep_ingest.loaders.json_records import JsonRecordsLoader
@@ -61,10 +61,12 @@ def stamped(data: str) -> Episode:
 class TestRun:
     def test_end_to_end_batch(self, mock_zep):
         loader = ListLoader([stamped("one"), stamped("two")])
-        result = Pipeline(loader, transforms=(UppercaseTransform(),)).run(mock_zep, graph_id="g1")
+        result = Pipeline(loader, transforms=(UppercaseTransform(),)).run(
+            mock_zep, graph_uuid=GRAPH_UUID
+        )
         assert result.method == "batch"
         assert result.items_submitted == 2
-        [add_call] = mock_zep.batch.add.call_args_list
+        [add_call] = mock_zep.batch.add_items.call_args_list
         assert [i.data for i in add_call.kwargs["items"]] == ["ONE", "TWO"]
 
     def test_custom_submitter_is_supported(self, mock_zep):
@@ -78,7 +80,7 @@ class TestRun:
 
         submitter = CustomSubmitter()
         result = Pipeline(ListLoader([stamped("x")]), submitter=submitter).run(
-            mock_zep, graph_id="g1"
+            mock_zep, graph_uuid=GRAPH_UUID
         )
         assert result.method == "sequential"
         assert [episode.data for episode in submitter.seen] == ["x"]
@@ -91,43 +93,43 @@ class TestRun:
 
         with pytest.raises(ConfigurationError, match="custom Pipeline submitter"):
             Pipeline(ListLoader([stamped("x")]), submitter=CustomSubmitter()).run(
-                mock_zep, graph_id="g1", method="batch"
+                mock_zep, graph_uuid=GRAPH_UUID, method="batch"
             )
 
     def test_transform_warnings_collected(self, mock_zep):
         result = Pipeline(ListLoader([stamped("x")]), transforms=(UppercaseTransform(),)).run(
-            mock_zep, graph_id="g1"
+            mock_zep, graph_uuid=GRAPH_UUID
         )
         assert "uppercased one" in result.warnings
 
     def test_preview_then_run_does_not_duplicate_warnings(self, mock_zep):
         pipeline = Pipeline(ListLoader([stamped("x")]), transforms=(UppercaseTransform(),))
         pipeline.preview()
-        result = pipeline.run(mock_zep, graph_id="g1")
+        result = pipeline.run(mock_zep, graph_uuid=GRAPH_UUID)
         assert result.warnings.count("uppercased one") == 1
 
     def test_loader_warnings_collected(self, mock_zep):
-        result = Pipeline(WarningLoader([stamped("x")])).run(mock_zep, graph_id="g1")
+        result = Pipeline(WarningLoader([stamped("x")])).run(mock_zep, graph_uuid=GRAPH_UUID)
         assert "loader noticed something" in result.warnings
 
     def test_loader_warnings_in_preview_and_not_duplicated_in_run(self, mock_zep):
         pipeline = Pipeline(WarningLoader([stamped("x")]))
         report = pipeline.preview()
         assert "loader noticed something" in report.warnings
-        result = pipeline.run(mock_zep, graph_id="g1")
+        result = pipeline.run(mock_zep, graph_uuid=GRAPH_UUID)
         assert result.warnings.count("loader noticed something") == 1
 
     def test_limit_guard_always_applied(self, mock_zep):
         loader = ListLoader([stamped("word " * 4000)])
-        Pipeline(loader).run(mock_zep, graph_id="g1")
-        items = mock_zep.batch.add.call_args.kwargs["items"]
+        Pipeline(loader).run(mock_zep, graph_uuid=GRAPH_UUID)
+        items = mock_zep.batch.add_items.call_args.kwargs["items"]
         assert len(items) > 1
         assert all(len(i.data) <= MAX_EPISODE_CHARS for i in items)
 
     def test_sequential_method(self, mock_zep):
-        mock_zep.graph.add.return_value = make_zep_episode("e1")
+        mock_zep.graph.episode.add.return_value = make_zep_episode("e1")
         result = Pipeline(ListLoader([stamped("x")])).run(
-            mock_zep, user_id="u1", method="sequential"
+            mock_zep, graph_uuid=GRAPH_UUID, method="sequential"
         )
         assert result.method == "sequential"
         mock_zep.batch.create.assert_not_called()
@@ -137,19 +139,19 @@ class TestRun:
         source.write_text('{"id": 1}\n{"id": 2}\nnot-json\n')
 
         with pytest.raises(ConfigurationError, match="Unparseable records"):
-            ingest_json_records(mock_zep, source, graph_id="g1", method="sequential")
+            ingest_json_records(mock_zep, source, graph_uuid=GRAPH_UUID, method="sequential")
 
-        mock_zep.graph.add.assert_not_called()
+        mock_zep.graph.episode.add.assert_not_called()
         mock_zep.batch.create.assert_not_called()
 
     def test_missing_created_at_warning(self, mock_zep):
         loader = ListLoader([Episode(data="a"), Episode(data="b"), stamped("c")])
-        result = Pipeline(loader).run(mock_zep, graph_id="g1")
-        [warning] = [w for w in result.warnings if "created_at" in w]
+        result = Pipeline(loader).run(mock_zep, graph_uuid=GRAPH_UUID)
+        [warning] = [w for w in result.warnings if "no created_at" in w]
         assert "2" in warning
 
     def test_wait_polls(self, mock_zep):
-        result = Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_id="g1")
+        result = Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_uuid=GRAPH_UUID)
         result.wait(poll_interval=0)
         assert result.status == "succeeded"
         mock_zep.batch.get.assert_called()
@@ -167,9 +169,9 @@ class TestConcatLoader:
                 JsonRecordsLoader(prs),
             ]
         )
-        result = Pipeline(loader).run(mock_zep, graph_id="g1")
+        result = Pipeline(loader).run(mock_zep, graph_uuid=GRAPH_UUID)
         assert result.items_submitted == 2
-        [add_call] = mock_zep.batch.add.call_args_list
+        [add_call] = mock_zep.batch.add_items.call_args_list
         assert [item.data for item in add_call.kwargs["items"]] == [
             '{"id": "ISSUE-1"}',
             '{"id": "PR-1"}',
@@ -183,7 +185,7 @@ class TestPreview:
         assert len(report.episodes) == 5
         assert loader.consumed <= 6  # lazy: at most limit + 1 pulled
         mock_zep.batch.create.assert_not_called()
-        mock_zep.graph.add.assert_not_called()
+        mock_zep.graph.episode.add.assert_not_called()
 
     def test_preview_surfaces_warnings(self):
         loader = ListLoader([Episode(data="no timestamp")])
@@ -232,7 +234,7 @@ class TestPreview:
         canon = AliasCanonicalizer({"ROBOT-202": ["PROTOTYPE-202"]})
         pipeline = Pipeline(loader, transforms=(canon,))
         pipeline.preview(limit=10)
-        result = pipeline.run(mock_zep, graph_id="g1")
+        result = pipeline.run(mock_zep, graph_uuid=GRAPH_UUID)
         [warning] = [w for w in result.warnings if "PROTOTYPE-202" in w]
         assert "20" in warning
 
@@ -240,7 +242,7 @@ class TestPreview:
 class TestGraphSetupIsCallerOwned:
     def test_run_never_creates_destination(self, mock_zep):
         # Ingestion writes only into existing graphs/users; it never creates them.
-        Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_id="g1")
+        Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_uuid=GRAPH_UUID)
         mock_zep.graph.get.assert_not_called()
         mock_zep.graph.create.assert_not_called()
         mock_zep.user.add.assert_not_called()
@@ -248,48 +250,53 @@ class TestGraphSetupIsCallerOwned:
     def test_run_never_sets_ontology(self, mock_zep):
         # The ontology is a property of the graph, set once by the caller before
         # ingesting — never per ingest run.
-        Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_id="g1")
+        Pipeline(ListLoader([stamped("x")])).run(mock_zep, graph_uuid=GRAPH_UUID)
         mock_zep.graph.set_ontology.assert_not_called()
 
     def test_ontology_kwarg_is_rejected(self, mock_zep):
         with pytest.raises(TypeError):
             Pipeline(ListLoader([stamped("x")])).run(
-                mock_zep, graph_id="g1", ontology={"entities": {}}
+                mock_zep, graph_uuid=GRAPH_UUID, ontology={"entities": {}}
             )
 
     def test_one_liner_rejects_ontology_kwarg(self, mock_zep):
         with pytest.raises(TypeError):
-            ingest_slack_export(mock_zep, FIXTURE, graph_id="g1", ontology={"entities": {}})
+            ingest_slack_export(mock_zep, FIXTURE, graph_uuid=GRAPH_UUID, ontology={"entities": {}})
 
 
 class TestConvenience:
     def test_ingest_function(self, mock_zep):
-        result = ingest(mock_zep, ListLoader([stamped("x")]), graph_id="g1")
+        result = ingest(mock_zep, ListLoader([stamped("x")]), graph_uuid=GRAPH_UUID)
         assert result.items_submitted == 1
 
     def test_ingest_slack_export(self, mock_zep):
-        result = ingest_slack_export(mock_zep, FIXTURE, graph_id="g1")
+        result = ingest_slack_export(mock_zep, FIXTURE, graph_uuid=GRAPH_UUID)
         assert result.method == "batch"
-        items = mock_zep.batch.add.call_args.kwargs["items"]
+        items = mock_zep.batch.add_items.call_args.kwargs["items"]
         assert all(i.data_type == "text" for i in items)
-        assert all(i.created_at is not None for i in items)
         assert result.items_submitted == len(items) == 4
+        # The v4 batch item has no reference-time field, so the loaded
+        # created_at values cannot be sent, and the result says so.
+        [warning] = [w for w in result.warnings if "created_at" in w]
+        assert "4 episode(s)" in warning
 
     def test_ingest_slack_export_channel_filter(self, mock_zep):
-        result = ingest_slack_export(mock_zep, FIXTURE, graph_id="g1", channels=["random"])
+        result = ingest_slack_export(mock_zep, FIXTURE, graph_uuid=GRAPH_UUID, channels=["random"])
         assert result.items_submitted == 1
 
     def test_ingest_documents_chunks_long_files(self, mock_zep, tmp_path):
         (tmp_path / "doc.md").write_text("\n\n".join("sentence here. " * 20 for _ in range(10)))
-        result = ingest_documents(mock_zep, str(tmp_path / "*.md"), graph_id="kb")
-        items = mock_zep.batch.add.call_args.kwargs["items"]
+        result = ingest_documents(mock_zep, str(tmp_path / "*.md"), graph_uuid=GRAPH_UUID)
+        items = mock_zep.batch.add_items.call_args.kwargs["items"]
         assert result.items_submitted == len(items) > 1
         assert all(len(i.data) <= 500 for i in items)
         assert all(i.data_type == "text" for i in items)
 
     def test_ingest_slack_export_skip_subtypes(self, mock_zep):
-        result = ingest_slack_export(mock_zep, FIXTURE, graph_id="g1", skip_subtypes=frozenset())
-        items = mock_zep.batch.add.call_args.kwargs["items"]
+        result = ingest_slack_export(
+            mock_zep, FIXTURE, graph_uuid=GRAPH_UUID, skip_subtypes=frozenset()
+        )
+        items = mock_zep.batch.add_items.call_args.kwargs["items"]
         assert result.items_submitted == 5
         assert any("has joined the channel" in i.data for i in items)
 
@@ -300,7 +307,7 @@ class TestConvenience:
             ingest_slack_export(
                 mock_zep,
                 FIXTURE,
-                graph_id="g1",
+                graph_uuid=GRAPH_UUID,
                 aliases={"William Example": ["Will"]},
                 risky_words=frozenset({"will"}),
             )

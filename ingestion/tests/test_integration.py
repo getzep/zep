@@ -35,11 +35,11 @@ def zep():
 
 
 @pytest.fixture
-def graph_id(zep):
-    graph_id = f"zep-ingest-it-{uuid.uuid4().hex[:12]}"
-    zep.graph.create(graph_id=graph_id, name="zep-ingest integration test")
-    yield graph_id
-    zep.graph.delete(graph_id)
+def graph_uuid(zep):
+    # v4 addresses a graph by the UUID that graph.create returns.
+    graph = zep.graph.create(name=f"zep-ingest-it-{uuid.uuid4().hex[:12]}")
+    yield graph.uuid_
+    zep.graph.delete(graph.uuid_)
 
 
 EPISODES = [
@@ -54,8 +54,8 @@ EPISODES = [
 ]
 
 
-def test_sequential_round_trip(zep, graph_id):
-    result = ingest(zep, ListLoader(EPISODES), graph_id=graph_id, method="sequential")
+def test_sequential_round_trip(zep, graph_uuid):
+    result = ingest(zep, ListLoader(EPISODES), graph_uuid=graph_uuid, method="sequential")
     assert result.items_submitted == 2
     assert result.add_errors == []
     assert len(result.episode_uuids) == 2
@@ -63,9 +63,9 @@ def test_sequential_round_trip(zep, graph_id):
     assert result.status == "succeeded"
 
 
-def test_batch_round_trip(zep, graph_id):
+def test_batch_round_trip(zep, graph_uuid):
     try:
-        result = ingest(zep, ListLoader(EPISODES), graph_id=graph_id, method="batch")
+        result = ingest(zep, ListLoader(EPISODES), graph_uuid=graph_uuid, method="batch")
     except BatchUnavailableError:
         pytest.skip("Batch API not enabled for this ZEP_API_KEY")
     assert result.items_submitted == 2

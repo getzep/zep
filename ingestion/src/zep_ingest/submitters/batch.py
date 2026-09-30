@@ -33,9 +33,14 @@ from zep_ingest.types import (
 
 #: The only status that means "this deployment does not serve the Batch API",
 #: and so the only failure sequential ingestion can work around. Every other
-#: refusal — a rejected key, an exhausted quota — would refuse graph.add just
-#: as readily, so falling back would only hide the real error behind a slow run.
+#: refusal — a rejected key, an exhausted quota — would refuse an episode add
+#: just as readily, so falling back would only hide the real error behind a slow run.
 BATCH_UNAVAILABLE_STATUS_CODES = frozenset({404})
+
+
+def batch_uuid_of(batch: Any) -> Any:
+    """Read the UUID of a v4 ``Batch`` response, which is aliased to ``uuid``."""
+    return getattr(batch, "uuid_", None)
 
 
 def require_batch_id(
@@ -44,10 +49,10 @@ def require_batch_id(
     source: str = "batch.create",
     partial_result: IngestResult | None = None,
 ) -> str:
-    """Return a usable batch ID or fail before any add/process call."""
+    """Return a usable batch UUID or fail before any add/process call."""
     if not isinstance(batch_id, str) or not batch_id.strip():
         raise InvalidBatchResponseError(
-            f"{source} returned no usable batch_id; refusing to submit because "
+            f"{source} returned no usable batch uuid; refusing to submit because "
             "the batch may already have been created.",
             partial_result=partial_result,
         )
@@ -81,7 +86,7 @@ def process_batch(client: Zep, batch_id: str, result: IngestResult, *, max_retri
         lambda: client.batch.process(batch_id),
         max_retries=max_retries,
         # Processing a known batch is idempotent; retrying it cannot add items
-        # twice, unlike graph.add or batch.add.
+        # twice, unlike graph.episode.add or batch.add_items.
         retry_server_errors=True,
     )
     if error is not None:
@@ -124,11 +129,12 @@ class BatchSubmitter:
         )
 
     def submit(self, episodes: Iterable[Episode], destination: Destination) -> IngestResult:
-        result = IngestResult(method="batch", client=self.client)
+        result = IngestResult(method="batch", client=self.client, graph_uuid=destination.graph_uuid)
         iterator = iter(episodes)
         batch_id: str | None = None
         items_in_batch = 0
         page_index = 0
+        dropped_created_at = 0
         while True:
             page = list(islice(iterator, self.page_size))
             if not page:
@@ -141,6 +147,7 @@ class BatchSubmitter:
                 if batch_id is None:
                     break
                 items_in_batch = 0
+            dropped_created_at += sum(1 for ep in page if ep.created_at is not None)
             items = [to_batch_item(ep, destination) for ep in page]
             if self._add_page(batch_id, items, page_index, result):
                 items_in_batch += len(page)
@@ -148,6 +155,12 @@ class BatchSubmitter:
             page_index += 1
         if batch_id is not None:
             process_batch(self.client, batch_id, result, max_retries=self.max_add_retries)
+        if dropped_created_at:
+            result.warnings.append(
+                f"{dropped_created_at} episode(s) carry created_at, but the v4 batch item "
+                "has no reference-time field, so the value was not sent. Submit with "
+                'method="sequential" to keep the reference time.'
+            )
         return result
 
     def _create_batch(self, result: IngestResult) -> str | None:
@@ -194,7 +207,7 @@ class BatchSubmitter:
                 raise BatchUnavailableError(partial_result=result) from error
             raise error
         batch_id = require_batch_id(
-            getattr(summary, "batch_id", None),
+            batch_uuid_of(summary),
             partial_result=result,
         )
         result.batch_ids.append(batch_id)
@@ -208,7 +221,7 @@ class BatchSubmitter:
         def add_page() -> None:
             nonlocal attempts
             attempts += 1
-            self.client.batch.add(batch_id, items=items)
+            self.client.batch.add_items(batch_id, items=items)
 
         _, error = call_with_retries(
             add_page,
@@ -220,7 +233,7 @@ class BatchSubmitter:
             AddError(
                 index=page_index,
                 item_count=len(items),
-                error=f"{format_api_error('batch.add', error)} after {attempts} attempt(s)",
+                error=f"{format_api_error('batch.add_items', error)} after {attempts} attempt(s)",
                 batch_id=batch_id,
             )
         )

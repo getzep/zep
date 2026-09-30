@@ -39,7 +39,7 @@ def test_empty_fields_are_preserved_for_dataclass_validation():
     # a present-but-empty value is not a missing column: it reaches the
     # dataclass, which is what names the field in the error
     row = {
-        "thread_id": "t1",
+        "thread_uuid": "44444444-4444-4444-8444-444444444444",
         "role": "",
         "name": "Avery Brown",
         "content": "hello",

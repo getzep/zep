@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from tests.conftest import GRAPH_UUID
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.loaders.json_records import JsonRecordsLoader
 
@@ -405,12 +406,15 @@ class TestOneLiner:
         result = ingest_json_records(
             mock_zep,
             jsonl_file,
-            graph_id="catalog",
+            graph_uuid=GRAPH_UUID,
             id_field="sku",
             created_at_field="date",
         )
         assert result.items_submitted == 2
-        items = mock_zep.batch.add.call_args.kwargs["items"]
+        items = mock_zep.batch.add_items.call_args.kwargs["items"]
         assert all(i.data_type == "json" for i in items)
-        assert all(i.created_at is not None for i in items)
         assert json.loads(items[0].data)["id"] == "P1"
+        # created_at_field still parses each record's date, but the v4 batch
+        # item has no reference-time field, so the result reports the drop.
+        [warning] = [w for w in result.warnings if "created_at" in w]
+        assert "2 episode(s)" in warning

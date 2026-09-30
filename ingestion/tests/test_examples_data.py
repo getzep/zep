@@ -6,12 +6,12 @@ import sys
 from pathlib import Path
 
 from zep_ingest import EmlLoader, Pipeline, SlackExportLoader, TextChunker, TextFileLoader
-from zep_ingest.threads import _load_messages
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "examples"))
 
-from example_ontology import ONTOLOGY  # noqa: E402
+from example_ontology import EDGE_TYPES, ENTITY_TYPES  # noqa: E402
 from fact_triples_example import load_triples  # noqa: E402
+from thread_backfill_example import load_rows  # noqa: E402
 
 DATA = Path(__file__).parent.parent / "examples" / "data"
 
@@ -44,23 +44,29 @@ def test_org_chart_molds_into_declared_edges():
     # construction itself validates every documented limit
     triples = load_triples()
     assert len(triples) > 0
-    assert all(t.fact_name in ONTOLOGY["edges"] for t in triples)
+    declared_edges = {edge.name for edge in EDGE_TYPES}
+    assert all(t.fact_name in declared_edges for t in triples)
     assert all(t.valid_at is not None for t in triples)
     molded = {t.fact_name for t in triples}
-    assert molded <= set(ONTOLOGY["edges"])
+    assert molded <= declared_edges
     assert {"WORKS_AT", "RESPONSIBLE", "SUPPLIES", "CUSTOMER_OF", "LOCATED_AT"} <= molded
     # labels tie triple-created nodes to declared entity types
-    entities = set(ONTOLOGY["entities"])
+    entities = {entity.name for entity in ENTITY_TYPES}
     assert all((t.source_node_labels or ["x"])[0] in entities for t in triples)
     assert all((t.target_node_labels or ["x"])[0] in entities for t in triples)
     assert all(t.source_node_labels and t.target_node_labels for t in triples)
 
 
 def test_thread_files_valid_and_multi_threaded():
+    # The bundled exports carry their own thread names and timestamps; the
+    # examples map each name onto the UUID of a thread they create, because
+    # v4 addresses a thread by UUID.
     for name in ("chat_history.jsonl", "combined_threads.jsonl"):
-        messages = _load_messages(DATA / name)
-        assert all(m.created_at is not None for m in messages), name
-        assert len({m.thread_id for m in messages}) >= 2, name
+        rows = load_rows(DATA / name)
+        assert rows, name
+        assert all(row["created_at"] for row in rows), name
+        assert all(row["role"] and row["name"] and row["content"] for row in rows), name
+        assert len({row["thread_id"] for row in rows}) >= 2, name
 
 
 def test_products_have_mapped_fields():

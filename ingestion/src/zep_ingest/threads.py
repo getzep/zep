@@ -3,10 +3,12 @@
 Business data goes to named graphs as episodes; a user's own conversations go
 to their user graph as thread messages. This module owns that path end to end:
 
-- validates every message client-side (thread_id, role, name, content,
-  created_at, metadata) before any API call,
-- requires the user to already exist and pre-creates the destination threads
-  (the Batch API requires threads to exist),
+- validates every message client-side (thread_uuid, role, name, content,
+  metadata) before any API call,
+- addresses every destination thread by its UUID: v4 addresses a thread by a
+  server-generated UUID, so the application creates the user and the thread one
+  time, stores each UUID, and passes it here. This module does no runtime
+  identifier lookup and creates no user or thread,
 - auto-splits messages over the 4,096-character message limit at sentence
   boundaries instead of letting the API reject them,
 - submits via the Batch API by default, with transparent fallback to sequential
@@ -15,6 +17,7 @@ to their user graph as thread messages. This module owns that path end to end:
 """
 
 import logging
+import uuid as _uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from itertools import islice
@@ -23,10 +26,8 @@ from typing import Any, Literal, cast
 
 import httpx
 from zep_cloud.client import Zep
-from zep_cloud.core.api_error import ApiError
-from zep_cloud.errors.not_found_error import NotFoundError
-from zep_cloud.types.batch_add_item import BatchAddItem
-from zep_cloud.types.message import Message
+from zep_cloud.types.add_message import AddMessage
+from zep_cloud.types.batch_item_input import BatchItemInput
 
 from zep_ingest._errors import format_api_error
 from zep_ingest._io import load_rows, resolve_source_files, rows_to_fields
@@ -41,8 +42,9 @@ from zep_ingest.exceptions import (
     ConfigurationError,
     InvalidBatchResponseError,
 )
-from zep_ingest.result import AddError, IngestResult
+from zep_ingest.result import AddError, IngestResult, task_uuid_of
 from zep_ingest.submitters.batch import (
+    batch_uuid_of,
     is_batch_unavailable,
     process_batch,
     require_batch_id,
@@ -70,37 +72,47 @@ ROLE_TYPES = frozenset({"user", "assistant", "system", "function", "tool", "noro
 
 @dataclass(slots=True)
 class ThreadMessage:
-    """One chat message destined for a user's thread, validated client-side.
+    """One chat message destined for a thread, validated client-side.
 
-    ``role``, ``name``, and ``created_at`` are all required: a backfill should
-    carry each turn's speaker type, speaker name, and original timestamp so the
-    conversation and its fact-validity timeline reconstruct faithfully. Only
-    ``metadata`` is optional.
+    ``thread_uuid`` is the UUID that ``thread.create`` returned for the
+    destination thread. ``role`` and ``name`` are required: a backfill should
+    carry each turn's speaker type and speaker name.
+
+    ``created_at`` is accepted and validated, but v4 has no reference-time
+    field for a thread message, so the value is not sent. Put the original
+    timestamp in ``metadata`` if the application must keep it.
     """
 
-    thread_id: str
+    thread_uuid: str
     content: str
     role: str
     name: str
-    created_at: str
+    created_at: str | None = None
     metadata: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         errors: list[str] = []
-        if not isinstance(self.thread_id, str) or not self.thread_id.strip():
-            errors.append("thread_id must be a non-empty string")
+        if not isinstance(self.thread_uuid, str) or not self.thread_uuid.strip():
+            errors.append("thread_uuid must be a non-empty string")
+        else:
+            try:
+                _uuid.UUID(self.thread_uuid)
+            except ValueError:
+                errors.append(
+                    "thread_uuid is not a valid UUID: v4 addresses a thread by the UUID "
+                    f"that thread.create returned, not by a thread name; got "
+                    f"{self.thread_uuid!r}"
+                )
         if not isinstance(self.content, str) or not self.content.strip():
             errors.append("content must be a non-empty string")
         if not isinstance(self.role, str) or self.role not in ROLE_TYPES:
             errors.append(f"role must be one of {sorted(ROLE_TYPES)}, got {self.role!r}")
         check_required_string("name", self.name, 100, errors)
-        if self.created_at is None:
-            errors.append("created_at is required (RFC3339, e.g. 2024-06-15T10:30:00Z)")
         check_timestamp("created_at", self.created_at, errors)
         check_scalar_map("metadata", self.metadata, errors, max_keys=MAX_METADATA_KEYS)
         if errors:
             raise ConfigurationError(
-                f"Invalid thread message (thread {self.thread_id!r}): " + "; ".join(errors)
+                f"Invalid thread message (thread {self.thread_uuid!r}): " + "; ".join(errors)
             )
 
 
@@ -169,45 +181,21 @@ def _prepare(messages: list[ThreadMessage], warnings: list[str]) -> list[ThreadM
     return prepared
 
 
-def _ensure_user_and_threads(client: Zep, user_id: str, messages: list[ThreadMessage]) -> None:
-    # The user must already exist — ingestion writes into existing users and does
-    # not create them (a bare auto-created user would skip the profile and
-    # per-user setup that user creation is the place for). Threads, by contrast,
-    # are backfill-owned containers, so they are created below if missing.
-    try:
-        client.user.get(user_id)
-    except NotFoundError:
-        raise ConfigurationError(
-            f"User {user_id!r} does not exist. Create it first — e.g. "
-            f"client.user.add(user_id={user_id!r}, ...) — then ingest; ingestion "
-            "writes into existing users and does not create them."
-        ) from None
-    seen: set[str] = set()
-    for message in messages:
-        if message.thread_id in seen:
-            continue
-        seen.add(message.thread_id)
-        try:
-            client.thread.create(thread_id=message.thread_id, user_id=user_id)
-        except ApiError as error:
-            # The API reports an existing thread as 400 "already exists" (or
-            # 409); any other 400 is a real validation error and must surface.
-            already_exists = error.status_code == 409 or (
-                error.status_code == 400 and "already exists" in str(error.body)
-            )
-            if not already_exists:
-                raise
-            # Thread IDs are project-global. A collision must be verified
-            # before adding messages; otherwise this import could cross a user
-            # boundary and write into another user's conversation.
-            existing = client.thread.get(message.thread_id, lastn=1)
-            owner_id = getattr(existing, "user_id", None)
-            if owner_id != user_id:
-                owner = repr(owner_id) if owner_id is not None else "unknown"
-                raise ConfigurationError(
-                    f"Thread {message.thread_id!r} already belongs to user {owner}; "
-                    f"refusing to ingest it for {user_id!r}."
-                ) from error
+def _created_at_warning(messages: list[ThreadMessage]) -> str | None:
+    """Warn one time when message reference times cannot be sent.
+
+    Neither the v4 ``AddMessage`` model nor the v4 batch item carries a
+    reference time for a thread message, so a supplied ``created_at`` is
+    dropped.
+    """
+    count = sum(1 for message in messages if message.created_at is not None)
+    if not count:
+        return None
+    return (
+        f"{count} message(s) carry created_at, but v4 has no reference-time field for "
+        "a thread message, so the value was not sent. Put the original timestamp in "
+        "metadata if you must keep it."
+    )
 
 
 def _submit_batch(
@@ -269,26 +257,25 @@ def _submit_batch(
                     raise BatchUnavailableError(partial_result=result) from create_error
                 raise create_error
             batch_id = require_batch_id(
-                getattr(summary, "batch_id", None),
+                batch_uuid_of(summary),
                 partial_result=result,
             )
             result.batch_ids.append(batch_id)
             items_in_batch = 0
         items = [
-            BatchAddItem(
+            BatchItemInput(
                 type="thread_message",
-                thread_id=message.thread_id,
+                thread_uuid=message.thread_uuid,
                 content=message.content,
                 role=message.role,  # type: ignore[arg-type]
                 name=message.name,
-                created_at=message.created_at,
                 metadata=message.metadata,
             )
             for message in page
         ]
         current_batch = batch_id
         _, add_failure = call_with_retries(
-            lambda: client.batch.add(current_batch, items=items),  # noqa: B023
+            lambda: client.batch.add_items(current_batch, items=items),  # noqa: B023
             max_retries=max_retries,
         )
         if add_failure is not None:
@@ -296,7 +283,7 @@ def _submit_batch(
                 AddError(
                     index=page_index,
                     item_count=len(page),
-                    error=(format_api_error("batch.add", add_failure)),
+                    error=(format_api_error("batch.add_items", add_failure)),
                     batch_id=batch_id,
                 )
             )
@@ -318,21 +305,19 @@ def _submit_sequential(
     max_retries: int,
 ) -> IngestResult:
     result = IngestResult(method="sequential", client=client)
-    missing_message_uuids = 0
+    missing_tasks = 0
     by_thread: dict[str, list[ThreadMessage]] = {}
-    thread_poll_uuids: dict[str, str] = {}
     for message in messages:
-        by_thread.setdefault(message.thread_id, []).append(message)
+        by_thread.setdefault(message.thread_uuid, []).append(message)
     chunk_index = 0
-    for thread_id, thread_messages in by_thread.items():
+    for thread_uuid, thread_messages in by_thread.items():
         for start in range(0, len(thread_messages), messages_per_call):
             chunk = thread_messages[start : start + messages_per_call]
             payload = [
-                Message(
+                AddMessage(
                     content=m.content,
                     role=m.role,  # type: ignore[arg-type]
                     name=m.name,
-                    created_at=m.created_at,
                     metadata=m.metadata,
                 )
                 for m in chunk
@@ -341,7 +326,7 @@ def _submit_sequential(
             if ignore_roles:
                 add_kwargs["ignore_roles"] = ignore_roles
             response, error = call_with_retries(
-                lambda: client.thread.add_messages(thread_id, **add_kwargs),  # noqa: B023
+                lambda: client.thread.add_messages(thread_uuid, **add_kwargs),  # noqa: B023
                 max_retries=max_retries,
             )
             if error is not None:
@@ -349,26 +334,24 @@ def _submit_sequential(
                     AddError(
                         index=chunk_index,
                         item_count=len(chunk),
-                        error=format_api_error(f"thread.add_messages({thread_id!r})", error),
+                        error=format_api_error(f"thread.add_messages({thread_uuid!r})", error),
                     )
                 )
             else:
                 result.items_submitted += len(chunk)
-                message_uuids = getattr(response, "message_uuids", None) or []
-                if message_uuids:
-                    # Docs: poll the last message in the last request per thread.
-                    # thread.add_messages does not return task_id (only batch mode does).
-                    thread_poll_uuids[thread_id] = str(message_uuids[-1])
-                else:
-                    missing_message_uuids += 1
+                # v4 thread.add_messages returns the task that tracks extraction,
+                # so the run is tracked by task instead of by message UUID.
+                task_id = task_uuid_of(response.task)
+                if task_id and task_id not in result.task_ids:
+                    result.task_ids.append(task_id)
+                elif not task_id:
+                    missing_tasks += 1
                     result.untracked_items += len(chunk)
             chunk_index += 1
-    result.episode_uuids = list(thread_poll_uuids.values())
-    result._single_queue_episode_poll = len(thread_poll_uuids) <= 1
-    if missing_message_uuids:
+    if missing_tasks:
         result.warnings.append(
-            f"{missing_message_uuids} successful thread.add_messages call(s) returned no "
-            "message UUIDs; wait()/status cannot track their server-side extraction. "
+            f"{missing_tasks} successful thread.add_messages call(s) returned no task; "
+            "wait()/status cannot track their server-side extraction. "
             "Poll your own read (e.g. zep_ingest.search_when_ready) before querying."
         )
     return result
@@ -378,26 +361,21 @@ def ingest_thread_messages(
     client: Zep,
     messages: Iterable[ThreadMessage] | SourcePaths,
     *,
-    user_id: str | None = None,
     method: Literal["auto", "batch", "sequential"] = "auto",
     batch_metadata: dict[str, Any] | None = None,
     ignore_roles: Sequence[str] | None = None,
     messages_per_call: int = MAX_MESSAGES_PER_THREAD_ADD,
     max_retries: int = 5,
-    thread_id_suffix: str | None = None,
 ) -> IngestResult:
     """Backfill chat history into a user's graph via threads.
 
     Accepts ThreadMessage objects, a JSONL / JSON-object / JSON-array path, a
     glob, or a sequence of those paths (files are submitted in caller order).
-    Columns are thread_id/role/name/content/created_at (all required except metadata).
-    The user must already exist; every referenced thread is created if missing (the
-    Batch API requires threads to exist), and per-thread message order is
-    preserved on both submission paths.
-
-    Thread ids are global to a Zep project — pass ``thread_id_suffix`` to
-    namespace them (e.g. per environment or per re-run) without rewriting
-    your source data.
+    Columns are thread_uuid/role/name/content (metadata and created_at are
+    optional). Every thread must already exist: the application creates the
+    user and the thread one time, stores each UUID, and supplies the
+    ``thread_uuid`` here. Per-thread message order is preserved on both
+    submission paths.
 
     ``ignore_roles`` lists message roles (e.g. ``["assistant"]``) to keep as
     conversational context but exclude from graph extraction; those messages are
@@ -407,14 +385,9 @@ def ingest_thread_messages(
     Submission is asynchronous; bind the result, then wait on it, so the resume
     handles survive a timeout::
 
-        result = ingest_thread_messages(client, messages, user_id="u1")
+        result = ingest_thread_messages(client, messages)
         result.wait()
     """
-    if not user_id:
-        raise ConfigurationError(
-            "ingest_thread_messages requires user_id — threads belong to a user "
-            "and their messages land on that user's graph."
-        )
     if method not in ("auto", "batch", "sequential"):
         raise ConfigurationError(
             f"method must be one of ['auto', 'batch', 'sequential'], got {method!r}"
@@ -426,20 +399,16 @@ def ingest_thread_messages(
         maximum=MAX_MESSAGES_PER_THREAD_ADD,
     )
     require_int_range("max_retries", max_retries, minimum=1)
-    if thread_id_suffix is not None and not isinstance(thread_id_suffix, str):
-        raise ConfigurationError("thread_id_suffix must be a string or None")
     normalized_ignore_roles = _validate_ignore_roles(ignore_roles)
     if _is_source_paths(messages):
         materialized = _load_message_sources(cast(SourcePaths, messages))
     else:
         materialized = list(cast(Iterable[ThreadMessage], messages))
-    if thread_id_suffix:
-        materialized = [
-            replace(m, thread_id=f"{m.thread_id}{thread_id_suffix}") for m in materialized
-        ]
     warnings: list[str] = []
     prepared = _prepare(materialized, warnings)
-    _ensure_user_and_threads(client, user_id, prepared)
+    created_at_notice = _created_at_warning(prepared)
+    if created_at_notice is not None:
+        warnings.append(created_at_notice)
 
     if method == "sequential":
         result = _submit_sequential(

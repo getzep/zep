@@ -2,6 +2,7 @@
 
 import pytest
 
+from tests.conftest import GRAPH_UUID
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.transforms.canonicalizer import AliasCanonicalizer
 from zep_ingest.types import Episode
@@ -238,9 +239,12 @@ class TestOneLinerIntegration:
 
         fixture = Path(__file__).parent / "fixtures" / "slack_export"
         ingest_slack_export(
-            mock_zep, fixture, graph_id="g1", aliases={"ROBOT-202": ["PROTOTYPE-202"]}
+            mock_zep,
+            fixture,
+            graph_uuid=GRAPH_UUID,
+            aliases={"ROBOT-202": ["PROTOTYPE-202"]},
         )
-        items = mock_zep.batch.add.call_args.kwargs["items"]
+        items = mock_zep.batch.add_items.call_args.kwargs["items"]
         joined = "\n".join(i.data for i in items)
         assert "PROTOTYPE-202" not in joined
         assert "ROBOT-202" in joined

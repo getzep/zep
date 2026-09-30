@@ -6,18 +6,14 @@ from pathlib import Path
 from typing import Any
 
 from zep_cloud.client import Zep
-from zep_cloud.types.add_node_item import AddNodeItem
+from zep_cloud.types.add_nodes_result import AddNodesResult
+from zep_cloud.types.node_input import NodeInput
 
 from zep_ingest._errors import format_api_error
 from zep_ingest._io import load_rows, rows_to_fields
-from zep_ingest._validation import (
-    check_len,
-    check_required_string,
-    check_scalar_map,
-    check_timestamp,
-)
+from zep_ingest._validation import check_len, check_required_string, check_scalar_map
 from zep_ingest.exceptions import ConfigurationError
-from zep_ingest.result import AddError, IngestResult
+from zep_ingest.result import AddError, IngestResult, task_uuid_of
 from zep_ingest.submitters.sequential import call_with_retries
 from zep_ingest.types import Destination
 
@@ -42,7 +38,6 @@ class NodeItem:
     summary: str | None = None
     attributes: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
-    created_at: str | None = None
 
     def __post_init__(self) -> None:
         errors: list[str] = []
@@ -51,11 +46,10 @@ class NodeItem:
         check_len("label", self.label, MAX_LABEL_CHARS, errors)
         check_scalar_map("attributes", self.attributes, errors, max_keys=MAX_ATTRIBUTE_KEYS)
         check_scalar_map("metadata", self.metadata, errors, max_keys=MAX_ATTRIBUTE_KEYS)
-        check_timestamp("created_at", self.created_at, errors)
         if errors:
             raise ConfigurationError(f"Invalid node {str(self.name)[:40]!r}: " + "; ".join(errors))
 
-    def to_add_node_item(self) -> AddNodeItem:
+    def to_node_input(self) -> NodeInput:
         """Build the SDK request model, omitting unset fields.
 
         Only fields that are actually set are passed, so an unset field is
@@ -70,9 +64,7 @@ class NodeItem:
             fields["attributes"] = self.attributes
         if self.metadata is not None:
             fields["metadata"] = self.metadata
-        if self.created_at is not None:
-            fields["created_at"] = self.created_at
-        return AddNodeItem(**fields)
+        return NodeInput(**fields)
 
 
 _RETIRED_NODE_FIELDS = {
@@ -80,6 +72,10 @@ _RETIRED_NODE_FIELDS = {
         "uuid cannot be supplied: Zep assigns node UUIDs "
         "(use client.graph.node.update with a UUID from IngestResult.node_uuids "
         "to update an existing node)"
+    ),
+    "created_at": (
+        "created_at cannot be supplied: the v4 node model has no reference time "
+        "(Zep sets the node's creation time)"
     ),
 }
 
@@ -89,24 +85,18 @@ def _load_nodes(path: Path) -> list[NodeItem]:
     return [NodeItem(**row) for row in rows]
 
 
-def _assigned_node_uuids(response: Any, *, expected: int) -> list[str | None]:
-    """Extract Zep-assigned node UUIDs from an ``add_nodes`` response.
+def _assigned_node_uuids(response: AddNodesResult, *, expected: int) -> list[str | None]:
+    """Extract Zep-assigned node UUIDs from a ``graph.node.add`` response.
 
     The returned list is always ``expected`` long and aligned with the request
     batch: a missing entry is ``None`` so callers can zip against the submitted
     nodes without shifting later identities forward over a gap.
     """
-    nodes = getattr(response, "nodes", None) or []
+    nodes = response.nodes or []
     uuids: list[str | None] = []
     for index in range(expected):
-        if index >= len(nodes):
-            uuids.append(None)
-            continue
-        node = nodes[index]
-        node_uuid = getattr(node, "uuid_", None)
-        if node_uuid is None and isinstance(node, dict):
-            node_uuid = node.get("uuid") or node.get("uuid_")
-        uuids.append(str(node_uuid) if node_uuid else None)
+        node_uuid = nodes[index].uuid_ if index < len(nodes) else None
+        uuids.append(node_uuid or None)
     return uuids
 
 
@@ -114,12 +104,11 @@ def ingest_nodes(
     client: Zep,
     nodes: Iterable[NodeItem] | str | Path,
     *,
-    graph_id: str | None = None,
-    user_id: str | None = None,
+    graph_uuid: str | None = None,
     batch_size: int = MAX_NODES_PER_REQUEST,
     max_retries: int = 5,
 ) -> IngestResult:
-    """Create canonical nodes via ``client.graph.add_nodes``.
+    """Create canonical nodes via ``client.graph.node.add``.
 
     Zep assigns each node's UUID. ``result.node_uuids`` is parallel to the
     submitted node list: successes carry the assigned UUID, and a failed batch
@@ -127,26 +116,22 @@ def ingest_nodes(
     success cannot shift forward under ``zip``. Submission is asynchronous; bind
     the result, then wait on it, so the resume handles survive a timeout::
 
-        result = ingest_nodes(client, nodes, graph_id="g1")
+        result = ingest_nodes(client, nodes, graph_uuid=graph_uuid)
         result.wait()
         # result.node_uuids[i] matches the i-th submitted node (or None)
     """
-    destination = Destination(graph_id=graph_id, user_id=user_id)
+    destination = Destination(graph_uuid=graph_uuid)
     if not 1 <= batch_size <= MAX_NODES_PER_REQUEST:
         raise ConfigurationError(f"batch_size must be 1..{MAX_NODES_PER_REQUEST}, got {batch_size}")
     materialized = _load_nodes(Path(nodes)) if isinstance(nodes, str | Path) else list(nodes)
 
-    scope = (
-        {"graph_id": destination.graph_id}
-        if destination.graph_id is not None
-        else {"user_id": destination.user_id}
-    )
-    result = IngestResult(method="sequential", client=client)
+    target = destination.graph
+    result = IngestResult(method="sequential", client=client, graph_uuid=target)
     for start in range(0, len(materialized), batch_size):
         batch = materialized[start : start + batch_size]
-        items = [node.to_add_node_item() for node in batch]
+        items = [node.to_node_input() for node in batch]
         response, error = call_with_retries(
-            lambda: client.graph.add_nodes(nodes=items, **scope),  # noqa: B023
+            lambda: client.graph.node.add(graph_uuid=target, nodes=items),  # noqa: B023
             max_retries=max_retries,
         )
         # Always extend node_uuids by batch length so indices stay aligned with
@@ -157,16 +142,16 @@ def ingest_nodes(
                 AddError(
                     index=start,
                     item_count=len(batch),
-                    error=format_api_error("graph.add_nodes", error),
+                    error=format_api_error("graph.node.add", error),
                 )
             )
             result.node_uuids.extend([None] * len(batch))
             continue
         result.items_submitted += len(batch)
         result.node_uuids.extend(_assigned_node_uuids(response, expected=len(batch)))
-        task_id = getattr(response, "task_id", None)
-        if task_id and str(task_id) not in result.task_ids:
-            result.task_ids.append(str(task_id))
+        task_id = task_uuid_of(response.task)
+        if task_id and task_id not in result.task_ids:
+            result.task_ids.append(task_id)
         elif not task_id:
             result.untracked_items += len(batch)
     return result

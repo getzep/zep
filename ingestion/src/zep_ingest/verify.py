@@ -7,63 +7,62 @@ this helper owns the retry so callers don't hand-roll poll loops.
 """
 
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from zep_ingest._validation import require_int_range, require_nonnegative_number
+from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.types import Destination
 
 if TYPE_CHECKING:
     from zep_cloud.client import Zep
-    from zep_cloud.types.graph_search_results import GraphSearchResults
 
 DEFAULT_TIMEOUT_SECONDS = 120.0
 DEFAULT_POLL_SECONDS = 5.0
+
+#: v4 replaces the single ``graph.search`` with one method per scope.
+Scope = Literal["edges", "nodes", "episodes", "observations", "thread_summaries"]
+_SEARCH_METHODS: dict[str, str] = {
+    "edges": "search_edges",
+    "nodes": "search_nodes",
+    "episodes": "search_episodes",
+    "observations": "search_observations",
+    "thread_summaries": "search_thread_summaries",
+}
 
 
 def search_when_ready(
     client: "Zep",
     query: str,
     *,
-    graph_id: str | None = None,
-    user_id: str | None = None,
-    scope: str = "edges",
+    graph_uuid: str | None = None,
+    scope: Scope = "edges",
     limit: int = 10,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     poll_interval: float = DEFAULT_POLL_SECONDS,
     **search_kwargs: Any,
-) -> "GraphSearchResults":
-    """Run ``graph.search``, retrying an empty result until indexing catches up.
+) -> list[Any]:
+    """Run the v4 search of ``scope``, retrying an empty result until indexing
+    catches up.
 
-    Returns the first response with any hits, or the final (empty) response
-    once ``timeout`` seconds have elapsed — it never raises on empty results,
-    since "nothing matched" is a valid answer.
+    v4 has one search method for each scope, and each one returns a pager. The
+    first page of results is returned, so the caller gets the same "did my data
+    arrive" answer as the v3 helper gave. The result is an empty list once
+    ``timeout`` seconds have elapsed — an empty result is a valid answer, so
+    this helper does not raise.
     """
     require_int_range("limit", limit, minimum=1)
     require_nonnegative_number("timeout", timeout)
     require_nonnegative_number("poll_interval", poll_interval)
-    destination = Destination(graph_id=graph_id, user_id=user_id)
-    target = (
-        {"graph_id": destination.graph_id}
-        if destination.graph_id is not None
-        else {"user_id": destination.user_id}
-    )
+    if scope not in _SEARCH_METHODS:
+        raise ConfigurationError(f"scope must be one of {sorted(_SEARCH_METHODS)}, got {scope!r}")
+    destination = Destination(graph_uuid=graph_uuid)
+    search = getattr(client.graph, _SEARCH_METHODS[scope])
     deadline = time.monotonic() + timeout
     while True:
-        response = client.graph.search(
-            query=query, scope=scope, limit=limit, **target, **search_kwargs
-        )
-        if any(
-            getattr(response, field, None)
-            for field in (
-                "context",
-                "edges",
-                "nodes",
-                "episodes",
-                "observations",
-                "thread_summaries",
-            )
-        ):
-            return response
+        pager = search(destination.graph, query=query, limit=limit, **search_kwargs)
+        items = list(pager.items or [])
+        if items:
+            return items
         if time.monotonic() >= deadline:
-            return response
+            return items
         time.sleep(poll_interval)

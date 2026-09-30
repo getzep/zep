@@ -1,20 +1,16 @@
 """Tests for search_when_ready — the indexing-lag-aware search helper."""
 
-from types import SimpleNamespace
-
 import pytest
+from zep_cloud.core.pagination import SyncPager
 
+from tests.conftest import GRAPH_UUID
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.verify import search_when_ready
 
 
-def results(n_edges: int):
-    class _Results:
-        edges = [object()] * n_edges
-        nodes = None
-        episodes = None
-
-    return _Results()
+def page(count: int) -> SyncPager:
+    """A v4 search method returns a pager; the helper reads its first page."""
+    return SyncPager(get_next=None, has_next=False, items=[object()] * count, response=None)
 
 
 @pytest.fixture(autouse=True)
@@ -23,65 +19,68 @@ def no_sleep(monkeypatch):
 
 
 class TestSearchWhenReady:
-    def test_returns_first_non_empty_response(self, mock_zep):
-        mock_zep.graph.search.side_effect = [results(0), results(0), results(3)]
-        response = search_when_ready(mock_zep, "who works here?", graph_id="g1")
-        assert len(response.edges) == 3
-        assert mock_zep.graph.search.call_count == 3
+    def test_returns_first_non_empty_page(self, mock_zep):
+        mock_zep.graph.search_edges.side_effect = [page(0), page(0), page(3)]
+        edges = search_when_ready(mock_zep, "who works here?", graph_uuid=GRAPH_UUID)
+        assert len(edges) == 3
+        assert mock_zep.graph.search_edges.call_count == 3
 
     def test_no_polling_when_results_immediate(self, mock_zep):
-        mock_zep.graph.search.return_value = results(2)
-        search_when_ready(mock_zep, "q", graph_id="g1")
-        assert mock_zep.graph.search.call_count == 1
+        mock_zep.graph.search_edges.return_value = page(2)
+        search_when_ready(mock_zep, "q", graph_uuid=GRAPH_UUID)
+        assert mock_zep.graph.search_edges.call_count == 1
+        assert mock_zep.graph.search_edges.call_args.args[0] == GRAPH_UUID
 
     @pytest.mark.parametrize(
-        ("field", "value"),
+        ("scope", "method"),
         [
-            ("context", "assembled context"),
-            ("observations", [object()]),
-            ("thread_summaries", [object()]),
+            ("edges", "search_edges"),
+            ("nodes", "search_nodes"),
+            ("episodes", "search_episodes"),
+            ("observations", "search_observations"),
+            ("thread_summaries", "search_thread_summaries"),
         ],
     )
-    def test_all_supported_result_fields_stop_polling(self, mock_zep, field, value):
-        response = SimpleNamespace(
-            context=None,
-            edges=None,
-            nodes=None,
-            episodes=None,
-            observations=None,
-            thread_summaries=None,
-        )
-        setattr(response, field, value)
-        mock_zep.graph.search.return_value = response
+    def test_every_scope_calls_its_own_v4_method(self, mock_zep, scope, method):
+        # v4 replaces the single graph.search with one method for each scope.
+        getattr(mock_zep.graph, method).return_value = page(1)
 
-        assert search_when_ready(mock_zep, "q", graph_id="g1") is response
-        assert mock_zep.graph.search.call_count == 1
+        items = search_when_ready(mock_zep, "q", graph_uuid=GRAPH_UUID, scope=scope)
 
-    def test_returns_empty_response_after_timeout(self, mock_zep, monkeypatch):
+        assert len(items) == 1
+        assert getattr(mock_zep.graph, method).call_count == 1
+
+    def test_unknown_scope_refused_before_searching(self, mock_zep):
+        with pytest.raises(ConfigurationError, match="scope"):
+            search_when_ready(mock_zep, "q", graph_uuid=GRAPH_UUID, scope="facts")
+        mock_zep.graph.search_edges.assert_not_called()
+
+    def test_returns_empty_list_after_timeout(self, mock_zep, monkeypatch):
         clock = iter(range(0, 10_000, 60))  # each check jumps 60s
         monkeypatch.setattr("zep_ingest.verify.time.monotonic", lambda: next(clock))
-        mock_zep.graph.search.return_value = results(0)
-        response = search_when_ready(mock_zep, "q", graph_id="g1", timeout=120)
-        assert response.edges == []
-        assert mock_zep.graph.search.call_count >= 2
+        mock_zep.graph.search_edges.return_value = page(0)
+        items = search_when_ready(mock_zep, "q", graph_uuid=GRAPH_UUID, timeout=120)
+        assert items == []
+        assert mock_zep.graph.search_edges.call_count >= 2
 
     def test_user_graph_destination(self, mock_zep):
-        mock_zep.graph.search.return_value = results(1)
-        search_when_ready(mock_zep, "q", user_id="u1")
-        assert mock_zep.graph.search.call_args.kwargs["user_id"] == "u1"
+        # A user graph is addressed by the user's graph_uuid, like any graph.
+        mock_zep.graph.search_edges.return_value = page(1)
+        search_when_ready(mock_zep, "q", graph_uuid=GRAPH_UUID)
+        assert mock_zep.graph.search_edges.call_args.args[0] == GRAPH_UUID
 
     def test_destination_required(self, mock_zep):
         with pytest.raises(ConfigurationError):
             search_when_ready(mock_zep, "q")
-        mock_zep.graph.search.assert_not_called()
+        mock_zep.graph.search_edges.assert_not_called()
 
     @pytest.mark.parametrize("field", ["timeout", "poll_interval"])
     @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
     def test_non_finite_timing_refused_before_searching(self, mock_zep, field, value):
         # `deadline = time.monotonic() + timeout` is nan or inf for a non-finite
         # timeout, and `time.monotonic() >= deadline` is then never true, so the
-        # helper would poll forever instead of returning the empty response.
+        # helper would poll forever instead of returning the empty result.
         with pytest.raises(ConfigurationError, match=field):
-            search_when_ready(mock_zep, "q", graph_id="g1", **{field: value})
+            search_when_ready(mock_zep, "q", graph_uuid=GRAPH_UUID, **{field: value})
 
-        mock_zep.graph.search.assert_not_called()
+        mock_zep.graph.search_edges.assert_not_called()

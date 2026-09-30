@@ -14,7 +14,7 @@ Usage:
 import time
 from pathlib import Path
 
-from example_ontology import ONTOLOGY
+from example_ontology import EDGE_TYPES, ENTITY_TYPES
 from zep_cloud.client import Zep
 
 from zep_ingest import DEFAULT_RISKY_WORDS, ingest_emails, search_when_ready
@@ -24,20 +24,19 @@ DATA = Path(__file__).parent / "data"
 
 def main() -> None:
     client = Zep()  # reads ZEP_API_KEY
-    graph_id = f"example-email-{int(time.time())}"
+    graph_name = f"example-email-{int(time.time())}"
 
     # Create the graph and set its ontology up front: ingestion writes only into
     # existing graphs, and the ontology is not retroactive.
-    client.graph.create(graph_id=graph_id)
-    client.graph.set_ontology(
-        entities=ONTOLOGY["entities"],
-        edges=ONTOLOGY["edges"],
-        graph_ids=[graph_id],
-    )
+    # v4 addresses a graph by the UUID that graph.create returns; graph_name
+    # is only a label.
+    graph = client.graph.create(name=graph_name)
+    graph_uuid = graph.uuid_
+    client.graph.set_ontology(graph_uuid, entity_types=ENTITY_TYPES, edge_types=EDGE_TYPES)
     result = ingest_emails(
         client,
         str(DATA / "emails" / "*.eml"),
-        graph_id=graph_id,
+        graph_uuid=graph_uuid,
         # canonicalize retired code names, longhand phrasings, and casual
         # first-name references so each merges into one entity
         aliases={
@@ -46,6 +45,9 @@ def main() -> None:
             "Avery Brown": ["Avery Brown"],
         },
         risky_words=DEFAULT_RISKY_WORDS,  # reject aliases that are common words
+        # Sequential keeps each email's Date: header as the reference time;
+        # a v4 batch item has no such field.
+        method="sequential",
     )
     # Submission returns immediately; blocking is opt-in. Bind the result first
     # so a wait() timeout still leaves you the ids below to resume from.
@@ -60,13 +62,13 @@ def main() -> None:
 
     # search indexing lags ingestion slightly; search_when_ready absorbs that
     query = "Who is responsible for the ROBOT-202 project?"
-    response = search_when_ready(client, query, graph_id=graph_id, limit=5)
+    edges = search_when_ready(client, query, graph_uuid=graph_uuid, limit=5)
     print(f"\nSearch: {query}")
-    for edge in response.edges or []:
+    for edge in edges:
         print(f"  - {edge.fact}")
 
-    print(f"\nGraph: {graph_id}")
-    print(f"Explore it at https://app.getzep.com (Graph -> {graph_id})")
+    print(f"\nGraph: {graph_name} ({graph_uuid})")
+    print(f"Explore it at https://app.getzep.com (Graph -> {graph_name})")
 
 
 if __name__ == "__main__":

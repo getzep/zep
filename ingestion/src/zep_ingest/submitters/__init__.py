@@ -10,7 +10,12 @@ from zep_cloud.client import Zep
 from zep_ingest._validation import require_int_range, require_nonnegative_number
 from zep_ingest.exceptions import ConfigurationError
 from zep_ingest.result import IngestResult
-from zep_ingest.submitters.batch import BatchSubmitter, is_batch_unavailable, require_batch_id
+from zep_ingest.submitters.batch import (
+    BatchSubmitter,
+    batch_uuid_of,
+    is_batch_unavailable,
+    require_batch_id,
+)
 from zep_ingest.submitters.sequential import SequentialSubmitter, call_with_retries
 from zep_ingest.types import (
     DEFAULT_ITEMS_PER_BATCH,
@@ -43,8 +48,8 @@ def submit_episodes(
     """Submit an episode stream via the requested method.
 
     method="auto" uses the Batch API when this deployment serves it and falls
-    back to sequential graph.add ingestion when it does not; no episodes are
-    lost on fallback. Any other failure is raised, not worked around.
+    back to sequential graph.episode.add ingestion when it does not; no
+    episodes are lost on fallback. Any other failure is raised, not worked around.
     """
     if method not in ("auto", "batch", "sequential"):
         raise ConfigurationError(
@@ -86,7 +91,7 @@ def submit_episodes(
     try:
         first = next(iterator)
     except StopIteration:
-        return IngestResult(method="sequential", client=client)
+        return IngestResult(method="sequential", client=client, graph_uuid=destination.graph_uuid)
     stream = chain([first], iterator)
 
     def create_probe_batch() -> Any:
@@ -99,7 +104,7 @@ def submit_episodes(
         if is_batch_unavailable(error):
             notice = (
                 "Zep Batch API not available on this deployment — "
-                "falling back to sequential graph.add ingestion."
+                "falling back to sequential graph.episode.add ingestion."
             )
             logger.info(notice)
             result = SequentialSubmitter(
@@ -108,7 +113,7 @@ def submit_episodes(
             result.warnings.insert(0, notice)
             return result
         raise error
-    batch_id = require_batch_id(getattr(summary, "batch_id", None))
+    batch_id = require_batch_id(batch_uuid_of(summary))
     return BatchSubmitter(client, initial_batch_id=batch_id, **batch_kwargs).submit(
         stream, destination
     )

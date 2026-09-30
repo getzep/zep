@@ -4,7 +4,7 @@ Everything upstream of the Zep API for getting unstructured and structured
 data into Context Graphs correctly: parsing sources, chunking,
 contextualization, entity canonicalization, temporal-correctness
 warnings, and rate-limit-aware submission via the Batch API or sequential
-graph.add.
+graph.episode.add.
 
 Quickstarts:
 
@@ -15,15 +15,23 @@ Quickstarts:
 
     # Setup is yours, once per graph: zep-ingest writes only into graphs that
     # already exist and already carry their ontology (it is not retroactive).
-    # ENTITIES/EDGES are your EntityModel/EdgeModel subclasses, keyed by type
-    # name; see the Ontology section of the README for a starter spec.
-    for graph_id in ("team_knowledge", "company_kb", "catalog"):
-        client.graph.create(graph_id=graph_id)
-        client.graph.set_ontology(entities=ENTITIES, edges=EDGES, graph_ids=[graph_id])
+    # ENTITY_TYPES/EDGE_TYPES are the ontology types of the graph; see the
+    # Ontology section of the README for a starter spec.
+    # Zep assigns each graph a UUID. Read it from the create response and store
+    # it: v4 addresses a graph by UUID, and zep-ingest does no lookup.
+    graph_uuids = {}
+    for name in ("team_knowledge", "company_kb", "catalog"):
+        graph = client.graph.create(name=name)
+        graph_uuids[name] = graph.uuid_
+        client.graph.set_ontology(
+            graph.uuid_, entity_types=ENTITY_TYPES, edge_types=EDGE_TYPES
+        )
 
-    ingest_slack_export(client, "export.zip", graph_id="team_knowledge")
-    ingest_documents(client, "handbook/**/*.md", graph_id="company_kb")
-    ingest_json_records(client, "products.csv", graph_id="catalog", id_field="sku")
+    ingest_slack_export(client, "export.zip", graph_uuid=graph_uuids["team_knowledge"])
+    ingest_documents(client, "handbook/**/*.md", graph_uuid=graph_uuids["company_kb"])
+    ingest_json_records(
+        client, "products.csv", graph_uuid=graph_uuids["catalog"], id_field="sku"
+    )
 """
 
 from importlib.metadata import PackageNotFoundError as _PackageNotFoundError

@@ -15,8 +15,9 @@ from zep_ingest.exceptions import (
 
 if TYPE_CHECKING:
     from zep_cloud.client import Zep
-    from zep_cloud.types.batch_item_detail import BatchItemDetail
-    from zep_cloud.types.batch_summary import BatchSummary
+    from zep_cloud.types.batch import Batch
+    from zep_cloud.types.batch_item import BatchItem
+    from zep_cloud.types.task import Task
 
 # Batch statuses that will not change without further action.
 _TERMINAL_BATCH_STATUSES = frozenset({"succeeded", "partial", "failed", "invalid", "canceled"})
@@ -40,6 +41,11 @@ _STATUS_PRIORITY = [
 ]
 
 
+def task_uuid_of(task: "Task | None") -> str | None:
+    """Read the UUID of a v4 task, which the SDK names ``uuid_``."""
+    return task.uuid_ if task is not None else None
+
+
 def _normalize_task_status(status: str | None) -> str:
     status = status.lower() if status is not None else None
     if status is None or status in {"created", "draft", "pending", "queued"}:
@@ -55,12 +61,12 @@ def _normalize_task_status(status: str | None) -> str:
     return status
 
 
-def _identity_from_task_params(params: Any) -> tuple[list[str], list[str]]:
-    """Pull server-assigned identities out of completed-task params.
+def _identity_from_task_result(params: Any) -> tuple[list[str], list[str]]:
+    """Pull server-assigned identities out of a completed task's ``result``.
 
-    After ``add_nodes`` succeeds the worker merges ``node_uuids`` into params;
-    after ``add_fact_triple`` succeeds it merges ``edge_uuid``. Pending tasks
-    do not carry these keys yet.
+    After ``graph.node.add`` succeeds the worker merges ``node_uuids`` into the
+    task result; after ``graph.edge.add`` succeeds it merges ``edge_uuid``. A
+    pending task does not carry these keys yet.
     """
     if not isinstance(params, dict):
         return [], []
@@ -116,9 +122,9 @@ class IngestResult:
     resume handles a caller can persist. ``node_uuids`` is parallel to the
     ``ingest_nodes`` input (assigned UUID or ``None`` for a failed/missing slot)
     so ``zip`` cannot pin a later success to an earlier failure; when resuming
-    from task IDs only, UUIDs are recovered from completed task params in
+    from task IDs only, UUIDs are recovered from completed task results in
     ``task_ids`` order. ``edge_uuids`` records fact identities from
-    ``add_fact_triple`` task params in ``task_ids`` order (``None`` when a
+    ``graph.edge.add`` task results in ``task_ids`` order (``None`` when a
     terminal task assigned none), stopping only before still-in-flight tasks so
     out-of-order completion cannot scramble zip order against the submitted
     triples. ``untracked_items`` records accepted writes for which the API
@@ -136,18 +142,19 @@ class IngestResult:
     add_errors: list[AddError] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     client: "Zep | None" = field(default=None, repr=False)
-    _batch_summaries: "dict[str, BatchSummary]" = field(
-        default_factory=dict, repr=False, compare=False
-    )
+    #: The graph that ``episode_uuids`` belong to. v4 reads an episode by
+    #: (graph_uuid, episode_uuid), so episode polling needs it.
+    graph_uuid: str | None = None
+    _batch_summaries: "dict[str, Batch]" = field(default_factory=dict, repr=False, compare=False)
     _processed_uuids: set[str] = field(default_factory=set, repr=False, compare=False)
     _task_statuses: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
-    # Cached task.params by task_id so identities can be rebuilt in task_ids order
+    # Cached task.result by task_id so identities can be rebuilt in task_ids order
     # even when a later task becomes terminal before an earlier one.
     _task_params: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
-    # True when node_uuids was filled from the add_nodes response (submission order).
+    # True when node_uuids was filled from the graph.node.add response (submission order).
     # Task-param recovery must not overwrite or reorder that list.
     _node_uuids_from_submit: bool = field(default=False, repr=False, compare=False)
-    # Plain graph.add (and single-thread backfills) share one per-graph queue, so
+    # A plain episode add (and single-thread backfills) share one per-graph queue, so
     # polling the last UUID is enough. Multiple threads are independent sagas.
     _single_queue_episode_poll: bool = field(default=True, repr=False, compare=False)
 
@@ -167,10 +174,10 @@ class IngestResult:
         """Record a batch whose processing could not be triggered: an AddError is
         added and the batch's status is pinned to "failed" so status/wait() treat
         it as terminal (refresh() never overwrites a terminal summary)."""
-        from zep_cloud.types.batch_summary import BatchSummary
+        from zep_cloud.types.batch import Batch
 
         self.add_errors.append(AddError(index=-1, item_count=0, error=error, batch_id=batch_id))
-        self._batch_summaries[batch_id] = BatchSummary(batch_id=batch_id, status="failed")
+        self._batch_summaries[batch_id] = Batch(uuid_=batch_id, status="failed")
 
     def refresh(self) -> None:
         """Fetch the latest processing state from the API."""
@@ -201,10 +208,15 @@ class IngestResult:
             uuids = list(dict.fromkeys(self.episode_uuids))
         else:
             uuids = self.episode_uuids
+        if self.graph_uuid is None:
+            raise RuntimeError(
+                "IngestResult has episode UUIDs but no graph_uuid; v4 reads an episode by "
+                "graph_uuid and episode_uuid."
+            )
         for uuid in uuids:
             if uuid in self._processed_uuids:
                 continue
-            episode = self.client.graph.episode.get(uuid_=uuid)
+            episode = self.client.graph.episode.get(graph_uuid=self.graph_uuid, episode_uuid=uuid)
             if episode.processed:
                 self._processed_uuids.add(uuid)
         if (
@@ -212,7 +224,7 @@ class IngestResult:
             and self._single_queue_episode_poll
             and self.episode_uuids[-1] in self._processed_uuids
         ):
-            # Plain graph.add and single-thread backfills are ordered by submission
+            # A plain episode add and single-thread backfills are ordered by submission
             # (or request-array order within a thread.add_messages call): the
             # tail finishing means the queue in front of it has drained.
             self._processed_uuids.update(self.episode_uuids)
@@ -225,11 +237,11 @@ class IngestResult:
                 continue
             task = self.client.task.get(task_id)
             self._task_statuses[task_id] = _normalize_task_status(task.status)
-            self._task_params[task_id] = getattr(task, "params", None)
+            self._task_params[task_id] = task.result
         self._sync_identities_from_task_params()
 
     def _param_identity_prefix(self, *, kind: Literal["node", "edge"]) -> list[str | None]:
-        """Identities from cached task params in ``task_ids`` order.
+        """Identities from cached task results in ``task_ids`` order.
 
         Stops only at the first still-in-flight task, so a later finish cannot
         surface its UUID ahead of an earlier submission. A terminal task with no
@@ -238,7 +250,7 @@ class IngestResult:
         """
         collected: list[str | None] = []
         for task_id in self.task_ids:
-            nodes, edges = _identity_from_task_params(self._task_params.get(task_id))
+            nodes, edges = _identity_from_task_result(self._task_params.get(task_id))
             values = nodes if kind == "node" else edges
             if values:
                 collected.extend(values)
@@ -252,7 +264,7 @@ class IngestResult:
         return collected
 
     def _sync_identities_from_task_params(self) -> None:
-        """Rebuild param-sourced identities in ``task_ids`` order after each poll."""
+        """Rebuild task-sourced identities in ``task_ids`` order after each poll."""
         self.edge_uuids = self._param_identity_prefix(kind="edge")
         if not self._node_uuids_from_submit:
             self.node_uuids = self._param_identity_prefix(kind="node")
@@ -301,12 +313,15 @@ class IngestResult:
         if len(clients) > 1:
             raise ConfigurationError("Cannot combine IngestResults from different Zep clients")
         client = next(iter(clients.values()), None)
+        graphs = {part.graph_uuid for part in parts if part.graph_uuid is not None}
+        if len(graphs) > 1:
+            raise ConfigurationError("Cannot combine IngestResults from different graphs")
         has_batches = any(part.batch_ids for part in parts)
         has_sequential_handles = any(part.episode_uuids or part.task_ids for part in parts)
         method: Literal["batch", "sequential"] = (
             "batch" if has_batches and not has_sequential_handles else "sequential"
         )
-        combined = IngestResult(method=method, client=client)
+        combined = IngestResult(method=method, client=client, graph_uuid=next(iter(graphs), None))
         for part in parts:
             combined.items_submitted += part.items_submitted
             combined.untracked_items += part.untracked_items
@@ -360,25 +375,22 @@ class IngestResult:
         <https://help.getzep.com/check-data-ingestion-status>`_):
 
         - **Batch API** (default for ``zep-ingest`` episodes and thread
-          backfills): ``batch.get`` on the last batch id — not per-episode
+          backfills): ``batch.get`` on the last batch uuid — not per-episode
           polling.
-        - **Sequential ``graph.add``** (batch fallback): the last-submitted
-          episode's ``processed`` flag. ``zep-ingest`` does not set
-          ``document_id``, so submission order matches ingestion order for plain
-          ``graph.add`` chunks.
-        - **Sequential ``thread.add_messages``**: the last message UUID in the
-          last request per thread (``message_uuids[-1]``). Regular
-          ``thread.add_messages`` does not return a ``task_id`` — only
-          ``add_messages_batch`` does.
-        - **Tasks** (``add_nodes``, ``add_fact_triple``): every ``task_id`` on
-          each tick — tasks are not the same FIFO as graph episodes.
+        - **Sequential ``graph.episode.add``** (batch fallback): the
+          last-submitted episode's ``processed`` flag. ``zep-ingest`` does not
+          set ``document_id``, so submission order matches ingestion order for
+          plain episode chunks.
+        - **Tasks** (``thread.add_messages``, ``graph.node.add``,
+          ``graph.edge.add``): every ``task_id`` on each tick — tasks are not
+          the same FIFO as graph episodes.
 
         The default timeout scales with ``items_submitted``
         (``wait_timeout_seconds``). Pass ``timeout=None`` to wait without a
         deadline. Reconstructed ``from_batch_ids()`` results have no item
         count, so ``timeout="auto"`` also waits without a deadline.
 
-        Do not mix Batch API and sequential ``graph.add`` into the same graph
+        Do not mix Batch API and sequential ``graph.episode.add`` into the same graph
         and expect one ``wait()`` to cover both — they are not globally
         serialized.
 
@@ -418,7 +430,7 @@ class IngestResult:
             if self.episode_uuids[-1] in self._processed_uuids:
                 self._refresh_batches(only_last=False)
             if self.batch_ids:
-                # Batch + sequential graph.add on one graph is discouraged, but
+                # Batch and sequential episode adds on one graph is discouraged, but
                 # poll the batch tail each tick when both handles are present.
                 self._refresh_batches(only_last=True)
         elif self.batch_ids:
@@ -446,23 +458,24 @@ class IngestResult:
             for task_id in set(self.task_ids)
         )
 
-    def failed_items(self, *, limit: int = 100) -> "list[BatchItemDetail | AddError]":
-        """Failed item details from submission and server-side batch processing."""
+    def failed_items(self, *, limit: int = 100) -> "list[BatchItem | AddError]":
+        """Failed item details from submission and server-side batch processing.
+
+        v4 ``batch.list_items`` has no status filter, so every item of a batch
+        is paged through and the failed ones are kept.
+        """
         require_int_range("limit", limit, minimum=1)
-        collected: list[BatchItemDetail | AddError] = list(self.add_errors[:limit])
+        collected: list[BatchItem | AddError] = list(self.add_errors[:limit])
         if len(collected) >= limit or not self.batch_ids:
             return collected[:limit]
         if self.client is None:
             raise RuntimeError("IngestResult has no client; cannot list failed items.")
         for batch_id in self.batch_ids:
-            cursor: int | None = None
-            while len(collected) < limit:
-                response = self.client.batch.list_items(
-                    batch_id, status="failed", limit=limit - len(collected), cursor=cursor
-                )
-                collected.extend(response.items or [])
-                cursor = response.next_cursor
-                if cursor is None:
+            for item in self.client.batch.list_items(batch_id):
+                if item.status != "failed":
+                    continue
+                collected.append(item)
+                if len(collected) >= limit:
                     break
             if len(collected) >= limit:
                 break
