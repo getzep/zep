@@ -93,9 +93,6 @@ async def main() -> None:
     # Zep v4 addresses every resource by a server-generated UUID. A real
     # application creates the user and the thread one time, and stores the
     # UUIDs in its own database.
-    #
-    # Note: ZEPAI-3605 -- a user that is created without a ``user_id`` cannot
-    # receive a thread message until the fix is deployed.
     user = await create_user(
         zep,
         first_name="Alice",
