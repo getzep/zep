@@ -151,10 +151,6 @@ thrown, so a Zep outage never crashes the caller.
 Zep v4 accepts no client-chosen identifier on a create call, so a new user, thread,
 or graph has no name. The returned UUIDs are the only addresses.
 
-> **Known defect (ZEPAI-3605).** A thread whose owner has no `userId` cannot receive
-> a thread message. Every v4 user has no `userId`, so the defect applies to every v4
-> thread until the fix is deployed.
-
 ## Tools
 
 The pre-0.2.0 tool-only surface is still available and fully supported — use it when you

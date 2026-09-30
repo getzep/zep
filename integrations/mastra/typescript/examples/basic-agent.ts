@@ -12,11 +12,6 @@
  *      requires recalling them (answered using context the input processor
  *      injects automatically).
  *
- * Known defect (ZEPAI-3605): a thread whose owner has no `userId` cannot
- * receive a thread message until the fix is deployed. Zep v4 creates every
- * user without a `userId`. The output processor reports the failure and the
- * agent continues.
- *
  * Prerequisites:
  *   npm install
  *   export ZEP_API_KEY="your-zep-api-key"
