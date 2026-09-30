@@ -231,13 +231,6 @@ async def main() -> None:
     sys.exit(0 if passed else 1)
 
 
-@pytest.mark.skip(
-    reason=(
-        "ZEPAI-3605: thread.add_messages gives a 404 when the thread owner has "
-        "no user_id, and a v4 user has no user_id. Enable this test after the "
-        "fix is deployed."
-    )
-)
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_provisioning_and_before_after_run() -> None:
@@ -311,13 +304,6 @@ async def test_provisioning_and_before_after_run() -> None:
             pass
 
 
-@pytest.mark.skip(
-    reason=(
-        "ZEPAI-3605: thread.add_messages gives a 404 when the thread owner has "
-        "no user_id, and a v4 user has no user_id. Enable this test after the "
-        "fix is deployed."
-    )
-)
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_integration_full_lifecycle() -> None:

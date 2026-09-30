@@ -92,9 +92,7 @@ async def main() -> None:
     zep = AsyncZep(api_key=ZEP_API_KEY)
 
     # --- One-time provisioning: the server returns the UUIDs ---------------
-    # A v4 create call takes no client-chosen name. Defect ZEPAI-3605 makes
-    # thread.add_messages give a 404 for a user with no user_id, and every v4
-    # user has no user_id. The example runs correctly after the fix.
+    # A v4 create call takes no client-chosen name.
     user = await create_user(
         zep,
         first_name="Alice",
