@@ -59,8 +59,6 @@ Note: Go intentionally has no tool-based injection (callbacks are the Go-ADK-idi
 
 Note: `CreateUser` takes positional `firstName`, `lastName`, and `email` strings (pass `""` to omit). It returns the UUID of the user and the UUID of the graph of the user. Zep v4 accepts no client-chosen name on a create call, and it addresses each resource by its UUID.
 
-Note: ZEPAI-3605. Until the fix is deployed, a thread of a user that has no `user_id` cannot receive a message, and the API returns HTTP 404.
-
 ## Quick start
 
 ```go

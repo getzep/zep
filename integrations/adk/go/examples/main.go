@@ -67,10 +67,6 @@ func main() {
 		// the identity of the user in the graph. Zep creates a new user on
 		// each call, so an application must not call CreateUser on each
 		// session start.
-		//
-		// Note: ZEPAI-3605. Until the fix is deployed, a thread of a user
-		// that has no user_id cannot receive a message, and the API returns
-		// HTTP 404.
 		var err error
 		userUUID, graphUUID, err = zepadk.CreateUser(ctx, zep, "Jane", "Smith", "jane@example.com")
 		if err != nil {

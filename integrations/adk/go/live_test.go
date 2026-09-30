@@ -57,8 +57,6 @@ func deleteLiveUser(t *testing.T, client *zepclient.Client, userUUID string) {
 // block into the system instruction, then persist the reply of the assistant
 // to the same thread.
 func TestLiveCreateAndPersist(t *testing.T) {
-	t.Skip("ZEPAI-3605: a thread of a user that has no user_id cannot receive a message; the API returns 404 until the fix is deployed")
-
 	client := requireLiveClient(t)
 	ctx := context.Background()
 
