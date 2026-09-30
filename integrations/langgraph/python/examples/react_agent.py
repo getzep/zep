@@ -17,10 +17,6 @@ example creates the user and the thread, reads ``user.uuid_``,
 ``user.graph_uuid``, and ``thread.uuid_`` from the responses, and passes those
 UUIDs to the integration.
 
-Note: ZEPAI-3605. ``thread.add_messages`` returns 404 because a v4 user has no
-``user_id``, so this example cannot complete the recall step against production
-until the fix is deployed.
-
 Prerequisites::
 
     pip install zep-langgraph langchain-openai

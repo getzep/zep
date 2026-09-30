@@ -89,10 +89,6 @@ The example:
 4. Asks recall questions — the agent answers using facts fused into the user's
    graph, injected automatically into the system prompt.
 
-> **Note (ZEPAI-3605):** `thread.add_messages` returns 404 because a v4 user
-> has no `user_id`. Until the fix is deployed, this example cannot complete its
-> recall step.
-
 To see the secondary `ZepStore` path (a `BaseStore` backed by Zep), run:
 
 ```bash

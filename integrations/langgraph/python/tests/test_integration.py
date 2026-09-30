@@ -267,12 +267,6 @@ async def main() -> None:
     sys.exit(0 if passed else 1)
 
 
-@pytest.mark.skip(
-    reason=(
-        "ZEPAI-3605: thread.add_messages returns 404 because a v4 user has no "
-        "user_id. Enable this test when the fix is deployed."
-    )
-)
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_integration_full_lifecycle() -> None:
