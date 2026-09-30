@@ -273,12 +273,6 @@ async def main() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-@pytest.mark.skip(
-    reason=(
-        "ZEPAI-3605: thread.add_messages returns 404 when the thread owner "
-        "has no user_id; every v4 user now has no user_id."
-    )
-)
 async def test_integration_full_lifecycle() -> None:
     """Pytest entry point for the live integration test."""
     zep = AsyncZep(api_key=ZEP_API_KEY)
@@ -334,6 +328,4 @@ async def test_integration_full_lifecycle() -> None:
 
 
 if __name__ == "__main__":
-    # NOTE: this standalone runner calls thread.add_messages, which currently
-    # returns 404 for every v4 thread (ZEPAI-3605), so it cannot pass.
     asyncio.run(main())
