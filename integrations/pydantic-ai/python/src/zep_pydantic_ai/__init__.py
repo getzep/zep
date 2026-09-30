@@ -20,11 +20,11 @@ The integration's public pieces:
   auto-persists the assistant's reply via ``Hooks(after_run=...)``; or pair
   :func:`zep_history_processor` with :func:`persist_run` for explicit control.
 * :func:`create_zep_search_tool` -- a factory producing a model-callable
-  ``pydantic_ai.Tool`` over ``graph.search``, with pin-or-expose control over
-  which search parameters the model can set.
-* :func:`ensure_user` / :func:`ensure_thread` -- explicit, out-of-band
-  provisioning helpers for onboarding flows that want genuine failures to
-  raise loudly, before the first turn.
+  ``pydantic_ai.Tool`` over the Zep graph search methods, with pin-or-expose
+  control over which search parameters the model can set.
+* :func:`create_user` / :func:`create_thread` -- out-of-band provisioning
+  helpers that create the Zep user and the Zep thread, and return the UUIDs
+  that :class:`ZepDeps` takes.
 
 Installation::
 
@@ -34,14 +34,26 @@ Usage::
 
     from pydantic_ai import Agent
     from zep_cloud.client import AsyncZep
-    from zep_pydantic_ai import ZepDeps, create_zep_search_tool, zep_capabilities
+    from zep_pydantic_ai import (
+        ZepDeps,
+        create_thread,
+        create_user,
+        create_zep_search_tool,
+        zep_capabilities,
+    )
 
     zep = AsyncZep(api_key="your-api-key")
 
+    # Zep v4 addresses a user, a thread, and a graph by a UUID.  Create the
+    # user and the thread one time, and store the UUIDs in your database.
+    user = await create_user(zep, first_name="Jane", last_name="Smith")
+    thread = await create_thread(zep, user_uuid=user.uuid_)
+
     deps = ZepDeps(
         client=zep,
-        user_id="user_123",
-        thread_id="thread_abc",
+        user_uuid=user.uuid_,
+        thread_uuid=thread.uuid_,
+        graph_uuid=user.graph_uuid,
         first_name="Jane",
         last_name="Smith",
     )
@@ -80,7 +92,7 @@ try:
         reset_turn_cache,
         zep_history_processor,
     )
-    from .provisioning import UserSetupHook, ensure_thread, ensure_user
+    from .provisioning import create_thread, create_user
     from .search import (
         Reranker,
         Scope,
@@ -99,9 +111,8 @@ try:
         "Scope",
         "Reranker",
         "ZepDependencyError",
-        "ensure_user",
-        "ensure_thread",
-        "UserSetupHook",
+        "create_user",
+        "create_thread",
         "ContextInput",
         "ContextBuilder",
         "DEFAULT_CONTEXT_TEMPLATE",

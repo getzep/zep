@@ -70,7 +70,7 @@ export interface ZepContextToolOptions extends ZepIdentityOptions {
  *   name: "memory_agent",
  *   model: "gemini-2.5-flash",
  *   instruction: "You are a helpful assistant with long-term memory.",
- *   tools: [new ZepContextTool({ zep, userId: "user-123", threadId: "thread-abc" })],
+ *   tools: [new ZepContextTool({ zep, userUuid, threadUuid })],
  * });
  * ```
  */
@@ -95,8 +95,8 @@ export class ZepContextTool extends BaseTool {
     this.dedup = new TurnDedup();
     this.ignoreRoles = options.ignoreRoles;
     this.identity = {
-      userId: options.userId,
-      threadId: options.threadId,
+      userUuid: options.userUuid,
+      threadUuid: options.threadUuid,
       firstName: options.firstName,
       lastName: options.lastName,
     };

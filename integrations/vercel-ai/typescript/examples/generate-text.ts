@@ -2,7 +2,8 @@
  * Vercel AI SDK + Zep long-term memory — `generateText` example.
  *
  * Demonstrates the full loop:
- *   1. Provision a Zep user + thread (`ensureZepUserAndThread`).
+ *   1. Create a Zep user + thread (`createZepUserAndThread`) and read the
+ *      server-generated UUIDs from the response.
  *   2. Wrap the model with `createZepMiddleware` so the user's Context Block is
  *      injected as a system message on each new user turn. This example wires
  *      persistence explicitly via `createZepOnFinish` (below); pass
@@ -25,7 +26,6 @@
  *   npm run example
  */
 
-import { randomUUID } from "node:crypto";
 import { ZepClient } from "@getzep/zep-cloud";
 import { openai } from "@ai-sdk/openai";
 import { generateText, stepCountIs, wrapLanguageModel } from "ai";
@@ -33,7 +33,7 @@ import {
   createZepMiddleware,
   createZepOnFinish,
   createZepTools,
-  ensureZepUserAndThread,
+  createZepUserAndThread,
 } from "../src/index.js";
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
@@ -41,9 +41,6 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 if (!ZEP_API_KEY) throw new Error("ZEP_API_KEY is not set.");
 if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set.");
-
-const userId = `zep-vercel-example-${randomUUID().slice(0, 8)}`;
-const threadId = `thread-${randomUUID().slice(0, 8)}`;
 
 const SYSTEM =
   "You are a helpful assistant with long-term memory powered by Zep. " +
@@ -56,19 +53,22 @@ async function main(): Promise<void> {
 
   console.log("=".repeat(60));
   console.log("Vercel AI SDK + Zep Memory Example (generateText)");
-  console.log(`  User ID:   ${userId}`);
-  console.log(`  Thread ID: ${threadId}`);
   console.log("=".repeat(60));
 
-  // 1. Provision identity before the first turn.
-  await ensureZepUserAndThread({
+  // 1. Create the identity before the first turn. Zep v4 assigns every UUID,
+  //    so the example reads them from the response and keeps them in scope.
+  //    A real application stores them in its own database.
+  const identity = await createZepUserAndThread({
     client,
-    userId,
-    threadId,
     firstName: "Alice",
     lastName: "Smith",
     email: "alice@example.com",
   });
+  if (!identity) throw new Error("The Zep user and thread were not created.");
+  const { userUuid, graphUuid, threadUuid } = identity;
+  console.log(`  User UUID:   ${userUuid}`);
+  console.log(`  Graph UUID:  ${graphUuid}`);
+  console.log(`  Thread UUID: ${threadUuid}`);
 
   // 2. Wrap the model: inject the Context Block on each new user turn. `persist`
   //    is left unset here — persistence happens explicitly via onFinish below
@@ -78,12 +78,12 @@ async function main(): Promise<void> {
   //    Retention (ZDR) organizations, which don't persist Responses item IDs.
   const model = wrapLanguageModel({
     model: openai.chat("gpt-5-mini"),
-    middleware: createZepMiddleware({ client, threadId }),
+    middleware: createZepMiddleware({ client, threadUuid }),
   });
 
   // 3. Tools the model can call to search/store memory explicitly.
   const tools = createZepTools(client, {
-    binding: { userId, threadId },
+    binding: { graphUuid, threadUuid },
     defaultMessageName: "Alice",
   });
 
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
       tools,
       stopWhen: stepCountIs(5),
       prompt,
-      onFinish: createZepOnFinish({ client, threadId, user: prompt, userName: "Alice" }),
+      onFinish: createZepOnFinish({ client, threadUuid, user: prompt, userName: "Alice" }),
     });
     console.log(`Agent: ${text}`);
   }

@@ -45,7 +45,6 @@ from .deps import (
     DEFAULT_CONTEXT_TEMPLATE,
     ContextInput,
     ZepDeps,
-    ensure_user_and_thread,
     latest_user_text,
     make_context_request,
     model_messages_to_zep,
@@ -121,13 +120,13 @@ def _run_key(ctx: RunContext[ZepDeps], deps: ZepDeps) -> str:
     """Build the dedupe key for this run.
 
     Prefers ``RunContext.run_id`` (one per ``agent.run``).  Falls back to the
-    ``(user_id, thread_id)`` pair only if a run id is unavailable, so dedupe
-    still degrades gracefully on older Pydantic AI versions.
+    ``(user_uuid, thread_uuid)`` pair only if a run id is unavailable, so
+    dedupe still degrades gracefully on older Pydantic AI versions.
     """
     run_id = getattr(ctx, "run_id", None)
     if run_id:
         return f"run:{run_id}"
-    return f"thread:{deps.user_id}:{deps.thread_id}"
+    return f"thread:{deps.user_uuid}:{deps.thread_uuid}"
 
 
 async def zep_history_processor(
@@ -151,7 +150,6 @@ async def zep_history_processor(
     On each model request the processor:
 
     * resolves the Zep client + identity from ``ctx.deps``;
-    * lazily creates the Zep user and thread;
     * extracts the latest user message text (truncated to Zep's per-message
       limit);
     * if this run has not yet persisted its user turn (run-scoped dedupe
@@ -207,18 +205,6 @@ async def zep_history_processor(
     # with HTTP 400.  Warn with lengths only (never content / PII).
     user_text = truncate_message_content(user_text, label="user turn")
 
-    try:
-        resources_ready = await ensure_user_and_thread(deps)
-    except Exception:
-        logger.warning(
-            "Failed to provision Zep user/thread for the turn path",
-            exc_info=True,
-        )
-        return messages
-
-    if not resources_ready:
-        return messages
-
     if deps.context_builder is not None:
         persist_ok, context = await _persist_and_build_context(ctx, deps, user_text)
     else:
@@ -239,12 +225,12 @@ async def _persist_with_return_context(deps: ZepDeps, user_text: str) -> tuple[b
         A ``(persist_ok, context)`` tuple.  On failure, logs a warning and
         returns ``(False, None)``.
     """
-    from zep_cloud import Message  # local import keeps module import light
+    from zep_cloud import AddMessage  # local import keeps module import light
 
     try:
         response = await deps.client.thread.add_messages(
-            thread_id=deps.thread_id,
-            messages=[Message(role="user", content=user_text, name=deps.display_name)],
+            deps.thread_uuid,
+            messages=[AddMessage(role="user", content=user_text, name=deps.display_name)],
             return_context=True,
             ignore_roles=deps.ignore_roles,
         )
@@ -258,7 +244,7 @@ async def _persist_with_return_context(deps: ZepDeps, user_text: str) -> tuple[b
     context = response.context if response else None
     logger.info(
         "Persisted user turn to Zep (thread=%s); context length=%s",
-        deps.thread_id,
+        deps.thread_uuid,
         len(context) if context else 0,
     )
     return True, context
@@ -284,24 +270,25 @@ async def _persist_and_build_context(
     Returns:
         A ``(persist_ok, context)`` tuple.
     """
-    from zep_cloud import Message  # local import keeps module import light
+    from zep_cloud import AddMessage  # local import keeps module import light
 
     context_builder = deps.context_builder
     assert context_builder is not None  # caller (zep_history_processor) already checked
 
     async def _persist() -> None:
         await deps.client.thread.add_messages(
-            thread_id=deps.thread_id,
-            messages=[Message(role="user", content=user_text, name=deps.display_name)],
+            deps.thread_uuid,
+            messages=[AddMessage(role="user", content=user_text, name=deps.display_name)],
             ignore_roles=deps.ignore_roles,
         )
-        logger.info("Persisted user turn to Zep (thread=%s).", deps.thread_id)
+        logger.info("Persisted user turn to Zep (thread=%s).", deps.thread_uuid)
 
     async def _build() -> str | None:
         context_input = ContextInput(
             zep=deps.client,
-            user_id=deps.user_id,
-            thread_id=deps.thread_id,
+            user_uuid=deps.user_uuid,
+            thread_uuid=deps.thread_uuid,
+            graph_uuid=deps.graph_uuid,
             user_message=user_text,
             run_context=ctx,
         )
@@ -378,17 +365,16 @@ async def persist_run(
         return
 
     try:
-        if await ensure_user_and_thread(deps):
-            await deps.client.thread.add_messages(
-                thread_id=deps.thread_id,
-                messages=zep_messages,
-                ignore_roles=deps.ignore_roles,
-            )
-            logger.info(
-                "Persisted %d assistant message(s) to Zep thread %s",
-                len(zep_messages),
-                deps.thread_id,
-            )
+        await deps.client.thread.add_messages(
+            deps.thread_uuid,
+            messages=zep_messages,
+            ignore_roles=deps.ignore_roles,
+        )
+        logger.info(
+            "Persisted %d assistant message(s) to Zep thread %s",
+            len(zep_messages),
+            deps.thread_uuid,
+        )
     except Exception:
         logger.warning("Failed to persist assistant messages to Zep", exc_info=True)
 

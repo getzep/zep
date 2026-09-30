@@ -20,6 +20,8 @@ def test_public_exports() -> None:
         ZepStore,
         build_system_message,
         create_graph_search_tool,
+        create_thread,
+        create_user,
         get_zep_context,
         persist_messages,
     )
@@ -28,6 +30,8 @@ def test_public_exports() -> None:
     assert get_zep_context is not None
     assert persist_messages is not None
     assert create_graph_search_tool is not None
+    assert create_user is not None
+    assert create_thread is not None
     assert ZepStore is not None
 
 
@@ -70,7 +74,10 @@ class TestZepStoreIsBaseStore:
 
         from zep_langgraph import ZepStore
 
-        return ZepStore(MagicMock(spec=AsyncZep))
+        return ZepStore(
+            MagicMock(spec=AsyncZep),
+            graph_uuid="22222222-2222-2222-2222-222222222222",
+        )
 
     def test_is_instance_of_base_store(self) -> None:
         store = self._make_store()

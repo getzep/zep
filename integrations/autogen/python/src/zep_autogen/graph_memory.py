@@ -4,7 +4,6 @@ Zep Memory integration for AutoGen.
 This module provides memory classes that integrate Zep with AutoGen's memory system.
 """
 
-import asyncio
 import logging
 from typing import Any
 
@@ -18,11 +17,11 @@ from autogen_core.memory import (
 )
 from autogen_core.model_context import ChatCompletionContext
 from autogen_core.models import SystemMessage
-from zep_cloud import GraphSearchResults, SearchFilters
+from zep_cloud import SearchFilters
 from zep_cloud.client import AsyncZep
-from zep_cloud.graph.utils import compose_context_string
 
 from .limits import truncate_graph_data
+from .search import collect, results_to_memory_content, search_scope
 
 
 class ZepGraphMemory(Memory):
@@ -33,25 +32,22 @@ class ZepGraphMemory(Memory):
     This class implements AutoGen's Memory interface and provides:
     - Automatic context injection via update_context()
     - Manual memory queries via query()
-    - Message storage in Zep threads
-    - Data storage in Zep user graphs
+    - Data storage in a standalone Zep graph
 
     Note:
-        **No user-scoped lazy provisioning here.** Unlike ``ZepUserMemory``,
-        this class has no ``on_created`` hook or user provisioning: it is
-        scoped to a standalone ``graph_id`` (e.g. a shared knowledge base),
-        not a Zep user, so there is no per-user setup step to run. Callers
-        that want the graph itself to exist before first use should create it
-        out-of-band via ``client.graph.create(graph_id=...)``.
+        **No user-scoped provisioning here.** Unlike ``ZepUserMemory``, this
+        class is scoped to a standalone graph, such as a shared knowledge
+        base, and not to a Zep user. Create the graph out-of-band with
+        ``client.graph.create(...)``, store the ``uuid_`` of the response,
+        and pass the value as ``graph_uuid``.
     """
 
     def __init__(
         self,
         client: AsyncZep,
-        graph_id: str,
+        graph_uuid: str,
         search_filters: SearchFilters | None = None,
-        facts_limit: int = 20,
-        entity_limit: int = 5,
+        max_characters: int | None = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -59,20 +55,24 @@ class ZepGraphMemory(Memory):
 
         Args:
             client: An initialized AsyncZep instance
-            graph_id: Identifier of the graph in Zep (required)
+            graph_uuid: The UUID of the graph in Zep (required). Zep assigns
+                the value when the graph is created.
+            search_filters: Optional Zep search filters applied to a query
+                and to the context retrieval.
+            max_characters: Optional maximum length of the retrieved context
+                block. When omitted, Zep applies its own default.
             **kwargs: Additional configuration options
         """
         if not isinstance(client, AsyncZep):
             raise TypeError("client must be an instance of AsyncZep")
 
-        if not graph_id:
-            raise ValueError("graph_id is required")
+        if not graph_uuid:
+            raise ValueError("graph_uuid is required")
 
         self._client = client
-        self._graph_id = graph_id
+        self._graph_uuid = graph_uuid
         self._search_filters = search_filters
-        self._facts_limit = facts_limit
-        self._entity_limit = entity_limit
+        self._max_characters = max_characters
 
         self._config = kwargs
 
@@ -90,7 +90,7 @@ class ZepGraphMemory(Memory):
         Uses metadata.type to determine the data type:
 
         Args:
-            entry: The memory content to store
+            content: The memory content to store
 
         Raises:
             ValueError: If the memory content mime type or metadata type is not supported
@@ -121,66 +121,9 @@ class ZepGraphMemory(Memory):
         else:
             data_type = "text"  # Default for string or unknown types
 
-        # Add data to user's graph
+        # Add data to the graph
         truncated_data = truncate_graph_data(str(content.content))
-        await self._client.graph.add(graph_id=self._graph_id, type=data_type, data=truncated_data)
-
-    def _graph_results_to_memory_content(
-        self, graph_results: GraphSearchResults
-    ) -> list[MemoryContent]:
-        """
-        Helper method to convert graph search results to MemoryContent.
-        """
-        results = []
-        # Add graph search results
-        if graph_results.edges:
-            for edge in graph_results.edges:
-                results.append(
-                    MemoryContent(
-                        content=edge.fact,
-                        mime_type=MemoryMimeType.TEXT,
-                        metadata={
-                            "source": "graph",
-                            "edge_name": edge.name,
-                            "edge_attributes": edge.attributes or {},
-                            "created_at": edge.created_at,
-                            "expired_at": edge.expired_at,
-                            "valid_at": edge.valid_at,
-                            "invalid_at": edge.invalid_at,
-                        },
-                    )
-                )
-        if graph_results.nodes:
-            for node in graph_results.nodes:
-                results.append(
-                    MemoryContent(
-                        content=f"{node.name}:\n {node.summary}",
-                        mime_type=MemoryMimeType.TEXT,
-                        metadata={
-                            "source": "graph",
-                            "node_name": node.name,
-                            "node_attributes": node.attributes or {},
-                            "created_at": node.created_at,
-                        },
-                    )
-                )
-        if graph_results.episodes:
-            for episode in graph_results.episodes:
-                results.append(
-                    MemoryContent(
-                        content=episode.content,
-                        mime_type=MemoryMimeType.TEXT,
-                        metadata={
-                            "source": "graph",
-                            "episode_type": episode.source,
-                            "episode_role": episode.role_type,
-                            "episode_name": episode.role,
-                            "created_at": episode.created_at,
-                        },
-                    )
-                )
-
-        return results
+        await self._client.graph.episode.add(self._graph_uuid, type=data_type, data=truncated_data)
 
     async def query(
         self,
@@ -189,12 +132,14 @@ class ZepGraphMemory(Memory):
         **kwargs: Any,
     ) -> MemoryQueryResult:
         """
-        Query memories from Zep storage using graph.search.
+        Query memories from Zep storage with a scoped graph search.
 
         Args:
             query: Search query string or MemoryContent
             cancellation_token: Optional cancellation token
-            **kwargs: Additional query parameters
+            **kwargs: Additional query parameters. ``scope`` selects the
+                search scope and defaults to ``"edges"``. The other
+                parameters are passed to the search method.
 
         Returns:
             MemoryQueryResult containing matching memories
@@ -207,19 +152,21 @@ class ZepGraphMemory(Memory):
 
         # Extract limit from kwargs for backward compatibility
         limit = kwargs.pop("limit", 5)
+        scope = kwargs.pop("scope", "edges")
 
-        results = []
+        results: list[MemoryContent] = []
 
         try:
-            # Search the user's graph
-            graph_results = await self._client.graph.search(
-                graph_id=self._graph_id,
+            items = await search_scope(
+                self._client,
+                graph_uuid=self._graph_uuid,
                 query=query_str,
+                scope=scope,
                 limit=limit,
-                search_filters=self._search_filters,
+                filters=self._search_filters,
                 **kwargs,
             )
-            results = self._graph_results_to_memory_content(graph_results)
+            results = results_to_memory_content(items, scope, source="graph")
 
         except Exception as e:
             # Log error but don't fail completely
@@ -228,53 +175,35 @@ class ZepGraphMemory(Memory):
         return MemoryQueryResult(results=results)
 
     async def _retrieve_graph_context(self) -> MemoryContent | None:
-        recent_messages = await self._client.graph.episode.get_by_graph_id(
-            graph_id=self._graph_id, lastn=2
-        )
-        if not recent_messages.episodes:
+        """Build a context block from the most recent episodes of the graph.
+
+        The two most recent episodes form the query, and ``graph.get_context``
+        returns the composed context block for that query.
+        """
+        pager = await self._client.graph.episode.list(self._graph_uuid, limit=2)
+        recent_episodes = await collect(pager, 2)
+        if not recent_episodes:
             return None
+
         query = ""
-        for msg in recent_messages.episodes:
-            query += f"{msg.content}\n"
+        for episode in recent_episodes:
+            query += f"{episode.content}\n"
 
         # trim query to 400 chars
         query = query[-400:]
-        search_functions = []
 
-        search_functions.append(
-            self._client.graph.search(
-                graph_id=self._graph_id,
-                query=query,
-                limit=self._facts_limit,
-                scope="edges",
-                search_filters=self._search_filters,
-            )
-        )
-        search_functions.append(
-            self._client.graph.search(
-                graph_id=self._graph_id,
-                query=query,
-                limit=self._entity_limit,
-                scope="nodes",
-                search_filters=self._search_filters,
-            )
-        )
+        context_args: dict[str, Any] = {"query": query}
+        if self._search_filters is not None:
+            context_args["filters"] = self._search_filters
+        if self._max_characters is not None:
+            context_args["max_characters"] = self._max_characters
 
-        results: list[GraphSearchResults] = await asyncio.gather(*search_functions)
-
-        edges = []
-        nodes = []
-
-        for result in results:
-            if result.edges:
-                edges.extend(result.edges)
-            if result.nodes:
-                nodes.extend(result.nodes)
-        if not edges and not nodes:
+        response = await self._client.graph.get_context(self._graph_uuid, **context_args)
+        if not response.context:
             return None
-        context = compose_context_string(edges, nodes, [])
+
         return MemoryContent(
-            content=context,
+            content=response.context,
             mime_type=MemoryMimeType.TEXT,
             metadata={"source": "graph_context"},
         )
@@ -283,8 +212,8 @@ class ZepGraphMemory(Memory):
         """
         Update the agent's model context with retrieved memories.
 
-        Gets memory from Zep, and if memory exists, includes up to 10 last messages
-        from history and adds the memory context as a system message.
+        Gets memory from Zep, and if memory exists, adds the memory context
+        as a system message.
 
         Args:
             model_context: The model context to update
@@ -310,13 +239,14 @@ class ZepGraphMemory(Memory):
 
     async def clear(self) -> None:
         """
-        Clear all memories from Zep storage by deleting the session.
+        Clear all memories from Zep storage by deleting the graph.
 
-        This will delete the entire session and all its messages.
-        Note: This operation cannot be undone.
+        This will delete the entire graph and all its data.
+        Note: This operation cannot be undone. Zep runs the delete
+        asynchronously and returns a task.
         """
         try:
-            await self._client.graph.delete(graph_id=self._graph_id)
+            await self._client.graph.delete(self._graph_uuid)
         except Exception as e:
             self._logger.error(f"Error clearing Zep graph: {e}")
             raise

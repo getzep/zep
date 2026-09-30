@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from zep_cloud import Message
+from zep_cloud import AddMessage
 
 from zep_langgraph.persistence import (
     MAX_MESSAGE_CHARS,
@@ -45,7 +45,7 @@ class TestToZepMessage:
         assert to_zep_message(AIMessage(content="")) is None
 
     def test_existing_zep_message_passthrough(self) -> None:
-        original = Message(role="user", content="kept", name="Bob")
+        original = AddMessage(role="user", content="kept", name="Bob")
         assert to_zep_message(original) is original
 
     def test_user_name_applied_to_user_role(self) -> None:
@@ -76,9 +76,9 @@ class TestToZepMessage:
         assert len(msg.content) == MAX_MESSAGE_CHARS
 
     def test_native_zep_message_oversize_truncated(self) -> None:
-        # Native Zep Message objects (the README/example path) must also be
+        # Native Zep AddMessage objects (the README/example path) must also be
         # truncated, or Zep returns a 400 for content > 4096 chars.
-        original = Message(role="user", content="x" * (MAX_MESSAGE_CHARS + 500), name="Bob")
+        original = AddMessage(role="user", content="x" * (MAX_MESSAGE_CHARS + 500), name="Bob")
         msg = to_zep_message(original)
         assert msg is not None
         assert len(msg.content) == MAX_MESSAGE_CHARS
@@ -87,7 +87,7 @@ class TestToZepMessage:
         assert len(original.content) == MAX_MESSAGE_CHARS + 500
 
     def test_native_zep_message_within_limit_passthrough(self) -> None:
-        original = Message(role="user", content="short", name="Bob")
+        original = AddMessage(role="user", content="short", name="Bob")
         assert to_zep_message(original) is original
 
 
@@ -122,13 +122,13 @@ class TestPersistMessages:
         client = _make_async_client()
         await persist_messages(
             client,
-            "thread-1",
+            "thread-uuid-1",
             [HumanMessage(content="hi"), AIMessage(content="hello")],
             user_name="Alice",
         )
         client.thread.add_messages.assert_awaited_once()
         call = client.thread.add_messages.call_args
-        assert call.args[0] == "thread-1"
+        assert call.args[0] == "thread-uuid-1"
         msgs = call.kwargs["messages"]
         assert len(msgs) == 2
         assert msgs[0].role == "user"
@@ -140,7 +140,7 @@ class TestPersistMessages:
     async def test_return_context_returns_block(self) -> None:
         client = _make_async_client(context="User likes hiking.")
         ctx = await persist_messages(
-            client, "thread-1", [HumanMessage(content="hi")], return_context=True
+            client, "thread-uuid-1", [HumanMessage(content="hi")], return_context=True
         )
         assert ctx == "User likes hiking."
         assert client.thread.add_messages.call_args.kwargs["return_context"] is True
@@ -148,21 +148,21 @@ class TestPersistMessages:
     @pytest.mark.asyncio
     async def test_no_context_returns_none_by_default(self) -> None:
         client = _make_async_client(context="ignored")
-        ctx = await persist_messages(client, "thread-1", [HumanMessage(content="hi")])
+        ctx = await persist_messages(client, "thread-uuid-1", [HumanMessage(content="hi")])
         assert ctx is None
 
     @pytest.mark.asyncio
     async def test_ignore_roles_passed_through(self) -> None:
         client = _make_async_client()
         await persist_messages(
-            client, "thread-1", [HumanMessage(content="hi")], ignore_roles=["assistant"]
+            client, "thread-uuid-1", [HumanMessage(content="hi")], ignore_roles=["assistant"]
         )
         assert client.thread.add_messages.call_args.kwargs["ignore_roles"] == ["assistant"]
 
     @pytest.mark.asyncio
     async def test_skips_when_no_persistable_messages(self) -> None:
         client = _make_async_client()
-        result = await persist_messages(client, "thread-1", [AIMessage(content="")])
+        result = await persist_messages(client, "thread-uuid-1", [AIMessage(content="")])
         assert result is None
         client.thread.add_messages.assert_not_awaited()
 
@@ -172,7 +172,7 @@ class TestPersistMessages:
         client.thread = MagicMock()
         client.thread.add_messages = AsyncMock(side_effect=RuntimeError("api down"))
         result = await persist_messages(
-            client, "thread-1", [HumanMessage(content="hi")], return_context=True
+            client, "thread-uuid-1", [HumanMessage(content="hi")], return_context=True
         )
         assert result is None
 
@@ -182,7 +182,7 @@ class TestPersistMessages:
         # split into multiple calls rather than send them all at once.
         client = _make_async_client()
         msgs = [HumanMessage(content=f"m{i}") for i in range(70)]
-        await persist_messages(client, "thread-1", msgs)
+        await persist_messages(client, "thread-uuid-1", msgs)
         assert client.thread.add_messages.await_count == 3
         sent = [c.kwargs["messages"] for c in client.thread.add_messages.await_args_list]
         assert [len(s) for s in sent] == [30, 30, 10]
@@ -196,7 +196,7 @@ class TestPersistMessages:
     async def test_context_requested_only_on_last_chunk(self) -> None:
         client = _make_async_client(context="final block")
         msgs = [HumanMessage(content=f"m{i}") for i in range(40)]
-        ctx = await persist_messages(client, "thread-1", msgs, return_context=True)
+        ctx = await persist_messages(client, "thread-uuid-1", msgs, return_context=True)
         calls = client.thread.add_messages.await_args_list
         assert len(calls) == 2
         assert calls[0].kwargs["return_context"] is False
@@ -207,7 +207,7 @@ class TestPersistMessages:
     async def test_single_chunk_makes_single_call(self) -> None:
         client = _make_async_client()
         msgs = [HumanMessage(content=f"m{i}") for i in range(MAX_MESSAGES_PER_CALL)]
-        await persist_messages(client, "thread-1", msgs)
+        await persist_messages(client, "thread-uuid-1", msgs)
         assert client.thread.add_messages.await_count == 1
 
     @pytest.mark.asyncio
@@ -221,7 +221,7 @@ class TestPersistMessages:
         # 70 messages -> 3 chunks; the middle (second) chunk fails.
         client.thread.add_messages = AsyncMock(side_effect=[ok, RuntimeError("api down"), ok])
         msgs = [HumanMessage(content=f"m{i}") for i in range(70)]
-        result = await persist_messages(client, "thread-1", msgs)
+        result = await persist_messages(client, "thread-uuid-1", msgs)
         assert result is None
         # All three chunks were attempted -- we did not stop at the failure.
         assert client.thread.add_messages.await_count == 3
@@ -232,13 +232,13 @@ class TestPersistMessages:
 class TestPersistMessagesSync:
     def test_persists(self) -> None:
         client = _make_sync_client()
-        persist_messages_sync(client, "thread-1", [HumanMessage(content="hi")])
+        persist_messages_sync(client, "thread-uuid-1", [HumanMessage(content="hi")])
         client.thread.add_messages.assert_called_once()
 
     def test_return_context(self) -> None:
         client = _make_sync_client(context="Fact.")
         ctx = persist_messages_sync(
-            client, "thread-1", [HumanMessage(content="hi")], return_context=True
+            client, "thread-uuid-1", [HumanMessage(content="hi")], return_context=True
         )
         assert ctx == "Fact."
 
@@ -246,12 +246,12 @@ class TestPersistMessagesSync:
         client = MagicMock()
         client.thread = MagicMock()
         client.thread.add_messages = MagicMock(side_effect=RuntimeError("down"))
-        assert persist_messages_sync(client, "thread-1", [HumanMessage(content="hi")]) is None
+        assert persist_messages_sync(client, "thread-uuid-1", [HumanMessage(content="hi")]) is None
 
     def test_chunks_over_thirty_messages(self) -> None:
         client = _make_sync_client()
         msgs = [HumanMessage(content=f"m{i}") for i in range(65)]
-        persist_messages_sync(client, "thread-1", msgs)
+        persist_messages_sync(client, "thread-uuid-1", msgs)
         assert client.thread.add_messages.call_count == 3
         sent = [c.kwargs["messages"] for c in client.thread.add_messages.call_args_list]
         assert [len(s) for s in sent] == [30, 30, 5]
@@ -267,7 +267,7 @@ class TestPersistMessagesSync:
         # 65 messages -> 3 chunks; the middle (second) chunk fails.
         client.thread.add_messages = MagicMock(side_effect=[ok, RuntimeError("down"), ok])
         msgs = [HumanMessage(content=f"m{i}") for i in range(65)]
-        result = persist_messages_sync(client, "thread-1", msgs)
+        result = persist_messages_sync(client, "thread-uuid-1", msgs)
         assert result is None
         # All three chunks were attempted -- we did not stop at the failure.
         assert client.thread.add_messages.call_count == 3

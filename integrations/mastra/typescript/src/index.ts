@@ -14,28 +14,34 @@
  *   model decide when to persist or recall — a tool-centric alternative or
  *   complement to the automatic loop.
  *
- * {@link ensureZepUserAndThread} provisions the Zep user/thread before the
- * first turn either way. Every processor and tool handles Zep failures
- * gracefully — a Zep outage never crashes the host agent.
+ * {@link createZepUserAndThread} provisions the Zep user and thread before
+ * the first turn either way, and returns their server-generated UUIDs. Zep
+ * v4 addresses every user, thread, and graph by UUID, so store the returned
+ * values in your own database and pass them to the processors and tools.
+ * Every processor and tool handles Zep failures gracefully — a Zep outage
+ * never crashes the host agent.
  *
  * @example Automatic memory loop
  * ```ts
  * import { ZepClient } from "@getzep/zep-cloud";
  * import { Agent } from "@mastra/core/agent";
- * import { createZepProcessors, ensureZepUserAndThread } from "@getzep/zep-mastra";
+ * import { createZepProcessors, createZepUserAndThread } from "@getzep/zep-mastra";
  *
  * const client = new ZepClient({ apiKey: process.env.ZEP_API_KEY! });
- * const userId = "user-123";
- * const threadId = "thread-abc";
- * await ensureZepUserAndThread({ client, userId, threadId, firstName: "Jane" });
+ * const identity = await createZepUserAndThread({ client, firstName: "Jane" });
+ * if (!identity) throw new Error("Zep setup failed");
  *
- * const { inputProcessor, outputProcessor } = createZepProcessors({ client, userId, threadId });
+ * const { inputProcessor, outputProcessor } = createZepProcessors({
+ *   client,
+ *   graphUuid: identity.graphUuid,
+ *   threadUuid: identity.threadUuid,
+ * });
  *
  * const agent = new Agent({
  *   id: "memory-agent",
  *   name: "Memory Agent",
  *   instructions: "You have long-term memory about the user.",
- *   model: "openai/gpt-4o-mini",
+ *   model: "openai/gpt-5-mini",
  *   inputProcessors: [inputProcessor],
  *   outputProcessors: [outputProcessor],
  * });
@@ -48,19 +54,24 @@ export { createZepRememberTool } from "./remember-tool.js";
 export type { ZepRememberToolOptions } from "./remember-tool.js";
 
 export { createZepSearchTool } from "./search-tool.js";
-export type { ZepSearchToolOptions, ZepSearchPinnableParams } from "./search-tool.js";
+export type {
+  ZepSearchToolOptions,
+  ZepSearchPinnableParams,
+  ZepSearchScope,
+} from "./search-tool.js";
 
 export { createZepContextTool } from "./context-tool.js";
 export type { ZepContextToolOptions } from "./context-tool.js";
 
 export {
   createZepToolset,
-  ensureZepUserAndThread,
+  createZepUserAndThread,
 } from "./toolset.js";
 export type {
   ZepToolset,
   ZepToolsetOptions,
-  EnsureIdentityOptions,
+  CreateIdentityOptions,
+  ZepIdentity,
   ZepUserCreatedHook,
 } from "./toolset.js";
 
@@ -81,7 +92,7 @@ export type {
   ZepContextBuilderInput,
 } from "./processors.js";
 
-export { toRoleType, resolveGraphTarget } from "./zep-utils.js";
+export { toRoleType, resolveGraphUuid } from "./zep-utils.js";
 
 export type {
   ZepBinding,

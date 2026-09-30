@@ -12,7 +12,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-slugify>=8.0.4",
     "rich>=14.0.0",
-    "zep-cloud>=3.23.0",
+    "zep-cloud==4.0.0a5",
 ]
 
 [project.urls]

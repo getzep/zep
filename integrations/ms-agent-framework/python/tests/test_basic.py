@@ -16,17 +16,17 @@ from zep_cloud.client import AsyncZep
 
 from zep_ms_agent_framework import ZepContextProvider
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+USER_UUID = "11111111-1111-1111-1111-111111111111"
+THREAD_UUID = "33333333-3333-3333-3333-333333333333"
+
+
 def make_mock_client() -> MagicMock:
-    """Create a mock AsyncZep client with async user/thread methods."""
+    """Create a mock AsyncZep client with async thread methods."""
     client = MagicMock(spec=AsyncZep)
-    client.user = MagicMock()
-    client.user.add = AsyncMock()
     client.thread = MagicMock()
-    client.thread.create = AsyncMock()
     client.thread.add_messages = AsyncMock()
     return client
 
@@ -57,8 +57,8 @@ def make_provider(client: MagicMock | None = None, **kwargs: Any) -> ZepContextP
     """Construct a ZepContextProvider with sensible test defaults."""
     params: dict[str, Any] = {
         "zep_client": client or make_mock_client(),
-        "user_id": "user-1",
-        "thread_id": "thread-1",
+        "user_uuid": USER_UUID,
+        "thread_uuid": THREAD_UUID,
     }
     params.update(kwargs)
     return ZepContextProvider(**params)
@@ -144,11 +144,11 @@ class TestInit:
 
     def test_init_stores_identity(self) -> None:
         client = make_mock_client()
-        provider = make_provider(client, user_id="u", thread_id="t")
+        provider = make_provider(client, user_uuid="u", thread_uuid="t", graph_uuid="g")
         assert provider._zep is client
-        assert provider.user_id == "u"
-        assert provider.thread_id == "t"
-        assert provider._resources_ready is False
+        assert provider.user_uuid == "u"
+        assert provider.thread_uuid == "t"
+        assert provider.graph_uuid == "g"
 
     def test_default_source_id(self) -> None:
         provider = make_provider()
@@ -158,15 +158,11 @@ class TestInit:
         provider = make_provider(source_id="memory")
         assert provider.source_id == "memory"
 
-    def test_user_message_name_defaults_to_full_name(self) -> None:
-        provider = make_provider(first_name="Jane", last_name="Smith")
-        assert provider._user_message_name == "Jane Smith"
-
     def test_user_message_name_explicit_override(self) -> None:
-        provider = make_provider(first_name="Jane", user_message_name="Janey")
+        provider = make_provider(user_message_name="Janey")
         assert provider._user_message_name == "Janey"
 
-    def test_user_message_name_none_without_names(self) -> None:
+    def test_user_message_name_defaults_to_none(self) -> None:
         provider = make_provider()
         assert provider._user_message_name is None
 
@@ -174,13 +170,13 @@ class TestInit:
         provider = make_provider()
         assert provider._assistant_message_name == "Assistant"
 
-    def test_empty_user_id_raises(self) -> None:
-        with pytest.raises(ValueError, match="user_id"):
-            make_provider(user_id="")
+    def test_empty_user_uuid_raises(self) -> None:
+        with pytest.raises(ValueError, match="user_uuid"):
+            make_provider(user_uuid="")
 
-    def test_empty_thread_id_raises(self) -> None:
-        with pytest.raises(ValueError, match="thread_id"):
-            make_provider(thread_id="")
+    def test_empty_thread_uuid_raises(self) -> None:
+        with pytest.raises(ValueError, match="thread_uuid"):
+            make_provider(thread_uuid="")
 
 
 # ---------------------------------------------------------------------------
@@ -233,40 +229,35 @@ class TestBeforeRun:
         await run_before(provider, ctx)
 
         client.thread.add_messages.assert_called_once()
+        assert client.thread.add_messages.call_args.args == (THREAD_UUID,)
         call = client.thread.add_messages.call_args.kwargs
-        assert call["thread_id"] == "thread-1"
         assert call["return_context"] is True
         assert len(call["messages"]) == 1
         assert call["messages"][0].content == "Hi there"
         assert call["messages"][0].role == "user"
 
     @pytest.mark.asyncio
-    async def test_lazy_creates_user_and_thread(self) -> None:
+    async def test_does_not_create_zep_resources(self) -> None:
+        """The provider addresses existing resources by UUID. It must not
+        create a user or a thread."""
         client = make_mock_client()
+        client.user = MagicMock()
+        client.user.create = AsyncMock()
+        client.thread.create = AsyncMock()
         client.thread.add_messages.return_value = add_messages_response(None)
-        provider = make_provider(
-            client,
-            first_name="Jane",
-            last_name="Smith",
-            email="jane@example.com",
-        )
+        provider = make_provider(client)
         ctx = make_context(input_messages=[Message("user", ["Hi"])])
 
         await run_before(provider, ctx)
 
-        client.user.add.assert_called_once_with(
-            user_id="user-1",
-            first_name="Jane",
-            last_name="Smith",
-            email="jane@example.com",
-        )
-        client.thread.create.assert_called_once_with(thread_id="thread-1", user_id="user-1")
+        client.user.create.assert_not_called()
+        client.thread.create.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_message_carries_display_name(self) -> None:
         client = make_mock_client()
         client.thread.add_messages.return_value = add_messages_response(None)
-        provider = make_provider(client, first_name="Jane", last_name="Smith")
+        provider = make_provider(client, user_message_name="Jane Smith")
         ctx = make_context(input_messages=[Message("user", ["Hi"])])
 
         await run_before(provider, ctx)
@@ -310,7 +301,6 @@ class TestBeforeRun:
 
         await run_before(provider, ctx)
 
-        client.user.add.assert_not_called()
         client.thread.add_messages.assert_not_called()
         ctx.extend_instructions.assert_not_called()
 
@@ -339,19 +329,7 @@ class TestBeforeRun:
         ctx.extend_instructions.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_resource_failure_skips_persist(self) -> None:
-        client = make_mock_client()
-        client.user.add.side_effect = RuntimeError("network timeout")
-        provider = make_provider(client)
-        ctx = make_context(input_messages=[Message("user", ["Hi"])])
-
-        await run_before(provider, ctx)
-
-        client.thread.add_messages.assert_not_called()
-        assert provider._resources_ready is False
-
-    @pytest.mark.asyncio
-    async def test_resources_created_only_once(self) -> None:
+    async def test_persists_every_run(self) -> None:
         client = make_mock_client()
         client.thread.add_messages.return_value = add_messages_response(None)
         provider = make_provider(client)
@@ -359,24 +337,7 @@ class TestBeforeRun:
         await run_before(provider, make_context(input_messages=[Message("user", ["one"])]))
         await run_before(provider, make_context(input_messages=[Message("user", ["two"])]))
 
-        assert client.user.add.call_count == 1
-        assert client.thread.create.call_count == 1
         assert client.thread.add_messages.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_existing_user_tolerated(self) -> None:
-        client = make_mock_client()
-        client.user.add.side_effect = Exception("user already exists")
-        client.thread.create.side_effect = Exception("thread already exists")
-        client.thread.add_messages.return_value = add_messages_response("ctx")
-        provider = make_provider(client)
-        ctx = make_context(input_messages=[Message("user", ["Hi"])])
-
-        await run_before(provider, ctx)
-
-        # Despite both "already exists" errors, the message is still persisted.
-        client.thread.add_messages.assert_called_once()
-        assert provider._resources_ready is True
 
 
 # ---------------------------------------------------------------------------
@@ -451,15 +412,14 @@ class TestAfterRun:
     async def test_persists_assistant_response(self) -> None:
         client = make_mock_client()
         provider = make_provider(client)
-        provider._resources_ready = True
         provider._user_turn_persisted = True
         ctx = make_context(response_messages=[Message("assistant", ["The answer is 42."])])
 
         await run_after(provider, ctx)
 
         client.thread.add_messages.assert_called_once()
+        assert client.thread.add_messages.call_args.args == (THREAD_UUID,)
         call = client.thread.add_messages.call_args.kwargs
-        assert call["thread_id"] == "thread-1"
         assert call["messages"][0].role == "assistant"
         assert call["messages"][0].content == "The answer is 42."
         assert call["messages"][0].name == "Assistant"
@@ -468,7 +428,6 @@ class TestAfterRun:
     async def test_custom_assistant_name(self) -> None:
         client = make_mock_client()
         provider = make_provider(client, assistant_message_name="Aria")
-        provider._resources_ready = True
         provider._user_turn_persisted = True
         ctx = make_context(response_messages=[Message("assistant", ["Hello"])])
 
@@ -481,7 +440,6 @@ class TestAfterRun:
     async def test_skips_when_no_response(self) -> None:
         client = make_mock_client()
         provider = make_provider(client)
-        provider._resources_ready = True
         provider._user_turn_persisted = True
         ctx = make_context(response_messages=None)
 
@@ -493,7 +451,6 @@ class TestAfterRun:
     async def test_skips_when_no_assistant_text(self) -> None:
         client = make_mock_client()
         provider = make_provider(client)
-        provider._resources_ready = True
         provider._user_turn_persisted = True
         ctx = make_context(response_messages=[Message("tool", ["tool output"])])
 
@@ -505,10 +462,8 @@ class TestAfterRun:
     async def test_skips_when_user_turn_not_persisted(self) -> None:
         client = make_mock_client()
         provider = make_provider(client)
-        # Resources are ready, but this run's user turn never persisted (e.g.
-        # before_run's add_messages failed). after_run must not write an
-        # orphaned assistant-only record.
-        provider._resources_ready = True
+        # This run's user turn never persisted (e.g. before_run's add_messages
+        # failed). after_run must not write an orphaned assistant-only record.
         provider._user_turn_persisted = False
         ctx = make_context(response_messages=[Message("assistant", ["Hello"])])
 
@@ -521,7 +476,6 @@ class TestAfterRun:
         client = make_mock_client()
         client.thread.add_messages.side_effect = RuntimeError("API down")
         provider = make_provider(client)
-        provider._resources_ready = True
         provider._user_turn_persisted = True
         ctx = make_context(response_messages=[Message("assistant", ["Hello"])])
 
@@ -548,106 +502,6 @@ class TestRoundTrip:
         assert client.thread.add_messages.call_count == 2
         roles = [c.kwargs["messages"][0].role for c in client.thread.add_messages.call_args_list]
         assert roles == ["user", "assistant"]
-
-
-# ---------------------------------------------------------------------------
-# on_user_created hook
-# ---------------------------------------------------------------------------
-class TestOnUserCreatedHook:
-    @pytest.mark.asyncio
-    async def test_hook_called_on_new_user(self) -> None:
-        client = make_mock_client()
-        client.thread.add_messages.return_value = add_messages_response(None)
-        hook = AsyncMock()
-        provider = make_provider(client, on_user_created=hook)
-        ctx = make_context(input_messages=[Message("user", ["Hi"])])
-
-        await run_before(provider, ctx)
-
-        hook.assert_called_once_with(client, "user-1")
-
-    @pytest.mark.asyncio
-    async def test_hook_not_called_on_existing_user(self) -> None:
-        client = make_mock_client()
-        client.user.add.side_effect = Exception("already exists")
-        client.thread.add_messages.return_value = add_messages_response(None)
-        hook = AsyncMock()
-        provider = make_provider(client, on_user_created=hook)
-        ctx = make_context(input_messages=[Message("user", ["Hi"])])
-
-        await run_before(provider, ctx)
-
-        hook.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_hook_runs_once_across_runs(self) -> None:
-        client = make_mock_client()
-        client.thread.add_messages.return_value = add_messages_response(None)
-        hook = AsyncMock()
-        provider = make_provider(client, on_user_created=hook)
-
-        await run_before(provider, make_context(input_messages=[Message("user", ["one"])]))
-        await run_before(provider, make_context(input_messages=[Message("user", ["two"])]))
-
-        assert hook.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_hook_failure_swallowed_by_provider_but_skips_this_turn(self) -> None:
-        """Per the provisioning contract, a hook error PROPAGATES out of
-        ``ensure_user`` (it indicates the caller's own setup code is broken,
-        not a transient Zep failure). The provider's hot path still never
-        lets it raise into ``before_run`` -- it is caught at the same
-        boundary as a genuine provisioning failure, logged, and this turn's
-        persistence is skipped (resources are retried on the next turn)."""
-        client = make_mock_client()
-        client.thread.add_messages.return_value = add_messages_response("ctx")
-        hook = AsyncMock(side_effect=RuntimeError("hook exploded"))
-        provider = make_provider(client, on_user_created=hook)
-        ctx = make_context(input_messages=[Message("user", ["Hi"])])
-
-        # Must not raise.
-        await run_before(provider, ctx)
-
-        client.thread.add_messages.assert_not_called()
-        ctx.extend_instructions.assert_not_called()
-        assert provider._resources_ready is False
-
-
-# ---------------------------------------------------------------------------
-# Provider lazy path onto provisioning.py (hot-path: swallow, never raise)
-# ---------------------------------------------------------------------------
-class TestProviderLazyPathProvisioning:
-    @pytest.mark.asyncio
-    async def test_provider_lazy_path_swallows_provisioning_errors(self) -> None:
-        """A genuine provisioning failure (e.g. a 500 from user.add) must be
-        logged and swallowed by the provider's hot path -- before_run must
-        survive it and simply skip the turn."""
-        client = make_mock_client()
-        client.user.add.side_effect = RuntimeError("500 internal server error")
-        provider = make_provider(client)
-        ctx = make_context(input_messages=[Message("user", ["Hi"])])
-
-        # Must not raise.
-        await run_before(provider, ctx)
-
-        client.thread.add_messages.assert_not_called()
-        assert provider._resources_ready is False
-
-    @pytest.mark.asyncio
-    async def test_provider_uses_ensure_user_and_ensure_thread(self) -> None:
-        """The provider's lazy resource creation now delegates to
-        provisioning.ensure_user / provisioning.ensure_thread."""
-        client = make_mock_client()
-        client.thread.add_messages.return_value = add_messages_response(None)
-        provider = make_provider(client, first_name="Jane", last_name="Smith")
-        ctx = make_context(input_messages=[Message("user", ["Hi"])])
-
-        await run_before(provider, ctx)
-
-        client.user.add.assert_called_once_with(
-            user_id="user-1", first_name="Jane", last_name="Smith", email=None
-        )
-        client.thread.create.assert_called_once_with(thread_id="thread-1", user_id="user-1")
 
 
 # ---------------------------------------------------------------------------
@@ -734,7 +588,7 @@ class TestMessageSizeGuard:
 class TestOrphanedTurnProtection:
     @pytest.mark.asyncio
     async def test_after_run_skips_when_before_run_persist_failed(self) -> None:
-        # Resources create fine, but the user-turn add_messages fails.
+        # The user-turn add_messages fails.
         client = make_mock_client()
         client.thread.add_messages.side_effect = RuntimeError("API down")
         provider = make_provider(client)
@@ -742,8 +596,7 @@ class TestOrphanedTurnProtection:
         before_ctx = make_context(input_messages=[Message("user", ["Hi"])])
         await run_before(provider, before_ctx)
 
-        # Resources were created, but the user turn was NOT persisted.
-        assert provider._resources_ready is True
+        # The user turn was NOT persisted.
         assert provider._user_turn_persisted is False
 
         # Now the model "responds" -- after_run must not write an orphan.

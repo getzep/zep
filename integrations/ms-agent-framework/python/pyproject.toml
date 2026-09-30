@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "agent-framework-core>=1.8.1",
-    "zep-cloud>=3.23.0",
+    "zep-cloud==4.0.0a5",
 ]
 
 [project.urls]

@@ -70,13 +70,13 @@ export type ZepBeforeModelCallback = (params: {
  *   2. Retrieves the Context Block for the user's graph (single round-trip).
  *   3. Injects that block into `request.config.systemInstruction`.
  *
- * Identity is resolved per turn: explicit `userId` / `threadId` options take
- * precedence, then `zep_user_id` / `zep_thread_id` session-state keys, then the
- * ADK session's `userId` / `sessionId`. Omitting the IDs lets one callback
- * serve every user in a shared-agent deployment.
+ * Identity is resolved per turn: explicit `userUuid` / `threadUuid` options
+ * take precedence, then `zep_user_uuid` / `zep_thread_uuid` session-state
+ * keys, then the ADK session's `userId` / `sessionId`. Omitting the UUIDs
+ * lets one callback serve every user in a shared-agent deployment.
  *
  * This callback never creates the Zep user or thread. Provision them
- * out-of-band before the first turn with `ensureUser()` / `ensureThread()`
+ * out-of-band before the first turn with `createUser()` / `createThread()`
  * (see `src/provisioning.ts`) — e.g. during account/session onboarding. If
  * the user/thread do not exist, persistence for that turn is skipped and a
  * warning is logged.
@@ -93,8 +93,8 @@ export type ZepBeforeModelCallback = (params: {
  *   model: "gemini-2.5-flash",
  *   instruction: "You are a helpful assistant with long-term memory.",
  *   beforeModelCallback: createZepBeforeModelCallback(zep, {
- *     userId: "user-123",
- *     threadId: "thread-abc",
+ *     userUuid,
+ *     threadUuid,
  *     firstName: "Jane",
  *     lastName: "Smith",
  *   }),

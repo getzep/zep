@@ -25,11 +25,11 @@ function neverAbort(): never {
 describe("ZepInputProcessor", () => {
   it("prepends a system message with the Context Block", async () => {
     const zep = makeFakeZep();
-    zep.thread.getUserContext.mockResolvedValueOnce({ context: "Jane lives in Portland" });
+    zep.thread.getContext.mockResolvedValueOnce({ context: "Jane lives in Portland" });
     const processor = new ZepInputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
     });
 
     const messages = [userMessage("where do I live?")];
@@ -48,16 +48,16 @@ describe("ZepInputProcessor", () => {
     expect(sysMessage.role).toBe("system");
     expect(sysMessage.content).toContain("Jane lives in Portland");
     expect(sysMessage.content).toContain("<ZEP_CONTEXT>");
-    expect(zep.thread.getUserContext).toHaveBeenCalledWith("t1", {});
+    expect(zep.thread.getContext).toHaveBeenCalledWith("t1", {});
   });
 
-  it("uses contextBuilder instead of getUserContext", async () => {
+  it("uses contextBuilder instead of getContext", async () => {
     const zep = makeFakeZep();
     const contextBuilder = vi.fn().mockResolvedValue("custom built context");
     const processor = new ZepInputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
       contextBuilder,
     });
 
@@ -70,16 +70,16 @@ describe("ZepInputProcessor", () => {
       retryCount: 0,
     } as never);
 
-    expect(zep.thread.getUserContext).not.toHaveBeenCalled();
+    expect(zep.thread.getContext).not.toHaveBeenCalled();
     expect(contextBuilder).toHaveBeenCalledOnce();
     const call = contextBuilder.mock.calls[0]![0] as {
       client: unknown;
-      userId?: string;
-      threadId: string;
+      graphUuid?: string;
+      threadUuid: string;
       userMessage: string;
     };
-    expect(call.userId).toBe("u1");
-    expect(call.threadId).toBe("t1");
+    expect(call.graphUuid).toBe("g1");
+    expect(call.threadUuid).toBe("t1");
     expect(call.userMessage).toBe("hello");
     const sysMessage = result.systemMessages[0] as { content: string };
     expect(sysMessage.content).toContain("custom built context");
@@ -87,12 +87,12 @@ describe("ZepInputProcessor", () => {
 
   it("resolves per-call identity via resolveIdentity, overriding constructor binding", async () => {
     const zep = makeFakeZep();
-    zep.thread.getUserContext.mockResolvedValueOnce({ context: "override context" });
-    const resolveIdentity = vi.fn().mockReturnValue({ userId: "u2", threadId: "t2" });
+    zep.thread.getContext.mockResolvedValueOnce({ context: "override context" });
+    const resolveIdentity = vi.fn().mockReturnValue({ graphUuid: "g2", threadUuid: "t2" });
     const processor = new ZepInputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
       resolveIdentity,
     });
 
@@ -107,17 +107,17 @@ describe("ZepInputProcessor", () => {
     } as never);
 
     expect(resolveIdentity).toHaveBeenCalledWith({ foo: "bar" });
-    expect(zep.thread.getUserContext).toHaveBeenCalledWith("t2", {});
+    expect(zep.thread.getContext).toHaveBeenCalledWith("t2", {});
   });
 
   it("awaits an async resolveIdentity and uses the resolved identity", async () => {
     const zep = makeFakeZep();
-    zep.thread.getUserContext.mockResolvedValueOnce({ context: "async override context" });
-    const resolveIdentity = vi.fn().mockResolvedValue({ userId: "u2", threadId: "t2" });
+    zep.thread.getContext.mockResolvedValueOnce({ context: "async override context" });
+    const resolveIdentity = vi.fn().mockResolvedValue({ graphUuid: "g2", threadUuid: "t2" });
     const processor = new ZepInputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
       resolveIdentity,
     });
 
@@ -132,16 +132,16 @@ describe("ZepInputProcessor", () => {
     } as never);
 
     expect(resolveIdentity).toHaveBeenCalledWith({ tenant: "acme" });
-    expect(zep.thread.getUserContext).toHaveBeenCalledWith("t2", {});
+    expect(zep.thread.getContext).toHaveBeenCalledWith("t2", {});
   });
 
-  it("passes through unchanged when threadId is missing", async () => {
+  it("passes through unchanged when threadUuid is missing", async () => {
     const zep = makeFakeZep();
     const processor = new ZepInputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      // no threadId, and resolveIdentity also omits it
-      resolveIdentity: () => ({ userId: "u1" }),
+      graphUuid: "g1",
+      // no threadUuid, and resolveIdentity also omits it
+      resolveIdentity: () => ({ graphUuid: "g1" }),
     });
 
     const messages = [userMessage("hi")];
@@ -157,17 +157,17 @@ describe("ZepInputProcessor", () => {
 
     expect(result.messages).toBe(messages);
     expect(result.systemMessages).toBe(systemMessages);
-    expect(zep.thread.getUserContext).not.toHaveBeenCalled();
+    expect(zep.thread.getContext).not.toHaveBeenCalled();
   });
 
   it("degrades gracefully on a Zep failure: messages unchanged, warn called, abort never invoked", async () => {
     const zep = makeFakeZep();
-    zep.thread.getUserContext.mockRejectedValueOnce(new Error("503 upstream"));
+    zep.thread.getContext.mockRejectedValueOnce(new Error("503 upstream"));
     const warn = vi.fn();
     const processor = new ZepInputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
       logger: { warn },
     });
 
@@ -189,7 +189,7 @@ describe("ZepInputProcessor", () => {
 
   it("has the fixed name 'zep-context'", () => {
     const zep = makeFakeZep();
-    const processor = new ZepInputProcessor({ client: asZep(zep), userId: "u1", threadId: "t1" });
+    const processor = new ZepInputProcessor({ client: asZep(zep), graphUuid: "g1", threadUuid: "t1" });
     expect(processor.name).toBe("zep-context");
   });
 });
@@ -199,8 +199,8 @@ describe("ZepOutputProcessor", () => {
     const zep = makeFakeZep();
     const processor = new ZepOutputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
     });
 
     await processor.processOutputResult({
@@ -221,8 +221,8 @@ describe("ZepOutputProcessor", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(zep.thread.addMessages).toHaveBeenCalledTimes(1);
-    const [threadId, req] = zep.thread.addMessages.mock.calls[0]!;
-    expect(threadId).toBe("t1");
+    const [threadUuid, req] = zep.thread.addMessages.mock.calls[0]!;
+    expect(threadUuid).toBe("t1");
     expect(req.messages).toHaveLength(2);
     expect(req.messages[0]).toMatchObject({ role: "user", content: "what's the weather?" });
     expect(req.messages[1]).toMatchObject({ role: "assistant", content: "It's sunny." });
@@ -234,8 +234,8 @@ describe("ZepOutputProcessor", () => {
     const zep = makeFakeZep();
     const processor = new ZepOutputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
     });
 
     await processor.processOutputResult({
@@ -254,8 +254,8 @@ describe("ZepOutputProcessor", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(zep.thread.addMessages).toHaveBeenCalledTimes(1);
-    const [threadId, req] = zep.thread.addMessages.mock.calls[0]!;
-    expect(threadId).toBe("t1");
+    const [threadUuid, req] = zep.thread.addMessages.mock.calls[0]!;
+    expect(threadUuid).toBe("t1");
     expect(req.messages).toEqual([{ role: "user", content: "do a thing" }]);
   });
 
@@ -265,8 +265,8 @@ describe("ZepOutputProcessor", () => {
     const zep = makeFakeZep();
     const processor = new ZepOutputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
     });
 
     await processor.processOutputResult({
@@ -299,8 +299,8 @@ describe("ZepOutputProcessor", () => {
     const zep = makeFakeZep();
     const processor = new ZepOutputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
     });
 
     await processor.processOutputResult({
@@ -323,11 +323,11 @@ describe("ZepOutputProcessor", () => {
 
   it("awaits an async resolveIdentity and uses the resolved identity", async () => {
     const zep = makeFakeZep();
-    const resolveIdentity = vi.fn().mockResolvedValue({ userId: "u2", threadId: "t2" });
+    const resolveIdentity = vi.fn().mockResolvedValue({ graphUuid: "g2", threadUuid: "t2" });
     const processor = new ZepOutputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
       resolveIdentity,
     });
 
@@ -357,8 +357,8 @@ describe("ZepOutputProcessor", () => {
     const warn = vi.fn();
     const processor = new ZepOutputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
       logger: { warn },
     });
 
@@ -385,7 +385,7 @@ describe("ZepOutputProcessor", () => {
 
   it("has the fixed name 'zep-persist'", () => {
     const zep = makeFakeZep();
-    const processor = new ZepOutputProcessor({ client: asZep(zep), userId: "u1", threadId: "t1" });
+    const processor = new ZepOutputProcessor({ client: asZep(zep), graphUuid: "g1", threadUuid: "t1" });
     expect(processor.name).toBe("zep-persist");
   });
 });
@@ -395,8 +395,8 @@ describe("createZepProcessors", () => {
     const zep = makeFakeZep();
     const { inputProcessor, outputProcessor } = createZepProcessors({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
     });
     expect(inputProcessor).toBeInstanceOf(ZepInputProcessor);
     expect(outputProcessor).toBeInstanceOf(ZepOutputProcessor);
@@ -426,8 +426,8 @@ describe("ZepInputProcessor template rendering", () => {
   it("safely renders context containing '{' and '%' characters", async () => {
     const zep = makeFakeZep();
     const weirdContext = "50% of users like {curly braces} and $pecial ch@rs";
-    zep.thread.getUserContext.mockResolvedValueOnce({ context: weirdContext });
-    const processor = new ZepInputProcessor({ client: asZep(zep), userId: "u1", threadId: "t1" });
+    zep.thread.getContext.mockResolvedValueOnce({ context: weirdContext });
+    const processor = new ZepInputProcessor({ client: asZep(zep), graphUuid: "g1", threadUuid: "t1" });
 
     const result = await processor.processInput({
       messages: [userMessage("hi")],
@@ -444,12 +444,12 @@ describe("ZepInputProcessor template rendering", () => {
 
   it("formatContext override wins over contextTemplate", async () => {
     const zep = makeFakeZep();
-    zep.thread.getUserContext.mockResolvedValueOnce({ context: "raw facts" });
+    zep.thread.getContext.mockResolvedValueOnce({ context: "raw facts" });
     const formatContext = vi.fn((context: string) => `CUSTOM[${context}]`);
     const processor = new ZepInputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
       contextTemplate: "IGNORED {context}",
       formatContext,
     });
@@ -469,13 +469,13 @@ describe("ZepInputProcessor template rendering", () => {
     expect(sysMessage.content).not.toContain("IGNORED");
   });
 
-  it("contextBuilder replaces getUserContext (assert not called)", async () => {
+  it("contextBuilder replaces getContext (assert not called)", async () => {
     const zep = makeFakeZep();
     const contextBuilder = vi.fn().mockResolvedValue("builder context");
     const processor = new ZepInputProcessor({
       client: asZep(zep),
-      userId: "u1",
-      threadId: "t1",
+      graphUuid: "g1",
+      threadUuid: "t1",
       contextBuilder,
     });
 
@@ -488,6 +488,6 @@ describe("ZepInputProcessor template rendering", () => {
       retryCount: 0,
     } as never);
 
-    expect(zep.thread.getUserContext).not.toHaveBeenCalled();
+    expect(zep.thread.getContext).not.toHaveBeenCalled();
   });
 });

@@ -34,7 +34,7 @@ def _make_async_client(context: str | None) -> MagicMock:
     client.thread = MagicMock()
     response = MagicMock()
     response.context = context
-    client.thread.get_user_context = AsyncMock(return_value=response)
+    client.thread.get_context = AsyncMock(return_value=response)
     return client
 
 
@@ -43,7 +43,7 @@ def _make_sync_client(context: str | None) -> MagicMock:
     client.thread = MagicMock()
     response = MagicMock()
     response.context = context
-    client.thread.get_user_context = MagicMock(return_value=response)
+    client.thread.get_context = MagicMock(return_value=response)
     return client
 
 
@@ -51,45 +51,45 @@ class TestGetZepContext:
     @pytest.mark.asyncio
     async def test_returns_context_string(self) -> None:
         client = _make_async_client("User likes blue.")
-        result = await get_zep_context(client, "thread-1")
+        result = await get_zep_context(client, "thread-uuid-1")
         assert result == "User likes blue."
-        client.thread.get_user_context.assert_awaited_once_with("thread-1", template_id=None)
+        client.thread.get_context.assert_awaited_once_with("thread-uuid-1", template_uuid=None)
 
     @pytest.mark.asyncio
-    async def test_passes_template_id(self) -> None:
+    async def test_passes_template_uuid(self) -> None:
         client = _make_async_client("ctx")
-        await get_zep_context(client, "thread-1", template_id="tpl-9")
-        client.thread.get_user_context.assert_awaited_once_with("thread-1", template_id="tpl-9")
+        await get_zep_context(client, "thread-uuid-1", template_uuid="tpl-9")
+        client.thread.get_context.assert_awaited_once_with("thread-uuid-1", template_uuid="tpl-9")
 
     @pytest.mark.asyncio
     async def test_returns_none_when_empty(self) -> None:
         client = _make_async_client("   ")
-        assert await get_zep_context(client, "thread-1") is None
+        assert await get_zep_context(client, "thread-uuid-1") is None
 
     @pytest.mark.asyncio
     async def test_returns_none_when_no_context(self) -> None:
         client = _make_async_client(None)
-        assert await get_zep_context(client, "thread-1") is None
+        assert await get_zep_context(client, "thread-uuid-1") is None
 
     @pytest.mark.asyncio
     async def test_zep_failure_returns_none_not_raise(self) -> None:
         client = MagicMock()
         client.thread = MagicMock()
-        client.thread.get_user_context = AsyncMock(side_effect=RuntimeError("boom"))
-        result = await get_zep_context(client, "thread-1")
+        client.thread.get_context = AsyncMock(side_effect=RuntimeError("boom"))
+        result = await get_zep_context(client, "thread-uuid-1")
         assert result is None
 
 
 class TestGetZepContextSync:
     def test_returns_context_string(self) -> None:
         client = _make_sync_client("Known fact.")
-        assert get_zep_context_sync(client, "thread-1") == "Known fact."
+        assert get_zep_context_sync(client, "thread-uuid-1") == "Known fact."
 
     def test_zep_failure_returns_none(self) -> None:
         client = MagicMock()
         client.thread = MagicMock()
-        client.thread.get_user_context = MagicMock(side_effect=RuntimeError("boom"))
-        assert get_zep_context_sync(client, "thread-1") is None
+        client.thread.get_context = MagicMock(side_effect=RuntimeError("boom"))
+        assert get_zep_context_sync(client, "thread-uuid-1") is None
 
 
 class TestFormatContextBlock:
@@ -122,7 +122,7 @@ class TestBuildSystemMessage:
     async def test_returns_system_message_with_context(self) -> None:
         client = _make_async_client("User is a pilot.")
         msg = await build_system_message(
-            client, "thread-1", base_instructions="You are an assistant."
+            client, "thread-uuid-1", base_instructions="You are an assistant."
         )
         assert isinstance(msg, SystemMessage)
         assert "You are an assistant." in msg.content
@@ -131,7 +131,7 @@ class TestBuildSystemMessage:
     @pytest.mark.asyncio
     async def test_base_only_when_zep_empty(self) -> None:
         client = _make_async_client(None)
-        msg = await build_system_message(client, "thread-1", base_instructions="Base.")
+        msg = await build_system_message(client, "thread-uuid-1", base_instructions="Base.")
         assert isinstance(msg, SystemMessage)
         assert msg.content == "Base."
 
@@ -139,13 +139,13 @@ class TestBuildSystemMessage:
     async def test_zep_failure_does_not_crash(self) -> None:
         client = MagicMock()
         client.thread = MagicMock()
-        client.thread.get_user_context = AsyncMock(side_effect=RuntimeError("down"))
-        msg = await build_system_message(client, "thread-1", base_instructions="Base.")
+        client.thread.get_context = AsyncMock(side_effect=RuntimeError("down"))
+        msg = await build_system_message(client, "thread-uuid-1", base_instructions="Base.")
         assert msg.content == "Base."
 
     def test_sync_variant(self) -> None:
         client = _make_sync_client("Fact one.")
-        msg = build_system_message_sync(client, "thread-1", base_instructions="Base.")
+        msg = build_system_message_sync(client, "thread-uuid-1", base_instructions="Base.")
         assert isinstance(msg, SystemMessage)
         assert "Fact one." in msg.content
 
@@ -173,18 +173,18 @@ class TestContextBuilder:
 
         result = await get_zep_context(
             client,
-            "thread-1",
+            "thread-uuid-1",
             context_builder=builder,
-            user_id="user-1",
+            graph_uuid="graph-uuid-1",
             user_message="hello there",
         )
 
         assert result == "built context"
-        client.thread.get_user_context.assert_not_called()
+        client.thread.get_context.assert_not_called()
         assert len(seen) == 1
         assert seen[0].zep is client
-        assert seen[0].user_id == "user-1"
-        assert seen[0].thread_id == "thread-1"
+        assert seen[0].graph_uuid == "graph-uuid-1"
+        assert seen[0].thread_uuid == "thread-uuid-1"
         assert seen[0].user_message == "hello there"
 
     @pytest.mark.asyncio
@@ -194,9 +194,9 @@ class TestContextBuilder:
         async def bad_builder(ctx: ContextInput) -> str | None:
             raise RuntimeError("builder boom")
 
-        result = await get_zep_context(client, "thread-1", context_builder=bad_builder)
+        result = await get_zep_context(client, "thread-uuid-1", context_builder=bad_builder)
         assert result is None
-        client.thread.get_user_context.assert_not_called()
+        client.thread.get_context.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_build_system_message_builder_none_falls_back_to_base(self) -> None:
@@ -207,12 +207,12 @@ class TestContextBuilder:
 
         msg = await build_system_message(
             client,
-            "thread-1",
+            "thread-uuid-1",
             base_instructions="Base only.",
             context_builder=none_builder,
         )
         assert msg.content == "Base only."
-        client.thread.get_user_context.assert_not_called()
+        client.thread.get_context.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_build_system_message_uses_builder_result(self) -> None:
@@ -222,7 +222,7 @@ class TestContextBuilder:
             return "custom fact"
 
         msg = await build_system_message(
-            client, "thread-1", base_instructions="Base.", context_builder=builder
+            client, "thread-uuid-1", base_instructions="Base.", context_builder=builder
         )
         assert "custom fact" in msg.content
         assert "Base." in msg.content
@@ -239,15 +239,15 @@ class TestContextBuilderSync:
 
         result = get_zep_context_sync(
             client,
-            "thread-1",
+            "thread-uuid-1",
             context_builder=builder,
-            user_id="user-2",
+            graph_uuid="graph-uuid-2",
             user_message="hi",
         )
 
         assert result == "sync built context"
-        client.thread.get_user_context.assert_not_called()
-        assert seen[0].user_id == "user-2"
+        client.thread.get_context.assert_not_called()
+        assert seen[0].graph_uuid == "graph-uuid-2"
 
     def test_sync_builder_error_degrades_to_none(self) -> None:
         client = _make_sync_client("ignored")
@@ -255,7 +255,7 @@ class TestContextBuilderSync:
         def bad_builder(ctx: ContextInput) -> str | None:
             raise RuntimeError("boom")
 
-        result = get_zep_context_sync(client, "thread-1", context_builder=bad_builder)
+        result = get_zep_context_sync(client, "thread-uuid-1", context_builder=bad_builder)
         assert result is None
 
     def test_build_system_message_sync_builder_none_falls_back_to_base(self) -> None:
@@ -265,7 +265,7 @@ class TestContextBuilderSync:
             return None
 
         msg = build_system_message_sync(
-            client, "thread-1", base_instructions="Base only.", context_builder=none_builder
+            client, "thread-uuid-1", base_instructions="Base only.", context_builder=none_builder
         )
         assert msg.content == "Base only."
-        client.thread.get_user_context.assert_not_called()
+        client.thread.get_context.assert_not_called()

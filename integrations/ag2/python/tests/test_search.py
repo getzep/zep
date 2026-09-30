@@ -3,11 +3,14 @@ Tests for the pin-or-expose ``create_search_graph_tool`` /
 ``create_search_memory_tool`` tool schema (BREAKING in this version -- see
 the CHANGELOG).
 
-Every ``graph.search`` parameter (``scope``, ``reranker``, ``limit``,
-``mmr_lambda``, ``center_node_uuid``) is exposed to the model by default and
-can be pinned (fixed to a constant, hidden from the model) or hidden (removed
-from the schema without pinning; Zep's own default applies) at construction
-time. ``search_filters``/``bfs_origin_node_uuids`` are always constructor-only.
+Every search parameter (``scope``, ``reranker``, ``limit``, ``mmr_lambda``,
+``center_node_uuid``) is exposed to the model by default and can be pinned
+(fixed to a constant, hidden from the model) or hidden (removed from the
+schema without pinning; Zep's own default applies) at construction time.
+``filters``/``bfs_origin_node_uuids`` are always constructor-only.
+
+Zep v4 has one search method for each scope, so the ``scope`` selects the SDK
+method instead of becoming a request parameter.
 
 AG2's ``Tool``/``register_for_llm`` derives its schema from the wrapped
 function's typed signature (``inspect.signature`` + ``get_type_hints``),
@@ -28,25 +31,24 @@ from zep_cloud.client import AsyncZep
 
 from zep_ag2 import ZepAG2MemoryError, create_search_graph_tool, create_search_memory_tool
 
+GRAPH_UUID = "graph-uuid-1"
 
-def _make_mock_graph_results(
-    edges: list | None = None,
-    nodes: list | None = None,
-    episodes: list | None = None,
-) -> MagicMock:
-    r = MagicMock()
-    r.edges = edges or []
-    r.nodes = nodes or []
-    r.episodes = episodes or []
-    r.observations = []
-    r.thread_summaries = []
-    return r
+
+def _make_pager(items: list | None = None) -> MagicMock:
+    pager = MagicMock()
+    pager.items = items or []
+    return pager
 
 
 def _mock_zep_client() -> MagicMock:
     client = MagicMock(spec=AsyncZep)
     client.graph = MagicMock()
-    client.graph.search = AsyncMock(return_value=_make_mock_graph_results())
+    client.graph.search_edges = AsyncMock(return_value=_make_pager())
+    client.graph.search_nodes = AsyncMock(return_value=_make_pager())
+    client.graph.search_episodes = AsyncMock(return_value=_make_pager())
+    client.graph.search_observations = AsyncMock(return_value=_make_pager())
+    client.graph.search_thread_summaries = AsyncMock(return_value=_make_pager())
+    client.graph.get_context = AsyncMock(return_value=MagicMock(context=""))
     return client
 
 
@@ -57,14 +59,14 @@ def mock_zep_client() -> MagicMock:
 
 class TestSearchGraphToolExposedByDefault:
     def test_search_tool_exposes_params_by_default(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
         sig = inspect.signature(tool)
 
         for param_name in ("scope", "reranker", "limit", "mmr_lambda", "center_node_uuid"):
             assert param_name in sig.parameters, f"{param_name} should be exposed by default"
 
     def test_search_tool_six_scopes(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
         hints = get_type_hints(tool, include_extras=True)
         scope_hint = hints["scope"]
         # Annotated[Literal[...], description]
@@ -80,7 +82,7 @@ class TestSearchGraphToolExposedByDefault:
         }
 
     def test_search_tool_five_rerankers(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
         hints = get_type_hints(tool, include_extras=True)
         reranker_hint = hints["reranker"]
         literal_type = reranker_hint.__origin__
@@ -91,7 +93,7 @@ class TestSearchGraphToolExposedByDefault:
 class TestSearchGraphToolPinOrExpose:
     def test_search_tool_pinned_params_hidden_and_sent(self, mock_zep_client: MagicMock) -> None:
         tool = create_search_graph_tool(
-            mock_zep_client, user_id="u1", pinned_params={"scope": "nodes", "limit": 3}
+            mock_zep_client, GRAPH_UUID, pinned_params={"scope": "nodes", "limit": 3}
         )
         sig = inspect.signature(tool)
 
@@ -100,21 +102,21 @@ class TestSearchGraphToolPinOrExpose:
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
-        assert call_kwargs["scope"] == "nodes"
+        call_kwargs = mock_zep_client.graph.search_nodes.call_args.kwargs
         assert call_kwargs["limit"] == 3
+        mock_zep_client.graph.search_edges.assert_not_called()
 
     def test_search_tool_hidden_params_omitted_from_sdk_call(
         self, mock_zep_client: MagicMock
     ) -> None:
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1", hidden_params={"reranker"})
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID, hidden_params={"reranker"})
         sig = inspect.signature(tool)
 
         assert "reranker" not in sig.parameters
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
         assert "reranker" not in call_kwargs
 
     def test_search_tool_query_only_omits_unset_none_default_params(
@@ -123,16 +125,16 @@ class TestSearchGraphToolPinOrExpose:
         """mmr_lambda / center_node_uuid default to None; when unset by the
         caller they must be OMITTED from the graph.search call, never sent
         as explicit None."""
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
         assert "mmr_lambda" not in call_kwargs
         assert "center_node_uuid" not in call_kwargs
 
     def test_search_tool_legacy_args_pin(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1", scope="nodes", limit=7)
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID, scope="nodes", limit=7)
         sig = inspect.signature(tool)
 
         assert "scope" not in sig.parameters
@@ -140,65 +142,60 @@ class TestSearchGraphToolPinOrExpose:
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
-        assert call_kwargs["scope"] == "nodes"
+        call_kwargs = mock_zep_client.graph.search_nodes.call_args.kwargs
         assert call_kwargs["limit"] == 7
+        mock_zep_client.graph.search_edges.assert_not_called()
 
     def test_search_tool_unknown_pinned_param_raises(self, mock_zep_client: MagicMock) -> None:
         with pytest.raises(ValueError, match="Unknown pinned"):
-            create_search_graph_tool(mock_zep_client, user_id="u1", pinned_params={"bogus": "x"})
+            create_search_graph_tool(mock_zep_client, GRAPH_UUID, pinned_params={"bogus": "x"})
 
     def test_search_tool_unknown_hidden_param_raises(self, mock_zep_client: MagicMock) -> None:
         with pytest.raises(ValueError, match="Unknown hidden"):
-            create_search_graph_tool(mock_zep_client, user_id="u1", hidden_params={"bogus"})
+            create_search_graph_tool(mock_zep_client, GRAPH_UUID, hidden_params={"bogus"})
 
     def test_search_tool_constructor_only_search_filters(self, mock_zep_client: MagicMock) -> None:
         tool = create_search_graph_tool(
-            mock_zep_client, user_id="u1", search_filters={"node_labels": ["Person"]}
+            mock_zep_client, GRAPH_UUID, filters={"node_labels": ["Person"]}
         )
         sig = inspect.signature(tool)
-        assert "search_filters" not in sig.parameters
+        assert "filters" not in sig.parameters
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
-        assert call_kwargs["search_filters"] == {"node_labels": ["Person"]}
+        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
+        assert call_kwargs["filters"] == {"node_labels": ["Person"]}
 
     def test_search_tool_bfs_origin_node_uuids_constructor_only(
         self, mock_zep_client: MagicMock
     ) -> None:
         tool = create_search_graph_tool(
-            mock_zep_client, user_id="u1", bfs_origin_node_uuids=["uuid-1"]
+            mock_zep_client, GRAPH_UUID, bfs_origin_node_uuids=["uuid-1"]
         )
         sig = inspect.signature(tool)
         assert "bfs_origin_node_uuids" not in sig.parameters
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
         assert call_kwargs["bfs_origin_node_uuids"] == ["uuid-1"]
 
     def test_search_tool_model_supplied_values_forwarded(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
 
         tool(query="hello", scope="episodes", reranker="mmr", limit=20, mmr_lambda=0.5)
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
-        assert call_kwargs["scope"] == "episodes"
+        call_kwargs = mock_zep_client.graph.search_episodes.call_args.kwargs
         assert call_kwargs["reranker"] == "mmr"
         assert call_kwargs["limit"] == 20
         assert call_kwargs["mmr_lambda"] == 0.5
 
-    def test_search_tool_requires_id(self, mock_zep_client: MagicMock) -> None:
+    def test_search_tool_requires_graph_uuid(self, mock_zep_client: MagicMock) -> None:
         with pytest.raises(ZepAG2MemoryError):
-            create_search_graph_tool(mock_zep_client)
-
-    def test_search_tool_rejects_both_ids(self, mock_zep_client: MagicMock) -> None:
-        with pytest.raises(ZepAG2MemoryError):
-            create_search_graph_tool(mock_zep_client, user_id="u1", graph_id="g1")
+            create_search_graph_tool(mock_zep_client, "")
 
     def test_search_tool_is_sync_callable(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
         assert not inspect.iscoroutinefunction(tool)
         result = tool(query="hello")
         assert isinstance(result, str)
@@ -206,8 +203,8 @@ class TestSearchGraphToolPinOrExpose:
     def test_search_tool_handler_returns_error_string_never_raises(
         self, mock_zep_client: MagicMock
     ) -> None:
-        mock_zep_client.graph.search = AsyncMock(side_effect=Exception("boom"))
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+        mock_zep_client.graph.search_edges = AsyncMock(side_effect=Exception("boom"))
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
 
         result = tool(query="hello")
 
@@ -223,45 +220,45 @@ class TestSearchLimitClamp:
     ) -> None:
         with caplog.at_level(logging.WARNING, logger="zep_ag2.tools"):
             tool = create_search_graph_tool(
-                mock_zep_client, user_id="u1", pinned_params={"limit": 100}
+                mock_zep_client, GRAPH_UUID, pinned_params={"limit": 100}
             )
         assert any("clamping" in record.message for record in caplog.records)
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
         assert call_kwargs["limit"] == 50
 
     def test_pinned_limit_below_one_clamped_to_one(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1", pinned_params={"limit": 0})
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID, pinned_params={"limit": 0})
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
         assert call_kwargs["limit"] == 1
 
     def test_model_limit_clamped_at_call_time(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
 
         tool(query="hello", limit=200)
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
         assert call_kwargs["limit"] == 50
 
     def test_model_limit_below_one_clamped_to_one(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
 
         tool(query="hello", limit=-3)
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
         assert call_kwargs["limit"] == 1
 
     def test_search_memory_tool_pinned_limit_clamped(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1", limit=100)
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID, limit=100)
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
         assert call_kwargs["limit"] == 50
 
 
@@ -274,54 +271,54 @@ class TestAutoScopeReranker:
         with caplog.at_level(logging.WARNING, logger="zep_ag2.tools"):
             tool = create_search_graph_tool(
                 mock_zep_client,
-                user_id="u1",
+                GRAPH_UUID,
                 pinned_params={"scope": "auto", "reranker": "node_distance"},
             )
         assert any("node_distance" in record.message for record in caplog.records)
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
-        assert call_kwargs["scope"] == "auto"
+        call_kwargs = mock_zep_client.graph.get_context.call_args.kwargs
         assert "reranker" not in call_kwargs
+        mock_zep_client.graph.search_edges.assert_not_called()
 
     def test_model_auto_scope_drops_incompatible_reranker(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
 
         tool(query="hello", scope="auto", reranker="episode_mentions")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
-        assert call_kwargs["scope"] == "auto"
+        call_kwargs = mock_zep_client.graph.get_context.call_args.kwargs
         assert "reranker" not in call_kwargs
+        mock_zep_client.graph.search_edges.assert_not_called()
 
     def test_search_memory_tool_auto_scope_drops_incompatible_reranker(
         self, mock_zep_client: MagicMock
     ) -> None:
         tool = create_search_memory_tool(
             mock_zep_client,
-            user_id="u1",
+            GRAPH_UUID,
             pinned_params={"scope": "auto", "reranker": "episode_mentions"},
         )
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
-        assert call_kwargs["scope"] == "auto"
+        call_kwargs = mock_zep_client.graph.get_context.call_args.kwargs
         assert "reranker" not in call_kwargs
+        mock_zep_client.graph.search_edges.assert_not_called()
 
 
 class TestSearchMemoryToolPinOrExpose:
     """create_search_memory_tool follows the same pin-or-expose contract."""
 
     def test_search_memory_tool_exposes_params_by_default(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1")
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
         sig = inspect.signature(tool)
 
         for param_name in ("scope", "reranker", "limit", "mmr_lambda", "center_node_uuid"):
             assert param_name in sig.parameters
 
     def test_search_memory_tool_six_scopes(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1")
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
         hints = get_type_hints(tool, include_extras=True)
         literal_type = hints["scope"].__origin__
         assert set(literal_type.__args__) == {
@@ -337,33 +334,33 @@ class TestSearchMemoryToolPinOrExpose:
         self, mock_zep_client: MagicMock
     ) -> None:
         tool = create_search_memory_tool(
-            mock_zep_client, user_id="u1", pinned_params={"scope": "nodes"}
+            mock_zep_client, GRAPH_UUID, pinned_params={"scope": "nodes"}
         )
         sig = inspect.signature(tool)
         assert "scope" not in sig.parameters
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
-        assert call_kwargs["scope"] == "nodes"
+        mock_zep_client.graph.search_nodes.assert_called_once()
+        mock_zep_client.graph.search_edges.assert_not_called()
 
     def test_search_memory_tool_query_only_omits_unset_none_default_params(
         self, mock_zep_client: MagicMock
     ) -> None:
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1")
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
         assert "mmr_lambda" not in call_kwargs
         assert "center_node_uuid" not in call_kwargs
 
     def test_search_memory_tool_legacy_args_pin(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1", limit=9)
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID, limit=9)
         sig = inspect.signature(tool)
         assert "limit" not in sig.parameters
 
         tool(query="hello")
 
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
+        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
         assert call_kwargs["limit"] == 9

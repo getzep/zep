@@ -38,7 +38,13 @@ export ZEP_API_KEY="your-zep-cloud-api-key"
 
 # Required for examples that call an LLM
 export OPENAI_API_KEY="your-openai-api-key"
+
+# Required for ag2_tools_search.py, which reads an existing Zep user
+export ZEP_USER_UUID="uuid-of-an-existing-zep-user"
 ```
+
+The Zep v4 SDK sends requests to `https://api.getzep.com/api/v4` by default.
+Give the client an explicit `base_url` only when you use a different endpoint.
 
 ## 4. Run an example
 
@@ -50,9 +56,16 @@ Other runnable examples live in [`examples/`](examples):
 
 - `ag2_basic.py` — system message injection + memory tools
 - `ag2_graph.py` — knowledge graph with `ZepGraphMemoryManager`
-- `ag2_tools_search.py` — read-only search tool registration
+- `ag2_tools_search.py` — read-only search tool registration; needs `ZEP_USER_UUID`
 - `ag2_tools_full.py` — all tools across a multi-agent GroupChat
 - `manual_test.py` — end-to-end integration test against real APIs
+
+## Identifiers
+
+Zep v4 addresses every user, thread, and graph by a server-generated UUID. Use
+`create_user` and `create_thread` one time for each user, and store
+`user.uuid_`, `user.graph_uuid`, and `thread.uuid_` in your own database. The
+integration takes those UUIDs and does not resolve a name at run time.
 
 ## Next steps
 

@@ -9,6 +9,12 @@ from zep_crewai import ZepGraphStorage, ZepUserStorage
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
+# Zep v4 addresses every resource by a server-generated UUID. The values
+# below stand for the UUIDs that a create call returns.
+USER_UUID = "11111111-1111-1111-1111-111111111111"
+THREAD_UUID = "22222222-2222-2222-2222-222222222222"
+GRAPH_UUID = "33333333-3333-3333-3333-333333333333"
+
 
 def demonstrate_user_context():
     """Show what context looks like from user storage"""
@@ -27,10 +33,10 @@ def demonstrate_user_context():
     mock_zep.thread = MagicMock()
 
     # Example 1: Context Block from the user graph
-    logger.info("\n1. CONTEXT BLOCK - thread.get_user_context(thread_id)")
+    logger.info("\n1. CONTEXT BLOCK - thread.get_context(thread_uuid)")
     logger.info("-" * 60)
 
-    # Mock the Context Block response (Zep V3 auto-assembles this; no 'mode' arg)
+    # Mock the Context Block response (Zep assembles this; no 'mode' arg)
     mock_context_summary = MagicMock()
     mock_context_summary.context = """User Profile Summary:
 - Name: Sarah Chen
@@ -49,16 +55,17 @@ Key Facts:
 - Has visited 15+ coffee shops in Seattle area
 - Works in tech industry downtown"""
 
-    mock_zep.thread.get_user_context = MagicMock(return_value=mock_context_summary)
+    mock_zep.thread.get_context = MagicMock(return_value=mock_context_summary)
 
     # Create storage
     storage_summary = ZepUserStorage(
         client=mock_zep,
-        user_id="user_123",
-        thread_id="thread_456",
+        user_uuid=USER_UUID,
+        thread_uuid=THREAD_UUID,
+        graph_uuid=GRAPH_UUID,
     )
 
-    # Get context - this calls thread.get_user_context(thread_id)
+    # Get context - this calls thread.get_context(thread_uuid)
     context = storage_summary.get_context()
     logger.info("Context that CrewAI agent receives:")
     logger.info(context)
@@ -80,9 +87,14 @@ Key Facts:
 
 [2024-01-15 10:04] User: Thanks! I'll check it out this weekend. I usually get their Ethiopian single-origin beans."""
 
-    mock_zep.thread.get_user_context = MagicMock(return_value=mock_context_raw)
+    mock_zep.thread.get_context = MagicMock(return_value=mock_context_raw)
 
-    storage_raw = ZepUserStorage(client=mock_zep, user_id="user_123", thread_id="thread_456")
+    storage_raw = ZepUserStorage(
+        client=mock_zep,
+        user_uuid=USER_UUID,
+        thread_uuid=THREAD_UUID,
+        graph_uuid=GRAPH_UUID,
+    )
 
     context = storage_raw.get_context()
     logger.info("Context that CrewAI agent receives:")
@@ -116,39 +128,23 @@ def demonstrate_graph_context():
     mock_graph = MagicMock()
     mock_zep.graph = mock_graph
 
-    # Mock a single combined graph.search result (edges/nodes/episodes are read
-    # off the same GraphSearchResults object per scope).
-    mock_results = MagicMock()
-    mock_results.edges = [
-        MagicMock(
-            fact="Optimal water temperature for coffee brewing is 195-205°F",
-            valid_at="2024-01-10",
-            invalid_at=None,
-        ),
-        MagicMock(
-            fact="V60 dripper creates clean, bright coffee with paper filters",
-            valid_at="2024-01-10",
-            invalid_at=None,
-        ),
-    ]
-    mock_results.nodes = [
-        MagicMock(
-            name="Victrola Coffee",
-            summary="Local Seattle roaster known for direct trade relationships",
-        ),
-    ]
-    mock_results.episodes = [
-        MagicMock(
-            content="Customer visited Victrola Coffee and tried their new Ethiopian Yirgacheffe.",
-        )
-    ]
+    # Zep v4 assembles the graph Context Block on the server, so the mock
+    # returns the composed context of graph.get_context.
+    mock_context = MagicMock()
+    mock_context.context = """Facts:
+- Optimal water temperature for coffee brewing is 195-205°F (valid from 2024-01-10)
+- V60 dripper creates clean, bright coffee with paper filters (valid from 2024-01-10)
 
-    mock_graph.search = MagicMock(return_value=mock_results)
+Entities:
+- Victrola Coffee: Local Seattle roaster known for direct trade relationships
+
+Episodes:
+- Customer visited Victrola Coffee and tried their new Ethiopian Yirgacheffe."""
+
+    mock_graph.get_context = MagicMock(return_value=mock_context)
 
     # Create storage
-    storage = ZepGraphStorage(
-        client=mock_zep, graph_id="coffee_knowledge_graph", facts_limit=20, entity_limit=5
-    )
+    storage = ZepGraphStorage(client=mock_zep, graph_uuid=GRAPH_UUID, max_characters=4000)
 
     # Search the graph for a query (returns composed context)
     results = storage.search("coffee brewing techniques")
@@ -207,15 +203,15 @@ CrewAI agents receive context from Zep in these ways:
 
 1. User Storage (ZepUserStorage):
    - Retrieves user-specific context from conversation threads
-   - Returns Zep's auto-assembled Context Block (Zep V3 removed the 'mode' option)
+   - Returns Zep's auto-assembled Context Block
    - Context includes user profile, preferences, conversation history
-   - Directly uses thread.get_user_context() from Zep SDK
+   - Directly uses thread.get_context(thread_uuid) from the Zep SDK
 
 2. Graph Storage (ZepGraphStorage):
-   - Searches knowledge graphs for relevant information
-   - Combines edges (relationships), nodes (entities), and episodes (events)
-   - Uses compose_context_string() to format the context
-   - Supports parallel search across different graph components
+   - Retrieves a Context Block for a query from a knowledge graph
+   - Zep assembles the facts, the entities, and the episodes on the server
+   - Directly uses graph.get_context(graph_uuid) from the Zep SDK
+   - Accepts search filters and a maximum character count
 
 3. Search Filters:
    - Allow precise control over what data is searched

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+
+- **Breaking: the package targets the Zep v4 SDK (`zep-cloud==4.0.0a5`).** Zep v4 addresses every user, thread, and graph by a server-generated UUID. There is no support for the v3 SDK.
+- **Breaking: `ZepDeps` takes `user_uuid` and `thread_uuid` instead of `user_id` and `thread_id`, and takes a new optional `graph_uuid`.** The application creates the Zep resources one time, stores the returned UUIDs, and passes them to `ZepDeps`. The integration does not resolve a name to a UUID at run time.
+- **Breaking: `ContextInput` carries `user_uuid`, `thread_uuid`, and `graph_uuid` instead of `user_id` and `thread_id`.**
+- **Breaking: `ensure_user` and `ensure_thread` are replaced by `create_user` and `create_thread`.** A v4 create call does not carry an application identifier, so a create call is no longer idempotent and the "already exists" conflict path no longer applies. `create_user` returns the created `User`, which carries `uuid_` and `graph_uuid`. `create_thread` returns the created `Thread`, which carries `uuid_`. Both raise on failure. The `UserSetupHook` type and the `on_created` hook are removed.
+- **Breaking: the history processor no longer creates the Zep user or the thread lazily.** Both resources must exist before the first turn.
+- **Breaking: `create_zep_search_tool` takes `graph_uuid` instead of `graph_id`, and `filters` instead of `search_filters`.** The tool calls the v4 scope-specific search methods (`graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, `graph.search_thread_summaries`), and `scope="auto"` calls `graph.get_context`. Each call addresses the graph by UUID, from the `graph_uuid` constructor argument or from `ZepDeps.graph_uuid`.
+- The default context retrieval calls `thread.add_messages(thread_uuid, ..., return_context=True)` with the v4 `AddMessage` model.
+
 ## 0.2.1 (2026-07-29)
 
 ### Added

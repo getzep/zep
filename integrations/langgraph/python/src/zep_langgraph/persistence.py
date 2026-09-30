@@ -3,9 +3,12 @@ Message-persistence helpers for LangGraph nodes.
 
 These helpers wrap Zep's :meth:`thread.add_messages` so a graph node can persist
 a turn of conversation to the user graph. They accept either native Zep
-:class:`~zep_cloud.types.message.Message` objects or LangChain
+:class:`~zep_cloud.types.add_message.AddMessage` objects or LangChain
 :class:`~langchain_core.messages.BaseMessage` objects (which are converted), and
 they handle Zep's role enum, message-length limits, and graceful failure.
+
+Zep v4 addresses a thread by its server-generated UUID, so these helpers take a
+``thread_uuid``.
 
 Typical use inside an agent node::
 
@@ -15,7 +18,7 @@ Typical use inside an agent node::
         response = await llm.ainvoke(messages)
         await persist_messages(
             zep_client,
-            thread_id=state["thread_id"],
+            thread_uuid=state["thread_uuid"],
             messages=[state["messages"][-1], response],
             user_name="Alice Smith",
         )
@@ -33,14 +36,14 @@ from collections.abc import Sequence
 from typing import Any
 
 from langchain_core.messages import BaseMessage
-from zep_cloud import Message
+from zep_cloud import AddMessage
 from zep_cloud.client import AsyncZep, Zep
 
 logger = logging.getLogger(__name__)
 
 #: Maximum content length (characters) Zep accepts for a single message.
-#: Longer content is truncated before sending. Use ``graph.add`` for large
-#: documents instead of the thread API.
+#: Longer content is truncated before sending. Use ``graph.episode.add`` for
+#: large documents instead of the thread API.
 MAX_MESSAGE_CHARS = 4096
 
 #: Maximum number of messages Zep accepts in a single ``thread.add_messages``
@@ -75,7 +78,7 @@ _LC_ROLE_MAP: dict[str, str] = {
 }
 
 #: Role names recognised by the Zep thread API.
-_ZEP_ROLES = frozenset({"norole", "system", "assistant", "user", "function", "tool"})
+_ZEP_ROLES = frozenset({"system", "assistant", "user", "function", "tool"})
 
 
 def _coerce_content(content: Any) -> str:
@@ -96,26 +99,27 @@ def _coerce_content(content: Any) -> str:
 
 
 def to_zep_message(
-    message: BaseMessage | Message,
+    message: BaseMessage | AddMessage,
     *,
     user_name: str | None = None,
     assistant_name: str | None = None,
-) -> Message | None:
-    """Convert a LangChain or Zep message into a Zep :class:`Message`.
+) -> AddMessage | None:
+    """Convert a LangChain or Zep message into a Zep :class:`AddMessage`.
 
     Args:
         message: A LangChain :class:`~langchain_core.messages.BaseMessage` or an
-            already-constructed Zep :class:`~zep_cloud.types.message.Message`.
+            already-constructed Zep
+            :class:`~zep_cloud.types.add_message.AddMessage`.
         user_name: Optional display name applied to user-role messages that lack
             one. Passing the user's real name helps Zep resolve identity.
         assistant_name: Optional display name applied to assistant-role messages
             that lack one.
 
     Returns:
-        A Zep :class:`Message`, or ``None`` if the message has no text content
-        (e.g. an assistant message that only carries tool calls).
+        A Zep :class:`AddMessage`, or ``None`` if the message has no text
+        content (e.g. an assistant message that only carries tool calls).
     """
-    if isinstance(message, Message):
+    if isinstance(message, AddMessage):
         # Native Zep messages take the same content path the LangChain branch
         # uses (the README/example pass these), so over-long content is truncated
         # rather than rejected with a 400 by Zep.
@@ -139,10 +143,10 @@ def to_zep_message(
         elif role == "assistant":
             name = assistant_name
 
-    return Message(role=role, content=content, name=name)
+    return AddMessage(role=role, content=content, name=name)
 
 
-def _chunk_messages(messages: Sequence[Message]) -> list[list[Message]]:
+def _chunk_messages(messages: Sequence[AddMessage]) -> list[list[AddMessage]]:
     """Split messages into chunks of at most :data:`MAX_MESSAGES_PER_CALL`.
 
     Zep rejects a ``thread.add_messages`` call carrying more than
@@ -165,12 +169,12 @@ def _chunk_messages(messages: Sequence[Message]) -> list[list[Message]]:
 
 
 def to_zep_messages(
-    messages: Sequence[BaseMessage | Message],
+    messages: Sequence[BaseMessage | AddMessage],
     *,
     user_name: str | None = None,
     assistant_name: str | None = None,
-) -> list[Message]:
-    """Convert a sequence of LangChain/Zep messages to Zep :class:`Message` objects.
+) -> list[AddMessage]:
+    """Convert a sequence of LangChain/Zep messages to Zep :class:`AddMessage` objects.
 
     Messages with no text content are dropped.
 
@@ -180,9 +184,10 @@ def to_zep_messages(
         assistant_name: Optional display name for assistant-role messages.
 
     Returns:
-        A list of Zep :class:`Message` objects (possibly shorter than the input).
+        A list of Zep :class:`AddMessage` objects (possibly shorter than the
+        input).
     """
-    result: list[Message] = []
+    result: list[AddMessage] = []
     for msg in messages:
         zep_msg = to_zep_message(
             msg,
@@ -196,8 +201,8 @@ def to_zep_messages(
 
 async def persist_messages(
     zep_client: AsyncZep,
-    thread_id: str,
-    messages: Sequence[BaseMessage | Message],
+    thread_uuid: str,
+    messages: Sequence[BaseMessage | AddMessage],
     *,
     user_name: str | None = None,
     assistant_name: str | None = None,
@@ -211,7 +216,7 @@ async def persist_messages(
 
     Args:
         zep_client: An initialised :class:`~zep_cloud.client.AsyncZep` client.
-        thread_id: The Zep thread to add the messages to.
+        thread_uuid: The UUID of the Zep thread to add the messages to.
         messages: The messages for this turn (LangChain or Zep messages).
         user_name: Optional display name for user-role messages without a name.
         assistant_name: Optional display name for assistant-role messages.
@@ -231,7 +236,7 @@ async def persist_messages(
         assistant_name=assistant_name,
     )
     if not zep_messages:
-        logger.debug("No persistable messages for thread %s -- skipping", thread_id)
+        logger.debug("No persistable messages for thread %s -- skipping", thread_uuid)
         return None
 
     chunks = _chunk_messages(zep_messages)
@@ -242,7 +247,7 @@ async def persist_messages(
         want_context = return_context and index == len(chunks) - 1
         try:
             response = await zep_client.thread.add_messages(
-                thread_id,
+                thread_uuid,
                 messages=chunk,
                 ignore_roles=ignore_roles,
                 return_context=want_context,
@@ -252,7 +257,7 @@ async def persist_messages(
                 "Failed to persist %d message(s) to Zep thread %s "
                 "(chunk %d/%d); attempting remaining chunks",
                 len(chunk),
-                thread_id,
+                thread_uuid,
                 index + 1,
                 len(chunks),
                 exc_info=True,
@@ -270,8 +275,8 @@ async def persist_messages(
 
 def persist_messages_sync(
     zep_client: Zep,
-    thread_id: str,
-    messages: Sequence[BaseMessage | Message],
+    thread_uuid: str,
+    messages: Sequence[BaseMessage | AddMessage],
     *,
     user_name: str | None = None,
     assistant_name: str | None = None,
@@ -282,7 +287,7 @@ def persist_messages_sync(
 
     Args:
         zep_client: An initialised synchronous :class:`~zep_cloud.client.Zep` client.
-        thread_id: The Zep thread to add the messages to.
+        thread_uuid: The UUID of the Zep thread to add the messages to.
         messages: The messages for this turn (LangChain or Zep messages).
         user_name: Optional display name for user-role messages without a name.
         assistant_name: Optional display name for assistant-role messages.
@@ -299,7 +304,7 @@ def persist_messages_sync(
         assistant_name=assistant_name,
     )
     if not zep_messages:
-        logger.debug("No persistable messages for thread %s -- skipping", thread_id)
+        logger.debug("No persistable messages for thread %s -- skipping", thread_uuid)
         return None
 
     chunks = _chunk_messages(zep_messages)
@@ -310,7 +315,7 @@ def persist_messages_sync(
         want_context = return_context and index == len(chunks) - 1
         try:
             response = zep_client.thread.add_messages(
-                thread_id,
+                thread_uuid,
                 messages=chunk,
                 ignore_roles=ignore_roles,
                 return_context=want_context,
@@ -320,7 +325,7 @@ def persist_messages_sync(
                 "Failed to persist %d message(s) to Zep thread %s "
                 "(chunk %d/%d); attempting remaining chunks",
                 len(chunk),
-                thread_id,
+                thread_uuid,
                 index + 1,
                 len(chunks),
                 exc_info=True,

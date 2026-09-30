@@ -6,11 +6,13 @@ including graph and user memory operations.
 
 ``ZepSearchTool``/``create_search_tool`` (BREAKING in this version -- see the
 CHANGELOG) follow the pin-or-expose pattern shared by the other Zep framework
-integrations: every ``graph.search`` parameter (``scope``, ``reranker``,
+integrations: every graph search parameter (``scope``, ``reranker``,
 ``limit``, ``mmr_lambda``, ``center_node_uuid``) is exposed to the model by
 default and can be pinned (fixed to a constant, hidden from the model) or
 hidden (removed from the schema without pinning; Zep's own default applies)
-at construction time. CrewAI's ``BaseTool`` (like LangChain's
+at construction time. Zep v4 addresses a graph by UUID and gives one search
+method for each scope, so ``scope`` selects the SDK method that the tool
+calls. CrewAI's ``BaseTool`` (like LangChain's
 ``StructuredTool``) uses a pydantic ``args_schema`` for its tool schema, so
 pin-or-expose is implemented the same way as ``zep_langgraph.tools``: the
 exposed schema is built dynamically with ``pydantic.create_model`` and
@@ -20,12 +22,15 @@ assigned to the instance's ``args_schema``.
 :mod:`zep_crewai.limits`).
 """
 
+import itertools
 import logging
 from typing import Any, Literal
 
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field, create_model
 from zep_cloud.client import Zep
+from zep_cloud.types import Edge, Episode, Node, Observation, ThreadSummary
+from zep_cloud.types.graph_context_response import GraphContextResponse
 
 from .limits import truncate_graph_data
 
@@ -41,8 +46,12 @@ SearchScope = Literal[
 ]
 SearchReranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
 
-#: Zep caps ``graph.search`` ``limit`` at 50; larger values are rejected.
+#: Zep caps a search ``limit`` at 50; larger values are rejected.
 MAX_SEARCH_LIMIT = 50
+
+#: The item types that the v4 search methods return.
+SearchItems = list[Edge] | list[Node] | list[Episode] | list[Observation] | list[ThreadSummary]
+
 
 #: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
 #: retrieval and applies its own internal cross-scope rerank).
@@ -58,8 +67,8 @@ DEFAULT_SEARCH_TOOL_DESCRIPTION = "Search Zep memory storage for relevant inform
 # ---------------------------------------------------------------------------
 # Parameter definitions
 # ---------------------------------------------------------------------------
-# Each entry describes a graph.search parameter that can be pinned or exposed
-# to the model.  Keys match the Zep SDK's ``graph.search()`` kwargs.  Model-
+# Each entry describes a graph search parameter that can be pinned or exposed
+# to the model.  Keys match the Zep SDK's search kwargs.  Model-
 # exposed by default; hidden only when pinned or explicitly listed in
 # ``hidden_params``.  ``annotation`` is the typed annotation used to build the
 # dynamic pydantic args_schema.
@@ -203,7 +212,6 @@ def _build_search_kwargs(
     *,
     pinned: dict[str, Any],
     hidden: set[str],
-    target: dict[str, str],
     constructor_only: dict[str, Any],
 ) -> dict[str, Any]:
     """Merge pinned / model-provided / default parameters for one search call.
@@ -216,7 +224,7 @@ def _build_search_kwargs(
     default applies instead of an explicit null on the wire.
     """
     query = str(call_args.get("query", ""))[:400]
-    search_kwargs: dict[str, Any] = {"query": query, **target}
+    search_kwargs: dict[str, Any] = {"query": query}
 
     for param_name in _SEARCH_PARAM_SPECS:
         if param_name in pinned:
@@ -259,40 +267,36 @@ def _build_search_kwargs(
     return search_kwargs
 
 
-def _format_results(result: Any, scope: str) -> str:
-    """Format ``GraphSearchResults`` into text for the model."""
-    if scope == "auto":
-        context: str | None = getattr(result, "context", None)
-        if context and context.strip():
-            return context.strip()
+def _format_named_summary(name: str | None, summary: str | None, fallback: str) -> str:
+    """Format one entity-like item as a single line."""
+    label = name or fallback
+    return f"- {label}: {summary}" if summary else f"- {label}"
 
+
+def _format_context(response: GraphContextResponse) -> str:
+    """Format the Context Block that scope ``auto`` returns."""
+    context = response.context
+    if context and context.strip():
+        return context.strip()
+    return "No results found."
+
+
+def _format_items(items: SearchItems) -> str:
+    """Format the items of one search scope into text for the model."""
     parts: list[str] = []
-    if scope == "edges":
-        for edge in getattr(result, "edges", None) or []:
-            fact = getattr(edge, "fact", None)
-            if fact:
-                parts.append(f"- {fact}")
-    elif scope == "nodes":
-        for node in getattr(result, "nodes", None) or []:
-            name = getattr(node, "name", None) or "Entity"
-            summary = getattr(node, "summary", None)
-            parts.append(f"- {name}: {summary}" if summary else f"- {name}")
-    elif scope == "episodes":
-        for episode in getattr(result, "episodes", None) or []:
-            content = getattr(episode, "content", None)
-            if content:
-                parts.append(f"- {content}")
-    elif scope == "observations":
-        for observation in getattr(result, "observations", None) or []:
-            name = getattr(observation, "name", None) or "Observation"
-            summary = getattr(observation, "summary", None)
-            parts.append(f"- {name}: {summary}" if summary else f"- {name}")
-    elif scope == "thread_summaries":
-        for thread_summary in getattr(result, "thread_summaries", None) or []:
-            summary = getattr(thread_summary, "summary", None)
-            text = summary or getattr(thread_summary, "name", None)
-            if text:
-                parts.append(f"- {text}")
+    for item in items:
+        if isinstance(item, Edge):
+            if item.fact:
+                parts.append(f"- {item.fact}")
+        elif isinstance(item, Node):
+            parts.append(_format_named_summary(item.name, item.summary, "Entity"))
+        elif isinstance(item, Episode):
+            if item.content:
+                parts.append(f"- {item.content}")
+        elif isinstance(item, Observation):
+            parts.append(_format_named_summary(item.name, item.summary, "Observation"))
+        elif item.summary:
+            parts.append(f"- {item.summary}")
 
     if parts:
         return "\n".join(parts)
@@ -310,9 +314,10 @@ class ZepSearchTool(BaseTool):
     """
     Tool for searching Zep memory storage.
 
-    Can search either graph memory or user memory depending on initialization.
+    The tool is bound to one graph. For a user graph, pass the ``graph_uuid``
+    of the user.
 
-    **Pin-or-expose.** Every ``graph.search`` parameter (``scope``,
+    **Pin-or-expose.** Every graph search parameter (``scope``,
     ``reranker``, ``limit``, ``mmr_lambda``, ``center_node_uuid``) is exposed
     to the model in the tool's ``args_schema`` by default, with the
     documented defaults in :data:`_SEARCH_PARAM_SPECS`. Use ``pinned_params``
@@ -332,8 +337,7 @@ class ZepSearchTool(BaseTool):
     def __init__(
         self,
         client: Zep,
-        graph_id: str | None = None,
-        user_id: str | None = None,
+        graph_uuid: str,
         *,
         pinned_params: dict[str, Any] | None = None,
         hidden_params: set[str] | None = None,
@@ -348,16 +352,16 @@ class ZepSearchTool(BaseTool):
         **kwargs: Any,
     ):
         """
-        Initialize search tool bound to either a graph or user.
+        Initialize a search tool bound to one graph.
 
         Args:
             client: Zep client instance
-            graph_id: Graph ID for generic knowledge graph search
-            user_id: User ID for user-specific graph search
-            pinned_params: Optional mapping of ``graph.search`` parameter name
+            graph_uuid: The UUID of the graph to search. For a user graph,
+                pass the ``graph_uuid`` of the user.
+            pinned_params: Optional mapping of a search parameter name
                 to a fixed value. Pinned parameters are hidden from the
                 model's ``args_schema`` and always sent with the given value.
-            hidden_params: Optional set of ``graph.search`` parameter names to
+            hidden_params: Optional set of search parameter names to
                 hide from the model's ``args_schema`` without pinning them --
                 omitted from the SDK call so Zep's own default takes effect.
             search_filters: Optional Zep search filters (constructor-only).
@@ -369,15 +373,12 @@ class ZepSearchTool(BaseTool):
             **kwargs: Additional configuration
 
         Raises:
-            ValueError: If neither or both of ``graph_id``/``user_id`` are
-                given, or ``pinned_params``/``hidden_params`` (or a legacy
-                alias) contains an unknown parameter name.
+            ValueError: If ``graph_uuid`` is empty, or
+                ``pinned_params``/``hidden_params`` (or a legacy alias)
+                contains an unknown parameter name.
         """
-        if not graph_id and not user_id:
-            raise ValueError("Either graph_id or user_id must be provided")
-
-        if graph_id and user_id:
-            raise ValueError("Only one of graph_id or user_id should be provided")
+        if not graph_uuid:
+            raise ValueError("graph_uuid must be provided")
 
         pinned, hidden = _resolve_pinned_and_hidden(
             pinned_params=pinned_params,
@@ -389,19 +390,13 @@ class ZepSearchTool(BaseTool):
 
         constructor_only: dict[str, Any] = {}
         if search_filters is not None:
-            constructor_only["search_filters"] = search_filters
+            constructor_only["filters"] = search_filters
         if bfs_origin_node_uuids is not None:
             constructor_only["bfs_origin_node_uuids"] = bfs_origin_node_uuids
 
-        # Update description based on target
-        if graph_id:
-            kwargs.setdefault(
-                "description", f"Search Zep graph '{graph_id}' for relevant information"
-            )
-        else:
-            kwargs.setdefault(
-                "description", f"Search user '{user_id}' memories for relevant information"
-            )
+        kwargs.setdefault(
+            "description", f"Search Zep graph '{graph_uuid}' for relevant information"
+        )
 
         kwargs["args_schema"] = _build_args_schema(pinned=pinned, hidden=hidden)
 
@@ -409,20 +404,10 @@ class ZepSearchTool(BaseTool):
 
         # Store as private attributes to avoid Pydantic validation
         self._client = client
-        self._graph_id = graph_id
-        self._user_id = user_id
+        self._graph_uuid = graph_uuid
         self._pinned = pinned
         self._hidden = hidden
         self._constructor_only = constructor_only
-        # Exactly one of graph_id/user_id is set (validated above), so the
-        # target value is always a str.
-        target: dict[str, str]
-        if graph_id:
-            target = {"graph_id": graph_id}
-        else:
-            assert user_id is not None  # noqa: S101 - narrowing, validated above
-            target = {"user_id": user_id}
-        self._target = target
 
     @property
     def client(self) -> Zep:
@@ -430,14 +415,9 @@ class ZepSearchTool(BaseTool):
         return self._client
 
     @property
-    def graph_id(self) -> str | None:
-        """Get the graph ID."""
-        return self._graph_id
-
-    @property
-    def user_id(self) -> str | None:
-        """Get the user ID."""
-        return self._user_id
+    def graph_uuid(self) -> str:
+        """Get the graph UUID."""
+        return self._graph_uuid
 
     def _run(self, **kwargs: Any) -> str:
         """
@@ -459,64 +439,93 @@ class ZepSearchTool(BaseTool):
             kwargs,
             pinned=self._pinned,
             hidden=self._hidden,
-            target=self._target,
             constructor_only=self._constructor_only,
         )
 
+        effective_scope = str(search_kwargs.pop("scope", "edges"))
+
         try:
-            result = self._client.graph.search(**search_kwargs)
+            if effective_scope == "auto":
+                context_kwargs: dict[str, Any] = {"query": search_kwargs["query"]}
+                if "filters" in search_kwargs:
+                    context_kwargs["filters"] = search_kwargs["filters"]
+                formatted = _format_context(
+                    self._client.graph.get_context(self._graph_uuid, **context_kwargs)
+                )
+            else:
+                formatted = _format_items(self._search(effective_scope, search_kwargs))
         except Exception as e:
             error_msg = f"Error searching Zep memory: {e}"
             logger.error(error_msg)
             return error_msg
 
-        effective_scope = str(search_kwargs.get("scope", "edges"))
-        formatted = _format_results(result, effective_scope)
         logger.info(f"Zep search for query: {query}")
         return formatted
+
+    def _search(self, scope: str, search_kwargs: dict[str, Any]) -> SearchItems:
+        """Call the v4 search method for ``scope`` and read its pager.
+
+        v4 gives one search method for each scope, and each method returns a
+        pager. The tool reads up to ``limit`` items from that pager.
+        """
+        graph = self._client.graph
+        limit = int(search_kwargs.get("limit", MAX_SEARCH_LIMIT))
+
+        if scope == "nodes":
+            return list(
+                itertools.islice(graph.search_nodes(self._graph_uuid, **search_kwargs), limit)
+            )
+        if scope == "episodes":
+            return list(
+                itertools.islice(graph.search_episodes(self._graph_uuid, **search_kwargs), limit)
+            )
+        if scope == "observations":
+            return list(
+                itertools.islice(
+                    graph.search_observations(self._graph_uuid, **search_kwargs), limit
+                )
+            )
+        if scope == "thread_summaries":
+            return list(
+                itertools.islice(
+                    graph.search_thread_summaries(self._graph_uuid, **search_kwargs), limit
+                )
+            )
+        return list(itertools.islice(graph.search_edges(self._graph_uuid, **search_kwargs), limit))
 
 
 class ZepAddDataTool(BaseTool):
     """
     Tool for adding data to Zep memory storage.
 
-    Can add data to either graph memory or user memory depending on initialization.
+    The tool is bound to one graph. For a user graph, pass the ``graph_uuid``
+    of the user.
     """
 
     name: str = "Zep Add Data"
     description: str = "Add data to Zep memory storage"
     args_schema: type[BaseModel] = AddGraphDataInput
 
-    def __init__(
-        self, client: Zep, graph_id: str | None = None, user_id: str | None = None, **kwargs: Any
-    ):
+    def __init__(self, client: Zep, graph_uuid: str, **kwargs: Any):
         """
-        Initialize add data tool bound to either a graph or user.
+        Initialize an add data tool bound to one graph.
 
         Args:
             client: Zep client instance
-            graph_id: Graph ID for generic knowledge graph
-            user_id: User ID for user-specific graph
+            graph_uuid: The UUID of the graph. For a user graph, pass the
+                ``graph_uuid`` of the user.
             **kwargs: Additional configuration
         """
-        if not graph_id and not user_id:
-            raise ValueError("Either graph_id or user_id must be provided")
+        if not graph_uuid:
+            raise ValueError("graph_uuid must be provided")
 
-        if graph_id and user_id:
-            raise ValueError("Only one of graph_id or user_id should be provided")
-
-        # Update description based on target
-        if graph_id:
-            kwargs["description"] = f"Add data to Zep graph '{graph_id}'"
-        else:
-            kwargs["description"] = f"Add data to user '{user_id}' memory"
+        kwargs["description"] = f"Add data to Zep graph '{graph_uuid}'"
 
         super().__init__(**kwargs)
 
         # Store as private attributes to avoid Pydantic validation
         self._client = client
-        self._graph_id = graph_id
-        self._user_id = user_id
+        self._graph_uuid = graph_uuid
 
     @property
     def client(self) -> Zep:
@@ -524,14 +533,9 @@ class ZepAddDataTool(BaseTool):
         return self._client
 
     @property
-    def graph_id(self) -> str | None:
-        """Get the graph ID."""
-        return self._graph_id
-
-    @property
-    def user_id(self) -> str | None:
-        """Get the user ID."""
-        return self._user_id
+    def graph_uuid(self) -> str:
+        """Get the graph UUID."""
+        return self._graph_uuid
 
     def _run(self, data: str, data_type: str = "text") -> str:
         """
@@ -551,21 +555,10 @@ class ZepAddDataTool(BaseTool):
 
             truncated_data = truncate_graph_data(data)
 
-            if self._graph_id:
-                # Add to graph memory
-                self._client.graph.add(graph_id=self._graph_id, type=data_type, data=truncated_data)
+            self._client.graph.episode.add(self._graph_uuid, type=data_type, data=truncated_data)
 
-                success_msg = f"Successfully added {data_type} data to graph '{self._graph_id}'"
-                logger.debug(f"Added data to graph {self._graph_id}: {data[:100]}...")
-
-            else:
-                # Add to user graph memory
-                self._client.graph.add(user_id=self._user_id, type=data_type, data=truncated_data)
-
-                success_msg = (
-                    f"Successfully added {data_type} data to user '{self._user_id}' memory"
-                )
-                logger.debug(f"Added data to user {self._user_id}: {data[:100]}...")
+            success_msg = f"Successfully added {data_type} data to graph '{self._graph_uuid}'"
+            logger.debug(f"Added data to graph {self._graph_uuid}: {data[:100]}...")
 
             return success_msg
 
@@ -577,8 +570,7 @@ class ZepAddDataTool(BaseTool):
 
 def create_search_tool(
     client: Zep,
-    graph_id: str | None = None,
-    user_id: str | None = None,
+    graph_uuid: str,
     *,
     pinned_params: dict[str, Any] | None = None,
     hidden_params: set[str] | None = None,
@@ -595,9 +587,9 @@ def create_search_tool(
 
     Args:
         client: Zep client instance
-        graph_id: Optional graph ID for generic knowledge graph
-        user_id: Optional user ID for user-specific graph
-        pinned_params: Optional mapping of ``graph.search`` parameter name to
+        graph_uuid: The UUID of the graph to search. For a user graph, pass
+            the ``graph_uuid`` of the user.
+        pinned_params: Optional mapping of a search parameter name to
             a fixed value (hidden from the model, always sent).
         hidden_params: Optional set of parameter names to hide from the model
             without pinning (omitted from the SDK call).
@@ -612,13 +604,12 @@ def create_search_tool(
         ZepSearchTool instance
 
     Raises:
-        ValueError: If neither or both IDs are provided, or an unknown
-            pinned/hidden parameter is given.
+        ValueError: If ``graph_uuid`` is empty, or an unknown pinned/hidden
+            parameter is given.
     """
     return ZepSearchTool(
         client=client,
-        graph_id=graph_id,
-        user_id=user_id,
+        graph_uuid=graph_uuid,
         pinned_params=pinned_params,
         hidden_params=hidden_params,
         search_filters=search_filters,
@@ -629,21 +620,19 @@ def create_search_tool(
     )
 
 
-def create_add_data_tool(
-    client: Zep, graph_id: str | None = None, user_id: str | None = None
-) -> ZepAddDataTool:
+def create_add_data_tool(client: Zep, graph_uuid: str) -> ZepAddDataTool:
     """
     Create an add data tool bound to a Zep client.
 
     Args:
         client: Zep client instance
-        graph_id: Optional graph ID for generic knowledge graph
-        user_id: Optional user ID for user-specific graph
+        graph_uuid: The UUID of the graph. For a user graph, pass the
+            ``graph_uuid`` of the user.
 
     Returns:
         ZepAddDataTool instance
 
     Raises:
-        ValueError: If neither or both IDs are provided
+        ValueError: If ``graph_uuid`` is empty
     """
-    return ZepAddDataTool(client=client, graph_id=graph_id, user_id=user_id)
+    return ZepAddDataTool(client=client, graph_uuid=graph_uuid)

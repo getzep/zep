@@ -30,6 +30,10 @@ pip install zep-langgraph
 pip install langchain-openai
 ```
 
+This package targets the Zep v4 SDK, which is a pre-release. To install the
+SDK on its own, use `pip install --pre "zep-cloud==4.0.0a5"` or
+`uv add "zep-cloud==4.0.0a5"`.
+
 Or, to work from the repository with `uv`:
 
 ```bash
@@ -38,7 +42,7 @@ cd zep/integrations/langgraph/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `langgraph>=1.2.5`, `zep-cloud>=3.23.0`.
+Requirements: Python 3.11+, `langgraph>=1.2.5`, `zep-cloud==4.0.0a5`.
 `langgraph` pulls in `langchain-core`, which provides the message and tool types
 this package uses.
 
@@ -48,6 +52,19 @@ this package uses.
 export ZEP_API_KEY="your-zep-api-key"
 export OPENAI_API_KEY="your-openai-api-key"
 ```
+
+The SDK sends requests to the Zep v4 API at `https://api.getzep.com/api/v4` by
+default. Pass `base_url` to `Zep` or `AsyncZep` only if you must use a
+different endpoint.
+
+## 4a. Identifiers in Zep v4
+
+Zep v4 addresses every user, thread, and graph by a server-generated UUID. A
+create call does not take an application identifier: it returns the object,
+and you read `User.uuid_`, `User.graph_uuid`, and `Thread.uuid_` from the
+response. Store those UUIDs in your own database and pass them to the
+integration on every turn. The integration never resolves an application
+identifier at run time.
 
 ## 5. Run the example
 
@@ -66,7 +83,7 @@ python examples/react_agent.py
 
 The example:
 
-1. Creates a Zep user and thread.
+1. Creates a Zep user and a thread, and reads their UUIDs from the responses.
 2. Seeds facts about the user across two turns.
 3. Waits for Zep to build the knowledge graph (ingestion is asynchronous).
 4. Asks recall questions — the agent answers using facts fused into the user's
@@ -77,6 +94,9 @@ To see the secondary `ZepStore` path (a `BaseStore` backed by Zep), run:
 ```bash
 uv run python examples/store_agent.py   # only needs ZEP_API_KEY
 ```
+
+That example creates a standalone graph and gives `ZepStore` the returned
+`Graph.uuid_`.
 
 ## 6. Run the tests
 

@@ -8,7 +8,6 @@ and conversation threads.
 import os
 import sys
 import time
-import uuid
 
 from crewai import Agent, Crew, Process, Task
 from zep_cloud.client import Zep
@@ -30,47 +29,38 @@ def main():
     print("\n🤖 CrewAI + Zep User Storage Example")
     print("=" * 60)
 
-    # Set up user and thread
-    user_id = f"alice_{uuid.uuid4().hex[:8]}"
-    thread_id = f"project_planning_{uuid.uuid4().hex[:8]}"
-
-    print(f"👤 User ID: {user_id}")
-    print(f"🧵 Thread ID: {thread_id}")
-
-    # Create user in Zep
+    # Create the user. Zep v4 gives every user a server-generated UUID and a
+    # user graph UUID. The application stores both UUIDs in its own database.
     print("\n👥 Setting up user profile...")
-    try:
-        zep_client.user.add(
-            user_id=user_id,
-            first_name="Alice",
-            last_name="Johnson",
-            email="alice.johnson@techcorp.com",
-            metadata={
-                "role": "Senior Product Manager",
-                "department": "Product Development",
-                "location": "San Francisco",
-                "years_experience": 8,
-            },
-        )
-        print("✅ User profile created")
-    except Exception as e:
-        if "already exists" in str(e).lower():
-            print("✅ User already exists")
-        else:
-            print(f"⚠️  User creation issue: {e}")
+    user = zep_client.user.create(
+        first_name="Alice",
+        last_name="Johnson",
+        email="alice.johnson@techcorp.com",
+        metadata={
+            "role": "Senior Product Manager",
+            "department": "Product Development",
+            "location": "San Francisco",
+            "years_experience": 8,
+        },
+    )
+    user_uuid = user.uuid_ or ""
+    graph_uuid = user.graph_uuid or ""
+    print("✅ User profile created")
 
     # Create thread for conversation
-    try:
-        zep_client.thread.create(user_id=user_id, thread_id=thread_id)
-        print("✅ Conversation thread created")
-    except Exception as e:
-        print(f"⚠️  Thread creation issue: {e}")
+    thread = zep_client.thread.create(user_uuid=user_uuid)
+    thread_uuid = thread.uuid_ or ""
+    print("✅ Conversation thread created")
+
+    print(f"👤 User UUID: {user_uuid}")
+    print(f"🧵 Thread UUID: {thread_uuid}")
 
     # Initialize user storage with thread
     user_storage = ZepUserStorage(
         client=zep_client,
-        user_id=user_id,
-        thread_id=thread_id,
+        user_uuid=user_uuid,
+        thread_uuid=thread_uuid,
+        graph_uuid=graph_uuid,
     )
 
     # Save user context and preferences
@@ -144,7 +134,7 @@ def main():
     time.sleep(20)
 
     # Give the agents a Zep search tool so they can recall Alice's context.
-    search_tool = create_search_tool(zep_client, user_id=user_id)
+    search_tool = create_search_tool(zep_client, graph_uuid=graph_uuid)
 
     # Create specialized agents
     project_advisor = Agent(

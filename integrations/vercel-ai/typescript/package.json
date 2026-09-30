@@ -59,7 +59,7 @@
     "zod": "^3.25.0 || ^4.0.0"
   },
   "dependencies": {
-    "@getzep/zep-cloud": "^3.23.0"
+    "@getzep/zep-cloud": "^4.0.0-alpha.5"
   },
   "devDependencies": {
     "@ai-sdk/openai": "^3.0.0",

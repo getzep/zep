@@ -14,15 +14,15 @@ def test_package_import() -> None:
 def test_public_exports() -> None:
     from zep_strands import (
         ZepMemoryStore,
+        create_thread,
+        create_user,
         create_zep_search_tool,
-        ensure_thread,
-        ensure_user,
     )
 
     assert ZepMemoryStore is not None
     assert create_zep_search_tool is not None
-    assert ensure_user is not None
-    assert ensure_thread is not None
+    assert create_user is not None
+    assert create_thread is not None
 
 
 class TestPackageMetadata:
@@ -44,8 +44,8 @@ class TestZepMemoryStoreInit:
 
         store = ZepMemoryStore(
             zep_client=MagicMock(),
-            user_id="u1",
-            thread_id="t1",
+            user_uuid="u1",
+            thread_uuid="t1",
             first_name="Jane",
             last_name="Smith",
         )
@@ -60,55 +60,55 @@ class TestZepMemoryStoreInit:
 
         store = ZepMemoryStore(
             zep_client=MagicMock(),
-            graph_id="g1",
+            graph_uuid="g1",
             writable=True,
         )
-        assert store.graph_id == "g1"
+        assert store.graph_uuid == "g1"
         # No thread → no default server-side extraction.
         assert store.extraction is None
 
     def test_rejects_neither_scope(self) -> None:
         from zep_strands import ZepMemoryStore
 
-        with pytest.raises(ValueError, match="user_id or graph_id"):
+        with pytest.raises(ValueError, match="user_uuid or graph_uuid"):
             ZepMemoryStore(zep_client=MagicMock())
 
     def test_rejects_both_scopes(self) -> None:
         from zep_strands import ZepMemoryStore
 
         with pytest.raises(ValueError, match="only one"):
-            ZepMemoryStore(zep_client=MagicMock(), user_id="u", graph_id="g")
+            ZepMemoryStore(zep_client=MagicMock(), user_uuid="u", graph_uuid="g")
 
     def test_rejects_empty_name(self) -> None:
         from zep_strands import ZepMemoryStore
 
         with pytest.raises(ValueError, match="name"):
-            ZepMemoryStore(zep_client=MagicMock(), user_id="u", name="  ")
+            ZepMemoryStore(zep_client=MagicMock(), user_uuid="u", name="  ")
 
     def test_rejects_invalid_max_search_results(self) -> None:
         from zep_strands import ZepMemoryStore
 
         with pytest.raises(ValueError, match="max_search_results"):
-            ZepMemoryStore(zep_client=MagicMock(), user_id="u", max_search_results=0)
+            ZepMemoryStore(zep_client=MagicMock(), user_uuid="u", max_search_results=0)
 
     def test_rejects_extraction_without_thread(self) -> None:
         from zep_strands import ZepMemoryStore
 
-        with pytest.raises(ValueError, match="user_id and thread_id"):
+        with pytest.raises(ValueError, match="user_uuid and thread_uuid"):
             ZepMemoryStore(
                 zep_client=MagicMock(),
-                user_id="u1",
-                thread_id=None,
+                user_uuid="u1",
+                thread_uuid=None,
                 extraction=True,
             )
 
     def test_rejects_extraction_on_standalone_graph(self) -> None:
         from zep_strands import ZepMemoryStore
 
-        with pytest.raises(ValueError, match="user_id and thread_id"):
+        with pytest.raises(ValueError, match="user_uuid and thread_uuid"):
             ZepMemoryStore(
                 zep_client=MagicMock(),
-                graph_id="g1",
+                graph_uuid="g1",
                 writable=True,
                 extraction=True,
             )
@@ -119,8 +119,8 @@ class TestZepMemoryStoreInit:
         with pytest.raises(ValueError, match="writable=True"):
             ZepMemoryStore(
                 zep_client=MagicMock(),
-                user_id="u1",
-                thread_id="t1",
+                user_uuid="u1",
+                thread_uuid="t1",
                 writable=False,
                 extraction=True,
             )
@@ -130,7 +130,7 @@ class TestZepMemoryStoreInit:
 
         store = ZepMemoryStore(
             zep_client=MagicMock(),
-            graph_id="g1",
+            graph_uuid="g1",
             writable=True,
             extraction=False,
         )

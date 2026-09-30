@@ -18,12 +18,17 @@ from zep_crewai.limits import (
     truncate_message_content,
 )
 
+USER_UUID = "11111111-1111-1111-1111-111111111111"
+THREAD_UUID = "22222222-2222-2222-2222-222222222222"
+GRAPH_UUID = "33333333-3333-3333-3333-333333333333"
+
 
 def _make_mock_client() -> MagicMock:
     client = MagicMock(spec=Zep)
     client.user = MagicMock()
     client.thread = MagicMock()
     client.graph = MagicMock()
+    client.graph.episode = MagicMock()
     return client
 
 
@@ -58,7 +63,12 @@ class TestSaveTruncation:
         thread.add_messages."""
         client = _make_mock_client()
 
-        storage = ZepUserStorage(client=client, user_id="u1", thread_id="t1")
+        storage = ZepUserStorage(
+            client=client,
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
+            graph_uuid=GRAPH_UUID,
+        )
         storage.save("z" * 5000, metadata={"type": "message", "role": "user"})
 
         message = client.thread.add_messages.call_args.kwargs["messages"][0]
@@ -68,7 +78,12 @@ class TestSaveTruncation:
         """ZepStorage.save() bounds an over-long message the same way."""
         client = _make_mock_client()
 
-        storage = ZepStorage(client=client, user_id="u1", thread_id="t1")
+        storage = ZepStorage(
+            client=client,
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
+            graph_uuid=GRAPH_UUID,
+        )
         storage.save("z" * 5000, metadata={"type": "message", "role": "user"})
 
         message = client.thread.add_messages.call_args.kwargs["messages"][0]
@@ -79,10 +94,10 @@ class TestSaveTruncation:
         GRAPH_MAX_CHARS."""
         client = _make_mock_client()
 
-        storage = ZepGraphStorage(client=client, graph_id="g1")
+        storage = ZepGraphStorage(client=client, graph_uuid=GRAPH_UUID)
         storage.save("z" * 15000, metadata={"type": "text"})
 
-        data = client.graph.add.call_args.kwargs["data"]
+        data = client.graph.episode.add.call_args.kwargs["data"]
         assert len(data) == GRAPH_MAX_CHARS
 
     def test_add_data_tool_truncates_oversize(self) -> None:
@@ -90,8 +105,8 @@ class TestSaveTruncation:
         GRAPH_MAX_CHARS."""
         client = _make_mock_client()
 
-        tool = ZepAddDataTool(client=client, graph_id="g1")
+        tool = ZepAddDataTool(client=client, graph_uuid=GRAPH_UUID)
         tool._run("z" * 15000, data_type="text")
 
-        data = client.graph.add.call_args.kwargs["data"]
+        data = client.graph.episode.add.call_args.kwargs["data"]
         assert len(data) == GRAPH_MAX_CHARS

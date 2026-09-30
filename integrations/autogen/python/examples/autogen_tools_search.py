@@ -1,6 +1,5 @@
 import asyncio
 import os
-import uuid
 
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.ui import Console
@@ -14,38 +13,26 @@ async def main():
     # Initialize AsyncZep client
     zep_client = AsyncZep(api_key=os.environ.get("ZEP_API_KEY"))
 
-    graph_id = f"graph_{uuid.uuid4().hex}"
+    # Zep assigns the UUID of the graph. Keep this UUID in your own database.
+    graph = await zep_client.graph.create(name="Programming Knowledge")
+    graph_uuid = str(graph.uuid_)
+    print(f"Created graph: {graph_uuid}")
 
-    try:
-        # Create graph with some existing data
-        await zep_client.graph.create(graph_id=graph_id, name="Programming Knowledge")
-        print(f"Created graph: {graph_id}")
+    # Pre-populate with some data for the search example
+    for fact in (
+        "Python is excellent for data science and AI",
+        "JavaScript is the language of the web",
+        "Rust provides memory safety without garbage collection",
+        "Go is designed for concurrent programming",
+    ):
+        await zep_client.graph.episode.add(graph_uuid, type="text", data=fact)
+    print("Pre-populated graph with programming knowledge")
 
-        # Pre-populate with some data for the search example
-        await zep_client.graph.add(
-            graph_id=graph_id, type="text", data="Python is excellent for data science and AI"
-        )
-        await zep_client.graph.add(
-            graph_id=graph_id, type="text", data="JavaScript is the language of the web"
-        )
-        await zep_client.graph.add(
-            graph_id=graph_id,
-            type="text",
-            data="Rust provides memory safety without garbage collection",
-        )
-        await zep_client.graph.add(
-            graph_id=graph_id, type="text", data="Go is designed for concurrent programming"
-        )
-        print("Pre-populated graph with programming knowledge")
-
-        # Wait for indexing
-        await asyncio.sleep(30)
-
-    except Exception as e:
-        print(f"Graph setup failed: {e}")
+    # Ingestion is asynchronous, so the example waits for the data to process.
+    await asyncio.sleep(30)
 
     # Create search tool bound to the graph
-    search_tool = create_search_graph_tool(zep_client, graph_id=graph_id)
+    search_tool = create_search_graph_tool(zep_client, graph_uuid=graph_uuid)
 
     # Create assistant agent with search tool and reflection
     model_client = OpenAIChatCompletionClient(model="gpt-4.1-mini")

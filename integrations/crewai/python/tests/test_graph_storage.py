@@ -9,131 +9,118 @@ import pytest
 from zep_crewai import ZepGraphStorage
 from zep_crewai.utils import DEFAULT_CONTEXT_TEMPLATE
 
+GRAPH_UUID = "33333333-3333-3333-3333-333333333333"
+
+
+def _make_mock_client():
+    from zep_cloud.client import Zep
+
+    client = MagicMock(spec=Zep)
+    client.graph = MagicMock()
+    client.graph.episode = MagicMock()
+    return client
+
 
 class TestZepGraphStorage:
     """Test suite for ZepGraphStorage."""
 
     def test_initialization_success(self):
         """Test successful initialization with required parameters."""
-        from zep_cloud.client import Zep
-
-        mock_client = MagicMock(spec=Zep)
+        mock_client = _make_mock_client()
         storage = ZepGraphStorage(
             client=mock_client,
-            graph_id="test-graph",
+            graph_uuid=GRAPH_UUID,
             search_filters={"node_labels": ["Technology"]},
-            facts_limit=15,
-            entity_limit=10,
+            max_characters=1500,
         )
 
         assert storage._client is mock_client
-        assert storage.graph_id == "test-graph"
+        assert storage.graph_uuid == GRAPH_UUID
         assert storage._search_filters == {"node_labels": ["Technology"]}
-        assert storage._facts_limit == 15
-        assert storage._entity_limit == 10
+        assert storage._max_characters == 1500
 
-    def test_initialization_requires_graph_id(self):
-        """Test that graph_id is required."""
-        from zep_cloud.client import Zep
+    def test_initialization_requires_graph_uuid(self):
+        """Test that graph_uuid is required."""
+        mock_client = _make_mock_client()
 
-        mock_client = MagicMock(spec=Zep)
-
-        with pytest.raises(ValueError, match="graph_id is required"):
-            ZepGraphStorage(client=mock_client, graph_id="")
+        with pytest.raises(ValueError, match="graph_uuid is required"):
+            ZepGraphStorage(client=mock_client, graph_uuid="")
 
     def test_initialization_requires_zep_client(self):
         """Test that client must be Zep instance."""
         with pytest.raises(TypeError, match="client must be an instance of Zep"):
-            ZepGraphStorage(client="not_a_client", graph_id="test-graph")
+            ZepGraphStorage(client="not_a_client", graph_uuid=GRAPH_UUID)
 
     def test_save_text_data(self):
         """Test saving text data to graph."""
-        from zep_cloud.client import Zep
+        mock_client = _make_mock_client()
+        mock_client.graph.episode.add = MagicMock()
 
-        mock_client = MagicMock(spec=Zep)
-        mock_client.graph = MagicMock()
-        mock_client.graph.add = MagicMock()
-
-        storage = ZepGraphStorage(client=mock_client, graph_id="test-graph")
+        storage = ZepGraphStorage(client=mock_client, graph_uuid=GRAPH_UUID)
 
         # Save text data
         storage.save("Python is great for AI", metadata={"type": "text"})
 
-        # Verify graph.add was called correctly
-        mock_client.graph.add.assert_called_once_with(
-            graph_id="test-graph", data="Python is great for AI", type="text"
+        # Verify graph.episode.add was called correctly
+        mock_client.graph.episode.add.assert_called_once_with(
+            GRAPH_UUID, data="Python is great for AI", type="text"
         )
 
     def test_save_json_data(self):
         """Test saving JSON data to graph."""
-        from zep_cloud.client import Zep
+        mock_client = _make_mock_client()
+        mock_client.graph.episode.add = MagicMock()
 
-        mock_client = MagicMock(spec=Zep)
-        mock_client.graph = MagicMock()
-        mock_client.graph.add = MagicMock()
-
-        storage = ZepGraphStorage(client=mock_client, graph_id="test-graph")
+        storage = ZepGraphStorage(client=mock_client, graph_uuid=GRAPH_UUID)
 
         # Save JSON data
         json_data = '{"language": "Python", "use_case": "AI/ML"}'
         storage.save(json_data, metadata={"type": "json"})
 
-        # Verify graph.add was called correctly
-        mock_client.graph.add.assert_called_once_with(
-            graph_id="test-graph", data=json_data, type="json"
+        # Verify graph.episode.add was called correctly
+        mock_client.graph.episode.add.assert_called_once_with(
+            GRAPH_UUID, data=json_data, type="json"
         )
 
     def test_save_defaults_to_text(self):
         """Test that save defaults to text type when not specified."""
-        from zep_cloud.client import Zep
+        mock_client = _make_mock_client()
+        mock_client.graph.episode.add = MagicMock()
 
-        mock_client = MagicMock(spec=Zep)
-        mock_client.graph = MagicMock()
-        mock_client.graph.add = MagicMock()
-
-        storage = ZepGraphStorage(client=mock_client, graph_id="test-graph")
+        storage = ZepGraphStorage(client=mock_client, graph_uuid=GRAPH_UUID)
 
         # Save without metadata
         storage.save("Default content")
 
         # Should default to text type
-        mock_client.graph.add.assert_called_once_with(
-            graph_id="test-graph", data="Default content", type="text"
+        mock_client.graph.episode.add.assert_called_once_with(
+            GRAPH_UUID, data="Default content", type="text"
         )
 
     def test_save_does_not_raise_on_zep_error(self, caplog):
         """save() must log and return normally when the Zep SDK call raises --
         never propagate the error into the crew."""
-        from zep_cloud.client import Zep
+        mock_client = _make_mock_client()
+        mock_client.graph.episode.add = MagicMock(side_effect=Exception("Zep API error"))
 
-        mock_client = MagicMock(spec=Zep)
-        mock_client.graph = MagicMock()
-        mock_client.graph.add = MagicMock(side_effect=Exception("Zep API error"))
-
-        storage = ZepGraphStorage(client=mock_client, graph_id="test-graph")
+        storage = ZepGraphStorage(client=mock_client, graph_uuid=GRAPH_UUID)
 
         with caplog.at_level("ERROR"):
             storage.save("Python is great for AI", metadata={"type": "text"})
 
-        mock_client.graph.add.assert_called_once()
+        mock_client.graph.episode.add.assert_called_once()
         assert "Zep API error" in caplog.text
 
-    @patch("zep_crewai.graph_storage.search_graph_and_compose_context")
-    def test_search_with_results(self, mock_search_compose):
-        """Test search returns composed context from graph."""
-        from zep_cloud.client import Zep
+    @patch("zep_crewai.graph_storage.compose_graph_context")
+    def test_search_with_results(self, mock_compose):
+        """Test search returns the Context Block of the graph."""
+        mock_client = _make_mock_client()
 
-        mock_client = MagicMock(spec=Zep)
-        mock_client.graph = MagicMock()
-
-        # Mock the search_graph_and_compose_context to return composed context
-        mock_search_compose.return_value = (
-            "Facts:\n- Python is used for AI\n\n"
-            "Entities:\n- Python: A programming language\n\n"
-            "Episodes:\n- Discussion about Python"
+        mock_compose.return_value = (
+            "Facts:\n- Python is used for AI\n\nEntities:\n- Python: A programming language"
         )
 
-        storage = ZepGraphStorage(client=mock_client, graph_id="test-graph")
+        storage = ZepGraphStorage(client=mock_client, graph_uuid=GRAPH_UUID)
 
         # Perform search
         results = storage.search("Python", limit=5)
@@ -142,40 +129,31 @@ class TestZepGraphStorage:
         assert isinstance(results, list)
         assert len(results) == 1  # Single composed result
 
-        # Check the composed result
         assert results[0]["context"] == (
-            "Facts:\n- Python is used for AI\n\n"
-            "Entities:\n- Python: A programming language\n\n"
-            "Episodes:\n- Discussion about Python"
+            "Facts:\n- Python is used for AI\n\nEntities:\n- Python: A programming language"
         )
         assert results[0]["type"] == "graph_context"
         assert results[0]["source"] == "graph"
         assert results[0]["query"] == "Python"
 
-        # Verify search_graph_and_compose_context was called with correct args
-        mock_search_compose.assert_called_once_with(
+        mock_compose.assert_called_once_with(
             client=mock_client,
             query="Python",
-            graph_id="test-graph",
-            facts_limit=20,
-            entity_limit=5,
-            episodes_limit=5,
+            graph_uuid=GRAPH_UUID,
+            max_characters=None,
             search_filters=None,
             context_template=DEFAULT_CONTEXT_TEMPLATE,
         )
 
-    @patch("zep_crewai.graph_storage.search_graph_and_compose_context")
-    def test_search_with_no_results(self, mock_search_compose):
+    @patch("zep_crewai.graph_storage.compose_graph_context")
+    def test_search_with_no_results(self, mock_compose):
         """Test search returns empty list when no results found."""
-        from zep_cloud.client import Zep
-
-        mock_client = MagicMock(spec=Zep)
-        mock_client.graph = MagicMock()
+        mock_client = _make_mock_client()
 
         # Mock the search to return None (no results)
-        mock_search_compose.return_value = None
+        mock_compose.return_value = None
 
-        storage = ZepGraphStorage(client=mock_client, graph_id="test-graph")
+        storage = ZepGraphStorage(client=mock_client, graph_uuid=GRAPH_UUID)
 
         # Perform search
         results = storage.search("NonExistent", limit=5)
@@ -184,73 +162,55 @@ class TestZepGraphStorage:
         assert isinstance(results, list)
         assert len(results) == 0
 
-    @patch("zep_crewai.graph_storage.search_graph_and_compose_context")
-    def test_search_with_custom_limits(self, mock_search_compose):
-        """Test search passes custom limits to search function."""
-        from zep_cloud.client import Zep
+    @patch("zep_crewai.graph_storage.compose_graph_context")
+    def test_search_with_max_characters(self, mock_compose):
+        """Test search passes max_characters to the retrieval function."""
+        mock_client = _make_mock_client()
 
-        mock_client = MagicMock(spec=Zep)
-        mock_client.graph = MagicMock()
+        mock_compose.return_value = "Context with a maximum length"
 
-        # Mock the search to return composed context
-        mock_search_compose.return_value = "Context with custom limits"
-
-        storage = ZepGraphStorage(
-            client=mock_client, graph_id="test-graph", facts_limit=30, entity_limit=10
-        )
+        storage = ZepGraphStorage(client=mock_client, graph_uuid=GRAPH_UUID, max_characters=3000)
 
         # Perform search
         storage.search("test", limit=15)
 
-        # Verify search_graph_and_compose_context was called with custom limits
-        mock_search_compose.assert_called_once_with(
+        mock_compose.assert_called_once_with(
             client=mock_client,
             query="test",
-            graph_id="test-graph",
-            facts_limit=30,
-            entity_limit=10,
-            episodes_limit=15,  # Uses the limit parameter for episodes
+            graph_uuid=GRAPH_UUID,
+            max_characters=3000,
             search_filters=None,
             context_template=DEFAULT_CONTEXT_TEMPLATE,
         )
 
-    @patch("zep_crewai.graph_storage.search_graph_and_compose_context")
-    def test_search_with_filters(self, mock_search_compose):
+    @patch("zep_crewai.graph_storage.compose_graph_context")
+    def test_search_with_filters(self, mock_compose):
         """Test that search filters are passed correctly."""
-        from zep_cloud.client import Zep
+        mock_client = _make_mock_client()
 
-        mock_client = MagicMock(spec=Zep)
-        mock_client.graph = MagicMock()
-
-        # Mock the search to return composed context
-        mock_search_compose.return_value = "Filtered context"
+        mock_compose.return_value = "Filtered context"
 
         search_filters = {"node_labels": ["Technology", "Company"]}
         storage = ZepGraphStorage(
-            client=mock_client, graph_id="test-graph", search_filters=search_filters
+            client=mock_client, graph_uuid=GRAPH_UUID, search_filters=search_filters
         )
 
         # Perform search to trigger filter usage
         storage.search("test query", limit=5)
 
-        # Verify search_graph_and_compose_context was called with filters
-        mock_search_compose.assert_called_once_with(
+        mock_compose.assert_called_once_with(
             client=mock_client,
             query="test query",
-            graph_id="test-graph",
-            facts_limit=20,
-            entity_limit=5,
-            episodes_limit=5,
+            graph_uuid=GRAPH_UUID,
+            max_characters=None,
             search_filters=search_filters,
             context_template=DEFAULT_CONTEXT_TEMPLATE,
         )
 
     def test_reset_does_nothing(self):
         """Test that reset method exists but does nothing."""
-        from zep_cloud.client import Zep
-
-        mock_client = MagicMock(spec=Zep)
-        storage = ZepGraphStorage(client=mock_client, graph_id="test-graph")
+        mock_client = _make_mock_client()
+        storage = ZepGraphStorage(client=mock_client, graph_uuid=GRAPH_UUID)
 
         # Should not raise exception
         storage.reset()

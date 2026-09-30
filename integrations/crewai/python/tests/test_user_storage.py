@@ -2,21 +2,27 @@
 Tests for ZepUserStorage.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from zep_crewai import ZepUserStorage
 
+USER_UUID = "11111111-1111-1111-1111-111111111111"
+THREAD_UUID = "22222222-2222-2222-2222-222222222222"
+GRAPH_UUID = "33333333-3333-3333-3333-333333333333"
+
 
 def _make_mock_zep_client():
-    """A Zep mock with ``user.add``/``thread.create`` wired up so lazy
-    provisioning in ``save()``/``search()`` succeeds by default."""
+    """A Zep mock whose ``user.get`` returns a user with a graph UUID."""
     from zep_cloud.client import Zep
 
     client = MagicMock(spec=Zep)
     client.user = MagicMock()
+    client.user.get = MagicMock(return_value=MagicMock(graph_uuid=GRAPH_UUID))
     client.thread = MagicMock()
+    client.graph = MagicMock()
+    client.graph.episode = MagicMock()
     return client
 
 
@@ -25,78 +31,70 @@ class TestZepUserStorage:
 
     def test_initialization_success(self):
         """Test successful initialization with required parameters."""
-        from zep_cloud.client import Zep
-
-        mock_client = MagicMock(spec=Zep)
+        mock_client = _make_mock_zep_client()
         storage = ZepUserStorage(
             client=mock_client,
-            user_id="test-user",
-            thread_id="test-thread",
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
             search_filters={"node_labels": ["Preference"]},
-            facts_limit=15,
-            entity_limit=10,
+            max_characters=2000,
+            graph_uuid=GRAPH_UUID,
         )
 
         assert storage._client is mock_client
-        assert storage.user_id == "test-user"
-        assert storage.thread_id == "test-thread"
+        assert storage.user_uuid == USER_UUID
+        assert storage.thread_uuid == THREAD_UUID
+        assert storage.graph_uuid == GRAPH_UUID
         assert storage._search_filters == {"node_labels": ["Preference"]}
-        assert storage._facts_limit == 15
-        assert storage._entity_limit == 10
+        assert storage._max_characters == 2000
 
     def test_initialization_mode_is_deprecated(self):
         """Test that passing the legacy 'mode' arg warns and is otherwise ignored."""
-        from zep_cloud.client import Zep
-
-        mock_client = MagicMock(spec=Zep)
+        mock_client = _make_mock_zep_client()
         with pytest.warns(DeprecationWarning, match="'mode' argument is deprecated"):
             storage = ZepUserStorage(
                 client=mock_client,
-                user_id="test-user",
-                thread_id="test-thread",
+                user_uuid=USER_UUID,
+                thread_uuid=THREAD_UUID,
                 mode="summary",
             )
 
-        # Mode is no longer stored or forwarded to the Zep V3 API.
+        # Mode is no longer stored or forwarded to the Zep API.
         assert not hasattr(storage, "_mode")
 
     def test_initialization_without_thread_raises_error(self):
-        """Test initialization without thread_id raises TypeError."""
-        from zep_cloud.client import Zep
+        """Test initialization without thread_uuid raises TypeError."""
+        mock_client = _make_mock_zep_client()
+        with pytest.raises(
+            TypeError, match="missing 1 required positional argument: 'thread_uuid'"
+        ):
+            ZepUserStorage(client=mock_client, user_uuid=USER_UUID)
 
-        mock_client = MagicMock(spec=Zep)
-        with pytest.raises(TypeError, match="missing 1 required positional argument: 'thread_id'"):
-            ZepUserStorage(client=mock_client, user_id="test-user")
+    def test_initialization_requires_user_uuid(self):
+        """Test that user_uuid is required."""
+        mock_client = _make_mock_zep_client()
 
-    def test_initialization_requires_user_id(self):
-        """Test that user_id is required."""
-        from zep_cloud.client import Zep
+        with pytest.raises(ValueError, match="user_uuid is required"):
+            ZepUserStorage(client=mock_client, user_uuid="", thread_uuid=THREAD_UUID)
 
-        mock_client = MagicMock(spec=Zep)
+    def test_initialization_requires_thread_uuid(self):
+        """Test that thread_uuid is required and non-empty."""
+        mock_client = _make_mock_zep_client()
 
-        with pytest.raises(ValueError, match="user_id is required"):
-            ZepUserStorage(client=mock_client, user_id="", thread_id="test-thread")
-
-    def test_initialization_requires_thread_id(self):
-        """Test that thread_id is required and non-empty."""
-        from zep_cloud.client import Zep
-
-        mock_client = MagicMock(spec=Zep)
-
-        with pytest.raises(ValueError, match="thread_id is required"):
-            ZepUserStorage(client=mock_client, user_id="test-user", thread_id="")
+        with pytest.raises(ValueError, match="thread_uuid is required"):
+            ZepUserStorage(client=mock_client, user_uuid=USER_UUID, thread_uuid="")
 
     def test_initialization_requires_zep_client(self):
         """Test that client must be Zep instance."""
         with pytest.raises(TypeError, match="client must be an instance of Zep"):
-            ZepUserStorage(client="not_a_client", user_id="test-user", thread_id="test-thread")
+            ZepUserStorage(client="not_a_client", user_uuid=USER_UUID, thread_uuid=THREAD_UUID)
 
     def test_save_message_with_thread(self):
-        """Test saving message when thread_id is set."""
+        """Test saving message to the thread that thread_uuid names."""
         mock_client = _make_mock_zep_client()
         mock_client.thread.add_messages = MagicMock()
 
-        storage = ZepUserStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
+        storage = ZepUserStorage(client=mock_client, user_uuid=USER_UUID, thread_uuid=THREAD_UUID)
 
         # Save message
         storage.save(
@@ -108,7 +106,7 @@ class TestZepUserStorage:
         mock_client.thread.add_messages.assert_called_once()
 
         call_args = mock_client.thread.add_messages.call_args
-        assert call_args[1]["thread_id"] == "test-thread"
+        assert call_args[0][0] == THREAD_UUID
         assert len(call_args[1]["messages"]) == 1
 
         message = call_args[1]["messages"][0]
@@ -117,37 +115,57 @@ class TestZepUserStorage:
         assert message.name == "Helper"
 
     def test_save_json_data(self):
-        """Test saving JSON data to user graph."""
+        """Test saving JSON data to the user graph."""
         mock_client = _make_mock_zep_client()
-        mock_client.graph = MagicMock()
-        mock_client.graph.add = MagicMock()
+        mock_client.graph.episode.add = MagicMock()
 
-        storage = ZepUserStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
+        storage = ZepUserStorage(
+            client=mock_client,
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
+            graph_uuid=GRAPH_UUID,
+        )
 
         # Save JSON data
         json_data = '{"preference": "dark_mode", "timezone": "PST"}'
         storage.save(json_data, metadata={"type": "json"})
 
-        # Verify graph.add was called correctly
-        mock_client.graph.add.assert_called_once_with(
-            user_id="test-user", data=json_data, type="json"
+        # Verify graph.episode.add was called correctly
+        mock_client.graph.episode.add.assert_called_once_with(
+            GRAPH_UUID, data=json_data, type="json"
         )
 
     def test_save_text_data(self):
-        """Test saving text data to user graph."""
+        """Test saving text data to the user graph."""
         mock_client = _make_mock_zep_client()
-        mock_client.graph = MagicMock()
-        mock_client.graph.add = MagicMock()
+        mock_client.graph.episode.add = MagicMock()
 
-        storage = ZepUserStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
+        storage = ZepUserStorage(
+            client=mock_client,
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
+            graph_uuid=GRAPH_UUID,
+        )
 
         # Save text data
         storage.save("User prefers morning meetings", metadata={"type": "text"})
 
-        # Verify graph.add was called correctly
-        mock_client.graph.add.assert_called_once_with(
-            user_id="test-user", data="User prefers morning meetings", type="text"
+        # Verify graph.episode.add was called correctly
+        mock_client.graph.episode.add.assert_called_once_with(
+            GRAPH_UUID, data="User prefers morning meetings", type="text"
         )
+
+    def test_save_resolves_graph_uuid_once(self):
+        """The user graph UUID is read one time and cached."""
+        mock_client = _make_mock_zep_client()
+        mock_client.graph.episode.add = MagicMock()
+
+        storage = ZepUserStorage(client=mock_client, user_uuid=USER_UUID, thread_uuid=THREAD_UUID)
+        storage.save("first", metadata={"type": "text"})
+        storage.save("second", metadata={"type": "text"})
+
+        mock_client.user.get.assert_called_once_with(USER_UUID)
+        assert mock_client.graph.episode.add.call_count == 2
 
     def test_save_does_not_raise_on_zep_error(self, caplog):
         """save() must log and return normally when the Zep SDK call raises --
@@ -155,7 +173,7 @@ class TestZepUserStorage:
         mock_client = _make_mock_zep_client()
         mock_client.thread.add_messages = MagicMock(side_effect=Exception("Zep API error"))
 
-        storage = ZepUserStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
+        storage = ZepUserStorage(client=mock_client, user_uuid=USER_UUID, thread_uuid=THREAD_UUID)
 
         with caplog.at_level("ERROR"):
             storage.save(
@@ -166,169 +184,71 @@ class TestZepUserStorage:
         mock_client.thread.add_messages.assert_called_once()
         assert "Zep API error" in caplog.text
 
-    @patch("zep_crewai.utils.compose_context_string")
-    @patch("zep_crewai.utils.ThreadPoolExecutor")
-    def test_search_with_thread_context(self, mock_executor, mock_compose):
-        """Test search includes thread context when available."""
-        from zep_cloud.client import Zep
-        from zep_cloud.types import GraphSearchResults
+    def test_search_returns_context_block(self):
+        """search() returns the Context Block of the user graph."""
+        mock_client = _make_mock_zep_client()
+        mock_client.graph.get_context = MagicMock(
+            return_value=MagicMock(context="Context: User likes Python")
+        )
 
-        mock_client = MagicMock(spec=Zep)
-        mock_client.thread = MagicMock()
-        mock_client.graph = MagicMock()
+        storage = ZepUserStorage(
+            client=mock_client,
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
+            graph_uuid=GRAPH_UUID,
+        )
 
-        # Setup mock executor
-        mock_executor_instance = MagicMock()
-        mock_executor.return_value.__enter__.return_value = mock_executor_instance
-
-        # Create proper GraphSearchResults mocks
-        edge_results = MagicMock(spec=GraphSearchResults)
-        edge_results.edges = [MagicMock(fact="User likes Python")]
-
-        node_results = MagicMock(spec=GraphSearchResults)
-        node_results.nodes = []
-
-        episode_results = MagicMock(spec=GraphSearchResults)
-        episode_results.episodes = []
-
-        # Mock futures
-        future_edges = MagicMock()
-        future_edges.result.return_value = edge_results
-
-        future_nodes = MagicMock()
-        future_nodes.result.return_value = node_results
-
-        future_episodes = MagicMock()
-        future_episodes.result.return_value = episode_results
-
-        mock_executor_instance.submit.side_effect = [future_edges, future_nodes, future_episodes]
-
-        # Mock compose_context_string to return context
-        mock_compose.return_value = "Context: User likes Python"
-
-        storage = ZepUserStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
-
-        # Perform search
         results = storage.search("test query", limit=5)
 
-        # Verify results include context (wrapped in the default context_template)
+        mock_client.graph.get_context.assert_called_once_with(GRAPH_UUID, query="test query")
+
         assert isinstance(results, list)
         assert len(results) == 1
         assert results[0]["type"] == "user_graph_context"
         assert "Context: User likes Python" in results[0]["context"]
 
-    @patch("zep_crewai.utils.compose_context_string")
-    @patch("zep_crewai.utils.ThreadPoolExecutor")
-    def test_search_user_graph(self, mock_executor, mock_compose):
-        """Test search searches user graph correctly."""
-        from zep_cloud.client import Zep
-        from zep_cloud.types import EntityEdge, EntityNode, GraphSearchResults
+    def test_search_returns_empty_list_without_context(self):
+        """search() returns no results when the graph gives no context."""
+        mock_client = _make_mock_zep_client()
+        mock_client.graph.get_context = MagicMock(return_value=MagicMock(context=None))
 
-        mock_client = MagicMock(spec=Zep)
-        mock_client.thread = MagicMock()
-        mock_client.graph = MagicMock()
-
-        # Mock edge
-        mock_edge = MagicMock(spec=EntityEdge)
-        mock_edge.fact = "User prefers Python"
-        mock_edge.name = "preference_fact"
-        mock_edge.attributes = {}
-        mock_edge.created_at = "2024-01-01"
-        mock_edge.valid_at = "2024-01-01"
-        mock_edge.invalid_at = None
-
-        # Mock node
-        mock_node = MagicMock(spec=EntityNode)
-        mock_node.name = "UserPreference"
-        mock_node.summary = "Programming language preference"
-        mock_node.attributes = {}
-        mock_node.created_at = "2024-01-01"
-
-        # Setup mock executor
-        mock_executor_instance = MagicMock()
-        mock_executor.return_value.__enter__.return_value = mock_executor_instance
-
-        # Create proper GraphSearchResults mocks
-        edge_results = MagicMock(spec=GraphSearchResults)
-        edge_results.edges = [mock_edge]
-
-        node_results = MagicMock(spec=GraphSearchResults)
-        node_results.nodes = [mock_node]
-
-        episode_results = MagicMock(spec=GraphSearchResults)
-        episode_results.episodes = []
-
-        # Mock futures
-        future_edges = MagicMock()
-        future_edges.result.return_value = edge_results
-
-        future_nodes = MagicMock()
-        future_nodes.result.return_value = node_results
-
-        future_episodes = MagicMock()
-        future_episodes.result.return_value = episode_results
-
-        mock_executor_instance.submit.side_effect = [future_edges, future_nodes, future_episodes]
-
-        # Mock compose_context_string to return formatted context
-        mock_compose.return_value = (
-            "Context: User prefers Python. UserPreference: Programming language preference"
+        storage = ZepUserStorage(
+            client=mock_client,
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
+            graph_uuid=GRAPH_UUID,
         )
 
-        storage = ZepUserStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
-
-        # Perform search
-        results = storage.search("preferences", limit=5)
-
-        # Verify results
-        # Verify compose_context_string was called with correct arguments
-        mock_compose.assert_called_once()
-        call_args = mock_compose.call_args
-        assert call_args[1]["edges"] == [mock_edge]
-        assert call_args[1]["nodes"] == [mock_node]
-        assert call_args[1]["episodes"] == []
-
-        # Verify results
-        assert len(results) == 1
-        assert results[0]["type"] == "user_graph_context"
-        assert "User prefers Python" in results[0]["context"]
-        assert "UserPreference" in results[0]["context"]
+        assert storage.search("test query", limit=5) == []
 
     def test_get_context_with_thread(self):
-        """Test get_context retrieves context using thread.get_user_context."""
-        from zep_cloud.client import Zep
-
-        mock_client = MagicMock(spec=Zep)
-        mock_client.thread = MagicMock()
+        """Test get_context retrieves context through thread.get_context."""
+        mock_client = _make_mock_zep_client()
 
         # Mock thread context response
         mock_context = MagicMock()
         mock_context.context = "User's conversation context with summary"
-        mock_client.thread.get_user_context.return_value = mock_context
+        mock_client.thread.get_context.return_value = mock_context
 
-        storage = ZepUserStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
+        storage = ZepUserStorage(client=mock_client, user_uuid=USER_UUID, thread_uuid=THREAD_UUID)
 
         # Get context
         context = storage.get_context()
 
-        # Zep V3 dropped the 'mode' arg: get_user_context is called with thread_id only
-        mock_client.thread.get_user_context.assert_called_once_with(thread_id="test-thread")
+        mock_client.thread.get_context.assert_called_once_with(THREAD_UUID)
 
         assert context == "User's conversation context with summary"
 
     def test_get_context_with_empty_response(self):
         """Test get_context handles empty context response."""
-        from zep_cloud.client import Zep
-
-        mock_client = MagicMock(spec=Zep)
-        mock_client.thread = MagicMock()
+        mock_client = _make_mock_zep_client()
 
         # Mock empty context response
         mock_context = MagicMock()
         mock_context.context = None
-        mock_client.thread.get_user_context.return_value = mock_context
+        mock_client.thread.get_context.return_value = mock_context
 
-        storage = ZepUserStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
+        storage = ZepUserStorage(client=mock_client, user_uuid=USER_UUID, thread_uuid=THREAD_UUID)
 
         # Get context
         context = storage.get_context()
@@ -338,45 +258,33 @@ class TestZepUserStorage:
 
     def test_search_with_filters(self):
         """Test that search filters are applied correctly."""
-        from zep_cloud.client import Zep
-        from zep_cloud.types import GraphSearchResults
-
-        mock_client = MagicMock(spec=Zep)
-        mock_client.thread = MagicMock()
-        mock_client.thread.get_user_context = MagicMock(return_value=None)
-        mock_client.graph = MagicMock()
-        mock_client.graph.search = MagicMock()
-
-        # Mock empty results
-        mock_results = MagicMock(spec=GraphSearchResults)
-        mock_results.edges = []
-        mock_results.nodes = []
-        mock_results.episodes = []
-        mock_client.graph.search.return_value = mock_results
+        mock_client = _make_mock_zep_client()
+        mock_client.graph.get_context = MagicMock(return_value=MagicMock(context="ctx"))
 
         search_filters = {"node_labels": ["Preference", "Project"]}
         storage = ZepUserStorage(
             client=mock_client,
-            user_id="test-user",
-            thread_id="test-thread",
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
             search_filters=search_filters,
+            max_characters=1200,
+            graph_uuid=GRAPH_UUID,
         )
 
         # Perform search
         storage.search("test query", limit=5)
 
-        # Verify search was called with filters
-        calls = mock_client.graph.search.call_args_list
-        for call in calls:
-            if "user_id" in call[1]:  # Only check user graph searches
-                assert call[1].get("search_filters") == search_filters
+        mock_client.graph.get_context.assert_called_once_with(
+            GRAPH_UUID,
+            query="test query",
+            filters=search_filters,
+            max_characters=1200,
+        )
 
     def test_reset_does_nothing(self):
         """Test that reset method exists but does nothing."""
-        from zep_cloud.client import Zep
-
-        mock_client = MagicMock(spec=Zep)
-        storage = ZepUserStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
+        mock_client = _make_mock_zep_client()
+        storage = ZepUserStorage(client=mock_client, user_uuid=USER_UUID, thread_uuid=THREAD_UUID)
 
         # Should not raise exception
         storage.reset()

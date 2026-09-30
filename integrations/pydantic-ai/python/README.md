@@ -16,14 +16,26 @@ See [SETUP.md](SETUP.md) for how to sign up for Zep, create an API key, configur
 import asyncio
 from pydantic_ai import Agent
 from zep_cloud.client import AsyncZep
-from zep_pydantic_ai import ZepDeps, create_zep_search_tool, zep_capabilities
+from zep_pydantic_ai import (
+    ZepDeps,
+    create_thread,
+    create_user,
+    create_zep_search_tool,
+    zep_capabilities,
+)
 
 zep = AsyncZep(api_key="your-zep-api-key")
 
+# Create the Zep resources one time, and store the returned UUIDs in your own
+# database. Zep v4 addresses every user, thread, and graph by a UUID.
+user = await create_user(zep, first_name="Jane", last_name="Smith")
+thread = await create_thread(zep, user_uuid=user.uuid_)
+
 deps = ZepDeps(
     client=zep,
-    user_id="user_123",
-    thread_id="thread_abc",
+    user_uuid=user.uuid_,
+    thread_uuid=thread.uuid_,
+    graph_uuid=user.graph_uuid,
     first_name="Jane",
     last_name="Smith",
 )
@@ -36,11 +48,13 @@ agent = Agent(
     instructions="You are a helpful assistant with long-term memory.",
 )
 
+
 async def main() -> None:
     result = await agent.run("What did I tell you about my project?", deps=deps)
     print(result.output)
     # The user turn and the assistant's reply are both already persisted --
     # zep_capabilities(deps) wires in automatic assistant persistence.
+
 
 asyncio.run(main())
 ```
@@ -53,13 +67,13 @@ yourself -- see [`persist_run`](#persist_run) below.
 
 ### `ZepDeps`
 
-A dataclass used as the agent's `deps_type`. It carries the Zep client and the
-user/thread identity (plus optional name, email, and display names). Construct
-one per conversation and pass it to `agent.run(..., deps=deps)`; the history
-processor and the search tool both reach it via `RunContext.deps`. The Zep user
-and thread are created lazily on first use -- you do not have to pre-create
-them, though doing so out-of-band with `ensure_user`/`ensure_thread` is
-slightly faster on the first turn (see [Provisioning](#provisioning) below).
+A dataclass used as the agent's `deps_type`. It carries the Zep client, the
+user UUID, the thread UUID, and the optional graph UUID (plus optional names
+and display names). Construct one per conversation and pass it to
+`agent.run(..., deps=deps)`; the history processor and the search tool both
+reach it via `RunContext.deps`. The Zep user and the thread must exist before
+the first turn. Create them with `create_user` and `create_thread`, and store
+the returned UUIDs (see [Provisioning](#provisioning) below).
 
 ### `zep_history_processor`
 
@@ -68,10 +82,9 @@ Registered via `capabilities=[ProcessHistory(zep_history_processor)]` (or via
 processor immediately before **every** model request. On the user's turn this
 processor:
 
-1. resolves the Zep client and identity from `ctx.deps`;
-2. lazily creates the Zep user and thread;
-3. persists the latest user message -- via `thread.add_messages(return_context=True)` by default (a single round-trip), or concurrently with a custom `context_builder` if one is set (see [Custom context building](#custom-context-building));
-4. prepends the resulting context block, wrapped in `context_template`, to the message history as a system message.
+1. resolves the Zep client and the UUIDs from `ctx.deps`;
+2. persists the latest user message -- via `thread.add_messages(return_context=True)` by default (a single round-trip), or concurrently with a custom `context_builder` if one is set (see [Custom context building](#custom-context-building));
+3. prepends the resulting context block, wrapped in `context_template`, to the message history as a system message.
 
 A subtle but important detail: `ProcessHistory` fires **once per model request,
 not once per run**. A single `agent.run` that makes a tool call invokes the
@@ -91,21 +104,32 @@ filters, or combining multiple sources:
 ```python
 from zep_pydantic_ai import ContextInput, ZepDeps
 
-async def my_builder(ctx: ContextInput) -> str | None:
-    results = await ctx.zep.graph.search(
-        user_id=ctx.user_id,
-        query=ctx.user_message,
-        scope="edges",
-    )
-    if not results.edges:
-        return None
-    return "\n".join(edge.fact for edge in results.edges)
 
-deps = ZepDeps(client=zep, user_id="u", thread_id="t", context_builder=my_builder)
+async def my_builder(ctx: ContextInput) -> str | None:
+    if ctx.graph_uuid is None:
+        return None
+    pager = await ctx.zep.graph.search_edges(
+        ctx.graph_uuid,
+        query=ctx.user_message,
+    )
+    edges = pager.items or []
+    if not edges:
+        return None
+    return "\n".join(edge.fact for edge in edges)
+
+
+deps = ZepDeps(
+    client=zep,
+    user_uuid=user.uuid_,
+    thread_uuid=thread.uuid_,
+    graph_uuid=user.graph_uuid,
+    context_builder=my_builder,
+)
 ```
 
-`ContextInput` bundles `zep` (the `AsyncZep` client), `user_id`, `thread_id`,
-`user_message`, and `run_context` (the Pydantic AI `RunContext` for the turn).
+`ContextInput` bundles `zep` (the `AsyncZep` client), `user_uuid`,
+`thread_uuid`, `graph_uuid`, `user_message`, and `run_context` (the Pydantic
+AI `RunContext` for the turn).
 
 When `context_builder` is set, message persistence (`add_messages` without
 `return_context`) and the builder run **concurrently**, with per-side failure
@@ -127,8 +151,8 @@ text containing `{`, `}`, or `%` is always safe to inject:
 ```python
 deps = ZepDeps(
     client=zep,
-    user_id="u",
-    thread_id="t",
+    user_uuid=user.uuid_,
+    thread_uuid=thread.uuid_,
     context_template="Relevant memory:\n{context}",
 )
 ```
@@ -139,45 +163,40 @@ TypeScript implementations.
 
 ### Provisioning
 
-`ensure_user` and `ensure_thread` (in `zep_pydantic_ai.provisioning`)
-explicitly provision the Zep user and thread out-of-band, before the first
-turn -- useful for onboarding flows that want genuine failures (auth, network,
-5xx) to raise loudly rather than degrade silently:
+`create_user` and `create_thread` (in `zep_pydantic_ai.provisioning`)
+provision the Zep user and the thread out-of-band, before the first turn. A
+create call does not carry an application identifier. The response carries the
+server-generated UUID that every later call uses:
 
 ```python
-from zep_pydantic_ai import ensure_thread, ensure_user
+from zep_pydantic_ai import create_thread, create_user
 
-async def setup_user(zep_client, user_id: str) -> None:
-    ...  # e.g. configure per-user ontology
-
-created = await ensure_user(
+user = await create_user(
     zep,
-    user_id="user_123",
     first_name="Jane",
     last_name="Smith",
     email="jane@example.com",
-    on_created=setup_user,  # fires exactly once, only on real creation
 )
-await ensure_thread(zep, thread_id="thread_abc", user_id="user_123")
+thread = await create_thread(zep, user_uuid=user.uuid_)
+
+# Store these values in your own database.
+user_uuid = user.uuid_
+graph_uuid = user.graph_uuid
+thread_uuid = thread.uuid_
 ```
 
-Both are create-then-catch-conflict: they call the Zep SDK's create method
-directly and treat an "already exists" conflict as success (returning
-`False`), while genuine failures propagate. If `on_created` raises, that
-exception also propagates even though the user was created -- make the hook
-idempotent so it can be safely re-run.
-
-You do not have to call these explicitly: `zep_history_processor` calls the
-same logic lazily on the turn path, but wrapped so that a genuine failure
-there is logged and degrades to no-memory rather than breaking the run.
+Both helpers raise on failure, because provisioning runs before the first turn
+and a misconfiguration must be visible there. The integration never resolves a
+name to a UUID at run time. Your application does the resolution one time and
+stores the UUIDs.
 
 ### `create_zep_search_tool`
 
-A factory that returns a model-callable `pydantic_ai.Tool` over `graph.search`.
-The model decides when to search the knowledge graph for specific facts,
-entities, or prior episodes. By default it searches the current user's graph;
-pass `graph_id=...` to target a shared standalone graph (e.g. a documentation
-knowledge base).
+A factory that returns a model-callable `pydantic_ai.Tool` over the Zep v4
+graph search methods. The model decides when to search the knowledge graph for
+specific facts, entities, or prior episodes. By default it searches the graph
+of `ZepDeps.graph_uuid`; pass `graph_uuid=...` to target a shared standalone
+graph (e.g. a documentation knowledge base).
 
 **Pin-or-expose.** Every search parameter (`scope`, `reranker`, `limit`,
 `mmr_lambda`, `center_node_uuid`) is exposed to the model in the tool's JSON
@@ -197,7 +216,7 @@ tool = create_zep_search_tool(pinned_params={"scope": "nodes", "limit": 5})
 tool = create_zep_search_tool(hidden_params={"mmr_lambda"})
 ```
 
-`search_filters` and `bfs_origin_node_uuids` are always constructor-only
+`filters` and `bfs_origin_node_uuids` are always constructor-only
 (their complex shapes are not exposed to the model).
 
 ### `persist_run`
@@ -238,50 +257,47 @@ your own `Hooks(...)` instance instead of using the bundled list.
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `client` | `AsyncZep` | Yes | -- | Initialised Zep async client (caller owns its lifecycle) |
-| `user_id` | `str` | Yes | -- | Zep user ID (one user graph) |
-| `thread_id` | `str` | Yes | -- | Zep thread ID for the conversation |
+| `user_uuid` | `str` | Yes | -- | Zep user UUID |
+| `thread_uuid` | `str` | Yes | -- | Zep thread UUID for the conversation |
+| `graph_uuid` | `str \| None` | No | `None` | UUID of the user's graph; the search tool uses it |
 | `first_name` | `str` | No | `None` | User first name (recommended; anchors the user node) |
 | `last_name` | `str` | No | `None` | User last name |
-| `email` | `str` | No | `None` | User email (helps identity resolution) |
 | `user_name` | `str` | No | `None` | Display name for persisted user messages (defaults to first + last) |
 | `assistant_name` | `str` | No | `"Assistant"` | Display name for persisted assistant messages |
 | `ignore_roles` | `list[str]` | No | `None` | Roles to exclude from graph ingestion |
 | `context_builder` | `ContextBuilder \| None` | No | `None` | Custom async context-retrieval callable; see [Custom context building](#custom-context-building) |
 | `context_template` | `str` | No | `DEFAULT_CONTEXT_TEMPLATE` | Template wrapping injected context; see [`context_template`](#context_template) |
 
-### `ensure_user`
+### `create_user`
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `client` | `AsyncZep` | -- | Initialised Zep async client |
-| `user_id` | `str` | -- | The Zep user ID to create |
-| `first_name` | `str \| None` | `None` | Passed through to `user.add` |
-| `last_name` | `str \| None` | `None` | Passed through to `user.add` |
-| `email` | `str \| None` | `None` | Passed through to `user.add` |
-| `on_created` | `UserSetupHook \| None` | `None` | Async hook run once, only on real creation: `(client, user_id) -> None` |
+| `first_name` | `str \| None` | `None` | Passed through to `user.create` |
+| `last_name` | `str \| None` | `None` | Passed through to `user.create` |
+| `email` | `str \| None` | `None` | Passed through to `user.create` |
 
-Returns `True` if newly created, `False` if it already existed. Genuine
-failures and `on_created` errors propagate.
+Returns the created `User`. Read `uuid_` and `graph_uuid` from it, and store
+both values. Failures propagate.
 
-### `ensure_thread`
+### `create_thread`
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `client` | `AsyncZep` | -- | Initialised Zep async client |
-| `thread_id` | `str` | -- | The Zep thread ID to create |
-| `user_id` | `str` | -- | The owning Zep user ID (must already exist) |
+| `user_uuid` | `str` | -- | The UUID of the user that owns the thread |
 
-Returns `True` if newly created, `False` if it already existed. Genuine
-failures propagate.
+Returns the created `Thread`. Read `uuid_` from it, and store the value.
+Failures propagate.
 
 ### `create_zep_search_tool`
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `graph_id` | `str \| None` | `None` | Standalone graph to search; when unset, searches the current user's graph |
+| `graph_uuid` | `str \| None` | `None` | Standalone graph UUID to search; when unset, the tool uses `ZepDeps.graph_uuid` |
 | `pinned_params` | `dict[str, Any] \| None` | `None` | Fix a search parameter to a value; hidden from the model schema |
 | `hidden_params` | `set[str] \| None` | `None` | Hide a search parameter from the schema without pinning (Zep's default applies) |
-| `search_filters` | `dict[str, Any] \| None` | `None` | Constructor-only Zep search filters (`node_labels`, `edge_types`, etc.) |
+| `filters` | `dict[str, Any] \| None` | `None` | Constructor-only Zep search filters (`node_labels`, `edge_types`, etc.) |
 | `bfs_origin_node_uuids` | `list[str] \| None` | `None` | Constructor-only node UUIDs for BFS seeding |
 | `name` | `str` | `"zep_search"` | Tool name exposed to the model |
 | `description` | `str` | (see source) | Tool description exposed to the model |
@@ -306,7 +322,7 @@ Returns a `pydantic_ai.Tool[ZepDeps]` -- pass it directly in `tools=[...]`.
 - **Native `ProcessHistory` capability** -- the current Pydantic AI hook, not the deprecated `history_processors=` kwarg
 - **Single round-trip** -- persist + retrieve context in one `add_messages` call (or concurrently, with a custom `context_builder`)
 - **Once-per-run dedupe** -- correct under tool-calling runs that re-invoke the processor
-- **Out-of-band provisioning** -- `ensure_user`/`ensure_thread` for onboarding flows that want failures to raise loudly, plus lazy fallback on the turn path
+- **Out-of-band provisioning** -- `create_user`/`create_thread` for onboarding flows that want failures to raise loudly
 - **Pin-or-expose search tool** -- every search parameter model-exposed by default, or pinned/hidden per deployment
 - **Automatic assistant persistence** -- `zep_capabilities(deps)` wires up `Hooks(after_run=...)`, or persist explicitly with `persist_run`
 - **Graceful error handling** -- Zep failures are logged but never crash the agent run
@@ -318,9 +334,9 @@ Every Zep call on the turn path (history processor, search tool, and the
 `after_run` hook) is wrapped: a Zep outage, auth failure, or transient error is
 logged and the agent run continues without memory for that turn. When
 persistence fails the turn is not cached, so the next model request retries
-it. `ensure_user`/`ensure_thread`, called directly (out-of-band), are the
-exception: they raise genuine failures so misconfiguration is caught before
-the agent ever runs.
+it. `create_user`/`create_thread`, called out-of-band, are the exception: they
+raise genuine failures so misconfiguration is caught before the agent ever
+runs.
 
 ## Configuration
 
@@ -351,7 +367,7 @@ make build        # uv build
 
 - Python 3.11+
 - `pydantic-ai>=1.107,<2`
-- `zep-cloud>=3.23.0`
+- `zep-cloud==4.0.0a5`
 
 ## Support
 

@@ -19,8 +19,12 @@ This guide walks you from zero to a running Vercel AI SDK call with Zep memory.
 ## 3. Install
 
 ```bash
-npm install @getzep/zep-vercel-ai @getzep/zep-cloud ai zod
+npm install @getzep/zep-vercel-ai @getzep/zep-cloud@preview ai zod
 ```
+
+This package targets the Zep v4 SDK (`@getzep/zep-cloud` 4.0.0-alpha.5, npm
+dist-tag `preview`). The v4 SDK sends requests to `https://api.getzep.com/api/v4`
+by default.
 
 `ai` (the Vercel AI SDK, v6) and `zod` are peer dependencies. Install a model
 provider too — the examples use OpenAI:
@@ -41,6 +45,11 @@ export ZEP_API_KEY="your-zep-api-key"
 export OPENAI_API_KEY="your-openai-api-key"
 ```
 
+The examples create a Zep user and a Zep thread on each run and read the
+server-generated UUIDs from the responses. An application stores the
+`userUuid`, the `graphUuid`, and the `threadUuid` in its own database, because
+Zep v4 addresses every resource by UUID.
+
 Only `ZEP_API_KEY` is required by the integration itself; `OPENAI_API_KEY` is
 needed by the example's model (`openai("gpt-4o-mini")`). Swap in any provider the
 AI SDK supports if you prefer.
@@ -58,7 +67,7 @@ npx tsx examples/stream-text.ts # streamText + onFinish persistence
 The `generate-text` example
 ([`examples/generate-text.ts`](./examples/generate-text.ts)):
 
-1. Provisions a Zep user and thread.
+1. Creates a Zep user and thread, and reads the returned UUIDs.
 2. Wraps the model with `createZepMiddleware` (context injection on each new user
    turn) and persists the whole turn once via `createZepOnFinish`.
 3. Attaches `createZepTools` so the model can search/store explicitly.

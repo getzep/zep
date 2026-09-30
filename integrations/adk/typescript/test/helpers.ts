@@ -118,31 +118,82 @@ export function capturingLogger(): Logger & {
   };
 }
 
+/** UUID of the user that {@link mockZepClient} returns by default. */
+export const MOCK_USER_UUID = "11111111-1111-1111-1111-111111111111";
+/** UUID of the graph that {@link mockZepClient} returns by default. */
+export const MOCK_GRAPH_UUID = "22222222-2222-2222-2222-222222222222";
+/** UUID of the thread that {@link mockZepClient} returns by default. */
+export const MOCK_THREAD_UUID = "33333333-3333-3333-3333-333333333333";
+
+/** One page of v4 search results, with the fields the integration reads. */
+function fakePage(data: unknown[]) {
+  return { data, hasNextPage: () => false };
+}
+
 /**
  * Build a mock `ZepClient` with `thread`, `user`, and `graph` resources whose
  * methods are vitest mocks. Cast to the concrete client type at the call site.
+ *
+ * The graph mocks follow Zep v4: one search method for each scope, each one
+ * returning a page, and `graph.getContext` for the `"auto"` scope.
  */
 export function mockZepClient(overrides?: {
   addMessagesContext?: string;
-  searchResults?: Record<string, unknown>;
+  searchData?: unknown[];
+  autoContext?: string;
 }) {
   const addMessages = vi.fn().mockResolvedValue({
     context: overrides?.addMessagesContext,
-    messageUuids: ["uuid-1"],
-    taskId: "task-1",
+    messages: [{ uuid: "uuid-1" }],
   });
-  const create = vi.fn().mockResolvedValue({ threadId: "t", userId: "u" });
-  const userAdd = vi.fn().mockResolvedValue({ userId: "u" });
-  const search = vi
+  const threadCreate = vi.fn().mockResolvedValue({
+    uuid: MOCK_THREAD_UUID,
+    userUuid: MOCK_USER_UUID,
+    graphUuid: MOCK_GRAPH_UUID,
+  });
+  const userCreate = vi.fn().mockResolvedValue({
+    uuid: MOCK_USER_UUID,
+    graphUuid: MOCK_GRAPH_UUID,
+  });
+  const userGet = vi.fn().mockResolvedValue({
+    uuid: MOCK_USER_UUID,
+    graphUuid: MOCK_GRAPH_UUID,
+  });
+
+  const page = () => fakePage(overrides?.searchData ?? []);
+  const searchEdges = vi.fn().mockImplementation(async () => page());
+  const searchNodes = vi.fn().mockImplementation(async () => page());
+  const searchEpisodes = vi.fn().mockImplementation(async () => page());
+  const searchObservations = vi.fn().mockImplementation(async () => page());
+  const searchThreadSummaries = vi.fn().mockImplementation(async () => page());
+  const getContext = vi
     .fn()
-    .mockResolvedValue(overrides?.searchResults ?? { edges: [] });
+    .mockResolvedValue({ context: overrides?.autoContext });
 
   return {
     client: {
-      thread: { addMessages, create },
-      user: { add: userAdd },
-      graph: { search },
+      thread: { addMessages, create: threadCreate },
+      user: { create: userCreate, get: userGet },
+      graph: {
+        getContext,
+        searchEdges,
+        searchNodes,
+        searchEpisodes,
+        searchObservations,
+        searchThreadSummaries,
+      },
     },
-    mocks: { addMessages, create, userAdd, search },
+    mocks: {
+      addMessages,
+      threadCreate,
+      userCreate,
+      userGet,
+      getContext,
+      searchEdges,
+      searchNodes,
+      searchEpisodes,
+      searchObservations,
+      searchThreadSummaries,
+    },
   };
 }

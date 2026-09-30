@@ -44,6 +44,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -54,15 +55,18 @@
     "@google/adk": "^1.2.0"
   },
   "dependencies": {
-    "@getzep/zep-cloud": "^3.23.0",
+    "@getzep/zep-cloud": "4.0.0-alpha.5",
     "@google/genai": "^1.37.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@google/adk": "1.2.0",
     "@types/node": "^22.10.0",
+    "eslint": "^9.39.4",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.61.1",
     "vitest": "^3.2.6"
   },
   "overrides": {

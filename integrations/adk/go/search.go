@@ -1,139 +1,169 @@
 package zepadk
 
 import (
-	zep "github.com/getzep/zep-go/v3"
+	"context"
+
+	zep "github.com/getzep/zep-go/v4"
+)
+
+// SearchScope selects which kind of graph data a Zep search returns. Zep v4
+// replaced the single v3 graph search method with one method for each scope,
+// and it no longer exports a scope enum, so this package defines the scope
+// values that it maps into textual results.
+type SearchScope string
+
+// Supported graph search scopes.
+const (
+	// SearchScopeEdges returns facts and relationships.
+	SearchScopeEdges SearchScope = "edges"
+	// SearchScopeNodes returns entities and their summaries.
+	SearchScopeNodes SearchScope = "nodes"
+	// SearchScopeEpisodes returns raw ingested content.
+	SearchScopeEpisodes SearchScope = "episodes"
+	// SearchScopeObservations returns derived memories.
+	SearchScopeObservations SearchScope = "observations"
+	// SearchScopeThreadSummaries returns incremental thread summaries.
+	SearchScopeThreadSummaries SearchScope = "thread_summaries"
+	// SearchScopeAuto returns the assembled context block, which Zep v4
+	// serves from Graph.GetContext.
+	SearchScopeAuto SearchScope = "auto"
 )
 
 // searchScopeSupported reports whether scope is one this package knows how to
 // map into textual results. Unsupported scopes are rejected loudly rather than
 // silently returning nothing.
-//
-// Supported scopes: edges (facts), nodes (entity summaries), episodes (raw
-// message/data content), observations (derived memories), thread_summaries
-// (incremental thread summaries), and auto (a pre-materialized Context Block
-// returned in res.Context).
-func searchScopeSupported(scope zep.GraphSearchScope) bool {
+func searchScopeSupported(scope SearchScope) bool {
 	switch scope {
-	case zep.GraphSearchScopeEdges,
-		zep.GraphSearchScopeNodes,
-		zep.GraphSearchScopeEpisodes,
-		zep.GraphSearchScopeObservations,
-		zep.GraphSearchScopeThreadSummaries,
-		zep.GraphSearchScopeAuto:
+	case SearchScopeEdges,
+		SearchScopeNodes,
+		SearchScopeEpisodes,
+		SearchScopeObservations,
+		SearchScopeThreadSummaries,
+		SearchScopeAuto:
 		return true
 	default:
 		return false
 	}
 }
 
-// mapSearchResults flattens a Zep graph search response into a slice of textual
-// results appropriate for the requested scope. Earlier versions read only
-// res.Edges, so any non-edge scope (auto / nodes / episodes / observations /
-// thread_summaries) silently returned zero results; this maps every
-// supported scope.
-//
-//   - edges            -> each edge's Fact
-//   - nodes            -> "name: summary" (or just the name when there is no summary)
-//   - episodes         -> each episode's Content
-//   - observations     -> "name: summary" (or just the name when there is no summary)
-//   - thread_summaries -> "name: summary" (or just the name when there is no summary)
-//   - auto             -> the single pre-materialized Context Block (res.Context)
-//
-// Empty entries are skipped. A nil res yields a nil slice.
-func mapSearchResults(scope zep.GraphSearchScope, res *zep.GraphSearchResults) []string {
-	if res == nil {
-		return nil
+// newSearchScopeFromString converts a model-supplied or caller-supplied value
+// into a [SearchScope]. It reports an error for an unsupported value.
+func newSearchScopeFromString(s string) (SearchScope, error) {
+	scope := SearchScope(s)
+	if !searchScopeSupported(scope) {
+		return "", errUnsupportedScope
 	}
+	return scope, nil
+}
 
+// searchGraph runs the Zep v4 graph search method for scope against the graph
+// identified by graphUUID, and maps every result to text:
+//
+//   - edges            -> each edge's fact
+//   - nodes            -> "name: summary" (or the populated half)
+//   - episodes         -> each episode's content
+//   - observations     -> "name: summary" (or the populated half)
+//   - thread_summaries -> each summary's text
+//   - auto             -> the assembled context block from Graph.GetContext
+//
+// Empty entries are skipped. The auto scope uses only the query and the
+// filters, because Graph.GetContext accepts no reranker, no center node, and
+// no MMR weighting.
+func searchGraph(ctx context.Context, api zepAPI, scope SearchScope, graphUUID string, limit *int, body *zep.SearchRequest) ([]string, error) {
 	switch scope {
-	case zep.GraphSearchScopeAuto:
-		if res.Context != nil && *res.Context != "" {
-			return []string{*res.Context}
+	case SearchScopeAuto:
+		res, err := api.GetGraphContext(ctx, graphUUID, &zep.GraphContextRequest{
+			Query:   body.Query,
+			Filters: body.Filters,
+		})
+		if err != nil {
+			return nil, err
 		}
-		return nil
+		if res != nil && deref(res.Context) != "" {
+			return []string{*res.Context}, nil
+		}
+		return nil, nil
 
-	case zep.GraphSearchScopeNodes:
+	case SearchScopeNodes:
+		nodes, err := api.SearchNodes(ctx, graphUUID, &zep.GraphSearchNodesRequest{Limit: limit, Body: body})
+		if err != nil {
+			return nil, err
+		}
 		var out []string
-		for _, node := range res.Nodes {
+		for _, node := range nodes {
 			if node == nil {
 				continue
 			}
-			if text := nodeText(node); text != "" {
+			if text := nameSummaryText(deref(node.Name), deref(node.Summary)); text != "" {
 				out = append(out, text)
 			}
 		}
-		return out
+		return out, nil
 
-	case zep.GraphSearchScopeEpisodes:
-		var out []string
-		for _, ep := range res.Episodes {
-			if ep != nil && ep.Content != "" {
-				out = append(out, ep.Content)
-			}
+	case SearchScopeEpisodes:
+		episodes, err := api.SearchEpisodes(ctx, graphUUID, &zep.GraphSearchEpisodesRequest{Limit: limit, Body: body})
+		if err != nil {
+			return nil, err
 		}
-		return out
-
-	case zep.GraphSearchScopeObservations:
 		var out []string
-		for _, obs := range res.Observations {
-			if obs == nil {
+		for _, episode := range episodes {
+			if episode == nil {
 				continue
 			}
-			if text := observationText(obs); text != "" {
+			if content := deref(episode.Content); content != "" {
+				out = append(out, content)
+			}
+		}
+		return out, nil
+
+	case SearchScopeObservations:
+		observations, err := api.SearchObservations(ctx, graphUUID, &zep.GraphSearchObservationsRequest{Limit: limit, Body: body})
+		if err != nil {
+			return nil, err
+		}
+		var out []string
+		for _, observation := range observations {
+			if observation == nil {
+				continue
+			}
+			if text := nameSummaryText(deref(observation.Name), deref(observation.Summary)); text != "" {
 				out = append(out, text)
 			}
 		}
-		return out
+		return out, nil
 
-	case zep.GraphSearchScopeThreadSummaries:
+	case SearchScopeThreadSummaries:
+		summaries, err := api.SearchThreadSummaries(ctx, graphUUID, &zep.GraphSearchThreadSummariesRequest{Limit: limit, Body: body})
+		if err != nil {
+			return nil, err
+		}
 		var out []string
-		for _, summary := range res.ThreadSummaries {
+		for _, summary := range summaries {
 			if summary == nil {
 				continue
 			}
-			if text := threadSummaryText(summary); text != "" {
+			if text := deref(summary.Summary); text != "" {
 				out = append(out, text)
 			}
 		}
-		return out
+		return out, nil
 
-	case zep.GraphSearchScopeEdges:
-		fallthrough
 	default:
+		edges, err := api.SearchEdges(ctx, graphUUID, &zep.GraphSearchEdgesRequest{Limit: limit, Body: body})
+		if err != nil {
+			return nil, err
+		}
 		var out []string
-		for _, edge := range res.Edges {
-			if edge != nil && edge.Fact != "" {
-				out = append(out, edge.Fact)
+		for _, edge := range edges {
+			if edge == nil {
+				continue
+			}
+			if fact := deref(edge.Fact); fact != "" {
+				out = append(out, fact)
 			}
 		}
-		return out
+		return out, nil
 	}
-}
-
-// nodeText renders an entity node as "name: summary", falling back to just the
-// name (or just the summary) when one half is absent.
-func nodeText(node *zep.EntityNode) string {
-	return nameSummaryText(node.Name, node.Summary)
-}
-
-// observationText renders a derived observation node as "name: summary",
-// falling back to whichever half is present.
-func observationText(obs *zep.DerivedNode) string {
-	summary := ""
-	if obs.Summary != nil {
-		summary = *obs.Summary
-	}
-	return nameSummaryText(obs.Name, summary)
-}
-
-// threadSummaryText renders a thread-summary node as "name: summary",
-// falling back to whichever half is present.
-func threadSummaryText(node *zep.GraphitiSagaNode) string {
-	summary := ""
-	if node.Summary != nil {
-		summary = *node.Summary
-	}
-	return nameSummaryText(node.Name, summary)
 }
 
 // nameSummaryText joins a name and summary as "name: summary", returning just

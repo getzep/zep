@@ -34,13 +34,23 @@ cd zep/integrations/crewai/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `crewai>=1.0.0`, `zep-cloud>=3.23.0`.
+Requirements: Python 3.11+, `crewai>=1.0.0`, `zep-cloud==4.0.0a5`.
+
+`zep-cloud` 4.x is a pre-release. To install it with `pip`, add the `--pre`
+flag, or pin the version:
+
+```bash
+pip install "zep-cloud==4.0.0a5"
+```
 
 ## 4. Configure environment variables
 
 ```bash
 export ZEP_API_KEY="your-zep-api-key"
 export OPENAI_API_KEY="your-openai-api-key"
+
+# Optional: override the Zep API URL (the SDK defaults to the v4 API)
+export ZEP_API_URL="https://api.getzep.com"
 
 # Optional: override the OpenAI model used by the live test (default: gpt-4o-mini)
 export OPENAI_MODEL="gpt-4o-mini"
@@ -67,7 +77,28 @@ Other runnable examples live in [`examples/`](examples):
 - `crewai_graph.py` — `ZepGraphStorage` for a shared knowledge graph
 - `crewai_tools.py` — search + add tools across a multi-agent crew
 
-## 6. Run the tests
+## 6. Identifiers
+
+Zep v4 addresses every user, thread, and graph by a server-generated UUID. An
+example creates each resource, reads the UUID from the create response, and
+passes the UUID to the storage adapters and the tools:
+
+```python
+user = zep_client.user.create(first_name="Alice", email="alice@example.com")
+thread = zep_client.thread.create(user_uuid=user.uuid_)
+
+storage = ZepUserStorage(
+    client=zep_client,
+    user_uuid=user.uuid_,
+    thread_uuid=thread.uuid_,
+    graph_uuid=user.graph_uuid,
+)
+```
+
+Your application stores these UUIDs in its own database. The integration does
+not resolve a `user_id` or a `thread_id` at run time.
+
+## 7. Run the tests
 
 Mock-based tests (no API keys needed):
 

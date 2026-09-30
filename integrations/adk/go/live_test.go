@@ -1,13 +1,16 @@
 package zepadk
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	zepclient "github.com/getzep/zep-go/v3/client"
+	zep "github.com/getzep/zep-go/v4"
+	zepclient "github.com/getzep/zep-go/v4/client"
 
 	"google.golang.org/adk/memory"
 	"google.golang.org/adk/model"
@@ -39,69 +42,66 @@ func requireLiveClient(t *testing.T) *zepclient.Client {
 // deleteLiveUser is a best-effort cleanup helper: it deletes the user (which
 // cascades to its threads on the Zep side), logging rather than failing the
 // test if cleanup itself errors. Mirrors the finally-cleanup in the Python and
-// TypeScript live suites.
-func deleteLiveUser(t *testing.T, client *zepclient.Client, userID string) {
+// TypeScript live suites. Zep v4 deletes a user by UUID.
+func deleteLiveUser(t *testing.T, client *zepclient.Client, userUUID string) {
 	t.Helper()
-	if client == nil || userID == "" {
+	if client == nil || userUUID == "" {
 		return
 	}
-	if _, err := client.User.Delete(context.Background(), userID); err != nil {
-		t.Logf("cleanup: failed to delete live test user %q: %v", userID, err)
+	if _, err := client.User.Delete(context.Background(), userUUID); err != nil {
+		t.Logf("cleanup: failed to delete live test user %q: %v", userUUID, err)
 	}
 }
 
-// TestLiveEnsureAndPersist drives the integration's own NewBeforeModelCallback
+// TestLiveCreateAndPersist drives the integration's own NewBeforeModelCallback
 // and NewAfterModelCallback against the live Zep API -- not the raw SDK -- so
-// this test exercises exactly the code path a real agent runs: persist the
-// user turn, inject the returned Context Block into the system instruction,
-// then persist the assistant's reply to the same thread.
-func TestLiveEnsureAndPersist(t *testing.T) {
+// this test exercises exactly the code path a real agent runs: create the
+// user and the thread, persist the user turn, inject the returned context
+// block into the system instruction, then persist the reply of the assistant
+// to the same thread.
+func TestLiveCreateAndPersist(t *testing.T) {
 	client := requireLiveClient(t)
 	ctx := context.Background()
 
 	suffix := time.Now().UTC().Format("20060102150405")
-	userID := "zepadk-live-user-" + suffix
-	threadID := "zepadk-live-thread-" + suffix
-	t.Cleanup(func() { deleteLiveUser(t, client, userID) })
+	adkUserID := "zepadk-live-user-" + suffix
+	adkSessionID := "zepadk-live-thread-" + suffix
 
-	created, err := EnsureUser(ctx, client, userID, "Live", "Tester", "live-"+suffix+"@example.com")
+	userUUID, graphUUID, err := CreateUser(ctx, client, "Live", "Tester", "live-"+suffix+"@example.com")
 	if err != nil {
-		t.Fatalf("EnsureUser: %v", err)
+		t.Fatalf("CreateUser: %v", err)
 	}
-	if !created {
-		t.Fatal("EnsureUser (first call) created = false, want true")
-	}
-	// A second call must be idempotent (409/400 already-exists swallowed) and
-	// report created=false.
-	created, err = EnsureUser(ctx, client, userID, "Live", "Tester", "")
-	if err != nil {
-		t.Fatalf("EnsureUser (idempotent): %v", err)
-	}
-	if created {
-		t.Fatal("EnsureUser (second call) created = true, want false")
+	t.Cleanup(func() { deleteLiveUser(t, client, userUUID) })
+	if userUUID == "" || graphUUID == "" {
+		t.Fatalf("CreateUser returned user_uuid=%q graph_uuid=%q, want both", userUUID, graphUUID)
 	}
 
-	created, err = EnsureThread(ctx, client, threadID, userID)
+	threadUUID, err := CreateThread(ctx, client, userUUID)
 	if err != nil {
-		t.Fatalf("EnsureThread: %v", err)
+		t.Fatalf("CreateThread: %v", err)
 	}
-	if !created {
-		t.Fatal("EnsureThread (first call) created = false, want true")
-	}
-	created, err = EnsureThread(ctx, client, threadID, userID)
-	if err != nil {
-		t.Fatalf("EnsureThread (idempotent): %v", err)
-	}
-	if created {
-		t.Fatal("EnsureThread (second call) created = true, want false")
+	if threadUUID == "" {
+		t.Fatal("CreateThread returned an empty thread UUID")
 	}
 
 	// --- Drive the real before/after callbacks against the live client ----
 
-	beforeCB := NewBeforeModelCallback(client, WithUserMessageName("Live Tester"))
-	afterCB := NewAfterModelCallback(client, WithAssistantMessageName("assistant"))
+	// The callbacks log and swallow a Zep error, so capture the error log to
+	// detect a failed persist.
+	var errLog bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&errLog, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	cc := newFakeCallbackContext(threadID, userID,
+	beforeCB := NewBeforeModelCallback(client,
+		WithThreadUUID(threadUUID),
+		WithUserUUID(userUUID),
+		WithUserMessageName("Live Tester"),
+		WithLogger(logger))
+	afterCB := NewAfterModelCallback(client,
+		WithAfterThreadUUID(threadUUID),
+		WithAssistantMessageName("assistant"),
+		WithAfterLogger(logger))
+
+	cc := newFakeCallbackContext(adkSessionID, adkUserID,
 		genai.NewContentFromText("My name is Live Tester and my favorite language is Go.", genai.RoleUser))
 	req := &model.LLMRequest{Contents: []*genai.Content{
 		genai.NewContentFromText("My name is Live Tester and my favorite language is Go.", genai.RoleUser),
@@ -114,6 +114,10 @@ func TestLiveEnsureAndPersist(t *testing.T) {
 	if resp != nil {
 		t.Fatalf("before-model callback returned a response %+v, want nil (pass-through)", resp)
 	}
+	if errLog.Len() > 0 {
+		t.Errorf("before-model callback logged an error: %s", errLog.String())
+		errLog.Reset()
+	}
 	if req.Config != nil && req.Config.SystemInstruction != nil {
 		got := LastUserText(req.Config.SystemInstruction)
 		t.Logf("system instruction after before-callback: %q", got)
@@ -124,7 +128,7 @@ func TestLiveEnsureAndPersist(t *testing.T) {
 		t.Log("no context block was injected (Zep may not have returned one yet); continuing")
 	}
 
-	// Persist the assistant's reply to the same thread via the real
+	// Persist the reply of the assistant to the same thread through the real
 	// after-model callback.
 	afterResp, err := afterCB(cc, &model.LLMResponse{
 		Content: genai.NewContentFromText("Nice to meet you, Live Tester!", genai.RoleModel),
@@ -134,6 +138,28 @@ func TestLiveEnsureAndPersist(t *testing.T) {
 	}
 	if afterResp != nil {
 		t.Fatalf("after-model callback returned a response %+v, want nil (pass-through)", afterResp)
+	}
+	if errLog.Len() > 0 {
+		t.Errorf("after-model callback logged an error: %s", errLog.String())
+	}
+
+	// Read the thread back to confirm that both turns were persisted.
+	page, err := client.Thread.ListMessages(ctx, threadUUID, &zep.ThreadListMessagesRequest{})
+	if err != nil {
+		t.Fatalf("Thread.ListMessages: %v", err)
+	}
+	messages, err := collectPage(ctx, page, nil)
+	if err != nil {
+		t.Fatalf("Thread.ListMessages pages: %v", err)
+	}
+	roles := map[zep.RoleType]int{}
+	for _, m := range messages {
+		if m != nil && m.Role != nil {
+			roles[*m.Role]++
+		}
+	}
+	if len(messages) != 2 || roles[zep.RoleTypeUser] != 1 || roles[zep.RoleTypeAssistant] != 1 {
+		t.Fatalf("thread messages = %d with roles %v, want one user and one assistant message", len(messages), roles)
 	}
 }
 
@@ -146,21 +172,18 @@ func TestLiveGraphSearchTool(t *testing.T) {
 	ctx := context.Background()
 
 	suffix := time.Now().UTC().Format("20060102150405")
-	userID := "zepadk-live-search-user-" + suffix
-	t.Cleanup(func() { deleteLiveUser(t, client, userID) })
+	adkUserID := "zepadk-live-search-user-" + suffix
 
-	created, err := EnsureUser(ctx, client, userID, "Live", "Searcher", "")
+	userUUID, graphUUID, err := CreateUser(ctx, client, "Live", "Searcher", "")
 	if err != nil {
-		t.Fatalf("EnsureUser: %v", err)
+		t.Fatalf("CreateUser: %v", err)
 	}
-	if !created {
-		t.Fatal("EnsureUser created = false, want true")
-	}
+	t.Cleanup(func() { deleteLiveUser(t, client, userUUID) })
 
 	api := newZepAPI(client)
-	handler := newGraphSearchHandler(api)
+	handler := newGraphSearchHandler(api, WithGraphUUID(graphUUID))
 
-	result, err := handler(fakeSearchToolContext{Context: ctx, userID: userID}, SearchArgs{
+	result, err := handler(fakeSearchToolContext{Context: ctx, userID: adkUserID}, SearchArgs{
 		Query: "favorite programming language",
 	})
 	if err != nil {
@@ -173,11 +196,18 @@ func TestLiveMemoryServiceSearch(t *testing.T) {
 	client := requireLiveClient(t)
 	ctx := context.Background()
 
-	// Search against a user that almost certainly has no graph; the call must
-	// still succeed and return a (possibly empty) response without error.
-	svc := NewMemoryService(client)
+	suffix := time.Now().UTC().Format("20060102150405")
+	userUUID, graphUUID, err := CreateUser(ctx, client, "Live", "Memory", "")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	t.Cleanup(func() { deleteLiveUser(t, client, userUUID) })
+
+	// The graph of a new user is empty. The call must still succeed and
+	// return a (possibly empty) response without an error.
+	svc := NewMemoryService(client, WithMemoryGraphUUID(graphUUID))
 	resp, err := svc.SearchMemory(ctx, &memory.SearchRequest{
-		UserID: "zepadk-live-user-nonexistent-" + time.Now().UTC().Format("20060102150405"),
+		UserID: "zepadk-live-memory-user-" + suffix,
 		Query:  "favorite programming language",
 	})
 	if err != nil {

@@ -19,14 +19,20 @@ Usage::
     zep = AsyncZep(api_key="your-api-key")
     store = ZepMemoryStore(
         zep_client=zep,
-        user_id="user-123",
-        thread_id="thread-abc",
+        user_uuid=user_uuid,
+        thread_uuid=thread_uuid,
         first_name="Jane",
         last_name="Smith",
         writable=True,
         extraction=True,
     )
     agent = Agent(memory_manager=MemoryManager(stores=[store]))
+
+Zep v4 addresses a user, a thread, and a graph by a server-generated UUID.
+Create the user and the thread one time with
+:func:`~zep_strands.provisioning.create_user` and
+:func:`~zep_strands.provisioning.create_thread`, keep the UUIDs in your own
+database, and give them to the store.
 """
 
 __version__ = "0.1.0"
@@ -53,7 +59,7 @@ from .memory_store import (
     DEFAULT_STORE_NAME,
     ZepMemoryStore,
 )
-from .provisioning import UserSetupHook, ensure_thread, ensure_user
+from .provisioning import UserSetupHook, create_thread, create_user
 from .search import (
     Reranker,
     Scope,
@@ -72,7 +78,7 @@ __all__ = [
     "ZepDependencyError",
     "ZepMemoryStore",
     "ZepSearchTool",
+    "create_thread",
+    "create_user",
     "create_zep_search_tool",
-    "ensure_user",
-    "ensure_thread",
 ]

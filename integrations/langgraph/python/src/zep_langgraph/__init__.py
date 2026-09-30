@@ -11,18 +11,18 @@ Two layers are provided:
 LangGraph guide). Call the Zep client directly inside your graph nodes:
 
 * :func:`~zep_langgraph.context.build_system_message` / :func:`~zep_langgraph.context.get_zep_context`
-  -- fetch the user's Context Block (from :meth:`thread.get_user_context`, or a
+  -- fetch the user's Context Block (from :meth:`thread.get_context`, or a
   custom :data:`~zep_langgraph.context.ContextBuilder`) and inject it into the
   system prompt.
 * :func:`~zep_langgraph.persistence.persist_messages` -- persist a conversation
   turn (wraps :meth:`thread.add_messages`).
 * :func:`~zep_langgraph.tools.create_graph_search_tool` -- a prebuilt,
-  pin-or-expose LangChain/LangGraph tool over :meth:`graph.search`, ready for
-  ``create_react_agent``.
+  pin-or-expose LangChain/LangGraph tool over the Zep graph-search methods,
+  ready for ``create_react_agent``.
 * :func:`~zep_langgraph.hooks.create_zep_pre_model_hook` -- a prebuilt
   ``pre_model_hook`` for ``create_react_agent`` that injects context on every
   turn via ``llm_input_messages``.
-* :func:`~zep_langgraph.provisioning.ensure_user` / :func:`~zep_langgraph.provisioning.ensure_thread`
+* :func:`~zep_langgraph.provisioning.create_user` / :func:`~zep_langgraph.provisioning.create_thread`
   (+ ``_sync`` twins) -- explicit, out-of-band resource provisioning.
 
 **Secondary -- ``ZepStore``** (:class:`~zep_langgraph.store.ZepStore`), a
@@ -34,6 +34,11 @@ Installation::
 
     pip install zep-langgraph
 
+Zep v4 addresses every user, thread, and graph by a server-generated UUID.
+Create the user and the thread one time, store ``user.uuid_``,
+``user.graph_uuid``, and ``thread.uuid_`` in your own database, and pass the
+stored UUIDs to these helpers on every turn.
+
 Quick start (primary path)::
 
     from zep_cloud.client import AsyncZep
@@ -43,12 +48,12 @@ Quick start (primary path)::
 
     async def agent_node(state):
         system = await build_system_message(
-            zep, thread_id=state["thread_id"],
+            zep, thread_uuid=state["thread_uuid"],
             base_instructions="You are a helpful assistant.",
         )
         response = await llm.ainvoke([system, *state["messages"]])
         await persist_messages(
-            zep, thread_id=state["thread_id"],
+            zep, thread_uuid=state["thread_uuid"],
             messages=[state["messages"][-1], response],
             user_name="Alice Smith",
         )
@@ -89,10 +94,10 @@ try:
     from .provisioning import (
         UserSetupHook,
         UserSetupHookSync,
-        ensure_thread,
-        ensure_thread_sync,
-        ensure_user,
-        ensure_user_sync,
+        create_thread,
+        create_thread_sync,
+        create_user,
+        create_user_sync,
     )
     from .store import NamespaceTargetResolver, ZepStore
     from .tools import (
@@ -123,10 +128,10 @@ try:
         "MAX_MESSAGE_CHARS",
         "MAX_MESSAGES_PER_CALL",
         # provisioning
-        "ensure_user",
-        "ensure_user_sync",
-        "ensure_thread",
-        "ensure_thread_sync",
+        "create_user",
+        "create_user_sync",
+        "create_thread",
+        "create_thread_sync",
         "UserSetupHook",
         "UserSetupHookSync",
         # hooks

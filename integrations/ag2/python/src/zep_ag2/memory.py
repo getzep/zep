@@ -20,9 +20,17 @@ for the exact hook wiring and persistence contract.
 Note:
     **Per-user manager instances.** Like the sibling ports (see
     ``zep_autogen.ZepUserMemory``), a ``ZepMemoryManager`` is scoped to one
-    ``(user_id, session_id)`` pair for the lifetime of the instance. Create
+    ``(user_uuid, thread_uuid)`` pair for the lifetime of the instance. Create
     one manager per user/thread rather than sharing a single instance across
     users -- there is no per-call identity override.
+
+Note:
+    **Zep v4 identifiers.** Zep v4 addresses every user, thread, and graph by
+    a server-generated UUID. The manager takes ``user_uuid`` and
+    ``thread_uuid``, and it never resolves a name at run time. Create the
+    user and the thread one time, out of band (see
+    :mod:`zep_ag2.provisioning`), and store the returned UUIDs in your own
+    database.
 """
 
 import asyncio
@@ -32,12 +40,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from zep_cloud.client import AsyncZep
-from zep_cloud.types import Message
+from zep_cloud.types import AddMessage
 
 from zep_ag2.exceptions import ZepAG2ConfigError, ZepAG2MemoryError
-from zep_ag2.provisioning import UserSetupHook
-from zep_ag2.provisioning import ensure_thread as _ensure_thread
-from zep_ag2.provisioning import ensure_user as _ensure_user
 from zep_ag2.tools import MESSAGE_MAX_CHARS, _run_sync, _truncate, _validate_role
 
 logger = logging.getLogger(__name__)
@@ -70,9 +75,10 @@ class ContextInput:
 
     Attributes:
         zep: The ``AsyncZep`` client in use by this manager.
-        user_id: The Zep user ID this manager is scoped to.
-        thread_id: The Zep thread ID this manager records the conversation in,
-            or ``None`` when the manager was created without a ``session_id``.
+        user_uuid: The UUID of the Zep user this manager is scoped to.
+        thread_uuid: The UUID of the Zep thread this manager records the
+            conversation in, or ``None`` when the manager was created without
+            a ``thread_uuid``.
         user_message: The user message text this turn is building context for.
         agent: The AG2 agent this call is being made on behalf of, when
             invoked via :meth:`ZepMemoryManager.attach_to_agent`'s automatic
@@ -82,28 +88,29 @@ class ContextInput:
             in scope).
 
     Example:
-        A builder that searches a per-user graph with a pinned scope instead
-        of using the thread's default Context Block retrieval::
+        A builder that searches the graph of the user for facts instead of
+        using the thread's default Context Block retrieval::
 
             async def my_builder(ctx: ContextInput) -> str | None:
-                results = await ctx.zep.graph.search(
-                    user_id=ctx.user_id,
+                user = await ctx.zep.user.get(ctx.user_uuid)
+                pager = await ctx.zep.graph.search_edges(
+                    user.graph_uuid,
                     query=ctx.user_message,
-                    scope="edges",
                 )
-                if not results.edges:
+                edges = pager.items or []
+                if not edges:
                     return None
-                return "\\n".join(edge.fact for edge in results.edges)
+                return "\\n".join(edge.fact for edge in edges if edge.fact)
 
             manager = ZepMemoryManager(
-                zep, user_id="user-123", session_id="thread-abc",
+                zep, user_uuid=user.uuid_, thread_uuid=thread.uuid_,
                 context_builder=my_builder,
             )
     """
 
     zep: AsyncZep
-    user_id: str
-    thread_id: str | None
+    user_uuid: str
+    thread_uuid: str | None
     user_message: str
     agent: Any | None = None
 
@@ -138,35 +145,31 @@ class ZepMemoryManager:
         >>> from zep_cloud.client import AsyncZep
         >>> from zep_ag2 import ZepMemoryManager
         >>> zep = AsyncZep(api_key="your-key")
-        >>> manager = ZepMemoryManager(zep, user_id="user123", session_id="sess456")
+        >>> manager = ZepMemoryManager(zep, user_uuid=user.uuid_, thread_uuid=thread.uuid_)
         >>> await manager.enrich_system_message(agent, query="project discussion")
 
     Note:
-        **Lazy provisioning.** The Zep user and (if ``session_id`` is set)
-        thread are created lazily, on first use, by
-        :meth:`ensure_user_and_thread` -- called internally from
-        :meth:`process_user_message`, :meth:`get_memory_context`,
-        :meth:`enrich_system_message`, and the :meth:`attach_to_agent` hooks.
-        The result is cached on the instance, so repeated calls incur no
-        extra setup round-trips. This lazy path is hot-path-wrapped: a
-        genuine provisioning failure (or an ``on_created`` hook failure) is
-        logged and returns ``False``, never raised into a memory-path method.
-        Callers who want provisioning failures to surface loudly should call
-        :func:`zep_ag2.provisioning.ensure_user` and
-        :func:`zep_ag2.provisioning.ensure_thread` directly, out-of-band,
-        before the first turn.
+        **The resources must exist.** Zep v4 addresses a user and a thread by
+        UUID, so the manager cannot create them from a name. Create the user
+        and the thread one time, out of band, with
+        :func:`zep_ag2.provisioning.create_user` and
+        :func:`zep_ag2.provisioning.create_thread`, and give their UUIDs to
+        the manager.
+
+    Note:
+        **The graph UUID.** The default graph search reads the graph of the
+        user. The manager resolves that UUID one time with
+        ``user.get(user_uuid)`` and caches it. Give ``graph_uuid`` to the
+        constructor to prevent this round-trip.
     """
 
     def __init__(
         self,
         client: AsyncZep,
-        user_id: str,
-        session_id: str | None = None,
+        user_uuid: str,
+        thread_uuid: str | None = None,
         *,
-        first_name: str | None = None,
-        last_name: str | None = None,
-        email: str | None = None,
-        on_created: UserSetupHook | None = None,
+        graph_uuid: str | None = None,
         context_builder: ContextBuilder | None = None,
         context_template: str = DEFAULT_CONTEXT_TEMPLATE,
     ) -> None:
@@ -175,19 +178,12 @@ class ZepMemoryManager:
 
         Args:
             client: An initialized AsyncZep instance.
-            user_id: User ID for memory isolation (required).
-            session_id: Optional thread/session ID for conversation-scoped memory.
-            first_name: Optional first name, passed to ``user.add`` during lazy
-                provisioning. Helps Zep anchor the user's identity node in the graph.
-            last_name: Optional last name, passed to ``user.add`` during lazy provisioning.
-            email: Optional email, passed to ``user.add`` during lazy provisioning.
-            on_created: Optional async hook invoked exactly once, right after a new
-                Zep user is created during lazy provisioning. Use it to configure
-                per-user ontology, custom instructions, or user summary instructions.
-                Does not fire for users that already exist. See
-                :func:`zep_ag2.provisioning.ensure_user` for the hook contract;
-                note that on this lazy path, a hook failure is logged and swallowed
-                rather than raised (see the class-level "Lazy provisioning" note).
+            user_uuid: The UUID of the Zep user (required).
+            thread_uuid: Optional UUID of the Zep thread for
+                conversation-scoped memory.
+            graph_uuid: Optional UUID of the graph of the user, read from
+                ``user.graph_uuid``. When it is not given, the manager
+                resolves it on first use and caches it.
             context_builder: Optional async callable that replaces the default
                 Zep Context Block retrieval used by :meth:`process_user_message`,
                 :meth:`get_memory_context`, and :meth:`enrich_system_message`.
@@ -200,28 +196,19 @@ class ZepMemoryManager:
                 :data:`DEFAULT_CONTEXT_TEMPLATE`.
 
         Raises:
-            ZepAG2ConfigError: If client is not an AsyncZep instance or user_id is empty.
+            ZepAG2ConfigError: If client is not an AsyncZep instance or user_uuid is empty.
         """
         if not isinstance(client, AsyncZep):
             raise ZepAG2ConfigError("client must be an instance of AsyncZep")
-        if not user_id:
-            raise ZepAG2ConfigError("user_id is required")
+        if not user_uuid:
+            raise ZepAG2ConfigError("user_uuid is required")
 
         self._client = client
-        self._user_id = user_id
-        self._session_id = session_id
-        self._first_name = first_name
-        self._last_name = last_name
-        self._email = email
-        self._on_created = on_created
+        self._user_uuid = user_uuid
+        self._thread_uuid = thread_uuid
+        self._graph_uuid = graph_uuid
         self._context_builder = context_builder
         self._context_template = context_template
-
-        # Whether the Zep user (and, once a session_id exists, the thread)
-        # have been created (or confirmed to already exist). Cached so
-        # repeated calls do not re-issue setup calls.
-        self._user_ready = False
-        self._thread_ready = False
 
     @property
     def client(self) -> AsyncZep:
@@ -229,58 +216,36 @@ class ZepMemoryManager:
         return self._client
 
     @property
-    def user_id(self) -> str:
-        """The user ID for memory isolation."""
-        return self._user_id
+    def user_uuid(self) -> str:
+        """The UUID of the Zep user."""
+        return self._user_uuid
 
     @property
-    def session_id(self) -> str | None:
-        """The thread/session ID, if set."""
-        return self._session_id
+    def thread_uuid(self) -> str | None:
+        """The UUID of the Zep thread, if set."""
+        return self._thread_uuid
 
-    async def ensure_user_and_thread(self) -> bool:
-        """Lazily create the Zep user and (if set) thread, hot-path-wrapped.
+    @property
+    def graph_uuid(self) -> str | None:
+        """The UUID of the graph of the user, if it is known."""
+        return self._graph_uuid
 
-        Unlike calling :func:`zep_ag2.provisioning.ensure_user` /
-        :func:`~.provisioning.ensure_thread` directly (where a genuine
-        failure or an ``on_created`` hook error propagates to the caller),
-        every failure here -- including a hook failure -- is logged and
-        swallowed so a Zep or setup-code outage never raises into a
+    async def resolve_graph_uuid(self) -> str | None:
+        """Return the UUID of the graph of the user, and cache it.
+
+        The manager reads ``user.graph_uuid`` one time. A failure is logged
+        and returns ``None``, so a Zep outage never raises into a
         memory-path method.
-
-        The result is cached on the instance: subsequent calls are no-ops
-        once the user (and thread, if applicable) are confirmed ready.
-
-        Returns:
-            ``True`` if the user (and thread, when applicable) are ready,
-            ``False`` on a genuine failure.
         """
-        if not self._user_ready:
-            try:
-                await _ensure_user(
-                    self._client,
-                    user_id=self._user_id,
-                    first_name=self._first_name,
-                    last_name=self._last_name,
-                    email=self._email,
-                    on_created=self._on_created,
-                )
-                self._user_ready = True
-            except Exception as exc:
-                logger.warning("Failed to create Zep user %s: %s", self._user_id, exc)
-                return False
-
-        if self._session_id and not self._thread_ready:
-            try:
-                await _ensure_thread(
-                    self._client, thread_id=self._session_id, user_id=self._user_id
-                )
-                self._thread_ready = True
-            except Exception as exc:
-                logger.warning("Failed to create Zep thread %s: %s", self._session_id, exc)
-                return False
-
-        return True
+        if self._graph_uuid:
+            return self._graph_uuid
+        try:
+            user = await self._client.user.get(self._user_uuid)
+        except Exception as exc:
+            logger.warning("Failed to read Zep user %s: %s", self._user_uuid, exc)
+            return None
+        self._graph_uuid = user.graph_uuid
+        return self._graph_uuid
 
     async def _build_context_via_builder(self, user_message: str, agent: Any | None) -> str | None:
         """Invoke ``context_builder`` if set, isolating any failure.
@@ -295,8 +260,8 @@ class ZepMemoryManager:
             return await self._context_builder(
                 ContextInput(
                     zep=self._client,
-                    user_id=self._user_id,
-                    thread_id=self._session_id,
+                    user_uuid=self._user_uuid,
+                    thread_uuid=self._thread_uuid,
                     user_message=user_message,
                     agent=agent,
                 )
@@ -319,7 +284,7 @@ class ZepMemoryManager:
         returns a context string ready for injection, or ``None`` if no
         context is available.
 
-        Requires ``session_id`` to be set (a session/thread id is required to
+        Requires ``thread_uuid`` to be set (a thread UUID is required to
         persist a message).
 
         Behavior:
@@ -346,18 +311,16 @@ class ZepMemoryManager:
             returned no context).
 
         Raises:
-            ZepAG2ConfigError: If no session_id is set.
+            ZepAG2ConfigError: If no thread_uuid is set.
         """
-        if not self._session_id:
+        if not self._thread_uuid:
             raise ZepAG2ConfigError(
-                "session_id is required to process a user message. "
-                "Set session_id when creating ZepMemoryManager."
+                "thread_uuid is required to process a user message. "
+                "Set thread_uuid when creating ZepMemoryManager."
             )
-        session_id: str = self._session_id
+        thread_uuid: str = self._thread_uuid
 
-        await self.ensure_user_and_thread()
-
-        message = Message(
+        message = AddMessage(
             content=_truncate(user_message, MESSAGE_MAX_CHARS, "message content"),
             role="user",
         )
@@ -366,7 +329,7 @@ class ZepMemoryManager:
 
             async def _persist() -> None:
                 await self._client.thread.add_messages(
-                    thread_id=session_id,
+                    thread_uuid,
                     messages=[message],
                 )
 
@@ -387,7 +350,7 @@ class ZepMemoryManager:
 
         try:
             add_result = await self._client.thread.add_messages(
-                thread_id=session_id,
+                thread_uuid,
                 messages=[message],
                 return_context=True,
             )
@@ -402,8 +365,8 @@ class ZepMemoryManager:
 
         If ``context_builder`` is set, it replaces the default retrieval
         below entirely (see :data:`ContextBuilder`). Otherwise: if a query is
-        provided, performs semantic search on the user's knowledge graph; if
-        a session_id is set, also retrieves thread context.
+        provided, performs semantic search on the graph of the user; if
+        a thread_uuid is set, also retrieves thread context.
 
         Args:
             query: Optional search query for semantic memory retrieval. Also
@@ -416,46 +379,48 @@ class ZepMemoryManager:
             if no relevant memories are found.
         """
         if self._context_builder is not None:
-            await self.ensure_user_and_thread()
             context_text = await self._build_context_via_builder(query or "", None)
             return context_text or ""
 
         parts: list[str] = []
 
-        # Get thread context if session_id is set. get_user_context returns a
-        # prompt-ready Context Block assembled from the whole user graph, so a
-        # separate recent-messages read is redundant.
-        if self._session_id:
+        # Get thread context if thread_uuid is set. thread.get_context returns
+        # a prompt-ready Context Block assembled from the whole user graph, so
+        # a separate recent-messages read is redundant.
+        if self._thread_uuid:
             try:
-                context_result = await self._client.thread.get_user_context(
-                    thread_id=self._session_id,
-                )
+                context_result = await self._client.thread.get_context(self._thread_uuid)
                 if context_result.context:
                     parts.append(f"Memory context: {context_result.context}")
             except Exception as e:
-                logger.error("Zep get_user_context failed: %s", type(e).__name__)
+                logger.error("Zep thread.get_context failed: %s", type(e).__name__)
 
         # Search knowledge graph if query is provided
         if query:
-            try:
-                graph_results = await self._client.graph.search(
-                    user_id=self._user_id,
-                    query=query,
-                    limit=limit,
-                )
-                facts: list[str] = []
-                if graph_results.edges:
-                    for edge in graph_results.edges:
+            graph_uuid = await self.resolve_graph_uuid()
+            if graph_uuid:
+                try:
+                    facts: list[str] = []
+                    edge_pager = await self._client.graph.search_edges(
+                        graph_uuid,
+                        query=query,
+                        limit=limit,
+                    )
+                    for edge in edge_pager.items or []:
                         facts.append(f"- {edge.fact}")
-                if graph_results.nodes:
-                    for node in graph_results.nodes:
+                    node_pager = await self._client.graph.search_nodes(
+                        graph_uuid,
+                        query=query,
+                        limit=limit,
+                    )
+                    for node in node_pager.items or []:
                         summary = node.summary or "No summary"
                         facts.append(f"- {node.name}: {summary}")
 
-                if facts:
-                    parts.append("Relevant knowledge:\n" + "\n".join(facts))
-            except Exception as e:
-                logger.error("Zep graph.search failed: %s", type(e).__name__)
+                    if facts:
+                        parts.append("Relevant knowledge:\n" + "\n".join(facts))
+                except Exception as e:
+                    logger.error("Zep graph search failed: %s", type(e).__name__)
 
         return "\n\n".join(parts)
 
@@ -481,7 +446,6 @@ class ZepMemoryManager:
             limit: Maximum number of memory results.
         """
         if self._context_builder is not None:
-            await self.ensure_user_and_thread()
             context_text = await self._build_context_via_builder(query or "", agent)
             if context_text:
                 original_msg = agent.system_message
@@ -506,20 +470,18 @@ class ZepMemoryManager:
                       and optionally 'name' keys.
 
         Raises:
-            ZepAG2ConfigError: If no session_id is set.
+            ZepAG2ConfigError: If no thread_uuid is set.
             ZepAG2MemoryError: If the Zep API call fails.
         """
-        if not self._session_id:
+        if not self._thread_uuid:
             raise ZepAG2ConfigError(
-                "session_id is required to add messages. "
-                "Set session_id when creating ZepMemoryManager."
+                "thread_uuid is required to add messages. "
+                "Set thread_uuid when creating ZepMemoryManager."
             )
-
-        await self.ensure_user_and_thread()
 
         try:
             zep_messages = [
-                Message(
+                AddMessage(
                     content=_truncate(msg["content"], MESSAGE_MAX_CHARS, "message content"),
                     role=_validate_role(msg.get("role", "user")),
                     name=msg.get("name"),
@@ -527,7 +489,7 @@ class ZepMemoryManager:
                 for msg in messages
             ]
             await self._client.thread.add_messages(
-                thread_id=self._session_id,
+                self._thread_uuid,
                 messages=zep_messages,
             )
         except Exception as e:
@@ -542,20 +504,18 @@ class ZepMemoryManager:
             A list of fact strings extracted from the session.
 
         Raises:
-            ZepAG2ConfigError: If no session_id is set.
+            ZepAG2ConfigError: If no thread_uuid is set.
         """
-        if not self._session_id:
-            raise ZepAG2ConfigError("session_id is required to get session facts.")
+        if not self._thread_uuid:
+            raise ZepAG2ConfigError("thread_uuid is required to get session facts.")
 
         try:
-            context_result = await self._client.thread.get_user_context(
-                thread_id=self._session_id,
-            )
+            context_result = await self._client.thread.get_context(self._thread_uuid)
             if context_result.context:
                 return [context_result.context]
             return []
         except Exception as e:
-            logger.error("Zep get_user_context failed: %s", type(e).__name__)
+            logger.error("Zep thread.get_context failed: %s", type(e).__name__)
             return []
 
     # -----------------------------------------------------------------
@@ -596,7 +556,7 @@ class ZepMemoryManager:
 
         Multi-agent caveat: attach this to exactly one agent per Zep thread
         (normally the user-facing agent) -- if two agents both attach managers
-        pointing at the same ``session_id``, each turn is persisted twice with
+        pointing at the same ``thread_uuid``, each turn is persisted twice with
         conflicting roles (one agent's outgoing hook persists it as
         ``assistant``, the other's incoming hook persists the same content as
         ``user``); see the README's "Multi-agent caveat" section for the
@@ -636,19 +596,18 @@ class ZepMemoryManager:
     async def _persist_assistant_reply(self, content: str) -> None:
         """Persist an assistant-authored message, used by the outgoing hook.
 
-        Requires ``session_id``; a missing session_id is treated the same as
+        Requires ``thread_uuid``; a missing thread_uuid is treated the same as
         any other failure here -- logged and swallowed, since this is called
         from inside the (already try/except-wrapped) ``attach_to_agent`` hook.
         """
-        if not self._session_id:
+        if not self._thread_uuid:
             return
-        await self.ensure_user_and_thread()
-        message = Message(
+        message = AddMessage(
             content=_truncate(content, MESSAGE_MAX_CHARS, "message content"),
             role="assistant",
         )
         await self._client.thread.add_messages(
-            thread_id=self._session_id,
+            self._thread_uuid,
             messages=[message],
         )
 

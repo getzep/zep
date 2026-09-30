@@ -35,7 +35,14 @@ cd zep/integrations/pydantic-ai/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `pydantic-ai>=1.107,<2`, `zep-cloud>=3.23.0`.
+Requirements: Python 3.11+, `pydantic-ai>=1.107,<2`, `zep-cloud==4.0.0a5`.
+
+`zep-cloud` 4.0.0a5 is a pre-release. To install it with `pip` directly, use
+`pip install --pre "zep-cloud==4.0.0a5"`.
+
+The package targets the Zep v4 API. Zep v4 addresses every user, thread, and
+graph by a server-generated UUID. Your application creates the user and the
+thread one time, stores the returned UUIDs, and passes them to `ZepDeps`.
 
 ## 4. Configure environment variables
 
@@ -60,9 +67,10 @@ python examples/basic_agent.py
 
 The example:
 
-1. Seeds facts about a user across two turns in one thread.
-2. Waits for Zep to process the knowledge graph (ingestion is asynchronous).
-3. Asks recall questions — the agent answers using facts fused into the user's
+1. Creates a Zep user and a thread, and reads the returned UUIDs.
+2. Seeds facts about the user across two turns in one thread.
+3. Waits for Zep to process the knowledge graph (ingestion is asynchronous).
+4. Asks recall questions — the agent answers using facts fused into the user's
    graph, injected automatically by the history processor.
 
 ## 6. Run the tests

@@ -1,11 +1,16 @@
 """
 Context-injection helpers for LangGraph nodes.
 
-These helpers wrap Zep's :meth:`thread.get_user_context` so a graph node can
+These helpers wrap Zep's :meth:`thread.get_context` so a graph node can
 fetch the user's :class:`Context Block <zep_cloud.types.thread_context_response.ThreadContextResponse>`
 -- a prompt-ready summary assembled from the *entire* user graph (the thread
 only scopes what is currently relevant) -- and inject it into the system
 prompt.
+
+Zep v4 addresses every user, thread, and graph by a server-generated UUID, so
+these helpers take a ``thread_uuid`` and a ``graph_uuid``. Resolve a legacy
+``thread_id`` one time with ``thread.lookup``, store the UUID in your own
+database, and pass the stored UUID on every turn.
 
 The recommended pattern, matching Zep's own LangGraph guide, is to call
 :func:`get_zep_context` (or :func:`build_system_message`) at the top of an
@@ -16,7 +21,7 @@ agent node and prepend the result to the message list passed to the model::
     async def agent_node(state):
         system = await build_system_message(
             zep_client,
-            thread_id=state["thread_id"],
+            thread_uuid=state["thread_uuid"],
             base_instructions="You are a helpful assistant.",
         )
         messages = [system, *state["messages"]]
@@ -68,35 +73,37 @@ class ContextInput:
 
     Attributes:
         zep: The ``AsyncZep`` client in use.
-        user_id: The Zep user ID for this turn (as passed to
-            :func:`get_zep_context` / :func:`build_system_message`).
-        thread_id: The Zep thread ID for this turn.
+        graph_uuid: The UUID of the graph to read for this turn (as passed to
+            :func:`get_zep_context` / :func:`build_system_message`). For a
+            user's personal graph this is ``User.graph_uuid``.
+        thread_uuid: The UUID of the Zep thread for this turn.
         user_message: The user's message text for this turn (as passed by the
             caller; these helpers do not extract it from graph state).
 
     Example:
-        A builder that searches a per-user graph instead of using the
-        thread's default context retrieval::
+        A builder that searches a graph instead of using the thread's default
+        context retrieval::
 
             async def my_builder(ctx: ContextInput) -> str | None:
-                results = await ctx.zep.graph.search(
-                    user_id=ctx.user_id,
+                page = await ctx.zep.graph.search_edges(
+                    ctx.graph_uuid,
                     query=ctx.user_message,
-                    scope="edges",
                 )
-                if not results.edges:
+                edges = page.items or []
+                if not edges:
                     return None
-                return "\\n".join(edge.fact for edge in results.edges)
+                return "\\n".join(edge.fact for edge in edges if edge.fact)
 
             context = await get_zep_context(
-                zep, thread_id, context_builder=my_builder,
-                user_id="user-1", user_message=state["messages"][-1].content,
+                zep, thread_uuid, context_builder=my_builder,
+                graph_uuid=user.graph_uuid,
+                user_message=state["messages"][-1].content,
             )
     """
 
     zep: AsyncZep
-    user_id: str
-    thread_id: str
+    graph_uuid: str
+    thread_uuid: str
     user_message: str
 
 
@@ -117,31 +124,31 @@ ContextBuilderSync = Callable[[ContextInput], str | None]
 
 async def get_zep_context(
     zep_client: AsyncZep,
-    thread_id: str,
+    thread_uuid: str,
     *,
-    template_id: str | None = None,
+    template_uuid: str | None = None,
     context_builder: ContextBuilder | None = None,
-    user_id: str = "",
+    graph_uuid: str = "",
     user_message: str = "",
 ) -> str | None:
     """Fetch the Zep Context Block for a thread.
 
-    Wraps :meth:`AsyncZep.thread.get_user_context`. The returned block is
+    Wraps :meth:`AsyncZep.thread.get_context`. The returned block is
     assembled from the whole user graph; the thread is used only to determine
     what is relevant right now.
 
     Args:
         zep_client: An initialised :class:`~zep_cloud.client.AsyncZep` client.
-        thread_id: The Zep thread ID to retrieve context for.
-        template_id: Optional ID of a context template to format the block with.
-            Ignored when ``context_builder`` is set.
+        thread_uuid: The UUID of the Zep thread to retrieve context for.
+        template_uuid: Optional UUID of a context template to format the block
+            with. Ignored when ``context_builder`` is set.
         context_builder: Optional async callable that *replaces*
-            ``thread.get_user_context`` for this call. Receives a single
-            :class:`ContextInput` built from ``zep_client``, ``user_id``,
-            ``thread_id``, and ``user_message``. Use this to search a
+            ``thread.get_context`` for this call. Receives a single
+            :class:`ContextInput` built from ``zep_client``, ``graph_uuid``,
+            ``thread_uuid``, and ``user_message``. Use this to search a
             different graph, apply filters, or combine multiple sources.
-        user_id: The Zep user ID for this turn. Only used to populate
-            ``ContextInput`` when ``context_builder`` is set; ignored
+        graph_uuid: The UUID of the graph to read for this turn. Only used to
+            populate ``ContextInput`` when ``context_builder`` is set; ignored
             otherwise.
         user_message: The user's message text for this turn. Only used to
             populate ``ContextInput`` when ``context_builder`` is set;
@@ -156,28 +163,28 @@ async def get_zep_context(
             return await context_builder(
                 ContextInput(
                     zep=zep_client,
-                    user_id=user_id,
-                    thread_id=thread_id,
+                    graph_uuid=graph_uuid,
+                    thread_uuid=thread_uuid,
                     user_message=user_message,
                 )
             )
         except Exception:
             logger.warning(
                 "Custom context_builder raised for thread %s -- skipping context injection",
-                thread_id,
+                thread_uuid,
                 exc_info=True,
             )
             return None
 
     try:
-        response = await zep_client.thread.get_user_context(
-            thread_id,
-            template_id=template_id,
+        response = await zep_client.thread.get_context(
+            thread_uuid,
+            template_uuid=template_uuid,
         )
     except Exception:
         logger.warning(
             "Failed to retrieve Zep context for thread %s",
-            thread_id,
+            thread_uuid,
             exc_info=True,
         )
         return None
@@ -190,11 +197,11 @@ async def get_zep_context(
 
 def get_zep_context_sync(
     zep_client: Zep,
-    thread_id: str,
+    thread_uuid: str,
     *,
-    template_id: str | None = None,
+    template_uuid: str | None = None,
     context_builder: ContextBuilderSync | None = None,
-    user_id: str = "",
+    graph_uuid: str = "",
     user_message: str = "",
 ) -> str | None:
     """Synchronous variant of :func:`get_zep_context`.
@@ -204,13 +211,14 @@ def get_zep_context_sync(
 
     Args:
         zep_client: An initialised synchronous :class:`~zep_cloud.client.Zep` client.
-        thread_id: The Zep thread ID to retrieve context for.
-        template_id: Optional ID of a context template to format the block with.
-            Ignored when ``context_builder`` is set.
+        thread_uuid: The UUID of the Zep thread to retrieve context for.
+        template_uuid: Optional UUID of a context template to format the block
+            with. Ignored when ``context_builder`` is set.
         context_builder: Optional synchronous callable that *replaces*
-            ``thread.get_user_context`` for this call. See
+            ``thread.get_context`` for this call. See
             :func:`get_zep_context` for the full contract.
-        user_id: The Zep user ID for this turn (populates ``ContextInput``).
+        graph_uuid: The UUID of the graph to read for this turn (populates
+            ``ContextInput``).
         user_message: The user's message text for this turn (populates
             ``ContextInput``).
 
@@ -223,28 +231,28 @@ def get_zep_context_sync(
             return context_builder(
                 ContextInput(
                     zep=zep_client,  # type: ignore[arg-type]
-                    user_id=user_id,
-                    thread_id=thread_id,
+                    graph_uuid=graph_uuid,
+                    thread_uuid=thread_uuid,
                     user_message=user_message,
                 )
             )
         except Exception:
             logger.warning(
                 "Custom context_builder raised for thread %s -- skipping context injection",
-                thread_id,
+                thread_uuid,
                 exc_info=True,
             )
             return None
 
     try:
-        response = zep_client.thread.get_user_context(
-            thread_id,
-            template_id=template_id,
+        response = zep_client.thread.get_context(
+            thread_uuid,
+            template_uuid=template_uuid,
         )
     except Exception:
         logger.warning(
             "Failed to retrieve Zep context for thread %s",
-            thread_id,
+            thread_uuid,
             exc_info=True,
         )
         return None
@@ -289,35 +297,35 @@ def format_context_block(
 
 async def build_system_message(
     zep_client: AsyncZep,
-    thread_id: str,
+    thread_uuid: str,
     *,
     base_instructions: str | None = None,
     template: str = DEFAULT_CONTEXT_TEMPLATE,
-    template_id: str | None = None,
+    template_uuid: str | None = None,
     context_builder: ContextBuilder | None = None,
-    user_id: str = "",
+    graph_uuid: str = "",
     user_message: str = "",
 ) -> SystemMessage:
     """Build a LangChain :class:`~langchain_core.messages.SystemMessage` with Zep context.
 
-    Convenience wrapper that fetches the Context Block for ``thread_id`` and
+    Convenience wrapper that fetches the Context Block for ``thread_uuid`` and
     formats it together with ``base_instructions`` into a ``SystemMessage`` ready
     to prepend to the model's message list.
 
     Args:
         zep_client: An initialised :class:`~zep_cloud.client.AsyncZep` client.
-        thread_id: The Zep thread ID to retrieve context for.
+        thread_uuid: The UUID of the Zep thread to retrieve context for.
         base_instructions: Optional fixed system instructions placed before the
             memory block.
         template: Template string wrapping the Context Block, rendered via
             plain string replacement (see :func:`format_context_block`).
-        template_id: Optional ID of a Zep context template. Ignored when
+        template_uuid: Optional UUID of a Zep context template. Ignored when
             ``context_builder`` is set.
         context_builder: Optional async callable that *replaces*
-            ``thread.get_user_context`` for this call (see
+            ``thread.get_context`` for this call (see
             :func:`get_zep_context`).
-        user_id: The Zep user ID for this turn (populates ``ContextInput``
-            when ``context_builder`` is set).
+        graph_uuid: The UUID of the graph to read for this turn (populates
+            ``ContextInput`` when ``context_builder`` is set).
         user_message: The user's message text for this turn (populates
             ``ContextInput`` when ``context_builder`` is set).
 
@@ -328,10 +336,10 @@ async def build_system_message(
     """
     context = await get_zep_context(
         zep_client,
-        thread_id,
-        template_id=template_id,
+        thread_uuid,
+        template_uuid=template_uuid,
         context_builder=context_builder,
-        user_id=user_id,
+        graph_uuid=graph_uuid,
         user_message=user_message,
     )
     content = format_context_block(
@@ -344,30 +352,30 @@ async def build_system_message(
 
 def build_system_message_sync(
     zep_client: Zep,
-    thread_id: str,
+    thread_uuid: str,
     *,
     base_instructions: str | None = None,
     template: str = DEFAULT_CONTEXT_TEMPLATE,
-    template_id: str | None = None,
+    template_uuid: str | None = None,
     context_builder: ContextBuilderSync | None = None,
-    user_id: str = "",
+    graph_uuid: str = "",
     user_message: str = "",
 ) -> SystemMessage:
     """Synchronous variant of :func:`build_system_message`.
 
     Args:
         zep_client: An initialised synchronous :class:`~zep_cloud.client.Zep` client.
-        thread_id: The Zep thread ID to retrieve context for.
+        thread_uuid: The UUID of the Zep thread to retrieve context for.
         base_instructions: Optional fixed system instructions placed before the
             memory block.
         template: Template string wrapping the Context Block.
-        template_id: Optional ID of a Zep context template. Ignored when
+        template_uuid: Optional UUID of a Zep context template. Ignored when
             ``context_builder`` is set.
         context_builder: Optional synchronous callable that *replaces*
-            ``thread.get_user_context`` for this call (see
+            ``thread.get_context`` for this call (see
             :func:`get_zep_context_sync`).
-        user_id: The Zep user ID for this turn (populates ``ContextInput``
-            when ``context_builder`` is set).
+        graph_uuid: The UUID of the graph to read for this turn (populates
+            ``ContextInput`` when ``context_builder`` is set).
         user_message: The user's message text for this turn (populates
             ``ContextInput`` when ``context_builder`` is set).
 
@@ -377,10 +385,10 @@ def build_system_message_sync(
     """
     context = get_zep_context_sync(
         zep_client,
-        thread_id,
-        template_id=template_id,
+        thread_uuid,
+        template_uuid=template_uuid,
         context_builder=context_builder,
-        user_id=user_id,
+        graph_uuid=graph_uuid,
         user_message=user_message,
     )
     content = format_context_block(

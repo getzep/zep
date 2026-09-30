@@ -30,7 +30,6 @@ from typing import Any, Literal
 from livekit.agents import function_tool
 from livekit.agents.llm import RawFunctionTool
 from zep_cloud.client import AsyncZep
-from zep_cloud.types.graph_search_results import GraphSearchResults
 
 from .exceptions import AgentConfigurationError
 
@@ -46,20 +45,25 @@ Scope = Literal[
 ]
 Reranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
 
-#: Zep caps ``graph.search`` ``limit`` at 50; larger values are rejected.
+#: Zep caps a graph search ``limit`` at 50; larger values are rejected.
 MAX_SEARCH_LIMIT = 50
 
-#: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
-#: retrieval and applies its own internal cross-scope rerank).
+#: Rerankers Zep rejects when ``scope == "auto"`` (``graph.get_context``
+#: applies its own internal cross-scope rerank).
 _AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
+
+#: Parameters that ``graph.get_context`` does not accept. They are dropped
+#: when the effective scope is ``"auto"``.
+_AUTO_UNSUPPORTED_PARAMS = ("reranker", "limit", "mmr_lambda", "center_node_uuid")
+
 
 # ---------------------------------------------------------------------------
 # Parameter definitions
 # ---------------------------------------------------------------------------
-# Each entry describes a graph.search parameter that can be pinned or exposed
-# to the model.  Keys match the Zep SDK's ``graph.search()`` kwargs.  Model-
-# exposed by default; hidden only when pinned or explicitly listed in
-# ``hidden_params``.
+# Each entry describes a graph search parameter that can be pinned or exposed
+# to the model.  Keys match the kwargs of the Zep SDK's per-scope search
+# methods.  Model-exposed by default; hidden only when pinned or explicitly
+# listed in ``hidden_params``.
 
 _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
     "scope": {
@@ -109,7 +113,7 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
 
 #: Parameters that are always constructor-only (complex types not suitable for
 #: model schema generation).
-_CONSTRUCTOR_ONLY_PARAMS = frozenset({"search_filters", "bfs_origin_node_uuids"})
+_CONSTRUCTOR_ONLY_PARAMS = frozenset({"filters", "bfs_origin_node_uuids"})
 
 #: All parameters that may be pinned or hidden at construction.
 _PINNABLE_PARAMS = frozenset(_SEARCH_PARAM_SPECS.keys())
@@ -126,8 +130,7 @@ _DEFAULT_DESCRIPTION = (
 def create_graph_search_tool(
     zep_client: AsyncZep,
     *,
-    graph_id: str | None = None,
-    user_id: str | None = None,
+    graph_uuid: str,
     pinned_params: dict[str, Any] | None = None,
     hidden_params: set[str] | None = None,
     search_filters: dict[str, Any] | None = None,
@@ -143,14 +146,13 @@ def create_graph_search_tool(
         from zep_livekit import create_graph_search_tool
 
         agent = agents.Agent(
-            tools=[create_graph_search_tool(zep_client, user_id="user-123")],
+            tools=[create_graph_search_tool(zep_client, graph_uuid=graph_uuid)],
         )
 
-    Exactly one of ``graph_id``/``user_id`` must be set: ``graph_id`` targets a
-    shared standalone graph (e.g. a documentation knowledge base), ``user_id``
-    targets that user's personal graph.
+    ``graph_uuid`` addresses the graph to search. For the personal graph of a
+    user, pass the ``graph_uuid`` of that user.
 
-    **Pin-or-expose.** Every ``graph.search`` parameter (``scope``,
+    **Pin-or-expose.** Every graph search parameter (``scope``,
     ``reranker``, ``limit``, ``mmr_lambda``, ``center_node_uuid``) is exposed
     to the model in the tool's JSON schema by default, with the documented
     defaults above.  Use ``pinned_params`` to fix a parameter to a constant
@@ -165,14 +167,11 @@ def create_graph_search_tool(
 
     Args:
         zep_client: An initialised ``AsyncZep`` client.
-        graph_id: Optional standalone graph ID.  Mutually exclusive with
-            ``user_id``.
-        user_id: Optional Zep user ID whose personal graph is searched.
-            Mutually exclusive with ``graph_id``.
-        pinned_params: Optional mapping of ``graph.search`` parameter name to
+        graph_uuid: UUID of the graph to search.
+        pinned_params: Optional mapping of a graph search parameter name to
             a fixed value.  Pinned parameters are hidden from the model's
             tool schema and always sent with the given value.
-        hidden_params: Optional set of ``graph.search`` parameter names to
+        hidden_params: Optional set of graph search parameter names to
             hide from the model's tool schema without pinning them -- omitted
             from the SDK call so Zep's own default takes effect.
         search_filters: Optional Zep search filters (constructor-only).
@@ -185,19 +184,17 @@ def create_graph_search_tool(
 
     Returns:
         A LiveKit ``RawFunctionTool`` suitable for ``tools=[...]``.  Calling
-        it executes ``graph.search`` with pinned/model-provided/default
-        parameters merged; Zep failures are caught and returned as an error
-        string -- the tool never raises.
+        it executes the search method of the selected scope with
+        pinned/model-provided/default parameters merged; Zep failures are
+        caught and returned as an error string -- the tool never raises.
 
     Raises:
-        AgentConfigurationError: If neither or both of ``graph_id``/``user_id``
-            are set, or if ``pinned_params``/``hidden_params`` contains an
-            unknown parameter name.
+        AgentConfigurationError: If ``graph_uuid`` is empty, or if
+            ``pinned_params``/``hidden_params`` contains an unknown parameter
+            name.
     """
-    if bool(graph_id) == bool(user_id):
-        raise AgentConfigurationError(
-            "create_graph_search_tool requires exactly one of graph_id or user_id"
-        )
+    if not graph_uuid:
+        raise AgentConfigurationError("create_graph_search_tool requires a graph_uuid")
 
     pinned: dict[str, Any] = dict(pinned_params or {})
     hidden: set[str] = set(hidden_params or ())
@@ -256,38 +253,48 @@ def create_graph_search_tool(
                 if default is not None:
                     search_kwargs[param_name] = default
 
-        effective_scope = search_kwargs.get("scope", "edges")
-        if effective_scope == "auto" and "reranker" in search_kwargs:
-            # Auto search always uses RRF internally and ignores reranker
-            # entirely; Zep rejects node_distance/episode_mentions outright.
-            # Warn only when the (would-be) reranker is one Zep would reject.
-            dropped_reranker = search_kwargs.pop("reranker")
+        effective_scope: str = search_kwargs.pop("scope", "edges")
+        if effective_scope == "auto":
+            # graph.get_context runs its own cross-scope retrieval and
+            # rerank, and accepts none of the per-scope search parameters.
+            dropped_reranker = search_kwargs.get("reranker")
             if dropped_reranker in _AUTO_INCOMPATIBLE_RERANKERS:
                 logger.warning(
                     "zep_search reranker %r is invalid for scope='auto'; omitting reranker.",
                     dropped_reranker,
                 )
-
-        if graph_id:
-            search_kwargs["graph_id"] = graph_id
-        else:
-            search_kwargs["user_id"] = user_id
+            for param_name in _AUTO_UNSUPPORTED_PARAMS:
+                search_kwargs.pop(param_name, None)
 
         if search_filters is not None:
-            search_kwargs["search_filters"] = search_filters
-        if bfs_origin_node_uuids is not None:
+            search_kwargs["filters"] = search_filters
+        if bfs_origin_node_uuids is not None and effective_scope != "auto":
             search_kwargs["bfs_origin_node_uuids"] = bfs_origin_node_uuids
 
         if not search_kwargs.get("query"):
             return "Error: No search query provided."
 
         try:
-            results = await zep_client.graph.search(**search_kwargs)
+            if effective_scope == "auto":
+                response = await zep_client.graph.get_context(graph_uuid, **search_kwargs)
+                context: str | None = response.context
+                if context and context.strip():
+                    return context.strip()
+                return "No results found."
+
+            searches = {
+                "edges": zep_client.graph.search_edges,
+                "nodes": zep_client.graph.search_nodes,
+                "episodes": zep_client.graph.search_episodes,
+                "observations": zep_client.graph.search_observations,
+                "thread_summaries": zep_client.graph.search_thread_summaries,
+            }
+            page = await searches[effective_scope](graph_uuid, **search_kwargs)
         except Exception as exc:
             logger.warning("Zep graph search failed: %s", exc, exc_info=True)
             return f"Graph search failed: {exc}"
 
-        return _format_results(results, effective_scope)
+        return _format_results(page.items or [], effective_scope)
 
     raw_schema = {
         "name": tool_name,
@@ -345,44 +352,24 @@ def _build_json_schema(
     }
 
 
-def _format_results(results: GraphSearchResults, scope: Scope) -> str:
-    """Render Zep search results as readable text for the model."""
-    if scope == "auto":
-        context = getattr(results, "context", None)
-        if context and str(context).strip():
-            return str(context).strip()
-        return "No results found."
-
+def _format_results(items: list[Any], scope: str) -> str:
+    """Render one page of Zep search results as readable text for the model."""
     parts: list[str] = []
-    if scope == "edges" and results.edges:
-        parts = [f"- {edge.fact}" for edge in results.edges if edge.fact]
-    elif scope == "nodes" and results.nodes:
-        for node in results.nodes:
-            node_name = getattr(node, "name", None) or "Entity"
-            summary = getattr(node, "summary", None)
-            if summary:
-                parts.append(f"- {node_name}: {summary}")
+
+    if scope == "edges":
+        parts = [f"- {edge.fact}" for edge in items if edge.fact]
+    elif scope == "episodes":
+        parts = [f"- {episode.content}" for episode in items if episode.content]
+    elif scope == "thread_summaries":
+        parts = [f"- {item.summary}" for item in items if item.summary]
+    else:
+        # A node and an observation both carry a name and an optional summary.
+        fallback = "Observation" if scope == "observations" else "Entity"
+        for item in items:
+            name = item.name or fallback
+            if item.summary:
+                parts.append(f"- {name}: {item.summary}")
             else:
-                parts.append(f"- {node_name}")
-    elif scope == "episodes" and results.episodes:
-        parts = [f"- {ep.content}" for ep in results.episodes if ep.content]
-    elif scope == "observations" and results.observations:
-        # Observations are DerivedNode items: ``name`` carries the derived
-        # pattern, with an optional region ``summary``.
-        for obs in results.observations:
-            obs_name = getattr(obs, "name", None) or "Observation"
-            summary = getattr(obs, "summary", None)
-            if summary:
-                parts.append(f"- {obs_name}: {summary}")
-            else:
-                parts.append(f"- {obs_name}")
-    elif scope == "thread_summaries" and results.thread_summaries:
-        # Thread summaries are GraphitiSagaNode items: ``summary`` holds the
-        # incremental thread summary; fall back to ``name`` when absent.
-        for ts in results.thread_summaries:
-            summary = getattr(ts, "summary", None)
-            text = summary or getattr(ts, "name", None)
-            if text:
-                parts.append(f"- {text}")
+                parts.append(f"- {name}")
 
     return "\n".join(parts) if parts else "No results found."

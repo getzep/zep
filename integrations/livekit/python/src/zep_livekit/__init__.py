@@ -14,7 +14,7 @@ from .agent import (
     ZepUserAgent,
 )
 from .exceptions import AgentConfigurationError, ZepLiveKitError
-from .provisioning import UserSetupHook, ensure_thread, ensure_user
+from .provisioning import UserSetupHook, create_thread, create_user
 from .tools import create_graph_search_tool
 
 __version__ = "0.2.1"
@@ -23,8 +23,8 @@ __all__ = [
     "ZepGraphAgent",
     "ZepLiveKitError",
     "AgentConfigurationError",
-    "ensure_user",
-    "ensure_thread",
+    "create_user",
+    "create_thread",
     "UserSetupHook",
     "ContextBuilder",
     "ContextInput",

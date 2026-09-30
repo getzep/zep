@@ -34,7 +34,10 @@ cd zep/integrations/strands/python
 make install        # uv sync --extra dev (includes strands-agents[openai])
 ```
 
-Requirements: Python 3.11+, `strands-agents>=1.45.0`, `zep-cloud>=3.23.0`.
+Requirements: Python 3.11+, `strands-agents>=1.45.0`, `zep-cloud==4.0.0a5`.
+
+`zep-cloud` 4.0.0a5 is a pre-release. With `pip`, install it with
+`pip install --pre 'zep-cloud==4.0.0a5'`.
 
 ## 4. Configure environment variables
 
@@ -59,9 +62,11 @@ python examples/basic_agent.py
 
 The example:
 
-1. Seeds facts about a user across two turns in one thread.
-2. Waits for Zep to process the knowledge graph (ingestion is asynchronous).
-3. Starts a **new** thread for the same user and asks recall questions — the
+1. Creates a Zep user and two threads, and keeps the UUID that the server gives
+   for each one.
+2. Seeds facts about the user across two turns in the first thread.
+3. Waits for Zep to process the knowledge graph (ingestion is asynchronous).
+4. Starts a **new** thread for the same user and asks recall questions — the
    agent answers using facts fused into the user's graph from the first thread.
 
 ## 6. Run the tests
@@ -94,6 +99,10 @@ uv run python tests/test_integration.py
   flush / use an every-turn trigger if your graph is large or under load.
 - **Authentication errors** — confirm `ZEP_API_KEY` is set in the same shell and
   belongs to the intended project.
-- **`extraction=True` / `add_messages` errors about `thread_id`** — user-graph
-  mode with extraction requires both `user_id` and `thread_id` at construction.
-  Standalone graphs must use `extraction=False` and `add()` only.
+- **`extraction=True` / `add_messages` errors about `thread_uuid`** — user-graph
+  mode with extraction requires both `user_uuid` and `thread_uuid` at
+  construction. Standalone graphs must use `extraction=False` and `add()` only.
+- **The store rejects a name** — Zep v4 addresses a user, a thread, and a graph
+  by a server-generated UUID. Create the resource one time with `create_user`
+  or `create_thread`, keep `uuid_` from the response, and give that value to the
+  store.

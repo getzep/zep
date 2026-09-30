@@ -11,23 +11,46 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+USER_UUID = "11111111-1111-1111-1111-111111111111"
+GRAPH_UUID = "22222222-2222-2222-2222-222222222222"
+
+#: Every Zep v4 graph search method that the memory service can call.
+SEARCH_METHODS = (
+    "search_edges",
+    "search_nodes",
+    "search_episodes",
+    "search_observations",
+    "search_thread_summaries",
+)
+
 
 def _make_zep_client() -> MagicMock:
     client = MagicMock()
     client.graph = MagicMock()
-    client.graph.search = AsyncMock()
+    for method in SEARCH_METHODS:
+        setattr(client.graph, method, AsyncMock(return_value=_make_pager([])))
+    client.graph.get_context = AsyncMock(return_value=_make_context(None))
+
+    user = MagicMock()
+    user.uuid_ = USER_UUID
+    user.graph_uuid = GRAPH_UUID
+    client.user = MagicMock()
+    client.user.get = AsyncMock(return_value=user)
     return client
 
 
-def _make_search_result(**kwargs: object) -> MagicMock:
-    result = MagicMock()
-    result.edges = kwargs.get("edges")
-    result.nodes = kwargs.get("nodes")
-    result.episodes = kwargs.get("episodes")
-    result.observations = kwargs.get("observations")
-    result.thread_summaries = kwargs.get("thread_summaries")
-    result.context = kwargs.get("context")
-    return result
+def _make_pager(items: object) -> MagicMock:
+    """Build a stand-in for the ``AsyncPager`` that a v4 search returns."""
+    pager = MagicMock()
+    pager.items = items
+    return pager
+
+
+def _make_context(context: object) -> MagicMock:
+    """Build a stand-in for the ``graph.get_context`` response."""
+    response = MagicMock()
+    response.context = context
+    return response
 
 
 def _make_edge(fact: str) -> MagicMock:
@@ -108,7 +131,9 @@ class TestAddSessionToMemoryIsNoOp:
         session = MagicMock()
         await service.add_session_to_memory(session)
 
-        client.graph.search.assert_not_called()
+        for method in SEARCH_METHODS:
+            getattr(client.graph, method).assert_not_called()
+        client.graph.get_context.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_returns_none(self) -> None:
@@ -141,8 +166,8 @@ class TestSearchMemoryMapsResults:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(
-            edges=[_make_edge("Alice works at Acme"), _make_edge("Bob likes hiking")]
+        client.graph.search_edges.return_value = _make_pager(
+            [_make_edge("Alice works at Acme"), _make_edge("Bob likes hiking")]
         )
         service = ZepMemoryService(zep=client)
 
@@ -158,9 +183,7 @@ class TestSearchMemoryMapsResults:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(
-            edges=[_make_edge("Alice works at Acme")]
-        )
+        client.graph.search_edges.return_value = _make_pager([_make_edge("Alice works at Acme")])
         service = ZepMemoryService(zep=client)
 
         response = await service.search_memory(app_name="my_app", user_id="user-1", query="Alice")
@@ -172,8 +195,8 @@ class TestSearchMemoryMapsResults:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(
-            nodes=[_make_node("Alice", "A software engineer at Acme")]
+        client.graph.search_nodes.return_value = _make_pager(
+            [_make_node("Alice", "A software engineer at Acme")]
         )
         service = ZepMemoryService(zep=client, scope="nodes")
 
@@ -192,8 +215,8 @@ class TestSearchMemoryMapsResults:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(
-            nodes=[_make_node(None, "A software engineer at Acme")]
+        client.graph.search_nodes.return_value = _make_pager(
+            [_make_node(None, "A software engineer at Acme")]
         )
         service = ZepMemoryService(zep=client, scope="nodes")
 
@@ -207,8 +230,8 @@ class TestSearchMemoryMapsResults:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(
-            episodes=[_make_episode("I work at Acme Corp")]
+        client.graph.search_episodes.return_value = _make_pager(
+            [_make_episode("I work at Acme Corp")]
         )
         service = ZepMemoryService(zep=client, scope="episodes")
 
@@ -222,8 +245,8 @@ class TestSearchMemoryMapsResults:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(
-            observations=[_make_observation("Alice", "Prefers async communication")]
+        client.graph.search_observations.return_value = _make_pager(
+            [_make_observation("Alice", "Prefers async communication")]
         )
         service = ZepMemoryService(zep=client, scope="observations")
 
@@ -242,8 +265,8 @@ class TestSearchMemoryMapsResults:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(
-            observations=[_make_observation("Alice", None)]
+        client.graph.search_observations.return_value = _make_pager(
+            [_make_observation("Alice", None)]
         )
         service = ZepMemoryService(zep=client, scope="observations")
 
@@ -260,8 +283,8 @@ class TestSearchMemoryMapsResults:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(
-            observations=[_make_observation(None, "Prefers async communication")]
+        client.graph.search_observations.return_value = _make_pager(
+            [_make_observation(None, "Prefers async communication")]
         )
         service = ZepMemoryService(zep=client, scope="observations")
 
@@ -275,8 +298,8 @@ class TestSearchMemoryMapsResults:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(
-            thread_summaries=[_make_thread_summary("thread-1", "Discussed billing issue")]
+        client.graph.search_thread_summaries.return_value = _make_pager(
+            [_make_thread_summary("thread-1", "Discussed billing issue")]
         )
         service = ZepMemoryService(zep=client, scope="thread_summaries")
 
@@ -292,8 +315,8 @@ class TestSearchMemoryMapsResults:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(
-            thread_summaries=[_make_thread_summary("thread-1", None)]
+        client.graph.search_thread_summaries.return_value = _make_pager(
+            [_make_thread_summary("thread-1", None)]
         )
         service = ZepMemoryService(zep=client, scope="thread_summaries")
 
@@ -310,8 +333,8 @@ class TestSearchMemoryMapsResults:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(
-            thread_summaries=[_make_thread_summary(None, "Discussed billing issue")]
+        client.graph.search_thread_summaries.return_value = _make_pager(
+            [_make_thread_summary(None, "Discussed billing issue")]
         )
         service = ZepMemoryService(zep=client, scope="thread_summaries")
 
@@ -325,9 +348,7 @@ class TestSearchMemoryMapsResults:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(
-            context="Pre-materialized context block."
-        )
+        client.graph.get_context.return_value = _make_context("Pre-materialized context block.")
         service = ZepMemoryService(zep=client, scope="auto")
 
         response = await service.search_memory(
@@ -342,7 +363,7 @@ class TestSearchMemoryMapsResults:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(edges=[])
+        client.graph.search_edges.return_value = _make_pager([])
         service = ZepMemoryService(zep=client)
 
         response = await service.search_memory(app_name="my_app", user_id="user-1", query="nothing")
@@ -363,7 +384,9 @@ class TestSearchMemoryUnsupportedScope:
 
         await service.search_memory(app_name="my_app", user_id="user-1", query="hi")
 
-        client.graph.search.assert_not_called()
+        for method in SEARCH_METHODS:
+            getattr(client.graph, method).assert_not_called()
+        client.graph.get_context.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_returns_empty_response(self) -> None:
@@ -402,59 +425,91 @@ class TestSearchMemoryUnsupportedScope:
 
 
 class TestSearchMemoryParameterPassthrough:
-    """scope/limit from the constructor and user_id/query from the call are
-    passed through to graph.search."""
+    """The scope selects the v4 method, and the graph UUID addresses it."""
 
     @pytest.mark.asyncio
-    async def test_user_id_from_call_used(self) -> None:
+    async def test_user_uuid_resolves_the_graph(self) -> None:
+        """ADK's user_id is the Zep user UUID; the service resolves its graph."""
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(edges=[])
         service = ZepMemoryService(zep=client)
 
-        await service.search_memory(app_name="my_app", user_id="user-42", query="hi")
+        await service.search_memory(app_name="my_app", user_id=USER_UUID, query="hi")
 
-        call_kwargs = client.graph.search.call_args[1]
-        assert call_kwargs["user_id"] == "user-42"
+        client.user.get.assert_called_once_with(USER_UUID)
+        assert client.graph.search_edges.call_args[0][0] == GRAPH_UUID
+
+    @pytest.mark.asyncio
+    async def test_graph_uuid_from_constructor_skips_user_lookup(self) -> None:
+        from zep_adk.memory_service import ZepMemoryService
+
+        client = _make_zep_client()
+        service = ZepMemoryService(zep=client, graph_uuid="fixed-graph")
+
+        await service.search_memory(app_name="my_app", user_id=USER_UUID, query="hi")
+
+        client.user.get.assert_not_called()
+        assert client.graph.search_edges.call_args[0][0] == "fixed-graph"
+
+    @pytest.mark.asyncio
+    async def test_graph_uuid_is_cached_between_searches(self) -> None:
+        from zep_adk.memory_service import ZepMemoryService
+
+        client = _make_zep_client()
+        service = ZepMemoryService(zep=client)
+
+        await service.search_memory(app_name="my_app", user_id=USER_UUID, query="hi")
+        await service.search_memory(app_name="my_app", user_id=USER_UUID, query="again")
+
+        client.user.get.assert_called_once_with(USER_UUID)
 
     @pytest.mark.asyncio
     async def test_query_from_call_used(self) -> None:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(edges=[])
         service = ZepMemoryService(zep=client)
 
-        await service.search_memory(app_name="my_app", user_id="user-1", query="find this")
+        await service.search_memory(app_name="my_app", user_id=USER_UUID, query="find this")
 
-        call_kwargs = client.graph.search.call_args[1]
+        call_kwargs = client.graph.search_edges.call_args[1]
         assert call_kwargs["query"] == "find this"
 
     @pytest.mark.asyncio
-    async def test_scope_from_constructor_used(self) -> None:
+    async def test_scope_selects_the_v4_method(self) -> None:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(nodes=[])
         service = ZepMemoryService(zep=client, scope="nodes")
 
-        await service.search_memory(app_name="my_app", user_id="user-1", query="hi")
+        await service.search_memory(app_name="my_app", user_id=USER_UUID, query="hi")
 
-        call_kwargs = client.graph.search.call_args[1]
-        assert call_kwargs["scope"] == "nodes"
+        client.graph.search_nodes.assert_called_once()
+        client.graph.search_edges.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_scope_calls_get_context(self) -> None:
+        from zep_adk.memory_service import ZepMemoryService
+
+        client = _make_zep_client()
+        service = ZepMemoryService(zep=client, scope="auto")
+
+        await service.search_memory(app_name="my_app", user_id=USER_UUID, query="hi")
+
+        client.graph.get_context.assert_called_once()
+        assert client.graph.get_context.call_args[0][0] == GRAPH_UUID
 
     @pytest.mark.asyncio
     async def test_limit_from_constructor_used(self) -> None:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(edges=[])
         service = ZepMemoryService(zep=client, limit=7)
 
-        await service.search_memory(app_name="my_app", user_id="user-1", query="hi")
+        await service.search_memory(app_name="my_app", user_id=USER_UUID, query="hi")
 
-        call_kwargs = client.graph.search.call_args[1]
+        call_kwargs = client.graph.search_edges.call_args[1]
         assert call_kwargs["limit"] == 7
 
     @pytest.mark.asyncio
@@ -464,27 +519,25 @@ class TestSearchMemoryParameterPassthrough:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(edges=[])
         service = ZepMemoryService(zep=client)
 
-        await service.search_memory(app_name="my_app", user_id="user-1", query="hi")
+        await service.search_memory(app_name="my_app", user_id=USER_UUID, query="hi")
 
-        call_kwargs = client.graph.search.call_args[1]
+        call_kwargs = client.graph.search_edges.call_args[1]
         assert "limit" not in call_kwargs or call_kwargs["limit"] is None
 
     @pytest.mark.asyncio
     async def test_app_name_not_forwarded_to_zep(self) -> None:
         """app_name has no Zep equivalent (Zep scopes by user graph, not app) --
-        it must not leak into the graph.search call."""
+        it must not leak into the search call."""
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.return_value = _make_search_result(edges=[])
         service = ZepMemoryService(zep=client)
 
-        await service.search_memory(app_name="my_app", user_id="user-1", query="hi")
+        await service.search_memory(app_name="my_app", user_id=USER_UUID, query="hi")
 
-        call_kwargs = client.graph.search.call_args[1]
+        call_kwargs = client.graph.search_edges.call_args[1]
         assert "app_name" not in call_kwargs
 
 
@@ -496,7 +549,7 @@ class TestSearchMemoryErrorHandling:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.side_effect = RuntimeError("Zep is down")
+        client.graph.search_edges.side_effect = RuntimeError("Zep is down")
         service = ZepMemoryService(zep=client)
 
         response = await service.search_memory(app_name="my_app", user_id="user-1", query="hi")
@@ -508,7 +561,7 @@ class TestSearchMemoryErrorHandling:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.side_effect = RuntimeError("Zep is down")
+        client.graph.search_edges.side_effect = RuntimeError("Zep is down")
         service = ZepMemoryService(zep=client)
 
         with caplog.at_level("WARNING"):
@@ -525,7 +578,7 @@ class TestSearchMemoryErrorHandling:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.side_effect = RuntimeError("Zep is down")
+        client.graph.search_edges.side_effect = RuntimeError("Zep is down")
         service = ZepMemoryService(zep=client)
 
         secret_query = "a very specific secret user query"
@@ -539,7 +592,7 @@ class TestSearchMemoryErrorHandling:
         from zep_adk.memory_service import ZepMemoryService
 
         client = _make_zep_client()
-        client.graph.search.side_effect = ValueError("boom")
+        client.graph.search_edges.side_effect = ValueError("boom")
         service = ZepMemoryService(zep=client)
 
         # Should not raise.

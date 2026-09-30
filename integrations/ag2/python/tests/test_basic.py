@@ -39,16 +39,16 @@ from zep_ag2.tools import (
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_graph_results(
-    edges: list[MagicMock] | None = None,
-    nodes: list[MagicMock] | None = None,
-    episodes: list[MagicMock] | None = None,
-) -> MagicMock:
-    r = MagicMock()
-    r.edges = edges or []
-    r.nodes = nodes or []
-    r.episodes = episodes or []
-    return r
+USER_UUID = "user-uuid-1"
+THREAD_UUID = "thread-uuid-1"
+GRAPH_UUID = "graph-uuid-1"
+
+
+def _make_pager(items: list[MagicMock] | None = None) -> MagicMock:
+    """Build a mock of the v4 SDK pager, which carries the items of one page."""
+    pager = MagicMock()
+    pager.items = items or []
+    return pager
 
 
 def _mock_zep_client() -> MagicMock:
@@ -63,24 +63,29 @@ def _mock_zep_client() -> MagicMock:
 
     # Thread sub-client
     client.thread = MagicMock()
-    client.thread.get = AsyncMock()
+    client.thread.list_messages = AsyncMock(return_value=_make_pager())
     client.thread.create = AsyncMock()
     client.thread.add_messages = AsyncMock()
-    client.thread.get_user_context = AsyncMock(return_value=MagicMock(context="Alice likes hiking"))
-    mock_thread = MagicMock()
-    mock_thread.messages = []
-    client.thread.get.return_value = mock_thread
+    client.thread.get_context = AsyncMock(return_value=MagicMock(context="Alice likes hiking"))
+
+    # User sub-client
+    client.user = MagicMock()
+    client.user.create = AsyncMock()
+    client.user.get = AsyncMock(return_value=MagicMock(uuid_=USER_UUID, graph_uuid=GRAPH_UUID))
 
     # Graph sub-client
     client.graph = MagicMock()
-    client.graph.search = AsyncMock(return_value=_make_mock_graph_results())
-    client.graph.add = AsyncMock()
+    client.graph.search_edges = AsyncMock(return_value=_make_pager())
+    client.graph.search_nodes = AsyncMock(return_value=_make_pager())
+    client.graph.search_episodes = AsyncMock(return_value=_make_pager())
+    client.graph.search_observations = AsyncMock(return_value=_make_pager())
+    client.graph.search_thread_summaries = AsyncMock(return_value=_make_pager())
+    client.graph.get_context = AsyncMock(return_value=MagicMock(context=""))
 
     # Graph episode sub-client
     client.graph.episode = MagicMock()
-    mock_episodes = MagicMock()
-    mock_episodes.episodes = []
-    client.graph.episode.get_by_graph_id = AsyncMock(return_value=mock_episodes)
+    client.graph.episode.add = AsyncMock()
+    client.graph.episode.list = AsyncMock(return_value=_make_pager())
 
     return client
 
@@ -147,98 +152,98 @@ class TestToolFactories:
     def test_create_search_memory_tool_returns_sync_callable(
         self, mock_zep_client: MagicMock
     ) -> None:
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1")
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
         assert callable(tool)
         # Tools are sync (not async)
         assert not inspect.iscoroutinefunction(tool)
 
     def test_create_add_memory_tool_returns_sync_callable(self, mock_zep_client: MagicMock) -> None:
-        tool = create_add_memory_tool(mock_zep_client, user_id="u1", session_id="s1")
+        tool = create_add_memory_tool(mock_zep_client, GRAPH_UUID, THREAD_UUID)
         assert callable(tool)
         assert not inspect.iscoroutinefunction(tool)
 
     def test_create_search_graph_tool_returns_sync_callable(
         self, mock_zep_client: MagicMock
     ) -> None:
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
         assert callable(tool)
         assert not inspect.iscoroutinefunction(tool)
 
     def test_create_add_graph_data_tool_returns_sync_callable(
         self, mock_zep_client: MagicMock
     ) -> None:
-        tool = create_add_graph_data_tool(mock_zep_client, user_id="u1")
+        tool = create_add_graph_data_tool(mock_zep_client, GRAPH_UUID)
         assert callable(tool)
         assert not inspect.iscoroutinefunction(tool)
 
-    def test_search_graph_tool_requires_id(self, mock_zep_client: MagicMock) -> None:
-        with pytest.raises(ZepAG2MemoryError, match="Either user_id or graph_id"):
-            create_search_graph_tool(mock_zep_client)
+    def test_search_graph_tool_requires_graph_uuid(self, mock_zep_client: MagicMock) -> None:
+        with pytest.raises(ZepAG2MemoryError, match="graph_uuid"):
+            create_search_graph_tool(mock_zep_client, "")
 
-    def test_search_graph_tool_rejects_both_ids(self, mock_zep_client: MagicMock) -> None:
-        with pytest.raises(ZepAG2MemoryError, match="Only one of"):
-            create_search_graph_tool(mock_zep_client, user_id="u1", graph_id="g1")
+    def test_search_memory_tool_requires_graph_uuid(self, mock_zep_client: MagicMock) -> None:
+        with pytest.raises(ZepAG2MemoryError, match="graph_uuid"):
+            create_search_memory_tool(mock_zep_client, "")
 
-    def test_add_graph_data_tool_requires_id(self, mock_zep_client: MagicMock) -> None:
-        with pytest.raises(ZepAG2MemoryError, match="Either user_id or graph_id"):
-            create_add_graph_data_tool(mock_zep_client)
+    def test_add_graph_data_tool_requires_graph_uuid(self, mock_zep_client: MagicMock) -> None:
+        with pytest.raises(ZepAG2MemoryError, match="graph_uuid"):
+            create_add_graph_data_tool(mock_zep_client, "")
 
-    def test_add_graph_data_tool_rejects_both_ids(self, mock_zep_client: MagicMock) -> None:
-        with pytest.raises(ZepAG2MemoryError, match="Only one of"):
-            create_add_graph_data_tool(mock_zep_client, user_id="u1", graph_id="g1")
+    def test_add_memory_tool_requires_graph_uuid(self, mock_zep_client: MagicMock) -> None:
+        with pytest.raises(ZepAG2MemoryError, match="graph_uuid"):
+            create_add_memory_tool(mock_zep_client, "")
 
     def test_search_memory_tool_calls_sdk(self, mock_zep_client: MagicMock) -> None:
         """Pin-or-expose (see test_search.py): unset optional params
         (mmr_lambda, center_node_uuid) are omitted from the SDK call."""
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1")
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
         result = tool(query="hiking", limit=3)
 
-        mock_zep_client.graph.search.assert_called_once_with(
-            query="hiking", user_id="u1", scope="edges", reranker="rrf", limit=3
+        mock_zep_client.graph.search_edges.assert_called_once_with(
+            GRAPH_UUID, query="hiking", reranker="rrf", limit=3
         )
         assert isinstance(result, str)
 
     def test_search_memory_tool_passes_scope(self, mock_zep_client: MagicMock) -> None:
         """search_memory accepts a scope, aligned with search_graph (fix #16)."""
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1")
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
         tool(query="hiking", limit=3, scope="nodes")
 
-        assert mock_zep_client.graph.search.call_args.kwargs.get("scope") == "nodes"
+        mock_zep_client.graph.search_nodes.assert_called_once()
+        mock_zep_client.graph.search_edges.assert_not_called()
 
     def test_add_memory_tool_with_session(self, mock_zep_client: MagicMock) -> None:
-        tool = create_add_memory_tool(mock_zep_client, user_id="u1", session_id="s1")
+        tool = create_add_memory_tool(mock_zep_client, GRAPH_UUID, THREAD_UUID)
         result = tool(content="Hello world", role="user")
 
         mock_zep_client.thread.add_messages.assert_called_once()
         assert "successfully" in result.lower()
 
     def test_add_memory_tool_without_session_uses_graph(self, mock_zep_client: MagicMock) -> None:
-        tool = create_add_memory_tool(mock_zep_client, user_id="u1")
+        tool = create_add_memory_tool(mock_zep_client, GRAPH_UUID)
         result = tool(content="Some fact")
 
-        mock_zep_client.graph.add.assert_called_once_with(
-            user_id="u1", type="text", data="Some fact"
+        mock_zep_client.graph.episode.add.assert_called_once_with(
+            GRAPH_UUID, type="text", data="Some fact"
         )
         assert "knowledge graph" in result.lower()
 
-    def test_search_graph_tool_with_graph_id(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_graph_tool(mock_zep_client, graph_id="g1")
+    def test_search_graph_tool_uses_graph_uuid(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
         tool(query="Python", limit=3, scope="edges")
 
-        mock_zep_client.graph.search.assert_called_once()
-        call_kwargs = mock_zep_client.graph.search.call_args.kwargs
-        assert call_kwargs.get("graph_id") == "g1"
+        mock_zep_client.graph.search_edges.assert_called_once()
+        assert mock_zep_client.graph.search_edges.call_args.args[0] == GRAPH_UUID
 
     def test_add_graph_data_tool_calls_sdk(self, mock_zep_client: MagicMock) -> None:
-        tool = create_add_graph_data_tool(mock_zep_client, user_id="u1")
+        tool = create_add_graph_data_tool(mock_zep_client, GRAPH_UUID)
         result = tool(data="Python is great", data_type="text")
 
-        mock_zep_client.graph.add.assert_called_once()
+        mock_zep_client.graph.episode.add.assert_called_once()
         assert "successfully" in result.lower()
 
     def test_tool_error_handling(self, mock_zep_client: MagicMock) -> None:
-        mock_zep_client.graph.search = AsyncMock(side_effect=Exception("API error"))
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1")
+        mock_zep_client.graph.search_edges = AsyncMock(side_effect=Exception("API error"))
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
         result = tool(query="test")
 
         assert "error" in result.lower()
@@ -247,7 +252,7 @@ class TestToolFactories:
 
     def test_tool_annotations(self, mock_zep_client: MagicMock) -> None:
         """Verify that tool functions have Annotated type hints for AG2 compatibility."""
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1")
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
         hints = get_type_hints(tool, include_extras=True)
 
         assert "query" in hints
@@ -275,8 +280,8 @@ class TestClientHandling:
         # Patch the AsyncZep symbol the tools module would use, if any.
         monkeypatch.setattr(tools_mod, "AsyncZep", _boom)
 
-        search = create_search_memory_tool(mock_zep_client, user_id="u1")
-        add = create_add_memory_tool(mock_zep_client, user_id="u1", session_id="s1")
+        search = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
+        add = create_add_memory_tool(mock_zep_client, GRAPH_UUID, THREAD_UUID)
 
         # Multiple invocations — still no construction, client reused each time.
         search(query="a")
@@ -284,7 +289,7 @@ class TestClientHandling:
         add(content="hi", role="user")
 
         assert construct_calls == 0
-        assert mock_zep_client.graph.search.call_count == 2
+        assert mock_zep_client.graph.search_edges.call_count == 2
         assert mock_zep_client.thread.add_messages.call_count == 1
 
     def test_no_private_client_wrapper_access(self) -> None:
@@ -294,10 +299,10 @@ class TestClientHandling:
             client._client_wrapper, MagicMock
         )
         # A plain spec'd AsyncZep mock auto-creates attributes, so assert behavior:
-        tool = create_search_memory_tool(client, user_id="u1")
+        tool = create_search_memory_tool(client, GRAPH_UUID)
         result = tool(query="x")
         assert isinstance(result, str)
-        client.graph.search.assert_called_once()
+        client.graph.search_edges.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +342,7 @@ class TestSyncBridge:
     def test_tool_runs_without_event_loop_in_thread(self, mock_zep_client: MagicMock) -> None:
         """Regression for Python 3.13: no asyncio.get_event_loop() crash."""
         assert sys.version_info[:2] >= (3, 11)
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1")
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
         result = tool(query="anything")
         assert isinstance(result, str)
 
@@ -365,7 +370,7 @@ class TestSizeAndRole:
         assert _validate_role("") == "assistant"
 
     def test_add_memory_tool_truncates_message(self, mock_zep_client: MagicMock) -> None:
-        tool = create_add_memory_tool(mock_zep_client, user_id="u1", session_id="s1")
+        tool = create_add_memory_tool(mock_zep_client, GRAPH_UUID, THREAD_UUID)
         long = "x" * (MESSAGE_MAX_CHARS + 500)
         tool(content=long, role="user")
 
@@ -373,18 +378,18 @@ class TestSizeAndRole:
         assert len(sent.content) == MESSAGE_MAX_CHARS
 
     def test_add_memory_tool_validates_role(self, mock_zep_client: MagicMock) -> None:
-        tool = create_add_memory_tool(mock_zep_client, user_id="u1", session_id="s1")
+        tool = create_add_memory_tool(mock_zep_client, GRAPH_UUID, THREAD_UUID)
         tool(content="hi", role="not-a-role")
 
         sent = mock_zep_client.thread.add_messages.call_args.kwargs["messages"][0]
         assert sent.role == "assistant"
 
     def test_add_graph_data_tool_truncates(self, mock_zep_client: MagicMock) -> None:
-        tool = create_add_graph_data_tool(mock_zep_client, user_id="u1")
+        tool = create_add_graph_data_tool(mock_zep_client, GRAPH_UUID)
         long = "y" * (GRAPH_MAX_CHARS + 1000)
         tool(data=long)
 
-        sent_data = mock_zep_client.graph.add.call_args.kwargs["data"]
+        sent_data = mock_zep_client.graph.episode.add.call_args.kwargs["data"]
         assert len(sent_data) == GRAPH_MAX_CHARS
 
 
@@ -396,41 +401,39 @@ class TestSizeAndRole:
 class TestZepMemoryManager:
     def test_init_validates_client(self) -> None:
         with pytest.raises(ZepAG2ConfigError, match="AsyncZep"):
-            ZepMemoryManager(client="bad", user_id="u1")  # type: ignore[arg-type]
+            ZepMemoryManager(client="bad", user_uuid=USER_UUID)  # type: ignore[arg-type]
 
-    def test_init_requires_user_id(self, mock_zep_client: MagicMock) -> None:
-        with pytest.raises(ZepAG2ConfigError, match="user_id"):
-            ZepMemoryManager(client=mock_zep_client, user_id="")
+    def test_init_requires_user_uuid(self, mock_zep_client: MagicMock) -> None:
+        with pytest.raises(ZepAG2ConfigError, match="user_uuid"):
+            ZepMemoryManager(client=mock_zep_client, user_uuid="")
 
     def test_init_success(self, mock_zep_client: MagicMock) -> None:
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1", session_id="s1")
-        assert mgr.user_id == "u1"
-        assert mgr.session_id == "s1"
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
+        assert mgr.user_uuid == USER_UUID
+        assert mgr.thread_uuid == THREAD_UUID
         assert mgr.client is mock_zep_client
 
     @pytest.mark.asyncio
     async def test_get_memory_context_with_query(self, mock_zep_client: MagicMock) -> None:
         mock_edge = MagicMock()
         mock_edge.fact = "Alice likes hiking"
-        mock_zep_client.graph.search = AsyncMock(
-            return_value=_make_mock_graph_results(edges=[mock_edge])
-        )
+        mock_zep_client.graph.search_edges = AsyncMock(return_value=_make_pager([mock_edge]))
 
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1")
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, graph_uuid=GRAPH_UUID)
         context = await mgr.get_memory_context(query="hiking")
 
         assert "hiking" in context
-        mock_zep_client.graph.search.assert_called_once()
+        mock_zep_client.graph.search_edges.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_memory_context_with_session(self, mock_zep_client: MagicMock) -> None:
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1", session_id="s1")
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
         context = await mgr.get_memory_context()
 
         assert "Alice likes hiking" in context
-        mock_zep_client.thread.get_user_context.assert_called_once()
+        mock_zep_client.thread.get_context.assert_called_once()
         # The redundant recent-messages read should no longer be issued.
-        mock_zep_client.thread.get.assert_not_called()
+        mock_zep_client.thread.list_messages.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_enrich_system_message(
@@ -438,7 +441,7 @@ class TestZepMemoryManager:
     ) -> None:
         """Injected context is wrapped in DEFAULT_CONTEXT_TEMPLATE's
         <ZEP_CONTEXT> block (see test_context_template.py)."""
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1", session_id="s1")
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
         await mgr.enrich_system_message(mock_ag2_agent)
 
         mock_ag2_agent.update_system_message.assert_called_once()
@@ -450,15 +453,15 @@ class TestZepMemoryManager:
     async def test_enrich_system_message_no_context(
         self, mock_zep_client: MagicMock, mock_ag2_agent: MagicMock
     ) -> None:
-        mock_zep_client.thread.get_user_context = AsyncMock(return_value=MagicMock(context=None))
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1", session_id="s1")
+        mock_zep_client.thread.get_context = AsyncMock(return_value=MagicMock(context=None))
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
         await mgr.enrich_system_message(mock_ag2_agent)
 
         mock_ag2_agent.update_system_message.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_add_messages(self, mock_zep_client: MagicMock) -> None:
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1", session_id="s1")
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
         await mgr.add_messages([{"content": "Hi", "role": "user"}])
 
         mock_zep_client.thread.add_messages.assert_called_once()
@@ -467,7 +470,7 @@ class TestZepMemoryManager:
     async def test_add_messages_truncates_and_validates_role(
         self, mock_zep_client: MagicMock
     ) -> None:
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1", session_id="s1")
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
         await mgr.add_messages([{"content": "z" * (MESSAGE_MAX_CHARS + 50), "role": "bogus"}])
 
         sent = mock_zep_client.thread.add_messages.call_args.kwargs["messages"][0]
@@ -476,13 +479,13 @@ class TestZepMemoryManager:
 
     @pytest.mark.asyncio
     async def test_add_messages_requires_session(self, mock_zep_client: MagicMock) -> None:
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1")
-        with pytest.raises(ZepAG2ConfigError, match="session_id"):
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, graph_uuid=GRAPH_UUID)
+        with pytest.raises(ZepAG2ConfigError, match="thread_uuid"):
             await mgr.add_messages([{"content": "Hi", "role": "user"}])
 
     @pytest.mark.asyncio
     async def test_get_session_facts(self, mock_zep_client: MagicMock) -> None:
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1", session_id="s1")
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
         facts = await mgr.get_session_facts()
 
         assert isinstance(facts, list)
@@ -491,8 +494,8 @@ class TestZepMemoryManager:
 
     @pytest.mark.asyncio
     async def test_get_session_facts_requires_session(self, mock_zep_client: MagicMock) -> None:
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1")
-        with pytest.raises(ZepAG2ConfigError, match="session_id"):
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, graph_uuid=GRAPH_UUID)
+        with pytest.raises(ZepAG2ConfigError, match="thread_uuid"):
             await mgr.get_session_facts()
 
 
@@ -504,15 +507,15 @@ class TestZepMemoryManager:
 class TestZepGraphMemoryManager:
     def test_init_validates_client(self) -> None:
         with pytest.raises(ZepAG2ConfigError, match="AsyncZep"):
-            ZepGraphMemoryManager(client="bad", graph_id="g1")  # type: ignore[arg-type]
+            ZepGraphMemoryManager(client="bad", graph_uuid=GRAPH_UUID)  # type: ignore[arg-type]
 
-    def test_init_requires_graph_id(self, mock_zep_client: MagicMock) -> None:
-        with pytest.raises(ZepAG2ConfigError, match="graph_id"):
-            ZepGraphMemoryManager(client=mock_zep_client, graph_id="")
+    def test_init_requires_graph_uuid(self, mock_zep_client: MagicMock) -> None:
+        with pytest.raises(ZepAG2ConfigError, match="graph_uuid"):
+            ZepGraphMemoryManager(client=mock_zep_client, graph_uuid="")
 
     def test_init_success(self, mock_zep_client: MagicMock) -> None:
-        mgr = ZepGraphMemoryManager(mock_zep_client, graph_id="g1")
-        assert mgr.graph_id == "g1"
+        mgr = ZepGraphMemoryManager(mock_zep_client, GRAPH_UUID)
+        assert mgr.graph_uuid == GRAPH_UUID
         assert mgr.client is mock_zep_client
 
     @pytest.mark.asyncio
@@ -522,11 +525,9 @@ class TestZepGraphMemoryManager:
         mock_edge.name = "popularity"
         mock_edge.attributes = {}
         mock_edge.created_at = "2024-01-01"
-        mock_zep_client.graph.search = AsyncMock(
-            return_value=_make_mock_graph_results(edges=[mock_edge])
-        )
+        mock_zep_client.graph.search_edges = AsyncMock(return_value=_make_pager([mock_edge]))
 
-        mgr = ZepGraphMemoryManager(mock_zep_client, graph_id="g1")
+        mgr = ZepGraphMemoryManager(mock_zep_client, GRAPH_UUID)
         results = await mgr.search("Python")
 
         assert len(results) == 1
@@ -541,37 +542,35 @@ class TestZepGraphMemoryManager:
         mock_node.summary = None
         mock_node.attributes = {}
         mock_node.created_at = "2024-01-01"
-        mock_zep_client.graph.search = AsyncMock(
-            return_value=_make_mock_graph_results(nodes=[mock_node])
-        )
+        mock_zep_client.graph.search_nodes = AsyncMock(return_value=_make_pager([mock_node]))
 
-        mgr = ZepGraphMemoryManager(mock_zep_client, graph_id="g1")
-        results = await mgr.search("Bob")
+        mgr = ZepGraphMemoryManager(mock_zep_client, GRAPH_UUID)
+        results = await mgr.search("Bob", scope="nodes")
 
         assert results[0]["content"] == "Bob: No summary"
 
     @pytest.mark.asyncio
     async def test_add_data(self, mock_zep_client: MagicMock) -> None:
-        mgr = ZepGraphMemoryManager(mock_zep_client, graph_id="g1")
+        mgr = ZepGraphMemoryManager(mock_zep_client, GRAPH_UUID)
         success = await mgr.add_data("Python is great", data_type="text")
 
         assert success is True
-        mock_zep_client.graph.add.assert_called_once_with(
-            graph_id="g1", type="text", data="Python is great"
+        mock_zep_client.graph.episode.add.assert_called_once_with(
+            GRAPH_UUID, type="text", data="Python is great"
         )
 
     @pytest.mark.asyncio
     async def test_add_data_truncates(self, mock_zep_client: MagicMock) -> None:
-        mgr = ZepGraphMemoryManager(mock_zep_client, graph_id="g1")
+        mgr = ZepGraphMemoryManager(mock_zep_client, GRAPH_UUID)
         await mgr.add_data("w" * (GRAPH_MAX_CHARS + 100))
 
-        sent_data = mock_zep_client.graph.add.call_args.kwargs["data"]
+        sent_data = mock_zep_client.graph.episode.add.call_args.kwargs["data"]
         assert len(sent_data) == GRAPH_MAX_CHARS
 
     @pytest.mark.asyncio
     async def test_add_data_error(self, mock_zep_client: MagicMock) -> None:
-        mock_zep_client.graph.add = AsyncMock(side_effect=Exception("API error"))
-        mgr = ZepGraphMemoryManager(mock_zep_client, graph_id="g1")
+        mock_zep_client.graph.episode.add = AsyncMock(side_effect=Exception("API error"))
+        mgr = ZepGraphMemoryManager(mock_zep_client, GRAPH_UUID)
         success = await mgr.add_data("data")
 
         assert success is False
@@ -585,11 +584,9 @@ class TestZepGraphMemoryManager:
         mock_edge.name = "popularity"
         mock_edge.attributes = {}
         mock_edge.created_at = "2024-01-01"
-        mock_zep_client.graph.search = AsyncMock(
-            return_value=_make_mock_graph_results(edges=[mock_edge])
-        )
+        mock_zep_client.graph.search_edges = AsyncMock(return_value=_make_pager([mock_edge]))
 
-        mgr = ZepGraphMemoryManager(mock_zep_client, graph_id="g1")
+        mgr = ZepGraphMemoryManager(mock_zep_client, GRAPH_UUID)
         await mgr.enrich_system_message(mock_ag2_agent, query="Python")
 
         mock_ag2_agent.update_system_message.assert_called_once()
@@ -598,8 +595,8 @@ class TestZepGraphMemoryManager:
 
     @pytest.mark.asyncio
     async def test_search_error_returns_empty(self, mock_zep_client: MagicMock) -> None:
-        mock_zep_client.graph.search = AsyncMock(side_effect=Exception("API error"))
-        mgr = ZepGraphMemoryManager(mock_zep_client, graph_id="g1")
+        mock_zep_client.graph.search_edges = AsyncMock(side_effect=Exception("API error"))
+        mgr = ZepGraphMemoryManager(mock_zep_client, GRAPH_UUID)
         results = await mgr.search("test")
 
         assert results == []
@@ -621,8 +618,8 @@ class TestRegistration:
             agent=mock_ag2_agent,
             executor=mock_ag2_executor,
             client=mock_zep_client,
-            user_id="u1",
-            session_id="s1",
+            graph_uuid=GRAPH_UUID,
+            thread_uuid=THREAD_UUID,
         )
 
         assert len(tools) == 4
@@ -647,13 +644,13 @@ class TestRegistration:
             agent=mock_ag2_agent,
             executor=mock_ag2_executor,
             client=mock_zep_client,
-            user_id="u1",
-            session_id="s1",
+            graph_uuid=GRAPH_UUID,
+            thread_uuid=THREAD_UUID,
         )
         # Registered callables must be distinct objects (no double-registration).
         assert len({id(fn) for fn in tools.values()}) == 4
 
-    def test_register_all_tools_with_graph_id(
+    def test_register_all_tools_with_named_graph(
         self,
         mock_zep_client: MagicMock,
         mock_ag2_agent: MagicMock,
@@ -663,8 +660,7 @@ class TestRegistration:
             agent=mock_ag2_agent,
             executor=mock_ag2_executor,
             client=mock_zep_client,
-            user_id="u1",
-            graph_id="g1",
+            graph_uuid=GRAPH_UUID,
         )
 
         assert len(tools) == 4
@@ -672,10 +668,10 @@ class TestRegistration:
     def test_tool_annotations_for_ag2(self, mock_zep_client: MagicMock) -> None:
         """Verify all tool functions have Annotated parameters for AG2 compatibility."""
         tools = [
-            create_search_memory_tool(mock_zep_client, user_id="u1"),
-            create_add_memory_tool(mock_zep_client, user_id="u1"),
-            create_search_graph_tool(mock_zep_client, user_id="u1"),
-            create_add_graph_data_tool(mock_zep_client, user_id="u1"),
+            create_search_memory_tool(mock_zep_client, GRAPH_UUID),
+            create_add_memory_tool(mock_zep_client, GRAPH_UUID),
+            create_search_graph_tool(mock_zep_client, GRAPH_UUID),
+            create_add_graph_data_tool(mock_zep_client, GRAPH_UUID),
         ]
 
         for tool in tools:
@@ -705,20 +701,18 @@ class TestFormattingHelpers:
         mock_episode = MagicMock()
         mock_episode.content = "Discussed hiking plans"
 
-        mock_zep_client.graph.search = AsyncMock(
-            return_value=_make_mock_graph_results(
-                edges=[mock_edge], nodes=[mock_node], episodes=[mock_episode]
-            )
-        )
+        mock_zep_client.graph.search_edges = AsyncMock(return_value=_make_pager([mock_edge]))
+        mock_zep_client.graph.search_nodes = AsyncMock(return_value=_make_pager([mock_node]))
+        mock_zep_client.graph.search_episodes = AsyncMock(return_value=_make_pager([mock_episode]))
 
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1")
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
 
         assert "Alice likes hiking" in tool(query="hiking", scope="edges")
         assert "Alice" in tool(query="hiking", scope="nodes")
         assert "Discussed hiking plans" in tool(query="hiking", scope="episodes")
 
     def test_search_memory_no_results(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1")
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
         result = tool(query="nothing")
 
         assert "No results found" in result
@@ -727,11 +721,9 @@ class TestFormattingHelpers:
         mock_node = MagicMock()
         mock_node.name = "Bob"
         mock_node.summary = None
-        mock_zep_client.graph.search = AsyncMock(
-            return_value=_make_mock_graph_results(nodes=[mock_node])
-        )
+        mock_zep_client.graph.search_nodes = AsyncMock(return_value=_make_pager([mock_node]))
 
-        tool = create_search_memory_tool(mock_zep_client, user_id="u1")
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
         result = tool(query="Bob", scope="nodes")
 
         assert "Bob" in result
@@ -739,8 +731,8 @@ class TestFormattingHelpers:
 
 class TestAddMemoryEdgeCases:
     def test_add_memory_graph_error(self, mock_zep_client: MagicMock) -> None:
-        mock_zep_client.graph.add = AsyncMock(side_effect=Exception("Graph error"))
-        tool = create_add_memory_tool(mock_zep_client, user_id="u1")
+        mock_zep_client.graph.episode.add = AsyncMock(side_effect=Exception("Graph error"))
+        tool = create_add_memory_tool(mock_zep_client, GRAPH_UUID)
         result = tool(content="test")
 
         assert "error" in result.lower()
@@ -748,7 +740,7 @@ class TestAddMemoryEdgeCases:
 
     def test_add_memory_thread_error(self, mock_zep_client: MagicMock) -> None:
         mock_zep_client.thread.add_messages = AsyncMock(side_effect=Exception("Thread error"))
-        tool = create_add_memory_tool(mock_zep_client, user_id="u1", session_id="s1")
+        tool = create_add_memory_tool(mock_zep_client, GRAPH_UUID, THREAD_UUID)
         result = tool(content="test", role="user")
 
         assert "error" in result.lower()
@@ -757,27 +749,27 @@ class TestAddMemoryEdgeCases:
 
 class TestSearchGraphEdgeCases:
     def test_search_graph_error(self, mock_zep_client: MagicMock) -> None:
-        mock_zep_client.graph.search = AsyncMock(side_effect=Exception("Search error"))
-        tool = create_search_graph_tool(mock_zep_client, user_id="u1")
+        mock_zep_client.graph.search_edges = AsyncMock(side_effect=Exception("Search error"))
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
         result = tool(query="test")
 
         assert "error" in result.lower()
         assert "Search error" not in result
 
     def test_add_graph_data_error(self, mock_zep_client: MagicMock) -> None:
-        mock_zep_client.graph.add = AsyncMock(side_effect=Exception("Add error"))
-        tool = create_add_graph_data_tool(mock_zep_client, user_id="u1")
+        mock_zep_client.graph.episode.add = AsyncMock(side_effect=Exception("Add error"))
+        tool = create_add_graph_data_tool(mock_zep_client, GRAPH_UUID)
         result = tool(data="test")
 
         assert "error" in result.lower()
         assert "Add error" not in result
 
-    def test_add_graph_data_with_graph_id(self, mock_zep_client: MagicMock) -> None:
-        tool = create_add_graph_data_tool(mock_zep_client, graph_id="g1")
+    def test_add_graph_data_names_the_graph(self, mock_zep_client: MagicMock) -> None:
+        tool = create_add_graph_data_tool(mock_zep_client, GRAPH_UUID)
         result = tool(data="test data", data_type="json")
 
-        mock_zep_client.graph.add.assert_called_once()
-        assert "g1" in result
+        mock_zep_client.graph.episode.add.assert_called_once()
+        assert GRAPH_UUID in result
 
 
 class TestMemoryManagerEdgeCases:
@@ -786,27 +778,25 @@ class TestMemoryManagerEdgeCases:
         mock_node = MagicMock()
         mock_node.name = "Alice"
         mock_node.summary = "A hiker"
-        mock_zep_client.graph.search = AsyncMock(
-            return_value=_make_mock_graph_results(nodes=[mock_node])
-        )
+        mock_zep_client.graph.search_nodes = AsyncMock(return_value=_make_pager([mock_node]))
 
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1")
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, graph_uuid=GRAPH_UUID)
         context = await mgr.get_memory_context(query="Alice")
 
         assert "Alice: A hiker" in context
 
     @pytest.mark.asyncio
     async def test_get_memory_context_graph_error(self, mock_zep_client: MagicMock) -> None:
-        mock_zep_client.graph.search = AsyncMock(side_effect=Exception("Graph error"))
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1")
+        mock_zep_client.graph.search_edges = AsyncMock(side_effect=Exception("Graph error"))
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, graph_uuid=GRAPH_UUID)
         context = await mgr.get_memory_context(query="test")
 
         assert context == ""
 
     @pytest.mark.asyncio
     async def test_get_memory_context_thread_error(self, mock_zep_client: MagicMock) -> None:
-        mock_zep_client.thread.get_user_context = AsyncMock(side_effect=Exception("err"))
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1", session_id="s1")
+        mock_zep_client.thread.get_context = AsyncMock(side_effect=Exception("err"))
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
         context = await mgr.get_memory_context()
 
         assert context == ""
@@ -814,7 +804,7 @@ class TestMemoryManagerEdgeCases:
     @pytest.mark.asyncio
     async def test_add_messages_error(self, mock_zep_client: MagicMock) -> None:
         mock_zep_client.thread.add_messages = AsyncMock(side_effect=Exception("API err"))
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1", session_id="s1")
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
 
         with pytest.raises(ZepAG2MemoryError, match="Failed to add messages") as exc_info:
             await mgr.add_messages([{"content": "hi", "role": "user"}])
@@ -823,16 +813,16 @@ class TestMemoryManagerEdgeCases:
 
     @pytest.mark.asyncio
     async def test_get_session_facts_empty(self, mock_zep_client: MagicMock) -> None:
-        mock_zep_client.thread.get_user_context = AsyncMock(return_value=MagicMock(context=None))
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1", session_id="s1")
+        mock_zep_client.thread.get_context = AsyncMock(return_value=MagicMock(context=None))
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
         facts = await mgr.get_session_facts()
 
         assert facts == []
 
     @pytest.mark.asyncio
     async def test_get_session_facts_error(self, mock_zep_client: MagicMock) -> None:
-        mock_zep_client.thread.get_user_context = AsyncMock(side_effect=Exception("err"))
-        mgr = ZepMemoryManager(mock_zep_client, user_id="u1", session_id="s1")
+        mock_zep_client.thread.get_context = AsyncMock(side_effect=Exception("err"))
+        mgr = ZepMemoryManager(mock_zep_client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
         facts = await mgr.get_session_facts()
 
         assert facts == []
@@ -851,16 +841,17 @@ class TestGraphMemoryManagerEdgeCases:
         mock_episode.source = "chat"
         mock_episode.role = "user"
         mock_episode.created_at = "2024-01-01"
-        mock_zep_client.graph.search = AsyncMock(
-            return_value=_make_mock_graph_results(nodes=[mock_node], episodes=[mock_episode])
-        )
+        mock_zep_client.graph.search_nodes = AsyncMock(return_value=_make_pager([mock_node]))
+        mock_zep_client.graph.search_episodes = AsyncMock(return_value=_make_pager([mock_episode]))
 
-        mgr = ZepGraphMemoryManager(mock_zep_client, graph_id="g1")
-        results = await mgr.search("Python")
+        mgr = ZepGraphMemoryManager(mock_zep_client, GRAPH_UUID)
+        node_results = await mgr.search("Python", scope="nodes")
+        episode_results = await mgr.search("Python", scope="episodes")
 
-        assert len(results) == 2
-        assert results[0]["type"] == "node"
-        assert results[1]["type"] == "episode"
+        assert len(node_results) == 1
+        assert node_results[0]["type"] == "node"
+        assert len(episode_results) == 1
+        assert episode_results[0]["type"] == "episode"
 
     @pytest.mark.asyncio
     async def test_enrich_system_message_no_query_with_episodes(
@@ -870,18 +861,16 @@ class TestGraphMemoryManagerEdgeCases:
         mock_episode.content = "Recent chat about Python"
         mock_episodes = MagicMock()
         mock_episodes.episodes = [mock_episode]
-        mock_zep_client.graph.episode.get_by_graph_id = AsyncMock(return_value=mock_episodes)
+        mock_zep_client.graph.episode.list = AsyncMock(return_value=mock_episodes)
 
         mock_edge = MagicMock()
         mock_edge.fact = "Python is great"
         mock_edge.name = "fact"
         mock_edge.attributes = {}
         mock_edge.created_at = "2024-01-01"
-        mock_zep_client.graph.search = AsyncMock(
-            return_value=_make_mock_graph_results(edges=[mock_edge])
-        )
+        mock_zep_client.graph.search_edges = AsyncMock(return_value=_make_pager([mock_edge]))
 
-        mgr = ZepGraphMemoryManager(mock_zep_client, graph_id="g1")
+        mgr = ZepGraphMemoryManager(mock_zep_client, GRAPH_UUID)
         await mgr.enrich_system_message(mock_ag2_agent)
 
         mock_ag2_agent.update_system_message.assert_called_once()
@@ -892,9 +881,9 @@ class TestGraphMemoryManagerEdgeCases:
     ) -> None:
         mock_episodes = MagicMock()
         mock_episodes.episodes = []
-        mock_zep_client.graph.episode.get_by_graph_id = AsyncMock(return_value=mock_episodes)
+        mock_zep_client.graph.episode.list = AsyncMock(return_value=mock_episodes)
 
-        mgr = ZepGraphMemoryManager(mock_zep_client, graph_id="g1")
+        mgr = ZepGraphMemoryManager(mock_zep_client, GRAPH_UUID)
         await mgr.enrich_system_message(mock_ag2_agent)
 
         mock_ag2_agent.update_system_message.assert_not_called()
@@ -903,9 +892,9 @@ class TestGraphMemoryManagerEdgeCases:
     async def test_enrich_system_message_no_query_error(
         self, mock_zep_client: MagicMock, mock_ag2_agent: MagicMock
     ) -> None:
-        mock_zep_client.graph.episode.get_by_graph_id = AsyncMock(side_effect=Exception("err"))
+        mock_zep_client.graph.episode.list = AsyncMock(side_effect=Exception("err"))
 
-        mgr = ZepGraphMemoryManager(mock_zep_client, graph_id="g1")
+        mgr = ZepGraphMemoryManager(mock_zep_client, GRAPH_UUID)
         await mgr.enrich_system_message(mock_ag2_agent)
 
         mock_ag2_agent.update_system_message.assert_not_called()
@@ -928,7 +917,7 @@ class TestSyncWrappers:
 
     def test_memory_manager_get_context_sync(self) -> None:
         client = _mock_zep_client()
-        mgr = ZepMemoryManager(client, user_id="u1", session_id="s1")
+        mgr = ZepMemoryManager(client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
         result = mgr.get_memory_context_sync()
 
         assert isinstance(result, str)
@@ -940,7 +929,7 @@ class TestSyncWrappers:
         agent.system_message = "You are helpful."
         agent.update_system_message = MagicMock()
 
-        mgr = ZepMemoryManager(client, user_id="u1", session_id="s1")
+        mgr = ZepMemoryManager(client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
         mgr.enrich_system_message_sync(agent)
 
         agent.update_system_message.assert_called_once()
@@ -952,16 +941,16 @@ class TestSyncWrappers:
         mock_edge.name = "f"
         mock_edge.attributes = {}
         mock_edge.created_at = "2024-01-01"
-        client.graph.search = AsyncMock(return_value=_make_mock_graph_results(edges=[mock_edge]))
+        client.graph.search_edges = AsyncMock(return_value=_make_pager([mock_edge]))
 
-        mgr = ZepGraphMemoryManager(client, graph_id="g1")
+        mgr = ZepGraphMemoryManager(client, GRAPH_UUID)
         results = mgr.search_sync("test")
 
         assert len(results) == 1
 
     def test_graph_manager_add_data_sync(self) -> None:
         client = _mock_zep_client()
-        mgr = ZepGraphMemoryManager(client, graph_id="g1")
+        mgr = ZepGraphMemoryManager(client, GRAPH_UUID)
         result = mgr.add_data_sync("data")
 
         assert result is True
@@ -973,7 +962,7 @@ class TestMultiAgentAttachCaveat:
     ``attach_to_agent`` registers both an incoming (``process_last_received_message``,
     persists as role=user) and an outgoing (``process_message_before_send``, persists as
     role=assistant) hook. If two agents in a two-agent conversation each attach a manager
-    pointing at the *same* Zep thread (``session_id``), a single turn is persisted twice
+    pointing at the *same* Zep thread (``thread_uuid``), a single turn is persisted twice
     with conflicting roles: the sender's outgoing hook persists it as ``assistant``, and the
     recipient's incoming hook persists the same content again as ``user``.
 
@@ -983,13 +972,13 @@ class TestMultiAgentAttachCaveat:
     """
 
     def test_two_attached_agents_same_thread_double_persist_documented_risk(self) -> None:
-        shared_session_id = "shared-thread"
+        shared_thread_uuid = "shared-thread-uuid"
 
         client_a = _mock_zep_client()
         client_b = _mock_zep_client()
 
-        manager_a = ZepMemoryManager(client_a, user_id="u1", session_id=shared_session_id)
-        manager_b = ZepMemoryManager(client_b, user_id="u1", session_id=shared_session_id)
+        manager_a = ZepMemoryManager(client_a, USER_UUID, shared_thread_uuid, graph_uuid=GRAPH_UUID)
+        manager_b = ZepMemoryManager(client_b, USER_UUID, shared_thread_uuid, graph_uuid=GRAPH_UUID)
 
         agent_a = _mock_fake_agent_for_attach()
         agent_b = _mock_fake_agent_for_attach()

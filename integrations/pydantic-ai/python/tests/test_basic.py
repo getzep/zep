@@ -45,9 +45,9 @@ class TestZepDeps:
     def test_construct_minimal(self) -> None:
         from zep_pydantic_ai import ZepDeps
 
-        deps = ZepDeps(client=MagicMock(), user_id="u", thread_id="t")
-        assert deps.user_id == "u"
-        assert deps.thread_id == "t"
+        deps = ZepDeps(client=MagicMock(), user_uuid="user-uuid-1", thread_uuid="thread-uuid-1")
+        assert deps.user_uuid == "user-uuid-1"
+        assert deps.thread_uuid == "thread-uuid-1"
         assert deps.assistant_name == "Assistant"
         assert deps.ignore_roles is None
 
@@ -56,8 +56,8 @@ class TestZepDeps:
 
         deps = ZepDeps(
             client=MagicMock(),
-            user_id="u",
-            thread_id="t",
+            user_uuid="user-uuid-1",
+            thread_uuid="thread-uuid-1",
             first_name="Jane",
             last_name="Smith",
         )
@@ -68,8 +68,8 @@ class TestZepDeps:
 
         deps = ZepDeps(
             client=MagicMock(),
-            user_id="u",
-            thread_id="t",
+            user_uuid="user-uuid-1",
+            thread_uuid="thread-uuid-1",
             first_name="Jane",
             last_name="Smith",
             user_name="JaneS",
@@ -79,11 +79,16 @@ class TestZepDeps:
     def test_display_name_none_when_no_names(self) -> None:
         from zep_pydantic_ai import ZepDeps
 
-        deps = ZepDeps(client=MagicMock(), user_id="u", thread_id="t")
+        deps = ZepDeps(client=MagicMock(), user_uuid="user-uuid-1", thread_uuid="thread-uuid-1")
         assert deps.display_name is None
 
     def test_display_name_first_only(self) -> None:
         from zep_pydantic_ai import ZepDeps
 
-        deps = ZepDeps(client=MagicMock(), user_id="u", thread_id="t", first_name="Jane")
+        deps = ZepDeps(
+            client=MagicMock(),
+            user_uuid="user-uuid-1",
+            thread_uuid="thread-uuid-1",
+            first_name="Jane",
+        )
         assert deps.display_name == "Jane"

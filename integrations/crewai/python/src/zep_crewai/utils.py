@@ -3,10 +3,9 @@ Utility functions for Zep CrewAI integration.
 """
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from zep_cloud.client import Zep
-from zep_cloud.graph.utils import compose_context_string
 from zep_cloud.types import SearchFilters
 
 #: Default template used to wrap a composed context string before it is
@@ -29,137 +28,59 @@ DEFAULT_CONTEXT_TEMPLATE = (
 )
 
 
-def search_graph_and_compose_context(
+def compose_graph_context(
     client: Zep,
     query: str,
-    graph_id: str | None = None,
-    user_id: str | None = None,
-    facts_limit: int = 20,
-    entity_limit: int = 5,
-    episodes_limit: int = 10,
+    graph_uuid: str,
+    max_characters: int | None = None,
     search_filters: SearchFilters | None = None,
     context_template: str = DEFAULT_CONTEXT_TEMPLATE,
 ) -> str | None:
     """
-    Perform parallel graph searches and compose context string.
+    Retrieve a Context Block for a graph and wrap it in ``context_template``.
 
-    Searches for edges, nodes, and episodes in parallel, then uses
-    compose_context_string to format the results, wrapped in
-    ``context_template`` (via literal ``str.replace("{context}", ...)``,
-    never ``str.format``).
+    Zep v4 assembles the Context Block on the server. ``graph.get_context``
+    returns a prompt-ready string for the graph that ``graph_uuid`` names.
+    The v3 client-side composition helper (``compose_context_string``) does
+    not exist in the v4 SDK.
 
     Args:
-        client: Zep client instance
-        query: Search query string
-        graph_id: Graph ID for generic graph search
-        user_id: User ID for user graph search
-        facts_limit: Maximum number of facts (edges) to retrieve
-        entity_limit: Maximum number of entities (nodes) to retrieve
-        episodes_limit: Maximum number of episodes to retrieve
-        search_filters: Optional search filters
-        context_template: Template used to wrap the composed context string.
-            Must contain a literal ``{context}`` placeholder. Defaults to
-            :data:`DEFAULT_CONTEXT_TEMPLATE`.
+        client: Zep client instance.
+        query: Search query string. Zep rejects a query above 400 characters,
+            so a longer query is truncated.
+        graph_uuid: The UUID of the graph. For a user graph, pass the
+            ``graph_uuid`` of the user.
+        max_characters: Optional maximum length of the Context Block.
+        search_filters: Optional search filters.
+        context_template: Template used to wrap the Context Block. The
+            template must contain a literal ``{context}`` placeholder.
+            Defaults to :data:`DEFAULT_CONTEXT_TEMPLATE`.
 
     Returns:
-        The composed context string, wrapped in ``context_template``, or
-        ``None`` if no results were found.
+        The Context Block, wrapped in ``context_template``, or ``None`` when
+        the graph returns no context.
     """
     logger = logging.getLogger(__name__)
 
-    if not graph_id and not user_id:
-        raise ValueError("Either graph_id or user_id must be provided")
+    if not graph_uuid:
+        raise ValueError("graph_uuid must be provided")
 
-    # Truncate query if too long
     truncated_query = query[:400] if len(query) > 400 else query
 
-    edges = []
-    nodes = []
-    episodes = []
+    kwargs: dict[str, Any] = {"query": truncated_query}
+    if search_filters is not None:
+        kwargs["filters"] = search_filters
+    if max_characters is not None:
+        kwargs["max_characters"] = max_characters
 
-    # Execute searches in parallel
     try:
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            # Search for facts (edges)
-            if graph_id:
-                future_edges = executor.submit(
-                    client.graph.search,
-                    graph_id=graph_id,
-                    query=truncated_query,
-                    limit=facts_limit,
-                    scope="edges",
-                    search_filters=search_filters,
-                )
-            else:
-                future_edges = executor.submit(
-                    client.graph.search,
-                    user_id=user_id,
-                    query=truncated_query,
-                    limit=facts_limit,
-                    scope="edges",
-                    search_filters=search_filters,
-                )
-
-            # Search for entities (nodes)
-            if graph_id:
-                future_nodes = executor.submit(
-                    client.graph.search,
-                    graph_id=graph_id,
-                    query=truncated_query,
-                    limit=entity_limit,
-                    scope="nodes",
-                    search_filters=search_filters,
-                )
-            else:
-                future_nodes = executor.submit(
-                    client.graph.search,
-                    user_id=user_id,
-                    query=truncated_query,
-                    limit=entity_limit,
-                    scope="nodes",
-                    search_filters=search_filters,
-                )
-
-            # Search for episodes
-            if graph_id:
-                future_episodes = executor.submit(
-                    client.graph.search,
-                    graph_id=graph_id,
-                    query=truncated_query,
-                    limit=episodes_limit,
-                    scope="episodes",
-                    search_filters=search_filters,
-                )
-            else:
-                future_episodes = executor.submit(
-                    client.graph.search,
-                    user_id=user_id,
-                    query=truncated_query,
-                    limit=episodes_limit,
-                    scope="episodes",
-                    search_filters=search_filters,
-                )
-
-            edge_results = future_edges.result()
-            node_results = future_nodes.result()
-            episode_results = future_episodes.result()
-
-            if edge_results and edge_results.edges:
-                edges = edge_results.edges
-
-            if node_results and node_results.nodes:
-                nodes = node_results.nodes
-
-            if episode_results and episode_results.episodes:
-                episodes = episode_results.episodes
-
+        response = client.graph.get_context(graph_uuid, **kwargs)
     except Exception as e:
-        logger.error(f"Failed to search graph: {e}")
+        logger.error(f"Failed to get context from graph: {e}")
         return None
 
-    # Compose context string from all results
-    if edges or nodes or episodes:
-        context = compose_context_string(edges=edges, nodes=nodes, episodes=episodes)
-        return context_template.replace("{context}", context)
+    context = response.context
+    if not context:
+        return None
 
-    return None
+    return context_template.replace("{context}", context)

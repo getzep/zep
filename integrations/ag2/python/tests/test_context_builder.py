@@ -20,17 +20,23 @@ from zep_cloud.client import AsyncZep
 from zep_ag2 import ZepAG2ConfigError, ZepMemoryManager
 from zep_ag2.memory import ContextInput
 
+USER_UUID = "user-uuid-1"
+THREAD_UUID = "thread-uuid-1"
+GRAPH_UUID = "graph-uuid-1"
+
 
 def _make_mock_client() -> MagicMock:
     client = MagicMock(spec=AsyncZep)
     client.user = MagicMock()
-    client.user.add = AsyncMock()
+    client.user.create = AsyncMock()
+    client.user.get = AsyncMock(return_value=MagicMock(graph_uuid=GRAPH_UUID))
     client.thread = MagicMock()
     client.thread.create = AsyncMock()
     client.thread.add_messages = AsyncMock(return_value=MagicMock(context="default context"))
-    client.thread.get_user_context = AsyncMock(return_value=MagicMock(context="default context"))
+    client.thread.get_context = AsyncMock(return_value=MagicMock(context="default context"))
     client.graph = MagicMock()
-    client.graph.search = AsyncMock()
+    client.graph.search_edges = AsyncMock(return_value=MagicMock(items=[]))
+    client.graph.search_nodes = AsyncMock(return_value=MagicMock(items=[]))
     return client
 
 
@@ -47,7 +53,9 @@ class TestProcessUserMessageWithBuilder:
             received.append(ctx)
             return "Built context block"
 
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1", context_builder=builder)
+        manager = ZepMemoryManager(
+            client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID, context_builder=builder
+        )
         fake_agent = object()
 
         result = await manager.process_user_message("Hello there", agent=fake_agent)
@@ -59,8 +67,8 @@ class TestProcessUserMessageWithBuilder:
         assert len(received) == 1
         built = received[0]
         assert built.zep is client
-        assert built.user_id == "u1"
-        assert built.thread_id == "s1"
+        assert built.user_uuid == USER_UUID
+        assert built.thread_uuid == THREAD_UUID
         assert built.user_message == "Hello there"
         assert built.agent is fake_agent
 
@@ -71,7 +79,7 @@ class TestProcessUserMessageWithBuilder:
         """Without a builder, a single add_messages(return_context=True) call
         both persists and retrieves context."""
         client = _make_mock_client()
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1")
+        manager = ZepMemoryManager(client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID)
 
         result = await manager.process_user_message("Hi")
 
@@ -90,7 +98,11 @@ class TestProcessUserMessageWithBuilder:
             raise RuntimeError("builder boom")
 
         manager = ZepMemoryManager(
-            client, user_id="u1", session_id="s1", context_builder=failing_builder
+            client,
+            USER_UUID,
+            THREAD_UUID,
+            graph_uuid=GRAPH_UUID,
+            context_builder=failing_builder,
         )
 
         result = await manager.process_user_message("Hi")
@@ -108,7 +120,9 @@ class TestProcessUserMessageWithBuilder:
         async def builder(ctx: ContextInput) -> str | None:
             return "Builder context survives"
 
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1", context_builder=builder)
+        manager = ZepMemoryManager(
+            client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID, context_builder=builder
+        )
 
         result = await manager.process_user_message("Hi")
 
@@ -117,7 +131,7 @@ class TestProcessUserMessageWithBuilder:
     @pytest.mark.asyncio
     async def test_process_user_message_requires_session(self) -> None:
         client = _make_mock_client()
-        manager = ZepMemoryManager(client, user_id="u1")
+        manager = ZepMemoryManager(client, USER_UUID, graph_uuid=GRAPH_UUID)
 
         with pytest.raises(ZepAG2ConfigError):
             await manager.process_user_message("Hi")
@@ -133,14 +147,16 @@ class TestEnrichSystemMessageUsesBuilder:
             received.append(ctx)
             return "Builder retrieval context"
 
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1", context_builder=builder)
+        manager = ZepMemoryManager(
+            client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID, context_builder=builder
+        )
         agent = MagicMock()
         agent.system_message = "You are a helpful assistant."
         agent.update_system_message = MagicMock()
 
         await manager.enrich_system_message(agent, query="hiking")
 
-        client.thread.get_user_context.assert_not_called()
+        client.thread.get_context.assert_not_called()
         assert len(received) == 1
         assert received[0].user_message == "hiking"
         agent.update_system_message.assert_called_once()
@@ -154,7 +170,9 @@ class TestEnrichSystemMessageUsesBuilder:
         async def builder(ctx: ContextInput) -> str | None:
             return None
 
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1", context_builder=builder)
+        manager = ZepMemoryManager(
+            client, USER_UUID, THREAD_UUID, graph_uuid=GRAPH_UUID, context_builder=builder
+        )
         agent = MagicMock()
         agent.system_message = "You are a helpful assistant."
         agent.update_system_message = MagicMock()
@@ -166,7 +184,7 @@ class TestEnrichSystemMessageUsesBuilder:
     @pytest.mark.asyncio
     async def test_enrich_system_message_uses_builder_without_session(self) -> None:
         """A configured builder replaces the default retrieval even when no
-        session_id is set -- ContextInput.thread_id is None in that case."""
+        thread_uuid is set -- ContextInput.thread_uuid is None in that case."""
         client = _make_mock_client()
         received: list[ContextInput] = []
 
@@ -174,17 +192,19 @@ class TestEnrichSystemMessageUsesBuilder:
             received.append(ctx)
             return "Builder context without session"
 
-        manager = ZepMemoryManager(client, user_id="u1", context_builder=builder)
+        manager = ZepMemoryManager(
+            client, USER_UUID, graph_uuid=GRAPH_UUID, context_builder=builder
+        )
         agent = MagicMock()
         agent.system_message = "You are a helpful assistant."
         agent.update_system_message = MagicMock()
 
         await manager.enrich_system_message(agent, query="hiking")
 
-        client.thread.get_user_context.assert_not_called()
+        client.thread.get_context.assert_not_called()
         client.thread.create.assert_not_called()
         assert len(received) == 1
-        assert received[0].thread_id is None
+        assert received[0].thread_uuid is None
         assert received[0].user_message == "hiking"
         agent.update_system_message.assert_called_once()
         injected = agent.update_system_message.call_args[0][0]
@@ -199,14 +219,16 @@ class TestEnrichSystemMessageUsesBuilder:
             received.append(ctx)
             return "Builder context without session"
 
-        manager = ZepMemoryManager(client, user_id="u1", context_builder=builder)
+        manager = ZepMemoryManager(
+            client, USER_UUID, graph_uuid=GRAPH_UUID, context_builder=builder
+        )
 
         result = await manager.get_memory_context(query="hiking")
 
-        client.thread.get_user_context.assert_not_called()
-        client.graph.search.assert_not_called()
+        client.thread.get_context.assert_not_called()
+        client.graph.search_edges.assert_not_called()
         assert len(received) == 1
-        assert received[0].thread_id is None
+        assert received[0].thread_uuid is None
         assert result == "Builder context without session"
 
     @pytest.mark.asyncio
@@ -217,7 +239,11 @@ class TestEnrichSystemMessageUsesBuilder:
             raise RuntimeError("boom")
 
         manager = ZepMemoryManager(
-            client, user_id="u1", session_id="s1", context_builder=failing_builder
+            client,
+            USER_UUID,
+            THREAD_UUID,
+            graph_uuid=GRAPH_UUID,
+            context_builder=failing_builder,
         )
         agent = MagicMock()
         agent.system_message = "You are a helpful assistant."

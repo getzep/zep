@@ -3,7 +3,7 @@ Zep size-limit handling.
 
 Zep rejects over-long payloads with a 400:
   - A thread message's ``content`` must be <= 4,096 characters.
-  - A single ``graph.add`` call's ``data`` must be <= 10,000 characters.
+  - A single ``graph.episode.add`` call's ``data`` must be <= 10,000 characters.
 
 Rather than letting an over-long payload 400 and be silently dropped, we
 truncate it (preferring a safety margin under the hard limit) and log a
@@ -14,7 +14,7 @@ Mirrors ``integrations/adk/python/src/zep_adk/limits.py`` and
 ``integrations/ag2/python/src/zep_ag2/tools.py`` -- keep the message-content
 constants identical across Python integrations. The graph-data limit here
 reuses ag2's ``GRAPH_MAX_CHARS = 9900`` (a safety margin under Zep's
-documented 10,000-char ``graph.add`` ceiling).
+documented 10,000-char ``graph.episode.add`` ceiling).
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ MESSAGE_CONTENT_MAX = 4096
 #: differences.
 MESSAGE_CONTENT_TRUNCATE_TO = 4000
 
-#: Safety margin under Zep's documented 10,000-char ``graph.add`` ceiling.
+#: Safety margin under Zep's documented 10,000-char ``graph.episode.add`` ceiling.
 #: Matches ``zep_ag2.tools.GRAPH_MAX_CHARS``.
 GRAPH_MAX_CHARS = 9900
 
@@ -68,7 +68,7 @@ def truncate_message_content(content: str, label: str = "message") -> str:
 
 
 def truncate_graph_data(data: str, label: str = "graph data") -> str:
-    """Truncate a ``graph.add`` payload to Zep's per-call data limit.
+    """Truncate a ``graph.episode.add`` payload to Zep's per-call data limit.
 
     Logs a warning (lengths only -- never content) when truncation happens.
     Data within the limit is returned unchanged. Over-long data is truncated
@@ -89,7 +89,7 @@ def truncate_graph_data(data: str, label: str = "graph data") -> str:
     truncated = data[:GRAPH_MAX_CHARS]
     logger.warning(
         "Truncated %s before sending to Zep: original %d chars exceeds the "
-        "%d-char graph.add limit; truncated to %d chars.",
+        "%d-char graph.episode.add limit; truncated to %d chars.",
         label,
         len(data),
         GRAPH_MAX_CHARS,

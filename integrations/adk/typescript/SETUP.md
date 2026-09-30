@@ -28,8 +28,10 @@ You only need this to run the model. The Zep integration wiring (persisting mess
 From your project (the package and its peers):
 
 ```bash
-npm install @getzep/zep-adk @google/adk @getzep/zep-cloud
+npm install @getzep/zep-adk @google/adk @getzep/zep-cloud@preview
 ```
+
+This package targets the Zep v4 SDK. The v4 SDK is a pre-release, and the npm `preview` dist-tag points to `4.0.0-alpha.5`.
 
 To work on this package from a checkout of the repo:
 
@@ -54,7 +56,7 @@ npm run example
 npx tsx examples/basic-agent.ts
 ```
 
-Before its first turn, the example provisions the Zep user and thread out-of-band with `ensureUser` / `ensureThread` — the callbacks and tools never create them implicitly. When wiring your own agent, call `ensureUser` / `ensureThread` once (e.g. during account or session onboarding) before the first turn.
+Before its first turn, the example provisions the Zep user and thread out-of-band with `createUser` / `createThread`, and keeps the `userUuid` and the `threadUuid` from the responses. The callbacks and tools never create the user or the thread. When you wire your own agent, call `createUser` / `createThread` once (for example, during account or session onboarding), store the UUIDs in your own database, and pass them to the callbacks as `userUuid` and `threadUuid`.
 
 - **With `GOOGLE_API_KEY` set:** the example seeds facts about a user, waits for Zep to process the graph, then asks recall questions and prints the agent's memory-aware answers.
 - **Without `GOOGLE_API_KEY`:** the example still creates the Zep user and thread and builds the fully-wired agent, then exits before the model call — useful for verifying the integration end-to-end without a model.
@@ -72,5 +74,5 @@ npm run build       # tsup → dist
 ## Troubleshooting
 
 - **`ZEP_API_KEY is not set`** — export the key (step 5) before running.
-- **No memory in responses** — Zep ingestion is asynchronous; a fact added this turn is not retrievable immediately. The example waits 15s before testing recall.
-- **`ZepIdentityError`** — pass `userId` / `threadId` to the callback or tool, set `zep_user_id` / `zep_thread_id` in ADK session state, or create the ADK session with a `userId` and `sessionId`.
+- **No memory in responses** — Zep ingestion is asynchronous; a fact added this turn is not retrievable immediately. The example waits 30 seconds before testing recall.
+- **`ZepIdentityError`** — pass `userUuid` / `threadUuid` to the callback or tool, set `zep_user_uuid` / `zep_thread_uuid` in ADK session state, or create the ADK session with a `userId` and a `sessionId` that hold Zep UUIDs.

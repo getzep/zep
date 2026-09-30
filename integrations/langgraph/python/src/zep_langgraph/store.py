@@ -15,9 +15,15 @@ read-after-write.
   ``get`` / ``put`` / ``delete`` / ``list_namespaces`` faithfully and
   synchronously.
 * On every ``put`` it **also** ingests the stored value into Zep via
-  ``graph.add(type="json")``, so the data becomes part of the temporal graph.
-* It routes ``search`` to Zep's semantic ``graph.search`` (the differentiator),
+  ``graph.episode.add(graph_uuid, type="json")``, so the data becomes part of
+  the temporal graph.
+* It routes ``search`` to Zep's semantic graph search (the differentiator),
   optionally merged with the backing store's own search.
+
+Zep v4 addresses a graph by its server-generated UUID. ``ZepStore`` therefore
+takes a ``graph_uuid`` and never resolves an application identifier at run
+time. Use ``User.graph_uuid`` for a user's personal graph, or ``Graph.uuid_``
+for a shared standalone graph.
 
 Only the two abstract methods -- :meth:`batch` and :meth:`abatch` -- are
 implemented. Every public ``get`` / ``put`` / ``search`` / ``delete`` /
@@ -53,34 +59,24 @@ from langgraph.store.base import (
 from langgraph.store.memory import InMemoryStore
 from zep_cloud.client import AsyncZep, Zep
 
+from .tools import resolve_search_method
+
 logger = logging.getLogger(__name__)
 
-#: Maximum characters Zep's ``graph.add`` accepts in a single call.
+#: Maximum characters Zep's ``graph.episode.add`` accepts in a single call.
 MAX_GRAPH_ADD_CHARS = 10_000
 
 #: Default number of results when a ``SearchOp`` does not specify a limit.
 DEFAULT_SEARCH_LIMIT = 10
 
-#: Maximum number of results Zep's ``graph.search`` accepts (``limit`` is capped
-#: at 50 server-side for non-``auto`` scopes).
+#: Maximum number of results a Zep graph search accepts (``limit`` is capped
+#: at 50 server-side).
 MAX_SEARCH_LIMIT = 50
 
-#: A resolver mapping a store namespace to a Zep search/ingest target.
-#: It receives the namespace tuple and returns either ``{"user_id": ...}`` or
-#: ``{"graph_id": ...}``.
-NamespaceTargetResolver = Callable[[tuple[str, ...]], dict[str, str]]
-
-
-def _default_namespace_target(namespace: tuple[str, ...]) -> dict[str, str]:
-    """Default resolver: treat the first namespace element as a Zep ``graph_id``.
-
-    For example, namespace ``("memories", "user-123")`` maps to
-    ``{"graph_id": "memories"}``. Override this with a resolver that maps a
-    namespace identifying an end user to ``{"user_id": ...}`` to use a personal
-    user graph (and unlock ``thread.get_user_context``) instead.
-    """
-    graph_id = namespace[0] if namespace else "default"
-    return {"graph_id": graph_id}
+#: A resolver mapping a store namespace to the UUID of the Zep graph that
+#: holds that namespace. It receives the namespace tuple and returns a
+#: ``graph_uuid``.
+NamespaceTargetResolver = Callable[[tuple[str, ...]], str]
 
 
 class ZepStore(BaseStore):
@@ -96,10 +92,14 @@ class ZepStore(BaseStore):
         backing_store: The KV ``BaseStore`` that handles exact-key
             ``get`` / ``put`` / ``delete`` / ``list_namespaces``. Defaults to a
             fresh :class:`~langgraph.store.memory.InMemoryStore`.
-        namespace_target: A callable mapping a namespace tuple to a Zep target
-            (``{"user_id": ...}`` or ``{"graph_id": ...}``). Defaults to
-            :func:`_default_namespace_target`.
-        search_scope: Zep ``graph.search`` scope used for ``search`` operations.
+        graph_uuid: The UUID of the Zep graph that holds every namespace of
+            this store. Use ``User.graph_uuid`` for a user's personal graph,
+            or ``Graph.uuid_`` for a shared standalone graph.
+        namespace_target: An optional callable mapping a namespace tuple to
+            the UUID of the graph that holds that namespace. It lets one store
+            span several graphs. When omitted, every namespace maps to
+            ``graph_uuid``.
+        search_scope: The Zep search scope used for ``search`` operations.
             Defaults to ``"edges"`` (facts).
         ingest_on_put: When ``True`` (default), every ``put`` also ingests the
             value into Zep. Set ``False`` to use Zep only for search.
@@ -114,6 +114,7 @@ class ZepStore(BaseStore):
         "_zep",
         "_sync_zep",
         "_backing",
+        "_graph_uuid",
         "_namespace_target",
         "_search_scope",
         "_ingest_on_put",
@@ -124,9 +125,10 @@ class ZepStore(BaseStore):
         self,
         zep_client: AsyncZep,
         *,
+        graph_uuid: str,
         sync_zep_client: Zep | None = None,
         backing_store: BaseStore | None = None,
-        namespace_target: NamespaceTargetResolver = _default_namespace_target,
+        namespace_target: NamespaceTargetResolver | None = None,
         search_scope: str = "edges",
         ingest_on_put: bool = True,
         merge_backing_search: bool = False,
@@ -134,7 +136,10 @@ class ZepStore(BaseStore):
         self._zep: AsyncZep = zep_client
         self._sync_zep: Zep | None = sync_zep_client
         self._backing: BaseStore = backing_store if backing_store is not None else InMemoryStore()
-        self._namespace_target: NamespaceTargetResolver = namespace_target
+        self._graph_uuid: str = graph_uuid
+        self._namespace_target: NamespaceTargetResolver = (
+            namespace_target if namespace_target is not None else (lambda _namespace: graph_uuid)
+        )
         self._search_scope: str = search_scope
         self._ingest_on_put: bool = ingest_on_put
         self._merge_backing_search: bool = merge_backing_search
@@ -189,7 +194,11 @@ class ZepStore(BaseStore):
     # ------------------------------------------------------------------
 
     def _results_to_search_items(self, op: SearchOp, result: Any) -> list[SearchItem]:
-        """Convert Zep ``graph.search`` results into ``SearchItem`` objects.
+        """Convert Zep graph-search results into ``SearchItem`` objects.
+
+        ``auto`` scope reads the Context Block of a ``GraphContextResponse``.
+        Every other scope reads the first page of a pager, whose ``items``
+        hold the records of that scope.
 
         Applies ``op.offset`` then ``op.limit`` (pagination) to the converted
         items, mirroring ``BaseStore.search`` semantics.
@@ -197,9 +206,10 @@ class ZepStore(BaseStore):
         now = datetime.now(UTC)
         items: list[SearchItem] = []
         scope = self._search_scope
+        records = getattr(result, "items", None) or []
 
         if scope == "edges":
-            for edge in getattr(result, "edges", None) or []:
+            for edge in records:
                 fact = getattr(edge, "fact", None)
                 if not fact:
                     continue
@@ -214,7 +224,7 @@ class ZepStore(BaseStore):
                     )
                 )
         elif scope == "nodes":
-            for node in getattr(result, "nodes", None) or []:
+            for node in records:
                 name = getattr(node, "name", None)
                 if not name:
                     continue
@@ -249,8 +259,8 @@ class ZepStore(BaseStore):
                         score=None,
                     )
                 )
-        else:  # episodes / observations / other -> use episodes when present
-            for episode in getattr(result, "episodes", None) or []:
+        else:  # episodes / observations / other -> read the page records
+            for episode in records:
                 content = getattr(episode, "content", None)
                 if not content:
                     continue
@@ -276,7 +286,7 @@ class ZepStore(BaseStore):
         """Clamp ``op.limit`` to ``[1, MAX_SEARCH_LIMIT]`` with a default.
 
         ``BaseStore.search`` defaults ``limit`` to 10 and imposes no ceiling,
-        but Zep's ``graph.search`` rejects ``limit > 50``. Clamp to stay valid.
+        but a Zep graph search rejects ``limit > 50``. Clamp to stay valid.
         """
         limit = op.limit or DEFAULT_SEARCH_LIMIT
         if limit > MAX_SEARCH_LIMIT:
@@ -289,12 +299,17 @@ class ZepStore(BaseStore):
         return max(limit, 1)
 
     def _zep_search_kwargs(self, op: SearchOp) -> dict[str, Any] | None:
-        """Build ``graph.search`` kwargs for a ``SearchOp``, or ``None`` to skip."""
+        """Build graph-search kwargs for a ``SearchOp``, or ``None`` to skip.
+
+        The returned mapping holds the keyword arguments of the v4 search
+        call. ``graph_uuid`` is passed separately as the first positional
+        argument.
+        """
         if not op.query:
             # No natural-language query -> nothing for the semantic graph to do.
             return None
         if op.filter:
-            # Zep's graph.search uses a typed ``search_filters`` shape (entity/
+            # A Zep graph search uses a typed ``filters`` shape (entity/
             # edge types, property/date filters) that does not map onto
             # BaseStore's MongoDB-style ``filter``. Rather than silently honour
             # the wrong thing, warn (count of keys only -- no values/PII) and
@@ -305,16 +320,14 @@ class ZepStore(BaseStore):
                 "ignored); use Zep search_filters via the graph-search tool instead",
                 len(op.filter),
             )
-        target = self._namespace_target(op.namespace_prefix)
         # Zep has no server-side offset; fetch enough rows to cover offset+limit
         # (capped), then slice locally in ``_results_to_search_items``.
         fetch = min(self._effective_limit(op) + (op.offset or 0), MAX_SEARCH_LIMIT)
-        return {
-            "query": op.query,
-            "scope": self._search_scope,
-            "limit": fetch,
-            **target,
-        }
+        if self._search_scope == "auto":
+            # ``auto`` scope is served by ``graph.get_context``, which returns
+            # one assembled Context Block and takes no result limit.
+            return {"query": op.query}
+        return {"query": op.query, "limit": fetch}
 
     # ------------------------------------------------------------------
     # Abstract methods (the only two required)
@@ -375,13 +388,12 @@ class ZepStore(BaseStore):
         payload = self._ingest_put_payload(op)
         if payload is None:
             return
-        target = self._namespace_target(op.namespace)
+        graph_uuid = self._namespace_target(op.namespace)
         try:
-            await self._zep.graph.add(
+            await self._zep.graph.episode.add(
+                graph_uuid,
                 data=payload,
                 type="json",
-                user_id=target.get("user_id"),
-                graph_id=target.get("graph_id"),
             )
         except Exception:
             logger.warning(
@@ -403,13 +415,12 @@ class ZepStore(BaseStore):
                 op.key,
             )
             return
-        target = self._namespace_target(op.namespace)
+        graph_uuid = self._namespace_target(op.namespace)
         try:
-            self._sync_zep.graph.add(
+            self._sync_zep.graph.episode.add(
+                graph_uuid,
                 data=payload,
                 type="json",
-                user_id=target.get("user_id"),
-                graph_id=target.get("graph_id"),
             )
         except Exception:
             logger.warning(
@@ -427,8 +438,10 @@ class ZepStore(BaseStore):
         items: list[SearchItem] = []
         kwargs = self._zep_search_kwargs(op)
         if kwargs is not None:
+            graph_uuid = self._namespace_target(op.namespace_prefix)
+            search_method = resolve_search_method(self._zep, self._search_scope)
             try:
-                result = await self._zep.graph.search(**kwargs)
+                result = await search_method(graph_uuid, **kwargs)
                 items = self._results_to_search_items(op, result)
             except Exception:
                 logger.warning("Zep graph search failed for %s", op.namespace_prefix, exc_info=True)
@@ -447,8 +460,10 @@ class ZepStore(BaseStore):
                     op.namespace_prefix,
                 )
             else:
+                graph_uuid = self._namespace_target(op.namespace_prefix)
+                search_method = resolve_search_method(self._sync_zep, self._search_scope)
                 try:
-                    result = self._sync_zep.graph.search(**kwargs)
+                    result = search_method(graph_uuid, **kwargs)
                     items = self._results_to_search_items(op, result)
                 except Exception:
                     logger.warning(
