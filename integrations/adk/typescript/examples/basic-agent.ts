@@ -108,8 +108,6 @@ async function main(): Promise<void> {
   // and keep the UUIDs that Zep returns. An application stores these UUIDs
   // in its own database and passes them back on each turn. The agent's turn
   // path (the before/after-model callbacks) never creates users or threads.
-  // ZEPAI-3605: a user that is created without a `user_id` cannot receive a
-  // thread message until the fix is deployed.
   console.log("--- Provisioning Zep user + thread ---\n");
   let userUuid: string;
   let threadUuid: string;

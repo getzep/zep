@@ -45,8 +45,6 @@ async function main(): Promise<void> {
 
   // Provision out-of-band and keep the UUIDs. An application stores them in
   // its own database and passes them back on each turn.
-  // ZEPAI-3605: a user that is created without a `user_id` cannot receive a
-  // thread message until the fix is deployed.
   const { userUuid, graphUuid } = await createUser(zep, {
     firstName: "Alice",
     lastName: "Smith",
