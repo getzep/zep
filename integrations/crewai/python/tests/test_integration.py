@@ -14,9 +14,6 @@ so this test uses the sync ``Zep`` client throughout:
 The test creates the user and the threads with the v4 SDK and keeps only the
 UUIDs of the responses. It does not look an identifier up at run time.
 
-The live test is skipped until the ZEPAI-3605 fix is deployed: a user without
-a ``user_id`` cannot receive a thread message.
-
 Requires:
     ZEP_API_KEY and OPENAI_API_KEY environment variables.
 
@@ -236,10 +233,6 @@ def main() -> None:
     sys.exit(0 if passed else 1)
 
 
-@pytest.mark.skip(
-    reason="ZEPAI-3605: a user without a user_id cannot receive a thread "
-    "message until the fix is deployed"
-)
 @pytest.mark.integration
 def test_integration_full_lifecycle() -> None:
     """Pytest entry point for the live integration test (synchronous)."""
