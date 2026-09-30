@@ -35,13 +35,10 @@ still change between minor versions.
   application must read it later.
 - **Sequential thread ingestion is task-tracked.** v4 `thread.add_messages`
   returns a task, so `wait()` polls the returned task instead of message UUIDs.
-- **Known gaps in the current v4 deployment.** Batch items for a standalone
-  graph and the direct `thread.add_messages` and `thread.get_context` calls
-  return 404 against `api.getzep.com`. `thread.add_messages` is defect
-  ZEPAI-3605, which applies to every v4 thread because every v4 user has no
-  `user_id`; the production smoke script skips the two sequential thread cases
-  under that defect. The batch path works for user graphs and thread
-  messages; submit standalone-graph episodes with `method="sequential"`.
+- **Known gap in the current v4 deployment.** Batch items for a standalone
+  graph return 404 against `api.getzep.com`. The batch path works for user
+  graphs and thread messages; submit standalone-graph episodes with
+  `method="sequential"`.
 
 ## 0.3.0
 
