@@ -42,7 +42,7 @@ Note:
     Zep into a CrewAI agent's tool list, the supported extension point in 1.x.
 """
 
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 __author__ = "Zep AI"
 __description__ = "Zep integration for CrewAI"
 
