@@ -397,13 +397,16 @@ async def poll_task_uuids(
     Each task gets a timeout proportional to its episode count:
     timeout = num_episodes * POLL_TIMEOUT_PER_EPISODE.
     The clock for each task starts only after the previous task completes.
-    Returns dict with succeeded/failed counts, timing, and episode stats.
+    Returns dict with succeeded/failed counts, a timed_out flag, timing,
+    and episode stats.
     """
     if not tasks:
         print(f"  [{label}] No tasks to poll")
         return {
             "succeeded": 0,
             "failed": 0,
+            "total_tasks": 0,
+            "timed_out": False,
             "total_episodes": 0,
             "elapsed_seconds": 0,
             "avg_seconds_per_episode": 0,
@@ -450,6 +453,8 @@ async def poll_task_uuids(
             return {
                 "succeeded": succeeded_count,
                 "failed": failed_count,
+                "total_tasks": total_tasks,
+                "timed_out": True,
                 "total_episodes": total_episodes,
                 "elapsed_seconds": round(elapsed, 1),
                 "avg_seconds_per_episode": round(avg, 1),
@@ -469,6 +474,8 @@ async def poll_task_uuids(
     return {
         "succeeded": succeeded_count,
         "failed": failed_count,
+        "total_tasks": total_tasks,
+        "timed_out": False,
         "total_episodes": total_episodes,
         "elapsed_seconds": round(elapsed, 1),
         "avg_seconds_per_episode": round(avg, 1),
@@ -933,6 +940,12 @@ async def main():
                 failed = (conv_result["failed"] if conv_result else 0) + (
                     tele_result["failed"] if tele_result else 0
                 )
+                total_tasks = (conv_result["total_tasks"] if conv_result else 0) + (
+                    tele_result["total_tasks"] if tele_result else 0
+                )
+                timed_out = bool(conv_result and conv_result["timed_out"]) or bool(
+                    tele_result and tele_result["timed_out"]
+                )
                 avg = graph_elapsed / total_ep if total_ep else 0
                 print(
                     f"  [{graph_uuid}] Graph total: {graph_elapsed:.1f}s | "
@@ -945,6 +958,8 @@ async def main():
                     "avg_seconds_per_episode": round(avg, 1),
                     "succeeded": succeeded,
                     "failed": failed,
+                    "total_tasks": total_tasks,
+                    "timed_out": timed_out,
                 }
 
             poll_coros = [
@@ -962,13 +977,30 @@ async def main():
                 total_episodes = sum(r["total_episodes"] for r in per_graph)
                 avg_per_episode = poll_elapsed / total_episodes if total_episodes else 0
 
-                print("\n✓ All user graphs finished processing")
+                total_tasks = sum(r["total_tasks"] for r in per_graph)
+                succeeded = sum(r["succeeded"] for r in per_graph)
+                failed = sum(r["failed"] for r in per_graph)
+                timed_out = any(r["timed_out"] for r in per_graph)
+
+                if timed_out:
+                    print(
+                        f"\n⚠ User graph processing timed out — "
+                        f"{succeeded + failed}/{total_tasks} tasks done"
+                    )
+                elif failed:
+                    print(
+                        f"\n⚠ User graph processing finished — "
+                        f"{succeeded}/{total_tasks} succeeded, {failed} failed"
+                    )
+                else:
+                    print("\n✓ All user graphs finished processing")
                 print(f"\n  Overall ingestion processing time: {poll_elapsed:.1f}s")
                 print(f"  Total episodes: {total_episodes}")
                 print(f"  Avg time per episode: {avg_per_episode:.1f}s")
 
                 # Save timing to manifest
                 timing = {
+                    "timed_out": timed_out,
                     "total_seconds": round(poll_elapsed, 1),
                     "total_episodes": total_episodes,
                     "avg_seconds_per_episode": round(avg_per_episode, 1),

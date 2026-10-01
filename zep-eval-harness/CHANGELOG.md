@@ -20,3 +20,10 @@ All notable changes to the Zep eval harness are recorded in this file.
   and the project-level or graph-level v4 methods.
 - The `README.md` and the harness skill describe the v4 identifiers and the v4
   methods.
+
+### Fixed
+
+- The ingestion scripts print the success message only when all tasks
+  succeeded. After a poll timeout, they print a warning with the number of
+  completed tasks. After a failed task, they print the failure count. The
+  manifest timing records the timeout in a `timed_out` field.

@@ -332,13 +332,16 @@ async def poll_task_uuids(
     Each task gets a timeout proportional to its episode count:
     timeout = num_episodes * POLL_TIMEOUT_PER_EPISODE.
     The clock for each task starts only after the previous task completes.
-    Returns dict with succeeded/failed counts, timing, and episode stats.
+    Returns dict with succeeded/failed counts, a timed_out flag, timing,
+    and episode stats.
     """
     if not tasks:
         print(f"  [{label}] No tasks to poll")
         return {
             "succeeded": 0,
             "failed": 0,
+            "total_tasks": 0,
+            "timed_out": False,
             "total_episodes": 0,
             "elapsed_seconds": 0,
             "avg_seconds_per_episode": 0,
@@ -385,6 +388,8 @@ async def poll_task_uuids(
             return {
                 "succeeded": succeeded_count,
                 "failed": failed_count,
+                "total_tasks": total_tasks,
+                "timed_out": True,
                 "total_episodes": total_episodes,
                 "elapsed_seconds": round(elapsed, 1),
                 "avg_seconds_per_episode": round(avg, 1),
@@ -404,6 +409,8 @@ async def poll_task_uuids(
     return {
         "succeeded": succeeded_count,
         "failed": failed_count,
+        "total_tasks": total_tasks,
+        "timed_out": False,
         "total_episodes": total_episodes,
         "elapsed_seconds": round(elapsed, 1),
         "avg_seconds_per_episode": round(avg, 1),
@@ -739,13 +746,27 @@ async def main():
                 total_episodes = result["total_episodes"]
                 avg_per_episode = poll_elapsed / total_episodes if total_episodes else 0
 
-                print("\n✓ Document graph finished processing")
+                if result["timed_out"]:
+                    done = result["succeeded"] + result["failed"]
+                    print(
+                        f"\n⚠ Document graph processing timed out — "
+                        f"{done}/{result['total_tasks']} tasks done"
+                    )
+                elif result["failed"]:
+                    print(
+                        f"\n⚠ Document graph processing finished — "
+                        f"{result['succeeded']}/{result['total_tasks']} succeeded, "
+                        f"{result['failed']} failed"
+                    )
+                else:
+                    print("\n✓ Document graph finished processing")
                 print(f"\n  Ingestion processing time: {poll_elapsed:.1f}s")
                 print(f"  Total episodes: {total_episodes}")
                 print(f"  Avg time per episode: {avg_per_episode:.1f}s")
 
                 # Save timing to manifest
                 timing = {
+                    "timed_out": result["timed_out"],
                     "total_seconds": round(poll_elapsed, 1),
                     "total_episodes": total_episodes,
                     "avg_seconds_per_episode": round(avg_per_episode, 1),
@@ -759,6 +780,7 @@ async def main():
                             ],
                             "succeeded": result["succeeded"],
                             "failed": result["failed"],
+                            "timed_out": result["timed_out"],
                         }
                     ],
                 }
