@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.3.2 (2026-10-01)
+
+### Changed
+
+- The package now requires `zep-cloud>=3.23.0,<4`. The upper bound keeps the package on the v3 SDK when `zep-cloud` 4.x is published.
+
 ## 0.3.1 (2026-07-29)
 
 ### Added

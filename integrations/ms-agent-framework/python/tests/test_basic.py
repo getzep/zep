@@ -119,7 +119,7 @@ class TestPackageStructure:
         import zep_ms_agent_framework
 
         assert hasattr(zep_ms_agent_framework, "__version__")
-        assert zep_ms_agent_framework.__version__ == "0.2.1"
+        assert zep_ms_agent_framework.__version__ == "0.2.2"
 
     def test_author_exists(self) -> None:
         import zep_ms_agent_framework

@@ -1,12 +1,12 @@
 [project]
 name = "zep-livekit"
-version = "0.2.1"
+version = "0.2.2"
 description = "LiveKit integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "livekit-agents[openai,silero]>=1.0.0",
-    "zep-cloud>=3.23.0",
+    "zep-cloud>=3.23.0,<4",
     "typing-extensions>=4.0.0",
 ]
 
