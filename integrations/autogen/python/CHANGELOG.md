@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-10-01
+
+### Changed
+
+- The package now requires `zep-cloud>=3.23.0,<4`. The upper bound keeps the package on the v3 SDK when `zep-cloud` 4.x is published.
+
 ## [1.2.1] - 2026-07-29
 
 ### Added
@@ -36,7 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ```python
 # Before (1.1.x) -- scope only had 3 documented values, limit had no pin/expose control
-tool = create_search_graph_tool(client, user_id="user-1", scope="nodes", limit=5)  # positional style
+tool = create_search_graph_tool(
+    client, user_id="user-1", scope="nodes", limit=5
+)  # positional style
 
 # After (1.2.0) -- legacy kwargs still work as pins, or be explicit:
 tool = create_search_graph_tool(client, user_id="user-1", scope="nodes", limit=5)  # still works

@@ -4,6 +4,11 @@ All notable changes to `zep-ingest` are documented here. The project follows
 [Semantic Versioning](https://semver.org); while at `0.x` the public API may
 still change between minor versions.
 
+## 0.3.1
+
+- `zep-ingest` now requires `zep-cloud>=3.27.0,<4`. The upper bound keeps the package
+  on the v3 SDK when `zep-cloud` 4.x is published.
+
 ## 0.3.0
 
 - **Submit everything, then wait once.** Multiple files or loaders destined for
