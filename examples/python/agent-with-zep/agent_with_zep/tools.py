@@ -160,7 +160,7 @@ def build_toolset() -> FunctionToolset:
     ) -> str:
         """Search the graph for the items most relevant to a query. Returns a ranked sample, not a complete set.
 
-        Use scope="edges" for facts and relationships, scope="nodes" for entities, and scope="episodes" for the source reports. Use report_type and product to restrict the search to reports with that metadata. Use near with one or more handles to add results from the graph neighborhood of known nodes. The results can also include matches from outside the neighborhood."""
+        Use scope="edges" for facts and relationships, scope="nodes" for entities, and scope="episodes" for the source reports. Use report_type and product to restrict the search to reports with that metadata. Use near with one or more handles, and scope="edges" or scope="nodes", to add results from the graph neighborhood of known nodes. The results can also include matches from outside the neighborhood."""
         args = {
             "query": query,
             "scope": scope,
@@ -173,6 +173,8 @@ def build_toolset() -> FunctionToolset:
         }
         if not query.strip():
             return "invalid arguments: query must not be empty."
+        if near and scope == "episodes":
+            return 'near works only with scope="edges" or scope="nodes". Remove near or change the scope.'
         bfs = None
         if near:
             bfs = []

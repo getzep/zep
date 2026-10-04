@@ -123,3 +123,14 @@ async def test_search_context_empty_query_no_budget(deps):
     out = await _tool("search_context")(_ctx(deps), query="   ")
     assert out == "invalid arguments: query must not be empty."
     assert deps.calls_left == 12
+
+
+async def test_search_context_near_episodes_no_budget(deps, fake_zep):
+    some_uuid = next(iter(fake_zep.graph.nodes))
+    handle = deps.registry.register(some_uuid, "n")
+    out = await _tool("search_context")(_ctx(deps), query="flow", scope="episodes", near=[handle])
+    assert (
+        out
+        == 'near works only with scope="edges" or scope="nodes". Remove near or change the scope.'
+    )
+    assert deps.calls_left == 12

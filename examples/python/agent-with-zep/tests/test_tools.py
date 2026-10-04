@@ -79,7 +79,7 @@ async def test_search_context_filters(deps, fake_zep):
     out = await fn(
         _ctx(deps),
         query="flow under-delivery",
-        scope="episodes",
+        scope="edges",
         report_type="complaint_summary",
         product="Aster 410",
         near=[handle],
