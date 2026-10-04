@@ -188,7 +188,7 @@ async def main_async(args) -> None:
                     out.flush()
                     records.append(record)
                     print(
-                        f"{config_name} {question['id']} rep{rep}: accuracy={record['grade']['accuracy']}"
+                        f"{config_name} {question['id']} rep{rep}: accuracy={(record['grade'] or {}).get('accuracy', 'grade error')}"
                     )
 
     # flatten grade.accuracy for the summary; grade errors stay None
