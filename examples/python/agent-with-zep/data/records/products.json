@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Aster 410",
+    "category": "volumetric infusion pump",
+    "site": "Pemberline Galway Plant",
+    "lifecycle_status": "on market",
+    "launch_date": null
+  },
+  {
+    "name": "Aster 520",
+    "category": "syringe pump",
+    "site": "Pemberline Raleigh Plant",
+    "lifecycle_status": "on market",
+    "launch_date": null
+  },
+  {
+    "name": "Lyric 300",
+    "category": "patient monitor",
+    "site": "Pemberline Penang Plant",
+    "lifecycle_status": "on market",
+    "launch_date": null
+  },
+  {
+    "name": "Lyric 350",
+    "category": "patient monitor (next generation of Lyric 300)",
+    "site": "Pemberline Penang Plant",
+    "lifecycle_status": "pre-launch",
+    "launch_date": "2026-11-16"
+  },
+  {
+    "name": "Fernway",
+    "category": "ambulatory infusion pump",
+    "site": "Pemberline Galway Plant",
+    "lifecycle_status": "on market (US only since 2026-06-30)",
+    "launch_date": null
+  },
+  {
+    "name": "Calder",
+    "category": "enteral feeding pump",
+    "site": "Pemberline Raleigh Plant",
+    "lifecycle_status": "on market (US only)",
+    "launch_date": null
+  }
+]

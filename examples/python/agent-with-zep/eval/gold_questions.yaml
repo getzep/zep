@@ -1,0 +1,130 @@
+# Gold questions for the Pemberline Medical example. AS_OF_DATE: 2026-09-15.
+# must_have: atomic facts that a correct answer states. must_not: claims that make an answer wrong.
+# expected_tools: the answer is unlikely to be complete unless the agent uses at least one of these.
+- id: q01
+  category: launch_readiness
+  question: Is the Lyric 350 ready to launch on its planned date?
+  must_have:
+    - The planned US launch date is 2026-11-16.
+    - The Lyric 350 is not FDA cleared; the 510(k) is pending after an additional-information request.
+    - The FDA response is due 2026-10-28.
+    - QI-1068 (alarm forwarding dropout through the WM-4 wireless module) is open, high severity, and blocks launch.
+    - The conclusion is that the launch date is at risk or the product is not ready.
+  must_not:
+    - States that the launch is on track without qualification.
+  expected_tools: [search_context, get_neighborhood, search_products]
+- id: q02
+  category: multi_report_status
+  question: What is the current status of the Aster 410 flow-rate problem?
+  must_have:
+    - QI-1041 / CAPA-118 is still open.
+    - Firmware 2.3.1 did not fix the problem; under-delivery recurred at St. Brigid's Hospital in June 2026.
+    - The new corrective action is to replace FS-20 with the FS-20B flow sensor, target 2026-10-31.
+    - The August 2026 audit raised a major nonconformity about the CAPA-118 verification of effectiveness.
+  must_not:
+    - States that the problem is resolved.
+  expected_tools: [search_context]
+- id: q03
+  category: multi_hop_supply
+  question: Which products use components from Vossbridge Sensors, and do any of those components have an open quality issue?
+  must_have:
+    - Aster 410 uses the FS-20 flow sensor from Vossbridge Sensors.
+    - Fernway uses the FS-20 flow sensor from Vossbridge Sensors.
+    - Aster 520 uses the OS-5 occlusion sensor from Vossbridge Sensors.
+    - The FS-20 is linked to open quality issue QI-1041 (Aster 410 under-delivery).
+  must_not:
+    - States that the OS-5 has an open quality issue.
+  expected_tools: [get_neighborhood, list_nodes]
+- id: q04
+  category: ownership_chain
+  question: Who owns the corrective action for the Aster 410 flow problem, and who is that person's manager and the manager's manager?
+  must_have:
+    - Priya Raman owns CAPA-118.
+    - Priya Raman reports to Helen Okafor (Director of Quality).
+    - Helen Okafor reports to Ruth Castellano (Chief Operating Officer).
+  must_not: []
+  expected_tools: [get_neighborhood, get_employees]
+- id: q05
+  category: complete_list
+  question: List every open high-severity quality issue.
+  must_have:
+    - QI-1041 (Aster 410 flow-rate under-delivery) is open and high severity.
+    - QI-1068 (Lyric 350 alarm forwarding dropout) is open and high severity.
+    - The list contains exactly these two issues.
+  must_not:
+    - Lists QI-1057 as high severity (it was reclassified to medium on 2026-07-02).
+    - Lists QI-1033 as open.
+  expected_tools: [list_nodes]
+- id: q06
+  category: regulatory_filter
+  question: Which products are cleared for sale in the EU today?
+  must_have:
+    - Aster 410, Aster 520, and Lyric 300 have valid CE certificates.
+    - Fernway is not cleared in the EU; its certificate expired on 2026-06-30 and the renewal is under review.
+    - The list of EU-cleared products contains exactly Aster 410, Aster 520, and Lyric 300.
+  must_not:
+    - Lists Fernway, Lyric 350, or Calder as cleared in the EU.
+  expected_tools: [search_products, list_nodes]
+- id: q07
+  category: contradiction
+  question: Did firmware 2.3.1 fix the Aster 410 under-delivery issue?
+  must_have:
+    - No. Under-delivery recurred on pumps running firmware 2.3.1 at St. Brigid's Hospital (June 2026), at about 16 °C.
+    - The CAPA-118 verification of effectiveness for firmware 2.3.1 failed (2026-07-09).
+    - The May 2026 sales note that called the issue resolved is not verification evidence.
+  must_not:
+    - States that firmware 2.3.1 fixed the issue.
+  expected_tools: [search_context]
+- id: q08
+  category: latest_report
+  question: What did the latest notified-body audit find?
+  must_have:
+    - The latest audit is the Lindqvist Certification surveillance audit of the Galway plant in August 2026.
+    - Major nonconformity NC-1 is about inadequate verification of effectiveness for CAPA-118.
+    - Minor nonconformity NC-2 is about incomplete supplier monitoring of Vossbridge Sensors.
+    - The response is due 2026-09-30.
+  must_not:
+    - Reports the 2025 audit result (no major nonconformities) as the latest finding.
+  expected_tools: [search_context]
+- id: q09
+  category: domain_tool
+  question: Which members of the Reliability Engineering team work on the Aster 410?
+  must_have:
+    - Lena Vogt.
+    - Owen Briggs.
+    - The list contains exactly these two people.
+  must_not:
+    - Lists Aiko Tanaka or Sanjay Mehta as working on the Aster 410.
+  expected_tools: [get_employees]
+- id: q10
+  category: customer_reports
+  question: Which customers have reported problems with the Aster 410?
+  must_have:
+    - Northgate Regional Hospital (February 2026, under-delivery).
+    - St. Brigid's Hospital (June 2026, under-delivery recurrence).
+    - The list contains exactly these two customers.
+  must_not:
+    - Lists Harlow Children's Hospital (it reported an Aster 520 problem).
+  expected_tools: [search_context, get_neighborhood]
+- id: q11
+  category: missing_fact
+  question: When did the Lyric 350 receive FDA clearance?
+  must_have:
+    - The Lyric 350 has not received FDA clearance.
+    - The 510(k) was submitted on 2026-05-12 and the FDA requested additional information on 2026-07-30.
+  must_not:
+    - Gives a clearance date for the Lyric 350.
+  expected_tools: [search_context, search_products]
+- id: q12
+  category: broad_ranked
+  question: What are the most important risks at Pemberline right now?
+  must_have:
+    - QI-1041 on the Aster 410 is an open patient-safety issue and the firmware fix failed.
+    - QI-1068 on the Lyric 350 is an open high-severity issue that blocks launch.
+    - The August 2026 audit major nonconformity needs a response by 2026-09-30.
+    - The Lyric 350 FDA response is due 2026-10-28.
+    - The WM-4 wireless module is single source from Tamsin Electronics, or the FS-20 to FS-20B supplier change is a supply risk.
+    - Patient-safety risks are ranked above regulatory, supply, and commercial risks.
+  must_not:
+    - Ranks a commercial fact (sales or marketing) above an open patient-safety issue.
+  expected_tools: [search_context, list_nodes]

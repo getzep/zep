@@ -1,0 +1,28 @@
+[project]
+name = "agent-with-zep"
+version = "0.1.0"
+description = "Reference agent that uses a Zep context graph as its context layer."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "zep-cloud>=3.30,<4",
+    "pydantic-ai>=1.0.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
