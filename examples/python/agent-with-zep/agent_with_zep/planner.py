@@ -52,8 +52,8 @@ def add_submit_plan(toolset: FunctionToolset) -> None:
         ctx.deps.plans.append(plan)
         remaining = MAX_PLANS - len(ctx.deps.plans)
         if remaining > 0:
-            return f"Plan accepted. Retrieval tools are now available. You may submit {remaining} revised plan(s) later."
-        return "Plan accepted. Retrieval tools are now available. You cannot submit more plans."
+            return f"Plan accepted. Run the plan steps now with the retrieval tools. You may submit {remaining} revised plan(s) later."
+        return "Plan accepted. Run the plan steps now with the retrieval tools. You cannot submit more plans."
 
 
 def make_prepare(planning: bool):

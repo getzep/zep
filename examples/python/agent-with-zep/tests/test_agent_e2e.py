@@ -62,7 +62,15 @@ async def test_end_to_end_config_d(deps):
 
 
 def _answering_model():
-    return FunctionModel(lambda messages, info: ModelResponse(parts=[TextPart("done")]))
+    calls = {"n": 0}
+
+    def fn(messages, info):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return ModelResponse(parts=[ToolCallPart("list_nodes", {"label": "Product"})])
+        return ModelResponse(parts=[TextPart("done")])
+
+    return FunctionModel(fn)
 
 
 async def test_run_agent_registers_sample_handles(deps):

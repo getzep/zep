@@ -12,7 +12,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
+from pydantic_ai.exceptions import ModelRetry
 from pydantic_ai.models import Model
 from pydantic_ai.toolsets import PreparedToolset
 from zep_cloud import AsyncZep
@@ -62,12 +63,28 @@ def build_agent(config: AgentConfig, model: Model | str, deps: AgentDeps) -> Age
             lambda ctx, tool_def: tool_def.name in {"search_context", "submit_plan"}
         )
     prepared = PreparedToolset(wrapped=toolset, prepare_func=make_prepare(config.planning))
-    return Agent(
+    agent = Agent(
         model,
         instructions=prompt,
         deps_type=AgentDeps,
         toolsets=[prepared],
+        retries=2,
     )
+
+    @agent.output_validator
+    def _require_retrieval(ctx: RunContext[AgentDeps], output: str) -> str:
+        require_retrieval(ctx.deps)
+        return output
+
+    return agent
+
+
+def require_retrieval(deps: AgentDeps) -> None:
+    """Raise ModelRetry when the agent answered without any retrieval call."""
+    if not deps.call_log and deps.calls_left > 0:
+        raise ModelRetry(
+            "You have not called a retrieval tool. Run the retrieval steps and then answer from the evidence."
+        )
 
 
 def graph_sample_prompt(deps: AgentDeps, orientation: dict | None) -> str | None:

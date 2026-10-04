@@ -24,7 +24,8 @@ from typing import Literal
 
 import yaml
 from pydantic import BaseModel
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
+from pydantic_ai.exceptions import ModelRetry
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -38,6 +39,21 @@ CONFIGS: dict[str, AgentConfig] = {
     "C": AgentConfig(tools="full", orientation=True, domain_knowledge=True, planning=False),
     "D": AgentConfig(tools="full", orientation=True, domain_knowledge=True, planning=True),
 }
+
+
+def validate_grade(grade: Grade, n_must_have: int) -> None:
+    """Raise ModelRetry when a grade has the wrong shape or a stub rationale."""
+    if len(grade.evidence_found) != n_must_have:
+        raise ModelRetry(
+            f"evidence_found must have exactly {n_must_have} entries, one per must_have fact; got {len(grade.evidence_found)}."
+        )
+    if len(grade.answer_states) != n_must_have:
+        raise ModelRetry(
+            f"answer_states must have exactly {n_must_have} entries, one per must_have fact; got {len(grade.answer_states)}."
+        )
+    rationale = grade.rationale.strip()
+    if not rationale or rationale.lower() == "placeholder":
+        raise ModelRetry("rationale must be a non-empty explanation, not empty or 'placeholder'.")
 
 
 class Grade(BaseModel):
@@ -66,9 +82,32 @@ def render_judge_prompt(question: dict, result) -> str:
 async def run_one(settings, question: dict, config_name: str, judge: Agent) -> dict:
     agent, deps, orientation = await prepare_run(settings, CONFIGS[config_name])
     result = await run_agent(agent, deps, question["question"], orientation=orientation)
-    grade: Grade = (
-        await judge.run(render_judge_prompt(question, result), output_type=Grade)
-    ).output
+    n_must_have = len(question.get("must_have", []))
+    try:
+        grade: Grade = (
+            await judge.run(render_judge_prompt(question, result), deps=n_must_have)
+        ).output
+    except Exception as e:  # noqa: BLE001 - record any judge failure
+        return {
+            "question_id": question["id"],
+            "config": config_name,
+            "answer": result.answer,
+            "plan": [p.model_dump() for p in result.plans],
+            "tool_calls": result.tool_calls,
+            "tool_call_count": len(result.tool_calls),
+            "tool_selection": int(
+                bool(
+                    set(question.get("expected_tools", [])) & {c["name"] for c in result.tool_calls}
+                )
+            ),
+            "latency_s": round(result.latency_s, 3),
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+            "grade": None,
+            "grade_error": str(e),
+            "context_completeness": None,
+            "plan_quality": None,
+        }
     called = {c["name"] for c in result.tool_calls}
     tool_selection = int(bool(set(question.get("expected_tools", [])) & called))
     return {
@@ -130,7 +169,13 @@ async def main_async(args) -> None:
         return
 
     settings = Settings.from_env()
-    judge = Agent(settings.judge_model, output_type=Grade)
+    judge = Agent(settings.judge_model, output_type=Grade, deps_type=int, retries=3)
+
+    @judge.output_validator
+    def _validate(ctx: RunContext[int], grade: Grade) -> Grade:
+        validate_grade(grade, ctx.deps)
+        return grade
+
     out_path = Path(__file__).parent / f"results-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
     records: list[dict] = []
     with out_path.open("a") as out:
@@ -146,9 +191,14 @@ async def main_async(args) -> None:
                         f"{config_name} {question['id']} rep{rep}: accuracy={record['grade']['accuracy']}"
                     )
 
-    # flatten grade.accuracy for the summary
+    # flatten grade.accuracy for the summary; grade errors stay None
+    grade_errors = 0
     for r in records:
-        r["grade_accuracy"] = r["grade"]["accuracy"]
+        if r.get("grade") is not None:
+            r["grade_accuracy"] = r["grade"]["accuracy"]
+        else:
+            r["grade_accuracy"] = None
+            grade_errors += 1
     rows = summarize(records)
     header = [
         "config",
@@ -165,6 +215,7 @@ async def main_async(args) -> None:
     print("\t".join(header))
     for row in rows:
         print("\t".join(str(row[h]) for h in header))
+    print(f"grade errors: {grade_errors}")
     print(f"results written to {out_path}")
 
 

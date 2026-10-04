@@ -56,7 +56,7 @@ class Site(EntityModel):
 
 
 class QualityIssue(EntityModel):
-    """A product quality problem tracked with an identifier such as QI-1041."""
+    """A product quality problem tracked with an identifier such as QI-1041. A report that mentions an issue is a Report, not a new QualityIssue."""
 
     issue_id: EntityText = OntologyField(
         description="Quality issue identifier, such as QI-1041", default=None
@@ -71,7 +71,7 @@ class QualityIssue(EntityModel):
 
 
 class RegulatoryFiling(EntityModel):
-    """A regulatory submission or certificate for one product in one region."""
+    """A regulatory submission or certificate for one product in one region, such as a 510(k) or an MDR CE certificate. A report about a filing is a Report, not a RegulatoryFiling."""
 
     region: EntityText = OntologyField(description="US or EU", default=None)
     filing_type: EntityText = OntologyField(
@@ -92,6 +92,19 @@ class Customer(EntityModel):
     )
 
 
+class Report(EntityModel):
+    """A dated company document identified by a report ID such as R10. Examples are field service reports, CAPA records, audit reports, complaint summaries, engineering tests, regulatory updates, risk reviews, sales notes, and marketing notes. A report is not a regulatory filing, a quality issue, or a person."""
+
+    report_id: EntityText = OntologyField(
+        description="Report identifier, such as R10", default=None
+    )
+    report_type: EntityText = OntologyField(
+        description="audit_report, capa_record, complaint_summary, engineering_test, field_service_report, marketing_note, regulatory_update, risk_review, or sales_note",
+        default=None,
+    )
+    report_date: EntityText = OntologyField(description="Report date, YYYY-MM-DD", default=None)
+
+
 ENTITY_TYPES: dict[str, type[EntityModel]] = {
     "Employee": Employee,
     "Team": Team,
@@ -102,6 +115,7 @@ ENTITY_TYPES: dict[str, type[EntityModel]] = {
     "QualityIssue": QualityIssue,
     "RegulatoryFiling": RegulatoryFiling,
     "Customer": Customer,
+    "Report": Report,
 }
 
 EDGE_TYPES: dict[str, tuple[type[EdgeModel], list[EntityEdgeSourceTarget]]] = {
