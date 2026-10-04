@@ -106,3 +106,16 @@ def test_report_episode_kwargs_dates():
     assert kw["metadata"]["date"] == "2026-05-02"
     assert isinstance(kw["metadata"]["date"], str)
     assert kw["metadata"]["report_id"] == "R06"
+
+
+def test_settings_reads_zep_base_url(monkeypatch):
+    from agent_with_zep.config import Settings
+
+    monkeypatch.setenv("ZEP_API_KEY", "k")
+    monkeypatch.setenv("ZEP_BASE_URL", "https://api.development.getzep.com/api/v2")
+    s = Settings.from_env(require_zep_key=False)
+    assert s.zep_base_url == "https://api.development.getzep.com/api/v2"
+
+    monkeypatch.delenv("ZEP_BASE_URL")
+    s = Settings.from_env(require_zep_key=False)
+    assert s.zep_base_url is None

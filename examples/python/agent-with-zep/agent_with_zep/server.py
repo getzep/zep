@@ -41,7 +41,10 @@ def _settings_and_zep() -> tuple[Settings, AsyncZep]:
     global _settings, _zep
     if _settings is None:
         _settings = Settings.from_env()
-        _zep = AsyncZep(api_key=_settings.zep_api_key)
+        _zep = AsyncZep(
+            api_key=_settings.zep_api_key,
+            **({"base_url": _settings.zep_base_url} if _settings.zep_base_url else {}),
+        )
     return _settings, _zep
 
 

@@ -125,7 +125,10 @@ async def prepare_run(
     zep: AsyncZep | None = None,
 ) -> tuple[Agent, AgentDeps, dict | None]:
     """Build the agent, deps, and orientation for one run."""
-    zep = zep or AsyncZep(api_key=settings.zep_api_key)
+    zep = zep or AsyncZep(
+        api_key=settings.zep_api_key,
+        **({"base_url": settings.zep_base_url} if settings.zep_base_url else {}),
+    )
     deps = AgentDeps(zep=zep, graph_id=settings.graph_id)
     orientation = await load_orientation(zep, settings.graph_id) if config.orientation else None
     agent = build_agent(config, model or settings.agent_model, deps)

@@ -123,7 +123,10 @@ def main() -> None:
     parser.add_argument("--reset", action="store_true", help="delete and recreate the graph")
     args = parser.parse_args()
     settings = Settings.from_env()
-    zep = AsyncZep(api_key=settings.zep_api_key)
+    zep = AsyncZep(
+        api_key=settings.zep_api_key,
+        **({"base_url": settings.zep_base_url} if settings.zep_base_url else {}),
+    )
     asyncio.run(ingest(zep, settings.graph_id, reset=args.reset))
 
 

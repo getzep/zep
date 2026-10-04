@@ -32,6 +32,7 @@ class Settings:
     """Environment-backed settings shared by the CLI, server, ingest, and eval."""
 
     zep_api_key: str
+    zep_base_url: str | None
     graph_id: str
     agent_model: str
     judge_model: str
@@ -44,6 +45,7 @@ class Settings:
             raise RuntimeError("Set ZEP_API_KEY in the environment or in .env")
         return cls(
             zep_api_key=zep_api_key,
+            zep_base_url=os.environ.get("ZEP_BASE_URL") or None,
             graph_id=os.environ.get("GRAPH_ID", "pemberline-demo"),
             agent_model=os.environ.get("AGENT_MODEL", "openai:gpt-5-mini"),
             judge_model=os.environ.get("JUDGE_MODEL", "openai:gpt-5-mini"),

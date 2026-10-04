@@ -52,7 +52,10 @@ def main() -> None:
     parser.add_argument("--refresh", action="store_true", help="ignore the cache and re-fetch")
     args = parser.parse_args()
     settings = Settings.from_env()
-    zep = AsyncZep(api_key=settings.zep_api_key)
+    zep = AsyncZep(
+        api_key=settings.zep_api_key,
+        **({"base_url": settings.zep_base_url} if settings.zep_base_url else {}),
+    )
     data = asyncio.run(load_orientation(zep, settings.graph_id, refresh=args.refresh))
     print(f"orientation cached at {cache_path(settings.graph_id)} ({len(data['nodes'])} nodes)")
 
