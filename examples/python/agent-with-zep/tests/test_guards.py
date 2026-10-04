@@ -134,3 +134,44 @@ async def test_search_context_near_episodes_no_budget(deps, fake_zep):
         == 'near works only with scope="edges" or scope="nodes". Remove near or change the scope.'
     )
     assert deps.calls_left == 12
+
+
+# Model settings
+
+
+def _settings(**kw):
+    from agent_with_zep.config import Settings
+
+    base = {
+        "zep_api_key": "k",
+        "zep_base_url": None,
+        "graph_id": "g",
+        "agent_model": "openai:gpt-6-luna",
+        "judge_model": "openai:gpt-6-luna",
+    }
+    base.update(kw)
+    return Settings(**base)
+
+
+def test_agent_and_judge_get_low_thinking_by_default(deps):
+    from pydantic_ai.settings import ModelSettings
+
+    from agent_with_zep.agent import build_agent
+    from agent_with_zep.config import AgentConfig
+    from eval.run_eval import build_judge
+
+    settings = _settings()
+    agent = build_agent(
+        AgentConfig(),
+        "test",
+        deps,
+        model_settings=ModelSettings(thinking=settings.model_thinking),
+    )
+    assert agent.model_settings["thinking"] == "low"
+    judge = build_judge(settings)
+    assert judge.model_settings["thinking"] == "low"
+
+
+def test_invalid_model_thinking_raises():
+    with pytest.raises(ValueError, match="MODEL_THINKING"):
+        _settings(model_thinking="turbo")

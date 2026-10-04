@@ -66,9 +66,11 @@ uv sync
 
 In `.env`, set `ZEP_API_KEY` and the API key for your model provider.
 `AGENT_MODEL` and `JUDGE_MODEL` are Pydantic AI model strings. The default for
-both is `openai:gpt-5-mini`. For a different provider, set the model string and
+both is `openai:gpt-6-luna`. For a different provider, set the model string and
 the API key for that provider, for example `ANTHROPIC_API_KEY` or
-`GEMINI_API_KEY`.
+`GEMINI_API_KEY`. `MODEL_THINKING` sets the thinking level for the agent and
+the judge. The default is `low`. The valid values are `minimal`, `low`,
+`medium`, `high`, and `xhigh`.
 
 ## Load the dataset
 

@@ -15,6 +15,7 @@ from pathlib import Path
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.exceptions import ModelRetry
 from pydantic_ai.models import Model
+from pydantic_ai.settings import ModelSettings
 from pydantic_ai.toolsets import PreparedToolset
 from zep_cloud import AsyncZep
 
@@ -41,7 +42,13 @@ def _read_domain_knowledge(path: Path | None = None) -> str:
     return path.read_text()
 
 
-def build_agent(config: AgentConfig, model: Model | str, deps: AgentDeps) -> Agent:
+def build_agent(
+    config: AgentConfig,
+    model: Model | str,
+    deps: AgentDeps,
+    *,
+    model_settings: ModelSettings | None = None,
+) -> Agent:
     """Create the Pydantic AI agent for a configuration.
 
     - tools="naive" exposes only search_context; "full" exposes all six tools.
@@ -69,6 +76,7 @@ def build_agent(config: AgentConfig, model: Model | str, deps: AgentDeps) -> Age
         deps_type=AgentDeps,
         toolsets=[prepared],
         retries=2,
+        model_settings=model_settings,
     )
 
     @agent.output_validator
@@ -148,7 +156,12 @@ async def prepare_run(
     )
     deps = AgentDeps(zep=zep, graph_id=settings.graph_id)
     orientation = await load_orientation(zep, settings.graph_id) if config.orientation else None
-    agent = build_agent(config, model or settings.agent_model, deps)
+    agent = build_agent(
+        config,
+        model or settings.agent_model,
+        deps,
+        model_settings=ModelSettings(thinking=settings.model_thinking),
+    )
     return agent, deps, orientation
 
 

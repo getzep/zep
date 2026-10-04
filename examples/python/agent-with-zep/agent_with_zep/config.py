@@ -29,6 +29,9 @@ NEIGHBOR_LIMIT_MAX = 30
 EPISODE_TEXT_MAX_CHARS = 3_000
 ORIENTATION_SAMPLE_SIZE = 30
 
+# Valid values for the unified `thinking` model setting (MODEL_THINKING).
+THINKING_LEVELS = ("minimal", "low", "medium", "high", "xhigh")
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -39,6 +42,13 @@ class Settings:
     graph_id: str
     agent_model: str
     judge_model: str
+    model_thinking: str = "low"
+
+    def __post_init__(self) -> None:
+        if self.model_thinking not in THINKING_LEVELS:
+            raise ValueError(
+                f"MODEL_THINKING must be one of {', '.join(THINKING_LEVELS)}; got {self.model_thinking!r}."
+            )
 
     @classmethod
     def from_env(cls, require_zep_key: bool = True) -> Settings:
@@ -50,8 +60,9 @@ class Settings:
             zep_api_key=zep_api_key,
             zep_base_url=os.environ.get("ZEP_BASE_URL") or None,
             graph_id=os.environ.get("GRAPH_ID", "pemberline-demo"),
-            agent_model=os.environ.get("AGENT_MODEL", "openai:gpt-5-mini"),
-            judge_model=os.environ.get("JUDGE_MODEL", "openai:gpt-5-mini"),
+            agent_model=os.environ.get("AGENT_MODEL", "openai:gpt-6-luna"),
+            judge_model=os.environ.get("JUDGE_MODEL", "openai:gpt-6-luna"),
+            model_thinking=os.environ.get("MODEL_THINKING", "low"),
         )
 
 

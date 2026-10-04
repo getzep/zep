@@ -17,6 +17,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic_ai.messages import ModelRequest
+from pydantic_ai.settings import ModelSettings
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from zep_cloud import AsyncZep
 
@@ -59,7 +60,12 @@ async def chat(request: Request):
         planning=q.get("planning", "true").lower() != "false",
     )
     deps = AgentDeps(zep=zep, graph_id=settings.graph_id)
-    agent = build_agent(config, settings.agent_model, deps)
+    agent = build_agent(
+        config,
+        settings.agent_model,
+        deps,
+        model_settings=ModelSettings(thinking=settings.model_thinking),
+    )
 
     orientation = None
     if config.orientation:
