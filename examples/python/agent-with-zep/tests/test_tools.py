@@ -210,7 +210,7 @@ async def test_search_products_truncated_at_api_page_size(deps, fake_zep):
 async def test_get_employees_no_match_in_truncated_list(deps, fake_zep):
     _add_nodes(fake_zep, "Team", "Extra Team", 50)
     out = await _tool("get_employees")(_ctx(deps), team="No Such Team")
-    assert "in the first 49 Team nodes" in out
+    assert "in the first 50 Team nodes" in out
     assert "search_context" in out
 
 

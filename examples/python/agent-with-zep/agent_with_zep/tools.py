@@ -357,7 +357,7 @@ def build_toolset() -> FunctionToolset:
             )
             nodes = list(nodes or [])
             truncated = len(nodes) > LIST_LIMIT_MAX
-            for n in nodes[:LIST_LIMIT_MAX]:
+            for n in nodes:
                 if (n.name or "").strip().casefold() == name.strip().casefold():
                     return n, truncated
             return None, truncated
@@ -384,7 +384,7 @@ def build_toolset() -> FunctionToolset:
             if node is None:
                 if truncated:
                     return (
-                        f"no Team node named {team!r} in the first {LIST_LIMIT_MAX} Team nodes. "
+                        f"no Team node named {team!r} in the first {LIST_LIMIT_MAX + 1} Team nodes. "
                         "Use search_context with node_labels=['Team'] to find it."
                     )
                 return f"no Team node named {team!r}."
@@ -395,7 +395,7 @@ def build_toolset() -> FunctionToolset:
             if node is None:
                 if truncated:
                     return (
-                        f"no Product node named {product!r} in the first {LIST_LIMIT_MAX} Product nodes. "
+                        f"no Product node named {product!r} in the first {LIST_LIMIT_MAX + 1} Product nodes. "
                         "Use search_context with node_labels=['Product'] to find it."
                     )
                 return f"no Product node named {product!r}."
