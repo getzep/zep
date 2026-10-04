@@ -26,6 +26,7 @@ import yaml
 from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.exceptions import ModelRetry
+from pydantic_ai.settings import ModelSettings
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -174,6 +175,24 @@ def summarize(records: list[dict]) -> list[dict]:
     return rows
 
 
+def build_judge(settings) -> Agent:
+    """Build the judge agent for the evaluation."""
+    judge = Agent(
+        settings.judge_model,
+        output_type=Grade,
+        deps_type=int,
+        retries=3,
+        model_settings=ModelSettings(thinking=settings.model_thinking),
+    )
+
+    @judge.output_validator
+    def _validate(ctx: RunContext[int], grade: Grade) -> Grade:
+        validate_grade(grade, ctx.deps)
+        return grade
+
+    return judge
+
+
 async def main_async(args) -> None:
     questions = yaml.safe_load((Path(__file__).parent / "gold_questions.yaml").read_text())
     if args.questions:
@@ -188,12 +207,7 @@ async def main_async(args) -> None:
         return
 
     settings = Settings.from_env()
-    judge = Agent(settings.judge_model, output_type=Grade, deps_type=int, retries=3)
-
-    @judge.output_validator
-    def _validate(ctx: RunContext[int], grade: Grade) -> Grade:
-        validate_grade(grade, ctx.deps)
-        return grade
+    judge = build_judge(settings)
 
     out_path = Path(__file__).parent / f"results-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
     records: list[dict] = []
