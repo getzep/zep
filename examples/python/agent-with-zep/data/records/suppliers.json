@@ -1,0 +1,42 @@
+[
+  {
+    "id": "V1",
+    "name": "Vossbridge Sensors",
+    "supplies": [
+      "FS-20",
+      "FS-20B",
+      "OS-5"
+    ]
+  },
+  {
+    "id": "V2",
+    "name": "Hollin Motion",
+    "supplies": [
+      "M-7"
+    ]
+  },
+  {
+    "id": "V3",
+    "name": "Carrow Energy",
+    "supplies": [
+      "BP-3",
+      "BP-5"
+    ]
+  },
+  {
+    "id": "V4",
+    "name": "Tamsin Electronics",
+    "supplies": [
+      "SP-2",
+      "DP-12",
+      "WM-4"
+    ]
+  },
+  {
+    "id": "V5",
+    "name": "Brackwell Polymers",
+    "supplies": [
+      "TS-1"
+    ]
+  }
+]

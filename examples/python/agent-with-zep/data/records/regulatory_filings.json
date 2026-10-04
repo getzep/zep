@@ -1,0 +1,95 @@
+[
+  {
+    "id": "RF-1",
+    "product": "Aster 410",
+    "region": "US",
+    "filing_type": "510(k)",
+    "status": "cleared",
+    "key_date": "2024-03-18",
+    "owner": "Julien Moreau"
+  },
+  {
+    "id": "RF-2",
+    "product": "Aster 410",
+    "region": "EU",
+    "filing_type": "MDR CE certificate",
+    "status": "valid",
+    "key_date": "2024-09-02",
+    "owner": "Ines Carvalho"
+  },
+  {
+    "id": "RF-3",
+    "product": "Aster 520",
+    "region": "US",
+    "filing_type": "510(k)",
+    "status": "cleared",
+    "key_date": "2023-06-07",
+    "owner": "Julien Moreau"
+  },
+  {
+    "id": "RF-4",
+    "product": "Aster 520",
+    "region": "EU",
+    "filing_type": "MDR CE certificate",
+    "status": "valid",
+    "key_date": "2023-11-20",
+    "owner": "Ines Carvalho"
+  },
+  {
+    "id": "RF-5",
+    "product": "Lyric 300",
+    "region": "US",
+    "filing_type": "510(k)",
+    "status": "cleared",
+    "key_date": "2022-04-11",
+    "owner": "Julien Moreau"
+  },
+  {
+    "id": "RF-6",
+    "product": "Lyric 300",
+    "region": "EU",
+    "filing_type": "MDR CE certificate",
+    "status": "valid",
+    "key_date": "2022-10-03",
+    "owner": "Ines Carvalho"
+  },
+  {
+    "id": "RF-7",
+    "product": "Lyric 350",
+    "region": "US",
+    "filing_type": "510(k)",
+    "status": "pending (additional information requested)",
+    "key_date": "2026-07-30",
+    "submitted": "2026-05-12",
+    "response_due": "2026-10-28",
+    "owner": "Julien Moreau"
+  },
+  {
+    "id": "RF-8",
+    "product": "Fernway",
+    "region": "US",
+    "filing_type": "510(k)",
+    "status": "cleared",
+    "key_date": "2021-02-15",
+    "owner": "Julien Moreau"
+  },
+  {
+    "id": "RF-9",
+    "product": "Fernway",
+    "region": "EU",
+    "filing_type": "MDR CE certificate",
+    "status": "expired (renewal under review)",
+    "key_date": "2026-06-30",
+    "renewal_submitted": "2026-04-22",
+    "owner": "Ines Carvalho"
+  },
+  {
+    "id": "RF-10",
+    "product": "Calder",
+    "region": "US",
+    "filing_type": "510(k)",
+    "status": "cleared",
+    "key_date": "2020-09-28",
+    "owner": "Julien Moreau"
+  }
+]

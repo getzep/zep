@@ -1,0 +1,54 @@
+[
+  {
+    "issue_id": "QI-1041",
+    "title": "Aster 410 flow-rate under-delivery",
+    "product": "Aster 410",
+    "component": "FS-20",
+    "severity": "high",
+    "status": "open",
+    "owner": "Priya Raman",
+    "capa_id": "CAPA-118"
+  },
+  {
+    "issue_id": "QI-1057",
+    "title": "Aster 520 battery swelling",
+    "product": "Aster 520",
+    "component": "BP-3",
+    "severity": "medium",
+    "severity_note": "reclassified from high on 2026-07-02",
+    "status": "open",
+    "owner": "Marcus Feld",
+    "capa_id": "CAPA-124"
+  },
+  {
+    "issue_id": "QI-1033",
+    "title": "Lyric 300 display flicker",
+    "product": "Lyric 300",
+    "component": "DP-12",
+    "severity": "low",
+    "status": "closed",
+    "closed_date": "2026-03-27",
+    "owner": "Lena Vogt",
+    "capa_id": "CAPA-109"
+  },
+  {
+    "issue_id": "QI-1068",
+    "title": "Lyric 350 alarm forwarding dropout",
+    "product": "Lyric 350",
+    "component": "WM-4",
+    "severity": "high",
+    "status": "open; blocks launch",
+    "owner": "Tomás Ibarra",
+    "capa_id": null
+  },
+  {
+    "issue_id": "QI-1062",
+    "title": "Fernway occlusion false alarms",
+    "product": "Fernway",
+    "component": null,
+    "severity": "low",
+    "status": "open",
+    "owner": "Colm Brennan",
+    "capa_id": null
+  }
+]
