@@ -53,8 +53,9 @@ function format(value: unknown): string {
   return typeof value === 'string' ? value : JSON.stringify(value, null, 2)
 }
 
-function lastAssistant(messages: UIMessage[]): UIMessage | undefined {
-  return [...messages].reverse().find((m) => m.role === 'assistant')
+function currentTurn(messages: UIMessage[]): UIMessage | undefined {
+  const last = messages[messages.length - 1]
+  return last?.role === 'assistant' ? last : undefined
 }
 
 export default function App() {
@@ -87,7 +88,7 @@ export default function App() {
   }, [])
 
   const toolParts = useMemo(() => {
-    const turn = lastAssistant(messages)
+    const turn = currentTurn(messages)
     return (turn?.parts ?? []).filter(isToolPart) as ToolPart[]
   }, [messages])
 
@@ -148,7 +149,7 @@ export default function App() {
                 ))}
               </div>
             ))}
-            {status === 'submitted' && <div className="empty">The agent is planning…</div>}
+            {status === 'submitted' && <div className="empty">{usePlanning ? 'The agent is planning…' : 'The agent is retrieving context…'}</div>}
           </div>
           {error && <div className="error">{error.message}</div>}
           <form className="composer" onSubmit={(e) => { e.preventDefault(); ask(input) }}>
