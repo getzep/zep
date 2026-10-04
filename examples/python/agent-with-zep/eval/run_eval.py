@@ -79,35 +79,51 @@ def render_judge_prompt(question: dict, result) -> str:
     )
 
 
+def _error_record(
+    question: dict,
+    config_name: str,
+    result,
+    *,
+    run_error: str | None = None,
+    grade_error: str | None = None,
+) -> dict:
+    """Build the record for a run that failed before or during grading."""
+    tool_calls = getattr(result, "tool_calls", None) or []
+    plans = getattr(result, "plans", None) or []
+    return {
+        "question_id": question["id"],
+        "config": config_name,
+        "answer": getattr(result, "answer", None),
+        "plan": [p.model_dump() for p in plans],
+        "tool_calls": tool_calls,
+        "tool_call_count": len(tool_calls),
+        "tool_selection": int(
+            bool(set(question.get("expected_tools", [])) & {c["name"] for c in tool_calls})
+        ),
+        "latency_s": round(getattr(result, "latency_s", 0.0), 3),
+        "input_tokens": getattr(result, "input_tokens", 0),
+        "output_tokens": getattr(result, "output_tokens", 0),
+        "grade": None,
+        "run_error": run_error,
+        "grade_error": grade_error,
+        "context_completeness": None,
+        "plan_quality": None,
+    }
+
+
 async def run_one(settings, question: dict, config_name: str, judge: Agent) -> dict:
     agent, deps, orientation = await prepare_run(settings, CONFIGS[config_name])
-    result = await run_agent(agent, deps, question["question"], orientation=orientation)
+    try:
+        result = await run_agent(agent, deps, question["question"], orientation=orientation)
+    except Exception as e:  # noqa: BLE001 - record and continue the sweep
+        return _error_record(question, config_name, None, run_error=str(e))
     n_must_have = len(question.get("must_have", []))
     try:
         grade: Grade = (
             await judge.run(render_judge_prompt(question, result), deps=n_must_have)
         ).output
     except Exception as e:  # noqa: BLE001 - record any judge failure
-        return {
-            "question_id": question["id"],
-            "config": config_name,
-            "answer": result.answer,
-            "plan": [p.model_dump() for p in result.plans],
-            "tool_calls": result.tool_calls,
-            "tool_call_count": len(result.tool_calls),
-            "tool_selection": int(
-                bool(
-                    set(question.get("expected_tools", [])) & {c["name"] for c in result.tool_calls}
-                )
-            ),
-            "latency_s": round(result.latency_s, 3),
-            "input_tokens": result.input_tokens,
-            "output_tokens": result.output_tokens,
-            "grade": None,
-            "grade_error": str(e),
-            "context_completeness": None,
-            "plan_quality": None,
-        }
+        return _error_record(question, config_name, result, grade_error=str(e))
     called = {c["name"] for c in result.tool_calls}
     tool_selection = int(bool(set(question.get("expected_tools", [])) & called))
     return {
@@ -193,12 +209,15 @@ async def main_async(args) -> None:
 
     # flatten grade.accuracy for the summary; grade errors stay None
     grade_errors = 0
+    run_errors = 0
     for r in records:
         if r.get("grade") is not None:
             r["grade_accuracy"] = r["grade"]["accuracy"]
         else:
             r["grade_accuracy"] = None
             grade_errors += 1
+        if r.get("run_error"):
+            run_errors += 1
     rows = summarize(records)
     header = [
         "config",
@@ -216,6 +235,7 @@ async def main_async(args) -> None:
     for row in rows:
         print("\t".join(str(row[h]) for h in header))
     print(f"grade errors: {grade_errors}")
+    print(f"run errors: {run_errors}")
     print(f"results written to {out_path}")
 
 

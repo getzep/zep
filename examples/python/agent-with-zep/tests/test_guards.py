@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from pydantic_ai.exceptions import ModelRetry
 
@@ -9,7 +11,17 @@ from agent_with_zep import ontology
 from agent_with_zep.agent import require_retrieval
 from agent_with_zep.config import AS_OF_DATE
 from agent_with_zep.prompts import ROLE, render_system_prompt
+from agent_with_zep.tools import build_toolset
 from eval.run_eval import Grade, validate_grade
+
+
+def _tool(name):
+    return build_toolset().tools[name].function
+
+
+def _ctx(deps):
+    return SimpleNamespace(deps=deps)
+
 
 # require_retrieval
 
@@ -89,3 +101,25 @@ def test_report_in_system_prompt():
         include_domain_knowledge=True,
     )
     assert "Report" in prompt
+
+
+# Zep API errors go back to the model as tool results
+
+
+async def test_tool_returns_zep_error_text(deps, monkeypatch):
+    from zep_cloud.core.api_error import ApiError
+
+    async def boom(**kw):
+        raise ApiError(status_code=502, body="bad gateway")
+
+    monkeypatch.setattr(deps.zep.graph, "search", boom)
+    out = await _tool("search_context")(_ctx(deps), query="flow")
+    assert out.startswith("zep error 502")
+    assert "bad gateway" in out
+    assert deps.calls_left == 11  # the call still counted against the budget
+
+
+async def test_search_context_empty_query_no_budget(deps):
+    out = await _tool("search_context")(_ctx(deps), query="   ")
+    assert out == "invalid arguments: query must not be empty."
+    assert deps.calls_left == 12

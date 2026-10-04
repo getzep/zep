@@ -9,6 +9,7 @@ and handles. Each result is marked "ranked sample", "complete", or
 
 from __future__ import annotations
 
+import functools
 import json
 import time
 from dataclasses import dataclass, field
@@ -17,6 +18,7 @@ from typing import Literal
 from pydantic_ai import RunContext
 from pydantic_ai.toolsets import FunctionToolset
 from zep_cloud import AsyncZep
+from zep_cloud.core.api_error import ApiError
 from zep_cloud.types import EpisodeMetadataFilter, MetadataFilterGroup, SearchFilters
 
 from . import ontology
@@ -110,6 +112,25 @@ def _episode_line(deps: AgentDeps, episode) -> str:
     return f"- {handle} {title} ({meta.get('report_type', '')}, {meta.get('date', '')}): {snippet}{_seen_mark(deps, handle)}"
 
 
+def _catch_zep_errors(fn):
+    """Return a Zep API error to the model as a tool result.
+
+    The call already counted against the budget when the gate ran.
+    """
+
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await fn(*args, **kwargs)
+        except ApiError as e:
+            body = str(e.body or "")[:200]
+            return (
+                f"zep error {e.status_code}: {body}. Change the arguments or use a different tool."
+            )
+
+    return wrapper
+
+
 def _finish(
     deps: AgentDeps, tool_name: str, args: dict, header: str, lines: list[str], start: float
 ) -> str:
@@ -125,6 +146,7 @@ def build_toolset() -> FunctionToolset:
     toolset = FunctionToolset()
 
     @toolset.tool
+    @_catch_zep_errors
     async def search_context(
         ctx: RunContext[AgentDeps],
         query: str,
@@ -149,6 +171,8 @@ def build_toolset() -> FunctionToolset:
             "near": near,
             "limit": limit,
         }
+        if not query.strip():
+            return "invalid arguments: query must not be empty."
         bfs = None
         if near:
             bfs = []
@@ -200,6 +224,7 @@ def build_toolset() -> FunctionToolset:
         return _finish(ctx.deps, "search_context", args, "ranked sample:", lines, start)
 
     @toolset.tool
+    @_catch_zep_errors
     async def list_nodes(
         ctx: RunContext[AgentDeps],
         label: EntityLabel,
@@ -229,6 +254,7 @@ def build_toolset() -> FunctionToolset:
         return _finish(ctx.deps, "list_nodes", args, f"{marker}:", lines, start)
 
     @toolset.tool
+    @_catch_zep_errors
     async def get_neighborhood(
         ctx: RunContext[AgentDeps],
         handle: str,
@@ -267,6 +293,7 @@ def build_toolset() -> FunctionToolset:
         return _finish(ctx.deps, "get_neighborhood", args, f"{marker}:", lines, start)
 
     @toolset.tool
+    @_catch_zep_errors
     async def get_details(ctx: RunContext[AgentDeps], handle: str) -> str:
         """Get the full record for one handle: the attributes and summary of a node, or the full text and metadata of a report (episode).
 
@@ -305,6 +332,7 @@ def build_toolset() -> FunctionToolset:
         return _finish(ctx.deps, "get_details", args, "details:", [text], start)
 
     @toolset.tool
+    @_catch_zep_errors
     async def get_employees(
         ctx: RunContext[AgentDeps],
         team: str | None = None,
@@ -380,6 +408,7 @@ def build_toolset() -> FunctionToolset:
         return _finish(ctx.deps, "get_employees", args, "complete:", lines, start)
 
     @toolset.tool
+    @_catch_zep_errors
     async def search_products(
         ctx: RunContext[AgentDeps],
         query: str | None = None,
