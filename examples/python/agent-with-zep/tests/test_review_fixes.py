@@ -112,9 +112,9 @@ def test_settings_reads_zep_base_url(monkeypatch):
     from agent_with_zep.config import Settings
 
     monkeypatch.setenv("ZEP_API_KEY", "k")
-    monkeypatch.setenv("ZEP_BASE_URL", "https://api.development.getzep.com/api/v2")
+    monkeypatch.setenv("ZEP_BASE_URL", "https://zep.example.com/api/v2")
     s = Settings.from_env(require_zep_key=False)
-    assert s.zep_base_url == "https://api.development.getzep.com/api/v2"
+    assert s.zep_base_url == "https://zep.example.com/api/v2"
 
     monkeypatch.delenv("ZEP_BASE_URL")
     s = Settings.from_env(require_zep_key=False)
