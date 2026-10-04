@@ -70,6 +70,23 @@ def build_agent(config: AgentConfig, model: Model | str, deps: AgentDeps) -> Age
     )
 
 
+def graph_sample_prompt(deps: AgentDeps, orientation: dict | None) -> str | None:
+    """Register the orientation nodes and render the graph-data block.
+
+    Shared by run_agent and the server so both paths produce the same sample.
+    """
+    if not orientation:
+        return None
+    lines = []
+    for node in orientation.get("nodes", []):
+        handle = deps.registry.register(node["uuid"], "n")
+        deps.registry.mark_seen(handle)
+        lines.append(f"- {handle} {node['name']} [{','.join(node['labels'])}]")
+    if not lines:
+        return None
+    return render_graph_data("\n".join(lines))
+
+
 async def run_agent(
     agent: Agent,
     deps: AgentDeps,
@@ -78,15 +95,10 @@ async def run_agent(
     orientation: dict | None = None,
 ) -> RunResult:
     """Run one question and collect the answer, plan, tool calls, and usage."""
-    sample_lines = ""
-    if orientation:
-        for node in orientation.get("nodes", []):
-            handle = deps.registry.register(node["uuid"], "n")
-            deps.registry.mark_seen(handle)
-            sample_lines += f"- {handle} {node['name']} [{','.join(node['labels'])}]\n"
     prompt_parts: list = []
-    if sample_lines:
-        prompt_parts.append(render_graph_data(sample_lines.rstrip()))
+    sample = graph_sample_prompt(deps, orientation)
+    if sample:
+        prompt_parts.append(sample)
     prompt_parts.append(question)
 
     start = time.monotonic()

@@ -73,7 +73,21 @@ def _seen_mark(deps: AgentDeps, handle: str) -> str:
 def _node_line(deps: AgentDeps, node) -> str:
     handle = deps.registry.register(node.uuid_, "n")
     labels = ",".join(node.labels or [])
-    return f"- {handle} {node.name} [{labels}] {node.summary or ''}{_seen_mark(deps, handle)}"
+    attrs = "; ".join(
+        f"{k}={v}"
+        for k, v in (node.attributes or {}).items()
+        if v not in (None, "") and k not in ("labels", "name", "uuid") and not k.startswith("_")
+    )
+    summary = (node.summary or "")[:200]
+    return f"- {handle} {node.name} [{labels}] {attrs} {summary}{_seen_mark(deps, handle)}"
+
+
+def _resolve_or_notice(deps: AgentDeps, handle: str, prefix: str) -> str | None:
+    """Resolve a handle to a UUID or return None."""
+    try:
+        return deps.registry.resolve(handle, prefix=prefix)
+    except KeyError:
+        return None
 
 
 def _edge_line(deps: AgentDeps, edge) -> str:
@@ -135,6 +149,14 @@ def build_toolset() -> FunctionToolset:
             "near": near,
             "limit": limit,
         }
+        bfs = None
+        if near:
+            bfs = []
+            for h in near:
+                uuid = _resolve_or_notice(ctx.deps, h, "n")
+                if uuid is None:
+                    return f"unknown handle {h}: pass an n* handle from a previous result."
+                bfs.append(uuid)
         notice = ctx.deps.gate("search_context", args)
         if notice:
             return notice
@@ -159,7 +181,6 @@ def build_toolset() -> FunctionToolset:
             if meta_filters
             else None,
         )
-        bfs = [ctx.deps.registry.resolve(h) for h in near] if near else None
         results = await ctx.deps.zep.graph.search(
             graph_id=ctx.deps.graph_id,
             query=query,
@@ -212,24 +233,25 @@ def build_toolset() -> FunctionToolset:
         ctx: RunContext[AgentDeps],
         handle: str,
         edge_types: list[EdgeTypeName] | None = None,
+        direction: Literal["out", "in", "both"] = "both",
         limit: int = NEIGHBOR_LIMIT_MAX,
     ) -> str:
         """Get the edges and neighbor nodes of one node. Returns every match up to the limit, and says if the list is complete.
 
-        Use this to follow relationships from a node you already have, such as the components of a product, the supplier of a component, or the manager of an employee. Use edge_types to keep only some relationships."""
-        args = {"handle": handle, "edge_types": edge_types, "limit": limit}
+        Use this to follow relationships from a node you already have, such as the components of a product, the supplier of a component, or the manager of an employee. Use edge_types to keep only some relationships. Use direction="out" for edges that start at the node, such as the manager of an employee (REPORTS_TO). Use direction="in" for edges that end at the node, such as the members of a team (MEMBER_OF)."""
+        args = {"handle": handle, "edge_types": edge_types, "direction": direction, "limit": limit}
+        node_uuid = _resolve_or_notice(ctx.deps, handle, "n")
+        if node_uuid is None:
+            return f"unknown handle {handle}: pass an n* handle from a previous result."
         notice = ctx.deps.gate("get_neighborhood", args)
         if notice:
             return notice
         start = time.monotonic()
-        try:
-            node_uuid = ctx.deps.registry.resolve(handle, prefix="n")
-        except KeyError:
-            return f"unknown handle {handle}: pass an n* handle from a previous result."
         page_size = min(limit, NEIGHBOR_LIMIT_MAX)
         neighbors = await ctx.deps.zep.graph.node.get_neighbors(
             node_uuid,
             filters=SearchFilters(edge_types=list(edge_types)) if edge_types else None,
+            direction=direction,
             limit=page_size + 1,
         )
         neighbors = list(neighbors or [])
@@ -250,30 +272,35 @@ def build_toolset() -> FunctionToolset:
 
         Use this when a search result is relevant but too short to answer from, for example to read a full report."""
         args = {"handle": handle}
-        notice = ctx.deps.gate("get_details", args)
-        if notice:
-            return notice
-        start = time.monotonic()
-        try:
-            if handle.startswith("p"):
-                uuid = ctx.deps.registry.resolve(handle, prefix="p")
-                episode = await ctx.deps.zep.graph.episode.get(uuid)
-                content = episode.content or ""
-                if len(content) > EPISODE_TEXT_MAX_CHARS:
-                    content = content[:EPISODE_TEXT_MAX_CHARS] + "\n[truncated]"
-                meta = json.dumps(episode.metadata or {}, ensure_ascii=False)
-                text = f"- {handle} metadata: {meta}\n{content}{_seen_mark(ctx.deps, handle)}"
-            elif handle.startswith("n"):
-                uuid = ctx.deps.registry.resolve(handle, prefix="n")
-                node = await ctx.deps.zep.graph.node.get(uuid)
-                attrs = json.dumps(node.attributes or {}, ensure_ascii=False)
-                text = (
-                    f"- {handle} {node.name} [{','.join(node.labels or [])}]\n"
-                    f"attributes: {attrs}\nsummary: {node.summary or ''}{_seen_mark(ctx.deps, handle)}"
-                )
-            else:
+        if handle.startswith("p"):
+            uuid = _resolve_or_notice(ctx.deps, handle, "p")
+            if uuid is None:
                 return f"unknown handle {handle}: pass an n* or p* handle from a previous result."
-        except KeyError:
+            notice = ctx.deps.gate("get_details", args)
+            if notice:
+                return notice
+            start = time.monotonic()
+            episode = await ctx.deps.zep.graph.episode.get(uuid)
+            content = episode.content or ""
+            if len(content) > EPISODE_TEXT_MAX_CHARS:
+                content = content[:EPISODE_TEXT_MAX_CHARS] + "\n[truncated]"
+            meta = json.dumps(episode.metadata or {}, ensure_ascii=False)
+            text = f"- {handle} metadata: {meta}\n{content}{_seen_mark(ctx.deps, handle)}"
+        elif handle.startswith("n"):
+            uuid = _resolve_or_notice(ctx.deps, handle, "n")
+            if uuid is None:
+                return f"unknown handle {handle}: pass an n* or p* handle from a previous result."
+            notice = ctx.deps.gate("get_details", args)
+            if notice:
+                return notice
+            start = time.monotonic()
+            node = await ctx.deps.zep.graph.node.get(uuid)
+            attrs = json.dumps(node.attributes or {}, ensure_ascii=False)
+            text = (
+                f"- {handle} {node.name} [{','.join(node.labels or [])}]\n"
+                f"attributes: {attrs}\nsummary: {node.summary or ''}{_seen_mark(ctx.deps, handle)}"
+            )
+        else:
             return f"unknown handle {handle}: pass an n* or p* handle from a previous result."
         return _finish(ctx.deps, "get_details", args, "details:", [text], start)
 
@@ -287,11 +314,11 @@ def build_toolset() -> FunctionToolset:
 
         Use this for questions about who works on something or who is on a team. Names must match the graph, such as "Reliability Engineering" or "Aster 410"."""
         args = {"team": team, "product": product}
+        if team is None and product is None:
+            return "pass team, product, or both."
         notice = ctx.deps.gate("get_employees", args)
         if notice:
             return notice
-        if team is None and product is None:
-            return "pass team, product, or both."
         start = time.monotonic()
 
         async def node_by_name(label: str, name: str):
@@ -301,7 +328,7 @@ def build_toolset() -> FunctionToolset:
                 limit=LIST_LIMIT_MAX,
             )
             for n in nodes or []:
-                if n.name == name:
+                if (n.name or "").strip().casefold() == name.strip().casefold():
                     return n
             return None
 
@@ -309,6 +336,7 @@ def build_toolset() -> FunctionToolset:
             neighbors = await ctx.deps.zep.graph.node.get_neighbors(
                 node_uuid,
                 filters=SearchFilters(edge_types=[edge_type]),
+                direction="in",
                 limit=NEIGHBOR_LIMIT_MAX,
             )
             out = {}
@@ -336,7 +364,10 @@ def build_toolset() -> FunctionToolset:
         for uuid, node in employees.items():
             manager = ""
             neighbors = await ctx.deps.zep.graph.node.get_neighbors(
-                uuid, filters=SearchFilters(edge_types=["REPORTS_TO"]), limit=5
+                uuid,
+                filters=SearchFilters(edge_types=["REPORTS_TO"]),
+                direction="out",
+                limit=5,
             )
             for nb in neighbors or []:
                 if nb.node is not None:

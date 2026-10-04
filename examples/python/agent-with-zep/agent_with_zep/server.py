@@ -20,7 +20,7 @@ from pydantic_ai.messages import ModelRequest
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from zep_cloud import AsyncZep
 
-from .agent import build_agent
+from .agent import build_agent, graph_sample_prompt
 from .config import DATA_DIR, AgentConfig, Settings
 from .orientation import load_orientation
 from .tools import AgentDeps
@@ -65,18 +65,9 @@ async def chat(request: Request):
     adapter = VercelAIAdapter.from_request(request, agent=agent, sdk_version=7)
     # Inject the graph sample as graph data before the UI messages so the
     # frontend only ever sends chat messages.
-    history = []
-    if orientation:
-        from .prompts import render_graph_data
-
-        lines = []
-        for node in orientation.get("nodes", []):
-            handle = deps.registry.register(node["uuid"], "n")
-            deps.registry.mark_seen(handle)
-            lines.append(f"- {handle} {node['name']} [{','.join(node['labels'])}]")
-        if lines:
-            history.append(ModelRequest.user_text_prompt(render_graph_data("\n".join(lines))))
-    stream = adapter.run_stream(deps=deps, message_history=history or None)
+    sample = graph_sample_prompt(deps, orientation)
+    history = [ModelRequest.user_text_prompt(sample)] if sample else None
+    stream = adapter.run_stream(deps=deps, message_history=history)
     return adapter.streaming_response(stream)
 
 

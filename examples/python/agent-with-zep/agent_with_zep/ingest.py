@@ -49,6 +49,25 @@ def load_reports() -> list[dict]:
     return reports
 
 
+def report_episode_kwargs(report: dict) -> dict:
+    """Build the graph.add kwargs for one report.
+
+    yaml.safe_load parses `date:` as datetime.date; metadata values must be
+    strings, numbers, or booleans, and created_at must be RFC 3339.
+    """
+    meta = report["meta"]
+    date = meta["date"]
+    return {
+        "type": "text",
+        "data": report["body"],
+        "created_at": f"{date.isoformat()}T00:00:00Z",
+        "metadata": {
+            k: (str(v) if hasattr(v, "isoformat") else v) for k, v in meta.items() if v is not None
+        },
+        "source_description": f"Pemberline report {meta['report_id']}",
+    }
+
+
 async def wait_processed(zep: AsyncZep, uuid: str) -> None:
     deadline = time.monotonic() + POLL_TIMEOUT_S
     while time.monotonic() < deadline:
@@ -90,15 +109,7 @@ async def ingest(zep: AsyncZep, graph_id: str, reset: bool = False) -> None:
             episode_uuids.append(episode.uuid_)
 
     for report in load_reports():
-        meta = report["meta"]
-        episode = await zep.graph.add(
-            graph_id=graph_id,
-            type="text",
-            data=report["body"],
-            created_at=str(meta["date"]),
-            metadata={k: (v if v is not None else "") for k, v in meta.items()},
-            source_description=f"Pemberline report {meta['report_id']}",
-        )
+        episode = await zep.graph.add(graph_id=graph_id, **report_episode_kwargs(report))
         episode_uuids.append(episode.uuid_)
 
     print(f"added {len(episode_uuids)} episodes; waiting for processing")

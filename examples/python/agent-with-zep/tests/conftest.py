@@ -97,16 +97,24 @@ class FakeNodeClient:
         request_options=None,
     ):
         self._g.calls.append(
-            ("get_neighbors", {"node_uuid": node_uuid, "filters": filters, "limit": limit})
+            (
+                "get_neighbors",
+                {
+                    "node_uuid": node_uuid,
+                    "filters": filters,
+                    "direction": direction,
+                    "limit": limit,
+                },
+            )
         )
         edge_types = filters.edge_types if filters else None
         out = []
         for e in self._g.edges.values():
             if edge_types and e.name not in edge_types:
                 continue
-            if e.source_node_uuid == node_uuid:
+            if e.source_node_uuid == node_uuid and direction in (None, "both", "out"):
                 out.append(SimpleNamespace(node=self._g.nodes[e.target_node_uuid], edges=[e]))
-            elif e.target_node_uuid == node_uuid:
+            elif e.target_node_uuid == node_uuid and direction in (None, "both", "in"):
                 out.append(SimpleNamespace(node=self._g.nodes[e.source_node_uuid], edges=[e]))
         return out[: limit or 30]
 
