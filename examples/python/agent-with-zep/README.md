@@ -116,6 +116,16 @@ retrieval plan, each tool call and its result, the graph orientation, and the
 domain knowledge. Two switches turn the domain knowledge and the planning step
 on or off.
 
+![The reference agent frontend with the retrieval plan panel open.](docs/images/agent-plan.png)
+
+The retrieval plan. The agent submits the plan before it calls a retrieval
+tool.
+
+![The reference agent frontend with the answer and the tool calls panel open.](docs/images/agent-answer.png)
+
+The answer and the tool calls. Each tool result shows the arguments and the
+result.
+
 The server has these endpoints:
 
 | Endpoint | Description |

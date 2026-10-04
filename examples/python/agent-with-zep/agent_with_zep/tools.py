@@ -160,7 +160,7 @@ def build_toolset() -> FunctionToolset:
     ) -> str:
         """Search the graph for the items most relevant to a query. Returns a ranked sample, not a complete set.
 
-        Use scope="edges" for facts and relationships, scope="nodes" for entities, and scope="episodes" for the source reports. Use report_type and product to restrict the search to reports with that metadata. Use near with one or more handles to search only the graph neighborhood of known nodes."""
+        Use scope="edges" for facts and relationships, scope="nodes" for entities, and scope="episodes" for the source reports. Use report_type and product to restrict the search to reports with that metadata. Use near with one or more handles to add results from the graph neighborhood of known nodes. The results can also include matches from outside the neighborhood."""
         args = {
             "query": query,
             "scope": scope,
@@ -353,37 +353,55 @@ def build_toolset() -> FunctionToolset:
             nodes = await ctx.deps.zep.graph.node.get_by_graph_id(
                 ctx.deps.graph_id,
                 filters=SearchFilters(node_labels=[label]),
-                limit=LIST_LIMIT_MAX,
+                limit=LIST_LIMIT_MAX + 1,
             )
-            for n in nodes or []:
+            nodes = list(nodes or [])
+            truncated = len(nodes) > LIST_LIMIT_MAX
+            for n in nodes[:LIST_LIMIT_MAX]:
                 if (n.name or "").strip().casefold() == name.strip().casefold():
-                    return n
-            return None
+                    return n, truncated
+            return None, truncated
 
-        async def member_uuids(node_uuid: str, edge_type: str) -> dict[str, object]:
+        async def member_uuids(node_uuid: str, edge_type: str) -> tuple[dict[str, object], bool]:
             neighbors = await ctx.deps.zep.graph.node.get_neighbors(
                 node_uuid,
                 filters=SearchFilters(edge_types=[edge_type]),
                 direction="in",
-                limit=NEIGHBOR_LIMIT_MAX,
+                limit=NEIGHBOR_LIMIT_MAX + 1,
             )
+            neighbors = list(neighbors or [])
+            truncated = len(neighbors) > NEIGHBOR_LIMIT_MAX
             out = {}
-            for nb in neighbors or []:
+            for nb in neighbors[:NEIGHBOR_LIMIT_MAX]:
                 if nb.node is not None and "Employee" in (nb.node.labels or []):
                     out[nb.node.uuid_] = nb.node
-            return out
+            return out, truncated
 
         sets: list[dict[str, object]] = []
+        members_truncated = False
         if team is not None:
-            node = await node_by_name("Team", team)
+            node, truncated = await node_by_name("Team", team)
             if node is None:
+                if truncated:
+                    return (
+                        f"no Team node named {team!r} in the first {LIST_LIMIT_MAX} Team nodes. "
+                        "Use search_context with node_labels=['Team'] to find it."
+                    )
                 return f"no Team node named {team!r}."
-            sets.append(await member_uuids(node.uuid_, "MEMBER_OF"))
+            members, members_truncated = await member_uuids(node.uuid_, "MEMBER_OF")
+            sets.append(members)
         if product is not None:
-            node = await node_by_name("Product", product)
+            node, truncated = await node_by_name("Product", product)
             if node is None:
+                if truncated:
+                    return (
+                        f"no Product node named {product!r} in the first {LIST_LIMIT_MAX} Product nodes. "
+                        "Use search_context with node_labels=['Product'] to find it."
+                    )
                 return f"no Product node named {product!r}."
-            sets.append(await member_uuids(node.uuid_, "WORKS_ON"))
+            members, product_truncated = await member_uuids(node.uuid_, "WORKS_ON")
+            members_truncated = members_truncated or product_truncated
+            sets.append(members)
         employees = sets[0]
         for other in sets[1:]:
             employees = {u: n for u, n in employees.items() if u in other}
@@ -405,7 +423,8 @@ def build_toolset() -> FunctionToolset:
             lines.append(
                 f"- {handle} {node.name} ({attrs.get('title', '')}; team: {attrs.get('team', '')}{manager}){_seen_mark(ctx.deps, handle)}"
             )
-        return _finish(ctx.deps, "get_employees", args, "complete:", lines, start)
+        marker = f"truncated at {NEIGHBOR_LIMIT_MAX}" if members_truncated else "complete"
+        return _finish(ctx.deps, "get_employees", args, f"{marker}:", lines, start)
 
     @toolset.tool
     @_catch_zep_errors
@@ -414,7 +433,7 @@ def build_toolset() -> FunctionToolset:
         query: str | None = None,
         category: str | None = None,
     ) -> str:
-        """Get products with their category, lifecycle status, and every regulatory filing (region, status, and key dates). Returns every product that matches.
+        """Get products with their category, lifecycle status, and every regulatory filing (region, status, and key dates). Returns every product that matches, and says if the product list is complete.
 
         Use this for questions about which products are cleared, launched, or in a category. Read each filing status: only a cleared 510(k) or a valid CE certificate clears a product in a region."""
         args = {"query": query, "category": category}
@@ -425,10 +444,13 @@ def build_toolset() -> FunctionToolset:
         products = await ctx.deps.zep.graph.node.get_by_graph_id(
             ctx.deps.graph_id,
             filters=SearchFilters(node_labels=["Product"]),
-            limit=LIST_LIMIT_MAX,
+            limit=LIST_LIMIT_MAX + 1,
         )
+        products = list(products or [])
+        truncated = len(products) > LIST_LIMIT_MAX
+        products = products[:LIST_LIMIT_MAX]
         lines = []
-        for product in products or []:
+        for product in products:
             attrs = product.attributes or {}
             if (
                 query
@@ -461,7 +483,8 @@ def build_toolset() -> FunctionToolset:
                 f"{_seen_mark(ctx.deps, handle)}"
             )
             lines.extend(filings)
-        return _finish(ctx.deps, "search_products", args, "complete:", lines, start)
+        marker = f"truncated at {LIST_LIMIT_MAX}" if truncated else "complete"
+        return _finish(ctx.deps, "search_products", args, f"{marker}:", lines, start)
 
     add_submit_plan(toolset)
     return toolset

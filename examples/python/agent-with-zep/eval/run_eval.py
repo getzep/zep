@@ -154,6 +154,7 @@ def summarize(records: list[dict]) -> list[dict]:
             vals = [r[key] for r in rs if r.get(key) is not None]
             return round(sum(vals) / len(vals), 3) if vals else None
 
+        ok = [r for r in rs if not r.get("run_error")]
         rows.append(
             {
                 "config": config_name,
@@ -161,11 +162,13 @@ def summarize(records: list[dict]) -> list[dict]:
                 "context_completeness": mean("context_completeness"),
                 "accuracy": mean("grade_accuracy"),
                 "plan_quality": mean("plan_quality"),
-                "tool_selection": mean("tool_selection"),
-                "tool_calls": mean("tool_call_count"),
-                "latency_s": mean("latency_s"),
-                "input_tokens": mean("input_tokens"),
-                "output_tokens": mean("output_tokens"),
+                "tool_selection": mean("tool_selection", ok),
+                "tool_calls": mean("tool_call_count", ok),
+                "latency_s": mean("latency_s", ok),
+                "input_tokens": mean("input_tokens", ok),
+                "output_tokens": mean("output_tokens", ok),
+                "run_errors": sum(1 for r in rs if r.get("run_error")),
+                "grade_errors": sum(1 for r in rs if r.get("grade_error")),
             }
         )
     return rows
@@ -230,6 +233,8 @@ async def main_async(args) -> None:
         "latency_s",
         "input_tokens",
         "output_tokens",
+        "run_errors",
+        "grade_errors",
     ]
     print("\t".join(header))
     for row in rows:

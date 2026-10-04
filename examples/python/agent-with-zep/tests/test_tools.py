@@ -176,3 +176,90 @@ async def test_search_products_query_filter(deps):
     out = await _tool("search_products")(_ctx(deps), query="Lyric")
     assert "Lyric 300" in out and "Lyric 350" in out
     assert "Aster 410" not in out
+
+
+# 8. Page-size clamping (the list API returns at most 50 nodes per page)
+
+
+def _add_nodes(fake_zep, label, prefix, count):
+    for i in range(count):
+        n = SimpleNamespace(
+            uuid_=f"{prefix}-{i}",
+            name=f"{prefix} {i}",
+            labels=["Entity", label],
+            attributes={},
+            summary="",
+            degree=0,
+        )
+        fake_zep.graph.nodes[n.uuid_] = n
+
+
+async def test_list_nodes_truncated_at_api_page_size(deps, fake_zep):
+    _add_nodes(fake_zep, "Team", "Extra Team", 50)
+    out = await _tool("list_nodes")(_ctx(deps), label="Team")
+    assert out.startswith("truncated at 49")
+    assert sum(1 for line in out.splitlines() if line.startswith("- ")) == 49
+
+
+async def test_search_products_truncated_at_api_page_size(deps, fake_zep):
+    _add_nodes(fake_zep, "Product", "Extra Product", 50)
+    out = await _tool("search_products")(_ctx(deps))
+    assert out.startswith("truncated at 49")
+
+
+async def test_get_employees_no_match_in_truncated_list(deps, fake_zep):
+    _add_nodes(fake_zep, "Team", "Extra Team", 50)
+    out = await _tool("get_employees")(_ctx(deps), team="No Such Team")
+    assert "in the first 49 Team nodes" in out
+    assert "search_context" in out
+
+
+async def test_get_employees_no_match_complete_list(deps):
+    out = await _tool("get_employees")(_ctx(deps), team="No Such Team")
+    assert out == "no Team node named 'No Such Team'."
+
+
+async def test_ingest_reset_removes_orientation_cache(fake_zep, tmp_path, monkeypatch):
+    from agent_with_zep import ingest as ingest_mod
+    from agent_with_zep import orientation
+
+    monkeypatch.setattr(orientation, "CACHE_DIR", tmp_path)
+    cache = orientation.cache_path("test-graph")
+    cache.write_text("{}")
+    await ingest_mod.ingest(fake_zep, "test-graph", reset=True)
+    assert not cache.exists()
+
+
+def test_summarize_excludes_run_errors():
+    from eval.run_eval import summarize
+
+    records = [
+        {
+            "config": "A",
+            "run_error": "boom",
+            "grade_error": None,
+            "latency_s": 0.0,
+            "tool_call_count": 0,
+            "tool_selection": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "context_completeness": None,
+            "grade_accuracy": None,
+            "plan_quality": None,
+        },
+        {
+            "config": "A",
+            "latency_s": 5.0,
+            "tool_call_count": 3,
+            "tool_selection": 1,
+            "input_tokens": 100,
+            "output_tokens": 10,
+            "context_completeness": 0.5,
+            "grade_accuracy": 2,
+            "plan_quality": 1,
+        },
+    ]
+    row = summarize(records)[0]
+    assert row["latency_s"] == 5.0
+    assert row["run_errors"] == 1
+    assert row["grade_errors"] == 0

@@ -21,7 +21,9 @@ MAX_PLANS = 2
 MAX_RESULT_CHARS = 4_000
 SEARCH_LIMIT_DEFAULT = 10
 SEARCH_LIMIT_MAX = 20
-LIST_LIMIT_MAX = 50
+# The list API returns at most 50 nodes per page; the tools request one extra
+# node to detect truncation, so 49 is the largest page the tools can report.
+LIST_LIMIT_MAX = 49
 NEIGHBOR_LIMIT_MAX = 30
 EPISODE_TEXT_MAX_CHARS = 3_000
 ORIENTATION_SAMPLE_SIZE = 30

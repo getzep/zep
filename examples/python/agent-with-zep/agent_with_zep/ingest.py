@@ -20,6 +20,7 @@ from zep_cloud.core.api_error import ApiError
 
 from . import ontology
 from .config import DATA_DIR, Settings
+from .orientation import cache_path
 
 RECORD_FILES = [
     "sites",
@@ -84,6 +85,11 @@ async def ingest(zep: AsyncZep, graph_id: str, reset: bool = False) -> None:
             await zep.graph.delete(graph_id)
         except ApiError as e:  # graph may not exist yet
             print(f"reset: graph delete skipped ({e.status_code})")
+        else:
+            # the cached orientation holds UUIDs from the deleted graph
+            removed = cache_path(graph_id)
+            removed.unlink(missing_ok=True)
+            print(f"reset: removed orientation cache {removed}")
     try:
         await zep.graph.create(graph_id=graph_id, name="Pemberline Medical demo")
     except ApiError as e:  # already exists -> idempotent
