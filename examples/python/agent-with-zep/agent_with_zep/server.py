@@ -65,7 +65,7 @@ async def chat(request: Request):
     if config.orientation:
         orientation = await load_orientation(zep, settings.graph_id)
 
-    adapter = VercelAIAdapter.from_request(request, agent=agent, sdk_version=7)
+    adapter = await VercelAIAdapter.from_request(request, agent=agent, sdk_version=7)
     # Inject the graph sample as graph data before the UI messages so the
     # frontend only ever sends chat messages.
     sample = graph_sample_prompt(deps, orientation)
