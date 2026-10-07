@@ -99,6 +99,8 @@ def make_before_tool_callback(deps: AgentDeps, planning: bool) -> Callable:
     """Reject a tool call that is not offered without changing the call budget."""
 
     def before_tool_callback(tool, args, tool_context) -> dict | None:
+        if tool.name == "submit_plan" and len(deps.plans) >= MAX_PLANS:
+            return {"result": "You cannot submit more plans. Run the retrieval tools and answer."}
         if tool.name in deps.offered_tools:
             return None
         if tool.name in RETRIEVAL_TOOL_NAMES and planning and "submit_plan" in deps.offered_tools:

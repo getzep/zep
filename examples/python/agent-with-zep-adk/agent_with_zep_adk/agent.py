@@ -167,7 +167,11 @@ async def run_agent(
             continue
         usage = event.usage_metadata
         input_tokens += usage.prompt_token_count or 0
-        if usage.total_token_count is not None and usage.prompt_token_count is not None:
+        if (
+            usage.total_token_count is not None
+            and usage.total_token_count > 0
+            and usage.prompt_token_count is not None
+        ):
             output_tokens += usage.total_token_count - usage.prompt_token_count
         else:
             output_tokens += usage.candidates_token_count or 0

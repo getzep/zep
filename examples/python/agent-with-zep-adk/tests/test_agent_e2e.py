@@ -14,7 +14,7 @@ from pydantic import Field
 
 import agent_with_zep_adk.agent as agent_module
 from agent_with_zep_adk.agent import build_agent, run_agent
-from agent_with_zep_adk.config import AgentConfig
+from agent_with_zep_adk.config import MAX_PLANS, AgentConfig
 from agent_with_zep_adk.planner import RETRIEVAL_TOOL_NAMES
 from agent_with_zep_adk.tools import MAX_TOOL_CALLS
 
@@ -289,12 +289,41 @@ async def test_parallel_plan_and_retrieval_uses_request_tool_snapshot(deps, call
     assert _answer_text(events) == "done"
 
 
-def _usage(*, candidates: int, thoughts: int) -> types.GenerateContentResponseUsageMetadata:
+async def test_parallel_submit_plans_respect_limit(deps):
+    model = ScriptedLlm(
+        model="scripted",
+        responses=[
+            _multi(
+                ("submit_plan", "plan-1", _plan_args()),
+                ("submit_plan", "plan-2", _plan_args()),
+                ("submit_plan", "plan-3", _plan_args()),
+            ),
+            _answer("done"),
+        ],
+    )
+
+    events = await _run_once(_agent(deps, AgentConfig(), model))
+
+    plan_responses = [
+        response
+        for response in _function_responses(model.requests[1])
+        if response.name == "submit_plan"
+    ]
+    assert len(deps.plans) == MAX_PLANS
+    assert plan_responses[2].response == {
+        "result": "You cannot submit more plans. Run the retrieval tools and answer."
+    }
+    assert _answer_text(events) == "done"
+
+
+def _usage(
+    *, candidates: int, thoughts: int, total: int = 1300
+) -> types.GenerateContentResponseUsageMetadata:
     return types.GenerateContentResponseUsageMetadata(
         prompt_token_count=1000,
         candidates_token_count=candidates,
         thoughts_token_count=thoughts,
-        total_token_count=1300,
+        total_token_count=total,
     )
 
 
@@ -319,6 +348,12 @@ async def test_litellm_usage_does_not_count_reasoning_twice(deps):
 
 async def test_gemini_usage_includes_thought_tokens(deps):
     result = await _run_usage_case(deps, _usage(candidates=100, thoughts=200))
+
+    assert result.output_tokens == 600
+
+
+async def test_zero_total_usage_uses_candidate_tokens(deps):
+    result = await _run_usage_case(deps, _usage(candidates=300, thoughts=200, total=0))
 
     assert result.output_tokens == 600
 
