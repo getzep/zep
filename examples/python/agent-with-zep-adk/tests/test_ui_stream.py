@@ -102,6 +102,26 @@ async def test_ui_stream_text_tools_and_done():
     assert [chunk["delta"] for chunk in chunks if chunk["type"] == "text-delta"] == ["Answer"]
 
 
+async def test_ui_stream_appends_final_text_after_partial():
+    events = [
+        Event(
+            author="zep_analyst",
+            partial=True,
+            content=types.Content(role="model", parts=[types.Part(text="The answer is")]),
+        ),
+        Event(
+            author="zep_analyst",
+            content=types.Content(role="model", parts=[types.Part(text="The answer is 42.")]),
+        ),
+    ]
+
+    lines = [line async for line in encode_ui_stream(_events(*events), message_id="message-5")]
+    deltas = [chunk["delta"] for chunk in _chunks(lines) if chunk["type"] == "text-delta"]
+
+    assert "".join(deltas) == "The answer is 42."
+    assert deltas == ["The answer is", " 42."]
+
+
 async def test_ui_stream_deduplicates_calls_and_encodes_errors():
     call = types.Part(
         function_call=types.FunctionCall(

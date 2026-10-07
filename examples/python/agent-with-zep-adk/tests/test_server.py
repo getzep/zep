@@ -16,7 +16,24 @@ def _body(messages: list[dict]) -> dict:
     return {"trigger": "submit-message", "id": "request-1", "messages": messages}
 
 
+def _function_responses(model: ScriptedLlm, request_index: int):
+    return [
+        part.function_response
+        for content in model.requests[request_index].contents
+        for part in content.parts or []
+        if part.function_response
+    ]
+
+
+def _response_text(function_response) -> str:
+    response = function_response.response
+    if isinstance(response, dict) and "result" in response:
+        response = response["result"]
+    return str(response)
+
+
 def _client(monkeypatch, fake_zep, model: ScriptedLlm) -> TestClient:
+    server._registries.clear()
     settings = Settings(
         zep_api_key="test",
         zep_base_url=None,
@@ -121,3 +138,62 @@ def test_chat_rebuilds_text_history_and_streams_response(monkeypatch, fake_zep):
     ]
     assert chunks[-1] == {"type": "finish"}
     assert response.text.rstrip().splitlines()[-1] == "data: [DONE]"
+
+
+def test_chat_keeps_handles_per_chat_and_resets_seen(monkeypatch, fake_zep):
+    model = ScriptedLlm(
+        model="scripted",
+        responses=[
+            _call("list_nodes", "nodes-1", {"label": "Product"}),
+            _answer("listed"),
+            _call("get_details", "details-1", {"handle": "n1"}),
+            _answer("details"),
+            _call("get_details", "details-2", {"handle": "n1"}),
+            _call("search_context", "search-3", {"query": "products"}),
+            _answer("unknown"),
+        ],
+    )
+    client = _client(monkeypatch, fake_zep, model)
+
+    def messages(text: str) -> list[dict]:
+        return [
+            {
+                "id": "user",
+                "role": "user",
+                "parts": [{"type": "text", "text": text}],
+            }
+        ]
+
+    first = client.post(
+        "/api/chat?planning=false",
+        json={
+            "trigger": "submit-message",
+            "id": "chat-one",
+            "messages": messages("List products."),
+        },
+    )
+    second = client.post(
+        "/api/chat?planning=false",
+        json={
+            "trigger": "submit-message",
+            "id": "chat-one",
+            "messages": messages("Show the node details."),
+        },
+    )
+    third = client.post(
+        "/api/chat?planning=false",
+        json={
+            "trigger": "submit-message",
+            "id": "chat-two",
+            "messages": messages("Show the node details."),
+        },
+    )
+
+    first_output = _response_text(_function_responses(model, 1)[0])
+    second_output = _response_text(_function_responses(model, 3)[0])
+    third_output = _response_text(_function_responses(model, 5)[0])
+    assert first.status_code == second.status_code == third.status_code == 200
+    assert "- n1 " in first_output
+    assert "unknown handle" not in second_output
+    assert "(seen)" not in second_output
+    assert "unknown handle n1" in third_output

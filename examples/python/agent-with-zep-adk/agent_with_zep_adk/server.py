@@ -5,6 +5,7 @@ Run: uv run uvicorn agent_with_zep_adk.server:app --reload
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
@@ -20,6 +21,7 @@ from zep_cloud import AsyncZep
 
 from .agent import build_agent, graph_sample_prompt, run_events
 from .config import DATA_DIR, AgentConfig, Settings
+from .handles import HandleRegistry
 from .models import resolve_model
 from .orientation import load_orientation
 from .tools import AgentDeps
@@ -35,6 +37,21 @@ app.add_middleware(
 
 _settings: Settings | None = None
 _zep: AsyncZep | None = None
+_registries: OrderedDict[str, HandleRegistry] = OrderedDict()
+MAX_CHAT_REGISTRIES = 100
+
+
+def _get_registry(chat_id: str | None) -> HandleRegistry:
+    if chat_id is None:
+        return HandleRegistry()
+    registry = _registries.get(chat_id)
+    if registry is None:
+        registry = HandleRegistry()
+        _registries[chat_id] = registry
+    _registries.move_to_end(chat_id)
+    if len(_registries) > MAX_CHAT_REGISTRIES:
+        _registries.popitem(last=False)
+    return registry
 
 
 def _settings_and_zep() -> tuple[Settings, AsyncZep]:
@@ -60,6 +77,9 @@ def _message_text_parts(message: dict) -> list[types.Part]:
 async def chat(request: Request):
     settings, zep = _settings_and_zep()
     body = await request.json()
+    chat_id = body.get("id")
+    registry = _get_registry(chat_id if isinstance(chat_id, str) else None)
+    registry.reset_seen()
     messages = body.get("messages", [])
     last_user_index = next(
         (
@@ -79,7 +99,7 @@ async def chat(request: Request):
         domain_knowledge=query.get("domain_knowledge", "true").lower() != "false",
         planning=query.get("planning", "true").lower() != "false",
     )
-    deps = AgentDeps(zep=zep, graph_id=settings.graph_id)
+    deps = AgentDeps(zep=zep, graph_id=settings.graph_id, registry=registry)
     orientation = await load_orientation(zep, settings.graph_id)
     sample = graph_sample_prompt(deps, orientation)
     model, generate_content_config = resolve_model(settings.agent_model, settings.model_thinking)

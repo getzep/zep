@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from google.adk.agents import LlmAgent
 from google.adk.models import BaseLlm
@@ -13,10 +15,11 @@ from google.genai import types
 from pydantic import Field
 
 import agent_with_zep_adk.agent as agent_module
-from agent_with_zep_adk.agent import build_agent, run_agent
+from agent_with_zep_adk.agent import build_agent, run_agent, run_events
 from agent_with_zep_adk.config import MAX_PLANS, AgentConfig
 from agent_with_zep_adk.planner import RETRIEVAL_TOOL_NAMES
 from agent_with_zep_adk.tools import MAX_TOOL_CALLS
+from agent_with_zep_adk.ui_stream import encode_ui_stream
 
 
 class ScriptedLlm(BaseLlm):
@@ -116,6 +119,22 @@ async def _run_once(agent: LlmAgent) -> list:
     ]
 
 
+async def _run_ui_stream(deps, config: AgentConfig, model: ScriptedLlm) -> list[dict]:
+    agent = _agent(deps, config, model)
+    service = InMemorySessionService()
+    runner = Runner(app_name="agent_with_zep_adk", agent=agent, session_service=service)
+    session = await service.create_session(app_name="agent_with_zep_adk", user_id="test")
+    events = run_events(
+        runner,
+        user_id=session.user_id,
+        session_id=session.id,
+        new_message=types.Content(role="user", parts=[types.Part(text="Question")]),
+        deps=deps,
+    )
+    lines = [line async for line in encode_ui_stream(events, message_id="message")]
+    return [json.loads(line[6:]) for line in lines if line.startswith("data: {")]
+
+
 def _answer_text(events: list) -> str:
     return "".join(
         part.text
@@ -168,6 +187,44 @@ async def test_run_retries_when_model_answers_before_retrieval(deps):
         for content in model.requests[1].contents
         for part in content.parts or []
     )
+
+
+async def test_ui_stream_hides_answer_before_retrieval(deps):
+    model = ScriptedLlm(
+        model="scripted",
+        responses=[
+            _answer("unsupported"),
+            _call("search_context", "search-1", {"query": "products"}),
+            _answer("grounded"),
+        ],
+    )
+
+    chunks = await _run_ui_stream(deps, AgentConfig(planning=False), model)
+    text = "".join(chunk["delta"] for chunk in chunks if chunk["type"] == "text-delta")
+
+    assert "grounded" in text
+    assert "unsupported" not in text
+
+
+async def test_ui_stream_hides_answer_after_plan_until_retrieval(deps):
+    model = ScriptedLlm(
+        model="scripted",
+        responses=[
+            _call("submit_plan", "plan-1", _plan_args()),
+            _answer("unsupported"),
+            _call("list_nodes", "nodes-1", {"label": "Product"}),
+            _answer("grounded"),
+        ],
+    )
+
+    chunks = await _run_ui_stream(deps, AgentConfig(), model)
+    text = "".join(chunk["delta"] for chunk in chunks if chunk["type"] == "text-delta")
+
+    assert any(
+        chunk["type"] == "tool-input-available" and chunk["toolName"] == "submit_plan"
+        for chunk in chunks
+    )
+    assert "unsupported" not in text
 
 
 async def test_run_agent_registers_graph_sample_handles(deps):

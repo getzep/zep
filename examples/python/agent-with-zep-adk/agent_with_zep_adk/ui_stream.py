@@ -20,7 +20,7 @@ async def encode_ui_stream(events: AsyncIterator[Event], *, message_id: str) -> 
     step_open = False
     text_id: str | None = None
     text_open = False
-    partial_text = False
+    partial_text = ""
 
     try:
         async for event in events:
@@ -75,13 +75,18 @@ async def encode_ui_stream(events: AsyncIterator[Event], *, message_id: str) -> 
                         yield _sse({"type": "text-start", "id": text_id})
                         text_open = True
                     yield _sse({"type": "text-delta", "id": text_id, "delta": text})
-                    partial_text = True
+                    partial_text += text
             else:
-                if text and not partial_text:
-                    text_id = f"{message_id}-text-{step_number}"
-                    yield _sse({"type": "text-start", "id": text_id})
-                    yield _sse({"type": "text-delta", "id": text_id, "delta": text})
-                    text_open = True
+                if text:
+                    if not partial_text:
+                        text_id = f"{message_id}-text-{step_number}"
+                        yield _sse({"type": "text-start", "id": text_id})
+                        yield _sse({"type": "text-delta", "id": text_id, "delta": text})
+                        text_open = True
+                    elif text.startswith(partial_text):
+                        suffix = text[len(partial_text) :]
+                        if suffix:
+                            yield _sse({"type": "text-delta", "id": text_id, "delta": suffix})
                 if text_open:
                     yield _sse({"type": "text-end", "id": text_id})
                     text_open = False
@@ -109,7 +114,7 @@ async def encode_ui_stream(events: AsyncIterator[Event], *, message_id: str) -> 
                     )
                 yield _sse({"type": "finish-step"})
                 step_open = False
-                partial_text = False
+                partial_text = ""
     except Exception as exc:  # noqa: BLE001 - encode run errors for the UI
         if text_open:
             yield _sse({"type": "text-end", "id": text_id})

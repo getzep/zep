@@ -40,6 +40,10 @@ class HandleRegistry:
         if entry is not None:
             entry.seen = True
 
+    def reset_seen(self) -> None:
+        for entry in self._by_uuid.values():
+            entry.seen = False
+
     def is_seen(self, handle: str) -> bool:
         entry = self._by_handle.get(handle)
         return entry.seen if entry else False

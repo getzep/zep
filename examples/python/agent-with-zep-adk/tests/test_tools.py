@@ -34,6 +34,16 @@ def test_prefixes():
     assert reg.register("u4", "n") == "n2"
 
 
+def test_reset_seen():
+    reg = HandleRegistry()
+    handle = reg.register("uuid-a", "n")
+    reg.mark_seen(handle)
+
+    reg.reset_seen()
+
+    assert not reg.is_seen(handle)
+
+
 # 2. Budget and dedup
 
 

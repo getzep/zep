@@ -105,6 +105,7 @@ async def run_events(
     """Yield events and retry in the same session when retrieval is missing."""
     message = new_message
     for attempt in range(max_retries + 1):
+        buffer: list[Event] = []
         last_event = None
         async for event in runner.run_async(
             user_id=user_id,
@@ -113,12 +114,42 @@ async def run_events(
             run_config=run_config,
         ):
             last_event = event
-            yield event
+            has_text = bool(
+                event.content
+                and any(
+                    part.text and not getattr(part, "thought", False)
+                    for part in event.content.parts or []
+                )
+            )
+            if deps.call_log:
+                for buffered_event in buffer:
+                    yield buffered_event
+                buffer.clear()
+                yield event
+            elif buffer or has_text:
+                buffer.append(event)
+            else:
+                yield event
         if last_event is not None and last_event.error_code:
+            for event in buffer:
+                yield event
             return
         notice = require_retrieval(deps)
         if notice is None or attempt >= max_retries:
+            for event in buffer:
+                yield event
             return
+        for event in buffer:
+            content = event.content
+            parts = (
+                [part for part in content.parts or [] if not getattr(part, "text", None)]
+                if content
+                else []
+            )
+            if parts:
+                yield event.model_copy(
+                    update={"content": types.Content(role=content.role, parts=parts)}
+                )
         message = types.Content(role="user", parts=[types.Part(text=notice)])
 
 
