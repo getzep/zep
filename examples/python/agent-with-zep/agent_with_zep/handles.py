@@ -44,6 +44,10 @@ class HandleRegistry:
         entry = self._by_handle.get(handle)
         return entry.seen if entry else False
 
+    def reset_seen(self) -> None:
+        for entry in self._by_uuid.values():
+            entry.seen = False
+
     def resolve(self, handle: str, prefix: str | None = None) -> str:
         """Return the UUID for a handle. Raises KeyError for unknown handles."""
         entry = self._by_handle.get(handle)
