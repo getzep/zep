@@ -24,6 +24,14 @@ async def encode_ui_stream(events: AsyncIterator[Event], *, message_id: str) -> 
 
     try:
         async for event in events:
+            if event.error_code:
+                yield _sse(
+                    {
+                        "type": "error",
+                        "errorText": event.error_message or event.error_code,
+                    }
+                )
+                continue
             content = event.content
             parts = content.parts if content else []
             function_responses = event.get_function_responses()

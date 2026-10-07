@@ -48,6 +48,7 @@ class AgentDeps:
     plans: list[RetrievalPlan] = field(default_factory=list)
     calls_left: int = MAX_TOOL_CALLS
     call_log: list[dict] = field(default_factory=list)
+    offered_tools: set[str] = field(default_factory=lambda: {"submit_plan"})
     _seen_calls: set[str] = field(default_factory=set)
 
     def gate(self, tool_name: str, args: dict) -> str | None:

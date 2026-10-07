@@ -129,3 +129,21 @@ async def test_ui_stream_deduplicates_calls_and_encodes_errors():
     assert {"type": "error", "errorText": "stream failed"} in error_chunks
     assert error_chunks[-1] == {"type": "finish"}
     assert error_lines[-1] == "data: [DONE]\n\n"
+
+
+async def test_ui_stream_encodes_adk_error_events():
+    event = Event(
+        author="zep_analyst",
+        error_code="SAFETY",
+        error_message="blocked by safety",
+    )
+
+    lines = [line async for line in encode_ui_stream(_events(event), message_id="message-4")]
+    chunks = _chunks(lines)
+
+    assert chunks == [
+        {"type": "start", "messageId": "message-4"},
+        {"type": "error", "errorText": "blocked by safety"},
+        {"type": "finish"},
+    ]
+    assert lines[-1] == "data: [DONE]\n\n"

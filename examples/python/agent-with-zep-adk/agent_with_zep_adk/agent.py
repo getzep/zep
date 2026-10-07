@@ -9,6 +9,7 @@ from pathlib import Path
 
 from google.adk.agents import LlmAgent, RunConfig
 from google.adk.events import Event
+from google.adk.features import FeatureName, override_feature_enabled
 from google.adk.models import BaseLlm
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -22,6 +23,8 @@ from .orientation import load_orientation
 from .planner import make_before_model_callback, make_before_tool_callback, make_submit_plan
 from .prompts import ROLE, render_graph_data, render_system_prompt
 from .tools import AgentDeps, build_tools
+
+override_feature_enabled(FeatureName.FUNCTION_TOOL_ARG_VALIDATION, True)
 
 
 @dataclass
@@ -46,7 +49,7 @@ def build_agent(
     generate_content_config: types.GenerateContentConfig | None = None,
 ) -> LlmAgent:
     """Build an ADK agent with the same prompt and retrieval behavior."""
-    instruction = render_system_prompt(
+    rendered_instruction = render_system_prompt(
         role=ROLE,
         as_of_date=AS_OF_DATE,
         domain_knowledge=_read_domain_knowledge(),
@@ -60,7 +63,7 @@ def build_agent(
     return LlmAgent(
         name="zep_analyst",
         model=model,
-        instruction=instruction,
+        instruction=lambda _ctx: rendered_instruction,
         tools=tools,
         generate_content_config=generate_content_config,
         before_model_callback=make_before_model_callback(deps, config.planning),
@@ -102,13 +105,17 @@ async def run_events(
     """Yield events and retry in the same session when retrieval is missing."""
     message = new_message
     for attempt in range(max_retries + 1):
+        last_event = None
         async for event in runner.run_async(
             user_id=user_id,
             session_id=session_id,
             new_message=message,
             run_config=run_config,
         ):
+            last_event = event
             yield event
+        if last_event is not None and last_event.error_code:
+            return
         notice = require_retrieval(deps)
         if notice is None or attempt >= max_retries:
             return
@@ -143,6 +150,8 @@ async def run_agent(
         deps=deps,
     ):
         events.append(event)
+    if events and events[-1].error_code:
+        raise RuntimeError(f"{events[-1].error_code}: {events[-1].error_message}")
     answer = ""
     for event in events:
         if event.is_final_response():
@@ -158,7 +167,10 @@ async def run_agent(
             continue
         usage = event.usage_metadata
         input_tokens += usage.prompt_token_count or 0
-        output_tokens += (usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0)
+        if usage.total_token_count is not None and usage.prompt_token_count is not None:
+            output_tokens += usage.total_token_count - usage.prompt_token_count
+        else:
+            output_tokens += usage.candidates_token_count or 0
     return RunResult(
         answer=answer,
         plans=list(deps.plans),

@@ -47,6 +47,8 @@ uv sync
 Set `ZEP_API_KEY` and the key for the selected model provider in `.env`.
 `AGENT_MODEL` and `JUDGE_MODEL` use LiteLLM model strings in
 `provider/model` format. Their default is `openai/gpt-6-luna`.
+A model name without `/` uses native Gemini, and a model name with `/` uses
+LiteLLM.
 
 For a Gemini model, set `AGENT_MODEL=gemini-3.5-flash` and provide
 `GOOGLE_API_KEY`. If your shell stores the key in `GEMINI_API_KEY`, set
@@ -69,6 +71,10 @@ uv run python -m agent_with_zep_adk.orientation
 The `ingest` command creates the graph, sets the ontology, adds the shared
 records and reports, and waits for processing. Use `--reset` to delete and
 recreate the graph.
+`--reset` deletes the shared graph, so run
+`uv run python -m agent_with_zep_adk.orientation --refresh` here and
+`uv run python -m agent_with_zep.orientation --refresh` in
+`../agent-with-zep` after a reset.
 
 The `orientation` command reads the most connected nodes and writes a cache to
 `.cache/` inside this example. Use `--refresh` to read the graph again.

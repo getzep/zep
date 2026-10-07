@@ -48,6 +48,7 @@ def test_before_model_callback_filters_declarations(deps):
         for declaration in tool.function_declarations or []
     ]
     assert declarations == ["submit_plan"]
+    assert deps.offered_tools == {"submit_plan"}
     assert request.tools_dict is original_tools_dict
 
 
@@ -67,6 +68,10 @@ def test_before_tool_callback_blocks_plan_after_limit(deps):
     from agent_with_zep_adk.config import MAX_PLANS
 
     deps.plans.extend(_plan() for _ in range(MAX_PLANS))
+    functions = build_tools(deps) + [make_submit_plan(deps)]
+    request = LlmRequest()
+    request.append_tools([FunctionTool(fn) for fn in functions])
+    make_before_model_callback(deps, planning=True)(None, request)
     callback = make_before_tool_callback(deps, planning=True)
 
     result = callback(SimpleNamespace(name="submit_plan"), {}, None)

@@ -80,6 +80,7 @@ def make_before_model_callback(deps: AgentDeps, planning: bool) -> Callable:
 
     def before_model_callback(callback_context, llm_request) -> None:
         offered = offered_tool_names(planning, len(deps.plans))
+        deps.offered_tools = set(offered)
         tools = []
         for tool in llm_request.config.tools or []:
             declarations = getattr(tool, "function_declarations", None)
@@ -98,13 +99,13 @@ def make_before_tool_callback(deps: AgentDeps, planning: bool) -> Callable:
     """Reject a tool call that is not offered without changing the call budget."""
 
     def before_tool_callback(tool, args, tool_context) -> dict | None:
-        if tool.name in offered_tool_names(planning, len(deps.plans)):
+        if tool.name in deps.offered_tools:
             return None
-        if tool.name in RETRIEVAL_TOOL_NAMES and planning and not deps.plans:
+        if tool.name in RETRIEVAL_TOOL_NAMES and planning and "submit_plan" in deps.offered_tools:
             return {
                 "result": "Call submit_plan with your retrieval plan before you call a retrieval tool."
             }
-        if tool.name == "submit_plan" and (not planning or len(deps.plans) >= MAX_PLANS):
+        if tool.name == "submit_plan" and (not planning or "submit_plan" not in deps.offered_tools):
             return {"result": "You cannot submit more plans. Run the retrieval tools and answer."}
         return {"result": f"The tool {tool.name} is not offered for this run."}
 
