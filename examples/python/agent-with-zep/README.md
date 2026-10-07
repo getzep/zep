@@ -4,6 +4,8 @@ This example is a reference agent that uses a Zep Context Graph as its context
 layer. The agent drives retrieval through tools. The example shows the five
 steps of the agent loop:
 
+A Google ADK version is available in [agent-with-zep-adk](../agent-with-zep-adk).
+
 1. **Learn the graph.** The agent reads the ontology and the most connected
    nodes one time for each graph, and caches the result.
 2. **Inject domain knowledge.** The application team writes a domain knowledge
