@@ -117,7 +117,7 @@ def test_chat_keeps_text_next_to_tool_call(monkeypatch, fake_zep):
     assert "grounded" in deltas
 
 
-def test_chat_keeps_handles_per_chat_and_resets_seen(monkeypatch, fake_zep):
+def test_chat_keeps_handles_per_chat(monkeypatch, fake_zep):
     model = _model(
         ModelResponse(parts=[ToolCallPart("list_nodes", {"label": "Product"})]),
         ModelResponse(parts=[TextPart("Listed products.")]),

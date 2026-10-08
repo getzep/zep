@@ -118,7 +118,6 @@ async def chat(request: Request):
     settings, zep = _settings_and_zep()
     body = await request.json()
     registry = _registry_for_chat(body.get("id"))
-    registry.reset_seen()
     q = request.query_params
     config = AgentConfig(
         tools="full",
