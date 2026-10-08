@@ -17,6 +17,8 @@ steps of the agent loop:
 5. **Evaluate.** An evaluation script runs 12 gold questions in four
    configurations and grades each answer.
 
+A Google ADK version is available in [agent-with-zep-adk](../agent-with-zep-adk).
+
 The guide [Build an Agent with Zep](https://help.getzep.com/build-an-agent-with-zep)
 explains each step. The page
 [Build Tools for an Agent](https://help.getzep.com/build-agent-tools) explains
