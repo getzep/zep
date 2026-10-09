@@ -1,6 +1,6 @@
 fastapi>=0.115.0,<1
 uvicorn[standard]>=0.32.0,<1
 openai>=3.13.0,<4
-zep-cloud>=3.28.0,<4
+zep-cloud==4.0.0a5
 python-dotenv>=1.0.0,<2
 httpx>=0.27.0,<1

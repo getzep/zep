@@ -9,7 +9,7 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "@getzep/zep-cloud": "^3.28.0",
+    "@getzep/zep-cloud": "4.0.0-alpha.5",
     "commander": "^12.1.0",
     "dotenv": "^16.4.7",
     "openai": "^7.15.0"

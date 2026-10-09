@@ -1,7 +1,7 @@
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/getzep/zep-go/v3 v3.28.0 h1:zzsfXcD0kWyc4XxaEmnZ2c4fhZ4VwxC7IG42hc5iWPs=
-github.com/getzep/zep-go/v3 v3.28.0/go.mod h1:gTP6uw5RPlcFSs5z0pGUzhOpx8+w/S2swSc08efsSyQ=
+github.com/getzep/zep-go/v4 v4.0.0-alpha.5 h1:LebIX3MBuYHsS+SxDUt5Su8oBes4yK8+5CaYXKHoHko=
+github.com/getzep/zep-go/v4 v4.0.0-alpha.5/go.mod h1:+z4Yv+XAUTW0/r6J9hv6DfD7R0OnEOxyt1VvEctNIvQ=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=

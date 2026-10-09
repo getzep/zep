@@ -19,6 +19,10 @@ load_dotenv()
 
 PROXY_API_KEY = os.getenv("PROXY_API_KEY")
 
+# Zep v4 addresses a user by its server-generated UUID. Run setup_test_user.py
+# first, and then set ZEP_USER_UUID to the UUID that it prints.
+ZEP_USER_UUID = os.getenv("ZEP_USER_UUID")
+
 
 async def test_proxy():
     """Send a test request to the proxy server."""
@@ -38,9 +42,9 @@ async def test_proxy():
         ],
         "stream": True,
         "temperature": 0.7,
-        # This is how you'd pass the user_id and conversation_id from ElevenLabs
+        # This is how you'd pass the user_uuid and conversation_id from ElevenLabs
         "elevenlabs_extra_body": {
-            "user_id": "test-user-123",  # This matches what we created in setup_test_user.py
+            "user_uuid": ZEP_USER_UUID,  # The UUID that setup_test_user.py printed
             "conversation_id": "test-conv-123"  # Required for Zep thread tracking
         }
     }
@@ -48,7 +52,7 @@ async def test_proxy():
     print("=" * 60)
     print("Testing ElevenLabs-Zep Proxy")
     print("=" * 60)
-    print(f"\nSending request with user_id: {test_request['elevenlabs_extra_body']['user_id']}")
+    print(f"\nSending request with user_uuid: {test_request['elevenlabs_extra_body']['user_uuid']}")
     print(f"User message: {test_request['messages'][-1]['content']}")
     print("Using PROXY_API_KEY: [configured]" if PROXY_API_KEY else "WARNING: No PROXY_API_KEY found!")
     print("\n" + "-" * 60)
@@ -112,6 +116,10 @@ async def test_health():
 
 
 async def main():
+    if not ZEP_USER_UUID:
+        print("ERROR: Set ZEP_USER_UUID to the UUID that setup_test_user.py printed.")
+        return
+
     print("\nChecking if proxy server is running...")
     if await test_health():
         print("\n")

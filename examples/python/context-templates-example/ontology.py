@@ -6,7 +6,7 @@ The ontology captures properties, neighborhoods, schools, amenities, and the rel
 between users and these entities during the home buying process.
 """
 
-from zep_cloud.external_clients.ontology import EntityModel, EntityText, EdgeModel, EntityInt, EntityFloat, EntityBoolean
+from zep_cloud.ontology import EntityModel, EntityText, EdgeModel, EntityInt, EntityFloat, EntityBoolean
 from pydantic import Field
 
 

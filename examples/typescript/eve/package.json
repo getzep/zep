@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.67",
-    "@getzep/zep-cloud": "^3.28.0",
+    "@getzep/zep-cloud": "4.0.0-alpha.5",
     "@vercel/connect": "0.4.3",
     "ai": "^7.0.97",
     "dotenv": "^17.4.2",

@@ -17,13 +17,12 @@ the graph structure.
 
 import asyncio
 import os
-import uuid
 import json
 from dotenv import find_dotenv, load_dotenv
 from conversations import history
 
+from zep_cloud import AddMessage
 from zep_cloud.client import AsyncZep
-from zep_cloud.types import Message
 
 load_dotenv(
     dotenv_path=find_dotenv()
@@ -36,17 +35,20 @@ async def main() -> None:
     client = AsyncZep(
         api_key=API_KEY,
     )
-    user_id = uuid.uuid4().hex
-    thread_id = uuid.uuid4().hex
-    await client.user.add(user_id=user_id, first_name="Paul")
-    print(f"User {user_id} created")
-    await client.thread.create(thread_id=thread_id, user_id=user_id)
-    print(f"thread {thread_id} created")
+    # v4 returns the UUID of the user and the UUID of the graph of the user.
+    # Every later call uses those UUIDs.
+    user = await client.user.create(first_name="Paul")
+    user_uuid = user.uuid_
+    graph_uuid = user.graph_uuid
+    print(f"User {user_uuid} created")
+    thread = await client.thread.create(user_uuid=user_uuid)
+    thread_uuid = thread.uuid_
+    print(f"thread {thread_uuid} created")
     for message in history[2]:
         await client.thread.add_messages(
-            thread_id,
+            thread_uuid,
             messages=[
-                Message(
+                AddMessage(
                     role=message["role"],
                     name=message["name"],
                     content=message["content"],
@@ -57,39 +59,43 @@ async def main() -> None:
     print("Waiting for the graph to be updated...")
     await asyncio.sleep(30)
     print("Getting memory for thread")
-    thread_memory = await client.thread.get_user_context(thread_id)
+    thread_memory = await client.thread.get_context(thread_uuid)
     print(thread_memory)
 
     print("Getting episodes for user")
-    episode_result = await client.graph.episode.get_by_user_id(user_id, lastn=3)
-    episodes = episode_result.episodes
-    print(f"Episodes for user {user_id}:")
+    episodes = [
+        episode async for episode in await client.graph.episode.list(graph_uuid, limit=3)
+    ]
+    print(f"Episodes for user {user_uuid}:")
     print(episodes)
-    episode = await client.graph.episode.get(episodes[0].uuid_)
+    episode = await client.graph.episode.get(graph_uuid, episodes[0].uuid_)
     print(episode)
 
-    edges = await client.graph.edge.get_by_user_id(user_id)
-    print(f"Edges for user {user_id}:")
+    edges = [edge async for edge in await client.graph.edge.list(graph_uuid)]
+    print(f"Edges for user {user_uuid}:")
     print(edges)
-    edge = await client.graph.edge.get(edges[0].uuid_)
+    edge = await client.graph.edge.get(graph_uuid, edges[0].uuid_)
     print(edge)
 
-    nodes = await client.graph.node.get_by_user_id(user_id)
-    print(f"Nodes for user {user_id}:")
+    nodes = [node async for node in await client.graph.node.list(graph_uuid)]
+    print(f"Nodes for user {user_uuid}:")
     print(nodes)
-    node = await client.graph.node.get(nodes[0].uuid_)
+    node = await client.graph.node.get(graph_uuid, nodes[0].uuid_)
     print(node)
 
     print("Searching user graph memory...")
-    search_results = await client.graph.search(
-        user_id=user_id,
-        query="What is the weather in San Francisco?",
-    )
-    print(search_results.edges)
+    search_results = [
+        edge
+        async for edge in await client.graph.search_edges(
+            graph_uuid,
+            query="What is the weather in San Francisco?",
+        )
+    ]
+    print(search_results)
 
     print("Adding a new text episode to the graph...")
-    await client.graph.add(
-        user_id=user_id,
+    await client.graph.episode.add(
+        graph_uuid,
         type="text",
         data="The user is an avid fan of Eric Clapton",
     )
@@ -99,11 +105,11 @@ async def main() -> None:
         "name": "Eric Clapton",
         "age": 78,
         "genre": "Rock",
-        "favorite_user_id": user_id,
+        "favorite_user_uuid": user_uuid,
     }
     json_string = json.dumps(json_data)
-    await client.graph.add(
-        user_id=user_id,
+    await client.graph.episode.add(
+        graph_uuid,
         type="json",
         data=json_string,
     )
@@ -111,8 +117,8 @@ async def main() -> None:
 
     print("Adding a new message episode to the graph...")
     message = "Paul (user): I went to Eric Clapton concert last night"
-    await client.graph.add(
-        user_id=user_id,
+    await client.graph.episode.add(
+        graph_uuid,
         type="message",
         data=message,
     )
@@ -123,7 +129,7 @@ async def main() -> None:
     await asyncio.sleep(30)
 
     print("Getting nodes from the graph...")
-    nodes = await client.graph.node.get_by_user_id(user_id)
+    nodes = [node async for node in await client.graph.node.list(graph_uuid)]
     print(nodes)
 
     print("Finding Eric Clapton in the graph...")
@@ -131,28 +137,30 @@ async def main() -> None:
     print(clapton_node)
 
     print("Performing Eric Clapton centered edge search...")
-    search_results = await client.graph.search(
-        user_id=user_id,
-        query="Eric Clapton",
-        center_node_uuid=clapton_node[0].uuid_,
-        scope="edges",
-    )
-    print(search_results.edges)
+    edge_results = [
+        edge
+        async for edge in await client.graph.search_edges(
+            graph_uuid,
+            query="Eric Clapton",
+            center_node_uuid=clapton_node[0].uuid_,
+        )
+    ]
+    print(edge_results)
 
     print("Performing Eric Clapton centered node search...")
-    search_results = await client.graph.search(
-        user_id=user_id,
-        query="Eric Clapton",
-        center_node_uuid=clapton_node[0].uuid_,
-        scope="nodes",
-    )
-    print(search_results.nodes)
-    # Note: get_facts() method not available in ZEP v3
-    # Facts are now extracted from graph edges as demonstrated above
+    node_results = [
+        node
+        async for node in await client.graph.search_nodes(
+            graph_uuid,
+            query="Eric Clapton",
+            center_node_uuid=clapton_node[0].uuid_,
+        )
+    ]
+    print(node_results)
 
     # Uncomment to delete the user
-    # await client.user.delete(user_id)
-    # print(f"User {user_id} deleted")
+    # await client.user.delete(user_uuid)
+    # print(f"User {user_uuid} deleted")
 
 
 if __name__ == "__main__":

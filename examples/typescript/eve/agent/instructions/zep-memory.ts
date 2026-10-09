@@ -29,11 +29,11 @@ export default defineDynamic({
       const identity = resolveZepIdentity(ctx);
       const pending = peekPendingUtterance({
         sessionId: ctx.session.id,
-        userId: identity.userId,
+        userKey: identity.userKey,
       });
 
       if (!pending) {
-        // Avoid logging userId (may come from ZEP_DEMO_USER_ID / env).
+        // Avoid logging the user key (may come from ZEP_DEMO_USER_KEY / env).
         console.warn("[zep-memory] no stashed utterance for this turn", {
           sessionId: ctx.session.id,
         });
@@ -48,9 +48,12 @@ export default defineDynamic({
       }
 
       try {
-        await ensureZepUser(identity.userId, identity.userName);
+        const { graphUuid } = await ensureZepUser(
+          identity.userKey,
+          identity.userName,
+        );
         const block = await searchUserMemory({
-          userId: identity.userId,
+          graphUuid,
           query: pending.text,
           maxCharacters: INSTRUCTION_RECALL_MAX_CHARS,
         });
@@ -59,12 +62,12 @@ export default defineDynamic({
         // if this resolver is invoked again before the next onMessage.
         clearPendingUtterance({
           sessionId: ctx.session.id,
-          userId: identity.userId,
+          userKey: identity.userKey,
           source: pending.source,
         });
 
         if (!block) {
-          console.warn("[zep-memory] graph.search returned no context", {
+          console.warn("[zep-memory] graph.getContext returned no context", {
             sessionId: ctx.session.id,
             queryChars: pending.text.length,
           });

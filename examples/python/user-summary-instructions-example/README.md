@@ -23,7 +23,7 @@ As new conversations arrive, **Zep continuously refines the user summary** to an
 This example provides:
 - **Pre-configured User Summary Instructions** for a real estate agent
 - **Sample data** with realistic home buyer preferences and conversations
-- **RealEstateSalesAgent** that uses `thread.get_user_context()` to retrieve the custom user summary
+- **RealEstateSalesAgent** that uses `thread.get_context()` to retrieve the custom user summary
 - **Interactive dashboard** to test and compare responses with/without Zep memory
 - **Side-by-side comparison** showing how User Summary Instructions improve agent responses
 - **Latency tracking** for Zep retrieval and LLM response times
@@ -57,7 +57,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 ### 3. Enable User Summary in Zep Project Settings
 
-**Important**: For the user summary to be automatically included in the context block returned by `get_user_context()`, you need to enable this setting in your Zep project:
+**Important**: For the user summary to be automatically included in the context block returned by `get_context()`, you need to enable this setting in your Zep project:
 
 1. Go to the [Zep web app](https://app.getzep.com)
 2. Navigate to your project's **Settings** page
@@ -121,12 +121,10 @@ As Zep processes conversations and structured data, it generates a user summary 
 
 ### 3. Retrieving Context with User Summary
 
-The `RealEstateSalesAgent` retrieves context using `get_user_context()`, which automatically includes the custom user summary:
+The `RealEstateSalesAgent` retrieves context using `get_context()`, which automatically includes the custom user summary:
 
 ```python
-results = await zep_client.thread.get_user_context(
-    thread_id=thread_id
-)
+results = await zep_client.thread.get_context(thread_uuid)
 context_block = results.context  # Includes the user summary
 
 system_prompt = (
@@ -150,7 +148,7 @@ With User Summary Instructions, the agent responds with full context—even when
 ### Dashboard Controls
 
 **Agent Selector** (in sidebar)
-- Default agent: `RealEstateSalesAgent` (uses `thread.get_user_context()`)
+- Default agent: `RealEstateSalesAgent` (uses `thread.get_context()`)
 - Add your own custom agents by copying and modifying the existing agent
 - All agent classes with an `on_receive_message` method automatically appear in this dropdown
 

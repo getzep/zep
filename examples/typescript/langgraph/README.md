@@ -41,11 +41,11 @@ The agent supports various command-line options through Commander.js:
 # Get help
 npm start -- --help
 
-# Basic usage with user ID
-npm start -- --userId john_doe
+# Basic usage with an existing user
+npm start -- --user-uuid <user-uuid>
 
-# Using kebab-case format
-npm start -- --user-id john_doe --thread-id vacation_planning
+# Continue an existing thread
+npm start -- --user-uuid <user-uuid> --thread-uuid <thread-uuid>
 
 # Customize the system message
 npm start -- --system-message "You are a travel assistant helping with vacation planning."
@@ -58,10 +58,8 @@ Available options:
 
 | Option                       | Description                                |
 | ---------------------------- | ------------------------------------------ |
-| `--userId <id>`              | User ID to associate with the conversation |
-| `--user-id <id>`             | Alternative format for user ID             |
-| `--threadId <id>`            | Thread ID for the conversation             |
-| `--thread-id <id>`           | Alternative format for thread ID           |
+| `--user-uuid <uuid>`         | The UUID of an existing Zep user           |
+| `--thread-uuid <uuid>`       | The UUID of an existing Zep thread         |
 | `--system-message <message>` | Custom system message to use               |
 | `--debug`                    | Enable debug mode with additional logging  |
 | `--help`                     | Display help information                   |
