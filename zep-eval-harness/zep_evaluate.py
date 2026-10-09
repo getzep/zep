@@ -103,7 +103,9 @@ def get_latest_run(run_type: str) -> Optional[Tuple[int, str]]:
     return run_num, latest_run_dir
 
 
-def load_run_manifest(run_number: Optional[int], run_type: str) -> Tuple[Dict[str, Any], str]:
+def load_run_manifest(
+    run_number: Optional[int], run_type: str
+) -> Tuple[Dict[str, Any], str]:
     """
     Load a run manifest for evaluation.
     run_type is "users" or "documents".
@@ -137,7 +139,7 @@ def load_run_manifest(run_number: Optional[int], run_type: str) -> Tuple[Dict[st
     if run_type == "users":
         print(f"Users: {len(manifest['users'])}")
     elif run_type == "documents":
-        print(f"Document graph: {manifest.get('graph_id', 'N/A')}")
+        print(f"Document graph: {manifest.get('graph_uuid', 'N/A')}")
         print(f"Chunks: {manifest.get('num_chunks', 0)}")
     print(f"Timestamp: {manifest['timestamp']}\n")
 
@@ -291,7 +293,9 @@ Provide your evaluation.
         )
         result = response.choices[0].message.parsed
         if result is None:
-            raise ValueError(f"LLM judge returned unparseable response for '{question[:60]}'")
+            raise ValueError(
+                f"LLM judge returned unparseable response for '{question[:60]}'"
+            )
         return result
 
     result = await retry_with_backoff(
@@ -394,7 +398,9 @@ Provide your evaluation.
         )
         result = response.choices[0].message.parsed
         if result is None:
-            raise ValueError(f"LLM judge returned unparseable response for '{question[:60]}'")
+            raise ValueError(
+                f"LLM judge returned unparseable response for '{question[:60]}'"
+            )
         return result
 
     result = await retry_with_backoff(
@@ -419,10 +425,10 @@ Provide your evaluation.
 async def process_single_query(
     zep_client: AsyncZep,
     llm_client: AsyncOpenAI,
-    user_id: str,
+    graph_uuid: str,
     query: str,
     golden_answer: str,
-    doc_graph_id: str | None = None,
+    doc_graph_uuid: str | None = None,
     user_summary: str | None = None,
 ) -> Dict[str, Any]:
     """
@@ -432,10 +438,10 @@ async def process_single_query(
     Args:
         zep_client: AsyncZep client instance
         openai_client: AsyncOpenAI client instance
-        user_id: User ID for graph search
+        graph_uuid: UUID of the user graph to get context from
         query: Question to answer
         golden_answer: Expected answer for evaluation
-        doc_graph_id: Optional standalone document graph to also search
+        doc_graph_uuid: UUID of an optional standalone document graph
         user_summary: Optional user-node summary (fetched once per user)
 
     Returns:
@@ -446,9 +452,9 @@ async def process_single_query(
     # Step 1: Retrieve context (strategy defined in retrieval_strategy.py)
     context = await build_context_block(
         zep_client,
-        user_id=user_id,
+        graph_uuid=graph_uuid,
         query=query,
-        doc_graph_id=doc_graph_id,
+        doc_graph_uuid=doc_graph_uuid,
         user_summary=user_summary,
     )
     search_duration_ms = (time() - start_time) * 1000
@@ -464,9 +470,17 @@ async def process_single_query(
     response_task = generate_ai_response(llm_client, context, query)
 
     # Execute in parallel
-    (completeness_grade, completeness_reasoning, missing_elements, present_elements), (
-        ai_answer,
-        prompt_tokens,
+    (
+        (
+            completeness_grade,
+            completeness_reasoning,
+            missing_elements,
+            present_elements,
+        ),
+        (
+            ai_answer,
+            prompt_tokens,
+        ),
     ) = await asyncio.gather(completeness_task, response_task)
 
     completeness_duration_ms = (time() - completeness_start) * 1000
@@ -534,14 +548,14 @@ async def evaluate_all_questions(
     llm_client: AsyncOpenAI,
     manifest: Dict[str, Any],
     test_cases_by_user: Dict[str, List[Dict[str, Any]]],
-    doc_graph_id: str | None = None,
+    doc_graph_uuid: str | None = None,
     concurrency: int = 15,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Run the complete evaluation pipeline for all users and their test cases.
 
     Args:
-        doc_graph_id: If provided, also search this standalone document graph
+        doc_graph_uuid: If provided, also get context from this document graph
         concurrency: Max concurrent test case evaluations (semaphore limit)
 
     Returns:
@@ -550,22 +564,20 @@ async def evaluate_all_questions(
     all_results = {}
     semaphore = asyncio.Semaphore(concurrency)
 
-    # Map base user IDs to actual Zep user IDs
+    # Map base user IDs to the server-generated user and graph UUIDs
     user_mapping = {}
     for user_data in manifest["users"]:
         base_id = user_data["base_user_id"]
-        zep_id = user_data["zep_user_id"]
-        user_mapping[base_id] = zep_id
-
-    # Warm the document graph by running a simple search (no warm method for
-    # standalone graphs, so a lightweight search primes the cache)
-    if doc_graph_id:
-        print(f"Warming document graph {doc_graph_id}...")
-        await zep_client.graph.search(
-            graph_id=doc_graph_id, query=".", scope="edges", limit=1,
-            reranker="cross_encoder",
+        user_mapping[base_id] = (
+            user_data["zep_user_uuid"],
+            user_data["zep_user_graph_uuid"],
         )
-        print(f"✓ Document graph warmed\n")
+
+    # Warm the document graph cache
+    if doc_graph_uuid:
+        print(f"Warming document graph {doc_graph_uuid}...")
+        await zep_client.graph.warm(doc_graph_uuid)
+        print("✓ Document graph warmed\n")
 
     # Process each user
     for base_user_id, test_cases in test_cases_by_user.items():
@@ -573,22 +585,22 @@ async def evaluate_all_questions(
             print(f"Warning: User {base_user_id} not found in manifest, skipping")
             continue
 
-        zep_user_id = user_mapping[base_user_id]
-        print(f"\n{'='*80}")
-        print(f"Evaluating user: {base_user_id} → {zep_user_id}")
+        zep_user_uuid, zep_graph_uuid = user_mapping[base_user_id]
+        print(f"\n{'=' * 80}")
+        print(f"Evaluating user: {base_user_id} → {zep_user_uuid}")
         print(f"Test cases: {len(test_cases)}")
         print(f"Concurrency: {concurrency}")
-        if doc_graph_id:
-            print(f"Document graph: {doc_graph_id}")
-        print(f"{'='*80}\n")
+        if doc_graph_uuid:
+            print(f"Document graph: {doc_graph_uuid}")
+        print(f"{'=' * 80}\n")
 
-        # Warm the user's graph cache for low-latency search
-        print(f"Warming graph cache for user {zep_user_id}...")
-        await zep_client.user.warm(user_id=zep_user_id)
-        print(f"✓ Graph cache warmed for {zep_user_id}")
+        # Warm the user's graph cache for low-latency retrieval
+        print(f"Warming graph cache for graph {zep_graph_uuid}...")
+        await zep_client.graph.warm(zep_graph_uuid)
+        print(f"✓ Graph cache warmed for {zep_graph_uuid}")
 
         # Fetch user summary once per user (reused across concurrent queries)
-        user_summary = await fetch_user_summary(zep_client, zep_user_id)
+        user_summary = await fetch_user_summary(zep_client, zep_user_uuid)
         if user_summary:
             print(f"✓ User summary retrieved")
         else:
@@ -607,10 +619,10 @@ async def evaluate_all_questions(
                 result = await process_single_query(
                     zep_client,
                     llm_client,
-                    zep_user_id,
+                    zep_graph_uuid,
                     query,
                     test_case["golden_answer"],
-                    doc_graph_id=doc_graph_id,
+                    doc_graph_uuid=doc_graph_uuid,
                     user_summary=user_summary,
                 )
             result["test_id"] = test_case.get("id")
@@ -622,9 +634,7 @@ async def evaluate_all_questions(
                 print(f"  Progress: {completed}/{total} test cases completed")
             return result
 
-        user_results = await asyncio.gather(*[
-            _run_one(tc) for tc in test_cases
-        ])
+        user_results = await asyncio.gather(*[_run_one(tc) for tc in test_cases])
 
         all_results[base_user_id] = list(user_results)
 
@@ -645,8 +655,12 @@ def _compute_scores(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         return {
             "total_tests": 0,
             "completeness": {
-                "complete": 0, "partial": 0, "insufficient": 0,
-                "complete_rate": 0, "partial_rate": 0, "insufficient_rate": 0,
+                "complete": 0,
+                "partial": 0,
+                "insufficient": 0,
+                "complete_rate": 0,
+                "partial_rate": 0,
+                "insufficient_rate": 0,
             },
             "accuracy": {"correct": 0, "incorrect": 0, "accuracy_rate": 0},
         }
@@ -657,7 +671,9 @@ def _compute_scores(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {
         "total_tests": total,
         "completeness": {
-            "complete": complete, "partial": partial, "insufficient": insufficient,
+            "complete": complete,
+            "partial": partial,
+            "insufficient": insufficient,
             "complete_rate": complete / total * 100,
             "partial_rate": partial / total * 100,
             "insufficient_rate": insufficient / total * 100,
@@ -844,7 +860,9 @@ def calculate_aggregate_statistics(
     for r in all_user_results:
         cat = r.get("category", "unknown")
         category_items[cat].append(r)
-    category_scores = {cat: _compute_scores(items) for cat, items in sorted(category_items.items())}
+    category_scores = {
+        cat: _compute_scores(items) for cat, items in sorted(category_items.items())
+    }
 
     return {
         "user_scores": user_scores,
@@ -889,7 +907,8 @@ def save_results(
     # Snapshot the evaluation config used for this run
     snapshot_dir = os.path.join(eval_run_dir, "evaluation_config_snapshot")
     shutil.copytree(
-        "config/evaluation_config", snapshot_dir,
+        "config/evaluation_config",
+        snapshot_dir,
         ignore=shutil.ignore_patterns("__pycache__"),
     )
 
@@ -907,7 +926,7 @@ def save_results(
         parent_runs["document_run"] = {
             "run_number": doc_manifest.get("run_number"),
             "run_dir": doc_run_dir,
-            "graph_id": doc_manifest.get("graph_id"),
+            "graph_uuid": doc_manifest.get("graph_uuid"),
         }
 
     # Prepare output structure
@@ -929,9 +948,9 @@ def save_results(
     with open(results_file, "w") as f:
         json.dump(output_data, f, indent=2)
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Evaluation run #{run_number} saved to: {eval_run_dir}/")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     return results_file, stats
 
@@ -955,9 +974,9 @@ def print_summary(stats: Dict[str, Any]):
 
     total_tests = aggregate["total_tests"]
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"AGGREGATE SCORES ({total_tests} total tests)")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     # PRIMARY METRIC - Context Completeness
     print("PRIMARY METRIC - Context Completeness:")
@@ -991,9 +1010,9 @@ def print_summary(stats: Dict[str, Any]):
 
     # Per-Category Breakdown
     if category_scores:
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("PER-CATEGORY SCORES")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
         for cat, scores in category_scores.items():
             label = _category_label(cat)
             n = scores["total_tests"]
@@ -1034,9 +1053,9 @@ def print_summary(stats: Dict[str, Any]):
     print(f"  Total prompt tokens:     {aggregate['tokens']['total_prompt']}")
 
     # Per-User Scores
-    print(f"\n\n{'='*80}")
+    print(f"\n\n{'=' * 80}")
     print("PER-USER SCORES")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     for user_id, scores in user_scores.items():
         print(f"User: {user_id} ({scores['total_tests']} tests)")
@@ -1119,16 +1138,18 @@ async def main():
         manifest, user_run_dir = load_run_manifest(args.user_run, "users")
 
         # Load document run manifest if --doc-run is specified
-        doc_graph_id = None
+        doc_graph_uuid = None
         doc_manifest = None
         doc_run_dir = None
         if args.doc_run is not None:
             doc_manifest, doc_run_dir = load_run_manifest(args.doc_run, "documents")
-            doc_graph_id = doc_manifest.get("graph_id")
-            if doc_graph_id:
-                print(f"Document graph: {doc_graph_id}")
+            doc_graph_uuid = doc_manifest.get("graph_uuid")
+            if doc_graph_uuid:
+                print(f"Document graph: {doc_graph_uuid}")
             else:
-                print("Warning: --doc-run specified but no graph_id found in document manifest")
+                print(
+                    "Warning: --doc-run specified but no graph_uuid found in document manifest"
+                )
 
         # Load test cases
         test_cases_by_user = await load_all_test_cases()
@@ -1136,23 +1157,29 @@ async def main():
         # Run evaluation
         print(f"Starting evaluation (concurrency={args.concurrency})...\n")
         results = await evaluate_all_questions(
-            zep_client, llm_client, manifest, test_cases_by_user,
-            doc_graph_id=doc_graph_id,
+            zep_client,
+            llm_client,
+            manifest,
+            test_cases_by_user,
+            doc_graph_uuid=doc_graph_uuid,
             concurrency=args.concurrency,
         )
 
         # Save results with aggregate statistics
         results_file, stats = save_results(
-            results, manifest, user_run_dir,
-            doc_manifest=doc_manifest, doc_run_dir=doc_run_dir,
+            results,
+            manifest,
+            user_run_dir,
+            doc_manifest=doc_manifest,
+            doc_run_dir=doc_run_dir,
         )
 
         # Print summary
         print_summary(stats)
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("EVALUATION COMPLETE")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print(f"\nDetailed results saved to: {results_file}")
 
     except Exception as e:

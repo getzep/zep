@@ -15,7 +15,7 @@ The pipeline has four steps:
 
 ### Scope: Single-Shot Retrieval
 
-**The harness evaluates single-shot retrieval only.** Every test case issues one retrieval from the raw test question via auto search (`config/evaluation_config/retrieval_strategy.py`), then hands the resulting context block to the response model in a single turn — no second retrieval round, no query reformulation. This mirrors deterministic/programmatic retrieval, not the tool-based pattern where an agent is handed Zep search tools (e.g. `search_graph` from the Zep MCP server) and decides when and what to search.
+**The harness evaluates single-shot retrieval only.** Every test case issues one retrieval from the raw test question through the context endpoint (`config/evaluation_config/retrieval_strategy.py`), then hands the resulting context block to the response model in a single turn — no second retrieval round, no query reformulation. This mirrors deterministic/programmatic retrieval, not the tool-based pattern where an agent is handed Zep search tools (e.g. `search_graph` from the Zep MCP server) and decides when and what to search.
 
 That makes the harness a clean instrument for the ingestion and search configuration, but it says nothing about agent tool-use behavior. A tool-based agent may do better (several targeted searches, reformulating after a weak result) or worse (never searching, poorly phrased queries, running out of turns). When reporting results, scope conclusions to the config under test and never present them as a prediction of production agent performance.
 
@@ -28,7 +28,7 @@ That makes the harness a clean instrument for the ingestion and search configura
 
 This is the metric that matters most. It directly measures Zep's retrieval quality — whether the knowledge graph and search surface the right facts, entities, and relationships.
 
-When completeness is low, the key diagnostic question is: **does the graph contain the right information but search failed to retrieve it, or is the information missing from the graph entirely?** Use `zep_graph_inspect.py` to examine what's actually in the graph. If the information is there but not retrieved, the issue is retrieval strategy (auto-search character budget, query phrasing). If the information is absent from the graph, the issue is upstream — ingestion, ontology, or custom instructions need adjustment.
+When completeness is low, the key diagnostic question is: **does the graph contain the right information but search failed to retrieve it, or is the information missing from the graph entirely?** Use `zep_graph_inspect.py` to examine what's actually in the graph. If the information is there but not retrieved, the issue is retrieval strategy (context character budget, query phrasing). If the information is absent from the graph, the issue is upstream — ingestion, ontology, or custom instructions need adjustment.
 
 **Answer Accuracy (SECONDARY)** — Did the LLM produce a correct answer from the retrieved context?
 - **CORRECT**: Answer conveys the same key information as the golden answer
@@ -38,13 +38,13 @@ This measures whether the response model uses the context well. It depends on th
 
 Metrics are calculated in aggregate, per-category (based on test case `category` field), and per-user.
 
-### Context Block: Auto Search
+### Context Block: the v4 context endpoint
 
-The evaluation script retrieves context via `build_context_block()` in `config/evaluation_config/retrieval_strategy.py`. The default strategy uses `scope="auto"` with `MAX_CHARACTERS = 10000`, and prepends the user-node summary (fetched once per user via `fetch_user_summary` — auto search does not include it).
+The evaluation script retrieves context via `build_context_block()` in `config/evaluation_config/retrieval_strategy.py`. The default strategy calls `graph.get_context` with `MAX_CHARACTERS = 10000`, and prepends the user-node summary (fetched once per user via `fetch_user_summary` — the context endpoint does not include it).
 
-Auto search packs relevant edges (facts), nodes (entities), episodes, observations, and thread summaries into a pre-assembled context string. ``limit`` and ``reranker`` do not apply under auto — volume is controlled by the character budget.
+The context endpoint packs relevant edges (facts), nodes (entities), episodes, observations, and thread summaries into a pre-assembled context string. The character budget controls the volume.
 
-To change retrieval (e.g. manual multi-scope searches with per-type limits and a reranker), edit `build_context_block` in that module. That function is the source of truth for the strategy.
+To change retrieval (for example, manual `graph.search` calls with per-type limits and a reranker), edit `build_context_block` in that module. That function is the source of truth for the strategy.
 
 All commands run from `zep-eval-harness/` using `uv run`. Depending on the user's request, either run the scripts directly or provide the terminal commands for the user.
 
@@ -54,7 +54,7 @@ All commands run from `zep-eval-harness/` using `uv run`. Depending on the user'
 |------|---------|
 | `data/users.json` | Array of user definitions (`user_id`, `first_name`, `last_name`, `email`, `metadata`) |
 | `data/conversations/{user_id}_{conv_id}.json` | Conversation files with `messages` array (role + content + timestamp) |
-| `data/telemetry/{user_id}_*.json` | Optional JSON data ingested via `graph.add(type="json")` |
+| `data/telemetry/{user_id}_*.json` | Optional JSON data ingested as a JSON graph episode |
 | `data/documents/*` | Text/markdown files for the shared document graph |
 | `data/test_cases/{user_id}_tests.json` | Eval test cases with `id`, `category`, `query`, `golden_answer` fields |
 
@@ -68,7 +68,7 @@ config/
 │   ├── custom_instructions.py          # User custom instructions + set_custom_instructions()
 │   └── user_summary_instructions.py    # User node summary instructions
 ├── document_ingestion_config/
-│   ├── constants.py                    # DOCUMENTS_GRAPH_ID
+│   ├── constants.py                    # DOCUMENTS_GRAPH_NAME
 │   ├── ontology.py                     # Document graph entity/edge types
 │   └── custom_instructions.py          # Document custom instructions
 ├── document_chunking_config/
@@ -98,7 +98,7 @@ uv run zep_chunk_documents.py [OPTIONS]
 
 ### 2. Ingest Users (`zep_ingest_users.py`)
 
-Creates Zep users, adds conversations and telemetry, polls for processing completion.
+Creates Zep users, adds conversations and telemetry, polls for processing completion. The Zep v4 API gives each user, thread, and graph a UUID. The script stores these UUIDs in the run manifest and uses them for all later calls.
 
 ```bash
 uv run zep_ingest_users.py [OPTIONS]
@@ -153,10 +153,10 @@ uv run zep_graph_inspect.py [OPTIONS]
 
 | Flag | Description |
 |------|-------------|
-| `--user USER_ID` | Inspect a user graph (full zep_user_id from manifest) |
-| `--graph GRAPH_ID` | Inspect a standalone document graph |
-| `--nodes-only` | Show only entity nodes |
-| `--edges-only` | Show only fact edges |
+| `--user USER_UUID` | Inspect a user graph (`zep_user_uuid` from the manifest) |
+| `--graph GRAPH_UUID` | Inspect a standalone document graph (`graph_uuid` from the manifest) |
+| `--include entities` | Show only entity nodes |
+| `--include edges` | Show only fact edges |
 
 ## Run Artifacts (`runs/`)
 

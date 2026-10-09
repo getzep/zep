@@ -20,7 +20,8 @@ Edge types model relationships and enable sophisticated queries.
 """
 
 from pydantic import Field
-from zep_cloud.external_clients.ontology import EntityModel, EdgeModel, EntityText
+from zep_cloud.ontology import EntityModel, EdgeModel, EntityText, build_ontology
+from zep_cloud.types import EdgeSourceTarget
 
 
 # ============================================================================
@@ -96,8 +97,7 @@ class Describes(EdgeModel):
 
     description_scope: EntityText = Field(
         default=None,
-        description="defines, explains, summarizes, introduces, other. "
-        + EMPTY_STRING,
+        description="defines, explains, summarizes, introduces, other. " + EMPTY_STRING,
         max_length=MAX_LENGTH,
     )
 
@@ -118,8 +118,7 @@ class PartOf(EdgeModel):
 
     hierarchy_level: EntityText = Field(
         default=None,
-        description="subsystem, subtopic, phase, subcomponent, other. "
-        + EMPTY_STRING,
+        description="subsystem, subtopic, phase, subcomponent, other. " + EMPTY_STRING,
         max_length=MAX_LENGTH,
     )
 
@@ -140,8 +139,7 @@ class Implements(EdgeModel):
 
     conformance: EntityText = Field(
         default=None,
-        description="full, partial, alternative, other. "
-        + EMPTY_STRING,
+        description="full, partial, alternative, other. " + EMPTY_STRING,
         max_length=MAX_LENGTH,
     )
 
@@ -166,7 +164,7 @@ DOCUMENT_EDGE_TYPES = [
 # ============================================================================
 
 
-async def set_document_custom_ontology(zep_client, graph_ids=None):
+async def set_document_custom_ontology(zep_client, graph_uuids=None):
     """
     Set a custom ontology for standalone document graphs.
 
@@ -179,70 +177,74 @@ async def set_document_custom_ontology(zep_client, graph_ids=None):
 
     Args:
         zep_client: AsyncZep client instance
-        graph_ids: Optional list of graph IDs to apply ontology to.
-                  If None, applies to entire project.
+        graph_uuids: Optional list of graph UUIDs to apply the ontology to.
+                  If None, applies to the project default.
 
     Returns:
-        Response from set_ontology call
+        The last response from a set_ontology call
     """
-    from zep_cloud import EntityEdgeSourceTarget
-
-    kwargs = {
-        "entities": {
+    entity_types, edge_types = build_ontology(
+        entities={
             "Concept": Concept,
             "Topic": Topic,
             "Process": Process,
             "Specification": Specification,
             "Component": Component,
         },
-        "edges": {
+        edges={
             "DESCRIBES": (
                 Describes,
                 [
-                    EntityEdgeSourceTarget(source="Topic", target="Concept"),
-                    EntityEdgeSourceTarget(source="Topic", target="Component"),
-                    EntityEdgeSourceTarget(source="Topic", target="Process"),
+                    EdgeSourceTarget(source="Topic", target="Concept"),
+                    EdgeSourceTarget(source="Topic", target="Component"),
+                    EdgeSourceTarget(source="Topic", target="Process"),
                 ],
             ),
             "DEPENDS_ON": (
                 DependsOn,
                 [
-                    EntityEdgeSourceTarget(source="Component", target="Component"),
-                    EntityEdgeSourceTarget(source="Component", target="Concept"),
-                    EntityEdgeSourceTarget(source="Process", target="Component"),
-                    EntityEdgeSourceTarget(source="Process", target="Specification"),
+                    EdgeSourceTarget(source="Component", target="Component"),
+                    EdgeSourceTarget(source="Component", target="Concept"),
+                    EdgeSourceTarget(source="Process", target="Component"),
+                    EdgeSourceTarget(source="Process", target="Specification"),
                 ],
             ),
             "PART_OF": (
                 PartOf,
                 [
-                    EntityEdgeSourceTarget(source="Component", target="Component"),
-                    EntityEdgeSourceTarget(source="Concept", target="Topic"),
-                    EntityEdgeSourceTarget(source="Process", target="Topic"),
+                    EdgeSourceTarget(source="Component", target="Component"),
+                    EdgeSourceTarget(source="Concept", target="Topic"),
+                    EdgeSourceTarget(source="Process", target="Topic"),
                 ],
             ),
             "REFERENCES": (
                 References,
                 [
-                    EntityEdgeSourceTarget(source="Concept", target="Concept"),
-                    EntityEdgeSourceTarget(source="Topic", target="Topic"),
-                    EntityEdgeSourceTarget(source="Specification", target="Specification"),
-                    EntityEdgeSourceTarget(source="Specification", target="Concept"),
+                    EdgeSourceTarget(source="Concept", target="Concept"),
+                    EdgeSourceTarget(source="Topic", target="Topic"),
+                    EdgeSourceTarget(source="Specification", target="Specification"),
+                    EdgeSourceTarget(source="Specification", target="Concept"),
                 ],
             ),
             "IMPLEMENTS": (
                 Implements,
                 [
-                    EntityEdgeSourceTarget(source="Component", target="Specification"),
-                    EntityEdgeSourceTarget(source="Process", target="Specification"),
-                    EntityEdgeSourceTarget(source="Component", target="Concept"),
+                    EdgeSourceTarget(source="Component", target="Specification"),
+                    EdgeSourceTarget(source="Process", target="Specification"),
+                    EdgeSourceTarget(source="Component", target="Concept"),
                 ],
             ),
         },
-    }
+    )
 
-    if graph_ids:
-        kwargs["graph_ids"] = graph_ids
+    if not graph_uuids:
+        return await zep_client.project.set_ontology(
+            entity_types=entity_types, edge_types=edge_types
+        )
 
-    response = await zep_client.graph.set_ontology(**kwargs)
+    response = None
+    for graph_uuid in graph_uuids:
+        response = await zep_client.graph.set_ontology(
+            graph_uuid, entity_types=entity_types, edge_types=edge_types
+        )
     return response
