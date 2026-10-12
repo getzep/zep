@@ -108,11 +108,20 @@ class TestBatchPath:
         mock_zep.user.create.assert_not_called()
         mock_zep.thread.create.assert_not_called()
 
-    def test_reference_time_loss_is_reported_as_a_warning(self, mock_zep):
+    def test_reference_time_is_sent_on_both_paths(self, mock_zep):
+        # created_at maps to the v4 reference_time field on each wire model.
         result = ingest_thread_messages(
             mock_zep, [message(created_at="2024-06-15T10:30:00Z")], method="batch"
         )
-        assert any("created_at" in warning for warning in result.warnings)
+        [item] = mock_zep.batch.add_items.call_args.kwargs["items"]
+        assert (item.model_extra or {})["reference_time"] == "2024-06-15T10:30:00Z"
+        assert result.warnings == []
+        result = ingest_thread_messages(
+            mock_zep, [message(created_at="2024-06-15T10:30:00Z")], method="sequential"
+        )
+        [sent] = mock_zep.thread.add_messages.call_args.kwargs["messages"]
+        assert (sent.model_extra or {})["reference_time"] == "2024-06-15T10:30:00Z"
+        assert result.warnings == []
 
     def test_sequential_sends_metadata(self, mock_zep):
         msgs = [message(metadata={"source": "zendesk"})]

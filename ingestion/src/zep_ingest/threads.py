@@ -78,9 +78,8 @@ class ThreadMessage:
     destination thread. ``role`` and ``name`` are required: a backfill should
     carry each turn's speaker type and speaker name.
 
-    ``created_at`` is accepted and validated, but v4 has no reference-time
-    field for a thread message, so the value is not sent. Put the original
-    timestamp in ``metadata`` if the application must keep it.
+    ``created_at`` is validated and sent as the v4 ``reference_time`` field
+    on both the batch and sequential paths.
     """
 
     thread_uuid: str
@@ -181,21 +180,22 @@ def _prepare(messages: list[ThreadMessage], warnings: list[str]) -> list[ThreadM
     return prepared
 
 
-def _created_at_warning(messages: list[ThreadMessage]) -> str | None:
-    """Warn one time when message reference times cannot be sent.
+def _message_wire_fields(message: ThreadMessage) -> dict[str, Any]:
+    """Map a ThreadMessage to the fields the v4 wire models share.
 
-    Neither the v4 ``AddMessage`` model nor the v4 batch item carries a
-    reference time for a thread message, so a supplied ``created_at`` is
-    dropped.
+    ``created_at`` maps to the v4 ``reference_time`` field. The installed
+    4.0.0a5 models do not declare the field, so it travels as a pydantic
+    extra; the SDK serializes extras into the request body.
     """
-    count = sum(1 for message in messages if message.created_at is not None)
-    if not count:
-        return None
-    return (
-        f"{count} message(s) carry created_at, but v4 has no reference-time field for "
-        "a thread message, so the value was not sent. Put the original timestamp in "
-        "metadata if you must keep it."
-    )
+    fields: dict[str, Any] = {
+        "content": message.content,
+        "role": message.role,
+        "name": message.name,
+        "metadata": message.metadata,
+    }
+    if message.created_at is not None:
+        fields["reference_time"] = message.created_at
+    return fields
 
 
 def _submit_batch(
@@ -266,10 +266,7 @@ def _submit_batch(
             BatchItemInput(
                 type="thread_message",
                 thread_uuid=message.thread_uuid,
-                content=message.content,
-                role=message.role,  # type: ignore[arg-type]
-                name=message.name,
-                metadata=message.metadata,
+                **_message_wire_fields(message),
             )
             for message in page
         ]
@@ -313,15 +310,7 @@ def _submit_sequential(
     for thread_uuid, thread_messages in by_thread.items():
         for start in range(0, len(thread_messages), messages_per_call):
             chunk = thread_messages[start : start + messages_per_call]
-            payload = [
-                AddMessage(
-                    content=m.content,
-                    role=m.role,  # type: ignore[arg-type]
-                    name=m.name,
-                    metadata=m.metadata,
-                )
-                for m in chunk
-            ]
+            payload = [AddMessage(**_message_wire_fields(m)) for m in chunk]
             add_kwargs: dict[str, Any] = {"messages": payload}
             if ignore_roles:
                 add_kwargs["ignore_roles"] = ignore_roles
@@ -406,9 +395,6 @@ def ingest_thread_messages(
         materialized = list(cast(Iterable[ThreadMessage], messages))
     warnings: list[str] = []
     prepared = _prepare(materialized, warnings)
-    created_at_notice = _created_at_warning(prepared)
-    if created_at_notice is not None:
-        warnings.append(created_at_notice)
 
     if method == "sequential":
         result = _submit_sequential(

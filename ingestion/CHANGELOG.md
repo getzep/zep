@@ -27,12 +27,13 @@ still change between minor versions.
   `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`,
   `graph.search_observations`, or `graph.search_thread_summaries`, and returns
   the first page of items.
-- **Reference time on paths that v4 does not support.** A v4 batch item and a
-  v4 thread message have no reference-time field. The sequential episode path
-  still sends `created_at`. On the batch episode path and on every thread
-  message path the value is validated, not sent, and counted in
-  `result.warnings`. Put the source timestamp in `metadata` when the
-  application must read it later.
+- **Reference time is sent on every path.** v4 renamed the
+  developer-supplied `created_at` field to `reference_time`. The package
+  sends `Episode.created_at` and `ThreadMessage.created_at` as
+  `reference_time` on `graph.episode.add`, on `batch.add_items` items, and
+  on `thread.add_messages` messages. On `zep-cloud==4.0.0a5` the field
+  travels as an SDK extra or `additional_body_parameters`; the declared
+  field arrives in the v4.0.0-rc.1 SDK.
 - **Sequential thread ingestion is task-tracked.** v4 `thread.add_messages`
   returns a task, so `wait()` polls the returned task instead of message UUIDs.
 - **Known gap in the current v4 deployment.** Batch items for a standalone

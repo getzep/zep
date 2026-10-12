@@ -54,8 +54,8 @@ for each local name, keeps the returned `uuid_`, and builds a `ThreadMessage`
 with that `thread_uuid`. A `ThreadMessage` file that already carries a
 `thread_uuid` column can go directly to `ingest_thread_messages`.
 
-v4 has no reference-time field for a thread message, so the examples copy the
-source `created_at` into the message `metadata`.
+Each row's `created_at` goes to `ThreadMessage.created_at`, which the package
+sends as the v4 `reference_time` field.
 
 Every message is validated client-side before the first API call — thread
 UUID, role, RFC3339 `created_at`, metadata limits — so a bad line 500 fails

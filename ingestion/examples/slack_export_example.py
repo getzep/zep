@@ -68,8 +68,8 @@ def main() -> None:
         # skip_subtypes=DEFAULT_SKIP_SUBTYPES | {"huddle_thread"},  # skip more
         #   (import DEFAULT_SKIP_SUBTYPES from zep_ingest to extend the default)
         # include_bots=True,  # keep bot messages
-        # Sequential keeps each message timestamp as the reference time;
-        # a v4 batch item has no such field.
+        # Batch items for a standalone graph return 404 in the current v4
+        # deployment, so episodes go one at a time.
         method="sequential",
     )
     # Submission returns immediately; blocking is opt-in. Bind the result first

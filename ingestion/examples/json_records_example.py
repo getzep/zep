@@ -48,8 +48,8 @@ def main() -> None:
         created_at_field="updated_at",
         metadata_fields=("category",),
         record_type="product",
-        # Sequential keeps created_at; a v4 batch item has no
-        # reference-time field.
+        # Batch items for a standalone graph return 404 in the current v4
+        # deployment, so episodes go one at a time.
         method="sequential",
     )
     # Submission returns immediately; blocking is opt-in. Bind the result first

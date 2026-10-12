@@ -61,8 +61,8 @@ def main() -> None:
         graph_uuid=graph_uuid,
         llm=llm,
         created_at="2025-06-01T00:00:00Z",  # generated source date
-        # Sequential keeps created_at; a v4 batch item has no
-        # reference-time field.
+        # Batch items for a standalone graph return 404 in the current v4
+        # deployment, so episodes go one at a time.
         method="sequential",
     )
     # Submission returns immediately; blocking is opt-in. Bind the result first

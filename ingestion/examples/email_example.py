@@ -45,8 +45,8 @@ def main() -> None:
             "Avery Brown": ["Avery Brown"],
         },
         risky_words=DEFAULT_RISKY_WORDS,  # reject aliases that are common words
-        # Sequential keeps each email's Date: header as the reference time;
-        # a v4 batch item has no such field.
+        # Batch items for a standalone graph return 404 in the current v4
+        # deployment, so episodes go one at a time.
         method="sequential",
     )
     # Submission returns immediately; blocking is opt-in. Bind the result first

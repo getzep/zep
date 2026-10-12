@@ -134,7 +134,6 @@ class BatchSubmitter:
         batch_id: str | None = None
         items_in_batch = 0
         page_index = 0
-        dropped_created_at = 0
         while True:
             page = list(islice(iterator, self.page_size))
             if not page:
@@ -147,7 +146,6 @@ class BatchSubmitter:
                 if batch_id is None:
                     break
                 items_in_batch = 0
-            dropped_created_at += sum(1 for ep in page if ep.created_at is not None)
             items = [to_batch_item(ep, destination) for ep in page]
             if self._add_page(batch_id, items, page_index, result):
                 items_in_batch += len(page)
@@ -155,12 +153,6 @@ class BatchSubmitter:
             page_index += 1
         if batch_id is not None:
             process_batch(self.client, batch_id, result, max_retries=self.max_add_retries)
-        if dropped_created_at:
-            result.warnings.append(
-                f"{dropped_created_at} episode(s) carry created_at, but the v4 batch item "
-                "has no reference-time field, so the value was not sent. Submit with "
-                'method="sequential" to keep the reference time.'
-            )
         return result
 
     def _create_batch(self, result: IngestResult) -> str | None:

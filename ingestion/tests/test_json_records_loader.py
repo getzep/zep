@@ -414,7 +414,6 @@ class TestOneLiner:
         items = mock_zep.batch.add_items.call_args.kwargs["items"]
         assert all(i.data_type == "json" for i in items)
         assert json.loads(items[0].data)["id"] == "P1"
-        # created_at_field still parses each record's date, but the v4 batch
-        # item has no reference-time field, so the result reports the drop.
-        [warning] = [w for w in result.warnings if "created_at" in w]
-        assert "2 episode(s)" in warning
+        # created_at_field parses each record's date, and each value travels
+        # as the v4 reference_time field on the batch item.
+        assert all((i.model_extra or {}).get("reference_time") for i in items)

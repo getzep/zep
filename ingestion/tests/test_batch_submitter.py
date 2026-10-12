@@ -48,15 +48,14 @@ class TestPaging:
         assert item.graph_uuid == GRAPH_UUID
         assert item.type == "graph_episode"
 
-    def test_reference_time_loss_is_reported_as_a_warning(self, mock_zep):
-        # v4 has no created_at on a batch item, so the caller must learn that
-        # the value was dropped rather than assume that it was sent.
+    def test_reference_time_is_carried_on_a_batch_item(self, mock_zep):
+        # created_at maps to the v4 reference_time field on the batch item.
         result = BatchSubmitter(mock_zep).submit(
             [Episode(data="hello", created_at="2024-01-01T00:00:00Z")], DEST
         )
-        [warning] = result.warnings
-        assert "created_at" in warning
-        assert "sequential" in warning
+        [item] = mock_zep.batch.add_items.call_args.kwargs["items"]
+        assert (item.model_extra or {})["reference_time"] == "2024-01-01T00:00:00Z"
+        assert result.warnings == []
 
     def test_no_warning_without_a_reference_time(self, mock_zep):
         assert BatchSubmitter(mock_zep).submit(episodes(2), DEST).warnings == []

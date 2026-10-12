@@ -39,11 +39,7 @@ def load_rows(path: Path) -> list[dict]:
 
 
 def to_messages(client: Zep, rows: list[dict], user_uuid: str) -> list[ThreadMessage]:
-    """Create one thread for each conversation and map its rows onto it.
-
-    v4 has no reference-time field for a thread message, so the export's
-    created_at is kept in metadata.
-    """
+    """Create one thread for each conversation and map its rows onto it."""
     thread_uuids: dict[str, str] = {}
     messages: list[ThreadMessage] = []
     for row in rows:
@@ -57,7 +53,7 @@ def to_messages(client: Zep, rows: list[dict], user_uuid: str) -> list[ThreadMes
                 role=row["role"],
                 name=row["name"],
                 content=row["content"],
-                metadata={"source_created_at": row["created_at"]},
+                created_at=row["created_at"],
             )
         )
     return messages

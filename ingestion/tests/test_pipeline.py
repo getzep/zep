@@ -275,10 +275,8 @@ class TestConvenience:
         items = mock_zep.batch.add_items.call_args.kwargs["items"]
         assert all(i.data_type == "text" for i in items)
         assert result.items_submitted == len(items) == 4
-        # The v4 batch item has no reference-time field, so the loaded
-        # created_at values cannot be sent, and the result says so.
-        [warning] = [w for w in result.warnings if "created_at" in w]
-        assert "4 episode(s)" in warning
+        # Each loaded created_at travels as the v4 reference_time field.
+        assert all((i.model_extra or {}).get("reference_time") for i in items)
 
     def test_ingest_slack_export_channel_filter(self, mock_zep):
         result = ingest_slack_export(mock_zep, FIXTURE, graph_uuid=GRAPH_UUID, channels=["random"])

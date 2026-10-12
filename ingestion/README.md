@@ -88,13 +88,14 @@ Pass `ignore_roles=["assistant"]` to keep assistant turns as conversational
 context but exclude them from graph extraction (they stay in thread history);
 it applies on both the batch and sequential paths.
 
-**Thread messages and `created_at`:** v4 has no reference-time field for a
-thread message. `ThreadMessage.created_at` is still validated, and the value is
-not sent. The result reports the number of messages whose timestamp was
-dropped. Keep the original timestamp in `metadata` when the application must
-read it later. An episode keeps its reference time on the sequential path
-(`graph.episode.add` takes `created_at`); the v4 batch item has no such field,
-so the batch path reports the same kind of warning.
+**Reference time:** the v4 API accepts a `reference_time` field on episodes,
+batch items, and thread messages. `Episode.created_at` and
+`ThreadMessage.created_at` are validated client-side and sent as
+`reference_time` on the batch and sequential paths alike. The pinned SDK
+(`4.0.0a5`) does not declare the field, so the package carries it as a
+pydantic extra on the wire models and through the SDK's
+`additional_body_parameters` request option for `graph.episode.add`; the
+declared field arrives in the v4.0.0-rc.1 SDK.
 
 **Slack conversation types:** a Slack export indexes its conversations in four
 files — `channels.json` (public channels), `groups.json` (private channels),
