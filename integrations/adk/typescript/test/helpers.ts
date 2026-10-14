@@ -46,14 +46,20 @@ export function fakeContext(opts: {
   userContent?: Content;
   state?: Record<string, unknown>;
 }): AdkContextLike {
+  const asUuid = (value: string | undefined, fallback: string) => {
+    if (value === "") return "";
+    return value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+      ? value
+      : fallback;
+  };
   const userContent =
     opts.userContent ??
     (opts.userText !== undefined
       ? ({ role: "user", parts: [{ text: opts.userText }] } satisfies Content)
       : undefined);
   return {
-    userId: opts.userId ?? "adk-user",
-    sessionId: opts.sessionId ?? "adk-session",
+    userId: asUuid(opts.userId, "123e4567-e89b-42d3-a456-426614174000"),
+    sessionId: asUuid(opts.sessionId, "123e4567-e89b-42d3-a456-426614174001"),
     invocationId: opts.invocationId ?? "adk-invocation",
     userContent,
     state: fakeState(opts.state),
@@ -131,18 +137,65 @@ export function mockZepClient(overrides?: {
     messageUuids: ["uuid-1"],
     taskId: "task-1",
   });
-  const create = vi.fn().mockResolvedValue({ threadId: "t", userId: "u" });
-  const userAdd = vi.fn().mockResolvedValue({ userId: "u" });
-  const search = vi
+  const createThread = vi
     .fn()
-    .mockResolvedValue(overrides?.searchResults ?? { edges: [] });
+    .mockResolvedValue({ uuid: "thread-uuid", graphUuid: "graph-uuid" });
+  const createUser = vi
+    .fn()
+    .mockResolvedValue({ uuid: "user-uuid", graphUuid: "graph-uuid" });
+  const getUser = vi.fn().mockImplementation(async (userUuid: string) => ({
+    uuid: userUuid,
+    graphUuid: "graph-uuid",
+  }));
+  const searchEdges = vi.fn().mockResolvedValue({
+    data: overrides?.searchResults?.edges ?? [],
+  });
+  const searchNodes = vi.fn().mockResolvedValue({
+    data: overrides?.searchResults?.nodes ?? [],
+  });
+  const searchEpisodes = vi.fn().mockResolvedValue({
+    data: overrides?.searchResults?.episodes ?? [],
+  });
+  const searchObservations = vi.fn().mockResolvedValue({
+    data: overrides?.searchResults?.observations ?? [],
+  });
+  const searchThreadSummaries = vi.fn().mockResolvedValue({
+    data: overrides?.searchResults?.threadSummaries ?? [],
+  });
+  const getContext = vi.fn().mockResolvedValue({
+    context: overrides?.searchResults?.context,
+  });
+  const deleteUser = vi.fn().mockResolvedValue(undefined);
+  const deleteThread = vi.fn().mockResolvedValue(undefined);
 
   return {
     client: {
-      thread: { addMessages, create },
-      user: { add: userAdd },
-      graph: { search },
+      thread: { addMessages, create: createThread, delete: deleteThread },
+      user: { create: createUser, get: getUser, delete: deleteUser },
+      graph: {
+        searchEdges,
+        searchNodes,
+        searchEpisodes,
+        searchObservations,
+        searchThreadSummaries,
+        getContext,
+      },
     },
-    mocks: { addMessages, create, userAdd, search },
+    mocks: {
+      addMessages,
+      createThread,
+      create: createThread,
+      createUser,
+      userAdd: createUser,
+      getUser,
+      deleteUser,
+      deleteThread,
+      searchEdges,
+      searchNodes,
+      searchEpisodes,
+      searchObservations,
+      searchThreadSummaries,
+      getContext,
+    },
   };
 }

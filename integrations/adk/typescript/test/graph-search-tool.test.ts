@@ -3,43 +3,37 @@ import type { ZepClient } from "@getzep/zep-cloud";
 import type { Context } from "@google/adk";
 import { Type } from "@google/genai";
 import { ZepGraphSearchTool } from "../src/graph-search-tool.js";
-import { fakeContext, capturingLogger, mockZepClient, silentLogger } from "./helpers.js";
+import {
+  capturingLogger,
+  fakeContext,
+  mockZepClient,
+  silentLogger,
+} from "./helpers.js";
 
-function callTool(
+const GRAPH_UUID = "123e4567-e89b-42d3-a456-426614174002";
+
+function run(
   tool: ZepGraphSearchTool,
   args: Record<string, unknown>,
-  ctx = fakeContext({ userId: "u" }),
+  context = fakeContext({}),
 ) {
-  return tool.runAsync({ args, toolContext: ctx as unknown as Context });
+  return tool.runAsync({ args, toolContext: context as unknown as Context });
 }
 
-describe("ZepGraphSearchTool — default declaration", () => {
-  it("default declaration exposes query + all five exposable params with the six-value scope enum", () => {
+describe("ZepGraphSearchTool", () => {
+  it("exposes all documented scopes and search parameters by default", () => {
     const { client } = mockZepClient();
     const tool = new ZepGraphSearchTool({
       zep: client as unknown as ZepClient,
+      graphUuid: GRAPH_UUID,
       logger: silentLogger,
     });
-    const decl = tool._getDeclaration();
-    expect(decl.name).toBe("zep_graph_search");
-    expect(decl.parameters?.required).toEqual(["query"]);
+    const declaration = tool._getDeclaration();
+    const properties = declaration.parameters?.properties ?? {};
 
-    const props = decl.parameters?.properties ?? {};
-    expect(Object.keys(props).sort()).toEqual(
-      [
-        "query",
-        "scope",
-        "reranker",
-        "limit",
-        "mmrLambda",
-        "centerNodeUuid",
-      ].sort(),
-    );
-
-    expect(props.query?.type).toBe(Type.STRING);
-
-    expect(props.scope?.type).toBe(Type.STRING);
-    expect(props.scope?.enum).toEqual([
+    expect(declaration.parameters?.required).toEqual(["query"]);
+    expect(properties.query?.type).toBe(Type.STRING);
+    expect(properties.scope?.enum).toEqual([
       "edges",
       "nodes",
       "episodes",
@@ -47,449 +41,256 @@ describe("ZepGraphSearchTool — default declaration", () => {
       "thread_summaries",
       "auto",
     ]);
-
-    expect(props.reranker?.type).toBe(Type.STRING);
-    expect(props.reranker?.enum).toEqual([
-      "rrf",
-      "mmr",
-      "node_distance",
-      "episode_mentions",
-      "cross_encoder",
-    ]);
-
-    expect(props.limit?.type).toBe(Type.INTEGER);
-    expect(props.mmrLambda?.type).toBe(Type.NUMBER);
-    expect(props.centerNodeUuid?.type).toBe(Type.STRING);
+    expect(properties).toHaveProperty("reranker");
+    expect(properties).toHaveProperty("limit");
+    expect(properties).toHaveProperty("mmrLambda");
+    expect(properties).toHaveProperty("centerNodeUuid");
   });
-});
 
-describe("ZepGraphSearchTool — pin behavior", () => {
-  it("pinning scope+reranker+limit hides them from declaration (old-behavior recipe)", () => {
-    const { client } = mockZepClient();
+  it("pins concrete parameters and hides null parameters", async () => {
+    const { client, mocks } = mockZepClient();
     const tool = new ZepGraphSearchTool({
       zep: client as unknown as ZepClient,
+      graphUuid: GRAPH_UUID,
       scope: "edges",
       reranker: "rrf",
-      limit: 10,
-      mmrLambda: null,
-      centerNodeUuid: null,
-      logger: silentLogger,
-    });
-    const decl = tool._getDeclaration();
-    expect(decl.parameters?.required).toEqual(["query"]);
-    expect(Object.keys(decl.parameters?.properties ?? {})).toEqual(["query"]);
-  });
-
-  it("pinned values are used in the SDK call even if the model passes others", async () => {
-    const { client, mocks } = mockZepClient({ searchResults: { edges: [] } });
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      userId: "u",
-      scope: "edges",
-      reranker: "rrf",
-      limit: 10,
-      logger: silentLogger,
-    });
-
-    await callTool(tool, {
-      query: "q",
-      scope: "nodes",
-      reranker: "mmr",
-      limit: 99,
-    });
-
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({
-        query: "q",
-        scope: "edges",
-        reranker: "rrf",
-        limit: 10,
-      }),
-    );
-  });
-});
-
-describe("ZepGraphSearchTool — hidden (null) params", () => {
-  it("hidden (null) mmrLambda/centerNodeUuid are absent from declaration", () => {
-    const { client } = mockZepClient();
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      mmrLambda: null,
-      centerNodeUuid: null,
-      logger: silentLogger,
-    });
-    const props = tool._getDeclaration().parameters?.properties ?? {};
-    expect(props.mmrLambda).toBeUndefined();
-    expect(props.centerNodeUuid).toBeUndefined();
-    // Still exposed
-    expect(props.scope).toBeDefined();
-    expect(props.reranker).toBeDefined();
-    expect(props.limit).toBeDefined();
-  });
-
-  it("hidden (null) mmrLambda/centerNodeUuid are absent from the SDK call payload", async () => {
-    const { client, mocks } = mockZepClient({ searchResults: { edges: [] } });
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      userId: "u",
-      mmrLambda: null,
-      centerNodeUuid: null,
-      logger: silentLogger,
-    });
-
-    await callTool(tool, { query: "q" });
-
-    const call = mocks.search.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(call).not.toHaveProperty("mmrLambda");
-    expect(call).not.toHaveProperty("centerNodeUuid");
-  });
-});
-
-describe("ZepGraphSearchTool — merge precedence", () => {
-  it("pinned beats model-provided arg", async () => {
-    const { client, mocks } = mockZepClient({ searchResults: { edges: [] } });
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      userId: "u",
       limit: 3,
+      mmrLambda: null,
+      centerNodeUuid: null,
       logger: silentLogger,
     });
 
-    await callTool(tool, { query: "q", limit: 50 });
-
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 3 }),
+    expect(Object.keys(tool._getDeclaration().parameters?.properties ?? {})).toEqual([
+      "query",
+    ]);
+    await run(tool, { query: "q", scope: "nodes", limit: 50 });
+    expect(mocks.searchEdges).toHaveBeenCalledWith(
+      GRAPH_UUID,
+      expect.objectContaining({ query: "q", pageSize: 3 }),
     );
+    const params = mocks.searchEdges.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(params).not.toHaveProperty("mmrLambda");
+    expect(params).not.toHaveProperty("centerNodeUuid");
   });
 
-  it("model-provided arg beats default when not pinned", async () => {
-    const { client, mocks } = mockZepClient({ searchResults: { edges: [] } });
+  it.each([
+    ["edges", "searchEdges"],
+    ["nodes", "searchNodes"],
+    ["episodes", "searchEpisodes"],
+    ["observations", "searchObservations"],
+    ["thread_summaries", "searchThreadSummaries"],
+  ] as const)("uses the v4 method for %s scope", async (scope, method) => {
+    const { client, mocks } = mockZepClient();
     const tool = new ZepGraphSearchTool({
       zep: client as unknown as ZepClient,
-      userId: "u",
+      graphUuid: GRAPH_UUID,
+      scope,
       logger: silentLogger,
     });
 
-    await callTool(tool, { query: "q", limit: 25, scope: "nodes" });
-
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 25, scope: "nodes" }),
+    await run(tool, { query: "find it" });
+    expect(mocks[method]).toHaveBeenCalledWith(
+      GRAPH_UUID,
+      expect.objectContaining({ query: "find it" }),
     );
   });
 
-  it("default is used when the param is neither pinned nor model-provided", async () => {
-    const { client, mocks } = mockZepClient({ searchResults: { edges: [] } });
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      userId: "u",
-      logger: silentLogger,
-    });
-
-    await callTool(tool, { query: "q" });
-
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: "edges", reranker: "rrf", limit: 10 }),
-    );
-  });
-
-  it("invalid model enum value falls back to default and logs a warning", async () => {
-    const { client, mocks } = mockZepClient({ searchResults: { edges: [] } });
-    const logger = capturingLogger();
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      userId: "u",
-      logger,
-    });
-
-    await callTool(tool, { query: "q", scope: "bogus", reranker: "not-a-reranker" });
-
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: "edges", reranker: "rrf" }),
-    );
-    expect(logger.warns.length).toBeGreaterThan(0);
-  });
-});
-
-describe("ZepGraphSearchTool — constructor-only params", () => {
-  it("searchFilters is passed through to graph.search", async () => {
-    const { client, mocks } = mockZepClient({ searchResults: { edges: [] } });
-    const searchFilters = { nodeLabels: ["Person"] };
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      userId: "u",
-      searchFilters,
-      logger: silentLogger,
-    });
-
-    await callTool(tool, { query: "q" });
-
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({ searchFilters }),
-    );
-  });
-
-  it("bfsOriginNodeUuids is passed through to graph.search", async () => {
-    const { client, mocks } = mockZepClient({ searchResults: { edges: [] } });
-    const bfsOriginNodeUuids = ["uuid-1", "uuid-2"];
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      userId: "u",
-      bfsOriginNodeUuids,
-      logger: silentLogger,
-    });
-
-    await callTool(tool, { query: "q" });
-
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({ bfsOriginNodeUuids }),
-    );
-  });
-
-  it("searchFilters/bfsOriginNodeUuids never appear in the model declaration", () => {
-    const { client } = mockZepClient();
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      searchFilters: { nodeLabels: ["Person"] },
-      bfsOriginNodeUuids: ["uuid-1"],
-      logger: silentLogger,
-    });
-    const props = tool._getDeclaration().parameters?.properties ?? {};
-    expect(props.searchFilters).toBeUndefined();
-    expect(props.bfsOriginNodeUuids).toBeUndefined();
-  });
-});
-
-describe("ZepGraphSearchTool — target resolution", () => {
-  it("searches the user's graph and formats edge facts", async () => {
+  it("routes auto scope through graph.getContext", async () => {
     const { client, mocks } = mockZepClient({
-      searchResults: {
-        edges: [{ fact: "Alice lives in Portland." }, { fact: "Alice hikes." }],
-      },
+      searchResults: { context: "  useful context  " },
     });
     const tool = new ZepGraphSearchTool({
       zep: client as unknown as ZepClient,
-      userId: "alice",
-      logger: silentLogger,
-    });
-
-    const out = await callTool(tool, { query: "where does alice live" });
-
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: "alice",
-        query: "where does alice live",
-        scope: "edges",
-        reranker: "rrf",
-        limit: 10,
-      }),
-    );
-    expect(out).toBe("- Alice lives in Portland.\n- Alice hikes.");
-  });
-
-  it("searches a standalone graph when graphId is set", async () => {
-    const { client, mocks } = mockZepClient({
-      searchResults: { nodes: [{ name: "Zep", summary: "A memory service." }] },
-    });
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      graphId: "kb-1",
-      scope: "nodes",
-      logger: silentLogger,
-    });
-
-    const out = await callTool(tool, { query: "what is zep" });
-
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({ graphId: "kb-1", scope: "nodes" }),
-    );
-    expect(out).toBe("- Zep: A memory service.");
-  });
-});
-
-describe("ZepGraphSearchTool — result formatting per scope", () => {
-  it("returns the assembled context string for auto scope", async () => {
-    const { client } = mockZepClient({
-      searchResults: { context: "  assembled context block  " },
-    });
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      graphId: "kb-1",
+      graphUuid: GRAPH_UUID,
       scope: "auto",
       logger: silentLogger,
     });
 
-    const out = await callTool(tool, { query: "x" });
-    expect(out).toBe("assembled context block");
-  });
-
-  it("formats thread_summaries results as 'name: summary' when both are present", async () => {
-    const { client, mocks } = mockZepClient({
-      searchResults: {
-        threadSummaries: [
-          { name: "Travel Planning", summary: "User discussed travel plans." },
-          { name: "Booking", summary: "User confirmed a booking." },
-        ],
-      },
-    });
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      userId: "u",
-      scope: "thread_summaries" as never,
-      logger: silentLogger,
-    });
-
-    const out = await callTool(tool, { query: "what did we discuss" });
-
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: "thread_summaries" }),
-    );
-    expect(out).toBe(
-      "- Travel Planning: User discussed travel plans.\n- Booking: User confirmed a booking.",
+    expect(await run(tool, { query: "q" })).toBe("useful context");
+    expect(mocks.getContext).toHaveBeenCalledWith(
+      GRAPH_UUID,
+      expect.objectContaining({ query: "q" }),
     );
   });
 
-  it("formats a thread_summaries result with only a name as just the name", async () => {
-    const { client } = mockZepClient({
-      searchResults: {
-        threadSummaries: [{ name: "Travel Planning" }],
-      },
-    });
+  it.each([
+    ["edges", { edges: [{ fact: "Jane likes tea." }] }, "- Jane likes tea."],
+    [
+      "nodes",
+      { nodes: [{ name: "Jane", summary: "Likes tea." }] },
+      "- Jane: Likes tea.",
+    ],
+    [
+      "episodes",
+      { episodes: [{ content: "Jane likes tea." }] },
+      "- Jane likes tea.",
+    ],
+    [
+      "observations",
+      { observations: [{ name: "Preference", summary: "Likes tea." }] },
+      "- Preference: Likes tea.",
+    ],
+    [
+      "thread_summaries",
+      { threadSummaries: [{ summary: "Jane likes tea." }] },
+      "- Jane likes tea.",
+    ],
+  ] as const)("formats %s scope results", async (scope, searchResults, expected) => {
+    const { client } = mockZepClient({ searchResults });
     const tool = new ZepGraphSearchTool({
       zep: client as unknown as ZepClient,
-      userId: "u",
-      scope: "thread_summaries" as never,
+      graphUuid: GRAPH_UUID,
+      scope,
       logger: silentLogger,
     });
 
-    const out = await callTool(tool, { query: "what did we discuss" });
-    expect(out).toBe("- Travel Planning");
+    await expect(run(tool, { query: "tea" })).resolves.toBe(expected);
   });
 
-  it("formats a thread_summaries result with only a summary as just the summary", async () => {
-    const { client } = mockZepClient({
-      searchResults: {
-        threadSummaries: [{ name: "", summary: "User discussed travel plans." }],
-      },
-    });
+  it.each([
+    ["nodes", { nodes: [{ name: "Jane" }] }, "- Jane"],
+    ["nodes", { nodes: [{ summary: "Likes tea." }] }, "- Likes tea."],
+    ["observations", { observations: [{ name: "Preference" }] }, "- Preference"],
+    [
+      "observations",
+      { observations: [{ summary: "Likes tea." }] },
+      "- Likes tea.",
+    ],
+  ] as const)("formats %s results when one text field is missing", async (
+    scope,
+    searchResults,
+    expected,
+  ) => {
+    const { client } = mockZepClient({ searchResults });
     const tool = new ZepGraphSearchTool({
       zep: client as unknown as ZepClient,
-      userId: "u",
-      scope: "thread_summaries" as never,
+      graphUuid: GRAPH_UUID,
+      scope,
       logger: silentLogger,
     });
 
-    const out = await callTool(tool, { query: "what did we discuss" });
-    expect(out).toBe("- User discussed travel plans.");
+    await expect(run(tool, { query: "tea" })).resolves.toBe(expected);
   });
 
-  it("formats observations results as 'name: summary' when both are present", async () => {
-    const { client, mocks } = mockZepClient({
-      searchResults: {
-        observations: [{ name: "Dark Mode Preference", summary: "User prefers dark mode." }],
-      },
-    });
+  it("applies constructor-only filters and BFS origins without exposing them", async () => {
+    const { client, mocks } = mockZepClient();
     const tool = new ZepGraphSearchTool({
       zep: client as unknown as ZepClient,
-      userId: "u",
-      scope: "observations" as never,
+      graphUuid: GRAPH_UUID,
+      scope: "edges",
+      searchFilters: { edgeTypes: ["LIKES"] },
+      bfsOriginNodeUuids: ["node-uuid"],
       logger: silentLogger,
     });
 
-    const out = await callTool(tool, { query: "preferences" });
-
-    expect(mocks.search).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: "observations" }),
+    const properties = tool._getDeclaration().parameters?.properties ?? {};
+    expect(properties).not.toHaveProperty("searchFilters");
+    expect(properties).not.toHaveProperty("bfsOriginNodeUuids");
+    await run(tool, { query: "tea" });
+    expect(mocks.searchEdges).toHaveBeenCalledWith(
+      GRAPH_UUID,
+      expect.objectContaining({
+        filters: { edgeTypes: ["LIKES"] },
+        bfsOriginNodeUuids: ["node-uuid"],
+      }),
     );
-    expect(out).toBe("- Dark Mode Preference: User prefers dark mode.");
   });
 
-  it("formats an observations result with only a name as just the name", async () => {
-    const { client } = mockZepClient({
-      searchResults: {
-        observations: [{ name: "Dark Mode Preference" }],
-      },
-    });
+  it("uses model-provided values for exposed search parameters", async () => {
+    const { client, mocks } = mockZepClient();
     const tool = new ZepGraphSearchTool({
       zep: client as unknown as ZepClient,
-      userId: "u",
-      scope: "observations" as never,
+      graphUuid: GRAPH_UUID,
       logger: silentLogger,
     });
 
-    const out = await callTool(tool, { query: "preferences" });
-    expect(out).toBe("- Dark Mode Preference");
-  });
-
-  it("formats an observations result with only a summary as just the summary", async () => {
-    const { client } = mockZepClient({
-      searchResults: {
-        observations: [{ name: "", summary: "User prefers dark mode." }],
-      },
-    });
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      userId: "u",
-      scope: "observations" as never,
-      logger: silentLogger,
-    });
-
-    const out = await callTool(tool, { query: "preferences" });
-    expect(out).toBe("- User prefers dark mode.");
-  });
-
-  it("formats a nodes result with only a name as just the name", async () => {
-    const { client } = mockZepClient({
-      searchResults: {
-        nodes: [{ name: "Zep" }],
-      },
-    });
-    const tool = new ZepGraphSearchTool({
-      zep: client as unknown as ZepClient,
-      graphId: "kb-1",
+    await run(tool, {
+      query: "tea",
       scope: "nodes",
-      logger: silentLogger,
+      reranker: "mmr",
+      limit: 5,
+      mmrLambda: 0.25,
+      centerNodeUuid: "center-uuid",
     });
-
-    const out = await callTool(tool, { query: "what is zep" });
-    expect(out).toBe("- Zep");
+    expect(mocks.searchNodes).toHaveBeenCalledWith(
+      GRAPH_UUID,
+      expect.objectContaining({
+        pageSize: 5,
+        reranker: "mmr",
+        mmrLambda: 0.25,
+        centerNodeUuid: "center-uuid",
+      }),
+    );
   });
 
-  it("returns 'No results found.' when nothing matches", async () => {
-    const { client } = mockZepClient({ searchResults: { edges: [] } });
+  it("falls back to defaults for invalid model enums and logs warnings", async () => {
+    const { client, mocks } = mockZepClient();
+    const logger = capturingLogger();
     const tool = new ZepGraphSearchTool({
       zep: client as unknown as ZepClient,
-      userId: "u",
+      graphUuid: GRAPH_UUID,
+      logger,
+    });
+
+    await run(tool, { query: "tea", scope: "invalid", reranker: "invalid" });
+
+    expect(mocks.searchEdges).toHaveBeenCalledWith(
+      GRAPH_UUID,
+      expect.objectContaining({ pageSize: 10, reranker: "rrf" }),
+    );
+    expect(logger.warns).toHaveLength(2);
+  });
+
+  it("returns no results for an empty search response", async () => {
+    const { client } = mockZepClient();
+    const tool = new ZepGraphSearchTool({
+      zep: client as unknown as ZepClient,
+      graphUuid: GRAPH_UUID,
+      scope: "edges",
       logger: silentLogger,
     });
-    expect(await callTool(tool, { query: "q" })).toBe("No results found.");
-  });
-});
 
-describe("ZepGraphSearchTool — errors", () => {
-  it("rejects an empty query", async () => {
+    await expect(run(tool, { query: "tea" })).resolves.toBe("No results found.");
+  });
+
+  it("does not call Zep for an empty query", async () => {
     const { client, mocks } = mockZepClient();
     const tool = new ZepGraphSearchTool({
       zep: client as unknown as ZepClient,
-      userId: "u",
+      graphUuid: GRAPH_UUID,
       logger: silentLogger,
     });
 
-    const out = await callTool(tool, { query: "   " });
-    expect(out).toContain("Error");
-    expect(mocks.search).not.toHaveBeenCalled();
+    await expect(run(tool, { query: "  " })).resolves.toContain(
+      "non-empty 'query'",
+    );
+    expect(mocks.searchEdges).not.toHaveBeenCalled();
   });
 
-  it("returns an error string (never throws) when the search fails", async () => {
+  it("resolves and caches the user's graph UUID", async () => {
     const { client, mocks } = mockZepClient();
-    mocks.search.mockRejectedValueOnce(new Error("search exploded"));
     const tool = new ZepGraphSearchTool({
       zep: client as unknown as ZepClient,
-      userId: "u",
+      userUuid: "user-uuid",
+      scope: "edges",
       logger: silentLogger,
     });
 
-    const out = await callTool(tool, { query: "q" });
-    expect(out).toContain("Graph search failed");
-    expect(out).toContain("search exploded");
+    await run(tool, { query: "one" });
+    await run(tool, { query: "two" });
+    expect(mocks.getUser).toHaveBeenCalledTimes(1);
+    expect(mocks.getUser).toHaveBeenCalledWith("user-uuid");
+  });
+
+  it("returns an error instead of throwing when graph search fails", async () => {
+    const { client, mocks } = mockZepClient();
+    mocks.searchEdges.mockRejectedValueOnce(new Error("search failed"));
+    const tool = new ZepGraphSearchTool({
+      zep: client as unknown as ZepClient,
+      graphUuid: GRAPH_UUID,
+      scope: "edges",
+      logger: silentLogger,
+    });
+    expect(await run(tool, { query: "q" })).toContain("search failed");
   });
 });

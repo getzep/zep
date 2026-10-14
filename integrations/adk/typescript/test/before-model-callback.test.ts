@@ -46,13 +46,16 @@ describe("createZepBeforeModelCallback", () => {
     expect(result).toBeUndefined();
 
     // Persisted with returnContext + display name.
-    expect(mocks.addMessages).toHaveBeenCalledWith("thread-1", {
+    expect(mocks.addMessages).toHaveBeenCalledWith(
+      "123e4567-e89b-42d3-a456-426614174001",
+      {
       messages: [
         { role: "user", content: "Where do I live?", name: "Alice Smith" },
       ],
       returnContext: true,
       ignoreRoles: undefined,
-    });
+      },
+    );
 
     // Context injected into systemInstruction.
     const sys = req.config?.systemInstruction as string;
@@ -69,8 +72,8 @@ describe("createZepBeforeModelCallback", () => {
     });
 
     await run(client, ctx, fakeLlmRequest(), {
-      userId: "explicit-user",
-      threadId: "explicit-thread",
+      userUuid: "explicit-user",
+      threadUuid: "explicit-thread",
     });
 
     expect(mocks.addMessages).toHaveBeenCalledWith(
@@ -96,7 +99,7 @@ describe("createZepBeforeModelCallback", () => {
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
-  it("logs a warning naming ensureUser/ensureThread on a Zep NotFound error and resolves without throwing", async () => {
+  it("logs a warning naming createUser/createThread on a Zep NotFound error and resolves without throwing", async () => {
     const { client, mocks } = mockZepClient();
     const notFound = Object.assign(new Error("user not found"), {
       statusCode: 404,
@@ -112,9 +115,9 @@ describe("createZepBeforeModelCallback", () => {
     );
 
     expect(result).toBeUndefined();
-    const warning = logger.warns.find((w) => w.includes("ensureUser"));
+    const warning = logger.warns.find((w) => w.includes("createUser"));
     expect(warning).toBeDefined();
-    expect(warning).toContain("ensureThread");
+    expect(warning).toContain("createThread");
   });
 
   it("resolves identity from session-state keys when no options are given", async () => {
@@ -124,8 +127,8 @@ describe("createZepBeforeModelCallback", () => {
       sessionId: "adk-session",
       userText: "hi",
       state: {
-        zep_user_id: "state-user",
-        zep_thread_id: "state-thread",
+        zep_user_uuid: "123e4567-e89b-42d3-a456-426614174000",
+        zep_thread_uuid: "123e4567-e89b-42d3-a456-426614174001",
         zep_first_name: "Bob",
       },
     });
@@ -133,7 +136,7 @@ describe("createZepBeforeModelCallback", () => {
     await run(client, ctx, fakeLlmRequest());
 
     expect(mocks.addMessages).toHaveBeenCalledWith(
-      "state-thread",
+      "123e4567-e89b-42d3-a456-426614174001",
       expect.objectContaining({
         messages: [{ role: "user", content: "hi", name: "Bob" }],
       }),
@@ -182,8 +185,8 @@ describe("createZepBeforeModelCallback", () => {
     const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
     const cb = createZepBeforeModelCallback(client as unknown as ZepClient, {
       logger: silentLogger,
-      userId: "u",
-      threadId: "t",
+      userUuid: "u",
+      threadUuid: "t",
     });
 
     for (const text of ["first", "second", "third"]) {
@@ -220,8 +223,8 @@ describe("createZepBeforeModelCallback", () => {
     const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
     const cb = createZepBeforeModelCallback(client as unknown as ZepClient, {
       logger: silentLogger,
-      userId: "u",
-      threadId: "t",
+      userUuid: "u",
+      threadUuid: "t",
     });
 
     // A tool-using turn fires the before-model hook multiple times with the
@@ -250,8 +253,8 @@ describe("createZepBeforeModelCallback", () => {
     const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
     const cb = createZepBeforeModelCallback(client as unknown as ZepClient, {
       logger: silentLogger,
-      userId: "u",
-      threadId: "t",
+      userUuid: "u",
+      threadUuid: "t",
     });
 
     for (const invocationId of ["inv-1", "inv-2"]) {
@@ -275,8 +278,8 @@ describe("createZepBeforeModelCallback", () => {
     mocks.addMessages.mockRejectedValueOnce(new Error("transient"));
     const cb = createZepBeforeModelCallback(client as unknown as ZepClient, {
       logger: silentLogger,
-      userId: "u",
-      threadId: "t",
+      userUuid: "u",
+      threadUuid: "t",
     });
 
     const userContent = {
@@ -351,7 +354,7 @@ describe("createZepBeforeModelCallback", () => {
     );
 
     expect(mocks.addMessages).toHaveBeenCalledWith(
-      "t",
+      "123e4567-e89b-42d3-a456-426614174001",
       expect.objectContaining({ ignoreRoles: ["assistant"] }),
     );
   });

@@ -14,12 +14,12 @@
  * graph on demand.
  *
  * Before the first turn, provision the Zep user and thread out-of-band with
- * {@link ensureUser} and {@link ensureThread} — the turn path never creates
+ * {@link createUser} and {@link createThread} — the turn path never creates
  * them itself.
  *
  * On the turn path (callbacks and tools), every Zep call is wrapped: failures
  * are logged, never thrown, so a Zep outage cannot crash the host agent. The
- * out-of-band provisioning helpers ({@link ensureUser}, {@link ensureThread})
+ * out-of-band provisioning helpers ({@link createUser}, {@link createThread})
  * are the deliberate exception — they throw on genuine failures so
  * misconfiguration is caught before the agent runs.
  *
@@ -69,6 +69,8 @@ export {
 
 export {
   resolveIdentity,
+  resolveUserUuid,
+  isZepUuid,
   extractText,
   STATE_KEYS,
   type AdkContextLike,
@@ -77,10 +79,12 @@ export {
 } from "./identity.js";
 
 export {
-  ensureUser,
-  ensureThread,
-  type EnsureUserOptions,
-  type EnsureThreadOptions,
+  createUser,
+  createThread,
+  type CreateUserOptions,
+  type CreateThreadOptions,
+  type CreatedUser,
+  type CreatedThread,
   type UserSetupHook,
 } from "./provisioning.js";
 
@@ -94,4 +98,4 @@ export { defaultLogger, type Logger } from "./logging.js";
 export { ZepIdentityError } from "./errors.js";
 
 /** The installed package version. */
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";

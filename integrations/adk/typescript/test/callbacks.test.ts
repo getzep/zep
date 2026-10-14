@@ -16,8 +16,8 @@ describe("createZepCallbacks", () => {
     const { beforeModelCallback, afterModelCallback, dedup } =
       createZepCallbacks(client as unknown as ZepClient, {
         logger: silentLogger,
-        userId: "u",
-        threadId: "t",
+        userUuid: "u",
+        threadUuid: "t",
       });
 
     expect(typeof beforeModelCallback).toBe("function");
@@ -29,7 +29,7 @@ describe("createZepCallbacks", () => {
     const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
     const { beforeModelCallback, afterModelCallback } = createZepCallbacks(
       client as unknown as ZepClient,
-      { logger: silentLogger, userId: "u", threadId: "t" },
+      { logger: silentLogger, userUuid: "u", threadUuid: "t" },
     );
 
     await beforeModelCallback({
@@ -62,7 +62,7 @@ describe("createZepCallbacks", () => {
     const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
     const { beforeModelCallback } = createZepCallbacks(
       client as unknown as ZepClient,
-      { logger: silentLogger, userId: "u", threadId: "t" },
+      { logger: silentLogger, userUuid: "u", threadUuid: "t" },
     );
 
     const userContent = {

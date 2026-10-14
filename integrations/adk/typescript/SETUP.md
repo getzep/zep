@@ -1,76 +1,78 @@
 # Setup
 
-How to sign up for Zep, create an API key, install this package, configure your environment, and run the example.
+This guide explains how to create a Zep API key, install the package, and run
+the examples.
 
-## 1. Create a Zep account
+## Create a Zep API key
 
-1. Go to [https://www.getzep.com](https://www.getzep.com) and sign up.
-2. Complete onboarding to reach the Zep dashboard.
+1. Create an account at [getzep.com](https://www.getzep.com).
+2. Open the Zep dashboard and create an API key.
+3. Store the API key in the application environment.
 
-Zep is a paid product (no meaningful free tier); see the pricing on the site for current plans.
+The Gemini example also needs a Google API key from
+[Google AI Studio](https://aistudio.google.com/app/apikey).
 
-## 2. Create an API key
-
-1. In the Zep dashboard, open **API Keys** (under project/account settings).
-2. Create a new key and copy it — it is shown only once.
-
-## 3. Get a Google API key (for the Gemini model)
-
-The example agent uses a Gemini model, so a **live run** needs a Google API key:
-
-1. Create a key at [Google AI Studio](https://aistudio.google.com/app/apikey).
-2. Copy the key.
-
-You only need this to run the model. The Zep integration wiring (persisting messages, injecting context) works with any ADK-supported model — swap `model:` in the example for your provider.
-
-## 4. Install
-
-From your project (the package and its peers):
+## Install the package
 
 ```bash
-npm install @getzep/zep-adk @google/adk @getzep/zep-cloud
+npm install @getzep/zep-adk @getzep/zep-cloud @google/adk
 ```
 
-To work on this package from a checkout of the repo:
+For local development, run these commands from
+`integrations/adk/typescript`:
 
 ```bash
-git clone https://github.com/getzep/zep.git
-cd zep/integrations/adk/typescript
 npm install
+npm run typecheck
+npm test
 ```
 
-## 5. Configure environment
+## Configure the environment
 
 ```bash
 export ZEP_API_KEY="your-zep-api-key"
-export GOOGLE_API_KEY="your-google-api-key"   # required only for a live model run
+export GOOGLE_API_KEY="your-google-api-key"
 ```
 
-## 6. Run the example
+The Google API key is required only for Gemini-backed model calls.
+
+Automatic context injection places retrieved content in the system
+instruction. Use it only with trusted, application-authored graph content. Use
+`ZepGraphSearchTool` or `ZepMemoryService` for user-provided or third-party
+content.
+
+## Run an example
 
 ```bash
 npm run example
-# or, directly:
-npx tsx examples/basic-agent.ts
 ```
 
-Before its first turn, the example provisions the Zep user and thread out-of-band with `ensureUser` / `ensureThread` — the callbacks and tools never create them implicitly. When wiring your own agent, call `ensureUser` / `ensureThread` once (e.g. during account or session onboarding) before the first turn.
+The example creates a Zep user and thread before the agent runs. It stores the
+returned UUIDs in the ADK session state. The example requires both API keys to
+run a model call.
 
-- **With `GOOGLE_API_KEY` set:** the example seeds facts about a user, waits for Zep to process the graph, then asks recall questions and prints the agent's memory-aware answers.
-- **Without `GOOGLE_API_KEY`:** the example still creates the Zep user and thread and builds the fully-wired agent, then exits before the model call — useful for verifying the integration end-to-end without a model.
-
-A second example, [`examples/graph-search-agent.ts`](examples/graph-search-agent.ts), wires `ZepContextTool` together with the model-callable `ZepGraphSearchTool`.
-
-## 7. Verify your install
+The graph-search example shows a model-callable search tool:
 
 ```bash
-npm run typecheck   # tsc --noEmit
-npm test            # vitest (mocked Zep client — no API key needed)
-npm run build       # tsup → dist
+npx tsx examples/graph-search-agent.ts
 ```
+
+## Run the tests
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+The unit tests use a mocked Zep client. The live tests run when `ZEP_API_KEY`
+is set. Gemini-backed tests also require `GOOGLE_API_KEY`.
 
 ## Troubleshooting
 
-- **`ZEP_API_KEY is not set`** — export the key (step 5) before running.
-- **No memory in responses** — Zep ingestion is asynchronous; a fact added this turn is not retrievable immediately. The example waits 15s before testing recall.
-- **`ZepIdentityError`** — pass `userId` / `threadId` to the callback or tool, set `zep_user_id` / `zep_thread_id` in ADK session state, or create the ADK session with a `userId` and `sessionId`.
+- `ZEP_API_KEY is not set`: set the Zep API key before running an example.
+- `ZepIdentityError`: pass `userUuid` and `threadUuid`, set
+  `zep_user_uuid` and `zep_thread_uuid` in session state, or use ADK identifiers
+  that are Zep UUIDs.
+- No memory appears in a response: Zep processes messages asynchronously.
+  Allow time for ingestion before testing retrieval.

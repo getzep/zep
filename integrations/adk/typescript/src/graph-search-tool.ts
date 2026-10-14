@@ -7,9 +7,9 @@
  * decides it needs to look something up.
  *
  * Search target resolution:
- *   - If `graphId` is set, every search targets that standalone graph.
- *   - Otherwise the current user's graph is searched, with the user ID resolved
- *     from explicit options → `zep_user_id` state key → the ADK `userId`.
+ *   - If `graphUuid` is set, every search targets that graph.
+ *   - Otherwise the current user's graph is resolved from `userUuid` or the
+ *     ADK session state and cached after the first `user.get` call.
  *
  * ## Pin-or-expose parameter model
  *
@@ -18,8 +18,8 @@
  *
  * - **Concrete value** (e.g. `scope: "edges"`) → *pinned*. Hidden from the
  *   model's tool schema and always used, regardless of what the model sends.
- * - **`null`** → *hidden*. Hidden from the model's tool schema AND omitted
- *   from the `graph.search` call entirely (useful for suppressing optional
+ * - **`null`** → *hidden*. Hidden from the model's tool schema and omitted
+ *   from the search request entirely (useful for suppressing optional
  *   params, e.g. `mmrLambda: null` when the reranker is never `"mmr"`).
  * - **`undefined` / omitted** → *exposed*. Included in the model's tool
  *   schema with the documented default, so the model can choose a value.
@@ -35,7 +35,7 @@ import {
 } from "@google/adk";
 import { type FunctionDeclaration, type Schema, Type } from "@google/genai";
 import {
-  resolveIdentity,
+  resolveUserUuid,
   type AdkContextLike,
   type ZepIdentityOptions,
 } from "./identity.js";
@@ -46,7 +46,7 @@ const DEFAULT_DESCRIPTION =
   "conversations, known facts about the user, or general context. " +
   "Use this to look up specific details the user has shared before.";
 
-/** Zep's supported search scopes (`GraphSearchScope`), model-exposable subset. */
+/** Supported graph search scopes that can be exposed to the model. */
 const SCOPE_ENUM = [
   "edges",
   "nodes",
@@ -56,7 +56,7 @@ const SCOPE_ENUM = [
   "auto",
 ] as const;
 
-/** Zep's supported rerankers (`Reranker`). */
+/** Supported search rerankers. */
 const RERANKER_ENUM = [
   "rrf",
   "mmr",
@@ -65,9 +65,22 @@ const RERANKER_ENUM = [
   "cross_encoder",
 ] as const;
 
+type GraphSearchScope =
+  | "edges"
+  | "nodes"
+  | "episodes"
+  | "observations"
+  | "thread_summaries"
+  | "auto";
+type SearchReranker =
+  | "rrf"
+  | "mmr"
+  | "node_distance"
+  | "episode_mentions"
+  | "cross_encoder";
+
 /**
- * Search scopes this tool knows how to format — every member of
- * `GraphSearchScope`, matching {@link SCOPE_ENUM} exactly.
+ * Search scopes that this tool supports, matching {@link SCOPE_ENUM}.
  */
 const SUPPORTED_SCOPES = [
   "auto",
@@ -76,10 +89,10 @@ const SUPPORTED_SCOPES = [
   "episodes",
   "observations",
   "thread_summaries",
-] as const satisfies readonly Zep.GraphSearchScope[];
+] as const satisfies readonly GraphSearchScope[];
 
-const DEFAULT_SCOPE: Zep.GraphSearchScope = "edges";
-const DEFAULT_RERANKER: Zep.Reranker = "rrf";
+const DEFAULT_SCOPE: GraphSearchScope = "edges";
+const DEFAULT_RERANKER: SearchReranker = "rrf";
 const DEFAULT_LIMIT = 10;
 
 /** Options for the {@link ZepGraphSearchTool} constructor. */
@@ -87,11 +100,11 @@ export interface ZepGraphSearchToolOptions extends ZepIdentityOptions {
   /** An initialised `ZepClient`. The caller owns its lifecycle. */
   zep: ZepClient;
   /**
-   * Fixed standalone graph ID. When set, all searches target this graph
+   * Fixed standalone graph UUID. When set, all searches target this graph
    * regardless of the active user. When omitted, the current user's graph is
    * searched. Mutually exclusive with per-user search.
    */
-  graphId?: string;
+  graphUuid?: string;
   /** Tool name shown to the model. Defaults to `"zep_graph_search"`. */
   name?: string;
   /** Tool description shown to the model. */
@@ -104,25 +117,25 @@ export interface ZepGraphSearchToolOptions extends ZepIdentityOptions {
    * to let Zep decide the best mix of results.
    *
    * Tri-state: a concrete value pins the scope (hidden from the model,
-   * always used); `null` hides it AND omits it from the `graph.search` call;
+   * always used); `null` hides it and omits it from the search request;
    * `undefined`/omitted exposes it to the model, defaulting to `"edges"`.
    */
-  scope?: Zep.GraphSearchScope | null;
+  scope?: GraphSearchScope | null;
   /**
    * Result ordering algorithm: `"rrf"` (balanced), `"mmr"` (diverse),
    * `"cross_encoder"` (highest accuracy), `"episode_mentions"` (frequently
    * referenced), `"node_distance"` (near a specific entity).
    *
    * Tri-state: a concrete value pins the reranker (hidden from the model,
-   * always used); `null` hides it AND omits it from the `graph.search` call;
+   * always used); `null` hides it and omits it from the search request;
    * `undefined`/omitted exposes it to the model, defaulting to `"rrf"`.
    */
-  reranker?: Zep.Reranker | null;
+  reranker?: SearchReranker | null;
   /**
    * Maximum number of results to return.
    *
    * Tri-state: a concrete value pins the limit (hidden from the model,
-   * always used); `null` hides it AND omits it from the `graph.search` call;
+   * always used); `null` hides it and omits it from the search request;
    * `undefined`/omitted exposes it to the model, defaulting to `10`.
    */
   limit?: number | null;
@@ -131,7 +144,7 @@ export interface ZepGraphSearchToolOptions extends ZepIdentityOptions {
    * `reranker` is `"mmr"`.
    *
    * Tri-state: a concrete value pins `mmrLambda` (hidden from the model,
-   * always used); `null` hides it AND omits it from the `graph.search` call;
+   * always used); `null` hides it and omits it from the search request;
    * `undefined`/omitted exposes it to the model with no default.
    */
   mmrLambda?: number | null;
@@ -141,7 +154,7 @@ export interface ZepGraphSearchToolOptions extends ZepIdentityOptions {
    *
    * Tri-state: a concrete value pins `centerNodeUuid` (hidden from the
    * model, always used); `null` hides it AND omits it from the
-   * `graph.search` call; `undefined`/omitted exposes it to the model with no
+   * search request; `undefined`/omitted exposes it to the model with no
    * default.
    */
   centerNodeUuid?: string | null;
@@ -204,7 +217,7 @@ function resolvePinState<T>(value: T | null | undefined): PinState<T> {
  *   name: "memory_agent",
  *   model: "gemini-2.5-flash",
  *   instruction: "You are a helpful assistant.",
- *   tools: [new ZepGraphSearchTool({ zep, userId: "user-123" })],
+ *   tools: [new ZepGraphSearchTool({ zep, userUuid: "user-123" })],
  * });
  * ```
  *
@@ -213,7 +226,7 @@ function resolvePinState<T>(value: T | null | undefined): PinState<T> {
  * // Model only ever sees `query`; scope/reranker/limit are fixed.
  * new ZepGraphSearchTool({
  *   zep,
- *   userId: "user-123",
+ *   userUuid: "user-123",
  *   scope: "edges",
  *   reranker: "rrf",
  *   limit: 10,
@@ -225,12 +238,13 @@ function resolvePinState<T>(value: T | null | undefined): PinState<T> {
 export class ZepGraphSearchTool extends BaseTool {
   private readonly zep: ZepClient;
   private readonly logger: Logger;
-  private readonly graphId?: string;
+  private readonly graphUuid?: string;
+  private readonly graphUuidCache = new Map<string, Promise<string>>();
   private readonly identity: ZepIdentityOptions;
   private readonly declaration: FunctionDeclaration;
 
-  private readonly scopeState: PinState<Zep.GraphSearchScope>;
-  private readonly rerankerState: PinState<Zep.Reranker>;
+  private readonly scopeState: PinState<GraphSearchScope>;
+  private readonly rerankerState: PinState<SearchReranker>;
   private readonly limitState: PinState<number>;
   private readonly mmrLambdaState: PinState<number>;
   private readonly centerNodeUuidState: PinState<string>;
@@ -244,10 +258,10 @@ export class ZepGraphSearchTool extends BaseTool {
     });
     this.zep = options.zep;
     this.logger = options.logger ?? defaultLogger;
-    this.graphId = options.graphId;
+    this.graphUuid = options.graphUuid;
     this.identity = {
-      userId: options.userId,
-      threadId: options.threadId,
+      userUuid: options.userUuid,
+      threadUuid: options.threadUuid,
       firstName: options.firstName,
       lastName: options.lastName,
     };
@@ -368,11 +382,6 @@ export class ZepGraphSearchTool extends BaseTool {
       return "Error: a non-empty 'query' string is required.";
     }
 
-    const target = this.resolveTarget(toolContext);
-    if ("error" in target) {
-      return target.error;
-    }
-
     const scope = this.resolveEnum(
       "scope",
       this.scopeState,
@@ -403,25 +412,37 @@ export class ZepGraphSearchTool extends BaseTool {
       typedArgs.centerNodeUuid,
     );
 
-    const searchParams: Zep.GraphSearchQuery = {
-      ...target,
-      query,
-    };
-    if (scope !== undefined) searchParams.scope = scope;
-    if (reranker !== undefined) searchParams.reranker = reranker;
-    if (limit !== undefined) searchParams.limit = limit;
-    if (mmrLambda !== undefined) searchParams.mmrLambda = mmrLambda;
-    if (centerNodeUuid !== undefined) searchParams.centerNodeUuid = centerNodeUuid;
-    if (this.searchFilters !== undefined) {
-      searchParams.searchFilters = this.searchFilters;
-    }
-    if (this.bfsOriginNodeUuids !== undefined) {
-      searchParams.bfsOriginNodeUuids = this.bfsOriginNodeUuids;
+    const selectedScope = scope ?? DEFAULT_SCOPE;
+    if (
+      selectedScope === "auto" &&
+      (this.rerankerState.kind === "pinned" ||
+        this.limitState.kind === "pinned" ||
+        this.mmrLambdaState.kind === "pinned" ||
+        this.centerNodeUuidState.kind === "pinned" ||
+        typedArgs.reranker !== undefined ||
+        typedArgs.limit !== undefined ||
+        typedArgs.mmrLambda !== undefined ||
+        typedArgs.centerNodeUuid !== undefined ||
+        this.bfsOriginNodeUuids !== undefined)
+    ) {
+      return (
+        "Error: the 'auto' scope uses graph.getContext and does not support " +
+        "reranker, limit, mmrLambda, centerNodeUuid, or bfsOriginNodeUuids."
+      );
     }
 
     try {
-      const results = await this.zep.graph.search(searchParams);
-      return this.formatResults(results, scope ?? DEFAULT_SCOPE);
+      const graphUuid = await this.resolveTarget(toolContext);
+      const results = await searchGraphByScope(this.zep, graphUuid, query, {
+        scope: selectedScope,
+        pageSize: limit,
+        reranker,
+        mmrLambda,
+        centerNodeUuid,
+        searchFilters: this.searchFilters,
+        bfsOriginNodeUuids: this.bfsOriginNodeUuids,
+      });
+      return this.formatResults(results, selectedScope);
     } catch (error) {
       this.logger.warn("Zep graph search failed", error);
       return `Graph search failed: ${error instanceof Error ? error.message : String(error)}`;
@@ -499,42 +520,174 @@ export class ZepGraphSearchTool extends BaseTool {
     return undefined;
   }
 
-  private resolveTarget(
-    context: AdkContextLike,
-  ): { graphId: string } | { userId: string } | { error: string } {
-    if (this.graphId) {
-      return { graphId: this.graphId };
+  private async resolveTarget(context: AdkContextLike): Promise<string> {
+    if (this.graphUuid) {
+      return this.graphUuid;
+    }
+    const userUuid = resolveUserUuid(context, this.identity);
+    let graphPromise = this.graphUuidCache.get(userUuid);
+    if (!graphPromise) {
+      graphPromise = this.zep.user
+        .get(userUuid)
+        .then((user) => {
+          if (!user.graphUuid) {
+            throw new Error("Zep did not return a graph UUID for the user.");
+          }
+          return user.graphUuid;
+        });
+      this.graphUuidCache.set(userUuid, graphPromise);
     }
     try {
-      return { userId: resolveIdentity(context, this.identity).userId };
+      return await graphPromise;
     } catch (error) {
-      this.logger.warn("Could not resolve user ID for graph search", error);
-      return { error: "Error: could not determine which graph to search." };
+      this.graphUuidCache.delete(userUuid);
+      throw error;
     }
   }
 
   private formatResults(
-    results: Zep.GraphSearchResults,
-    scope: Zep.GraphSearchScope,
+    results: ScopeSearchOutcome,
+    scope: GraphSearchScope,
   ): string {
-    // Auto scope returns a pre-assembled context string.
     if (scope === "auto") {
       const context = results.context?.trim();
       return context && context.length > 0 ? context : "No results found.";
     }
 
-    const texts = scopeResultsToTexts(results, scope);
+    const texts = scopeResultsToTexts(results.items, scope);
     return texts.length > 0
       ? texts.map((text) => `- ${text}`).join("\n")
       : "No results found.";
   }
 }
 
+interface ScopeSearchOutcome {
+  context?: string;
+  items: unknown[];
+}
+
+interface ScopeSearchOptions {
+  scope: GraphSearchScope;
+  pageSize?: number;
+  reranker?: SearchReranker;
+  mmrLambda?: number;
+  centerNodeUuid?: string;
+  searchFilters?: Zep.SearchFilters;
+  bfsOriginNodeUuids?: string[];
+}
+
+const FILTER_KEYS_BY_SCOPE: Record<
+  Exclude<GraphSearchScope, "auto">,
+  readonly string[]
+> = {
+  edges: [
+    "connectedNodeUuids",
+    "dateFilters",
+    "edgeTypes",
+    "edgeUuids",
+    "episodeUuids",
+    "excludeEdgeTypes",
+    "metadataFilters",
+    "propertyFilters",
+    "sourceNodeUuids",
+    "targetNodeUuids",
+  ],
+  nodes: [
+    "episodeUuids",
+    "excludeNodeLabels",
+    "metadataFilters",
+    "nodeLabels",
+    "propertyFilters",
+  ],
+  episodes: ["contentPolicyViolated", "metadataFilters"],
+  observations: [],
+  thread_summaries: ["metadataFilters"],
+};
+
+function validateScopeFilters(
+  scope: GraphSearchScope,
+  filters: Zep.SearchFilters | undefined,
+): void {
+  if (!filters || scope === "auto") return;
+  const allowed = FILTER_KEYS_BY_SCOPE[scope];
+  const unsupported = Object.keys(filters).filter((key) => !allowed.includes(key));
+  if (unsupported.length > 0) {
+    throw new Error(
+      `The ${scope} search does not support these filters: ${unsupported.join(", ")}.`,
+    );
+  }
+}
+
+export async function searchGraphByScope(
+  zep: ZepClient,
+  graphUuid: string,
+  query: string,
+  options: ScopeSearchOptions,
+): Promise<ScopeSearchOutcome> {
+  const {
+    scope,
+    pageSize,
+    reranker,
+    mmrLambda,
+    centerNodeUuid,
+    searchFilters,
+    bfsOriginNodeUuids,
+  } = options;
+  validateScopeFilters(scope, searchFilters);
+
+  if (scope === "auto") {
+    const response = await zep.graph.getContext(graphUuid, {
+      query,
+      filters: searchFilters,
+    });
+    return { context: response.context, items: [] };
+  }
+
+  const common = {
+    query,
+    ...(pageSize !== undefined ? { pageSize } : {}),
+    ...(reranker !== undefined ? { reranker } : {}),
+    ...(mmrLambda !== undefined ? { mmrLambda } : {}),
+    ...(centerNodeUuid !== undefined ? { centerNodeUuid } : {}),
+    ...(bfsOriginNodeUuids !== undefined ? { bfsOriginNodeUuids } : {}),
+  };
+
+  if (scope === "edges") {
+    const page = await zep.graph.searchEdges(graphUuid, {
+      ...common,
+      filters: searchFilters as Zep.EdgeSearchFilters | undefined,
+    });
+    return { items: page.data };
+  }
+  if (scope === "nodes") {
+    const page = await zep.graph.searchNodes(graphUuid, {
+      ...common,
+      filters: searchFilters as Zep.NodeSearchFilters | undefined,
+    });
+    return { items: page.data };
+  }
+  if (scope === "episodes") {
+    const page = await zep.graph.searchEpisodes(graphUuid, {
+      ...common,
+      filters: searchFilters as Zep.EpisodeSearchFilters | undefined,
+    });
+    return { items: page.data };
+  }
+  if (scope === "observations") {
+    const page = await zep.graph.searchObservations(graphUuid, common);
+    return { items: page.data };
+  }
+
+  const page = await zep.graph.searchThreadSummaries(graphUuid, {
+    ...common,
+    filters: searchFilters as Zep.ThreadSummarySearchFilters | undefined,
+  });
+  return { items: page.data };
+}
+
 /**
  * Joins a name and summary as `"name: summary"`, falling back to whichever
- * half is present, or `""` when both are empty/undefined. Mirrors Go's
- * `nameSummaryText` (see `integrations/adk/go/search.go`), which Python's
- * `_format_results` also matches for the observations/thread_summaries cases.
+ * half is present, or `""` when both are empty/undefined.
  */
 function nameSummaryText(
   name: string | null | undefined,
@@ -546,43 +699,46 @@ function nameSummaryText(
 }
 
 /**
- * Flattens a `graph.search` result into plain-text items for one scope.
- *
- * Shared by {@link ZepGraphSearchTool} (which prefixes each item with `"- "`
- * for the model) and `ZepMemoryService` (which wraps each item in its own
- * `MemoryEntry`). The `"auto"` scope is intentionally excluded: it returns a
- * single pre-materialized Context Block on `results.context` rather than a
- * list of discrete items, so callers handle it separately. Mirrors Python's
- * `scope_results_to_texts` in `graph_search_tool.py`.
+ * Flattens search results into plain-text items for one scope.
  */
 export function scopeResultsToTexts(
-  results: Zep.GraphSearchResults,
-  scope: Zep.GraphSearchScope,
+  results: unknown[],
+  scope: GraphSearchScope,
 ): string[] {
   const texts: string[] = [];
+  const items = results as Array<Record<string, unknown>>;
 
   if (scope === "edges") {
-    for (const edge of results.edges ?? []) {
-      if (edge.fact) texts.push(edge.fact);
+    for (const edge of items) {
+      if (typeof edge.fact === "string" && edge.fact) texts.push(edge.fact);
     }
   } else if (scope === "nodes") {
-    for (const node of results.nodes ?? []) {
-      const text = nameSummaryText(node.name, node.summary);
+    for (const node of items) {
+      const text = nameSummaryText(
+        node.name as string | undefined,
+        node.summary as string | undefined,
+      );
       if (text) texts.push(text);
     }
   } else if (scope === "episodes") {
-    for (const episode of results.episodes ?? []) {
-      if (episode.content) texts.push(episode.content);
+    for (const episode of items) {
+      if (typeof episode.content === "string" && episode.content) {
+        texts.push(episode.content);
+      }
     }
   } else if (scope === "observations") {
-    for (const observation of results.observations ?? []) {
-      const text = nameSummaryText(observation.name, observation.summary);
+    for (const observation of items) {
+      const text = nameSummaryText(
+        observation.name as string | undefined,
+        observation.summary as string | undefined,
+      );
       if (text) texts.push(text);
     }
   } else if (scope === "thread_summaries") {
-    for (const summaryNode of results.threadSummaries ?? []) {
-      const text = nameSummaryText(summaryNode.name, summaryNode.summary);
-      if (text) texts.push(text);
+    for (const summary of items) {
+      if (typeof summary.summary === "string" && summary.summary) {
+        texts.push(summary.summary);
+      }
     }
   }
 

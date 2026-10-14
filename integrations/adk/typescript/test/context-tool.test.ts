@@ -33,8 +33,8 @@ describe("ZepContextTool", () => {
     const { client, mocks } = mockZepClient({ addMessagesContext: "ctx-block" });
     const tool = new ZepContextTool({
       zep: client as unknown as ZepClient,
-      userId: "u-1",
-      threadId: "t-1",
+      userUuid: "u-1",
+      threadUuid: "t-1",
       logger: silentLogger,
     });
     const req = fakeLlmRequest();
@@ -56,8 +56,8 @@ describe("ZepContextTool", () => {
     mocks.addMessages.mockRejectedValueOnce(new Error("boom"));
     const tool = new ZepContextTool({
       zep: client as unknown as ZepClient,
-      userId: "u",
-      threadId: "t",
+      userUuid: "u",
+      threadUuid: "t",
       logger: silentLogger,
     });
     const req = fakeLlmRequest();
@@ -76,8 +76,8 @@ describe("ZepContextTool", () => {
     const contextBuilder = vi.fn(async () => "built via tool");
     const tool = new ZepContextTool({
       zep: client as unknown as ZepClient,
-      userId: "u-1",
-      threadId: "t-1",
+      userUuid: "u-1",
+      threadUuid: "t-1",
       logger: silentLogger,
       contextBuilder,
       contextTemplate: "TOOL[{context}]",
@@ -99,8 +99,8 @@ describe("ZepContextTool", () => {
     const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
     const tool = new ZepContextTool({
       zep: client as unknown as ZepClient,
-      userId: "u-1",
-      threadId: "t-1",
+      userUuid: "u-1",
+      threadUuid: "t-1",
       logger: silentLogger,
     });
 

@@ -1,9 +1,8 @@
 /**
  * ADK agent with a model-callable Zep graph-search tool (TypeScript).
  *
- * Combines `ZepContextTool` (automatic per-turn context injection) with
- * `ZepGraphSearchTool` (the model decides when to search the user's graph).
- * This is an alternative to the callback wiring in `basic-agent.ts`.
+ * Uses `ZepGraphSearchTool` for user-provided memory. The model decides when
+ * to search, so retrieved content is not inserted into the system instruction.
  *
  * A live run requires GOOGLE_API_KEY (Gemini) in addition to ZEP_API_KEY.
  * Without GOOGLE_API_KEY the example builds and inspects the agent without a
@@ -22,8 +21,9 @@ import { randomUUID } from "node:crypto";
 import { ZepClient } from "@getzep/zep-cloud";
 import { LlmAgent } from "@google/adk";
 import {
-  ZepContextTool,
   ZepGraphSearchTool,
+  createThread,
+  createUser,
   createZepAfterModelCallback,
 } from "../src/index.js";
 
@@ -39,6 +39,8 @@ const SESSION_ID = `adk-ts-search-session-${suffix}`;
 
 async function main(): Promise<void> {
   const zep = new ZepClient({ apiKey: ZEP_API_KEY });
+  const { userUuid, graphUuid } = await createUser(zep);
+  const { threadUuid } = await createThread(zep, { userUuid });
 
   const agent = new LlmAgent({
     name: "zep_search_agent",
@@ -48,21 +50,19 @@ async function main(): Promise<void> {
       "You are a helpful assistant. Use the zep_graph_search tool to look up " +
       "facts the user shared in earlier conversations when it helps.",
     tools: [
-      // Automatic context injection on every turn (not model-callable).
-      new ZepContextTool({ zep, userId: USER_ID, threadId: SESSION_ID }),
       // On-demand graph search (model-callable).
-      new ZepGraphSearchTool({ zep, userId: USER_ID, scope: "edges", limit: 5 }),
+      new ZepGraphSearchTool({ zep, graphUuid, scope: "edges", limit: 5 }),
     ],
     afterModelCallback: createZepAfterModelCallback(zep, {
-      userId: USER_ID,
-      threadId: SESSION_ID,
+      userUuid,
+      threadUuid,
     }),
   });
 
   console.log("Built ADK agent with Zep tools:");
   console.log(`  agent.name = ${agent.name}`);
   console.log(`  tools      = ${agent.tools.length}`);
-  console.log(`  user_id    = ${USER_ID}`);
+  console.log(`  user_uuid  = ${userUuid}`);
 
   if (!process.env.GOOGLE_API_KEY) {
     console.log(

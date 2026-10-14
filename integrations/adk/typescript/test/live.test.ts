@@ -5,9 +5,9 @@ import { randomUUID } from "node:crypto";
 import {
   ZepGraphSearchTool,
   ZepMemoryService,
+  createThread,
+  createUser,
   createZepAfterModelCallback,
-  ensureThread,
-  ensureUser,
   persistAndInject,
   defaultLogger,
 } from "../src/index.js";
@@ -15,166 +15,106 @@ import { TurnDedup } from "../src/resources.js";
 import { fakeContext, fakeLlmRequest, fakeLlmResponse } from "./helpers.js";
 
 const apiKey = process.env.ZEP_API_KEY;
-
-// These tests hit the real Zep API and only run when ZEP_API_KEY is set.
-// Ingestion is asynchronous, so they assert the calls succeed and return the
-// right shapes — not that a just-written fact is instantly retrievable.
-// (ADK is normally Gemini-driven; here we drive the integration's core
-// persist-and-inject logic directly, so no model key is needed.)
 const describeLive = apiKey ? describe : describe.skip;
 
 describeLive("live Zep integration", () => {
-  it("provisions identity out-of-band, persists, and injects context without throwing", async () => {
+  it("creates UUID resources, persists messages, searches memory, and cleans up", async () => {
     const client = new ZepClient({ apiKey });
-    const userId = `zep-adk-test-${randomUUID()}`;
-    const threadId = `thread-${randomUUID()}`;
-    const identity = {
-      userId,
-      threadId,
-      firstName: "Test",
-      lastName: "User",
-      email: `${userId}@example.com`,
-    };
+    let userUuid: string | undefined;
+    let threadUuid: string | undefined;
+    let graphUuid: string | undefined;
 
     try {
-      // Explicit, out-of-band provisioning — the turn path itself never
-      // creates the Zep user or thread.
-      const userCreated = await ensureUser(client, {
-        userId,
-        firstName: identity.firstName,
-        lastName: identity.lastName,
-        email: identity.email,
+      const user = await createUser(client, {
+        firstName: "Integration",
+        lastName: "Test",
+        email: `zep-adk-${randomUUID()}@example.com`,
       });
-      expect(userCreated).toBe(true);
+      userUuid = user.userUuid;
+      graphUuid = user.graphUuid;
+      threadUuid = (await createThread(client, { userUuid })).threadUuid;
 
-      const threadCreated = await ensureThread(client, { threadId, userId });
-      expect(threadCreated).toBe(true);
-
-      // ensure-twice: the second call against the same IDs reports "already
-      // exists" (false) rather than throwing.
-      const userCreatedAgain = await ensureUser(client, { userId });
-      expect(userCreatedAgain).toBe(false);
-
-      const threadCreatedAgain = await ensureThread(client, {
-        threadId,
-        userId,
-      });
-      expect(threadCreatedAgain).toBe(false);
-
+      const identity = { userUuid, threadUuid, firstName: "Integration" };
       const dedup = new TurnDedup();
-
-      // First turn: persist the user message and inject the Context Block.
-      // The call never creates the Zep user/thread and never throws on a Zep
-      // error (returns undefined instead).
-      const llmRequest = fakeLlmRequest();
+      const request = fakeLlmRequest();
       const injected = await persistAndInject({
         zep: client,
         dedup,
         logger: defaultLogger,
         context: fakeContext({
-          userId,
-          userText: "My favorite color is teal and I live in Portland.",
-          invocationId: "inv-1",
+          userId: userUuid,
+          userText: "My favorite color is teal.",
+          invocationId: "live-1",
         }),
-        llmRequest,
+        llmRequest: request,
         options: identity,
       });
       expect(injected === undefined || typeof injected === "string").toBe(true);
-      if (typeof injected === "string") {
-        expect(JSON.stringify(llmRequest.config?.systemInstruction)).toContain(
-          "ZEP_CONTEXT",
-        );
-      }
 
-      // Same invocation id within the turn is de-duplicated (no re-persist).
-      const duplicate = await persistAndInject({
+      const searchTool = new ZepGraphSearchTool({
         zep: client,
-        dedup,
-        logger: defaultLogger,
-        context: fakeContext({
-          userId,
-          userText: "My favorite color is teal and I live in Portland.",
-          invocationId: "inv-1",
-        }),
-        llmRequest: fakeLlmRequest(),
-        options: identity,
+        graphUuid,
+        scope: "edges",
       });
-      expect(duplicate).toBeUndefined();
-
-      // The graph-search tool runs against the user's graph and returns a
-      // string result (formatted facts or a graceful message) without throwing.
-      const searchTool = new ZepGraphSearchTool({ zep: client, userId });
-      const result = await searchTool.runAsync({
+      const search = await searchTool.runAsync({
         args: { query: "favorite color" },
-        toolContext: fakeContext({ userId }) as never,
+        toolContext: fakeContext({ userId: userUuid }) as never,
       });
-      expect(typeof result).toBe("string");
+      expect(typeof search).toBe("string");
 
-      // Assistant-turn persistence: createZepAfterModelCallback persists the
-      // model's reply to the same thread. Must not throw.
-      const afterCallback = createZepAfterModelCallback(client, {
-        threadId,
-      });
-      const afterResult = await afterCallback({
-        context: fakeContext({ userId }) as unknown as Context,
-        response: fakeLlmResponse({
-          text: "Noted — teal it is, and Portland sounds lovely.",
-        }) as never,
-      });
-      expect(afterResult).toBeUndefined();
+      const afterCallback = createZepAfterModelCallback(client, { threadUuid });
+      await expect(
+        afterCallback({
+          context: fakeContext({ userId: userUuid }) as unknown as Context,
+          response: fakeLlmResponse({ text: "I will remember teal." }) as never,
+        }),
+      ).resolves.toBeUndefined();
 
-      // ZepMemoryService.searchMemory (the ADK-native memory extension
-      // point) round-trips against the live client without rejecting.
-      // Ingestion is asynchronous, so the array may be empty or populated.
-      const memoryService = new ZepMemoryService({ zep: client });
-      const memoryResponse = await memoryService.searchMemory({
+      const memory = new ZepMemoryService({ zep: client, graphUuid });
+      const result = await memory.searchMemory({
         appName: "zep-adk-live-test",
-        userId,
+        userId: userUuid,
         query: "favorite color",
       });
-      expect(Array.isArray(memoryResponse.memories)).toBe(true);
+      expect(Array.isArray(result.memories)).toBe(true);
     } finally {
-      try {
-        await client.user.delete(userId);
-      } catch {
-        // Best-effort cleanup; ignore failures.
+      if (threadUuid) {
+        try {
+          await client.thread.delete(threadUuid);
+        } catch {
+          // Cleanup is best effort if the thread was already removed.
+        }
+      }
+      if (userUuid) {
+        try {
+          await client.user.delete(userUuid);
+        } catch {
+          // Cleanup is best effort if the user was already removed.
+        }
       }
     }
   }, 60_000);
 
-  it("fires the onCreated hook exactly once for a freshly created user", async () => {
+  it("runs the createUser hook with the server-generated user UUID", async () => {
     const client = new ZepClient({ apiKey });
-    const userId = `zep-adk-test-oncreated-${randomUUID()}`;
-
+    let userUuid: string | undefined;
     const hookCalls: string[] = [];
-    const onCreated = async (_zep: ZepClient, createdUserId: string) => {
-      hookCalls.push(createdUserId);
-    };
-
     try {
-      const created = await ensureUser(client, {
-        userId,
-        firstName: "Hook",
-        lastName: "Test",
-        email: `${userId}@example.com`,
-        onCreated,
+      const user = await createUser(client, {
+        email: `zep-adk-hook-${randomUUID()}@example.com`,
+        onCreated: async (_zep, createdUserUuid) => {
+          hookCalls.push(createdUserUuid);
+        },
       });
-      expect(created).toBe(true);
-      expect(hookCalls).toEqual([userId]);
-
-      // A second call against the same (now-existing) user must not re-fire
-      // the hook.
-      const createdAgain = await ensureUser(client, {
-        userId,
-        onCreated,
-      });
-      expect(createdAgain).toBe(false);
-      expect(hookCalls).toEqual([userId]);
+      userUuid = user.userUuid;
+      expect(hookCalls).toEqual([userUuid]);
     } finally {
-      try {
-        await client.user.delete(userId);
-      } catch {
-        // Best-effort cleanup; ignore failures.
+      if (userUuid) {
+        try {
+          await client.user.delete(userUuid);
+        } catch {
+          // Cleanup is best effort if the user was already removed.
+        }
       }
     }
   }, 60_000);

@@ -84,8 +84,8 @@ describe("persistAndInject — context-builder seam", () => {
     expect(contextBuilder).toHaveBeenCalledTimes(1);
     expect(captured).toBeDefined();
     expect(captured!.zep).toBe(client);
-    expect(captured!.userId).toBe("user-1");
-    expect(captured!.threadId).toBe("thread-1");
+    expect(captured!.userUuid).toBe("123e4567-e89b-42d3-a456-426614174000");
+    expect(captured!.threadUuid).toBe("123e4567-e89b-42d3-a456-426614174001");
     expect(captured!.userMessage).toBe("hello there");
     expect(captured!.context).toBe(ctx);
     expect(captured!.llmRequest).toBe(req);
@@ -155,7 +155,12 @@ describe("persistAndInject — context-builder seam", () => {
     expect(mocks.addMessages).toHaveBeenCalledTimes(1);
     expect((req as unknown as ReturnType<typeof fakeLlmRequest>).config?.systemInstruction).toBeUndefined();
     expect(logger.warns.some((w) => w.toLowerCase().includes("builder"))).toBe(true);
-    expect(dedup.alreadyPersisted("t", "inv-1")).toBe(true);
+    expect(
+      dedup.alreadyPersisted(
+        "123e4567-e89b-42d3-a456-426614174001",
+        "inv-1",
+      ),
+    ).toBe(true);
   });
 
   it("persist rejects + builder resolves: warns, dedup NOT marked, builder result still injected", async () => {

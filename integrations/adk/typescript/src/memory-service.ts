@@ -46,7 +46,11 @@ import type {
   SearchMemoryResponse,
 } from "@google/adk";
 import type { Content } from "@google/genai";
-import { scopeResultsToTexts } from "./graph-search-tool.js";
+import {
+  scopeResultsToTexts,
+  searchGraphByScope,
+} from "./graph-search-tool.js";
+import { isZepUuid } from "./identity.js";
 import { defaultLogger, type Logger } from "./logging.js";
 
 // Minimal structural type for the `Session` ADK passes to
@@ -60,13 +64,21 @@ interface SessionLike {
  * Scope handled by treating `result.context` as a single pre-materialized
  * Context Block, rather than a list of discrete edges/nodes/etc.
  */
-const AUTO_SCOPE: Zep.GraphSearchScope = "auto";
+type GraphSearchScope =
+  | "edges"
+  | "nodes"
+  | "episodes"
+  | "observations"
+  | "thread_summaries"
+  | "auto";
+
+const AUTO_SCOPE: GraphSearchScope = "auto";
 
 /**
  * Scopes supported by {@link ZepMemoryService.searchMemory}. Matches the
  * scope enum exposed by `ZepGraphSearchTool`.
  */
-const SUPPORTED_SCOPES: readonly Zep.GraphSearchScope[] = [
+const SUPPORTED_SCOPES: readonly GraphSearchScope[] = [
   "edges",
   "nodes",
   "episodes",
@@ -75,12 +87,14 @@ const SUPPORTED_SCOPES: readonly Zep.GraphSearchScope[] = [
   AUTO_SCOPE,
 ];
 
-const DEFAULT_SCOPE: Zep.GraphSearchScope = "edges";
+const DEFAULT_SCOPE: GraphSearchScope = "edges";
 
 /** Options for the {@link ZepMemoryService} constructor. */
 export interface ZepMemoryServiceOptions {
   /** An initialised `ZepClient`. The caller owns its lifecycle. */
   zep: ZepClient;
+  /** Fixed graph UUID. When omitted, the calling user's graph is resolved. */
+  graphUuid?: string;
   /**
    * The Zep graph search scope to use for every `searchMemory` call.
    * Matches `ZepGraphSearchTool`'s scope enum: `"edges"` (facts, the
@@ -89,10 +103,9 @@ export interface ZepMemoryServiceOptions {
    * `"thread_summaries"` (incremental thread summaries), or `"auto"` (Zep's
    * own pre-assembled Context Block, returned as a single memory entry).
    */
-  scope?: Zep.GraphSearchScope;
+  scope?: GraphSearchScope;
   /**
-   * Maximum number of results per search. `undefined` (the default) omits
-   * the parameter so the Zep SDK applies its own default.
+   * Maximum number of results per search.
    */
   limit?: number;
   /** Logger for Zep failures and unsupported-scope warnings. Defaults to a `console`-backed logger. */
@@ -131,12 +144,15 @@ export interface ZepMemoryServiceOptions {
  */
 export class ZepMemoryService implements BaseMemoryService {
   private readonly zep: ZepClient;
-  private readonly scope: Zep.GraphSearchScope;
+  private readonly graphUuid?: string;
+  private readonly graphUuidCache = new Map<string, Promise<string>>();
+  private readonly scope: GraphSearchScope;
   private readonly limit?: number;
   private readonly logger: Logger;
 
   constructor(options: ZepMemoryServiceOptions) {
     this.zep = options.zep;
+    this.graphUuid = options.graphUuid;
     this.scope = options.scope ?? DEFAULT_SCOPE;
     this.limit = options.limit;
     this.logger = options.logger ?? defaultLogger;
@@ -185,41 +201,61 @@ export class ZepMemoryService implements BaseMemoryService {
       return { memories: [] };
     }
 
-    const searchParams: Zep.GraphSearchQuery = {
-      userId: request.userId,
-      query: request.query,
-      scope: this.scope,
-    };
-    if (this.limit !== undefined) {
-      searchParams.limit = this.limit;
-    }
-
-    let results: Zep.GraphSearchResults;
     try {
-      results = await this.zep.graph.search(searchParams);
+      const graphUuid = await this.resolveGraphUuid(request.userId);
+      const results = await searchGraphByScope(
+        this.zep,
+        graphUuid,
+        request.query,
+        {
+          scope: this.scope,
+          pageSize: this.limit,
+        },
+      );
+      const texts =
+        this.scope === AUTO_SCOPE
+          ? results.context?.trim()
+            ? [results.context.trim()]
+            : []
+          : scopeResultsToTexts(results.items, this.scope);
+      const memories: MemoryEntry[] = texts.map((text) => ({
+        content: { role: "model", parts: [{ text }] } satisfies Content,
+        author: "Zep",
+      }));
+      return { memories };
     } catch (error) {
       this.logger.warn(
-        `Zep memory search failed (userId_len=${request.userId.length}, query_len=${request.query.length})`,
+        `Zep memory search failed (userUuid_len=${request.userId.length}, query_len=${request.query.length})`,
         error,
       );
       return { memories: [] };
     }
-
-    const texts = this.resultTexts(results);
-    const memories: MemoryEntry[] = texts.map((text) => ({
-      content: { role: "model", parts: [{ text }] } satisfies Content,
-      author: "Zep",
-    }));
-    return { memories };
   }
 
-  /** Flattens a `graph.search` result into text items for the configured scope. */
-  private resultTexts(results: Zep.GraphSearchResults): string[] {
-    if (this.scope === AUTO_SCOPE) {
-      const context = results.context?.trim();
-      return context && context.length > 0 ? [context] : [];
+  private async resolveGraphUuid(userId: string): Promise<string> {
+    if (this.graphUuid) {
+      return this.graphUuid;
     }
-
-    return scopeResultsToTexts(results, this.scope);
+    if (!isZepUuid(userId)) {
+      throw new Error(
+        "The ADK userId is not a Zep UUID. Set graphUuid or use the Zep user UUID as userId.",
+      );
+    }
+    let graphPromise = this.graphUuidCache.get(userId);
+    if (!graphPromise) {
+      graphPromise = this.zep.user.get(userId).then((user) => {
+        if (!user.graphUuid) {
+          throw new Error("Zep did not return a graph UUID for the user.");
+        }
+        return user.graphUuid;
+      });
+      this.graphUuidCache.set(userId, graphPromise);
+    }
+    try {
+      return await graphPromise;
+    } catch (error) {
+      this.graphUuidCache.delete(userId);
+      throw error;
+    }
   }
 }

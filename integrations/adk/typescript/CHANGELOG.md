@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.0
+
+### Changed
+
+- **Breaking: upgraded to Zep v4.** The package now depends on
+  `@getzep/zep-cloud@^4.0.0`.
+- **Breaking: provisioning now uses server-generated UUIDs.** Replace
+  `ensureUser` and `ensureThread` with `createUser` and `createThread`. The
+  helpers return `userUuid`, `threadUuid`, and `graphUuid`; they do not accept
+  caller-selected IDs.
+- **Breaking: identity options and session-state keys now use UUID names.**
+  Use `userUuid`, `threadUuid`, `zep_user_uuid`, and `zep_thread_uuid`.
+- Graph search now calls the v4 scope-specific methods. The `auto` scope uses
+  `graph.getContext`, and graph search resolves a user's graph through
+  `user.get` when `graphUuid` is omitted.
+- The memory service now searches a graph UUID and supports all six documented
+  scopes. It resolves and caches the graph of the ADK user when no `graphUuid`
+  is configured.
+- Search failures, callback failures, and memory-service failures do not raise
+  into the ADK turn path.
+
 ## 0.2.0 (2026-07-06)
 
 ### Added

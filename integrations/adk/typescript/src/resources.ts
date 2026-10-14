@@ -3,8 +3,8 @@
  * the tools).
  *
  * This module is internal: it no longer creates Zep users or threads (see
- * `src/provisioning.ts` for the explicit, out-of-band `ensureUser` /
- * `ensureThread` helpers callers are expected to use before the first turn).
+ * `src/provisioning.ts` for the explicit, out-of-band `createUser` /
+ * `createThread` helpers callers are expected to use before the first turn).
  * All that remains here is the per-invocation dedup cache that prevents a
  * tool-using turn — which fires the before-model hook multiple times with
  * the same `invocationId` — from persisting the same user message more than

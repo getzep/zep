@@ -1,16 +1,14 @@
 /**
  * Basic Google ADK agent with Zep long-term memory (TypeScript).
  *
- * Wires `createZepBeforeModelCallback` (persist user turn + inject the Zep
- * Context Block) and `createZepAfterModelCallback` (persist the assistant
- * reply) into an ADK `LlmAgent`, then drives a short conversation that seeds
- * facts and recalls them.
+ * Wires the before- and after-model callbacks to persist conversation turns.
+ * A model-callable graph-search tool retrieves user-provided memory without
+ * placing it in the system instruction.
  *
  * The Zep user and thread are provisioned explicitly, out-of-band, via
- * `ensureUser` and `ensureThread` — before the agent runs its first turn.
- * `ensureUser`'s `onCreated` hook demonstrates one-time per-user setup (here,
- * seeding a user summary instruction) that only runs when the user is
- * genuinely new. The turn path itself (the before/after-model callbacks)
+ * `createUser` and `createThread` — before the agent runs its first turn.
+ * The `onCreated` hook demonstrates one-time per-user setup. The turn path
+ * itself (the before/after-model callbacks)
  * never creates the user or thread.
  *
  * The agent's model is Gemini, so a live run requires GOOGLE_API_KEY in
@@ -37,10 +35,11 @@ import {
 } from "@google/adk";
 import type { Content } from "@google/genai";
 import {
+  ZepGraphSearchTool,
   createZepAfterModelCallback,
   createZepBeforeModelCallback,
-  ensureThread,
-  ensureUser,
+  createThread,
+  createUser,
 } from "../src/index.js";
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
@@ -79,25 +78,11 @@ async function collectResponse(
 /**
  * One-time setup for a newly created Zep user.
  *
- * Fires only when `ensureUser` actually creates the user — never for a user
- * that already existed. This is the place to configure per-user ontology,
- * custom instructions, or (as here) a user summary instruction.
+ * Runs after `createUser` creates a new user. Use this hook for per-user
+ * ontology or extraction setup.
  */
-async function onUserCreated(zep: ZepClient, userId: string): Promise<void> {
-  console.log(
-    `  [onCreated] New Zep user ${userId} — seeding summary instructions.`,
-  );
-  await zep.user.addUserSummaryInstructions({
-    instructions: [
-      {
-        name: "professional-background",
-        text:
-          "Summarize this user's professional background, interests, and " +
-          "living situation in a concise paragraph.",
-      },
-    ],
-    userIds: [userId],
-  });
+async function onUserCreated(_zep: ZepClient, userUuid: string): Promise<void> {
+  console.log(`  [onCreated] Created Zep user ${userUuid}.`);
 }
 
 async function main(): Promise<void> {
@@ -105,40 +90,45 @@ async function main(): Promise<void> {
 
   // Provision the Zep user and thread out-of-band, before the first turn.
   // The agent's turn path (the before/after-model callbacks) never creates
-  // users or threads itself — see README.md's "Migrating from 0.1.x" section.
+  // users or threads itself. See README.md for the v4 migration notes.
   console.log("--- Provisioning Zep user + thread ---\n");
+  let userUuid = "";
+  let graphUuid = "";
+  let threadUuid = "";
   try {
-    await ensureUser(zep, {
-      userId: USER_ID,
+    const createdUser = await createUser(zep, {
       firstName: "Alice",
       lastName: "Smith",
       email: "alice@example.com",
       onCreated: onUserCreated,
     });
-    await ensureThread(zep, { threadId: SESSION_ID, userId: USER_ID });
+    userUuid = createdUser.userUuid;
+    graphUuid = createdUser.graphUuid;
+    threadUuid = (await createThread(zep, { userUuid })).threadUuid;
   } catch (error) {
     console.error("Provisioning Zep user/thread failed:", error);
     process.exit(1);
   }
 
-  // One agent definition. The callbacks carry the Zep identity.
   const agent = new LlmAgent({
     name: "zep_memory_agent",
     model: "gemini-2.5-flash",
-    description: "A helpful assistant with Zep-powered long-term memory.",
+    description: "An assistant that can search the user's Zep knowledge graph.",
     instruction:
-      "You are a helpful assistant with long-term memory. When Zep context " +
-      "is present in your system instruction, use it to answer with " +
-      "personalised, memory-aware responses.",
+      "You are a helpful assistant. Use the zep_graph_search tool to look up " +
+      "facts the user shared in earlier conversations when it helps.",
+    tools: [new ZepGraphSearchTool({ zep, graphUuid })],
     beforeModelCallback: createZepBeforeModelCallback(zep, {
-      userId: USER_ID,
-      threadId: SESSION_ID,
+      userUuid,
+      threadUuid,
       firstName: "Alice",
       lastName: "Smith",
+      // Persist turns without injecting user-provided content into the system instruction.
+      contextBuilder: async () => undefined,
     }),
     afterModelCallback: createZepAfterModelCallback(zep, {
-      userId: USER_ID,
-      threadId: SESSION_ID,
+      userUuid,
+      threadUuid,
     }),
   });
 

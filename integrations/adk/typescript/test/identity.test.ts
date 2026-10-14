@@ -3,46 +3,69 @@ import { extractText, resolveIdentity } from "../src/identity.js";
 import { ZepIdentityError } from "../src/errors.js";
 import { fakeContext } from "./helpers.js";
 
+const USER_UUID = "123e4567-e89b-42d3-a456-426614174000";
+const THREAD_UUID = "123e4567-e89b-42d3-a456-426614174001";
+
 describe("resolveIdentity", () => {
-  it("falls back to the ADK session userId/sessionId", () => {
-    const id = resolveIdentity(
-      fakeContext({ userId: "adk-u", sessionId: "adk-s" }),
-    );
-    expect(id.userId).toBe("adk-u");
-    expect(id.threadId).toBe("adk-s");
+  it("prefers explicit UUIDs over session state and ADK UUID fallbacks", () => {
+    const ctx = fakeContext({
+      userId: USER_UUID,
+      sessionId: THREAD_UUID,
+      state: { zep_user_uuid: USER_UUID, zep_thread_uuid: THREAD_UUID },
+    });
+    expect(
+      resolveIdentity(ctx, { userUuid: "option-user", threadUuid: "option-thread" }),
+    ).toMatchObject({ userUuid: "option-user", threadUuid: "option-thread" });
   });
 
-  it("prefers explicit options, then state, then ADK session", () => {
-    const ctx = fakeContext({
-      userId: "adk-u",
-      sessionId: "adk-s",
-      state: { zep_user_id: "state-u", zep_thread_id: "state-s" },
+  it("uses UUIDs from ADK state", () => {
+    const identity = resolveIdentity(
+      fakeContext({
+        userId: "adk-user",
+        sessionId: "adk-session",
+        state: {
+          zep_user_uuid: USER_UUID,
+          zep_thread_uuid: THREAD_UUID,
+          zep_graph_uuid: "123e4567-e89b-42d3-a456-426614174002",
+        },
+      }),
+    );
+    expect(identity).toMatchObject({
+      userUuid: USER_UUID,
+      threadUuid: THREAD_UUID,
     });
-    expect(resolveIdentity(ctx).userId).toBe("state-u");
-    expect(resolveIdentity(ctx, { userId: "opt-u" }).userId).toBe("opt-u");
+  });
+
+  it("uses ADK identifiers only when they are Zep UUIDs", () => {
+    expect(
+      resolveIdentity(fakeContext({ userId: USER_UUID, sessionId: THREAD_UUID })),
+    ).toMatchObject({ userUuid: USER_UUID, threadUuid: THREAD_UUID });
+    const invalidContext = {
+      ...fakeContext({}),
+      userId: "adk-user",
+      sessionId: "adk-session",
+    };
+    expect(() => resolveIdentity(invalidContext)).toThrow(ZepIdentityError);
   });
 
   it("builds a display name from first and last name", () => {
-    const id = resolveIdentity(fakeContext({ userId: "u", sessionId: "s" }), {
-      firstName: "Jane",
-      lastName: "Doe",
-    });
-    expect(id.displayName).toBe("Jane Doe");
+    expect(
+      resolveIdentity(fakeContext({}), {
+        userUuid: USER_UUID,
+        threadUuid: THREAD_UUID,
+        firstName: "Jane",
+        lastName: "Doe",
+      }).displayName,
+    ).toBe("Jane Doe");
   });
 
-  it("leaves displayName undefined when no name is available", () => {
-    const id = resolveIdentity(fakeContext({ userId: "u", sessionId: "s" }));
-    expect(id.displayName).toBeUndefined();
-  });
-
-  it("throws ZepIdentityError when no userId can be resolved", () => {
-    const ctx = fakeContext({ userId: "", sessionId: "s" });
-    expect(() => resolveIdentity(ctx)).toThrow(ZepIdentityError);
-  });
-
-  it("throws ZepIdentityError when no threadId can be resolved", () => {
-    const ctx = fakeContext({ userId: "u", sessionId: "" });
-    expect(() => resolveIdentity(ctx)).toThrow(/thread ID/);
+  it("throws when no user UUID or thread UUID is available", () => {
+    expect(() =>
+      resolveIdentity(fakeContext({ userId: "", sessionId: "" })),
+    ).toThrow(ZepIdentityError);
+    expect(() =>
+      resolveIdentity(fakeContext({ userId: USER_UUID, sessionId: "" })),
+    ).toThrow(/thread UUID/i);
   });
 });
 
