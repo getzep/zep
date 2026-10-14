@@ -93,21 +93,24 @@ The dashboard will open in your browser at `http://localhost:8501`.
 
 ### 1. User Summary Instructions Configuration
 
-The ingestion script (`zep_ingest.py`) configures User Summary Instructions that define what information should always be available:
+The ingestion script (`zep_ingest.py`) sets the User Summary Instructions of the user. The instructions define what information must always be available. The call uses the user UUID that `user.create` returned:
 
 ```python
-zep_client.user.add_user_summary_instructions(
+from zep_cloud.types import UserInstruction
+
+zep_client.user.set_summary_instructions(
+    user_uuid,
     instructions=[
         UserInstruction(
-            name="bedroom_requirements",
-            text="How many bedrooms does the user need and why?"
+            name="price_range",
+            text="What is the user's budget or price range for purchasing a home?",
         ),
         UserInstruction(
-            name="price_range",
-            text="What is the user's budget or price range for purchasing a home?"
+            name="bedroom_requirements",
+            text="How many bedrooms does the user need and why?",
         ),
-        # Additional instructions for location, features, etc.
-    ]
+        # Additional instructions for features and family context
+    ],
 )
 ```
 

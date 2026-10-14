@@ -16,9 +16,9 @@ All notable changes to the Zep examples are in this file.
 
 ### Changed
 
-- The Python examples use `zep-cloud` 4.0.0a5.
-- The TypeScript examples use `@getzep/zep-cloud` 4.0.0-alpha.5.
-- The Go examples use `github.com/getzep/zep-go/v4` v4.0.0-alpha.5.
+- The Python examples use `zep-cloud` 4.0.0.
+- The TypeScript examples use `@getzep/zep-cloud` 4.0.0.
+- The Go examples use `github.com/getzep/zep-go/v4` v4.0.0.
 - Every example addresses a user, a thread, and a graph by the
   server-generated UUID that the create call returns.
 - No create call sends a `user_id`, a `thread_id`, or a `graph_id`, because
