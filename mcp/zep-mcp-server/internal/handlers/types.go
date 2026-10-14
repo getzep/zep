@@ -1,5 +1,20 @@
 package handlers
 
+import (
+	"fmt"
+	"strings"
+	"unicode/utf8"
+)
+
+// Search input validation bounds (enforced before calling the Zep API).
+const (
+	searchQueryMaxLen = 2000
+	searchLimitMin    = 1
+	searchLimitMax    = 100
+	searchMinScoreMin = 0.0
+	searchMinScoreMax = 1.0
+)
+
 // Input and output types for MCP tool handlers
 // These types are used to automatically generate JSON schemas
 
@@ -15,6 +30,31 @@ type SearchGraphInput struct {
 	CenterNodeUUID string   `json:"center_node_uuid,omitempty" jsonschema:"Node UUID to rerank around for node_distance reranking"`
 	NodeLabels     []string `json:"node_labels,omitempty" jsonschema:"Filter results by node labels"`
 	EdgeTypes      []string `json:"edge_types,omitempty" jsonschema:"Filter results by edge types"`
+}
+
+// Validate checks SearchGraphInput before it is sent to the downstream API.
+// Errors use the same fmt.Errorf patterns as internal/transform.ValidateRequired.
+func (input SearchGraphInput) Validate() error {
+	query := strings.TrimSpace(input.Query)
+	if query == "" {
+		return fmt.Errorf("query cannot be empty")
+	}
+	if utf8.RuneCountInString(input.Query) > searchQueryMaxLen {
+		return fmt.Errorf("query exceeds maximum length of %d characters", searchQueryMaxLen)
+	}
+
+	// MinFactRating is the minimum score field (min_fact_rating). Zero means omitted.
+	// Values outside [0, 1] are rejected (covers negative and >1.0).
+	if input.MinFactRating < searchMinScoreMin || input.MinFactRating > searchMinScoreMax {
+		return fmt.Errorf("min_fact_rating must be between %v and %v", searchMinScoreMin, searchMinScoreMax)
+	}
+
+	// Limit 0 means use handler default; an explicit limit must be in [1, 100].
+	if input.Limit != 0 && (input.Limit < searchLimitMin || input.Limit > searchLimitMax) {
+		return fmt.Errorf("limit must be between %d and %d", searchLimitMin, searchLimitMax)
+	}
+
+	return nil
 }
 
 // GetUserContextInput defines the input parameters for get_user_context

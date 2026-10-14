@@ -14,7 +14,11 @@ import (
 // HandleSearchGraph handles the search_graph tool using the new MCP SDK signature
 func HandleSearchGraph(client *zepclient.Client) mcp.ToolHandlerFor[SearchGraphInput, any] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input SearchGraphInput) (*mcp.CallToolResult, any, error) {
-		// Apply defaults
+		if err := input.Validate(); err != nil {
+			return nil, nil, err
+		}
+
+		// Apply defaults (after validation so explicit out-of-range limits are rejected)
 		if input.Scope == "" {
 			input.Scope = "edges"
 		}
