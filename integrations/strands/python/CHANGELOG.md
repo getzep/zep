@@ -2,8 +2,27 @@
 
 ## Unreleased
 
+## 0.1.1 (2026-10-01)
+
+### Changed
+
+- The package now requires `zep-cloud>=3.23.0,<4`. The upper bound keeps the package on the v3 SDK when `zep-cloud` 4.x is published.
+
+## 0.1.0 (2026-08-01)
+
 ### Added
 
+- `ZepMemoryStore` — a Strands Agents `MemoryStore` backed by Zep's temporal Context Graph.
+- `search` via `graph.search` (default `scope="auto"` returns Zep's assembled Context Block).
+- `add_messages` via `thread.add_messages` for server-side extraction in user-graph mode.
+- `add` via `graph.add` for text/JSON/message facts (`metadata["type"]` selects the data type).
+- `initialize` is a no-op. The store provisions the Zep user and thread on the first search or write (no provisioning for standalone graphs).
+- Standalone-graph mode via `graph_id` (search + add only).
+- `ensure_user` / `ensure_thread` idempotent provisioning helpers with optional `on_created` hook.
+- `create_zep_search_tool` with pin-or-expose control over `graph.search` parameters.
+- `expose_search_tool` on `ZepMemoryStore` to register the search tool through `get_tools()`.
+- Message and graph payload truncation helpers with length-only warnings.
+- Mock-based unit tests, a gated live integration test, and a runnable example.
 - Live agent integration test (`test_integration_full_lifecycle`) exercising
   `Agent` + `MemoryManager` + `ZepMemoryStore` against Zep Cloud and OpenAI,
   including cross-thread recall and `on_user_created` (gated on
@@ -40,19 +59,3 @@
 - Documented the failure-handling contract: Zep SDK errors propagate out of `search`/`add`/`add_messages` by design, because `MemoryManager` and `ExtractionCoordinator` own failure isolation (skip-and-log, `AggregateMemoryError`, and high-water-mark rollback for retry). Added tests pinning that behavior.
 - Example and live tests flush at the session boundary after `invoke_async`,
   which `MemoryManager` requires to persist buffered turns on that path.
-
-## 0.1.0 (2026-08-01)
-
-### Added
-
-- `ZepMemoryStore` — a Strands Agents `MemoryStore` backed by Zep's temporal Context Graph.
-- `search` via `graph.search` (default `scope="auto"` returns Zep's assembled Context Block).
-- `add_messages` via `thread.add_messages` for server-side extraction in user-graph mode.
-- `add` via `graph.add` for text/JSON/message facts (`metadata["type"]` selects the data type).
-- `initialize` provisions the Zep user and thread (no-op for standalone graphs).
-- Standalone-graph mode via `graph_id` (search + add only).
-- `ensure_user` / `ensure_thread` idempotent provisioning helpers with optional `on_created` hook.
-- `create_zep_search_tool` with pin-or-expose control over `graph.search` parameters.
-- `expose_search_tool` on `ZepMemoryStore` to register the search tool through `get_tools()`.
-- Message and graph payload truncation helpers with length-only warnings.
-- Mock-based unit tests, a gated live integration test, and a runnable example.

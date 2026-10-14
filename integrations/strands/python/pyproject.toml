@@ -1,12 +1,12 @@
 [project]
 name = "zep-strands"
-version = "0.1.0"
+version = "0.1.1"
 description = "Strands Agents memory-store integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "strands-agents>=1.45.0",
-    "zep-cloud>=3.23.0",
+    "zep-cloud>=3.23.0,<4",
 ]
 
 [project.urls]

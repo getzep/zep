@@ -1,0 +1,20 @@
+[
+  {
+    "id": "S1",
+    "name": "Pemberline Galway Plant",
+    "country": "Ireland",
+    "role": "Final assembly of Aster 410 and Fernway"
+  },
+  {
+    "id": "S2",
+    "name": "Pemberline Raleigh Plant",
+    "country": "United States",
+    "role": "Final assembly of Aster 520 and Calder"
+  },
+  {
+    "id": "S3",
+    "name": "Pemberline Penang Plant",
+    "country": "Malaysia",
+    "role": "Final assembly of Lyric 300 and Lyric 350"
+  }
+]

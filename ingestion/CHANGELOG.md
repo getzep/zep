@@ -56,6 +56,11 @@ All notable changes to `zep-ingest` are documented here. The project follows
   accepted items and records each rejection as an `AddError` with its index
   and reason.
 
+## 0.3.1
+
+- `zep-ingest` now requires `zep-cloud>=3.27.0,<4`. The upper bound keeps the package
+  on the v3 SDK when `zep-cloud` 4.x is published.
+
 ## 0.3.0
 
 - **Submit everything, then wait once.** Multiple files or loaders destined for

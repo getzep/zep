@@ -29,7 +29,7 @@ Usage::
     agent = Agent(memory_manager=MemoryManager(stores=[store]))
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __author__ = "Zep AI"
 __description__ = "Strands Agents memory-store integration for Zep"
 
