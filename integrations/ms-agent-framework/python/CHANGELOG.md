@@ -4,25 +4,37 @@
 
 ### Breaking
 
-- The package now requires the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). It does not
+To migrate from Zep v3, follow the
+[V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general
+procedure. This package has these API changes:
+
+- The package requires the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). It does not
   support the v3 SDK.
-- Zep v4 addresses a user, a thread, and a graph by a server-generated UUID.
-  `ZepContextProvider` takes `user_uuid`, `thread_uuid`, and an optional
-  `graph_uuid` instead of `user_id` and `thread_id`. The provider makes no
-  lookup call at run time.
-- `ContextInput` carries `user_uuid`, `thread_uuid`, and `graph_uuid` instead
-  of `user_id` and `thread_id`.
-- `create_user` and `create_thread` replace `ensure_user` and `ensure_thread`.
-  Each helper creates a new resource and returns it, and the response carries
-  the UUIDs. `create_user` takes no `user_id`, and `create_thread` takes
-  `user_uuid` and no `thread_id`. A v4 create call takes no client-chosen
-  name, and the server rejects one with `400 invalid_request`.
-- `create_zep_search_tool` takes a `graph_uuid` instead of a user or graph ID.
-- The provider does not create the Zep user or the thread on the turn path.
-  Create the user and the thread out-of-band, and give the UUIDs to the
-  provider.
+- `ZepContextProvider` takes `user_uuid` and `thread_uuid` instead of `user_id`
+  and `thread_id`. It also takes an optional `graph_uuid`, which is necessary
+  when `expose_search_tool=True`. Give the stored user UUID, thread UUID, and
+  user graph UUID to these parameters.
+- `ZepContextProvider` does not create the user or the thread on the turn path,
+  and it makes no `lookup` call.
 - `ZepContextProvider` no longer takes `first_name`, `last_name`, `email`, or
-  `on_user_created`. Give these values to `create_user`.
+  `on_user_created`. Give `first_name`, `last_name`, and `email` to
+  `create_user`, and give the hook to `create_user(on_created=...)`.
+- The default of `user_message_name` is `None`. Before, the default was the
+  full name from `first_name` and `last_name`. To keep a name on the user
+  messages, set `user_message_name`.
+- `ContextInput` has `user_uuid`, `thread_uuid`, and `graph_uuid` instead of
+  `user_id` and `thread_id`.
+- `create_user` replaces `ensure_user`. It takes no `user_id`, and it returns
+  the created `User` (with `uuid_` and `graph_uuid`) instead of a `bool`.
+- `create_thread` replaces `ensure_thread`. It takes `user_uuid` instead of
+  `thread_id` and `user_id`, and it returns the created `Thread` (with `uuid_`)
+  instead of a `bool`.
+- `create_zep_search_tool` takes a required `graph_uuid` instead of `user_id`
+  or `graph_id`. Give it the stored user graph UUID or standalone graph UUID.
+
+For an existing V3 user, thread, or graph, do not call `create_user`,
+`create_thread`, or `graph.create`. Get its UUID one time with the backfill in
+the migration guide, and store it.
 
 ### Changed
 
