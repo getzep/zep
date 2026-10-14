@@ -182,7 +182,7 @@ class TestPinOrExposeSchema:
         client.graph.search_edges.assert_not_awaited()
         call = client.graph.search_nodes.call_args
         assert call.args[0] == GRAPH_UUID
-        assert call.kwargs["limit"] == 3
+        assert call.kwargs["page_size"] == 3
         assert "scope" not in call.kwargs
         assert "Alice" in out
 
@@ -220,7 +220,7 @@ class TestPinOrExposeSchema:
         assert "center_node_uuid" not in call
         # But defaulted params ARE sent.
         assert call["reranker"] == "rrf"
-        assert call["limit"] == 10
+        assert call["page_size"] == 10
 
     @pytest.mark.asyncio
     async def test_model_provided_mmr_lambda_forwarded(self) -> None:
@@ -244,7 +244,7 @@ class TestPinOrExposeSchema:
         client.graph.search_nodes.return_value = _page([_node("Alice", "x")])
         tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID, scope="nodes", limit=5)
         await tool.ainvoke({"query": "who"})
-        assert client.graph.search_nodes.call_args.kwargs["limit"] == 5
+        assert client.graph.search_nodes.call_args.kwargs["page_size"] == 5
 
     def test_unknown_pinned_param_rejected(self) -> None:
         with pytest.raises(ValueError, match="Unknown pinned"):
@@ -332,7 +332,7 @@ class TestLimitClamping:
 
         await tool.ainvoke({"query": "x"})
 
-        assert client.graph.search_edges.call_args.kwargs["limit"] == 50
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == 50
 
     @pytest.mark.asyncio
     async def test_pinned_limit_below_one_clamped(self) -> None:
@@ -342,7 +342,7 @@ class TestLimitClamping:
 
         await tool.ainvoke({"query": "x"})
 
-        assert client.graph.search_edges.call_args.kwargs["limit"] == 1
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == 1
 
     @pytest.mark.asyncio
     async def test_model_provided_limit_above_ceiling_clamped(self) -> None:
@@ -352,7 +352,7 @@ class TestLimitClamping:
 
         await tool.ainvoke({"query": "x", "limit": 200})
 
-        assert client.graph.search_edges.call_args.kwargs["limit"] == 50
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == 50
 
     @pytest.mark.asyncio
     async def test_model_provided_limit_below_one_clamped(self) -> None:
@@ -362,7 +362,7 @@ class TestLimitClamping:
 
         await tool.ainvoke({"query": "x", "limit": 0})
 
-        assert client.graph.search_edges.call_args.kwargs["limit"] == 1
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == 1
 
 
 class TestAutoScopeParameters:
@@ -437,7 +437,7 @@ class TestAsyncToolExecution:
         call = client.graph.search_edges.call_args
         assert call.args[0] == GRAPH_UUID
         assert call.kwargs["query"] == "preferences"
-        assert call.kwargs["limit"] == 10
+        assert call.kwargs["page_size"] == 10
         assert "Alice likes blue" in out
 
     @pytest.mark.asyncio
@@ -452,7 +452,7 @@ class TestAsyncToolExecution:
 
         call = client.graph.search_nodes.call_args.kwargs
         assert call["reranker"] == "cross_encoder"
-        assert call["limit"] == 3
+        assert call["page_size"] == 3
         assert "Alice" in out
 
     @pytest.mark.asyncio

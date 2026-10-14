@@ -50,7 +50,7 @@ GraphSearchScope = Literal[
 ]
 GraphSearchReranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
 
-#: Zep caps the graph-search ``limit`` at 50; larger values are rejected.
+#: Zep caps the graph-search ``page_size`` at 50; larger values are rejected.
 MAX_SEARCH_LIMIT = 50
 
 #: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
@@ -313,7 +313,8 @@ def _build_search_kwargs(
     sibling ports' ``if value is not None`` guard so Zep's own server-side
     default applies instead of an explicit null on the wire.
 
-    A model-provided ``limit`` is clamped to ``[1, MAX_SEARCH_LIMIT]``. When
+    A model-provided ``limit`` is clamped to ``[1, MAX_SEARCH_LIMIT]`` and is
+    sent to the v4 search method as ``page_size``. When
     the effective scope is ``auto``, the call goes to ``graph.get_context``,
     which takes neither a reranker nor a limit, so those parameters are
     dropped and the call never 400s on model-chosen parameters.
@@ -360,6 +361,8 @@ def _build_search_kwargs(
             search_kwargs["filters"] = constructor_only["filters"]
         return search_kwargs
 
+    if "limit" in search_kwargs:
+        search_kwargs["page_size"] = search_kwargs.pop("limit")
     search_kwargs.update(constructor_only)
     return search_kwargs
 
@@ -409,9 +412,13 @@ def create_graph_search_tool(
         hidden_params: Optional set of search parameter names to hide
             from the model's tool schema without pinning them -- omitted from
             the SDK call so Zep's own default takes effect.
-        search_filters: Optional :class:`~zep_cloud.types.search_filters.SearchFilters`
-            to constrain results by entity/edge type, properties, or dates
-            (constructor-only). Sent as the v4 ``filters`` argument.
+        search_filters: Optional filters for the selected scope
+            (constructor-only), sent as the v4 ``filters`` argument. Each
+            scope has its own filter type: ``EdgeSearchFilters``,
+            ``NodeSearchFilters``, ``EpisodeSearchFilters``,
+            ``ObservationSearchFilters``, ``ThreadSummarySearchFilters``, and
+            ``SearchFilters`` for ``auto``. Zep rejects a key that the scope
+            cannot apply.
         bfs_origin_node_uuids: Optional list of node UUIDs for BFS seeding
             (constructor-only). Ignored when the effective scope is ``auto``.
         scope: Deprecated back-compat alias for ``pinned_params={"scope": scope}``.

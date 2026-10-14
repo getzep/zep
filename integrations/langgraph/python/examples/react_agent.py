@@ -82,7 +82,7 @@ async def wait_for_graph_searchable(
     """
     start = time.monotonic()
     while time.monotonic() - start <= timeout_seconds:
-        page = await zep.graph.search_edges(graph_uuid, query=query, limit=5)
+        page = await zep.graph.search_edges(graph_uuid, query=query, page_size=5)
         if page.items:
             return True
         await asyncio.sleep(poll_interval)

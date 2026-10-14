@@ -30,9 +30,8 @@ pip install zep-langgraph
 pip install langchain-openai
 ```
 
-This package targets the Zep v4 SDK, which is a pre-release. To install the
-SDK on its own, use `pip install --pre "zep-cloud==4.0.0a5"` or
-`uv add "zep-cloud==4.0.0a5"`.
+This package targets the Zep v4 SDK. To install the SDK on its own, use
+`pip install "zep-cloud>=4.0.0,<5"` or `uv add "zep-cloud>=4.0.0,<5"`.
 
 Or, to work from the repository with `uv`:
 
@@ -42,7 +41,7 @@ cd zep/integrations/langgraph/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `langgraph>=1.2.5`, `zep-cloud==4.0.0a5`.
+Requirements: Python 3.11+, `langgraph>=1.2.5`, `zep-cloud>=4.0.0,<5`.
 `langgraph` pulls in `langchain-core`, which provides the message and tool types
 this package uses.
 

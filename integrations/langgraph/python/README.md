@@ -406,7 +406,7 @@ make build        # uv build
 ## Requirements
 
 - Python 3.11+
-- `zep-cloud==4.0.0a5`
+- `zep-cloud>=4.0.0,<5`
 - `langgraph>=1.2.5` (pulls in `langchain-core`)
 
 ## Support

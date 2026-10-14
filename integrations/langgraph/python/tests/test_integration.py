@@ -104,7 +104,7 @@ async def wait_for_episodes_processed(
             logger.warning("Timed out waiting for episode processing; continuing.")
             return
         try:
-            page = await zep.graph.episode.list(graph_uuid, limit=20)
+            page = await zep.graph.episode.list(graph_uuid, page_size=20)
         except Exception as exc:
             logger.warning("Episode poll failed (%s); retrying.", exc)
             await asyncio.sleep(poll_interval)
@@ -132,7 +132,7 @@ async def wait_for_graph_searchable(
     start = time.monotonic()
     while time.monotonic() - start <= timeout_seconds:
         try:
-            page = await zep.graph.search_edges(graph_uuid, query=query, limit=5)
+            page = await zep.graph.search_edges(graph_uuid, query=query, page_size=5)
             edges = page.items or []
             if edges:
                 logger.info("Graph search returned %d edges.", len(edges))
@@ -220,7 +220,7 @@ async def main() -> None:
 
         # -- Verify the thread captured both sides ---------------------------
         print("\n[Step 3] Verifying thread messages...")
-        page = await zep.thread.list_messages(thread_uuid, limit=20)
+        page = await zep.thread.list_messages(thread_uuid, page_size=20)
         messages = page.items or []
         user_msgs = [m for m in messages if m.role == "user"]
         asst_msgs = [m for m in messages if m.role == "assistant"]
@@ -295,7 +295,7 @@ async def test_integration_full_lifecycle() -> None:
         assert fetched.first_name == FIRST_NAME
         assert fetched.email == EMAIL
 
-        page = await zep.thread.list_messages(thread_uuid, limit=20)
+        page = await zep.thread.list_messages(thread_uuid, page_size=20)
         messages = page.items or []
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)

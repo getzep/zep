@@ -69,8 +69,8 @@ MAX_GRAPH_ADD_CHARS = 10_000
 #: Default number of results when a ``SearchOp`` does not specify a limit.
 DEFAULT_SEARCH_LIMIT = 10
 
-#: Maximum number of results a Zep graph search accepts (``limit`` is capped
-#: at 50 server-side).
+#: Maximum number of results a Zep graph search accepts (``page_size`` is
+#: capped at 50 server-side).
 MAX_SEARCH_LIMIT = 50
 
 #: A resolver mapping a store namespace to the UUID of the Zep graph that
@@ -286,7 +286,7 @@ class ZepStore(BaseStore):
         """Clamp ``op.limit`` to ``[1, MAX_SEARCH_LIMIT]`` with a default.
 
         ``BaseStore.search`` defaults ``limit`` to 10 and imposes no ceiling,
-        but a Zep graph search rejects ``limit > 50``. Clamp to stay valid.
+        but a Zep graph search rejects ``page_size > 50``. Clamp to stay valid.
         """
         limit = op.limit or DEFAULT_SEARCH_LIMIT
         if limit > MAX_SEARCH_LIMIT:
@@ -327,7 +327,7 @@ class ZepStore(BaseStore):
             # ``auto`` scope is served by ``graph.get_context``, which returns
             # one assembled Context Block and takes no result limit.
             return {"query": op.query}
-        return {"query": op.query, "limit": fetch}
+        return {"query": op.query, "page_size": fetch}
 
     # ------------------------------------------------------------------
     # Abstract methods (the only two required)

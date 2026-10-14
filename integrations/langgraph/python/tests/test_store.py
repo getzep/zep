@@ -250,7 +250,7 @@ class TestSyncSearch:
         store = _store(_async_client(), sync_zep_client=sync)
         # BaseStore allows any limit; Zep rejects > 50, so we must clamp.
         store.search(("ns",), query="q", limit=500)
-        assert sync.graph.search_edges.call_args.kwargs["limit"] <= MAX_SEARCH_LIMIT
+        assert sync.graph.search_edges.call_args.kwargs["page_size"] <= MAX_SEARCH_LIMIT
 
     def test_search_honors_offset(self) -> None:
         sync = _sync_client()
@@ -263,7 +263,7 @@ class TestSyncSearch:
         assert len(results) == 1
         assert results[0].value["fact"] == "c"
         # Zep has no server-side offset, so we must fetch offset+limit rows.
-        assert sync.graph.search_edges.call_args.kwargs["limit"] >= 3
+        assert sync.graph.search_edges.call_args.kwargs["page_size"] >= 3
 
     def test_search_auto_scope_returns_context_item(self) -> None:
         sync = _sync_client()
