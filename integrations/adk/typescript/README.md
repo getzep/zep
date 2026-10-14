@@ -333,32 +333,20 @@ Zep ingestion is asynchronous — a just-added message is not instantly retrieva
 
 ## Migrating to the Zep v4 SDK
 
-The unreleased version of this package targets `@getzep/zep-cloud@^4.0.0`. Zep v4 addresses a user, a thread, and a graph by a server-generated UUID, so the public API changed with it:
+Follow the [V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general migration procedure: the UUID columns, the one-time backfill, and the order of steps.
 
-| Before (v3) | After (v4) |
-|---|---|
-| `ensureUser(zep, { userId, ... })` | `createUser(zep, { firstName, ... })`, which returns `{ userUuid, graphUuid }` |
-| `ensureThread(zep, { threadId, userId })` | `createThread(zep, { userUuid })`, which returns `{ threadUuid, graphUuid }` |
-| `userId` / `threadId` options | `userUuid` / `threadUuid` options |
-| a client-chosen `userId` / `threadId` on a create call | no name on a create call; v4 rejects one |
-| `zep_user_id` / `zep_thread_id` state keys | `zep_user_uuid` / `zep_thread_uuid` state keys |
-| `ZepGraphSearchTool({ graphId })` | `ZepGraphSearchTool({ graphUuid })` |
-| one `graph.search` call with a `scope` | one v4 method for each scope, and `graph.getContext` for `auto` |
-| snake_case search filters | camelCase `Zep.SearchFilters` fields |
+These API changes are specific to this package:
 
-Resolve a v3 `user_id` or `thread_id` to its UUID one time with the v4 `lookup` methods, then store the UUID in your own database. The integration never calls `lookup` on the turn path.
+- The package requires `@getzep/zep-cloud@^4.0.0` (Zep V4, below V5).
+- `ensureUser(zep, { userId, ... })` is replaced by `createUser(zep, { firstName, lastName, email, onCreated })`. It has no `userId` option, and it returns `{ userUuid, graphUuid }` instead of a value that tells whether the user was new. The `onCreated` hook receives the UUID of the new user.
+- `ensureThread(zep, { threadId, userId })` is replaced by `createThread(zep, { userUuid })`. It has no `threadId` option, and it returns `{ threadUuid, graphUuid }`.
+- The `userId` and `threadId` options are replaced by `userUuid` and `threadUuid` on `createZepCallbacks`, `createZepBeforeModelCallback`, `createZepAfterModelCallback`, `ZepContextTool`, `ZepGraphSearchTool`, and `resolveIdentity`. Give the stored user UUID and thread UUID to these options.
+- The session-state keys `zep_user_id` and `zep_thread_id` are replaced by `zep_user_uuid` and `zep_thread_uuid`. To use one agent for many users, put the stored UUIDs in these keys. If you omit them, the ADK session `userId` and `sessionId` must be the Zep user UUID and the Zep thread UUID.
+- The `userId` and `threadId` fields of `ResolvedIdentity` and `ContextBuilderInput` are replaced by `userUuid` and `threadUuid`.
+- The `graphId` option of `ZepGraphSearchTool` is replaced by `graphUuid`. `ZepMemoryService` has a new `graphUuid` option. Give the stored graph UUID to these options. If you omit `graphUuid`, the package reads the graph of the user UUID with `zep.user.get`.
+- `searchFilters` on `ZepGraphSearchTool` takes the camelCase V4 `Zep.SearchFilters` shape (for example `dateFilters` and `metadataFilters`). Each search scope accepts only the filter keys that apply to it, and Zep returns HTTP 400 `unsupported_filter` for another key.
 
-```ts
-// Before (v3)
-await ensureUser(zep, { userId, firstName, lastName, email });
-await ensureThread(zep, { threadId, userId });
-createZepCallbacks(zep, { userId, threadId });
-
-// After (v4)
-const { userUuid } = await createUser(zep, { firstName, lastName, email });
-const { threadUuid } = await createThread(zep, { userUuid });
-createZepCallbacks(zep, { userUuid, threadUuid });
-```
+For an existing V3 user, thread, or graph, do not call `createUser`, `createThread`, or `graph.create`. Get its UUID one time with the backfill in the migration guide, and store it.
 
 ## Migrating from 0.1.x
 
@@ -394,15 +382,7 @@ createZepCallbacks(zep, { userUuid, threadUuid });
 0.2.0 also removes lazy, in-band Zep user/thread creation from the ADK turn path in favor of explicit, out-of-band provisioning:
 
 - **Lazy creation is gone.** `createZepBeforeModelCallback`, `createZepAfterModelCallback`, and `ZepContextTool` no longer create the Zep user or the Zep thread. If the user/thread don't exist yet, persistence for that turn fails with a logged warning (the turn continues without Zep memory) instead of silently creating them.
-- **Call `createUser` / `createThread` yourself**, once, before the first turn — typically in your app's account or session onboarding code:
-
-  ```ts
-  import { createUser, createThread } from "@getzep/zep-adk";
-
-  const { userUuid } = await createUser(zep, { firstName, lastName, email });
-  const { threadUuid } = await createThread(zep, { userUuid });
-  ```
-
+- **Call `createUser` / `createThread` yourself** for a new user and a new thread, once, before the first turn — typically in your app's account or session onboarding code. For a user or a thread that already exists, see [Migrating to the Zep v4 SDK](#migrating-to-the-zep-v4-sdk).
 - **`ZepResourceManager` is gone.** The class that used to own lazy creation and same-turn dedup has been replaced by two independent pieces: the `createUser` / `createThread` functions above (provisioning) and the exported `TurnDedup` guard (used only by `createZepBeforeModelCallback` — the after-model callback has no dedup state of its own). If you passed a shared `resources: ZepResourceManager` instance to keep the before/after callbacks in sync, pass a `TurnDedup` instance as `dedup` instead — or just use `createZepCallbacks`, which creates and wires one automatically:
 
   ```ts

@@ -4,11 +4,20 @@
 
 ### Breaking
 
-- **The package requires the Zep v4 SDK, below v5 (`@getzep/zep-cloud@^4.0.0`).** Zep v4 addresses a user, a thread, and a graph by a server-generated UUID.
-- **The public API takes UUIDs instead of client-chosen IDs.** The `userId` and `threadId` options on the callbacks and the tools are replaced by `userUuid` and `threadUuid`. The session-state keys `zep_user_id` and `zep_thread_id` are replaced by `zep_user_uuid` and `zep_thread_uuid`.
-- **`ensureUser` and `ensureThread` are removed and replaced by `createUser` and `createThread`.** `createUser` returns `{ userUuid, graphUuid }` and `createThread` returns `{ threadUuid, graphUuid }`. Store the UUIDs in your own database and pass them back on each turn. The v4 create methods have no conflict semantics, so neither helper reports whether the resource already existed. The `onCreated` hook of `createUser` now receives the UUID of the new user. Neither helper accepts a client-chosen name, because a v4 create call rejects `user_id` and `thread_id`.
-- **`ZepGraphSearchTool` takes `graphUuid` instead of `graphId`.** When `graphUuid` is omitted, the tool resolves the graph of the identity's `userUuid` one time with `zep.user.get` and caches the result.
-- **Graph search uses the v4 methods.** Each scope calls its own method: `graph.searchEdges`, `graph.searchNodes`, `graph.searchEpisodes`, `graph.searchObservations`, and `graph.searchThreadSummaries`. The `auto` scope calls `graph.getContext`. `searchFilters` takes the camelCase v4 `Zep.SearchFilters` shape. Each scope accepts only the filter keys that apply to it, and Zep returns HTTP 400 `unsupported_filter` for another key. The `limit` option is sent as the v4 `pageSize`.
+Follow the [V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general migration procedure: the UUID columns, the one-time backfill, and the order of steps.
+
+These API changes are specific to this package:
+
+- The package requires `@getzep/zep-cloud@^4.0.0` (Zep V4, below V5).
+- `ensureUser(zep, { userId, ... })` is replaced by `createUser(zep, { firstName, lastName, email, onCreated })`. It has no `userId` option, and it returns `{ userUuid, graphUuid }` instead of a value that tells whether the user was new. The `onCreated` hook receives the UUID of the new user.
+- `ensureThread(zep, { threadId, userId })` is replaced by `createThread(zep, { userUuid })`. It has no `threadId` option, and it returns `{ threadUuid, graphUuid }`.
+- The `userId` and `threadId` options are replaced by `userUuid` and `threadUuid` on `createZepCallbacks`, `createZepBeforeModelCallback`, `createZepAfterModelCallback`, `ZepContextTool`, `ZepGraphSearchTool`, and `resolveIdentity`. Give the stored user UUID and thread UUID to these options.
+- The session-state keys `zep_user_id` and `zep_thread_id` are replaced by `zep_user_uuid` and `zep_thread_uuid`. To use one agent for many users, put the stored UUIDs in these keys. If you omit them, the ADK session `userId` and `sessionId` must be the Zep user UUID and the Zep thread UUID.
+- The `userId` and `threadId` fields of `ResolvedIdentity` and `ContextBuilderInput` are replaced by `userUuid` and `threadUuid`.
+- The `graphId` option of `ZepGraphSearchTool` is replaced by `graphUuid`. `ZepMemoryService` has a new `graphUuid` option. Give the stored graph UUID to these options. If you omit `graphUuid`, the package reads the graph of the user UUID with `zep.user.get`.
+- `searchFilters` on `ZepGraphSearchTool` takes the camelCase V4 `Zep.SearchFilters` shape (for example `dateFilters` and `metadataFilters`). Each search scope accepts only the filter keys that apply to it, and Zep returns HTTP 400 `unsupported_filter` for another key.
+
+For an existing V3 user, thread, or graph, do not call `createUser`, `createThread`, or `graph.create`. Get its UUID one time with the backfill in the migration guide, and store it.
 
 ### Changed
 
