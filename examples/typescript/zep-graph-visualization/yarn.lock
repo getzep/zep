@@ -116,7 +116,7 @@
 
 "@getzep/zep-cloud@^4.0.0":
   version "4.0.0"
-  resolved "https://pkg-proxy.tailed6c6.ts.net/npm/@getzep/zep-cloud/-/zep-cloud-4.0.0.tgz#6251b13e3c9ba81dc712c0b0abe193fbcfd075dc"
+  resolved "https://registry.yarnpkg.com/@getzep/zep-cloud/-/zep-cloud-4.0.0.tgz#6251b13e3c9ba81dc712c0b0abe193fbcfd075dc"
   integrity sha512-l47N08/bAcyzL+1C59Jh4E68prJzSW1Eqj59AHtuo/sde0i80rKBAwLQg4ZH9aHGtLzBXEKs0l4UWTURCnrW0g==
   dependencies:
     zod "^3.23.8"
@@ -2793,7 +2793,7 @@ minimatch@3.1.3:
 
 minimatch@^3.1.2:
   version "3.1.5"
-  resolved "https://pkg-proxy.tailed6c6.ts.net/npm/minimatch/-/minimatch-3.1.5.tgz#580c88f8d5445f2bd6aa8f3cadefa0de79fbd69e"
+  resolved "https://registry.yarnpkg.com/minimatch/-/minimatch-3.1.5.tgz#580c88f8d5445f2bd6aa8f3cadefa0de79fbd69e"
   integrity sha512-VgjWUsnnT6n+NUk6eZq77zeFdpW2LWDzP6zFGrCbHXiYNul5Dzqk2HHQ5uFH2DNW5Xbp8+jVzaeNt94ssEEl4w==
   dependencies:
     brace-expansion "^1.1.7"
