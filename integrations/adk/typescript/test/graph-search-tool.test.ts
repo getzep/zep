@@ -205,11 +205,10 @@ describe("ZepGraphSearchTool — merge precedence", () => {
     expect(mocks.searchEdges).toHaveBeenCalledWith(GRAPH_UUID, {
       pageSize: 10,
       query: "q",
-      reranker: "rrf",
     });
   });
 
-  it("invalid model enum value falls back to default and logs a warning", async () => {
+  it("invalid model scope falls back to default and logs a warning", async () => {
     const { client, mocks } = mockZepClient();
     const logger = capturingLogger();
     const tool = new ZepGraphSearchTool({
@@ -218,17 +217,34 @@ describe("ZepGraphSearchTool — merge precedence", () => {
       logger,
     });
 
-    await callTool(tool, {
+    await callTool(tool, { query: "q", scope: "bogus" });
+
+    expect(mocks.searchEdges).toHaveBeenCalledWith(GRAPH_UUID, {
+      pageSize: 10,
       query: "q",
-      scope: "bogus",
+    });
+    expect(logger.warns.length).toBeGreaterThan(0);
+  });
+
+  it("returns a retryable error for an invalid model reranker", async () => {
+    const { client, mocks } = mockZepClient();
+    const tool = new ZepGraphSearchTool({
+      zep: client as unknown as ZepClient,
+      graphUuid: GRAPH_UUID,
+      logger: silentLogger,
+    });
+
+    const result = await callTool(tool, {
+      query: "q",
       reranker: "not-a-reranker",
     });
 
-    expect(mocks.searchEdges).toHaveBeenCalledWith(
-      GRAPH_UUID,
-      expect.objectContaining({ reranker: "rrf" }),
+    expect(result).toBe(
+      'Error: reranker "not-a-reranker" is not valid. Call the tool again ' +
+        "with no reranker, or with one of these rerankers: rrf, mmr, " +
+        "node_distance, cross_encoder.",
     );
-    expect(logger.warns.length).toBeGreaterThan(0);
+    expect(mocks.searchEdges).not.toHaveBeenCalled();
   });
 });
 
@@ -303,7 +319,6 @@ describe("ZepGraphSearchTool — target resolution", () => {
     expect(mocks.searchEdges).toHaveBeenCalledWith(MOCK_GRAPH_UUID, {
       pageSize: 10,
       query: "where does alice live",
-      reranker: "rrf",
     });
     expect(out).toBe("- Alice lives in Portland.\n- Alice hikes.");
   });
@@ -699,7 +714,6 @@ describe("ZepGraphSearchTool — scope and reranker validation", () => {
       "nodes",
       "observations",
       "thread_summaries",
-      "auto",
     ]);
   });
 
@@ -709,18 +723,54 @@ describe("ZepGraphSearchTool — scope and reranker validation", () => {
     expect(result).toBe(
       "Error: scope 'episodes' does not support reranker 'cross_encoder', " +
         "which this tool always uses. Use one of these scopes: edges, nodes, " +
-        "observations, thread_summaries, auto.",
+        "observations, thread_summaries.",
     );
     expect(searchCalls(mocks)).toBe(0);
   });
 
-  it("sends no reranker for the auto scope", async () => {
+  it("returns a retryable error when the model sends a reranker with the auto scope", async () => {
     const { tool, mocks } = makeTool();
-    await callTool(tool, { query: "q", scope: "auto", reranker: "cross_encoder" });
+    const result = await callTool(tool, {
+      query: "q",
+      scope: "auto",
+      reranker: "cross_encoder",
+    });
+    expect(result).toBe(
+      "Error: scope 'auto' takes no reranker, but reranker 'cross_encoder' " +
+        "was given. Call the tool again with no reranker, or with a scope " +
+        "that accepts this reranker.",
+    );
+    expect(searchCalls(mocks)).toBe(0);
+    expect(mocks.getContext).not.toHaveBeenCalled();
+  });
+
+  it("returns a retryable error when the model selects auto with a pinned reranker", async () => {
+    const { tool, mocks } = makeTool({ reranker: "rrf" });
+    const result = await callTool(tool, { query: "q", scope: "auto" });
+    expect(result).toBe(
+      "Error: scope 'auto' takes no reranker, and this tool always uses " +
+        "reranker 'rrf'. Use one of these scopes: edges, nodes, episodes, " +
+        "observations, thread_summaries.",
+    );
+    expect(mocks.getContext).not.toHaveBeenCalled();
+  });
+
+  it("calls graph.getContext for the auto scope with no reranker", async () => {
+    const { tool, mocks } = makeTool();
+    await callTool(tool, { query: "q", scope: "auto" });
     expect(mocks.getContext).toHaveBeenCalledWith(GRAPH_UUID, {
       query: "q",
       filters: undefined,
     });
+  });
+
+  it("tells the model that the auto scope takes no reranker", () => {
+    const { tool } = makeTool();
+    const props = tool._getDeclaration().parameters?.properties ?? {};
+    expect(props.reranker?.description).toContain(
+      "The 'auto' scope takes no reranker: omit the reranker with scope 'auto'.",
+    );
+    expect(props.reranker?.description).not.toContain("ignores");
   });
 
   it.each([
@@ -731,6 +781,7 @@ describe("ZepGraphSearchTool — scope and reranker validation", () => {
     [{ reranker: "mmr", mmrLambda: null }, "'mmr' requires 'mmrLambda', but 'mmrLambda' is null."],
     [{ reranker: "node_distance", centerNodeUuid: null }, "'node_distance' requires 'centerNodeUuid', but 'centerNodeUuid' is null."],
     [{ reranker: "bogus" }, "Unsupported Zep graph search reranker: 'bogus'."],
+    [{ scope: "auto", reranker: "rrf" }, "scope 'auto' takes no reranker, but reranker 'rrf' is set. Do not set a reranker with scope 'auto', or set another scope."],
   ])("throws at construction for invalid pinned options %j", (options, message) => {
     expect(() => makeTool(options)).toThrow(message);
   });
@@ -746,7 +797,6 @@ describe("ZepGraphSearchTool — scope and reranker validation", () => {
       ["episodes", "mmr"],
       ["observations", "cross_encoder"],
       ["thread_summaries", "cross_encoder"],
-      ["auto", "rrf"],
     ];
     for (const [scope, reranker] of pairs) {
       expect(() => makeTool({ scope, reranker })).not.toThrow();

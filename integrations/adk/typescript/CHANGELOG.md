@@ -23,6 +23,8 @@ For an existing V3 user, thread, or graph, do not call `createUser`, `createThre
 
 - `ZepGraphSearchTool` and `ZepMemoryService` read one page of results from the v4 search methods, which replaces the v3 page number and cursor behavior.
 - `ZepGraphSearchTool` checks each scope and reranker pair before the request. The model sees only the rerankers that the tool can use, and the tool returns an error message that names the valid values for a pair that Zep rejects. The constructor throws an error for pinned options that cannot work together. The tool sends `mmrLambda: 0.5` when the reranker is `"mmr"` and no value is set.
+- `ZepGraphSearchTool` no longer ignores a reranker with the `auto` scope. The `auto` scope takes no reranker. When the model sends a reranker with `auto`, the tool does not call Zep, and it returns an error message that tells the model to call the tool again with no reranker or with a scope that accepts the reranker. The constructor throws an error when `scope` is pinned to `"auto"` and a reranker is pinned. When a reranker is pinned, the tool does not show the `auto` scope.
+- The `reranker` parameter of `ZepGraphSearchTool` has no default value. When the model sends no reranker, the tool sends no reranker, and Zep uses `"rrf"`. When the model sends a value that is not a reranker, the tool does not call Zep, and it returns an error message that lists the valid rerankers.
 
 ### Added
 

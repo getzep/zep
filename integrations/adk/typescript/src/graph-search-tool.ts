@@ -96,7 +96,7 @@ function scopeSupportsReranker(
   scope: ZepGraphSearchScope,
   reranker: Reranker,
 ): boolean {
-  return scope === "auto" || RERANKERS_BY_SCOPE[scope].includes(reranker);
+  return scope !== "auto" && RERANKERS_BY_SCOPE[scope].includes(reranker);
 }
 
 /**
@@ -113,7 +113,6 @@ const SUPPORTED_SCOPES = [
 ] as const satisfies readonly ZepGraphSearchScope[];
 
 const DEFAULT_SCOPE: ZepGraphSearchScope = "edges";
-const DEFAULT_RERANKER: Reranker = "rrf";
 const DEFAULT_LIMIT = 10;
 /** The `mmrLambda` that the tool sends when the reranker is `"mmr"` and no value is set. */
 export const DEFAULT_MMR_LAMBDA = 0.5;
@@ -159,8 +158,15 @@ export interface ZepGraphSearchToolOptions extends ZepIdentityOptions {
    *
    * Tri-state: a concrete value pins the reranker (hidden from the model,
    * always used); `null` hides it AND omits it from the search call;
-   * `undefined`/omitted exposes it to the model, defaulting to `"rrf"`.
-   * The exposed list contains only the rerankers that the tool can use.
+   * `undefined`/omitted exposes it to the model with no default: when the
+   * model sends no reranker, the tool sends no reranker and Zep uses its
+   * default ordering (`"rrf"`). The exposed list contains only the
+   * rerankers that the tool can use.
+   *
+   * The `"auto"` scope takes no reranker. The constructor throws when
+   * `scope` is pinned to `"auto"` and a reranker is pinned, and the tool
+   * returns an error message when the model sends a reranker with
+   * `"auto"`.
    */
   reranker?: Reranker | null;
   /**
@@ -368,6 +374,13 @@ export class ZepGraphSearchTool extends BaseTool {
     if (reason !== undefined) {
       throw new Error(`Invalid Zep graph search options: ${reason}.`);
     }
+    if (this.scopeState.kind === "pinned" && this.scopeState.value === "auto") {
+      throw new Error(
+        `Invalid Zep graph search options: scope 'auto' takes no reranker, ` +
+          `but reranker '${reranker}' is set. Do not set a reranker with ` +
+          `scope 'auto', or set another scope.`,
+      );
+    }
     if (
       this.scopeState.kind === "pinned" &&
       !scopeSupportsReranker(this.scopeState.value, reranker)
@@ -411,7 +424,7 @@ export class ZepGraphSearchTool extends BaseTool {
   private selectableRerankers(): Reranker[] {
     return this.usableRerankers.filter((reranker) =>
       this.selectableScopes.some(
-        (scope) => scope !== "auto" && scopeSupportsReranker(scope, reranker),
+        (scope) => scopeSupportsReranker(scope, reranker),
       ),
     );
   }
@@ -425,7 +438,21 @@ export class ZepGraphSearchTool extends BaseTool {
     reranker: Reranker | undefined,
     centerNodeUuid: string | undefined,
   ): string | undefined {
-    if (scope === "auto" || reranker === undefined) return undefined;
+    if (reranker === undefined) return undefined;
+    if (scope === "auto") {
+      if (this.rerankerState.kind === "pinned") {
+        return (
+          `Error: scope 'auto' takes no reranker, and this tool always uses ` +
+          `reranker '${reranker}'. Use one of these scopes: ` +
+          `${this.selectableScopes.join(", ")}.`
+        );
+      }
+      return (
+        `Error: scope 'auto' takes no reranker, but reranker '${reranker}' ` +
+        "was given. Call the tool again with no reranker, or with a scope " +
+        "that accepts this reranker."
+      );
+    }
     const reason = this.rerankerUnavailableReason(reranker);
     if (reason !== undefined) {
       return (
@@ -543,15 +570,15 @@ export class ZepGraphSearchTool extends BaseTool {
     };
     const lines = rerankers.map((reranker) => {
       const scopes = this.selectableScopes.filter(
-        (scope) => scope !== "auto" && scopeSupportsReranker(scope, reranker),
+        (scope) => scopeSupportsReranker(scope, reranker),
       );
       return `'${reranker}' (${meaning[reranker]}; scopes: ${scopes.join(", ")})`;
     });
     const autoNote = this.selectableScopes.includes("auto")
-      ? " The 'auto' scope ignores the reranker."
+      ? " The 'auto' scope takes no reranker: omit the reranker with scope 'auto'."
       : "";
     return (
-      `Result ordering algorithm. Each reranker works only with the listed scopes: ${lines.join(", ")}.` +
+      `Result ordering algorithm. Optional: omit it to use Zep's default ordering. Each reranker works only with the listed scopes: ${lines.join(", ")}.` +
       autoNote
     );
   }
@@ -585,13 +612,12 @@ export class ZepGraphSearchTool extends BaseTool {
       SCOPE_ENUM,
       DEFAULT_SCOPE,
     );
-    const reranker = this.resolveEnum(
-      "reranker",
-      this.rerankerState,
-      typedArgs.reranker,
-      RERANKER_ENUM,
-      DEFAULT_RERANKER,
-    );
+    const rerankerArg = this.resolveReranker(typedArgs.reranker);
+    if (rerankerArg.error !== undefined) {
+      this.logger.warn(`Zep graph search: ${rerankerArg.error}`);
+      return rerankerArg.error;
+    }
+    const reranker = rerankerArg.value;
     const limit = this.resolveNumber(
       "limit",
       this.limitState,
@@ -687,6 +713,35 @@ export class ZepGraphSearchTool extends BaseTool {
       return fallbackDefault;
     }
     return fallbackDefault;
+  }
+
+  /**
+   * Resolve the reranker: the pinned value, else the value from the model.
+   * The reranker has no default, so the tool sends no reranker when the
+   * model omits it. A value from the model that is not a reranker gives an
+   * error message for the model.
+   */
+  private resolveReranker(modelValue: unknown): {
+    value?: Reranker;
+    error?: string;
+  } {
+    if (this.rerankerState.kind === "pinned") {
+      return { value: this.rerankerState.value };
+    }
+    if (this.rerankerState.kind === "hidden") return {};
+    if (modelValue === undefined || modelValue === null) return {};
+    if (
+      typeof modelValue === "string" &&
+      (RERANKER_ENUM as readonly string[]).includes(modelValue)
+    ) {
+      return { value: modelValue as Reranker };
+    }
+    return {
+      error:
+        `Error: reranker ${JSON.stringify(modelValue)} is not valid. Call ` +
+        `the tool again with no reranker, or with one of these rerankers: ` +
+        `${this.selectableRerankers().join(", ")}.`,
+    };
   }
 
   /**

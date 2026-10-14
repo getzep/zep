@@ -176,7 +176,7 @@ Every search parameter is **tri-state** at construction time:
 | Option | Model param | Default when exposed | Notes |
 |--------|-------------|------------------------|-------|
 | `scope` | `scope` | `"edges"` | `"edges"` \| `"nodes"` \| `"episodes"` \| `"observations"` \| `"thread_summaries"` \| `"auto"` |
-| `reranker` | `reranker` | `"rrf"` | `"rrf"` \| `"mmr"` \| `"node_distance"` \| `"episode_mentions"` \| `"cross_encoder"`. Each scope accepts only some rerankers (see below). |
+| `reranker` | `reranker` | — (no default; omitted unless set, and Zep then uses `"rrf"`) | `"rrf"` \| `"mmr"` \| `"node_distance"` \| `"episode_mentions"` \| `"cross_encoder"`. Each scope accepts only some rerankers (see below). |
 | `limit` | `limit` | `10` | Maximum number of results |
 | `mmrLambda` | `mmrLambda` | `0.5` when `reranker` is `"mmr"`; omitted otherwise | Diversity (`0.0`) vs. relevance (`1.0`); only used when `reranker` is `"mmr"` |
 | `centerNodeUuid` | `centerNodeUuid` | — (no default; omitted unless set) | Required when `reranker` is `"node_distance"` |
@@ -185,7 +185,7 @@ Every search parameter is **tri-state** at construction time:
 
 Each scope calls its own v4 SDK method: `edges` calls `graph.searchEdges`, `nodes` calls `graph.searchNodes`, `episodes` calls `graph.searchEpisodes`, `observations` calls `graph.searchObservations`, and `thread_summaries` calls `graph.searchThreadSummaries`. The `auto` scope calls `graph.getContext` and returns Zep's assembled Context Block. The search methods return one page, and the tool reads that page.
 
-An invalid enum value sent by the model (e.g. an unsupported `scope`) falls back to the documented default and logs a warning; it never throws.
+An unsupported `scope` sent by the model falls back to the documented default and logs a warning; it never throws. An unsupported `reranker` sent by the model gives an error message to the model, and the tool sends no request.
 
 Each v4 search scope accepts only some rerankers:
 
@@ -193,9 +193,9 @@ Each v4 search scope accepts only some rerankers:
 - `nodes`: `"rrf"`, `"mmr"`, `"node_distance"`, and `"cross_encoder"`.
 - `episodes`: `"rrf"` and `"mmr"`.
 - `observations` and `thread_summaries`: `"rrf"`, `"mmr"`, and `"cross_encoder"`.
-- `auto`: the reranker is ignored.
+- `auto`: no reranker. The `auto` scope calls `graph.getContext`, which takes no reranker.
 
-`"node_distance"` requires `centerNodeUuid`, and `"episode_mentions"` requires `searchFilters.episodeUuids`. The tool shows the model only the rerankers that it can use: it removes `"episode_mentions"` when `searchFilters.episodeUuids` is not set, `"mmr"` when `mmrLambda` is `null`, and `"node_distance"` when `centerNodeUuid` is `null`. When `scope` is pinned, the tool shows only the rerankers of that scope. When `reranker` is pinned, the tool shows only the scopes that accept it. The constructor throws an error for pinned options that cannot work together. If the model still sends a pair that Zep rejects, the tool sends no request and returns an error message that names the setting that is not valid and the values to use.
+`"node_distance"` requires `centerNodeUuid`, and `"episode_mentions"` requires `searchFilters.episodeUuids`. The tool shows the model only the rerankers that it can use: it removes `"episode_mentions"` when `searchFilters.episodeUuids` is not set, `"mmr"` when `mmrLambda` is `null`, and `"node_distance"` when `centerNodeUuid` is `null`. When `scope` is pinned, the tool shows only the rerankers of that scope. When `reranker` is pinned, the tool shows only the scopes that accept it. When `reranker` is pinned, the tool does not show the `auto` scope. The constructor throws an error for pinned options that cannot work together, which includes a reranker with `scope: "auto"`. When the model sends a reranker with the `auto` scope, the tool sends no request and returns an error message that tells the model to call the tool again with no reranker or with a scope that accepts the reranker. If the model still sends a pair that Zep rejects, the tool sends no request and returns an error message that names the setting that is not valid and the values to use.
 
 ```ts
 // Fully dynamic: the model chooses scope, reranker, limit, mmrLambda, centerNodeUuid.
