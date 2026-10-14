@@ -64,6 +64,12 @@ backfill in the migration guide, and store it.
   schema default: a model that omits it gets `rrf` on every scope except
   `auto`. When a reranker is pinned, the scope field does not offer `auto`.
 
+## [1.2.2] - 2026-10-01
+
+### Changed
+
+- The package now requires `zep-cloud>=3.23.0,<4`. The upper bound keeps the package on the v3 SDK when `zep-cloud` 4.x is published.
+
 ## [1.2.1] - 2026-07-29
 
 ### Added

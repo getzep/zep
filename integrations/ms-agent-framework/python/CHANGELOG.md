@@ -44,6 +44,12 @@ the migration guide, and store it.
   provider now reads `first_name` and `last_name` from the Zep user one time
   with `user.get` on the first turn, because it no longer takes these names.
 
+## 0.2.2 (2026-10-01)
+
+### Changed
+
+- The package now requires `zep-cloud>=3.23.0,<4`. The upper bound keeps the package on the v3 SDK when `zep-cloud` 4.x is published.
+
 ## 0.2.1 (2026-07-29)
 
 ### Added

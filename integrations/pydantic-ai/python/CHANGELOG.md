@@ -27,6 +27,12 @@ For an existing V3 user, thread, or graph, do not call `create_user`, `create_th
 - The search tool no longer ignores a reranker with the `auto` scope. The `auto` scope calls `graph.get_context`, which takes no reranker. If the model sends a reranker with `scope="auto"`, the tool does not call Zep. It returns an error message as the tool result, so the model can search again with no reranker or with another scope. The `reranker` parameter of the tool schema has no default value. When the model sends no reranker for another scope, the tool still sends `rrf`. When a reranker is pinned, the `scope` field does not offer `auto`, and when `scope="auto"` is pinned, the schema does not offer the reranker.
 - `create_zep_search_tool` raises `ValueError` when a reranker is pinned together with `scope="auto"`. Before, the tool removed the pinned reranker.
 
+## 0.2.2 (2026-10-01)
+
+### Changed
+
+- The package now requires `zep-cloud>=3.23.0,<4`. The upper bound keeps the package on the v3 SDK when `zep-cloud` 4.x is published.
+
 ## 0.2.1 (2026-07-29)
 
 ### Added

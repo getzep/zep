@@ -1,0 +1,180 @@
+[
+  {
+    "name": "Ruth Castellano",
+    "title": "Chief Operating Officer",
+    "team": null,
+    "reports_to": null,
+    "works_on": []
+  },
+  {
+    "name": "Graham Whitlock",
+    "title": "VP Engineering",
+    "team": null,
+    "reports_to": "Ruth Castellano",
+    "works_on": []
+  },
+  {
+    "name": "Helen Okafor",
+    "title": "Director of Quality",
+    "team": "Quality",
+    "reports_to": "Ruth Castellano",
+    "works_on": []
+  },
+  {
+    "name": "Priya Raman",
+    "title": "Quality Engineering Lead",
+    "team": "Quality",
+    "reports_to": "Helen Okafor",
+    "works_on": [
+      "Aster 410"
+    ]
+  },
+  {
+    "name": "Marcus Feld",
+    "title": "Quality Engineer",
+    "team": "Quality",
+    "reports_to": "Priya Raman",
+    "works_on": [
+      "Aster 520"
+    ]
+  },
+  {
+    "name": "Nadia Haddad",
+    "title": "Supplier Quality Engineer",
+    "team": "Quality",
+    "reports_to": "Helen Okafor",
+    "works_on": [
+      "Aster 410",
+      "Aster 520"
+    ]
+  },
+  {
+    "name": "Julien Moreau",
+    "title": "Regulatory Affairs Manager",
+    "team": "Regulatory Affairs",
+    "reports_to": "Ruth Castellano",
+    "works_on": [
+      "Lyric 350"
+    ]
+  },
+  {
+    "name": "Ines Carvalho",
+    "title": "EU Regulatory Specialist",
+    "team": "Regulatory Affairs",
+    "reports_to": "Julien Moreau",
+    "works_on": [
+      "Fernway",
+      "Aster 410"
+    ]
+  },
+  {
+    "name": "Sanjay Mehta",
+    "title": "Reliability Engineering Manager",
+    "team": "Reliability Engineering",
+    "reports_to": "Graham Whitlock",
+    "works_on": []
+  },
+  {
+    "name": "Lena Vogt",
+    "title": "Reliability Engineer",
+    "team": "Reliability Engineering",
+    "reports_to": "Sanjay Mehta",
+    "works_on": [
+      "Aster 410",
+      "Aster 520"
+    ]
+  },
+  {
+    "name": "Owen Briggs",
+    "title": "Reliability Engineer",
+    "team": "Reliability Engineering",
+    "reports_to": "Sanjay Mehta",
+    "works_on": [
+      "Aster 410"
+    ]
+  },
+  {
+    "name": "Aiko Tanaka",
+    "title": "Reliability Engineer",
+    "team": "Reliability Engineering",
+    "reports_to": "Sanjay Mehta",
+    "works_on": [
+      "Lyric 350"
+    ]
+  },
+  {
+    "name": "Tomás Ibarra",
+    "title": "Firmware Lead",
+    "team": "Firmware",
+    "reports_to": "Graham Whitlock",
+    "works_on": [
+      "Lyric 350"
+    ]
+  },
+  {
+    "name": "Grace Lindholm",
+    "title": "Firmware Engineer",
+    "team": "Firmware",
+    "reports_to": "Tomás Ibarra",
+    "works_on": [
+      "Aster 410"
+    ]
+  },
+  {
+    "name": "Ravi Kulkarni",
+    "title": "Firmware Engineer",
+    "team": "Firmware",
+    "reports_to": "Tomás Ibarra",
+    "works_on": [
+      "Lyric 350"
+    ]
+  },
+  {
+    "name": "Colm Brennan",
+    "title": "Field Service Engineer (Europe)",
+    "team": "Field Service",
+    "reports_to": "Ruth Castellano",
+    "works_on": [
+      "Aster 410",
+      "Fernway"
+    ]
+  },
+  {
+    "name": "Dana Whitfield",
+    "title": "Field Service Engineer (North America)",
+    "team": "Field Service",
+    "reports_to": "Ruth Castellano",
+    "works_on": [
+      "Aster 520",
+      "Calder"
+    ]
+  },
+  {
+    "name": "Erik Sandoval",
+    "title": "Sales Director, Hospital Accounts",
+    "team": "Commercial",
+    "reports_to": "Ruth Castellano",
+    "works_on": [
+      "Aster 410",
+      "Aster 520"
+    ]
+  },
+  {
+    "name": "Maya Lund",
+    "title": "Product Marketing Manager",
+    "team": "Commercial",
+    "reports_to": "Erik Sandoval",
+    "works_on": [
+      "Lyric 350"
+    ]
+  },
+  {
+    "name": "Hannah Cole",
+    "title": "Product Manager",
+    "team": "Product Management",
+    "reports_to": "Graham Whitlock",
+    "works_on": [
+      "Lyric 350"
+    ]
+  }
+]

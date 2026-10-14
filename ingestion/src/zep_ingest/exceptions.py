@@ -26,7 +26,7 @@ class BatchUnavailableError(ZepIngestError):
     Batch is the default submission path, but not every deployment exposes it.
     This is the one failure sequential ingestion can work around, so it is the
     only one raised here: a refused key or an exhausted quota surfaces as the
-    underlying API error instead, since sequential graph.add would be refused
+    underlying API error instead, since sequential graph.episode.add would be refused
     the same way. Use method="sequential" (or the default method="auto", which
     falls back automatically). See SETUP.md.
     """

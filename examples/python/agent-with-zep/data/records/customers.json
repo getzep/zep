@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Northgate Regional Hospital",
+    "segment": "acute-care hospital",
+    "country": "Ireland",
+    "notes": "Reported Aster 410 under-delivery (2026-02-03)"
+  },
+  {
+    "name": "St. Brigid's Hospital",
+    "segment": "acute-care hospital",
+    "country": "Ireland",
+    "notes": "Reported Aster 410 under-delivery recurrence (2026-06-18)"
+  },
+  {
+    "name": "Harlow Children's Hospital",
+    "segment": "pediatric hospital",
+    "country": "United States",
+    "notes": "Reported Aster 520 battery swelling (2026-05-20)"
+  },
+  {
+    "name": "Eastmere Health System",
+    "segment": "hospital network",
+    "country": "United States",
+    "notes": "Uses Lyric 300; no complaints; early-access customer for Lyric 350"
+  }
+]

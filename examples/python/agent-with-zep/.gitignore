@@ -1,0 +1,5 @@
+.env
+.venv/
+.cache/
+__pycache__/
+eval/results-*.jsonl

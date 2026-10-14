@@ -1,0 +1,91 @@
+[
+  {
+    "part": "FS-20",
+    "name": "FS-20 flow sensor",
+    "supplier": "Vossbridge Sensors",
+    "used_in": [
+      "Aster 410",
+      "Fernway"
+    ]
+  },
+  {
+    "part": "FS-20B",
+    "name": "FS-20B flow sensor (revised FS-20, in qualification, not yet in production)",
+    "supplier": "Vossbridge Sensors",
+    "used_in": [
+      "Aster 410"
+    ]
+  },
+  {
+    "part": "OS-5",
+    "name": "OS-5 occlusion sensor",
+    "supplier": "Vossbridge Sensors",
+    "used_in": [
+      "Aster 520"
+    ]
+  },
+  {
+    "part": "M-7",
+    "name": "M-7 pump motor",
+    "supplier": "Hollin Motion",
+    "used_in": [
+      "Aster 410",
+      "Aster 520",
+      "Calder"
+    ]
+  },
+  {
+    "part": "BP-3",
+    "name": "BP-3 battery pack",
+    "supplier": "Carrow Energy",
+    "used_in": [
+      "Aster 410",
+      "Aster 520"
+    ]
+  },
+  {
+    "part": "BP-5",
+    "name": "BP-5 battery pack",
+    "supplier": "Carrow Energy",
+    "used_in": [
+      "Lyric 300",
+      "Lyric 350"
+    ]
+  },
+  {
+    "part": "SP-2",
+    "name": "SP-2 SpO2 module",
+    "supplier": "Tamsin Electronics",
+    "used_in": [
+      "Lyric 300",
+      "Lyric 350"
+    ]
+  },
+  {
+    "part": "DP-12",
+    "name": "DP-12 display",
+    "supplier": "Tamsin Electronics",
+    "used_in": [
+      "Lyric 300",
+      "Lyric 350"
+    ]
+  },
+  {
+    "part": "WM-4",
+    "name": "WM-4 wireless module (single source)",
+    "supplier": "Tamsin Electronics",
+    "used_in": [
+      "Lyric 350"
+    ]
+  },
+  {
+    "part": "TS-1",
+    "name": "TS-1 tubing set",
+    "supplier": "Brackwell Polymers",
+    "used_in": [
+      "Aster 410",
+      "Fernway",
+      "Calder"
+    ]
+  }
+]

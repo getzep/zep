@@ -60,6 +60,14 @@ builds it. After the `release` environment is approved, it creates the
 `zep-ingest-v<version>` tag and GitHub Release, then publishes `zep-ingest` to
 PyPI through trusted publishing.
 
+Before dispatching a release, run the production smoke suite locally with your
+own `ZEP_API_KEY` and confirm it passes — the workflow does not run it:
+
+```bash
+cd ingestion
+ZEP_API_URL=https://api.getzep.com uv run python scripts/release_smoke_prod.py
+```
+
 ## Setup requirements
 
 ### PyPI (trusted publishing)

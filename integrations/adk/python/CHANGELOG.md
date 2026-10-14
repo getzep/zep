@@ -25,6 +25,12 @@ For an existing V3 user or thread, do not call `create_user` or `create_thread`.
 - `ZepContextTool` and the after-model callback now call `thread.add_messages(thread_uuid, ...)` with `zep_cloud.AddMessage` objects, and `thread.get_context` replaces `thread.get_user_context`.
 - `ZepMemoryService` gets the Zep user UUID from `resolve_user_uuid` and resolves the graph UUID of the user through `user.get`, or it uses the fixed `graph_uuid`. When `resolve_user_uuid` returns no value or a value that is not a UUID, the service logs an error and returns no memories.
 
+## 0.3.2 (2026-10-01)
+
+### Changed
+
+- The package now requires `zep-cloud>=3.23.0,<4`. The upper bound keeps the package on the v3 SDK when `zep-cloud` 4.x is published.
+
 ## 0.3.1 (2026-07-29)
 
 ### Added
