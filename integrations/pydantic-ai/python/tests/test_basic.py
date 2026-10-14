@@ -32,7 +32,7 @@ class TestPackageMetadata:
         import zep_pydantic_ai
 
         assert hasattr(zep_pydantic_ai, "__version__")
-        assert zep_pydantic_ai.__version__ == "0.2.2"
+        assert zep_pydantic_ai.__version__ == "0.3.0"
 
     def test_author_and_description(self) -> None:
         import zep_pydantic_ai
@@ -45,9 +45,9 @@ class TestZepDeps:
     def test_construct_minimal(self) -> None:
         from zep_pydantic_ai import ZepDeps
 
-        deps = ZepDeps(client=MagicMock(), user_id="u", thread_id="t")
-        assert deps.user_id == "u"
-        assert deps.thread_id == "t"
+        deps = ZepDeps(client=MagicMock(), user_uuid="u", thread_uuid="t")
+        assert deps.user_uuid == "u"
+        assert deps.thread_uuid == "t"
         assert deps.assistant_name == "Assistant"
         assert deps.ignore_roles is None
 
@@ -56,8 +56,8 @@ class TestZepDeps:
 
         deps = ZepDeps(
             client=MagicMock(),
-            user_id="u",
-            thread_id="t",
+            user_uuid="u",
+            thread_uuid="t",
             first_name="Jane",
             last_name="Smith",
         )
@@ -68,8 +68,8 @@ class TestZepDeps:
 
         deps = ZepDeps(
             client=MagicMock(),
-            user_id="u",
-            thread_id="t",
+            user_uuid="u",
+            thread_uuid="t",
             first_name="Jane",
             last_name="Smith",
             user_name="JaneS",
@@ -79,11 +79,11 @@ class TestZepDeps:
     def test_display_name_none_when_no_names(self) -> None:
         from zep_pydantic_ai import ZepDeps
 
-        deps = ZepDeps(client=MagicMock(), user_id="u", thread_id="t")
+        deps = ZepDeps(client=MagicMock(), user_uuid="u", thread_uuid="t")
         assert deps.display_name is None
 
     def test_display_name_first_only(self) -> None:
         from zep_pydantic_ai import ZepDeps
 
-        deps = ZepDeps(client=MagicMock(), user_id="u", thread_id="t", first_name="Jane")
+        deps = ZepDeps(client=MagicMock(), user_uuid="u", thread_uuid="t", first_name="Jane")
         assert deps.display_name == "Jane"

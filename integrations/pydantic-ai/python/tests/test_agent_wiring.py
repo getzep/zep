@@ -11,6 +11,7 @@ These prove the integration plugs into Pydantic AI as documented:
 * ``persist_run`` stores the assistant reply from ``result.new_messages()``.
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -36,17 +37,15 @@ def _clear_cache() -> None:
 def _make_mock_client(context: str | None = "User likes blue.") -> MagicMock:
     client = MagicMock()
     client.user = MagicMock()
-    client.user.add = AsyncMock()
+    client.user.create = AsyncMock()
     client.thread = MagicMock()
     client.thread.create = AsyncMock()
     response = MagicMock()
     response.context = context
     client.thread.add_messages = AsyncMock(return_value=response)
-    search_result = MagicMock()
     edge = MagicMock()
     edge.fact = "User's favourite colour is blue"
-    search_result.edges = [edge]
-    client.graph.search = AsyncMock(return_value=search_result)
+    client.graph.search_edges = AsyncMock(return_value=SimpleNamespace(items=[edge]))
     return client
 
 
@@ -55,7 +54,7 @@ async def test_processor_injects_context_into_run() -> None:
     """The history processor runs during agent.run and the model sees the
     injected Zep context (captured via the model's last request)."""
     client = _make_mock_client(context="User likes blue.")
-    deps = ZepDeps(client=client, user_id="u", thread_id="t", first_name="Jane")
+    deps = ZepDeps(client=client, user_uuid="u", thread_uuid="t", first_name="Jane")
 
     agent = Agent(
         TestModel(custom_output_text="ack"),
@@ -85,7 +84,7 @@ async def test_tool_run_persists_user_turn_once() -> None:
     """A tool-calling run invokes the processor multiple times; the user turn
     must be persisted to Zep exactly once."""
     client = _make_mock_client(context=None)
-    deps = ZepDeps(client=client, user_id="u", thread_id="t")
+    deps = ZepDeps(client=client, user_uuid="u", thread_uuid="t")
 
     agent = Agent(
         TestModel(),  # TestModel calls available tools, then returns
@@ -99,8 +98,8 @@ async def test_tool_run_persists_user_turn_once() -> None:
     # The run made >1 model request (tool call + final), but only one persist.
     assert client.thread.add_messages.call_count == 1
     # The search tool actually ran against the mocked Zep client.
-    client.graph.search.assert_called()
-    assert client.graph.search.call_args.kwargs["user_id"] == "u"
+    client.graph.search_edges.assert_awaited()
+    assert client.graph.search_edges.call_args.args == ("u",)
 
     # persist_run stores the assistant reply afterwards.
     await persist_run(deps, result.new_messages())
@@ -115,11 +114,11 @@ async def test_zep_outage_does_not_break_run() -> None:
     """If every Zep call fails, the agent run still completes."""
     client = MagicMock()
     client.user = MagicMock()
-    client.user.add = AsyncMock(side_effect=RuntimeError("down"))
+    client.user.create = AsyncMock(side_effect=RuntimeError("down"))
     client.thread = MagicMock()
     client.thread.create = AsyncMock(side_effect=RuntimeError("down"))
     client.thread.add_messages = AsyncMock(side_effect=RuntimeError("down"))
-    deps = ZepDeps(client=client, user_id="u", thread_id="t")
+    deps = ZepDeps(client=client, user_uuid="u", thread_uuid="t")
 
     agent = Agent(
         TestModel(custom_output_text="still works"),

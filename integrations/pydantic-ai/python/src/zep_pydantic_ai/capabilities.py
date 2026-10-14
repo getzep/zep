@@ -64,10 +64,9 @@ def create_zep_after_run_hook(
     ``result.new_messages()``.
 
     This hook runs **inside the agent's run loop**, so the hot-path rule
-    applies: any Zep failure (including the lazy provisioning call inside
-    ``persist_run``) is caught and logged, never raised into the run --
-    ``persist_run`` already implements this contract, so this hook simply
-    delegates to it and always returns ``result`` unchanged.
+    applies: any Zep failure is caught and logged, never raised into the run.
+    ``persist_run`` implements this contract and always returns ``result``
+    unchanged.
 
     Args:
         deps: The dependency object carrying the client and identity.  The

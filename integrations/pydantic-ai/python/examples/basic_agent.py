@@ -29,12 +29,17 @@ from __future__ import annotations
 
 import asyncio
 import os
-from uuid import uuid4
 
 from pydantic_ai import Agent
 from zep_cloud.client import AsyncZep
 
-from zep_pydantic_ai import ZepDeps, create_zep_search_tool, zep_capabilities
+from zep_pydantic_ai import (
+    ZepDeps,
+    create_thread,
+    create_user,
+    create_zep_search_tool,
+    zep_capabilities,
+)
 
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -43,11 +48,6 @@ if not ZEP_API_KEY:
     raise OSError("ZEP_API_KEY is not set.")
 if not OPENAI_API_KEY:
     raise OSError("OPENAI_API_KEY is not set.")
-
-# Unique IDs for this demo run so repeated runs don't collide.
-_suffix = uuid4().hex[:8]
-USER_ID = f"pydantic-ai-example-user-{_suffix}"
-THREAD_ID = f"pydantic-ai-example-thread-{_suffix}"
 
 
 async def chat(agent: Agent, deps: ZepDeps, message: str) -> str:
@@ -59,16 +59,28 @@ async def chat(agent: Agent, deps: ZepDeps, message: str) -> str:
 
 async def main() -> None:
     zep = AsyncZep(api_key=ZEP_API_KEY)
+    user = await create_user(
+        zep,
+        first_name="Alice",
+        last_name="Smith",
+        email="alice@example.com",
+    )
+    if user.uuid_ is None:
+        raise RuntimeError("Zep created a user without a UUID")
+    thread = await create_thread(zep, user_uuid=user.uuid_)
+    if thread.uuid_ is None:
+        await zep.user.delete(user_uuid=user.uuid_)
+        raise RuntimeError("Zep created a thread without a UUID")
 
     # ZepDeps must exist before the agent: zep_capabilities(deps) closes over
     # it to wire up automatic assistant persistence via Hooks(after_run=...).
     deps = ZepDeps(
         client=zep,
-        user_id=USER_ID,
-        thread_id=THREAD_ID,
+        user_uuid=user.uuid_,
+        thread_uuid=thread.uuid_,
+        graph_uuid=user.uuid_,
         first_name="Alice",
         last_name="Smith",
-        email="alice@example.com",
     )
 
     agent = Agent(
@@ -88,8 +100,8 @@ async def main() -> None:
     print(f"\n{'=' * 60}")
     print("Pydantic AI + Zep Memory Example")
     print(f"{'=' * 60}")
-    print(f"  User ID:   {USER_ID}")
-    print(f"  Thread ID: {THREAD_ID}")
+    print(f"  User UUID:   {user.uuid_}")
+    print(f"  Thread UUID: {thread.uuid_}")
     print(f"{'=' * 60}\n")
 
     # Phase 1: seed some facts.
@@ -116,6 +128,8 @@ async def main() -> None:
         print(f"Agent: {await chat(agent, deps, msg)}\n")
 
     print("Done!")
+    await zep.thread.delete(thread.uuid_)
+    await zep.user.delete(user_uuid=user.uuid_)
 
 
 if __name__ == "__main__":

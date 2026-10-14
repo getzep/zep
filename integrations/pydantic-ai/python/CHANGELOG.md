@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.3.0 (2026-10-14)
+
+### Changed
+
+- **Breaking:** Migrated to `zep-cloud>=4.0.0,<5`. Replace `user_id`, `thread_id`, and `graph_id` with `user_uuid`, `thread_uuid`, and `graph_uuid`.
+- **Breaking:** Removed `ensure_user` and `ensure_thread`. Create resources before an agent run with `create_user` and `create_thread`; both return V4 SDK models with server-generated UUIDs.
+- Removed resource creation from the history processor. The agent run path uses the UUIDs provided in `ZepDeps` and does not look up resources.
+- Migrated graph search to the V4 scope-specific methods and paged results. Added `auto` scope support through `graph.get_context`.
+- Updated the README, setup guide, example, and tests for V4.
+
 ## 0.2.2 (2026-10-01)
 
 ### Changed

@@ -20,11 +20,10 @@ The integration's public pieces:
   auto-persists the assistant's reply via ``Hooks(after_run=...)``; or pair
   :func:`zep_history_processor` with :func:`persist_run` for explicit control.
 * :func:`create_zep_search_tool` -- a factory producing a model-callable
-  ``pydantic_ai.Tool`` over ``graph.search``, with pin-or-expose control over
+  ``pydantic_ai.Tool`` over V4 graph search methods, with pin-or-expose control over
   which search parameters the model can set.
-* :func:`ensure_user` / :func:`ensure_thread` -- explicit, out-of-band
-  provisioning helpers for onboarding flows that want genuine failures to
-  raise loudly, before the first turn.
+* :func:`create_user` / :func:`create_thread` -- out-of-band helpers that
+  create resources with server-generated UUIDs.
 
 Installation::
 
@@ -36,31 +35,32 @@ Usage::
     from zep_cloud.client import AsyncZep
     from zep_pydantic_ai import ZepDeps, create_zep_search_tool, zep_capabilities
 
-    zep = AsyncZep(api_key="your-api-key")
+    async def main():
+        zep = AsyncZep(api_key="your-api-key")
+        user = await create_user(zep, first_name="Jane", last_name="Smith")
+        thread = await create_thread(zep, user_uuid=user.uuid_)
 
-    deps = ZepDeps(
-        client=zep,
-        user_id="user_123",
-        thread_id="thread_abc",
-        first_name="Jane",
-        last_name="Smith",
-    )
+        deps = ZepDeps(
+            client=zep,
+            user_uuid=user.uuid_,
+            thread_uuid=thread.uuid_,
+            graph_uuid=user.uuid_,
+        )
+        agent = Agent(
+            "openai:gpt-4o-mini",
+            deps_type=ZepDeps,
+            capabilities=zep_capabilities(deps),
+            tools=[create_zep_search_tool()],
+            instructions="You are a helpful assistant with long-term memory.",
+        )
 
-    agent = Agent(
-        "openai:gpt-4o-mini",
-        deps_type=ZepDeps,
-        capabilities=zep_capabilities(deps),
-        tools=[create_zep_search_tool()],
-        instructions="You are a helpful assistant with long-term memory.",
-    )
-
-    result = await agent.run("What did I tell you about my project?", deps=deps)
-    # The user turn and the assistant's reply are both already persisted.
+        result = await agent.run("What did I tell you about my project?", deps=deps)
+        # The user turn and the assistant reply are both persisted.
 """
 
 from .exceptions import ZepDependencyError
 
-__version__ = "0.2.2"
+__version__ = "0.3.0"
 __author__ = "Zep AI"
 __description__ = "Pydantic AI integration for Zep"
 
@@ -80,7 +80,7 @@ try:
         reset_turn_cache,
         zep_history_processor,
     )
-    from .provisioning import UserSetupHook, ensure_thread, ensure_user
+    from .provisioning import UserSetupHook, create_thread, create_user
     from .search import (
         Reranker,
         Scope,
@@ -99,8 +99,8 @@ try:
         "Scope",
         "Reranker",
         "ZepDependencyError",
-        "ensure_user",
-        "ensure_thread",
+        "create_user",
+        "create_thread",
         "UserSetupHook",
         "ContextInput",
         "ContextBuilder",
