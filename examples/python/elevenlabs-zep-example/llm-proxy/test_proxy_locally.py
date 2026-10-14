@@ -71,7 +71,9 @@ async def send_chat_turn(
             except json.JSONDecodeError:
                 continue
             if chunk.get("choices"):
-                full_response += chunk["choices"][0].get("delta", {}).get("content", "")
+                content = chunk["choices"][0].get("delta", {}).get("content")
+                if content:
+                    full_response += content
     return full_response
 
 
