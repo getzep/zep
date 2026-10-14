@@ -45,7 +45,7 @@ Usage::
     print(result.text)
 """
 
-__version__ = "0.3.0"
+__version__ = "1.0.0"
 __author__ = "Zep AI"
 __description__ = "Microsoft Agent Framework integration for Zep"
 
