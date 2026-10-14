@@ -1,60 +1,50 @@
-# Zep LiveKit Integration Full Working Example
+# LiveKit and Zep example
 
-Voice agent that demonstrates LiveKit + Zep integration with persistent memory.
-
-## Setup
-
-### 1. Get API Keys
-
-**OpenAI:** Visit [platform.openai.com](https://platform.openai.com/) and create an API key
-
-**Zep:** Visit [cloud.getzep.com](https://cloud.getzep.com/) and create an API key
-
-**LiveKit:** Visit [cloud.livekit.io](https://cloud.livekit.io/), create a project, and copy the connection details
-
-### 2. Install Dependencies
+This example uses the Zep V4 Python SDK. Install the package dependencies:
 
 ```bash
-python -m venv venv
-source venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Configure Environment
+Create a Zep user and thread with the package `create_user` and
+`create_thread` helpers. Save the returned UUIDs. Set `ZEP_USER_UUID` and
+`ZEP_THREAD_UUID` for the thread agent. Set `ZEP_GRAPH_UUID` for the graph
+agent.
 
-Create a `.env` file with your API keys:
+Set the provider and LiveKit values in `.env`:
 
-```bash
-OPENAI_API_KEY=your_openai_api_key_here
-ZEP_API_KEY=your_zep_cloud_api_key_here
+```text
+ZEP_API_KEY=your-zep-api-key
+ZEP_USER_UUID=your-user-uuid
+ZEP_THREAD_UUID=your-thread-uuid
+ZEP_GRAPH_UUID=your-graph-uuid
+# Optional, for the graph agent:
+ZEP_TEMPLATE_UUID=your-template-uuid
+OPENAI_API_KEY=your-openai-api-key
 LIVEKIT_URL=wss://your-project.livekit.cloud
-LIVEKIT_API_KEY=your_livekit_api_key_here
-LIVEKIT_API_SECRET=your_livekit_api_secret_here
+LIVEKIT_API_KEY=your-livekit-api-key
+LIVEKIT_API_SECRET=your-livekit-api-secret
 ```
 
-## Usage
+Run the thread agent:
 
-1. Run the agent:
 ```bash
 python zep_voice_agent.py dev
 ```
 
-2. Visit https://agents-playground.livekit.io/ and connect to agent.
+Run the graph agent:
 
-
-
-## Optional: Pre-populate graph first
-
-Run the following to add coversations from `conversations.json` to the user graph specified in `populate_memory.py`:
-```bash
-python populate_memory.py
-```
-
-## Optional: Try the more customizable ZepGraphAgent
-
-1. Run the agent:
 ```bash
 python zep_graph_voice_agent.py dev
 ```
 
-2. Visit https://agents-playground.livekit.io/ and connect to agent.
+To load the sample profile and conversations into a user's graph, run:
+
+```bash
+python populate_memory.py
+```
+
+The population script creates new threads. Save each returned thread UUID if
+you will use it in an agent.
