@@ -228,10 +228,34 @@ standalone graph are the same kind of address. Bind the tools and the processors
   Context retrieval and the `zepContext` tool require it. The thread scopes relevance;
   retrieval still spans the whole user graph.
 
-Resolve a v3 `userId` or `graphId` name to its UUID one time, then store the UUID in
-your own database. The integration never calls `lookup` at run time. If no `graphUuid`
-or no `threadUuid` is available, the tools and the processors degrade gracefully
-instead of throwing.
+The integration never calls `lookup` at run time. If no `graphUuid` or no `threadUuid`
+is available, the tools and the processors degrade gracefully instead of throwing.
+
+## Upgrading from Zep v3
+
+Follow the [V4 migration guide](https://help.getzep.com/migrating-from-v3) for the
+general procedure. The changes that are specific to this package are:
+
+- The package requires `@getzep/zep-cloud` `^4.0.0`.
+- `ZepBinding` takes `graphUuid` in place of `userId`/`graphId`, and `ZepThreadBinding`
+  takes `threadUuid` in place of `threadId`. Give the stored UUIDs in the `binding`
+  option of `createZepToolset`, `createZepRememberTool`, `createZepSearchTool`, and
+  `createZepContextTool`.
+- `createZepProcessors`, `ZepInputProcessor`, and `ZepOutputProcessor` take `graphUuid`
+  and `threadUuid` in place of `userId` and `threadId`. A `resolveIdentity` function
+  returns `graphUuid` and `threadUuid`, and a `contextBuilder` receives them.
+- `ensureZepUserAndThread` is replaced by `createZepUserAndThread`, which accepts no
+  `userId` and no `threadId`, creates a new user and thread, and returns
+  `{ userUuid, graphUuid, threadUuid }`. `EnsureIdentityOptions` is replaced by
+  `CreateIdentityOptions`, and `onUserCreated` receives the `userUuid`.
+- `templateId` is renamed to `templateUuid` on `createZepContextTool` and the processors.
+- `searchFilters` is renamed to `filters` on `createZepSearchTool`.
+- `resolveGraphTarget` is renamed to `resolveGraphUuid`.
+- `toRoleType` omits an unknown role in place of mapping it to `norole`.
+
+For an existing v3 user, thread, or graph, do not call `createZepUserAndThread` or
+`graph.create`. Get its UUID one time with the backfill in the migration guide, and
+store it.
 
 ## Roles
 
