@@ -15,17 +15,19 @@ Usage:
     # Initialize Zep client
     zep_client = Zep(api_key="your-api-key")
 
-    # For user-specific storage (standalone Zep adapter: save / search / reset)
-    user_storage = ZepUserStorage(client=zep_client, user_id="user123", thread_id="thread123")
+    # For user-specific storage, pass UUIDs created during onboarding.
+    user_storage = ZepUserStorage(
+        client=zep_client, user_uuid="user-uuid", thread_uuid="thread-uuid"
+    )
 
     # For generic knowledge graphs
-    graph_storage = ZepGraphStorage(client=zep_client, graph_id="knowledge_base")
+    graph_storage = ZepGraphStorage(client=zep_client, graph_uuid="graph-uuid")
 
     # Persist conversation turns and business data
     user_storage.save("Hi there!", metadata={"type": "message", "role": "user"})
 
     # Create tools to let an agent search and write to Zep
-    search_tool = create_search_tool(zep_client, user_id="user123")
+    search_tool = create_search_tool(zep_client, graph_uuid="user-uuid")
 
     # Create agent with tools
     agent = Agent(
@@ -42,7 +44,7 @@ Note:
     Zep into a CrewAI agent's tool list, the supported extension point in 1.x.
 """
 
-__version__ = "1.2.2"
+__version__ = "1.3.0"
 __author__ = "Zep AI"
 __description__ = "Zep integration for CrewAI"
 

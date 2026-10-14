@@ -1,9 +1,4 @@
-"""
-Tests for Zep size-limit handling (``zep_crewai.limits``) and its application
-in the storage save paths and ``ZepAddDataTool``.
-"""
-
-from __future__ import annotations
+"""Tests for V4 payload limits."""
 
 from unittest.mock import MagicMock
 
@@ -19,79 +14,62 @@ from zep_crewai.limits import (
 )
 
 
-def _make_mock_client() -> MagicMock:
+def _client() -> MagicMock:
     client = MagicMock(spec=Zep)
     client.user = MagicMock()
     client.thread = MagicMock()
     client.graph = MagicMock()
+    client.graph.episode = MagicMock()
     return client
 
 
-class TestTruncateHelpers:
-    def test_message_within_limit_unchanged(self) -> None:
-        content = "x" * MESSAGE_CONTENT_MAX
-        assert truncate_message_content(content) is content
-
-    def test_message_over_limit_truncated(self, caplog) -> None:
-        content = "x" * (MESSAGE_CONTENT_MAX + 1)
-        with caplog.at_level("WARNING"):
-            truncated = truncate_message_content(content)
-        assert len(truncated) == MESSAGE_CONTENT_TRUNCATE_TO
-        # Lengths-only logging: content must never reach the logs.
-        assert "xxx" not in caplog.text
-
-    def test_graph_data_within_limit_unchanged(self) -> None:
-        data = "y" * GRAPH_MAX_CHARS
-        assert truncate_graph_data(data) is data
-
-    def test_graph_data_over_limit_truncated(self, caplog) -> None:
-        data = "y" * (GRAPH_MAX_CHARS + 1)
-        with caplog.at_level("WARNING"):
-            truncated = truncate_graph_data(data)
-        assert len(truncated) == GRAPH_MAX_CHARS
-        assert "yyy" not in caplog.text
+def test_message_under_limit_is_unchanged() -> None:
+    value = "x" * MESSAGE_CONTENT_MAX
+    assert truncate_message_content(value) is value
 
 
-class TestSaveTruncation:
-    def test_save_truncates_oversize(self) -> None:
-        """ZepUserStorage.save() bounds an over-long message before
-        thread.add_messages."""
-        client = _make_mock_client()
+def test_message_over_limit_is_truncated(caplog) -> None:
+    with caplog.at_level("WARNING"):
+        result = truncate_message_content("x" * (MESSAGE_CONTENT_MAX + 1))
+    assert len(result) == MESSAGE_CONTENT_TRUNCATE_TO
+    assert "xxx" not in caplog.text
 
-        storage = ZepUserStorage(client=client, user_id="u1", thread_id="t1")
-        storage.save("z" * 5000, metadata={"type": "message", "role": "user"})
 
-        message = client.thread.add_messages.call_args.kwargs["messages"][0]
-        assert len(message.content) == MESSAGE_CONTENT_TRUNCATE_TO
+def test_graph_data_under_limit_is_unchanged() -> None:
+    value = "y" * GRAPH_MAX_CHARS
+    assert truncate_graph_data(value) is value
 
-    def test_zep_storage_save_truncates_oversize(self) -> None:
-        """ZepStorage.save() bounds an over-long message the same way."""
-        client = _make_mock_client()
 
-        storage = ZepStorage(client=client, user_id="u1", thread_id="t1")
-        storage.save("z" * 5000, metadata={"type": "message", "role": "user"})
+def test_graph_data_over_limit_is_truncated(caplog) -> None:
+    with caplog.at_level("WARNING"):
+        result = truncate_graph_data("y" * (GRAPH_MAX_CHARS + 1))
+    assert len(result) == GRAPH_MAX_CHARS
+    assert "yyy" not in caplog.text
 
-        message = client.thread.add_messages.call_args.kwargs["messages"][0]
-        assert len(message.content) == MESSAGE_CONTENT_TRUNCATE_TO
 
-    def test_graph_save_truncates_oversize(self) -> None:
-        """ZepGraphStorage.save() bounds an over-long graph payload at
-        GRAPH_MAX_CHARS."""
-        client = _make_mock_client()
+def test_user_storage_truncates_message() -> None:
+    client = _client()
+    storage = ZepUserStorage(client, "u", "t", graph_uuid="g")
+    storage.save("x" * 5000, {"type": "message"})
+    message = client.thread.add_messages.call_args.kwargs["messages"][0]
+    assert len(message.content) == MESSAGE_CONTENT_TRUNCATE_TO
 
-        storage = ZepGraphStorage(client=client, graph_id="g1")
-        storage.save("z" * 15000, metadata={"type": "text"})
 
-        data = client.graph.add.call_args.kwargs["data"]
-        assert len(data) == GRAPH_MAX_CHARS
+def test_compat_storage_truncates_message() -> None:
+    client = _client()
+    storage = ZepStorage(client, "u", "t", graph_uuid="g")
+    storage.save("x" * 5000, {"type": "message"})
+    message = client.thread.add_messages.call_args.kwargs["messages"][0]
+    assert len(message.content) == MESSAGE_CONTENT_TRUNCATE_TO
 
-    def test_add_data_tool_truncates_oversize(self) -> None:
-        """ZepAddDataTool bounds an over-long graph payload at
-        GRAPH_MAX_CHARS."""
-        client = _make_mock_client()
 
-        tool = ZepAddDataTool(client=client, graph_id="g1")
-        tool._run("z" * 15000, data_type="text")
+def test_graph_storage_truncates_episode() -> None:
+    client = _client()
+    ZepGraphStorage(client, "g").save("x" * 15000)
+    assert len(client.graph.episode.add.call_args.kwargs["data"]) == GRAPH_MAX_CHARS
 
-        data = client.graph.add.call_args.kwargs["data"]
-        assert len(data) == GRAPH_MAX_CHARS
+
+def test_add_data_tool_truncates_episode() -> None:
+    client = _client()
+    ZepAddDataTool(client, graph_uuid="g")._run("x" * 15000)
+    assert len(client.graph.episode.add.call_args.kwargs["data"]) == GRAPH_MAX_CHARS

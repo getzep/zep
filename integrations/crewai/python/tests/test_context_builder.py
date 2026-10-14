@@ -20,8 +20,6 @@ from zep_crewai.user_storage import ContextInput
 
 def _make_mock_client() -> MagicMock:
     client = MagicMock(spec=Zep)
-    client.user = MagicMock()
-    client.thread = MagicMock()
     client.graph = MagicMock()
     return client
 
@@ -39,19 +37,23 @@ class TestContextBuilder:
             return "Built context block"
 
         storage = ZepUserStorage(
-            client=client, user_id="user-1", thread_id="thread-1", context_builder=builder
+            client=client,
+            user_uuid="user-1",
+            thread_uuid="thread-1",
+            graph_uuid="graph-1",
+            context_builder=builder,
         )
 
         results = storage.search("What's up?", limit=5)
 
-        client.thread.get_user_context.assert_not_called()
-        client.graph.search.assert_not_called()
+        client.graph.get_context.assert_not_called()
 
         assert len(received) == 1
         built = received[0]
         assert built.zep is client
-        assert built.user_id == "user-1"
-        assert built.thread_id == "thread-1"
+        assert built.user_uuid == "user-1"
+        assert built.thread_uuid == "thread-1"
+        assert built.graph_uuid == "graph-1"
         assert built.user_message == "What's up?"
 
         assert isinstance(results, list)
@@ -69,7 +71,11 @@ class TestContextBuilder:
             return None
 
         storage = ZepUserStorage(
-            client=client, user_id="user-1", thread_id="thread-1", context_builder=builder
+            client=client,
+            user_uuid="user-1",
+            thread_uuid="thread-1",
+            graph_uuid="graph-1",
+            context_builder=builder,
         )
 
         results = storage.search("anything")
@@ -86,8 +92,9 @@ class TestContextBuilder:
 
         storage = ZepUserStorage(
             client=client,
-            user_id="user-1",
-            thread_id="thread-1",
+            user_uuid="user-1",
+            thread_uuid="thread-1",
+            graph_uuid="graph-1",
             context_builder=failing_builder,
         )
 

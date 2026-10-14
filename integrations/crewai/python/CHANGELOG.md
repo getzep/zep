@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-15
+
+### Changed
+
+- Migrated to `zep-cloud>=4.0.0,<5`. Resource inputs now use server-generated
+  `user_uuid`, `thread_uuid`, and `graph_uuid` values.
+- `ensure_user` and `ensure_thread` now create server-identified resources and
+  return the resource with a `created` flag. Storage does not provision resources
+  on the turn path.
+- Replaced V3 graph add and search calls with V4 episode ingestion, scoped
+  search, and graph context retrieval.
+- Search filters now use the V4 type for each scope. Unsupported filter fields
+  return an error instead of being dropped. The `auto` scope sends only query
+  and supported filters because V4 graph context requests do not accept scoped
+  search controls.
+- Updated CrewAI storage, search tools, examples, and documentation for V4.
+- **Breaking:** `ZepStorage`, `ZepUserStorage`, `ZepGraphStorage`, and tool
+  constructors now accept UUID values instead of V3 IDs.
+
 ## [1.2.2] - 2026-10-01
 
 ### Changed

@@ -1,238 +1,114 @@
-"""
-Basic tests for the zep-crewai package.
-"""
+"""Basic tests for the CrewAI V4 storage adapter."""
 
 from unittest.mock import MagicMock
 
 import pytest
+from zep_cloud.client import Zep
 
 from zep_crewai import ZepStorage
 
 
-def test_package_import():
-    """Test that the package can be imported successfully."""
+def _client() -> MagicMock:
+    client = MagicMock(spec=Zep)
+    client.user = MagicMock()
+    client.thread = MagicMock()
+    client.graph = MagicMock()
+    client.graph.episode = MagicMock()
+    return client
+
+
+def _storage(client: MagicMock | None = None) -> ZepStorage:
+    return ZepStorage(
+        client=client or _client(),
+        user_uuid="user-uuid",
+        thread_uuid="thread-uuid",
+        graph_uuid="graph-uuid",
+    )
+
+
+def test_package_import() -> None:
     import zep_crewai
 
-    assert zep_crewai is not None
+    assert zep_crewai.__version__ == "1.3.0"
 
 
-def test_zep_storage_import():
-    """Test that ZepStorage can be imported successfully."""
+def test_storage_import() -> None:
     assert ZepStorage is not None
 
 
-class TestBasicFunctionality:
-    """Basic functionality tests for the zep-crewai package."""
-
-    def test_package_structure(self):
-        """Test that the package has the expected structure."""
-        import zep_crewai
-
-        assert hasattr(zep_crewai, "__version__")
-        assert hasattr(zep_crewai, "__author__")
-        assert hasattr(zep_crewai, "__description__")
+def test_storage_requires_uuids() -> None:
+    client = _client()
+    with pytest.raises(ValueError, match="user_uuid and thread_uuid"):
+        ZepStorage(client, user_uuid="", thread_uuid="thread-uuid")
 
 
-class TestZepStorageMock:
-    """Test ZepStorage with mock clients."""
+def test_storage_requires_zep_client() -> None:
+    with pytest.raises(TypeError, match="client must be an instance of Zep"):
+        ZepStorage("invalid", user_uuid="u", thread_uuid="t")  # type: ignore[arg-type]
 
-    def test_zep_storage_initialization_with_mock(self):
-        """Test that ZepStorage can be initialized with a mock client."""
-        try:
-            from zep_cloud.client import Zep
 
-            # Create a mock Zep client
-            mock_client = MagicMock(spec=Zep)
-            storage = ZepStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
-            assert storage is not None
-            assert storage._client is mock_client
-            assert storage._user_id == "test-user"
-            assert storage._thread_id == "test-thread"
+def test_storage_properties() -> None:
+    storage = _storage()
+    assert storage.user_uuid == "user-uuid"
+    assert storage.thread_uuid == "thread-uuid"
+    assert storage.graph_uuid == "graph-uuid"
 
-        except ImportError:
-            # If zep_cloud is not available, test with a generic mock
-            class MockZep:
-                pass
 
-            mock_client = MockZep()
-            with pytest.raises(TypeError, match="client must be an instance of Zep"):
-                ZepStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
+def test_message_save_uses_v4_thread_uuid() -> None:
+    client = _client()
+    _storage(client).save("hello", {"type": "message", "role": "user", "name": "Alice"})
+    client.thread.add_messages.assert_called_once()
+    assert client.thread.add_messages.call_args.args[0] == "thread-uuid"
+    message = client.thread.add_messages.call_args.kwargs["messages"][0]
+    assert (message.content, message.role, message.name) == ("hello", "user", "Alice")
 
-    def test_zep_storage_requires_user_id_and_thread_id(self):
-        """Test that ZepStorage requires both user_id and thread_id."""
-        try:
-            from zep_cloud.client import Zep
 
-            mock_client = MagicMock(spec=Zep)
+def test_graph_save_uses_v4_episode_api() -> None:
+    client = _client()
+    _storage(client).save("likes tea", {"type": "text"})
+    client.graph.episode.add.assert_called_once_with(
+        "graph-uuid", data="likes tea", type="text", metadata={"type": "text"}
+    )
 
-            with pytest.raises(ValueError, match="user_id is required"):
-                ZepStorage(client=mock_client, user_id="", thread_id="test-thread")
 
-            with pytest.raises(ValueError, match="thread_id is required"):
-                ZepStorage(client=mock_client, user_id="test-user", thread_id="")
+def test_graph_save_defaults_to_text() -> None:
+    client = _client()
+    _storage(client).save("likes tea")
+    assert client.graph.episode.add.call_args.kwargs["type"] == "text"
 
-        except ImportError:
-            pytest.skip("zep_cloud not available")
 
-    def test_zep_storage_requires_zep_client(self):
-        """Test that ZepStorage raises TypeError when client is not Zep."""
-        with pytest.raises(TypeError, match="client must be an instance of Zep"):
-            ZepStorage(client="not_a_client", user_id="test-user", thread_id="test-thread")
+def test_save_does_not_raise_on_sdk_error(caplog: pytest.LogCaptureFixture) -> None:
+    client = _client()
+    client.thread.add_messages.side_effect = RuntimeError("offline")
+    with caplog.at_level("ERROR"):
+        _storage(client).save("hello", {"type": "message"})
+    assert "offline" in caplog.text
 
-    def test_zep_storage_save_message_sync(self):
-        """Test saving memory as thread message using sync interface."""
-        try:
-            from zep_cloud.client import Zep
 
-            mock_client = MagicMock(spec=Zep)
-            mock_client.user = MagicMock()
-            mock_client.thread = MagicMock()
-            mock_client.thread.add_messages = MagicMock()
+def test_search_uses_auto_context() -> None:
+    client = _client()
+    client.graph.get_context.return_value.context = "known fact"
+    result = _storage(client).search("question")
+    assert "known fact" in result[0]["context"]
+    client.graph.get_context.assert_called_once()
+    assert client.graph.get_context.call_args.args[0] == "graph-uuid"
 
-            storage = ZepStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
 
-            # Test saving message content to thread
-            storage.save(
-                "Test message content",
-                metadata={"type": "message", "role": "user", "name": "John Doe"},
-            )
+def test_search_sdk_error_degrades_to_empty() -> None:
+    client = _client()
+    client.graph.get_context.side_effect = RuntimeError("offline")
+    assert _storage(client).search("question") == []
 
-            # Verify the thread add_messages was called
-            mock_client.thread.add_messages.assert_called_once()
 
-            # Check the call arguments
-            call_args = mock_client.thread.add_messages.call_args
-            assert call_args[1]["thread_id"] == "test-thread"
-            assert len(call_args[1]["messages"]) == 1
+def test_reset_does_not_delete_persistent_resources() -> None:
+    client = _client()
+    _storage(client).reset()
+    client.user.delete.assert_not_called()
 
-            message = call_args[1]["messages"][0]
-            assert message.content == "Test message content"
-            assert message.role == "user"
-            assert message.name == "John Doe"
 
-        except ImportError:
-            pytest.skip("zep_cloud not available")
-
-    def test_save_does_not_raise_on_zep_error(self, caplog):
-        """save() must log and return normally when the Zep SDK call raises --
-        never propagate the error into the crew."""
-        try:
-            from zep_cloud.client import Zep
-
-            mock_client = MagicMock(spec=Zep)
-            mock_client.user = MagicMock()
-            mock_client.thread = MagicMock()
-            mock_client.thread.add_messages = MagicMock(side_effect=Exception("Zep API error"))
-
-            storage = ZepStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
-
-            with caplog.at_level("ERROR"):
-                storage.save(
-                    "Test message content",
-                    metadata={"type": "message", "role": "user", "name": "John Doe"},
-                )
-
-            mock_client.thread.add_messages.assert_called_once()
-            assert "Zep API error" in caplog.text
-
-        except ImportError:
-            pytest.skip("zep_cloud not available")
-
-    def test_zep_storage_save_graph_sync(self):
-        """Test saving memory as graph data using sync interface."""
-        try:
-            from zep_cloud.client import Zep
-
-            mock_client = MagicMock(spec=Zep)
-            mock_client.user = MagicMock()
-            mock_client.thread = MagicMock()
-            mock_client.graph = MagicMock()
-            mock_client.graph.add = MagicMock()
-
-            storage = ZepStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
-
-            # Test saving text content to graph
-            storage.save("Test text content", metadata={"type": "text", "category": "facts"})
-
-            # Verify the graph add was called
-            mock_client.graph.add.assert_called_once()
-
-            # Check the call arguments
-            call_args = mock_client.graph.add.call_args
-            assert call_args[1]["user_id"] == "test-user"
-            assert call_args[1]["data"] == "Test text content"
-            assert call_args[1]["type"] == "text"
-
-        except ImportError:
-            pytest.skip("zep_cloud not available")
-
-    def test_zep_storage_search_sync(self):
-        """Test searching memory using sync interface."""
-        try:
-            from zep_cloud.client import Zep
-            from zep_cloud.types import EntityEdge, GraphSearchResults
-
-            mock_client = MagicMock(spec=Zep)
-            mock_client.thread = MagicMock()
-            mock_client.thread.get_user_context = MagicMock()
-            mock_client.graph = MagicMock()
-            mock_client.graph.search = MagicMock()
-
-            # Mock thread context response
-            mock_thread_context = MagicMock()
-            mock_thread_context.context = "Mock thread context summary"
-            mock_client.thread.get_user_context.return_value = mock_thread_context
-
-            # Mock graph search response
-            mock_edge = MagicMock(spec=EntityEdge)
-            mock_edge.fact = "Mock fact from graph"
-            mock_edge.valid_at = "2023-01-01"
-            mock_edge.invalid_at = None
-
-            mock_graph_results = MagicMock(spec=GraphSearchResults)
-            mock_graph_results.edges = [mock_edge]
-            mock_client.graph.search.return_value = mock_graph_results
-
-            storage = ZepStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
-
-            results = storage.search("test query", limit=5)
-
-            # Should return a list of results
-            assert isinstance(results, list)
-            assert len(results) >= 1  # At least thread context
-
-            # Verify both thread context and graph search were called
-            mock_client.thread.get_user_context.assert_called_once_with(thread_id="test-thread")
-            mock_client.graph.search.assert_called_once()
-
-        except ImportError:
-            pytest.skip("zep_cloud not available")
-
-    def test_zep_storage_reset_sync(self):
-        """Test resetting memory using sync interface."""
-        try:
-            from zep_cloud.client import Zep
-
-            mock_client = MagicMock(spec=Zep)
-
-            storage = ZepStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
-
-            # Should not raise an exception (currently just logs a warning)
-            storage.reset()
-
-        except ImportError:
-            pytest.skip("zep_cloud not available")
-
-    def test_zep_storage_properties(self):
-        """Test ZepStorage properties."""
-        try:
-            from zep_cloud.client import Zep
-
-            mock_client = MagicMock(spec=Zep)
-            storage = ZepStorage(client=mock_client, user_id="test-user", thread_id="test-thread")
-
-            assert storage.user_id == "test-user"
-            assert storage.thread_id == "test-thread"
-
-        except ImportError:
-            pytest.skip("zep_cloud not available")
+def test_storage_resolves_graph_uuid_once_when_omitted() -> None:
+    client = _client()
+    client.user.get.return_value.graph_uuid = "resolved-graph"
+    storage = ZepStorage(client, user_uuid="user-uuid", thread_uuid="thread-uuid")
+    assert storage.graph_uuid == "resolved-graph"
+    client.user.get.assert_called_once_with("user-uuid")

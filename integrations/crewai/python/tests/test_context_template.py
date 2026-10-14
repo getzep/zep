@@ -33,8 +33,9 @@ class TestContextTemplate:
 
         storage = ZepUserStorage(
             client=client,
-            user_id="user-1",
-            thread_id="thread-1",
+            user_uuid="user-1",
+            thread_uuid="thread-1",
+            graph_uuid="graph-1",
             context_builder=builder,
             context_template=custom_template,
         )
@@ -54,7 +55,11 @@ class TestContextTemplate:
             return tricky_context
 
         storage = ZepUserStorage(
-            client=client, user_id="user-1", thread_id="thread-1", context_builder=builder
+            client=client,
+            user_uuid="user-1",
+            thread_uuid="thread-1",
+            graph_uuid="graph-1",
+            context_builder=builder,
         )
 
         # Must not raise.
@@ -83,8 +88,9 @@ class TestContextTemplate:
 
         storage = ZepUserStorage(
             client=client,
-            user_id="user-1",
-            thread_id="thread-1",
+            user_uuid="user-1",
+            thread_uuid="thread-1",
+            graph_uuid="graph-1",
             context_template=custom_template,
         )
 
