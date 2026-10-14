@@ -109,8 +109,9 @@ describe("ZepGraphSearchTool — pin behavior", () => {
 
     expect(mocks.searchNodes).not.toHaveBeenCalled();
     expect(mocks.searchEdges).toHaveBeenCalledWith(GRAPH_UUID, {
-      limit: 10,
-      body: { query: "q", reranker: "rrf" },
+      pageSize: 10,
+      query: "q",
+      reranker: "rrf",
     });
   });
 });
@@ -145,11 +146,12 @@ describe("ZepGraphSearchTool — hidden (null) params", () => {
 
     await callTool(tool, { query: "q" });
 
-    const call = mocks.searchEdges.mock.calls[0]?.[1] as {
-      body: Record<string, unknown>;
-    };
-    expect(call.body).not.toHaveProperty("mmrLambda");
-    expect(call.body).not.toHaveProperty("centerNodeUuid");
+    const call = mocks.searchEdges.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(call).not.toHaveProperty("mmrLambda");
+    expect(call).not.toHaveProperty("centerNodeUuid");
   });
 });
 
@@ -167,7 +169,7 @@ describe("ZepGraphSearchTool — merge precedence", () => {
 
     expect(mocks.searchEdges).toHaveBeenCalledWith(
       GRAPH_UUID,
-      expect.objectContaining({ limit: 3 }),
+      expect.objectContaining({ pageSize: 3 }),
     );
   });
 
@@ -183,7 +185,7 @@ describe("ZepGraphSearchTool — merge precedence", () => {
 
     expect(mocks.searchNodes).toHaveBeenCalledWith(
       GRAPH_UUID,
-      expect.objectContaining({ limit: 25 }),
+      expect.objectContaining({ pageSize: 25 }),
     );
     expect(mocks.searchEdges).not.toHaveBeenCalled();
   });
@@ -199,8 +201,9 @@ describe("ZepGraphSearchTool — merge precedence", () => {
     await callTool(tool, { query: "q" });
 
     expect(mocks.searchEdges).toHaveBeenCalledWith(GRAPH_UUID, {
-      limit: 10,
-      body: { query: "q", reranker: "rrf" },
+      pageSize: 10,
+      query: "q",
+      reranker: "rrf",
     });
   });
 
@@ -221,16 +224,14 @@ describe("ZepGraphSearchTool — merge precedence", () => {
 
     expect(mocks.searchEdges).toHaveBeenCalledWith(
       GRAPH_UUID,
-      expect.objectContaining({
-        body: expect.objectContaining({ reranker: "rrf" }),
-      }),
+      expect.objectContaining({ reranker: "rrf" }),
     );
     expect(logger.warns.length).toBeGreaterThan(0);
   });
 });
 
 describe("ZepGraphSearchTool — constructor-only params", () => {
-  it("searchFilters is passed through as the v4 body filters", async () => {
+  it("searchFilters is passed through as the v4 filters", async () => {
     const { client, mocks } = mockZepClient();
     const searchFilters = { nodeLabels: ["Person"] };
     const tool = new ZepGraphSearchTool({
@@ -244,13 +245,11 @@ describe("ZepGraphSearchTool — constructor-only params", () => {
 
     expect(mocks.searchEdges).toHaveBeenCalledWith(
       GRAPH_UUID,
-      expect.objectContaining({
-        body: expect.objectContaining({ filters: searchFilters }),
-      }),
+      expect.objectContaining({ filters: searchFilters }),
     );
   });
 
-  it("bfsOriginNodeUuids is passed through in the v4 body", async () => {
+  it("bfsOriginNodeUuids is passed through in the v4 request", async () => {
     const { client, mocks } = mockZepClient();
     const bfsOriginNodeUuids = ["uuid-1", "uuid-2"];
     const tool = new ZepGraphSearchTool({
@@ -264,9 +263,7 @@ describe("ZepGraphSearchTool — constructor-only params", () => {
 
     expect(mocks.searchEdges).toHaveBeenCalledWith(
       GRAPH_UUID,
-      expect.objectContaining({
-        body: expect.objectContaining({ bfsOriginNodeUuids }),
-      }),
+      expect.objectContaining({ bfsOriginNodeUuids }),
     );
   });
 
@@ -302,8 +299,9 @@ describe("ZepGraphSearchTool — target resolution", () => {
 
     expect(mocks.userGet).toHaveBeenCalledWith(MOCK_USER_UUID);
     expect(mocks.searchEdges).toHaveBeenCalledWith(MOCK_GRAPH_UUID, {
-      limit: 10,
-      body: { query: "where does alice live", reranker: "rrf" },
+      pageSize: 10,
+      query: "where does alice live",
+      reranker: "rrf",
     });
     expect(out).toBe("- Alice lives in Portland.\n- Alice hikes.");
   });
@@ -339,7 +337,7 @@ describe("ZepGraphSearchTool — target resolution", () => {
     expect(mocks.userGet).not.toHaveBeenCalled();
     expect(mocks.searchNodes).toHaveBeenCalledWith(
       GRAPH_UUID,
-      expect.objectContaining({ body: expect.objectContaining({ query: "what is zep" }) }),
+      expect.objectContaining({ query: "what is zep" }),
     );
     expect(out).toBe("- Zep: A memory service.");
   });

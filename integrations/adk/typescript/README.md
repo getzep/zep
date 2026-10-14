@@ -9,10 +9,8 @@ Zep v4 addresses every user, thread, and graph by a server-generated UUID. A v4 
 ## Installation
 
 ```bash
-npm install @getzep/zep-adk @google/adk @getzep/zep-cloud@preview
+npm install @getzep/zep-adk @google/adk @getzep/zep-cloud
 ```
-
-The v4 SDK is a pre-release. The npm `preview` dist-tag points to `4.0.0-alpha.5`.
 
 `@google/adk` is a peer dependency (`^1.2.0`) — install the version your app uses; this package is built and tested against `@google/adk@1.2.0` and verified stable across the `1.x` line.
 
@@ -183,7 +181,7 @@ Every search parameter is **tri-state** at construction time:
 | `mmrLambda` | `mmrLambda` | — (no default; omitted unless set) | Diversity (`0.0`) vs. relevance (`1.0`); only used when `reranker` is `"mmr"` |
 | `centerNodeUuid` | `centerNodeUuid` | — (no default; omitted unless set) | Required when `reranker` is `"node_distance"` |
 
-`searchFilters` and `bfsOriginNodeUuids` are always constructor-only — never exposed to the model, always applied to every search when set. `searchFilters` takes the v4 `Zep.SearchFilters` shape, whose fields are camelCase (`nodeLabels`, `edgeTypes`, `createdAt`, and the other v4 filter fields).
+`searchFilters` and `bfsOriginNodeUuids` are always constructor-only — never exposed to the model, always applied to every search when set. `searchFilters` takes the v4 `Zep.SearchFilters` shape, whose fields are camelCase (`nodeLabels`, `edgeTypes`, `dateFilters`, `metadataFilters`, and the other v4 filter fields). Each scope accepts only the filter keys that apply to it. Zep returns HTTP 400 `unsupported_filter` for a key that the scope cannot apply.
 
 Each scope calls its own v4 SDK method: `edges` calls `graph.searchEdges`, `nodes` calls `graph.searchNodes`, `episodes` calls `graph.searchEpisodes`, `observations` calls `graph.searchObservations`, and `thread_summaries` calls `graph.searchThreadSummaries`. The `auto` scope calls `graph.getContext` and returns Zep's assembled Context Block. The search methods return one page, and the tool reads that page.
 
@@ -335,7 +333,7 @@ Zep ingestion is asynchronous — a just-added message is not instantly retrieva
 
 ## Migrating to the Zep v4 SDK
 
-The unreleased version of this package targets `@getzep/zep-cloud@4.0.0-alpha.5`. Zep v4 addresses a user, a thread, and a graph by a server-generated UUID, so the public API changed with it:
+The unreleased version of this package targets `@getzep/zep-cloud@^4.0.0`. Zep v4 addresses a user, a thread, and a graph by a server-generated UUID, so the public API changed with it:
 
 | Before (v3) | After (v4) |
 |---|---|
@@ -445,7 +443,7 @@ npm run example     # run examples/basic-agent.ts
 
 - Node.js >= 20
 - `@google/adk` ^1.2.0 (peer)
-- `@getzep/zep-cloud` 4.0.0-alpha.5 (npm dist-tag `preview`)
+- `@getzep/zep-cloud` ^4.0.0
 
 ## License
 

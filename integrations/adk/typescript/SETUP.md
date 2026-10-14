@@ -28,10 +28,10 @@ You only need this to run the model. The Zep integration wiring (persisting mess
 From your project (the package and its peers):
 
 ```bash
-npm install @getzep/zep-adk @google/adk @getzep/zep-cloud@preview
+npm install @getzep/zep-adk @google/adk @getzep/zep-cloud
 ```
 
-This package targets the Zep v4 SDK. The v4 SDK is a pre-release, and the npm `preview` dist-tag points to `4.0.0-alpha.5`.
+This package targets the Zep v4 SDK, `@getzep/zep-cloud@^4.0.0`.
 
 To work on this package from a checkout of the repo:
 

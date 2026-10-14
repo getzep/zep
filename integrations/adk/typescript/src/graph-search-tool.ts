@@ -31,10 +31,7 @@
  */
 
 import type { ZepClient, Zep } from "@getzep/zep-cloud";
-import {
-  BaseTool,
-  type Context,
-} from "@google/adk";
+import { BaseTool, type Context } from "@google/adk";
 import { type FunctionDeclaration, type Schema, Type } from "@google/genai";
 import {
   resolveIdentity,
@@ -56,12 +53,7 @@ const DEFAULT_DESCRIPTION =
  * matching v4 method.
  */
 export type ZepGraphSearchScope =
-  | "edges"
-  | "nodes"
-  | "episodes"
-  | "observations"
-  | "thread_summaries"
-  | "auto";
+  "edges" | "nodes" | "episodes" | "observations" | "thread_summaries" | "auto";
 
 /** The scopes that the tool can expose to the model. */
 const SCOPE_ENUM = [
@@ -73,7 +65,7 @@ const SCOPE_ENUM = [
   "auto",
 ] as const;
 
-/** Zep's supported rerankers (`V4SearchRequestReranker`). */
+/** Zep's supported rerankers (`SearchEdgesRequestReranker`). */
 const RERANKER_ENUM = [
   "rrf",
   "mmr",
@@ -96,7 +88,7 @@ const SUPPORTED_SCOPES = [
 ] as const satisfies readonly ZepGraphSearchScope[];
 
 const DEFAULT_SCOPE: ZepGraphSearchScope = "edges";
-const DEFAULT_RERANKER: Zep.V4SearchRequestReranker = "rrf";
+const DEFAULT_RERANKER: Zep.SearchEdgesRequestReranker = "rrf";
 const DEFAULT_LIMIT = 10;
 
 /** Options for the {@link ZepGraphSearchTool} constructor. */
@@ -134,7 +126,7 @@ export interface ZepGraphSearchToolOptions extends ZepIdentityOptions {
    * always used); `null` hides it AND omits it from the search call;
    * `undefined`/omitted exposes it to the model, defaulting to `"rrf"`.
    */
-  reranker?: Zep.V4SearchRequestReranker | null;
+  reranker?: Zep.SearchEdgesRequestReranker | null;
   /**
    * Maximum number of results to return.
    *
@@ -188,9 +180,7 @@ interface GraphSearchArgs {
 
 /** Tri-state resolution for a single pinnable/exposable parameter. */
 type PinState<T> =
-  | { kind: "pinned"; value: T }
-  | { kind: "hidden" }
-  | { kind: "exposed" };
+  { kind: "pinned"; value: T } | { kind: "hidden" } | { kind: "exposed" };
 
 function resolvePinState<T>(value: T | null | undefined): PinState<T> {
   if (value === null) return { kind: "hidden" };
@@ -248,7 +238,7 @@ export class ZepGraphSearchTool extends BaseTool {
   private readonly graphUuidByUser = new Map<string, string>();
 
   private readonly scopeState: PinState<ZepGraphSearchScope>;
-  private readonly rerankerState: PinState<Zep.V4SearchRequestReranker>;
+  private readonly rerankerState: PinState<Zep.SearchEdgesRequestReranker>;
   private readonly limitState: PinState<number>;
   private readonly mmrLambdaState: PinState<number>;
   private readonly centerNodeUuidState: PinState<string>;
@@ -416,7 +406,7 @@ export class ZepGraphSearchTool extends BaseTool {
       typedArgs.centerNodeUuid,
     );
 
-    const body: Zep.SearchRequest = { query };
+    const body: GraphScopeSearchBody = { query };
     if (reranker !== undefined) body.reranker = reranker;
     if (mmrLambda !== undefined) body.mmrLambda = mmrLambda;
     if (centerNodeUuid !== undefined) body.centerNodeUuid = centerNodeUuid;
@@ -569,12 +559,34 @@ function nameSummaryText(
   return summary ?? "";
 }
 
+/**
+ * The fields that every v4 scoped search method accepts. The five search
+ * methods share these fields, and each method has its own filter type.
+ */
+export interface GraphScopeSearchBody {
+  /** The search query. */
+  query: string;
+  /** The reranker. The five search methods accept the same values. */
+  reranker?: Zep.SearchEdgesRequestReranker;
+  /** The diversity weight for the `"mmr"` reranker. */
+  mmrLambda?: number;
+  /** The node to rank results by distance from. */
+  centerNodeUuid?: string;
+  /** Nodes used as BFS origins. */
+  bfsOriginNodeUuids?: string[];
+  /**
+   * Search filters. Zep returns HTTP 400 `unsupported_filter` when a filter
+   * key does not apply to the scope.
+   */
+  filters?: Zep.SearchFilters;
+}
+
 /** Parameters of a single scoped graph search. */
 export interface GraphScopeSearchParams {
   /** The scope to search. */
   scope: ZepGraphSearchScope;
-  /** The v4 search body. The `"auto"` scope uses its `query` and `filters`. */
-  body: Zep.SearchRequest;
+  /** The v4 search fields. The `"auto"` scope uses its `query` and `filters`. */
+  body: GraphScopeSearchBody;
   /**
    * Maximum number of results on the first page. Zep v4 has no result limit
    * for the `"auto"` scope, so the value is ignored for that scope.
@@ -610,33 +622,49 @@ export async function searchGraphScope(
     return context ? [context] : [];
   }
 
-  const request = { limit, body };
+  const { filters, ...fields } = body;
+  const request = { ...fields, pageSize: limit };
   const texts: string[] = [];
 
   if (scope === "edges") {
-    const page = await zep.graph.searchEdges(graphUuid, request);
+    const page = await zep.graph.searchEdges(graphUuid, {
+      ...request,
+      filters,
+    });
     for (const edge of page.data) {
       if (edge.fact) texts.push(edge.fact);
     }
   } else if (scope === "nodes") {
-    const page = await zep.graph.searchNodes(graphUuid, request);
+    const page = await zep.graph.searchNodes(graphUuid, {
+      ...request,
+      filters,
+    });
     for (const node of page.data) {
       const text = nameSummaryText(node.name, node.summary);
       if (text) texts.push(text);
     }
   } else if (scope === "episodes") {
-    const page = await zep.graph.searchEpisodes(graphUuid, request);
+    const page = await zep.graph.searchEpisodes(graphUuid, {
+      ...request,
+      filters,
+    });
     for (const episode of page.data) {
       if (episode.content) texts.push(episode.content);
     }
   } else if (scope === "observations") {
-    const page = await zep.graph.searchObservations(graphUuid, request);
+    const page = await zep.graph.searchObservations(graphUuid, {
+      ...request,
+      filters: filters && { ...filters },
+    });
     for (const observation of page.data) {
       const text = nameSummaryText(observation.name, observation.summary);
       if (text) texts.push(text);
     }
   } else {
-    const page = await zep.graph.searchThreadSummaries(graphUuid, request);
+    const page = await zep.graph.searchThreadSummaries(graphUuid, {
+      ...request,
+      filters,
+    });
     for (const threadSummary of page.data) {
       const text = threadSummary.summary?.trim();
       if (text) texts.push(text);

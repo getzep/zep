@@ -13,7 +13,9 @@ import {
 
 const GRAPH_UUID = "44444444-4444-4444-4444-444444444444";
 
-function request(overrides?: Partial<SearchMemoryRequest>): SearchMemoryRequest {
+function request(
+  overrides?: Partial<SearchMemoryRequest>,
+): SearchMemoryRequest {
   return {
     appName: "my-app",
     userId: MOCK_USER_UUID,
@@ -143,8 +145,8 @@ describe("ZepMemoryService — graph addressing", () => {
 
     expect(mocks.userGet).toHaveBeenCalledWith(MOCK_USER_UUID);
     expect(mocks.searchEdges).toHaveBeenCalledWith(MOCK_GRAPH_UUID, {
-      limit: 5,
-      body: { query: "likes" },
+      pageSize: 5,
+      query: "likes",
     });
   });
 
@@ -175,7 +177,7 @@ describe("ZepMemoryService — graph addressing", () => {
     expect(mocks.userGet).not.toHaveBeenCalled();
     expect(mocks.searchEdges).toHaveBeenCalledWith(
       GRAPH_UUID,
-      expect.objectContaining({ body: { query: "where does alice live" } }),
+      expect.objectContaining({ query: "where does alice live" }),
     );
   });
 
@@ -192,7 +194,7 @@ describe("ZepMemoryService — graph addressing", () => {
       string,
       unknown
     >;
-    expect(call.limit).toBeUndefined();
+    expect(call.pageSize).toBeUndefined();
   });
 
   it("defaults scope to edges when not configured", async () => {
@@ -217,10 +219,11 @@ describe("ZepMemoryService — graph addressing", () => {
 
     await service.searchMemory(request({ appName: "some-app" }));
 
-    const call = mocks.searchEdges.mock.calls[0]?.[1] as {
-      body: Record<string, unknown>;
-    };
-    expect(call.body).not.toHaveProperty("appName");
+    const call = mocks.searchEdges.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(call).not.toHaveProperty("appName");
   });
 
   it("returns no memories when the user has no graph UUID", async () => {

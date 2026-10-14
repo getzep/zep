@@ -55,7 +55,7 @@
     "@google/adk": "^1.2.0"
   },
   "dependencies": {
-    "@getzep/zep-cloud": "4.0.0-alpha.5",
+    "@getzep/zep-cloud": "^4.0.0",
     "@google/genai": "^1.37.0"
   },
   "devDependencies": {
