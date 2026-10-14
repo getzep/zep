@@ -240,7 +240,6 @@ class TestBeforeRun:
         assert call["messages"][0].role == "user"
 
     @pytest.mark.asyncio
-    @pytest.mark.asyncio
     async def test_message_carries_display_name(self) -> None:
         client = make_mock_client()
         client.thread.add_messages.return_value = add_messages_response(None)
