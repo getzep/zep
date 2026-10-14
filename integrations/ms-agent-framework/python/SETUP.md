@@ -11,7 +11,7 @@ This guide walks you from a fresh machine to running the example agent with Zep 
 
 Zep is a paid product; see [getzep.com](https://www.getzep.com) for plan details.
 
-## 2. Get an OpenAI API key (for the example)
+## 2. Get an OpenAI API key (for the example and model-driven live test)
 
 The integration itself is model-agnostic, but the bundled example and live tests
 drive the agent with OpenAI. Create a key at
@@ -34,7 +34,8 @@ cd zep/integrations/ms-agent-framework/python
 make install        # uv sync --extra dev (includes agent-framework-openai)
 ```
 
-Requirements: Python 3.11+, `agent-framework-core>=1.8.1`, `zep-cloud>=3.23.0`.
+Requirements: Python 3.11+, `agent-framework-core>=1.8.1`, and
+`zep-cloud>=4.0.0,<5`.
 
 ## 4. Configure environment variables
 
@@ -42,7 +43,8 @@ Requirements: Python 3.11+, `agent-framework-core>=1.8.1`, `zep-cloud>=3.23.0`.
 export ZEP_API_KEY="your-zep-api-key"
 export OPENAI_API_KEY="your-openai-api-key"
 
-# Optional: override the OpenAI model used by the example (default: gpt-4o-mini)
+# Optional: override the OpenAI model used by the example and live test
+# (default: gpt-5-mini in the example and gpt-4o-mini in the live test)
 export OPENAI_MODEL="gpt-4o-mini"
 ```
 
@@ -62,24 +64,33 @@ python examples/basic_agent.py
 
 The example:
 
-1. Seeds facts about a user across two turns in one thread.
-2. Waits for Zep to process the knowledge graph (ingestion is asynchronous).
-3. Starts a **new** thread for the same user and asks recall questions — the
-   agent answers using facts fused into the user's graph from the first thread.
+1. Creates a user and a thread. Zep returns the resource UUIDs.
+2. Seeds facts about the user and waits for Zep to process the graph.
+3. Creates a second thread for the same user and asks recall questions.
+4. Deletes the test user and threads when the run ends.
+
+The example uses `ZepContextProvider`, which adds retrieved context to model
+instructions. Use this pattern only when the stored content is trusted and
+application-authored. Use `create_zep_search_tool` when your memory can contain
+user-provided or third-party content.
 
 ## 6. Run the tests
 
-Mock-based tests (no API keys needed):
+Unit tests:
 
 ```bash
-make test
+uv run pytest tests/ -m "not integration"
 ```
 
-Live integration test (requires `ZEP_API_KEY` and `OPENAI_API_KEY`):
+The first live test uses Zep only. The model-driven live test also uses
+`OPENAI_API_KEY`. Run both with:
 
 ```bash
 uv run pytest tests/test_integration.py -v -s -m integration
 ```
+
+Run the package checks with `make format`, `make lint`, and
+`make type-check`.
 
 ## Troubleshooting
 
@@ -88,8 +99,8 @@ uv run pytest tests/test_integration.py -v -s -m integration
   `agent-framework-core`).
 - **`ModuleNotFoundError: agent_framework.openai`** — install the model
   provider used by the example: `pip install agent-framework-openai`.
-- **Recall returns nothing** — Zep ingestion is asynchronous; a just-added fact
-  is not instantly retrievable. The example waits ~20s; increase the wait if
-  your graph is large or under load.
+- **Recall returns nothing** — Zep graph ingestion is asynchronous. The example
+  waits 20 seconds before it starts the second thread. Increase the wait if the
+  graph is under load.
 - **Authentication errors** — confirm `ZEP_API_KEY` is set in the same shell and
   belongs to the intended project.

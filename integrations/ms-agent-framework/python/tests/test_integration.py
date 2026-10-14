@@ -1,47 +1,17 @@
-"""
-End-to-end integration test for the Zep Microsoft Agent Framework integration.
-
-Exercises the full lifecycle against live Zep and OpenAI:
-
-  1. Lazy user + thread creation with correct metadata.
-  2. ``before_run`` persists the user turn; ``after_run`` persists the assistant
-     turn (both sides captured on the thread).
-  3. The ``on_user_created`` hook fires exactly once.
-  4. Cross-thread memory recall: a second thread for the same user recalls facts
-     seeded in the first thread (proving recall comes from the user graph).
-  5. Zep resource verification via the SDK (user metadata, thread messages).
-
-Also includes a lighter-weight test (``test_ensure_helpers_and_before_after_run``)
-that only requires ``ZEP_API_KEY`` -- it drives ``ensure_user``/``ensure_thread``
-and a ``before_run``/``after_run`` cycle directly against real Zep with a fake
-session double, without needing a real model provider.
-
-Requires:
-    ZEP_API_KEY (all tests) and OPENAI_API_KEY (agent-driven tests only).
-
-Usage:
-    uv run pytest tests/test_integration.py -v -s -m integration
-    # or standalone:
-    uv run python tests/test_integration.py
-"""
+"""Live V4 lifecycle tests for the Microsoft Agent Framework integration."""
 
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
-import sys
 import time
+from types import SimpleNamespace
+from typing import cast
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Configuration -- skip the whole module when no Zep API key is available.
-# Tests that also need a real model provider additionally gate on
-# OPENAI_API_KEY (see test_integration_full_lifecycle).
-# ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
@@ -49,299 +19,214 @@ OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 if not ZEP_API_KEY:
     pytest.skip("ZEP_API_KEY required for integration tests", allow_module_level=True)
 
-from agent_framework import Agent  # noqa: E402
+from agent_framework import Agent, Message  # noqa: E402
 from agent_framework.openai import OpenAIChatClient  # noqa: E402
 from zep_cloud.client import AsyncZep  # noqa: E402
 
-from zep_ms_agent_framework import ZepContextProvider, ensure_thread, ensure_user  # noqa: E402
-
-# Unique IDs per run to avoid collisions.
-_suffix = uuid4().hex[:8]
-USER_ID = f"af-integ-{_suffix}"
-THREAD_1 = f"af-integ-t1-{_suffix}"
-THREAD_2 = f"af-integ-t2-{_suffix}"
-
-FIRST_NAME = "IntegTest"
-LAST_NAME = "User"
-EMAIL = f"integtest-{_suffix}@example.com"
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-logger = logging.getLogger("test_integration")
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("openai").setLevel(logging.WARNING)
+from zep_ms_agent_framework import (  # noqa: E402
+    ZepContextProvider,
+    create_thread,
+    create_user,
+)
 
 
-def check(description: str, condition: bool, detail: str = "") -> bool:
-    """Print a PASS/FAIL line and return the condition."""
-    status = "PASS" if condition else "FAIL"
-    msg = f"  {status}: {description}"
-    if detail:
-        msg += f" ({detail})"
-    print(msg)
-    return condition
+def _identity_suffix() -> str:
+    return uuid4().hex[:8]
 
 
-async def wait_for_episodes_processed(
-    zep: AsyncZep,
-    user_id: str,
-    timeout_seconds: int = 120,
-    poll_interval: float = 3.0,
+def _context(messages: list[Message], response: list[Message] | None = None) -> MagicMock:
+    value = MagicMock()
+    value.input_messages = messages
+    value.extend_instructions = MagicMock()
+    if response is None:
+        value.response = None
+    else:
+        value.response = SimpleNamespace(messages=response)
+    return value
+
+
+async def _persist_turn(
+    provider: ZepContextProvider,
+    user_text: str,
+    assistant_text: str,
 ) -> None:
-    """Poll Zep episodes until all are processed or the timeout is reached."""
-    start = time.monotonic()
-    while True:
-        if time.monotonic() - start > timeout_seconds:
-            logger.warning("Timed out waiting for episode processing; continuing.")
-            return
-        try:
-            resp = await zep.graph.episode.get_by_user_id(user_id=user_id, lastn=20)
-        except Exception as exc:
-            logger.warning("Episode poll failed (%s); retrying.", exc)
-            await asyncio.sleep(poll_interval)
-            continue
-        episodes = resp.episodes or []
-        if episodes and all(e.processed for e in episodes):
-            logger.info("All %d episodes processed.", len(episodes))
-            return
-        await asyncio.sleep(poll_interval)
-
-
-def build_agent(zep: AsyncZep, thread_id: str, hook=None) -> Agent:
-    """Build an agent scoped to USER_ID on the given thread."""
-    return Agent(
-        OpenAIChatClient(model=OPENAI_MODEL, api_key=OPENAI_API_KEY),
-        instructions=(
-            "You are a helpful assistant with long-term memory. When context "
-            "from Zep is provided, use it to answer questions about the user. "
-            "Be concise."
-        ),
-        context_providers=[
-            ZepContextProvider(
-                zep_client=zep,
-                user_id=USER_ID,
-                thread_id=thread_id,
-                first_name=FIRST_NAME,
-                last_name=LAST_NAME,
-                email=EMAIL,
-                on_user_created=hook,
-            )
-        ],
+    await provider.before_run(
+        agent=MagicMock(),
+        session=MagicMock(),
+        context=_context([Message("user", [user_text])]),
+        state={},
+    )
+    await provider.after_run(
+        agent=MagicMock(),
+        session=MagicMock(),
+        context=_context([], [Message("assistant", [assistant_text])]),
+        state={},
     )
 
 
-async def main() -> None:
-    if not OPENAI_API_KEY:
-        print("OPENAI_API_KEY not set; skipping the agent-driven lifecycle test.")
-        sys.exit(0)
+async def _wait_for_search_result(
+    zep: AsyncZep,
+    graph_uuid: str,
+    *,
+    query: str,
+    timeout_seconds: int = 120,
+) -> bool:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        page = await zep.graph.search_edges(graph_uuid, query=query, page_size=5)
+        if page.items:
+            return True
+        await asyncio.sleep(3)
+    return False
 
-    zep = AsyncZep(api_key=ZEP_API_KEY)
-    passed = True
 
-    print(f"\n{'=' * 70}")
-    print("Zep Microsoft Agent Framework Integration Test")
-    print(f"  User:    {USER_ID}")
-    print(f"  Threads: {THREAD_1}, {THREAD_2}")
-    print(f"{'=' * 70}\n")
-
-    hook_calls: list[str] = []
-
-    async def on_user_created(client: AsyncZep, user_id: str) -> None:
-        hook_calls.append(user_id)
-        logger.info("on_user_created fired for %s", user_id)
-
-    try:
-        # -- Conversation 1: seed facts -------------------------------------
-        print("[Step 1] Conversation 1: seeding facts...")
-        agent1 = build_agent(zep, THREAD_1, hook=on_user_created)
-        seeds = [
-            "My name is IntegTest. I work at Acme Corp as a data scientist.",
-            "I live in Portland, Oregon and I love hiking and photography.",
-        ]
-        for msg in seeds:
-            print(f"  User:  {msg}")
-            result = await agent1.run(msg)
-            print(f"  Agent: {result.text}\n")
-            passed &= check("Agent returned a non-empty response", len(result.text) > 0)
-
-        passed &= check(
-            "on_user_created hook fired exactly once",
-            len(hook_calls) == 1 and hook_calls[0] == USER_ID,
-            f"calls={hook_calls}",
-        )
-
-        # -- Verify user metadata -------------------------------------------
-        print("[Step 2] Verifying Zep user metadata...")
-        user = await zep.user.get(user_id=USER_ID)
-        passed &= check("first_name matches", user.first_name == FIRST_NAME, str(user.first_name))
-        passed &= check("last_name matches", user.last_name == LAST_NAME, str(user.last_name))
-        passed &= check("email matches", user.email == EMAIL, str(user.email))
-
-        # -- Verify thread 1 captured both sides ----------------------------
-        print("\n[Step 3] Verifying thread 1 messages...")
-        t1 = await zep.thread.get(thread_id=THREAD_1, lastn=20)
-        messages = t1.messages or []
-        user_msgs = [m for m in messages if m.role == "user"]
-        asst_msgs = [m for m in messages if m.role == "assistant"]
-        print(f"  {len(user_msgs)} user, {len(asst_msgs)} assistant messages")
-        passed &= check("Thread 1 has user messages", len(user_msgs) >= 2, f"{len(user_msgs)}")
-        passed &= check("Thread 1 has assistant messages", len(asst_msgs) >= 2, f"{len(asst_msgs)}")
-
-        # -- Wait for graph ingestion ---------------------------------------
-        print("\n[Step 4] Waiting for Zep to process episodes...")
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=120)
-
-        # -- Conversation 2: cross-thread recall ----------------------------
-        print("\n[Step 5] Conversation 2: cross-thread memory recall...")
-        agent2 = build_agent(zep, THREAD_2, hook=on_user_created)
-        result = await agent2.run("What do you know about me?")
-        print(f"  Agent: {result.text}\n")
-
-        passed &= check(
-            "on_user_created did NOT fire again for existing user",
-            len(hook_calls) == 1,
-            f"calls={len(hook_calls)}",
-        )
-
-        recall = result.text.lower()
-        keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
-        found = [kw for kw in keywords if kw in recall]
-        print(f"  Recalled keywords: {found}")
-        passed &= check(
-            "Agent recalled facts from conversation 1",
-            len(found) > 0,
-            f"found={found}",
-        )
-
-    finally:
-        print("\n[Cleanup] Deleting test user...")
+async def _delete_resources(
+    zep: AsyncZep,
+    thread_uuids: list[str],
+    user_uuid: str | None,
+) -> None:
+    errors: list[Exception] = []
+    for thread_uuid in thread_uuids:
         try:
-            await zep.user.delete(user_id=USER_ID)
-            print(f"  Deleted {USER_ID}")
+            await zep.thread.delete(thread_uuid)
         except Exception as exc:
-            print(f"  Warning: could not delete user: {exc}")
-
-    print(f"\n{'=' * 70}")
-    print("RESULT:", "ALL CHECKS PASSED" if passed else "SOME CHECKS FAILED")
-    print("=" * 70)
-    sys.exit(0 if passed else 1)
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_ensure_helpers_and_before_after_run() -> None:
-    """Exercise ``ensure_user``/``ensure_thread`` and a ``before_run``/
-    ``after_run`` cycle directly against real Zep, without a model provider.
-
-    Uses a fake ``SessionContext`` double (mirroring the mock-based unit
-    tests) so this only requires ``ZEP_API_KEY`` -- no OpenAI call is made.
-    """
-    zep = AsyncZep(api_key=ZEP_API_KEY)
-    user_id = f"{USER_ID}-ensure"
-    thread_id = f"{THREAD_1}-ensure"
-
-    try:
-        # -- Out-of-band provisioning via the new helpers -------------------
-        created_user = await ensure_user(
-            zep,
-            user_id=user_id,
-            first_name=FIRST_NAME,
-            last_name=LAST_NAME,
-            email=f"ensure-{_suffix}@example.com",
-        )
-        assert created_user is True
-
-        # Idempotent: calling again reports "already exists", not an error.
-        created_again = await ensure_user(zep, user_id=user_id)
-        assert created_again is False
-
-        created_thread = await ensure_thread(zep, thread_id=thread_id, user_id=user_id)
-        assert created_thread is True
-
-        # -- before_run/after_run cycle with a fake SessionContext double ---
-        provider = ZepContextProvider(zep_client=zep, user_id=user_id, thread_id=thread_id)
-
-        before_ctx = MagicMock()
-        before_ctx.input_messages = [
-            MagicMock(role="user", text="Hello from the integration test.")
-        ]
-        before_ctx.extend_instructions = MagicMock()
-        before_ctx.extend_tools = MagicMock()
-        before_ctx.response = None
-
-        # Must not raise; resources are already provisioned above.
-        await provider.before_run(
-            agent=MagicMock(), session=MagicMock(), context=before_ctx, state={}
-        )
-        assert provider._user_turn_persisted is True
-
-        after_ctx = MagicMock()
-        after_ctx.input_messages = []
-        response = MagicMock()
-        response.messages = [MagicMock(role="assistant", text="Hi there!")]
-        after_ctx.response = response
-
-        await provider.after_run(
-            agent=MagicMock(), session=MagicMock(), context=after_ctx, state={}
-        )
-
-        # -- Context retrieval round-trips: the thread now has both turns ---
-        t = await zep.thread.get(thread_id=thread_id, lastn=20)
-        messages = t.messages or []
-        assert any(m.role == "user" for m in messages)
-        assert any(m.role == "assistant" for m in messages)
-    finally:
+            errors.append(exc)
+    if user_uuid is not None:
         try:
-            await zep.user.delete(user_id=user_id)
-        except Exception:
-            pass
+            await zep.user.delete(user_uuid)
+        except Exception as exc:
+            errors.append(exc)
+    if errors:
+        raise RuntimeError(f"Failed to delete {len(errors)} live test resource(s)") from errors[0]
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_integration_full_lifecycle() -> None:
-    """Pytest entry point for the live integration test."""
-    if not OPENAI_API_KEY:
-        pytest.skip("OPENAI_API_KEY required for this test")
-
+async def test_create_helpers_and_before_after_lifecycle() -> None:
+    """Create UUID resources, persist both roles, and run the setup hook."""
     zep = AsyncZep(api_key=ZEP_API_KEY)
+    suffix = _identity_suffix()
+    user_uuid: str | None = None
+    thread_uuids: list[str] = []
     hook_calls: list[str] = []
 
-    async def on_user_created(client: AsyncZep, user_id: str) -> None:
-        hook_calls.append(user_id)
+    async def on_created(_client: AsyncZep, created_user_uuid: str) -> None:
+        hook_calls.append(created_user_uuid)
 
     try:
-        agent1 = build_agent(zep, THREAD_1, hook=on_user_created)
-        await agent1.run("My name is IntegTest. I work at Acme Corp as a data scientist.")
-        await agent1.run("I live in Portland, Oregon and love hiking and photography.")
+        user = await create_user(
+            zep,
+            first_name="Lifecycle",
+            last_name="Test",
+            email=f"lifecycle-{suffix}@example.com",
+            on_created=on_created,
+        )
+        user_uuid = cast(str, user.uuid_)
+        assert user_uuid
+        thread = await create_thread(zep, user_uuid=user_uuid)
+        thread_uuid = cast(str, thread.uuid_)
+        assert thread_uuid
+        thread_uuids.append(thread_uuid)
 
-        assert hook_calls == [USER_ID]
+        provider = ZepContextProvider(
+            zep_client=zep,
+            user_uuid=user_uuid,
+            thread_uuid=thread_uuid,
+            user_message_name="Lifecycle Test",
+        )
+        await _persist_turn(
+            provider,
+            "I work at Acme as a data scientist.",
+            "I will remember that you work at Acme.",
+        )
 
-        user = await zep.user.get(user_id=USER_ID)
-        assert user.first_name == FIRST_NAME
-        assert user.email == EMAIL
+        page = await zep.thread.list_messages(thread_uuid, page_size=20)
+        user_messages = [message for message in page.items if message.role == "user"]
+        assistant_messages = [message for message in page.items if message.role == "assistant"]
 
-        t1 = await zep.thread.get(thread_id=THREAD_1, lastn=20)
-        messages = t1.messages or []
-        assert any(m.role == "user" for m in messages)
-        assert any(m.role == "assistant" for m in messages)
-
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=120)
-
-        agent2 = build_agent(zep, THREAD_2, hook=on_user_created)
-        result = await agent2.run("What do you know about me?")
-
-        # Existing user -> hook must not fire again.
-        assert hook_calls == [USER_ID]
-
-        recall = result.text.lower()
-        keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
-        assert any(kw in recall for kw in keywords), f"no recall in: {result.text}"
+        assert user.first_name == "Lifecycle"
+        assert user.last_name == "Test"
+        assert user.email == f"lifecycle-{suffix}@example.com"
+        assert hook_calls == [user_uuid]
+        assert any("Acme" in (message.content or "") for message in user_messages)
+        assert any("remember" in (message.content or "") for message in assistant_messages)
     finally:
-        try:
-            await zep.user.delete(user_id=USER_ID)
-        except Exception:
-            pass
+        await _delete_resources(zep, thread_uuids, user_uuid)
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_openai_lifecycle_recalls_across_threads() -> None:
+    """Persist model turns and recall a user fact from a second thread."""
+    if not OPENAI_API_KEY:
+        pytest.skip("OPENAI_API_KEY required for the model-driven integration test")
+
+    zep = AsyncZep(api_key=ZEP_API_KEY)
+    suffix = _identity_suffix()
+    user_uuid: str | None = None
+    thread_uuids: list[str] = []
+    hook_calls: list[str] = []
+
+    async def on_created(_client: AsyncZep, created_user_uuid: str) -> None:
+        hook_calls.append(created_user_uuid)
+
+    def build_agent(thread_uuid: str) -> Agent:
+        return Agent(
+            OpenAIChatClient(model=OPENAI_MODEL, api_key=OPENAI_API_KEY),
+            instructions=(
+                "You are a helpful assistant with long-term memory. Use Zep context "
+                "when it contains facts about the user. Be concise."
+            ),
+            context_providers=[
+                ZepContextProvider(
+                    zep_client=zep,
+                    user_uuid=cast(str, user_uuid),
+                    thread_uuid=thread_uuid,
+                    graph_uuid=cast(str, user_uuid),
+                    user_message_name="Recall Test",
+                )
+            ],
+        )
+
+    try:
+        user = await create_user(
+            zep,
+            first_name="Recall",
+            last_name="Test",
+            email=f"recall-{suffix}@example.com",
+            on_created=on_created,
+        )
+        user_uuid = cast(str, user.uuid_)
+        assert user_uuid
+        first_thread = await create_thread(zep, user_uuid=user_uuid)
+        first_thread_uuid = cast(str, first_thread.uuid_)
+        assert first_thread_uuid
+        thread_uuids.append(first_thread_uuid)
+
+        agent = build_agent(first_thread_uuid)
+        seed_prompts = [
+            "I work at Acme as a data scientist.",
+            "I live in Portland and enjoy landscape photography.",
+        ]
+        for prompt in seed_prompts:
+            result = await agent.run(prompt)
+            assert result.text.strip()
+
+        assert hook_calls == [user_uuid]
+        assert await _wait_for_search_result(
+            zep,
+            user_uuid,
+            query="Acme data scientist Portland",
+        )
+
+        second_thread = await create_thread(zep, user_uuid=user_uuid)
+        second_thread_uuid = cast(str, second_thread.uuid_)
+        assert second_thread_uuid
+        thread_uuids.append(second_thread_uuid)
+
+        result = await build_agent(second_thread_uuid).run("Where do I work, and what do I do?")
+        assert result.text.strip()
+        assert "acme" in result.text.lower() or "data scientist" in result.text.lower()
+        assert hook_calls == [user_uuid]
+    finally:
+        await _delete_resources(zep, thread_uuids, user_uuid)

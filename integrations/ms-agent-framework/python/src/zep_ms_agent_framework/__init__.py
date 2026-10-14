@@ -20,9 +20,12 @@ Usage::
     from agent_framework import Agent
     from agent_framework.openai import OpenAIChatClient
     from zep_cloud.client import AsyncZep
-    from zep_ms_agent_framework import ZepContextProvider
+    from zep_ms_agent_framework import ZepContextProvider, create_thread, create_user
 
     zep = AsyncZep(api_key="your-api-key")
+
+    user = await create_user(zep, first_name="Jane", last_name="Smith")
+    thread = await create_thread(zep, user_uuid=user.uuid_)
 
     agent = Agent(
         OpenAIChatClient(model="gpt-5-mini"),
@@ -30,10 +33,10 @@ Usage::
         context_providers=[
             ZepContextProvider(
                 zep_client=zep,
-                user_id="user-123",
-                thread_id="thread-abc",
-                first_name="Jane",
-                last_name="Smith",
+                user_uuid=user.uuid_,
+                thread_uuid=thread.uuid_,
+                graph_uuid=user.uuid_,
+                user_message_name="Jane Smith",
             )
         ],
     )
@@ -42,7 +45,7 @@ Usage::
     print(result.text)
 """
 
-__version__ = "0.2.2"
+__version__ = "0.3.0"
 __author__ = "Zep AI"
 __description__ = "Microsoft Agent Framework integration for Zep"
 
@@ -66,7 +69,7 @@ from .context_provider import (
     ContextInput,
     ZepContextProvider,
 )
-from .provisioning import UserSetupHook, ensure_thread, ensure_user
+from .provisioning import UserSetupHook, create_thread, create_user
 from .search import (
     Reranker,
     Scope,
@@ -86,6 +89,6 @@ __all__ = [
     "ZepDependencyError",
     "ZepSearchTool",
     "create_zep_search_tool",
-    "ensure_user",
-    "ensure_thread",
+    "create_user",
+    "create_thread",
 ]

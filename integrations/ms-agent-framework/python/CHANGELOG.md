@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 0.3.0 (unreleased)
+
+### Changed
+
+- **Breaking:** migrate to `zep-cloud>=4.0.0,<5`.
+- **Breaking:** `ZepContextProvider` now requires server-generated `user_uuid`
+  and `thread_uuid` values. It no longer creates resources on the agent turn
+  path.
+- Replace `ensure_user` and `ensure_thread` with `create_user` and
+  `create_thread`. `create_user` returns the created user and supports an
+  `on_created` hook. Both helpers propagate Zep errors.
+- Replace the old graph search call with V4 scope-specific search methods.
+  Results use the SDK page `items`. The `auto` scope uses
+  `graph.get_context`.
+- Update the example, README, setup guide, and tests for V4 UUID provisioning
+  and lifecycle behavior.
+
+### Removed
+
+- Remove `ensure_user`, `ensure_thread`, and the provider's lazy resource
+  creation. Provision users and threads before an agent run.
+- Remove identity fields from `ZepContextProvider`. Pass them to `create_user`.
+- Remove `on_user_created` from `ZepContextProvider`. Use `create_user`'s
+  `on_created` hook during explicit setup.
+
 ## 0.2.2 (2026-10-01)
 
 ### Changed

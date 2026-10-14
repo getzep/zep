@@ -20,13 +20,14 @@ from __future__ import annotations
 
 import asyncio
 import os
+from typing import cast
 from uuid import uuid4
 
 from agent_framework import Agent
 from agent_framework.openai import OpenAIChatClient
 from zep_cloud.client import AsyncZep
 
-from zep_ms_agent_framework import ZepContextProvider
+from zep_ms_agent_framework import ZepContextProvider, create_thread, create_user
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -40,15 +41,11 @@ if not ZEP_API_KEY:
 if not OPENAI_API_KEY:
     raise SystemExit("OPENAI_API_KEY is not set.")
 
-# Unique identity for this demo run so repeated runs do not collide.
 _suffix = uuid4().hex[:8]
-USER_ID = f"af-example-user-{_suffix}"
-THREAD_1 = f"af-example-thread1-{_suffix}"
-THREAD_2 = f"af-example-thread2-{_suffix}"
 
 
-def build_agent(zep: AsyncZep, thread_id: str) -> Agent:
-    """Build an agent whose memory is scoped to USER_ID on the given thread."""
+def build_agent(zep: AsyncZep, user_uuid: str, thread_uuid: str) -> Agent:
+    """Build an agent with memory scoped to the provided user and thread."""
     return Agent(
         OpenAIChatClient(model=OPENAI_MODEL, api_key=OPENAI_API_KEY),
         instructions=(
@@ -59,11 +56,10 @@ def build_agent(zep: AsyncZep, thread_id: str) -> Agent:
         context_providers=[
             ZepContextProvider(
                 zep_client=zep,
-                user_id=USER_ID,
-                thread_id=thread_id,
-                first_name="Alice",
-                last_name="Nguyen",
-                email="alice@example.com",
+                user_uuid=user_uuid,
+                thread_uuid=thread_uuid,
+                graph_uuid=user_uuid,
+                user_message_name="Alice Nguyen",
             )
         ],
     )
@@ -71,47 +67,69 @@ def build_agent(zep: AsyncZep, thread_id: str) -> Agent:
 
 async def main() -> None:
     zep = AsyncZep(api_key=ZEP_API_KEY)
+    user_uuid: str | None = None
+    thread_uuids: list[str] = []
 
-    print("=" * 64)
-    print("Microsoft Agent Framework + Zep Memory Example")
-    print("=" * 64)
-    print(f"  User ID:   {USER_ID}")
-    print(f"  Thread 1:  {THREAD_1}")
-    print(f"  Thread 2:  {THREAD_2}")
-    print("=" * 64, "\n")
+    try:
+        user = await create_user(
+            zep,
+            first_name="Alice",
+            last_name="Nguyen",
+            email=f"alice-{_suffix}@example.com",
+        )
+        user_uuid = cast(str, user.uuid_)
+        first_thread = await create_thread(zep, user_uuid=user_uuid)
+        first_thread_uuid = cast(str, first_thread.uuid_)
+        thread_uuids.append(first_thread_uuid)
 
-    # --- Conversation 1: seed facts ----------------------------------------
-    print("--- Conversation 1: seeding facts ---\n")
-    agent1 = build_agent(zep, THREAD_1)
-    seed_messages = [
-        "Hi! I'm Alice, a data scientist living in Portland, Oregon.",
-        "On weekends I love hiking and landscape photography.",
-    ]
-    for message in seed_messages:
-        print(f"User:  {message}")
-        result = await agent1.run(message)
-        print(f"Agent: {result.text}\n")
+        print("Microsoft Agent Framework + Zep Memory Example")
+        print(f"User UUID: {user_uuid}")
+        print(f"Thread UUID: {first_thread_uuid}\n")
 
-    # --- Wait for asynchronous graph ingestion -----------------------------
-    wait_seconds = 20
-    print(f"--- Waiting {wait_seconds}s for Zep to process the graph ---\n")
-    await asyncio.sleep(wait_seconds)
+        print("--- Conversation 1: seeding facts ---\n")
+        agent1 = build_agent(zep, user_uuid, first_thread_uuid)
+        seed_messages = [
+            "Hi! I am a data scientist living in Portland, Oregon.",
+            "On weekends I love hiking and landscape photography.",
+        ]
+        for message in seed_messages:
+            print(f"User:  {message}")
+            result = await agent1.run(message)
+            print(f"Agent: {result.text}\n")
 
-    # --- Conversation 2: recall in a brand-new thread ----------------------
-    # A different thread for the SAME user proves recall comes from the user
-    # graph (fused across threads), not from local conversation history.
-    print("--- Conversation 2: memory recall in a new thread ---\n")
-    agent2 = build_agent(zep, THREAD_2)
-    recall_messages = [
-        "What do I do for work, and where do I live?",
-        "What are my hobbies?",
-    ]
-    for message in recall_messages:
-        print(f"User:  {message}")
-        result = await agent2.run(message)
-        print(f"Agent: {result.text}\n")
+        wait_seconds = 20
+        print(f"Waiting {wait_seconds}s for Zep to process the graph.\n")
+        await asyncio.sleep(wait_seconds)
 
-    print("Done.")
+        second_thread = await create_thread(zep, user_uuid=user_uuid)
+        second_thread_uuid = cast(str, second_thread.uuid_)
+        thread_uuids.append(second_thread_uuid)
+
+        print("--- Conversation 2: recall in a new thread ---\n")
+        agent2 = build_agent(zep, user_uuid, second_thread_uuid)
+        for message in [
+            "What do I do for work, and where do I live?",
+            "What are my hobbies?",
+        ]:
+            print(f"User:  {message}")
+            result = await agent2.run(message)
+            print(f"Agent: {result.text}\n")
+    finally:
+        cleanup_errors: list[Exception] = []
+        for thread_uuid in thread_uuids:
+            try:
+                await zep.thread.delete(thread_uuid)
+            except Exception as exc:
+                cleanup_errors.append(exc)
+        if user_uuid is not None:
+            try:
+                await zep.user.delete(user_uuid)
+            except Exception as exc:
+                cleanup_errors.append(exc)
+        if cleanup_errors:
+            raise RuntimeError(
+                "Failed to delete one or more example resources"
+            ) from cleanup_errors[0]
 
 
 if __name__ == "__main__":
