@@ -4,7 +4,7 @@ Zep Graph Memory Manager for AG2.
 This module provides the ZepGraphMemoryManager class for integrating Zep's
 knowledge graph capabilities with AG2 agents.
 
-This is used for named/shared knowledge graphs (identified by graph_id),
+This is used for named/shared knowledge graphs (identified by graph_uuid),
 as opposed to user-scoped graphs managed by ZepMemoryManager.
 """
 
@@ -30,32 +30,32 @@ class ZepGraphMemoryManager:
         >>> from zep_cloud.client import AsyncZep
         >>> from zep_ag2 import ZepGraphMemoryManager
         >>> zep = AsyncZep(api_key="your-key")
-        >>> manager = ZepGraphMemoryManager(zep, graph_id="company_kb")
+        >>> manager = ZepGraphMemoryManager(zep, graph_uuid="graph-uuid")
         >>> results = await manager.search("Python frameworks")
     """
 
     def __init__(
         self,
         client: AsyncZep,
-        graph_id: str,
+        graph_uuid: str,
     ) -> None:
         """
         Initialize ZepGraphMemoryManager.
 
         Args:
             client: An initialized AsyncZep instance.
-            graph_id: The knowledge graph identifier in Zep (required).
+            graph_uuid: The knowledge graph UUID in Zep (required).
 
         Raises:
-            ZepAG2ConfigError: If client is not an AsyncZep instance or graph_id is empty.
+            ZepAG2ConfigError: If client is not an AsyncZep instance or graph_uuid is empty.
         """
         if not isinstance(client, AsyncZep):
             raise ZepAG2ConfigError("client must be an instance of AsyncZep")
-        if not graph_id:
-            raise ZepAG2ConfigError("graph_id is required")
+        if not graph_uuid:
+            raise ZepAG2ConfigError("graph_uuid is required")
 
         self._client = client
-        self._graph_id = graph_id
+        self._graph_uuid = graph_uuid
 
     @property
     def client(self) -> AsyncZep:
@@ -63,9 +63,9 @@ class ZepGraphMemoryManager:
         return self._client
 
     @property
-    def graph_id(self) -> str:
-        """The knowledge graph identifier."""
-        return self._graph_id
+    def graph_uuid(self) -> str:
+        """The knowledge graph UUID."""
+        return self._graph_uuid
 
     async def search(
         self,
@@ -85,17 +85,19 @@ class ZepGraphMemoryManager:
             A list of result dicts with 'content', 'type', and metadata fields.
         """
         try:
-            search_results = await self._client.graph.search(
-                graph_id=self._graph_id,
-                query=query,
-                limit=limit,
-                scope=scope,
-            )
+            method = {
+                "edges": self._client.graph.search_edges,
+                "nodes": self._client.graph.search_nodes,
+                "episodes": self._client.graph.search_episodes,
+            }.get(scope or "edges")
+            if method is None:
+                raise ValueError(f"Unsupported search scope: {scope}")
+            search_results = await method(self._graph_uuid, query=query, page_size=limit)
 
             results: list[dict[str, Any]] = []
 
-            if search_results.edges:
-                for edge in search_results.edges:
+            if scope == "edges":
+                for edge in search_results.items:
                     results.append(
                         {
                             "content": edge.fact,
@@ -106,8 +108,8 @@ class ZepGraphMemoryManager:
                         }
                     )
 
-            if search_results.nodes:
-                for node in search_results.nodes:
+            if scope == "nodes":
+                for node in search_results.items:
                     summary = node.summary or "No summary"
                     results.append(
                         {
@@ -119,8 +121,8 @@ class ZepGraphMemoryManager:
                         }
                     )
 
-            if search_results.episodes:
-                for episode in search_results.episodes:
+            if scope == "episodes":
+                for episode in search_results.items:
                     results.append(
                         {
                             "content": episode.content,
@@ -134,7 +136,7 @@ class ZepGraphMemoryManager:
             return results
 
         except Exception as e:
-            logger.error("Zep graph.search failed: %s", type(e).__name__)
+            logger.error("Zep graph search failed: %s", type(e).__name__)
             return []
 
     async def add_data(
@@ -153,14 +155,14 @@ class ZepGraphMemoryManager:
             True if data was added successfully, False otherwise.
         """
         try:
-            await self._client.graph.add(
-                graph_id=self._graph_id,
+            await self._client.graph.episode.add(
+                self._graph_uuid,
                 type=data_type,
                 data=_truncate(data, GRAPH_MAX_CHARS, "graph data"),
             )
             return True
         except Exception as e:
-            logger.error("Zep graph.add failed: %s", type(e).__name__)
+            logger.error("Zep graph.episode.add failed: %s", type(e).__name__)
             return False
 
     async def enrich_system_message(
@@ -191,13 +193,13 @@ class ZepGraphMemoryManager:
         else:
             # Retrieve recent episodes for automatic context
             try:
-                recent = await self._client.graph.episode.get_by_graph_id(
-                    graph_id=self._graph_id, lastn=2
+                recent = await self._client.graph.episode.list(
+                    self._graph_uuid, page_size=2, order="desc"
                 )
-                if recent.episodes:
+                if recent.items:
                     episode_query = ""
-                    for ep in recent.episodes:
-                        episode_query += f"{ep.content}\n"
+                    for ep in recent.items:
+                        episode_query += f"{ep.content or ''}\n"
                     episode_query = episode_query[-400:]
 
                     results = await self.search(episode_query, limit=limit)
@@ -205,7 +207,7 @@ class ZepGraphMemoryManager:
                         facts = [f"- {r['content']}" for r in results]
                         context_parts.append("Knowledge graph context:\n" + "\n".join(facts))
             except Exception as e:
-                logger.error("Zep graph.episode.get_by_graph_id failed: %s", type(e).__name__)
+                logger.error("Zep graph.episode.list failed: %s", type(e).__name__)
 
         if context_parts:
             context = "\n\n".join(context_parts)

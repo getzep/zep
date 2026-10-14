@@ -1,48 +1,36 @@
-"""
-AG2 + Zep Full Tool Suite Example.
-
-Demonstrates registering all Zep tools (search memory, add memory,
-search graph, add graph data) and using them in a GroupChat with
-multiple agents.
-
-Prerequisites:
-    export ZEP_API_KEY="your-zep-cloud-api-key"
-    export OPENAI_API_KEY="your-openai-api-key"
-"""
+"""Register all Zep tools on a multi-agent AG2 conversation."""
 
 import asyncio
 import os
-import uuid
 
 from autogen import AssistantAgent, GroupChat, GroupChatManager, LLMConfig, UserProxyAgent
 from zep_cloud.client import AsyncZep
 
-from zep_ag2 import register_all_tools
+from zep_ag2 import create_thread, create_user, register_all_tools
 
 
 async def main() -> None:
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
-    user_id = f"user_{uuid.uuid4().hex[:16]}"
-    session_id = f"thread_{uuid.uuid4().hex[:16]}"
+    user = await create_user(
+        zep,
+        first_name="Bob",
+        email=f"ag2-tools-{os.urandom(4).hex()}@example.com",
+    )
+    user_uuid = user.uuid_
+    thread = await create_thread(zep, user_uuid=user_uuid)
+    thread_uuid = thread.uuid_
+    graph_uuid = user_uuid
 
-    # Create user and thread
-    try:
-        await zep.user.add(user_id=user_id, email="bob@example.com", first_name="Bob")
-        await zep.thread.create(thread_id=session_id, user_id=user_id)
-    except Exception as e:
-        print(f"Setup: {e}")
-
-    llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
-
+    llm_config = LLMConfig({"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]})
     researcher = AssistantAgent(
         name="researcher",
         llm_config=llm_config,
-        system_message="You are a researcher. Search memory and knowledge graphs to find information.",
+        system_message="Search memory and the graph for relevant facts.",
     )
     writer = AssistantAgent(
         name="writer",
         llm_config=llm_config,
-        system_message="You are a writer. Use the add tools to store important information.",
+        system_message="Use the add tools to store important facts.",
     )
     user_proxy = UserProxyAgent(
         name="user",
@@ -50,26 +38,23 @@ async def main() -> None:
         code_execution_config=False,
         is_termination_msg=lambda msg: "TERMINATE" in (msg.get("content") or ""),
     )
+    register_all_tools(researcher, user_proxy, zep, graph_uuid, thread_uuid)
+    register_all_tools(writer, user_proxy, zep, graph_uuid, thread_uuid)
 
-    # Register all tools on both agents, with user_proxy as executor
-    register_all_tools(researcher, user_proxy, zep, user_id=user_id, session_id=session_id)
-    register_all_tools(writer, user_proxy, zep, user_id=user_id, session_id=session_id)
-
-    # Create a group chat
     group_chat = GroupChat(
         agents=[user_proxy, researcher, writer],
         messages=[],
         max_round=6,
     )
     manager = GroupChatManager(groupchat=group_chat, llm_config=llm_config)
-
     try:
         user_proxy.initiate_chat(
             manager,
-            message="Add this fact: Bob is a data scientist who specializes in NLP. Then search for what you know about Bob.",
+            message="Store that Bob works in data science, then search for that fact.",
         )
-    except Exception as e:
-        print(f"Error: {e}")
+    finally:
+        await zep.thread.delete(thread_uuid)
+        await zep.user.delete(user_uuid)
 
 
 if __name__ == "__main__":

@@ -9,8 +9,8 @@ with typing.Annotated for parameter descriptions. The factories here return plai
 callables that are compatible with this pattern.
 
 ``create_search_graph_tool`` and ``create_search_memory_tool`` (BREAKING in
-this version -- see the CHANGELOG) follow the pin-or-expose pattern shared by
-the other Zep framework integrations: every ``graph.search`` parameter
+this version -- see the CHANGELOG) follow the pin-or-expose pattern: every
+documented graph search parameter
 (``scope``, ``reranker``, ``limit``, ``mmr_lambda``, ``center_node_uuid``) is
 exposed to the model by default and can be pinned (fixed to a constant,
 hidden from the model) or hidden (removed from the schema without pinning;
@@ -25,7 +25,7 @@ way as ``zep_autogen.tools``: exposed parameters become real, typed
 parameters of a dynamically-built ``inspect.Signature`` assigned to the
 function's ``__signature__``/``__annotations__``, while pinned/hidden
 parameters are never parameters of the function at all -- they are merged in
-as constants (or omitted) when the tool actually calls ``graph.search``.
+as constants (or omitted) when the tool calls a V4 graph search method.
 """
 
 import asyncio
@@ -35,8 +35,6 @@ import threading
 from typing import Annotated, Any, Literal
 
 from zep_cloud.client import AsyncZep
-
-from zep_ag2.exceptions import ZepAG2MemoryError
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +48,7 @@ Scope = Literal[
 ]
 Reranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
 
-#: Zep caps ``graph.search`` ``limit`` at 50; larger values are rejected.
+#: Zep caps graph search page sizes at 50; larger values are rejected.
 MAX_SEARCH_LIMIT = 50
 
 #: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
@@ -60,8 +58,8 @@ _AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
 # ---------------------------------------------------------------------------
 # Parameter definitions
 # ---------------------------------------------------------------------------
-# Each entry describes a graph.search parameter that can be pinned or exposed
-# to the model.  Keys match the Zep SDK's ``graph.search()`` kwargs.  Model-
+# Each entry describes a graph search parameter that can be pinned or exposed
+# to the model. Keys map to the V4 SDK's search request fields. Model-
 # exposed by default; hidden only when pinned or explicitly listed in
 # ``hidden_params``. ``annotation`` is the real typed annotation used to build
 # the dynamic function signature AG2's ``Tool`` introspects.
@@ -112,7 +110,7 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
 
 #: Parameters that are always constructor-only (complex types not suitable for
 #: model schema generation).
-_CONSTRUCTOR_ONLY_PARAMS = frozenset({"search_filters", "bfs_origin_node_uuids"})
+_CONSTRUCTOR_ONLY_PARAMS = frozenset({"filters", "bfs_origin_node_uuids"})
 
 #: All parameters that may be pinned or hidden at construction.
 _PINNABLE_PARAMS = frozenset(_SEARCH_PARAM_SPECS.keys())
@@ -274,7 +272,7 @@ def _build_search_kwargs(
 # ---------------------------------------------------------------------------
 # Size limits (Zep API constraints)
 # ---------------------------------------------------------------------------
-# Zep rejects messages longer than 4096 characters and graph.add payloads
+# Zep rejects messages longer than 4096 characters and episode.add payloads
 # longer than 10,000 characters. We truncate slightly below those limits and
 # warn (with lengths only, never content) rather than silently dropping data
 # or letting the API reject the whole call.
@@ -399,22 +397,23 @@ def _format_graph_results(search_results: Any, scope: str = "edges") -> str:
 
     parts: list[str] = []
 
-    if scope == "edges" and search_results.edges:
-        parts = [f"- Fact: {edge.fact}" for edge in search_results.edges if edge.fact]
-    elif scope == "nodes" and search_results.nodes:
-        for node in search_results.nodes:
+    items = getattr(search_results, "items", [])
+    if scope == "edges" and items:
+        parts = [f"- Fact: {edge.fact}" for edge in items if edge.fact]
+    elif scope == "nodes" and items:
+        for node in items:
             text = _name_summary_text(getattr(node, "name", None), getattr(node, "summary", None))
             if text:
                 parts.append(f"- Entity: {text}")
-    elif scope == "episodes" and search_results.episodes:
-        parts = [f"- Episode: {ep.content}" for ep in search_results.episodes if ep.content]
-    elif scope == "observations" and getattr(search_results, "observations", None):
-        for obs in search_results.observations:
+    elif scope == "episodes" and items:
+        parts = [f"- Episode: {ep.content}" for ep in items if ep.content]
+    elif scope == "observations" and items:
+        for obs in items:
             text = _name_summary_text(getattr(obs, "name", None), getattr(obs, "summary", None))
             if text:
                 parts.append(f"- Observation: {text}")
-    elif scope == "thread_summaries" and getattr(search_results, "thread_summaries", None):
-        for ts in search_results.thread_summaries:
+    elif scope == "thread_summaries" and items:
+        for ts in items:
             summary = getattr(ts, "summary", None) or getattr(ts, "name", None)
             if summary:
                 parts.append(f"- {summary}")
@@ -422,14 +421,45 @@ def _format_graph_results(search_results: Any, scope: str = "edges") -> str:
     return "\n".join(parts) if parts else "No results found."
 
 
+async def _execute_search(client: AsyncZep, params: dict[str, Any]) -> Any:
+    graph_uuid = params.pop("graph_uuid")
+    query = params.pop("query")
+    scope = params.pop("scope", "edges")
+    limit = params.pop("limit", 10)
+    if scope == "auto":
+        return await client.graph.get_context(
+            graph_uuid,
+            query=query,
+            filters=params.get("filters"),
+        )
+    methods = {
+        "edges": client.graph.search_edges,
+        "nodes": client.graph.search_nodes,
+        "episodes": client.graph.search_episodes,
+        "observations": client.graph.search_observations,
+        "thread_summaries": client.graph.search_thread_summaries,
+    }
+    method = methods[scope]
+    return await method(
+        graph_uuid,
+        query=query,
+        page_size=limit,
+        **{
+            key: value
+            for key, value in params.items()
+            if key
+            in {"filters", "bfs_origin_node_uuids", "reranker", "mmr_lambda", "center_node_uuid"}
+        },
+    )
+
+
 def create_search_memory_tool(
     client: AsyncZep,
-    user_id: str,
-    session_id: str | None = None,
+    graph_uuid: str,
     *,
     pinned_params: dict[str, Any] | None = None,
     hidden_params: set[str] | None = None,
-    search_filters: dict[str, Any] | None = None,
+    filters: Any | None = None,
     bfs_origin_node_uuids: list[str] | None = None,
     # Back-compat: the original constructor args.  Each, if passed, pins
     # (hides) the corresponding parameter -- equivalent to putting it in
@@ -444,7 +474,7 @@ def create_search_memory_tool(
     memories. Compatible with AG2's @register_for_llm / @register_for_execution
     decorators.
 
-    **Pin-or-expose.** Every ``graph.search`` parameter (``scope``,
+    **Pin-or-expose.** Every documented search parameter (``scope``,
     ``reranker``, ``limit``, ``mmr_lambda``, ``center_node_uuid``) is exposed
     to the model in the tool's schema by default. Use ``pinned_params`` to fix
     a parameter to a constant value and remove it from the schema; use
@@ -455,20 +485,17 @@ def create_search_memory_tool(
 
     Args:
         client: An initialized AsyncZep instance (reused for all calls).
-        user_id: The user ID to search memories for.
-        session_id: Optional thread/session ID (unused by the search itself;
-            kept for backward-compatible construction alongside
-            ``create_add_memory_tool``).
-        pinned_params: Optional mapping of ``graph.search`` parameter name to
+        graph_uuid: The graph UUID to search.
+        pinned_params: Optional mapping of search parameter name to
             a fixed value. Pinned parameters are hidden from the model's tool
             schema and always sent with the given value.
-        hidden_params: Optional set of ``graph.search`` parameter names to
+        hidden_params: Optional set of search parameter names to
             hide from the model's tool schema without pinning them.
-        search_filters: Optional Zep search filters (constructor-only).
+        filters: Optional Zep search filters (constructor-only).
         bfs_origin_node_uuids: Optional list of node UUIDs for BFS seeding
             (constructor-only).
-        scope: Deprecated back-compat alias for ``pinned_params={"scope": scope}``.
-        limit: Deprecated back-compat alias for ``pinned_params={"limit": limit}``.
+        scope: Alias for ``pinned_params={"scope": scope}``.
+        limit: Alias for ``pinned_params={"limit": limit}``.
 
     Returns:
         A callable suitable for AG2 tool registration.
@@ -489,12 +516,12 @@ def create_search_memory_tool(
     signature, annotations = _build_search_signature(exposed)
 
     constructor_only: dict[str, Any] = {}
-    if search_filters is not None:
-        constructor_only["search_filters"] = search_filters
+    if filters is not None:
+        constructor_only["filters"] = filters
     if bfs_origin_node_uuids is not None:
         constructor_only["bfs_origin_node_uuids"] = bfs_origin_node_uuids
 
-    target = {"user_id": user_id}
+    target = {"graph_uuid": graph_uuid}
 
     async def _search(**kwargs: Any) -> str:
         search_kwargs = _build_search_kwargs(
@@ -503,8 +530,9 @@ def create_search_memory_tool(
         if not search_kwargs.get("query"):
             return "Error: No search query provided."
         try:
-            results = await client.graph.search(**search_kwargs)
-            return _format_graph_results(results, str(search_kwargs.get("scope", "edges")))
+            scope = str(search_kwargs.get("scope", "edges"))
+            results = await _execute_search(client, search_kwargs)
+            return _format_graph_results(results, scope)
         except Exception as e:
             logger.error("Zep search_memory failed: %s", type(e).__name__)
             return "Error: unable to search memory at this time."
@@ -524,30 +552,31 @@ def create_search_memory_tool(
 
 def create_add_memory_tool(
     client: AsyncZep,
-    user_id: str,
-    session_id: str | None = None,
+    graph_uuid: str,
+    thread_uuid: str | None = None,
 ) -> Any:
     """
     Create a tool function for adding messages to Zep conversation memory.
 
-    The returned function stores messages in a Zep thread. If no session_id is
-    provided at creation time, the content is added to the user's knowledge graph.
+    The returned function stores messages in a Zep thread. Without a
+    ``thread_uuid``, it adds the content as a graph episode.
 
     Args:
         client: An initialized AsyncZep instance (reused for all calls).
-        user_id: The user ID who owns the memory.
-        session_id: Optional thread/session ID for storing messages.
+        graph_uuid: UUID of the graph that receives the episode when no thread
+            UUID is set.
+        thread_uuid: Optional thread UUID for storing messages.
 
     Returns:
         A callable suitable for AG2 tool registration.
     """
-    from zep_cloud.types import Message
+    from zep_cloud.types import AddMessage
 
     async def _add(content: str, role: str) -> str:
-        if not session_id:
+        if not thread_uuid:
             try:
-                await client.graph.add(
-                    user_id=user_id,
+                await client.graph.episode.add(
+                    graph_uuid,
                     type="text",
                     data=_truncate(content, GRAPH_MAX_CHARS, "graph data"),
                 )
@@ -557,12 +586,12 @@ def create_add_memory_tool(
                 return "Error: unable to add memory at this time."
 
         try:
-            message = Message(
+            message = AddMessage(
                 content=_truncate(content, MESSAGE_MAX_CHARS, "message content"),
                 role=_validate_role(role),
             )
             await client.thread.add_messages(
-                thread_id=session_id,
+                thread_uuid=thread_uuid,
                 messages=[message],
             )
             return "Memory added to conversation thread successfully."
@@ -584,12 +613,11 @@ def create_add_memory_tool(
 
 def create_search_graph_tool(
     client: AsyncZep,
-    user_id: str | None = None,
-    graph_id: str | None = None,
+    graph_uuid: str,
     *,
     pinned_params: dict[str, Any] | None = None,
     hidden_params: set[str] | None = None,
-    search_filters: dict[str, Any] | None = None,
+    filters: Any | None = None,
     bfs_origin_node_uuids: list[str] | None = None,
     # Back-compat: the original constructor args.  Each, if passed, pins
     # (hides) the corresponding parameter -- equivalent to putting it in
@@ -600,9 +628,7 @@ def create_search_graph_tool(
     """
     Create a tool function for searching the Zep knowledge graph.
 
-    Exactly one of user_id or graph_id must be provided.
-
-    **Pin-or-expose.** Every ``graph.search`` parameter (``scope``,
+    **Pin-or-expose.** Every documented search parameter (``scope``,
     ``reranker``, ``limit``, ``mmr_lambda``, ``center_node_uuid``) is exposed
     to the model in the tool's schema by default, with the documented
     defaults below. Use ``pinned_params`` to fix a parameter to a constant
@@ -611,44 +637,37 @@ def create_search_graph_tool(
     pinning it -- Zep's own server-side default applies, and the parameter is
     simply omitted from the SDK call.
 
-    ``search_filters`` and ``bfs_origin_node_uuids`` are always
+    ``filters`` and ``bfs_origin_node_uuids`` are always
     constructor-only: their complex/list-of-object shapes are not exposed to
     the model.
 
     Args:
         client: An initialized AsyncZep instance (reused for all calls).
-        user_id: User ID for user knowledge graph search.
-        graph_id: Graph ID for named knowledge graph search.
-        pinned_params: Optional mapping of ``graph.search`` parameter name to
+        graph_uuid: UUID of the graph to search.
+        pinned_params: Optional mapping of search parameter name to
             a fixed value. Pinned parameters are hidden from the model's tool
             schema and always sent with the given value.
-        hidden_params: Optional set of ``graph.search`` parameter names to
+        hidden_params: Optional set of search parameter names to
             hide from the model's tool schema without pinning them --
             omitted from the SDK call so Zep's own default takes effect.
-        search_filters: Optional Zep search filters (constructor-only).
+        filters: Optional Zep search filters (constructor-only).
             Supports ``node_labels``, ``edge_types``, ``exclude_node_labels``,
             ``exclude_edge_types``, and property filters.
         bfs_origin_node_uuids: Optional list of node UUIDs for BFS seeding
             (constructor-only).
-        scope: Deprecated back-compat alias for ``pinned_params={"scope": scope}``.
-        limit: Deprecated back-compat alias for ``pinned_params={"limit": limit}``.
+        scope: Alias for ``pinned_params={"scope": scope}``.
+        limit: Alias for ``pinned_params={"limit": limit}``.
 
     Returns:
         A callable suitable for AG2 tool registration. Calling it executes
-        ``graph.search`` with pinned/model-provided/default parameters
+        a V4 graph search method with pinned/model-provided/default parameters
         merged; Zep failures are caught and returned as an error string --
         the tool never raises into the agent.
 
     Raises:
-        ZepAG2MemoryError: If neither or both user_id and graph_id are provided.
         ValueError: If ``pinned_params``/``hidden_params`` (or a legacy alias)
             contains an unknown parameter name.
     """
-    if not user_id and not graph_id:
-        raise ZepAG2MemoryError("Either user_id or graph_id must be provided")
-    if user_id and graph_id:
-        raise ZepAG2MemoryError("Only one of user_id or graph_id should be provided")
-
     pinned, hidden = _resolve_pinned_and_hidden(
         pinned_params=pinned_params, hidden_params=hidden_params, scope=scope, limit=limit
     )
@@ -661,12 +680,12 @@ def create_search_graph_tool(
     signature, annotations = _build_search_signature(exposed)
 
     constructor_only: dict[str, Any] = {}
-    if search_filters is not None:
-        constructor_only["search_filters"] = search_filters
+    if filters is not None:
+        constructor_only["filters"] = filters
     if bfs_origin_node_uuids is not None:
         constructor_only["bfs_origin_node_uuids"] = bfs_origin_node_uuids
 
-    target: dict[str, str] = {"graph_id": graph_id} if graph_id else {"user_id": user_id}  # type: ignore[dict-item]
+    target = {"graph_uuid": graph_uuid}
 
     async def _search_g(**kwargs: Any) -> str:
         search_kwargs = _build_search_kwargs(
@@ -675,8 +694,9 @@ def create_search_graph_tool(
         if not search_kwargs.get("query"):
             return "Error: No search query provided."
         try:
-            results = await client.graph.search(**search_kwargs)
-            return _format_graph_results(results, str(search_kwargs.get("scope", "edges")))
+            scope = str(search_kwargs.get("scope", "edges"))
+            results = await _execute_search(client, search_kwargs)
+            return _format_graph_results(results, scope)
         except Exception as e:
             logger.error("Zep search_graph failed: %s", type(e).__name__)
             return "Error: unable to search the knowledge graph at this time."
@@ -696,29 +716,20 @@ def create_search_graph_tool(
 
 def create_add_graph_data_tool(
     client: AsyncZep,
-    user_id: str | None = None,
-    graph_id: str | None = None,
+    graph_uuid: str,
 ) -> Any:
     """
     Create a tool function for adding data to the Zep knowledge graph.
 
-    Exactly one of user_id or graph_id must be provided.
-
     Args:
         client: An initialized AsyncZep instance (reused for all calls).
-        user_id: User ID for user knowledge graph storage.
-        graph_id: Graph ID for named knowledge graph storage.
+        graph_uuid: UUID of the graph that receives the data.
 
     Returns:
         A callable suitable for AG2 tool registration.
 
     Raises:
-        ZepAG2MemoryError: If neither or both user_id and graph_id are provided.
     """
-    if not user_id and not graph_id:
-        raise ZepAG2MemoryError("Either user_id or graph_id must be provided")
-    if user_id and graph_id:
-        raise ZepAG2MemoryError("Only one of user_id or graph_id should be provided")
 
     async def _add_graph(data: str, data_type: str) -> str:
         try:
@@ -726,15 +737,8 @@ def create_add_graph_data_tool(
                 "type": data_type,
                 "data": _truncate(data, GRAPH_MAX_CHARS, "graph data"),
             }
-            if graph_id:
-                kwargs["graph_id"] = graph_id
-            else:
-                kwargs["user_id"] = user_id
-
-            await client.graph.add(**kwargs)
-
-            target = f"graph '{graph_id}'" if graph_id else f"user '{user_id}'"
-            return f"Data added to knowledge graph for {target} successfully."
+            await client.graph.episode.add(graph_uuid, **kwargs)
+            return "Data added to the knowledge graph successfully."
         except Exception as e:
             logger.error("Zep add_graph_data failed: %s", type(e).__name__)
             return "Error: unable to add data to the knowledge graph at this time."
@@ -753,9 +757,9 @@ def register_all_tools(
     agent: Any,
     executor: Any,
     client: AsyncZep,
-    user_id: str,
-    session_id: str | None = None,
-    graph_id: str | None = None,
+    graph_uuid: str,
+    thread_uuid: str | None = None,
+    memory_graph_uuid: str | None = None,
 ) -> dict[str, Any]:
     """
     Create and register all Zep tools on AG2 agents.
@@ -767,29 +771,23 @@ def register_all_tools(
         agent: The AG2 agent that will call the tools (register_for_llm).
         executor: The AG2 agent that will execute the tools (register_for_execution).
         client: An initialized AsyncZep instance (reused for all calls).
-        user_id: The user ID for memory operations.
-        session_id: Optional thread/session ID for conversation memory.
-        graph_id: Optional graph ID for named knowledge graph operations.
+        graph_uuid: UUID of the graph for graph operations.
+        thread_uuid: Optional UUID of the conversation thread.
+        memory_graph_uuid: Optional UUID of a separate graph for memory tools.
 
     Returns:
         A dict mapping tool names to their callable functions.
     """
     tools: dict[str, Any] = {}
 
-    # Graph tools — use graph_id if provided, otherwise user_id
-    target_user_id = None if graph_id else user_id
+    # Memory tools can use a separate graph from the shared graph tools.
+    memory_graph_uuid = memory_graph_uuid or graph_uuid
 
     factories = [
-        ("search_memory", create_search_memory_tool(client, user_id, session_id)),
-        ("add_memory", create_add_memory_tool(client, user_id, session_id)),
-        (
-            "search_graph",
-            create_search_graph_tool(client, user_id=target_user_id, graph_id=graph_id),
-        ),
-        (
-            "add_graph_data",
-            create_add_graph_data_tool(client, user_id=target_user_id, graph_id=graph_id),
-        ),
+        ("search_memory", create_search_memory_tool(client, memory_graph_uuid)),
+        ("add_memory", create_add_memory_tool(client, memory_graph_uuid, thread_uuid)),
+        ("search_graph", create_search_graph_tool(client, graph_uuid)),
+        ("add_graph_data", create_add_graph_data_tool(client, graph_uuid)),
     ]
 
     descriptions = {

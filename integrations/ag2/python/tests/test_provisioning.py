@@ -1,217 +1,94 @@
-"""
-Tests for out-of-band Zep resource provisioning: ``ensure_user``,
-``ensure_thread``, and the ``on_created`` hook contract.
-
-Also covers ``ZepMemoryManager.ensure_user_and_thread`` -- the manager's
-lazy, hot-path-wrapped path onto the same helpers.
-"""
-
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from zep_cloud.client import AsyncZep
 
-from zep_ag2.provisioning import (
-    _is_already_exists_error,
-    ensure_thread,
-    ensure_user,
-)
+from zep_ag2 import ZepMemoryManager, create_thread, create_user
 
 
-def _make_mock_client() -> MagicMock:
-    from zep_cloud.client import AsyncZep
-
+def _client() -> MagicMock:
     client = MagicMock(spec=AsyncZep)
     client.user = MagicMock()
-    client.user.add = AsyncMock()
+    client.user.create = AsyncMock(return_value=MagicMock(uuid_="user-1"))
+    client.user.get = AsyncMock(
+        return_value=MagicMock(uuid_="graph-1", graph_uuid="different-graph")
+    )
     client.thread = MagicMock()
-    client.thread.create = AsyncMock()
+    client.thread.create = AsyncMock(return_value=MagicMock(uuid_="thread-1"))
     return client
 
 
-class _ApiError(Exception):
-    """Minimal stand-in for a typed Zep SDK error exposing ``status_code``."""
+@pytest.mark.asyncio
+async def test_create_user_returns_server_generated_resource() -> None:
+    client = _client()
 
-    def __init__(self, status_code: int, message: str = "error") -> None:
-        self.status_code = status_code
-        super().__init__(message)
+    user = await create_user(
+        client,
+        first_name="Ada",
+        last_name="Lovelace",
+        email="ada@example.com",
+    )
 
-
-class TestIsAlreadyExistsError:
-    def test_409_status_code_is_conflict(self) -> None:
-        assert _is_already_exists_error(_ApiError(409)) is True
-
-    def test_400_with_already_exists_message_is_conflict(self) -> None:
-        assert _is_already_exists_error(_ApiError(400, "user already exists")) is True
-
-    def test_400_without_already_exists_message_is_genuine(self) -> None:
-        assert _is_already_exists_error(_ApiError(400, "invalid payload")) is False
-
-    def test_404_is_genuine_failure(self) -> None:
-        assert _is_already_exists_error(_ApiError(404, "not found")) is False
-
-    def test_500_with_conflict_wording_is_genuine_failure(self) -> None:
-        assert _is_already_exists_error(_ApiError(500, "conflict while saving")) is False
-
-    def test_401_is_genuine_failure(self) -> None:
-        assert _is_already_exists_error(_ApiError(401, "unauthorized")) is False
-
-    def test_untyped_already_exists_message_is_conflict(self) -> None:
-        assert _is_already_exists_error(Exception("resource already exists")) is True
-
-    def test_untyped_conflict_message_is_conflict(self) -> None:
-        assert _is_already_exists_error(Exception("409 conflict")) is True
-
-    def test_untyped_unrelated_message_is_genuine_failure(self) -> None:
-        assert _is_already_exists_error(Exception("network timeout")) is False
+    assert user.uuid_ == "user-1"
+    client.user.create.assert_awaited_once_with(
+        first_name="Ada", last_name="Lovelace", email="ada@example.com"
+    )
 
 
-class TestEnsureUser:
-    @pytest.mark.asyncio
-    async def test_ensure_user_created_signal(self) -> None:
-        """True on genuine creation, False when the user already exists."""
-        client = _make_mock_client()
+@pytest.mark.asyncio
+async def test_create_user_propagates_sdk_errors() -> None:
+    client = _client()
+    client.user.create = AsyncMock(side_effect=RuntimeError("create failed"))
 
-        created = await ensure_user(client, user_id="u1")
-        assert created is True
-        client.user.add.assert_called_once_with(
-            user_id="u1", first_name=None, last_name=None, email=None
-        )
-
-        client.user.add.side_effect = Exception("already exists")
-        already_existed = await ensure_user(client, user_id="u1")
-        assert already_existed is False
-
-    @pytest.mark.asyncio
-    async def test_passes_identity_fields(self) -> None:
-        client = _make_mock_client()
-
-        await ensure_user(
-            client, user_id="u1", first_name="Jane", last_name="Smith", email="jane@example.com"
-        )
-
-        client.user.add.assert_called_once_with(
-            user_id="u1", first_name="Jane", last_name="Smith", email="jane@example.com"
-        )
-
-    @pytest.mark.asyncio
-    async def test_on_created_not_fired_when_exists(self) -> None:
-        client = _make_mock_client()
-        client.user.add.side_effect = _ApiError(409, "already exists")
-        hook = AsyncMock()
-
-        created = await ensure_user(client, user_id="u1", on_created=hook)
-
-        assert created is False
-        hook.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_ensure_user_propagates_genuine_errors(self) -> None:
-        client = _make_mock_client()
-        client.user.add.side_effect = _ApiError(401, "unauthorized")
-
-        with pytest.raises(_ApiError):
-            await ensure_user(client, user_id="u1")
-
-    @pytest.mark.asyncio
-    async def test_on_created_fires_once_on_new_user(self) -> None:
-        client = _make_mock_client()
-        hook = AsyncMock()
-
-        created = await ensure_user(client, user_id="u1", on_created=hook)
-        assert created is True
-        hook.assert_called_once_with(client, "u1")
-
-        client.user.add.side_effect = _ApiError(409, "already exists")
-        created_again = await ensure_user(client, user_id="u1", on_created=hook)
-        assert created_again is False
-        hook.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_hook_error_propagates_from_ensure_user(self) -> None:
-        client = _make_mock_client()
-
-        async def _failing_hook(_client: MagicMock, _user_id: str) -> None:
-            raise RuntimeError("setup failed")
-
-        with pytest.raises(RuntimeError, match="setup failed"):
-            await ensure_user(client, user_id="u1", on_created=_failing_hook)
+    with pytest.raises(RuntimeError, match="create failed"):
+        await create_user(client)
 
 
-class TestEnsureThread:
-    @pytest.mark.asyncio
-    async def test_returns_true_on_actual_creation(self) -> None:
-        client = _make_mock_client()
+@pytest.mark.asyncio
+async def test_create_user_runs_setup_hook_with_server_uuid() -> None:
+    client = _client()
+    hook = AsyncMock()
 
-        created = await ensure_thread(client, thread_id="t1", user_id="u1")
+    await create_user(client, on_created=hook)
 
-        assert created is True
-        client.thread.create.assert_called_once_with(thread_id="t1", user_id="u1")
-
-    @pytest.mark.asyncio
-    async def test_returns_false_when_already_exists(self) -> None:
-        client = _make_mock_client()
-        client.thread.create.side_effect = _ApiError(409, "already exists")
-
-        created = await ensure_thread(client, thread_id="t1", user_id="u1")
-
-        assert created is False
-
-    @pytest.mark.asyncio
-    async def test_propagates_genuine_errors(self) -> None:
-        client = _make_mock_client()
-        client.thread.create.side_effect = _ApiError(500, "internal error")
-
-        with pytest.raises(_ApiError):
-            await ensure_thread(client, thread_id="t1", user_id="u1")
+    hook.assert_awaited_once_with(client, "user-1")
 
 
-class TestManagerEnsureUserAndThread:
-    @pytest.mark.asyncio
-    async def test_manager_ensure_user_and_thread_caches(self) -> None:
-        """The manager calls the provisioning helpers at most once each,
-        even across repeated ensure_user_and_thread() calls."""
-        from zep_ag2 import ZepMemoryManager
+@pytest.mark.asyncio
+async def test_create_user_propagates_setup_hook_errors() -> None:
+    client = _client()
+    hook = AsyncMock(side_effect=RuntimeError("setup failed"))
 
-        client = _make_mock_client()
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1")
+    with pytest.raises(RuntimeError, match="setup failed"):
+        await create_user(client, on_created=hook)
 
-        result1 = await manager.ensure_user_and_thread()
-        result2 = await manager.ensure_user_and_thread()
+    client.user.create.assert_awaited_once()
 
-        assert result1 is True
-        assert result2 is True
-        client.user.add.assert_called_once()
-        client.thread.create.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_manager_lazy_path_swallows_provisioning_errors(self) -> None:
-        """A genuine provisioning failure is logged and swallowed -- the
-        manager's lazy path never raises."""
-        from zep_ag2 import ZepMemoryManager
+@pytest.mark.asyncio
+async def test_create_thread_uses_user_uuid() -> None:
+    client = _client()
 
-        client = _make_mock_client()
-        client.user.add.side_effect = _ApiError(500, "internal error")
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1")
+    thread = await create_thread(client, user_uuid="user-1")
 
-        result = await manager.ensure_user_and_thread()
+    assert thread.uuid_ == "thread-1"
+    client.thread.create.assert_awaited_once_with(user_uuid="user-1")
 
-        assert result is False
 
-    @pytest.mark.asyncio
-    async def test_on_created_fires_on_new_user(self) -> None:
-        """on_created wired through the manager fires exactly once for a
-        newly-created user."""
-        from zep_ag2 import ZepMemoryManager
+@pytest.mark.asyncio
+async def test_resolve_graph_uuid_reads_user_only_once() -> None:
+    client = _client()
+    manager = ZepMemoryManager(client, user_uuid="user-1")
 
-        client = _make_mock_client()
-        hook = AsyncMock()
-        manager = ZepMemoryManager(
-            client, user_id="u1", session_id="s1", on_created=hook, first_name="Jane"
-        )
+    assert await manager.resolve_graph_uuid() == "graph-1"
+    assert await manager.resolve_graph_uuid() == "graph-1"
+    client.user.get.assert_awaited_once_with("user-1")
 
-        await manager.ensure_user_and_thread()
 
-        hook.assert_called_once_with(client, "u1")
-        client.user.add.assert_called_once_with(
-            user_id="u1", first_name="Jane", last_name=None, email=None
-        )
+@pytest.mark.asyncio
+async def test_resolve_graph_uuid_uses_configured_uuid_without_lookup() -> None:
+    client = _client()
+    manager = ZepMemoryManager(client, user_uuid="user-1", graph_uuid="graph-2")
+
+    assert await manager.resolve_graph_uuid() == "graph-2"
+    client.user.get.assert_not_awaited()

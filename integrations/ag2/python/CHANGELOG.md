@@ -7,11 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-15
+
+### Changed
+
+- Migrated the package to `zep-cloud>=4.0.0,<5`.
+- Replaced `user_id`, `session_id`, and `graph_id` inputs with V4 UUID inputs.
+- Replaced `ensure_user` and `ensure_thread` with server-UUID-returning
+  `create_user` and `create_thread` helpers.
+- Added graph UUID resolution, V4 thread context retrieval, episode writes, and
+  all six documented search scopes. The `auto` scope uses `graph.get_context`.
+- Added context builders, context templates, sync wrappers, and turn hooks that
+  isolate Zep errors from agent conversations.
+- Added pinned and hidden search parameters, plus constructor-only filters and
+  BFS origins. The V4 SDK does not support the full parameter set on
+  `GraphContextRequest`, so the `auto` scope sends the query and supported
+  filters only.
+- Updated the examples and package documentation for V4.
+
 ## [0.2.2] - 2026-10-01
 
 ### Changed
 
-- The package now requires `zep-cloud>=3.23.0,<4`. The upper bound keeps the package on the v3 SDK when `zep-cloud` 4.x is published.
+- The package required `zep-cloud>=3.23.0,<4`.
 
 ## [0.2.1] - 2026-07-29
 

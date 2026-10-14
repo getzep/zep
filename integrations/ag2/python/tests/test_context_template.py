@@ -19,7 +19,7 @@ from zep_ag2.memory import DEFAULT_CONTEXT_TEMPLATE
 def _make_mock_client(context: str = "Alice likes hiking") -> MagicMock:
     client = MagicMock(spec=AsyncZep)
     client.thread = MagicMock()
-    client.thread.get_user_context = AsyncMock(return_value=MagicMock(context=context))
+    client.thread.get_context = AsyncMock(return_value=MagicMock(context=context))
     client.thread.add_messages = AsyncMock(return_value=MagicMock(context=context))
     return client
 
@@ -37,7 +37,7 @@ class TestContextTemplateOverride:
         client = _make_mock_client()
         custom_template = "CUSTOM START\n{context}\nCUSTOM END"
         manager = ZepMemoryManager(
-            client, user_id="u1", session_id="s1", context_template=custom_template
+            client, user_uuid="u1", thread_uuid="s1", context_template=custom_template
         )
         agent = MagicMock()
         agent.system_message = "base"
@@ -55,7 +55,7 @@ class TestContextTemplateOverride:
         """A context string containing '{' / '}' / '%' must not raise or be
         mangled -- proves rendering uses str.replace, not str.format."""
         client = _make_mock_client(context="Weird {braces} and %s percent stuff")
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1")
+        manager = ZepMemoryManager(client, user_uuid="u1", thread_uuid="s1")
         agent = MagicMock()
         agent.system_message = "base"
         agent.update_system_message = MagicMock()
@@ -72,7 +72,7 @@ class TestContextTemplateOverride:
         client = _make_mock_client(context="fact")
         custom_template = "{{not_a_placeholder}} {context} {{also_not}}"
         manager = ZepMemoryManager(
-            client, user_id="u1", session_id="s1", context_template=custom_template
+            client, user_uuid="u1", thread_uuid="s1", context_template=custom_template
         )
         agent = MagicMock()
         agent.system_message = "base"

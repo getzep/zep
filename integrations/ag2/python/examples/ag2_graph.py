@@ -1,13 +1,4 @@
-"""
-AG2 + Zep Knowledge Graph Example.
-
-Demonstrates how to use ZepGraphMemoryManager to enrich an AG2 agent
-with knowledge graph context and manage structured knowledge.
-
-Prerequisites:
-    export ZEP_API_KEY="your-zep-cloud-api-key"
-    export OPENAI_API_KEY="your-openai-api-key"
-"""
+"""Create a shared Context Graph and expose search and add tools."""
 
 import asyncio
 import os
@@ -15,20 +6,22 @@ import os
 from autogen import AssistantAgent, LLMConfig, UserProxyAgent
 from zep_cloud.client import AsyncZep
 
-from zep_ag2 import ZepGraphMemoryManager, create_add_graph_data_tool, create_search_graph_tool
+from zep_ag2 import (
+    ZepGraphMemoryManager,
+    create_add_graph_data_tool,
+    create_search_graph_tool,
+)
 
 
 async def main() -> None:
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
-    graph_id = "company_knowledge_base"
-
-    # Configure AG2 agents
-    llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
+    graph = await zep.graph.create(name=f"ag2-example-{os.urandom(4).hex()}")
+    graph_uuid = graph.uuid_
 
     assistant = AssistantAgent(
         name="knowledge_assistant",
-        llm_config=llm_config,
-        system_message="You are a knowledge management assistant. You can search and add information to a shared knowledge graph.",
+        llm_config=LLMConfig({"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}),
+        system_message="Search the graph before you answer. Use the add tool to store facts.",
     )
     user_proxy = UserProxyAgent(
         name="user",
@@ -36,31 +29,21 @@ async def main() -> None:
         code_execution_config=False,
         is_termination_msg=lambda msg: "TERMINATE" in (msg.get("content") or ""),
     )
+    search = create_search_graph_tool(zep, graph_uuid)
+    add = create_add_graph_data_tool(zep, graph_uuid)
+    assistant.register_for_llm(description="Search the knowledge graph")(search)
+    user_proxy.register_for_execution()(search)
+    assistant.register_for_llm(description="Add data to the knowledge graph")(add)
+    user_proxy.register_for_execution()(add)
 
-    # Create and register graph tools
-    search_tool = create_search_graph_tool(zep, graph_id=graph_id)
-    add_tool = create_add_graph_data_tool(zep, graph_id=graph_id)
-
-    assistant.register_for_llm(description="Search the knowledge graph")(search_tool)
-    user_proxy.register_for_execution()(search_tool)
-
-    assistant.register_for_llm(description="Add data to the knowledge graph")(add_tool)
-    user_proxy.register_for_execution()(add_tool)
-
-    # Optionally enrich system message with existing knowledge
-    graph_mgr = ZepGraphMemoryManager(zep, graph_id=graph_id)
-    await graph_mgr.enrich_system_message(assistant, query="company policies")
-
-    # Run conversation
-    try:
-        result = user_proxy.initiate_chat(
-            assistant,
-            message="Add this to our knowledge base: Our company uses Python and TypeScript as primary languages. Say TERMINATE when done.",
-            max_turns=4,
-        )
-        print(result)
-    except Exception as e:
-        print(f"Conversation error: {e}")
+    manager = ZepGraphMemoryManager(zep, graph_uuid)
+    await manager.add_data("The example project uses Python.")
+    await manager.enrich_system_message(assistant, query="What language does the project use?")
+    user_proxy.initiate_chat(
+        assistant,
+        message="What language does the project use? Say TERMINATE when done.",
+        max_turns=2,
+    )
 
 
 if __name__ == "__main__":

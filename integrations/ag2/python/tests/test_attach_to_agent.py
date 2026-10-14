@@ -27,11 +27,11 @@ from zep_ag2 import ZepMemoryManager
 def _make_mock_client(context: str = "Zep context block") -> MagicMock:
     client = MagicMock(spec=AsyncZep)
     client.user = MagicMock()
-    client.user.add = AsyncMock()
+    client.user.get = AsyncMock(return_value=MagicMock(uuid_="graph-1"))
     client.thread = MagicMock()
     client.thread.create = AsyncMock()
     client.thread.add_messages = AsyncMock(return_value=MagicMock(context=context))
-    client.thread.get_user_context = AsyncMock(return_value=MagicMock(context=context))
+    client.thread.get_context = AsyncMock(return_value=MagicMock(context=context))
     return client
 
 
@@ -46,7 +46,7 @@ def _make_fake_agent() -> MagicMock:
 class TestAttachToAgentRegistersHooks:
     def test_attach_to_agent_registers_hook(self) -> None:
         client = _make_mock_client()
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1")
+        manager = ZepMemoryManager(client, user_uuid="u1", thread_uuid="s1")
         agent = _make_fake_agent()
 
         manager.attach_to_agent(agent)
@@ -59,7 +59,7 @@ class TestAttachToAgentRegistersHooks:
         the outgoing message, can return it unchanged) to wire assistant
         persistence through -- the loop is complete, not just inject-only."""
         client = _make_mock_client()
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1")
+        manager = ZepMemoryManager(client, user_uuid="u1", thread_uuid="s1")
         agent = _make_fake_agent()
 
         manager.attach_to_agent(agent)
@@ -71,7 +71,7 @@ class TestAttachToAgentRegistersHooks:
 class TestIncomingHookBehavior:
     def test_hook_persists_and_updates_system_message(self) -> None:
         client = _make_mock_client(context="Fresh context")
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1")
+        manager = ZepMemoryManager(client, user_uuid="u1", thread_uuid="s1")
         agent = _make_fake_agent()
 
         manager.attach_to_agent(agent)
@@ -95,7 +95,7 @@ class TestIncomingHookBehavior:
     def test_hook_failure_returns_message_unchanged(self) -> None:
         client = _make_mock_client()
         client.thread.add_messages = AsyncMock(side_effect=Exception("zep is down"))
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1")
+        manager = ZepMemoryManager(client, user_uuid="u1", thread_uuid="s1")
         agent = _make_fake_agent()
 
         manager.attach_to_agent(agent)
@@ -117,7 +117,7 @@ class TestIncomingHookBehavior:
         """Even if update_system_message itself raises, the hook must still
         return the message unchanged."""
         client = _make_mock_client(context="Some context")
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1")
+        manager = ZepMemoryManager(client, user_uuid="u1", thread_uuid="s1")
         agent = _make_fake_agent()
         agent.update_system_message.side_effect = RuntimeError("agent explosion")
 
@@ -137,7 +137,7 @@ class TestIncomingHookBehavior:
 class TestOutgoingHookBehavior:
     def test_outgoing_hook_persists_assistant_reply(self) -> None:
         client = _make_mock_client()
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1")
+        manager = ZepMemoryManager(client, user_uuid="u1", thread_uuid="s1")
         agent = _make_fake_agent()
 
         manager.attach_to_agent(agent)
@@ -162,7 +162,7 @@ class TestOutgoingHookBehavior:
     def test_outgoing_hook_failure_returns_message_unchanged(self) -> None:
         client = _make_mock_client()
         client.thread.add_messages = AsyncMock(side_effect=Exception("zep is down"))
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1")
+        manager = ZepMemoryManager(client, user_uuid="u1", thread_uuid="s1")
         agent = _make_fake_agent()
 
         manager.attach_to_agent(agent)
@@ -184,7 +184,7 @@ class TestOutgoingHookBehavior:
         """AG2 messages may be dicts with a 'content' key, not just plain
         strings -- the hook must extract the text content in either shape."""
         client = _make_mock_client()
-        manager = ZepMemoryManager(client, user_id="u1", session_id="s1")
+        manager = ZepMemoryManager(client, user_uuid="u1", thread_uuid="s1")
         agent = _make_fake_agent()
 
         manager.attach_to_agent(agent)
