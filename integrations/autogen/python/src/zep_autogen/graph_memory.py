@@ -180,7 +180,7 @@ class ZepGraphMemory(Memory):
         The two most recent episodes form the query, and ``graph.get_context``
         returns the composed context block for that query.
         """
-        pager = await self._client.graph.episode.list(self._graph_uuid, limit=2)
+        pager = await self._client.graph.episode.list(self._graph_uuid, page_size=2)
         recent_episodes = await collect(pager, 2)
         if not recent_episodes:
             return None

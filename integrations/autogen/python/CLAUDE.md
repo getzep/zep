@@ -26,7 +26,7 @@ snippet.
 
 ## Identifiers: Zep v4 UUIDs
 
-The package targets the Zep v4 API (`zep-cloud==4.0.0a5`). Zep v4 assigns the UUID of
+The package targets the Zep v4 API (`zep-cloud>=4.0.0,<5`). Zep v4 assigns the UUID of
 every user, thread, and graph, and a `user_id` or a `thread_id` is a name, not an address.
 The public API takes `user_uuid`, `thread_uuid`, and `graph_uuid`. The integration never
 calls a run-time `lookup`. The application resolves a v3 identifier one time and stores the

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Breaking: the package targets the Zep v4 API and requires `zep-cloud==4.0.0a5`.** Zep v4 assigns the UUID of every user, thread, and graph. The public API takes UUIDs instead of names.
+- **Breaking: the package targets the Zep v4 API and requires `zep-cloud>=4.0.0,<5`.** Zep v4 assigns the UUID of every user, thread, and graph. The public API takes UUIDs instead of names.
 - **Breaking: the resource parameters are renamed.** `ZepUserMemory` takes `user_uuid`, `thread_uuid`, and the optional `graph_uuid`. `ZepGraphMemory` takes `graph_uuid`. `create_search_graph_tool` and `create_add_graph_data_tool` take `graph_uuid` or `user_uuid`. The `ContextInput` dataclass gives `user_uuid`, `thread_uuid`, and `graph_uuid`.
 - **Breaking: `ensure_user` and `ensure_thread` are replaced by `create_user` and `create_thread`.** Zep v4 creates a resource and returns its UUID, so the create-then-catch-conflict pattern no longer applies. `create_user` returns the `User` model and `create_thread` returns the `Thread` model. Read `uuid_` from the response and store it in your own database.
 - **Breaking: `ZepUserMemory` no longer creates the Zep user.** The application creates the user one time with `create_user`, or with `client.user.create`. `add()` still creates a thread when the constructor did not get a `thread_uuid`.

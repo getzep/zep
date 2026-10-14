@@ -92,18 +92,22 @@ async def search_scope(
     """
     limit = clamp_limit(limit)
     if scope == "edges":
-        pager: Any = await client.graph.search_edges(graph_uuid, query=query, limit=limit, **kwargs)
+        pager: Any = await client.graph.search_edges(
+            graph_uuid, query=query, page_size=limit, **kwargs
+        )
     elif scope == "nodes":
-        pager = await client.graph.search_nodes(graph_uuid, query=query, limit=limit, **kwargs)
+        pager = await client.graph.search_nodes(graph_uuid, query=query, page_size=limit, **kwargs)
     elif scope == "episodes":
-        pager = await client.graph.search_episodes(graph_uuid, query=query, limit=limit, **kwargs)
+        pager = await client.graph.search_episodes(
+            graph_uuid, query=query, page_size=limit, **kwargs
+        )
     elif scope == "observations":
         pager = await client.graph.search_observations(
-            graph_uuid, query=query, limit=limit, **kwargs
+            graph_uuid, query=query, page_size=limit, **kwargs
         )
     elif scope == "thread_summaries":
         pager = await client.graph.search_thread_summaries(
-            graph_uuid, query=query, limit=limit, **kwargs
+            graph_uuid, query=query, page_size=limit, **kwargs
         )
     else:
         raise ValueError(f"Unsupported search scope: {scope}. Supported: {list(PAGED_SCOPES)}")

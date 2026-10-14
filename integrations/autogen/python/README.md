@@ -207,7 +207,7 @@ async def my_builder(ctx: ContextInput) -> str | None:
     pager = await ctx.zep.graph.search_edges(
         ctx.graph_uuid,
         query=ctx.user_message,
-        limit=10,
+        page_size=10,
     )
     facts = [edge.fact async for edge in pager if edge.fact]
     if not facts:
@@ -445,7 +445,7 @@ make pre-commit
 ## Requirements
 
 - Python 3.11+
-- `zep-cloud==4.0.0a5`
+- `zep-cloud>=4.0.0,<5`
 - `autogen-agentchat>=0.7.0`
 - `autogen-ext[azure,openai]>=0.7.0`
 

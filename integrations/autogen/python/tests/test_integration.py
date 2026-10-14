@@ -89,7 +89,7 @@ async def wait_for_episodes_processed(
             logger.warning("Timed out waiting for episode processing; continuing.")
             return
         try:
-            pager = await zep.graph.episode.list(graph_uuid, limit=20)
+            pager = await zep.graph.episode.list(graph_uuid, page_size=20)
             episodes = [episode async for episode in pager]
         except Exception as exc:
             logger.warning("Episode poll failed (%s); retrying.", exc)
@@ -133,7 +133,7 @@ async def store_turn(
 
 async def collect_messages(zep: AsyncZep, thread_uuid: str, limit: int = 20) -> list:
     """Return up to ``limit`` messages of a thread."""
-    pager = await zep.thread.list_messages(thread_uuid, limit=limit)
+    pager = await zep.thread.list_messages(thread_uuid, page_size=limit)
     return [message async for message in pager]
 
 

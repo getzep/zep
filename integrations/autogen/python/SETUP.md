@@ -35,10 +35,8 @@ make install        # uv sync --extra dev
 ```
 
 Requirements: Python 3.11+, `autogen-agentchat>=0.7.0`,
-`autogen-ext[azure,openai]>=0.7.0`, `zep-cloud==4.0.0a5`.
-
-`zep-cloud` 4.0.0a5 is a pre-release. Install it with `pip install --pre
-zep-cloud==4.0.0a5` or with `uv add "zep-cloud==4.0.0a5"`.
+`autogen-ext[azure,openai]>=0.7.0`, `zep-cloud>=4.0.0,<5`. Install it with
+`pip install "zep-cloud>=4.0.0,<5"` or with `uv add "zep-cloud>=4.0.0,<5"`.
 
 This package targets the Zep v4 API. Zep v4 assigns the UUID of every user,
 thread, and graph. The public API of the package takes `user_uuid`,

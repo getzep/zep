@@ -96,7 +96,7 @@ class ContextInput:
                 pager = await ctx.zep.graph.search_edges(
                     ctx.graph_uuid,
                     query=ctx.user_message,
-                    limit=10,
+                    page_size=10,
                 )
                 facts = [edge.fact async for edge in pager if edge.fact]
                 if not facts:
@@ -497,7 +497,7 @@ class ZepUserMemory(Memory):
 
                 # Only include recent messages if we have memory
                 if memory_parts:
-                    pager = await self._client.thread.list_messages(self._thread_uuid, limit=10)
+                    pager = await self._client.thread.list_messages(self._thread_uuid, page_size=10)
                     recent = await collect(pager, 10)
                     if recent:
                         message_history = []

@@ -98,7 +98,7 @@ class TestPinOrExposeSchema:
         await _run(tool, query="query")
 
         client.graph.search_nodes.assert_called_once()
-        assert client.graph.search_nodes.call_args.kwargs["limit"] == 5
+        assert client.graph.search_nodes.call_args.kwargs["page_size"] == 5
 
     @pytest.mark.asyncio
     async def test_search_tool_hidden_params_omitted_from_sdk_call(self) -> None:
@@ -132,7 +132,7 @@ class TestPinOrExposeSchema:
         await _run(tool, query="query")
 
         client.graph.search_nodes.assert_called_once()
-        assert client.graph.search_nodes.call_args.kwargs["limit"] == 3
+        assert client.graph.search_nodes.call_args.kwargs["page_size"] == 3
 
     def test_search_tool_six_scopes(self) -> None:
         client = _make_mock_client()
@@ -165,7 +165,7 @@ class TestPinOrExposeSchema:
         kwargs = client.graph.search_edges.call_args.kwargs
         assert "mmr_lambda" not in kwargs
         assert "center_node_uuid" not in kwargs
-        assert kwargs["limit"] == 10
+        assert kwargs["page_size"] == 10
         assert kwargs["reranker"] == "rrf"
 
 
@@ -267,7 +267,7 @@ class TestLimitClamping:
 
         await _run(tool, query="query")
 
-        assert client.graph.search_edges.call_args.kwargs["limit"] == 50
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == 50
 
     @pytest.mark.asyncio
     async def test_model_provided_limit_clamped_at_call_time(self) -> None:
@@ -278,7 +278,7 @@ class TestLimitClamping:
 
         await _run(tool, query="query", limit=200)
 
-        assert client.graph.search_edges.call_args.kwargs["limit"] == 50
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == 50
 
     @pytest.mark.asyncio
     async def test_model_provided_limit_clamped_to_at_least_one(self) -> None:
@@ -287,7 +287,7 @@ class TestLimitClamping:
 
         await _run(tool, query="query", limit=0)
 
-        assert client.graph.search_edges.call_args.kwargs["limit"] == 1
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == 1
 
 
 class TestAutoScope:
