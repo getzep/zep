@@ -15,7 +15,7 @@ The changes that are specific to this package are:
 - The session-state key `zep_user_id` is now `zep_user_uuid`, and `zep_thread_id` is now `zep_thread_uuid`. The new optional key `zep_graph_uuid` takes the stored `user.graph_uuid`. `ZepContextTool`, `create_after_model_callback`, and `ZepGraphSearchTool` read these keys. They use the ADK `user_id` and `session_id` only when no key is set, so those values must then be the Zep UUIDs.
 - `ContextInput.user_id` is now `ContextInput.user_uuid`, and `ContextInput.thread_id` is now `ContextInput.thread_uuid`. A custom `context_builder` must call the V4 SDK, for example `ctx.zep.graph.search_edges(graph_uuid, query=ctx.user_message)` in place of `ctx.zep.graph.search(user_id=ctx.user_id, ...)`.
 - The `graph_id` parameter of `ZepGraphSearchTool` is now `graph_uuid`.
-- `ZepMemoryService.search_memory` reads the ADK `user_id` as the Zep user UUID. Set the ADK `user_id` to the stored user UUID, or give a fixed graph UUID to the new `graph_uuid` parameter of `ZepMemoryService`.
+- `ZepMemoryService` now requires the new `resolve_user_uuid` parameter, which maps the ADK `app_name` and `user_id` to the stored Zep user UUID, or the new `graph_uuid` parameter, which gives a fixed graph UUID.
 
 For an existing V3 user or thread, do not call `create_user` or `create_thread`. Get its UUID one time with the backfill in the migration guide, and store it.
 
@@ -23,7 +23,7 @@ For an existing V3 user or thread, do not call `create_user` or `create_thread`.
 
 - `ZepGraphSearchTool` and `ZepMemoryService` now call the v4 split search methods (`graph.search_edges`, `search_nodes`, `search_episodes`, `search_observations`, `search_thread_summaries`) and `graph.get_context` for the `auto` scope. The supported scopes are unchanged. The v4 search methods return a pager; the tools read the items of the first page. The `limit` setting of the tools is sent to the SDK as `page_size`.
 - `ZepContextTool` and the after-model callback now call `thread.add_messages(thread_uuid, ...)` with `zep_cloud.AddMessage` objects, and `thread.get_context` replaces `thread.get_user_context`.
-- `ZepMemoryService` takes an optional `graph_uuid` and otherwise resolves the graph UUID of the user through `user.get`.
+- `ZepMemoryService` gets the Zep user UUID from `resolve_user_uuid` and resolves the graph UUID of the user through `user.get`, or it uses the fixed `graph_uuid`. When `resolve_user_uuid` returns no value or a value that is not a UUID, the service logs an error and returns no memories.
 
 ## 0.3.1 (2026-07-29)
 

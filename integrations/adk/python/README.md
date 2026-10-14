@@ -71,8 +71,11 @@ user = await create_user(
 )
 thread = await create_thread(zep, user_uuid=user.uuid_)
 
-# Store user.uuid_, user.graph_uuid, and thread.uuid_ in your own database, and
-# put them into the ADK session state.
+# Store user.uuid_, user.graph_uuid, and thread.uuid_ in your own database, next
+# to your own user ID, and put them into the ADK session state. This dict stands
+# in for that database.
+zep_user_uuids: dict[str, str] = {"user_123": user.uuid_}
+
 await session_service.create_session(
     app_name="my_app",
     user_id="user_123",
@@ -133,16 +136,21 @@ Both `ZepContextTool` and `create_after_model_callback` include per-thread messa
 
 ## ADK-native memory service
 
-`ZepMemoryService` implements ADK's own `BaseMemoryService` extension point, so Zep can back ADK's built-in `load_memory`/`preload_memory` tools. Register it on the `Runner`:
+`ZepMemoryService` implements ADK's own `BaseMemoryService` extension point, so Zep can back ADK's built-in `load_memory`/`preload_memory` tools. Register it on the `Runner`.
+
+ADK gives `search_memory` only the ADK `app_name` and `user_id`, and the ADK `user_id` is your own identifier, not a Zep UUID. Give the service a `resolve_user_uuid` callable that returns the Zep user UUID that you stored for that user. This example continues the Quick Start, so `zep`, `session_service`, and `zep_user_uuids` are already defined:
 
 ```python
 from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.adk.tools import load_memory
-from zep_cloud.client import AsyncZep
 from zep_adk import ZepMemoryService
 
-zep = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
+
+def resolve_user_uuid(app_name: str, user_id: str) -> str | None:
+    # Read the Zep user UUID that you stored when you called create_user.
+    return zep_user_uuids.get(user_id)
+
 
 agent = Agent(
     name="my_agent",
@@ -155,11 +163,17 @@ runner = Runner(
     agent=agent,
     app_name="my_app",
     session_service=session_service,
-    memory_service=ZepMemoryService(zep=zep, scope="edges"),
+    memory_service=ZepMemoryService(
+        zep=zep,
+        scope="edges",
+        resolve_user_uuid=resolve_user_uuid,
+    ),
 )
 ```
 
-When the model calls `load_memory`, ADK invokes `ZepMemoryService.search_memory(app_name=..., user_id=..., query=...)`, where `user_id` holds the Zep user UUID. The service resolves the graph UUID of that user and runs the v4 search method for the configured scope (for example `zep.graph.search_edges(graph_uuid, query=query, page_size=limit)`) and maps each result into a `MemoryEntry` (the same result shapes -- edges, nodes, episodes, observations, thread_summaries, auto -- as `ZepGraphSearchTool`). A Zep failure is logged (as a warning, with lengths/counts only) and returns an empty result rather than raising into the agent.
+`resolve_user_uuid` can also be an `async` function, for example one that reads your database. The constructor raises `ValueError` when you give neither `resolve_user_uuid` nor `graph_uuid`. When `resolve_user_uuid` returns `None` or a value that is not a UUID, the service logs an error and returns no memories.
+
+When the model calls `load_memory`, ADK invokes `ZepMemoryService.search_memory(app_name=..., user_id=..., query=...)`. The service calls `resolve_user_uuid(app_name, user_id)` to get the Zep user UUID, resolves the graph UUID of that user, and runs the v4 search method for the configured scope (for example `zep.graph.search_edges(graph_uuid, query=query, page_size=limit)`) and maps each result into a `MemoryEntry` (the same result shapes -- edges, nodes, episodes, observations, thread_summaries, auto -- as `ZepGraphSearchTool`). A Zep failure is logged (as a warning, with lengths/counts only) and returns an empty result rather than raising into the agent.
 
 `add_session_to_memory` is intentionally a no-op: Zep already ingests each turn live via `ZepContextTool` (or `thread.add_messages`) and `create_after_model_callback`, so re-ingesting the full session here would persist the same conversation into the graph twice.
 
@@ -225,7 +239,7 @@ The changes that are specific to this package are:
 - The session-state key `zep_user_id` is now `zep_user_uuid`, and `zep_thread_id` is now `zep_thread_uuid`. The new optional key `zep_graph_uuid` takes the stored `user.graph_uuid`. `ZepContextTool`, `create_after_model_callback`, and `ZepGraphSearchTool` read these keys. They use the ADK `user_id` and `session_id` only when no key is set, so those values must then be the Zep UUIDs.
 - `ContextInput.user_id` is now `ContextInput.user_uuid`, and `ContextInput.thread_id` is now `ContextInput.thread_uuid`. A custom `context_builder` must call the V4 SDK, for example `ctx.zep.graph.search_edges(graph_uuid, query=ctx.user_message)` in place of `ctx.zep.graph.search(user_id=ctx.user_id, ...)`.
 - The `graph_id` parameter of `ZepGraphSearchTool` is now `graph_uuid`.
-- `ZepMemoryService.search_memory` reads the ADK `user_id` as the Zep user UUID. Set the ADK `user_id` to the stored user UUID, or give a fixed graph UUID to the new `graph_uuid` parameter of `ZepMemoryService`.
+- `ZepMemoryService` now requires the new `resolve_user_uuid` parameter, which maps the ADK `app_name` and `user_id` to the stored Zep user UUID, or the new `graph_uuid` parameter, which gives a fixed graph UUID.
 
 For an existing V3 user or thread, do not call `create_user` or `create_thread`. Get its UUID one time with the backfill in the migration guide, and store it.
 
@@ -358,6 +372,8 @@ Every search parameter is **tri-state**, set via `**pinned`:
 | `zep` | `AsyncZep` | Yes | -- | Initialised Zep async client |
 | `scope` | `str` | No | `"edges"` | Graph search scope used by `search_memory`. Same enum as `ZepGraphSearchTool`: `edges`, `nodes`, `episodes`, `observations`, `thread_summaries`, `auto` |
 | `limit` | `int` | No | `None` | Maximum results per search. `None` omits the parameter so the Zep SDK applies its own default |
+| `resolve_user_uuid` | `Callable[[str, str], str \| None]` (sync or async) | Yes, unless `graph_uuid` is set | `None` | Receives the ADK `app_name` and `user_id`, and returns the stored Zep user UUID. The ADK `user_id` is never used as a Zep UUID |
+| `graph_uuid` | `str` | No | `None` | A fixed graph UUID. When set, every search targets that graph, and `resolve_user_uuid` is not called |
 
 ## Examples
 

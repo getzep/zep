@@ -437,11 +437,15 @@ async def main() -> None:
         # ==================================================================
         print("\n[Step 9b] ZepMemoryService.search_memory against the live client...")
 
-        memory_service = ZepMemoryService(zep=zep_client)
+        adk_user_uuids = {"integ-adk-user": user_uuid}
+        memory_service = ZepMemoryService(
+            zep=zep_client,
+            resolve_user_uuid=lambda app_name, user_id: adk_user_uuids.get(user_id),
+        )
         try:
             memory_response = await memory_service.search_memory(
                 app_name=APP_NAME,
-                user_id=user_uuid,
+                user_id="integ-adk-user",
                 query="What do you know about the user's hobbies?",
             )
             print(f"  ZepMemoryService returned {len(memory_response.memories)} memories")

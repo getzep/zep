@@ -39,7 +39,10 @@ the same intentional no-op for the same reason.
 
 from __future__ import annotations
 
+import inspect
 import logging
+import uuid
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from google.adk.memory.base_memory_service import BaseMemoryService, SearchMemoryResponse
@@ -54,6 +57,11 @@ if TYPE_CHECKING:
     from google.adk.sessions import Session
 
 logger = logging.getLogger(__name__)
+
+#: Maps the ADK ``(app_name, user_id)`` of a memory search to the stored Zep
+#: user UUID.  The callable can be sync or async, and returns ``None`` when the
+#: application has no Zep user for the ADK user.
+UserUUIDResolver = Callable[[str, str], "str | None | Awaitable[str | None]"]
 
 
 class ZepMemoryService(BaseMemoryService):
@@ -77,7 +85,10 @@ class ZepMemoryService(BaseMemoryService):
             agent=agent,
             app_name="my_app",
             session_service=session_service,
-            memory_service=ZepMemoryService(zep=zep),
+            memory_service=ZepMemoryService(
+                zep=zep,
+                resolve_user_uuid=lambda app_name, user_id: zep_user_uuids.get(user_id),
+            ),
         )
 
     See the module docstring for guidance on when to use this versus
@@ -95,10 +106,15 @@ class ZepMemoryService(BaseMemoryService):
             single memory entry).
         limit: Maximum number of results per search. ``None`` (the default)
             omits the parameter so the Zep SDK applies its own default.
+        resolve_user_uuid: A callable that receives the ADK ``app_name`` and
+            ``user_id`` of a search and returns the stored Zep user UUID, or
+            ``None``.  It can be sync or async.  The service searches the graph
+            of that Zep user.  The ADK ``user_id`` is never used as a Zep UUID.
         graph_uuid: An optional fixed graph UUID.  When set, every search
-            targets that graph.  When ``None`` (the default), the service
-            searches the graph of the user that ADK passes to
-            :meth:`search_memory`.
+            targets that graph, and ``resolve_user_uuid`` is not called.
+
+    Raises:
+        ValueError: If neither ``resolve_user_uuid`` nor ``graph_uuid`` is set.
     """
 
     def __init__(
@@ -107,9 +123,17 @@ class ZepMemoryService(BaseMemoryService):
         zep: AsyncZep,
         scope: str = "edges",
         limit: int | None = None,
+        resolve_user_uuid: UserUUIDResolver | None = None,
         graph_uuid: str | None = None,
     ) -> None:
+        if resolve_user_uuid is None and not graph_uuid:
+            raise ValueError(
+                "ZepMemoryService needs the Zep user UUID. Pass resolve_user_uuid "
+                "(maps the ADK user_id to the stored Zep user UUID) or a fixed "
+                "graph_uuid. The ADK user_id is not a Zep UUID."
+            )
         self._zep: AsyncZep = zep
+        self._resolve_user_uuid: UserUUIDResolver | None = resolve_user_uuid
         self._scope: str = scope
         self._limit: int | None = limit
         self._graph_uuid: str | None = graph_uuid
@@ -144,9 +168,10 @@ class ZepMemoryService(BaseMemoryService):
     ) -> SearchMemoryResponse:
         """Search the user's Zep graph and map results to ``MemoryEntry`` objects.
 
-        Zep v4 addresses a user by a server-generated UUID, so ADK's
-        ``user_id`` is read as the Zep user UUID.  Set the ADK ``user_id`` to
-        the Zep user UUID, or pass a fixed ``graph_uuid`` to the constructor.
+        Zep v4 addresses a user by a server-generated UUID.  The service gets
+        the Zep user UUID from ``resolve_user_uuid`` (or uses the fixed
+        ``graph_uuid``).  When the resolver gives no value or a value that is
+        not a UUID, the service logs an error and returns no memories.
 
         ``app_name`` has no Zep equivalent -- Zep scopes memory by user
         graph, not by application -- so it is accepted (to satisfy the ADK
@@ -169,12 +194,8 @@ class ZepMemoryService(BaseMemoryService):
             return SearchMemoryResponse()
 
         try:
-            graph_uuid = await self._resolve_graph_uuid(user_id)
+            graph_uuid = await self._resolve_graph_uuid(app_name, user_id)
             if not graph_uuid:
-                logger.warning(
-                    "Cannot resolve the Zep graph UUID (user_uuid_len=%d); returning no memories",
-                    len(user_id),
-                )
                 return SearchMemoryResponse()
             texts = await search_graph(
                 self._zep,
@@ -201,10 +222,38 @@ class ZepMemoryService(BaseMemoryService):
         ]
         return SearchMemoryResponse(memories=memories)
 
-    async def _resolve_graph_uuid(self, user_uuid: str) -> str | None:
-        """Resolve the UUID of the graph to search for one user."""
+    async def _resolve_graph_uuid(self, app_name: str, user_id: str) -> str | None:
+        """Resolve the UUID of the graph to search for one ADK user.
+
+        Logs an error and returns ``None`` when the resolver gives no Zep user
+        UUID or a value that is not a UUID.
+        """
         if self._graph_uuid:
             return self._graph_uuid
+        if self._resolve_user_uuid is None:
+            return None
+
+        result = self._resolve_user_uuid(app_name, user_id)
+        user_uuid = await result if inspect.isawaitable(result) else result
+        if not user_uuid:
+            logger.error(
+                "resolve_user_uuid returned no Zep user UUID for the ADK user "
+                "(user_id_len=%d); returning no memories. Store the UUID from "
+                "create_user and return it from resolve_user_uuid.",
+                len(user_id),
+            )
+            return None
+        try:
+            uuid.UUID(str(user_uuid))
+        except ValueError:
+            logger.error(
+                "resolve_user_uuid returned a value that is not a Zep user UUID "
+                "(value_len=%d); returning no memories. Return the user.uuid_ "
+                "value from create_user.",
+                len(str(user_uuid)),
+            )
+            return None
+        user_uuid = str(user_uuid)
 
         cached = self._user_graph_uuids.get(user_uuid)
         if cached:
@@ -213,4 +262,6 @@ class ZepMemoryService(BaseMemoryService):
         resolved = await resolve_user_graph_uuid(self._zep, user_uuid)
         if resolved:
             self._user_graph_uuids[user_uuid] = resolved
+        else:
+            logger.error("The Zep user has no graph UUID; returning no memories.")
         return resolved
