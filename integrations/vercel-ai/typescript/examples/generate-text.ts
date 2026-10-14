@@ -38,6 +38,9 @@ import {
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const ZEP_BASE_URL = process.env.ZEP_API_URL
+  ? `${process.env.ZEP_API_URL}/api/v4`
+  : undefined;
 
 if (!ZEP_API_KEY) throw new Error("ZEP_API_KEY is not set.");
 if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set.");
@@ -49,7 +52,7 @@ const SYSTEM =
   "look up specific details. Personalize your replies.";
 
 async function main(): Promise<void> {
-  const client = new ZepClient({ apiKey: ZEP_API_KEY });
+  const client = new ZepClient({ apiKey: ZEP_API_KEY, baseUrl: ZEP_BASE_URL });
 
   console.log("=".repeat(60));
   console.log("Vercel AI SDK + Zep Memory Example (generateText)");

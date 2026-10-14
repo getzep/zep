@@ -9,6 +9,9 @@ import {
 import { run } from "./helpers.js";
 
 const apiKey = process.env.ZEP_API_KEY;
+const baseUrl = process.env.ZEP_API_URL
+  ? `${process.env.ZEP_API_URL}/api/v4`
+  : undefined;
 
 // These tests hit the real Zep API and only run when ZEP_API_KEY is set.
 // Ingestion is asynchronous, so they assert the calls succeed — not that a
@@ -17,7 +20,7 @@ const describeLive = apiKey ? describe : describe.skip;
 
 describeLive("live Zep integration", () => {
   it("creates identity, persists, and retrieves without throwing", async () => {
-    const client = new ZepClient({ apiKey });
+    const client = new ZepClient({ apiKey, baseUrl });
 
     const identity = await createZepUserAndThread({
       client,

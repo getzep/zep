@@ -36,12 +36,15 @@ import {
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const ZEP_BASE_URL = process.env.ZEP_API_URL
+  ? `${process.env.ZEP_API_URL}/api/v4`
+  : undefined;
 
 if (!ZEP_API_KEY) throw new Error("ZEP_API_KEY is not set.");
 if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set.");
 
 async function main(): Promise<void> {
-  const client = new ZepClient({ apiKey: ZEP_API_KEY });
+  const client = new ZepClient({ apiKey: ZEP_API_KEY, baseUrl: ZEP_BASE_URL });
 
   // Zep v4 assigns every UUID. A real application stores the returned UUIDs in
   // its own database and reuses them on later turns.
