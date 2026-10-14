@@ -140,9 +140,10 @@ func TestADKSchemaConversionCarriesEnumsAndDefaults(t *testing.T) {
 // built tool's declaration for assertions below.
 type declaredSchemaProps struct {
 	Properties map[string]struct {
-		Type    string          `json:"type"`
-		Enum    []string        `json:"enum,omitempty"`
-		Default json.RawMessage `json:"default,omitempty"`
+		Type        string          `json:"type"`
+		Description string          `json:"description,omitempty"`
+		Enum        []string        `json:"enum,omitempty"`
+		Default     json.RawMessage `json:"default,omitempty"`
 	} `json:"properties"`
 	Required []string `json:"required"`
 }
@@ -206,9 +207,17 @@ func TestGraphSearchToolSchemaDefaultExposesAllFiveParams(t *testing.T) {
 	}
 
 	reranker := schema.Properties["reranker"]
-	wantRerankerEnum := []string{"rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"}
+	wantRerankerEnum := []string{"rrf", "mmr", "node_distance", "cross_encoder"}
 	if len(reranker.Enum) != len(wantRerankerEnum) {
 		t.Fatalf("reranker enum = %v, want %v", reranker.Enum, wantRerankerEnum)
+	}
+	for i, v := range wantRerankerEnum {
+		if reranker.Enum[i] != v {
+			t.Fatalf("reranker enum[%d] = %q, want %q", i, reranker.Enum[i], v)
+		}
+	}
+	if strings.Contains(reranker.Description, "episode_mentions") {
+		t.Fatalf("reranker description = %q, want no episode_mentions", reranker.Description)
 	}
 	if string(reranker.Default) != `"rrf"` {
 		t.Fatalf("reranker default = %s, want \"rrf\"", reranker.Default)
@@ -390,6 +399,33 @@ func TestGraphSearchHandlerMergePrecedence(t *testing.T) {
 		}
 		if f.api.lastSearchBody.Reranker == nil || *f.api.lastSearchBody.Reranker != SearchRerankerRRF {
 			t.Fatalf("reranker = %v, want fallback default rrf", f.api.lastSearchBody.Reranker)
+		}
+	})
+
+	t.Run("model episode_mentions reranker falls back to default", func(t *testing.T) {
+		f := newSearchToolFixture(t, WithToolLogger(discardLogger()))
+		em := string(SearchRerankerEpisodeMentions)
+		if _, err := f.run(context.Background(), SearchArgs{Query: "q", Reranker: &em}); err != nil {
+			t.Fatalf("run err = %v", err)
+		}
+		if f.api.lastSearchBody.Reranker == nil || *f.api.lastSearchBody.Reranker != SearchRerankerRRF {
+			t.Fatalf("reranker = %v, want fallback default rrf", f.api.lastSearchBody.Reranker)
+		}
+	})
+
+	t.Run("pinned episode_mentions reranker is sent with episode filters", func(t *testing.T) {
+		f := newSearchToolFixture(t,
+			WithToolReranker(SearchRerankerEpisodeMentions),
+			WithToolSearchFilters(&zep.SearchFilters{EpisodeUUIDs: []string{"episode-uuid-1"}}),
+		)
+		if _, err := f.run(context.Background(), SearchArgs{Query: "q"}); err != nil {
+			t.Fatalf("run err = %v", err)
+		}
+		if f.api.lastSearchBody.Reranker == nil || *f.api.lastSearchBody.Reranker != SearchRerankerEpisodeMentions {
+			t.Fatalf("reranker = %v, want pinned episode_mentions", f.api.lastSearchBody.Reranker)
+		}
+		if f.api.lastEdgeFilters == nil || len(f.api.lastEdgeFilters.EpisodeUUIDs) != 1 {
+			t.Fatalf("edge filters = %v, want the pinned episode UUIDs", f.api.lastEdgeFilters)
 		}
 	})
 

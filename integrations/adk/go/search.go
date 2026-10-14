@@ -69,20 +69,24 @@ const (
 	SearchRerankerMMR SearchReranker = "mmr"
 	// SearchRerankerNodeDistance orders results by distance from a center node.
 	SearchRerankerNodeDistance SearchReranker = "node_distance"
-	// SearchRerankerEpisodeMentions orders results by episode mentions.
+	// SearchRerankerEpisodeMentions orders results by episode mentions. Zep
+	// requires the EpisodeUUIDs search filter for this reranker, so the graph
+	// search tool does not offer it to the model. Set it with
+	// WithToolReranker and WithToolSearchFilters.
 	SearchRerankerEpisodeMentions SearchReranker = "episode_mentions"
 	// SearchRerankerCrossEncoder orders results with a cross-encoder.
 	SearchRerankerCrossEncoder SearchReranker = "cross_encoder"
 )
 
-// newSearchRerankerFromString converts a model-supplied value into a
-// [SearchReranker]. It reports an error for an unsupported value.
-func newSearchRerankerFromString(s string) (SearchReranker, error) {
+// newModelSearchRerankerFromString converts a model-supplied value into a
+// [SearchReranker]. It reports an error for a value that the model cannot
+// select. The model cannot select [SearchRerankerEpisodeMentions], because
+// Zep requires episode UUID filters for that reranker.
+func newModelSearchRerankerFromString(s string) (SearchReranker, error) {
 	switch r := SearchReranker(s); r {
 	case SearchRerankerRRF,
 		SearchRerankerMMR,
 		SearchRerankerNodeDistance,
-		SearchRerankerEpisodeMentions,
 		SearchRerankerCrossEncoder:
 		return r, nil
 	default:

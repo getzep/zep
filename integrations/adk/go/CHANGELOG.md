@@ -37,6 +37,11 @@
   type `zepadk.SearchReranker` (`SearchRerankerRRF`, `SearchRerankerMMR`,
   `SearchRerankerNodeDistance`, `SearchRerankerEpisodeMentions`, and
   `SearchRerankerCrossEncoder`), and `WithToolReranker` takes this type.
+- The graph search tool no longer offers the `episode_mentions` reranker to
+  the model, because Zep requires the `EpisodeUUIDs` search filter for it. A
+  model-supplied `episode_mentions` value falls back to the default reranker.
+  To use `episode_mentions`, set `WithToolReranker` and set `EpisodeUUIDs` in
+  `WithToolSearchFilters`.
 - Each Zep v4 search scope accepts only some filter keys. When the filters of
   `WithToolSearchFilters` have a key that the selected scope cannot apply, the
   search tool logs an error and returns no facts.

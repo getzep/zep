@@ -61,7 +61,6 @@ var (
 		string(SearchRerankerRRF),
 		string(SearchRerankerMMR),
 		string(SearchRerankerNodeDistance),
-		string(SearchRerankerEpisodeMentions),
 		string(SearchRerankerCrossEncoder),
 	}
 )
@@ -351,8 +350,7 @@ func buildSearchInputSchema(cfg *graphSearchToolOptions) *jsonschema.Schema {
 		properties["reranker"] = &jsonschema.Schema{
 			Type: "string",
 			Description: "Result ordering algorithm: 'rrf' (balanced), 'mmr' (diverse), " +
-				"'cross_encoder' (highest accuracy), 'episode_mentions' " +
-				"(frequently referenced), 'node_distance' (near a specific entity).",
+				"'cross_encoder' (highest accuracy), 'node_distance' (near a specific entity).",
 			Enum:    searchRerankerEnum,
 			Default: mustRaw(string(defaultSearchReranker)),
 		}
@@ -427,7 +425,7 @@ func resolveReranker(cfg *graphSearchToolOptions, modelValue *string) *SearchRer
 		return nil
 	default:
 		if modelValue != nil {
-			reranker, err := newSearchRerankerFromString(*modelValue)
+			reranker, err := newModelSearchRerankerFromString(*modelValue)
 			if err != nil {
 				cfg.logger.Warn("zepadk: invalid reranker value from model; falling back to default",
 					slog.String("value", *modelValue), slog.String("default", string(defaultSearchReranker)))
