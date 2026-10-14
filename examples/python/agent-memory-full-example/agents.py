@@ -10,7 +10,7 @@ from openai import AsyncOpenAI
 from dotenv import load_dotenv
 import os
 import time
-from zep_cloud.types import Message, EntityEdge
+from zep_cloud.types import Edge, Message
 
 # Load environment variables
 load_dotenv()
@@ -190,10 +190,10 @@ class ChatAgent_GraphSearch:
         )
 
         # Extract edges from search results
-        edges: List[EntityEdge] = search_results.items or []
+        edges: List[Edge] = search_results.items or []
 
         # Format facts from edges
-        def format_fact(edge: EntityEdge) -> str:
+        def format_fact(edge: Edge) -> str:
             valid_at = edge.valid_at or "unknown"
             invalid_at = edge.invalid_at or "present"
             return f"  - {edge.fact} (Date range: {valid_at} - {invalid_at})"

@@ -10,7 +10,7 @@ from openai import AsyncOpenAI
 from dotenv import load_dotenv
 import os
 import time
-from zep_cloud.types import Message, EntityEdge
+from zep_cloud.types import Message
 import inspect
 
 # Load environment variables
