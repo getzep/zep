@@ -24,10 +24,10 @@ from __future__ import annotations
 import inspect
 import logging
 from typing import get_type_hints
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
-from zep_cloud.client import AsyncZep
+from zep_cloud.client import Zep
 
 from zep_ag2 import ZepAG2MemoryError, create_search_graph_tool, create_search_memory_tool
 
@@ -41,14 +41,14 @@ def _make_pager(items: list | None = None) -> MagicMock:
 
 
 def _mock_zep_client() -> MagicMock:
-    client = MagicMock(spec=AsyncZep)
+    client = MagicMock(spec=Zep)
     client.graph = MagicMock()
-    client.graph.search_edges = AsyncMock(return_value=_make_pager())
-    client.graph.search_nodes = AsyncMock(return_value=_make_pager())
-    client.graph.search_episodes = AsyncMock(return_value=_make_pager())
-    client.graph.search_observations = AsyncMock(return_value=_make_pager())
-    client.graph.search_thread_summaries = AsyncMock(return_value=_make_pager())
-    client.graph.get_context = AsyncMock(return_value=MagicMock(context=""))
+    client.graph.search_edges = MagicMock(return_value=_make_pager())
+    client.graph.search_nodes = MagicMock(return_value=_make_pager())
+    client.graph.search_episodes = MagicMock(return_value=_make_pager())
+    client.graph.search_observations = MagicMock(return_value=_make_pager())
+    client.graph.search_thread_summaries = MagicMock(return_value=_make_pager())
+    client.graph.get_context = MagicMock(return_value=MagicMock(context=""))
     return client
 
 
@@ -203,7 +203,7 @@ class TestSearchGraphToolPinOrExpose:
     def test_search_tool_handler_returns_error_string_never_raises(
         self, mock_zep_client: MagicMock
     ) -> None:
-        mock_zep_client.graph.search_edges = AsyncMock(side_effect=Exception("boom"))
+        mock_zep_client.graph.search_edges = MagicMock(side_effect=Exception("boom"))
         tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
 
         result = tool(query="hello")

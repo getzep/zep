@@ -23,7 +23,7 @@ import asyncio
 import os
 
 from autogen import AssistantAgent, LLMConfig, UserProxyAgent
-from zep_cloud.client import AsyncZep
+from zep_cloud.client import AsyncZep, Zep
 
 from zep_ag2 import ZepMemoryManager, create_thread, create_user, register_all_tools
 
@@ -31,9 +31,9 @@ from zep_ag2 import ZepMemoryManager, create_thread, create_user, register_all_t
 async def provision() -> tuple[str, str, str]:
     """Create the user and the thread, and return their UUIDs.
 
-    This function uses its own client, because an AsyncZep client binds to
-    the event loop that first drives a request. The synchronous AG2 hooks
-    use a background loop, so the chat phase makes a second client.
+    The async helpers use an AsyncZep client. An AsyncZep client binds to
+    the event loop that first drives a request, so the chat phase, which
+    runs in synchronous code, makes its own clients.
     """
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
 
@@ -65,7 +65,10 @@ async def show_context(thread_uuid: str) -> None:
 def main() -> None:
     user_uuid, graph_uuid, thread_uuid = asyncio.run(provision())
 
+    # The async manager methods use AsyncZep. The synchronous hooks of
+    # attach_to_agent and the synchronous AG2 tools use the synchronous Zep client.
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
+    sync_zep = Zep(api_key=os.environ["ZEP_API_KEY"])
 
     # Configure AG2 agents
     llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
@@ -82,7 +85,9 @@ def main() -> None:
         is_termination_msg=lambda msg: "TERMINATE" in (msg.get("content") or ""),
     )
 
-    memory_mgr = ZepMemoryManager(zep, user_uuid, thread_uuid, graph_uuid=graph_uuid)
+    memory_mgr = ZepMemoryManager(
+        zep, user_uuid, thread_uuid, graph_uuid=graph_uuid, sync_client=sync_zep
+    )
 
     # Wire the automatic inject+persist loop onto the assistant. Every
     # incoming message is persisted and used to refresh the system message;
@@ -92,7 +97,7 @@ def main() -> None:
     # Register Zep tools so the agent can also search and store memories
     # explicitly (pin-or-expose: scope/reranker/limit/mmr_lambda/center_node_uuid
     # are all model-visible by default -- see README for pinning options).
-    register_all_tools(assistant, user_proxy, zep, graph_uuid, thread_uuid)
+    register_all_tools(assistant, user_proxy, sync_zep, graph_uuid, thread_uuid)
 
     # Run a conversation -- no manual memory calls needed per turn.
     try:

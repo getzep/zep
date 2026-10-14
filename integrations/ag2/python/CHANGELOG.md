@@ -7,25 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+## [0.3.0] - 2026-10-14
 
-- The package now uses the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). The package targets v4 only and gives no v3 compatibility.
-- The public API takes server-generated UUIDs. `ZepMemoryManager` takes `client`, `user_uuid`, and an optional `thread_uuid`, with an optional `graph_uuid` keyword. `ZepGraphMemoryManager` takes `client` and `graph_uuid`. Every tool factory and `register_all_tools` take `graph_uuid` and, where a thread is needed, `thread_uuid`.
-- Graph search calls the scope-specific v4 methods `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, and `graph.search_thread_summaries`. The new `auto` scope calls `graph.get_context`, which accepts neither a reranker nor a limit.
-- Conversation context comes from `thread.get_context`, and messages go to `thread.add_messages` with the `AddMessage` model.
-- Graph ingestion calls `graph.episode.add`, and the recent-episode read calls `graph.episode.list`.
-- The examples, the README, and SETUP.md show the UUID workflow.
-- The search `limit` of the managers and the tools goes to the SDK as `page_size`. The `limit` name in the package API does not change.
-- Each search scope accepts only its own filter keys. Zep rejects a key that the scope does not support.
-- `create_user` and `create_thread` take no client-chosen name. The v4 create operations reject `user_id` and `thread_id`, and a v4 resource has no name.
+### Breaking
+
+- The package now requires the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). The package targets v4 only and gives no v3 compatibility.
+- The public API takes server-generated UUIDs, not client-chosen IDs. `ZepMemoryManager` takes `client`, `user_uuid`, and an optional `thread_uuid`, with an optional `graph_uuid` keyword. `ZepGraphMemoryManager` takes `client` and `graph_uuid`. Every tool factory and `register_all_tools` take `graph_uuid` and, where a thread is needed, `thread_uuid`.
+- `create_user` and `create_thread` replace `ensure_user` and `ensure_thread`. They take no client-chosen name, because the v4 create operations reject `user_id` and `thread_id`.
+- The lazy provisioning path of `ZepMemoryManager` is removed: `ensure_user_and_thread`, and the constructor arguments `first_name`, `last_name`, `email`, and `on_created`. Create the user and the thread out-of-band, and give the manager the UUIDs.
+- The tool factories (`create_search_memory_tool`, `create_add_memory_tool`, `create_search_graph_tool`, `create_add_graph_data_tool`) and `register_all_tools` take a synchronous `zep_cloud.client.Zep` client, not an `AsyncZep` client. An `AsyncZep` client raises `TypeError` when you create the tools. Before this change, an `AsyncZep` client that an async helper used first caused the first tool call to fail with "Event loop is closed".
+- The synchronous manager methods call a synchronous `Zep` client directly. Give it with the new `sync_client` keyword: `ZepMemoryManager(..., sync_client=Zep(...))` and `ZepGraphMemoryManager(..., sync_client=Zep(...))`. `attach_to_agent`, `get_memory_context_sync`, `enrich_system_message_sync`, `search_sync`, and `add_data_sync` raise `TypeError` when the manager has no `sync_client`. The async helpers and the async manager methods keep `AsyncZep`. An async `context_builder` still runs on a background event loop.
 
 ### Added
 
 - `create_user` and `create_thread` in `zep_ag2.provisioning`. Both create the resource and return the SDK object, so the application can store `user.uuid_`, `user.graph_uuid`, and `thread.uuid_`. `create_user` keeps the optional `on_created` hook, which now receives the UUID of the user.
+- The `sync_client` keyword on `ZepMemoryManager` and `ZepGraphMemoryManager`.
 
-### Removed
+### Changed
 
-- `ensure_user`, `ensure_thread`, and the lazy provisioning path of `ZepMemoryManager` (`ensure_user_and_thread`, and the constructor arguments `first_name`, `last_name`, `email`, and `on_created`). v4 resources have server-generated UUIDs, so the integration cannot create a resource from a name at run time. Create the user and the thread out-of-band, and give the manager the UUIDs.
+- Graph search calls the scope-specific v4 methods `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, and `graph.search_thread_summaries`. The new `auto` scope calls `graph.get_context`, which accepts neither a reranker nor a limit.
+- Conversation context comes from `thread.get_context`, and messages go to `thread.add_messages` with the `AddMessage` model.
+- Graph ingestion calls `graph.episode.add`, and the recent-episode read calls `graph.episode.list`.
+- The search `limit` of the managers and the tools goes to the SDK as `page_size`. The `limit` name in the package API does not change.
+- Each search scope accepts only its own filter keys. Zep rejects a key that the scope does not support.
+- The examples, the README, and SETUP.md show the UUID workflow and the two clients.
+
+## [0.2.2] - 2026-10-01
+
+### Changed
+
+- The package now requires `zep-cloud>=3.23.0,<4`. The upper bound keeps the package on the v3 SDK when `zep-cloud` 4.x is published.
 
 ## [0.2.1] - 2026-07-29
 

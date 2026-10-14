@@ -13,31 +13,18 @@ Prerequisites:
     export OPENAI_API_KEY="your-openai-api-key"
 """
 
-import asyncio
 import os
 
 from autogen import AssistantAgent, LLMConfig, UserProxyAgent
-from zep_cloud.client import AsyncZep
+from zep_cloud.client import Zep
 
 from zep_ag2 import create_search_memory_tool
 
 
-async def get_graph_uuid() -> str:
-    """Read the graph UUID of the user.
-
-    This function uses its own client, because an AsyncZep client binds to
-    the event loop that first drives a request. The synchronous AG2 tools
-    use a background loop, so the chat phase makes a second client.
-    """
-    zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
-    user = await zep.user.get(os.environ["ZEP_USER_UUID"])
-    return user.graph_uuid or ""
-
-
 def main() -> None:
-    graph_uuid = asyncio.run(get_graph_uuid())
-
-    zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
+    # The synchronous AG2 tools use the synchronous Zep client.
+    zep = Zep(api_key=os.environ["ZEP_API_KEY"])
+    graph_uuid = zep.user.get(os.environ["ZEP_USER_UUID"]).graph_uuid or ""
 
     llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
 

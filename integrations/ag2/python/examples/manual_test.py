@@ -172,7 +172,7 @@ async def test_3_memory_manager() -> bool:
 async def test_4_tool_factories() -> bool:
     """Test 4: Tool factories — create tools and call them against real Zep."""
     print("\n=== Test 4: Tool Factories ===")
-    from zep_cloud.client import AsyncZep
+    from zep_cloud.client import AsyncZep, Zep
 
     from zep_ag2 import (
         create_add_graph_data_tool,
@@ -194,10 +194,8 @@ async def test_4_tool_factories() -> bool:
         thread = await create_thread(zep, user_uuid=user_uuid)
         thread_uuid = thread.uuid_ or ""
 
-        # The synchronous tools run on a background event loop, and an
-        # AsyncZep client binds to the loop that first drives a request.
-        # Thus the tools use a second client.
-        tools_zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
+        # The synchronous tools use the synchronous Zep client.
+        tools_zep = Zep(api_key=os.environ["ZEP_API_KEY"])
         search_mem = create_search_memory_tool(tools_zep, graph_uuid)
         add_mem = create_add_memory_tool(tools_zep, graph_uuid, thread_uuid)
         search_graph = create_search_graph_tool(tools_zep, graph_uuid)
@@ -245,7 +243,7 @@ async def test_4_tool_factories() -> bool:
 async def test_5_ag2_agent_with_tools() -> bool:
     """Test 5: Full AG2 agent with Zep tools — the real integration test."""
     print("\n=== Test 5: AG2 Agent with Zep Tools ===")
-    from zep_cloud.client import AsyncZep
+    from zep_cloud.client import AsyncZep, Zep
 
     from zep_ag2 import ZepMemoryManager, create_thread, create_user, register_all_tools
 
@@ -290,8 +288,8 @@ async def test_5_ag2_agent_with_tools() -> bool:
         print("  OK: AG2 agents created")
 
         # Register all Zep tools
-        # The synchronous tools use a second client (see test 4).
-        tools_zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
+        # The synchronous tools use the synchronous Zep client.
+        tools_zep = Zep(api_key=os.environ["ZEP_API_KEY"])
         tools = register_all_tools(assistant, user_proxy, tools_zep, graph_uuid, thread_uuid)
         print(f"  OK: Registered {len(tools)} tools: {list(tools.keys())}")
 

@@ -18,7 +18,7 @@ import asyncio
 import os
 
 from autogen import AssistantAgent, GroupChat, GroupChatManager, LLMConfig, UserProxyAgent
-from zep_cloud.client import AsyncZep
+from zep_cloud.client import AsyncZep, Zep
 
 from zep_ag2 import create_thread, create_user, register_all_tools
 
@@ -26,9 +26,8 @@ from zep_ag2 import create_thread, create_user, register_all_tools
 async def provision() -> tuple[str, str]:
     """Create the user and the thread, and return the graph and thread UUIDs.
 
-    This function uses its own client, because an AsyncZep client binds to
-    the event loop that first drives a request. The synchronous AG2 tools
-    use a background loop, so the chat phase makes a second client.
+    The async helpers use an AsyncZep client. The synchronous AG2 tools use
+    the synchronous Zep client.
     """
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
 
@@ -45,7 +44,7 @@ async def provision() -> tuple[str, str]:
 def main() -> None:
     graph_uuid, thread_uuid = asyncio.run(provision())
 
-    zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
+    zep = Zep(api_key=os.environ["ZEP_API_KEY"])
 
     llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
 

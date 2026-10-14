@@ -48,7 +48,7 @@ if not ZEP_API_KEY or not OPENAI_API_KEY:
     )
 
 from autogen import AssistantAgent, LLMConfig, UserProxyAgent  # noqa: E402
-from zep_cloud.client import AsyncZep  # noqa: E402
+from zep_cloud.client import AsyncZep, Zep  # noqa: E402
 
 from zep_ag2 import ZepMemoryManager, create_thread, create_user, register_all_tools  # noqa: E402
 
@@ -81,6 +81,11 @@ SEED_MESSAGES = [
 def make_client() -> AsyncZep:
     """Create the v4 client with an explicit v4 base URL."""
     return AsyncZep(api_key=ZEP_API_KEY, base_url=ZEP_BASE_URL)
+
+
+def make_sync_client() -> Zep:
+    """Create the synchronous v4 client for the AG2 tools."""
+    return Zep(api_key=ZEP_API_KEY, base_url=ZEP_BASE_URL)
 
 
 def check(description: str, condition: bool, detail: str = "") -> bool:
@@ -119,7 +124,7 @@ async def wait_for_episodes_processed(
 
 
 def build_agent(
-    zep: AsyncZep, graph_uuid: str, thread_uuid: str
+    sync_zep: Zep, graph_uuid: str, thread_uuid: str
 ) -> tuple[AssistantAgent, UserProxyAgent]:
     """Build an AG2 assistant/user pair wired to Zep memory on the given thread."""
     llm_config = LLMConfig({"model": OPENAI_MODEL, "api_key": OPENAI_API_KEY})
@@ -137,7 +142,7 @@ def build_agent(
         code_execution_config=False,
         is_termination_msg=lambda msg: "TERMINATE" in (msg.get("content") or ""),
     )
-    register_all_tools(assistant, user_proxy, zep, graph_uuid, thread_uuid)
+    register_all_tools(assistant, user_proxy, sync_zep, graph_uuid, thread_uuid)
     return assistant, user_proxy
 
 
@@ -209,7 +214,7 @@ async def main() -> None:
             f"found={found}",
         )
 
-        assistant, user_proxy = build_agent(zep, graph_uuid, thread_2_uuid)
+        assistant, user_proxy = build_agent(make_sync_client(), graph_uuid, thread_2_uuid)
         await manager2.enrich_system_message(assistant, query="IntegTest profile and hobbies")
         result = user_proxy.initiate_chat(
             assistant,
@@ -281,7 +286,7 @@ async def test_integration_full_lifecycle() -> None:
         )
         assert any(kw in context.lower() for kw in KEYWORDS), f"no recall in context: {context}"
 
-        assistant, user_proxy = build_agent(zep, graph_uuid, thread_2_uuid)
+        assistant, user_proxy = build_agent(make_sync_client(), graph_uuid, thread_2_uuid)
         await manager2.enrich_system_message(assistant, query="IntegTest profile and hobbies")
         result = user_proxy.initiate_chat(
             assistant,

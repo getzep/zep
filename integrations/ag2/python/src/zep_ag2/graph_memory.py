@@ -12,10 +12,10 @@ server-generated UUID.
 import logging
 from typing import Any
 
-from zep_cloud.client import AsyncZep
+from zep_cloud.client import AsyncZep, Zep
 
 from zep_ag2.exceptions import ZepAG2ConfigError
-from zep_ag2.tools import GRAPH_MAX_CHARS, _run_sync, _truncate
+from zep_ag2.tools import GRAPH_MAX_CHARS, _require_sync_client, _truncate
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,8 @@ class ZepGraphMemoryManager:
         self,
         client: AsyncZep,
         graph_uuid: str,
+        *,
+        sync_client: Zep | None = None,
     ) -> None:
         """
         Initialize ZepGraphMemoryManager.
@@ -49,22 +51,45 @@ class ZepGraphMemoryManager:
             graph_uuid: The UUID of the knowledge graph in Zep (required).
                 Read it from ``graph.uuid_`` one time and store it in your
                 own database.
+            sync_client: Optional synchronous ``Zep`` client. The
+                synchronous methods (:meth:`search_sync` and
+                :meth:`add_data_sync`) call this client directly. These
+                methods raise ``TypeError`` when it is not set.
 
         Raises:
             ZepAG2ConfigError: If client is not an AsyncZep instance or graph_uuid is empty.
+            TypeError: If sync_client is set and is not a synchronous Zep client.
         """
         if not isinstance(client, AsyncZep):
             raise ZepAG2ConfigError("client must be an instance of AsyncZep")
         if not graph_uuid:
             raise ZepAG2ConfigError("graph_uuid is required")
+        if sync_client is not None:
+            _require_sync_client(sync_client)
 
         self._client = client
+        self._sync_client = sync_client
         self._graph_uuid = graph_uuid
 
     @property
     def client(self) -> AsyncZep:
         """The underlying AsyncZep client."""
         return self._client
+
+    @property
+    def sync_client(self) -> Zep | None:
+        """The synchronous Zep client of the synchronous methods, if set."""
+        return self._sync_client
+
+    def _require_manager_sync_client(self) -> Zep:
+        """Return the synchronous client, or raise ``TypeError`` if it is not set."""
+        if self._sync_client is None:
+            raise TypeError(
+                "The synchronous methods of ZepGraphMemoryManager need a "
+                "synchronous Zep client. Pass sync_client=zep_cloud.client.Zep(...) "
+                "when you create the manager."
+            )
+        return self._sync_client
 
     @property
     def graph_uuid(self) -> str:
@@ -90,56 +115,23 @@ class ZepGraphMemoryManager:
             A list of result dicts with 'content', 'type', and metadata fields.
         """
         selected_scope = scope or "edges"
-        results: list[dict[str, Any]] = []
         try:
             if selected_scope == "edges":
-                edge_pager = await self._client.graph.search_edges(
+                pager = await self._client.graph.search_edges(
                     self._graph_uuid, query=query, page_size=limit
                 )
-                for edge in edge_pager.items or []:
-                    results.append(
-                        {
-                            "content": edge.fact,
-                            "type": "edge",
-                            "name": edge.name,
-                            "attributes": edge.attributes or {},
-                            "created_at": edge.created_at,
-                        }
-                    )
             elif selected_scope == "nodes":
-                node_pager = await self._client.graph.search_nodes(
+                pager = await self._client.graph.search_nodes(
                     self._graph_uuid, query=query, page_size=limit
                 )
-                for node in node_pager.items or []:
-                    summary = node.summary or "No summary"
-                    results.append(
-                        {
-                            "content": f"{node.name}: {summary}",
-                            "type": "node",
-                            "name": node.name,
-                            "attributes": node.attributes or {},
-                            "created_at": node.created_at,
-                        }
-                    )
             elif selected_scope == "episodes":
-                episode_pager = await self._client.graph.search_episodes(
+                pager = await self._client.graph.search_episodes(
                     self._graph_uuid, query=query, page_size=limit
                 )
-                for episode in episode_pager.items or []:
-                    results.append(
-                        {
-                            "content": episode.content,
-                            "type": "episode",
-                            "source": episode.source,
-                            "role": episode.role,
-                            "created_at": episode.created_at,
-                        }
-                    )
             else:
                 logger.error("Unknown search scope: %s", selected_scope)
-
-            return results
-
+                return []
+            return _search_results(selected_scope, pager.items)
         except Exception as e:
             logger.error("Zep graph search failed: %s", type(e).__name__)
             return []
@@ -218,7 +210,7 @@ class ZepGraphMemoryManager:
             original_msg = agent.system_message
             agent.update_system_message(f"{original_msg}\n\n## Knowledge Graph Context\n{context}")
 
-    # Sync wrappers
+    # Sync methods. They call the synchronous client.
 
     def search_sync(
         self,
@@ -226,16 +218,84 @@ class ZepGraphMemoryManager:
         limit: int = 5,
         scope: str | None = "edges",
     ) -> list[dict[str, Any]]:
-        """Synchronous wrapper for search().
+        """Synchronous form of :meth:`search`.
 
-        Bridges to async via the package's shared background event loop.
+        Calls the synchronous ``sync_client`` directly.
+
+        Raises:
+            TypeError: If the manager has no synchronous ``sync_client``.
         """
-        result = _run_sync(self.search(query, limit, scope))
-        return list(result)
+        client = self._require_manager_sync_client()
+        selected_scope = scope or "edges"
+        try:
+            if selected_scope == "edges":
+                pager = client.graph.search_edges(self._graph_uuid, query=query, page_size=limit)
+            elif selected_scope == "nodes":
+                pager = client.graph.search_nodes(self._graph_uuid, query=query, page_size=limit)
+            elif selected_scope == "episodes":
+                pager = client.graph.search_episodes(self._graph_uuid, query=query, page_size=limit)
+            else:
+                logger.error("Unknown search scope: %s", selected_scope)
+                return []
+            return _search_results(selected_scope, pager.items)
+        except Exception as e:
+            logger.error("Zep graph search failed: %s", type(e).__name__)
+            return []
 
     def add_data_sync(self, data: str, data_type: str = "text") -> bool:
-        """Synchronous wrapper for add_data().
+        """Synchronous form of :meth:`add_data`.
 
-        Bridges to async via the package's shared background event loop.
+        Calls the synchronous ``sync_client`` directly.
+
+        Raises:
+            TypeError: If the manager has no synchronous ``sync_client``.
         """
-        return bool(_run_sync(self.add_data(data, data_type)))
+        client = self._require_manager_sync_client()
+        try:
+            client.graph.episode.add(
+                self._graph_uuid,
+                type=data_type,
+                data=_truncate(data, GRAPH_MAX_CHARS, "graph data"),
+            )
+            return True
+        except Exception as e:
+            logger.error("Zep graph.episode.add failed: %s", type(e).__name__)
+            return False
+
+
+def _search_results(scope: str, items: list[Any] | None) -> list[dict[str, Any]]:
+    """Convert the items of one search page to result dicts."""
+    results: list[dict[str, Any]] = []
+    for item in items or []:
+        if scope == "edges":
+            results.append(
+                {
+                    "content": item.fact,
+                    "type": "edge",
+                    "name": item.name,
+                    "attributes": item.attributes or {},
+                    "created_at": item.created_at,
+                }
+            )
+        elif scope == "nodes":
+            summary = item.summary or "No summary"
+            results.append(
+                {
+                    "content": f"{item.name}: {summary}",
+                    "type": "node",
+                    "name": item.name,
+                    "attributes": item.attributes or {},
+                    "created_at": item.created_at,
+                }
+            )
+        elif scope == "episodes":
+            results.append(
+                {
+                    "content": item.content,
+                    "type": "episode",
+                    "source": item.source,
+                    "role": item.role,
+                    "created_at": item.created_at,
+                }
+            )
+    return results

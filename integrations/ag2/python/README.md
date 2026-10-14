@@ -36,12 +36,14 @@ user.uuid_, user.graph_uuid, thread.uuid_
 import asyncio
 import os
 from autogen import AssistantAgent, UserProxyAgent, LLMConfig
-from zep_cloud.client import AsyncZep
+from zep_cloud.client import AsyncZep, Zep
 from zep_ag2 import ZepMemoryManager, create_thread, create_user, register_all_tools
 
 
 async def main():
+    # The async helpers use AsyncZep. The synchronous AG2 tools use Zep.
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
+    sync_zep = Zep(api_key=os.environ["ZEP_API_KEY"])
 
     # Create these one time and store the UUIDs in your own database.
     user = await create_user(zep, first_name="Jane", email="jane@example.com")
@@ -66,8 +68,8 @@ async def main():
     memory_mgr = ZepMemoryManager(zep, user_uuid, thread_uuid, graph_uuid=graph_uuid)
     await memory_mgr.enrich_system_message(assistant, query="conversation topic")
 
-    # Register memory tools (sync — AG2 calls them automatically)
-    register_all_tools(assistant, user_proxy, zep, graph_uuid, thread_uuid)
+    # Register memory tools. AG2 calls them synchronously, so they take the sync client.
+    register_all_tools(assistant, user_proxy, sync_zep, graph_uuid, thread_uuid)
 
     result = user_proxy.initiate_chat(assistant, message="What do you remember about me?")
 
@@ -78,11 +80,15 @@ asyncio.run(main())
 ### Tool-Based Memory Access
 
 ```python
+from zep_cloud.client import Zep
 from zep_ag2 import create_search_graph_tool, create_add_graph_data_tool
 
+# The tools take the synchronous Zep client.
+sync_zep = Zep(api_key=os.environ["ZEP_API_KEY"])
+
 # Create tools bound to the graph of one user
-search_tool = create_search_graph_tool(zep, graph_uuid)
-add_tool = create_add_graph_data_tool(zep, graph_uuid)
+search_tool = create_search_graph_tool(sync_zep, graph_uuid)
+add_tool = create_add_graph_data_tool(sync_zep, graph_uuid)
 
 # Register with AG2's decorator pattern
 assistant.register_for_llm(description="Search knowledge graph")(search_tool)
@@ -102,7 +108,8 @@ yourself on every turn:
 ```python
 from zep_ag2 import ZepMemoryManager
 
-manager = ZepMemoryManager(zep, user_uuid, thread_uuid, graph_uuid=graph_uuid)
+# The hooks run in synchronous AG2 code, so they call the synchronous Zep client.
+manager = ZepMemoryManager(zep, user_uuid, thread_uuid, graph_uuid=graph_uuid, sync_client=sync_zep)
 manager.attach_to_agent(assistant)
 
 # Every message the agent receives is persisted and used to refresh its system
@@ -121,15 +128,15 @@ isn't) covered.
 - **Knowledge graph** — Access Zep's knowledge graph from AG2 agents
 - **Conversation memory** — Store and retrieve thread-based conversation history
 - **Out-of-band provisioning** — `create_user`/`create_thread` for explicit, fail-loud setup before the first turn
-- **Sync tool execution** — Tools run synchronously via a single shared background event loop, compatible with AG2's execution model on Python 3.11–3.13
+- **Sync tool execution** — Tools call the synchronous `Zep` client, which matches AG2's synchronous tool execution
 
 ## The automatic memory loop, precisely
 
 `ZepMemoryManager.attach_to_agent(agent)` registers two hooks on `ConversableAgent`:
 
 - **`process_last_received_message`** fires for every message the agent receives. It
-  persists the message and retrieves context (via `process_user_message` internally,
-  bridged through the package's sync loop), then replaces the agent's system message with
+  persists the message and retrieves context with the synchronous `sync_client` of the
+  manager, then replaces the agent's system message with
   its original text plus the freshly-rendered `context_template`. The hook always returns
   the message content **unmodified** -- this is a side channel, not a message transform.
 - **`process_message_before_send`** fires for every message the agent sends. AG2's contract
@@ -161,7 +168,7 @@ mislabels the thread's history -- it is not caught or deduplicated by the packag
 Correct wiring -- attach only to the user-facing agent, leaving the other agent unmanaged:
 
 ```python
-manager = ZepMemoryManager(zep, user_uuid, thread_uuid, graph_uuid=graph_uuid)
+manager = ZepMemoryManager(zep, user_uuid, thread_uuid, graph_uuid=graph_uuid, sync_client=sync_zep)
 
 # Attach to ONE agent only (e.g. the user-facing assistant) ...
 manager.attach_to_agent(assistant)
@@ -178,10 +185,10 @@ each manager a **distinct `thread_uuid`** instead of sharing one thread:
 assistant_thread = await create_thread(zep, user_uuid=user_uuid)
 critic_thread = await create_thread(zep, user_uuid=user_uuid)
 
-assistant_manager = ZepMemoryManager(zep, user_uuid, assistant_thread.uuid_)
+assistant_manager = ZepMemoryManager(zep, user_uuid, assistant_thread.uuid_, sync_client=sync_zep)
 assistant_manager.attach_to_agent(assistant)
 
-critic_manager = ZepMemoryManager(zep, user_uuid, critic_thread.uuid_)
+critic_manager = ZepMemoryManager(zep, user_uuid, critic_thread.uuid_, sync_client=sync_zep)
 critic_manager.attach_to_agent(critic)
 ```
 
@@ -291,8 +298,9 @@ The template is rendered via `template.replace("{context}", context_text)` -- ne
 Manages Zep memory for AG2 agents via system message injection and an optional automatic
 loop.
 
-- `ZepMemoryManager(client, user_uuid, thread_uuid=None, *, graph_uuid=None, context_builder=None, context_template=DEFAULT_CONTEXT_TEMPLATE)` — Initialize with Zep client
-- `attach_to_agent(agent)` — Register the automatic inject+persist loop (see above)
+- `ZepMemoryManager(client, user_uuid, thread_uuid=None, *, graph_uuid=None, sync_client=None, context_builder=None, context_template=DEFAULT_CONTEXT_TEMPLATE)` — Initialize with an `AsyncZep` client. The synchronous methods call `sync_client`, a `zep_cloud.client.Zep` client, and raise `TypeError` when it is not set.
+- `attach_to_agent(agent)` — Register the automatic inject+persist loop (see above). Needs `sync_client`.
+- `get_memory_context_sync(query=None, limit=5)` and `enrich_system_message_sync(agent, query=None, limit=5)` — Synchronous forms. They need `sync_client`.
 - `await process_user_message(user_message, *, agent=None)` — Persist a user turn and retrieve context in one call
 - `await resolve_graph_uuid()` — Return the UUID of the graph of the user, and cache it
 - `await enrich_system_message(agent, query=None, limit=5)` — Inject memory context
@@ -304,7 +312,7 @@ loop.
 
 Manages Zep knowledge graph for AG2 agents.
 
-- `ZepGraphMemoryManager(client, graph_uuid)` — Initialize with the UUID of a graph
+- `ZepGraphMemoryManager(client, graph_uuid, *, sync_client=None)` — Initialize with an `AsyncZep` client and the UUID of a graph. `search_sync` and `add_data_sync` call `sync_client`, a `zep_cloud.client.Zep` client, and raise `TypeError` when it is not set.
 - `await search(query, limit=5, scope="edges")` — Search the graph
 - `await add_data(data, data_type="text")` — Add data to the graph
 - `await enrich_system_message(agent, query=None, limit=5)` — Inject graph context
@@ -317,8 +325,9 @@ Manages Zep knowledge graph for AG2 agents.
 ### Tool Factories
 
 All tool factories return **synchronous** callables (AG2 executes tools synchronously).
-Internally they bridge to the async Zep SDK on a single shared background event loop,
-reusing the `AsyncZep` client you pass in (no per-call client construction).
+Each factory and `register_all_tools` take a synchronous `zep_cloud.client.Zep` client and
+use it for every call. An `AsyncZep` client raises `TypeError` when you create the tools.
+The async helpers (`create_user`, `create_thread`, and the manager methods) keep `AsyncZep`.
 
 `create_search_memory_tool` and `create_search_graph_tool` follow a **pin-or-expose**
 pattern: every search parameter (`scope`, `reranker`, `limit`, `mmr_lambda`,
@@ -331,13 +340,13 @@ schema without pinning (Zep's own default applies):
 
 ```python
 # Model chooses scope/reranker/limit/mmr_lambda/center_node_uuid freely (all exposed by default)
-tool = create_search_graph_tool(zep, graph_uuid)
+tool = create_search_graph_tool(sync_zep, graph_uuid)
 
 # Pin scope to "nodes" and limit to 5 -- hidden from the model, always sent as given
-tool = create_search_graph_tool(zep, graph_uuid, pinned_params={"scope": "nodes", "limit": 5})
+tool = create_search_graph_tool(sync_zep, graph_uuid, pinned_params={"scope": "nodes", "limit": 5})
 
 # Hide reranker entirely -- omitted from the schema AND the SDK call (Zep's default applies)
-tool = create_search_graph_tool(zep, graph_uuid, hidden_params={"reranker"})
+tool = create_search_graph_tool(sync_zep, graph_uuid, hidden_params={"reranker"})
 ```
 
 - `create_search_memory_tool(client, graph_uuid, *, pinned_params=None, hidden_params=None, filters=None, bfs_origin_node_uuids=None, scope=None, limit=None)` — Search conversation memory

@@ -40,7 +40,7 @@ import logging
 import threading
 from typing import Annotated, Any, Literal
 
-from zep_cloud.client import AsyncZep
+from zep_cloud.client import AsyncZep, Zep
 
 from zep_ag2.exceptions import ZepAG2MemoryError
 
@@ -315,23 +315,13 @@ def _validate_role(role: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Background event loop + shared client
+# Background event loop for an async context builder
 # ---------------------------------------------------------------------------
-# AG2 executes tool functions synchronously (even when declared async). When the
-# caller is already inside an asyncio event loop (e.g. the test's
-# ``asyncio.run(main())``), ``asyncio.run()`` / ``loop.run_until_complete()``
-# raise. On Python 3.13 ``asyncio.get_event_loop()`` raises outright when there
-# is no running loop.
-#
-# AsyncZep wraps an ``httpx.AsyncClient`` which binds to whichever event loop
-# first drives a request and must thereafter be used only on that loop.
-#
-# Solution: keep ONE dedicated daemon background event loop alive on its own
-# thread for the lifetime of the process. All async Zep work — for both the
-# sync tool wrappers and the manager classes' sync wrappers — is submitted to
-# that loop via ``run_coroutine_threadsafe``. The caller-supplied AsyncZep is
-# reused directly (no per-call construction, no private-attribute access); it
-# becomes bound to the background loop on first use and is driven only there.
+# A ``context_builder`` of ZepMemoryManager is an async callable. When a
+# synchronous method of the manager needs the builder, the coroutine runs on
+# ONE daemon background loop with ``run_coroutine_threadsafe``. The tools and
+# the other synchronous manager methods do not use this loop: they call the
+# synchronous Zep client.
 # ---------------------------------------------------------------------------
 
 _bg_loop: asyncio.AbstractEventLoop | None = None
@@ -422,11 +412,23 @@ def _format_graph_results(items: list[Any], scope: str = "edges") -> str:
     return "\n".join(parts) if parts else "No results found."
 
 
+def _require_sync_client(client: object) -> None:
+    """Raise ``TypeError`` unless *client* is a synchronous ``Zep`` client.
+
+    AG2 runs tools synchronously, so the tools call the synchronous client.
+    """
+    if isinstance(client, AsyncZep) or not isinstance(client, Zep):
+        raise TypeError(
+            "The AG2 tools need a synchronous Zep client. Pass "
+            "zep_cloud.client.Zep, not AsyncZep or another object."
+        )
+
+
 #: Parameters that ``graph.get_context`` (the ``auto`` scope in v4) accepts.
 _AUTO_SUPPORTED_PARAMS = frozenset({"query", "filters"})
 
 
-async def _run_search(client: AsyncZep, graph_uuid: str, search_kwargs: dict[str, Any]) -> str:
+def _run_search(client: Zep, graph_uuid: str, search_kwargs: dict[str, Any]) -> str:
     """Run one v4 graph search and format its result.
 
     The ``scope`` selects the v4 method. Every scope except ``auto`` calls a
@@ -445,33 +447,33 @@ async def _run_search(client: AsyncZep, graph_uuid: str, search_kwargs: dict[str
             del kwargs[name]
         if dropped:
             logger.debug("scope='auto' ignores the parameters %s", sorted(dropped))
-        response = await client.graph.get_context(graph_uuid, **kwargs)
+        response = client.graph.get_context(graph_uuid, **kwargs)
         context = response.context
         if context and str(context).strip():
             return str(context).strip()
         return "No results found."
 
     if scope == "edges":
-        edge_pager = await client.graph.search_edges(graph_uuid, **kwargs)
+        edge_pager = client.graph.search_edges(graph_uuid, **kwargs)
         return _format_graph_results(list(edge_pager.items or []), scope)
     if scope == "nodes":
-        node_pager = await client.graph.search_nodes(graph_uuid, **kwargs)
+        node_pager = client.graph.search_nodes(graph_uuid, **kwargs)
         return _format_graph_results(list(node_pager.items or []), scope)
     if scope == "episodes":
-        episode_pager = await client.graph.search_episodes(graph_uuid, **kwargs)
+        episode_pager = client.graph.search_episodes(graph_uuid, **kwargs)
         return _format_graph_results(list(episode_pager.items or []), scope)
     if scope == "observations":
-        observation_pager = await client.graph.search_observations(graph_uuid, **kwargs)
+        observation_pager = client.graph.search_observations(graph_uuid, **kwargs)
         return _format_graph_results(list(observation_pager.items or []), scope)
     if scope == "thread_summaries":
-        summary_pager = await client.graph.search_thread_summaries(graph_uuid, **kwargs)
+        summary_pager = client.graph.search_thread_summaries(graph_uuid, **kwargs)
         return _format_graph_results(list(summary_pager.items or []), scope)
 
     return f"Error: unknown search scope {scope!r}."
 
 
 def create_search_memory_tool(
-    client: AsyncZep,
+    client: Zep,
     graph_uuid: str,
     *,
     pinned_params: dict[str, Any] | None = None,
@@ -501,7 +503,8 @@ def create_search_memory_tool(
     contract.
 
     Args:
-        client: An initialized AsyncZep instance (reused for all calls).
+        client: An initialized synchronous ``Zep`` client (reused for all
+            calls). An ``AsyncZep`` client raises ``TypeError``.
         graph_uuid: The UUID of the graph of the user. Read it from
             ``user.graph_uuid`` one time and store it in your own database.
         pinned_params: Optional mapping of a search parameter name to a fixed
@@ -519,10 +522,12 @@ def create_search_memory_tool(
         A callable suitable for AG2 tool registration.
 
     Raises:
+        TypeError: If ``client`` is not a synchronous ``Zep`` client.
         ZepAG2MemoryError: If ``graph_uuid`` is empty.
         ValueError: If ``pinned_params``/``hidden_params`` (or a legacy alias)
             contains an unknown parameter name.
     """
+    _require_sync_client(client)
     if not graph_uuid:
         raise ZepAG2MemoryError("graph_uuid is required")
 
@@ -543,14 +548,14 @@ def create_search_memory_tool(
     if bfs_origin_node_uuids is not None:
         constructor_only["bfs_origin_node_uuids"] = bfs_origin_node_uuids
 
-    async def _search(**kwargs: Any) -> str:
+    def _search(**kwargs: Any) -> str:
         search_kwargs = _build_search_kwargs(
             kwargs, pinned=pinned, hidden=hidden, constructor_only=constructor_only
         )
         if not search_kwargs.get("query"):
             return "Error: No search query provided."
         try:
-            return await _run_search(client, graph_uuid, search_kwargs)
+            return _run_search(client, graph_uuid, search_kwargs)
         except Exception as e:
             logger.error("Zep search_memory failed: %s", type(e).__name__)
             return "Error: unable to search memory at this time."
@@ -559,7 +564,7 @@ def create_search_memory_tool(
         """Search Zep memory for relevant information based on a query."""
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
-        return str(_run_sync(_search(**dict(bound.arguments))))
+        return _search(**dict(bound.arguments))
 
     search_memory.__signature__ = signature  # type: ignore[attr-defined]
     search_memory.__annotations__ = {**annotations, "return": str}
@@ -569,7 +574,7 @@ def create_search_memory_tool(
 
 
 def create_add_memory_tool(
-    client: AsyncZep,
+    client: Zep,
     graph_uuid: str,
     thread_uuid: str | None = None,
 ) -> Any:
@@ -580,7 +585,8 @@ def create_add_memory_tool(
     provided at creation time, the content is added to the graph as an episode.
 
     Args:
-        client: An initialized AsyncZep instance (reused for all calls).
+        client: An initialized synchronous ``Zep`` client (reused for all
+            calls). An ``AsyncZep`` client raises ``TypeError``.
         graph_uuid: The UUID of the graph that holds the memory.
         thread_uuid: Optional UUID of the thread that stores the messages.
 
@@ -588,17 +594,19 @@ def create_add_memory_tool(
         A callable suitable for AG2 tool registration.
 
     Raises:
+        TypeError: If ``client`` is not a synchronous ``Zep`` client.
         ZepAG2MemoryError: If ``graph_uuid`` is empty.
     """
     from zep_cloud.types import AddMessage
 
+    _require_sync_client(client)
     if not graph_uuid:
         raise ZepAG2MemoryError("graph_uuid is required")
 
-    async def _add(content: str, role: str) -> str:
+    def _add(content: str, role: str) -> str:
         if not thread_uuid:
             try:
-                await client.graph.episode.add(
+                client.graph.episode.add(
                     graph_uuid,
                     type="text",
                     data=_truncate(content, GRAPH_MAX_CHARS, "graph data"),
@@ -613,7 +621,7 @@ def create_add_memory_tool(
                 content=_truncate(content, MESSAGE_MAX_CHARS, "message content"),
                 role=_validate_role(role),
             )
-            await client.thread.add_messages(
+            client.thread.add_messages(
                 thread_uuid,
                 messages=[message],
             )
@@ -629,13 +637,13 @@ def create_add_memory_tool(
         ] = "assistant",
     ) -> str:
         """Add a message to Zep conversation memory."""
-        return str(_run_sync(_add(content, role)))
+        return _add(content, role)
 
     return add_memory
 
 
 def create_search_graph_tool(
-    client: AsyncZep,
+    client: Zep,
     graph_uuid: str,
     *,
     pinned_params: dict[str, Any] | None = None,
@@ -668,7 +676,8 @@ def create_search_graph_tool(
     their complex/list-of-object shapes are not exposed to the model.
 
     Args:
-        client: An initialized AsyncZep instance (reused for all calls).
+        client: An initialized synchronous ``Zep`` client (reused for all
+            calls). An ``AsyncZep`` client raises ``TypeError``.
         graph_uuid: The UUID of the graph to search.
         pinned_params: Optional mapping of a search parameter name to a fixed
             value. Pinned parameters are hidden from the model's tool schema
@@ -694,10 +703,12 @@ def create_search_graph_tool(
         the agent.
 
     Raises:
+        TypeError: If ``client`` is not a synchronous ``Zep`` client.
         ZepAG2MemoryError: If ``graph_uuid`` is empty.
         ValueError: If ``pinned_params``/``hidden_params`` (or a legacy alias)
             contains an unknown parameter name.
     """
+    _require_sync_client(client)
     if not graph_uuid:
         raise ZepAG2MemoryError("graph_uuid is required")
 
@@ -718,14 +729,14 @@ def create_search_graph_tool(
     if bfs_origin_node_uuids is not None:
         constructor_only["bfs_origin_node_uuids"] = bfs_origin_node_uuids
 
-    async def _search_g(**kwargs: Any) -> str:
+    def _search_g(**kwargs: Any) -> str:
         search_kwargs = _build_search_kwargs(
             kwargs, pinned=pinned, hidden=hidden, constructor_only=constructor_only
         )
         if not search_kwargs.get("query"):
             return "Error: No search query provided."
         try:
-            return await _run_search(client, graph_uuid, search_kwargs)
+            return _run_search(client, graph_uuid, search_kwargs)
         except Exception as e:
             logger.error("Zep search_graph failed: %s", type(e).__name__)
             return "Error: unable to search the knowledge graph at this time."
@@ -734,7 +745,7 @@ def create_search_graph_tool(
         """Search the Zep knowledge graph for relevant information."""
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
-        return str(_run_sync(_search_g(**dict(bound.arguments))))
+        return _search_g(**dict(bound.arguments))
 
     search_graph.__signature__ = signature  # type: ignore[attr-defined]
     search_graph.__annotations__ = {**annotations, "return": str}
@@ -744,28 +755,31 @@ def create_search_graph_tool(
 
 
 def create_add_graph_data_tool(
-    client: AsyncZep,
+    client: Zep,
     graph_uuid: str,
 ) -> Any:
     """
     Create a tool function for adding data to the Zep knowledge graph.
 
     Args:
-        client: An initialized AsyncZep instance (reused for all calls).
+        client: An initialized synchronous ``Zep`` client (reused for all
+            calls). An ``AsyncZep`` client raises ``TypeError``.
         graph_uuid: The UUID of the graph that receives the data.
 
     Returns:
         A callable suitable for AG2 tool registration.
 
     Raises:
+        TypeError: If ``client`` is not a synchronous ``Zep`` client.
         ZepAG2MemoryError: If ``graph_uuid`` is empty.
     """
+    _require_sync_client(client)
     if not graph_uuid:
         raise ZepAG2MemoryError("graph_uuid is required")
 
-    async def _add_graph(data: str, data_type: str) -> str:
+    def _add_graph(data: str, data_type: str) -> str:
         try:
-            await client.graph.episode.add(
+            client.graph.episode.add(
                 graph_uuid,
                 type=data_type,
                 data=_truncate(data, GRAPH_MAX_CHARS, "graph data"),
@@ -780,7 +794,7 @@ def create_add_graph_data_tool(
         data_type: Annotated[str, "Type of data: 'text', 'json', or 'message'"] = "text",
     ) -> str:
         """Add data to the Zep knowledge graph."""
-        return str(_run_sync(_add_graph(data, data_type)))
+        return _add_graph(data, data_type)
 
     return add_graph_data
 
@@ -788,7 +802,7 @@ def create_add_graph_data_tool(
 def register_all_tools(
     agent: Any,
     executor: Any,
-    client: AsyncZep,
+    client: Zep,
     graph_uuid: str,
     thread_uuid: str | None = None,
     memory_graph_uuid: str | None = None,
@@ -802,7 +816,8 @@ def register_all_tools(
     Args:
         agent: The AG2 agent that will call the tools (register_for_llm).
         executor: The AG2 agent that will execute the tools (register_for_execution).
-        client: An initialized AsyncZep instance (reused for all calls).
+        client: An initialized synchronous ``Zep`` client (reused for all
+            calls). An ``AsyncZep`` client raises ``TypeError``.
         graph_uuid: The UUID of the graph that the graph tools use.
         thread_uuid: Optional UUID of the thread for conversation memory.
         memory_graph_uuid: Optional UUID of the graph that the memory tools
@@ -811,7 +826,11 @@ def register_all_tools(
 
     Returns:
         A dict mapping tool names to their callable functions.
+
+    Raises:
+        TypeError: If ``client`` is not a synchronous ``Zep`` client.
     """
+    _require_sync_client(client)
     tools: dict[str, Any] = {}
 
     memory_uuid = memory_graph_uuid or graph_uuid

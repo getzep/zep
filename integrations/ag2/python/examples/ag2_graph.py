@@ -17,7 +17,7 @@ import asyncio
 import os
 
 from autogen import AssistantAgent, LLMConfig, UserProxyAgent
-from zep_cloud.client import AsyncZep
+from zep_cloud.client import AsyncZep, Zep
 
 from zep_ag2 import ZepGraphMemoryManager, create_add_graph_data_tool, create_search_graph_tool
 
@@ -25,9 +25,8 @@ from zep_ag2 import ZepGraphMemoryManager, create_add_graph_data_tool, create_se
 async def provision() -> str:
     """Create the graph and return its UUID.
 
-    This function uses its own client, because an AsyncZep client binds to
-    the event loop that first drives a request. The synchronous AG2 tools
-    use a background loop, so the chat phase makes a second client.
+    This function uses its own AsyncZep client, because an AsyncZep client
+    binds to the event loop that first drives a request.
     """
     zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
     graph = await zep.graph.create(name="company_knowledge_base")
@@ -37,7 +36,8 @@ async def provision() -> str:
 def main() -> None:
     graph_uuid = asyncio.run(provision())
 
-    zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
+    # The synchronous AG2 tools use the synchronous Zep client.
+    sync_zep = Zep(api_key=os.environ["ZEP_API_KEY"])
 
     # Configure AG2 agents
     llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
@@ -55,8 +55,8 @@ def main() -> None:
     )
 
     # Create and register graph tools
-    search_tool = create_search_graph_tool(zep, graph_uuid)
-    add_tool = create_add_graph_data_tool(zep, graph_uuid)
+    search_tool = create_search_graph_tool(sync_zep, graph_uuid)
+    add_tool = create_add_graph_data_tool(sync_zep, graph_uuid)
 
     assistant.register_for_llm(description="Search the knowledge graph")(search_tool)
     user_proxy.register_for_execution()(search_tool)
@@ -65,9 +65,11 @@ def main() -> None:
     user_proxy.register_for_execution()(add_tool)
 
     # Optionally enrich system message with existing knowledge
-    # The chat runs in synchronous code, so the example uses the
-    # synchronous search wrapper, which drives the background loop.
-    graph_mgr = ZepGraphMemoryManager(zep, graph_uuid)
+    # The chat runs in synchronous code, so the example uses search_sync,
+    # which calls the synchronous Zep client.
+    graph_mgr = ZepGraphMemoryManager(
+        AsyncZep(api_key=os.environ["ZEP_API_KEY"]), graph_uuid, sync_client=sync_zep
+    )
     results = graph_mgr.search_sync("company policies", limit=5)
     if results:
         facts = "\n".join(f"- {r['content']}" for r in results)

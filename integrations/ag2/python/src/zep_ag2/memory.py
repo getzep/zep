@@ -39,11 +39,17 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from zep_cloud.client import AsyncZep
+from zep_cloud.client import AsyncZep, Zep
 from zep_cloud.types import AddMessage
 
 from zep_ag2.exceptions import ZepAG2ConfigError, ZepAG2MemoryError
-from zep_ag2.tools import MESSAGE_MAX_CHARS, _run_sync, _truncate, _validate_role
+from zep_ag2.tools import (
+    MESSAGE_MAX_CHARS,
+    _require_sync_client,
+    _run_sync,
+    _truncate,
+    _validate_role,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +176,7 @@ class ZepMemoryManager:
         thread_uuid: str | None = None,
         *,
         graph_uuid: str | None = None,
+        sync_client: Zep | None = None,
         context_builder: ContextBuilder | None = None,
         context_template: str = DEFAULT_CONTEXT_TEMPLATE,
     ) -> None:
@@ -184,6 +191,11 @@ class ZepMemoryManager:
             graph_uuid: Optional UUID of the graph of the user, read from
                 ``user.graph_uuid``. When it is not given, the manager
                 resolves it on first use and caches it.
+            sync_client: Optional synchronous ``Zep`` client. The
+                synchronous methods (:meth:`attach_to_agent`,
+                :meth:`get_memory_context_sync`, and
+                :meth:`enrich_system_message_sync`) call this client
+                directly. These methods raise ``TypeError`` when it is not set.
             context_builder: Optional async callable that replaces the default
                 Zep Context Block retrieval used by :meth:`process_user_message`,
                 :meth:`get_memory_context`, and :meth:`enrich_system_message`.
@@ -197,13 +209,17 @@ class ZepMemoryManager:
 
         Raises:
             ZepAG2ConfigError: If client is not an AsyncZep instance or user_uuid is empty.
+            TypeError: If sync_client is set and is not a synchronous Zep client.
         """
         if not isinstance(client, AsyncZep):
             raise ZepAG2ConfigError("client must be an instance of AsyncZep")
         if not user_uuid:
             raise ZepAG2ConfigError("user_uuid is required")
+        if sync_client is not None:
+            _require_sync_client(sync_client)
 
         self._client = client
+        self._sync_client = sync_client
         self._user_uuid = user_uuid
         self._thread_uuid = thread_uuid
         self._graph_uuid = graph_uuid
@@ -214,6 +230,33 @@ class ZepMemoryManager:
     def client(self) -> AsyncZep:
         """The underlying AsyncZep client."""
         return self._client
+
+    @property
+    def sync_client(self) -> Zep | None:
+        """The synchronous Zep client of the synchronous methods, if set."""
+        return self._sync_client
+
+    def _require_manager_sync_client(self) -> Zep:
+        """Return the synchronous client, or raise ``TypeError`` if it is not set."""
+        if self._sync_client is None:
+            raise TypeError(
+                "The synchronous methods of ZepMemoryManager need a synchronous "
+                "Zep client. Pass sync_client=zep_cloud.client.Zep(...) when you "
+                "create the manager."
+            )
+        return self._sync_client
+
+    def _resolve_graph_uuid_sync(self, client: Zep) -> str | None:
+        """Synchronous form of :meth:`resolve_graph_uuid`."""
+        if self._graph_uuid:
+            return self._graph_uuid
+        try:
+            user = client.user.get(self._user_uuid)
+        except Exception as exc:
+            logger.warning("Failed to read Zep user %s: %s", self._user_uuid, exc)
+            return None
+        self._graph_uuid = user.graph_uuid
+        return self._graph_uuid
 
     @property
     def user_uuid(self) -> str:
@@ -400,25 +443,19 @@ class ZepMemoryManager:
             graph_uuid = await self.resolve_graph_uuid()
             if graph_uuid:
                 try:
-                    facts: list[str] = []
                     edge_pager = await self._client.graph.search_edges(
                         graph_uuid,
                         query=query,
                         page_size=limit,
                     )
-                    for edge in edge_pager.items or []:
-                        facts.append(f"- {edge.fact}")
                     node_pager = await self._client.graph.search_nodes(
                         graph_uuid,
                         query=query,
                         page_size=limit,
                     )
-                    for node in node_pager.items or []:
-                        summary = node.summary or "No summary"
-                        facts.append(f"- {node.name}: {summary}")
-
-                    if facts:
-                        parts.append("Relevant knowledge:\n" + "\n".join(facts))
+                    knowledge = _format_knowledge(edge_pager.items, node_pager.items)
+                    if knowledge:
+                        parts.append(knowledge)
                 except Exception as e:
                     logger.error("Zep graph search failed: %s", type(e).__name__)
 
@@ -530,9 +567,9 @@ class ZepMemoryManager:
         is the framework's per-turn seam. This registers **two** hooks:
 
         * ``process_last_received_message`` -- fires for every message the
-          agent receives. Bridges (via the package's ``_run_sync`` background
-          loop) into :meth:`process_user_message` to persist the incoming
-          message and retrieve context, then injects that context into the
+          agent receives. Uses the synchronous ``sync_client`` to persist the
+          incoming message and retrieve context (the same work as
+          :meth:`process_user_message`), then injects that context into the
           agent's system message via ``agent.update_system_message()``
           (**replaces** the system message wholesale -- AG2's
           ``update_system_message`` has no append mode, so the hook keeps the
@@ -566,14 +603,18 @@ class ZepMemoryManager:
             agent: An AG2 ``ConversableAgent`` (or subclass) exposing
                 ``register_hook``, ``system_message``, and
                 ``update_system_message``.
+
+        Raises:
+            TypeError: If the manager has no synchronous ``sync_client``.
         """
+        sync_client = self._require_manager_sync_client()
         base_system_message = agent.system_message
 
         def _on_last_received_message(user_content: str) -> str:
             try:
                 if not isinstance(user_content, str):
                     return user_content
-                context_text = _run_sync(self.process_user_message(user_content, agent=agent))
+                context_text = self._process_user_message_sync(sync_client, user_content, agent)
                 if context_text:
                     rendered = self._context_template.replace("{context}", context_text)
                     agent.update_system_message(f"{base_system_message}\n\n{rendered}")
@@ -585,7 +626,7 @@ class ZepMemoryManager:
             try:
                 content = message.get("content") if isinstance(message, dict) else message
                 if isinstance(content, str) and content:
-                    _run_sync(self._persist_assistant_reply(content))
+                    self._persist_assistant_reply_sync(sync_client, content)
             except Exception as exc:
                 logger.warning("attach_to_agent: outgoing-message hook failed: %s", exc)
             return message
@@ -593,7 +634,48 @@ class ZepMemoryManager:
         agent.register_hook("process_last_received_message", _on_last_received_message)
         agent.register_hook("process_message_before_send", _on_message_before_send)
 
-    async def _persist_assistant_reply(self, content: str) -> None:
+    def _process_user_message_sync(
+        self, client: Zep, user_message: str, agent: Any | None
+    ) -> str | None:
+        """Synchronous form of :meth:`process_user_message`, used by the incoming hook."""
+        if not self._thread_uuid:
+            raise ZepAG2ConfigError(
+                "thread_uuid is required to process a user message. "
+                "Set thread_uuid when creating ZepMemoryManager."
+            )
+        message = AddMessage(
+            content=_truncate(user_message, MESSAGE_MAX_CHARS, "message content"),
+            role="user",
+        )
+
+        if self._context_builder is not None:
+            try:
+                client.thread.add_messages(self._thread_uuid, messages=[message])
+            except Exception as e:
+                logger.error("Zep thread.add_messages failed: %s", type(e).__name__)
+            return self._build_context_via_builder_sync(user_message, agent)
+
+        try:
+            add_result = client.thread.add_messages(
+                self._thread_uuid,
+                messages=[message],
+                return_context=True,
+            )
+            return add_result.context or None
+        except Exception as e:
+            logger.error("Zep thread.add_messages failed: %s", type(e).__name__)
+            return None
+
+    def _build_context_via_builder_sync(self, user_message: str, agent: Any | None) -> str | None:
+        """Run the async ``context_builder`` from synchronous code.
+
+        The builder is an async callable, so it runs on the package background
+        event loop.
+        """
+        result = _run_sync(self._build_context_via_builder(user_message, agent))
+        return result if isinstance(result, str) else None
+
+    def _persist_assistant_reply_sync(self, client: Zep, content: str) -> None:
         """Persist an assistant-authored message, used by the outgoing hook.
 
         Requires ``thread_uuid``; a missing thread_uuid is treated the same as
@@ -606,20 +688,47 @@ class ZepMemoryManager:
             content=_truncate(content, MESSAGE_MAX_CHARS, "message content"),
             role="assistant",
         )
-        await self._client.thread.add_messages(
+        client.thread.add_messages(
             self._thread_uuid,
             messages=[message],
         )
 
-    # Sync wrappers for non-async AG2 usage
+    # Sync methods for non-async AG2 usage. They call the synchronous client.
 
     def get_memory_context_sync(self, query: str | None = None, limit: int = 5) -> str:
-        """Synchronous wrapper for get_memory_context().
+        """Synchronous form of :meth:`get_memory_context`.
 
-        Bridges to async via the package's shared background event loop, so it
-        works on Python 3.11–3.13 and whether or not a loop is already running.
+        Calls the synchronous ``sync_client`` directly.
+
+        Raises:
+            TypeError: If the manager has no synchronous ``sync_client``.
         """
-        return str(_run_sync(self.get_memory_context(query, limit)))
+        client = self._require_manager_sync_client()
+        if self._context_builder is not None:
+            return self._build_context_via_builder_sync(query or "", None) or ""
+
+        parts: list[str] = []
+        if self._thread_uuid:
+            try:
+                context_result = client.thread.get_context(self._thread_uuid)
+                if context_result.context:
+                    parts.append(f"Memory context: {context_result.context}")
+            except Exception as e:
+                logger.error("Zep thread.get_context failed: %s", type(e).__name__)
+
+        if query:
+            graph_uuid = self._resolve_graph_uuid_sync(client)
+            if graph_uuid:
+                try:
+                    edge_pager = client.graph.search_edges(graph_uuid, query=query, page_size=limit)
+                    node_pager = client.graph.search_nodes(graph_uuid, query=query, page_size=limit)
+                    knowledge = _format_knowledge(edge_pager.items, node_pager.items)
+                    if knowledge:
+                        parts.append(knowledge)
+                except Exception as e:
+                    logger.error("Zep graph search failed: %s", type(e).__name__)
+
+        return "\n\n".join(parts)
 
     def enrich_system_message_sync(
         self,
@@ -627,8 +736,37 @@ class ZepMemoryManager:
         query: str | None = None,
         limit: int = 5,
     ) -> None:
-        """Synchronous wrapper for enrich_system_message().
+        """Synchronous form of :meth:`enrich_system_message`.
 
-        Bridges to async via the package's shared background event loop.
+        Calls the synchronous ``sync_client`` directly.
+
+        Raises:
+            TypeError: If the manager has no synchronous ``sync_client``.
         """
-        _run_sync(self.enrich_system_message(agent, query, limit))
+        if self._context_builder is not None:
+            self._require_manager_sync_client()
+            context_text = self._build_context_via_builder_sync(query or "", agent)
+            if context_text:
+                original_msg = agent.system_message
+                agent.update_system_message(
+                    f"{original_msg}\n\n{self._context_template.replace('{context}', context_text)}"
+                )
+            return
+
+        context = self.get_memory_context_sync(query, limit)
+        if context:
+            original_msg = agent.system_message
+            agent.update_system_message(
+                f"{original_msg}\n\n{self._context_template.replace('{context}', context)}"
+            )
+
+
+def _format_knowledge(edges: list[Any] | None, nodes: list[Any] | None) -> str | None:
+    """Format the edges and nodes of a graph search as a knowledge block."""
+    facts = [f"- {edge.fact}" for edge in edges or []]
+    for node in nodes or []:
+        summary = node.summary or "No summary"
+        facts.append(f"- {node.name}: {summary}")
+    if not facts:
+        return None
+    return "Relevant knowledge:\n" + "\n".join(facts)
