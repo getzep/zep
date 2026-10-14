@@ -17,11 +17,15 @@ from autogen_core.memory import (
 )
 from autogen_core.model_context import ChatCompletionContext
 from autogen_core.models import SystemMessage
-from zep_cloud import SearchFilters
 from zep_cloud.client import AsyncZep
 
 from .limits import truncate_graph_data
-from .search import collect, results_to_memory_content, search_scope
+from .search import (
+    SearchFiltersLike,
+    collect,
+    results_to_memory_content,
+    search_scope,
+)
 
 
 class ZepGraphMemory(Memory):
@@ -46,7 +50,7 @@ class ZepGraphMemory(Memory):
         self,
         client: AsyncZep,
         graph_uuid: str,
-        search_filters: SearchFilters | None = None,
+        search_filters: SearchFiltersLike | None = None,
         max_characters: int | None = None,
         **kwargs: Any,
     ) -> None:
@@ -58,7 +62,10 @@ class ZepGraphMemory(Memory):
             graph_uuid: The UUID of the graph in Zep (required). Zep assigns
                 the value when the graph is created.
             search_filters: Optional Zep search filters applied to a query
-                and to the context retrieval.
+                and to the context retrieval. The filter must be valid for
+                the scope of each call that uses it; a scope rejects a key
+                that it does not support. Pass a ``filters`` argument to
+                ``query()`` to override this value for one call.
             max_characters: Optional maximum length of the retrieved context
                 block. When omitted, Zep applies its own default.
             **kwargs: Additional configuration options
@@ -153,6 +160,7 @@ class ZepGraphMemory(Memory):
         # Extract limit from kwargs for backward compatibility
         limit = kwargs.pop("limit", 5)
         scope = kwargs.pop("scope", "edges")
+        filters = kwargs.pop("filters", self._search_filters)
 
         results: list[MemoryContent] = []
 
@@ -163,7 +171,7 @@ class ZepGraphMemory(Memory):
                 query=query_str,
                 scope=scope,
                 limit=limit,
-                filters=self._search_filters,
+                filters=filters,
                 **kwargs,
             )
             results = results_to_memory_content(items, scope, source="graph")

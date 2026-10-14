@@ -16,9 +16,30 @@ import logging
 from typing import Any, Literal
 
 from autogen_core.memory import MemoryContent, MemoryMimeType
+from zep_cloud import (
+    EdgeSearchFilters,
+    EpisodeSearchFilters,
+    NodeSearchFilters,
+    SearchFilters,
+    ThreadSummarySearchFilters,
+)
 from zep_cloud.client import AsyncZep
 
 logger = logging.getLogger(__name__)
+
+#: Filter objects that ``search_filters`` and a per-query ``filters`` argument
+#: accept. Each scoped search method has its own filter type, and the server
+#: rejects a filter key that the scope does not support. ``SearchFilters`` is
+#: the generic type that ``graph.get_context`` accepts, and a plain ``dict``
+#: is serialized as given.
+SearchFiltersLike = (
+    SearchFilters
+    | EdgeSearchFilters
+    | NodeSearchFilters
+    | EpisodeSearchFilters
+    | ThreadSummarySearchFilters
+    | dict[str, Any]
+)
 
 #: Search scopes that Zep v4 supports. ``auto`` is not a pager scope: it maps
 #: to ``graph.get_context``, which returns a composed context string.

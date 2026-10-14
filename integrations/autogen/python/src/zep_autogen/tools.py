@@ -34,11 +34,16 @@ import logging
 from typing import Annotated, Any, Literal
 
 from autogen_core.tools import FunctionTool
-from zep_cloud import SearchFilters
 from zep_cloud.client import AsyncZep
 
 from .limits import truncate_graph_data
-from .search import Scope, clamp_limit, name_summary_text, search_scope
+from .search import (
+    Scope,
+    SearchFiltersLike,
+    clamp_limit,
+    name_summary_text,
+    search_scope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +174,7 @@ def create_search_graph_tool(
     *,
     pinned_params: dict[str, Any] | None = None,
     hidden_params: set[str] | None = None,
-    search_filters: SearchFilters | dict[str, Any] | None = None,
+    search_filters: SearchFiltersLike | None = None,
     bfs_origin_node_uuids: list[str] | None = None,
     name: str = "zep_search",
     description: str = (

@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Episode retrieval calls `graph.episode.list(graph_uuid)` and iterates the pager.
 - Graph deletion calls `graph.delete(graph_uuid)`.
 - The search limit is clamped to the range 1 to 50.
+- `ZepGraphMemory` accepts each scoped `search_filters` type (`EdgeSearchFilters`, `NodeSearchFilters`, `EpisodeSearchFilters`, `ThreadSummarySearchFilters`, `SearchFilters`, or a plain `dict`). Each v4 search scope has its own filter type, and the server rejects a filter key that the scope does not support. `ZepGraphMemory.query` accepts a per-query `filters` argument that overrides the constructor `search_filters` for that call.
 
 ### Removed
 

@@ -4,7 +4,7 @@ import os
 from autogen_agentchat.agents import AssistantAgent
 from autogen_core.memory import MemoryContent, MemoryMimeType
 from autogen_ext.models.openai import OpenAIChatCompletionClient
-from zep_cloud import EntityProperty, EntityType, SearchFilters
+from zep_cloud import EntityProperty, EntityType, NodeSearchFilters
 from zep_cloud.client import AsyncZep
 
 from zep_autogen.graph_memory import ZepGraphMemory
@@ -77,7 +77,9 @@ async def main():
     memory = ZepGraphMemory(
         client=zep_client,
         graph_uuid=graph_uuid,
-        search_filters=SearchFilters(
+        # Each search scope has its own filter type. Node labels belong to
+        # node search, so this example queries the "nodes" scope.
+        search_filters=NodeSearchFilters(
             node_labels=["ProgrammingLanguage", "Framework", "Concept"],
         ),
     )
@@ -149,7 +151,9 @@ async def main():
 
         # Test querying graph memory directly
         print("\n=== Querying graph memory directly ===")
-        query_result = await memory.query("What technologies are useful for AI?", limit=5)
+        query_result = await memory.query(
+            "What technologies are useful for AI?", scope="nodes", limit=5
+        )
         print(f"Query results ({len(query_result.results)} items):")
         for i, result in enumerate(query_result.results[:3], 1):
             print(f"{i}. {result.content[:100]}...")

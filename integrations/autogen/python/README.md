@@ -285,7 +285,7 @@ For knowledge graph storage and retrieval:
 
 - `client` (AsyncZep): Your Zep client instance
 - `graph_uuid` (str): UUID of the knowledge graph
-- `search_filters` (SearchFilters, optional): Filters applied to context retrieval
+- `search_filters` (optional): Filters applied to queries and to context retrieval. Each search scope has its own filter type (`EdgeSearchFilters`, `NodeSearchFilters`, `EpisodeSearchFilters`, `ThreadSummarySearchFilters`, or the generic `SearchFilters` for `graph.get_context`), and a scope rejects a filter key that it does not support. Pass `filters` to `query()` to override the constructor value for one call
 - `max_characters` (int, optional): Maximum size of the retrieved context
 
 ### Tool Functions
@@ -385,7 +385,7 @@ writer = AssistantAgent(name="Writer", model_client=model_client, memory=[shared
 Define structured entities for better knowledge organization:
 
 ```python
-from zep_cloud import EntityProperty, EntityType, SearchFilters
+from zep_cloud import EntityProperty, EntityType, NodeSearchFilters
 
 entity_types = [
     EntityType(
@@ -401,11 +401,12 @@ entity_types = [
 # Set the ontology of one graph. v4 applies an ontology per graph UUID.
 await zep_client.graph.set_ontology(graph_uuid, entity_types=entity_types)
 
-# Use graph memory with ontology
+# Use graph memory with ontology. Node labels belong to node search, so the
+# filter type is NodeSearchFilters and the query uses the "nodes" scope.
 memory = ZepGraphMemory(
     client=zep_client,
     graph_uuid=graph_uuid,
-    search_filters=SearchFilters(
+    search_filters=NodeSearchFilters(
         node_labels=["ProgrammingLanguage"],
     ),
 )
