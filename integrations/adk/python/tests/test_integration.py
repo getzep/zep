@@ -197,16 +197,19 @@ async def test_cross_thread_recall_uses_the_user_graph() -> None:
         user = await create_user(zep, first_name="ADK", last_name="Recall")
         seed_thread = await create_thread(zep, user_uuid=user.uuid_)
         recall_thread = await create_thread(zep, user_uuid=user.uuid_)
-        threads.extend([seed_thread, recall_thread])
+        search_thread = await create_thread(zep, user_uuid=user.uuid_)
+        threads.extend([seed_thread, recall_thread, search_thread])
 
         app_name = f"adk-recall-{suffix}"
         app_user_id = f"app-user-{suffix}"
         seed_session = f"seed-{suffix}"
         recall_session = f"recall-{suffix}"
+        search_session = f"search-{suffix}"
         sessions = InMemorySessionService()
         for session_id, thread in (
             (seed_session, seed_thread),
             (recall_session, recall_thread),
+            (search_session, search_thread),
         ):
             await sessions.create_session(
                 app_name=app_name,
@@ -228,9 +231,9 @@ async def test_cross_thread_recall_uses_the_user_graph() -> None:
         )
         runner = Runner(agent=agent, app_name=app_name, session_service=sessions)
 
-        async def send(session_id: str, text: str) -> str:
+        async def send(session_id: str, text: str, active_runner=runner) -> str:
             parts = []
-            async for event in runner.run_async(
+            async for event in active_runner.run_async(
                 user_id=app_user_id,
                 session_id=session_id,
                 new_message=types.Content(role="user", parts=[types.Part(text=text)]),
@@ -263,6 +266,33 @@ async def test_cross_thread_recall_uses_the_user_graph() -> None:
 
         recalled = await send(recall_session, "Where do I like to go hiking?")
         assert "hood river" in recalled.lower()
+
+        search_agent = Agent(
+            name="zep_graph_search_agent",
+            model="gemini-2.5-flash",
+            instruction=(
+                "You must call search_user_memory to answer questions about the user's "
+                "past conversations. Do not answer from prior knowledge."
+            ),
+            tools=[
+                ZepGraphSearchTool(
+                    zep_client=zep,
+                    name="search_user_memory",
+                    scope="edges",
+                )
+            ],
+        )
+        search_runner = Runner(
+            agent=search_agent,
+            app_name=app_name,
+            session_service=sessions,
+        )
+        searched = await send(
+            search_session,
+            "Use search_user_memory to find my favorite hiking place. What does it return?",
+            search_runner,
+        )
+        assert "hood river" in searched.lower()
     finally:
         for thread in threads:
             await zep.thread.delete(thread.uuid_)
