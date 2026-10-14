@@ -195,7 +195,6 @@ def build_judge(settings) -> Agent:
 
 async def main_async(args) -> None:
     settings = Settings.from_env(require_zep_key=not args.dry_run)
-    settings.require_graph_uuid()
     questions = yaml.safe_load((Path(__file__).parent / "gold_questions.yaml").read_text())
     if args.questions:
         questions = [q for q in questions if q["id"] in args.questions]
@@ -208,6 +207,7 @@ async def main_async(args) -> None:
         )
         return
 
+    settings.require_graph_uuid()
     judge = build_judge(settings)
 
     out_path = Path(__file__).parent / f"results-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"

@@ -234,7 +234,6 @@ def summarize(records: list[dict]) -> list[dict]:
 
 async def main_async(args) -> None:
     settings = Settings.from_env(require_zep_key=not args.dry_run)
-    settings.require_graph_uuid()
     questions = yaml.safe_load(GOLD_QUESTIONS.read_text())
     if args.questions:
         questions = [question for question in questions if question["id"] in args.questions]
@@ -247,6 +246,7 @@ async def main_async(args) -> None:
         )
         return
 
+    settings.require_graph_uuid()
     judge = build_judge(settings)
 
     out_path = Path(__file__).parent / f"results-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
