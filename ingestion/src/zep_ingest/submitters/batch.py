@@ -98,6 +98,59 @@ def process_batch(client: Zep, batch_id: str, result: IngestResult, *, max_retri
         )
 
 
+def add_items_page(
+    client: Zep,
+    batch_id: str,
+    items: list[Any],
+    *,
+    max_retries: int,
+    page_index: int,
+    result: IngestResult,
+) -> int:
+    """Submit one page to a batch and return the count the API accepted.
+
+    The v4 ``BatchItemsResponse`` reports per-item rejections (``rejected_items``)
+    separately from a call-level error, so a successful response is not proof
+    that every item landed. Rejected items are recorded as AddErrors instead of
+    being counted as submitted.
+    """
+    attempts = 0
+
+    def add_page() -> Any:
+        nonlocal attempts
+        attempts += 1
+        return client.batch.add_items(batch_id, items=items)
+
+    response, error = call_with_retries(add_page, max_retries=max_retries)
+    if error is not None:
+        result.add_errors.append(
+            AddError(
+                index=page_index,
+                item_count=len(items),
+                error=f"{format_api_error('batch.add_items', error)} after {attempts} attempt(s)",
+                batch_id=batch_id,
+            )
+        )
+        return 0
+    rejected = getattr(response, "rejected_items", None)
+    if not isinstance(rejected, list | tuple):
+        rejected = []
+    if rejected:
+        detail = "; ".join(
+            f"index {getattr(rejection, 'index', '?')}: {getattr(rejection, 'reason', 'rejected')}"
+            for rejection in rejected
+        )
+        result.add_errors.append(
+            AddError(
+                index=page_index,
+                item_count=len(rejected),
+                error=f"batch.add_items rejected {len(rejected)} item(s): {detail}",
+                batch_id=batch_id,
+            )
+        )
+    return len(items) - len(rejected)
+
+
 class BatchSubmitter:
     def __init__(
         self,
@@ -147,9 +200,9 @@ class BatchSubmitter:
                     break
                 items_in_batch = 0
             items = [to_batch_item(ep, destination) for ep in page]
-            if self._add_page(batch_id, items, page_index, result):
-                items_in_batch += len(page)
-                result.items_submitted += len(page)
+            accepted = self._add_page(batch_id, items, page_index, result)
+            items_in_batch += accepted
+            result.items_submitted += accepted
             page_index += 1
         if batch_id is not None:
             process_batch(self.client, batch_id, result, max_retries=self.max_add_retries)
@@ -207,26 +260,12 @@ class BatchSubmitter:
 
     def _add_page(
         self, batch_id: str, items: list[Any], page_index: int, result: IngestResult
-    ) -> bool:
-        attempts = 0
-
-        def add_page() -> None:
-            nonlocal attempts
-            attempts += 1
-            self.client.batch.add_items(batch_id, items=items)
-
-        _, error = call_with_retries(
-            add_page,
+    ) -> int:
+        return add_items_page(
+            self.client,
+            batch_id,
+            items,
             max_retries=self.max_add_retries,
+            page_index=page_index,
+            result=result,
         )
-        if error is None:
-            return True
-        result.add_errors.append(
-            AddError(
-                index=page_index,
-                item_count=len(items),
-                error=f"{format_api_error('batch.add_items', error)} after {attempts} attempt(s)",
-                batch_id=batch_id,
-            )
-        )
-        return False

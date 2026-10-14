@@ -6,6 +6,8 @@ import httpx
 import pytest
 from zep_cloud.core.api_error import ApiError
 from zep_cloud.types.batch import Batch
+from zep_cloud.types.batch_items_response import BatchItemsResponse
+from zep_cloud.types.rejected_batch_item import RejectedBatchItem
 
 from tests.conftest import BATCH_UUID, GRAPH_UUID, make_batch_summary
 from zep_ingest.exceptions import BatchUnavailableError, InvalidBatchResponseError
@@ -313,3 +315,28 @@ class TestBatchMetadata:
         assert partial.batch_ids == ["b1"]
         assert partial.items_submitted == 1
         assert mock_zep.batch.add_items.call_count == 1
+
+
+class TestRejectedItems:
+    def test_rejected_items_record_error_and_are_not_counted(self, mock_zep):
+        mock_zep.batch.add_items.return_value = BatchItemsResponse(
+            items=None,
+            rejected_items=[RejectedBatchItem(index=1, reason="graph not found")],
+        )
+
+        result = BatchSubmitter(mock_zep).submit(episodes(2), DEST)
+
+        assert result.items_submitted == 1
+        assert len(result.add_errors) == 1
+        assert "rejected 1 item(s)" in result.add_errors[0].error
+        assert "index 1" in result.add_errors[0].error
+        assert "graph not found" in result.add_errors[0].error
+        assert result.batch_ids == [BATCH_UUID]
+
+    def test_response_without_rejected_items_counts_the_whole_page(self, mock_zep):
+        mock_zep.batch.add_items.return_value = BatchItemsResponse(items=None, rejected_items=None)
+
+        result = BatchSubmitter(mock_zep).submit(episodes(2), DEST)
+
+        assert result.items_submitted == 2
+        assert result.add_errors == []

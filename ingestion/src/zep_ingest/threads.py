@@ -44,6 +44,7 @@ from zep_ingest.exceptions import (
 )
 from zep_ingest.result import AddError, IngestResult, task_uuid_of
 from zep_ingest.submitters.batch import (
+    add_items_page,
     batch_uuid_of,
     is_batch_unavailable,
     process_batch,
@@ -269,22 +270,16 @@ def _submit_batch(
             for message in page
         ]
         current_batch = batch_id
-        _, add_failure = call_with_retries(
-            lambda: client.batch.add_items(current_batch, items=items),  # noqa: B023
+        accepted = add_items_page(
+            client,
+            current_batch,
+            items,
             max_retries=max_retries,
+            page_index=page_index,
+            result=result,
         )
-        if add_failure is not None:
-            result.add_errors.append(
-                AddError(
-                    index=page_index,
-                    item_count=len(page),
-                    error=(format_api_error("batch.add_items", add_failure)),
-                    batch_id=batch_id,
-                )
-            )
-        else:
-            result.items_submitted += len(page)
-            items_in_batch += len(page)
+        items_in_batch += accepted
+        result.items_submitted += accepted
         page_index += 1
     if batch_id is not None:
         process_batch(client, batch_id, result, max_retries=max_retries)
