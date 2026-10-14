@@ -259,14 +259,14 @@ class TestZepSearchToolPinOrExpose:
         mock_client = _make_mock_client()
 
         tool = ZepSearchTool(
-            client=mock_client, graph_uuid=GRAPH_UUID, search_filters={"node_labels": ["Person"]}
+            client=mock_client, graph_uuid=GRAPH_UUID, search_filters={"edge_types": ["RELATED_TO"]}
         )
         assert "search_filters" not in tool.args_schema.model_fields
 
         tool._run(query="hello")
 
         call_kwargs = mock_client.graph.search_edges.call_args.kwargs
-        assert call_kwargs["filters"] == {"node_labels": ["Person"]}
+        assert call_kwargs["filters"] == {"edge_types": ["RELATED_TO"]}
 
     def test_search_tool_bfs_origin_node_uuids_constructor_only(self):
         mock_client = _make_mock_client()
@@ -417,6 +417,133 @@ class TestAutoScopeReranker:
 
         call_kwargs = mock_client.graph.search_edges.call_args.kwargs
         assert call_kwargs["reranker"] == "node_distance"
+
+    def test_pinned_scope_rejects_unsupported_filters_at_construction(self):
+        """node_labels is a nodes-scope key; with scope pinned to 'edges' the
+        constructor raises instead of letting the call 400 on every search."""
+        mock_client = _make_mock_client()
+
+        with pytest.raises(ValueError, match="node_labels"):
+            ZepSearchTool(
+                client=mock_client,
+                graph_uuid=GRAPH_UUID,
+                pinned_params={"scope": "edges"},
+                search_filters={"node_labels": ["Project"]},
+            )
+
+        # the exception message names the scopes that do accept the key
+        with pytest.raises(ValueError, match="nodes"):
+            ZepSearchTool(
+                client=mock_client,
+                graph_uuid=GRAPH_UUID,
+                pinned_params={"scope": "edges"},
+                search_filters={"node_labels": ["Project"]},
+            )
+
+    def test_pinned_nodes_scope_accepts_node_labels(self):
+        mock_client = _make_mock_client()
+
+        tool = ZepSearchTool(
+            client=mock_client,
+            graph_uuid=GRAPH_UUID,
+            pinned_params={"scope": "nodes"},
+            search_filters={"node_labels": ["Project"]},
+        )
+
+        assert tool._constructor_only["filters"] == {"node_labels": ["Project"]}
+
+    def test_legacy_scope_arg_validates_filters_at_construction(self):
+        mock_client = _make_mock_client()
+
+        with pytest.raises(ValueError, match="node_labels"):
+            ZepSearchTool(
+                client=mock_client,
+                graph_uuid=GRAPH_UUID,
+                scope="edges",
+                search_filters={"node_labels": ["Project"]},
+            )
+
+    def test_supported_filter_keys_pass_construction(self):
+        """Every scope that has a typed filter model accepts its own keys."""
+        mock_client = _make_mock_client()
+
+        ZepSearchTool(
+            client=mock_client,
+            graph_uuid=GRAPH_UUID,
+            pinned_params={"scope": "edges"},
+            search_filters={"edge_types": ["RELATED_TO"]},
+        )
+        ZepSearchTool(
+            client=mock_client,
+            graph_uuid=GRAPH_UUID,
+            pinned_params={"scope": "episodes"},
+            search_filters={"metadata_filters": {"filters": []}},
+        )
+        # observations takes a free-form dict -- no key validation
+        ZepSearchTool(
+            client=mock_client,
+            graph_uuid=GRAPH_UUID,
+            pinned_params={"scope": "observations"},
+            search_filters={"node_labels": ["anything"]},
+        )
+        # auto takes the general SearchFilters shape
+        ZepSearchTool(
+            client=mock_client,
+            graph_uuid=GRAPH_UUID,
+            pinned_params={"scope": "auto"},
+            search_filters={"node_labels": ["Project"]},
+        )
+
+    def test_unsupported_filter_returns_error_at_call_time(self):
+        """Scope unpinned + filters set: a model-chosen scope that cannot use
+        the filters yields a clear error string, never a silent empty result
+        and never a raise into the crew."""
+        mock_client = _make_mock_client()
+
+        tool = ZepSearchTool(
+            client=mock_client,
+            graph_uuid=GRAPH_UUID,
+            search_filters={"node_labels": ["Project"]},
+        )
+
+        result = tool._run(query="hello", scope="edges")
+
+        assert result.startswith("Error searching Zep memory:")
+        assert "'node_labels'" in result
+        assert "'edges'" in result
+        assert "nodes" in result
+        mock_client.graph.search_edges.assert_not_called()
+
+    def test_supported_filters_reach_the_sdk_call(self):
+        mock_client = _make_mock_client()
+
+        tool = ZepSearchTool(
+            client=mock_client,
+            graph_uuid=GRAPH_UUID,
+            search_filters={"edge_types": ["RELATED_TO"]},
+        )
+
+        tool._run(query="hello", scope="edges")
+
+        call_kwargs = mock_client.graph.search_edges.call_args.kwargs
+        assert call_kwargs["filters"] == {"edge_types": ["RELATED_TO"]}
+
+    def test_model_chosen_scope_that_supports_the_filters_runs(self):
+        """filters not matched to the default scope still work when the model
+        picks a scope that supports them."""
+        mock_client = _make_mock_client()
+
+        tool = ZepSearchTool(
+            client=mock_client,
+            graph_uuid=GRAPH_UUID,
+            search_filters={"node_labels": ["Project"]},
+        )
+
+        tool._run(query="hello", scope="nodes")
+
+        call_kwargs = mock_client.graph.search_nodes.call_args.kwargs
+        assert call_kwargs["filters"] == {"node_labels": ["Project"]}
+        mock_client.graph.search_edges.assert_not_called()
 
 
 class TestZepAddDataTool:

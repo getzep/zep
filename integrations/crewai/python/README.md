@@ -156,7 +156,11 @@ from the schema *without* pinning (Zep's own server-side default applies).
 Zep v4 gives one search method for each scope, so `scope` selects the SDK method that
 the tool calls: `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`,
 `graph.search_observations`, or `graph.search_thread_summaries`. Scope `auto` calls
-`graph.get_context` and returns the assembled Context Block.
+`graph.get_context` and returns the assembled Context Block. Each scope accepts only
+its own filter keys — for example `edge_types` filters edge searches and
+`node_labels` filters node searches — so `search_filters` must match the scope that
+the call uses. The tool validates `search_filters` against the resolved scope and
+reports an unsupported key instead of silently sending it.
 
 ```python
 # All params model-exposed (default)
@@ -174,11 +178,21 @@ search_tool = create_search_tool(
 )
 
 # Constructor-only (never exposed to the model):
+# `search_filters` must use keys that the scope supports — here `edge_types`
+# for the default `edges` scope. For `node_labels`, pin scope to "nodes".
 search_tool = create_search_tool(
     zep_client,
     graph_uuid=graph.uuid_,
-    search_filters={"node_labels": ["Project"]},
+    search_filters={"edge_types": ["RELATED_TO"]},
     bfs_origin_node_uuids=["node-uuid-1"],
+)
+
+# Label filtering on the nodes scope:
+node_search_tool = create_search_tool(
+    zep_client,
+    graph_uuid=graph.uuid_,
+    pinned_params={"scope": "nodes"},
+    search_filters={"node_labels": ["Project"]},
 )
 ```
 

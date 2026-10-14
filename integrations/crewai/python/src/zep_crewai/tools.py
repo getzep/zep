@@ -29,7 +29,18 @@ from typing import Any, Literal
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field, create_model
 from zep_cloud.client import Zep
-from zep_cloud.types import Edge, Episode, Node, Observation, ThreadSummary
+from zep_cloud.types import (
+    Edge,
+    EdgeSearchFilters,
+    Episode,
+    EpisodeSearchFilters,
+    Node,
+    NodeSearchFilters,
+    Observation,
+    SearchFilters,
+    ThreadSummary,
+    ThreadSummarySearchFilters,
+)
 from zep_cloud.types.graph_context_response import GraphContextResponse
 
 from .limits import truncate_graph_data
@@ -56,6 +67,50 @@ SearchItems = list[Edge] | list[Node] | list[Episode] | list[Observation] | list
 #: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
 #: retrieval and applies its own internal cross-scope rerank).
 _AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
+
+#: Filter keys that each search scope accepts, read from the typed
+#: search-filter models of the v4 SDK. ``None`` means the scope's filter
+#: type is free-form: ``ObservationSearchFilters`` is a plain
+#: ``Dict[str, Any]`` in the SDK, so any keys pass.
+_SCOPE_FILTER_FIELDS: dict[str, frozenset[str] | None] = {
+    "edges": frozenset(EdgeSearchFilters.model_fields),
+    "nodes": frozenset(NodeSearchFilters.model_fields),
+    "episodes": frozenset(EpisodeSearchFilters.model_fields),
+    "observations": None,
+    "thread_summaries": frozenset(ThreadSummarySearchFilters.model_fields),
+    "auto": frozenset(SearchFilters.model_fields),
+}
+
+
+def _validate_filters_for_scope(filters: Any, scope: str) -> None:
+    """Raise ``ValueError`` when a filter dict has keys ``scope`` cannot use.
+
+    Zep v4 gives each search scope its own filter type and rejects an
+    unsupported key with HTTP 400 ``unsupported_filter``. The message names
+    the filter key, the scope, and the scopes that accept the key.
+    """
+    if not isinstance(filters, dict):
+        return
+    allowed = _SCOPE_FILTER_FIELDS.get(scope)
+    if allowed is None:
+        return
+    unsupported = sorted(set(filters) - allowed)
+    if not unsupported:
+        return
+    details = []
+    for key in unsupported:
+        supporting = sorted(
+            s for s, fields in _SCOPE_FILTER_FIELDS.items() if fields is not None and key in fields
+        )
+        detail = f"'{key}' is not supported for scope '{scope}'"
+        if supporting:
+            detail += f"; it is supported on scopes {supporting}"
+        details.append(detail)
+    raise ValueError(
+        f"Invalid search_filters for scope '{scope}': {'; '.join(details)}. "
+        f"Filters supported by scope '{scope}': {sorted(allowed)}"
+    )
+
 
 #: Default tool name surfaced to the model.
 DEFAULT_SEARCH_TOOL_NAME = "Zep Memory Search"
@@ -388,6 +443,9 @@ class ZepSearchTool(BaseTool):
             limit=limit,
         )
 
+        if search_filters is not None and pinned.get("scope") is not None:
+            _validate_filters_for_scope(search_filters, str(pinned["scope"]))
+
         constructor_only: dict[str, Any] = {}
         if search_filters is not None:
             constructor_only["filters"] = search_filters
@@ -445,6 +503,8 @@ class ZepSearchTool(BaseTool):
         effective_scope = str(search_kwargs.pop("scope", "edges"))
 
         try:
+            if "filters" in search_kwargs:
+                _validate_filters_for_scope(search_kwargs["filters"], effective_scope)
             if effective_scope == "auto":
                 context_kwargs: dict[str, Any] = {"query": search_kwargs["query"]}
                 if "filters" in search_kwargs:
