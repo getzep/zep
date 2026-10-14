@@ -5,7 +5,7 @@ All notable changes to the zep-livekit integration will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0]
+## [1.0.0]
 
 ### Breaking
 
@@ -132,6 +132,7 @@ If you depend on the exact old wording (e.g. in a prompt-matching test), pass it
 - **Per-User Agent Instances**: Designed for typical deployment where each user gets their own agent
 - **Minimal Logging**: Clean, production-ready logging with essential information only
 
-[Unreleased]: https://github.com/getzep/zep/compare/zep-livekit-python-v0.2.0...HEAD
+[Unreleased]: https://github.com/getzep/zep/compare/zep-livekit-python-v1.0.0...HEAD
+[1.0.0]: https://github.com/getzep/zep/compare/zep-livekit-python-v0.2.0...zep-livekit-python-v1.0.0
 [0.2.0]: https://github.com/getzep/zep/compare/zep-livekit-python-v0.1.1...zep-livekit-python-v0.2.0
 [0.1.0]: https://github.com/getzep/zep/releases/tag/zep-livekit-v0.1.0
