@@ -56,6 +56,12 @@ the migration guide, and store it.
   names the setting and the valid values. An invalid pair in the constructor
   raises a `ValueError`. The `mmr` reranker sends `mmr_lambda=0.5` when no
   value is given.
+- The `auto` scope takes no reranker. A reranker from the model with
+  `scope="auto"` gives a clear error, and the tool does not call Zep. A pinned
+  reranker with `scope="auto"`, or a `search_reranker` with
+  `search_scope="auto"` on `ZepMemoryStore`, raises a `ValueError`. The
+  `reranker` tool parameter has no schema default. When the model gives no
+  reranker for a scoped search, the tool sends `rrf`, as before.
 - `ZepMemoryStore.initialize()` no longer calls Zep. `Agent.__init__` is
   synchronous, so Strands runs that hook on a throwaway event loop in a worker
   thread; provisioning there drove the caller's `AsyncZep` client from a second

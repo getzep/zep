@@ -50,10 +50,6 @@ Reranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_enc
 #: Zep caps the search ``limit`` at 50; larger values are rejected.
 MAX_SEARCH_LIMIT = 50
 
-#: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
-#: retrieval and applies its own internal cross-scope rerank).
-_AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
-
 _ALL_SCOPES: tuple[str, ...] = (
     "edges",
     "nodes",
@@ -79,6 +75,10 @@ SCOPE_RERANKERS: dict[str, tuple[str, ...]] = {
     "observations": ("rrf", "mmr", "cross_encoder"),
     "thread_summaries": ("rrf", "mmr", "cross_encoder"),
 }
+
+#: The reranker that a model-facing scoped search sends when the model gives
+#: no reranker.
+DEFAULT_RERANKER = "rrf"
 
 #: The ``mmr_lambda`` that a search sends when the reranker is ``mmr`` and no
 #: value is given. Zep requires ``mmr_lambda`` for ``mmr``.
@@ -106,12 +106,17 @@ def search_settings_error(
 ) -> str | None:
     """Return why Zep will reject a scope and reranker setting, or ``None``.
 
-    The ``auto`` scope ignores the reranker, so any reranker is accepted for it.
+    The ``auto`` scope takes no reranker.
     """
     if scope not in _ALL_SCOPES:
         return f"scope {scope!r} is not valid. Use one of: {', '.join(_ALL_SCOPES)}."
-    if reranker is None or scope == "auto":
+    if reranker is None:
         return None
+    if scope == "auto":
+        return (
+            f"the 'auto' scope takes no reranker, but the reranker {reranker!r} was given. "
+            "Omit the reranker with scope 'auto', or use another scope."
+        )
     if reranker not in _ALL_RERANKERS:
         return f"reranker {reranker!r} is not valid. Use one of: {', '.join(_ALL_RERANKERS)}."
     allowed = SCOPE_RERANKERS[scope]
@@ -161,7 +166,7 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
     "reranker": {
         "annotation": Reranker,
         "description": "Result ordering algorithm.",
-        "default": "rrf",
+        "default": None,
     },
     "limit": {
         "annotation": int,
@@ -482,11 +487,11 @@ def create_zep_search_tool(
             pinned["limit"] = 1
 
     if pinned.get("scope") == "auto":
-        if pinned.get("reranker") in _AUTO_INCOMPATIBLE_RERANKERS:
-            logger.warning(
-                "zep_search reranker %r is invalid for scope='auto'; "
-                "omitting reranker (auto search uses RRF).",
-                pinned["reranker"],
+        if "reranker" in pinned:
+            raise ValueError(
+                "zep_search pinned settings are not valid: the 'auto' scope takes no "
+                f"reranker, but the reranker {pinned['reranker']!r} is pinned. Do not pin "
+                "a reranker with scope 'auto', or pin another scope."
             )
         for param_name in ("reranker", "mmr_lambda", "center_node_uuid"):
             pinned.pop(param_name, None)
@@ -531,7 +536,7 @@ def create_zep_search_tool(
                 scope
                 for scope, rerankers in SCOPE_RERANKERS.items()
                 if pinned_reranker in rerankers
-            ] + ["auto"]
+            ]
             exposed["scope"]["annotation"] = _literal(scopes)
 
     reranker_limits = ""
@@ -552,14 +557,12 @@ def create_zep_search_tool(
                     f"{scope}: {', '.join(r for r in rerankers if r in usable)}"
                     for scope, rerankers in SCOPE_RERANKERS.items()
                 )
-                + ". The 'auto' scope ignores the reranker."
+                + ". The 'auto' scope takes no reranker: omit the reranker with scope 'auto'."
             )
         notes = ", ".join(f"'{r}' ({_RERANKER_NOTES[r]})" for r in usable)
         reranker_limits = f"Result ordering algorithm: {notes}.{scope_limits}"
         exposed["reranker"]["annotation"] = _literal(usable)
         exposed["reranker"]["description"] = reranker_limits
-        if "rrf" not in usable:
-            exposed["reranker"]["default"] = usable[0]
 
     signature, annotations = _build_search_signature(exposed)
     if reranker_limits:
@@ -597,13 +600,12 @@ def create_zep_search_tool(
         # The scope selects the Zep method, so it is always necessary, even
         # when it is hidden from the model.
         search_kwargs["scope"] = effective_scope
-        if effective_scope == "auto" and "reranker" in search_kwargs:
-            dropped_reranker = search_kwargs.pop("reranker")
-            if dropped_reranker in _AUTO_INCOMPATIBLE_RERANKERS:
-                logger.warning(
-                    "zep_search reranker %r is invalid for scope='auto'; omitting reranker.",
-                    dropped_reranker,
-                )
+        if (
+            effective_scope != "auto"
+            and "reranker" not in search_kwargs
+            and "reranker" not in hidden
+        ):
+            search_kwargs["reranker"] = DEFAULT_RERANKER
 
         search_kwargs.update(constructor_only)
 

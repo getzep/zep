@@ -95,7 +95,6 @@ from ._text import (
     truncate_message_content,
 )
 from .search import (
-    _AUTO_INCOMPATIBLE_RERANKERS,
     MAX_SEARCH_LIMIT,
     Scope,
     SearchResults,
@@ -289,7 +288,8 @@ class ZepMemoryStore:
                 ``"auto"`` (Zep's assembled Context Block from
                 ``graph.get_context``).
             search_reranker: Optional default reranker for :meth:`search`. It
-                must be a reranker that ``search_scope`` supports.
+                must be a reranker that ``search_scope`` supports. The
+                ``"auto"`` scope takes no reranker.
             search_filters: Optional filters applied to every search.
             bfs_origin_node_uuids: Optional BFS seed node UUIDs for search.
             expose_search_tool: When ``True``, :meth:`get_tools` returns a
@@ -417,14 +417,7 @@ class ZepMemoryStore:
             # no result cap.
             del search_kwargs["limit"]
         if self.search_reranker is not None:
-            if self.search_scope == "auto" and self.search_reranker in _AUTO_INCOMPATIBLE_RERANKERS:
-                logger.warning(
-                    "ZepMemoryStore search_reranker %r is invalid for scope='auto'; omitting.",
-                    self.search_reranker,
-                )
-            elif self.search_scope != "auto":
-                search_kwargs["reranker"] = self.search_reranker
-            # auto + compatible reranker: still omit — auto ignores it.
+            search_kwargs["reranker"] = self.search_reranker
         if self.search_filters is not None:
             search_kwargs["filters"] = self.search_filters
         if self.bfs_origin_node_uuids is not None and self.search_scope != "auto":

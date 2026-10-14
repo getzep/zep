@@ -171,6 +171,11 @@ class TestSearch:
         assert await store.search("   ") == []
         store._zep.graph.get_context.assert_not_awaited()
 
+    @pytest.mark.parametrize("reranker", ["rrf", "mmr", "node_distance"])
+    def test_rejects_reranker_with_auto_scope(self, reranker: str) -> None:
+        with pytest.raises(ValueError, match="'auto' scope takes no reranker"):
+            _make_store(search_scope="auto", search_reranker=reranker)
+
     def test_rejects_unsupported_scope_and_reranker(self) -> None:
         with pytest.raises(ValueError, match="not supported for scope 'episodes'"):
             _make_store(search_scope="episodes", search_reranker="cross_encoder")

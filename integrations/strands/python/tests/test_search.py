@@ -137,8 +137,61 @@ class TestSearchSettingsValidation:
             is None
         )
 
-    def test_auto_accepts_any_reranker(self) -> None:
-        assert search_settings_error("auto", "episode_mentions") is None
+    @pytest.mark.parametrize("reranker", ["rrf", "mmr", "node_distance", "cross_encoder"])
+    def test_auto_rejects_any_reranker(self, reranker: str) -> None:
+        error = search_settings_error("auto", reranker)
+        assert error is not None
+        assert "'auto' scope takes no reranker" in error
+        assert search_settings_error("auto", None) is None
+
+    def test_reranker_has_no_schema_default(self) -> None:
+        tool = create_zep_search_tool(zep_client=_make_client(), user_uuid=USER_UUID)
+        props = tool.tool_spec["inputSchema"]["json"]["properties"]
+        assert props["reranker"].get("default") is None
+        assert "'auto' scope takes no reranker" in tool.tool_spec["description"]
+
+    @pytest.mark.parametrize("reranker", ["rrf", "mmr", "cross_encoder"])
+    def test_pinned_auto_scope_with_reranker_raises(self, reranker: str) -> None:
+        with pytest.raises(ValueError, match="'auto' scope takes no reranker"):
+            create_zep_search_tool(
+                zep_client=_make_client(),
+                user_uuid=USER_UUID,
+                search_pinned_params={"scope": "auto", "reranker": reranker},
+            )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("reranker", ["rrf", "mmr", "episode_mentions"])
+    async def test_model_auto_scope_with_reranker_returns_error(self, reranker: str) -> None:
+        client = _make_client()
+        tool = create_zep_search_tool(zep_client=client, user_uuid=USER_UUID)
+        result = await _fn(tool)(query="x", scope="auto", reranker=reranker)  # type: ignore[operator]
+        assert result.startswith("Error: the 'auto' scope takes no reranker")
+        assert f"'{reranker}'" in result
+        client.graph.get_context.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_model_auto_scope_without_reranker_calls_get_context(self) -> None:
+        client = _make_client()
+        tool = create_zep_search_tool(zep_client=client, user_uuid=USER_UUID)
+        result = await _fn(tool)(query="x", scope="auto")  # type: ignore[operator]
+        assert result == "auto context"
+        assert "reranker" not in client.graph.get_context.await_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_model_scoped_search_without_reranker_sends_rrf(self) -> None:
+        client = _make_client()
+        tool = create_zep_search_tool(zep_client=client, user_uuid=USER_UUID)
+        await _fn(tool)(query="x", scope="edges")  # type: ignore[operator]
+        assert client.graph.search_edges.await_args.kwargs["reranker"] == "rrf"
+
+    @pytest.mark.asyncio
+    async def test_hidden_reranker_is_not_sent(self) -> None:
+        client = _make_client()
+        tool = create_zep_search_tool(
+            zep_client=client, user_uuid=USER_UUID, search_hidden_params={"reranker"}
+        )
+        await _fn(tool)(query="x", scope="edges")  # type: ignore[operator]
+        assert "reranker" not in client.graph.search_edges.await_args.kwargs
 
     def test_reranker_enum_hides_unusable_rerankers(self) -> None:
         tool = create_zep_search_tool(zep_client=_make_client(), user_uuid=USER_UUID)
@@ -167,7 +220,6 @@ class TestSearchSettingsValidation:
             "nodes",
             "observations",
             "thread_summaries",
-            "auto",
         ]
 
     def test_episode_mentions_is_offered_with_episode_filter(self) -> None:
