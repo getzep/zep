@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from typing import get_type_hints
+from typing import get_args, get_type_hints
 from unittest.mock import MagicMock
 
 import pytest
@@ -278,48 +278,69 @@ class TestSearchLimitClamp:
 
 
 class TestAutoScopeReranker:
-    """scope='auto' ignores reranker and rejects node_distance/episode_mentions."""
+    """scope='auto' takes no reranker."""
 
-    def test_pinned_auto_scope_drops_incompatible_reranker(
-        self, mock_zep_client: MagicMock, caplog: pytest.LogCaptureFixture
+    @pytest.mark.parametrize("reranker", ["rrf", "mmr", "node_distance", "cross_encoder"])
+    def test_pinned_auto_scope_with_reranker_raises(
+        self, mock_zep_client: MagicMock, reranker: str
     ) -> None:
-        with caplog.at_level(logging.WARNING, logger="zep_ag2.tools"):
-            tool = create_search_graph_tool(
+        with pytest.raises(ValueError, match="'auto' scope takes no reranker"):
+            create_search_graph_tool(
                 mock_zep_client,
                 GRAPH_UUID,
-                pinned_params={"scope": "auto", "reranker": "node_distance"},
+                pinned_params={"scope": "auto", "reranker": reranker, "center_node_uuid": "n"},
             )
-        assert any("node_distance" in record.message for record in caplog.records)
 
-        tool(query="hello")
-
-        call_kwargs = mock_zep_client.graph.get_context.call_args.kwargs
-        assert "reranker" not in call_kwargs
-        mock_zep_client.graph.search_edges.assert_not_called()
-
-    def test_model_auto_scope_drops_incompatible_reranker(self, mock_zep_client: MagicMock) -> None:
-        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
-
-        tool(query="hello", scope="auto", reranker="episode_mentions")
-
-        call_kwargs = mock_zep_client.graph.get_context.call_args.kwargs
-        assert "reranker" not in call_kwargs
-        mock_zep_client.graph.search_edges.assert_not_called()
-
-    def test_search_memory_tool_auto_scope_drops_incompatible_reranker(
+    def test_search_memory_tool_pinned_auto_scope_with_reranker_raises(
         self, mock_zep_client: MagicMock
     ) -> None:
-        tool = create_search_memory_tool(
-            mock_zep_client,
-            GRAPH_UUID,
-            pinned_params={"scope": "auto", "reranker": "episode_mentions"},
+        with pytest.raises(ValueError, match="'auto' scope takes no reranker"):
+            create_search_memory_tool(
+                mock_zep_client,
+                GRAPH_UUID,
+                pinned_params={"scope": "auto", "reranker": "rrf"},
+            )
+
+    @pytest.mark.parametrize("reranker", ["rrf", "mmr", "episode_mentions"])
+    def test_model_auto_scope_with_reranker_returns_error(
+        self, mock_zep_client: MagicMock, reranker: str
+    ) -> None:
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
+
+        result = tool(query="hello", scope="auto", reranker=reranker)
+
+        assert result.startswith("Error:")
+        assert "'auto' scope takes no reranker" in result
+        assert f"'{reranker}'" in result
+        mock_zep_client.graph.get_context.assert_not_called()
+
+    def test_search_memory_tool_model_auto_scope_with_reranker_returns_error(
+        self, mock_zep_client: MagicMock
+    ) -> None:
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
+
+        result = tool(query="hello", scope="auto", reranker="rrf")
+
+        assert "'auto' scope takes no reranker" in result
+        mock_zep_client.graph.get_context.assert_not_called()
+
+    def test_model_auto_scope_without_reranker_calls_get_context(
+        self, mock_zep_client: MagicMock
+    ) -> None:
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
+
+        tool(query="hello", scope="auto")
+
+        mock_zep_client.graph.get_context.assert_called_once()
+        assert "reranker" not in mock_zep_client.graph.get_context.call_args.kwargs
+
+    def test_pinned_reranker_removes_auto_scope_choice(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(
+            mock_zep_client, GRAPH_UUID, pinned_params={"reranker": "rrf"}
         )
 
-        tool(query="hello")
-
-        call_kwargs = mock_zep_client.graph.get_context.call_args.kwargs
-        assert "reranker" not in call_kwargs
-        mock_zep_client.graph.search_edges.assert_not_called()
+        scope_choices = set(get_args(inspect.signature(tool).parameters["scope"].annotation))
+        assert "auto" not in scope_choices
 
 
 class TestSearchMemoryToolPinOrExpose:
@@ -412,7 +433,6 @@ class TestRerankerScopeSchema:
             "nodes",
             "observations",
             "thread_summaries",
-            "auto",
         }
         assert "mmr_lambda" not in sig.parameters
         assert "center_node_uuid" not in sig.parameters

@@ -359,8 +359,10 @@ Each scope accepts only some rerankers. `edges` accepts all five, `nodes` accept
 choices: `episode_mentions` appears only when `filters` sets `episode_uuids`, and
 `node_distance` needs `center_node_uuid`. If the model sends a pair that Zep rejects, the tool
 does not call Zep. It returns an error message that names the pair and lists the valid
-rerankers for the scope, so the model can call the tool again. For `mmr` with no `mmr_lambda`, the tool sends `0.5`. A pinned
-pair that is not valid raises `ValueError` when you create the tool.
+rerankers for the scope, so the model can call the tool again. The `auto` scope takes no reranker: if the model sends
+a reranker with `auto`, the tool returns an error and does not call Zep. For `mmr` with no `mmr_lambda`, the tool sends `0.5`. A pinned
+pair that is not valid, which includes a pinned reranker with the `auto` scope, raises
+`ValueError` when you create the tool.
 
 Use `pinned_params` to fix a
 parameter to a constant (hidden from the model), or `hidden_params` to remove it from the

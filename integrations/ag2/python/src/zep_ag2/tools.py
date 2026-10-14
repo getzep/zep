@@ -84,10 +84,6 @@ _RERANKER_LABELS: dict[str, str] = {
 #: Zep caps the search page size at 50; larger values are rejected.
 MAX_SEARCH_LIMIT = 50
 
-#: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
-#: retrieval and applies its own internal cross-scope rerank).
-_AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
-
 # ---------------------------------------------------------------------------
 # Parameter definitions
 # ---------------------------------------------------------------------------
@@ -114,7 +110,7 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
     "reranker": {
         "annotation": Reranker,
         "description": "Result ordering algorithm.",
-        "default": "rrf",
+        "default": None,
     },
     "limit": {
         "annotation": int,
@@ -157,11 +153,7 @@ def _quoted(values: tuple[str, ...] | list[str]) -> str:
 
 
 def _validate_pinned_search(pinned: dict[str, Any], filters: dict[str, Any] | None) -> None:
-    """Raise ``ValueError`` when the pinned scope and reranker are not a valid pair.
-
-    The ``auto`` scope is resolved before this check, so a pinned reranker is
-    never present here together with ``scope="auto"``.
-    """
+    """Raise ``ValueError`` when the pinned scope and reranker are not a valid pair."""
     scope = pinned.get("scope")
     if scope is not None and scope not in _ALL_SCOPES:
         raise ValueError(f"Unknown search scope {scope!r}. Use one of: {_quoted(_ALL_SCOPES)}.")
@@ -170,6 +162,11 @@ def _validate_pinned_search(pinned: dict[str, Any], filters: dict[str, Any] | No
         return
     if reranker not in _ALL_RERANKERS:
         raise ValueError(f"Unknown reranker {reranker!r}. Use one of: {_quoted(_ALL_RERANKERS)}.")
+    if scope == "auto":
+        raise ValueError(
+            f"The 'auto' scope takes no reranker, but the reranker {reranker!r} is pinned. "
+            "Do not pin a reranker with scope 'auto', or pin another scope."
+        )
     if scope is not None and reranker not in SCOPE_RERANKERS[scope]:
         raise ValueError(
             f"The reranker {reranker!r} is not supported with scope {scope!r}. "
@@ -215,7 +212,7 @@ def _resolve_exposed_specs(
     scopes = list(_ALL_SCOPES)
     if pinned_reranker is not None:
         scopes = [
-            name for name in scopes if name == "auto" or pinned_reranker in SCOPE_RERANKERS[name]
+            name for name in scopes if name != "auto" and pinned_reranker in SCOPE_RERANKERS[name]
         ]
 
     removed: set[str] = set()
@@ -257,7 +254,7 @@ def _reranker_description(rerankers: list[str], scopes: list[str]) -> str:
         parts.append(label)
     description = "Result ordering algorithm: " + "; ".join(parts) + "."
     if "auto" in scopes:
-        description += " The 'auto' scope ignores the reranker."
+        description += " The 'auto' scope takes no reranker: omit the reranker with scope 'auto'."
     return description
 
 
@@ -275,7 +272,14 @@ def _reranker_error(search_kwargs: dict[str, Any]) -> str | None:
     """
     scope = str(search_kwargs.get("scope", "edges"))
     reranker = search_kwargs.get("reranker")
-    if reranker is None or scope == "auto" or scope not in SCOPE_RERANKERS:
+    if reranker is None:
+        return None
+    if scope == "auto":
+        return (
+            f"Error: the 'auto' scope takes no reranker, but the reranker {reranker!r} was "
+            "given. Call the tool again with no reranker, or choose another scope."
+        )
+    if scope not in SCOPE_RERANKERS:
         return None
     valid = _quoted(SCOPE_RERANKERS[scope])
     if reranker not in SCOPE_RERANKERS[scope]:
@@ -379,20 +383,6 @@ def _resolve_pinned_and_hidden(
         elif pinned_limit < 1:
             pinned["limit"] = 1
 
-    # Auto scope rejects node_distance / episode_mentions and ignores reranker
-    # entirely.  If scope is pinned to "auto" and reranker is also pinned,
-    # resolve the effective value once, here, so the call path is always valid.
-    if pinned.get("scope") == "auto" and "reranker" in pinned:
-        if pinned["reranker"] in _AUTO_INCOMPATIBLE_RERANKERS:
-            logger.warning(
-                "reranker %r is invalid for scope='auto'; "
-                "omitting reranker (auto search uses RRF).",
-                pinned["reranker"],
-            )
-        del pinned["reranker"]
-        # Keep the param out of the model schema, as pinning intended.
-        hidden.add("reranker")
-
     return pinned, hidden
 
 
@@ -438,17 +428,6 @@ def _build_search_kwargs(
             search_kwargs["limit"] = MAX_SEARCH_LIMIT
         elif limit_value < 1:
             search_kwargs["limit"] = 1
-
-    if search_kwargs.get("scope") == "auto" and "reranker" in search_kwargs:
-        # Auto search always uses RRF internally and ignores reranker
-        # entirely; Zep rejects node_distance/episode_mentions outright.
-        # Warn only when the (would-be) reranker is one Zep would reject.
-        dropped_reranker = search_kwargs.pop("reranker")
-        if dropped_reranker in _AUTO_INCOMPATIBLE_RERANKERS:
-            logger.warning(
-                "reranker %r is invalid for scope='auto'; omitting reranker.",
-                dropped_reranker,
-            )
 
     search_kwargs.update(constructor_only)
     _apply_mmr_default(search_kwargs)

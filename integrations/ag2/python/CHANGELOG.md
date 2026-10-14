@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The search tools no longer send a scope and reranker pair that Zep rejects with HTTP 400. The tool schema offers only the rerankers that the scope supports. It offers `episode_mentions` only when `filters` sets `episode_uuids`, and `node_distance` only when `center_node_uuid` is pinned or exposed. When the model sends a pair that Zep rejects, the tool does not call Zep. It returns an error message as the tool result. The message names the invalid pair and lists the valid rerankers for the scope, so the model can call the tool again. When the reranker is `mmr` and no `mmr_lambda` is set, the tool sends `mmr_lambda=0.5`.
-- `create_search_memory_tool` and `create_search_graph_tool` raise `ValueError` when the pinned scope and reranker are not a valid pair, or when a pinned reranker needs a setting that is not given.
+- The search tools no longer ignore a reranker from the model when the scope is `auto`. The `auto` scope takes no reranker, so the tool returns an error message as the tool result and does not call Zep. When a reranker is pinned, the tool schema does not offer the `auto` scope. The `reranker` parameter now has no default value: when the model does not set a reranker, the tool sends no reranker, and Zep uses `rrf`.
+- `create_search_memory_tool` and `create_search_graph_tool` raise `ValueError` when the pinned scope and reranker are not a valid pair, when a reranker is pinned with the `auto` scope, or when a pinned reranker needs a setting that is not given.
 
 ## [1.0.0] - 2026-10-14
 
