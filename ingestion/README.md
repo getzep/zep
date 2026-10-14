@@ -659,5 +659,12 @@ keybank run zep-prod -- env ZEP_API_URL=https://api.getzep.com \
   uv run python scripts/release_smoke_prod.py
 ```
 
+Without KeyBank, export a production `ZEP_API_KEY` of your own and run the
+same script:
+
+```bash
+ZEP_API_URL=https://api.getzep.com uv run python scripts/release_smoke_prod.py
+```
+
 Live integration tests run only when `ZEP_API_KEY` is set. See
 [`SETUP.md`](https://github.com/getzep/zep/blob/main/ingestion/SETUP.md) for account setup.
