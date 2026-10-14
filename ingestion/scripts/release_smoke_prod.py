@@ -1,7 +1,8 @@
 """Production smoke tests for zep-ingest 1.0.0 release candidates.
 
 Exercises submit-all-then-wait-once, tail polling, thread message UUIDs,
-multi-thread sagas, and phased node seeding. Requires ZEP_API_KEY (and
+multi-thread sagas, phased node seeding, and a node+edge+episode scenario that
+verifies the data through search. Requires ZEP_API_KEY (and
 ZEP_API_URL for zep-cloud). Run via KeyBank:
 
     keybank run zep-prod -- env ZEP_API_URL=https://api.getzep.com \\
@@ -23,9 +24,17 @@ from typing import Any
 from zep_cloud.client import Zep
 from zep_cloud.types import AddMessage
 
-from zep_ingest import Episode, NodeItem, ingest, ingest_json_records, ingest_nodes
+from zep_ingest import (
+    Episode,
+    NodeItem,
+    ingest,
+    ingest_json_records,
+    ingest_nodes,
+    search_when_ready,
+)
 from zep_ingest.exceptions import BatchUnavailableError
 from zep_ingest.threads import ThreadMessage, ingest_thread_messages
+from zep_ingest.triples import FactTriple, ingest_fact_triples
 
 
 @dataclass
@@ -230,6 +239,96 @@ def main() -> int:
             f"status={episodes.status}"
         )
 
+    def case_seed_then_episode_search_verify() -> str:
+        marker = f"QUILL-{run_id}"
+        nodes = ingest_nodes(
+            client,
+            [
+                NodeItem(
+                    name=f"Northwind Logistics {run_id}",
+                    label="Entity",
+                    summary="A freight operator.",
+                ),
+                NodeItem(
+                    name=f"{marker} Drone",
+                    label="Entity",
+                    summary="An autonomous cargo drone.",
+                ),
+            ],
+            graph_uuid=graph_uuid,
+        )
+        nodes.wait(poll_interval=5.0, timeout=300)
+        assert nodes.status == "succeeded"
+        assert all(nodes.node_uuids)
+
+        edges = ingest_fact_triples(
+            client,
+            [
+                FactTriple(
+                    fact=f"Northwind Logistics {run_id} operates the {marker} Drone.",
+                    fact_name="OPERATES",
+                    source_node_name=f"Northwind Logistics {run_id}",
+                    target_node_name=f"{marker} Drone",
+                    source_node_labels=["Entity"],
+                    target_node_labels=["Entity"],
+                )
+            ],
+            graph_uuid=graph_uuid,
+        )
+        edges.wait(poll_interval=5.0, timeout=300)
+        assert edges.status == "succeeded"
+
+        episodes = ingest(
+            client,
+            ListLoader(
+                [
+                    Episode(
+                        data=(
+                            f"Dispatch log: the {marker} Drone completed route 7 "
+                            "for Northwind Logistics on schedule."
+                        ),
+                        created_at="2024-10-01T08:00:00Z",
+                    )
+                ]
+            ),
+            graph_uuid=graph_uuid,
+            method="batch",
+        )
+        episodes.wait(poll_interval=5.0, timeout=600)
+        assert episodes.status in ("succeeded", "partial")
+
+        node_hits = search_when_ready(
+            client,
+            f"{marker} Drone",
+            graph_uuid=graph_uuid,
+            scope="nodes",
+            limit=5,
+            timeout=240,
+        )
+        assert node_hits, "seeded node not found by search"
+        edge_hits = search_when_ready(
+            client,
+            f"{marker} Drone",
+            graph_uuid=graph_uuid,
+            scope="edges",
+            limit=5,
+            timeout=240,
+        )
+        assert edge_hits, "seeded edge not found by search"
+        ep_hits = search_when_ready(
+            client,
+            "completed route 7",
+            graph_uuid=graph_uuid,
+            scope="episodes",
+            limit=5,
+            timeout=240,
+        )
+        assert ep_hits, "ingested episode not found by search"
+        return (
+            f"nodes={len(nodes.node_uuids)} edge_hits={len(edge_hits)} "
+            f"node_hits={len(node_hits)} episode_hits={len(ep_hits)}"
+        )
+
     def case_multi_file_one_wait() -> str:
         stats = instrument_client(client)
         stats_holder.append(stats)
@@ -334,6 +433,10 @@ def main() -> int:
         ("batch: submit 5 episodes then wait once", case_batch_submit_all_wait_once),
         ("sequential graph.episode.add: tail episode poll", case_sequential_tail_episode_poll),
         ("phased: nodes.wait then episodes.wait", case_phased_nodes_then_episodes),
+        (
+            "nodes+edges+episode: verified via search",
+            case_seed_then_episode_search_verify,
+        ),
         ("multi-file json: one submit one wait", case_multi_file_one_wait),
         ("multi-thread sequential: poll each thread tail", case_multi_thread_sequential_wait),
         ("thread batch backfill: batch.get wait", case_thread_batch_backfill),
