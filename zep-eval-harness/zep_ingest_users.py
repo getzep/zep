@@ -243,12 +243,14 @@ async def submit_batch(
         metadata={"description": label},
         description=f"create batch for {label}",
     )
-    await retry_with_backoff(
+    added = await retry_with_backoff(
         zep_client.batch.add_items,
         batch.uuid_,
         items=items,
         description=f"add items to {label}",
     )
+    for rejected in added.rejected_items or []:
+        print(f"⚠ [{label}] Item {rejected.index} rejected: {rejected.reason}")
     result = await retry_with_backoff(
         zep_client.batch.process,
         batch.uuid_,
@@ -309,6 +311,7 @@ async def add_conversations_to_zep(
                     role=msg["role"],
                     content=msg["content"],
                     name=user_name if msg["role"] == "user" and user_name else None,
+                    reference_time=msg.get("timestamp"),
                 )
                 for msg in messages_data
             ]

@@ -12,6 +12,8 @@ All notable changes to the Zep eval harness are recorded in this file.
   manifests and the checkpoints store the returned UUIDs.
 - User ingestion sends conversation messages and telemetry through the v4 Batch
   API.
+- User ingestion sends the message timestamp as `reference_time` and prints a
+  warning for each batch item that the Batch API rejects.
 - Document ingestion sends each chunk through `graph.episode.add`.
 - Evaluation retrieves context with `graph.get_context` and warms a graph with
   `graph.warm(graph_uuid)`.
