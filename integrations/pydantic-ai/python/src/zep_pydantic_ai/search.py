@@ -42,7 +42,7 @@ Scope = Literal[
 ]
 Reranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
 
-#: Zep caps the search ``limit`` at 50; larger values are rejected.
+#: Zep caps the search ``page_size`` at 50; larger values are rejected.
 MAX_SEARCH_LIMIT = 50
 
 #: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
@@ -292,6 +292,8 @@ def create_zep_search_tool(
             search_kwargs["limit"] = clamped_limit
 
         effective_scope: Scope = search_kwargs.pop("scope", "edges")
+        if "limit" in search_kwargs:
+            search_kwargs["page_size"] = search_kwargs.pop("limit")
 
         if not search_kwargs.get("query"):
             return "Error: No search query provided."

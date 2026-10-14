@@ -141,7 +141,7 @@ class TestSearchTargeting:
 
         kwargs = _search_mock(client).call_args.kwargs
         assert kwargs["reranker"] == "rrf"
-        assert kwargs["limit"] == 10
+        assert kwargs["page_size"] == 10
         assert "scope" not in kwargs
 
     @pytest.mark.asyncio
@@ -154,7 +154,7 @@ class TestSearchTargeting:
 
         kwargs = _search_mock(client, "nodes").call_args.kwargs
         assert kwargs["reranker"] == "cross_encoder"
-        assert kwargs["limit"] == 3
+        assert kwargs["page_size"] == 3
 
     @pytest.mark.asyncio
     async def test_query_truncated_to_400(self) -> None:
@@ -180,7 +180,7 @@ class TestLimitClamping:
 
         await _call(tool, ctx, "query")
 
-        assert _search_mock(client).call_args.kwargs["limit"] == 50
+        assert _search_mock(client).call_args.kwargs["page_size"] == 50
 
     @pytest.mark.asyncio
     async def test_limit_at_ceiling_unchanged(self) -> None:
@@ -190,7 +190,7 @@ class TestLimitClamping:
 
         await _call(tool, ctx, "query")
 
-        assert _search_mock(client).call_args.kwargs["limit"] == 50
+        assert _search_mock(client).call_args.kwargs["page_size"] == 50
 
     @pytest.mark.asyncio
     async def test_limit_floor_is_one(self) -> None:
@@ -200,7 +200,7 @@ class TestLimitClamping:
 
         await _call(tool, ctx, "query")
 
-        assert _search_mock(client).call_args.kwargs["limit"] == 1
+        assert _search_mock(client).call_args.kwargs["page_size"] == 1
 
 
 class TestModelProvidedArguments:
@@ -242,7 +242,7 @@ class TestModelProvidedArguments:
 
         await _call(tool, ctx, "query", limit=200)
 
-        assert _search_mock(client).call_args.kwargs["limit"] == 50
+        assert _search_mock(client).call_args.kwargs["page_size"] == 50
 
     @pytest.mark.asyncio
     async def test_model_limit_floored_to_one(self) -> None:
@@ -252,7 +252,7 @@ class TestModelProvidedArguments:
 
         await _call(tool, ctx, "query", limit=0)
 
-        assert _search_mock(client).call_args.kwargs["limit"] == 1
+        assert _search_mock(client).call_args.kwargs["page_size"] == 1
 
     @pytest.mark.asyncio
     async def test_model_limit_in_range_unchanged(self) -> None:
@@ -262,7 +262,7 @@ class TestModelProvidedArguments:
 
         await _call(tool, ctx, "query", limit=25)
 
-        assert _search_mock(client).call_args.kwargs["limit"] == 25
+        assert _search_mock(client).call_args.kwargs["page_size"] == 25
 
     def test_limit_schema_carries_bounds(self) -> None:
         """The model-facing schema advertises Zep's limit bounds so
@@ -462,7 +462,7 @@ class TestPinOrExposeSchema:
         # cannot (and needn't) pass them; the tool sends the pinned value.
         await _call(tool, ctx, "query")
 
-        assert _search_mock(client, "nodes").call_args.kwargs["limit"] == 5
+        assert _search_mock(client, "nodes").call_args.kwargs["page_size"] == 5
 
     def test_hidden_params_removed_from_schema_and_use_zep_default(self) -> None:
         """hidden_params hides a param from the schema WITHOUT pinning it to a

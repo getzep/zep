@@ -367,7 +367,7 @@ make build        # uv build
 
 - Python 3.11+
 - `pydantic-ai>=1.107,<2`
-- `zep-cloud==4.0.0a5`
+- `zep-cloud>=4.0.0,<5`
 
 ## Support
 

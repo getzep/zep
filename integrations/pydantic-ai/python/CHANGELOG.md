@@ -4,7 +4,7 @@
 
 ### Changed
 
-- **Breaking: the package targets the Zep v4 SDK (`zep-cloud==4.0.0a5`).** Zep v4 addresses every user, thread, and graph by a server-generated UUID. There is no support for the v3 SDK.
+- **Breaking: the package targets the Zep v4 SDK (`zep-cloud>=4.0.0,<5`).** Zep v4 addresses every user, thread, and graph by a server-generated UUID. There is no support for the v3 SDK.
 - **Breaking: `ZepDeps` takes `user_uuid` and `thread_uuid` instead of `user_id` and `thread_id`, and takes a new optional `graph_uuid`.** The application creates the Zep resources one time, stores the returned UUIDs, and passes them to `ZepDeps`. The integration does not resolve a name to a UUID at run time.
 - **Breaking: `ContextInput` carries `user_uuid`, `thread_uuid`, and `graph_uuid` instead of `user_id` and `thread_id`.**
 - **Breaking: `ensure_user` and `ensure_thread` are replaced by `create_user` and `create_thread`.** A v4 create call does not carry an application identifier, so a create call is no longer idempotent and the "already exists" conflict path no longer applies. `create_user` returns the created `User`, which carries `uuid_` and `graph_uuid`. `create_thread` returns the created `Thread`, which carries `uuid_`. Both raise on failure. The `UserSetupHook` type and the `on_created` hook are removed.

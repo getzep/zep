@@ -35,10 +35,7 @@ cd zep/integrations/pydantic-ai/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `pydantic-ai>=1.107,<2`, `zep-cloud==4.0.0a5`.
-
-`zep-cloud` 4.0.0a5 is a pre-release. To install it with `pip` directly, use
-`pip install --pre "zep-cloud==4.0.0a5"`.
+Requirements: Python 3.11+, `pydantic-ai>=1.107,<2`, `zep-cloud>=4.0.0,<5`.
 
 The package targets the Zep v4 API. Zep v4 addresses every user, thread, and
 graph by a server-generated UUID. Your application creates the user and the
