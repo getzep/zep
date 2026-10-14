@@ -35,10 +35,23 @@ async def test_add_session_to_memory_does_not_call_zep() -> None:
     from zep_adk.memory_service import ZepMemoryService
 
     client = _make_client()
-    await ZepMemoryService(zep=client).add_session_to_memory(MagicMock())
+    result = await ZepMemoryService(zep=client).add_session_to_memory(MagicMock())
 
+    assert result is None
     client.user.get.assert_not_awaited()
     client.graph.get_context.assert_not_awaited()
+    for scope in ("edges", "nodes", "episodes", "observations", "thread_summaries"):
+        getattr(client.graph, f"search_{scope}").assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_add_session_to_memory_logs_no_op(caplog) -> None:
+    from zep_adk.memory_service import ZepMemoryService
+
+    with caplog.at_level("DEBUG"):
+        await ZepMemoryService(zep=_make_client()).add_session_to_memory(MagicMock())
+
+    assert "no-op" in caplog.text.lower()
 
 
 @pytest.mark.asyncio
@@ -75,8 +88,38 @@ async def test_search_memory_maps_v4_scope_items(
     )
 
     assert [memory.content.parts[0].text for memory in response.memories] == [expected]
+    assert response.memories[0].author == "Zep"
     client.user.get.assert_awaited_once_with(USER_UUID)
     getattr(client.graph, f"search_{scope}").assert_awaited_once_with(GRAPH_UUID, query="work")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("scope", "item", "expected"),
+    [
+        ("nodes", _item(name=None, summary="A company"), "A company"),
+        ("nodes", _item(name="Acme", summary=None), "Acme"),
+        ("observations", _item(name="Preference", summary=None), "Preference"),
+        ("observations", _item(name=None, summary="Prefers tea"), "Prefers tea"),
+        ("thread_summaries", _item(name="Recent", summary=None), "Recent"),
+        ("thread_summaries", _item(name=None, summary="Discussed work"), "Discussed work"),
+    ],
+)
+async def test_search_memory_uses_available_name_or_summary(
+    scope: str, item: MagicMock, expected: str
+) -> None:
+    from zep_adk.memory_service import ZepMemoryService
+
+    client = _make_client()
+    getattr(client.graph, f"search_{scope}").return_value = _page([item])
+
+    response = await ZepMemoryService(zep=client, scope=scope).search_memory(
+        app_name="app",
+        user_id=USER_UUID,
+        query="work",
+    )
+
+    assert [memory.content.parts[0].text for memory in response.memories] == [expected]
 
 
 @pytest.mark.asyncio
@@ -126,11 +169,45 @@ async def test_search_memory_skips_lookup_for_non_uuid_adk_user_id() -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_memory_returns_empty_response_when_zep_fails() -> None:
+async def test_search_memory_returns_empty_response_when_zep_fails(caplog) -> None:
     from zep_adk.memory_service import ZepMemoryService
 
     client = _make_client()
     client.graph.search_edges.side_effect = RuntimeError("Zep is down")
+
+    query = "private customer search"
+    response = await ZepMemoryService(zep=client).search_memory(
+        app_name="app",
+        user_id=USER_UUID,
+        query=query,
+    )
+
+    assert response.memories == []
+    assert query not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_search_memory_returns_empty_when_user_is_missing() -> None:
+    from zep_adk.memory_service import ZepMemoryService
+
+    client = _make_client()
+    client.user.get.return_value = None
+
+    response = await ZepMemoryService(zep=client).search_memory(
+        app_name="app",
+        user_id=USER_UUID,
+        query="work",
+    )
+
+    assert response.memories == []
+    client.graph.search_edges.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_search_memory_returns_empty_for_empty_page() -> None:
+    from zep_adk.memory_service import ZepMemoryService
+
+    client = _make_client()
 
     response = await ZepMemoryService(zep=client).search_memory(
         app_name="app",

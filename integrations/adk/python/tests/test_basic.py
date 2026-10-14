@@ -5,6 +5,7 @@ Uses mocked Zep and ADK objects to validate the integration logic without
 requiring live services.
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -1648,6 +1649,21 @@ class TestGraphSearchToolExecution:
         )
 
     @pytest.mark.asyncio
+    async def test_missing_query_returns_error_without_zep_call(self) -> None:
+        from zep_adk import ZepGraphSearchTool
+
+        client = self._make_client()
+        tool = ZepGraphSearchTool(zep_client=client)
+
+        result = await tool.run_async(
+            args={},
+            tool_context=self._make_tool_context({"zep_graph_uuid": "graph-uuid"}),
+        )
+
+        assert "query" in result.lower()
+        client.graph.search_edges.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_fixed_graph_uuid_skips_user_resolution(self) -> None:
         from zep_adk import ZepGraphSearchTool
 
@@ -1792,3 +1808,58 @@ class TestGraphSearchResultFormatting:
         from zep_adk.graph_search_tool import ZepGraphSearchTool
 
         assert ZepGraphSearchTool._format_results([], "edges") == "No results found."
+
+    @pytest.mark.parametrize(
+        ("scope", "item", "expected"),
+        [
+            ("edges", SimpleNamespace(fact="Jane works at Acme."), "- Jane works at Acme."),
+            ("nodes", SimpleNamespace(name="Acme", summary="A company"), "- Acme: A company"),
+            ("episodes", SimpleNamespace(content="Original message"), "- Original message"),
+            (
+                "observations",
+                SimpleNamespace(name="Preference", summary="Prefers tea"),
+                "- Preference: Prefers tea",
+            ),
+            (
+                "thread_summaries",
+                SimpleNamespace(name="Recent", summary="Discussed work"),
+                "- Recent: Discussed work",
+            ),
+        ],
+    )
+    def test_formats_all_v4_search_scopes(self, scope, item, expected) -> None:
+        from zep_adk.graph_search_tool import ZepGraphSearchTool
+
+        assert ZepGraphSearchTool._format_results([item], scope) == expected
+
+    @pytest.mark.parametrize(
+        ("scope", "item", "expected"),
+        [
+            ("nodes", SimpleNamespace(name=None, summary="A company"), "- A company"),
+            ("nodes", SimpleNamespace(name="Acme", summary=None), "- Acme"),
+            (
+                "observations",
+                SimpleNamespace(name="Preference", summary=None),
+                "- Preference",
+            ),
+            (
+                "observations",
+                SimpleNamespace(name=None, summary="Prefers tea"),
+                "- Prefers tea",
+            ),
+            (
+                "thread_summaries",
+                SimpleNamespace(name="Recent", summary=None),
+                "- Recent",
+            ),
+            (
+                "thread_summaries",
+                SimpleNamespace(name=None, summary="Discussed work"),
+                "- Discussed work",
+            ),
+        ],
+    )
+    def test_formats_name_or_summary_when_the_other_is_missing(self, scope, item, expected) -> None:
+        from zep_adk.graph_search_tool import ZepGraphSearchTool
+
+        assert ZepGraphSearchTool._format_results([item], scope) == expected
