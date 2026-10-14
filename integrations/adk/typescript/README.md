@@ -106,8 +106,8 @@ import type { ContextBuilderInput } from "@getzep/zep-adk";
 
 async function multiGraphBuilder(input: ContextBuilderInput): Promise<string | undefined> {
   const [userGraph, orgGraph] = await Promise.all([
-    input.zep.graph.searchEdges(userGraphUuid, { body: { query: input.userMessage } }),
-    input.zep.graph.searchEdges(orgGraphUuid, { body: { query: input.userMessage } }),
+    input.zep.graph.searchEdges(userGraphUuid, { query: input.userMessage }),
+    input.zep.graph.searchEdges(orgGraphUuid, { query: input.userMessage }),
   ]);
   const facts = [...userGraph.data, ...orgGraph.data].map((e) => e.fact);
   return facts.length > 0 ? facts.join("\n") : undefined;
