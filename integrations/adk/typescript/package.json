@@ -1,6 +1,6 @@
 {
   "name": "@getzep/zep-adk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Zep long-term memory integration for Google ADK (TypeScript) agents",
   "license": "Apache-2.0",
   "author": "Zep AI",

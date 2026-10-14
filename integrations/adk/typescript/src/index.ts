@@ -99,4 +99,4 @@ export { defaultLogger, type Logger } from "./logging.js";
 export { ZepIdentityError } from "./errors.js";
 
 /** The installed package version. */
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";
