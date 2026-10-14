@@ -17,7 +17,7 @@ Usage:
     from google.adk.runners import Runner
     from google.adk.sessions import InMemorySessionService
     from zep_cloud.client import AsyncZep
-    from zep_adk import ZepContextTool, create_after_model_callback, ensure_user, ensure_thread
+    from zep_adk import ZepContextTool, create_after_model_callback, create_user, create_thread
 
     zep = AsyncZep(api_key="your-api-key")
 
@@ -33,30 +33,26 @@ Usage:
     session_service = InMemorySessionService()
     runner = Runner(agent=agent, app_name="my_app", session_service=session_service)
 
-    # Provision the Zep user and thread out-of-band, before the first turn
-    # (e.g. during account/session onboarding).
-    await ensure_user(
-        zep,
-        user_id="user_123",
-        first_name="Jane",
-        last_name="Smith",
-        email="jane@example.com",  # optional
-    )
-    await ensure_thread(zep, thread_id="session_abc", user_id="user_123")
+    # Create the Zep user and thread before the first turn.
+    user = await create_user(zep, first_name="Jane", last_name="Smith")
+    thread = await create_thread(zep, user_uuid=user.uuid_)
 
-    # Per-user session: user_id → Zep user, session_id → Zep thread
+    # Store the generated UUIDs with your ADK user and session records.
     await session_service.create_session(
         app_name="my_app",
-        user_id="user_123",          # automatically used as Zep user ID
-        session_id="session_abc",    # automatically used as Zep thread ID
+        user_id="user_123",
+        session_id="session_abc",
         state={
+            "zep_user_uuid": user.uuid_,
+            "zep_thread_uuid": thread.uuid_,
+            "zep_graph_uuid": user.uuid_,
             "zep_first_name": "Jane",
             "zep_last_name": "Smith",
         },
     )
 """
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"
 __author__ = "Zep AI"
 __description__ = "Google ADK integration for Zep"
 
@@ -76,19 +72,18 @@ try:
     )
     from .graph_search_tool import ZepGraphSearchTool
     from .memory_service import ZepMemoryService
-    from .provisioning import UserSetupHook, ensure_thread, ensure_user
+    from .provisioning import create_thread, create_user
 
     __all__ = [
         "DEFAULT_CONTEXT_TEMPLATE",
         "ContextBuilder",
         "ContextInput",
-        "UserSetupHook",
         "ZepContextTool",
         "ZepGraphSearchTool",
         "ZepMemoryService",
         "create_after_model_callback",
-        "ensure_thread",
-        "ensure_user",
+        "create_thread",
+        "create_user",
         "ZepDependencyError",
     ]
 

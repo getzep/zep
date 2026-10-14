@@ -11,16 +11,17 @@ parameter not pinned is exposed to the model with a reasonable default.
 
 The tool resolves the search target automatically:
 
-* If ``graph_id`` is set at construction → searches that shared graph for all
+* If ``graph_uuid`` is set at construction → searches that shared graph for all
   users (e.g. a documentation knowledge base).
-* If ``graph_id`` is not set → resolves ``user_id`` from ADK session state at
+* If ``graph_uuid`` is not set → resolves the user's UUID from ADK session state at
   runtime and searches the current user's personal graph.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+from uuid import UUID
 
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
@@ -36,8 +37,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Parameter definitions
 # ---------------------------------------------------------------------------
-# Each entry describes a graph.search parameter that can be pinned or exposed
-# to the model.  Keys match the Zep SDK's ``graph.search()`` kwargs.
+# Each entry describes a graph search parameter that can be pinned or exposed
+# to the model.
 
 _SEARCH_PARAMS: dict[str, dict[str, Any]] = {
     "query": {
@@ -120,7 +121,7 @@ def _name_summary_text(name: str | None, summary: str | None) -> str:
 
 
 def scope_results_to_texts(result: Any, scope: str) -> list[str]:
-    """Flatten a ``graph.search`` result into plain-text items for one scope.
+    """Flatten a V4 graph search page into plain-text items for one scope.
 
     Shared by :class:`ZepGraphSearchTool` (which prefixes each item with
     ``"- "`` for the model) and :class:`~zep_adk.memory_service.ZepMemoryService`
@@ -137,29 +138,29 @@ def scope_results_to_texts(result: Any, scope: str) -> list[str]:
     texts: list[str] = []
 
     if scope == "edges":
-        for edge in result.edges or []:
+        for edge in result or []:
             fact = getattr(edge, "fact", None)
             if fact:
                 texts.append(fact)
     elif scope == "nodes":
-        for node in result.nodes or []:
+        for node in result or []:
             text = _name_summary_text(getattr(node, "name", None), getattr(node, "summary", None))
             if text:
                 texts.append(text)
     elif scope == "episodes":
-        for episode in result.episodes or []:
+        for episode in result or []:
             content = getattr(episode, "content", None)
             if content:
                 texts.append(content)
     elif scope == "observations":
-        for observation in result.observations or []:
+        for observation in result or []:
             text = _name_summary_text(
                 getattr(observation, "name", None), getattr(observation, "summary", None)
             )
             if text:
                 texts.append(text)
     elif scope == "thread_summaries":
-        for thread_summary in result.thread_summaries or []:
+        for thread_summary in result or []:
             text = _name_summary_text(
                 getattr(thread_summary, "name", None), getattr(thread_summary, "summary", None)
             )
@@ -186,18 +187,18 @@ class ZepGraphSearchTool(BaseTool):
 
     Args:
         zep_client: An initialised ``AsyncZep`` client.
-        graph_id: Optional fixed graph ID for shared-graph search.  When set,
+        graph_uuid: Optional fixed graph UUID for shared-graph search.  When set,
             all searches target this graph regardless of which user's session
             is active.  When ``None``, the tool searches the current user's
             personal graph (resolved from session state).
         name: Tool name visible to the model.
         description: Tool description visible to the model.
         search_filters: Optional Zep search filters (constructor-only).
-            Supports ``node_labels``, ``edge_types``, ``exclude_node_labels``,
-            ``exclude_edge_types``, and property filters.
+            Accepted filter fields depend on the search scope. Unsupported
+            filters return a tool error instead of widening the search.
         bfs_origin_node_uuids: Optional list of node UUIDs for BFS seeding
             (constructor-only).
-        **pinned: Any graph.search parameter to fix at construction time.
+        **pinned: Any graph search parameter to fix at construction time.
             Supported: ``scope``, ``reranker``, ``limit``, ``mmr_lambda``,
             ``center_node_uuid``.
     """
@@ -206,7 +207,7 @@ class ZepGraphSearchTool(BaseTool):
         self,
         *,
         zep_client: AsyncZep,
-        graph_id: str | None = None,
+        graph_uuid: str | None = None,
         name: str = "zep_graph_search",
         description: str = (
             "Search the user's knowledge graph for information from previous "
@@ -219,13 +220,13 @@ class ZepGraphSearchTool(BaseTool):
     ) -> None:
         super().__init__(name=name, description=description)
         self._zep: AsyncZep = zep_client
-        self._graph_id: str | None = graph_id
+        self._graph_uuid: str | None = graph_uuid
 
         # Validate pinned params
-        if "user_id" in pinned:
+        if "user_uuid" in pinned:
             raise ValueError(
-                "'user_id' cannot be pinned. Per-user graph search is resolved "
-                "from session state at runtime. Use 'graph_id' for shared "
+                "'user_uuid' cannot be pinned. Per-user graph search is resolved "
+                "from session state at runtime. Use 'graph_uuid' for shared "
                 "graph search."
             )
         allowed_pinned = frozenset(_SEARCH_PARAMS.keys())
@@ -302,14 +303,6 @@ class ZepGraphSearchTool(BaseTool):
         # --- Resolve search target ------------------------------------
         search_kwargs: dict[str, Any] = {}
 
-        if self._graph_id:
-            search_kwargs["graph_id"] = self._graph_id
-        else:
-            user_id = self._resolve_user_id(tool_context)
-            if not user_id:
-                return "Error: Cannot determine user ID from session state."
-            search_kwargs["user_id"] = user_id
-
         # --- Merge params: pinned > model-provided > default ----------
         # A param pinned to None is hidden from the model and omitted from
         # the SDK call (used to suppress optional params from the schema).
@@ -332,39 +325,135 @@ class ZepGraphSearchTool(BaseTool):
                 search_kwargs[key] = self._pinned[key]
 
         # --- Execute --------------------------------------------------
-        scope = search_kwargs.get("scope", "edges")
+        scope = search_kwargs.pop("scope", "edges")
+        limit = search_kwargs.pop("limit", None)
+        search_filters = search_kwargs.pop("search_filters", None)
+        if limit is not None:
+            search_kwargs["page_size"] = limit
 
         try:
-            result = await self._zep.graph.search(**search_kwargs)
+            graph_uuid = self._graph_uuid or await self._resolve_graph_uuid(tool_context)
+            if not graph_uuid:
+                return "Error: Cannot determine graph UUID from session state."
+
+            if scope == "auto":
+                unsupported = sorted(
+                    key
+                    for key in (
+                        "limit",
+                        "reranker",
+                        "mmr_lambda",
+                        "center_node_uuid",
+                        "bfs_origin_node_uuids",
+                    )
+                    if (self._pinned.get(key) is not None or key in args)
+                )
+                if unsupported:
+                    logger.warning(
+                        "Zep graph context does not support search parameters: %s",
+                        ", ".join(unsupported),
+                    )
+                    return (
+                        "Graph search failed: scope 'auto' does not support "
+                        f"these parameters with the Zep v4 SDK: {', '.join(unsupported)}."
+                    )
+                filters = None
+                if search_filters is not None:
+                    from zep_cloud import SearchFilters
+
+                    unsupported_filters = sorted(
+                        set(search_filters) - set(getattr(SearchFilters, "model_fields", {}))
+                    )
+                    if unsupported_filters:
+                        return (
+                            "Graph search failed: scope 'auto' does not support "
+                            f"these filters: {', '.join(unsupported_filters)}."
+                        )
+                    filters = SearchFilters(**search_filters)
+                context_kwargs: dict[str, Any] = {
+                    "query": search_kwargs["query"],
+                    "include_results": True,
+                }
+                if filters is not None:
+                    context_kwargs["filters"] = filters
+                result = await self._zep.graph.get_context(graph_uuid, **context_kwargs)
+                return self._format_results(result, scope)
+
+            search_method = getattr(self._zep.graph, f"search_{scope}")
+            if search_filters is not None and scope == "observations":
+                logger.warning("Zep observation search does not support filters")
+                return (
+                    "Graph search failed: the Zep v4 SDK does not support "
+                    "filters for observation search."
+                )
+            if search_filters is not None:
+                from zep_cloud import (
+                    EdgeSearchFilters,
+                    EpisodeSearchFilters,
+                    NodeSearchFilters,
+                    ThreadSummarySearchFilters,
+                )
+
+                filters_type = {
+                    "edges": EdgeSearchFilters,
+                    "nodes": NodeSearchFilters,
+                    "episodes": EpisodeSearchFilters,
+                    "thread_summaries": ThreadSummarySearchFilters,
+                }[scope]
+                unsupported_filters = sorted(
+                    set(search_filters) - set(getattr(filters_type, "model_fields", {}))
+                )
+                if unsupported_filters:
+                    logger.warning(
+                        "Zep %s search does not support filters: %s",
+                        scope,
+                        ", ".join(unsupported_filters),
+                    )
+                    return (
+                        f"Graph search failed: the Zep v4 SDK does not support "
+                        f"these filters for {scope} search: {', '.join(unsupported_filters)}."
+                    )
+                search_kwargs["filters"] = filters_type(**search_filters)
+
+            result = await search_method(graph_uuid, **search_kwargs)
         except Exception as exc:
             logger.warning("Zep graph search failed: %s", exc, exc_info=True)
             return f"Graph search failed: {exc}"
 
-        return self._format_results(result, scope)
+        return self._format_results(result.items, scope)
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _resolve_user_id(tool_context: ToolContext) -> str | None:
-        """Resolve user_id from session state or ADK session metadata."""
+    async def _resolve_graph_uuid(self, tool_context: ToolContext) -> str | None:
+        """Resolve the user graph UUID from ADK session state."""
         state = tool_context.state
         if state is not None:
-            user_id = state.get("zep_user_id")
-            if user_id:
-                return str(user_id)
-        try:
-            return tool_context.user_id
-        except AttributeError:
+            graph_uuid = state.get("zep_graph_uuid")
+            if graph_uuid:
+                return str(graph_uuid)
+            user_uuid = state.get("zep_user_uuid")
+        else:
+            user_uuid = None
+        if not user_uuid:
+            try:
+                user_uuid = tool_context.user_id
+            except AttributeError:
+                return None
+            try:
+                UUID(user_uuid)
+            except (AttributeError, TypeError, ValueError):
+                return None
+        if not user_uuid:
             return None
+        user = await self._zep.user.get(user_uuid)
+        return cast(str, user.uuid_)
 
     @staticmethod
     def _format_results(result: Any, scope: str) -> str:
         """Format search results as readable text for the model."""
         if scope == "auto":
-            # Auto scope returns a pre-formatted context string in result.context
-            # rather than populating the individual edges/nodes/episodes lists.
             context: str | None = getattr(result, "context", None)
             if context and context.strip():
                 return context.strip()

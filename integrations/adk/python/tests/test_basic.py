@@ -104,8 +104,8 @@ class TestIdentityResolution:
     def _make_tool_context(
         self,
         state: dict | None = None,
-        session_id: str | None = "fallback-session-id",
-        session_user_id: str | None = "fallback-user-id",
+        session_id: str | None = "d0cb69ef-44a4-40dc-8d88-05762c836522",
+        session_user_id: str | None = "7a8fbf8e-5153-4c1b-bb4c-5d7f0f6c1f21",
     ) -> MagicMock:
         """Create a mock ToolContext with state and optional session metadata."""
         mock_tc = MagicMock()
@@ -126,60 +126,60 @@ class TestIdentityResolution:
         tool = self._make_tool()
         tc = self._make_tool_context(
             state={
-                "zep_user_id": "user-1",
-                "zep_thread_id": "thread-1",
+                "zep_user_uuid": "user-1",
+                "zep_thread_uuid": "thread-1",
                 "zep_first_name": "Jane",
                 "zep_last_name": "Smith",
             }
         )
         identity = tool._resolve_identity(tc)
-        assert identity.user_id == "user-1"
-        assert identity.thread_id == "thread-1"
+        assert identity.user_uuid == "user-1"
+        assert identity.thread_uuid == "thread-1"
         assert identity.first_name == "Jane"
         assert identity.last_name == "Smith"
         assert identity.user_display_name == "Jane Smith"
 
     def test_user_id_falls_back_to_session_user_id(self) -> None:
-        """When zep_user_id is not in state, session user_id should be used."""
+        """When zep_user_uuid is not in state, session user_id should be used."""
         tool = self._make_tool()
         tc = self._make_tool_context(
-            state={"zep_thread_id": "t"},
-            session_user_id="session-user-42",
+            state={"zep_thread_uuid": "t"},
+            session_user_id="d7fdb9d5-ddb1-4c94-82bd-8b61e3cc8edf",
         )
         identity = tool._resolve_identity(tc)
-        assert identity.user_id == "session-user-42"
+        assert identity.user_uuid == "d7fdb9d5-ddb1-4c94-82bd-8b61e3cc8edf"
 
     def test_missing_user_id_raises_value_error(self) -> None:
         """When neither state nor session has a user_id, should raise ValueError."""
         tool = self._make_tool()
         tc = self._make_tool_context(state={}, session_id=None)
-        with pytest.raises(ValueError, match="Cannot determine Zep user ID"):
+        with pytest.raises(ValueError, match="Cannot determine Zep user UUID"):
             tool._resolve_identity(tc)
 
     def test_thread_id_falls_back_to_session_id(self) -> None:
         tool = self._make_tool()
         tc = self._make_tool_context(
             state={},
-            session_id="adk-session-123",
-            session_user_id="user-1",
+            session_id="b102be0e-83d4-414f-b9b0-43b9637c12d4",
+            session_user_id="7a8fbf8e-5153-4c1b-bb4c-5d7f0f6c1f21",
         )
         identity = tool._resolve_identity(tc)
-        assert identity.thread_id == "adk-session-123"
+        assert identity.thread_uuid == "b102be0e-83d4-414f-b9b0-43b9637c12d4"
 
     def test_thread_id_fallback_fails_raises_value_error(self) -> None:
         tool = self._make_tool()
         tc = self._make_tool_context(
-            state={"zep_user_id": "user-1"},
+            state={"zep_user_uuid": "user-1"},
             session_id=None,
         )
-        with pytest.raises(ValueError, match="Cannot determine Zep thread ID"):
+        with pytest.raises(ValueError, match="Cannot determine Zep thread UUID"):
             tool._resolve_identity(tc)
 
     def test_display_name_with_first_only(self) -> None:
         """When only first_name is provided, last_name defaults to 'User'."""
         tool = self._make_tool()
         tc = self._make_tool_context(
-            state={"zep_user_id": "u", "zep_thread_id": "t", "zep_first_name": "Jane"}
+            state={"zep_user_uuid": "u", "zep_thread_uuid": "t", "zep_first_name": "Jane"}
         )
         identity = tool._resolve_identity(tc)
         assert identity.user_display_name == "Jane User"
@@ -187,7 +187,7 @@ class TestIdentityResolution:
     def test_display_name_defaults_when_no_name(self) -> None:
         """When no name is provided, defaults to 'Anonymous User'."""
         tool = self._make_tool()
-        tc = self._make_tool_context(state={"zep_user_id": "u", "zep_thread_id": "t"})
+        tc = self._make_tool_context(state={"zep_user_uuid": "u", "zep_thread_uuid": "t"})
         identity = tool._resolve_identity(tc)
         assert identity.first_name == "Anonymous"
         assert identity.last_name == "User"
@@ -197,8 +197,8 @@ class TestIdentityResolution:
         tool = self._make_tool()
         tc = self._make_tool_context(
             state={
-                "zep_user_id": "u",
-                "zep_thread_id": "t",
+                "zep_user_uuid": "u",
+                "zep_thread_uuid": "t",
                 "zep_first_name": "Jane",
                 "zep_last_name": "Doe",
             }
@@ -209,7 +209,7 @@ class TestIdentityResolution:
     def test_name_defaults_when_no_identity_fields(self) -> None:
         """When no identity fields are in state, first/last names default."""
         tool = self._make_tool()
-        tc = self._make_tool_context(state={"zep_user_id": "u", "zep_thread_id": "t"})
+        tc = self._make_tool_context(state={"zep_user_uuid": "u", "zep_thread_uuid": "t"})
         identity = tool._resolve_identity(tc)
         assert identity.first_name == "Anonymous"
         assert identity.last_name == "User"
@@ -238,7 +238,7 @@ class TestZepContextToolProcessLlmRequest:
         text: str = "Hello",
         state: dict | None = None,
         session_id: str = "test-session",
-        session_user_id: str = "test-user",
+        session_user_id: str = "7a8fbf8e-5153-4c1b-bb4c-5d7f0f6c1f21",
     ) -> MagicMock:
         """Create a mock ToolContext with user_content and state."""
         mock_part = MagicMock()
@@ -248,7 +248,7 @@ class TestZepContextToolProcessLlmRequest:
 
         mock_tc = MagicMock()
         mock_tc.user_content = mock_content
-        mock_tc.state = state if state is not None else {"zep_thread_id": "test-thread"}
+        mock_tc.state = state if state is not None else {"zep_thread_uuid": "test-thread"}
         mock_tc.session.id = session_id
         mock_tc.user_id = session_user_id
         return mock_tc
@@ -279,7 +279,7 @@ class TestZepContextToolProcessLlmRequest:
         # Should have called add_messages with return_context=True
         mock_client.thread.add_messages.assert_called_once()
         call_kwargs = mock_client.thread.add_messages.call_args[1]
-        assert call_kwargs["thread_id"] == "test-thread"
+        assert call_kwargs["thread_uuid"] == "test-thread"
         assert call_kwargs["return_context"] is True
         assert len(call_kwargs["messages"]) == 1
         assert call_kwargs["messages"][0].content == "Hi there"
@@ -298,8 +298,8 @@ class TestZepContextToolProcessLlmRequest:
         tool_context = self._make_tool_context(
             "Hello",
             state={
-                "zep_user_id": "test-user",
-                "zep_thread_id": "test-thread",
+                "zep_user_uuid": "7a8fbf8e-5153-4c1b-bb4c-5d7f0f6c1f21",
+                "zep_thread_uuid": "test-thread",
                 "zep_first_name": "Jane",
                 "zep_last_name": "Smith",
             },
@@ -321,8 +321,8 @@ class TestZepContextToolProcessLlmRequest:
         tool_context = self._make_tool_context(
             "Hello",
             state={
-                "zep_user_id": "test-user",
-                "zep_thread_id": "test-thread",
+                "zep_user_uuid": "7a8fbf8e-5153-4c1b-bb4c-5d7f0f6c1f21",
+                "zep_thread_uuid": "test-thread",
                 "zep_first_name": "Jane",
                 "zep_last_name": "Smith",
             },
@@ -510,9 +510,9 @@ class TestZepContextToolProcessLlmRequest:
 
         tc = MagicMock()
         tc.user_content = mock_content
-        tc.state = {"zep_thread_id": "test-thread"}
+        tc.state = {"zep_thread_uuid": "test-thread"}
         tc.session.id = "test-session"
-        tc.user_id = "test-user"
+        tc.user_id = "7a8fbf8e-5153-4c1b-bb4c-5d7f0f6c1f21"
 
         await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
 
@@ -539,9 +539,9 @@ class TestZepContextToolProcessLlmRequest:
 
         tc = MagicMock()
         tc.user_content = mock_content
-        tc.state = {"zep_thread_id": "test-thread"}
+        tc.state = {"zep_thread_uuid": "test-thread"}
         tc.session.id = "test-session"
-        tc.user_id = "test-user"
+        tc.user_id = "7a8fbf8e-5153-4c1b-bb4c-5d7f0f6c1f21"
 
         await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
 
@@ -583,7 +583,7 @@ class TestZepContextToolProcessLlmRequest:
 
     @pytest.mark.asyncio
     async def test_thread_id_uses_session_fallback(self) -> None:
-        """When zep_thread_id is not in state, session ID should be used."""
+        """When zep_thread_uuid is not in state, session ID should be used."""
         mock_client = self._make_mock_client()
         mock_response = MagicMock()
         mock_response.context = None
@@ -592,9 +592,9 @@ class TestZepContextToolProcessLlmRequest:
         tool = self._make_tool(mock_client)
         tc = self._make_tool_context(
             "Hello",
-            state={},  # no zep_thread_id — falls back to session ID
-            session_id="my-session-id",
-            session_user_id="test-user",
+            state={},  # no zep_thread_uuid — falls back to session ID
+            session_id="d0cb69ef-44a4-40dc-8d88-05762c836522",
+            session_user_id="7a8fbf8e-5153-4c1b-bb4c-5d7f0f6c1f21",
         )
         llm_request = self._make_llm_request()
 
@@ -604,7 +604,7 @@ class TestZepContextToolProcessLlmRequest:
         # fallback flows through to the persistence call.
         mock_client.thread.create.assert_not_called()
         call_kwargs = mock_client.thread.add_messages.call_args[1]
-        assert call_kwargs["thread_id"] == "my-session-id"
+        assert call_kwargs["thread_uuid"] == "d0cb69ef-44a4-40dc-8d88-05762c836522"
 
     @pytest.mark.asyncio
     async def test_missing_user_id_degrades_gracefully(self) -> None:
@@ -612,7 +612,7 @@ class TestZepContextToolProcessLlmRequest:
         mock_client = self._make_mock_client()
         tool = self._make_tool(mock_client)
 
-        # No zep_user_id in state AND no session user_id (session attrs raise)
+        # No zep_user_uuid in state AND no session user_id (session attrs raise)
         mock_part = MagicMock()
         mock_part.text = "Hello"
         mock_content = MagicMock()
@@ -666,8 +666,8 @@ class TestZepContextToolProcessLlmRequest:
         assert len(captured) == 1
         ctx = captured[0]
         assert ctx.zep is mock_client
-        assert ctx.user_id == "test-user"
-        assert ctx.thread_id == "test-thread"
+        assert ctx.user_uuid == "7a8fbf8e-5153-4c1b-bb4c-5d7f0f6c1f21"
+        assert ctx.thread_uuid == "test-thread"
         assert ctx.user_message == "Hello"
         assert ctx.tool_context is tc
         assert ctx.llm_request is llm_request
@@ -899,11 +899,11 @@ class TestZepContextToolProcessLlmRequest:
         assert instructions[0].count(tricky_context) == 1
 
     @pytest.mark.asyncio
-    async def test_not_found_logs_warning_naming_ensure_helpers(
+    async def test_not_found_logs_warning_naming_v4_helpers(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Persistence NotFound logs a warning naming
-        ``ensure_user``/``ensure_thread``, and the callback completes without
+        ``create_user``/``create_thread``, and the callback completes without
         raising (warn-and-continue, never crash)."""
         from zep_cloud.errors import NotFoundError
 
@@ -920,7 +920,7 @@ class TestZepContextToolProcessLlmRequest:
             await tool.process_llm_request(tool_context=tc, llm_request=llm_request)
 
         assert any(
-            "ensure_user" in record.message and "ensure_thread" in record.message
+            "create_user" in record.message and "create_thread" in record.message
             for record in caplog.records
         )
         llm_request.append_instructions.assert_not_called()
@@ -941,7 +941,7 @@ class TestZepContextToolProcessLlmRequest:
         await tool.process_llm_request(tool_context=tc1, llm_request=llm_request)
         tc2 = self._make_tool_context(
             "Message 2",
-            state={"zep_user_id": "user-B", "zep_thread_id": "thread-B"},
+            state={"zep_user_uuid": "user-B", "zep_thread_uuid": "thread-B"},
         )
         await tool.process_llm_request(tool_context=tc2, llm_request=llm_request)
 
@@ -975,7 +975,7 @@ class TestAfterModelCallback:
     ) -> MagicMock:
         """Create a mock CallbackContext with state and session ID."""
         mock_ctx = MagicMock()
-        mock_ctx.state = state if state is not None else {"zep_thread_id": "test-thread"}
+        mock_ctx.state = state if state is not None else {"zep_thread_uuid": "test-thread"}
         mock_ctx.session.id = session_id
         return mock_ctx
 
@@ -1004,7 +1004,7 @@ class TestAfterModelCallback:
         # Should have persisted the message
         mock_client.thread.add_messages.assert_called_once()
         call_kwargs = mock_client.thread.add_messages.call_args[1]
-        assert call_kwargs["thread_id"] == "test-thread"
+        assert call_kwargs["thread_uuid"] == "test-thread"
         assert len(call_kwargs["messages"]) == 1
         assert call_kwargs["messages"][0].content == "This is the answer."
         assert call_kwargs["messages"][0].role == "assistant"
@@ -1036,12 +1036,12 @@ class TestAfterModelCallback:
         callback = create_after_model_callback(zep_client=mock_client)
 
         llm_response = self._make_llm_response("Response")
-        callback_context = self._make_callback_context(state={"zep_thread_id": "state-thread-42"})
+        callback_context = self._make_callback_context(state={"zep_thread_uuid": "state-thread-42"})
 
         await callback(callback_context, llm_response)
 
         call_kwargs = mock_client.thread.add_messages.call_args[1]
-        assert call_kwargs["thread_id"] == "state-thread-42"
+        assert call_kwargs["thread_uuid"] == "state-thread-42"
 
     @pytest.mark.asyncio
     async def test_thread_falls_back_to_session_id(self) -> None:
@@ -1051,13 +1051,16 @@ class TestAfterModelCallback:
         callback = create_after_model_callback(zep_client=mock_client)
 
         llm_response = self._make_llm_response("Response")
-        # No zep_thread_id in state
-        callback_context = self._make_callback_context(state={}, session_id="session-fallback-99")
+        # No zep_thread_uuid in state
+        callback_context = self._make_callback_context(
+            state={},
+            session_id="2d147892-3832-408d-a784-81f80b94712a",
+        )
 
         await callback(callback_context, llm_response)
 
         call_kwargs = mock_client.thread.add_messages.call_args[1]
-        assert call_kwargs["thread_id"] == "session-fallback-99"
+        assert call_kwargs["thread_uuid"] == "2d147892-3832-408d-a784-81f80b94712a"
 
     @pytest.mark.asyncio
     async def test_skips_when_no_thread_available(self) -> None:
@@ -1342,9 +1345,9 @@ class TestZepContextToolTruncatesUserMessages:
 
         mock_tc = MagicMock()
         mock_tc.user_content = mock_content
-        mock_tc.state = {"zep_thread_id": "test-thread"}
+        mock_tc.state = {"zep_thread_uuid": "test-thread"}
         mock_tc.session.id = "test-session"
-        mock_tc.user_id = "test-user"
+        mock_tc.user_id = "7a8fbf8e-5153-4c1b-bb4c-5d7f0f6c1f21"
         return mock_tc
 
     def _make_mock_client(self) -> MagicMock:
@@ -1419,7 +1422,7 @@ class TestGraphSearchToolInit:
         mock_client = MagicMock()
         tool = ZepGraphSearchTool(zep_client=mock_client)
         assert tool.name == "zep_graph_search"
-        assert tool._graph_id is None
+        assert tool._graph_uuid is None
         assert tool._pinned == {}
 
     def test_custom_name_and_description(self) -> None:
@@ -1433,11 +1436,11 @@ class TestGraphSearchToolInit:
         assert tool.name == "search_docs"
         assert tool.description == "Search documentation."
 
-    def test_graph_id_stored(self) -> None:
+    def test_graph_uuid_stored(self) -> None:
         from zep_adk import ZepGraphSearchTool
 
-        tool = ZepGraphSearchTool(zep_client=MagicMock(), graph_id="docs-123")
-        assert tool._graph_id == "docs-123"
+        tool = ZepGraphSearchTool(zep_client=MagicMock(), graph_uuid="docs-123")
+        assert tool._graph_uuid == "docs-123"
 
     def test_pinned_params_stored(self) -> None:
         from zep_adk import ZepGraphSearchTool
@@ -1455,7 +1458,7 @@ class TestGraphSearchToolInit:
     def test_search_filters_stored_as_pinned(self) -> None:
         from zep_adk import ZepGraphSearchTool
 
-        filters = {"node_labels": ["Person"]}
+        filters = {"edge_types": ["WORKS_AT"]}
         tool = ZepGraphSearchTool(zep_client=MagicMock(), search_filters=filters)
         assert tool._pinned["search_filters"] == filters
 
@@ -1466,11 +1469,11 @@ class TestGraphSearchToolInit:
         tool = ZepGraphSearchTool(zep_client=MagicMock(), bfs_origin_node_uuids=uuids)
         assert tool._pinned["bfs_origin_node_uuids"] == uuids
 
-    def test_rejects_user_id_pinning(self) -> None:
+    def test_rejects_user_uuid_pinning(self) -> None:
         from zep_adk import ZepGraphSearchTool
 
-        with pytest.raises(ValueError, match="user_id.*cannot be pinned"):
-            ZepGraphSearchTool(zep_client=MagicMock(), user_id="bad")
+        with pytest.raises(ValueError, match="user_uuid.*cannot be pinned"):
+            ZepGraphSearchTool(zep_client=MagicMock(), user_uuid="bad")
 
     def test_allows_query_pinning(self) -> None:
         from zep_adk import ZepGraphSearchTool
@@ -1559,377 +1562,233 @@ class TestGraphSearchToolDeclaration:
         assert len(props) == 0
 
 
+def _graph_item(**attributes: str | None) -> MagicMock:
+    item = MagicMock()
+    for name, value in attributes.items():
+        setattr(item, name, value)
+    return item
+
+
 class TestGraphSearchToolExecution:
-    """Test run_async with mocked Zep client."""
+    """Test V4 scoped graph search through the model-callable tool."""
 
     @staticmethod
-    def _make_tool_context(
-        state: dict | None = None,
-        session_user_id: str | None = "fallback-user",
-    ) -> MagicMock:
-        mock_tc = MagicMock()
-        mock_tc.state = state if state is not None else {}
-        mock_tc.user_id = session_user_id
-        return mock_tc
+    def _make_client() -> MagicMock:
+        client = MagicMock()
+        client.user.get = AsyncMock(return_value=MagicMock(uuid_="graph-uuid"))
+        client.graph.get_context = AsyncMock(return_value=MagicMock(context="Saved context"))
+        for scope in ("edges", "nodes", "episodes", "observations", "thread_summaries"):
+            setattr(client.graph, f"search_{scope}", AsyncMock(return_value=MagicMock(items=[])))
+        return client
 
     @staticmethod
-    def _make_search_result(edges=None, nodes=None, episodes=None):
-        result = MagicMock()
-        result.edges = edges
-        result.nodes = nodes
-        result.episodes = episodes
-        return result
+    def _make_tool_context(state: dict | None = None) -> MagicMock:
+        context = MagicMock()
+        context.state = state or {}
+        context.user_id = "application-user-id"
+        return context
 
     @pytest.mark.asyncio
-    async def test_resolves_user_id_from_session(self) -> None:
+    @pytest.mark.parametrize(
+        ("scope", "result_item", "expected"),
+        [
+            ("edges", MagicMock(fact="Jane works at Acme."), "- Jane works at Acme."),
+            ("nodes", _graph_item(name="Acme", summary="A company"), "- Acme: A company"),
+            ("episodes", _graph_item(content="Original message"), "- Original message"),
+            (
+                "observations",
+                _graph_item(name="Preference", summary="Prefers tea"),
+                "- Preference: Prefers tea",
+            ),
+            (
+                "thread_summaries",
+                _graph_item(name=None, summary="Build a tool"),
+                "- Build a tool",
+            ),
+        ],
+    )
+    async def test_scoped_search_uses_v4_pager_items(
+        self, scope: str, result_item: MagicMock, expected: str
+    ) -> None:
         from zep_adk import ZepGraphSearchTool
 
-        mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
+        client = self._make_client()
+        getattr(client.graph, f"search_{scope}").return_value = MagicMock(items=[result_item])
+        tool = ZepGraphSearchTool(zep_client=client)
 
-        tool = ZepGraphSearchTool(zep_client=mock_client)
-        tc = self._make_tool_context(session_user_id="user-42")
-
-        await tool.run_async(args={"query": "test"}, tool_context=tc)
-
-        call_kwargs = mock_client.graph.search.call_args[1]
-        assert call_kwargs["user_id"] == "user-42"
-        assert "graph_id" not in call_kwargs
-
-    @pytest.mark.asyncio
-    async def test_resolves_user_id_from_state_override(self) -> None:
-        from zep_adk import ZepGraphSearchTool
-
-        mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
-
-        tool = ZepGraphSearchTool(zep_client=mock_client)
-        tc = self._make_tool_context(
-            state={"zep_user_id": "state-user"},
-            session_user_id="fallback-user",
+        result = await tool.run_async(
+            args={"query": "work", "scope": scope},
+            tool_context=self._make_tool_context({"zep_user_uuid": "user-uuid"}),
         )
 
-        await tool.run_async(args={"query": "test"}, tool_context=tc)
-
-        call_kwargs = mock_client.graph.search.call_args[1]
-        assert call_kwargs["user_id"] == "state-user"
-
-    @pytest.mark.asyncio
-    async def test_uses_graph_id_when_set(self) -> None:
-        from zep_adk import ZepGraphSearchTool
-
-        mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
-
-        tool = ZepGraphSearchTool(zep_client=mock_client, graph_id="docs-123")
-        tc = self._make_tool_context(session_user_id="user-42")
-
-        await tool.run_async(args={"query": "test"}, tool_context=tc)
-
-        call_kwargs = mock_client.graph.search.call_args[1]
-        assert call_kwargs["graph_id"] == "docs-123"
-        assert "user_id" not in call_kwargs
+        assert result == expected
+        client.user.get.assert_awaited_once_with("user-uuid")
+        method = getattr(client.graph, f"search_{scope}")
+        assert method.call_args.args == ("graph-uuid",)
+        assert method.call_args.kwargs["query"] == "work"
+        assert method.call_args.kwargs["page_size"] == 10
 
     @pytest.mark.asyncio
-    async def test_pinned_params_override_model_args(self) -> None:
+    async def test_auto_scope_uses_graph_get_context(self) -> None:
         from zep_adk import ZepGraphSearchTool
 
-        mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
+        client = self._make_client()
+        tool = ZepGraphSearchTool(zep_client=client)
+        result = await tool.run_async(
+            args={"query": "work", "scope": "auto"},
+            tool_context=self._make_tool_context({"zep_graph_uuid": "graph-uuid"}),
+        )
 
-        tool = ZepGraphSearchTool(zep_client=mock_client, scope="nodes", limit=5)
-        tc = self._make_tool_context()
+        assert result == "Saved context"
+        client.user.get.assert_not_awaited()
+        client.graph.get_context.assert_awaited_once_with(
+            "graph-uuid",
+            query="work",
+            include_results=True,
+        )
 
-        # Model tries to set scope and limit, but they're pinned
+    @pytest.mark.asyncio
+    async def test_fixed_graph_uuid_skips_user_resolution(self) -> None:
+        from zep_adk import ZepGraphSearchTool
+
+        client = self._make_client()
+        tool = ZepGraphSearchTool(zep_client=client, graph_uuid="shared-graph-uuid")
         await tool.run_async(
-            args={"query": "test", "scope": "edges", "limit": 20},
-            tool_context=tc,
+            args={"query": "work"},
+            tool_context=self._make_tool_context(),
         )
 
-        call_kwargs = mock_client.graph.search.call_args[1]
-        assert call_kwargs["scope"] == "nodes"  # pinned wins
-        assert call_kwargs["limit"] == 5  # pinned wins
+        client.user.get.assert_not_awaited()
+        assert client.graph.search_edges.call_args.args == ("shared-graph-uuid",)
 
     @pytest.mark.asyncio
-    async def test_defaults_applied_when_model_omits(self) -> None:
+    async def test_search_filters_and_bfs_are_constructor_only(self) -> None:
         from zep_adk import ZepGraphSearchTool
 
-        mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
+        client = self._make_client()
+        tool = ZepGraphSearchTool(
+            zep_client=client,
+            search_filters={"edge_types": ["WORKS_AT"]},
+            bfs_origin_node_uuids=["node-uuid"],
+        )
+        await tool.run_async(
+            args={"query": "work"},
+            tool_context=self._make_tool_context({"zep_graph_uuid": "graph-uuid"}),
+        )
 
-        tool = ZepGraphSearchTool(zep_client=mock_client)
-        tc = self._make_tool_context()
-
-        await tool.run_async(args={"query": "test"}, tool_context=tc)
-
-        call_kwargs = mock_client.graph.search.call_args[1]
-        assert call_kwargs["scope"] == "edges"  # default
-        assert call_kwargs["reranker"] == "rrf"  # default
-        assert call_kwargs["limit"] == 10  # default
+        filters = client.graph.search_edges.call_args.kwargs["filters"]
+        assert filters.edge_types == ["WORKS_AT"]
+        assert client.graph.search_edges.call_args.kwargs["bfs_origin_node_uuids"] == ["node-uuid"]
 
     @pytest.mark.asyncio
-    async def test_model_provided_params_used(self) -> None:
+    async def test_pinned_search_parameters_map_to_v4_arguments(self) -> None:
         from zep_adk import ZepGraphSearchTool
 
-        mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
+        client = self._make_client()
+        tool = ZepGraphSearchTool(
+            zep_client=client,
+            scope="edges",
+            limit=5,
+            reranker="cross_encoder",
+        )
+        await tool.run_async(
+            args={"query": "work"},
+            tool_context=self._make_tool_context({"zep_graph_uuid": "graph-uuid"}),
+        )
 
-        tool = ZepGraphSearchTool(zep_client=mock_client)
-        tc = self._make_tool_context()
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == 5
+        assert client.graph.search_edges.call_args.kwargs["reranker"] == "cross_encoder"
+
+    @pytest.mark.asyncio
+    async def test_unsupported_edge_filter_fails_closed(self) -> None:
+        from zep_adk import ZepGraphSearchTool
+
+        client = self._make_client()
+        tool = ZepGraphSearchTool(
+            zep_client=client,
+            search_filters={"node_labels": ["Person"]},
+        )
+
+        result = await tool.run_async(
+            args={"query": "work"},
+            tool_context=self._make_tool_context({"zep_graph_uuid": "graph-uuid"}),
+        )
+
+        assert "does not support these filters" in result
+        client.graph.search_edges.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_hidden_optional_parameter_is_not_sent_to_sdk(self) -> None:
+        from zep_adk import ZepGraphSearchTool
+
+        client = self._make_client()
+        tool = ZepGraphSearchTool(zep_client=client, mmr_lambda=None)
+        declaration = tool._get_declaration()
+        assert declaration is not None
+        assert "mmr_lambda" not in declaration.parameters.properties
 
         await tool.run_async(
-            args={"query": "test", "scope": "nodes", "limit": 3},
-            tool_context=tc,
+            args={"query": "work"},
+            tool_context=self._make_tool_context({"zep_graph_uuid": "graph-uuid"}),
         )
 
-        call_kwargs = mock_client.graph.search.call_args[1]
-        assert call_kwargs["scope"] == "nodes"
-        assert call_kwargs["limit"] == 3
+        assert "mmr_lambda" not in client.graph.search_edges.call_args.kwargs
 
     @pytest.mark.asyncio
-    async def test_search_filters_passed_through(self) -> None:
+    async def test_search_errors_return_tool_result_instead_of_raising(self) -> None:
         from zep_adk import ZepGraphSearchTool
 
-        mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(return_value=self._make_search_result())
+        client = self._make_client()
+        client.graph.search_edges.side_effect = RuntimeError("Zep is down")
+        tool = ZepGraphSearchTool(zep_client=client)
 
-        filters = {"node_labels": ["Person"]}
-        tool = ZepGraphSearchTool(zep_client=mock_client, search_filters=filters)
-        tc = self._make_tool_context()
+        result = await tool.run_async(
+            args={"query": "work"},
+            tool_context=self._make_tool_context({"zep_graph_uuid": "graph-uuid"}),
+        )
 
-        await tool.run_async(args={"query": "test"}, tool_context=tc)
-
-        call_kwargs = mock_client.graph.search.call_args[1]
-        assert call_kwargs["search_filters"] == filters
-
-    @pytest.mark.asyncio
-    async def test_error_on_missing_query(self) -> None:
-        from zep_adk import ZepGraphSearchTool
-
-        tool = ZepGraphSearchTool(zep_client=MagicMock())
-        tc = self._make_tool_context()
-
-        result = await tool.run_async(args={}, tool_context=tc)
-        assert "Error" in result
-
-    @pytest.mark.asyncio
-    async def test_error_on_missing_user_id(self) -> None:
-        from zep_adk import ZepGraphSearchTool
-
-        tool = ZepGraphSearchTool(zep_client=MagicMock())
-        tc = MagicMock(spec=["state"])
-        tc.state = {}
-        # tc has no user_id attr (spec restricts it), simulating a context
-        # without the public user_id property.
-
-        result = await tool.run_async(args={"query": "test"}, tool_context=tc)
-        assert "Error" in result
-
-    @pytest.mark.asyncio
-    async def test_handles_search_exception(self) -> None:
-        from zep_adk import ZepGraphSearchTool
-
-        mock_client = MagicMock()
-        mock_client.graph.search = AsyncMock(side_effect=RuntimeError("boom"))
-
-        tool = ZepGraphSearchTool(zep_client=mock_client)
-        tc = self._make_tool_context()
-
-        result = await tool.run_async(args={"query": "test"}, tool_context=tc)
         assert "failed" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_missing_user_uuid_returns_error_without_zep_call(self) -> None:
+        from zep_adk import ZepGraphSearchTool
+
+        client = self._make_client()
+        tool = ZepGraphSearchTool(zep_client=client)
+        context = MagicMock(spec=["state"])
+        context.state = {}
+
+        result = await tool.run_async(args={"query": "work"}, tool_context=context)
+
+        assert "cannot determine" in result.lower()
+        client.user.get.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_non_uuid_adk_user_id_is_not_used_for_graph_lookup(self) -> None:
+        from zep_adk import ZepGraphSearchTool
+
+        client = self._make_client()
+        tool = ZepGraphSearchTool(zep_client=client)
+        context = self._make_tool_context()
+
+        result = await tool.run_async(args={"query": "work"}, tool_context=context)
+
+        assert "cannot determine" in result.lower()
+        client.user.get.assert_not_awaited()
 
 
 class TestGraphSearchResultFormatting:
-    """Test result formatting for different scopes."""
+    """Test pager-item formatting for the documented search scopes."""
 
-    def _make_edge(self, fact: str) -> MagicMock:
-        edge = MagicMock()
-        edge.fact = fact
-        return edge
-
-    def _make_node(self, name: str, summary: str) -> MagicMock:
-        node = MagicMock()
-        node.name = name
-        node.summary = summary
-        return node
-
-    def _make_episode(self, content: str) -> MagicMock:
-        ep = MagicMock()
-        ep.content = content
-        return ep
-
-    def _make_observation(self, name: str, summary: str) -> MagicMock:
-        observation = MagicMock()
-        observation.name = name
-        observation.summary = summary
-        return observation
-
-    def _make_thread_summary(self, name: str, summary: str) -> MagicMock:
-        thread_summary = MagicMock()
-        thread_summary.name = name
-        thread_summary.summary = summary
-        return thread_summary
-
-    def test_format_edges(self) -> None:
+    def test_auto_context_is_trimmed(self) -> None:
         from zep_adk.graph_search_tool import ZepGraphSearchTool
 
-        result = MagicMock()
-        result.edges = [self._make_edge("Alice works at Acme"), self._make_edge("Bob likes hiking")]
-        result.nodes = None
-        result.episodes = None
+        assert (
+            ZepGraphSearchTool._format_results(MagicMock(context="  context  "), "auto")
+            == "context"
+        )
 
-        formatted = ZepGraphSearchTool._format_results(result, "edges")
-        assert "Alice works at Acme" in formatted
-        assert "Bob likes hiking" in formatted
-
-    def test_format_nodes(self) -> None:
+    def test_empty_scope_returns_no_results(self) -> None:
         from zep_adk.graph_search_tool import ZepGraphSearchTool
 
-        result = MagicMock()
-        result.edges = None
-        result.nodes = [self._make_node("Alice", "A software engineer at Acme")]
-        result.episodes = None
-
-        formatted = ZepGraphSearchTool._format_results(result, "nodes")
-        assert "Alice" in formatted
-        assert "software engineer" in formatted
-
-    def test_format_episodes(self) -> None:
-        from zep_adk.graph_search_tool import ZepGraphSearchTool
-
-        result = MagicMock()
-        result.edges = None
-        result.nodes = None
-        result.episodes = [self._make_episode("I work at Acme Corp")]
-
-        formatted = ZepGraphSearchTool._format_results(result, "episodes")
-        assert "Acme Corp" in formatted
-
-    def test_format_observations(self) -> None:
-        from zep_adk.graph_search_tool import ZepGraphSearchTool
-
-        result = MagicMock()
-        result.edges = None
-        result.nodes = None
-        result.episodes = None
-        result.observations = [self._make_observation("Alice", "Prefers async communication")]
-        result.thread_summaries = None
-
-        formatted = ZepGraphSearchTool._format_results(result, "observations")
-        assert "Alice" in formatted
-        assert "Prefers async communication" in formatted
-
-    def test_format_thread_summaries(self) -> None:
-        from zep_adk.graph_search_tool import ZepGraphSearchTool
-
-        result = MagicMock()
-        result.edges = None
-        result.nodes = None
-        result.episodes = None
-        result.observations = None
-        result.thread_summaries = [self._make_thread_summary("thread-1", "Discussed billing issue")]
-
-        formatted = ZepGraphSearchTool._format_results(result, "thread_summaries")
-        assert "thread-1" in formatted
-        assert "Discussed billing issue" in formatted
-
-    def test_format_observation_with_name_only_still_shown(self) -> None:
-        """An observation with a name but no summary is rendered as just the
-        name, matching the Go/TypeScript integrations, rather than being
-        silently dropped."""
-        from zep_adk.graph_search_tool import ZepGraphSearchTool
-
-        result = MagicMock()
-        result.edges = None
-        result.nodes = None
-        result.episodes = None
-        result.observations = [self._make_observation("Alice", None)]
-        result.thread_summaries = None
-
-        formatted = ZepGraphSearchTool._format_results(result, "observations")
-        assert "Alice" in formatted
-        assert formatted != "No results found."
-
-    def test_format_thread_summary_with_name_only_still_shown(self) -> None:
-        """A thread summary with a name but no summary is rendered as just
-        the name, matching the Go/TypeScript integrations, rather than being
-        silently dropped."""
-        from zep_adk.graph_search_tool import ZepGraphSearchTool
-
-        result = MagicMock()
-        result.edges = None
-        result.nodes = None
-        result.episodes = None
-        result.observations = None
-        result.thread_summaries = [self._make_thread_summary("thread-1", None)]
-
-        formatted = ZepGraphSearchTool._format_results(result, "thread_summaries")
-        assert "thread-1" in formatted
-        assert formatted != "No results found."
-
-    def test_format_node_with_name_only_still_shown(self) -> None:
-        """A node with a name but no summary is rendered as just the name."""
-        from zep_adk.graph_search_tool import ZepGraphSearchTool
-
-        result = MagicMock()
-        result.edges = None
-        result.nodes = [self._make_node("Alice", None)]
-        result.episodes = None
-
-        formatted = ZepGraphSearchTool._format_results(result, "nodes")
-        assert "Alice" in formatted
-        assert formatted != "No results found."
-
-    def test_format_node_with_summary_only_renders_summary_without_label(self) -> None:
-        """A node with a summary but no name renders as just the summary --
-        no generic 'Entity'-style label prefix, matching Go/TypeScript."""
-        from zep_adk.graph_search_tool import ZepGraphSearchTool
-
-        result = MagicMock()
-        result.edges = None
-        result.nodes = [self._make_node(None, "A software engineer at Acme")]
-        result.episodes = None
-
-        formatted = ZepGraphSearchTool._format_results(result, "nodes")
-        assert formatted == "- A software engineer at Acme"
-
-    def test_format_observation_with_summary_only_renders_summary_without_label(self) -> None:
-        """An observation with a summary but no name renders as just the
-        summary -- no generic 'Observation'-style label prefix."""
-        from zep_adk.graph_search_tool import ZepGraphSearchTool
-
-        result = MagicMock()
-        result.edges = None
-        result.nodes = None
-        result.episodes = None
-        result.observations = [self._make_observation(None, "Prefers async communication")]
-        result.thread_summaries = None
-
-        formatted = ZepGraphSearchTool._format_results(result, "observations")
-        assert formatted == "- Prefers async communication"
-
-    def test_format_thread_summary_with_summary_only_renders_summary_without_label(self) -> None:
-        """A thread summary with a summary but no name renders as just the
-        summary -- no generic 'Thread'-style label prefix."""
-        from zep_adk.graph_search_tool import ZepGraphSearchTool
-
-        result = MagicMock()
-        result.edges = None
-        result.nodes = None
-        result.episodes = None
-        result.observations = None
-        result.thread_summaries = [self._make_thread_summary(None, "Discussed billing issue")]
-
-        formatted = ZepGraphSearchTool._format_results(result, "thread_summaries")
-        assert formatted == "- Discussed billing issue"
-
-    def test_format_empty_results(self) -> None:
-        from zep_adk.graph_search_tool import ZepGraphSearchTool
-
-        result = MagicMock()
-        result.edges = []
-        result.nodes = None
-        result.episodes = None
-
-        formatted = ZepGraphSearchTool._format_results(result, "edges")
-        assert formatted == "No results found."
+        assert ZepGraphSearchTool._format_results([], "edges") == "No results found."

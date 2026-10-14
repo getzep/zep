@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 from google.adk.memory.base_memory_service import BaseMemoryService, SearchMemoryResponse
 from google.adk.memory.memory_entry import MemoryEntry
@@ -114,6 +115,8 @@ class ZepMemoryService(BaseMemoryService):
         scope: str = "edges",
         limit: int | None = None,
     ) -> None:
+        if scope not in _SUPPORTED_SCOPES:
+            raise ValueError(f"Unsupported Zep search scope: {scope}")
         self._zep: AsyncZep = zep
         self._scope: str = scope
         self._limit: int | None = limit
@@ -165,19 +168,31 @@ class ZepMemoryService(BaseMemoryService):
             )
             return SearchMemoryResponse()
 
-        search_kwargs: dict[str, Any] = {
-            "user_id": user_id,
-            "query": query,
-            "scope": self._scope,
-        }
-        if self._limit is not None:
-            search_kwargs["limit"] = self._limit
-
         try:
-            result = await self._zep.graph.search(**search_kwargs)
+            try:
+                UUID(user_id)
+            except ValueError:
+                logger.warning("ADK user_id is not a Zep user UUID; returning no memories")
+                return SearchMemoryResponse()
+
+            user = await self._zep.user.get(user_id)
+            graph_uuid = user.uuid_
+
+            if self._scope == _AUTO_SCOPE:
+                result = await self._zep.graph.get_context(
+                    graph_uuid,
+                    query=query,
+                    include_results=True,
+                )
+            else:
+                search_method = getattr(self._zep.graph, f"search_{self._scope}")
+                search_kwargs: dict[str, Any] = {"query": query}
+                if self._limit is not None:
+                    search_kwargs["page_size"] = self._limit
+                result = await search_method(graph_uuid, **search_kwargs)
         except Exception as exc:
             logger.warning(
-                "Zep memory search failed (user_id_len=%d, query_len=%d): %s",
+                "Zep memory search failed (user_uuid_len=%d, query_len=%d): %s",
                 len(user_id),
                 len(query),
                 exc,
@@ -201,5 +216,4 @@ class ZepMemoryService(BaseMemoryService):
             if context and context.strip():
                 return [context.strip()]
             return []
-
-        return scope_results_to_texts(result, self._scope)
+        return scope_results_to_texts(result.items or [], self._scope)

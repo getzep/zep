@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 0.4.0
+
+### Changed
+
+- **Breaking:** Migrated to the Zep v4 SDK. Provision users and threads with
+  `create_user` and `create_thread`; store their generated UUIDs in session
+  state as `zep_user_uuid`, `zep_thread_uuid`, and `zep_graph_uuid`.
+- **Breaking:** Removed `ensure_user`, `ensure_thread`, `on_created`, and
+  `UserSetupHook`. Create users and threads directly, then run per-user setup
+  with the generated UUIDs.
+- **Breaking:** Replaced generic graph search with the v4 scoped search methods.
+  Graph search now supports `edges`, `nodes`, `episodes`, `observations`,
+  `thread_summaries`, and `auto`.
+- **Breaking:** `ContextInput` now uses `user_uuid` and `thread_uuid`.
+  `ContextBuilder` continues to receive one `ContextInput` value.
+- Updated graph and memory searches to use v4 UUIDs, `page_size`, and pager
+  items. The `auto` scope uses `graph.get_context`.
+- Updated the minimum dependency to `zep-cloud>=4.0.0,<5`.
+
 ## 0.3.2 (2026-10-01)
 
 ### Changed

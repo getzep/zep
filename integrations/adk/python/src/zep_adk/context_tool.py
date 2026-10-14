@@ -29,15 +29,15 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
 from typing_extensions import override
-from zep_cloud import Message
+from zep_cloud import AddMessage
 from zep_cloud.client import AsyncZep
 
 from .limits import truncate_message_content
-from .provisioning import UserSetupHook  # noqa: F401  (re-exported for compatibility)
 
 if TYPE_CHECKING:
     from google.adk.models import LlmRequest
@@ -70,8 +70,8 @@ class ContextInput:
 
     Attributes:
         zep: The ``AsyncZep`` client in use by the tool.
-        user_id: The resolved Zep user ID for this turn.
-        thread_id: The resolved Zep thread ID for this turn.
+        user_uuid: The resolved Zep user UUID for this turn.
+        thread_uuid: The resolved Zep thread UUID for this turn.
         user_message: The user's message text for this turn.
         tool_context: The ADK ``ToolContext`` for this turn (session state,
             invocation metadata).
@@ -82,21 +82,21 @@ class ContextInput:
         thread's default context retrieval::
 
             async def my_builder(ctx: ContextInput) -> str | None:
-                results = await ctx.zep.graph.search(
-                    user_id=ctx.user_id,
+                results = await ctx.zep.graph.search_edges(
+                    ctx.user_uuid,
                     query=ctx.user_message,
-                    scope="edges",
+                    page_size=10,
                 )
-                if not results.edges:
+                if not results.items:
                     return None
-                return "\\n".join(edge.fact for edge in results.edges)
+                return "\\n".join(edge.fact for edge in results.items if edge.fact)
 
             tool = ZepContextTool(zep_client=zep, context_builder=my_builder)
     """
 
     zep: AsyncZep
-    user_id: str
-    thread_id: str
+    user_uuid: str
+    thread_uuid: str
     user_message: str
     tool_context: ToolContext
     llm_request: LlmRequest
@@ -117,6 +117,17 @@ ContextBuilder = Callable[[ContextInput], Awaitable[str | None]]
 
 logger = logging.getLogger(__name__)
 
+
+def _is_uuid(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
 #: Substrings that identify a Zep "not found" error on the turn path (message
 #: persistence failing because the user/thread was never provisioned).
 _NOT_FOUND_MARKERS = ("not found", "404")
@@ -126,8 +137,8 @@ _NOT_FOUND_MARKERS = ("not found", "404")
 class _ZepIdentity:
     """Resolved Zep identity from ADK session state."""
 
-    user_id: str
-    thread_id: str
+    user_uuid: str
+    thread_uuid: str
     first_name: str | None
     last_name: str | None
     user_display_name: str | None
@@ -157,12 +168,12 @@ class ZepContextTool(BaseTool):
             :class:`ContextInput`. Example::
 
                 async def my_builder(ctx: ContextInput) -> str | None:
-                    results = await ctx.zep.graph.search(
-                        user_id=ctx.user_id,
+                    results = await ctx.zep.graph.search_edges(
+                        ctx.user_uuid,
                         query=ctx.user_message,
-                        scope="edges",
+                        page_size=10,
                     )
-                    return "\\n".join(e.fact for e in results.edges or [])
+                    return "\\n".join(e.fact for e in results.items if e.fact)
 
                 tool = ZepContextTool(zep_client=zep, context_builder=my_builder)
 
@@ -179,8 +190,8 @@ class ZepContextTool(BaseTool):
     Note:
         This tool does **not** create the Zep user or thread.  Provision them
         out-of-band, before the first turn, with
-        :func:`zep_adk.provisioning.ensure_user` and
-        :func:`zep_adk.provisioning.ensure_thread`.  If persistence fails
+        :func:`zep_adk.provisioning.create_user` and
+        :func:`zep_adk.provisioning.create_thread`.  If persistence fails
         because the user/thread does not exist, a warning is logged naming
         those helpers and the turn continues without Zep memory.
 
@@ -231,14 +242,14 @@ class ZepContextTool(BaseTool):
 
         Resolution order for each field:
 
-        * **user_id**: ``zep_user_id`` in state → ADK session ``user_id``
-        * **thread_id**: ``zep_thread_id`` in state → ADK session ``id``
+        * **user_uuid**: ``zep_user_uuid`` in state → ADK ``user_id`` if it is a UUID
+        * **thread_uuid**: ``zep_thread_uuid`` in state → ADK session ``id`` if it is a UUID
         * **first_name**: ``zep_first_name`` in state → ``"Anonymous"``
         * **last_name**: ``zep_last_name`` in state → ``"User"``
 
         Email is not resolved from session state: the turn path never creates
         or updates the Zep user, so email only takes effect when passed to
-        :func:`~zep_adk.provisioning.ensure_user` during provisioning.
+                :func:`~zep_adk.provisioning.create_user` during provisioning.
 
         Raises:
             ValueError: If neither the session state key nor the ADK session
@@ -252,31 +263,36 @@ class ZepContextTool(BaseTool):
             )
 
         # -- user_id: state override → ADK session user_id -----------------
-        user_id = state.get("zep_user_id")
-        if not user_id:
+        user_uuid = state.get("zep_user_uuid")
+        if not user_uuid:
             try:
-                user_id = tool_context.user_id
+                user_uuid = tool_context.user_id
             except AttributeError as err:
                 raise ValueError(
-                    "Cannot determine Zep user ID. Either set 'zep_user_id' in "
-                    "session state or ensure the ADK session has a user_id."
+                    "Cannot determine Zep user UUID. Set 'zep_user_uuid' in "
+                    "session state or provide the ADK user_id."
                 ) from err
-        if not user_id:
-            raise ValueError(
-                "Cannot determine Zep user ID. Either set 'zep_user_id' in "
-                "session state or pass user_id to create_session()."
-            )
+            if not _is_uuid(user_uuid):
+                raise ValueError(
+                    "Cannot determine a Zep user UUID. Set 'zep_user_uuid' in "
+                    "session state or use a UUID as the ADK user_id."
+                )
 
-        # -- thread_id: state override → ADK session id --------------------
-        thread_id = state.get("zep_thread_id")
-        if not thread_id:
+        # -- thread_uuid: state override → ADK session id -------------------
+        thread_uuid = state.get("zep_thread_uuid")
+        if not thread_uuid:
             try:
-                thread_id = tool_context.session.id
+                thread_uuid = tool_context.session.id
             except AttributeError as err:
                 raise ValueError(
-                    "Cannot determine Zep thread ID. Either set 'zep_thread_id' "
+                    "Cannot determine Zep thread UUID. Set 'zep_thread_uuid' "
                     "in session state or ensure the ADK session has an id."
                 ) from err
+            if not _is_uuid(thread_uuid):
+                raise ValueError(
+                    "Cannot determine a Zep thread UUID. Set 'zep_thread_uuid' in "
+                    "session state or use a UUID as the ADK session id."
+                )
 
         # -- name: state with sensible defaults -----------------------------
         first_name = state.get("zep_first_name") or "Anonymous"
@@ -285,8 +301,8 @@ class ZepContextTool(BaseTool):
         display = f"{first_name} {last_name}".strip()
 
         return _ZepIdentity(
-            user_id=user_id,
-            thread_id=thread_id,
+            user_uuid=user_uuid,
+            thread_uuid=thread_uuid,
             first_name=first_name,
             last_name=last_name,
             user_display_name=display,
@@ -353,15 +369,15 @@ class ZepContextTool(BaseTool):
         # Comparing id() skips re-invocations without blocking legitimately
         # repeated user text in later turns (which will be a new object).
         content_id = id(user_content)
-        if self._last_persisted_content_id.get(identity.thread_id) == content_id:
-            logger.debug("Skipping same-turn re-invocation for thread %s", identity.thread_id)
+        if self._last_persisted_content_id.get(identity.thread_uuid) == content_id:
+            logger.debug("Skipping same-turn re-invocation for thread %s", identity.thread_uuid)
             return
 
         # --- 4. Persist message and retrieve context -----------------------
-        # The Zep user and thread must already exist -- this tool never
-        # creates them (see zep_adk.provisioning.ensure_user/ensure_thread).
+        # The Zep user and thread must already exist. This tool never creates
+        # them; provision them with create_user and create_thread first.
         truncated_text = truncate_message_content(user_text, label="user")
-        zep_msg = Message(
+        zep_msg = AddMessage(
             role="user",
             content=truncated_text,
             name=identity.user_display_name,
@@ -380,7 +396,7 @@ class ZepContextTool(BaseTool):
             # Default: single round-trip
             try:
                 response = await self._zep.thread.add_messages(
-                    thread_id=identity.thread_id,
+                    thread_uuid=identity.thread_uuid,
                     messages=[zep_msg],
                     return_context=True,
                     ignore_roles=self._ignore_roles,
@@ -389,7 +405,7 @@ class ZepContextTool(BaseTool):
                 persist_ok = True
                 logger.info(
                     "Persisted message to Zep (thread=%s). Context length: %s",
-                    identity.thread_id,
+                    identity.thread_uuid,
                     len(context_text) if context_text else 0,
                 )
             except Exception as exc:
@@ -400,7 +416,7 @@ class ZepContextTool(BaseTool):
         # Mark as persisted only AFTER the API call succeeded, so that a
         # transient failure does not permanently suppress the message.
         if persist_ok:
-            self._last_persisted_content_id[identity.thread_id] = content_id
+            self._last_persisted_content_id[identity.thread_uuid] = content_id
 
         # --- 5. Inject context into the LLM prompt -----------------------
         if context_text:
@@ -415,11 +431,11 @@ class ZepContextTool(BaseTool):
         """Log a warning for a failed ``add_messages`` call."""
         if self._is_not_found_error(exc):
             logger.warning(
-                "Zep user/thread not found for user_id=%s thread_id=%s — call "
-                "zep_adk.ensure_user() and zep_adk.ensure_thread() before the "
+                "Zep user/thread not found for user_uuid=%s thread_uuid=%s — call "
+                "zep_adk.create_user() and zep_adk.create_thread() before the "
                 "first turn",
-                identity.user_id,
-                identity.thread_id,
+                identity.user_uuid,
+                identity.thread_uuid,
             )
         else:
             logger.warning(
@@ -430,7 +446,7 @@ class ZepContextTool(BaseTool):
     async def _persist_and_build_context(
         self,
         identity: _ZepIdentity,
-        zep_msg: Message,
+        zep_msg: AddMessage,
         user_text: str,
         llm_request: LlmRequest,
         tool_context: ToolContext,
@@ -461,11 +477,11 @@ class ZepContextTool(BaseTool):
         async def _persist() -> bool:
             try:
                 await self._zep.thread.add_messages(
-                    thread_id=identity.thread_id,
+                    thread_uuid=identity.thread_uuid,
                     messages=[zep_msg],
                     ignore_roles=self._ignore_roles,
                 )
-                logger.info("Persisted message to Zep (thread=%s).", identity.thread_id)
+                logger.info("Persisted message to Zep (thread=%s).", identity.thread_uuid)
                 return True
             except Exception as exc:
                 self._log_persist_failure(exc, identity)
@@ -475,8 +491,8 @@ class ZepContextTool(BaseTool):
             try:
                 context_input = ContextInput(
                     zep=self._zep,
-                    user_id=identity.user_id,
-                    thread_id=identity.thread_id,
+                    user_uuid=identity.user_uuid,
+                    thread_uuid=identity.thread_uuid,
                     user_message=user_text,
                     tool_context=tool_context,
                     llm_request=llm_request,
