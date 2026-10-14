@@ -15,8 +15,8 @@ read-after-write.
   ``get`` / ``put`` / ``delete`` / ``list_namespaces`` faithfully and
   synchronously.
 * On every ``put`` it **also** ingests the stored value into Zep via
-  ``graph.add(type="json")``, so the data becomes part of the temporal graph.
-* It routes ``search`` to Zep's semantic ``graph.search`` (the differentiator),
+  ``graph.episode.add(type="json")``, so the data becomes part of the temporal graph.
+* It routes ``search`` to Zep's semantic graph-search methods,
   optionally merged with the backing store's own search.
 
 Only the two abstract methods -- :meth:`batch` and :meth:`abatch` -- are
@@ -55,32 +55,17 @@ from zep_cloud.client import AsyncZep, Zep
 
 logger = logging.getLogger(__name__)
 
-#: Maximum characters Zep's ``graph.add`` accepts in a single call.
+#: Maximum characters accepted for a single Zep episode payload.
 MAX_GRAPH_ADD_CHARS = 10_000
 
 #: Default number of results when a ``SearchOp`` does not specify a limit.
 DEFAULT_SEARCH_LIMIT = 10
 
-#: Maximum number of results Zep's ``graph.search`` accepts (``limit`` is capped
-#: at 50 server-side for non-``auto`` scopes).
+#: Maximum page size accepted by Zep's graph-search methods.
 MAX_SEARCH_LIMIT = 50
 
-#: A resolver mapping a store namespace to a Zep search/ingest target.
-#: It receives the namespace tuple and returns either ``{"user_id": ...}`` or
-#: ``{"graph_id": ...}``.
+#: A resolver mapping a store namespace to a Zep graph UUID.
 NamespaceTargetResolver = Callable[[tuple[str, ...]], dict[str, str]]
-
-
-def _default_namespace_target(namespace: tuple[str, ...]) -> dict[str, str]:
-    """Default resolver: treat the first namespace element as a Zep ``graph_id``.
-
-    For example, namespace ``("memories", "user-123")`` maps to
-    ``{"graph_id": "memories"}``. Override this with a resolver that maps a
-    namespace identifying an end user to ``{"user_id": ...}`` to use a personal
-    user graph (and unlock ``thread.get_user_context``) instead.
-    """
-    graph_id = namespace[0] if namespace else "default"
-    return {"graph_id": graph_id}
 
 
 class ZepStore(BaseStore):
@@ -97,10 +82,11 @@ class ZepStore(BaseStore):
             ``get`` / ``put`` / ``delete`` / ``list_namespaces``. Defaults to a
             fresh :class:`~langgraph.store.memory.InMemoryStore`.
         namespace_target: A callable mapping a namespace tuple to a Zep target
-            (``{"user_id": ...}`` or ``{"graph_id": ...}``). Defaults to
+            (``{"graph_uuid": ...}``). Defaults to
             :func:`_default_namespace_target`.
-        search_scope: Zep ``graph.search`` scope used for ``search`` operations.
-            Defaults to ``"edges"`` (facts).
+        search_scope: V4 graph-search scope used for ``search`` operations.
+            Defaults to ``"edges"`` (facts). ``"auto"`` uses
+            ``graph.get_context``.
         ingest_on_put: When ``True`` (default), every ``put`` also ingests the
             value into Zep. Set ``False`` to use Zep only for search.
         merge_backing_search: When ``True``, ``search`` results combine Zep
@@ -113,6 +99,7 @@ class ZepStore(BaseStore):
     __slots__ = (
         "_zep",
         "_sync_zep",
+        "_graph_uuid",
         "_backing",
         "_namespace_target",
         "_search_scope",
@@ -124,17 +111,19 @@ class ZepStore(BaseStore):
         self,
         zep_client: AsyncZep,
         *,
+        graph_uuid: str,
         sync_zep_client: Zep | None = None,
         backing_store: BaseStore | None = None,
-        namespace_target: NamespaceTargetResolver = _default_namespace_target,
+        namespace_target: NamespaceTargetResolver | None = None,
         search_scope: str = "edges",
         ingest_on_put: bool = True,
         merge_backing_search: bool = False,
     ) -> None:
         self._zep: AsyncZep = zep_client
         self._sync_zep: Zep | None = sync_zep_client
+        self._graph_uuid = graph_uuid
         self._backing: BaseStore = backing_store if backing_store is not None else InMemoryStore()
-        self._namespace_target: NamespaceTargetResolver = namespace_target
+        self._namespace_target = namespace_target
         self._search_scope: str = search_scope
         self._ingest_on_put: bool = ingest_on_put
         self._merge_backing_search: bool = merge_backing_search
@@ -157,7 +146,7 @@ class ZepStore(BaseStore):
         return backing, searches
 
     def _ingest_put_payload(self, op: PutOp) -> str | None:
-        """Serialise a ``PutOp`` value to a JSON string for ``graph.add``.
+        """Serialise a ``PutOp`` value to a JSON string for ``graph.episode.add``.
 
         Returns ``None`` for deletes (``value is None``) or values that cannot
         be serialised / exceed Zep's size limit.
@@ -189,7 +178,7 @@ class ZepStore(BaseStore):
     # ------------------------------------------------------------------
 
     def _results_to_search_items(self, op: SearchOp, result: Any) -> list[SearchItem]:
-        """Convert Zep ``graph.search`` results into ``SearchItem`` objects.
+        """Convert V4 Zep search results into ``SearchItem`` objects.
 
         Applies ``op.offset`` then ``op.limit`` (pagination) to the converted
         items, mirroring ``BaseStore.search`` semantics.
@@ -198,70 +187,52 @@ class ZepStore(BaseStore):
         items: list[SearchItem] = []
         scope = self._search_scope
 
-        if scope == "edges":
-            for edge in getattr(result, "edges", None) or []:
-                fact = getattr(edge, "fact", None)
-                if not fact:
-                    continue
-                items.append(
-                    SearchItem(
-                        namespace=op.namespace_prefix,
-                        key=getattr(edge, "uuid_", "") or fact[:64],
-                        value={"fact": fact, "type": "edge"},
-                        created_at=now,
-                        updated_at=now,
-                        score=getattr(edge, "score", None),
-                    )
-                )
-        elif scope == "nodes":
-            for node in getattr(result, "nodes", None) or []:
-                name = getattr(node, "name", None)
-                if not name:
-                    continue
-                items.append(
-                    SearchItem(
-                        namespace=op.namespace_prefix,
-                        key=getattr(node, "uuid_", "") or name,
-                        value={
-                            "name": name,
-                            "summary": getattr(node, "summary", None),
-                            "type": "node",
-                        },
-                        created_at=now,
-                        updated_at=now,
-                        score=getattr(node, "score", None),
-                    )
-                )
-        elif scope == "auto":
-            # ``auto`` returns a pre-assembled context string, not result lists,
-            # so reading ``episodes`` here yields nothing. Surface the context
-            # block as a single item instead.
+        if scope == "auto":
             context = getattr(result, "context", None)
             if context and context.strip():
-                context = context.strip()
                 items.append(
                     SearchItem(
                         namespace=op.namespace_prefix,
                         key="context",
-                        value={"context": context, "type": "context"},
+                        value={"context": context.strip(), "type": "context"},
                         created_at=now,
                         updated_at=now,
                         score=None,
                     )
                 )
-        else:  # episodes / observations / other -> use episodes when present
-            for episode in getattr(result, "episodes", None) or []:
-                content = getattr(episode, "content", None)
-                if not content:
+        else:
+            for item in getattr(result, "items", None) or []:
+                if scope == "edges":
+                    text = getattr(item, "fact", None)
+                    value = {"fact": text, "type": "edge"}
+                elif scope == "nodes":
+                    text = getattr(item, "name", None)
+                    value = {
+                        "name": text,
+                        "summary": getattr(item, "summary", None),
+                        "type": "node",
+                    }
+                elif scope == "episodes":
+                    text = getattr(item, "content", None)
+                    value = {"content": text, "type": "episode"}
+                elif scope == "observations":
+                    text = getattr(item, "summary", None) or getattr(item, "name", None)
+                    value = {"summary": text, "type": "observation"}
+                elif scope == "thread_summaries":
+                    text = getattr(item, "summary", None) or getattr(item, "name", None)
+                    value = {"summary": text, "type": "thread_summary"}
+                else:
+                    continue
+                if not text:
                     continue
                 items.append(
                     SearchItem(
                         namespace=op.namespace_prefix,
-                        key=getattr(episode, "uuid_", "") or content[:64],
-                        value={"content": content, "type": "episode"},
+                        key=getattr(item, "uuid_", "") or text[:64],
+                        value=value,
                         created_at=now,
                         updated_at=now,
-                        score=getattr(episode, "score", None),
+                        score=getattr(item, "score", None),
                     )
                 )
 
@@ -276,7 +247,7 @@ class ZepStore(BaseStore):
         """Clamp ``op.limit`` to ``[1, MAX_SEARCH_LIMIT]`` with a default.
 
         ``BaseStore.search`` defaults ``limit`` to 10 and imposes no ceiling,
-        but Zep's ``graph.search`` rejects ``limit > 50``. Clamp to stay valid.
+        but Zep's search methods reject ``page_size > 50``. Clamp to stay valid.
         """
         limit = op.limit or DEFAULT_SEARCH_LIMIT
         if limit > MAX_SEARCH_LIMIT:
@@ -289,12 +260,12 @@ class ZepStore(BaseStore):
         return max(limit, 1)
 
     def _zep_search_kwargs(self, op: SearchOp) -> dict[str, Any] | None:
-        """Build ``graph.search`` kwargs for a ``SearchOp``, or ``None`` to skip."""
+        """Build V4 search inputs for a ``SearchOp``, or ``None`` to skip."""
         if not op.query:
             # No natural-language query -> nothing for the semantic graph to do.
             return None
         if op.filter:
-            # Zep's graph.search uses a typed ``search_filters`` shape (entity/
+            # Zep uses typed ``filters`` inputs (entity/
             # edge types, property/date filters) that does not map onto
             # BaseStore's MongoDB-style ``filter``. Rather than silently honour
             # the wrong thing, warn (count of keys only -- no values/PII) and
@@ -302,18 +273,18 @@ class ZepStore(BaseStore):
             # Zep-native filtering.
             logger.warning(
                 "ZepStore.search does not support BaseStore filters (%d key(s) "
-                "ignored); use Zep search_filters via the graph-search tool instead",
+                "ignored); use Zep filters via the graph-search tool instead",
                 len(op.filter),
             )
-        target = self._namespace_target(op.namespace_prefix)
+        target = self._namespace_target(op.namespace_prefix) if self._namespace_target else {}
         # Zep has no server-side offset; fetch enough rows to cover offset+limit
         # (capped), then slice locally in ``_results_to_search_items``.
         fetch = min(self._effective_limit(op) + (op.offset or 0), MAX_SEARCH_LIMIT)
         return {
             "query": op.query,
             "scope": self._search_scope,
-            "limit": fetch,
-            **target,
+            "page_size": fetch,
+            "graph_uuid": target.get("graph_uuid", self._graph_uuid),
         }
 
     # ------------------------------------------------------------------
@@ -375,13 +346,12 @@ class ZepStore(BaseStore):
         payload = self._ingest_put_payload(op)
         if payload is None:
             return
-        target = self._namespace_target(op.namespace)
+        target = self._namespace_target(op.namespace) if self._namespace_target else {}
         try:
-            await self._zep.graph.add(
+            await self._zep.graph.episode.add(
+                target.get("graph_uuid", self._graph_uuid),
                 data=payload,
                 type="json",
-                user_id=target.get("user_id"),
-                graph_id=target.get("graph_id"),
             )
         except Exception:
             logger.warning(
@@ -403,13 +373,12 @@ class ZepStore(BaseStore):
                 op.key,
             )
             return
-        target = self._namespace_target(op.namespace)
+        target = self._namespace_target(op.namespace) if self._namespace_target else {}
         try:
-            self._sync_zep.graph.add(
+            self._sync_zep.graph.episode.add(
+                target.get("graph_uuid", self._graph_uuid),
                 data=payload,
                 type="json",
-                user_id=target.get("user_id"),
-                graph_id=target.get("graph_id"),
             )
         except Exception:
             logger.warning(
@@ -428,7 +397,15 @@ class ZepStore(BaseStore):
         kwargs = self._zep_search_kwargs(op)
         if kwargs is not None:
             try:
-                result = await self._zep.graph.search(**kwargs)
+                scope = kwargs.pop("scope")
+                graph_uuid = kwargs.pop("graph_uuid")
+                if scope == "auto":
+                    result = await self._zep.graph.get_context(
+                        graph_uuid,
+                        query=kwargs["query"],
+                    )
+                else:
+                    result = await getattr(self._zep.graph, f"search_{scope}")(graph_uuid, **kwargs)
                 items = self._results_to_search_items(op, result)
             except Exception:
                 logger.warning("Zep graph search failed for %s", op.namespace_prefix, exc_info=True)
@@ -448,7 +425,17 @@ class ZepStore(BaseStore):
                 )
             else:
                 try:
-                    result = self._sync_zep.graph.search(**kwargs)
+                    scope = kwargs.pop("scope")
+                    graph_uuid = kwargs.pop("graph_uuid")
+                    if scope == "auto":
+                        result = self._sync_zep.graph.get_context(
+                            graph_uuid,
+                            query=kwargs["query"],
+                        )
+                    else:
+                        result = getattr(self._sync_zep.graph, f"search_{scope}")(
+                            graph_uuid, **kwargs
+                        )
                     items = self._results_to_search_items(op, result)
                 except Exception:
                     logger.warning(

@@ -38,7 +38,7 @@ cd zep/integrations/langgraph/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `langgraph>=1.2.5`, `zep-cloud>=3.23.0`.
+Requirements: Python 3.11+, `langgraph>=1.2.5`, and `zep-cloud>=4.0.0,<5`.
 `langgraph` pulls in `langchain-core`, which provides the message and tool types
 this package uses.
 

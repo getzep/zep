@@ -4,7 +4,7 @@ Using ``ZepStore`` as a LangGraph ``BaseStore`` (secondary path).
 ``ZepStore`` is a hybrid-delegate :class:`~langgraph.store.base.BaseStore`: a
 backing KV store (here the default ``InMemoryStore``) handles exact-key
 ``get`` / ``put`` / ``delete``, while ``search`` is routed to Zep's semantic
-``graph.search`` and every ``put`` is also ingested into the Zep graph.
+V4 graph search and every ``put`` is also ingested into the Zep graph.
 
 This makes ``ZepStore`` a drop-in store for ``create_react_agent(store=...)``
 and for langmem's memory tools, which require a ``BaseStore``.
@@ -29,38 +29,29 @@ from __future__ import annotations
 
 import asyncio
 import os
-from uuid import uuid4
 
 from zep_cloud.client import AsyncZep
 
-from zep_langgraph import ZepStore
+from zep_langgraph import ZepStore, create_user
 
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 if not ZEP_API_KEY:
     raise OSError("ZEP_API_KEY is not set.")
 
-_suffix = uuid4().hex[:8]
-GRAPH_ID = f"langgraph-store-example-{_suffix}"
-NAMESPACE = (GRAPH_ID, "facts")
+NAMESPACE = ("memories", "facts")
 
 
 async def main() -> None:
     zep = AsyncZep(api_key=ZEP_API_KEY)
-
-    # Ensure the standalone graph the default namespace resolver targets exists.
-    # (Namespace ("<graph_id>", "facts") -> graph_id="<graph_id>".)
-    try:
-        await zep.graph.create(graph_id=GRAPH_ID)
-    except Exception:
-        pass  # already exists
+    user = await create_user(zep, first_name="Alice", last_name="Smith")
 
     # Default backing store is InMemoryStore; pass your own (e.g. PostgresStore)
     # for durable exact-key storage in production.
-    store = ZepStore(zep)
+    store = ZepStore(zep, graph_uuid=user.uuid_)
 
     print("=" * 60)
     print("LangGraph ZepStore example (hybrid-delegate BaseStore)")
-    print(f"  graph_id={GRAPH_ID}")
+    print(f"  graph_uuid={user.uuid_}")
     print("=" * 60)
 
     # --- put(): writes to the backing KV store AND ingests into Zep ---
@@ -79,7 +70,7 @@ async def main() -> None:
     print("\n--- Waiting 20s for Zep to ingest into the graph ---")
     await asyncio.sleep(20)
 
-    # --- search(): routed to Zep semantic graph.search ---
+    # --- search(): routed to Zep's V4 graph-search API ---
     print("\n--- search() routed to Zep semantic search ---")
     results = await store.asearch(NAMESPACE, query="What does Alice do for work?")
     if results:

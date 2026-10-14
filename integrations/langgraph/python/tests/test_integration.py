@@ -48,22 +48,21 @@ if not ZEP_API_KEY or not OPENAI_API_KEY:
 from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
 from langchain_openai import ChatOpenAI  # noqa: E402
 from langgraph.prebuilt import create_react_agent  # noqa: E402
-from zep_cloud import Message  # noqa: E402
+from zep_cloud import AddMessage  # noqa: E402
 from zep_cloud.client import AsyncZep  # noqa: E402
 
 from zep_langgraph import (  # noqa: E402
     build_system_message,
     create_graph_search_tool,
+    create_thread,
+    create_user,
     persist_messages,
 )
 
 # Unique IDs per run to avoid collisions.
-_suffix = uuid4().hex[:8]
-USER_ID = f"langgraph-integ-{_suffix}"
-THREAD_1 = f"langgraph-integ-t1-{_suffix}"
-
 FIRST_NAME = "IntegTest"
 LAST_NAME = "User"
+_suffix = uuid4().hex[:8]
 EMAIL = f"integtest-{_suffix}@example.com"
 
 BASE_INSTRUCTIONS = (
@@ -88,50 +87,24 @@ def check(description: str, condition: bool, detail: str = "") -> bool:
     return condition
 
 
-async def wait_for_episodes_processed(
-    zep: AsyncZep,
-    user_id: str,
-    timeout_seconds: int = 300,
-    poll_interval: float = 3.0,
-) -> None:
-    """Poll Zep episodes until all are processed or the timeout is reached."""
-    start = time.monotonic()
-    while True:
-        if time.monotonic() - start > timeout_seconds:
-            logger.warning("Timed out waiting for episode processing; continuing.")
-            return
-        try:
-            resp = await zep.graph.episode.get_by_user_id(user_id=user_id, lastn=20)
-        except Exception as exc:
-            logger.warning("Episode poll failed (%s); retrying.", exc)
-            await asyncio.sleep(poll_interval)
-            continue
-        episodes = resp.episodes or []
-        if episodes and all(e.processed for e in episodes):
-            logger.info("All %d episodes processed.", len(episodes))
-            return
-        await asyncio.sleep(poll_interval)
-
-
 async def wait_for_graph_searchable(
     zep: AsyncZep,
-    user_id: str,
+    graph_uuid: str,
     query: str,
     timeout_seconds: int = 300,
     poll_interval: float = 5.0,
 ) -> bool:
-    """Poll ``graph.search`` until it returns at least one edge.
+    """Poll V4 edge search until it returns at least one result.
 
-    Episodes can report ``processed`` before the extracted facts are actually
-    searchable, so gate the recall turn on the signal it depends on: a live
-    graph search returning results.
+    Gate the recall turn on the signal it depends on: a live graph search
+    returning results.
     """
     start = time.monotonic()
     while time.monotonic() - start <= timeout_seconds:
         try:
-            result = await zep.graph.search(user_id=user_id, query=query, scope="edges", limit=5)
-            if result.edges:
-                logger.info("Graph search returned %d edges.", len(result.edges))
+            result = await zep.graph.search_edges(graph_uuid, query=query, page_size=5)
+            if result.items:
+                logger.info("Graph search returned %d edges.", len(result.items))
                 return True
         except Exception as exc:
             logger.warning("Graph search poll failed (%s); retrying.", exc)
@@ -140,16 +113,18 @@ async def wait_for_graph_searchable(
     return False
 
 
-def build_agent(zep: AsyncZep, thread_id: str) -> Callable[[str], Awaitable[str]]:
+def build_agent(
+    zep: AsyncZep, thread_uuid: str, graph_uuid: str
+) -> Callable[[str], Awaitable[str]]:
     """Build a ReAct agent wired to Zep on the given thread; return a chat fn."""
 
     async def prompt(state: dict) -> list:
         system = await build_system_message(
-            zep, thread_id=thread_id, base_instructions=BASE_INSTRUCTIONS
+            zep, thread_uuid=thread_uuid, base_instructions=BASE_INSTRUCTIONS
         )
         return [system, *state["messages"]]
 
-    search_tool = create_graph_search_tool(zep, user_id=USER_ID, scope="edges")
+    search_tool = create_graph_search_tool(zep, graph_uuid=graph_uuid, scope="edges")
     model = ChatOpenAI(model=OPENAI_MODEL)
     agent = create_react_agent(model=model, tools=[search_tool], prompt=prompt)
 
@@ -159,9 +134,9 @@ def build_agent(zep: AsyncZep, thread_id: str) -> Callable[[str], Awaitable[str]
         reply_text = reply.content if isinstance(reply.content, str) else str(reply.content)
         await persist_messages(
             zep,
-            thread_id=thread_id,
+            thread_uuid=thread_uuid,
             messages=[
-                Message(role="user", content=user_text, name=f"{FIRST_NAME} {LAST_NAME}"),
+                AddMessage(role="user", content=user_text, name=f"{FIRST_NAME} {LAST_NAME}"),
                 AIMessage(content=reply_text),
             ],
         )
@@ -173,21 +148,19 @@ def build_agent(zep: AsyncZep, thread_id: str) -> Callable[[str], Awaitable[str]
 async def main() -> None:
     zep = AsyncZep(api_key=ZEP_API_KEY)
     passed = True
+    user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+    thread = await create_thread(zep, user_uuid=user.uuid_)
 
     print(f"\n{'=' * 70}")
     print("Zep LangGraph Integration Test")
-    print(f"  User:    {USER_ID}")
-    print(f"  Thread:  {THREAD_1}")
+    print(f"  User:    {user.uuid_}")
+    print(f"  Thread:  {thread.uuid_}")
     print(f"{'=' * 70}\n")
 
     try:
-        # -- One-time Zep setup: create the user and thread out-of-band. ------
-        await zep.user.add(user_id=USER_ID, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
-        await zep.thread.create(thread_id=THREAD_1, user_id=USER_ID)
-
         # -- Conversation 1: seed facts via the agent. -----------------------
         print("[Step 1] Conversation 1: seeding facts...")
-        chat1 = build_agent(zep, THREAD_1)
+        chat1 = build_agent(zep, thread.uuid_, user.uuid_)
         seeds = [
             "My name is IntegTest. I work at Acme Corp as a data scientist.",
             "I live in Portland, Oregon and I love hiking and photography.",
@@ -200,15 +173,21 @@ async def main() -> None:
 
         # -- Verify user metadata --------------------------------------------
         print("[Step 2] Verifying Zep user metadata...")
-        user = await zep.user.get(user_id=USER_ID)
-        passed &= check("first_name matches", user.first_name == FIRST_NAME, str(user.first_name))
-        passed &= check("last_name matches", user.last_name == LAST_NAME, str(user.last_name))
-        passed &= check("email matches", user.email == EMAIL, str(user.email))
+        fetched_user = await zep.user.get(user_uuid=user.uuid_)
+        passed &= check(
+            "first_name matches",
+            fetched_user.first_name == FIRST_NAME,
+            str(fetched_user.first_name),
+        )
+        passed &= check(
+            "last_name matches", fetched_user.last_name == LAST_NAME, str(fetched_user.last_name)
+        )
+        passed &= check("email matches", fetched_user.email == EMAIL, str(fetched_user.email))
 
         # -- Verify thread 1 captured both sides -----------------------------
         print("\n[Step 3] Verifying thread 1 messages...")
-        t1 = await zep.thread.get(thread_id=THREAD_1, lastn=20)
-        messages = t1.messages or []
+        page = await zep.thread.list_messages(thread_uuid=thread.uuid_, page_size=20)
+        messages = page.items or []
         user_msgs = [m for m in messages if m.role == "user"]
         asst_msgs = [m for m in messages if m.role == "assistant"]
         print(f"  {len(user_msgs)} user, {len(asst_msgs)} assistant messages")
@@ -217,16 +196,15 @@ async def main() -> None:
 
         # -- Wait for graph ingestion ----------------------------------------
         print("\n[Step 4] Waiting for Zep to process episodes...")
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
         searchable = await wait_for_graph_searchable(
-            zep, USER_ID, query="Where does IntegTest work?"
+            zep, user.uuid_, query="Where does IntegTest work?"
         )
         passed &= check("User graph is searchable", searchable)
 
         # -- Recall through the integration's graph-search tool --------------
         print("\n[Step 5] Recalling facts through search_memory...")
         keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
-        search_tool = create_graph_search_tool(zep, user_id=USER_ID, scope="edges")
+        search_tool = create_graph_search_tool(zep, graph_uuid=user.uuid_, scope="edges")
         recall = str(await search_tool.ainvoke({"query": "Where does IntegTest work?"})).lower()
         found = [kw for kw in keywords if kw in recall]
         print(f"  Search results: {recall}\n")
@@ -238,10 +216,11 @@ async def main() -> None:
         )
 
     finally:
-        print("\n[Cleanup] Deleting test user...")
+        print("\n[Cleanup] Deleting test thread and user...")
         try:
-            await zep.user.delete(user_id=USER_ID)
-            print(f"  Deleted {USER_ID}")
+            await zep.thread.delete(thread_uuid=thread.uuid_)
+            await zep.user.delete(user_uuid=user.uuid_)
+            print(f"  Deleted {user.uuid_}")
         except Exception as exc:
             print(f"  Warning: could not delete user: {exc}")
 
@@ -256,12 +235,11 @@ async def main() -> None:
 async def test_integration_full_lifecycle() -> None:
     """Pytest entry point for the live integration test."""
     zep = AsyncZep(api_key=ZEP_API_KEY)
+    user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
+    thread = await create_thread(zep, user_uuid=user.uuid_)
 
     try:
-        await zep.user.add(user_id=USER_ID, first_name=FIRST_NAME, last_name=LAST_NAME, email=EMAIL)
-        await zep.thread.create(thread_id=THREAD_1, user_id=USER_ID)
-
-        chat1 = build_agent(zep, THREAD_1)
+        chat1 = build_agent(zep, thread.uuid_, user.uuid_)
         # One combined turn on purpose: each persist_messages call creates one
         # Zep extraction episode, and a user's episodes process serially, so
         # extra turns multiply the live-test ingestion wait.
@@ -270,30 +248,30 @@ async def test_integration_full_lifecycle() -> None:
             "I live in Portland, Oregon and I love hiking and photography."
         )
 
-        user = await zep.user.get(user_id=USER_ID)
-        assert user.first_name == FIRST_NAME
-        assert user.email == EMAIL
+        fetched_user = await zep.user.get(user_uuid=user.uuid_)
+        assert fetched_user.first_name == FIRST_NAME
+        assert fetched_user.email == EMAIL
 
-        t1 = await zep.thread.get(thread_id=THREAD_1, lastn=20)
-        messages = t1.messages or []
+        page = await zep.thread.list_messages(thread_uuid=thread.uuid_, page_size=20)
+        messages = page.items or []
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)
 
-        await wait_for_episodes_processed(zep, USER_ID, timeout_seconds=300)
-        assert await wait_for_graph_searchable(zep, USER_ID, query="Where does IntegTest work?"), (
-            "user graph never became searchable"
-        )
+        assert await wait_for_graph_searchable(
+            zep, user.uuid_, query="Where does IntegTest work?"
+        ), "user graph never became searchable"
 
         # Exercise the integration's tool directly. Whether an LLM elects to
         # call an optional tool is nondeterministic and is not a reliable signal
         # for whether ingestion and graph recall work.
         keywords = ["acme", "data scientist", "portland", "hiking", "photography"]
-        search_tool = create_graph_search_tool(zep, user_id=USER_ID, scope="edges")
+        search_tool = create_graph_search_tool(zep, graph_uuid=user.uuid_, scope="edges")
         recall = str(await search_tool.ainvoke({"query": "Where does IntegTest work?"})).lower()
         assert any(kw in recall for kw in keywords), f"no recall in: {recall}"
     finally:
         try:
-            await zep.user.delete(user_id=USER_ID)
+            await zep.thread.delete(thread_uuid=thread.uuid_)
+            await zep.user.delete(user_uuid=user.uuid_)
         except Exception:
             pass
 

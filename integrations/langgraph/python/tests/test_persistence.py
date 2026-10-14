@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from zep_cloud import Message
+from zep_cloud import AddMessage
 
 from zep_langgraph.persistence import (
     MAX_MESSAGE_CHARS,
@@ -45,7 +45,7 @@ class TestToZepMessage:
         assert to_zep_message(AIMessage(content="")) is None
 
     def test_existing_zep_message_passthrough(self) -> None:
-        original = Message(role="user", content="kept", name="Bob")
+        original = AddMessage(role="user", content="kept", name="Bob")
         assert to_zep_message(original) is original
 
     def test_user_name_applied_to_user_role(self) -> None:
@@ -76,9 +76,9 @@ class TestToZepMessage:
         assert len(msg.content) == MAX_MESSAGE_CHARS
 
     def test_native_zep_message_oversize_truncated(self) -> None:
-        # Native Zep Message objects (the README/example path) must also be
+        # Native Zep AddMessage objects (the README/example path) must also be
         # truncated, or Zep returns a 400 for content > 4096 chars.
-        original = Message(role="user", content="x" * (MAX_MESSAGE_CHARS + 500), name="Bob")
+        original = AddMessage(role="user", content="x" * (MAX_MESSAGE_CHARS + 500), name="Bob")
         msg = to_zep_message(original)
         assert msg is not None
         assert len(msg.content) == MAX_MESSAGE_CHARS
@@ -87,7 +87,7 @@ class TestToZepMessage:
         assert len(original.content) == MAX_MESSAGE_CHARS + 500
 
     def test_native_zep_message_within_limit_passthrough(self) -> None:
-        original = Message(role="user", content="short", name="Bob")
+        original = AddMessage(role="user", content="short", name="Bob")
         assert to_zep_message(original) is original
 
 

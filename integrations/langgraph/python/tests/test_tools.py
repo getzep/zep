@@ -18,14 +18,24 @@ from zep_langgraph.tools import (
 def _make_async_client() -> MagicMock:
     client = MagicMock()
     client.graph = MagicMock()
-    client.graph.search = AsyncMock()
+    client.graph.search_edges = AsyncMock()
+    client.graph.search = client.graph.search_edges
+    client.graph.get_context = AsyncMock()
+    for scope in ("edges", "nodes", "episodes", "observations", "thread_summaries"):
+        if scope != "edges":
+            setattr(client.graph, f"search_{scope}", AsyncMock())
     return client
 
 
 def _make_sync_client() -> MagicMock:
     client = MagicMock()
     client.graph = MagicMock()
-    client.graph.search = MagicMock()
+    client.graph.search_edges = MagicMock()
+    client.graph.search = client.graph.search_edges
+    client.graph.get_context = MagicMock()
+    for scope in ("edges", "nodes", "episodes", "observations", "thread_summaries"):
+        if scope != "edges":
+            setattr(client.graph, f"search_{scope}", MagicMock())
     return client
 
 
@@ -56,52 +66,46 @@ def _episode(content: str) -> MagicMock:
 
 def _result(edges=None, nodes=None, episodes=None, context=None) -> MagicMock:
     r = MagicMock()
-    r.edges = edges
-    r.nodes = nodes
-    r.episodes = episodes
+    r.items = edges or nodes or episodes or []
     r.context = context
     return r
 
 
 class TestTargetValidation:
-    def test_requires_exactly_one_target(self) -> None:
-        with pytest.raises(ValueError, match="exactly one"):
+    def test_requires_graph_uuid(self) -> None:
+        with pytest.raises(TypeError, match="graph_uuid"):
             create_graph_search_tool(_make_async_client())
 
-    def test_rejects_both_targets(self) -> None:
-        with pytest.raises(ValueError, match="exactly one"):
-            create_graph_search_tool(_make_async_client(), user_id="u", graph_id="g")
+    def test_rejects_empty_graph_uuid(self) -> None:
+        with pytest.raises(ValueError, match="graph_uuid"):
+            create_graph_search_tool(_make_async_client(), graph_uuid="")
 
-    def test_user_id_target_ok(self) -> None:
-        tool = create_graph_search_tool(_make_async_client(), user_id="u")
-        assert isinstance(tool, StructuredTool)
-
-    def test_graph_id_target_ok(self) -> None:
-        tool = create_graph_search_tool(_make_async_client(), graph_id="g")
+    def test_graph_uuid_target_ok(self) -> None:
+        tool = create_graph_search_tool(_make_async_client(), graph_uuid="g")
         assert isinstance(tool, StructuredTool)
 
 
 class TestToolMetadata:
     def test_default_name_and_description(self) -> None:
-        tool = create_graph_search_tool(_make_async_client(), user_id="u")
+        tool = create_graph_search_tool(_make_async_client(), graph_uuid="u")
         assert tool.name == "search_memory"
         assert "memory" in tool.description.lower()
 
     def test_custom_name_and_description(self) -> None:
         tool = create_graph_search_tool(
-            _make_async_client(), graph_id="docs", name="search_docs", description="Find docs."
+            _make_async_client(), graph_uuid="docs", name="search_docs", description="Find docs."
         )
         assert tool.name == "search_docs"
         assert tool.description == "Find docs."
 
     def test_is_async_tool(self) -> None:
-        tool = create_graph_search_tool(_make_async_client(), user_id="u")
+        tool = create_graph_search_tool(_make_async_client(), graph_uuid="u")
         assert tool.coroutine is not None
 
 
 class TestPinOrExposeSchema:
     def test_search_tool_exposes_params_by_default(self) -> None:
-        tool = create_graph_search_tool(_make_async_client(), user_id="u")
+        tool = create_graph_search_tool(_make_async_client(), graph_uuid="u")
         schema = tool.args_schema.model_json_schema()
         properties = schema["properties"]
         for name in ("query", "scope", "reranker", "limit", "mmr_lambda", "center_node_uuid"):
@@ -109,7 +113,7 @@ class TestPinOrExposeSchema:
         assert schema["required"] == ["query"]
 
     def test_search_tool_six_scopes(self) -> None:
-        tool = create_graph_search_tool(_make_async_client(), user_id="u")
+        tool = create_graph_search_tool(_make_async_client(), graph_uuid="u")
         schema = tool.args_schema.model_json_schema()
         scope_enum = schema["properties"]["scope"]["enum"]
         assert set(scope_enum) == {
@@ -122,7 +126,7 @@ class TestPinOrExposeSchema:
         }
 
     def test_search_tool_five_rerankers(self) -> None:
-        tool = create_graph_search_tool(_make_async_client(), user_id="u")
+        tool = create_graph_search_tool(_make_async_client(), graph_uuid="u")
         schema = tool.args_schema.model_json_schema()
         reranker_enum = schema["properties"]["reranker"]["enum"]
         assert set(reranker_enum) == {
@@ -135,7 +139,7 @@ class TestPinOrExposeSchema:
 
     def test_constructor_only_params_never_in_schema(self) -> None:
         tool = create_graph_search_tool(
-            _make_async_client(), user_id="u", search_filters={"node_labels": ["Person"]}
+            _make_async_client(), graph_uuid="u", search_filters={"node_labels": ["Person"]}
         )
         schema = tool.args_schema.model_json_schema()
         assert "search_filters" not in schema["properties"]
@@ -143,9 +147,9 @@ class TestPinOrExposeSchema:
 
     def test_search_tool_pinned_params_hidden_and_sent(self) -> None:
         client = _make_async_client()
-        client.graph.search.return_value = _result(nodes=[_node("Alice", "engineer")])
+        client.graph.search_nodes.return_value = _result(nodes=[_node("Alice", "engineer")])
         tool = create_graph_search_tool(
-            client, user_id="u", pinned_params={"scope": "nodes", "limit": 3}
+            client, graph_uuid="u", pinned_params={"scope": "nodes", "limit": 3}
         )
         schema = tool.args_schema.model_json_schema()
         assert "scope" not in schema["properties"]
@@ -154,19 +158,19 @@ class TestPinOrExposeSchema:
     @pytest.mark.asyncio
     async def test_pinned_params_applied_to_call(self) -> None:
         client = _make_async_client()
-        client.graph.search.return_value = _result(nodes=[_node("Alice", "engineer")])
+        client.graph.search_nodes.return_value = _result(nodes=[_node("Alice", "engineer")])
         tool = create_graph_search_tool(
-            client, user_id="u", pinned_params={"scope": "nodes", "limit": 3}
+            client, graph_uuid="u", pinned_params={"scope": "nodes", "limit": 3}
         )
         out = await tool.ainvoke({"query": "who"})
-        call = client.graph.search.call_args.kwargs
-        assert call["scope"] == "nodes"
-        assert call["limit"] == 3
+        call = client.graph.search_nodes.call_args.kwargs
+        assert client.graph.search_nodes.called
+        assert call["page_size"] == 3
         assert "Alice" in out
 
     def test_search_tool_hidden_params_omitted_from_schema(self) -> None:
         tool = create_graph_search_tool(
-            _make_async_client(), user_id="u", hidden_params={"mmr_lambda"}
+            _make_async_client(), graph_uuid="u", hidden_params={"mmr_lambda"}
         )
         schema = tool.args_schema.model_json_schema()
         assert "mmr_lambda" not in schema["properties"]
@@ -176,10 +180,10 @@ class TestPinOrExposeSchema:
         client = _make_async_client()
         client.graph.search.return_value = _result(edges=[_edge("fact")])
         tool = create_graph_search_tool(
-            client, user_id="u", hidden_params={"mmr_lambda", "center_node_uuid"}
+            client, graph_uuid="u", hidden_params={"mmr_lambda", "center_node_uuid"}
         )
         await tool.ainvoke({"query": "x"})
-        call = client.graph.search.call_args.kwargs
+        call = client.graph.search_edges.call_args.kwargs
         assert "mmr_lambda" not in call
         assert "center_node_uuid" not in call
 
@@ -191,27 +195,29 @@ class TestPinOrExposeSchema:
         # should apply).
         client = _make_async_client()
         client.graph.search.return_value = _result(edges=[_edge("fact")])
-        tool = create_graph_search_tool(client, user_id="u")
+        tool = create_graph_search_tool(client, graph_uuid="u")
         await tool.ainvoke({"query": "x"})
         call = client.graph.search.call_args.kwargs
         assert "mmr_lambda" not in call
         assert "center_node_uuid" not in call
         # But defaulted params ARE sent.
-        assert call["scope"] == "edges"
+        assert client.graph.search_edges.called
         assert call["reranker"] == "rrf"
-        assert call["limit"] == 10
+        assert call["page_size"] == 10
 
     @pytest.mark.asyncio
     async def test_model_provided_mmr_lambda_forwarded(self) -> None:
         client = _make_async_client()
         client.graph.search.return_value = _result(edges=[_edge("fact")])
-        tool = create_graph_search_tool(client, user_id="u")
+        tool = create_graph_search_tool(client, graph_uuid="u")
         await tool.ainvoke({"query": "x", "reranker": "mmr", "mmr_lambda": 0.5})
         call = client.graph.search.call_args.kwargs
         assert call["mmr_lambda"] == 0.5
 
     def test_search_tool_legacy_args_pin(self) -> None:
-        tool = create_graph_search_tool(_make_async_client(), user_id="u", scope="nodes", limit=5)
+        tool = create_graph_search_tool(
+            _make_async_client(), graph_uuid="u", scope="nodes", limit=5
+        )
         schema = tool.args_schema.model_json_schema()
         assert "scope" not in schema["properties"]
         assert "limit" not in schema["properties"]
@@ -219,20 +225,22 @@ class TestPinOrExposeSchema:
     @pytest.mark.asyncio
     async def test_legacy_args_pin_applied_to_call(self) -> None:
         client = _make_async_client()
-        client.graph.search.return_value = _result(nodes=[_node("Alice", "x")])
-        tool = create_graph_search_tool(client, user_id="u", scope="nodes", limit=5)
+        client.graph.search_nodes.return_value = _result(nodes=[_node("Alice", "x")])
+        tool = create_graph_search_tool(client, graph_uuid="u", scope="nodes", limit=5)
         await tool.ainvoke({"query": "who"})
-        call = client.graph.search.call_args.kwargs
-        assert call["scope"] == "nodes"
-        assert call["limit"] == 5
+        call = client.graph.search_nodes.call_args.kwargs
+        assert client.graph.search_nodes.called
+        assert call["page_size"] == 5
 
     def test_unknown_pinned_param_rejected(self) -> None:
         with pytest.raises(ValueError, match="Unknown pinned"):
-            create_graph_search_tool(_make_async_client(), user_id="u", pinned_params={"bogus": 1})
+            create_graph_search_tool(
+                _make_async_client(), graph_uuid="u", pinned_params={"bogus": 1}
+            )
 
     def test_unknown_hidden_param_rejected(self) -> None:
         with pytest.raises(ValueError, match="Unknown hidden"):
-            create_graph_search_tool(_make_async_client(), user_id="u", hidden_params={"bogus"})
+            create_graph_search_tool(_make_async_client(), graph_uuid="u", hidden_params={"bogus"})
 
 
 class TestLimitClamping:
@@ -243,42 +251,42 @@ class TestLimitClamping:
         client = _make_async_client()
         client.graph.search.return_value = _result(edges=[])
         with caplog.at_level(logging.WARNING, logger="zep_langgraph.tools"):
-            tool = create_graph_search_tool(client, user_id="u", pinned_params={"limit": 100})
+            tool = create_graph_search_tool(client, graph_uuid="u", pinned_params={"limit": 100})
         assert "clamping" in caplog.text
 
         await tool.ainvoke({"query": "x"})
 
-        assert client.graph.search.call_args.kwargs["limit"] == 50
+        assert client.graph.search.call_args.kwargs["page_size"] == 50
 
     @pytest.mark.asyncio
     async def test_pinned_limit_below_one_clamped(self) -> None:
         client = _make_async_client()
         client.graph.search.return_value = _result(edges=[])
-        tool = create_graph_search_tool(client, user_id="u", pinned_params={"limit": 0})
+        tool = create_graph_search_tool(client, graph_uuid="u", pinned_params={"limit": 0})
 
         await tool.ainvoke({"query": "x"})
 
-        assert client.graph.search.call_args.kwargs["limit"] == 1
+        assert client.graph.search.call_args.kwargs["page_size"] == 1
 
     @pytest.mark.asyncio
     async def test_model_provided_limit_above_ceiling_clamped(self) -> None:
         client = _make_async_client()
         client.graph.search.return_value = _result(edges=[])
-        tool = create_graph_search_tool(client, user_id="u")
+        tool = create_graph_search_tool(client, graph_uuid="u")
 
         await tool.ainvoke({"query": "x", "limit": 200})
 
-        assert client.graph.search.call_args.kwargs["limit"] == 50
+        assert client.graph.search.call_args.kwargs["page_size"] == 50
 
     @pytest.mark.asyncio
     async def test_model_provided_limit_below_one_clamped(self) -> None:
         client = _make_async_client()
         client.graph.search.return_value = _result(edges=[])
-        tool = create_graph_search_tool(client, user_id="u")
+        tool = create_graph_search_tool(client, graph_uuid="u")
 
         await tool.ainvoke({"query": "x", "limit": 0})
 
-        assert client.graph.search.call_args.kwargs["limit"] == 1
+        assert client.graph.search.call_args.kwargs["page_size"] == 1
 
 
 class TestAutoScopeReranker:
@@ -287,40 +295,51 @@ class TestAutoScopeReranker:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         client = _make_async_client()
-        client.graph.search.return_value = _result(context="ctx")
+        client.graph.get_context.return_value = _result(context="ctx")
         with caplog.at_level(logging.WARNING, logger="zep_langgraph.tools"):
             tool = create_graph_search_tool(
-                client, user_id="u", pinned_params={"scope": "auto", "reranker": "node_distance"}
+                client, graph_uuid="u", pinned_params={"scope": "auto", "reranker": "node_distance"}
             )
         assert "node_distance" in caplog.text
 
         await tool.ainvoke({"query": "x"})
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["scope"] == "auto"
+        kwargs = client.graph.get_context.call_args.kwargs
+        assert client.graph.get_context.call_args.args[0] == "u"
         assert "reranker" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_auto_scope_sends_query_and_supported_filters_only(self) -> None:
+        client = _make_async_client()
+        filters = {"node_labels": ["Person"]}
+        client.graph.get_context.return_value = _result(context="ctx")
+        tool = create_graph_search_tool(client, graph_uuid="u", search_filters=filters)
+
+        await tool.ainvoke({"query": "who", "scope": "auto", "limit": 5})
+
+        client.graph.get_context.assert_awaited_once_with("u", query="who", filters=filters)
 
     @pytest.mark.asyncio
     async def test_model_provided_auto_scope_drops_incompatible_reranker(self) -> None:
         client = _make_async_client()
-        client.graph.search.return_value = _result(context="ctx")
-        tool = create_graph_search_tool(client, user_id="u")
+        client.graph.get_context.return_value = _result(context="ctx")
+        tool = create_graph_search_tool(client, graph_uuid="u")
 
         await tool.ainvoke({"query": "x", "scope": "auto", "reranker": "episode_mentions"})
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["scope"] == "auto"
+        kwargs = client.graph.get_context.call_args.kwargs
+        assert client.graph.get_context.call_args.args[0] == "u"
         assert "reranker" not in kwargs
 
     @pytest.mark.asyncio
     async def test_non_auto_scope_keeps_reranker(self) -> None:
         client = _make_async_client()
-        client.graph.search.return_value = _result(edges=[])
-        tool = create_graph_search_tool(client, user_id="u")
+        client.graph.search_edges.return_value = _result(edges=[])
+        tool = create_graph_search_tool(client, graph_uuid="u")
 
         await tool.ainvoke({"query": "x", "scope": "edges", "reranker": "node_distance"})
 
-        assert client.graph.search.call_args.kwargs["reranker"] == "node_distance"
+        assert client.graph.search_edges.call_args.kwargs["reranker"] == "node_distance"
 
 
 class TestAsyncToolExecution:
@@ -328,44 +347,41 @@ class TestAsyncToolExecution:
     async def test_searches_user_graph(self) -> None:
         client = _make_async_client()
         client.graph.search.return_value = _result(edges=[_edge("Alice likes blue")])
-        tool = create_graph_search_tool(client, user_id="user-42")
+        tool = create_graph_search_tool(client, graph_uuid="user-42")
 
         out = await tool.ainvoke({"query": "preferences"})
 
-        call = client.graph.search.call_args.kwargs
-        assert call["user_id"] == "user-42"
-        assert "graph_id" not in call
+        call = client.graph.search_edges.call_args.kwargs
+        assert client.graph.search_edges.call_args.args[0] == "user-42"
         assert call["query"] == "preferences"
-        assert call["scope"] == "edges"
-        assert call["limit"] == 10
+        assert client.graph.search_edges.called
+        assert call["page_size"] == 10
         assert "Alice likes blue" in out
 
     @pytest.mark.asyncio
     async def test_searches_standalone_graph(self) -> None:
         client = _make_async_client()
-        client.graph.search.return_value = _result(edges=[_edge("Policy X applies")])
-        tool = create_graph_search_tool(client, graph_id="kb")
+        client.graph.search_edges.return_value = _result(edges=[_edge("Policy X applies")])
+        tool = create_graph_search_tool(client, graph_uuid="kb")
 
         await tool.ainvoke({"query": "policy"})
 
-        call = client.graph.search.call_args.kwargs
-        assert call["graph_id"] == "kb"
-        assert "user_id" not in call
+        assert client.graph.search_edges.call_args.args[0] == "kb"
 
     @pytest.mark.asyncio
     async def test_model_chosen_scope_reranker_limit(self) -> None:
         client = _make_async_client()
-        client.graph.search.return_value = _result(nodes=[_node("Alice", "engineer")])
-        tool = create_graph_search_tool(client, user_id="u")
+        client.graph.search_nodes.return_value = _result(nodes=[_node("Alice", "engineer")])
+        tool = create_graph_search_tool(client, graph_uuid="u")
 
         out = await tool.ainvoke(
             {"query": "who", "scope": "nodes", "reranker": "cross_encoder", "limit": 3}
         )
 
-        call = client.graph.search.call_args.kwargs
-        assert call["scope"] == "nodes"
+        call = client.graph.search_nodes.call_args.kwargs
+        assert client.graph.search_nodes.called
         assert call["reranker"] == "cross_encoder"
-        assert call["limit"] == 3
+        assert call["page_size"] == 3
         assert "Alice" in out
 
     @pytest.mark.asyncio
@@ -373,23 +389,23 @@ class TestAsyncToolExecution:
         client = _make_async_client()
         client.graph.search.return_value = _result(edges=[])
         filters = {"node_labels": ["Person"]}
-        tool = create_graph_search_tool(client, user_id="u", search_filters=filters)
+        tool = create_graph_search_tool(client, graph_uuid="u", search_filters=filters)
 
         await tool.ainvoke({"query": "x"})
 
-        assert client.graph.search.call_args.kwargs["search_filters"] == filters
+        assert client.graph.search_edges.call_args.kwargs["filters"] == filters
 
     @pytest.mark.asyncio
     async def test_bfs_origin_node_uuids_passed(self) -> None:
         client = _make_async_client()
         client.graph.search.return_value = _result(edges=[])
         tool = create_graph_search_tool(
-            client, user_id="u", bfs_origin_node_uuids=["uuid-1", "uuid-2"]
+            client, graph_uuid="u", bfs_origin_node_uuids=["uuid-1", "uuid-2"]
         )
 
         await tool.ainvoke({"query": "x"})
 
-        assert client.graph.search.call_args.kwargs["bfs_origin_node_uuids"] == [
+        assert client.graph.search_edges.call_args.kwargs["bfs_origin_node_uuids"] == [
             "uuid-1",
             "uuid-2",
         ]
@@ -397,7 +413,7 @@ class TestAsyncToolExecution:
     @pytest.mark.asyncio
     async def test_empty_query_short_circuits(self) -> None:
         client = _make_async_client()
-        tool = create_graph_search_tool(client, user_id="u")
+        tool = create_graph_search_tool(client, graph_uuid="u")
         out = await tool.ainvoke({"query": "   "})
         assert "Error" in out
         client.graph.search.assert_not_awaited()
@@ -406,7 +422,7 @@ class TestAsyncToolExecution:
     async def test_zep_failure_returns_error_string(self) -> None:
         client = _make_async_client()
         client.graph.search.side_effect = RuntimeError("boom")
-        tool = create_graph_search_tool(client, user_id="u")
+        tool = create_graph_search_tool(client, graph_uuid="u")
         out = await tool.ainvoke({"query": "x"})
         assert "failed" in out.lower()
 
@@ -414,48 +430,85 @@ class TestAsyncToolExecution:
     async def test_no_results_message(self) -> None:
         client = _make_async_client()
         client.graph.search.return_value = _result(edges=[])
-        tool = create_graph_search_tool(client, user_id="u")
+        tool = create_graph_search_tool(client, graph_uuid="u")
         out = await tool.ainvoke({"query": "x"})
         assert out == "No results found."
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("scope", ["episodes", "observations", "thread_summaries"])
+    async def test_dispatches_to_scope_specific_v4_method(self, scope: str) -> None:
+        client = _make_async_client()
+        method = getattr(client.graph, f"search_{scope}")
+        method.return_value = _result()
+        tool = create_graph_search_tool(client, graph_uuid="g")
+
+        await tool.ainvoke({"query": "x", "scope": scope})
+
+        method.assert_awaited_once()
+        assert method.call_args.args[0] == "g"
 
 
 class TestSyncToolExecution:
     def test_searches_and_formats(self) -> None:
         client = _make_sync_client()
         client.graph.search.return_value = _result(edges=[_edge("fact one")])
-        tool = create_graph_search_tool_sync(client, user_id="u")
+        tool = create_graph_search_tool_sync(client, graph_uuid="u")
         out = tool.invoke({"query": "q"})
         assert "fact one" in out
 
     def test_zep_failure_returns_error(self) -> None:
         client = _make_sync_client()
         client.graph.search.side_effect = RuntimeError("down")
-        tool = create_graph_search_tool_sync(client, graph_id="g")
+        tool = create_graph_search_tool_sync(client, graph_uuid="g")
         out = tool.invoke({"query": "q"})
         assert "failed" in out.lower()
 
     def test_sync_tool_exposes_params_by_default(self) -> None:
-        tool = create_graph_search_tool_sync(_make_sync_client(), user_id="u")
+        tool = create_graph_search_tool_sync(_make_sync_client(), graph_uuid="u")
         schema = tool.args_schema.model_json_schema()
         for name in ("query", "scope", "reranker", "limit", "mmr_lambda", "center_node_uuid"):
             assert name in schema["properties"]
 
     def test_sync_tool_pinned_params(self) -> None:
         client = _make_sync_client()
-        client.graph.search.return_value = _result(nodes=[_node("Bob", None)])
-        tool = create_graph_search_tool_sync(client, user_id="u", pinned_params={"scope": "nodes"})
+        client.graph.search_nodes.return_value = _result(nodes=[_node("Bob", None)])
+        tool = create_graph_search_tool_sync(
+            client, graph_uuid="u", pinned_params={"scope": "nodes"}
+        )
         out = tool.invoke({"query": "who"})
-        assert client.graph.search.call_args.kwargs["scope"] == "nodes"
+        assert client.graph.search_nodes.call_args.kwargs["query"] == "who"
         assert "Bob" in out
 
     def test_sync_tool_omits_unset_none_default_params(self) -> None:
         client = _make_sync_client()
         client.graph.search.return_value = _result(edges=[_edge("fact")])
-        tool = create_graph_search_tool_sync(client, user_id="u")
+        tool = create_graph_search_tool_sync(client, graph_uuid="u")
         tool.invoke({"query": "x"})
-        call = client.graph.search.call_args.kwargs
+        call = client.graph.search_edges.call_args.kwargs
         assert "mmr_lambda" not in call
         assert "center_node_uuid" not in call
+
+    @pytest.mark.parametrize("scope", ["episodes", "observations", "thread_summaries"])
+    def test_sync_dispatches_to_scope_specific_v4_method(self, scope: str) -> None:
+        client = _make_sync_client()
+        method = getattr(client.graph, f"search_{scope}")
+        method.return_value = _result()
+        tool = create_graph_search_tool_sync(client, graph_uuid="g")
+
+        tool.invoke({"query": "x", "scope": scope})
+
+        method.assert_called_once()
+        assert method.call_args.args[0] == "g"
+
+    def test_sync_auto_scope_uses_context_api(self) -> None:
+        client = _make_sync_client()
+        client.graph.get_context.return_value = _result(context="context")
+        tool = create_graph_search_tool_sync(client, graph_uuid="g")
+
+        result = tool.invoke({"query": "who", "scope": "auto"})
+
+        client.graph.get_context.assert_called_once_with("g", query="who")
+        assert result == "context"
 
 
 class TestFormatResults:

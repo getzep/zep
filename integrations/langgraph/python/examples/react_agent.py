@@ -27,17 +27,18 @@ from __future__ import annotations
 
 import asyncio
 import os
-from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
-from zep_cloud import Message
+from zep_cloud import AddMessage
 from zep_cloud.client import AsyncZep
 
 from zep_langgraph import (
     build_system_message,
     create_graph_search_tool,
+    create_thread,
+    create_user,
     persist_messages,
 )
 
@@ -49,9 +50,6 @@ if not ZEP_API_KEY:
 if not OPENAI_API_KEY:
     raise OSError("OPENAI_API_KEY is not set.")
 
-_suffix = uuid4().hex[:8]
-USER_ID = f"langgraph-example-{_suffix}"
-THREAD_ID = f"langgraph-example-thread-{_suffix}"
 FIRST_NAME = "Alice"
 LAST_NAME = "Smith"
 
@@ -64,27 +62,25 @@ BASE_INSTRUCTIONS = (
 
 async def main() -> None:
     zep = AsyncZep(api_key=ZEP_API_KEY)
+    user = await create_user(zep, first_name=FIRST_NAME, last_name=LAST_NAME)
+    thread = await create_thread(zep, user_uuid=user.uuid_)
 
     print("=" * 60)
     print("LangGraph + Zep (create_react_agent, primary path)")
-    print(f"  user_id={USER_ID}  thread_id={THREAD_ID}")
+    print(f"  user_uuid={user.uuid_}  thread_uuid={thread.uuid_}")
     print("=" * 60)
-
-    # --- One-time Zep setup: create the user and thread out-of-band. ---
-    await zep.user.add(user_id=USER_ID, first_name=FIRST_NAME, last_name=LAST_NAME)
-    await zep.thread.create(thread_id=THREAD_ID, user_id=USER_ID)
 
     # --- Prompt callable: inject the Zep Context Block on every turn. ---
     async def prompt(state: dict) -> list:
         system = await build_system_message(
             zep,
-            thread_id=THREAD_ID,
+            thread_uuid=thread.uuid_,
             base_instructions=BASE_INSTRUCTIONS,
         )
         return [system, *state["messages"]]
 
     # --- On-demand graph search over the user's personal graph. ---
-    search_tool = create_graph_search_tool(zep, user_id=USER_ID, scope="edges")
+    search_tool = create_graph_search_tool(zep, graph_uuid=user.uuid_, scope="edges")
 
     # gpt-5 family models are reasoning models and reject an explicit ``temperature``; omit it.
     model = ChatOpenAI(model="gpt-5-mini")
@@ -99,9 +95,9 @@ async def main() -> None:
         # Persist the user turn and the assistant reply to Zep.
         await persist_messages(
             zep,
-            thread_id=THREAD_ID,
+            thread_uuid=thread.uuid_,
             messages=[
-                Message(role="user", content=user_text, name=f"{FIRST_NAME} {LAST_NAME}"),
+                AddMessage(role="user", content=user_text, name=f"{FIRST_NAME} {LAST_NAME}"),
                 AIMessage(content=reply_text),
             ],
         )

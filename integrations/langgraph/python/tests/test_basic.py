@@ -38,7 +38,7 @@ class TestPackageStructure:
         import zep_langgraph
 
         assert hasattr(zep_langgraph, "__version__")
-        assert zep_langgraph.__version__ == "0.2.2"
+        assert zep_langgraph.__version__ == "0.3.0"
 
     def test_author_exists(self) -> None:
         import zep_langgraph
@@ -70,7 +70,7 @@ class TestZepStoreIsBaseStore:
 
         from zep_langgraph import ZepStore
 
-        return ZepStore(MagicMock(spec=AsyncZep))
+        return ZepStore(MagicMock(spec=AsyncZep), graph_uuid="g")
 
     def test_is_instance_of_base_store(self) -> None:
         store = self._make_store()

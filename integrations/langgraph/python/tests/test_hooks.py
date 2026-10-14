@@ -15,7 +15,7 @@ def _make_async_client(context: str | None) -> MagicMock:
     client.thread = MagicMock()
     response = MagicMock()
     response.context = context
-    client.thread.get_user_context = AsyncMock(return_value=response)
+    client.thread.get_context = AsyncMock(return_value=response)
     return client
 
 
@@ -24,7 +24,7 @@ class TestCreateZepPreModelHook:
     async def test_pre_model_hook_injects_context(self) -> None:
         client = _make_async_client("User likes hiking.")
         hook = create_zep_pre_model_hook(
-            client, user_id="user-1", thread_id="thread-1", base_instructions="Be helpful."
+            client, graph_uuid="user-1", thread_uuid="thread-1", base_instructions="Be helpful."
         )
 
         state = {"messages": [HumanMessage(content="What do I like?")]}
@@ -43,9 +43,9 @@ class TestCreateZepPreModelHook:
     async def test_pre_model_hook_zep_failure_passthrough(self) -> None:
         client = MagicMock()
         client.thread = MagicMock()
-        client.thread.get_user_context = AsyncMock(side_effect=RuntimeError("down"))
+        client.thread.get_context = AsyncMock(side_effect=RuntimeError("down"))
         hook = create_zep_pre_model_hook(
-            client, user_id="user-1", thread_id="thread-1", base_instructions="Be helpful."
+            client, graph_uuid="user-1", thread_uuid="thread-1", base_instructions="Be helpful."
         )
 
         state = {"messages": [HumanMessage(content="hi")]}
@@ -61,7 +61,7 @@ class TestCreateZepPreModelHook:
         # Per the create_react_agent pre_model_hook contract, returning
         # `llm_input_messages` must NOT also update the `messages` state key.
         client = _make_async_client("fact")
-        hook = create_zep_pre_model_hook(client, user_id="u", thread_id="t")
+        hook = create_zep_pre_model_hook(client, graph_uuid="u", thread_uuid="t")
         state = {"messages": [HumanMessage(content="hi")]}
         result = await hook(state)
         assert "messages" not in result
@@ -74,17 +74,17 @@ class TestCreateZepPreModelHook:
             return f"built for {ctx.user_message}"
 
         hook = create_zep_pre_model_hook(
-            client, user_id="user-1", thread_id="thread-1", context_builder=builder
+            client, graph_uuid="user-1", thread_uuid="thread-1", context_builder=builder
         )
         state = {"messages": [HumanMessage(content="hello")]}
         result = await hook(state)
         assert "built for hello" in result["llm_input_messages"][0].content
-        client.thread.get_user_context.assert_not_called()
+        client.thread.get_context.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_pre_model_hook_no_human_message_uses_empty_query(self) -> None:
         client = _make_async_client("fact")
-        hook = create_zep_pre_model_hook(client, user_id="u", thread_id="t")
+        hook = create_zep_pre_model_hook(client, graph_uuid="u", thread_uuid="t")
         state = {"messages": [AIMessage(content="assistant only")]}
         result = await hook(state)
         assert isinstance(result["llm_input_messages"][0], SystemMessage)
@@ -95,7 +95,7 @@ class TestCreateZepPreModelHook:
         # empty; the hook must NOT prepend an empty SystemMessage (providers
         # such as Anthropic reject empty message content).
         client = _make_async_client(None)
-        hook = create_zep_pre_model_hook(client, user_id="u", thread_id="t")
+        hook = create_zep_pre_model_hook(client, graph_uuid="u", thread_uuid="t")
 
         state = {"messages": [HumanMessage(content="hi")]}
         result = await hook(state)
@@ -107,7 +107,7 @@ class TestCreateZepPreModelHook:
     async def test_pre_model_hook_custom_template(self) -> None:
         client = _make_async_client("fact")
         hook = create_zep_pre_model_hook(
-            client, user_id="u", thread_id="t", template="MEM: {context}"
+            client, graph_uuid="u", thread_uuid="t", template="MEM: {context}"
         )
         state = {"messages": [HumanMessage(content="hi")]}
         result = await hook(state)

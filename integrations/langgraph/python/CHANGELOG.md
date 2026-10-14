@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 0.3.0 (2026-10-22)
+
+### Changed
+
+- Migrated to `zep-cloud>=4.0.0,<5` and server-generated resource UUIDs.
+- Replaced `ensure_user` and `ensure_thread` with `create_user` and
+  `create_thread`, which return the created resources.
+- Updated context, persistence, search tools, and `ZepStore` to use V4 methods
+  and UUID arguments. `ZepStore` ingests with `graph.episode.add`.
+- Added all documented search scopes, `.items` result mapping, and the
+  model-visible search parameters with `pinned_params` and `hidden_params`.
+- Added the synchronous provisioning, context, persistence, and search-tool
+  variants. Context helpers and the pre-model hook accept `template_uuid` and
+  `context_builder`, and they degrade gracefully when retrieval fails.
+- The `auto` search scope uses `graph.get_context`. The V4 context request has
+  no reranker, page-size, MMR, center-node, or BFS fields, so the auto path
+  sends the query and supported filters only.
+
 ## 0.2.2 (2026-10-01)
 
 ### Changed

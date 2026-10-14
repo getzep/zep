@@ -31,21 +31,31 @@ import os
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
-from zep_cloud import Message
 from zep_cloud.client import AsyncZep
-from zep_langgraph import build_system_message, create_graph_search_tool, persist_messages
+from zep_cloud import AddMessage
+from zep_langgraph import (
+    build_system_message,
+    create_graph_search_tool,
+    create_thread,
+    create_user,
+    persist_messages,
+)
 
 zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
+user = await create_user(zep, first_name="Alice", last_name="Smith")
+thread = await create_thread(zep, user_uuid=user.uuid_)
+
 
 async def prompt(state):
     system = await build_system_message(
-        zep, thread_id="thread-1", base_instructions="You are a helpful assistant."
+        zep, thread_uuid=thread.uuid_, base_instructions="You are a helpful assistant."
     )
     return [system, *state["messages"]]
 
+
 agent = create_react_agent(
     model=ChatOpenAI(model="gpt-5-mini"),
-    tools=[create_graph_search_tool(zep, user_id="user-1")],
+    tools=[create_graph_search_tool(zep, graph_uuid=user.uuid_)],
     prompt=prompt,
 )
 
@@ -53,8 +63,8 @@ result = await agent.ainvoke({"messages": [HumanMessage(content="Where do I work
 reply = result["messages"][-1]
 await persist_messages(
     zep,
-    thread_id="thread-1",
-    messages=[Message(role="user", content="Where do I work?", name="Alice Smith"), reply],
+    thread_uuid=thread.uuid_,
+    messages=[AddMessage(role="user", content="Where do I work?", name="Alice Smith"), reply],
 )
 ```
 
@@ -69,7 +79,7 @@ from inside a graph node.
 
 ### Context injection — `build_system_message` / `get_zep_context`
 
-`thread.get_user_context(thread_id)` returns a token-efficient **Context Block**
+`thread.get_context(thread_uuid)` returns a token-efficient **Context Block**
 assembled from the *entire user graph* (the thread only scopes what is relevant
 right now). `build_system_message` fetches it and folds it into a
 `SystemMessage` together with your base instructions, ready to prepend to the
@@ -88,32 +98,31 @@ Implemented in [src/zep_langgraph/context.py](src/zep_langgraph/context.py).
 #### Custom context building — `context_builder`
 
 Pass `context_builder` to `get_zep_context` / `build_system_message` (or their
-`_sync` twins) to *replace* the default `thread.get_user_context` retrieval
+`_sync` twins) to *replace* the default `thread.get_context` retrieval
 with custom logic -- for example, searching a different graph, applying
 filters, or combining multiple sources:
 
 ```python
 from zep_langgraph import ContextInput, build_system_message
 
+
 async def my_builder(ctx: ContextInput) -> str | None:
-    results = await ctx.zep.graph.search(
-        user_id=ctx.user_id,
-        query=ctx.user_message,
-        scope="edges",
-    )
-    if not results.edges:
+    results = await ctx.zep.graph.search_edges(ctx.graph_uuid, query=ctx.user_message)
+    if not results.items:
         return None
-    return "\n".join(edge.fact for edge in results.edges)
+    return "\n".join(edge.fact for edge in results.items)
+
 
 system = await build_system_message(
-    zep, thread_id="thread-1",
+    zep,
+    thread_uuid="thread-1",
     context_builder=my_builder,
-    user_id="user-1",
+    graph_uuid="user-1",
     user_message=state["messages"][-1].content,
 )
 ```
 
-`ContextInput` bundles `zep`, `user_id`, `thread_id`, and `user_message` --
+`ContextInput` bundles `zep`, `graph_uuid`, `thread_uuid`, and `user_message` --
 these helpers are plain functions with no surrounding framework object, so
 `ContextInput` carries only the Zep call inputs (contrast with the
 framework-hooked ports, whose `ContextInput` also carries a tool/run context).
@@ -129,23 +138,27 @@ overlap, gather both yourself:
 import asyncio
 from zep_langgraph import build_system_message, persist_messages
 
+
 async def agent_node(state):
     system, _ = await asyncio.gather(
         build_system_message(
-            zep, thread_id="thread-1", context_builder=my_builder,
-            user_id="user-1", user_message=state["messages"][-1].content,
+            zep,
+            thread_uuid="thread-1",
+            context_builder=my_builder,
+            graph_uuid="user-1",
+            user_message=state["messages"][-1].content,
         ),
-        persist_messages(zep, thread_id="thread-1", messages=[state["messages"][-1]]),
+        persist_messages(zep, thread_uuid="thread-1", messages=[state["messages"][-1]]),
     )
     response = await llm.ainvoke([system, *state["messages"]])
-    await persist_messages(zep, thread_id="thread-1", messages=[response])
+    await persist_messages(zep, thread_uuid="thread-1", messages=[response])
     return {"messages": [response]}
 ```
 
 ### Persistence — `persist_messages`
 
 Wraps `thread.add_messages`. Accepts LangChain `BaseMessage` objects (converted
-automatically — `human`→`user`, `ai`→`assistant`, …) or native Zep `Message`
+automatically — `human`→`user`, `ai`→`assistant`, …) or native Zep `AddMessage`
 objects, flattens multimodal content to text, truncates over-long messages, and
 maps names so Zep can resolve identity. Pass `return_context=True` to fold
 persist + retrieve into one round-trip.
@@ -153,53 +166,52 @@ persist + retrieve into one round-trip.
 Implemented in
 [src/zep_langgraph/persistence.py](src/zep_langgraph/persistence.py).
 
-### Provisioning — `ensure_user` / `ensure_thread`
+### Provisioning — `create_user` / `create_thread`
 
 Explicitly provision the Zep user and thread out-of-band, before the first
 turn -- useful for onboarding flows that want genuine failures (auth, network,
 5xx) to raise loudly rather than degrade silently:
 
 ```python
-from zep_langgraph import ensure_thread, ensure_user
+from zep_langgraph import create_thread, create_user
 
-async def setup_user(zep_client, user_id: str) -> None:
-    ...  # e.g. configure per-user ontology
 
-created = await ensure_user(
+async def setup_user(zep_client, user) -> None: ...  # e.g. configure per-user ontology
+
+
+user = await create_user(
     zep,
-    user_id="user-1",
     first_name="Jane",
     last_name="Smith",
     email="jane@example.com",
-    on_created=setup_user,  # fires exactly once, only on real creation
+    on_created=setup_user,
 )
-await ensure_thread(zep, thread_id="thread-1", user_id="user-1")
+thread = await create_thread(zep, user_uuid=user.uuid_)
 ```
 
-Synchronous twins `ensure_user_sync` / `ensure_thread_sync` take a synchronous
-`Zep` client and a synchronous `on_created` hook. Both are
-create-then-catch-conflict: they call the Zep SDK's create method directly and
-treat an "already exists" conflict as success (returning `False`), while
-genuine failures propagate. If `on_created` raises, that exception also
-propagates even though the user was created -- make the hook idempotent so it
-can be safely re-run. These are plain module-level functions with no instance
-caching -- cache the "already provisioned" result yourself if you want to skip
-redundant calls.
+Synchronous twins `create_user_sync` / `create_thread_sync` take a synchronous
+`Zep` client and a synchronous `on_created` hook. The V4 service generates
+resource UUIDs. These helpers return the created resources. They do not catch
+creation errors. If `on_created` raises, that exception also propagates after
+the user has been created.
 
 Unlike the framework-hooked ports, this package's node helpers (`persist_messages`,
 `get_zep_context`) never provision resources lazily -- create the user and
-thread yourself, with `ensure_user`/`ensure_thread` or otherwise, before the
+thread yourself, with `create_user`/`create_thread` or otherwise, before the
 first turn.
 
 ### On-demand search — `create_graph_search_tool`
 
-Returns a LangChain `StructuredTool` over `graph.search`. Bind it to a model or
+Returns a LangChain `StructuredTool` over the V4 graph search methods. Bind it to a model or
 pass it to `create_react_agent(tools=[...])` and the model decides when to search
-the graph. The target (`user_id` for a personal graph, `graph_id` for a shared
-standalone graph) is fixed at construction.
+the graph. Pass the user graph UUID as `graph_uuid`; the target is fixed at
+construction.
 
-**Pin-or-expose.** Every `graph.search` parameter (`scope`, `reranker`,
-`limit`, `mmr_lambda`, `center_node_uuid`) is exposed to the model in the
+The tool supports the `edges`, `nodes`, `episodes`, `observations`,
+`thread_summaries`, and `auto` scopes. It calls the matching V4 search method;
+`auto` calls `graph.get_context`.
+
+**Pin-or-expose.** The supported search parameters are exposed to the model in the
 tool's schema by default, with documented defaults. Use `pinned_params` to fix
 a parameter to a constant value and hide it from the schema; use
 `hidden_params` to hide a parameter *without* pinning it, so Zep's own
@@ -208,22 +220,23 @@ server-side default applies:
 ```python
 from zep_langgraph import create_graph_search_tool
 
-# Model chooses scope/reranker/limit/mmr_lambda/center_node_uuid freely.
-tool = create_graph_search_tool(zep, user_id="user-1")
+# Model chooses supported search parameters.
+tool = create_graph_search_tool(zep, graph_uuid="user-1")
 
 # Pin scope to "nodes" and limit to 5 -- hidden from the model, always sent.
 tool = create_graph_search_tool(
-    zep, user_id="user-1", pinned_params={"scope": "nodes", "limit": 5}
+    zep, graph_uuid="user-1", pinned_params={"scope": "nodes", "limit": 5}
 )
 
 # Hide mmr_lambda from the schema; Zep applies its own default when omitted.
-tool = create_graph_search_tool(zep, user_id="user-1", hidden_params={"mmr_lambda"})
+tool = create_graph_search_tool(zep, graph_uuid="user-1", hidden_params={"mmr_lambda"})
 ```
 
-`search_filters` and `bfs_origin_node_uuids` are always constructor-only
-(their complex shapes are not exposed to the model). The schema is built
+`search_filters` and `bfs_origin_node_uuids` are constructor-only. The schema is built
 dynamically with `pydantic.create_model` and passed as the `StructuredTool`'s
-`args_schema`.
+`args_schema`. The V4 `GraphContextRequest` does not expose reranker, page size,
+MMR lambda, center-node UUID, or BFS controls. The `auto` path sends the query
+and supported filters only.
 
 Implemented in [src/zep_langgraph/tools.py](src/zep_langgraph/tools.py).
 
@@ -242,9 +255,11 @@ from zep_langgraph import create_zep_pre_model_hook
 
 agent = create_react_agent(
     model=model,
-    tools=[create_graph_search_tool(zep, user_id="user-1")],
+    tools=[create_graph_search_tool(zep, graph_uuid="user-1")],
     pre_model_hook=create_zep_pre_model_hook(
-        zep, user_id="user-1", thread_id="thread-1",
+        zep,
+        graph_uuid="user-1",
+        thread_uuid="thread-1",
         base_instructions="You are a helpful assistant.",
     ),
 )
@@ -269,16 +284,17 @@ Implemented in [src/zep_langgraph/hooks.py](src/zep_langgraph/hooks.py).
 temporal knowledge graph, not a KV store, so `ZepStore` uses a **hybrid-delegate**
 design: a backing KV `BaseStore` (default `InMemoryStore`) serves exact-key
 `get` / `put` / `delete` / `list_namespaces` faithfully and synchronously, while
-every `put` is *also* ingested into Zep and `search` is routed to Zep's semantic
-`graph.search`. Only the two abstract methods (`batch` / `abatch`) are
+every `put` is *also* ingested into Zep and `search` is routed to the V4
+graph-search methods. Only the two abstract methods (`batch` / `abatch`) are
 implemented; everything else is inherited and delegates to them.
 
 ```python
-from zep_langgraph import ZepStore
+from zep_langgraph import ZepStore, create_user
 
-store = ZepStore(zep)                  # default backing store: InMemoryStore
+user = await create_user(zep, first_name="Alice")
+store = ZepStore(zep, graph_uuid=user.uuid_)  # default backing store: InMemoryStore
 await store.aput(("memories", "user-1"), "m1", {"text": "Alice works at Acme."})
-item = await store.aget(("memories", "user-1"), "m1")     # exact-key, synchronous
+item = await store.aget(("memories", "user-1"), "m1")  # exact-key, synchronous
 hits = await store.asearch(("memories", "user-1"), query="where does Alice work?")
 ```
 
@@ -303,10 +319,10 @@ Implemented in [src/zep_langgraph/store.py](src/zep_langgraph/store.py); see
 | `DEFAULT_CONTEXT_TEMPLATE` | constant | Canonical `<ZEP_CONTEXT>...</ZEP_CONTEXT>` wrapper |
 | `persist_messages` / `persist_messages_sync` | async / sync fn | Persist a turn (LangChain or Zep messages) |
 | `to_zep_message` / `to_zep_messages` | fn | Convert LangChain messages to Zep messages |
-| `ensure_user` / `ensure_user_sync` | async / sync fn | Idempotently provision a Zep user, out-of-band |
-| `ensure_thread` / `ensure_thread_sync` | async / sync fn | Idempotently provision a Zep thread, out-of-band |
-| `UserSetupHook` / `UserSetupHookSync` | type alias | `on_created` hook signatures for `ensure_user`(`_sync`) |
-| `create_graph_search_tool` / `create_graph_search_tool_sync` | fn | Build a pin-or-expose `graph.search` `StructuredTool` |
+| `create_user` / `create_user_sync` | async / sync fn | Create a Zep user with a server-generated UUID |
+| `create_thread` / `create_thread_sync` | async / sync fn | Create a Zep thread with a server-generated UUID |
+| `UserSetupHook` / `UserSetupHookSync` | type alias | `on_created` hook signatures for `create_user`(`_sync`) |
+| `create_graph_search_tool` / `create_graph_search_tool_sync` | fn | Build a pin-or-expose V4 graph search `StructuredTool` |
 | `create_zep_pre_model_hook` | fn | Build a `create_react_agent(pre_model_hook=...)` for guaranteed context injection |
 | `ZepStore` | class | Hybrid-delegate `BaseStore` |
 
@@ -322,7 +338,7 @@ a custom `context_builder`) and persistence log a warning and return
 serving KV operations from its backing store. **A Zep failure never crashes
 the host agent.**
 
-`ensure_user` / `ensure_thread` (and their `_sync` twins) are the one
+`create_user` / `create_thread` (and their `_sync` twins) are the one
 exception, by design: they are meant for explicit, out-of-band provisioning
 where a genuine failure (auth, network, 5xx) or an `on_created` hook error
 should raise loudly and stop startup/onboarding, rather than degrade silently.
@@ -334,6 +350,14 @@ An "already exists" conflict is not an error -- it returns `False`.
 export ZEP_API_KEY="your-zep-api-key"
 export OPENAI_API_KEY="your-openai-api-key"   # for the example's model
 ```
+
+The V4 package requires `zep-cloud>=4.0.0,<5`. V4 creates server-generated
+UUIDs. Store `User.uuid_` and `Thread.uuid_`, then pass them as `graph_uuid`
+and `thread_uuid`; the package does not accept application-chosen IDs.
+
+The `auto` search scope uses `graph.get_context`. The V4 SDK context request
+does not expose the search tool's reranker, page-size, MMR, center-node, or BFS
+controls, so the auto path sends the query and supported filters only.
 
 ## Examples
 
@@ -359,7 +383,7 @@ make build        # uv build
 ## Requirements
 
 - Python 3.11+
-- `zep-cloud>=3.23.0`
+- `zep-cloud>=4.0.0,<5`
 - `langgraph>=1.2.5` (pulls in `langchain-core`)
 
 ## Support
