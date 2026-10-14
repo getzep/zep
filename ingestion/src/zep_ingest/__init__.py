@@ -95,7 +95,7 @@ from zep_ingest.verify import search_when_ready
 try:
     __version__ = _version("zep-ingest")
 except _PackageNotFoundError:  # source tree without an editable install
-    __version__ = "1.0.0"
+    __version__ = "0.4.0"
 
 __all__ = [
     "DEFAULT_CONTEXT_PROMPT",

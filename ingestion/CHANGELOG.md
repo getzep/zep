@@ -3,7 +3,7 @@
 All notable changes to `zep-ingest` are documented here. The project follows
 [Semantic Versioning](https://semver.org).
 
-## 1.0.0
+## 0.4.0
 
 ### Breaking
 
