@@ -36,6 +36,8 @@ async function ensureGraph(client: ZepClient): Promise<string> {
     description: "Standalone graph of company-wide product and policy facts for the Eve demo.",
   });
   if (!graph.uuid) throw new Error("Zep did not return a graph UUID");
+  console.log(`Created company graph: ${graph.uuid}`);
+  console.log(`Set ZEP_COMPANY_GRAPH_UUID=${graph.uuid} in .env.`);
   return graph.uuid;
 }
 
@@ -72,7 +74,9 @@ async function main() {
   });
 
   const graphUuid = await ensureGraph(client);
-  console.log(`Seeding company graph: ${graphUuid}`);
+  // Do not log graphUuid here — it can come from env (ZEP_COMPANY_GRAPH_UUID)
+  // and CodeQL flags clear-text logging of process environment values.
+  console.log("Seeding company graph.");
 
   const existing = await client.graph.episode.list(graphUuid, { pageSize: 50 });
   const existingCount = existing.data.length;
@@ -81,7 +85,7 @@ async function main() {
       `Graph already has ${existingCount} episodes (≥ ${EPISODES.length}). Skipping ingest to avoid duplicates.`,
     );
     console.log(
-      `To re-seed, delete graph "${graphUuid}" in the Zep app and run without ZEP_COMPANY_GRAPH_UUID.`,
+      "To re-seed, delete this graph in the Zep app and run without ZEP_COMPANY_GRAPH_UUID.",
     );
   } else {
     const addedEpisodes = await Promise.all(
@@ -110,7 +114,7 @@ async function main() {
     console.log(sample.context.trim());
   }
 
-  console.log(`\nDone. Set ZEP_COMPANY_GRAPH_UUID=${graphUuid} in .env.`);
+  console.log("\nDone.");
 }
 
 main().catch((error) => {
