@@ -9,21 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
-- The package now requires the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). It targets
-  the v4 API only and does not support v3.
-- The public API takes Zep UUIDs, and client-chosen identifiers are gone.
-  `ZepUserStorage` and `ZepStorage` take `user_uuid` and `thread_uuid` (with
+Follow the Zep v4 migration guide for the general migration procedure — the
+nullable UUID columns, the one-time `lookup` backfill, and the order of
+steps: https://help.getzep.com/migrating-from-v3
+
+The API changes that are specific to this package are:
+
+- The package requires the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). It targets the
+  v4 API only and does not support v3.
+- `ZepUserStorage` and `ZepStorage` take `user_uuid` and `thread_uuid` (with
   an optional `graph_uuid`) instead of `user_id` and `thread_id`.
-  `ZepGraphStorage`, `create_search_tool`, `ZepSearchTool`, and
+- `ZepGraphStorage`, `create_search_tool`, `ZepSearchTool`, and
   `create_add_data_tool` take `graph_uuid` instead of `graph_id` or `user_id`.
-  `ContextInput` carries `user_uuid`, `thread_uuid`, `graph_uuid`, and
-  `user_message` instead of `user_id` and `thread_id`. The application creates
-  each resource one time, reads the UUID from the create response, and stores
-  the UUID in its own database.
-- `ensure_user` and `ensure_thread` take no `user_id` or `thread_id`: the v4
-  create endpoints reject a client-chosen identifier. `ensure_thread` takes
-  `user_uuid`, and both helpers return the created or existing resource
-  together with a flag that shows whether the resource was newly created.
+- `ContextInput` carries `user_uuid`, `thread_uuid`, `graph_uuid`, and
+  `user_message` instead of `user_id` and `thread_id`.
+- `ensure_user` and `ensure_thread` take no `user_id` or `thread_id`:
+  `ensure_thread` takes `user_uuid`, and both helpers return the created or
+  existing resource together with a flag that shows whether the resource was
+  newly created.
 - The `on_created` hook signature is now `Callable[[Zep, User], None]`. The
   hook receives the created `User`, which carries `uuid_` and `graph_uuid`.
 - `ZepUserStorage` and `ZepGraphStorage` replace `facts_limit` and
@@ -33,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with their `first_name`, `last_name`, `email`, and `on_created` constructor
   arguments. A UUID identifies a resource that already exists; use
   `ensure_user` and `ensure_thread` one time, during onboarding.
+
+For an existing V3 user, thread, or graph, do not call `ensure_user`,
+`ensure_thread`, or `client.graph.create`. Get its UUID one time with the
+backfill in the migration guide, and store it.
 
 ### Changed
 
