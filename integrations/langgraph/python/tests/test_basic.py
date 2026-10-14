@@ -42,7 +42,7 @@ class TestPackageStructure:
         import zep_langgraph
 
         assert hasattr(zep_langgraph, "__version__")
-        assert zep_langgraph.__version__ == "0.2.1"
+        assert zep_langgraph.__version__ == "0.3.0"
 
     def test_author_exists(self) -> None:
         import zep_langgraph
