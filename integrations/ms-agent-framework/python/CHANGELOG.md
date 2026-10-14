@@ -1,31 +1,36 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
+
+### Breaking
+
+- The package now requires the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). It does not
+  support the v3 SDK.
+- Zep v4 addresses a user, a thread, and a graph by a server-generated UUID.
+  `ZepContextProvider` takes `user_uuid`, `thread_uuid`, and an optional
+  `graph_uuid` instead of `user_id` and `thread_id`. The provider makes no
+  lookup call at run time.
+- `ContextInput` carries `user_uuid`, `thread_uuid`, and `graph_uuid` instead
+  of `user_id` and `thread_id`.
+- `create_user` and `create_thread` replace `ensure_user` and `ensure_thread`.
+  Each helper creates a new resource and returns it, and the response carries
+  the UUIDs. `create_user` takes no `user_id`, and `create_thread` takes
+  `user_uuid` and no `thread_id`. A v4 create call takes no client-chosen
+  name, and the server rejects one with `400 invalid_request`.
+- `create_zep_search_tool` takes a `graph_uuid` instead of a user or graph ID.
+- The provider does not create the Zep user or the thread on the turn path.
+  Create the user and the thread out-of-band, and give the UUIDs to the
+  provider.
+- `ZepContextProvider` no longer takes `first_name`, `last_name`, `email`, or
+  `on_user_created`. Give these values to `create_user`.
 
 ### Changed
 
-- Migrated the package to the Zep v4 SDK (`zep-cloud>=4.0.0,<5`).
-- `ZepContextProvider` now takes `user_uuid`, `thread_uuid`, and an optional
-  `graph_uuid`. Zep v4 addresses a user, a thread, and a graph by a
-  server-generated UUID. The provider makes no lookup call at run time.
-- `ContextInput` now carries `user_uuid`, `thread_uuid`, and `graph_uuid`.
-- Replaced `ensure_user` and `ensure_thread` with `create_user` and
-  `create_thread`. The create response carries the UUIDs.
-- `create_zep_search_tool` now takes a `graph_uuid`, and it dispatches to the
-  v4 per-scope search methods (`graph.search_edges`, `graph.search_nodes`,
-  `graph.search_episodes`, `graph.search_observations`,
-  `graph.search_thread_summaries`). The `auto` scope uses `graph.get_context`.
+- The search tool dispatches to the v4 per-scope search methods
+  (`graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`,
+  `graph.search_observations`, `graph.search_thread_summaries`). The `auto`
+  scope uses `graph.get_context`.
 - The search tool sends its `limit` parameter as the v4 `page_size` argument.
-
-### Removed
-
-- Lazy creation of the Zep user and the thread on the turn path. Create the
-  user and the thread out-of-band, and give the UUIDs to the provider.
-- The `first_name`, `last_name`, `email`, and `on_user_created` parameters of
-  `ZepContextProvider`. Give these values to `create_user`.
-- The `user_id` parameter of `create_user` and the `thread_id` parameter of
-  `create_thread`. A v4 create call takes no client-chosen name, and the
-  server rejects one with `400 invalid_request`.
 
 ## 0.2.1 (2026-07-29)
 
