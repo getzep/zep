@@ -171,6 +171,21 @@ class TestSearch:
         assert await store.search("   ") == []
         store._zep.graph.get_context.assert_not_awaited()
 
+    def test_rejects_unsupported_scope_and_reranker(self) -> None:
+        with pytest.raises(ValueError, match="not supported for scope 'episodes'"):
+            _make_store(search_scope="episodes", search_reranker="cross_encoder")
+
+    def test_rejects_node_distance_reranker(self) -> None:
+        with pytest.raises(ValueError, match="center_node_uuid"):
+            _make_store(search_scope="edges", search_reranker="node_distance")
+
+    @pytest.mark.asyncio
+    async def test_search_mmr_sends_default_lambda(self) -> None:
+        store = _make_store(search_scope="edges", search_reranker="mmr")
+        await store.search("hiking")
+        _, kwargs = store._zep.graph.search_edges.await_args
+        assert kwargs["mmr_lambda"] == 0.5
+
     @pytest.mark.asyncio
     async def test_search_rejects_invalid_max(self) -> None:
         store = _make_store()

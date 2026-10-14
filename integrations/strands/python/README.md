@@ -171,6 +171,8 @@ agent = Agent(tools=[tool])
 
 **Pin-or-expose.** Every search parameter (`scope`, `reranker`, `limit`, `mmr_lambda`, `center_node_uuid`) is model-exposed by default. `search_pinned_params` fixes a value and hides it; `search_hidden_params` hides without pinning (Zep's default applies). `search_filters` and `bfs_origin_node_uuids` are always constructor-only.
 
+Zep v4 accepts only some rerankers for each scope. The tool schema shows only the rerankers that the scope supports, and an invalid pair gives the model an error that names the valid values. `node_distance` needs `center_node_uuid`, and `episode_mentions` needs `episode_uuids` in `search_filters`. When the reranker is `mmr` and no `mmr_lambda` is given, the tool sends `0.5`. An invalid pinned pair, or an invalid `search_scope` and `search_reranker` pair on `ZepMemoryStore`, raises a `ValueError`.
+
 ## Writing facts
 
 ```python

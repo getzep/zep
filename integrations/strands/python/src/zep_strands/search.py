@@ -54,6 +54,85 @@ MAX_SEARCH_LIMIT = 50
 #: retrieval and applies its own internal cross-scope rerank).
 _AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
 
+_ALL_SCOPES: tuple[str, ...] = (
+    "edges",
+    "nodes",
+    "episodes",
+    "observations",
+    "thread_summaries",
+    "auto",
+)
+_ALL_RERANKERS: tuple[str, ...] = (
+    "rrf",
+    "mmr",
+    "node_distance",
+    "episode_mentions",
+    "cross_encoder",
+)
+
+#: The rerankers that the Zep v4 API accepts for each scoped search. The
+#: ``auto`` scope takes no reranker.
+SCOPE_RERANKERS: dict[str, tuple[str, ...]] = {
+    "edges": ("rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"),
+    "nodes": ("rrf", "mmr", "node_distance", "cross_encoder"),
+    "episodes": ("rrf", "mmr"),
+    "observations": ("rrf", "mmr", "cross_encoder"),
+    "thread_summaries": ("rrf", "mmr", "cross_encoder"),
+}
+
+#: The ``mmr_lambda`` that a search sends when the reranker is ``mmr`` and no
+#: value is given. Zep requires ``mmr_lambda`` for ``mmr``.
+DEFAULT_MMR_LAMBDA = 0.5
+
+_RERANKER_NOTES: dict[str, str] = {
+    "rrf": "balanced, the default",
+    "mmr": "diverse results; mmr_lambda defaults to 0.5",
+    "cross_encoder": "highest accuracy",
+    "node_distance": "results near center_node_uuid, which is required",
+    "episode_mentions": "results mentioned most often in the configured episodes",
+}
+
+
+def _has_episode_uuids(filters: dict[str, Any] | None) -> bool:
+    return bool(filters and filters.get("episode_uuids"))
+
+
+def search_settings_error(
+    scope: str,
+    reranker: str | None,
+    *,
+    center_node_uuid: str | None = None,
+    filters: dict[str, Any] | None = None,
+) -> str | None:
+    """Return why Zep will reject a scope and reranker setting, or ``None``.
+
+    The ``auto`` scope ignores the reranker, so any reranker is accepted for it.
+    """
+    if scope not in _ALL_SCOPES:
+        return f"scope {scope!r} is not valid. Use one of: {', '.join(_ALL_SCOPES)}."
+    if reranker is None or scope == "auto":
+        return None
+    if reranker not in _ALL_RERANKERS:
+        return f"reranker {reranker!r} is not valid. Use one of: {', '.join(_ALL_RERANKERS)}."
+    allowed = SCOPE_RERANKERS[scope]
+    if reranker not in allowed:
+        return (
+            f"reranker {reranker!r} is not supported for scope {scope!r}. "
+            f"Use one of: {', '.join(allowed)}."
+        )
+    if reranker == "node_distance" and not center_node_uuid:
+        return (
+            "reranker 'node_distance' requires center_node_uuid. "
+            "Set center_node_uuid, or use a different reranker."
+        )
+    if reranker == "episode_mentions" and not _has_episode_uuids(filters):
+        return (
+            "reranker 'episode_mentions' requires episode_uuids in the search filters. "
+            "Set the filters, or use a different reranker."
+        )
+    return None
+
+
 #: The type of tool ``create_zep_search_tool`` returns.
 ZepSearchTool = AgentTool
 
@@ -81,11 +160,7 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
     },
     "reranker": {
         "annotation": Reranker,
-        "description": (
-            "Result ordering algorithm: 'rrf' (balanced), 'mmr' (diverse), "
-            "'cross_encoder' (highest accuracy), 'episode_mentions' "
-            "(frequently referenced), 'node_distance' (near a specific entity)."
-        ),
+        "description": "Result ordering algorithm.",
         "default": "rrf",
     },
     "limit": {
@@ -96,7 +171,8 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
     "mmr_lambda": {
         "annotation": float | None,
         "description": (
-            "Balance between diversity (0.0) and relevance (1.0). Only used when reranker is 'mmr'."
+            "Balance between diversity (0.0) and relevance (1.0). Only used when "
+            f"reranker is 'mmr'. Defaults to {DEFAULT_MMR_LAMBDA}."
         ),
         "default": None,
     },
@@ -170,8 +246,17 @@ async def run_graph_search(
         The results of the search.
 
     Raises:
-        ValueError: If ``scope`` is not a known scope.
+        ValueError: If ``scope`` is not a known scope, or if Zep does not
+            accept the reranker settings for the scope.
     """
+    error = search_settings_error(
+        scope, reranker, center_node_uuid=center_node_uuid, filters=filters
+    )
+    if error is not None:
+        raise ValueError(f"Zep search settings are not valid: {error}")
+    if reranker == "mmr" and mmr_lambda is None:
+        mmr_lambda = DEFAULT_MMR_LAMBDA
+
     if scope == "auto":
         response = await client.graph.get_context(
             graph_uuid,
@@ -251,6 +336,11 @@ def _format_results(results: SearchResults) -> str:
         f"- {text}" for text in (result_text(item, results.scope) for item in results.items) if text
     ]
     return "\n".join(parts) if parts else "No results found."
+
+
+def _literal(values: list[str]) -> Any:
+    """Build a ``Literal`` type of ``values`` for the tool schema."""
+    return Literal.__getitem__(tuple(values))  # type: ignore[attr-defined]
 
 
 def _build_search_signature(
@@ -391,22 +481,89 @@ def create_zep_search_tool(
         elif pinned_limit < 1:
             pinned["limit"] = 1
 
-    if pinned.get("scope") == "auto" and "reranker" in pinned:
-        if pinned["reranker"] in _AUTO_INCOMPATIBLE_RERANKERS:
+    if pinned.get("scope") == "auto":
+        if pinned.get("reranker") in _AUTO_INCOMPATIBLE_RERANKERS:
             logger.warning(
                 "zep_search reranker %r is invalid for scope='auto'; "
                 "omitting reranker (auto search uses RRF).",
                 pinned["reranker"],
             )
-        del pinned["reranker"]
-        hidden.add("reranker")
+        for param_name in ("reranker", "mmr_lambda", "center_node_uuid"):
+            pinned.pop(param_name, None)
+            hidden.add(param_name)
 
     exposed = {
-        param_name: spec
+        param_name: dict(spec)
         for param_name, spec in _SEARCH_PARAM_SPECS.items()
         if param_name not in pinned and param_name not in hidden
     }
+    center_node_available = "center_node_uuid" in pinned or "center_node_uuid" in exposed
+    # A center node that the model can still give counts as set at construction.
+    center_node_hint = pinned.get("center_node_uuid") or (
+        "model-supplied" if "center_node_uuid" in exposed else None
+    )
+
+    if "scope" in pinned and "reranker" in pinned:
+        error = search_settings_error(
+            pinned["scope"],
+            pinned["reranker"],
+            center_node_uuid=center_node_hint,
+            filters=search_filters,
+        )
+        if error is not None:
+            raise ValueError(f"zep_search pinned settings are not valid: {error}")
+    elif "scope" in pinned:
+        scope_error = search_settings_error(pinned["scope"], None)
+        if scope_error is not None:
+            raise ValueError(f"zep_search pinned settings are not valid: {scope_error}")
+    elif "reranker" in pinned:
+        pinned_reranker = pinned["reranker"]
+        error = search_settings_error(
+            "edges",
+            pinned_reranker,
+            center_node_uuid=center_node_hint,
+            filters=search_filters,
+        )
+        if error is not None:
+            raise ValueError(f"zep_search pinned settings are not valid: {error}")
+        if "scope" in exposed:
+            scopes = [
+                scope
+                for scope, rerankers in SCOPE_RERANKERS.items()
+                if pinned_reranker in rerankers
+            ] + ["auto"]
+            exposed["scope"]["annotation"] = _literal(scopes)
+
+    reranker_limits = ""
+    if "reranker" in exposed:
+        usable = [
+            reranker
+            for reranker in _ALL_RERANKERS
+            if not (reranker == "node_distance" and not center_node_available)
+            and not (reranker == "episode_mentions" and not _has_episode_uuids(search_filters))
+        ]
+        if "scope" in pinned:
+            usable = [r for r in usable if r in SCOPE_RERANKERS[pinned["scope"]]]
+            scope_limits = ""
+        else:
+            scope_limits = (
+                " Rerankers supported by each scope: "
+                + "; ".join(
+                    f"{scope}: {', '.join(r for r in rerankers if r in usable)}"
+                    for scope, rerankers in SCOPE_RERANKERS.items()
+                )
+                + ". The 'auto' scope ignores the reranker."
+            )
+        notes = ", ".join(f"'{r}' ({_RERANKER_NOTES[r]})" for r in usable)
+        reranker_limits = f"Result ordering algorithm: {notes}.{scope_limits}"
+        exposed["reranker"]["annotation"] = _literal(usable)
+        exposed["reranker"]["description"] = reranker_limits
+        if "rrf" not in usable:
+            exposed["reranker"]["default"] = usable[0]
+
     signature, annotations = _build_search_signature(exposed)
+    if reranker_limits:
+        description = f"{description} {reranker_limits}"
 
     constructor_only: dict[str, Any] = {}
     if search_filters is not None:
@@ -452,6 +609,15 @@ def create_zep_search_tool(
 
         if not search_kwargs.get("query"):
             return "Error: No search query provided."
+
+        settings_error = search_settings_error(
+            effective_scope,
+            search_kwargs.get("reranker"),
+            center_node_uuid=search_kwargs.get("center_node_uuid"),
+            filters=search_kwargs.get("filters"),
+        )
+        if settings_error is not None:
+            return f"Error: {settings_error} Retry the search with valid settings."
 
         try:
             results = await run_graph_search(

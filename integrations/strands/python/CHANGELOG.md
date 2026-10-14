@@ -50,6 +50,12 @@ the migration guide, and store it.
 
 ### Fixed
 
+- The search tool and the store now send only the scope and reranker pairs
+  that the Zep v4 API accepts. The tool schema shows only the rerankers that
+  the scope supports. An invalid pair from the model gives a clear error that
+  names the setting and the valid values. An invalid pair in the constructor
+  raises a `ValueError`. The `mmr` reranker sends `mmr_lambda=0.5` when no
+  value is given.
 - `ZepMemoryStore.initialize()` no longer calls Zep. `Agent.__init__` is
   synchronous, so Strands runs that hook on a throwaway event loop in a worker
   thread; provisioning there drove the caller's `AsyncZep` client from a second

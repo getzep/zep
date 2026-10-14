@@ -102,6 +102,7 @@ from .search import (
     create_zep_search_tool,
     result_text,
     run_graph_search,
+    search_settings_error,
 )
 
 logger = logging.getLogger(__name__)
@@ -287,7 +288,8 @@ class ZepMemoryStore:
             search_scope: Default search scope for :meth:`search`. Defaults to
                 ``"auto"`` (Zep's assembled Context Block from
                 ``graph.get_context``).
-            search_reranker: Optional default reranker for :meth:`search`.
+            search_reranker: Optional default reranker for :meth:`search`. It
+                must be a reranker that ``search_scope`` supports.
             search_filters: Optional filters applied to every search.
             bfs_origin_node_uuids: Optional BFS seed node UUIDs for search.
             expose_search_tool: When ``True``, :meth:`get_tools` returns a
@@ -298,7 +300,8 @@ class ZepMemoryStore:
         Raises:
             ValueError: On invalid scoping (neither/both of ``user_uuid``/
                 ``graph_uuid``, empty ``name``, ``max_search_results < 1``, or
-                extraction enabled without writable user/thread mode).
+                extraction enabled without writable user/thread mode, or a
+                ``search_scope`` and ``search_reranker`` pair that Zep rejects).
         """
         if not user_uuid and not graph_uuid:
             raise ValueError("ZepMemoryStore requires either user_uuid or graph_uuid")
@@ -308,6 +311,11 @@ class ZepMemoryStore:
             raise ValueError("ZepMemoryStore: name must not be empty")
         if max_search_results is not None and max_search_results < 1:
             raise ValueError("ZepMemoryStore: max_search_results must be at least 1")
+        settings_error = search_settings_error(
+            search_scope, search_reranker, filters=search_filters
+        )
+        if settings_error is not None:
+            raise ValueError(f"ZepMemoryStore: search settings are not valid: {settings_error}")
 
         self._zep = zep_client
         self.user_uuid = user_uuid
