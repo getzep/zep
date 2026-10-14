@@ -398,7 +398,7 @@ async def warm_user_cache(request: Request):
         # Note: This may fail with 404 if the user has no graph data yet (new user)
         # That's fine - there's nothing to warm for new users
         try:
-            await zep_client.user.warm(user_uuid=user_id)
+            await zep_client.graph.warm(graph_uuid=user_id)
             return {
                 "status": "success",
                 "user_id": user_id,
