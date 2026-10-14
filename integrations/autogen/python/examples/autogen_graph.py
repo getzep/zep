@@ -1,79 +1,90 @@
 import asyncio
 import os
-import uuid
 
 from autogen_agentchat.agents import AssistantAgent
 from autogen_core.memory import MemoryContent, MemoryMimeType
 from autogen_ext.models.openai import OpenAIChatCompletionClient
-from pydantic import Field
-from zep_cloud import SearchFilters
+from zep_cloud import EntityProperty, EntityType, NodeSearchFilters
 from zep_cloud.client import AsyncZep
-from zep_cloud.external_clients.ontology import EntityModel, EntityText
 
 from zep_autogen.graph_memory import ZepGraphMemory
 
-
-class ProgrammingLanguage(EntityModel):
-    """
-    A programming language entity.
-    """
-
-    paradigm: EntityText = Field(
-        description="programming paradigm (e.g., object-oriented, functional)", default=None
-    )
-    use_case: EntityText = Field(description="primary use cases for this language", default=None)
-
-
-class Framework(EntityModel):
-    """
-    A software framework or library.
-    """
-
-    language: EntityText = Field(
-        description="the programming language this framework is built for", default=None
-    )
-    purpose: EntityText = Field(description="primary purpose of this framework", default=None)
-
-
-class Concept(EntityModel):
-    """
-    A programming concept or technique.
-    """
-
-    category: EntityText = Field(
-        description="category of concept (e.g., design pattern, algorithm)", default=None
-    )
-    difficulty: EntityText = Field(
-        description="difficulty level (beginner, intermediate, advanced)", default=None
-    )
+ENTITY_TYPES = [
+    EntityType(
+        name="ProgrammingLanguage",
+        description="A programming language entity.",
+        properties=[
+            EntityProperty(
+                name="paradigm",
+                type="text",
+                description="programming paradigm (e.g., object-oriented, functional)",
+            ),
+            EntityProperty(
+                name="use_case",
+                type="text",
+                description="primary use cases for this language",
+            ),
+        ],
+    ),
+    EntityType(
+        name="Framework",
+        description="A software framework or library.",
+        properties=[
+            EntityProperty(
+                name="language",
+                type="text",
+                description="the programming language this framework is built for",
+            ),
+            EntityProperty(
+                name="purpose",
+                type="text",
+                description="primary purpose of this framework",
+            ),
+        ],
+    ),
+    EntityType(
+        name="Concept",
+        description="A programming concept or technique.",
+        properties=[
+            EntityProperty(
+                name="category",
+                type="text",
+                description="category of concept (e.g., design pattern, algorithm)",
+            ),
+            EntityProperty(
+                name="difficulty",
+                type="text",
+                description="difficulty level (beginner, intermediate, advanced)",
+            ),
+        ],
+    ),
+]
 
 
 async def main():
-    # Initialize AsyncZep client
-    zep_client = AsyncZep(api_key=os.environ.get("ZEP_API_KEY"))
-
-    await zep_client.graph.set_ontology(
-        entities={
-            "ProgrammingLanguage": ProgrammingLanguage,
-            "Framework": Framework,
-            "Concept": Concept,
-        },
+    # Initialize AsyncZep client. ZEP_API_URL is the API origin; the SDK
+    # uses the value of base_url as given, so append the API version path.
+    base_url = os.environ.get("ZEP_API_URL")
+    zep_client = AsyncZep(
+        api_key=os.environ.get("ZEP_API_KEY"),
+        base_url=f"{base_url}/api/v4" if base_url else None,
     )
 
-    graph_id = f"graph_{uuid.uuid4().hex[:16]}"
+    # Zep assigns the UUID of the graph. Keep this UUID in your own database.
+    graph = await zep_client.graph.create(name="Knowledge Graph")
+    graph_uuid = str(graph.uuid_)
+    print(f"Created graph: {graph_uuid}")
 
-    try:
-        # Create graph for storing knowledge
-        await zep_client.graph.create(graph_id=graph_id, name="Knowledge Graph")
-        print(f"Created graph: {graph_id}")
-    except Exception as e:
-        print(f"Graph creation failed: {e}")
+    # The ontology applies to one graph UUID in v4.
+    await zep_client.graph.set_ontology(graph_uuid, entity_types=ENTITY_TYPES)
 
     # Initialize Zep graph memory bound to the assistant
     memory = ZepGraphMemory(
         client=zep_client,
-        graph_id=graph_id,
-        search_filters=SearchFilters(
+        graph_uuid=graph_uuid,
+        # Each search scope has its own filter type. Node labels belong to
+        # node search, so this example queries the "nodes" scope.
+        search_filters=NodeSearchFilters(
             node_labels=["ProgrammingLanguage", "Framework", "Concept"],
         ),
     )
@@ -145,7 +156,9 @@ async def main():
 
         # Test querying graph memory directly
         print("\n=== Querying graph memory directly ===")
-        query_result = await memory.query("What technologies are useful for AI?", limit=5)
+        query_result = await memory.query(
+            "What technologies are useful for AI?", scope="nodes", limit=5
+        )
         print(f"Query results ({len(query_result.results)} items):")
         for i, result in enumerate(query_result.results[:3], 1):
             print(f"{i}. {result.content[:100]}...")

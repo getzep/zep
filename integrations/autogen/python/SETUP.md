@@ -35,7 +35,12 @@ make install        # uv sync --extra dev
 ```
 
 Requirements: Python 3.11+, `autogen-agentchat>=0.7.0`,
-`autogen-ext[azure,openai]>=0.7.0`, `zep-cloud>=3.23.0`.
+`autogen-ext[azure,openai]>=0.7.0`, `zep-cloud>=4.0.0,<5`. Install it with
+`pip install "zep-cloud>=4.0.0,<5"` or with `uv add "zep-cloud>=4.0.0,<5"`.
+
+This package targets the Zep v4 API. Zep v4 assigns the UUID of every user,
+thread, and graph. The public API of the package takes `user_uuid`,
+`thread_uuid`, and `graph_uuid`.
 
 ## 4. Configure environment variables
 
@@ -43,9 +48,19 @@ Requirements: Python 3.11+, `autogen-agentchat>=0.7.0`,
 export ZEP_API_KEY="your-zep-api-key"
 export OPENAI_API_KEY="your-openai-api-key"
 
+# Optional: the API origin, used by the examples and the live test to build
+# the base URL of the client. The SDK uses https://api.getzep.com/api/v4 by
+# default.
+export ZEP_API_URL="https://api.getzep.com"
+
 # Optional: override the OpenAI model used by the live test (default: gpt-4o-mini)
 export OPENAI_MODEL="gpt-4o-mini"
 ```
+
+The SDK does not read `ZEP_API_URL` itself. The examples and the live test
+read the variable and pass `base_url=f"{ZEP_API_URL}/api/v4"` to `AsyncZep`;
+the SDK uses `base_url` verbatim. To call a non-default API in your own code,
+pass the base URL explicitly the same way.
 
 ## 5. Run the example
 

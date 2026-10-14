@@ -7,6 +7,9 @@ facing JSON schema.  Tests call the tool's underlying function directly via
 ``_call`` (mirroring how Pydantic AI's ``FunctionSchema.call`` invokes it:
 ``ctx`` positional, everything else keyword) and inspect
 ``tool.tool_def.parameters_json_schema`` for schema-shape assertions.
+
+Zep v4 has one search method for each scope, and every method takes the graph
+UUID as its first positional argument and returns a pager.
 """
 
 from unittest.mock import AsyncMock, MagicMock
@@ -16,9 +19,16 @@ from pydantic_ai import Tool
 
 from zep_pydantic_ai import ZepDeps, create_zep_search_tool
 
+GRAPH_UUID = "graph-uuid-1"
 
-def _make_deps(client: MagicMock) -> ZepDeps:
-    return ZepDeps(client=client, user_id="user-1", thread_id="thread-1")
+
+def _make_deps(client: MagicMock, graph_uuid: str | None = GRAPH_UUID) -> ZepDeps:
+    return ZepDeps(
+        client=client,
+        user_uuid="user-uuid-1",
+        thread_uuid="thread-uuid-1",
+        graph_uuid=graph_uuid,
+    )
 
 
 def _make_ctx(deps: ZepDeps) -> MagicMock:
@@ -33,22 +43,27 @@ async def _call(tool: Tool, ctx: MagicMock, query: str, **kwargs: object) -> str
     return await tool.function(ctx, query=query, **kwargs)  # type: ignore[no-any-return]
 
 
-def _make_result(
-    edges=None,
-    nodes=None,
-    episodes=None,
-    context=None,
-    observations=None,
-    thread_summaries=None,
-) -> MagicMock:
-    result = MagicMock()
-    result.edges = edges
-    result.nodes = nodes
-    result.episodes = episodes
-    result.context = context
-    result.observations = observations
-    result.thread_summaries = thread_summaries
-    return result
+def _make_client(scope: str = "edges", items: list[MagicMock] | None = None) -> MagicMock:
+    """Build a mock client whose search method for ``scope`` returns a pager."""
+    client = MagicMock()
+    pager = MagicMock()
+    pager.items = items if items is not None else []
+    method = AsyncMock(return_value=pager)
+    setattr(client.graph, f"search_{scope}", method)
+    return client
+
+
+def _search_mock(client: MagicMock, scope: str = "edges") -> AsyncMock:
+    """Return the mock search method of ``scope`` on ``client``."""
+    return getattr(client.graph, f"search_{scope}")  # type: ignore[no-any-return]
+
+
+def _make_context_client(context: str | None) -> MagicMock:
+    client = MagicMock()
+    response = MagicMock()
+    response.context = context
+    client.graph.get_context = AsyncMock(return_value=response)
+    return client
 
 
 def _edge(fact: str) -> MagicMock:
@@ -77,79 +92,79 @@ def _observation(name: str, summary: str | None = None) -> MagicMock:
     return obs
 
 
-def _thread_summary(summary: str | None, name: str = "thread") -> MagicMock:
+def _thread_summary(summary: str | None) -> MagicMock:
     ts = MagicMock()
     ts.summary = summary
-    ts.name = name
     return ts
 
 
 class TestSearchTargeting:
     @pytest.mark.asyncio
-    async def test_searches_user_graph_by_default(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[_edge("fact")]))
+    async def test_searches_the_graph_uuid_of_deps_by_default(self) -> None:
+        client = _make_client(items=[_edge("fact")])
         tool = create_zep_search_tool()
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "what do you know")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["user_id"] == "user-1"
-        assert "graph_id" not in kwargs
+        args = _search_mock(client).call_args.args
+        assert args[0] == GRAPH_UUID
 
     @pytest.mark.asyncio
-    async def test_searches_graph_id_when_set(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
-        tool = create_zep_search_tool(graph_id="docs-graph")
+    async def test_searches_graph_uuid_of_the_tool_when_set(self) -> None:
+        client = _make_client()
+        tool = create_zep_search_tool(graph_uuid="docs-graph-uuid")
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["graph_id"] == "docs-graph"
-        assert "user_id" not in kwargs
+        assert _search_mock(client).call_args.args[0] == "docs-graph-uuid"
+
+    @pytest.mark.asyncio
+    async def test_reports_a_missing_graph_uuid(self) -> None:
+        client = _make_client()
+        tool = create_zep_search_tool()
+        ctx = _make_ctx(_make_deps(client, graph_uuid=None))
+
+        out = await _call(tool, ctx, "query")
+
+        assert "graph UUID" in out
+        _search_mock(client).assert_not_called()
 
     @pytest.mark.asyncio
     async def test_default_params(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        client = _make_client()
         tool = create_zep_search_tool()
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["scope"] == "edges"
+        kwargs = _search_mock(client).call_args.kwargs
         assert kwargs["reranker"] == "rrf"
-        assert kwargs["limit"] == 10
+        assert kwargs["page_size"] == 10
+        assert "scope" not in kwargs
 
     @pytest.mark.asyncio
     async def test_pinned_params_used(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(nodes=[]))
+        client = _make_client(scope="nodes")
         tool = create_zep_search_tool(scope="nodes", reranker="cross_encoder", limit=3)
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["scope"] == "nodes"
+        kwargs = _search_mock(client, "nodes").call_args.kwargs
         assert kwargs["reranker"] == "cross_encoder"
-        assert kwargs["limit"] == 3
+        assert kwargs["page_size"] == 3
 
     @pytest.mark.asyncio
     async def test_query_truncated_to_400(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        client = _make_client()
         tool = create_zep_search_tool()
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "x" * 1000)
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert len(kwargs["query"]) == 400
+        assert len(_search_mock(client).call_args.kwargs["query"]) == 400
 
     def test_custom_tool_name(self) -> None:
         tool = create_zep_search_tool(name="search_memory")
@@ -159,68 +174,61 @@ class TestSearchTargeting:
 class TestLimitClamping:
     @pytest.mark.asyncio
     async def test_limit_clamped_to_50(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        client = _make_client()
         tool = create_zep_search_tool(limit=1000)
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["limit"] == 50
+        assert _search_mock(client).call_args.kwargs["page_size"] == 50
 
     @pytest.mark.asyncio
     async def test_limit_at_ceiling_unchanged(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        client = _make_client()
         tool = create_zep_search_tool(limit=50)
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query")
 
-        assert client.graph.search.call_args.kwargs["limit"] == 50
+        assert _search_mock(client).call_args.kwargs["page_size"] == 50
 
     @pytest.mark.asyncio
     async def test_limit_floor_is_one(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        client = _make_client()
         tool = create_zep_search_tool(limit=0)
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query")
 
-        assert client.graph.search.call_args.kwargs["limit"] == 1
+        assert _search_mock(client).call_args.kwargs["page_size"] == 1
 
 
 class TestModelProvidedArguments:
     @pytest.mark.asyncio
     async def test_none_scope_falls_back_to_default(self) -> None:
         """An explicit JSON null from the model (Tool.from_schema skips
-        argument validation) must not reach graph.search as scope=None; the
-        spec default applies and results are formatted normally."""
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[_edge("Alice hikes")]))
+        argument validation) must not select a scope of None; the spec default
+        applies and the tool searches edges."""
+        client = _make_client(items=[_edge("Alice hikes")])
         tool = create_zep_search_tool()
         ctx = _make_ctx(_make_deps(client))
 
         out = await _call(tool, ctx, "query", scope=None)
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["scope"] == "edges"
+        _search_mock(client).assert_called_once()
         assert "Alice hikes" in out
 
     @pytest.mark.asyncio
     async def test_none_optional_params_omitted(self) -> None:
         """None for a defaultless param (mmr_lambda, center_node_uuid) is
         omitted from the SDK call rather than sent as JSON null."""
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        client = _make_client()
         tool = create_zep_search_tool()
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query", mmr_lambda=None, center_node_uuid=None)
 
-        kwargs = client.graph.search.call_args.kwargs
+        kwargs = _search_mock(client).call_args.kwargs
         assert "mmr_lambda" not in kwargs
         assert "center_node_uuid" not in kwargs
 
@@ -228,36 +236,33 @@ class TestModelProvidedArguments:
     async def test_model_limit_clamped_to_ceiling(self) -> None:
         """A model-provided limit above Zep's cap is clamped at call time so
         the search never 400s."""
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        client = _make_client()
         tool = create_zep_search_tool()
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query", limit=200)
 
-        assert client.graph.search.call_args.kwargs["limit"] == 50
+        assert _search_mock(client).call_args.kwargs["page_size"] == 50
 
     @pytest.mark.asyncio
     async def test_model_limit_floored_to_one(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        client = _make_client()
         tool = create_zep_search_tool()
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query", limit=0)
 
-        assert client.graph.search.call_args.kwargs["limit"] == 1
+        assert _search_mock(client).call_args.kwargs["page_size"] == 1
 
     @pytest.mark.asyncio
     async def test_model_limit_in_range_unchanged(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        client = _make_client()
         tool = create_zep_search_tool()
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query", limit=25)
 
-        assert client.graph.search.call_args.kwargs["limit"] == 25
+        assert _search_mock(client).call_args.kwargs["page_size"] == 25
 
     def test_limit_schema_carries_bounds(self) -> None:
         """The model-facing schema advertises Zep's limit bounds so
@@ -269,67 +274,152 @@ class TestModelProvidedArguments:
         assert limit_prop["maximum"] == 50
 
 
-class TestAutoScopeReranker:
+class TestAutoScope:
     @pytest.mark.asyncio
-    async def test_auto_scope_drops_incompatible_reranker(self) -> None:
-        """node_distance / episode_mentions are rejected by Zep for auto scope;
-        the tool must not pass a reranker at all."""
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(context="ctx"))
-        tool = create_zep_search_tool(scope="auto", reranker="node_distance")
+    async def test_auto_scope_calls_get_context(self) -> None:
+        """The auto scope uses graph.get_context, which takes the query and
+        the filters only."""
+        client = _make_context_client("ctx")
+        tool = create_zep_search_tool(scope="auto", limit=25)
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["scope"] == "auto"
-        assert "reranker" not in kwargs
+        assert client.graph.get_context.call_args.args[0] == GRAPH_UUID
+        kwargs = client.graph.get_context.call_args.kwargs
+        assert kwargs == {"query": "query"}
 
     @pytest.mark.asyncio
-    async def test_auto_scope_drops_default_reranker_too(self) -> None:
-        """Auto search ignores reranker entirely; even rrf is omitted."""
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(context="ctx"))
+    @pytest.mark.parametrize(
+        "reranker", ["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
+    )
+    async def test_model_reranker_with_auto_returns_error(self, reranker: str) -> None:
+        client = _make_context_client("ctx")
+        tool = create_zep_search_tool()
+        ctx = _make_ctx(_make_deps(client))
+
+        out = await _call(tool, ctx, "query", scope="auto", reranker=reranker)
+
+        assert out.startswith("Error:")
+        assert "'auto' scope takes no reranker" in out
+        assert repr(reranker) in out
+        client.graph.get_context.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_model_auto_without_reranker_calls_get_context(self) -> None:
+        client = _make_context_client("ctx")
+        tool = create_zep_search_tool()
+        ctx = _make_ctx(_make_deps(client))
+
+        out = await _call(tool, ctx, "query", scope="auto")
+
+        assert out == "ctx"
+        assert client.graph.get_context.call_args.kwargs == {"query": "query"}
+
+    @pytest.mark.asyncio
+    async def test_pinned_reranker_with_model_auto_returns_error(self) -> None:
+        client = _make_context_client("ctx")
+        tool = create_zep_search_tool(pinned_params={"reranker": "mmr"})
+        ctx = _make_ctx(_make_deps(client))
+
+        out = await _call(tool, ctx, "query", scope="auto")
+
+        assert "'auto' scope takes no reranker" in out
+        client.graph.get_context.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"scope": "auto", "reranker": "rrf"},
+            {"pinned_params": {"scope": "auto", "reranker": "node_distance"}},
+            {"scope": "auto", "pinned_params": {"reranker": "cross_encoder"}},
+        ],
+    )
+    def test_pinned_reranker_with_pinned_auto_raises(self, kwargs: dict[str, object]) -> None:
+        with pytest.raises(ValueError, match="'auto' scope takes no reranker"):
+            create_zep_search_tool(**kwargs)  # type: ignore[arg-type]
+
+    def test_pinned_auto_hides_reranker(self) -> None:
         tool = create_zep_search_tool(scope="auto")
+        properties = tool.tool_def.parameters_json_schema["properties"]
+
+        assert "reranker" not in properties
+
+    def test_pinned_reranker_removes_auto_from_scope_enum(self) -> None:
+        tool = create_zep_search_tool(pinned_params={"reranker": "rrf"})
+        properties = tool.tool_def.parameters_json_schema["properties"]
+
+        assert "auto" not in properties["scope"]["enum"]
+        assert "edges" in properties["scope"]["enum"]
+
+    def test_reranker_has_no_schema_default(self) -> None:
+        tool = create_zep_search_tool()
+        properties = tool.tool_def.parameters_json_schema["properties"]
+
+        assert "default" not in properties["reranker"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "scope", ["edges", "nodes", "episodes", "observations", "thread_summaries"]
+    )
+    async def test_omitted_reranker_sends_rrf_for_other_scopes(self, scope: str) -> None:
+        client = _make_client(scope=scope)
+        tool = create_zep_search_tool()
+        ctx = _make_ctx(_make_deps(client))
+
+        await _call(tool, ctx, "query", scope=scope)
+
+        assert _search_mock(client, scope).call_args.kwargs["reranker"] == "rrf"
+
+    @pytest.mark.asyncio
+    async def test_hidden_reranker_is_omitted(self) -> None:
+        client = _make_client()
+        tool = create_zep_search_tool(hidden_params={"reranker"})
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query")
 
-        assert "reranker" not in client.graph.search.call_args.kwargs
+        assert "reranker" not in _search_mock(client).call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_auto_scope_sends_filters(self) -> None:
+        client = _make_context_client("ctx")
+        tool = create_zep_search_tool(scope="auto", filters={"node_labels": ["Person"]})
+        ctx = _make_ctx(_make_deps(client))
+
+        await _call(tool, ctx, "query")
+
+        kwargs = client.graph.get_context.call_args.kwargs
+        assert kwargs["filters"] == {"node_labels": ["Person"]}
 
     @pytest.mark.asyncio
     async def test_non_auto_scope_keeps_reranker(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        client = _make_client()
         tool = create_zep_search_tool(scope="edges", reranker="node_distance")
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query")
 
-        assert client.graph.search.call_args.kwargs["reranker"] == "node_distance"
+        assert _search_mock(client).call_args.kwargs["reranker"] == "node_distance"
 
 
 class TestExtendedScopes:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("scope", ["observations", "thread_summaries"])
-    async def test_new_scopes_accepted(self, scope: str) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+    async def test_new_scopes_call_their_own_method(self, scope: str) -> None:
+        client = _make_client(scope=scope)
         tool = create_zep_search_tool(scope=scope)  # type: ignore[arg-type]
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query")
 
-        assert client.graph.search.call_args.kwargs["scope"] == scope
+        _search_mock(client, scope).assert_called_once()
 
 
 class TestResultFormatting:
     @pytest.mark.asyncio
     async def test_formats_edges(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(
-            return_value=_make_result(edges=[_edge("Alice works at Acme"), _edge("Bob hikes")])
-        )
+        client = _make_client(items=[_edge("Alice works at Acme"), _edge("Bob hikes")])
         tool = create_zep_search_tool(scope="edges")
         out = await _call(tool, _make_ctx(_make_deps(client)), "q")
         assert "Alice works at Acme" in out
@@ -337,44 +427,40 @@ class TestResultFormatting:
 
     @pytest.mark.asyncio
     async def test_formats_nodes(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(
-            return_value=_make_result(nodes=[_node("Alice", "An engineer")])
-        )
+        client = _make_client(scope="nodes", items=[_node("Alice", "An engineer")])
         tool = create_zep_search_tool(scope="nodes")
         out = await _call(tool, _make_ctx(_make_deps(client)), "q")
         assert "Alice: An engineer" in out
 
     @pytest.mark.asyncio
     async def test_formats_episodes(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(
-            return_value=_make_result(episodes=[_episode("I work at Acme")])
-        )
+        client = _make_client(scope="episodes", items=[_episode("I work at Acme")])
         tool = create_zep_search_tool(scope="episodes")
         out = await _call(tool, _make_ctx(_make_deps(client)), "q")
         assert "I work at Acme" in out
 
     @pytest.mark.asyncio
     async def test_auto_scope_returns_context(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(
-            return_value=_make_result(context="Assembled context block")
-        )
+        client = _make_context_client("Assembled context block")
         tool = create_zep_search_tool(scope="auto")
         out = await _call(tool, _make_ctx(_make_deps(client)), "q")
         assert out == "Assembled context block"
 
     @pytest.mark.asyncio
+    async def test_auto_scope_without_context(self) -> None:
+        client = _make_context_client(None)
+        tool = create_zep_search_tool(scope="auto")
+        out = await _call(tool, _make_ctx(_make_deps(client)), "q")
+        assert out == "No results found."
+
+    @pytest.mark.asyncio
     async def test_formats_observations(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(
-            return_value=_make_result(
-                observations=[
-                    _observation("Prefers async updates", "Communication pattern"),
-                    _observation("Ships on Fridays"),
-                ]
-            )
+        client = _make_client(
+            scope="observations",
+            items=[
+                _observation("Prefers async updates", "Communication pattern"),
+                _observation("Ships on Fridays"),
+            ],
         )
         tool = create_zep_search_tool(scope="observations")
         out = await _call(tool, _make_ctx(_make_deps(client)), "q")
@@ -384,26 +470,17 @@ class TestResultFormatting:
 
     @pytest.mark.asyncio
     async def test_formats_thread_summaries(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(
-            return_value=_make_result(
-                thread_summaries=[
-                    _thread_summary("User discussed Q3 roadmap"),
-                    _thread_summary(None, name="onboarding-thread"),
-                ]
-            )
+        client = _make_client(
+            scope="thread_summaries",
+            items=[_thread_summary("User discussed Q3 roadmap"), _thread_summary(None)],
         )
         tool = create_zep_search_tool(scope="thread_summaries")
         out = await _call(tool, _make_ctx(_make_deps(client)), "q")
-        assert out != "No results found."
-        assert "User discussed Q3 roadmap" in out
-        # Falls back to the node name when no summary is present.
-        assert "onboarding-thread" in out
+        assert out == "- User discussed Q3 roadmap"
 
     @pytest.mark.asyncio
     async def test_empty_results(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        client = _make_client()
         tool = create_zep_search_tool()
         out = await _call(tool, _make_ctx(_make_deps(client)), "q")
         assert out == "No results found."
@@ -412,9 +489,17 @@ class TestResultFormatting:
 class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_search_failure_returns_error_string(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(side_effect=RuntimeError("boom"))
+        client = _make_client()
+        _search_mock(client).side_effect = RuntimeError("boom")
         tool = create_zep_search_tool()
+        out = await _call(tool, _make_ctx(_make_deps(client)), "q")
+        assert "failed" in out.lower()
+
+    @pytest.mark.asyncio
+    async def test_context_failure_returns_error_string(self) -> None:
+        client = _make_context_client("ctx")
+        client.graph.get_context.side_effect = RuntimeError("boom")
+        tool = create_zep_search_tool(scope="auto")
         out = await _call(tool, _make_ctx(_make_deps(client)), "q")
         assert "failed" in out.lower()
 
@@ -461,8 +546,7 @@ class TestPinOrExposeSchema:
 
     @pytest.mark.asyncio
     async def test_pinned_params_sent_to_sdk(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(nodes=[]))
+        client = _make_client(scope="nodes")
         tool = create_zep_search_tool(pinned_params={"scope": "nodes", "limit": 5})
         ctx = _make_ctx(_make_deps(client))
 
@@ -470,9 +554,7 @@ class TestPinOrExposeSchema:
         # cannot (and needn't) pass them; the tool sends the pinned value.
         await _call(tool, ctx, "query")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["scope"] == "nodes"
-        assert kwargs["limit"] == 5
+        assert _search_mock(client, "nodes").call_args.kwargs["page_size"] == 5
 
     def test_hidden_params_removed_from_schema_and_use_zep_default(self) -> None:
         """hidden_params hides a param from the schema WITHOUT pinning it to a
@@ -487,41 +569,39 @@ class TestPinOrExposeSchema:
 
     @pytest.mark.asyncio
     async def test_hidden_params_omitted_from_sdk_call(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        client = _make_client()
         tool = create_zep_search_tool(hidden_params={"mmr_lambda"})
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query")
 
-        assert "mmr_lambda" not in client.graph.search.call_args.kwargs
+        assert "mmr_lambda" not in _search_mock(client).call_args.kwargs
 
     def test_bfs_and_filters_constructor_only(self) -> None:
-        """search_filters / bfs_origin_node_uuids are never part of the model
+        """filters / bfs_origin_node_uuids are never part of the model
         schema -- constructor-only."""
         tool = create_zep_search_tool(
-            search_filters={"node_labels": ["Person"]},
+            filters={"node_labels": ["Person"]},
             bfs_origin_node_uuids=["uuid-1"],
         )
         properties = tool.tool_def.parameters_json_schema["properties"]
 
-        assert "search_filters" not in properties
+        assert "filters" not in properties
         assert "bfs_origin_node_uuids" not in properties
 
     @pytest.mark.asyncio
     async def test_bfs_and_filters_sent_to_sdk(self) -> None:
-        client = MagicMock()
-        client.graph.search = AsyncMock(return_value=_make_result(edges=[]))
+        client = _make_client()
         tool = create_zep_search_tool(
-            search_filters={"node_labels": ["Person"]},
+            filters={"edge_types": ["WORKS_AT"]},
             bfs_origin_node_uuids=["uuid-1"],
         )
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query")
 
-        kwargs = client.graph.search.call_args.kwargs
-        assert kwargs["search_filters"] == {"node_labels": ["Person"]}
+        kwargs = _search_mock(client).call_args.kwargs
+        assert kwargs["filters"] == {"edge_types": ["WORKS_AT"]}
         assert kwargs["bfs_origin_node_uuids"] == ["uuid-1"]
 
     def test_legacy_constructor_args_pin(self) -> None:
@@ -539,4 +619,76 @@ class TestPinOrExposeSchema:
     def test_model_facing_tool_is_a_pydantic_ai_tool(self) -> None:
         tool = create_zep_search_tool()
         assert isinstance(tool, Tool)
-        assert tool.takes_ctx is True
+
+
+class TestScopeFilters:
+    def test_unsupported_filter_on_pinned_scope_raises(self) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            create_zep_search_tool(scope="edges", filters={"node_labels": ["Person"]})
+
+        message = str(excinfo.value)
+        assert "'node_labels'" in message
+        assert "scope 'edges'" in message
+        assert "['nodes', 'auto']" in message
+
+    def test_unsupported_filter_on_hidden_default_scope_raises(self) -> None:
+        with pytest.raises(ValueError, match="scope 'edges'"):
+            create_zep_search_tool(hidden_params={"scope"}, filters={"node_labels": ["Person"]})
+
+    def test_filter_that_no_scope_supports_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown Zep search filters"):
+            create_zep_search_tool(filters={"search_filters": {}})
+
+    def test_observations_scope_rejects_every_filter(self) -> None:
+        with pytest.raises(ValueError, match="scope 'observations'"):
+            create_zep_search_tool(scope="observations", filters={"metadata_filters": {}})
+
+    def test_supported_filter_on_pinned_scope_is_accepted(self) -> None:
+        create_zep_search_tool(scope="nodes", filters={"node_labels": ["Person"]})
+        create_zep_search_tool(scope="auto", filters={"node_labels": ["Person"]})
+        create_zep_search_tool(scope="edges", filters={"edge_types": ["WORKS_AT"]})
+
+    def test_model_selectable_scope_accepts_filter_of_any_scope(self) -> None:
+        create_zep_search_tool(filters={"node_labels": ["Person"]})
+
+    @pytest.mark.asyncio
+    async def test_pinned_nodes_scope_sends_node_labels(self) -> None:
+        client = _make_client("nodes")
+        tool = create_zep_search_tool(scope="nodes", filters={"node_labels": ["Person"]})
+        ctx = _make_ctx(_make_deps(client))
+
+        await _call(tool, ctx, "query")
+
+        assert _search_mock(client, "nodes").call_args.kwargs["filters"] == {
+            "node_labels": ["Person"]
+        }
+
+    @pytest.mark.asyncio
+    async def test_each_scope_gets_only_its_filters(self) -> None:
+        filters = {"node_labels": ["Person"], "edge_types": ["WORKS_AT"]}
+        tool = create_zep_search_tool(filters=filters)
+
+        edges_client = _make_client("edges")
+        await _call(tool, _make_ctx(_make_deps(edges_client)), "query", scope="edges")
+        assert _search_mock(edges_client, "edges").call_args.kwargs["filters"] == {
+            "edge_types": ["WORKS_AT"]
+        }
+
+        nodes_client = _make_client("nodes")
+        await _call(tool, _make_ctx(_make_deps(nodes_client)), "query", scope="nodes")
+        assert _search_mock(nodes_client, "nodes").call_args.kwargs["filters"] == {
+            "node_labels": ["Person"]
+        }
+
+        context_client = _make_context_client("ctx")
+        await _call(tool, _make_ctx(_make_deps(context_client)), "query", scope="auto")
+        assert context_client.graph.get_context.call_args.kwargs["filters"] == filters
+
+    @pytest.mark.asyncio
+    async def test_scope_without_supported_filters_sends_no_filters(self) -> None:
+        client = _make_client("episodes")
+        tool = create_zep_search_tool(filters={"node_labels": ["Person"]})
+
+        await _call(tool, _make_ctx(_make_deps(client)), "query", scope="episodes")
+
+        assert "filters" not in _search_mock(client, "episodes").call_args.kwargs

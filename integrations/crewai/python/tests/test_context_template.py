@@ -13,6 +13,10 @@ from zep_cloud.client import Zep
 from zep_crewai import DEFAULT_CONTEXT_TEMPLATE, ZepUserStorage
 from zep_crewai.user_storage import ContextInput
 
+USER_UUID = "11111111-1111-1111-1111-111111111111"
+THREAD_UUID = "22222222-2222-2222-2222-222222222222"
+GRAPH_UUID = "33333333-3333-3333-3333-333333333333"
+
 
 def _make_mock_client() -> MagicMock:
     client = MagicMock(spec=Zep)
@@ -33,8 +37,9 @@ class TestContextTemplate:
 
         storage = ZepUserStorage(
             client=client,
-            user_id="user-1",
-            thread_id="thread-1",
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
+            graph_uuid=GRAPH_UUID,
             context_builder=builder,
             context_template=custom_template,
         )
@@ -54,7 +59,11 @@ class TestContextTemplate:
             return tricky_context
 
         storage = ZepUserStorage(
-            client=client, user_id="user-1", thread_id="thread-1", context_builder=builder
+            client=client,
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
+            graph_uuid=GRAPH_UUID,
+            context_builder=builder,
         )
 
         # Must not raise.
@@ -74,8 +83,8 @@ class TestContextTemplate:
         )
 
     def test_default_composition_wrapped_in_template(self) -> None:
-        """The default (non-builder) search path also wraps the composed
-        context in context_template, via search_graph_and_compose_context."""
+        """The default (non-builder) search path also wraps the Context Block
+        in context_template, via compose_graph_context."""
         from unittest.mock import patch
 
         client = _make_mock_client()
@@ -83,13 +92,14 @@ class TestContextTemplate:
 
         storage = ZepUserStorage(
             client=client,
-            user_id="user-1",
-            thread_id="thread-1",
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
+            graph_uuid=GRAPH_UUID,
             context_template=custom_template,
         )
 
         with patch(
-            "zep_crewai.user_storage.search_graph_and_compose_context",
+            "zep_crewai.user_storage.compose_graph_context",
             return_value="WRAP[composed facts]",
         ) as mock_compose:
             results = storage.search("hi", limit=5)

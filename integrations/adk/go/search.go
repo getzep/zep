@@ -1,139 +1,449 @@
 package zepadk
 
 import (
-	zep "github.com/getzep/zep-go/v3"
+	"context"
+	"slices"
+
+	zep "github.com/getzep/zep-go/v4"
+)
+
+// SearchScope selects which kind of graph data a Zep search returns. Zep v4
+// replaced the single v3 graph search method with one method for each scope,
+// and it no longer exports a scope enum, so this package defines the scope
+// values that it maps into textual results.
+type SearchScope string
+
+// Supported graph search scopes.
+const (
+	// SearchScopeEdges returns facts and relationships.
+	SearchScopeEdges SearchScope = "edges"
+	// SearchScopeNodes returns entities and their summaries.
+	SearchScopeNodes SearchScope = "nodes"
+	// SearchScopeEpisodes returns raw ingested content.
+	SearchScopeEpisodes SearchScope = "episodes"
+	// SearchScopeObservations returns derived memories.
+	SearchScopeObservations SearchScope = "observations"
+	// SearchScopeThreadSummaries returns incremental thread summaries.
+	SearchScopeThreadSummaries SearchScope = "thread_summaries"
+	// SearchScopeAuto returns the assembled context block, which Zep v4
+	// serves from Graph.GetContext.
+	SearchScopeAuto SearchScope = "auto"
 )
 
 // searchScopeSupported reports whether scope is one this package knows how to
 // map into textual results. Unsupported scopes are rejected loudly rather than
 // silently returning nothing.
-//
-// Supported scopes: edges (facts), nodes (entity summaries), episodes (raw
-// message/data content), observations (derived memories), thread_summaries
-// (incremental thread summaries), and auto (a pre-materialized Context Block
-// returned in res.Context).
-func searchScopeSupported(scope zep.GraphSearchScope) bool {
+func searchScopeSupported(scope SearchScope) bool {
 	switch scope {
-	case zep.GraphSearchScopeEdges,
-		zep.GraphSearchScopeNodes,
-		zep.GraphSearchScopeEpisodes,
-		zep.GraphSearchScopeObservations,
-		zep.GraphSearchScopeThreadSummaries,
-		zep.GraphSearchScopeAuto:
+	case SearchScopeEdges,
+		SearchScopeNodes,
+		SearchScopeEpisodes,
+		SearchScopeObservations,
+		SearchScopeThreadSummaries,
+		SearchScopeAuto:
 		return true
 	default:
 		return false
 	}
 }
 
-// mapSearchResults flattens a Zep graph search response into a slice of textual
-// results appropriate for the requested scope. Earlier versions read only
-// res.Edges, so any non-edge scope (auto / nodes / episodes / observations /
-// thread_summaries) silently returned zero results; this maps every
-// supported scope.
-//
-//   - edges            -> each edge's Fact
-//   - nodes            -> "name: summary" (or just the name when there is no summary)
-//   - episodes         -> each episode's Content
-//   - observations     -> "name: summary" (or just the name when there is no summary)
-//   - thread_summaries -> "name: summary" (or just the name when there is no summary)
-//   - auto             -> the single pre-materialized Context Block (res.Context)
-//
-// Empty entries are skipped. A nil res yields a nil slice.
-func mapSearchResults(scope zep.GraphSearchScope, res *zep.GraphSearchResults) []string {
-	if res == nil {
+// newSearchScopeFromString converts a model-supplied or caller-supplied value
+// into a [SearchScope]. It reports an error for an unsupported value.
+func newSearchScopeFromString(s string) (SearchScope, error) {
+	scope := SearchScope(s)
+	if !searchScopeSupported(scope) {
+		return "", errUnsupportedScope
+	}
+	return scope, nil
+}
+
+// SearchReranker selects the result ordering algorithm of a Zep graph search.
+// Zep v4 has one reranker type for each search scope, so this package defines
+// one set of values and converts it for the scope of each search.
+type SearchReranker string
+
+// Supported graph search rerankers.
+const (
+	// SearchRerankerRRF uses reciprocal rank fusion.
+	SearchRerankerRRF SearchReranker = "rrf"
+	// SearchRerankerMMR uses maximal marginal relevance.
+	SearchRerankerMMR SearchReranker = "mmr"
+	// SearchRerankerNodeDistance orders results by distance from a center node.
+	SearchRerankerNodeDistance SearchReranker = "node_distance"
+	// SearchRerankerEpisodeMentions orders results by episode mentions. Zep
+	// requires the EpisodeUUIDs search filter for this reranker, so the graph
+	// search tool does not offer it to the model. Set it with
+	// WithToolReranker and WithToolSearchFilters.
+	SearchRerankerEpisodeMentions SearchReranker = "episode_mentions"
+	// SearchRerankerCrossEncoder orders results with a cross-encoder.
+	SearchRerankerCrossEncoder SearchReranker = "cross_encoder"
+)
+
+// newModelSearchRerankerFromString converts a model-supplied value into a
+// [SearchReranker]. It reports an error for a value that the model cannot
+// select. The model cannot select [SearchRerankerEpisodeMentions], because
+// Zep requires episode UUID filters for that reranker.
+func newModelSearchRerankerFromString(s string) (SearchReranker, error) {
+	switch r := SearchReranker(s); r {
+	case SearchRerankerRRF,
+		SearchRerankerMMR,
+		SearchRerankerNodeDistance,
+		SearchRerankerCrossEncoder:
+		return r, nil
+	default:
+		return "", errUnsupportedReranker
+	}
+}
+
+// defaultMMRLambda is the mmr_lambda that the graph search tool sends when the
+// reranker is mmr and no mmr_lambda is set. Zep v4 rejects an mmr search that
+// has no mmr_lambda.
+const defaultMMRLambda = 0.5
+
+// searchRerankersByScope lists the rerankers that each Zep v4 search scope
+// accepts, in the canonical order. Zep v4 rejects any other pair with HTTP
+// 400. The auto scope has no entry, because Graph.GetContext takes no
+// reranker.
+var searchRerankersByScope = map[SearchScope][]SearchReranker{
+	SearchScopeEdges: {
+		SearchRerankerRRF, SearchRerankerMMR, SearchRerankerNodeDistance,
+		SearchRerankerEpisodeMentions, SearchRerankerCrossEncoder,
+	},
+	SearchScopeNodes: {
+		SearchRerankerRRF, SearchRerankerMMR, SearchRerankerNodeDistance,
+		SearchRerankerCrossEncoder,
+	},
+	SearchScopeEpisodes:        {SearchRerankerRRF, SearchRerankerMMR},
+	SearchScopeObservations:    {SearchRerankerRRF, SearchRerankerMMR, SearchRerankerCrossEncoder},
+	SearchScopeThreadSummaries: {SearchRerankerRRF, SearchRerankerMMR, SearchRerankerCrossEncoder},
+}
+
+// rerankerSupported reports whether Zep v4 accepts reranker on scope.
+func rerankerSupported(scope SearchScope, reranker SearchReranker) bool {
+	return slices.Contains(searchRerankersByScope[scope], reranker)
+}
+
+// rerankerKnown reports whether reranker is one of the package rerankers.
+func rerankerKnown(reranker SearchReranker) bool {
+	return rerankerSupported(SearchScopeEdges, reranker)
+}
+
+// maxSearchPageSize is the largest page_size that a Zep v4 search accepts.
+const maxSearchPageSize = 50
+
+// searchParams holds the scope-independent parameters of a graph search.
+// searchGraph converts them to the request type of the selected scope.
+type searchParams struct {
+	Query              string
+	Reranker           *SearchReranker
+	MmrLambda          *float64
+	CenterNodeUUID     *string
+	BfsOriginNodeUUIDs []string
+	Filters            *zep.SearchFilters
+}
+
+// searchPageSize returns the page_size for a search that collects limit
+// results. A nil limit uses the Zep default.
+func searchPageSize(limit *int) *int {
+	if limit == nil {
 		return nil
 	}
+	return zep.Int(min(*limit, maxSearchPageSize))
+}
 
+// searchGraph runs the Zep v4 graph search method for scope against the graph
+// identified by graphUUID, and maps every result to text:
+//
+//   - edges            -> each edge's fact
+//   - nodes            -> "name: summary" (or the populated half)
+//   - episodes         -> each episode's content
+//   - observations     -> "name: summary" (or the populated half)
+//   - thread_summaries -> each summary's text
+//   - auto             -> the assembled context block from Graph.GetContext
+//
+// Empty entries are skipped. The auto scope uses only the query and the
+// filters, because Graph.GetContext accepts no reranker, no center node, and
+// no MMR weighting. Each Zep v4 search scope accepts only some filter keys, so
+// searchGraph returns an error when params.Filters has a key that the scope
+// cannot apply.
+func searchGraph(ctx context.Context, api zepAPI, scope SearchScope, graphUUID string, limit *int, params *searchParams) ([]string, error) {
+	pageSize := searchPageSize(limit)
 	switch scope {
-	case zep.GraphSearchScopeAuto:
-		if res.Context != nil && *res.Context != "" {
-			return []string{*res.Context}
+	case SearchScopeAuto:
+		res, err := api.GetGraphContext(ctx, graphUUID, &zep.GraphContextRequest{
+			Query:   params.Query,
+			Filters: params.Filters,
+		})
+		if err != nil {
+			return nil, err
 		}
-		return nil
+		if res != nil && deref(res.Context) != "" {
+			return []string{*res.Context}, nil
+		}
+		return nil, nil
 
-	case zep.GraphSearchScopeNodes:
+	case SearchScopeNodes:
+		filters, err := nodeSearchFilters(params.Filters)
+		if err != nil {
+			return nil, err
+		}
+		req := &zep.SearchNodesRequest{
+			PageSize:           pageSize,
+			Query:              params.Query,
+			BfsOriginNodeUUIDs: params.BfsOriginNodeUUIDs,
+			CenterNodeUUID:     params.CenterNodeUUID,
+			Filters:            filters,
+			MmrLambda:          params.MmrLambda,
+		}
+		if params.Reranker != nil {
+			req.Reranker = zep.SearchNodesRequestReranker(*params.Reranker).Ptr()
+		}
+		nodes, err := api.SearchNodes(ctx, graphUUID, req, limit)
+		if err != nil {
+			return nil, err
+		}
 		var out []string
-		for _, node := range res.Nodes {
+		for _, node := range nodes {
 			if node == nil {
 				continue
 			}
-			if text := nodeText(node); text != "" {
+			if text := nameSummaryText(deref(node.Name), deref(node.Summary)); text != "" {
 				out = append(out, text)
 			}
 		}
-		return out
+		return out, nil
 
-	case zep.GraphSearchScopeEpisodes:
-		var out []string
-		for _, ep := range res.Episodes {
-			if ep != nil && ep.Content != "" {
-				out = append(out, ep.Content)
-			}
+	case SearchScopeEpisodes:
+		filters, err := episodeSearchFilters(params.Filters)
+		if err != nil {
+			return nil, err
 		}
-		return out
-
-	case zep.GraphSearchScopeObservations:
+		req := &zep.SearchEpisodesRequest{
+			PageSize:           pageSize,
+			Query:              params.Query,
+			BfsOriginNodeUUIDs: params.BfsOriginNodeUUIDs,
+			CenterNodeUUID:     params.CenterNodeUUID,
+			Filters:            filters,
+			MmrLambda:          params.MmrLambda,
+		}
+		if params.Reranker != nil {
+			req.Reranker = zep.SearchEpisodesRequestReranker(*params.Reranker).Ptr()
+		}
+		episodes, err := api.SearchEpisodes(ctx, graphUUID, req, limit)
+		if err != nil {
+			return nil, err
+		}
 		var out []string
-		for _, obs := range res.Observations {
-			if obs == nil {
+		for _, episode := range episodes {
+			if episode == nil {
 				continue
 			}
-			if text := observationText(obs); text != "" {
+			if content := deref(episode.Content); content != "" {
+				out = append(out, content)
+			}
+		}
+		return out, nil
+
+	case SearchScopeObservations:
+		if !filtersEmpty(params.Filters) {
+			return nil, errUnsupportedFilter
+		}
+		req := &zep.SearchObservationsRequest{
+			PageSize:           pageSize,
+			Query:              params.Query,
+			BfsOriginNodeUUIDs: params.BfsOriginNodeUUIDs,
+			CenterNodeUUID:     params.CenterNodeUUID,
+			MmrLambda:          params.MmrLambda,
+		}
+		if params.Reranker != nil {
+			req.Reranker = zep.SearchObservationsRequestReranker(*params.Reranker).Ptr()
+		}
+		observations, err := api.SearchObservations(ctx, graphUUID, req, limit)
+		if err != nil {
+			return nil, err
+		}
+		var out []string
+		for _, observation := range observations {
+			if observation == nil {
+				continue
+			}
+			if text := nameSummaryText(deref(observation.Name), deref(observation.Summary)); text != "" {
 				out = append(out, text)
 			}
 		}
-		return out
+		return out, nil
 
-	case zep.GraphSearchScopeThreadSummaries:
+	case SearchScopeThreadSummaries:
+		filters, err := threadSummarySearchFilters(params.Filters)
+		if err != nil {
+			return nil, err
+		}
+		req := &zep.SearchThreadSummariesRequest{
+			PageSize:           pageSize,
+			Query:              params.Query,
+			BfsOriginNodeUUIDs: params.BfsOriginNodeUUIDs,
+			CenterNodeUUID:     params.CenterNodeUUID,
+			Filters:            filters,
+			MmrLambda:          params.MmrLambda,
+		}
+		if params.Reranker != nil {
+			req.Reranker = zep.SearchThreadSummariesRequestReranker(*params.Reranker).Ptr()
+		}
+		summaries, err := api.SearchThreadSummaries(ctx, graphUUID, req, limit)
+		if err != nil {
+			return nil, err
+		}
 		var out []string
-		for _, summary := range res.ThreadSummaries {
+		for _, summary := range summaries {
 			if summary == nil {
 				continue
 			}
-			if text := threadSummaryText(summary); text != "" {
+			if text := deref(summary.Summary); text != "" {
 				out = append(out, text)
 			}
 		}
-		return out
+		return out, nil
 
-	case zep.GraphSearchScopeEdges:
-		fallthrough
 	default:
+		filters, err := edgeSearchFilters(params.Filters)
+		if err != nil {
+			return nil, err
+		}
+		req := &zep.SearchEdgesRequest{
+			PageSize:           pageSize,
+			Query:              params.Query,
+			BfsOriginNodeUUIDs: params.BfsOriginNodeUUIDs,
+			CenterNodeUUID:     params.CenterNodeUUID,
+			Filters:            filters,
+			MmrLambda:          params.MmrLambda,
+		}
+		if params.Reranker != nil {
+			req.Reranker = zep.SearchEdgesRequestReranker(*params.Reranker).Ptr()
+		}
+		edges, err := api.SearchEdges(ctx, graphUUID, req, limit)
+		if err != nil {
+			return nil, err
+		}
 		var out []string
-		for _, edge := range res.Edges {
-			if edge != nil && edge.Fact != "" {
-				out = append(out, edge.Fact)
+		for _, edge := range edges {
+			if edge == nil {
+				continue
+			}
+			if fact := deref(edge.Fact); fact != "" {
+				out = append(out, fact)
 			}
 		}
-		return out
+		return out, nil
 	}
 }
 
-// nodeText renders an entity node as "name: summary", falling back to just the
-// name (or just the summary) when one half is absent.
-func nodeText(node *zep.EntityNode) string {
-	return nameSummaryText(node.Name, node.Summary)
+// filtersEmpty reports whether f sets no filter key.
+func filtersEmpty(f *zep.SearchFilters) bool {
+	return f == nil || (len(f.ConnectedNodeUUIDs) == 0 &&
+		f.ContentPolicyViolated == nil &&
+		f.DateFilters == nil &&
+		len(f.EdgeTypes) == 0 &&
+		len(f.EdgeUUIDs) == 0 &&
+		len(f.EpisodeUUIDs) == 0 &&
+		len(f.ExcludeEdgeTypes) == 0 &&
+		len(f.ExcludeNodeLabels) == 0 &&
+		f.MetadataFilters == nil &&
+		len(f.NodeLabels) == 0 &&
+		len(f.PropertyFilters) == 0 &&
+		len(f.SourceNodeUUIDs) == 0 &&
+		len(f.TargetNodeUUIDs) == 0)
 }
 
-// observationText renders a derived observation node as "name: summary",
-// falling back to whichever half is present.
-func observationText(obs *zep.DerivedNode) string {
-	summary := ""
-	if obs.Summary != nil {
-		summary = *obs.Summary
+// edgeSearchFilters converts f to the filters of an edge search.
+func edgeSearchFilters(f *zep.SearchFilters) (*zep.EdgeSearchFilters, error) {
+	if filtersEmpty(f) {
+		return nil, nil
 	}
-	return nameSummaryText(obs.Name, summary)
+	if f.ContentPolicyViolated != nil || len(f.ExcludeNodeLabels) > 0 || len(f.NodeLabels) > 0 {
+		return nil, errUnsupportedFilter
+	}
+	return &zep.EdgeSearchFilters{
+		ConnectedNodeUUIDs: f.ConnectedNodeUUIDs,
+		DateFilters:        f.DateFilters,
+		EdgeTypes:          f.EdgeTypes,
+		EdgeUUIDs:          f.EdgeUUIDs,
+		EpisodeUUIDs:       f.EpisodeUUIDs,
+		ExcludeEdgeTypes:   f.ExcludeEdgeTypes,
+		MetadataFilters:    f.MetadataFilters,
+		PropertyFilters:    f.PropertyFilters,
+		SourceNodeUUIDs:    f.SourceNodeUUIDs,
+		TargetNodeUUIDs:    f.TargetNodeUUIDs,
+	}, nil
 }
 
-// threadSummaryText renders a thread-summary node as "name: summary",
-// falling back to whichever half is present.
-func threadSummaryText(node *zep.GraphitiSagaNode) string {
-	summary := ""
-	if node.Summary != nil {
-		summary = *node.Summary
+// nodeSearchFilters converts f to the filters of a node search.
+func nodeSearchFilters(f *zep.SearchFilters) (*zep.NodeSearchFilters, error) {
+	if filtersEmpty(f) {
+		return nil, nil
 	}
-	return nameSummaryText(node.Name, summary)
+	if len(f.ConnectedNodeUUIDs) > 0 || f.ContentPolicyViolated != nil || f.DateFilters != nil ||
+		len(f.EdgeTypes) > 0 || len(f.EdgeUUIDs) > 0 || len(f.ExcludeEdgeTypes) > 0 ||
+		len(f.SourceNodeUUIDs) > 0 || len(f.TargetNodeUUIDs) > 0 {
+		return nil, errUnsupportedFilter
+	}
+	return &zep.NodeSearchFilters{
+		EpisodeUUIDs:      f.EpisodeUUIDs,
+		ExcludeNodeLabels: f.ExcludeNodeLabels,
+		MetadataFilters:   f.MetadataFilters,
+		NodeLabels:        f.NodeLabels,
+		PropertyFilters:   f.PropertyFilters,
+	}, nil
+}
+
+// episodeSearchFilters converts f to the filters of an episode search.
+func episodeSearchFilters(f *zep.SearchFilters) (*zep.EpisodeSearchFilters, error) {
+	if filtersEmpty(f) {
+		return nil, nil
+	}
+	if !filtersEmpty(&zep.SearchFilters{
+		ConnectedNodeUUIDs: f.ConnectedNodeUUIDs,
+		DateFilters:        f.DateFilters,
+		EdgeTypes:          f.EdgeTypes,
+		EdgeUUIDs:          f.EdgeUUIDs,
+		EpisodeUUIDs:       f.EpisodeUUIDs,
+		ExcludeEdgeTypes:   f.ExcludeEdgeTypes,
+		ExcludeNodeLabels:  f.ExcludeNodeLabels,
+		NodeLabels:         f.NodeLabels,
+		PropertyFilters:    f.PropertyFilters,
+		SourceNodeUUIDs:    f.SourceNodeUUIDs,
+		TargetNodeUUIDs:    f.TargetNodeUUIDs,
+	}) {
+		return nil, errUnsupportedFilter
+	}
+	return &zep.EpisodeSearchFilters{
+		ContentPolicyViolated: f.ContentPolicyViolated,
+		MetadataFilters:       f.MetadataFilters,
+	}, nil
+}
+
+// threadSummarySearchFilters converts f to the filters of a thread summary
+// search.
+func threadSummarySearchFilters(f *zep.SearchFilters) (*zep.ThreadSummarySearchFilters, error) {
+	if filtersEmpty(f) {
+		return nil, nil
+	}
+	if !filtersEmpty(&zep.SearchFilters{
+		ConnectedNodeUUIDs:    f.ConnectedNodeUUIDs,
+		ContentPolicyViolated: f.ContentPolicyViolated,
+		DateFilters:           f.DateFilters,
+		EdgeTypes:             f.EdgeTypes,
+		EdgeUUIDs:             f.EdgeUUIDs,
+		EpisodeUUIDs:          f.EpisodeUUIDs,
+		ExcludeEdgeTypes:      f.ExcludeEdgeTypes,
+		ExcludeNodeLabels:     f.ExcludeNodeLabels,
+		NodeLabels:            f.NodeLabels,
+		PropertyFilters:       f.PropertyFilters,
+		SourceNodeUUIDs:       f.SourceNodeUUIDs,
+		TargetNodeUUIDs:       f.TargetNodeUUIDs,
+	}) {
+		return nil, errUnsupportedFilter
+	}
+	return &zep.ThreadSummarySearchFilters{MetadataFilters: f.MetadataFilters}, nil
 }
 
 // nameSummaryText joins a name and summary as "name: summary", returning just

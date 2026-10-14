@@ -14,15 +14,15 @@ import { ZepIdentityError } from "./errors.js";
  * Session-state keys read when resolving a Zep identity at runtime.
  *
  * Set these on the ADK session `state` to attribute persisted messages to
- * the user or to override the IDs derived from the ADK session. The user's
+ * the user or to override the UUIDs derived from the ADK session. The user's
  * email on the Zep profile is a provisioning concern — pass it to
- * `ensureUser`, not session state.
+ * `createUser`, not session state.
  */
 export const STATE_KEYS = {
-  /** Overrides the Zep user ID (defaults to the ADK `userId`). */
-  userId: "zep_user_id",
-  /** Overrides the Zep thread ID (defaults to the ADK `sessionId`). */
-  threadId: "zep_thread_id",
+  /** Overrides the Zep user UUID (defaults to the ADK `userId`). */
+  userUuid: "zep_user_uuid",
+  /** Overrides the Zep thread UUID (defaults to the ADK `sessionId`). */
+  threadUuid: "zep_thread_uuid",
   /** The user's first name — anchors the identity node in the graph. */
   firstName: "zep_first_name",
   /** The user's last name. */
@@ -32,16 +32,21 @@ export const STATE_KEYS = {
 /**
  * Explicit Zep identity, supplied at construction time.
  *
- * When `userId` / `threadId` are provided they take precedence over any
+ * Zep v4 addresses a user and a thread by their server-generated UUIDs. A
+ * `userId` or a `threadId` is a name, not an address, so the integration
+ * never accepts one here: resolve the UUID once during provisioning (see
+ * `createUser` / `createThread`) and store it in your own database.
+ *
+ * When `userUuid` / `threadUuid` are provided they take precedence over any
  * values resolved from the ADK session at runtime. `firstName` and
  * `lastName` are attached as the author name on persisted messages so the
  * graph resolves identity.
  */
 export interface ZepIdentityOptions {
-  /** Zep user ID. Defaults to the ADK session `userId`. */
-  userId?: string;
-  /** Zep thread ID. Defaults to the ADK session `sessionId`. */
-  threadId?: string;
+  /** Zep user UUID. Defaults to the ADK session `userId`. */
+  userUuid?: string;
+  /** Zep thread UUID. Defaults to the ADK session `sessionId`. */
+  threadUuid?: string;
   /** User's first name. Recommended — used to anchor the user's graph node. */
   firstName?: string;
   /** User's last name. */
@@ -50,8 +55,8 @@ export interface ZepIdentityOptions {
 
 /** A fully resolved Zep identity for a single turn. */
 export interface ResolvedIdentity {
-  userId: string;
-  threadId: string;
+  userUuid: string;
+  threadUuid: string;
   firstName?: string;
   lastName?: string;
   /** Display name used as the `name` on persisted user messages. */
@@ -96,37 +101,44 @@ function readStateString(
  *
  * Resolution order for each field:
  *
- * - **userId**: explicit option → `zep_user_id` in state → ADK `userId`
- * - **threadId**: explicit option → `zep_thread_id` in state → ADK `sessionId`
+ * - **userUuid**: explicit option → `zep_user_uuid` in state → ADK `userId`
+ * - **threadUuid**: explicit option → `zep_thread_uuid` in state → ADK
+ *   `sessionId`
  * - **firstName / lastName**: explicit option → matching state key
+ *
+ * The ADK fallbacks apply only when the application sets the ADK `userId`
+ * and `sessionId` to the Zep UUIDs. When it does not, pass the UUIDs
+ * explicitly or set the state keys.
  *
  * @param context The ADK callback or tool context for this turn.
  * @param options Explicit identity overrides supplied at construction time.
  * @returns The resolved identity.
  * @throws {ZepIdentityError} If neither an explicit value, a state key, nor
- *   the ADK session can provide a `userId` or `threadId`.
+ *   the ADK session can provide a `userUuid` or `threadUuid`.
  */
 export function resolveIdentity(
   context: AdkContextLike,
   options: ZepIdentityOptions = {},
 ): ResolvedIdentity {
-  const userId =
-    options.userId ?? readStateString(context, STATE_KEYS.userId) ?? context.userId;
-  if (!userId) {
+  const userUuid =
+    options.userUuid ??
+    readStateString(context, STATE_KEYS.userUuid) ??
+    context.userId;
+  if (!userUuid) {
     throw new ZepIdentityError(
-      "Cannot resolve a Zep user ID. Pass `userId` to the integration, set " +
-        `'${STATE_KEYS.userId}' in session state, or create the ADK session with a userId.`,
+      "Cannot resolve a Zep user UUID. Pass `userUuid` to the integration, set " +
+        `'${STATE_KEYS.userUuid}' in session state, or create the ADK session with the Zep user UUID as its userId.`,
     );
   }
 
-  const threadId =
-    options.threadId ??
-    readStateString(context, STATE_KEYS.threadId) ??
+  const threadUuid =
+    options.threadUuid ??
+    readStateString(context, STATE_KEYS.threadUuid) ??
     context.sessionId;
-  if (!threadId) {
+  if (!threadUuid) {
     throw new ZepIdentityError(
-      "Cannot resolve a Zep thread ID. Pass `threadId` to the integration, set " +
-        `'${STATE_KEYS.threadId}' in session state, or create the ADK session with a sessionId.`,
+      "Cannot resolve a Zep thread UUID. Pass `threadUuid` to the integration, set " +
+        `'${STATE_KEYS.threadUuid}' in session state, or create the ADK session with the Zep thread UUID as its sessionId.`,
     );
   }
 
@@ -141,8 +153,8 @@ export function resolveIdentity(
     .trim();
 
   return {
-    userId,
-    threadId,
+    userUuid,
+    threadUuid,
     firstName,
     lastName,
     displayName: displayName.length > 0 ? displayName : undefined,

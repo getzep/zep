@@ -1,6 +1,32 @@
 # Changelog
 
-## Unreleased
+## 1.0.0
+
+### Breaking
+
+- **The package targets the Zep v4 SDK (`zep-cloud>=4.0.0,<5`) only.** There is no compatibility layer for v3.
+
+To migrate from V3, follow the [V3 to V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general procedure: the nullable UUID columns, the one-time `lookup` backfill, and the order of the steps.
+
+These API changes are specific to this package:
+
+- `get_zep_context`, `get_zep_context_sync`, `build_system_message`, and `build_system_message_sync`: `thread_id` becomes `thread_uuid` (give the stored `Thread.uuid_`), `user_id` becomes `graph_uuid` (give the stored `User.graph_uuid`), and `template_id` becomes `template_uuid`.
+- `create_zep_pre_model_hook`: `thread_id` becomes `thread_uuid`, `user_id` becomes `graph_uuid`, and `template_id` becomes `template_uuid`.
+- `ContextInput`: the `user_id` and `thread_id` fields become `graph_uuid` and `thread_uuid`.
+- `persist_messages` and `persist_messages_sync`: `thread_id` becomes `thread_uuid` (give the stored `Thread.uuid_`).
+- `create_graph_search_tool` and `create_graph_search_tool_sync`: the `user_id` and `graph_id` arguments become one required `graph_uuid` argument. Give the stored `User.graph_uuid` for a user graph, or the stored `Graph.uuid_` for a standalone graph.
+- `ZepStore`: the constructor requires `graph_uuid` (the stored `User.graph_uuid` or `Graph.uuid_`). A `namespace_target` resolver returns a graph UUID string, not a `{"user_id": ...}` or `{"graph_id": ...}` dict. The default resolver no longer uses the first namespace element as a graph ID.
+- `ensure_user`, `ensure_thread`, `ensure_user_sync`, and `ensure_thread_sync` are removed. Use `create_user`, `create_thread`, `create_user_sync`, and `create_thread_sync` for new resources only. `create_user` takes no `user_id` and returns the created `User` (store `User.uuid_` and `User.graph_uuid`). `create_thread` takes `user_uuid` in place of `thread_id` and `user_id`, and returns the created `Thread` (store `Thread.uuid_`). The `on_created` hook receives the created `User` in place of a user ID.
+- `to_zep_message` and `to_zep_messages` return the v4 `AddMessage` type in place of the v3 `Message` type.
+
+For an existing V3 user, thread, or graph, do not call `create_user`, `create_thread`, or `graph.create`. Get its UUID one time with the backfill in the migration guide, and store it.
+
+### Changed
+
+- Context retrieval uses `thread.get_context(thread_uuid)` in place of the v3 `thread.get_user_context(thread_id)`. Zep searches the whole user graph with the four most recent thread messages as the query, so a thread with no messages gives no context. The README Quick Start, the `react_agent.py` example, and the integration test now add the user message to the thread before the agent runs, and add the assistant reply after it. The first turn of a new thread now gets context.
+- Persistence uses the v4 `AddMessage` type and `thread.add_messages(thread_uuid, ...)`.
+- `create_graph_search_tool` and `ZepStore` use the dedicated v4 search methods in place of the v3 aggregate `graph.search`. The `scope` selects the method: `edges`, `nodes`, `episodes`, `observations`, and `thread_summaries` call `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, and `graph.search_thread_summaries`; `auto` calls `graph.get_context`, which accepts neither a `reranker` nor a `limit`. Results are read from the first page of a pager (`page.items`). The tool `limit` parameter and the `ZepStore` search limit are sent as the v4 `page_size` argument. The constructor-only `search_filters` argument is sent as the v4 `filters` argument, and its type must be the filter type of the selected scope, for example `EdgeSearchFilters` for `edges`. If the model chooses a reranker that the selected scope does not support, for example `cross_encoder` on `episodes`, the search tool does not call Zep, because Zep rejects that request with HTTP 400. The tool returns an error message that names the invalid pair and lists the valid rerankers for the scope, so the model can search again. A model-chosen reranker with `scope="auto"` gives the same kind of error, because `graph.get_context` takes no reranker. When the model gives no reranker, the tool sends `rrf` for every scope except `auto`. When a reranker is pinned, the `scope` field does not show `auto`. The tool schema shows only the rerankers that the model can use correctly for the scope. `node_distance` is shown only when `center_node_uuid` is pinned, and `episode_mentions` only when `search_filters` sets `episode_uuids`. When the reranker is `mmr` and no `mmr_lambda` is set, the tool sends `DEFAULT_MMR_LAMBDA` (0.5). An argument outside the schema, or `node_distance` without `center_node_uuid`, gives the model an error message that names the setting and the valid values. A pinned scope and reranker pair that Zep rejects, including any pinned reranker with `scope="auto"`, raises `ValueError` at construction.
+- `ZepStore` ingestion uses `graph.episode.add(graph_uuid, data=..., type="json")` in place of the v3 `graph.add`. `ZepStore` now requires a `graph_uuid`, and `namespace_target` maps a namespace to the UUID of a graph instead of to a v3 target.
 
 ## 0.2.2 (2026-10-01)
 

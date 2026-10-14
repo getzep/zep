@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.0.0
+
+### Breaking
+
+Follow the [V3-to-V4 migration guide](https://help.getzep.com/migrating-from-v3)
+for the general procedure — the nullable UUID columns, the one-time `lookup`
+backfill, and the order of steps.
+
+The API changes that are specific to this package:
+
+- **The package requires the Zep v4 SDK (`@getzep/zep-cloud` `>=4.0.0`
+  and `<5`).** The v3 SDK is no longer supported, and the package does
+  not contain a compatibility layer.
+- **`ensureZepUserAndThread` is replaced by
+  `createZepUserAndThread`.** `EnsureIdentityOptions` is replaced by
+  `CreateIdentityOptions`, and the new `ZepIdentity` type is exported. The
+  function returns `{ userUuid, graphUuid, threadUuid }` from the Zep
+  responses, or `null` when Zep does not create both resources. The
+  `onUserCreated` hook now receives the new user UUID.
+- **Parameters are renamed to UUIDs.** `createZepMiddleware`,
+  `createZepOnFinish`, `createZepContextTool`, `getZepContext`, and
+  `persistZepTurn` take `threadUuid`; `createZepMiddleware` and
+  `createZepOnFinish` also take the optional `userUuid`, and `templateId` is
+  renamed to `templateUuid`. `ZepBinding` takes the stored graph UUID in
+  `graphUuid`. The extended binding on `createZepTools` and
+  `createZepRememberTool` (`ZepBinding & { threadUuid?: string }`) also takes
+  the stored thread UUID in `binding.threadUuid`.
+- **`toRoleType` can return `undefined`.** Zep v4 removed the
+  `norole` member of `RoleType`. An unrecognized or absent role maps to
+  `undefined`, and the package omits the role from the message.
+- **`resolveGraphTarget` returns `string | null`.** The function
+  returns the bound graph UUID.
+- **The `searchFilters` option of `createZepSearchTool` is renamed to
+  `filters`**, which matches the field of the v4 search requests.
+
+For an existing V3 user, thread, or graph, do not call
+`createZepUserAndThread`, `thread.create`, or `graph.create`. Get its UUID one
+time with the backfill in the migration guide, and store it.
+
+### Changed
+
+- Zep calls now use the v4 methods: `user.create`, `thread.create` with a
+  `userUuid`, `thread.getContext`, `graph.episode.add`, and the scope-specific
+  search methods `graph.searchEdges`, `graph.searchNodes`,
+  `graph.searchEpisodes`, `graph.searchObservations`, and
+  `graph.searchThreadSummaries`. The `auto` search scope calls
+  `graph.getContext`. Each scope-specific search request carries the query,
+  the reranker, the filters, and the other parameters as flat fields, and the
+  `limit` parameter maps to the `pageSize` field of the request.
+- The examples, the tests, the README, and SETUP.md show the v4 API and the
+  UUID identifier convention.
+
 ## 0.2.0 (2026-07-07)
 
 ### Added

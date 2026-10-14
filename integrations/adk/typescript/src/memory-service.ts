@@ -38,7 +38,7 @@
  * the same intentional no-op for the same reason.
  */
 
-import type { ZepClient, Zep } from "@getzep/zep-cloud";
+import type { ZepClient } from "@getzep/zep-cloud";
 import type {
   BaseMemoryService,
   MemoryEntry,
@@ -46,7 +46,10 @@ import type {
   SearchMemoryResponse,
 } from "@google/adk";
 import type { Content } from "@google/genai";
-import { scopeResultsToTexts } from "./graph-search-tool.js";
+import {
+  searchGraphScope,
+  type ZepGraphSearchScope,
+} from "./graph-search-tool.js";
 import { defaultLogger, type Logger } from "./logging.js";
 
 // Minimal structural type for the `Session` ADK passes to
@@ -57,30 +60,31 @@ interface SessionLike {
 }
 
 /**
- * Scope handled by treating `result.context` as a single pre-materialized
- * Context Block, rather than a list of discrete edges/nodes/etc.
- */
-const AUTO_SCOPE: Zep.GraphSearchScope = "auto";
-
-/**
  * Scopes supported by {@link ZepMemoryService.searchMemory}. Matches the
  * scope enum exposed by `ZepGraphSearchTool`.
  */
-const SUPPORTED_SCOPES: readonly Zep.GraphSearchScope[] = [
+const SUPPORTED_SCOPES: readonly ZepGraphSearchScope[] = [
   "edges",
   "nodes",
   "episodes",
   "observations",
   "thread_summaries",
-  AUTO_SCOPE,
+  "auto",
 ];
 
-const DEFAULT_SCOPE: Zep.GraphSearchScope = "edges";
+const DEFAULT_SCOPE: ZepGraphSearchScope = "edges";
 
 /** Options for the {@link ZepMemoryService} constructor. */
 export interface ZepMemoryServiceOptions {
   /** An initialised `ZepClient`. The caller owns its lifecycle. */
   zep: ZepClient;
+  /**
+   * Fixed graph UUID. When set, every `searchMemory` call targets this
+   * graph. When omitted, the service reads the graph UUID of the user named
+   * by `SearchMemoryRequest.userId`, which ADK carries from the session. In
+   * Zep v4 that value must be the UUID of the Zep user.
+   */
+  graphUuid?: string;
   /**
    * The Zep graph search scope to use for every `searchMemory` call.
    * Matches `ZepGraphSearchTool`'s scope enum: `"edges"` (facts, the
@@ -89,7 +93,7 @@ export interface ZepMemoryServiceOptions {
    * `"thread_summaries"` (incremental thread summaries), or `"auto"` (Zep's
    * own pre-assembled Context Block, returned as a single memory entry).
    */
-  scope?: Zep.GraphSearchScope;
+  scope?: ZepGraphSearchScope;
   /**
    * Maximum number of results per search. `undefined` (the default) omits
    * the parameter so the Zep SDK applies its own default.
@@ -131,12 +135,16 @@ export interface ZepMemoryServiceOptions {
  */
 export class ZepMemoryService implements BaseMemoryService {
   private readonly zep: ZepClient;
-  private readonly scope: Zep.GraphSearchScope;
+  private readonly graphUuid?: string;
+  private readonly scope: ZepGraphSearchScope;
   private readonly limit?: number;
   private readonly logger: Logger;
+  /** Graph UUID for each user UUID, cached for the life of the service. */
+  private readonly graphUuidByUser = new Map<string, string>();
 
   constructor(options: ZepMemoryServiceOptions) {
     this.zep = options.zep;
+    this.graphUuid = options.graphUuid;
     this.scope = options.scope ?? DEFAULT_SCOPE;
     this.limit = options.limit;
     this.logger = options.logger ?? defaultLogger;
@@ -165,6 +173,11 @@ export class ZepMemoryService implements BaseMemoryService {
    * graph, not by application — so it is accepted (to satisfy the ADK
    * interface) but not forwarded to Zep.
    *
+   * Zep v4 searches a graph by UUID. The service uses the configured
+   * `graphUuid` when there is one. Otherwise it reads the graph UUID of
+   * `request.userId` with `user.get`, which requires the ADK session to
+   * carry the UUID of the Zep user. The service never calls `user.lookup`.
+   *
    * On any Zep failure, logs a warning (lengths only, never query or result
    * content) and returns an empty response rather than throwing, so a
    * memory lookup never breaks the agent.
@@ -185,18 +198,14 @@ export class ZepMemoryService implements BaseMemoryService {
       return { memories: [] };
     }
 
-    const searchParams: Zep.GraphSearchQuery = {
-      userId: request.userId,
-      query: request.query,
-      scope: this.scope,
-    };
-    if (this.limit !== undefined) {
-      searchParams.limit = this.limit;
-    }
-
-    let results: Zep.GraphSearchResults;
+    let texts: string[];
     try {
-      results = await this.zep.graph.search(searchParams);
+      const graphUuid = await this.resolveGraphUuid(request.userId);
+      texts = await searchGraphScope(this.zep, graphUuid, {
+        scope: this.scope,
+        body: { query: request.query },
+        limit: this.limit,
+      });
     } catch (error) {
       this.logger.warn(
         `Zep memory search failed (userId_len=${request.userId.length}, query_len=${request.query.length})`,
@@ -205,7 +214,6 @@ export class ZepMemoryService implements BaseMemoryService {
       return { memories: [] };
     }
 
-    const texts = this.resultTexts(results);
     const memories: MemoryEntry[] = texts.map((text) => ({
       content: { role: "model", parts: [{ text }] } satisfies Content,
       author: "Zep",
@@ -213,13 +221,22 @@ export class ZepMemoryService implements BaseMemoryService {
     return { memories };
   }
 
-  /** Flattens a `graph.search` result into text items for the configured scope. */
-  private resultTexts(results: Zep.GraphSearchResults): string[] {
-    if (this.scope === AUTO_SCOPE) {
-      const context = results.context?.trim();
-      return context && context.length > 0 ? [context] : [];
+  /** Resolve the UUID of the graph to search for a user UUID. */
+  private async resolveGraphUuid(userUuid: string): Promise<string> {
+    if (this.graphUuid) {
+      return this.graphUuid;
     }
 
-    return scopeResultsToTexts(results, this.scope);
+    const cached = this.graphUuidByUser.get(userUuid);
+    if (cached) {
+      return cached;
+    }
+
+    const user = await this.zep.user.get(userUuid);
+    if (!user.graphUuid) {
+      throw new Error(`Zep user ${userUuid} has no graph UUID.`);
+    }
+    this.graphUuidByUser.set(userUuid, user.graphUuid);
+    return user.graphUuid;
   }
 }

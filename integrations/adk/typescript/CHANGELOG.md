@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.0.0
+
+### Breaking
+
+Follow the [V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general migration procedure: the UUID columns, the one-time backfill, and the order of steps.
+
+These API changes are specific to this package:
+
+- The package requires `@getzep/zep-cloud@^4.0.0` (Zep V4, below V5).
+- `ensureUser(zep, { userId, ... })` is replaced by `createUser(zep, { firstName, lastName, email, onCreated })`. It has no `userId` option, and it returns `{ userUuid, graphUuid }` instead of a value that tells whether the user was new. The `onCreated` hook receives the UUID of the new user.
+- `ensureThread(zep, { threadId, userId })` is replaced by `createThread(zep, { userUuid })`. It has no `threadId` option, and it returns `{ threadUuid, graphUuid }`.
+- The `userId` and `threadId` options are replaced by `userUuid` and `threadUuid` on `createZepCallbacks`, `createZepBeforeModelCallback`, `createZepAfterModelCallback`, `ZepContextTool`, `ZepGraphSearchTool`, and `resolveIdentity`. Give the stored user UUID and thread UUID to these options.
+- The session-state keys `zep_user_id` and `zep_thread_id` are replaced by `zep_user_uuid` and `zep_thread_uuid`. To use one agent for many users, put the stored UUIDs in these keys. If you omit them, the ADK session `userId` and `sessionId` must be the Zep user UUID and the Zep thread UUID.
+- The `userId` and `threadId` fields of `ResolvedIdentity` and `ContextBuilderInput` are replaced by `userUuid` and `threadUuid`.
+- The `graphId` option of `ZepGraphSearchTool` is replaced by `graphUuid`. `ZepMemoryService` has a new `graphUuid` option. Give the stored graph UUID to these options. If you omit `graphUuid`, the package reads the graph of the user UUID with `zep.user.get`.
+- `searchFilters` on `ZepGraphSearchTool` takes the camelCase V4 `Zep.SearchFilters` shape (for example `dateFilters` and `metadataFilters`). Each search scope accepts only the filter keys that apply to it, and Zep returns HTTP 400 `unsupported_filter` for another key.
+
+For an existing V3 user, thread, or graph, do not call `createUser`, `createThread`, or `graph.create`. Get its UUID one time with the backfill in the migration guide, and store it.
+
+### Changed
+
+- `ZepGraphSearchTool` and `ZepMemoryService` read one page of results from the v4 search methods, which replaces the v3 page number and cursor behavior.
+- `ZepGraphSearchTool` checks each scope and reranker pair before the request. The model sees only the rerankers that the tool can use, and the tool returns an error message that names the valid values for a pair that Zep rejects. The constructor throws an error for pinned options that cannot work together. The tool sends `mmrLambda: 0.5` when the reranker is `"mmr"` and no value is set.
+- `ZepGraphSearchTool` no longer ignores a reranker with the `auto` scope. The `auto` scope takes no reranker. When the model sends a reranker with `auto`, the tool does not call Zep, and it returns an error message that tells the model to call the tool again with no reranker or with a scope that accepts the reranker. The constructor throws an error when `scope` is pinned to `"auto"` and a reranker is pinned. When a reranker is pinned, the tool does not show the `auto` scope.
+- The `reranker` parameter of `ZepGraphSearchTool` has no default value. When the model sends no reranker, the tool sends no reranker, and Zep uses `"rrf"`. When the model sends a value that is not a reranker, the tool does not call Zep, and it returns an error message that lists the valid rerankers.
+
+### Added
+
+- `graphUuid` option on `ZepMemoryService`, which sets a fixed graph for every `searchMemory` call.
+- `lint` script (`eslint .`) and an ESLint 9 configuration.
+
 ## 0.2.0 (2026-07-06)
 
 ### Added

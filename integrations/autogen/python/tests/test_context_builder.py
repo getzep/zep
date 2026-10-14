@@ -1,7 +1,6 @@
 """
 Tests for ``ContextInput`` / ``context_builder`` / ``context_template`` support
-on ``ZepUserMemory``, and the lazy user+thread provisioning path in
-``update_context()`` / ``add()``.
+on ``ZepUserMemory``, and the thread creation path in ``add()``.
 
 AutoGen's ``Memory`` protocol splits injection and persistence: ``update_context()``
 is called automatically before every model call (injection only), while
@@ -15,23 +14,28 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from autogen_core.memory import MemoryQueryResult
+from autogen_core.memory import MemoryContent, MemoryMimeType, MemoryQueryResult
 from autogen_core.model_context import UnboundedChatCompletionContext
 from autogen_core.models import UserMessage
+from conftest import FakePager
 from zep_cloud.client import AsyncZep
 
 from zep_autogen import ZepUserMemory
 from zep_autogen.memory import ContextInput
 
+USER_UUID = "11111111-1111-1111-1111-111111111111"
+THREAD_UUID = "22222222-2222-2222-2222-222222222222"
+GRAPH_UUID = "33333333-3333-3333-3333-333333333333"
+
 
 def _make_mock_client() -> MagicMock:
     client = MagicMock(spec=AsyncZep)
     client.user = MagicMock()
-    client.user.add = AsyncMock()
+    client.user.get = AsyncMock(return_value=MagicMock(graph_uuid=GRAPH_UUID))
     client.thread = MagicMock()
-    client.thread.create = AsyncMock()
-    client.thread.get_user_context = AsyncMock(return_value=MagicMock(context="default context"))
-    client.thread.get = AsyncMock(return_value=MagicMock(messages=[]))
+    client.thread.create = AsyncMock(return_value=MagicMock(uuid_=THREAD_UUID))
+    client.thread.get_context = AsyncMock(return_value=MagicMock(context="default context"))
+    client.thread.list_messages = AsyncMock(return_value=FakePager([]))
     client.thread.add_messages = AsyncMock()
     return client
 
@@ -45,7 +49,7 @@ async def _context_with_message(text: str) -> UnboundedChatCompletionContext:
 class TestContextBuilder:
     @pytest.mark.asyncio
     async def test_update_context_uses_context_builder(self) -> None:
-        """When context_builder is set, get_user_context is NOT called; the
+        """When context_builder is set, get_context is NOT called; the
         builder receives a ContextInput with the right fields; the injected
         content contains the builder's output."""
         client = _make_mock_client()
@@ -56,19 +60,23 @@ class TestContextBuilder:
             return "Built context block"
 
         memory = ZepUserMemory(
-            client=client, user_id="user-1", thread_id="thread-1", context_builder=builder
+            client=client,
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
+            context_builder=builder,
         )
         model_context = await _context_with_message("What's up?")
 
         result = await memory.update_context(model_context)
 
-        client.thread.get_user_context.assert_not_called()
+        client.thread.get_context.assert_not_called()
 
         assert len(received) == 1
         built = received[0]
         assert built.zep is client
-        assert built.user_id == "user-1"
-        assert built.thread_id == "thread-1"
+        assert built.user_uuid == USER_UUID
+        assert built.thread_uuid == THREAD_UUID
+        assert built.graph_uuid == GRAPH_UUID
         assert built.user_message == "What's up?"
         assert built.model_context is model_context
 
@@ -90,7 +98,10 @@ class TestContextBuilder:
             return None
 
         memory = ZepUserMemory(
-            client=client, user_id="user-1", thread_id="thread-1", context_builder=builder
+            client=client,
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
+            context_builder=builder,
         )
         model_context = UnboundedChatCompletionContext()
         await model_context.add_message(UserMessage(content="", source="user"))
@@ -113,8 +124,8 @@ class TestContextBuilder:
 
         memory = ZepUserMemory(
             client=client,
-            user_id="user-1",
-            thread_id="thread-1",
+            user_uuid=USER_UUID,
+            thread_uuid=THREAD_UUID,
             context_builder=failing_builder,
         )
         model_context = await _context_with_message("hello")
@@ -124,14 +135,49 @@ class TestContextBuilder:
         assert result.memories.results == []
 
 
-class TestLazyProvisioningInUpdateContext:
+class TestThreadCreation:
     @pytest.mark.asyncio
-    async def test_update_context_creates_user_and_thread_lazily(self) -> None:
+    async def test_update_context_without_thread_injects_nothing(self) -> None:
+        """Without a thread, there is no thread context to retrieve."""
         client = _make_mock_client()
-        memory = ZepUserMemory(client=client, user_id="user-1", thread_id="thread-1")
+        memory = ZepUserMemory(client=client, user_uuid=USER_UUID)
         model_context = await _context_with_message("hello")
 
-        await memory.update_context(model_context)
+        result = await memory.update_context(model_context)
 
-        client.user.add.assert_called_once()
-        client.thread.create.assert_called_once()
+        client.thread.get_context.assert_not_called()
+        assert result.memories.results == []
+
+    @pytest.mark.asyncio
+    async def test_add_creates_thread_once(self) -> None:
+        """The thread is created one time and then reused."""
+        client = _make_mock_client()
+        memory = ZepUserMemory(client=client, user_uuid=USER_UUID)
+
+        content = MemoryContent(
+            content="hello",
+            mime_type=MemoryMimeType.TEXT,
+            metadata={"type": "message", "role": "user"},
+        )
+        await memory.add(content)
+        await memory.add(content)
+
+        client.thread.create.assert_called_once_with(user_uuid=USER_UUID)
+        assert client.thread.add_messages.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_add_swallows_thread_creation_failure(self) -> None:
+        """A creation failure is logged, and add() does not raise."""
+        client = _make_mock_client()
+        client.thread.create = AsyncMock(side_effect=RuntimeError("zep down"))
+        memory = ZepUserMemory(client=client, user_uuid=USER_UUID)
+
+        await memory.add(
+            MemoryContent(
+                content="hello",
+                mime_type=MemoryMimeType.TEXT,
+                metadata={"type": "message", "role": "user"},
+            )
+        )
+
+        client.thread.add_messages.assert_not_called()

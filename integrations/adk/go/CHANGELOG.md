@@ -1,88 +1,126 @@
 # Changelog
 
-## 0.2.0 (2026-07-06)
+## v1.0.0
+
+### Breaking
+
+To move an application from Zep V3 to V4, follow the
+[Zep V4 migration guide](https://help.getzep.com/migrating-from-v3) for the
+general procedure: the nullable UUID columns, the one-time `lookup` backfill,
+and the order of steps. This section lists only the changes that are specific
+to this package.
+
+- The package requires the Zep V4 SDK, `github.com/getzep/zep-go/v4` v4.0.0
+  or later and below v5, in place of `github.com/getzep/zep-go/v3`. The
+  module path of this integration does not change.
+- `EnsureUser(ctx, client, userID, firstName, lastName, email)` is removed.
+  Use `CreateUser(ctx, client, firstName, lastName, email)` for a new user
+  only. It returns the user UUID and the graph UUID of the user.
+- `EnsureThread(ctx, client, threadID, userID)` is removed. Use
+  `CreateThread(ctx, client, userUUID)` for a new thread only. It returns the
+  thread UUID.
+- Give the stored thread UUID to `NewBeforeModelCallback` with
+  `WithThreadUUID` or `WithThreadUUIDResolver`, and to
+  `NewAfterModelCallback` with `WithAfterThreadUUID` or
+  `WithAfterThreadUUIDResolver`. The callbacks no longer use the ADK session
+  ID as the Zep thread ID.
+- Give the stored user UUID to `NewBeforeModelCallback` with `WithUserUUID`
+  or `WithUserUUIDResolver`. The callback gives it to a custom
+  `ContextBuilder` in `ContextInput.UserUUID`.
+- Give the stored graph UUID to `NewGraphSearchTool` with `WithGraphUUID` or
+  `WithGraphUUIDResolver`, and to `NewMemoryService` with
+  `WithMemoryGraphUUID` or `WithMemoryGraphUUIDResolver`. `WithGraphID` is
+  removed. The tool and the memory service no longer use the ADK user ID as
+  the Zep user ID.
+- The `UserID` and `ThreadID` fields of `ContextInput` are replaced by
+  `UserUUID` and `ThreadUUID`.
+- A callback, the tool, or the memory service that has no UUID logs an error
+  and returns no result.
+- The search scope is now the package type `zepadk.SearchScope`
+  (`SearchScopeEdges`, `SearchScopeNodes`, `SearchScopeEpisodes`,
+  `SearchScopeObservations`, `SearchScopeThreadSummaries`, and
+  `SearchScopeAuto`), because Zep v4 has one search method for each scope and
+  exports no scope enum. `WithSearchScope` and `WithToolSearchScope` take
+  this type instead of `zep.GraphSearchScope`.
+- The reranker is now the package type `zepadk.SearchReranker`
+  (`SearchRerankerRRF`, `SearchRerankerMMR`, `SearchRerankerNodeDistance`,
+  `SearchRerankerEpisodeMentions`, and `SearchRerankerCrossEncoder`), because
+  Zep v4 has a different reranker type for each scope. `WithToolReranker`
+  takes this type instead of `zep.Reranker`.
+- `WithToolSearchScope` and `WithToolSearchLimit` now pin and hide the scope
+  or limit parameter (a fixed value that is removed from the tool schema of
+  the model). When the option is absent, the model can set the parameter,
+  with the default `scope="edges"` and `limit=10`. To keep the parameters
+  hidden, pass `WithToolSearchScope` and `WithToolSearchLimit`, and add
+  `WithHiddenParams` for `reranker`, `mmr_lambda`, and `center_node_uuid`.
+  The README section "Graph search tool: pin-or-expose parameters" shows the
+  procedure.
+- The default context block of `NewBeforeModelCallback` is now wrapped in
+  `DefaultContextTemplate` (a `<ZEP_CONTEXT>...</ZEP_CONTEXT>` block with
+  framing text), not in the bare `DefaultContextPrefix` string. To keep the
+  old output, use `WithContextTemplate` or the deprecated
+  `WithContextPrefix`.
+
+For an existing V3 user, thread, or graph, do not call `CreateUser`,
+`CreateThread`, or `Graph.Create`. Get its UUID one time with the backfill in
+the migration guide, and store it.
 
 ### Added
 
-- `NewGraphSearchTool` now builds an explicit JSON schema (via
-  `github.com/google/jsonschema-go`) giving every model-exposable search
-  parameter (`scope`, `reranker`, `limit`, `mmr_lambda`, `center_node_uuid`) a
-  pin-or-expose tri-state, matching the Python and TypeScript zep-adk
-  packages: **exposed** (default; the model chooses, with a documented
-  default), **pinned** (hidden from the schema, always sent to Zep with a
-  fixed value), or **hidden** (omitted from both the schema and the Zep call).
-  New options: `WithToolReranker`, `WithToolMMRLambda`,
-  `WithToolCenterNodeUUID` (pin-and-hide), `WithToolSearchFilters`,
-  `WithToolBFSOriginNodeUUIDs` (constructor-only, always applied), and
-  `WithHiddenParams` (hide without pinning). See the README's "Graph search
-  tool: pin-or-expose parameters" section.
-- `thread_summaries` added to the set of Zep graph search scopes the memory
-  service and search tool map into results (`name: summary`, mirroring the
-  `nodes`/`observations` shape). The model-exposed `scope` enum now covers all
-  six Zep scopes: `edges`, `nodes`, `episodes`, `observations`,
-  `thread_summaries`, `auto`.
-- `WithContextBuilder` — configure a custom `ContextBuilder` function to
-  construct the context block injected by `NewBeforeModelCallback`, instead of
-  relying on `Thread.AddMessages(ReturnContext=true)`. When set, message
-  persistence and the builder run concurrently, each isolated from the
-  other's failure: a builder error only skips injection for that turn
-  (persistence still completes); a persist failure does not prevent a
-  successful builder result from being injected.
-- `WithContextTemplate` / `DefaultContextTemplate` — configure the template
-  used to wrap the injected Zep context block. Rendered via
-  `strings.ReplaceAll` (never `fmt` verbs), so context content containing
-  `%`, `{`, or `}` is always safe to inject. `DefaultContextTemplate` is
-  canonical across zep-adk's Python, Go, and TypeScript implementations.
-- `ContextInput` — the struct passed to a custom `ContextBuilder`, carrying
-  the concrete Zep client, resolved user/thread IDs, the user's message text,
-  the ADK callback context, and the outgoing `*model.LLMRequest`.
+- `NewGraphSearchTool` builds an explicit JSON schema (with
+  `github.com/google/jsonschema-go`). Each search parameter that the model can
+  set (`scope`, `reranker`, `limit`, `mmr_lambda`, `center_node_uuid`) can be
+  exposed (the default), pinned, or hidden. New options: `WithToolReranker`,
+  `WithToolMMRLambda`, `WithToolCenterNodeUUID`, `WithToolSearchFilters`,
+  `WithToolBFSOriginNodeUUIDs`, and `WithHiddenParams`.
+- The memory service and the search tool support the `thread_summaries`
+  scope. The `scope` enum of the model has all six scopes: `edges`, `nodes`,
+  `episodes`, `observations`, `thread_summaries`, and `auto`.
+- `WithContextBuilder` sets a custom `ContextBuilder` function that makes the
+  context block of `NewBeforeModelCallback`. Message persistence and the
+  builder run at the same time. A builder error skips the injection for that
+  turn only. A persistence error does not stop the injection of a builder
+  result.
+- `WithContextTemplate` and `DefaultContextTemplate` set the template that
+  wraps the injected context block. The package renders the template with
+  `strings.ReplaceAll`, so context that contains `%`, `{`, or `}` is safe.
+- `ContextInput` is the input of a custom `ContextBuilder`. It has the Zep
+  client, the user UUID, the thread UUID, the text of the user message, the
+  ADK callback context, and the outgoing `*model.LLMRequest`.
+- `NewGraphSearchTool` validates the scope and reranker pair against the
+  pairs that Zep v4 accepts. The schema shows only the rerankers that a pinned
+  or hidden scope accepts, and only the scopes that a pinned reranker accepts.
+  A pair from the model that Zep rejects returns an error to the model that
+  names the setting and the values to use, and the tool makes no Zep call.
+  A pinned pair that Zep rejects makes `NewGraphSearchTool` return an error.
+  The `mmr` reranker uses `mmr_lambda=0.5` when no value is set.
+- A reranker from the model with `scope="auto"` returns an error to the model,
+  and the tool makes no Zep call. Before, the tool ignored the reranker. The
+  `reranker` parameter of the schema has no default, so `auto` with no
+  reranker works. When the model sends no reranker, the tool still uses `rrf`
+  for every scope except `auto`.
+- With a non-nil client and no graph UUID, `NewGraphSearchTool` returns an
+  error. `NewBeforeModelCallback`, `NewAfterModelCallback`, and
+  `NewMemoryService` log an error when they are constructed with no thread
+  UUID or graph UUID. An empty UUID string counts as no UUID.
 
 ### Changed
 
-- **Breaking:** `WithToolSearchScope` and `WithToolSearchLimit` now **pin and
-  hide** the scope/limit parameter (fixed value, removed from the model's tool
-  schema) instead of silently configuring a hidden default that every search
-  used. An *absent* option now **exposes** that parameter to the model (with
-  the documented default: `scope="edges"`, `limit=10`) instead of pinning it —
-  previously the model never saw or controlled these parameters at all.
-  Callers who want the old always-pinned-to-a-fixed-value behavior should pass
-  `WithToolSearchScope` / `WithToolSearchLimit` explicitly (as before) and add
-  `WithHiddenParams` for the newly-exposed `reranker`, `mmr_lambda`, and
-  `center_node_uuid` parameters if they should stay hidden too. See the
-  README's "Graph search tool: pin-or-expose parameters" migration recipe.
-- **Breaking:** The default context block injected by `NewBeforeModelCallback`
-  is now wrapped in `DefaultContextTemplate` (an explicit `<ZEP_CONTEXT>...
-  </ZEP_CONTEXT>` block with framing text) instead of the bare
-  `DefaultContextPrefix` string. Callers relying on the old bare-prefix output
-  should switch to `WithContextTemplate` (or the deprecated `WithContextPrefix`
-  shim, which reproduces the previous prefix-only formatting).
-- `WithContextPrefix` is now **deprecated** in favor of `WithContextTemplate`.
-  It remains fully functional as a shim: it sets the template to
-  `prefix + "{context}"`, reproducing the old prefix-only output exactly (no
-  `<ZEP_CONTEXT>` wrapper). `DefaultContextPrefix` remains exported for
-  existing callers but is no longer used by the default template.
-- **Breaking:** `EnsureUser` and `EnsureThread` now return `(created bool, err
-  error)` instead of `error`, so callers can tell whether the user/thread was
-  newly created and drive one-time per-user setup (ontology, custom
-  instructions) reliably. `created` is `true` only when the resource was
-  newly created by that call; an already-exists conflict returns `(false,
-  nil)` (not an error), and a nil client returns `(false, nil)` as before.
-
-  Migration:
-
-  ```go
-  // Before: if err := zepadk.EnsureUser(ctx, zep, userID, first, last, email); err != nil { ... }
-  // After:
-  created, err := zepadk.EnsureUser(ctx, zep, userID, first, last, email)
-  if err != nil {
-      // handle genuine failure
-  }
-  if created {
-      // one-time per-user setup: ontology, custom instructions, etc.
-  }
-  ```
-
-  `EnsureThread` follows the same pattern.
+- `WithContextPrefix` is deprecated. Use `WithContextTemplate`.
+  `WithContextPrefix` sets the template to `prefix + "{context}"`, so it
+  gives the old prefix-only output. `DefaultContextPrefix` stays exported.
+- The graph search tool does not offer the `episode_mentions` reranker to the
+  model, because Zep requires the `EpisodeUUIDs` search filter for it. An
+  `episode_mentions` value from the model falls back to the default reranker
+  and is not sent to Zep. To use `episode_mentions`, set `WithToolReranker`
+  and set `EpisodeUUIDs` in `WithToolSearchFilters`.
+- Each Zep v4 search scope accepts only some filter keys. When the filters of
+  `WithToolSearchFilters` have a key that the selected scope cannot apply, the
+  search tool logs an error, makes no Zep call, and returns no facts.
+- A search sends the configured limit as the Zep v4 `page_size`, up to the
+  Zep maximum of 50.
+- The memory service and the search tool read every page of a Zep v4 search
+  result, up to the configured limit.
 
 ## 0.1.0 (2026-06-16)
 

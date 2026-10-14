@@ -9,7 +9,7 @@ try:
 
     # Import our integration
     from .memory import DEFAULT_CONTEXT_TEMPLATE, ContextBuilder, ContextInput, ZepUserMemory
-    from .provisioning import UserSetupHook, ensure_thread, ensure_user
+    from .provisioning import UserSetupHook, create_thread, create_user
     from .tools import create_add_graph_data_tool, create_search_graph_tool
 
     __all__ = [
@@ -18,8 +18,8 @@ try:
         "create_search_graph_tool",
         "create_add_graph_data_tool",
         "ZepDependencyError",
-        "ensure_user",
-        "ensure_thread",
+        "create_user",
+        "create_thread",
         "UserSetupHook",
         "ContextBuilder",
         "ContextInput",

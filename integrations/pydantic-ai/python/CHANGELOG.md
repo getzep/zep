@@ -1,6 +1,31 @@
 # Changelog
 
-## Unreleased
+## 1.0.0
+
+### Breaking
+
+To migrate an application from Zep V3, follow the [V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general procedure: the nullable UUID columns, the one-time `lookup` backfill, and the order of the steps.
+
+The API changes that are specific to this package are:
+
+- The package requires the Zep V4 SDK (`zep-cloud>=4.0.0,<5`). The package does not support the V3 SDK.
+- `ZepDeps` takes `user_uuid` and `thread_uuid` instead of `user_id` and `thread_id`. Give the stored user UUID and the stored thread UUID to these fields.
+- `ZepDeps` has a new optional field, `graph_uuid`. Give the stored graph UUID of the user (`user.graph_uuid`) to this field. The `zep_search` tool searches this graph.
+- `ContextInput` has `user_uuid`, `thread_uuid`, and `graph_uuid` instead of `user_id` and `thread_id`.
+- `create_user` and `create_thread` replace `ensure_user` and `ensure_thread`. `create_user` returns the created `User`, which has `uuid_` and `graph_uuid`. `create_thread(client, user_uuid=...)` returns the created `Thread`, which has `uuid_`. Each call creates a new resource and raises on failure. The `UserSetupHook` type and the `on_created` parameter are removed.
+- The history processor does not create the user or the thread lazily. Both resources must exist before the first turn.
+- `create_zep_search_tool` takes `graph_uuid` instead of `graph_id`, and `filters` instead of `search_filters`. Give a stored standalone graph UUID to `graph_uuid`. When `graph_uuid` is not set, the tool uses `ZepDeps.graph_uuid`. The tool calls the V4 scope-specific search methods, and `scope="auto"` calls `graph.get_context`.
+
+For an existing V3 user, thread, or graph, do not call `create_user`, `create_thread`, or `graph.create`. Get its UUID one time with the backfill in the migration guide, and store it.
+
+### Changed
+
+- The default context retrieval calls `thread.add_messages(thread_uuid, ..., return_context=True)` with the v4 `AddMessage` model.
+
+### Fixed
+
+- The search tool no longer ignores a reranker with the `auto` scope. The `auto` scope calls `graph.get_context`, which takes no reranker. If the model sends a reranker with `scope="auto"`, the tool does not call Zep. It returns an error message as the tool result, so the model can search again with no reranker or with another scope. The `reranker` parameter of the tool schema has no default value. When the model sends no reranker for another scope, the tool still sends `rrf`. When a reranker is pinned, the `scope` field does not offer `auto`, and when `scope="auto"` is pinned, the schema does not offer the reranker.
+- `create_zep_search_tool` raises `ValueError` when a reranker is pinned together with `scope="auto"`. Before, the tool removed the pinned reranker.
 
 ## 0.2.2 (2026-10-01)
 

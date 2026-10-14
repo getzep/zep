@@ -34,7 +34,7 @@ cd zep/integrations/crewai/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `crewai>=1.0.0`, `zep-cloud>=3.23.0`.
+Requirements: Python 3.11+, `crewai>=1.0.0`, `zep-cloud>=4.0.0,<5`.
 
 ## 4. Configure environment variables
 
@@ -42,8 +42,23 @@ Requirements: Python 3.11+, `crewai>=1.0.0`, `zep-cloud>=3.23.0`.
 export ZEP_API_KEY="your-zep-api-key"
 export OPENAI_API_KEY="your-openai-api-key"
 
+# Optional: target a non-default Zep API, such as the development API.
+# The v4 SDK reads only ZEP_API_KEY; it does not read ZEP_API_URL itself.
+# The examples and the live test pass this value to the client as base_url.
+export ZEP_API_URL="https://api.development.getzep.com"
+
 # Optional: override the OpenAI model used by the live test (default: gpt-4o-mini)
 export OPENAI_MODEL="gpt-4o-mini"
+```
+
+To call a non-default Zep API, pass the base URL when you create the client.
+The `base_url` value must end in `/api/v4`:
+
+```python
+zep_client = Zep(
+    api_key=os.environ["ZEP_API_KEY"],
+    base_url=os.environ["ZEP_API_URL"] + "/api/v4",
+)
 ```
 
 ## 5. Run the example
@@ -67,7 +82,28 @@ Other runnable examples live in [`examples/`](examples):
 - `crewai_graph.py` — `ZepGraphStorage` for a shared knowledge graph
 - `crewai_tools.py` — search + add tools across a multi-agent crew
 
-## 6. Run the tests
+## 6. Identifiers
+
+Zep v4 addresses every user, thread, and graph by a server-generated UUID. An
+example creates each resource, reads the UUID from the create response, and
+passes the UUID to the storage adapters and the tools:
+
+```python
+user = zep_client.user.create(first_name="Alice", email="alice@example.com")
+thread = zep_client.thread.create(user_uuid=user.uuid_)
+
+storage = ZepUserStorage(
+    client=zep_client,
+    user_uuid=user.uuid_,
+    thread_uuid=thread.uuid_,
+    graph_uuid=user.graph_uuid,
+)
+```
+
+Your application stores these UUIDs in its own database. The integration does
+not resolve a `user_id` or a `thread_id` at run time.
+
+## 7. Run the tests
 
 Mock-based tests (no API keys needed):
 

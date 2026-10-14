@@ -84,8 +84,8 @@ describe("persistAndInject — context-builder seam", () => {
     expect(contextBuilder).toHaveBeenCalledTimes(1);
     expect(captured).toBeDefined();
     expect(captured!.zep).toBe(client);
-    expect(captured!.userId).toBe("user-1");
-    expect(captured!.threadId).toBe("thread-1");
+    expect(captured!.userUuid).toBe("user-1");
+    expect(captured!.threadUuid).toBe("thread-1");
     expect(captured!.userMessage).toBe("hello there");
     expect(captured!.context).toBe(ctx);
     expect(captured!.llmRequest).toBe(req);

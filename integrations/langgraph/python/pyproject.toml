@@ -1,13 +1,13 @@
 [project]
 name = "zep-langgraph"
-version = "0.2.2"
+version = "1.0.0"
 description = "LangGraph integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "langchain-core>=1.0",
     "langgraph>=1.2.5",
-    "zep-cloud>=3.23.0,<4",
+    "zep-cloud>=4.0.0,<5",
 ]
 
 [project.urls]

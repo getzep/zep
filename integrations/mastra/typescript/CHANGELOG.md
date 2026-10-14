@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.0.0
+
+### Breaking
+
+To upgrade from Zep v3, follow the [V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general procedure. This entry gives only the changes that are specific to this package.
+
+- **The package requires the Zep v4 SDK (`@getzep/zep-cloud` `^4.0.0`, which is 4.0.0 or later and below 5).** The public API of the package takes UUIDs, and the package never calls `lookup` at run time.
+- **The bindings take UUIDs.** `ZepBinding` takes `graphUuid` in place of `userId`/`graphId`, and `ZepThreadBinding` takes `threadUuid` in place of `threadId`. Give the stored UUIDs in the `binding` option of `createZepToolset`, `createZepRememberTool`, `createZepSearchTool`, and `createZepContextTool`. For a user graph, give the `graphUuid` of the user. For a standalone graph, give the `uuid` of the graph.
+- **`createZepProcessors`, `ZepInputProcessor`, and `ZepOutputProcessor` take `graphUuid` and `threadUuid`** in place of `userId` and `threadId`. `ZepContextBuilderInput` gives `graphUuid` and `threadUuid` to a custom context builder.
+- **`ResolvedZepIdentity` returns `graphUuid` and `threadUuid`** in place of `userId` and `threadId`. A `resolveIdentity` function must return the stored UUIDs.
+- **`ensureZepUserAndThread` is replaced by `createZepUserAndThread`, and `EnsureIdentityOptions` is replaced by `CreateIdentityOptions`.** The new function accepts no `userId` and no `threadId`. It creates a new user and a new thread, and returns `ZepIdentity` (`{ userUuid, graphUuid, threadUuid }`), or `null` after a failure. It is not idempotent: a second call creates a second user. The `onUserCreated` hook receives the `userUuid`.
+- **`createZepContextTool` and the processors take `templateUuid`** in place of `templateId`.
+- **`createZepSearchTool` takes `filters`** in place of `searchFilters`. Zep rejects a filter key that the selected scope cannot apply with HTTP 400 `unsupported_filter`.
+- `resolveGraphTarget` is renamed to `resolveGraphUuid` and returns the bound `graphUuid`.
+- `toRoleType` no longer maps an unknown role to `norole`, because Zep v4 removed that role. An unknown role is omitted, and the tool records the message without a role name.
+
+For an existing v3 user, thread, or graph, do not call `createZepUserAndThread` or `graph.create`. Get its UUID one time with the backfill in the migration guide, and store it.
+
+### Changed
+
+- The Zep calls are migrated to their v4 replacements: `thread.getUserContext` to `thread.getContext`, `graph.add` to `graph.episode.add`, `user.add` to `user.create`, and `graph.search` to the scope methods `graph.searchEdges`, `graph.searchNodes`, `graph.searchEpisodes`, `graph.searchObservations`, `graph.searchThreadSummaries`, and `graph.getContext` for the `auto` scope. The `zepSearch` tool keeps the model-visible `scope` parameter and maps each paginated result to its facts.
+- `zepSearch` validates the scope and reranker pair before the request, because each Zep v4 search method accepts only some rerankers. The schema shows only the valid choices, an invalid model choice returns an `error` that names the valid choices, an invalid pinned pair throws at construction, and `mmr` sends a default `mmrLambda` of 0.5.
+- `zepSearch` does not ignore a reranker with the `auto` scope, because `graph.getContext` takes no reranker. A model-selected reranker with `auto` returns an `error` that tells the model to search again with no reranker or with a scope that accepts the reranker, and the tool does not call Zep. A pinned `scope: "auto"` with a pinned reranker throws at construction. The tool sends the default `rrf` reranker only for the other scopes.
+
 ## 0.2.0 (2026-07-07)
 
 ### Added

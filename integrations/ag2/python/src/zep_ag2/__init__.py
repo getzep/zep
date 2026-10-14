@@ -28,7 +28,7 @@ from zep_ag2.memory import (
     ContextInput,
     ZepMemoryManager,
 )
-from zep_ag2.provisioning import UserSetupHook, ensure_thread, ensure_user
+from zep_ag2.provisioning import UserSetupHook, create_thread, create_user
 from zep_ag2.tools import (
     create_add_graph_data_tool,
     create_add_memory_tool,
@@ -49,12 +49,12 @@ __all__ = [
     "ZepAG2ConfigError",
     "ZepAG2MemoryError",
     "ZepDependencyError",
-    "ensure_user",
-    "ensure_thread",
+    "create_user",
+    "create_thread",
     "UserSetupHook",
     "ContextBuilder",
     "ContextInput",
     "DEFAULT_CONTEXT_TEMPLATE",
 ]
 
-__version__ = "0.2.2"
+__version__ = "1.0.0"

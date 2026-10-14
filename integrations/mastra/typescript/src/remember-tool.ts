@@ -6,7 +6,7 @@ import {
   errorMessage,
   GRAPH_MAX_CHARS,
   MESSAGE_MAX_CHARS,
-  resolveGraphTarget,
+  resolveGraphUuid,
   resolveLogger,
   resolveToolIdentity,
   toRoleType,
@@ -20,11 +20,11 @@ export interface ZepRememberToolOptions {
   /**
    * The graph this tool writes to, plus the thread used to record conversation.
    *
-   * - When `threadId` and `userId` are present, conversational content is
-   *   persisted via `thread.addMessages` (records history *and* ingests into the
-   *   user graph). Non-conversational data always uses `graph.add`.
-   * - When only `graphId` (or `userId` without a thread) is present, everything
-   *   is ingested via `graph.add`.
+   * - When `threadUuid` is present, conversational content is persisted via
+   *   `thread.addMessages` (records history *and* ingests into the user
+   *   graph). Non-conversational data always uses `graph.episode.add`.
+   * - When only `graphUuid` is present, everything is ingested via
+   *   `graph.episode.add`.
    */
   binding: ZepThreadBinding | ZepBinding;
   /** Override the tool id (default `"zep-remember"`). */
@@ -75,7 +75,7 @@ type RememberInput = z.infer<typeof inputSchema>;
 type RememberOutput = z.infer<typeof outputSchema>;
 
 function hasThread(binding: ZepThreadBinding | ZepBinding): binding is ZepThreadBinding {
-  return typeof (binding as ZepThreadBinding).threadId === "string";
+  return typeof (binding as ZepThreadBinding).threadUuid === "string";
 }
 
 /**
@@ -83,9 +83,9 @@ function hasThread(binding: ZepThreadBinding | ZepBinding): binding is ZepThread
  *
  * Conversational content (a `role` is provided and a thread is bound) is written
  * with `thread.addMessages`, which both records conversation history and ingests
- * into the bound user graph. Everything else is ingested with `graph.add`
- * (`type: "text"`), so the agent can durably remember facts the user shares or
- * results it produces.
+ * into the bound user graph. Everything else is ingested with
+ * `graph.episode.add` (`type: "text"`), so the agent can durably remember facts
+ * the user shares or results it produces.
  *
  * Zep ingestion is **asynchronous**: a just-stored fact is not instantly
  * retrievable. The tool reports success once Zep accepts the data; design flows
@@ -116,21 +116,22 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
       }
 
       const identity = await resolveToolIdentity(binding, resolveIdentity, context);
-      const effectiveBinding: ZepThreadBinding | ZepBinding = identity.threadId
-        ? { userId: identity.userId, graphId: binding.graphId, threadId: identity.threadId }
-        : { userId: identity.userId, graphId: binding.graphId };
-      const target = resolveGraphTarget(effectiveBinding);
-      if (!target) {
-        logger.warn("[zep-remember] No userId or graphId bound; skipping persist.");
+      const effectiveBinding: ZepThreadBinding | ZepBinding = identity.threadUuid
+        ? { graphUuid: identity.graphUuid, threadUuid: identity.threadUuid }
+        : { graphUuid: identity.graphUuid };
+      const role = toRoleType(inputData.role);
+      const graphUuid = resolveGraphUuid(effectiveBinding);
+      if (!graphUuid && !(role && hasThread(effectiveBinding))) {
+        logger.warn("[zep-remember] No graphUuid bound; skipping persist.");
         return {
           stored: false,
-          message: "Memory is not configured (no user or graph bound).",
+          message: "Memory is not configured (no graph bound).",
         };
       }
 
       try {
         // Conversational content with a bound thread → thread.addMessages.
-        if (inputData.role && hasThread(effectiveBinding) && effectiveBinding.userId) {
+        if (role && hasThread(effectiveBinding)) {
           // Zep rejects messages over 4,096 chars with a 400; truncate + warn.
           const messageContent = truncateForZep(
             content,
@@ -138,10 +139,10 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
             "zep-remember",
             logger,
           );
-          await client.thread.addMessages(effectiveBinding.threadId, {
+          await client.thread.addMessages(effectiveBinding.threadUuid, {
             messages: [
               {
-                role: toRoleType(inputData.role),
+                role,
                 content: messageContent,
                 name: inputData.name ?? options.defaultMessageName,
               },
@@ -150,10 +151,17 @@ export function createZepRememberTool(options: ZepRememberToolOptions) {
           return { stored: true, message: "Saved to conversation memory." };
         }
 
-        // Everything else → graph.add as text.
-        // Zep rejects graph.add payloads over 10,000 chars with a 400; truncate + warn.
+        // Everything else → graph.episode.add as text.
+        // Zep rejects episode payloads over 10,000 chars with a 400; truncate + warn.
+        if (!graphUuid) {
+          logger.warn("[zep-remember] No graphUuid bound; skipping persist.");
+          return {
+            stored: false,
+            message: "Memory is not configured (no graph bound).",
+          };
+        }
         const graphData = truncateForZep(content, GRAPH_MAX_CHARS, "zep-remember", logger);
-        await client.graph.add({ ...target, type: "text", data: graphData });
+        await client.graph.episode.add(graphUuid, { type: "text", data: graphData });
         return { stored: true, message: "Saved to long-term memory." };
       } catch (error) {
         logger.warn(`[zep-remember] Failed to persist to Zep: ${errorMessage(error)}`);

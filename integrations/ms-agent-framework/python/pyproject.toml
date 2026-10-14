@@ -1,12 +1,12 @@
 [project]
 name = "zep-ms-agent-framework"
-version = "0.2.2"
+version = "1.0.0"
 description = "Microsoft Agent Framework integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "agent-framework-core>=1.8.1",
-    "zep-cloud>=3.23.0,<4",
+    "zep-cloud>=4.0.0,<5",
 ]
 
 [project.urls]

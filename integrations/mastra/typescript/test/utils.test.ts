@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { toRoleType, resolveGraphTarget } from "../src/index.js";
+import { toRoleType, resolveGraphUuid } from "../src/index.js";
 import {
   truncateForZep,
   MESSAGE_MAX_CHARS,
@@ -22,22 +22,19 @@ describe("toRoleType", () => {
     expect(toRoleType("developer")).toBe("system");
   });
 
-  it("falls back to norole for unknown or empty input", () => {
-    expect(toRoleType("wizard")).toBe("norole");
-    expect(toRoleType(undefined)).toBe("norole");
-    expect(toRoleType("")).toBe("norole");
+  it("returns undefined for unknown or empty input", () => {
+    expect(toRoleType("wizard")).toBeUndefined();
+    expect(toRoleType(undefined)).toBeUndefined();
+    expect(toRoleType("")).toBeUndefined();
   });
 });
 
-describe("resolveGraphTarget", () => {
-  it("prefers userId over graphId", () => {
-    expect(resolveGraphTarget({ userId: "u", graphId: "g" })).toEqual({ userId: "u" });
-  });
-  it("falls back to graphId", () => {
-    expect(resolveGraphTarget({ graphId: "g" })).toEqual({ graphId: "g" });
+describe("resolveGraphUuid", () => {
+  it("returns the bound graph UUID", () => {
+    expect(resolveGraphUuid({ graphUuid: "g" })).toBe("g");
   });
   it("returns null when nothing is bound", () => {
-    expect(resolveGraphTarget({})).toBeNull();
+    expect(resolveGraphUuid({})).toBeNull();
   });
 });
 

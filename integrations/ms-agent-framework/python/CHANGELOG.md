@@ -1,6 +1,48 @@
 # Changelog
 
-## Unreleased
+## 1.0.0
+
+### Breaking
+
+To migrate from Zep v3, follow the
+[V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general
+procedure. This package has these API changes:
+
+- The package requires the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). It does not
+  support the v3 SDK.
+- `ZepContextProvider` takes `user_uuid` and `thread_uuid` instead of `user_id`
+  and `thread_id`. It also takes an optional `graph_uuid`, which is necessary
+  when `expose_search_tool=True`. Give the stored user UUID, thread UUID, and
+  user graph UUID to these parameters.
+- `ZepContextProvider` does not create the user or the thread on the turn path,
+  and it makes no `lookup` call.
+- `ZepContextProvider` no longer takes `first_name`, `last_name`, `email`, or
+  `on_user_created`. Give `first_name`, `last_name`, and `email` to
+  `create_user`, and give the hook to `create_user(on_created=...)`.
+- `ContextInput` has `user_uuid`, `thread_uuid`, and `graph_uuid` instead of
+  `user_id` and `thread_id`.
+- `create_user` replaces `ensure_user`. It takes no `user_id`, and it returns
+  the created `User` (with `uuid_` and `graph_uuid`) instead of a `bool`.
+- `create_thread` replaces `ensure_thread`. It takes `user_uuid` instead of
+  `thread_id` and `user_id`, and it returns the created `Thread` (with `uuid_`)
+  instead of a `bool`.
+- `create_zep_search_tool` takes a required `graph_uuid` instead of `user_id`
+  or `graph_id`. Give it the stored user graph UUID or standalone graph UUID.
+
+For an existing V3 user, thread, or graph, do not call `create_user`,
+`create_thread`, or `graph.create`. Get its UUID one time with the backfill in
+the migration guide, and store it.
+
+### Changed
+
+- The search tool dispatches to the v4 per-scope search methods
+  (`graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`,
+  `graph.search_observations`, `graph.search_thread_summaries`). The `auto`
+  scope uses `graph.get_context`.
+- The search tool sends its `limit` parameter as the v4 `page_size` argument.
+- The default of `user_message_name` is still the full name of the user. The
+  provider now reads `first_name` and `last_name` from the Zep user one time
+  with `user.get` on the first turn, because it no longer takes these names.
 
 ## 0.2.2 (2026-10-01)
 

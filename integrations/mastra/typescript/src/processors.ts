@@ -66,10 +66,10 @@ function renderTemplate(contextBlock: string, template: string): string {
 export interface ZepContextBuilderInput {
   /** The `ZepClient` in use by the integration. */
   client: ZepClient;
-  /** The resolved Zep user ID for this turn, if any. */
-  userId?: string;
-  /** The resolved Zep thread ID for this turn. */
-  threadId: string;
+  /** The resolved Zep graph UUID for this turn, if any. */
+  graphUuid?: string;
+  /** The resolved Zep thread UUID for this turn. */
+  threadUuid: string;
   /** The latest user message text for this turn. */
   userMessage: string;
   /** The Mastra `requestContext` for this turn, if any. */
@@ -77,7 +77,7 @@ export interface ZepContextBuilderInput {
 }
 
 /**
- * A custom context builder function, replacing `thread.getUserContext` as the
+ * A custom context builder function, replacing `thread.getContext` as the
  * source of the injected Context Block.
  *
  * Error semantics: if the builder rejects or resolves to `undefined`, no
@@ -118,13 +118,13 @@ function extractLatestUserText(messages: readonly unknown[]): string {
 export interface ZepProcessorSharedOptions {
   /** A shared, initialized Zep client. The caller owns its lifecycle. */
   client: ZepClient;
-  /** Default Zep user ID, used when {@link resolveIdentity} is unset or omits it. */
-  userId?: string;
-  /** Default Zep thread ID, used when {@link resolveIdentity} is unset or omits it. */
-  threadId?: string;
+  /** Default Zep graph UUID, used when {@link resolveIdentity} is unset or omits it. */
+  graphUuid?: string;
+  /** Default Zep thread UUID, used when {@link resolveIdentity} is unset or omits it. */
+  threadUuid?: string;
   /**
    * Resolve identity per call from the Mastra `requestContext`, overriding
-   * the constructor-bound `userId`/`threadId` when it returns a value.
+   * the constructor-bound `graphUuid`/`threadUuid` when it returns a value.
    */
   resolveIdentity?: ZepIdentityResolver;
   /** Logger for Zep failures. Defaults to `console`. */
@@ -134,12 +134,12 @@ export interface ZepProcessorSharedOptions {
 /** Options for {@link ZepInputProcessor}. */
 export interface ZepInputProcessorOptions extends ZepProcessorSharedOptions {
   /**
-   * Optional Zep context template ID, forwarded to `thread.getUserContext`.
+   * Optional Zep context template UUID, forwarded to `thread.getContext`.
    * Ignored when {@link contextBuilder} is set.
    */
-  templateId?: string;
+  templateUuid?: string;
   /**
-   * Replace `thread.getUserContext` with a custom async builder for the
+   * Replace `thread.getContext` with a custom async builder for the
    * Context Block.
    */
   contextBuilder?: ZepContextBuilder;
@@ -167,8 +167,8 @@ async function resolveCallIdentity(
 ): Promise<ResolvedZepIdentity> {
   const override = await options.resolveIdentity?.(requestContext);
   return {
-    userId: override?.userId ?? options.userId,
-    threadId: override?.threadId ?? options.threadId,
+    graphUuid: override?.graphUuid ?? options.graphUuid,
+    threadUuid: override?.threadUuid ?? options.threadUuid,
   };
 }
 
@@ -176,7 +176,7 @@ async function resolveCallIdentity(
  * Mastra input processor: retrieves a Zep Context Block for the latest user
  * message and injects it as a system message, before the model is called.
  *
- * Missing `threadId` (after identity resolution) or any Zep failure degrades
+ * Missing `threadUuid` (after identity resolution) or any Zep failure degrades
  * gracefully — messages and system messages pass through unchanged, a
  * warning is logged, and `abort()` is never called.
  */
@@ -204,9 +204,9 @@ export class ZepInputProcessor {
     }
 
     const identity = await resolveCallIdentity(this.options, args.requestContext);
-    if (!identity.threadId) {
+    if (!identity.threadUuid) {
       this.logger.warn(
-        "[zep-context] No threadId resolved for this call; skipping context injection.",
+        "[zep-context] No threadUuid resolved for this call; skipping context injection.",
       );
       return passthrough;
     }
@@ -216,15 +216,15 @@ export class ZepInputProcessor {
       if (this.options.contextBuilder) {
         context = await this.options.contextBuilder({
           client: this.options.client,
-          userId: identity.userId,
-          threadId: identity.threadId,
+          graphUuid: identity.graphUuid,
+          threadUuid: identity.threadUuid,
           userMessage,
           requestContext: args.requestContext,
         });
       } else {
-        const response = await this.options.client.thread.getUserContext(
-          identity.threadId,
-          this.options.templateId ? { templateId: this.options.templateId } : {},
+        const response = await this.options.client.thread.getContext(
+          identity.threadUuid,
+          this.options.templateUuid ? { templateUuid: this.options.templateUuid } : {},
         );
         context = response.context ?? undefined;
       }
@@ -308,15 +308,15 @@ export class ZepOutputProcessor {
     }
 
     const identity = await resolveCallIdentity(this.options, args.requestContext);
-    if (!identity.threadId) {
+    if (!identity.threadUuid) {
       this.logger.warn(
-        "[zep-persist] No threadId resolved for this call; skipping persist.",
+        "[zep-persist] No threadUuid resolved for this call; skipping persist.",
       );
       return args.messages;
     }
 
     // Fire-and-forget: never let a Zep failure propagate into the agent loop.
-    this.persist(identity.threadId, userText, assistantText).catch((error) => {
+    this.persist(identity.threadUuid, userText, assistantText).catch((error) => {
       this.logger.warn(`[zep-persist] Failed to persist turn: ${errorMessage(error)}`);
     });
 
@@ -324,7 +324,7 @@ export class ZepOutputProcessor {
   }
 
   private async persist(
-    threadId: string,
+    threadUuid: string,
     userText: string,
     assistantText: string,
   ): Promise<void> {
@@ -342,14 +342,14 @@ export class ZepOutputProcessor {
       });
     }
 
-    await this.options.client.thread.addMessages(threadId, { messages });
+    await this.options.client.thread.addMessages(threadUuid, { messages });
   }
 }
 
 /** Options for {@link createZepProcessors}. */
 export interface ZepProcessorsOptions extends ZepProcessorSharedOptions {
   /** Forwarded to {@link ZepInputProcessor}. */
-  templateId?: string;
+  templateUuid?: string;
   /** Forwarded to {@link ZepInputProcessor}. */
   contextBuilder?: ZepContextBuilder;
   /** Forwarded to {@link ZepInputProcessor}. */
@@ -364,7 +364,7 @@ export interface ZepProcessorsOptions extends ZepProcessorSharedOptions {
  *
  * ```ts
  * const { inputProcessor, outputProcessor } = createZepProcessors({
- *   client, userId, threadId,
+ *   client, threadUuid,
  * });
  * new Agent({ ..., inputProcessors: [inputProcessor], outputProcessors: [outputProcessor] });
  * ```
@@ -375,11 +375,11 @@ export function createZepProcessors(options: ZepProcessorsOptions): {
 } {
   const {
     client,
-    userId,
-    threadId,
+    graphUuid,
+    threadUuid,
     resolveIdentity,
     logger,
-    templateId,
+    templateUuid,
     contextBuilder,
     contextTemplate,
     formatContext,
@@ -388,19 +388,19 @@ export function createZepProcessors(options: ZepProcessorsOptions): {
   return {
     inputProcessor: new ZepInputProcessor({
       client,
-      userId,
-      threadId,
+      graphUuid,
+      threadUuid,
       resolveIdentity,
       logger,
-      templateId,
+      templateUuid,
       contextBuilder,
       contextTemplate,
       formatContext,
     }),
     outputProcessor: new ZepOutputProcessor({
       client,
-      userId,
-      threadId,
+      graphUuid,
+      threadUuid,
       resolveIdentity,
       logger,
     }),

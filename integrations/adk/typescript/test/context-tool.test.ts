@@ -33,8 +33,8 @@ describe("ZepContextTool", () => {
     const { client, mocks } = mockZepClient({ addMessagesContext: "ctx-block" });
     const tool = new ZepContextTool({
       zep: client as unknown as ZepClient,
-      userId: "u-1",
-      threadId: "t-1",
+      userUuid: "u-1",
+      threadUuid: "t-1",
       logger: silentLogger,
     });
     const req = fakeLlmRequest();
@@ -56,8 +56,8 @@ describe("ZepContextTool", () => {
     mocks.addMessages.mockRejectedValueOnce(new Error("boom"));
     const tool = new ZepContextTool({
       zep: client as unknown as ZepClient,
-      userId: "u",
-      threadId: "t",
+      userUuid: "u",
+      threadUuid: "t",
       logger: silentLogger,
     });
     const req = fakeLlmRequest();
@@ -76,8 +76,8 @@ describe("ZepContextTool", () => {
     const contextBuilder = vi.fn(async () => "built via tool");
     const tool = new ZepContextTool({
       zep: client as unknown as ZepClient,
-      userId: "u-1",
-      threadId: "t-1",
+      userUuid: "u-1",
+      threadUuid: "t-1",
       logger: silentLogger,
       contextBuilder,
       contextTemplate: "TOOL[{context}]",
@@ -95,12 +95,12 @@ describe("ZepContextTool", () => {
     expect(req.config?.systemInstruction).toBe("TOOL[built via tool]");
   });
 
-  it("never calls user.add or thread.create via processLlmRequest", async () => {
+  it("never calls user.create or thread.create via processLlmRequest", async () => {
     const { client, mocks } = mockZepClient({ addMessagesContext: "ctx" });
     const tool = new ZepContextTool({
       zep: client as unknown as ZepClient,
-      userId: "u-1",
-      threadId: "t-1",
+      userUuid: "u-1",
+      threadUuid: "t-1",
       logger: silentLogger,
     });
 
@@ -109,7 +109,7 @@ describe("ZepContextTool", () => {
       llmRequest: fakeLlmRequest() as unknown as LlmRequest,
     });
 
-    expect(mocks.userAdd).not.toHaveBeenCalled();
-    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.userCreate).not.toHaveBeenCalled();
+    expect(mocks.threadCreate).not.toHaveBeenCalled();
   });
 });

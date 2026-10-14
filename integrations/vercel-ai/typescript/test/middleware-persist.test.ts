@@ -71,14 +71,14 @@ function makeStreamResult(parts: LanguageModelV3StreamPart[]): LanguageModelV3St
 describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
   it("wrapGenerate/wrapStream are undefined when persist is unset", () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1" });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1" });
     expect(mw.wrapGenerate).toBeUndefined();
     expect(mw.wrapStream).toBeUndefined();
   });
 
   it("wrapGenerate persists user and assistant once on the final step", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
     expect(mw.wrapGenerate).toBeDefined();
 
     const params = makeParams("Where do I live?");
@@ -92,8 +92,8 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
     await flushMicrotasks();
 
     expect(zep.thread.addMessages).toHaveBeenCalledTimes(1);
-    const [threadId, req] = zep.thread.addMessages.mock.calls[0]!;
-    expect(threadId).toBe("t1");
+    const [threadUuid, req] = zep.thread.addMessages.mock.calls[0]!;
+    expect(threadUuid).toBe("t1");
     expect(req.messages).toEqual([
       { role: "user", content: "Where do I live?" },
       { role: "assistant", content: "You live in Portland." },
@@ -102,7 +102,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("wrapGenerate does not persist on tool-call continuation steps", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
 
     const params = makeParams("Look up my orders.");
     const generateResult = makeGenerateResult("", "tool-calls");
@@ -117,7 +117,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("wrapGenerate does not re-persist a user message already answered by assistant text", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
 
     // Continuation call: the prompt ends with an assistant TEXT message, so the
     // user message belongs to an earlier, already-persisted turn.
@@ -138,7 +138,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("wrapGenerate persists the user message exactly once on the final tool-loop step", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
 
     // Final step of a tool loop: the prompt ends with a tool result, and the
     // intermediate assistant message carries only tool calls (no text) — the
@@ -175,11 +175,163 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
     ]);
   });
 
+  it("wrapGenerate persists the user message when the model wrote text before a tool call", async () => {
+    const zep = makeFakeZep();
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
+
+    // Final step of a tool loop where the model wrote a text preamble before
+    // its tool call: the intermediate assistant message has text AND tool
+    // results after it — a preamble, not an answer. The user message must
+    // still be persisted.
+    const params = makeParamsFromPrompt([
+      { role: "user", content: [{ type: "text", text: "Look up my orders." }] },
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Let me check memory for that." },
+          { type: "tool-call", toolCallId: "c1", toolName: "search", input: "{}" },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "c1",
+            toolName: "search",
+            output: { type: "text", value: "3 orders" },
+          },
+        ],
+      },
+    ]);
+    const doGenerate = vi.fn().mockResolvedValue(makeGenerateResult("You have 3 orders."));
+    const doStream = vi.fn();
+
+    await mw.wrapGenerate!({ doGenerate, doStream, params, model: modelStub });
+    await flushMicrotasks();
+
+    expect(zep.thread.addMessages).toHaveBeenCalledTimes(1);
+    const req = zep.thread.addMessages.mock.calls[0]![1];
+    expect(req.messages).toEqual([
+      { role: "user", content: "Look up my orders." },
+      { role: "assistant", content: "You have 3 orders." },
+    ]);
+  });
+
+  it("wrapGenerate persists the user message once across several tool-loop steps", async () => {
+    const zep = makeFakeZep();
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
+
+    // Final step of a two-step tool loop: two intermediate assistant
+    // messages (one with preamble text) each followed by a tool result.
+    const params = makeParamsFromPrompt([
+      { role: "user", content: [{ type: "text", text: "Check my orders and my city." }] },
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "First, your orders." },
+          { type: "tool-call", toolCallId: "c1", toolName: "search", input: "{}" },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "c1",
+            toolName: "search",
+            output: { type: "text", value: "3 orders" },
+          },
+        ],
+      },
+      {
+        role: "assistant",
+        content: [{ type: "tool-call", toolCallId: "c2", toolName: "search", input: "{}" }],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "c2",
+            toolName: "search",
+            output: { type: "text", value: "Portland" },
+          },
+        ],
+      },
+    ]);
+    const doGenerate = vi
+      .fn()
+      .mockResolvedValue(makeGenerateResult("You have 3 orders and live in Portland."));
+    const doStream = vi.fn();
+
+    await mw.wrapGenerate!({ doGenerate, doStream, params, model: modelStub });
+    await flushMicrotasks();
+
+    expect(zep.thread.addMessages).toHaveBeenCalledTimes(1);
+    const req = zep.thread.addMessages.mock.calls[0]![1];
+    expect(req.messages).toEqual([
+      { role: "user", content: "Check my orders and my city." },
+      { role: "assistant", content: "You have 3 orders and live in Portland." },
+    ]);
+  });
+
+  it("wrapStream persists the user message when the model wrote text before a tool call", async () => {
+    const zep = makeFakeZep();
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
+
+    const params = makeParamsFromPrompt([
+      { role: "user", content: [{ type: "text", text: "Look up my orders." }] },
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "One moment, checking." },
+          { type: "tool-call", toolCallId: "c1", toolName: "search", input: "{}" },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "c1",
+            toolName: "search",
+            output: { type: "text", value: "3 orders" },
+          },
+        ],
+      },
+    ]);
+    const streamParts: LanguageModelV3StreamPart[] = [
+      { type: "text-delta", id: "1", delta: "You have 3 orders." },
+      {
+        type: "finish",
+        usage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 1, text: 1, reasoning: undefined },
+        },
+        finishReason: { unified: "stop", raw: "stop" } as never,
+      },
+    ];
+    const doGenerate = vi.fn();
+    const doStream = vi.fn().mockResolvedValue(makeStreamResult(streamParts));
+
+    const wrapped = await mw.wrapStream!({ doGenerate, doStream, params, model: modelStub });
+    await collectParts(wrapped);
+    await flushMicrotasks();
+
+    expect(zep.thread.addMessages).toHaveBeenCalledTimes(1);
+    const req = zep.thread.addMessages.mock.calls[0]![1];
+    expect(req.messages).toEqual([
+      { role: "user", content: "Look up my orders." },
+      { role: "assistant", content: "You have 3 orders." },
+    ]);
+  });
+
   it("wrapGenerate persists custom userName/assistantName when persist carries them", async () => {
     const zep = makeFakeZep();
     const mw = createZepMiddleware({
       client: asZep(zep),
-      threadId: "t1",
+      threadUuid: "t1",
       persist: { userName: "Jane", assistantName: "Assistant" },
     });
 
@@ -200,7 +352,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("wrapStream accumulates text-delta parts and persists on finish", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
     expect(mw.wrapStream).toBeDefined();
 
     const params = makeParams("Tell me a joke.");
@@ -239,7 +391,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("wrapStream does not re-persist a user message already answered by assistant text", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
 
     const params = makeParamsFromPrompt([
       { role: "user", content: [{ type: "text", text: "Tell me a story." }] },
@@ -270,7 +422,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("wrapStream does not persist when finishReason is tool-calls", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
 
     const params = makeParams("Search my orders.");
     const streamParts: LanguageModelV3StreamPart[] = [
@@ -296,7 +448,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("all stream parts pass through unmodified even when persist is unset", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1" });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1" });
     // wrapStream is undefined when persist is unset — nothing to test here for
     // pass-through beyond confirming the hook itself is absent.
     expect(mw.wrapStream).toBeUndefined();
@@ -308,7 +460,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
     const warn = vi.fn();
     const mw = createZepMiddleware({
       client: asZep(zep),
-      threadId: "t1",
+      threadUuid: "t1",
       persist: true,
       logger: { warn },
     });
@@ -331,7 +483,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
     const warn = vi.fn();
     const mw = createZepMiddleware({
       client: asZep(zep),
-      threadId: "t1",
+      threadUuid: "t1",
       persist: true,
       logger: { warn },
     });

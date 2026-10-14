@@ -5,7 +5,65 @@ All notable changes to the zep-autogen package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0]
+
+### Breaking
+
+To migrate from Zep v3, follow the
+[V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general
+procedure. This package has these API changes:
+
+- The package requires the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). It does not
+  support the v3 SDK.
+- `ZepUserMemory` takes `user_uuid` and `thread_uuid` instead of `user_id`
+  and `thread_id`. Give the stored user UUID and thread UUID to these
+  parameters. It also takes an optional `graph_uuid`, and
+  `context_template_uuid` replaces `context_template_id` (the value is sent
+  as `template_uuid` to `thread.get_context`).
+- `ZepUserMemory` does not create the Zep user on the turn path, and it makes
+  no `lookup` call. `add()` still creates a thread when the constructor did
+  not get a `thread_uuid`.
+- `ZepUserMemory` no longer takes `first_name`, `last_name`, `email`, or
+  `on_created`. Give `first_name`, `last_name`, and `email` to `create_user`,
+  and give the hook to `create_user(on_created=...)`.
+- `ZepGraphMemory` takes `graph_uuid` instead of `graph_id`. Give it the
+  stored standalone graph UUID.
+- `ZepGraphMemory` replaces `facts_limit` and `entity_limit` with
+  `max_characters`. Context retrieval calls `graph.get_context`, which takes
+  a character budget in place of a fact count and an entity count.
+- `create_search_graph_tool` and `create_add_graph_data_tool` take a
+  `graph_uuid` or `user_uuid` instead of `graph_id` or `user_id`. Give them
+  the stored user graph UUID or standalone graph UUID.
+- `ContextInput` has `user_uuid`, `thread_uuid`, and `graph_uuid` instead of
+  `user_id` and `thread_id`.
+- `create_user` replaces `ensure_user`. It takes no `user_id`, and it returns
+  the created `User` (with `uuid_` and `graph_uuid`) instead of a `bool`.
+- `create_thread` replaces `ensure_thread`. It takes `user_uuid` instead of
+  `thread_id` and `user_id`, and it returns the created `Thread` (with
+  `uuid_`) instead of a `bool`.
+- The v3 types and helpers that Zep v4 does not give are removed:
+  `GraphSearchResults` and `zep_cloud.graph.utils.compose_context_string`.
+  The package formats the search results itself.
+
+For an existing V3 user, thread, or graph, do not call `create_user`,
+`create_thread`, or `graph.create`. Get its UUID one time with the backfill
+in the migration guide, and store it.
+
+### Changed
+
+- The default context retrieval calls `thread.get_context(thread_uuid)` in place of the v3 `thread.get_user_context`.
+- Message ingestion calls `thread.add_messages(thread_uuid, messages=[...])`.
+- Graph ingestion calls `graph.episode.add(graph_uuid, type=..., data=...)` in place of `graph.add`.
+- Graph search calls the v4 scope-specific methods `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, and `graph.search_thread_summaries`. The `auto` scope calls `graph.get_context`. Each search method returns a pager, and the integration collects results up to the requested limit.
+- Episode retrieval calls `graph.episode.list(graph_uuid)` and iterates the pager.
+- Graph deletion calls `graph.delete(graph_uuid)`.
+- The search limit is clamped to the range 1 to 50.
+- `ZepGraphMemory` accepts each scoped `search_filters` type (`EdgeSearchFilters`, `NodeSearchFilters`, `EpisodeSearchFilters`, `ThreadSummarySearchFilters`, `SearchFilters`, or a plain `dict`). Each v4 search scope has its own filter type, and the server rejects a filter key that the scope does not support. `ZepGraphMemory.query` accepts a per-query `filters` argument that overrides the constructor `search_filters` for that call.
+
+### Fixed
+
+- The search tool no longer ignores a reranker that the model sends with `scope="auto"`. The `auto` scope takes no reranker, so the tool does not call Zep and returns an error message to the model. A pinned reranker together with `pinned_params={"scope": "auto"}` raises `ValueError` when you create the tool, and a pinned reranker removes `auto` from the scope enum of the tool schema. The model-facing `reranker` parameter has no default value: when the model does not send a reranker, the tool sends `rrf` for every scope except `auto`.
+- `ZepUserMemory` and `ZepGraphMemory` reject each removed v3 keyword argument (`user_id`, `thread_id`, `context_template_id`, `first_name`, `last_name`, `email`, `on_created`, `graph_id`, `facts_limit`, `entity_limit`) with a `TypeError` that names its v4 replacement, and they reject any other unexpected keyword argument.
 
 ## [1.2.2] - 2026-10-01
 
@@ -99,5 +157,6 @@ memory = ZepUserMemory(client=zep_client, user_id="user-1", thread_id="thread-1"
 - Configurable memory retrieval limits
 - Compatible with AutoGen 0.6.1+
 
-[Unreleased]: https://github.com/getzep/zep/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/getzep/zep/compare/zep-autogen-python-v2.0.0...HEAD
+[2.0.0]: https://github.com/getzep/zep/compare/zep-autogen-python-v1.2.2...zep-autogen-python-v2.0.0
 [0.1.0]: https://github.com/getzep/zep/releases/tag/v0.1.0

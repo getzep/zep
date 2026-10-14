@@ -3,24 +3,24 @@ import type { Zep, ZepClient } from "@getzep/zep-cloud";
 /**
  * A binding identifies *which* Zep graph the tools read from and write to.
  *
- * Exactly one of {@link userId} or {@link graphId} should be supplied:
+ * Zep v4 addresses every graph by its server-generated UUID. A user graph and a
+ * standalone graph are both a `graphUuid`:
  *
- * - `userId` targets a **user graph** — the home for personalized agent memory.
- *   This is the right choice for a conversational agent that remembers an end
- *   user across sessions. User graphs carry a user summary and fuse every thread
- *   and business record for that user into one picture.
- * - `graphId` targets a **standalone graph** — shared or domain knowledge (a
- *   product knowledge base, runbooks, etc.). Standalone graphs have no user node
- *   and no user summary.
+ * - A **user graph** is the home for personalized agent memory. Its UUID is the
+ *   `graphUuid` field of the `user.create` (or `user.get`) response. User graphs
+ *   carry a user summary and fuse every thread and business record for that user
+ *   into one picture.
+ * - A **standalone graph** holds shared or domain knowledge (a product knowledge
+ *   base, runbooks, and similar). Its UUID is the `uuid` field of the
+ *   `graph.create` response. Standalone graphs have no user node and no user
+ *   summary.
  *
- * If both are supplied, `userId` wins. If neither is supplied a tool surfaces a
+ * Store the UUID in your own database. If no UUID is supplied, a tool surfaces a
  * graceful result to the model rather than throwing.
  */
 export interface ZepBinding {
-  /** The Zep user ID whose user graph the tools operate on. */
-  userId?: string;
-  /** The Zep standalone graph ID the tools operate on. */
-  graphId?: string;
+  /** The UUID of the Zep graph the tools operate on. */
+  graphUuid?: string;
 }
 
 /**
@@ -68,10 +68,10 @@ export interface ZepTurn {
 export interface ZepContextBuilderInput {
   /** The `ZepClient` in use by the integration. */
   client: ZepClient;
-  /** The resolved Zep user ID for this turn, when configured. */
-  userId?: string;
-  /** The Zep thread that scopes this turn. */
-  threadId: string;
+  /** The UUID of the Zep user for this turn, when configured. */
+  userUuid?: string;
+  /** The UUID of the Zep thread that scopes this turn. */
+  threadUuid: string;
   /** The user's message text for this turn. */
   userMessage: string;
   /**
@@ -88,17 +88,16 @@ export interface ZepContextBuilderInput {
  * Receives a single {@link ZepContextBuilderInput} and returns the context
  * block to inject into the prompt (or `undefined` to skip injection). Used by
  * {@link ZepMiddlewareOptions.contextBuilder} to replace the default
- * `thread.getUserContext` retrieval — useful when you want to assemble context
+ * `thread.getContext` retrieval — useful when you want to assemble context
  * from more than one Zep call, or fold in non-Zep data.
  */
 export type ZepContextBuilder = (input: ZepContextBuilderInput) => Promise<string | undefined>;
 
 /**
  * Hook run exactly once, immediately after a Zep user is newly created by
- * {@link EnsureIdentityOptions}. Receives the Zep client and the newly created
- * user ID. Use this to configure per-user ontology, custom instructions, or
- * user summary instructions. Errors are logged, not thrown — a failing hook
- * never flips {@link ensureZepUserAndThread}'s `Promise<boolean>` "ready"
- * result to `false`.
+ * {@link CreateIdentityOptions}. Receives the Zep client and the UUID of the new
+ * user. Use this to configure per-user ontology, custom instructions, or user
+ * summary instructions. Errors are logged, not thrown — a failing hook never
+ * changes the identity that {@link createZepUserAndThread} returns.
  */
-export type ZepUserCreatedHook = (client: ZepClient, userId: string) => void | Promise<void>;
+export type ZepUserCreatedHook = (client: ZepClient, userUuid: string) => void | Promise<void>;

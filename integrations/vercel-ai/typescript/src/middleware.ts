@@ -51,17 +51,17 @@ export interface ZepMiddlewareOptions {
   /** A shared, initialized Zep client. The caller owns its lifecycle. */
   client: ZepClient;
   /**
-   * The Zep thread that scopes relevance for the injected Context Block. The
-   * block is still assembled from the *whole* user graph; the thread only
-   * focuses what's relevant right now.
+   * The UUID of the Zep thread that scopes relevance for the injected Context
+   * Block. The block is still assembled from the *whole* user graph; the thread
+   * only focuses what's relevant right now.
    */
-  threadId: string;
+  threadUuid: string;
   /**
-   * The Zep user ID for this turn. Not required for injection or persistence
-   * (both are scoped by `threadId`), but handed to a custom
+   * The UUID of the Zep user for this turn. Not required for injection or
+   * persistence (both are scoped by `threadUuid`), but handed to a custom
    * {@link contextBuilder} for power users who need it.
    */
-  userId?: string;
+  userUuid?: string;
   /**
    * How to wrap the retrieved Context Block into the injected system message.
    * Receives the raw Context Block; return the full system message text.
@@ -69,13 +69,13 @@ export interface ZepMiddlewareOptions {
    */
   formatContext?: (context: string) => string;
   /**
-   * Optional Zep context template ID for custom Context Block formatting.
-   * When omitted, Zep's default Smart Context Assembly layout is used.
-   * Ignored when {@link contextBuilder} is set.
+   * Optional UUID of a Zep context template for custom Context Block
+   * formatting. When omitted, Zep's default Smart Context Assembly layout is
+   * used. Ignored when {@link contextBuilder} is set.
    */
-  templateId?: string;
+  templateUuid?: string;
   /**
-   * Replace the default `thread.getUserContext` retrieval with a custom
+   * Replace the default `thread.getContext` retrieval with a custom
    * builder. Runs inside the same try/catch as the default retrieval path —
    * a rejection is logged and degrades to "no context injected" for that
    * turn, exactly like a `getZepContext` failure. The builder's result is
@@ -97,8 +97,8 @@ export interface ZepMiddlewareOptions {
    * middleware also wraps `wrapGenerate`/`wrapStream`: after the model's
    * final step in a turn (`finishReason !== "tool-calls"`), it fires a
    * fire-and-forget `thread.addMessages` call with the user's message (the
-   * last user turn in `params.prompt`, skipped when an assistant text
-   * response already follows it — i.e. it was persisted on an earlier call)
+   * last user turn in `params.prompt`, skipped only when the prompt already
+   * ends with an assistant text answer — a continuation of a completed turn)
    * and the assistant's final text. Persistence never blocks or throws into
    * the host call — failures are logged via `logger`.
    *
@@ -158,33 +158,32 @@ function lastUserMessageText(prompt: LanguageModelV3Prompt): string {
  * The user text the guaranteed-persist hooks should persist this call, or `""`
  * when the last user message was already answered.
  *
- * Scanning backwards from the end of the prompt: if an assistant message with
- * TEXT content appears before the last user message is reached, that user
- * message belongs to an earlier, already-persisted turn (assistant
- * continuation, `finishReason: "length"` continuation, follow-up generate over
- * existing history) — persisting it again would duplicate it in Zep.
- * Tool-call-only assistant messages don't count as an answer: on the final
- * step of a tool loop (prompt ends with a tool result) the user message has
- * not been persisted yet and still must be.
+ * The prompt is the INPUT to the model call — its last message decides. When
+ * the prompt ends with an assistant message that has TEXT content, the last
+ * user turn already carries its answer in the history (assistant continuation,
+ * `finishReason: "length"` continuation, or a follow-up generate over existing
+ * history): the user message was persisted on the earlier call, so persisting
+ * it again would duplicate it.
+ *
+ * Every other ending — a user message, a tool result, or an assistant message
+ * without text — means the turn is still in flight and the user message has
+ * not been persisted. In particular, text the model wrote before a tool call
+ * sits in an intermediate assistant message with tool results after it; it is
+ * a preamble, not an answer, and does not exempt the user message.
  */
 function pendingUserMessageText(prompt: LanguageModelV3Prompt): string {
   for (let i = prompt.length - 1; i >= 0; i--) {
     const message = prompt[i];
     if (!message) continue;
-    if (message.role === "user") {
-      return message.content
-        .filter((part): part is { type: "text"; text: string } => part.type === "text")
-        .map((part) => part.text)
-        .join("");
-    }
     if (
       message.role === "assistant" &&
       message.content.some((part) => part.type === "text" && part.text.length > 0)
     ) {
       return "";
     }
+    break;
   }
-  return "";
+  return lastUserMessageText(prompt);
 }
 
 /** Extract the concatenated assistant text from a V3 generate result's content. */
@@ -207,7 +206,7 @@ function isEndOfTurn(finishReason: LanguageModelV3GenerateResult["finishReason"]
  */
 function persistTurn(
   client: ZepClient,
-  threadId: string,
+  threadUuid: string,
   userText: string,
   assistantText: string,
   persistOptions: ZepPersistOptions,
@@ -215,7 +214,7 @@ function persistTurn(
 ): void {
   void persistZepTurn(
     client,
-    threadId,
+    threadUuid,
     {
       ...(userText ? { user: userText } : {}),
       ...(assistantText ? { assistant: assistantText } : {}),
@@ -246,7 +245,7 @@ function persistTurn(
  *   model: openai("gpt-4o-mini"),
  *   // `persist: true` guarantees the turn is written to Zep — no separate
  *   // onFinish wiring required.
- *   middleware: createZepMiddleware({ client, threadId, persist: true }),
+ *   middleware: createZepMiddleware({ client, threadUuid, persist: true }),
  * });
  *
  * const { text } = await generateText({
@@ -257,7 +256,7 @@ function persistTurn(
  * ```
  *
  * **Injection** — `transformParams` fetches the Context Block
- * (`thread.getUserContext`, or a custom {@link ZepMiddlewareOptions.contextBuilder})
+ * (`thread.getContext`, or a custom {@link ZepMiddlewareOptions.contextBuilder})
  * and prepends it as a `system` message to the provider prompt — on both
  * `generate` and `stream` calls — but **only on a genuine new user turn**
  * (detected by the last prompt message being a `user` message). On tool-loop
@@ -281,7 +280,7 @@ function persistTurn(
  * host call.
  */
 export function createZepMiddleware(options: ZepMiddlewareOptions): LanguageModelMiddleware {
-  const { client, threadId } = options;
+  const { client, threadUuid } = options;
   const logger = resolveLogger(options.logger);
   const format = options.formatContext ?? defaultFormatContext;
   const persistOptions: ZepPersistOptions | undefined =
@@ -304,13 +303,15 @@ export function createZepMiddleware(options: ZepMiddlewareOptions): LanguageMode
       const context = options.contextBuilder
         ? await options.contextBuilder({
             client,
-            ...(options.userId !== undefined ? { userId: options.userId } : {}),
-            threadId,
+            ...(options.userUuid !== undefined ? { userUuid: options.userUuid } : {}),
+            threadUuid,
             userMessage: lastUserMessageText(params.prompt),
             params,
           })
-        : await getZepContext(client, threadId, {
-            ...(options.templateId !== undefined ? { templateId: options.templateId } : {}),
+        : await getZepContext(client, threadUuid, {
+            ...(options.templateUuid !== undefined
+              ? { templateUuid: options.templateUuid }
+              : {}),
             logger,
           });
       if (context) {
@@ -350,7 +351,7 @@ export function createZepMiddleware(options: ZepMiddlewareOptions): LanguageMode
     if (isEndOfTurn(result.finishReason)) {
       const userText = pendingUserMessageText(params.prompt);
       const assistantText = assistantTextFromContent(result.content);
-      persistTurn(client, threadId, userText, assistantText, persistOptions, logger);
+      persistTurn(client, threadUuid, userText, assistantText, persistOptions, logger);
     }
     return result;
   };
@@ -373,7 +374,7 @@ export function createZepMiddleware(options: ZepMiddlewareOptions): LanguageMode
           assistantText += part.delta;
         } else if (part.type === "finish" && isEndOfTurn(part.finishReason)) {
           const userText = pendingUserMessageText(params.prompt);
-          persistTurn(client, threadId, userText, assistantText, persistOptions, logger);
+          persistTurn(client, threadUuid, userText, assistantText, persistOptions, logger);
         }
         controller.enqueue(part);
       },

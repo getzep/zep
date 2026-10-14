@@ -8,32 +8,55 @@ import type { ZepClient } from "@getzep/zep-cloud";
 export interface FakeZep {
   thread: {
     addMessages: ReturnType<typeof vi.fn>;
-    getUserContext: ReturnType<typeof vi.fn>;
+    getContext: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
   };
   graph: {
-    add: ReturnType<typeof vi.fn>;
-    search: ReturnType<typeof vi.fn>;
+    episode: {
+      add: ReturnType<typeof vi.fn>;
+    };
+    getContext: ReturnType<typeof vi.fn>;
+    searchEdges: ReturnType<typeof vi.fn>;
+    searchNodes: ReturnType<typeof vi.fn>;
+    searchEpisodes: ReturnType<typeof vi.fn>;
+    searchObservations: ReturnType<typeof vi.fn>;
+    searchThreadSummaries: ReturnType<typeof vi.fn>;
   };
   user: {
-    add: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
   };
 }
+
+/** The UUID of the fake Zep user. */
+export const USER_UUID = "11111111-1111-4111-8111-111111111111";
+/** The UUID of the fake user's graph. */
+export const GRAPH_UUID = "22222222-2222-4222-8222-222222222222";
+/** The UUID of the fake Zep thread. */
+export const THREAD_UUID = "33333333-3333-4333-8333-333333333333";
 
 /** Build a fresh fake Zep client with sensible default resolved values. */
 export function makeFakeZep(): FakeZep {
   return {
     thread: {
       addMessages: vi.fn().mockResolvedValue({ context: "ctx" }),
-      getUserContext: vi.fn().mockResolvedValue({ context: "USER CONTEXT BLOCK" }),
-      create: vi.fn().mockResolvedValue({ uuid: "t1" }),
+      getContext: vi.fn().mockResolvedValue({ context: "USER CONTEXT BLOCK" }),
+      create: vi.fn().mockResolvedValue({ uuid: THREAD_UUID, userUuid: USER_UUID }),
     },
     graph: {
-      add: vi.fn().mockResolvedValue({ uuid: "ep1" }),
-      search: vi.fn().mockResolvedValue({ edges: [], nodes: [], episodes: [] }),
+      episode: {
+        add: vi.fn().mockResolvedValue({ uuid: "ep1" }),
+      },
+      getContext: vi.fn().mockResolvedValue({ context: "AUTO CONTEXT BLOCK" }),
+      searchEdges: vi.fn().mockResolvedValue({ data: [] }),
+      searchNodes: vi.fn().mockResolvedValue({ data: [] }),
+      searchEpisodes: vi.fn().mockResolvedValue({ data: [] }),
+      searchObservations: vi.fn().mockResolvedValue({ data: [] }),
+      searchThreadSummaries: vi.fn().mockResolvedValue({ data: [] }),
     },
     user: {
-      add: vi.fn().mockResolvedValue({ userId: "u" }),
+      create: vi
+        .fn()
+        .mockResolvedValue({ uuid: USER_UUID, graphUuid: GRAPH_UUID }),
     },
   };
 }

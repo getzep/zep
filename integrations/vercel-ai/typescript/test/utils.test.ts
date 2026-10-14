@@ -22,19 +22,18 @@ describe("toRoleType", () => {
     expect(toRoleType("developer")).toBe("system");
   });
 
-  it("falls back to norole for unknown or empty input", () => {
-    expect(toRoleType("wizard")).toBe("norole");
-    expect(toRoleType(undefined)).toBe("norole");
-    expect(toRoleType("")).toBe("norole");
+  it("returns undefined for unknown or empty input", () => {
+    expect(toRoleType("wizard")).toBeUndefined();
+    expect(toRoleType(undefined)).toBeUndefined();
+    expect(toRoleType("")).toBeUndefined();
   });
 
-  it("debug-logs the role NAME only when coercing an unknown role to norole", () => {
+  it("debug-logs the role NAME only for an unknown role", () => {
     const debug = vi.fn();
-    expect(toRoleType("wizard", { warn: vi.fn(), debug })).toBe("norole");
+    expect(toRoleType("wizard", { warn: vi.fn(), debug })).toBeUndefined();
     expect(debug).toHaveBeenCalledOnce();
     const msg = debug.mock.calls[0]![0] as string;
     expect(msg).toContain("wizard");
-    expect(msg).toContain("norole");
   });
 
   it("does not debug-log for a known role", () => {
@@ -45,11 +44,8 @@ describe("toRoleType", () => {
 });
 
 describe("resolveGraphTarget", () => {
-  it("prefers userId over graphId", () => {
-    expect(resolveGraphTarget({ userId: "u", graphId: "g" })).toEqual({ userId: "u" });
-  });
-  it("falls back to graphId", () => {
-    expect(resolveGraphTarget({ graphId: "g" })).toEqual({ graphId: "g" });
+  it("returns the bound graph UUID", () => {
+    expect(resolveGraphTarget({ graphUuid: "g" })).toBe("g");
   });
   it("returns null when nothing is bound", () => {
     expect(resolveGraphTarget({})).toBeNull();
