@@ -97,8 +97,8 @@ export interface ZepMiddlewareOptions {
    * middleware also wraps `wrapGenerate`/`wrapStream`: after the model's
    * final step in a turn (`finishReason !== "tool-calls"`), it fires a
    * fire-and-forget `thread.addMessages` call with the user's message (the
-   * last user turn in `params.prompt`, skipped when an assistant text
-   * response already follows it — i.e. it was persisted on an earlier call)
+   * last user turn in `params.prompt`, skipped only when the prompt already
+   * ends with an assistant text answer — a continuation of a completed turn)
    * and the assistant's final text. Persistence never blocks or throws into
    * the host call — failures are logged via `logger`.
    *
@@ -158,33 +158,32 @@ function lastUserMessageText(prompt: LanguageModelV3Prompt): string {
  * The user text the guaranteed-persist hooks should persist this call, or `""`
  * when the last user message was already answered.
  *
- * Scanning backwards from the end of the prompt: if an assistant message with
- * TEXT content appears before the last user message is reached, that user
- * message belongs to an earlier, already-persisted turn (assistant
- * continuation, `finishReason: "length"` continuation, follow-up generate over
- * existing history) — persisting it again would duplicate it in Zep.
- * Tool-call-only assistant messages don't count as an answer: on the final
- * step of a tool loop (prompt ends with a tool result) the user message has
- * not been persisted yet and still must be.
+ * The prompt is the INPUT to the model call — its last message decides. When
+ * the prompt ends with an assistant message that has TEXT content, the last
+ * user turn already carries its answer in the history (assistant continuation,
+ * `finishReason: "length"` continuation, or a follow-up generate over existing
+ * history): the user message was persisted on the earlier call, so persisting
+ * it again would duplicate it.
+ *
+ * Every other ending — a user message, a tool result, or an assistant message
+ * without text — means the turn is still in flight and the user message has
+ * not been persisted. In particular, text the model wrote before a tool call
+ * sits in an intermediate assistant message with tool results after it; it is
+ * a preamble, not an answer, and does not exempt the user message.
  */
 function pendingUserMessageText(prompt: LanguageModelV3Prompt): string {
   for (let i = prompt.length - 1; i >= 0; i--) {
     const message = prompt[i];
     if (!message) continue;
-    if (message.role === "user") {
-      return message.content
-        .filter((part): part is { type: "text"; text: string } => part.type === "text")
-        .map((part) => part.text)
-        .join("");
-    }
     if (
       message.role === "assistant" &&
       message.content.some((part) => part.type === "text" && part.text.length > 0)
     ) {
       return "";
     }
+    break;
   }
-  return "";
+  return lastUserMessageText(prompt);
 }
 
 /** Extract the concatenated assistant text from a V3 generate result's content. */

@@ -23,9 +23,10 @@ The API changes that are specific to this package:
   `createZepOnFinish`, `createZepContextTool`, `getZepContext`, and
   `persistZepTurn` take `threadUuid`; `createZepMiddleware` and
   `createZepOnFinish` also take the optional `userUuid`, and `templateId` is
-  renamed to `templateUuid`. `createZepTools` and the tool factories take the
-  stored graph UUID in `binding.graphUuid`, and `createZepTools` and
-  `createZepRememberTool` take the stored thread UUID in `binding.threadUuid`.
+  renamed to `templateUuid`. `ZepBinding` takes the stored graph UUID in
+  `graphUuid`. The extended binding on `createZepTools` and
+  `createZepRememberTool` (`ZepBinding & { threadUuid?: string }`) also takes
+  the stored thread UUID in `binding.threadUuid`.
 - **`toRoleType` can return `undefined`.** Zep v4 removed the
   `norole` member of `RoleType`. An unrecognized or absent role maps to
   `undefined`, and the package omits the role from the message.
