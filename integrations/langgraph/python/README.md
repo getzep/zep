@@ -29,9 +29,24 @@ therefore takes `user_uuid`, `thread_uuid`, and `graph_uuid`, and the
 integration never resolves an application identifier at run time.
 
 Create the user and the thread out-of-band, read the UUIDs from the responses,
-and store them in your own database. If you come from v3, resolve each legacy
-identifier one time with `user.lookup` or `thread.lookup`, store the UUID, and
-pass the UUID from then on.
+and store them in your own database.
+
+### Migrating from V3
+
+To migrate from V3, follow the [V3 to V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general procedure: the nullable UUID columns, the one-time `lookup` backfill, and the order of the steps.
+
+These API changes are specific to this package:
+
+- `get_zep_context`, `get_zep_context_sync`, `build_system_message`, and `build_system_message_sync`: `thread_id` becomes `thread_uuid` (give the stored `Thread.uuid_`), `user_id` becomes `graph_uuid` (give the stored `User.graph_uuid`), and `template_id` becomes `template_uuid`.
+- `create_zep_pre_model_hook`: `thread_id` becomes `thread_uuid`, `user_id` becomes `graph_uuid`, and `template_id` becomes `template_uuid`.
+- `ContextInput`: the `user_id` and `thread_id` fields become `graph_uuid` and `thread_uuid`.
+- `persist_messages` and `persist_messages_sync`: `thread_id` becomes `thread_uuid` (give the stored `Thread.uuid_`).
+- `create_graph_search_tool` and `create_graph_search_tool_sync`: the `user_id` and `graph_id` arguments become one required `graph_uuid` argument. Give the stored `User.graph_uuid` for a user graph, or the stored `Graph.uuid_` for a standalone graph.
+- `ZepStore`: the constructor requires `graph_uuid` (the stored `User.graph_uuid` or `Graph.uuid_`). A `namespace_target` resolver returns a graph UUID string, not a `{"user_id": ...}` or `{"graph_id": ...}` dict. The default resolver no longer uses the first namespace element as a graph ID.
+- `ensure_user`, `ensure_thread`, `ensure_user_sync`, and `ensure_thread_sync` are removed. Use `create_user`, `create_thread`, `create_user_sync`, and `create_thread_sync` for new resources only. `create_user` takes no `user_id` and returns the created `User` (store `User.uuid_` and `User.graph_uuid`). `create_thread` takes `user_uuid` in place of `thread_id` and `user_id`, and returns the created `Thread` (store `Thread.uuid_`). The `on_created` hook receives the created `User` in place of a user ID.
+- `to_zep_message` and `to_zep_messages` return the v4 `AddMessage` type in place of the v3 `Message` type.
+
+For an existing V3 user, thread, or graph, do not call `create_user`, `create_thread`, or `graph.create`. Get its UUID one time with the backfill in the migration guide, and store it.
 
 ## Quick Start (primary path)
 
