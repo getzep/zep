@@ -45,6 +45,7 @@ const (
 
 func main() {
 	ctx := context.Background()
+	var userUUID, graphUUID, threadUUID string
 
 	// A nil client (ZEP_API_KEY unset) makes the whole Zep integration a
 	// no-op, so this example runs with or without a Zep account.
@@ -52,37 +53,34 @@ func main() {
 	if zep == nil {
 		log.Println("ZEP_API_KEY not set: running without Zep memory (all Zep calls are no-ops).")
 	} else {
-		// Provision the Zep user and thread out of band before the first turn.
-		// Both calls are idempotent. Passing a real name + email helps Zep
-		// resolve the user's identity in the graph.
-		created, err := zepadk.EnsureUser(ctx, zep, userID, "Jane", "Smith", "jane@example.com")
+		var err error
+		userUUID, graphUUID, err = zepadk.CreateUser(ctx, zep, "Jane", "Smith", "jane@example.com")
 		if err != nil {
-			log.Printf("warning: could not ensure Zep user: %v", err)
+			log.Fatalf("creating Zep user: %v", err)
 		}
-		if created {
-			// One-time setup for a brand-new user goes here, e.g. configuring
-			// per-user ontology, custom instructions, or user summary
-			// instructions via the Zep client. Skipped for already-existing
-			// users so it never re-runs on every session start.
-			log.Printf("Zep user %q created; run one-time per-user setup here.", userID)
-		}
-		if _, err := zepadk.EnsureThread(ctx, zep, sessionID, userID); err != nil {
-			log.Printf("warning: could not ensure Zep thread: %v", err)
+		threadUUID, err = zepadk.CreateThread(ctx, zep, userUUID)
+		if err != nil {
+			log.Fatalf("creating Zep thread: %v", err)
 		}
 	}
 
 	// Graph-search tool the model can call to recall facts on demand.
-	searchTool, err := zepadk.NewGraphSearchTool(zep)
+	searchTool, err := zepadk.NewGraphSearchTool(zep, zepadk.WithGraphUUID(graphUUID))
 	if err != nil {
 		log.Fatalf("building graph search tool: %v", err)
 	}
 
 	// BeforeModelCallback persists each user turn and injects the Context Block.
-	beforeModel := zepadk.NewBeforeModelCallback(zep, zepadk.WithUserMessageName("Jane"))
+	beforeModel := zepadk.NewBeforeModelCallback(zep,
+		zepadk.WithUserUUID(userUUID),
+		zepadk.WithThreadUUID(threadUUID),
+		zepadk.WithUserMessageName("Jane"))
 
 	// AfterModelCallback persists the assistant's reply so the user graph sees
 	// both halves of the conversation, not just the user's messages.
-	afterModel := zepadk.NewAfterModelCallback(zep, zepadk.WithAssistantMessageName("assistant"))
+	afterModel := zepadk.NewAfterModelCallback(zep,
+		zepadk.WithAfterThreadUUID(threadUUID),
+		zepadk.WithAssistantMessageName("assistant"))
 
 	// Without a Google API key we cannot construct the model; print the wiring
 	// we would use and exit cleanly.
@@ -130,7 +128,7 @@ func main() {
 		SessionService: sessions,
 		// Zep-backed memory.Service: ADK's built-in memory tooling reaches it
 		// via ToolContext.SearchMemory.
-		MemoryService: zepadk.NewMemoryService(zep),
+		MemoryService: zepadk.NewMemoryService(zep, zepadk.WithMemoryGraphUUID(graphUUID)),
 	})
 	if err != nil {
 		log.Fatalf("creating runner: %v", err)

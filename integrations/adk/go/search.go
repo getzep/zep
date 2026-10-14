@@ -1,150 +1,205 @@
 package zepadk
 
 import (
-	zep "github.com/getzep/zep-go/v3"
+	"context"
+	"encoding/json"
+	"reflect"
+
+	zep "github.com/getzep/zep-go/v4"
+	zepclient "github.com/getzep/zep-go/v4/client"
 )
 
-// searchScopeSupported reports whether scope is one this package knows how to
-// map into textual results. Unsupported scopes are rejected loudly rather than
-// silently returning nothing.
-//
-// Supported scopes: edges (facts), nodes (entity summaries), episodes (raw
-// message/data content), observations (derived memories), thread_summaries
-// (incremental thread summaries), and auto (a pre-materialized Context Block
-// returned in res.Context).
-func searchScopeSupported(scope zep.GraphSearchScope) bool {
+type SearchScope string
+
+const (
+	SearchScopeEdges           SearchScope = "edges"
+	SearchScopeNodes           SearchScope = "nodes"
+	SearchScopeEpisodes        SearchScope = "episodes"
+	SearchScopeObservations    SearchScope = "observations"
+	SearchScopeThreadSummaries SearchScope = "thread_summaries"
+	SearchScopeAuto            SearchScope = "auto"
+)
+
+type SearchReranker string
+
+const (
+	SearchRerankerRRF             SearchReranker = "rrf"
+	SearchRerankerMMR             SearchReranker = "mmr"
+	SearchRerankerNodeDistance    SearchReranker = "node_distance"
+	SearchRerankerEpisodeMentions SearchReranker = "episode_mentions"
+	SearchRerankerCrossEncoder    SearchReranker = "cross_encoder"
+)
+
+type graphSearchRequest struct {
+	query       string
+	scope       SearchScope
+	reranker    *SearchReranker
+	pageSize    *int
+	mmrLambda   *float64
+	centerNode  *string
+	bfsOrigins  []string
+	filters     any
+	autoFilters *zep.SearchFilters
+}
+
+func searchScopeSupported(scope SearchScope) bool {
 	switch scope {
-	case zep.GraphSearchScopeEdges,
-		zep.GraphSearchScopeNodes,
-		zep.GraphSearchScopeEpisodes,
-		zep.GraphSearchScopeObservations,
-		zep.GraphSearchScopeThreadSummaries,
-		zep.GraphSearchScopeAuto:
+	case SearchScopeEdges, SearchScopeNodes, SearchScopeEpisodes,
+		SearchScopeObservations, SearchScopeThreadSummaries, SearchScopeAuto:
 		return true
 	default:
 		return false
 	}
 }
 
-// mapSearchResults flattens a Zep graph search response into a slice of textual
-// results appropriate for the requested scope. Earlier versions read only
-// res.Edges, so any non-edge scope (auto / nodes / episodes / observations /
-// thread_summaries) silently returned zero results; this maps every
-// supported scope.
-//
-//   - edges            -> each edge's Fact
-//   - nodes            -> "name: summary" (or just the name when there is no summary)
-//   - episodes         -> each episode's Content
-//   - observations     -> "name: summary" (or just the name when there is no summary)
-//   - thread_summaries -> "name: summary" (or just the name when there is no summary)
-//   - auto             -> the single pre-materialized Context Block (res.Context)
-//
-// Empty entries are skipped. A nil res yields a nil slice.
-func mapSearchResults(scope zep.GraphSearchScope, res *zep.GraphSearchResults) []string {
-	if res == nil {
+func searchRerankerSupported(reranker SearchReranker) bool {
+	switch reranker {
+	case SearchRerankerRRF, SearchRerankerMMR, SearchRerankerNodeDistance,
+		SearchRerankerEpisodeMentions, SearchRerankerCrossEncoder:
+		return true
+	default:
+		return false
+	}
+}
+
+func filterAs[T any](filter any) *T {
+	if filter == nil {
 		return nil
 	}
-
-	switch scope {
-	case zep.GraphSearchScopeAuto:
-		if res.Context != nil && *res.Context != "" {
-			return []string{*res.Context}
-		}
+	if typed, ok := filter.(*T); ok {
+		return typed
+	}
+	data, err := json.Marshal(filter)
+	if err != nil {
 		return nil
+	}
+	var typed T
+	if json.Unmarshal(data, &typed) != nil {
+		return nil
+	}
+	return &typed
+}
 
-	case zep.GraphSearchScopeNodes:
-		var out []string
-		for _, node := range res.Nodes {
-			if node == nil {
-				continue
-			}
-			if text := nodeText(node); text != "" {
-				out = append(out, text)
-			}
+func searchGraph(ctx context.Context, client *zepclient.Client, graphUUID string, req graphSearchRequest) ([]string, error) {
+	if req.scope == SearchScopeAuto {
+		filters := req.autoFilters
+		if filters == nil {
+			filters = filterAs[zep.SearchFilters](req.filters)
 		}
-		return out
-
-	case zep.GraphSearchScopeEpisodes:
-		var out []string
-		for _, ep := range res.Episodes {
-			if ep != nil && ep.Content != "" {
-				out = append(out, ep.Content)
-			}
+		result, err := client.Graph.GetContext(ctx, graphUUID, &zep.GraphContextRequest{
+			Query:   req.query,
+			Filters: filters,
+		})
+		if err != nil || result == nil || result.GetContext() == nil {
+			return nil, err
 		}
-		return out
+		return []string{*result.GetContext()}, nil
+	}
 
-	case zep.GraphSearchScopeObservations:
-		var out []string
-		for _, obs := range res.Observations {
-			if obs == nil {
-				continue
-			}
-			if text := observationText(obs); text != "" {
-				out = append(out, text)
-			}
+	var page any
+	var err error
+	switch req.scope {
+	case SearchScopeEdges:
+		filters := filterAs[zep.EdgeSearchFilters](req.filters)
+		r := &zep.SearchEdgesRequest{Query: req.query, PageSize: req.pageSize, MmrLambda: req.mmrLambda, CenterNodeUUID: req.centerNode, BfsOriginNodeUUIDs: req.bfsOrigins, Filters: filters}
+		if req.reranker != nil {
+			v := zep.SearchEdgesRequestReranker(*req.reranker)
+			r.Reranker = &v
 		}
-		return out
-
-	case zep.GraphSearchScopeThreadSummaries:
-		var out []string
-		for _, summary := range res.ThreadSummaries {
-			if summary == nil {
-				continue
-			}
-			if text := threadSummaryText(summary); text != "" {
-				out = append(out, text)
-			}
+		page, err = client.Graph.SearchEdges(ctx, graphUUID, r)
+	case SearchScopeNodes:
+		filters := filterAs[zep.NodeSearchFilters](req.filters)
+		r := &zep.SearchNodesRequest{Query: req.query, PageSize: req.pageSize, MmrLambda: req.mmrLambda, CenterNodeUUID: req.centerNode, BfsOriginNodeUUIDs: req.bfsOrigins, Filters: filters}
+		if req.reranker != nil {
+			v := zep.SearchNodesRequestReranker(*req.reranker)
+			r.Reranker = &v
 		}
-		return out
-
-	case zep.GraphSearchScopeEdges:
-		fallthrough
+		page, err = client.Graph.SearchNodes(ctx, graphUUID, r)
+	case SearchScopeEpisodes:
+		filters := filterAs[zep.EpisodeSearchFilters](req.filters)
+		r := &zep.SearchEpisodesRequest{Query: req.query, PageSize: req.pageSize, MmrLambda: req.mmrLambda, CenterNodeUUID: req.centerNode, BfsOriginNodeUUIDs: req.bfsOrigins, Filters: filters}
+		if req.reranker != nil {
+			v := zep.SearchEpisodesRequestReranker(*req.reranker)
+			r.Reranker = &v
+		}
+		page, err = client.Graph.SearchEpisodes(ctx, graphUUID, r)
+	case SearchScopeObservations:
+		filters := filterAs[zep.ObservationSearchFilters](req.filters)
+		r := &zep.SearchObservationsRequest{Query: req.query, PageSize: req.pageSize, MmrLambda: req.mmrLambda, CenterNodeUUID: req.centerNode, BfsOriginNodeUUIDs: req.bfsOrigins, Filters: filters}
+		if req.reranker != nil {
+			v := zep.SearchObservationsRequestReranker(*req.reranker)
+			r.Reranker = &v
+		}
+		page, err = client.Graph.SearchObservations(ctx, graphUUID, r)
+	case SearchScopeThreadSummaries:
+		filters := filterAs[zep.ThreadSummarySearchFilters](req.filters)
+		r := &zep.SearchThreadSummariesRequest{Query: req.query, PageSize: req.pageSize, MmrLambda: req.mmrLambda, CenterNodeUUID: req.centerNode, BfsOriginNodeUUIDs: req.bfsOrigins, Filters: filters}
+		if req.reranker != nil {
+			v := zep.SearchThreadSummariesRequestReranker(*req.reranker)
+			r.Reranker = &v
+		}
+		page, err = client.Graph.SearchThreadSummaries(ctx, graphUUID, r)
 	default:
-		var out []string
-		for _, edge := range res.Edges {
-			if edge != nil && edge.Fact != "" {
-				out = append(out, edge.Fact)
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return pageText(page), nil
+}
+
+func pageText(page any) []string {
+	v := reflect.ValueOf(page)
+	if !v.IsValid() || v.IsNil() {
+		return nil
+	}
+	results := v.Elem().FieldByName("Results")
+	if !results.IsValid() {
+		return nil
+	}
+	out := make([]string, 0, results.Len())
+	for i := 0; i < results.Len(); i++ {
+		item := results.Index(i)
+		text := fieldText(item, "Fact")
+		if text == "" {
+			text = fieldText(item, "Content")
+		}
+		if text == "" {
+			name, summary := fieldText(item, "Name"), fieldText(item, "Summary")
+			if name != "" && summary != "" {
+				text = name + ": " + summary
+			} else if name != "" {
+				text = name
+			} else {
+				text = summary
 			}
 		}
-		return out
+		if text != "" {
+			out = append(out, text)
+		}
 	}
+	return out
 }
 
-// nodeText renders an entity node as "name: summary", falling back to just the
-// name (or just the summary) when one half is absent.
-func nodeText(node *zep.EntityNode) string {
-	return nameSummaryText(node.Name, node.Summary)
-}
-
-// observationText renders a derived observation node as "name: summary",
-// falling back to whichever half is present.
-func observationText(obs *zep.DerivedNode) string {
-	summary := ""
-	if obs.Summary != nil {
-		summary = *obs.Summary
+func fieldText(v reflect.Value, name string) string {
+	for v.IsValid() && (v.Kind() == reflect.Interface || v.Kind() == reflect.Pointer) {
+		if v.IsNil() {
+			return ""
+		}
+		v = v.Elem()
 	}
-	return nameSummaryText(obs.Name, summary)
-}
-
-// threadSummaryText renders a thread-summary node as "name: summary",
-// falling back to whichever half is present.
-func threadSummaryText(node *zep.GraphitiSagaNode) string {
-	summary := ""
-	if node.Summary != nil {
-		summary = *node.Summary
+	if !v.IsValid() || v.Kind() != reflect.Struct {
+		return ""
 	}
-	return nameSummaryText(node.Name, summary)
-}
-
-// nameSummaryText joins a name and summary as "name: summary", returning just
-// the populated half when one is empty and "" when both are.
-func nameSummaryText(name, summary string) string {
-	switch {
-	case name != "" && summary != "":
-		return name + ": " + summary
-	case name != "":
-		return name
-	default:
-		return summary
+	f := v.FieldByName(name)
+	for f.IsValid() && (f.Kind() == reflect.Interface || f.Kind() == reflect.Pointer) {
+		if f.IsNil() {
+			return ""
+		}
+		f = f.Elem()
 	}
+	if f.IsValid() && f.Kind() == reflect.String {
+		return f.String()
+	}
+	return ""
 }

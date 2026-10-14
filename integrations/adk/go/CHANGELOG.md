@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.3.0
+
+### Changed
+
+- **Breaking:** the integration now uses `github.com/getzep/zep-go/v4` v4.0.0.
+  `CreateUser` and `CreateThread` replace the idempotent `EnsureUser` and
+  `EnsureThread` helpers. Zep generates each UUID. Store the returned user,
+  graph, and thread UUIDs in your application.
+- **Breaking:** callback, search-tool, and memory-service options now accept
+  Zep UUIDs. The ADK user ID and session ID are not treated as Zep UUIDs.
+- The graph search tool and memory service now use the V4 scope-specific
+  methods. The integration supports `edges`, `nodes`, `episodes`,
+  `observations`, `thread_summaries`, and `auto`.
+- The graph search tool accepts typed filters through
+  `WithToolEdgeSearchFilters`, `WithToolNodeSearchFilters`,
+  `WithToolEpisodeSearchFilters`, `WithToolObservationSearchFilters`, and
+  `WithToolThreadSummarySearchFilters`.
+- The live tests create and delete V4 UUID resources.
+
+### Added
+
+- `WithUserUUID`, `WithThreadUUID`, `WithAfterThreadUUID`, and matching
+  resolver options for callback UUIDs.
+- `WithGraphUUID` and `WithGraphUUIDResolver` for graph search tools.
+- `WithMemoryGraphUUID` and `WithMemoryGraphUUIDResolver` for the ADK memory
+  service.
+- `WithIgnoreRoles` and `WithAfterIgnoreRoles` for message extraction rules.
+
 ## 0.2.0 (2026-07-06)
 
 ### Added

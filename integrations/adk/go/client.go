@@ -3,8 +3,8 @@ package zepadk
 import (
 	"os"
 
-	zepclient "github.com/getzep/zep-go/v3/client"
-	zepoption "github.com/getzep/zep-go/v3/option"
+	zepclient "github.com/getzep/zep-go/v4/client"
+	zepoption "github.com/getzep/zep-go/v4/option"
 )
 
 // NewClient constructs a Zep client authenticated with apiKey. It is a thin

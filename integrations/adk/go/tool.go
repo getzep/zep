@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 
-	zep "github.com/getzep/zep-go/v3"
-	zepclient "github.com/getzep/zep-go/v3/client"
+	zep "github.com/getzep/zep-go/v4"
+	zepclient "github.com/getzep/zep-go/v4/client"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/tool"
@@ -40,8 +40,8 @@ const (
 // defaults exposed to the model when a parameter is neither pinned nor
 // hidden. They mirror the Python and TypeScript zep-adk defaults exactly.
 const (
-	defaultSearchScope    = zep.GraphSearchScopeEdges
-	defaultSearchReranker = zep.RerankerRrf
+	defaultSearchScope    = SearchScopeEdges
+	defaultSearchReranker = SearchRerankerRRF
 	defaultSearchLimit    = 10
 )
 
@@ -50,19 +50,19 @@ const (
 // zep-adk's Python, Go, and TypeScript implementations.
 var (
 	searchScopeEnum = []any{
-		string(zep.GraphSearchScopeEdges),
-		string(zep.GraphSearchScopeNodes),
-		string(zep.GraphSearchScopeEpisodes),
-		string(zep.GraphSearchScopeObservations),
-		string(zep.GraphSearchScopeThreadSummaries),
-		string(zep.GraphSearchScopeAuto),
+		string(SearchScopeEdges),
+		string(SearchScopeNodes),
+		string(SearchScopeEpisodes),
+		string(SearchScopeObservations),
+		string(SearchScopeThreadSummaries),
+		string(SearchScopeAuto),
 	}
 	searchRerankerEnum = []any{
-		string(zep.RerankerRrf),
-		string(zep.RerankerMmr),
-		string(zep.RerankerNodeDistance),
-		string(zep.RerankerEpisodeMentions),
-		string(zep.RerankerCrossEncoder),
+		string(SearchRerankerRRF),
+		string(SearchRerankerMMR),
+		string(SearchRerankerNodeDistance),
+		string(SearchRerankerEpisodeMentions),
+		string(SearchRerankerCrossEncoder),
 	}
 )
 
@@ -115,15 +115,16 @@ const (
 // value (when applicable); WithHiddenParams applied after a pin downgrades
 // the state to hidden.
 type graphSearchToolOptions struct {
-	name        string
-	description string
-	graphID     string
-	logger      *slog.Logger
+	name              string
+	description       string
+	graphUUID         string
+	graphUUIDResolver func(agent.ToolContext) string
+	logger            *slog.Logger
 
 	scopeState      pinState
-	scope           zep.GraphSearchScope
+	scope           SearchScope
 	rerankerState   pinState
-	reranker        zep.Reranker
+	reranker        SearchReranker
 	limitState      pinState
 	limit           int
 	mmrLambdaState  pinState
@@ -132,6 +133,7 @@ type graphSearchToolOptions struct {
 	centerNode      string
 
 	searchFilters      *zep.SearchFilters
+	scopeFilters       map[SearchScope]any
 	bfsOriginNodeUUIDs []string
 }
 
@@ -156,11 +158,14 @@ func WithToolDescription(description string) GraphSearchToolOption {
 	}
 }
 
-// WithGraphID scopes the search to a standalone graph instead of the calling
-// user's graph. UserID and GraphID are mutually exclusive in Zep; setting a
-// graph ID overrides the per-user scoping.
-func WithGraphID(graphID string) GraphSearchToolOption {
-	return func(o *graphSearchToolOptions) { o.graphID = graphID }
+// WithGraphUUID scopes the search to the specified graph instead of a
+// per-user graph.
+func WithGraphUUID(uuid string) GraphSearchToolOption {
+	return func(o *graphSearchToolOptions) { o.graphUUID = uuid }
+}
+
+func WithGraphUUIDResolver(resolve func(agent.ToolContext) string) GraphSearchToolOption {
+	return func(o *graphSearchToolOptions) { o.graphUUIDResolver = resolve }
 }
 
 // WithToolSearchScope pins and hides the Zep graph search scope, removing it
@@ -175,7 +180,7 @@ func WithGraphID(graphID string) GraphSearchToolOption {
 // exposes the scope parameter to the model (default "edges") instead of
 // pinning it. Pass this option explicitly to restore the old always-pinned
 // behavior.
-func WithToolSearchScope(scope zep.GraphSearchScope) GraphSearchToolOption {
+func WithToolSearchScope(scope SearchScope) GraphSearchToolOption {
 	return func(o *graphSearchToolOptions) {
 		o.scopeState = statePinned
 		o.scope = scope
@@ -202,7 +207,7 @@ func WithToolSearchLimit(limit int) GraphSearchToolOption {
 
 // WithToolReranker pins and hides the result reranking algorithm, removing it
 // from the model's tool schema and always using the given value.
-func WithToolReranker(reranker zep.Reranker) GraphSearchToolOption {
+func WithToolReranker(reranker SearchReranker) GraphSearchToolOption {
 	return func(o *graphSearchToolOptions) {
 		o.rerankerState = statePinned
 		o.reranker = reranker
@@ -233,6 +238,35 @@ func WithToolCenterNodeUUID(uuid string) GraphSearchToolOption {
 // search. Constructor-only: never exposed to the model.
 func WithToolSearchFilters(filters *zep.SearchFilters) GraphSearchToolOption {
 	return func(o *graphSearchToolOptions) { o.searchFilters = filters }
+}
+
+func WithToolEdgeSearchFilters(filters *zep.EdgeSearchFilters) GraphSearchToolOption {
+	return withScopeFilters(SearchScopeEdges, filters)
+}
+
+func WithToolNodeSearchFilters(filters *zep.NodeSearchFilters) GraphSearchToolOption {
+	return withScopeFilters(SearchScopeNodes, filters)
+}
+
+func WithToolEpisodeSearchFilters(filters *zep.EpisodeSearchFilters) GraphSearchToolOption {
+	return withScopeFilters(SearchScopeEpisodes, filters)
+}
+
+func WithToolObservationSearchFilters(filters *zep.ObservationSearchFilters) GraphSearchToolOption {
+	return withScopeFilters(SearchScopeObservations, filters)
+}
+
+func WithToolThreadSummarySearchFilters(filters *zep.ThreadSummarySearchFilters) GraphSearchToolOption {
+	return withScopeFilters(SearchScopeThreadSummaries, filters)
+}
+
+func withScopeFilters(scope SearchScope, filters any) GraphSearchToolOption {
+	return func(o *graphSearchToolOptions) {
+		if o.scopeFilters == nil {
+			o.scopeFilters = make(map[SearchScope]any)
+		}
+		o.scopeFilters[scope] = filters
+	}
 }
 
 // WithToolBFSOriginNodeUUIDs sets node UUIDs seeding a breadth-first search,
@@ -371,46 +405,50 @@ func buildSearchInputSchema(cfg *graphSearchToolOptions) *jsonschema.Schema {
 // handler runs, so an invalid scope is rejected there and returned to the
 // model as a tool error. This fallback can only fire if the handler is
 // invoked outside functiontool.
-func resolveScope(cfg *graphSearchToolOptions, modelValue *string) *zep.GraphSearchScope {
+func resolveScope(cfg *graphSearchToolOptions, modelValue *string) *SearchScope {
 	switch cfg.scopeState {
 	case statePinned:
-		return cfg.scope.Ptr()
+		return &cfg.scope
 	case stateHidden:
 		return nil
 	default:
 		if modelValue != nil {
-			scope, err := zep.NewGraphSearchScopeFromString(*modelValue)
-			if err != nil {
+			scope := SearchScope(*modelValue)
+			if !searchScopeSupported(scope) {
 				cfg.logger.Warn("zepadk: invalid scope value from model; falling back to default",
 					slog.String("value", *modelValue), slog.String("default", string(defaultSearchScope)))
-				return defaultSearchScope.Ptr()
+				fallback := defaultSearchScope
+				return &fallback
 			}
-			return scope.Ptr()
+			return &scope
 		}
-		return defaultSearchScope.Ptr()
+		fallback := defaultSearchScope
+		return &fallback
 	}
 }
 
 // resolveReranker merges the pinned/model/default reranker value. As with
 // [resolveScope], the invalid-value branch is defense-in-depth only — ADK's
 // schema validation rejects invalid enum values before the handler runs.
-func resolveReranker(cfg *graphSearchToolOptions, modelValue *string) *zep.Reranker {
+func resolveReranker(cfg *graphSearchToolOptions, modelValue *string) *SearchReranker {
 	switch cfg.rerankerState {
 	case statePinned:
-		return cfg.reranker.Ptr()
+		return &cfg.reranker
 	case stateHidden:
 		return nil
 	default:
 		if modelValue != nil {
-			reranker, err := zep.NewRerankerFromString(*modelValue)
-			if err != nil {
+			reranker := SearchReranker(*modelValue)
+			if !searchRerankerSupported(reranker) {
 				cfg.logger.Warn("zepadk: invalid reranker value from model; falling back to default",
 					slog.String("value", *modelValue), slog.String("default", string(defaultSearchReranker)))
-				return defaultSearchReranker.Ptr()
+				fallback := defaultSearchReranker
+				return &fallback
 			}
-			return reranker.Ptr()
+			return &reranker
 		}
-		return defaultSearchReranker.Ptr()
+		fallback := defaultSearchReranker
+		return &fallback
 	}
 }
 
@@ -491,47 +529,46 @@ func newGraphSearchHandlerFromConfig(api zepAPI, cfg *graphSearchToolOptions) fu
 			return out, nil
 		}
 
-		query := &zep.GraphSearchQuery{
-			Query:          args.Query,
-			Scope:          scope,
-			Reranker:       resolveReranker(cfg, args.Reranker),
-			Limit:          resolveLimit(cfg, args.Limit),
-			MmrLambda:      resolveMMRLambda(cfg, args.MMRLambda),
-			CenterNodeUUID: resolveCenterNodeUUID(cfg, args.CenterNodeUUID),
+		graphUUID := cfg.graphUUID
+		if graphUUID == "" && cfg.graphUUIDResolver != nil {
+			graphUUID = cfg.graphUUIDResolver(tc)
 		}
-		if cfg.searchFilters != nil {
-			query.SearchFilters = cfg.searchFilters
+		if graphUUID == "" && tc != nil && tc.State() != nil {
+			if value, err := tc.State().Get("zep_graph_uuid"); err == nil {
+				graphUUID, _ = value.(string)
+			}
 		}
-		if cfg.bfsOriginNodeUUIDs != nil {
-			query.BfsOriginNodeUUIDs = cfg.bfsOriginNodeUUIDs
+		if graphUUID == "" {
+			cfg.logger.Warn("zepadk: graph UUID is required; returning no facts")
+			return out, nil
 		}
-		// UserID and GraphID are mutually exclusive: prefer an explicit graph
-		// ID, otherwise scope to the calling user's graph.
-		if cfg.graphID != "" {
-			query.GraphID = zep.String(cfg.graphID)
-		} else {
-			query.UserID = zep.String(tc.UserID())
+		query := graphSearchRequest{
+			query: args.Query, scope: defaultSearchScope,
+			reranker: resolveReranker(cfg, args.Reranker), pageSize: resolveLimit(cfg, args.Limit),
+			mmrLambda: resolveMMRLambda(cfg, args.MMRLambda), centerNode: resolveCenterNodeUUID(cfg, args.CenterNodeUUID),
+			filters: cfg.searchFilters, bfsOrigins: cfg.bfsOriginNodeUUIDs,
+			autoFilters: cfg.searchFilters,
 		}
-
-		res, err := api.Search(tc, query)
+		if scope != nil {
+			query.scope = *scope
+		}
+		if filter := cfg.scopeFilters[query.scope]; filter != nil {
+			query.filters = filter
+		}
+		res, err := api.Search(tc, graphUUID, query)
 		if err != nil {
 			cfg.logger.Error("zepadk: graph search tool failed; returning no facts",
 				slog.Any("error", err))
 			return out, nil
 		}
-		effectiveScope := defaultSearchScope
-		if scope != nil {
-			effectiveScope = *scope
-		}
-		out.Facts = mapSearchResults(effectiveScope, res)
+		out.Facts = res
 		return out, nil
 	}
 }
 
 // NewGraphSearchTool returns an ADK [tool.Tool] the model can call to search
-// the user's Zep knowledge graph on demand. By default the search is scoped to
-// the calling user's graph (resolved from the ToolContext); pass [WithGraphID]
-// to target a standalone graph instead.
+// a Zep graph on demand. Pass [WithGraphUUID] or [WithGraphUUIDResolver] to
+// select the graph.
 //
 // Every model-exposable search parameter (scope, reranker, limit, mmr_lambda,
 // center_node_uuid) can be pinned to a fixed value (hidden from the model,

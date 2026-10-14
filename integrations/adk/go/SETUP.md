@@ -1,60 +1,42 @@
 # Setup Guide
 
-This guide takes you from a fresh checkout to running the example agent with
-Zep memory.
+This guide explains how to run the Go example with Zep.
 
-## 1. Sign up for Zep and create an API key
+## 1. Create a Zep API key
 
-1. Go to [https://www.getzep.com](https://www.getzep.com) and create an account.
-2. Open the [Zep dashboard](https://app.getzep.com) and select (or create) a project.
-3. In the project settings, go to **API Keys** and create a new key.
-4. Copy the key — you will set it as `ZEP_API_KEY` below.
+1. Create an account at [getzep.com](https://www.getzep.com).
+2. Open your project in the [Zep dashboard](https://app.getzep.com).
+3. Open **API Keys** in the project settings.
+4. Create an API key and set it as `ZEP_API_KEY`.
 
-Zep is a paid product; see [getzep.com](https://www.getzep.com) for plan details.
+## 2. Create a Google API key
 
-## 2. Get a Google API key (for the example)
-
-The integration is model-agnostic, but the bundled example drives the agent with
-Google's Gemini models — ADK for Go's native model provider. Create a key in
-[Google AI Studio](https://aistudio.google.com/apikey) and copy it for
+The example uses Google's Gemini model through ADK. Create a key in
+[Google AI Studio](https://aistudio.google.com/apikey) and set it as
 `GOOGLE_API_KEY`.
 
-## 3. Install
-
-Add the module to your project:
+## 3. Install the package
 
 ```bash
 go get github.com/getzep/zep/integrations/adk/go@latest
 ```
 
-Import it as `zepadk`:
+The package requires Go 1.25 or later, ADK v1.4.0, and the Zep Go SDK v4.0.0.
+The module path for the Zep SDK is `github.com/getzep/zep-go/v4`.
 
-```go
-import zepadk "github.com/getzep/zep/integrations/adk/go"
-```
-
-To work from the repository instead:
+To run the example from a repository checkout:
 
 ```bash
-git clone https://github.com/getzep/zep.git
-cd zep/integrations/adk/go
+cd integrations/adk/go
 go mod download
 ```
 
-Requirements: Go 1.25+ (`google.golang.org/adk` v1.4.0 requires Go 1.25),
-`google.golang.org/adk` v1.4.0, `github.com/getzep/zep-go/v3` v3.23.0.
-
-## 4. Configure environment variables
+## 4. Set environment variables
 
 ```bash
 export ZEP_API_KEY="your-zep-api-key"
 export GOOGLE_API_KEY="your-google-api-key"
 ```
-
-If `ZEP_API_KEY` is unset, the integration disables itself (the Zep client is
-`nil` and every Zep call becomes a no-op), so the agent still runs — useful for
-confirming the wiring without a Zep account. If `GOOGLE_API_KEY` is unset, the
-example prints the configured wiring and exits before calling the model.
 
 ## 5. Run the example
 
@@ -62,40 +44,31 @@ example prints the configured wiring and exits before calling the model.
 go run ./examples
 ```
 
-The example:
+The example creates a Zep user and thread before the first turn. Zep returns
+the UUIDs. The example passes these UUIDs to the callbacks, search tool, and
+memory service.
 
-1. Provisions the Zep user and thread out-of-band with `EnsureUser` /
-   `EnsureThread` before the first turn — the before/after-model callbacks
-   never create them themselves. When wiring your own agent, call these once
-   (e.g. during account or session onboarding) before running any turns.
-2. Builds an `llmagent` whose `BeforeModelCallback` persists each new user turn
-   to Zep and injects the user's Context Block into the prompt, and whose
-   `AfterModelCallback` persists the assistant's reply back to the same thread.
-3. Registers a `search_memory` tool the model can call on demand and attaches a
-   Zep-backed `memory.Service` at the runner.
-4. Sends two turns and prints the agent's replies.
+## 6. Run tests
 
-Because Zep ingestion is asynchronous, memory recall improves across turns and
-sessions rather than instantly within the first turn.
-
-## 6. Run the tests
-
-The tests are mock/table-based and make no network calls, so no API keys are
-required:
+Run offline unit tests:
 
 ```bash
-make test            # or: go test ./...
+go test ./...
 ```
+
+Run the live tests with `ZEP_API_KEY` set:
+
+```bash
+ZEP_API_KEY=... go test -run TestLive -v ./...
+```
+
+The live tests create and delete UUID-addressed Zep resources.
 
 ## Troubleshooting
 
-- **`go get` cannot find the module** — the module path is
-  `github.com/getzep/zep/integrations/adk/go`; Go modules under this subpath are
-  tagged `integrations/adk/go/vX.Y.Z`.
-- **Recall returns nothing** — Zep ingestion is asynchronous; a just-added fact
-  is not instantly retrievable. Recall improves on subsequent turns and across
-  sessions for the same user.
-- **Authentication errors** — confirm `ZEP_API_KEY` is set in the same shell and
-  belongs to the intended project.
-- **Agent runs but has no memory** — verify `ZEP_API_KEY` is exported; an unset
-  key makes the Zep client `nil` and all Zep calls no-ops by design.
+- If authentication fails, check that `ZEP_API_KEY` belongs to the intended
+  project.
+- If the example has no memory, check that `ZEP_API_KEY` is exported in the
+  same shell.
+- Zep processes messages asynchronously. Search results can take time to
+  include new messages.
