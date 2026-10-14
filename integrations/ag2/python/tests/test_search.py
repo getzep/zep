@@ -445,7 +445,9 @@ class TestRerankerScopeSchema:
 
     def test_reranker_description_names_scope_limits(self, mock_zep_client: MagicMock) -> None:
         tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
-        description = get_type_hints(tool, include_extras=True)["reranker"].__metadata__[0]
+        metadata = get_type_hints(tool, include_extras=True)["reranker"].__metadata__[0]
+        # AG2 tool registration can replace the shared ``Annotated`` string with a Field.
+        description = metadata if isinstance(metadata, str) else metadata.description
         assert "'cross_encoder' (highest accuracy) -- only with scope" in description
         assert "'episodes'" not in description.split("'cross_encoder'")[1]
         assert "default 0.5" in description
