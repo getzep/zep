@@ -25,13 +25,12 @@ from zep_autogen.tools import create_add_graph_data_tool
 
 def _make_mock_client() -> MagicMock:
     client = MagicMock(spec=AsyncZep)
-    client.user = MagicMock()
-    client.user.add = AsyncMock()
     client.thread = MagicMock()
     client.thread.create = AsyncMock()
     client.thread.add_messages = AsyncMock()
     client.graph = MagicMock()
-    client.graph.add = AsyncMock()
+    client.graph.episode = MagicMock()
+    client.graph.episode.add = AsyncMock()
     return client
 
 
@@ -66,7 +65,7 @@ class TestAddTruncatesOversizeMessage:
     @pytest.mark.asyncio
     async def test_add_truncates_oversize_message(self) -> None:
         client = _make_mock_client()
-        memory = ZepUserMemory(client=client, user_id="test-user", thread_id="test-session")
+        memory = ZepUserMemory(client=client, user_uuid="test-user", thread_uuid="test-session")
 
         long_text = "a" * (MESSAGE_CONTENT_MAX + 200)
         content = MemoryContent(
@@ -88,7 +87,7 @@ class TestUserMemoryDataAddTruncatesOversize:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         client = _make_mock_client()
-        memory = ZepUserMemory(client=client, user_id="test-user", thread_id="test-session")
+        memory = ZepUserMemory(client=client, user_uuid="test-user", thread_uuid="test-session")
 
         long_text = "d" * (GRAPH_MAX_CHARS + 500)
         content = MemoryContent(
@@ -100,8 +99,8 @@ class TestUserMemoryDataAddTruncatesOversize:
         with caplog.at_level("WARNING"):
             await memory.add(content)
 
-        client.graph.add.assert_called_once()
-        sent_data = client.graph.add.call_args.kwargs["data"]
+        client.graph.episode.add.assert_called_once()
+        sent_data = client.graph.episode.add.call_args.kwargs["data"]
         assert len(sent_data) == GRAPH_MAX_CHARS
         assert "Truncated" in caplog.text
         assert "d" * 50 not in caplog.text
@@ -111,7 +110,7 @@ class TestGraphAddTruncatesOversize:
     @pytest.mark.asyncio
     async def test_graph_add_truncates_oversize(self) -> None:
         client = _make_mock_client()
-        memory = ZepGraphMemory(client=client, graph_id="test-graph")
+        memory = ZepGraphMemory(client=client, graph_uuid="test-graph")
 
         long_text = "b" * (GRAPH_MAX_CHARS + 500)
         content = MemoryContent(
@@ -122,20 +121,20 @@ class TestGraphAddTruncatesOversize:
 
         await memory.add(content)
 
-        client.graph.add.assert_called_once()
-        sent_data = client.graph.add.call_args.kwargs["data"]
+        client.graph.episode.add.assert_called_once()
+        sent_data = client.graph.episode.add.call_args.kwargs["data"]
         assert len(sent_data) == GRAPH_MAX_CHARS
 
     @pytest.mark.asyncio
     async def test_add_graph_data_tool_truncates_oversize(self) -> None:
         client = _make_mock_client()
-        tool = create_add_graph_data_tool(client, user_id="test-user")
+        tool = create_add_graph_data_tool(client, user_uuid="test-user")
 
         long_text = "c" * (GRAPH_MAX_CHARS + 500)
         from autogen_core import CancellationToken
 
         await tool.run_json({"data": long_text}, CancellationToken())
 
-        client.graph.add.assert_called_once()
-        sent_data = client.graph.add.call_args.kwargs["data"]
+        client.graph.episode.add.assert_called_once()
+        sent_data = client.graph.episode.add.call_args.kwargs["data"]
         assert len(sent_data) == GRAPH_MAX_CHARS

@@ -19,12 +19,9 @@ from zep_autogen.memory import DEFAULT_CONTEXT_TEMPLATE
 
 def _make_mock_client(context: str | None = "some context") -> MagicMock:
     client = MagicMock(spec=AsyncZep)
-    client.user = MagicMock()
-    client.user.add = AsyncMock()
     client.thread = MagicMock()
-    client.thread.create = AsyncMock()
-    client.thread.get_user_context = AsyncMock(return_value=MagicMock(context=context))
-    client.thread.get = AsyncMock(return_value=MagicMock(messages=[]))
+    client.thread.get_context = AsyncMock(return_value=MagicMock(context=context))
+    client.thread.list_messages = AsyncMock(return_value=MagicMock(items=[]))
     return client
 
 
@@ -45,8 +42,8 @@ class TestContextTemplate:
         custom_template = "CUSTOM WRAP >>> {context} <<< END"
         memory = ZepUserMemory(
             client=client,
-            user_id="user-1",
-            thread_id="thread-1",
+            user_uuid="user-1",
+            thread_uuid="thread-1",
             context_template=custom_template,
         )
         model_context = await _context_with_message("hi")
@@ -65,7 +62,7 @@ class TestContextTemplate:
         would raise or corrupt output under str.format()."""
         tricky_context = "50% done; use {braces} and {other} freely"
         client = _make_mock_client(context=tricky_context)
-        memory = ZepUserMemory(client=client, user_id="user-1", thread_id="thread-1")
+        memory = ZepUserMemory(client=client, user_uuid="user-1", thread_uuid="thread-1")
         model_context = await _context_with_message("hi")
 
         # Must not raise.
@@ -74,6 +71,24 @@ class TestContextTemplate:
         messages = await model_context.get_messages()
         system_messages = _system_messages(messages)
         assert any(tricky_context in m.content for m in system_messages)
+
+    @pytest.mark.asyncio
+    async def test_context_template_uuid_is_passed_to_v4_context_request(self) -> None:
+        client = _make_mock_client(context="templated context")
+        memory = ZepUserMemory(
+            client=client,
+            user_uuid="user-1",
+            thread_uuid="thread-1",
+            context_template_uuid="template-1",
+        )
+        model_context = await _context_with_message("hello")
+
+        await memory.update_context(model_context)
+
+        client.thread.get_context.assert_awaited_once_with(
+            "thread-1",
+            template_uuid="template-1",
+        )
 
     @pytest.mark.asyncio
     async def test_default_template_is_canonical(self) -> None:

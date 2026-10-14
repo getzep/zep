@@ -35,7 +35,11 @@ make install        # uv sync --extra dev
 ```
 
 Requirements: Python 3.11+, `autogen-agentchat>=0.7.0`,
-`autogen-ext[azure,openai]>=0.7.0`, `zep-cloud>=3.23.0`.
+`autogen-ext[azure,openai]>=0.7.0`, and `zep-cloud>=4.0.0,<5`.
+
+The integration uses Zep v4. Create users, threads, and shared graphs with the
+v4 SDK. The API assigns each resource UUIDs. Store the returned UUIDs in your
+application database.
 
 ## 4. Configure environment variables
 
@@ -47,7 +51,7 @@ export OPENAI_API_KEY="your-openai-api-key"
 export OPENAI_MODEL="gpt-4o-mini"
 ```
 
-## 5. Run the example
+## 5. Run an example
 
 From the repository:
 
@@ -68,6 +72,9 @@ Other runnable examples live in [`examples/`](examples):
 - `autogen_tools_search.py` — read-only graph search tool
 - `autogen_tools_full.py` — search + add graph data tools
 
+Examples use the returned `uuid_` values. They do not use v3 IDs or lookup
+methods.
+
 ## 6. Run the tests
 
 Mock-based tests (no API keys needed):
@@ -81,6 +88,8 @@ Live integration test (requires `ZEP_API_KEY` and `OPENAI_API_KEY`):
 ```bash
 uv run pytest tests/test_integration.py -v -s -m integration
 ```
+
+The live test creates and deletes its user and threads through the v4 API.
 
 ## Troubleshooting
 

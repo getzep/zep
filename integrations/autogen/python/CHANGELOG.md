@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-14
+
+### Changed
+
+- **Breaking:** Migrated the integration to `zep-cloud>=4.0.0,<5` and Zep v4 UUID-based APIs. Replace `user_id`, `thread_id`, and `graph_id` with the server-generated `user_uuid`, `thread_uuid`, and `graph_uuid`.
+- **Breaking:** Replaced `ensure_user` and `ensure_thread` with `create_user` and `create_thread`. The new helpers return SDK models with server-generated UUIDs. `ZepUserMemory` no longer creates the user; create it before you construct memory.
+- Updated user and graph memory, search tools, add-data tools, examples, and setup instructions to use v4 graph and thread methods.
+- Added the six v4 search scopes, pin-or-expose search parameters, context builders, context templates, and graph context limits.
+- Zep API failures on memory and tool paths are logged and do not fail an agent turn.
+
 ## [1.2.2] - 2026-10-01
 
 ### Changed
