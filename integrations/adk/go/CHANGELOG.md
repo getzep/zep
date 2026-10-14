@@ -4,34 +4,38 @@
 
 ### Breaking
 
-- The package now requires the Zep v4 SDK, `github.com/getzep/zep-go/v4`
-  v4.0.0 or later and below v5. The package no longer uses
-  `github.com/getzep/zep-go/v3`. The module path of this integration does not
-  change.
-- Zep v4 addresses every user, thread, and graph by a server-generated UUID,
-  so the package takes UUIDs instead of client-chosen IDs:
-  - The before-model callback takes a thread UUID and a user UUID
-    (`WithThreadUUID`, `WithThreadUUIDResolver`, `WithUserUUID`,
-    `WithUserUUIDResolver`).
-  - The after-model callback takes a thread UUID (`WithAfterThreadUUID`,
-    `WithAfterThreadUUIDResolver`).
-  - `WithGraphID` is replaced by `WithGraphUUID` and `WithGraphUUIDResolver`.
-    The memory service takes a graph UUID (`WithMemoryGraphUUID`,
-    `WithMemoryGraphUUIDResolver`).
-  - The `UserID` and `ThreadID` fields of `ContextInput` are replaced by
-    `UserUUID` and `ThreadUUID`.
-  - The package no longer maps the ADK session ID to a Zep thread and the ADK
-    user ID to a Zep user, because neither ADK value is a UUID. The package
-    makes no lookup call at run time. A component without a UUID logs an
-    error and returns no result.
-- `EnsureUser` and `EnsureThread` are removed and replaced by `CreateUser`
-  and `CreateThread`. `CreateUser(ctx, client, firstName, lastName, email)`
-  returns the UUID of the user and the UUID of the graph of the user.
-  `CreateThread(ctx, client, userUUID)` returns the UUID of the thread. The
-  application calls each function one time and stores the UUIDs in its own
-  database. The functions are not idempotent, because a create call in v4
-  always creates a new resource. Neither function takes a client-chosen ID,
-  because the Zep v4 create endpoints reject a `user_id` and a `thread_id`.
+To move an application from Zep V3 to V4, follow the
+[Zep V4 migration guide](https://help.getzep.com/migrating-from-v3) for the
+general procedure: the nullable UUID columns, the one-time `lookup` backfill,
+and the order of steps. This section lists only the changes that are specific
+to this package.
+
+- The package requires the Zep V4 SDK, `github.com/getzep/zep-go/v4` v4.0.0
+  or later and below v5, in place of `github.com/getzep/zep-go/v3`. The
+  module path of this integration does not change.
+- `EnsureUser(ctx, client, userID, firstName, lastName, email)` is removed.
+  Use `CreateUser(ctx, client, firstName, lastName, email)` for a new user
+  only. It returns the user UUID and the graph UUID of the user.
+- `EnsureThread(ctx, client, threadID, userID)` is removed. Use
+  `CreateThread(ctx, client, userUUID)` for a new thread only. It returns the
+  thread UUID.
+- Give the stored thread UUID to `NewBeforeModelCallback` with
+  `WithThreadUUID` or `WithThreadUUIDResolver`, and to
+  `NewAfterModelCallback` with `WithAfterThreadUUID` or
+  `WithAfterThreadUUIDResolver`. The callbacks no longer use the ADK session
+  ID as the Zep thread ID.
+- Give the stored user UUID to `NewBeforeModelCallback` with `WithUserUUID`
+  or `WithUserUUIDResolver`. The callback gives it to a custom
+  `ContextBuilder` in `ContextInput.UserUUID`.
+- Give the stored graph UUID to `NewGraphSearchTool` with `WithGraphUUID` or
+  `WithGraphUUIDResolver`, and to `NewMemoryService` with
+  `WithMemoryGraphUUID` or `WithMemoryGraphUUIDResolver`. `WithGraphID` is
+  removed. The tool and the memory service no longer use the ADK user ID as
+  the Zep user ID.
+- The `UserID` and `ThreadID` fields of `ContextInput` are replaced by
+  `UserUUID` and `ThreadUUID`.
+- A callback, the tool, or the memory service that has no UUID logs an error
+  and returns no result.
 - The search scope is now the package type `zepadk.SearchScope`
   (`SearchScopeEdges`, `SearchScopeNodes`, `SearchScopeEpisodes`,
   `SearchScopeObservations`, `SearchScopeThreadSummaries`, and
@@ -56,6 +60,10 @@
   framing text), not in the bare `DefaultContextPrefix` string. To keep the
   old output, use `WithContextTemplate` or the deprecated
   `WithContextPrefix`.
+
+For an existing V3 user, thread, or graph, do not call `CreateUser`,
+`CreateThread`, or `Graph.Create`. Get its UUID one time with the backfill in
+the migration guide, and store it.
 
 ### Added
 
