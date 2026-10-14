@@ -219,6 +219,27 @@ tool = create_zep_search_tool(hidden_params={"mmr_lambda"})
 `filters` and `bfs_origin_node_uuids` are always constructor-only
 (their complex shapes are not exposed to the model).
 
+Each search scope accepts its own filter keys. The tool sends each search
+only the filters that its scope accepts. A filter that no scope of the tool
+accepts raises `ValueError` when you build the tool:
+
+| Scope | Accepted filter keys |
+|-------|----------------------|
+| `edges` | `edge_types`, `exclude_edge_types`, `edge_uuids`, `source_node_uuids`, `target_node_uuids`, `connected_node_uuids`, `episode_uuids`, `date_filters`, `property_filters`, `metadata_filters` |
+| `nodes` | `node_labels`, `exclude_node_labels`, `episode_uuids`, `property_filters`, `metadata_filters` |
+| `episodes` | `metadata_filters`, `content_policy_violated` |
+| `observations` | None |
+| `thread_summaries` | `metadata_filters` |
+| `auto` | The `edges` keys and the `nodes` keys |
+
+```python
+# Search only facts of one edge type.
+tool = create_zep_search_tool(scope="edges", filters={"edge_types": ["WORKS_AT"]})
+
+# Search only entities with one label.
+tool = create_zep_search_tool(scope="nodes", filters={"node_labels": ["Person"]})
+```
+
 ### `persist_run`
 
 Call after `agent.run` with `result.new_messages()` to persist the assistant's
@@ -297,7 +318,7 @@ Failures propagate.
 | `graph_uuid` | `str \| None` | `None` | Standalone graph UUID to search; when unset, the tool uses `ZepDeps.graph_uuid` |
 | `pinned_params` | `dict[str, Any] \| None` | `None` | Fix a search parameter to a value; hidden from the model schema |
 | `hidden_params` | `set[str] \| None` | `None` | Hide a search parameter from the schema without pinning (Zep's default applies) |
-| `filters` | `dict[str, Any] \| None` | `None` | Constructor-only Zep search filters (`node_labels`, `edge_types`, etc.) |
+| `filters` | `dict[str, Any] \| None` | `None` | Constructor-only Zep search filters. Each scope gets only the keys that it accepts, for example `edge_types` on `edges` and `node_labels` on `nodes`. See [`create_zep_search_tool`](#create_zep_search_tool). |
 | `bfs_origin_node_uuids` | `list[str] \| None` | `None` | Constructor-only node UUIDs for BFS seeding |
 | `name` | `str` | `"zep_search"` | Tool name exposed to the model |
 | `description` | `str` | (see source) | Tool description exposed to the model |

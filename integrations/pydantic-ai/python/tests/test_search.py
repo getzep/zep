@@ -501,7 +501,7 @@ class TestPinOrExposeSchema:
     async def test_bfs_and_filters_sent_to_sdk(self) -> None:
         client = _make_client()
         tool = create_zep_search_tool(
-            filters={"node_labels": ["Person"]},
+            filters={"edge_types": ["WORKS_AT"]},
             bfs_origin_node_uuids=["uuid-1"],
         )
         ctx = _make_ctx(_make_deps(client))
@@ -509,7 +509,7 @@ class TestPinOrExposeSchema:
         await _call(tool, ctx, "query")
 
         kwargs = _search_mock(client).call_args.kwargs
-        assert kwargs["filters"] == {"node_labels": ["Person"]}
+        assert kwargs["filters"] == {"edge_types": ["WORKS_AT"]}
         assert kwargs["bfs_origin_node_uuids"] == ["uuid-1"]
 
     def test_legacy_constructor_args_pin(self) -> None:
@@ -527,3 +527,76 @@ class TestPinOrExposeSchema:
     def test_model_facing_tool_is_a_pydantic_ai_tool(self) -> None:
         tool = create_zep_search_tool()
         assert isinstance(tool, Tool)
+
+
+class TestScopeFilters:
+    def test_unsupported_filter_on_pinned_scope_raises(self) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            create_zep_search_tool(scope="edges", filters={"node_labels": ["Person"]})
+
+        message = str(excinfo.value)
+        assert "'node_labels'" in message
+        assert "scope 'edges'" in message
+        assert "['nodes', 'auto']" in message
+
+    def test_unsupported_filter_on_hidden_default_scope_raises(self) -> None:
+        with pytest.raises(ValueError, match="scope 'edges'"):
+            create_zep_search_tool(hidden_params={"scope"}, filters={"node_labels": ["Person"]})
+
+    def test_filter_that_no_scope_supports_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown Zep search filters"):
+            create_zep_search_tool(filters={"search_filters": {}})
+
+    def test_observations_scope_rejects_every_filter(self) -> None:
+        with pytest.raises(ValueError, match="scope 'observations'"):
+            create_zep_search_tool(scope="observations", filters={"metadata_filters": {}})
+
+    def test_supported_filter_on_pinned_scope_is_accepted(self) -> None:
+        create_zep_search_tool(scope="nodes", filters={"node_labels": ["Person"]})
+        create_zep_search_tool(scope="auto", filters={"node_labels": ["Person"]})
+        create_zep_search_tool(scope="edges", filters={"edge_types": ["WORKS_AT"]})
+
+    def test_model_selectable_scope_accepts_filter_of_any_scope(self) -> None:
+        create_zep_search_tool(filters={"node_labels": ["Person"]})
+
+    @pytest.mark.asyncio
+    async def test_pinned_nodes_scope_sends_node_labels(self) -> None:
+        client = _make_client("nodes")
+        tool = create_zep_search_tool(scope="nodes", filters={"node_labels": ["Person"]})
+        ctx = _make_ctx(_make_deps(client))
+
+        await _call(tool, ctx, "query")
+
+        assert _search_mock(client, "nodes").call_args.kwargs["filters"] == {
+            "node_labels": ["Person"]
+        }
+
+    @pytest.mark.asyncio
+    async def test_each_scope_gets_only_its_filters(self) -> None:
+        filters = {"node_labels": ["Person"], "edge_types": ["WORKS_AT"]}
+        tool = create_zep_search_tool(filters=filters)
+
+        edges_client = _make_client("edges")
+        await _call(tool, _make_ctx(_make_deps(edges_client)), "query", scope="edges")
+        assert _search_mock(edges_client, "edges").call_args.kwargs["filters"] == {
+            "edge_types": ["WORKS_AT"]
+        }
+
+        nodes_client = _make_client("nodes")
+        await _call(tool, _make_ctx(_make_deps(nodes_client)), "query", scope="nodes")
+        assert _search_mock(nodes_client, "nodes").call_args.kwargs["filters"] == {
+            "node_labels": ["Person"]
+        }
+
+        context_client = _make_context_client("ctx")
+        await _call(tool, _make_ctx(_make_deps(context_client)), "query", scope="auto")
+        assert context_client.graph.get_context.call_args.kwargs["filters"] == filters
+
+    @pytest.mark.asyncio
+    async def test_scope_without_supported_filters_sends_no_filters(self) -> None:
+        client = _make_client("episodes")
+        tool = create_zep_search_tool(filters={"node_labels": ["Person"]})
+
+        await _call(tool, _make_ctx(_make_deps(client)), "query", scope="episodes")
+
+        assert "filters" not in _search_mock(client, "episodes").call_args.kwargs
