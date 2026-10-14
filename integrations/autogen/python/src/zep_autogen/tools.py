@@ -49,9 +49,9 @@ logger = logging.getLogger(__name__)
 
 Reranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
 
-#: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
-#: retrieval and applies its own internal cross-scope rerank).
-_AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
+#: Scopes other than ``auto``; used as the model-facing scope enum when a
+#: reranker is pinned, because no reranker is valid with ``auto``.
+_NON_AUTO_SCOPES = Literal["edges", "nodes", "episodes", "observations", "thread_summaries"]
 
 # ---------------------------------------------------------------------------
 # Parameter definitions
@@ -80,9 +80,10 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
         "description": (
             "Result ordering algorithm: 'rrf' (balanced), 'mmr' (diverse), "
             "'cross_encoder' (highest accuracy), 'episode_mentions' "
-            "(frequently referenced), 'node_distance' (near a specific entity)."
+            "(frequently referenced), 'node_distance' (near a specific entity). "
+            "The 'auto' scope takes no reranker: omit the reranker with scope 'auto'."
         ),
-        "default": "rrf",
+        "default": None,
     },
     "limit": {
         "annotation": int,
@@ -243,8 +244,9 @@ def create_search_graph_tool(
 
     Raises:
         ValueError: If neither or both of ``graph_uuid``/``user_uuid`` are
-            provided, or ``pinned_params``/``hidden_params`` (or a legacy
-            alias) contains an unknown parameter name.
+            provided, if ``pinned_params``/``hidden_params`` (or a legacy
+            alias) contains an unknown parameter name, or if a reranker is
+            pinned together with ``scope="auto"``.
     """
     if not graph_uuid and not user_uuid:
         raise ValueError("Either graph_uuid or user_uuid must be provided when creating the tool")
@@ -279,26 +281,24 @@ def create_search_graph_tool(
     if "limit" in pinned:
         pinned["limit"] = clamp_limit(pinned["limit"])
 
-    # Auto scope rejects node_distance / episode_mentions and ignores reranker
-    # entirely.  If scope is pinned to "auto" and reranker is also pinned,
-    # resolve the effective value once, here, so the call path is always valid.
-    # The reranker stays hidden from the model (the caller pinned it) but is
-    # omitted from the SDK call.
+    # The 'auto' scope takes no reranker, so a pinned reranker with scope
+    # 'auto' is a configuration error, not a value to drop.
     if pinned.get("scope") == "auto" and "reranker" in pinned:
-        if pinned["reranker"] in _AUTO_INCOMPATIBLE_RERANKERS:
-            logger.warning(
-                "zep_search reranker %r is invalid for scope='auto'; "
-                "omitting reranker (auto search uses RRF).",
-                pinned["reranker"],
-            )
-        del pinned["reranker"]
-        hidden.add("reranker")
+        raise ValueError(
+            f"The 'auto' scope takes no reranker, but the reranker "
+            f"{pinned['reranker']!r} is pinned. Do not pin a reranker with "
+            "scope 'auto', or pin another scope."
+        )
 
     exposed = {
         param_name: spec
         for param_name, spec in _SEARCH_PARAM_SPECS.items()
         if param_name not in pinned and param_name not in hidden
     }
+    if "reranker" in pinned and "scope" in exposed:
+        # No reranker is valid with scope='auto'; do not offer 'auto' to the
+        # model when a reranker is pinned.
+        exposed["scope"] = {**exposed["scope"], "annotation": _NON_AUTO_SCOPES}
     signature, annotations = _build_search_signature(exposed)
 
     constructor_only: dict[str, Any] = {}
@@ -352,16 +352,17 @@ def create_search_graph_tool(
             search_kwargs["limit"] = clamp_limit(limit_value)
 
         effective_scope = str(search_kwargs.pop("scope", "edges"))
-        if effective_scope == "auto" and "reranker" in search_kwargs:
-            # Auto search always uses RRF internally and ignores reranker
-            # entirely; Zep rejects node_distance/episode_mentions outright.
-            # Warn only when the (would-be) reranker is one Zep would reject.
-            dropped_reranker = search_kwargs.pop("reranker")
-            if dropped_reranker in _AUTO_INCOMPATIBLE_RERANKERS:
-                logger.warning(
-                    "zep_search reranker %r is invalid for scope='auto'; omitting reranker.",
-                    dropped_reranker,
+        if effective_scope == "auto":
+            if "reranker" in search_kwargs:
+                return (
+                    f"Error: the 'auto' scope takes no reranker, but the reranker "
+                    f"{search_kwargs['reranker']!r} was given. Call the tool "
+                    "again with no reranker, or choose another scope."
                 )
+        elif "reranker" not in search_kwargs and "reranker" not in hidden:
+            # A model that omits the reranker gets the request the package has
+            # always sent: 'rrf'.
+            search_kwargs["reranker"] = "rrf"
 
         search_kwargs.update(constructor_only)
 

@@ -60,6 +60,11 @@ in the migration guide, and store it.
 - The search limit is clamped to the range 1 to 50.
 - `ZepGraphMemory` accepts each scoped `search_filters` type (`EdgeSearchFilters`, `NodeSearchFilters`, `EpisodeSearchFilters`, `ThreadSummarySearchFilters`, `SearchFilters`, or a plain `dict`). Each v4 search scope has its own filter type, and the server rejects a filter key that the scope does not support. `ZepGraphMemory.query` accepts a per-query `filters` argument that overrides the constructor `search_filters` for that call.
 
+### Fixed
+
+- The search tool no longer ignores a reranker that the model sends with `scope="auto"`. The `auto` scope takes no reranker, so the tool does not call Zep and returns an error message to the model. A pinned reranker together with `pinned_params={"scope": "auto"}` raises `ValueError` when you create the tool, and a pinned reranker removes `auto` from the scope enum of the tool schema. The model-facing `reranker` parameter has no default value: when the model does not send a reranker, the tool sends `rrf` for every scope except `auto`.
+- `ZepUserMemory` and `ZepGraphMemory` reject each removed v3 keyword argument (`user_id`, `thread_id`, `context_template_id`, `first_name`, `last_name`, `email`, `on_created`, `graph_id`, `facts_limit`, `entity_limit`) with a `TypeError` that names its v4 replacement, and they reject any other unexpected keyword argument.
+
 ## [1.2.1] - 2026-07-29
 
 ### Added

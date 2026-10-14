@@ -319,10 +319,12 @@ model, each with a documented default:
 | Parameter | Default | Description |
 |---|---|---|
 | `scope` | `"edges"` | One of `edges`, `nodes`, `episodes`, `observations`, `thread_summaries`, `auto`. Each scope calls its own v4 method, such as `graph.search_edges`. The `auto` scope calls `graph.get_context`. |
-| `reranker` | `"rrf"` | One of `rrf`, `mmr`, `node_distance`, `episode_mentions`, `cross_encoder` |
+| `reranker` | none | One of `rrf`, `mmr`, `node_distance`, `episode_mentions`, `cross_encoder` |
 | `limit` | `10` | Maximum number of results |
 | `mmr_lambda` | `None` | Diversity/relevance balance (only used when `reranker="mmr"`) |
 | `center_node_uuid` | `None` | Center node for `reranker="node_distance"` |
+
+The `auto` scope takes no reranker. If the model sends a reranker with `scope="auto"`, the tool does not call Zep and returns an error message, so the model can call the tool again with no reranker or with another scope. When the model omits the reranker for another scope, the tool sends `rrf`. A pinned reranker together with `pinned_params={"scope": "auto"}` raises `ValueError` when you create the tool, and a pinned reranker removes `auto` from the scope enum of the tool schema.
 
 ```python
 # Expose everything to the model (default)

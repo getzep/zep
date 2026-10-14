@@ -291,31 +291,54 @@ class TestLimitClamping:
 
 
 class TestAutoScope:
-    @pytest.mark.asyncio
-    async def test_pinned_auto_scope_drops_incompatible_pinned_reranker(self, caplog) -> None:
-        """scope pinned to 'auto' + a pinned auto-incompatible reranker: the
-        reranker is dropped (with a warning) and never sent to Zep."""
+    @pytest.mark.parametrize("reranker", ["rrf", "node_distance", "episode_mentions"])
+    def test_pinned_auto_scope_and_reranker_raises_value_error(self, reranker: str) -> None:
+        """scope pinned to 'auto' with any pinned reranker raises ValueError at
+        tool creation, because 'auto' takes no reranker."""
         client = _make_mock_client()
-        with caplog.at_level("WARNING", logger="zep_autogen.tools"):
-            tool = create_search_graph_tool(
+        with pytest.raises(ValueError, match="The 'auto' scope takes no reranker"):
+            create_search_graph_tool(
                 client,
                 user_uuid=USER_UUID,
-                pinned_params={"scope": "auto", "reranker": "node_distance"},
+                pinned_params={"scope": "auto", "reranker": reranker},
             )
-            await _run(tool, query="query")
-        assert any("invalid for scope='auto'" in record.message for record in caplog.records)
 
-        client.graph.get_context.assert_called_once()
-        assert "reranker" not in client.graph.get_context.call_args.kwargs
+    def test_pinned_reranker_removes_auto_from_scope_enum(self) -> None:
+        """When a reranker is pinned, the model-facing scope enum does not
+        offer 'auto', because no reranker is valid with 'auto'."""
+        client = _make_mock_client()
+        tool = create_search_graph_tool(
+            client, user_uuid=USER_UUID, pinned_params={"reranker": "mmr"}
+        )
+        assert set(tool.schema["parameters"]["properties"]["scope"]["enum"]) == {
+            "edges",
+            "nodes",
+            "episodes",
+            "observations",
+            "thread_summaries",
+        }
 
     @pytest.mark.asyncio
-    async def test_model_provided_auto_scope_calls_get_context(self) -> None:
-        """When the model itself chooses scope='auto', the tool calls
-        graph.get_context and drops an incompatible reranker."""
+    async def test_model_provided_auto_scope_with_reranker_returns_error(self) -> None:
+        """A reranker that the model sends with scope='auto' returns an error
+        message to the model and does not call Zep."""
         client = _make_mock_client()
         tool = create_search_graph_tool(client, user_uuid=USER_UUID)
 
-        await _run(tool, query="query", scope="auto", reranker="node_distance")
+        out = await _run(tool, query="query", scope="auto", reranker="node_distance")
+
+        assert "takes no reranker" in str(out)
+        client.graph.get_context.assert_not_called()
+        client.graph.search_edges.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_model_provided_auto_scope_without_reranker_calls_get_context(self) -> None:
+        """When the model chooses scope='auto' and omits the reranker, the
+        tool calls graph.get_context without a reranker."""
+        client = _make_mock_client()
+        tool = create_search_graph_tool(client, user_uuid=USER_UUID)
+
+        await _run(tool, query="query", scope="auto")
 
         client.graph.get_context.assert_called_once()
         args, kwargs = client.graph.get_context.call_args
