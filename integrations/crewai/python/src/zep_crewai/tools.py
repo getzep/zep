@@ -469,7 +469,8 @@ class ZepSearchTool(BaseTool):
         pager. The tool reads up to ``limit`` items from that pager.
         """
         graph = self._client.graph
-        limit = int(search_kwargs.get("limit", MAX_SEARCH_LIMIT))
+        limit = int(search_kwargs.pop("limit", MAX_SEARCH_LIMIT))
+        search_kwargs["page_size"] = limit
 
         if scope == "nodes":
             return list(

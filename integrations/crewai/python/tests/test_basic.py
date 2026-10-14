@@ -189,7 +189,7 @@ class TestZepStorageMock:
         # Verify both thread context and graph search were called
         mock_client.thread.get_context.assert_called_once_with(THREAD_UUID)
         mock_client.graph.search_edges.assert_called_once_with(
-            GRAPH_UUID, query="test query", limit=5
+            GRAPH_UUID, query="test query", page_size=5
         )
 
     def test_zep_storage_reset_sync(self):

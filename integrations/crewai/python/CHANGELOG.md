@@ -9,8 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Migrated the package to the Zep v4 SDK (`zep-cloud==4.0.0a5`). The package
+- Migrated the package to the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). The package
   targets v4 only. It does not support v3.
+- Search calls use the stable v4 `page_size` parameter. The tool-facing
+  `limit` parameter is unchanged: the package translates it to `page_size`
+  on the SDK call.
 - The public API takes UUIDs. Zep v4 addresses every user, thread, and graph by
   a server-generated UUID, and a v4 create call accepts no client-chosen
   identifier. `ZepUserStorage` and `ZepStorage` take `user_uuid` and

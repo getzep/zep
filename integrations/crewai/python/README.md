@@ -248,7 +248,7 @@ from zep_crewai import ZepUserStorage, ContextInput
 
 
 def my_builder(ctx: ContextInput) -> str | None:
-    edges = list(ctx.zep.graph.search_edges(ctx.graph_uuid, query=ctx.user_message, limit=10))
+    edges = list(ctx.zep.graph.search_edges(ctx.graph_uuid, query=ctx.user_message, page_size=10))
     if not edges:
         return None
     return "\n".join(edge.fact for edge in edges if edge.fact)

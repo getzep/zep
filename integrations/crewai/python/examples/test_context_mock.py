@@ -170,20 +170,21 @@ def demonstrate_search_filters():
     logger.info("\nSearch filters allow you to constrain what data is searched:")
     logger.info("""
     SearchFilters(
-        # Scope can limit search to specific parts of the graph
-        scope='edges',  # Only search edges (relationships)
-        scope='nodes',  # Only search nodes (entities)
-        scope='episodes',  # Only search episodes (events)
+        # Filter by entity label
+        node_labels=['Technology', 'Company'],
 
         # Date filters for temporal constraints
-        start_date='2024-01-01',
-        end_date='2024-12-31',
+        date_filters=DateFilters(any_of=[
+            DateFilterGroup(all_of=[
+                DateFilter(field='created_at', operator='gte', value='2024-01-01'),
+                DateFilter(field='created_at', operator='lte', value='2024-12-31'),
+            ])
+        ]),
 
         # Metadata filters for custom constraints
-        metadata_filter={
-            'location': 'Seattle',
-            'category': 'coffee'
-        }
+        metadata_filters=MetadataFilterGroup(filters=[
+            MetadataFilter(property_name='location', operator='eq', value='Seattle'),
+        ])
     )
     """)
 

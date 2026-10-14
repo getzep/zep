@@ -55,7 +55,7 @@ class ContextInput:
                     ctx.zep.graph.search_edges(
                         ctx.graph_uuid,
                         query=ctx.user_message,
-                        limit=10,
+                        page_size=10,
                     )
                 )
                 if not edges:

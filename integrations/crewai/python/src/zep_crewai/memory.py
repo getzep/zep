@@ -186,7 +186,7 @@ class ZepStorage:
                 if not graph_uuid:
                     return []
                 pager = self._client.graph.search_edges(
-                    graph_uuid, query=truncated_query, limit=limit
+                    graph_uuid, query=truncated_query, page_size=limit
                 )
                 edges: list[str] = []
                 for edge in itertools.islice(pager, limit):

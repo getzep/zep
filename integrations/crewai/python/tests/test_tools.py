@@ -77,7 +77,9 @@ class TestZepSearchTool:
         result = tool._run(query="Python", limit=5, scope="edges")
 
         # Verify the edge search method was called correctly
-        mock_client.graph.search_edges.assert_called_once_with(GRAPH_UUID, query="Python", limit=5)
+        mock_client.graph.search_edges.assert_called_once_with(
+            GRAPH_UUID, query="Python", page_size=5
+        )
 
         # Check result formatting
         assert "Python is great for AI" in result
@@ -86,7 +88,12 @@ class TestZepSearchTool:
         """Test searching a graph for nodes."""
         from zep_cloud.types import Node
 
-        mock_node = Node(name="UserPreference", summary="User's programming preferences")
+        mock_node = Node(
+            name="UserPreference",
+            summary="User's programming preferences",
+            episode_uuids=[],
+            episode_uuids_truncated=False,
+        )
         mock_client = _make_mock_client(search_nodes=[mock_node])
 
         tool = ZepSearchTool(client=mock_client, graph_uuid=GRAPH_UUID)
@@ -94,7 +101,7 @@ class TestZepSearchTool:
         result = tool._run(query="preferences", limit=3, scope="nodes")
 
         mock_client.graph.search_nodes.assert_called_once_with(
-            GRAPH_UUID, query="preferences", limit=3
+            GRAPH_UUID, query="preferences", page_size=3
         )
 
         assert "UserPreference" in result
@@ -192,7 +199,7 @@ class TestZepSearchToolPinOrExpose:
 
         mock_client.graph.search_nodes.assert_called_once()
         call_kwargs = mock_client.graph.search_nodes.call_args.kwargs
-        assert call_kwargs["limit"] == 3
+        assert call_kwargs["page_size"] == 3
 
     def test_search_tool_hidden_params_omitted_from_sdk_call(self):
         """A hidden (not pinned) param disappears from args_schema and is
@@ -235,7 +242,7 @@ class TestZepSearchToolPinOrExpose:
         tool._run(query="hello")
 
         mock_client.graph.search_nodes.assert_called_once()
-        assert mock_client.graph.search_nodes.call_args.kwargs["limit"] == 7
+        assert mock_client.graph.search_nodes.call_args.kwargs["page_size"] == 7
 
     def test_search_tool_unknown_pinned_param_raises(self):
         mock_client = _make_mock_client()
@@ -302,7 +309,7 @@ class TestSearchLimitClamping:
         tool._run(query="hello")
 
         call_kwargs = mock_client.graph.search_edges.call_args.kwargs
-        assert call_kwargs["limit"] == MAX_SEARCH_LIMIT
+        assert call_kwargs["page_size"] == MAX_SEARCH_LIMIT
 
     def test_pinned_limit_below_one_clamped_to_one(self):
         mock_client = _make_mock_client()
@@ -312,7 +319,7 @@ class TestSearchLimitClamping:
         tool._run(query="hello")
 
         call_kwargs = mock_client.graph.search_edges.call_args.kwargs
-        assert call_kwargs["limit"] == 1
+        assert call_kwargs["page_size"] == 1
 
     def test_legacy_limit_arg_clamped(self):
         """The legacy limit= constructor arg pins and is clamped the same way."""
@@ -323,7 +330,7 @@ class TestSearchLimitClamping:
         tool._run(query="hello")
 
         call_kwargs = mock_client.graph.search_edges.call_args.kwargs
-        assert call_kwargs["limit"] == MAX_SEARCH_LIMIT
+        assert call_kwargs["page_size"] == MAX_SEARCH_LIMIT
 
     def test_model_provided_limit_clamped_at_call_time(self):
         """A model-provided limit above the ceiling is clamped to 50, not
@@ -335,7 +342,7 @@ class TestSearchLimitClamping:
         tool._run(query="hello", limit=200)
 
         call_kwargs = mock_client.graph.search_edges.call_args.kwargs
-        assert call_kwargs["limit"] == MAX_SEARCH_LIMIT
+        assert call_kwargs["page_size"] == MAX_SEARCH_LIMIT
 
     def test_model_provided_limit_below_one_clamped_to_one(self):
         mock_client = _make_mock_client()
@@ -345,7 +352,7 @@ class TestSearchLimitClamping:
         tool._run(query="hello", limit=-3)
 
         call_kwargs = mock_client.graph.search_edges.call_args.kwargs
-        assert call_kwargs["limit"] == 1
+        assert call_kwargs["page_size"] == 1
 
     def test_valid_limit_passes_through_unchanged(self):
         mock_client = _make_mock_client()
@@ -355,7 +362,7 @@ class TestSearchLimitClamping:
         tool._run(query="hello", limit=25)
 
         call_kwargs = mock_client.graph.search_edges.call_args.kwargs
-        assert call_kwargs["limit"] == 25
+        assert call_kwargs["page_size"] == 25
 
 
 class TestAutoScopeReranker:
