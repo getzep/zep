@@ -1,33 +1,36 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
-### Changed
+### Breaking
 
-- **Breaking: the package targets the Zep v4 SDK (`@getzep/zep-cloud`
-  `4.0.0`).** The v3 SDK is no longer supported, and the package does
+- **The package requires the Zep v4 SDK (`@getzep/zep-cloud` `>=4.0.0`
+  and `<5`).** The v3 SDK is no longer supported, and the package does
   not contain a compatibility layer.
-- **Breaking: the public API takes UUIDs.** Zep v4 addresses every user,
+- **The public API takes UUIDs.** Zep v4 addresses every user,
   thread, and graph by a server-generated UUID, and a create call takes no
   client-chosen identifier. `ZepBinding` now has `graphUuid` and `threadUuid`.
   `createZepMiddleware`, `createZepOnFinish`, `createZepContextTool`,
   `getZepContext`, and `persistZepTurn` take `threadUuid`, `userUuid`, and
   `templateUuid`. The package does not call a lookup method at run time. An
   application stores the returned UUIDs in its own database.
-- **Breaking: `ensureZepUserAndThread` is replaced by
+- **`ensureZepUserAndThread` is replaced by
   `createZepUserAndThread`.** The new function creates the user and the thread
   with no client-chosen identifier, and returns `{ userUuid, graphUuid,
   threadUuid }` from the Zep responses, or `null` when Zep does not create
   both resources. `EnsureIdentityOptions` is replaced by
   `CreateIdentityOptions`, and the new `ZepIdentity` type is exported. The
   `onUserCreated` hook now receives the new user UUID.
-- **Breaking: `toRoleType` can return `undefined`.** Zep v4 removed the
+- **`toRoleType` can return `undefined`.** Zep v4 removed the
   `norole` member of `RoleType`. An unrecognized or absent role maps to
   `undefined`, and the package omits the role from the message.
-- **Breaking: `resolveGraphTarget` returns `string | null`.** The function
+- **`resolveGraphTarget` returns `string | null`.** The function
   returns the bound graph UUID.
-- **Breaking: the `searchFilters` option of `createZepSearchTool` is renamed to
+- **The `searchFilters` option of `createZepSearchTool` is renamed to
   `filters`**, which matches the field of the v4 search requests.
+
+### Changed
+
 - Zep calls now use the v4 methods: `user.create`, `thread.create` with a
   `userUuid`, `thread.getContext`, `graph.episode.add`, and the scope-specific
   search methods `graph.searchEdges`, `graph.searchNodes`,
