@@ -10,8 +10,13 @@ from zep_autogen import ZepUserMemory, create_thread, create_user
 
 
 async def main():
-    # Initialize AsyncZep client
-    zep_client = AsyncZep(api_key=os.environ.get("ZEP_API_KEY"))
+    # Initialize AsyncZep client. ZEP_API_URL is the API origin; the SDK
+    # uses the value of base_url as given, so append the API version path.
+    base_url = os.environ.get("ZEP_API_URL")
+    zep_client = AsyncZep(
+        api_key=os.environ.get("ZEP_API_KEY"),
+        base_url=f"{base_url}/api/v4" if base_url else None,
+    )
 
     # Zep assigns the UUID of the user and of the thread. Keep these UUIDs in
     # your own database, and use them to address the resources later.

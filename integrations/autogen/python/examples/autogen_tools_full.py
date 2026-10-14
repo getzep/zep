@@ -11,7 +11,13 @@ from zep_autogen import create_add_graph_data_tool, create_search_graph_tool, cr
 
 async def main():
     # Initialize AsyncZep client
-    zep_client = AsyncZep(api_key=os.environ.get("ZEP_API_KEY"))
+    # ZEP_API_URL is the API origin; the SDK uses the value of base_url as
+    # given, so append the API version path.
+    base_url = os.environ.get("ZEP_API_URL")
+    zep_client = AsyncZep(
+        api_key=os.environ.get("ZEP_API_KEY"),
+        base_url=f"{base_url}/api/v4" if base_url else None,
+    )
 
     # Zep assigns the UUID of the user. Keep this UUID in your own database.
     user = await create_user(

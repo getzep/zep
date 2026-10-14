@@ -38,6 +38,10 @@ import pytest
 # Configuration -- skip the whole module when API keys are not available.
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
+# ZEP_API_URL is the API origin; the SDK uses the value of base_url as given,
+# so append the API version path.
+_api_url = os.environ.get("ZEP_API_URL")
+ZEP_BASE_URL = f"{_api_url}/api/v4" if _api_url else None
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
@@ -138,7 +142,7 @@ async def collect_messages(zep: AsyncZep, thread_uuid: str, limit: int = 20) -> 
 
 
 async def main() -> None:
-    zep = AsyncZep(api_key=ZEP_API_KEY)
+    zep = AsyncZep(api_key=ZEP_API_KEY, base_url=ZEP_BASE_URL)
     passed = True
     user_uuid = ""
 
@@ -233,7 +237,7 @@ async def main() -> None:
 @pytest.mark.asyncio
 async def test_integration_full_lifecycle() -> None:
     """Pytest entry point for the live integration test."""
-    zep = AsyncZep(api_key=ZEP_API_KEY)
+    zep = AsyncZep(api_key=ZEP_API_KEY, base_url=ZEP_BASE_URL)
     user_uuid = ""
 
     try:
