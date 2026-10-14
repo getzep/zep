@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.3.0 (2026-10-14)
+
+### Changed
+
+- **Breaking:** Migrate from `@getzep/zep-cloud` v3 to v4. User, graph, and
+  thread bindings now use server-generated UUIDs. Replace
+  `ensureZepUserAndThread` with `createZepUserAndThread`, which returns
+  `{ userUuid, graphUuid, threadUuid }` or `null`.
+- Rename `templateId` to `templateUuid` and `searchFilters` to `filters`.
+- Update persistence to use `thread.addMessages` and `graph.episode.add`.
+  Update context retrieval to use `thread.getContext`.
+
+### Added
+
+- Add all six documented search scopes: `edges`, `nodes`, `episodes`,
+  `observations`, `thread_summaries`, and `auto`. The `auto` scope uses
+  `graph.getContext`.
+- Add pin, hide, and expose controls for search parameters. Keep filters and
+  BFS origin UUIDs as constructor-only options.
+- Add V4 user creation options, the `onUserCreated` hook, UUID identity
+  resolution, and non-fatal error handling for tools and processors.
+- Update the README, setup guide, example, and tests for V4.
+
+The V4 `GraphContextRequest` does not include reranker, page-size, MMR,
+center-node, or BFS-origin fields. The `auto` scope sends the query and
+supported filters only.
+
 ## 0.2.0 (2026-07-07)
 
 ### Added

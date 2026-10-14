@@ -1,73 +1,33 @@
 import type { Zep } from "@getzep/zep-cloud";
 
-/**
- * A binding identifies *which* Zep graph a tool reads from and writes to.
- *
- * Exactly one of {@link userId} or {@link graphId} should be supplied:
- *
- * - `userId` targets a **user graph** — the home for personalized agent memory.
- *   This is the right choice for a conversational agent that remembers an end
- *   user across sessions. User graphs carry a user summary and fuse every thread
- *   and business record for that user into one picture.
- * - `graphId` targets a **standalone graph** — shared or domain knowledge (a
- *   product knowledge base, runbooks, etc.). Standalone graphs have no user node
- *   and no user summary.
- *
- * If both are supplied, `userId` wins. If neither is supplied a tool surfaces a
- * graceful error message to the model rather than throwing.
- */
+/** A binding to a user graph or a shared graph. */
 export interface ZepBinding {
-  /** The Zep user ID whose user graph the tools operate on. */
-  userId?: string;
-  /** The Zep standalone graph ID the tools operate on. */
-  graphId?: string;
+  /** The UUID of the user graph or shared graph. */
+  graphUuid?: string;
 }
 
-/**
- * A binding that also identifies the conversation thread.
- *
- * `threadId` is required by the context tools ({@link ZepBinding} alone is not
- * enough) because Zep scopes "what is relevant right now" to a thread's most
- * recent messages. The thread does not partition memory — retrieval still spans
- * the whole user graph — it only focuses relevance.
- */
+/** A graph binding with a conversation thread. */
 export interface ZepThreadBinding extends ZepBinding {
-  /** The Zep thread ID used to scope relevance and record conversation history. */
-  threadId: string;
+  /** The UUID of the conversation thread. */
+  threadUuid: string;
 }
 
-/**
- * Logger interface compatible with `console` and most structured loggers.
- *
- * Tools never throw on a Zep failure; they log a warning through this interface
- * and return a graceful message to the model. Defaults to `console`.
- */
+/** Logger interface compatible with `console` and structured loggers. */
 export interface ZepLogger {
   warn: (message: string, ...args: unknown[]) => void;
   debug?: (message: string, ...args: unknown[]) => void;
 }
 
-/** Re-export of Zep's closed role enum for convenience. */
+/** Re-export of Zep's role enum. */
 export type RoleType = Zep.RoleType;
 
-/** Resolved per-call identity: which Zep user/thread a call should use. */
+/** Resolved UUIDs for a processor or tool call. */
 export interface ResolvedZepIdentity {
-  userId?: string;
-  threadId?: string;
+  graphUuid?: string;
+  threadUuid?: string;
 }
 
-/**
- * A per-call identity override, resolved from a Mastra `requestContext`.
- *
- * May be synchronous or async — a returned promise is awaited before the
- * identity is used. Return `undefined` (or omit a field) to fall back to the
- * constructor-bound identity. Accepted by both {@link "./processors.js"}
- * (per-turn identity) and the tools in the toolset (per-tool-call identity
- * via `execute(inputData, context)`'s `context.requestContext`) — useful when
- * a single processor or tool instance is shared across many end users and
- * identity is only known per request (e.g. from auth middleware that sets
- * values on `RequestContext`).
- */
+/** Resolve UUIDs from Mastra's per-call `requestContext`. */
 export type ZepIdentityResolver = (
   requestContext: unknown,
 ) => ResolvedZepIdentity | undefined | Promise<ResolvedZepIdentity | undefined>;

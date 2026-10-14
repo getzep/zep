@@ -9,7 +9,7 @@ export interface ZepContextToolOptions {
   /** A shared, initialized Zep client. The caller owns its lifecycle. */
   client: ZepClient;
   /**
-   * The thread binding. `threadId` is required; the Context Block is assembled
+   * The thread binding. `threadUuid` is required; the Context Block is assembled
    * from the **entire user graph** with the thread used only to scope relevance.
    */
   binding: ZepThreadBinding;
@@ -25,14 +25,14 @@ export interface ZepContextToolOptions {
    * offered here because `ZepContextBuilderInput` requires the latest user
    * message text, and this tool is invoked by the model with an empty input
    * schema — it has no access to the turn's user message. Server-side
-   * `templateId` is the customization point for the tool path; use
+   * `templateUuid` is the customization point for the tool path; use
    * `ZepInputProcessor` with `contextBuilder` for client-side assembly.
    */
-  templateId?: string;
+  templateUuid?: string;
   /**
-   * Resolve the `threadId` (and optional `userId`) per call from the tool's
+   * Resolve the `threadUuid` (and optional `graphUuid`) per call from the tool's
    * `requestContext`, overriding the constructor-bound `binding`. Return
-   * `undefined` (or omit `threadId`) to fall back to `binding`.
+   * `undefined` (or omit `threadUuid`) to fall back to `binding`.
    */
   resolveIdentity?: ZepIdentityResolver;
   /** Logger for Zep failures. Defaults to `console`. */
@@ -57,7 +57,7 @@ type ContextOutput = z.infer<typeof outputSchema>;
 
 /**
  * Build a model-callable Mastra tool that returns the **Context Block** for the
- * bound user via `thread.getUserContext`.
+ * bound thread via `thread.getContext`.
  *
  * This is the default recall path for conversational agents: a single call
  * returns an optimized, prompt-ready string (user summary + relevant facts and
@@ -83,21 +83,20 @@ export function createZepContextTool(options: ZepContextToolOptions) {
     outputSchema,
     execute: async (
       _inputData: unknown,
-      context?: { requestContext?: unknown },
+      executionContext?: { requestContext?: unknown },
     ): Promise<ContextOutput> => {
-      const identity = await resolveToolIdentity(binding, resolveIdentity, context);
-      if (!identity.threadId) {
-        logger.warn("[zep-context] No threadId bound; skipping context retrieval.");
-        return { context: "", found: false };
-      }
-
       try {
-        const response = await client.thread.getUserContext(
-          identity.threadId,
-          options.templateId ? { templateId: options.templateId } : {},
+        const identity = await resolveToolIdentity(binding, resolveIdentity, executionContext);
+        if (!identity.threadUuid) {
+          logger.warn("[zep-context] No threadUuid bound; skipping context retrieval.");
+          return { context: "", found: false };
+        }
+        const response = await client.thread.getContext(
+          identity.threadUuid,
+          options.templateUuid ? { templateUuid: options.templateUuid } : {},
         );
-        const context = response.context?.trim() ?? "";
-        return { context, found: context.length > 0 };
+        const contextText = response.context?.trim() ?? "";
+        return { context: contextText, found: contextText.length > 0 };
       } catch (error) {
         logger.warn(`[zep-context] Failed to retrieve Zep context: ${errorMessage(error)}`);
         return { context: "", found: false };

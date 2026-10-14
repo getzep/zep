@@ -22,21 +22,19 @@ describe("toRoleType", () => {
     expect(toRoleType("developer")).toBe("system");
   });
 
-  it("falls back to norole for unknown or empty input", () => {
-    expect(toRoleType("wizard")).toBe("norole");
-    expect(toRoleType(undefined)).toBe("norole");
-    expect(toRoleType("")).toBe("norole");
+  it("omits unknown or empty roles", () => {
+    expect(toRoleType("wizard")).toBeUndefined();
+    expect(toRoleType("norole")).toBeUndefined();
+    expect(toRoleType(undefined)).toBeUndefined();
+    expect(toRoleType("")).toBeUndefined();
   });
 });
 
 describe("resolveGraphTarget", () => {
-  it("prefers userId over graphId", () => {
-    expect(resolveGraphTarget({ userId: "u", graphId: "g" })).toEqual({ userId: "u" });
+  it("returns a graph UUID target", () => {
+    expect(resolveGraphTarget({ graphUuid: "g" })).toEqual({ graphUuid: "g" });
   });
-  it("falls back to graphId", () => {
-    expect(resolveGraphTarget({ graphId: "g" })).toEqual({ graphId: "g" });
-  });
-  it("returns null when nothing is bound", () => {
+  it("returns null when the graph UUID is absent", () => {
     expect(resolveGraphTarget({})).toBeNull();
   });
 });

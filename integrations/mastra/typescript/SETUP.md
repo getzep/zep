@@ -1,77 +1,64 @@
 # Setup
 
-This guide walks you from zero to a running Mastra agent with Zep memory.
+This guide explains how to set up Zep and run the Mastra integration.
 
-## 1. Sign up for Zep
+## Create a Zep API key
 
-1. Go to [https://www.getzep.com](https://www.getzep.com) and create an account.
-2. Open the Zep dashboard and create (or select) a project.
+1. Create an account at [getzep.com](https://www.getzep.com).
+2. Open your Zep project settings.
+3. Create an API key and store it securely.
 
-> Zep is a paid product (it has no meaningful free tier). See the Zep site for
-> current plans.
+Do not commit the API key or add it to a source file.
 
-## 2. Create an API key
-
-1. In the Zep dashboard, open your project settings and find the **API Keys**
-   section.
-2. Create a new API key and copy it. You won't be able to view it again.
-
-## 3. Install
+## Install the packages
 
 ```bash
 npm install @getzep/zep-mastra @getzep/zep-cloud @mastra/core
 ```
 
-`@mastra/core` is a peer dependency, so install it alongside the package.
+The integration requires Node.js 20 or later. `@mastra/core` is a peer
+dependency.
 
-## 4. Configure environment variables
+## Set environment variables
 
-The runnable example uses Zep and an OpenAI model. Set:
+The example uses Zep and an OpenAI model:
 
 ```bash
 export ZEP_API_KEY="your-zep-api-key"
 export OPENAI_API_KEY="your-openai-api-key"
 ```
 
-Only `ZEP_API_KEY` is required by the integration itself; `OPENAI_API_KEY` is
-needed by the example agent's model (`openai/gpt-4o-mini`). Swap in any model
-Mastra supports if you prefer a different provider.
+Only `ZEP_API_KEY` is required by the integration. Set the API key for the
+model provider that you use.
 
-## 5. Run the example
+## Run the example
 
-From this package directory:
+From this package directory, install the development dependencies and run:
 
 ```bash
 npm install
 npm run example
 ```
 
-The example ([`examples/basic-agent.ts`](./examples/basic-agent.ts)):
+The example creates a user and thread with server-generated UUIDs. It stores
+facts through the Mastra output processor, waits for graph ingestion, and then
+asks the agent to recall the facts. Store the returned UUIDs in your
+application database for production use. Each example run creates a new user.
 
-1. Provisions a Zep user and thread.
-2. Builds the Zep tool set and attaches it to a Mastra `Agent`.
-3. Seeds a couple of facts, waits ~15s for Zep's asynchronous graph ingestion,
-   then asks the agent to recall them.
-
-> Note: Zep ingestion is asynchronous, so the example waits before recalling.
-> If your OpenAI organization enforces Zero Data Retention (ZDR), Mastra's
-> default OpenAI Responses-API agent loop may be rejected by OpenAI — this is an
-> OpenAI/account constraint, not a Zep issue. Use a non-ZDR key or a different
-> model provider to run the example end-to-end.
-
-## 6. Run the tests
+## Run checks and tests
 
 ```bash
+npm run typecheck
+npm run lint
 npm test
+npm run build
 ```
 
-Mock-based tests run with no credentials. The live test in
-[`test/live.test.ts`](./test/live.test.ts) runs automatically only when
-`ZEP_API_KEY` is set and exercises the real Zep API.
+Mock tests do not require credentials. The live test runs when `ZEP_API_KEY` is
+set and deletes the UUID-based test thread and user after the test.
 
-## Next steps
+```bash
+ZEP_API_KEY="your-zep-api-key" npm test -- test/live.test.ts
+```
 
-- Read [README.md](./README.md) for the full tool reference and the user-graph
-  vs standalone-graph binding model.
-- See the [Zep documentation](https://help.getzep.com) for ontology, search
-  scopes, and context customization.
+See [README.md](./README.md) for the API reference and usage examples.

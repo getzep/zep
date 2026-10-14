@@ -14,7 +14,7 @@
  *   model decide when to persist or recall — a tool-centric alternative or
  *   complement to the automatic loop.
  *
- * {@link ensureZepUserAndThread} provisions the Zep user/thread before the
+ * {@link createZepUserAndThread} creates a Zep user/thread before the
  * first turn either way. Every processor and tool handles Zep failures
  * gracefully — a Zep outage never crashes the host agent.
  *
@@ -22,14 +22,17 @@
  * ```ts
  * import { ZepClient } from "@getzep/zep-cloud";
  * import { Agent } from "@mastra/core/agent";
- * import { createZepProcessors, ensureZepUserAndThread } from "@getzep/zep-mastra";
+ * import { createZepProcessors, createZepUserAndThread } from "@getzep/zep-mastra";
  *
  * const client = new ZepClient({ apiKey: process.env.ZEP_API_KEY! });
- * const userId = "user-123";
- * const threadId = "thread-abc";
- * await ensureZepUserAndThread({ client, userId, threadId, firstName: "Jane" });
+ * const identity = await createZepUserAndThread({ client, firstName: "Jane" });
+ * if (!identity) throw new Error("Could not create the Zep user and thread.");
  *
- * const { inputProcessor, outputProcessor } = createZepProcessors({ client, userId, threadId });
+ * const { inputProcessor, outputProcessor } = createZepProcessors({
+ *   client,
+ *   graphUuid: identity.graphUuid,
+ *   threadUuid: identity.threadUuid,
+ * });
  *
  * const agent = new Agent({
  *   id: "memory-agent",
@@ -55,12 +58,13 @@ export type { ZepContextToolOptions } from "./context-tool.js";
 
 export {
   createZepToolset,
-  ensureZepUserAndThread,
+  createZepUserAndThread,
 } from "./toolset.js";
 export type {
   ZepToolset,
   ZepToolsetOptions,
-  EnsureIdentityOptions,
+  CreateUserAndThreadOptions,
+  CreatedZepIdentity,
   ZepUserCreatedHook,
 } from "./toolset.js";
 
@@ -93,4 +97,4 @@ export type {
 // ./processors.js (which re-exports the canonical definitions in types.js).
 
 /** Package version. */
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";

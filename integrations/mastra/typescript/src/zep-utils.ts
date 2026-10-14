@@ -2,10 +2,8 @@ import type { Zep } from "@getzep/zep-cloud";
 import type { ResolvedZepIdentity, ZepBinding, ZepIdentityResolver, ZepLogger } from "./types.js";
 
 /**
- * The Zep `RoleType` enum is closed (`user | assistant | system | tool |
- * function | norole`). Host frameworks often use looser role strings, so we map
- * common aliases onto the valid set and fall back to `norole` for anything we
- * don't recognize (rather than letting an invalid role reach the API).
+ * The Zep `RoleType` enum is closed. Host frameworks often use looser role
+ * strings, so we map known aliases and omit unknown roles.
  */
 const ROLE_ALIASES: Record<string, Zep.RoleType> = {
   user: "user",
@@ -18,34 +16,28 @@ const ROLE_ALIASES: Record<string, Zep.RoleType> = {
   developer: "system",
   tool: "tool",
   function: "function",
-  norole: "norole",
 };
 
 /**
  * Coerce an arbitrary role string into a valid Zep {@link Zep.RoleType}.
  *
  * @param role - A role string from the host framework (case-insensitive).
- * @returns A valid `RoleType`; defaults to `"norole"` for unknown input.
+ * @returns A valid `RoleType`, or `undefined` for unknown input.
  */
-export function toRoleType(role: string | undefined): Zep.RoleType {
-  if (!role) return "norole";
-  return ROLE_ALIASES[role.trim().toLowerCase()] ?? "norole";
+export function toRoleType(role: string | undefined): Zep.RoleType | undefined {
+  if (!role) return undefined;
+  return ROLE_ALIASES[role.trim().toLowerCase()];
 }
 
 /**
- * Resolve a {@link ZepBinding} into the mutually-exclusive `userId`/`graphId`
- * pair that Zep's `graph.add` / `graph.search` accept.
+ * Resolve a {@link ZepBinding} to the graph UUID used by Zep's V4 API.
  *
- * `userId` takes precedence over `graphId` when both are set, because a user
- * graph is the richer target (it carries identity and a user summary).
- *
- * @returns `{ userId }`, `{ graphId }`, or `null` when neither is bound.
+ * @returns `{ graphUuid }`, or `null` when no graph is bound.
  */
 export function resolveGraphTarget(
   binding: ZepBinding,
-): { userId: string } | { graphId: string } | null {
-  if (binding.userId) return { userId: binding.userId };
-  if (binding.graphId) return { graphId: binding.graphId };
+): { graphUuid: string } | null {
+  if (binding.graphUuid) return { graphUuid: binding.graphUuid };
   return null;
 }
 
@@ -73,7 +65,7 @@ export function resolveLogger(logger: ZepLogger | undefined): ZepLogger {
  *
  * `resolveIdentity`, when provided, is called with `context?.requestContext`
  * (Mastra's per-call runtime context) and awaited (resolvers may be async);
- * any field it returns overrides the constructor-bound `userId`/`threadId`.
+ * any field it returns overrides the constructor-bound UUID.
  * When `resolveIdentity` is unset, or omits a field, the constructor binding
  * is used unchanged.
  */
@@ -84,8 +76,8 @@ export async function resolveToolIdentity(
 ): Promise<ResolvedZepIdentity> {
   const override = await resolveIdentity?.(context?.requestContext);
   return {
-    userId: override?.userId ?? binding.userId,
-    threadId: override?.threadId ?? binding.threadId,
+    graphUuid: override?.graphUuid ?? binding.graphUuid,
+    threadUuid: override?.threadUuid ?? binding.threadUuid,
   };
 }
 
@@ -96,7 +88,8 @@ export async function resolveToolIdentity(
 export const MESSAGE_MAX_CHARS = 4000;
 
 /**
- * Zep's `graph.add` rejects payloads longer than 10,000 characters with a 400.
+ * Zep's `graph.episode.add` rejects payloads longer than 10,000 characters
+ * with a 400.
  * We truncate to a safety margin under that ceiling (matches the 9900 used by
  * every sibling integration's `GRAPH_MAX_CHARS`).
  */
@@ -105,10 +98,9 @@ export const GRAPH_MAX_CHARS = 9900;
 /**
  * Truncate `content` to `maxChars` if it exceeds the limit, logging a warning.
  *
- * Zep returns a 400 when a message exceeds 4,096 chars or a `graph.add` payload
- * exceeds 10,000 chars. Rather than letting the call fail (or silently dropping
- * data), we truncate to the limit and warn. The warning contains **only lengths**
- * (never the content itself) to avoid leaking PII into logs.
+ * Zep returns a 400 when a message exceeds 4,096 chars or a
+ * `graph.episode.add` payload exceeds 10,000 chars. The integration truncates
+ * the content and warns. The warning contains only lengths, not content.
  *
  * @param content - The text about to be sent to Zep.
  * @param maxChars - The hard limit for this Zep operation.
