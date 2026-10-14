@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The integration calls the v4 SDK methods: `user.create`, `thread.create(user_uuid=...)`, `thread.add_messages(thread_uuid, ...)`, `thread.get_context`, `graph.episode.add`, `graph.get_context`, and the dedicated search methods `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, and `graph.search_thread_summaries`. Each search method returns a pager. Read `.items`, or iterate the pager.
 - The examples, the README, and the SETUP guide show the v4 flow: create each resource one time, read the UUID from the response, and store the UUID.
 
+### Fixed
+- `create_graph_search_tool` no longer drops a reranker silently when the scope is `auto`. The `auto` scope takes no reranker: a reranker the model sends with `auto` returns an error and does not call Zep, a pinned reranker removes `auto` from the scope choices, and pinning a reranker together with `scope="auto"` raises `AgentConfigurationError` when the tool is created. The `reranker` parameter has no default in the schema; when the model omits it for another scope, the tool still sends `rrf`, and when the parameter is hidden the tool sends no reranker.
+
 ## [0.2.1] - 2026-07-29
 
 ### Added

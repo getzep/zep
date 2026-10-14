@@ -119,9 +119,7 @@ context = response.context
 # Storage with user attribution
 if self._user_name:
     message_data = f"[{self._user_name}]: {user_text}"
-await self._zep_client.graph.episode.add(
-    self._graph_uuid, type="message", data=message_data
-)
+await self._zep_client.graph.episode.add(self._graph_uuid, type="message", data=message_data)
 
 # Retrieval: Zep assembles the context block on the server
 response = await self._zep_client.graph.get_context(

@@ -65,6 +65,7 @@ from livekit.plugins import openai, silero
 from zep_cloud.client import AsyncZep
 from zep_livekit import ZepUserAgent
 
+
 async def entrypoint(ctx: agents.JobContext):
     # Initialize Zep client
     zep_client = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
@@ -80,7 +81,7 @@ async def entrypoint(ctx: agents.JobContext):
 
     # Connect to room
     await ctx.connect()
-    
+
     # Create session with providers
     session = agents.AgentSession(
         stt=openai.STT(),
@@ -88,15 +89,15 @@ async def entrypoint(ctx: agents.JobContext):
         tts=openai.TTS(),
         vad=silero.VAD.load(),
     )
-    
+
     # Create memory-enabled agent
     agent = ZepUserAgent(
         zep_client=zep_client,
         user_uuid=user_uuid,
         thread_uuid=thread_uuid,
-        instructions="You are a helpful assistant with persistent memory."
+        instructions="You are a helpful assistant with persistent memory.",
     )
-    
+
     # Start conversation with memory
     await session.start(agent=agent, room=ctx.room)
 ```
@@ -111,7 +112,7 @@ agent = ZepUserAgent(
     thread_uuid=thread_uuid,
     user_message_name="Alice",  # Name for user messages in Zep
     assistant_message_name="Assistant",  # Name for assistant messages
-    instructions="You remember our previous conversations and preferences."
+    instructions="You remember our previous conversations and preferences.",
 )
 ```
 
@@ -125,9 +126,11 @@ a misconfiguration is visible during onboarding:
 ```python
 from zep_livekit import create_thread, create_user
 
+
 async def seed_new_user(zep_client, user_uuid: str) -> None:
     """Runs one time, directly after the user is created."""
     ...  # seed initial facts, set custom instructions, configure ontology, etc.
+
 
 user = await create_user(
     zep_client,
@@ -156,20 +159,20 @@ For explicit control over what gets stored as facts, entities, and relationships
 ```python
 from zep_livekit import ZepGraphAgent
 
+
 async def entrypoint(ctx: agents.JobContext):
     # Initialize Zep client
     zep_client = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
-    
+
     # Create the knowledge graph one time and keep the UUID
     graph = await zep_client.graph.create(
-        name="Company Knowledge Base",
-        description="Shared knowledge across all conversations"
+        name="Company Knowledge Base", description="Shared knowledge across all conversations"
     )
     graph_uuid = graph.uuid_
 
     # Connect to room
     await ctx.connect()
-    
+
     # Create session
     session = agents.AgentSession(
         stt=openai.STT(),
@@ -177,20 +180,20 @@ async def entrypoint(ctx: agents.JobContext):
         tts=openai.TTS(),
         vad=silero.VAD.load(),
     )
-    
+
     # Create knowledge-enabled agent
     agent = ZepGraphAgent(
         zep_client=zep_client,
         graph_uuid=graph_uuid,
-        user_name="Alice",     # Optional: for message attribution
-        max_characters=4000,   # Size limit of the assembled context block
+        user_name="Alice",  # Optional: for message attribution
+        max_characters=4000,  # Size limit of the assembled context block
         instructions="""
             You have access to a shared knowledge graph. 
             Store important facts for future reference and 
             search your knowledge to answer questions accurately.
-        """
+        """,
     )
-    
+
     await session.start(agent=agent, room=ctx.room)
 ```
 
@@ -205,6 +208,7 @@ example a filtered graph search, a different graph, or a multi-source context as
 ```python
 from zep_livekit import ContextInput
 
+
 async def my_builder(ctx: ContextInput) -> str | None:
     page = await ctx.zep.graph.search_edges(
         graph_uuid,
@@ -213,6 +217,7 @@ async def my_builder(ctx: ContextInput) -> str | None:
     if not page.items:
         return None
     return "\n".join(edge.fact for edge in page.items if edge.fact)
+
 
 agent = ZepUserAgent(
     zep_client=zep_client,
@@ -286,6 +291,12 @@ search_tool = create_graph_search_tool(
     hidden_params={"center_node_uuid"},
 )
 ```
+
+The `auto` scope takes no reranker: it runs Zep's own cross-scope retrieval and rerank.
+If the model sends a reranker with `auto`, the tool returns an error and does not call
+Zep. A pinned reranker removes `auto` from the scope choices, and pinning a reranker
+together with `scope="auto"` raises `AgentConfigurationError` when the tool is created.
+`page_size`, `mmr_lambda`, and `center_node_uuid` do not apply to `auto` either.
 
 `search_filters` and `bfs_origin_node_uuids` are always constructor-only. Zep failures are
 caught and returned as an error string to the model -- the tool never raises into the
@@ -412,6 +423,7 @@ async def create_user(
     email: str | None = None,
     on_created: UserSetupHook | None = None,
 ) -> User: ...  # read `uuid_` and `graph_uuid` from the response
+
 
 async def create_thread(
     client: AsyncZep, *, user_uuid: str

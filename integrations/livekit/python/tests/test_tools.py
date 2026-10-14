@@ -294,7 +294,7 @@ class TestAutoScope:
         tool = create_graph_search_tool(
             client,
             graph_uuid=GRAPH_UUID,
-            pinned_params={"scope": "auto", "reranker": "node_distance"},
+            pinned_params={"scope": "auto"},
         )
 
         out = await _call(tool, query="query")
@@ -305,6 +305,78 @@ class TestAutoScope:
         assert call.args[0] == GRAPH_UUID
         assert "reranker" not in call.kwargs
         assert "page_size" not in call.kwargs
+
+    def test_pinned_auto_scope_with_pinned_reranker_raises(self) -> None:
+        """The 'auto' scope takes no reranker: pinning both can never produce
+        a valid call, so tool creation fails loudly."""
+        with pytest.raises(AgentConfigurationError, match="auto"):
+            create_graph_search_tool(
+                _mock_client(),
+                graph_uuid=GRAPH_UUID,
+                pinned_params={"scope": "auto", "reranker": "node_distance"},
+            )
+
+    def test_pinned_auto_scope_hides_unsupported_params(self) -> None:
+        tool = create_graph_search_tool(
+            _mock_client(), graph_uuid=GRAPH_UUID, pinned_params={"scope": "auto"}
+        )
+        properties = tool.info.raw_schema["parameters"]["properties"]
+        assert "reranker" not in properties
+        assert "page_size" not in properties
+        assert "mmr_lambda" not in properties
+        assert "center_node_uuid" not in properties
+
+    def test_pinned_reranker_removes_auto_from_scope_enum(self) -> None:
+        tool = create_graph_search_tool(
+            _mock_client(), graph_uuid=GRAPH_UUID, pinned_params={"reranker": "mmr"}
+        )
+        scope_enum = tool.info.raw_schema["parameters"]["properties"]["scope"]["enum"]
+        assert "auto" not in scope_enum
+
+    @pytest.mark.asyncio
+    async def test_model_sent_reranker_with_auto_returns_error(self) -> None:
+        """A model-chosen reranker with scope 'auto' must not be dropped
+        silently: the tool returns an error and never calls Zep."""
+        client = _mock_client()
+        tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
+
+        out = await _call(tool, query="query", scope="auto", reranker="mmr")
+
+        assert "auto" in out
+        assert "reranker" in out
+        client.graph.get_context.assert_not_called()
+        client.graph.search_edges.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_scope_without_reranker_calls_zep(self) -> None:
+        client = _mock_client()
+        client.graph.get_context = AsyncMock(return_value=_make_context("ctx"))
+        tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
+
+        out = await _call(tool, query="query", scope="auto")
+
+        assert out == "ctx"
+        assert "reranker" not in client.graph.get_context.call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_omitted_reranker_sends_rrf_for_other_scopes(self) -> None:
+        """When the model omits the reranker for a non-auto scope, the tool
+        sends the same request it always sent: rrf."""
+        client = _mock_client()
+        tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
+
+        await _call(tool, query="query", scope="nodes")
+
+        assert client.graph.search_nodes.call_args.kwargs["reranker"] == "rrf"
+
+    @pytest.mark.asyncio
+    async def test_hidden_reranker_sends_no_reranker(self) -> None:
+        client = _mock_client()
+        tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID, hidden_params={"reranker"})
+
+        await _call(tool, query="query", scope="nodes")
+
+        assert "reranker" not in client.graph.search_nodes.call_args.kwargs
 
 
 class TestResultFormatting:
