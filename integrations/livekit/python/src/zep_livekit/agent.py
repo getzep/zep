@@ -652,8 +652,8 @@ class ZepGraphAgent(agents.Agent):
         Retrieve a prompt-ready context block for the graph.
 
         ``graph.get_context`` assembles the relevant facts, entities, and
-        episodes into one string, so the agent does not compose the block
-        itself.
+        other selected scopes into one string, so the agent does not
+        compose the block itself.
         """
         try:
             response = await self._zep_client.graph.get_context(
