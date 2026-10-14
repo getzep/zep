@@ -58,7 +58,13 @@ def main():
         sys.exit(1)
 
     # Initialize Zep client
-    zep_client = Zep(api_key=api_key)
+    # The SDK reads only ZEP_API_KEY. To call a non-default Zep API,
+    # pass base_url explicitly (ZEP_API_URL is not read by the SDK).
+    zep_api_url = os.environ.get("ZEP_API_URL")
+    zep_client = Zep(
+        api_key=api_key,
+        base_url=f"{zep_api_url}/api/v4" if zep_api_url else None,
+    )
 
     print("\n🤖 CrewAI + Zep Graph Storage with Ontology Example")
     print("=" * 60)

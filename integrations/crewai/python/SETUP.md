@@ -42,11 +42,23 @@ Requirements: Python 3.11+, `crewai>=1.0.0`, `zep-cloud>=4.0.0,<5`.
 export ZEP_API_KEY="your-zep-api-key"
 export OPENAI_API_KEY="your-openai-api-key"
 
-# Optional: override the Zep API URL (the SDK defaults to the v4 API)
-export ZEP_API_URL="https://api.getzep.com"
+# Optional: target a non-default Zep API, such as the development API.
+# The v4 SDK reads only ZEP_API_KEY; it does not read ZEP_API_URL itself.
+# The examples and the live test pass this value to the client as base_url.
+export ZEP_API_URL="https://api.development.getzep.com"
 
 # Optional: override the OpenAI model used by the live test (default: gpt-4o-mini)
 export OPENAI_MODEL="gpt-4o-mini"
+```
+
+To call a non-default Zep API, pass the base URL when you create the client.
+The `base_url` value must end in `/api/v4`:
+
+```python
+zep_client = Zep(
+    api_key=os.environ["ZEP_API_KEY"],
+    base_url=os.environ["ZEP_API_URL"] + "/api/v4",
+)
 ```
 
 ## 5. Run the example

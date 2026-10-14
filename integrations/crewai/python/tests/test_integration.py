@@ -16,6 +16,9 @@ UUIDs of the responses. It does not look an identifier up at run time.
 
 Requires:
     ZEP_API_KEY and OPENAI_API_KEY environment variables.
+    Optional: ZEP_API_URL to target a non-default Zep API (for example
+    https://api.development.getzep.com). The v4 SDK does not read this
+    variable itself; this test passes it to the client as base_url.
 
 Usage:
     uv run pytest tests/test_integration.py -v -s -m integration
@@ -38,8 +41,13 @@ import pytest
 # Configuration -- skip the whole module when API keys are not available.
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
+ZEP_API_URL = os.environ.get("ZEP_API_URL", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+
+# The v4 SDK reads only ZEP_API_KEY; a non-default API is passed explicitly
+# as base_url, which must end in /api/v4.
+ZEP_BASE_URL = f"{ZEP_API_URL}/api/v4" if ZEP_API_URL else None
 
 if not ZEP_API_KEY or not OPENAI_API_KEY:
     pytest.skip(
@@ -118,7 +126,7 @@ def seed_facts(storage: ZepUserStorage) -> None:
 
 
 def main() -> None:
-    zep = Zep(api_key=ZEP_API_KEY)
+    zep = Zep(api_key=ZEP_API_KEY, base_url=ZEP_BASE_URL)
     passed = True
     user_uuid = ""
 
@@ -236,7 +244,7 @@ def main() -> None:
 @pytest.mark.integration
 def test_integration_full_lifecycle() -> None:
     """Pytest entry point for the live integration test (synchronous)."""
-    zep = Zep(api_key=ZEP_API_KEY)
+    zep = Zep(api_key=ZEP_API_KEY, base_url=ZEP_BASE_URL)
     user_uuid = ""
 
     try:
