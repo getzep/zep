@@ -28,7 +28,17 @@ def make_mock_client() -> MagicMock:
     client = MagicMock(spec=AsyncZep)
     client.thread = MagicMock()
     client.thread.add_messages = AsyncMock()
+    client.user = MagicMock()
+    client.user.get = AsyncMock(return_value=make_user(None, None))
     return client
+
+
+def make_user(first_name: str | None, last_name: str | None) -> MagicMock:
+    """Create a mock Zep user with the given names."""
+    user = MagicMock()
+    user.first_name = first_name
+    user.last_name = last_name
+    return user
 
 
 def make_context(
@@ -162,9 +172,11 @@ class TestInit:
         provider = make_provider(user_message_name="Janey")
         assert provider._user_message_name == "Janey"
 
-    def test_user_message_name_defaults_to_none(self) -> None:
-        provider = make_provider()
+    def test_user_message_name_not_read_at_construction(self) -> None:
+        client = make_mock_client()
+        provider = make_provider(client)
         assert provider._user_message_name is None
+        client.user.get.assert_not_called()
 
     def test_assistant_message_name_default(self) -> None:
         provider = make_provider()
@@ -264,6 +276,55 @@ class TestBeforeRun:
 
         call = client.thread.add_messages.call_args.kwargs
         assert call["messages"][0].name == "Jane Smith"
+
+    @pytest.mark.asyncio
+    async def test_default_name_is_full_name_of_zep_user(self) -> None:
+        client = make_mock_client()
+        client.user.get.return_value = make_user("Jane", "Smith")
+        client.thread.add_messages.return_value = add_messages_response(None)
+        provider = make_provider(client)
+
+        await run_before(provider, make_context(input_messages=[Message("user", ["Hi"])]))
+        await run_before(provider, make_context(input_messages=[Message("user", ["Again"])]))
+
+        client.user.get.assert_awaited_once_with(USER_UUID)
+        for call in client.thread.add_messages.call_args_list:
+            assert call.kwargs["messages"][0].name == "Jane Smith"
+
+    @pytest.mark.asyncio
+    async def test_default_name_is_none_when_zep_user_has_no_name(self) -> None:
+        client = make_mock_client()
+        client.thread.add_messages.return_value = add_messages_response(None)
+        provider = make_provider(client)
+
+        await run_before(provider, make_context(input_messages=[Message("user", ["Hi"])]))
+
+        assert client.thread.add_messages.call_args.kwargs["messages"][0].name is None
+
+    @pytest.mark.asyncio
+    async def test_explicit_name_skips_user_read(self) -> None:
+        client = make_mock_client()
+        client.thread.add_messages.return_value = add_messages_response(None)
+        provider = make_provider(client, user_message_name="Janey")
+
+        await run_before(provider, make_context(input_messages=[Message("user", ["Hi"])]))
+
+        client.user.get.assert_not_called()
+        assert client.thread.add_messages.call_args.kwargs["messages"][0].name == "Janey"
+
+    @pytest.mark.asyncio
+    async def test_user_read_failure_persists_without_name_and_retries(self) -> None:
+        client = make_mock_client()
+        client.user.get.side_effect = [RuntimeError("boom"), make_user("Jane", None)]
+        client.thread.add_messages.return_value = add_messages_response(None)
+        provider = make_provider(client)
+
+        await run_before(provider, make_context(input_messages=[Message("user", ["Hi"])]))
+        assert client.thread.add_messages.call_args.kwargs["messages"][0].name is None
+
+        await run_before(provider, make_context(input_messages=[Message("user", ["Again"])]))
+        assert client.thread.add_messages.call_args.kwargs["messages"][0].name == "Jane"
+        assert client.user.get.await_count == 2
 
     @pytest.mark.asyncio
     async def test_injects_context_block(self) -> None:

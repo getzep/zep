@@ -193,7 +193,10 @@ class ZepContextProvider(ContextProvider):
             addresses a graph search by graph UUID.  It is also passed to a
             ``context_builder`` in :class:`ContextInput`.
         user_message_name: Display name attached to persisted user messages.
-            Defaults to ``None``.
+            Defaults to the full name (``first_name`` and ``last_name``) of
+            the Zep user.  The provider reads it one time with ``user.get``
+            on the first turn.  If the user has no name, or the read fails,
+            the message has no name.
         assistant_message_name: Display name attached to persisted assistant
             messages.  Defaults to ``"Assistant"``.
         source_id: The Agent Framework ``source_id`` used to attribute this
@@ -311,6 +314,7 @@ class ZepContextProvider(ContextProvider):
         self._graph_uuid: str | None = graph_uuid
 
         self._user_message_name: str | None = user_message_name
+        self._user_message_name_resolved: bool = user_message_name is not None
         self._assistant_message_name: str = assistant_message_name
 
         self._ignore_roles: list[str] | None = ignore_roles
@@ -441,6 +445,8 @@ class ZepContextProvider(ContextProvider):
         # drop) so the turn is persisted instead of triggering a swallowed 400.
         user_text = truncate_message_content(user_text, label="user message")
 
+        await self._resolve_user_message_name()
+
         if self._context_builder is not None:
             persist_ok, context_block = await self._persist_and_build_context(user_text, context)
         else:
@@ -456,6 +462,23 @@ class ZepContextProvider(ContextProvider):
                 "Injected Zep context (%d chars) into agent instructions",
                 len(context_block),
             )
+
+    async def _resolve_user_message_name(self) -> None:
+        """Set the default user message name from the Zep user, one time."""
+        if self._user_message_name_resolved:
+            return
+        try:
+            user = await self._zep.user.get(self._user_uuid)
+        except Exception:
+            logger.warning(
+                "Failed to read the Zep user %s for the user message name",
+                self._user_uuid,
+                exc_info=True,
+            )
+            return
+        full_name = " ".join(part for part in (user.first_name, user.last_name) if part).strip()
+        self._user_message_name = full_name or None
+        self._user_message_name_resolved = True
 
     async def _persist_with_return_context(self, user_text: str) -> tuple[bool, str | None]:
         """Persist the user message and retrieve context in one round-trip.

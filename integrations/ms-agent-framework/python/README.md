@@ -246,7 +246,7 @@ Memory is scoped per `ZepContextProvider` instance to one `user_uuid` + `thread_
 | `user_uuid` | Yes | — | UUID of the Zep user this provider's memory is scoped to |
 | `thread_uuid` | Yes | — | UUID of the Zep thread the conversation is recorded in |
 | `graph_uuid` | Optional | `None` | UUID of the graph to search; required when `expose_search_tool` is `True` |
-| `user_message_name` | Optional | full name | Display name on persisted user messages |
+| `user_message_name` | Optional | full name of the Zep user | Display name on persisted user messages. The provider reads the name one time with `user.get` on the first turn |
 | `assistant_message_name` | Optional | `"Assistant"` | Display name on persisted assistant messages |
 | `source_id` | Optional | `"zep"` | Agent Framework attribution ID for injected instructions/tools |
 | `ignore_roles` | Optional | `None` | Roles to exclude from graph ingestion (still stored in thread history) |

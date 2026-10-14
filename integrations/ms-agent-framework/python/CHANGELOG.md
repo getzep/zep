@@ -19,9 +19,6 @@ procedure. This package has these API changes:
 - `ZepContextProvider` no longer takes `first_name`, `last_name`, `email`, or
   `on_user_created`. Give `first_name`, `last_name`, and `email` to
   `create_user`, and give the hook to `create_user(on_created=...)`.
-- The default of `user_message_name` is `None`. Before, the default was the
-  full name from `first_name` and `last_name`. To keep a name on the user
-  messages, set `user_message_name`.
 - `ContextInput` has `user_uuid`, `thread_uuid`, and `graph_uuid` instead of
   `user_id` and `thread_id`.
 - `create_user` replaces `ensure_user`. It takes no `user_id`, and it returns
@@ -43,6 +40,9 @@ the migration guide, and store it.
   `graph.search_observations`, `graph.search_thread_summaries`). The `auto`
   scope uses `graph.get_context`.
 - The search tool sends its `limit` parameter as the v4 `page_size` argument.
+- The default of `user_message_name` is still the full name of the user. The
+  provider now reads `first_name` and `last_name` from the Zep user one time
+  with `user.get` on the first turn, because it no longer takes these names.
 
 ## 0.2.1 (2026-07-29)
 
