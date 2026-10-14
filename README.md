@@ -23,9 +23,9 @@ Zep's managed agent memory platform.
 To use Zep Cloud, sign up at [www.getzep.com](https://www.getzep.com/) and read the
 documentation at [help.getzep.com](https://help.getzep.com). Zep's official SDKs are:
 
-- **Python**: `pip install zep-cloud`
-- **TypeScript/JavaScript**: `npm install @getzep/zep-cloud`
-- **Go**: `go get github.com/getzep/zep-go/v3`
+- **Python**: `pip install 'zep-cloud==4.0.0'`
+- **TypeScript/JavaScript**: `npm install @getzep/zep-cloud@4.0.0`
+- **Go**: `go get github.com/getzep/zep-go/v4@v4.0.0`
 
 > Looking for the open-source temporal knowledge graph framework that powers Zep? See
 > [Graphiti](https://github.com/getzep/graphiti).

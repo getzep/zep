@@ -87,32 +87,32 @@ Every integration ships: **README**, **SETUP.md** (including how to sign up for 
 https://www.getzep.com and get an API key), a **runnable example**, **tests**, and a
 **CHANGELOG**.
 
-## Zep SDKs — always target the latest
+## Zep SDKs — use V4
 
-| Language | SDK | Latest (2026-06) | Import |
-|----------|-----|------------------|--------|
-| Python | `zep-cloud` | 3.23.0 | `from zep_cloud.client import Zep, AsyncZep` |
-| TypeScript | `@getzep/zep-cloud` | 3.23.0 | `import { ZepClient } from "@getzep/zep-cloud"` |
-| Go | `github.com/getzep/zep-go/v3` | v3.23.0 | `zepclient "github.com/getzep/zep-go/v3/client"` |
+| Language | SDK | Version | Import |
+|----------|-----|---------|--------|
+| Python | `zep-cloud` | 4.0.0 | `from zep_cloud.client import Zep, AsyncZep` |
+| TypeScript | `@getzep/zep-cloud` | 4.0.0 | `import { ZepClient } from "@getzep/zep-cloud"` |
+| Go | `github.com/getzep/zep-go/v4` | v4.0.0 | `zepclient "github.com/getzep/zep-go/v4/client"` |
 
-> Zep V3 only. The npm `preview` dist-tag points to an *older* 2.0.0-rc.2 — use `latest`.
-> The Go module path is `/v3` (`/v2` is superseded).
+All integration packages use the Zep V4 SDK. The Go module path is `/v4`.
 
 ## Zep integration patterns
 
-The Zep loop is the same everywhere: **create user → create thread → add messages →
-retrieve context**.
+The common flow is **create a user → create a thread → add messages → retrieve context**.
 
-- **Persist conversation:** `thread.add_messages(thread_id, messages=[...])`. Pass
-  `return_context=True` to fold persist + retrieval into one round-trip (returns `.context`).
-- **Retrieve a Context Block:** `thread.get_user_context(thread_id)` — returns a
-  prompt-ready string assembled from the *whole user graph* (the thread just scopes
-  relevance). This is the default for conversational agents.
-- **Ingest business data / documents / JSON:** `graph.add(...)` (≤10,000 chars/call — chunk).
-- **Targeted search:** `graph.search(...)` with a `scope` (`edges`, `nodes`, `episodes`,
-  `auto`, …) — expose as a tool when the model should decide when to search.
-- **Identity:** always pass real user names (ideally last name + email) so the graph
-  resolves identity. Create the user/thread out-of-band before the first turn.
+- **Identity:** create the user and thread before the first turn. The server returns
+  UUIDs for the user, graph, and thread. Store and reuse those UUIDs.
+- **Persist conversation:** `thread.add_messages(thread_uuid, messages=[...])`. Pass
+  `return_context=True` to combine persistence and context retrieval in one request.
+- **Retrieve context:** `thread.get_context(thread_uuid)` returns a prompt-ready context
+  block. The thread scopes relevance across the user's graph.
+- **Ingest data:** use `graph.episode.add(...)` for text, messages, or JSON episodes.
+  Keep each episode within the 10,000-character limit.
+- **Targeted search:** use the V4 scope-specific methods `graph.search_edges`,
+  `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, and
+  `graph.search_thread_summaries`. Use `graph.get_context` for the `auto` scope.
+  Expose search as a tool when the model should choose when to retrieve data.
 - **Ingestion is asynchronous** — a just-added fact is not instantly retrievable; design
   for eventual availability. No read-after-write within a turn.
 - Reuse a single client instance. Log Zep errors; never crash the agent on a Zep failure.
@@ -184,4 +184,4 @@ async def test_persist_with_mock():
     client.thread.add_messages.assert_called_once()
 ```
 Don't close externally-provided clients (the caller owns the lifecycle). Guard optional
-`thread_id`/`user_id` against `None`.
+`thread_uuid`/`user_uuid` values against `None`.

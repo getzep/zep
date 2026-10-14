@@ -7,6 +7,7 @@ Integrations are organized **framework-first, then language**: `integrations/<fr
 
 New to Zep? Sign up at [getzep.com](https://www.getzep.com) and create an API key in the
 [Zep dashboard](https://app.getzep.com); each package's `SETUP.md` has the details.
+These framework integrations use the Zep V4 SDKs.
 
 ## Available integrations
 

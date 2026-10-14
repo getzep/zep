@@ -107,8 +107,23 @@ Pass `onUserCreated: async (client, userUuid) => { ... }` for one-time setup
 after Zep creates a user. The hook receives the server-generated user UUID.
 Hook errors do not change the returned identity.
 
-These helpers do not accept caller-selected Zep resource UUIDs and do not
-perform runtime lookup calls.
+The hook can read the created user by UUID and use its graph UUID to seed an
+initial episode:
+
+```ts
+onUserCreated: async (zep, userUuid) => {
+  const user = await zep.user.get(userUuid);
+  const graphUuid = user.graphUuid!;
+  await zep.graph.episode.add(graphUuid, {
+    type: "text",
+    data: "New user onboarded.",
+  });
+}
+```
+
+The provisioning helper does not accept caller-selected UUIDs or look up an
+existing user. A user-supplied hook can read the new user by its server-generated
+UUID.
 
 ## Tools
 
