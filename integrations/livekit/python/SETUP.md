@@ -43,10 +43,10 @@ cd zep/integrations/livekit/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `livekit-agents[openai,silero]>=1.0.0`, `zep-cloud==4.0.0a5`.
+Requirements: Python 3.11+, `livekit-agents[openai,silero]>=1.0.0`, `zep-cloud>=4.0.0,<5`.
 
-`zep-cloud` 4.0.0a5 is a pre-release. Install it with `pip install --pre
-zep-cloud==4.0.0a5`, or with `uv add "zep-cloud==4.0.0a5" --prerelease=allow`.
+`zep-cloud` 4.0.0 is the stable release. Install it with `pip install
+"zep-cloud>=4.0.0,<5"`, or with `uv add "zep-cloud>=4.0.0,<5"`.
 
 ## 5. Configure environment variables
 

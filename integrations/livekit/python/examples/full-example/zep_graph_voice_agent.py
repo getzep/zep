@@ -92,7 +92,7 @@ async def entrypoint(ctx: agents.JobContext):
     # Step 6: Configure search filters to use Location entity type (relevant for travel)
     search_filters = SearchFilters(
         node_labels=["Restaurant"],
-        edge_labels=["RESTAURANT_VISIT"],
+        edge_types=["RESTAURANT_VISIT"],
     )
 
     # Step 7: Create the graph memory-enabled agent with all possible arguments

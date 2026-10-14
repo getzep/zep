@@ -273,7 +273,7 @@ agent = ZepUserAgent(
 ```
 
 The tool exposes `scope` (`edges`, `nodes`, `episodes`, `observations`, `thread_summaries`,
-`auto`), `reranker`, `limit`, `mmr_lambda`, and `center_node_uuid` to the model by default.
+`auto`), `reranker`, `page_size`, `mmr_lambda`, and `center_node_uuid` to the model by default.
 Use `pinned_params` to fix a parameter to a constant value (hidden from the model, always
 sent), or `hidden_params` to hide a parameter without pinning it (Zep's own default
 applies):
@@ -282,7 +282,7 @@ applies):
 search_tool = create_graph_search_tool(
     zep_client,
     graph_uuid=graph_uuid,
-    pinned_params={"scope": "edges", "limit": 5},
+    pinned_params={"scope": "edges", "page_size": 5},
     hidden_params={"center_node_uuid"},
 )
 ```
@@ -311,7 +311,7 @@ if memory_result and memory_result.context:
 edges = await zep_client.graph.search_edges(
     graph_uuid,
     query="Python programming best practices",
-    limit=10,
+    page_size=10,
 )
 for edge in edges.items or []:
     print(edge.fact)

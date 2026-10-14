@@ -45,8 +45,8 @@ Scope = Literal[
 ]
 Reranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
 
-#: Zep caps a graph search ``limit`` at 50; larger values are rejected.
-MAX_SEARCH_LIMIT = 50
+#: Zep caps a graph search ``page_size`` at 50; larger values are rejected.
+MAX_PAGE_SIZE = 50
 
 #: Rerankers Zep rejects when ``scope == "auto"`` (``graph.get_context``
 #: applies its own internal cross-scope rerank).
@@ -54,7 +54,12 @@ _AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
 
 #: Parameters that ``graph.get_context`` does not accept. They are dropped
 #: when the effective scope is ``"auto"``.
-_AUTO_UNSUPPORTED_PARAMS = ("reranker", "limit", "mmr_lambda", "center_node_uuid")
+_AUTO_UNSUPPORTED_PARAMS = (
+    "reranker",
+    "page_size",
+    "mmr_lambda",
+    "center_node_uuid",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -89,12 +94,12 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
         "enum": ["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"],
         "default": "rrf",
     },
-    "limit": {
+    "page_size": {
         "type": "integer",
         "description": "Maximum number of results to return.",
         "default": 10,
         "minimum": 1,
-        "maximum": MAX_SEARCH_LIMIT,
+        "maximum": MAX_PAGE_SIZE,
     },
     "mmr_lambda": {
         "type": "number",
@@ -153,7 +158,7 @@ def create_graph_search_tool(
     user, pass the ``graph_uuid`` of that user.
 
     **Pin-or-expose.** Every graph search parameter (``scope``,
-    ``reranker``, ``limit``, ``mmr_lambda``, ``center_node_uuid``) is exposed
+    ``reranker``, ``page_size``, ``mmr_lambda``, ``center_node_uuid``) is exposed
     to the model in the tool's JSON schema by default, with the documented
     defaults above.  Use ``pinned_params`` to fix a parameter to a constant
     value and remove it from the schema (the model can no longer choose it);
@@ -175,8 +180,9 @@ def create_graph_search_tool(
             hide from the model's tool schema without pinning them -- omitted
             from the SDK call so Zep's own default takes effect.
         search_filters: Optional Zep search filters (constructor-only).
-            Supports ``node_labels``, ``edge_types``, ``exclude_node_labels``,
-            ``exclude_edge_types``, and property filters.
+            Each search scope accepts its own filter type; a key that the
+            effective scope cannot apply fails with HTTP 400
+            ``unsupported_filter``.
         bfs_origin_node_uuids: Optional list of node UUIDs for BFS seeding
             (constructor-only).
         name: The tool name exposed to the model.  Defaults to ``"zep_search"``.
@@ -210,10 +216,10 @@ def create_graph_search_tool(
             f"Unknown hidden parameters: {unknown_hidden}. Allowed: {sorted(_PINNABLE_PARAMS)}"
         )
 
-    # Clamp a pinned limit to Zep's ceiling at construction time so the call
-    # never 400s.
-    if "limit" in pinned:
-        pinned["limit"] = _clamp_limit(pinned["limit"])
+    # Clamp a pinned page_size to Zep's ceiling at construction time so the
+    # call never 400s.
+    if "page_size" in pinned:
+        pinned["page_size"] = _clamp_page_size(pinned["page_size"])
 
     # Auto scope rejects node_distance / episode_mentions and ignores reranker
     # entirely.  If scope is pinned to "auto" and reranker is also pinned,
@@ -242,11 +248,11 @@ def create_graph_search_tool(
                 continue  # hidden, not pinned -> omit; Zep applies its own default
             elif param_name in raw_arguments and raw_arguments[param_name] is not None:
                 value = raw_arguments[param_name]
-                if param_name == "limit":
-                    # Clamp a model-provided limit at call time so the call
+                if param_name == "page_size":
+                    # Clamp a model-provided page_size at call time so the call
                     # never 400s (the schema advertises the bounds, but the
                     # model may still ignore them).
-                    value = _clamp_limit(value)
+                    value = _clamp_page_size(value)
                 search_kwargs[param_name] = value
             else:
                 default = _SEARCH_PARAM_SPECS[param_name].get("default")
@@ -304,19 +310,19 @@ def create_graph_search_tool(
     return function_tool(zep_search, raw_schema=raw_schema)
 
 
-def _clamp_limit(limit: int) -> int:
-    """Clamp ``limit`` to Zep's accepted range ``[1, MAX_SEARCH_LIMIT]``."""
-    if limit > MAX_SEARCH_LIMIT:
+def _clamp_page_size(page_size: int) -> int:
+    """Clamp ``page_size`` to Zep's accepted range ``[1, MAX_PAGE_SIZE]``."""
+    if page_size > MAX_PAGE_SIZE:
         logger.warning(
-            "zep_search limit %d exceeds Zep ceiling %d; clamping to %d",
-            limit,
-            MAX_SEARCH_LIMIT,
-            MAX_SEARCH_LIMIT,
+            "zep_search page_size %d exceeds Zep ceiling %d; clamping to %d",
+            page_size,
+            MAX_PAGE_SIZE,
+            MAX_PAGE_SIZE,
         )
-        return MAX_SEARCH_LIMIT
-    if limit < 1:
+        return MAX_PAGE_SIZE
+    if page_size < 1:
         return 1
-    return limit
+    return page_size
 
 
 def _build_json_schema(

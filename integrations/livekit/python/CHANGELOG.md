@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Breaking: the package now targets the Zep v4 SDK (`zep-cloud==4.0.0a5`).** Zep v4 addresses every user, thread, and graph by a server-generated UUID. A `user_id`, a `thread_id`, and a `graph_id` are names, not addresses.
+- **Breaking: the package now targets the Zep v4 SDK (`zep-cloud>=4.0.0,<5`).** Zep v4 addresses every user, thread, and graph by a server-generated UUID. A `user_id`, a `thread_id`, and a `graph_id` are names, not addresses.
 - **Breaking: `ZepUserAgent` takes `user_uuid` and `thread_uuid`** in place of `user_id` and `thread_id`. The agent does not resolve a name at run time. Create the resources out of band, store the UUIDs, and give the stored UUIDs to the agent.
 - **Breaking: `ZepGraphAgent` takes `graph_uuid`** in place of `graph_id`. The `facts_limit`, `entity_limit`, `episode_limit`, and `reranker` parameters are removed. `ZepGraphAgent` now calls `graph.get_context`, which assembles the context block on the server, and the new `max_characters` parameter limits the size of that block.
 - **Breaking: `ContextInput` exposes `user_uuid` and `thread_uuid`, and `GraphContextInput` exposes `graph_uuid`.** A custom context builder must read the new field names.

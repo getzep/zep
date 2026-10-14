@@ -18,7 +18,7 @@ import pytest
 from livekit.agents.llm import RawFunctionTool
 
 from zep_livekit.exceptions import AgentConfigurationError
-from zep_livekit.tools import MAX_SEARCH_LIMIT, create_graph_search_tool
+from zep_livekit.tools import MAX_PAGE_SIZE, create_graph_search_tool
 
 GRAPH_UUID = "33333333-3333-3333-3333-333333333333"
 
@@ -99,19 +99,19 @@ class TestSchemaExposure:
             "episode_mentions",
             "cross_encoder",
         }
-        assert "limit" in properties
+        assert "page_size" in properties
         assert "mmr_lambda" in properties
         assert "center_node_uuid" in properties
         assert schema["required"] == ["query"]
 
-    def test_limit_schema_advertises_zep_bounds(self) -> None:
-        """The model-facing schema must carry Zep's limit bounds so
+    def test_page_size_schema_advertises_zep_bounds(self) -> None:
+        """The model-facing schema must carry Zep's page_size bounds so
         well-behaved models self-limit instead of sending e.g. 200."""
         tool = create_graph_search_tool(_mock_client(), graph_uuid=GRAPH_UUID)
-        limit_prop = tool.info.raw_schema["parameters"]["properties"]["limit"]
+        page_size_prop = tool.info.raw_schema["parameters"]["properties"]["page_size"]
 
-        assert limit_prop["minimum"] == 1
-        assert limit_prop["maximum"] == MAX_SEARCH_LIMIT
+        assert page_size_prop["minimum"] == 1
+        assert page_size_prop["maximum"] == MAX_PAGE_SIZE
 
     def test_custom_name_and_description(self) -> None:
         tool = create_graph_search_tool(
@@ -129,19 +129,19 @@ class TestPinnedAndHiddenParams:
     async def test_search_tool_pinned_params_hidden_and_sent(self) -> None:
         client = _mock_client()
         tool = create_graph_search_tool(
-            client, graph_uuid=GRAPH_UUID, pinned_params={"scope": "nodes", "limit": 5}
+            client, graph_uuid=GRAPH_UUID, pinned_params={"scope": "nodes", "page_size": 5}
         )
 
         properties = tool.info.raw_schema["parameters"]["properties"]
         assert "scope" not in properties
-        assert "limit" not in properties
+        assert "page_size" not in properties
         assert "reranker" in properties
 
         await _call(tool, query="query")
 
         client.graph.search_edges.assert_not_called()
         assert client.graph.search_nodes.call_args.args[0] == GRAPH_UUID
-        assert client.graph.search_nodes.call_args.kwargs["limit"] == 5
+        assert client.graph.search_nodes.call_args.kwargs["page_size"] == 5
 
     @pytest.mark.asyncio
     async def test_search_tool_hidden_params_omitted_from_sdk_call(self) -> None:
@@ -196,42 +196,44 @@ class TestPinnedAndHiddenParams:
 
 class TestLimitClamping:
     @pytest.mark.asyncio
-    async def test_model_provided_limit_clamped_to_ceiling(self) -> None:
-        """A model-sent limit above Zep's ceiling is clamped, not forwarded
+    async def test_model_provided_page_size_clamped_to_ceiling(self) -> None:
+        """A model-sent page_size above Zep's ceiling is clamped, not forwarded
         verbatim (which would 400 and degrade the tool to an error string)."""
         client = _mock_client()
         tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
 
-        await _call(tool, query="query", limit=200)
+        await _call(tool, query="query", page_size=200)
 
-        assert client.graph.search_edges.call_args.kwargs["limit"] == MAX_SEARCH_LIMIT
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == MAX_PAGE_SIZE
 
     @pytest.mark.asyncio
-    async def test_model_provided_limit_clamped_to_floor(self) -> None:
+    async def test_model_provided_page_size_clamped_to_floor(self) -> None:
         client = _mock_client()
         tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
 
-        await _call(tool, query="query", limit=0)
+        await _call(tool, query="query", page_size=0)
 
-        assert client.graph.search_edges.call_args.kwargs["limit"] == 1
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == 1
 
     @pytest.mark.asyncio
-    async def test_model_provided_limit_in_range_forwarded_unchanged(self) -> None:
+    async def test_model_provided_page_size_in_range_forwarded_unchanged(self) -> None:
         client = _mock_client()
         tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
 
-        await _call(tool, query="query", limit=25)
+        await _call(tool, query="query", page_size=25)
 
-        assert client.graph.search_edges.call_args.kwargs["limit"] == 25
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == 25
 
     @pytest.mark.asyncio
-    async def test_pinned_limit_clamped_at_construction(self) -> None:
+    async def test_pinned_page_size_clamped_at_construction(self) -> None:
         client = _mock_client()
-        tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID, pinned_params={"limit": 200})
+        tool = create_graph_search_tool(
+            client, graph_uuid=GRAPH_UUID, pinned_params={"page_size": 200}
+        )
 
         await _call(tool, query="query")
 
-        assert client.graph.search_edges.call_args.kwargs["limit"] == MAX_SEARCH_LIMIT
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == MAX_PAGE_SIZE
 
 
 class TestQueryHandling:
@@ -248,7 +250,7 @@ class TestQueryHandling:
         assert call.args[0] == GRAPH_UUID
         assert call.kwargs["query"] == "find facts"
         assert call.kwargs["reranker"] == "rrf"
-        assert call.kwargs["limit"] == 10
+        assert call.kwargs["page_size"] == 10
         assert "scope" not in call.kwargs
         assert "mmr_lambda" not in call.kwargs
         assert "center_node_uuid" not in call.kwargs
@@ -302,7 +304,7 @@ class TestAutoScope:
         call = client.graph.get_context.call_args
         assert call.args[0] == GRAPH_UUID
         assert "reranker" not in call.kwargs
-        assert "limit" not in call.kwargs
+        assert "page_size" not in call.kwargs
 
 
 class TestResultFormatting:

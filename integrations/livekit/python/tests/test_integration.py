@@ -101,7 +101,7 @@ async def wait_for_episodes_processed(
             logger.warning("Timed out waiting for episode processing; continuing.")
             return
         try:
-            page = await zep.graph.episode.list(graph_uuid, limit=20)
+            page = await zep.graph.episode.list(graph_uuid, page_size=20)
         except Exception as exc:
             logger.warning("Episode poll failed (%s); retrying.", exc)
             await asyncio.sleep(poll_interval)
@@ -215,7 +215,7 @@ async def main() -> None:
 
         # -- Verify thread 1 captured both sides -----------------------------
         print("\n[Step 3] Verifying thread 1 messages...")
-        message_page = await zep.thread.list_messages(thread_1_uuid, limit=20)
+        message_page = await zep.thread.list_messages(thread_1_uuid, page_size=20)
         messages = message_page.items or []
         user_msgs = [m for m in messages if m.role == "user"]
         asst_msgs = [m for m in messages if m.role == "assistant"]
@@ -246,7 +246,9 @@ async def main() -> None:
             f"found={found}",
         )
 
-        search = await zep.graph.search_edges(graph_uuid, query="job, location, hobbies", limit=10)
+        search = await zep.graph.search_edges(
+            graph_uuid, query="job, location, hobbies", page_size=10
+        )
         search_text = " ".join(e.fact for e in (search.items or []) if e.fact).lower()
         search_found = [kw for kw in KEYWORDS if kw in search_text]
         print(f"  Recalled keywords (graph search): {search_found}")
@@ -300,7 +302,7 @@ async def test_integration_full_lifecycle() -> None:
         assert stored_user.first_name == FIRST_NAME
         assert stored_user.email == EMAIL
 
-        message_page = await zep.thread.list_messages(thread_1_uuid, limit=20)
+        message_page = await zep.thread.list_messages(thread_1_uuid, page_size=20)
         messages = message_page.items or []
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)
@@ -314,7 +316,9 @@ async def test_integration_full_lifecycle() -> None:
 
         ctx_result = await zep.thread.get_context(thread_2_uuid)
         context = (ctx_result.context or "").lower()
-        search = await zep.graph.search_edges(graph_uuid, query="job, location, hobbies", limit=10)
+        search = await zep.graph.search_edges(
+            graph_uuid, query="job, location, hobbies", page_size=10
+        )
         search_text = " ".join(e.fact for e in (search.items or []) if e.fact).lower()
         assert any(kw in context or kw in search_text for kw in KEYWORDS), (
             f"no recall in context/search: {context} / {search_text}"
