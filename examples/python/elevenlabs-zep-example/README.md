@@ -2,6 +2,8 @@
 
 This example demonstrates how to integrate Zep's context store with ElevenLabs Conversational AI agents.
 
+The React app creates a Zep user with `POST /zep/users` and stores the returned UUID in `localStorage` as `zep_user_uuid`. It creates a new Zep thread with `POST /zep/threads` for each voice session. The existing `customLlmExtraBody` keys, `user_id` and `conversation_id`, carry the Zep user UUID and thread UUID.
+
 ## How It Works
 
 ElevenLabs agents support a **Custom LLM** option that lets you route LLM requests through your own server instead of directly to OpenAI/Anthropic. This example uses that feature to insert a proxy server that:
@@ -135,7 +137,7 @@ Copy the HTTPS URL (e.g., `https://abc123.ngrok-free.app`). You'll need this for
    - **Toggle it ON**
    - Save the agent
 
-   > This setting allows the React app to pass `user_id` and `conversation_id` to your proxy. Without it, the integration won't work.
+   > This setting allows the React app to pass the Zep UUIDs in the existing `user_id` and `conversation_id` fields. Without it, the integration will not work.
 
 8. **Copy your Agent ID** from the URL:
    - The URL looks like: `elevenlabs.io/app/conversational-ai/agents/AGENT_ID_HERE`
@@ -181,12 +183,11 @@ Copy the HTTPS URL (e.g., `https://abc123.ngrok-free.app`). You'll need this for
 
 **Verify it's working by checking:**
 
-- **React app**: Status shows "connected", User ID and Conversation ID are displayed
+- **React app**: Status shows "connected", and the Zep user and thread UUIDs are displayed
 - **Proxy logs**: You should see messages like:
   ```
-  INFO: User ID: user-abc12345
-  INFO: Conversation ID: conv-xyz789...
-  INFO: Fetching Zep context for user: user-abc12345
+  INFO: Zep User UUID: <uuid>
+  INFO: Zep Thread UUID: <uuid>
   INFO: Persisted user message to Zep thread...
   ```
 - **Zep Dashboard**: The user and thread should appear at [app.getzep.com](https://app.getzep.com)
@@ -196,8 +197,9 @@ Copy the HTTPS URL (e.g., `https://abc123.ngrok-free.app`). You'll need this for
 ### 1. React App (`react-app/`)
 - Vite + React application
 - Uses `@11labs/react` SDK for voice conversations
-- Manages user identity and conversation sessions
-- Passes identifiers via `customLlmExtraBody`
+- Stores the Zep user UUID in `localStorage` as `zep_user_uuid`
+- Creates a Zep thread for each session
+- Passes the UUIDs via `customLlmExtraBody` using `user_id` and `conversation_id`
 - Includes cache warming for faster first responses
 
 ### 2. LLM Proxy (`llm-proxy/`)
@@ -210,31 +212,21 @@ Copy the HTTPS URL (e.g., `https://abc123.ngrok-free.app`). You'll need this for
 
 ### User Identification
 
-The React app generates and persists a `user_id` in localStorage:
-- Format: `user-{8-char-uuid}` (e.g., `user-a1b2c3d4`)
-- Persists across browser sessions
-- Can be reset via UI button for testing
+The React app calls `POST /zep/users` when no `zep_user_uuid` is stored. The proxy creates the user and returns its Zep UUID. The app stores that UUID in `localStorage`. The **New User** button creates a new Zep user and replaces the stored UUID.
 
 ### Conversation Tracking
 
-Each voice session gets a unique `conversation_id`:
-- Format: `conv-{12-char-uuid}` (e.g., `conv-x1y2z3a4b5c6`)
-- Pre-generated in React before starting the ElevenLabs session
-- Maps to a Zep "thread" for conversation history
+Each voice session gets a new Zep thread. The React app calls `POST /zep/threads` with the Zep user UUID. The proxy returns a Zep thread UUID.
 
-### Why Pre-Generate conversation_id?
+The existing `customLlmExtraBody` keys are retained:
 
-ElevenLabs generates its own conversation_id, but it's only available **after** `startSession()` returns. However, `customLlmExtraBody` is sent **when** the session starts. This creates a chicken-and-egg problem:
-
-- We need to send the conversation_id in customLlmExtraBody
-- But ElevenLabs' conversation_id isn't available until after
-
-**Solution:** Generate our own conversation_id before calling `startSession()` and use that for Zep tracking.
+- `user_id` carries the Zep user UUID.
+- `conversation_id` carries the Zep thread UUID.
 
 ## Troubleshooting
 
 ### "No user_id in request" error
-Make sure you enabled **"Custom LLM extra body"** in the agent's Security settings (Step 3.7).
+Make sure you enabled **"Custom LLM extra body"** in the agent's Security settings (Step 3.7). The `user_id` field must contain the UUID returned by `POST /zep/users`.
 
 ### Proxy authentication fails (401)
 - Verify the `PROXY_API_KEY` in your proxy's `.env` matches the header value in ElevenLabs
@@ -254,7 +246,6 @@ ngrok free tier generates a new URL each restart. Update the Custom LLM URL in E
 
 ## Limitations
 
-- **No native conversation_id forwarding**: ElevenLabs doesn't pass their conversation_id to custom LLM endpoints, hence the pre-generation approach
 - **Requires ngrok for development**: ElevenLabs needs a publicly accessible URL for the custom LLM
 - **Latency**: The proxy adds a round-trip to Zep, though this is typically minimal (~50-100ms)
 

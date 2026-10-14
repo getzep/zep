@@ -1,36 +1,69 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useConversation } from '@11labs/react';
-import { v4 as uuidv4 } from 'uuid';
 
 // Configuration - set these in your .env file
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID;
 const PROXY_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:8080';
 
-// Generate or retrieve persistent user ID
-function getUserId() {
-  let userId = localStorage.getItem('zep_user_id');
-  if (!userId) {
-    userId = `user-${uuidv4().slice(0, 8)}`;
-    localStorage.setItem('zep_user_id', userId);
-  }
-  return userId;
-}
-
 export default function App() {
-  const [userId, setUserId] = useState(getUserId);
+  const [userUuid, setUserUuid] = useState(() => localStorage.getItem('zep_user_uuid'));
   const [conversationId, setConversationId] = useState(null);
   const [status, setStatus] = useState('disconnected');
   const [messages, setMessages] = useState([]);
   const [error, setError] = useState(null);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const userCreationRef = useRef(null);
 
-  // Reset to a new user ID
-  const resetUserId = useCallback(() => {
-    const newUserId = `user-${uuidv4().slice(0, 8)}`;
-    localStorage.setItem('zep_user_id', newUserId);
-    setUserId(newUserId);
+  const createZepUser = useCallback(async () => {
+    if (userCreationRef.current) {
+      return userCreationRef.current;
+    }
+    const creation = (async () => {
+      setIsCreatingUser(true);
+      try {
+        const response = await fetch(`${PROXY_URL}/zep/users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        if (!response.ok) {
+          throw new Error(`Could not create Zep user: HTTP ${response.status}`);
+        }
+        const result = await response.json();
+        if (!result.user_uuid) {
+          throw new Error('The proxy did not return a Zep user UUID');
+        }
+        localStorage.setItem('zep_user_uuid', result.user_uuid);
+        setUserUuid(result.user_uuid);
+        return result.user_uuid;
+      } finally {
+        setIsCreatingUser(false);
+      }
+    })();
+    userCreationRef.current = creation;
+    try {
+      return await creation;
+    } finally {
+      userCreationRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!userUuid) {
+      createZepUser().catch((err) => setError(err.message || 'Could not create Zep user'));
+    }
+  }, [createZepUser, userUuid]);
+
+  const resetUserUuid = useCallback(async () => {
+    setError(null);
     setMessages([]);
     setConversationId(null);
-  }, []);
+    try {
+      await createZepUser();
+    } catch (err) {
+      setError(err.message || 'Could not create Zep user');
+    }
+  }, [createZepUser]);
 
   // PERFORMANCE OPTIMIZATION: Warm the Zep cache when the user arrives on the page.
   // This moves the user's data into Zep's "hot" cache before they start speaking,
@@ -38,15 +71,18 @@ export default function App() {
   // where inactive user data moves to slower storage after a few hours.
   // Call this whenever the user may soon speak with the agent.
   useEffect(() => {
+    if (!userUuid) {
+      return;
+    }
     const warmUserCache = async () => {
       try {
-        console.log(`Warming Zep cache for user: ${userId}`);
+        console.log(`Warming Zep cache for user: ${userUuid}`);
         const response = await fetch(`${PROXY_URL}/warm-user-cache`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ user_id: userId }),
+          body: JSON.stringify({ user_id: userUuid }),
         });
 
         if (response.ok) {
@@ -63,7 +99,7 @@ export default function App() {
 
     // Warm the cache when component mounts or when userId changes
     warmUserCache();
-  }, [userId]);
+  }, [userUuid]);
 
   // Initialize the ElevenLabs conversation hook
   const conversation = useConversation({
@@ -94,34 +130,44 @@ export default function App() {
       setError(null);
       setMessages([]);
 
+      if (!userUuid) {
+        throw new Error('Wait for the Zep user to be created before starting a session');
+      }
+
       // Request microphone permission
       await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // Pre-generate a conversation_id for Zep thread tracking
-      // We generate this ourselves since ElevenLabs' conversation_id isn't available
-      // until after startSession() returns
-      const zepConversationId = `conv-${uuidv4().slice(0, 12)}`;
+      const threadResponse = await fetch(`${PROXY_URL}/zep/threads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_uuid: userUuid }),
+      });
+      if (!threadResponse.ok) {
+        throw new Error(`Could not create Zep thread: HTTP ${threadResponse.status}`);
+      }
+      const { thread_uuid: threadUuid } = await threadResponse.json();
+      if (!threadUuid) {
+        throw new Error('The proxy did not return a Zep thread UUID');
+      }
 
-      // Start the session with user_id and conversation_id in customLlmExtraBody
-      // This gets forwarded as "elevenlabs_extra_body" to our proxy
       const elevenLabsConvId = await conversation.startSession({
         agentId: AGENT_ID,
         customLlmExtraBody: {
-          user_id: userId,
-          conversation_id: zepConversationId,  // Our pre-generated ID for Zep
+          user_id: userUuid,
+          conversation_id: threadUuid,
         },
       });
 
       console.log('ElevenLabs Conversation ID:', elevenLabsConvId);
-      console.log('Zep Conversation ID:', zepConversationId);
-      setConversationId(zepConversationId);  // Display the Zep conversation ID
+      console.log('Zep Thread UUID:', threadUuid);
+      setConversationId(threadUuid);
 
     } catch (err) {
       console.error('Failed to start conversation:', err);
       setError(err.message || 'Failed to start conversation');
       setStatus('error');
     }
-  }, [conversation, userId]);
+  }, [conversation, userUuid]);
 
   // End the conversation session
   const endConversation = useCallback(async () => {
@@ -139,16 +185,16 @@ export default function App() {
 
       <div style={styles.infoBox}>
         <p>
-          <strong>User ID:</strong> {userId}
+          <strong>Zep User UUID:</strong> {userUuid || (isCreatingUser ? 'Creating...' : 'Unavailable')}
           <button
-            onClick={resetUserId}
+            onClick={resetUserUuid}
             style={styles.resetButton}
-            disabled={status === 'connected' || status === 'connecting'}
+            disabled={status === 'connected' || status === 'connecting' || isCreatingUser}
           >
             🔄 New User
           </button>
         </p>
-        <p><strong>Conversation ID:</strong> {conversationId || 'Not started'}</p>
+        <p><strong>Zep Thread UUID:</strong> {conversationId || 'Not started'}</p>
         <p><strong>Status:</strong> <span style={styles.status[status]}>{status}</span></p>
       </div>
 
@@ -163,6 +209,7 @@ export default function App() {
           <button
             onClick={startConversation}
             style={styles.startButton}
+            disabled={!userUuid || isCreatingUser}
           >
             🎤 Start Conversation
           </button>

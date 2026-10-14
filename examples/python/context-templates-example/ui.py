@@ -833,7 +833,7 @@ with st.sidebar:
         current_user_index = 0
         if st.session_state.current_user_id:
             for i, user in enumerate(st.session_state.users):
-                if user.user_id == st.session_state.current_user_id:
+                if user.uuid_ == st.session_state.current_user_id:
                     current_user_index = i + 1  # +1 because "New User" is at index 0
                     break
 
@@ -994,7 +994,7 @@ elif current_thread:
             zep_thread_id = current_thread["zep_thread_id"]
 
             # Get current user's name
-            current_user = next((user for user in st.session_state.users if user.user_id == st.session_state.current_user_id), None)
+            current_user = next((user for user in st.session_state.users if user.uuid_ == st.session_state.current_user_id), None)
             user_full_name = f"{current_user.first_name} {current_user.last_name}".strip()
 
             # Get current display mode

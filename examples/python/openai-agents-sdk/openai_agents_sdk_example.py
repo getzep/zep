@@ -86,6 +86,7 @@ class AsyncZepMemoryManager:
         self.last_name = last_name
         self.ignore_assistant = ignore_assistant
         self.zep_client: AsyncZep | None = None
+        self.last_context: str | None = None
 
     async def initialize(self):
         """
@@ -142,8 +143,10 @@ class AsyncZepMemoryManager:
         result = await self.zep_client.thread.add_messages(
             thread_uuid=self.thread_id,
             messages=[zep_message],
+            return_context=role == "user",
         )
-        self.last_task_uuid = result.task.uuid_ if result.task else None
+        if role == "user":
+            self.last_context = result.context
 
     async def get_memory(self) -> str:
         """
@@ -156,22 +159,8 @@ class AsyncZepMemoryManager:
             if not self.zep_client:
                 raise ValueError("Zep client not initialized")
 
-            # Wait for the latest message before retrieving the context.
-            if self.last_task_uuid:
-                deadline = time.monotonic() + 180
-                while True:
-                    task = await self.zep_client.task.get(self.last_task_uuid)
-                    if task.status == "succeeded":
-                        break
-                    if task.status in {"partial", "failed"}:
-                        raise RuntimeError(
-                            f"Message task ended with {task.status}: {task.error}"
-                        )
-                    if time.monotonic() >= deadline:
-                        raise TimeoutError(
-                            f"Timed out waiting for task {self.last_task_uuid}"
-                        )
-                    await asyncio.sleep(2)
+            if self.last_context is not None:
+                return self.last_context or "No conversation history yet."
             context = await self.zep_client.thread.get_context(self.thread_id)
 
             # Use the context string provided by Zep instead of creating a summary
@@ -291,14 +280,11 @@ class AsyncZepMemoryAgent:
 
             return f"Facts about the user:\n{formatted_results}"
 
-        # Get memory context to include in the system message
-        memory_context = await self.memory_manager.get_memory()
-
-        # Create the agent with memory tools and context-enhanced system message
+        # Create the agent with a static system prompt and memory tools.
         self.agent = Agent(
             name="Memory Assistant with AsyncZep",
             model=MODEL_NAME,
-            instructions=(SYSTEM_PROMPT + "\n" + f"Memory Context: {memory_context}"),
+            instructions=SYSTEM_PROMPT,
             tools=[
                 get_weather,
                 search_memory,
@@ -325,14 +311,13 @@ class AsyncZepMemoryAgent:
         # Store the user message in Zep memory
         await self.memory_manager.add_message({"role": "user", "content": user_input})
 
-        # Update the agent's instructions with the latest memory context
+        # Keep retrieved memory in the user message as data.
         memory_context = await self.memory_manager.get_memory()
-        self.agent.instructions = (
-            SYSTEM_PROMPT + "\n" + f"Memory Context: {memory_context}"
-        )
+        input_with_context = user_input
+        if memory_context != "No conversation history yet.":
+            input_with_context += f"\n\nMemory context from Zep:\n{memory_context}"
 
-        # Run the agent with the user input directly
-        result = await Runner.run(self.agent, user_input)
+        result = await Runner.run(self.agent, input_with_context)
 
         # Extract the agent's response
         agent_response = result.final_output

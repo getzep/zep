@@ -96,17 +96,7 @@ def validate_api_key(request: Request) -> bool:
     return False
 
 
-async def ensure_zep_user_exists(user_id: str) -> bool:
-    """Check the user UUID supplied by the caller."""
-    try:
-        await zep_client.user.get(user_id)
-        return True
-    except Exception:
-        return False
-
-
 async def add_message_and_get_context(
-    user_id: str,
     conversation_id: str,
     user_message: str
 ) -> Optional[str]:
@@ -119,10 +109,6 @@ async def add_message_and_get_context(
     Returns:
         The context block string, or None if unavailable.
     """
-    thread_exists = await ensure_zep_thread_exists(conversation_id, user_id)
-    if not thread_exists:
-        return None
-
     # Create the user message
     message = Message(role="user", content=user_message)
 
@@ -130,37 +116,15 @@ async def add_message_and_get_context(
         memory_response = await zep_client.thread.add_messages(
             thread_uuid=conversation_id,
             messages=[message],
+            return_context=True,
         )
-
-        if memory_response.task and memory_response.task.uuid_:
-            deadline = time.monotonic() + 180
-            while True:
-                task = await zep_client.task.get(memory_response.task.uuid_)
-                if task.status == "succeeded":
-                    break
-                if task.status in {"partial", "failed"}:
-                    raise RuntimeError(f"Message task ended with {task.status}: {task.error}")
-                if time.monotonic() >= deadline:
-                    raise TimeoutError("Timed out waiting for message processing")
-                await asyncio.sleep(2)
-        context = await zep_client.thread.get_context(conversation_id)
-        return context.context
+        return memory_response.context
 
     except Exception:
         return None
 
 
-async def ensure_zep_thread_exists(thread_id: str, user_id: str) -> bool:
-    """Check the thread UUID supplied by the caller."""
-    try:
-        await zep_client.thread.get(thread_uuid=thread_id)
-        return True
-    except Exception:
-        return False
-
-
 async def persist_message_to_zep(
-    user_id: str,
     conversation_id: str,
     role: str,
     content: str
@@ -172,10 +136,6 @@ async def persist_message_to_zep(
     automatic fact extraction and graph updates.
     """
     try:
-        thread_exists = await ensure_zep_thread_exists(conversation_id, user_id)
-        if not thread_exists:
-            return
-
         # Create message with the correct format for Zep thread API
         message = Message(role=role, content=content)
 
@@ -270,7 +230,7 @@ async def stream_openai_response(
         if user_id and conversation_id and full_response_content:
             full_text = "".join(full_response_content)
             asyncio.create_task(
-                persist_message_to_zep(user_id, conversation_id, "assistant", full_text)
+                persist_message_to_zep(conversation_id, "assistant", full_text)
             )
 
     except Exception as e:
@@ -325,21 +285,12 @@ async def chat_completions(request: Request):
         user_id = extra_body.get("user_id")
         conversation_id = extra_body.get("conversation_id")
 
-        # Also check if conversation_id exists elsewhere in the request
-        possible_keys = ["conversation_id", "session_id", "call_id", "id", "conv_id"]
-        for key in possible_keys:
-            if key in body and not conversation_id:
-                conversation_id = body[key]
-
         # Validate required fields
         if not user_id:
             raise HTTPException(status_code=400, detail="user_id is required in elevenlabs_extra_body")
 
         if not conversation_id:
             raise HTTPException(status_code=400, detail="conversation_id is required")
-
-        # Ensure user exists in Zep
-        await ensure_zep_user_exists(user_id)
 
         # Get original messages
         messages = body.get("messages", [])
@@ -351,10 +302,10 @@ async def chat_completions(request: Request):
                 user_message = msg.get("content", "")
                 break
 
-        # Add the user message, wait for processing, and retrieve its context.
+        # Add the user message and retrieve its context in the same request.
         if user_message:
             zep_context = await add_message_and_get_context(
-                user_id, conversation_id, user_message
+                conversation_id, user_message
             )
         else:
             # No user message - this shouldn't normally happen
@@ -385,6 +336,39 @@ async def health_check():
     return {"status": "healthy", "service": "elevenlabs-zep-proxy"}
 
 
+@app.post("/zep/users")
+async def create_zep_user(request: Request):
+    """Create a Zep user and return its UUID for the client to persist."""
+    try:
+        body = await request.json()
+        user = await zep_client.user.create(
+            first_name=body.get("first_name") or "ElevenLabs",
+            last_name=body.get("last_name") or "User",
+            email=body.get("email"),
+        )
+        return {"user_uuid": user.uuid_}
+    except Exception as e:
+        logger.error(f"Error creating Zep user: {e}")
+        raise HTTPException(status_code=500, detail="Could not create Zep user")
+
+
+@app.post("/zep/threads")
+async def create_zep_thread(request: Request):
+    """Create a Zep thread for a user and return its UUID."""
+    try:
+        body = await request.json()
+        user_uuid = body.get("user_uuid")
+        if not user_uuid:
+            raise HTTPException(status_code=400, detail="user_uuid is required")
+        thread = await zep_client.thread.create(user_uuid=user_uuid)
+        return {"thread_uuid": thread.uuid_}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating Zep thread: {e}")
+        raise HTTPException(status_code=500, detail="Could not create Zep thread")
+
+
 @app.post("/warm-user-cache")
 async def warm_user_cache(request: Request):
     """
@@ -409,9 +393,6 @@ async def warm_user_cache(request: Request):
 
         if not user_id:
             raise HTTPException(status_code=400, detail="user_id is required")
-
-        # Ensure user exists first
-        await ensure_zep_user_exists(user_id)
 
         # Warm the user's cache
         # Note: This may fail with 404 if the user has no graph data yet (new user)
@@ -449,6 +430,8 @@ async def root():
         "description": "Custom LLM proxy that injects Zep context into every request",
         "endpoints": {
             "POST /v1/chat/completions": "Main endpoint for ElevenLabs",
+            "POST /zep/users": "Create a Zep user and return its UUID",
+            "POST /zep/threads": "Create a Zep thread and return its UUID",
             "POST /warm-user-cache": "Pre-warm Zep cache for a user (call when user arrives on page)",
             "GET /health": "Health check",
         },

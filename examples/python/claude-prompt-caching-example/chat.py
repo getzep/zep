@@ -5,10 +5,10 @@ two prior conversations, so the agent starts with cross-session memory.
 
 Usage:
 
-    # Cache-preserving mode (default — context is a trailing user-data message)
+    # Cache-preserving mode (default — Opus 4.8 mid-conversation system messages)
     python chat.py
 
-    # Baseline (context is appended to the current user turn)
+    # Baseline (context block in the system prompt; only the prefix caches)
     python chat.py --context-mode system-prompt
 
     # Continue an existing thread
@@ -34,7 +34,6 @@ from anthropic import Anthropic
 from dotenv import load_dotenv
 from zep_cloud.client import Zep
 
-import scenario
 from agent import (
     MODE_SYSTEM_MESSAGE,
     MODES,
@@ -85,9 +84,8 @@ def main() -> None:
         choices=MODES,
         default=MODE_SYSTEM_MESSAGE,
         help=(
-            "Where the Zep context data is placed: 'system-prompt' appends it to the "
-            "current user turn; 'system-message' adds a trailing user-data message. "
-            "Both modes keep retrieved context out of the system prompt."
+            "Where the Zep context data is placed: 'system-prompt' puts it in the system prompt; "
+            "'system-message' adds it as a trailing mid-conversation system message."
         ),
     )
     parser.add_argument(
@@ -118,10 +116,9 @@ def main() -> None:
     print(f"User {BOLD}{user_id}{RESET} | thread {BOLD}{thread_id}{RESET} | context mode: {BOLD}{args.context_mode}{RESET}")
     print(f"{DIM}Commands: /context (show last retrieved memory), /stats (session totals), /quit{RESET}\n")
 
-    user_name = "Dana" if user_id == scenario.DEMO_USER_ID else "User"
     agent = ZepMemoryAgent(
         anthropic_client=anthropic_client,
-        memory=ZepMemory(zep, thread_id, user_name=user_name),
+        memory=ZepMemory(zep, thread_id, user_name="Dana"),
         mode=args.context_mode,
         max_tokens=args.max_tokens,
     )
