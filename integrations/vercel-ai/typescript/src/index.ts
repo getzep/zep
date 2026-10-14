@@ -8,7 +8,9 @@
  *
  * 1. **Middleware** — {@link createZepMiddleware} wraps a language model and
  *    **injects** the user's Context Block as a system message on each genuine
- *    new user turn. Pass `persist: true` for a guaranteed persistence loop
+ *    new user turn. Use it only for trusted, application-authored context.
+ *    Do not inject untrusted retrieved data into system or developer messages.
+ *    Pass `persist: true` for a guaranteed persistence loop
  *    (the middleware also persists the turn itself, once, via
  *    `wrapGenerate`/`wrapStream`); leave it unset for injection-only and pair
  *    with {@link createZepOnFinish} to persist instead. Use one or the other.
@@ -33,18 +35,21 @@
  * import {
  *   createZepMiddleware,
  *   createZepTools,
- *   ensureZepUserAndThread,
+ *   createZepUserAndThread,
  * } from "@getzep/zep-vercel-ai";
  *
  * const client = new ZepClient({ apiKey: process.env.ZEP_API_KEY! });
- * await ensureZepUserAndThread({ client, userId: "u1", threadId: "t1", firstName: "Jane" });
+ * const identity = await createZepUserAndThread({ client, firstName: "Jane" });
+ * if (!identity) throw new Error("Zep setup failed.");
  *
  * const model = wrapLanguageModel({
  *   model: openai("gpt-4o-mini"),
- *   middleware: createZepMiddleware({ client, threadId: "t1", persist: true }),
+ *   middleware: createZepMiddleware({ client, threadUuid: identity.threadUuid, persist: true }),
  * });
  *
- * const tools = createZepTools(client, { binding: { userId: "u1", threadId: "t1" } });
+ * const tools = createZepTools(client, {
+ *   binding: { graphUuid: identity.graphUuid, threadUuid: identity.threadUuid },
+ * });
  * const { text } = await generateText({
  *   model,
  *   tools,
@@ -63,9 +68,9 @@ export {
   getZepContext,
   persistZepTurn,
   createZepOnFinish,
-  ensureZepUserAndThread,
+  createZepUserAndThread,
 } from "./helpers.js";
-export type { EnsureIdentityOptions, ZepOnFinishOptions } from "./helpers.js";
+export type { CreateZepUserAndThreadOptions, ZepOnFinishOptions } from "./helpers.js";
 
 export {
   createZepTools,
@@ -78,6 +83,8 @@ export type {
   ZepToolsOptions,
   ZepSearchToolOptions,
   ZepSearchParamName,
+  ZepSearchScope,
+  ZepReranker,
   ZepRememberToolOptions,
   ZepContextToolOptions,
 } from "./tools.js";
@@ -101,4 +108,4 @@ export type {
 } from "./types.js";
 
 /** Package version. */
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";

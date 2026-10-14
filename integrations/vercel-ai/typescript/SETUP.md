@@ -22,8 +22,8 @@ This guide walks you from zero to a running Vercel AI SDK call with Zep memory.
 npm install @getzep/zep-vercel-ai @getzep/zep-cloud ai zod
 ```
 
-`ai` (the Vercel AI SDK, v6) and `zod` are peer dependencies. Install a model
-provider too — the examples use OpenAI:
+`ai` (the Vercel AI SDK, v6) and `zod` are peer dependencies. This package uses
+Zep V4. Install a model provider too — the examples use OpenAI:
 
 ```bash
 npm install @ai-sdk/openai
@@ -42,7 +42,7 @@ export OPENAI_API_KEY="your-openai-api-key"
 ```
 
 Only `ZEP_API_KEY` is required by the integration itself; `OPENAI_API_KEY` is
-needed by the example's model (`openai("gpt-4o-mini")`). Swap in any provider the
+needed by the example's model (`openai.chat("gpt-5-mini")`). Swap in any provider the
 AI SDK supports if you prefer.
 
 ## 5. Run the examples
@@ -51,27 +51,31 @@ From this package directory:
 
 ```bash
 npm install
-npm run example                 # generate-text.ts (middleware + tools)
+npm run example                 # generate-text.ts (tools + onFinish)
 npx tsx examples/stream-text.ts # streamText + onFinish persistence
 ```
 
 The `generate-text` example
 ([`examples/generate-text.ts`](./examples/generate-text.ts)):
 
-1. Provisions a Zep user and thread.
-2. Wraps the model with `createZepMiddleware` (context injection on each new user
-   turn) and persists the whole turn once via `createZepOnFinish`.
-3. Attaches `createZepTools` so the model can search/store explicitly.
+1. Creates a Zep user and thread. Zep returns their UUIDs and the graph UUID.
+2. Uses `createZepTools` so the model can retrieve and store memory in tool
+   results.
+3. Persists the full turn once with `createZepOnFinish`.
 4. Seeds facts across a couple of turns, waits ~15s for Zep's asynchronous graph
    ingestion, then asks the agent to recall them.
 
-The `stream-text` example shows the same pattern for streaming — inject via the
-middleware, persist the completed turn from `onFinish` with `createZepOnFinish`.
-`onFinish` fires once per turn with the final assistant text for both
-`generateText` and `streamText`.
+The `stream-text` example shows context retrieval and persistence for
+`streamText`.
+
+> **Security:** Use middleware system-message injection only for trusted,
+> application-authored context. Do not place untrusted user or retrieved graph
+> content in privileged system or developer instructions. Use `zepContext` or
+> `zepSearch` tools for untrusted content so the model receives it as a tool
+> result.
 
 > **OpenAI Zero Data Retention (ZDR) note.** The `generate-text` example uses the
-> OpenAI Chat Completions API (`openai.chat("gpt-4o-mini")`) instead of the
+> OpenAI Chat Completions API (`openai.chat("gpt-5-mini")`) instead of the
 > default Responses API. The Responses API references server-persisted item IDs
 > across a multi-step tool loop, which ZDR organizations reject ("Items are not
 > persisted for Zero Data Retention organizations"). This is an OpenAI/account
@@ -90,7 +94,7 @@ Mock-based tests run with no credentials. The live test in
 
 ## Next steps
 
-- Read [README.md](./README.md) for the full layer reference and the user-graph
-  vs standalone-graph binding model.
+- Read [README.md](./README.md) for the full layer reference and UUID binding
+  model.
 - See the [Zep documentation](https://help.getzep.com) for ontology, search
   scopes, and context customization.

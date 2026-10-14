@@ -71,14 +71,14 @@ function makeStreamResult(parts: LanguageModelV3StreamPart[]): LanguageModelV3St
 describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
   it("wrapGenerate/wrapStream are undefined when persist is unset", () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1" });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1" });
     expect(mw.wrapGenerate).toBeUndefined();
     expect(mw.wrapStream).toBeUndefined();
   });
 
   it("wrapGenerate persists user and assistant once on the final step", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
     expect(mw.wrapGenerate).toBeDefined();
 
     const params = makeParams("Where do I live?");
@@ -92,8 +92,8 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
     await flushMicrotasks();
 
     expect(zep.thread.addMessages).toHaveBeenCalledTimes(1);
-    const [threadId, req] = zep.thread.addMessages.mock.calls[0]!;
-    expect(threadId).toBe("t1");
+    const [threadUuid, req] = zep.thread.addMessages.mock.calls[0]!;
+    expect(threadUuid).toBe("t1");
     expect(req.messages).toEqual([
       { role: "user", content: "Where do I live?" },
       { role: "assistant", content: "You live in Portland." },
@@ -102,7 +102,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("wrapGenerate does not persist on tool-call continuation steps", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
 
     const params = makeParams("Look up my orders.");
     const generateResult = makeGenerateResult("", "tool-calls");
@@ -117,7 +117,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("wrapGenerate does not re-persist a user message already answered by assistant text", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
 
     // Continuation call: the prompt ends with an assistant TEXT message, so the
     // user message belongs to an earlier, already-persisted turn.
@@ -138,7 +138,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("wrapGenerate persists the user message exactly once on the final tool-loop step", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
 
     // Final step of a tool loop: the prompt ends with a tool result, and the
     // intermediate assistant message carries only tool calls (no text) — the
@@ -179,7 +179,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
     const zep = makeFakeZep();
     const mw = createZepMiddleware({
       client: asZep(zep),
-      threadId: "t1",
+      threadUuid: "t1",
       persist: { userName: "Jane", assistantName: "Assistant" },
     });
 
@@ -200,7 +200,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("wrapStream accumulates text-delta parts and persists on finish", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
     expect(mw.wrapStream).toBeDefined();
 
     const params = makeParams("Tell me a joke.");
@@ -239,7 +239,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("wrapStream does not re-persist a user message already answered by assistant text", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
 
     const params = makeParamsFromPrompt([
       { role: "user", content: [{ type: "text", text: "Tell me a story." }] },
@@ -270,7 +270,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("wrapStream does not persist when finishReason is tool-calls", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1", persist: true });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1", persist: true });
 
     const params = makeParams("Search my orders.");
     const streamParts: LanguageModelV3StreamPart[] = [
@@ -296,7 +296,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
 
   it("all stream parts pass through unmodified even when persist is unset", async () => {
     const zep = makeFakeZep();
-    const mw = createZepMiddleware({ client: asZep(zep), threadId: "t1" });
+    const mw = createZepMiddleware({ client: asZep(zep), threadUuid: "t1" });
     // wrapStream is undefined when persist is unset — nothing to test here for
     // pass-through beyond confirming the hook itself is absent.
     expect(mw.wrapStream).toBeUndefined();
@@ -308,7 +308,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
     const warn = vi.fn();
     const mw = createZepMiddleware({
       client: asZep(zep),
-      threadId: "t1",
+      threadUuid: "t1",
       persist: true,
       logger: { warn },
     });
@@ -331,7 +331,7 @@ describe("createZepMiddleware persist (wrapGenerate/wrapStream)", () => {
     const warn = vi.fn();
     const mw = createZepMiddleware({
       client: asZep(zep),
-      threadId: "t1",
+      threadUuid: "t1",
       persist: true,
       logger: { warn },
     });

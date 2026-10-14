@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0
+
+### Changed
+
+- Migrated the package to `@getzep/zep-cloud` V4. User, graph, and thread UUIDs
+  are now returned by server-side creation helpers; the integration no longer
+  accepts client-selected Zep resource IDs or performs runtime lookups.
+- Replaced V3 context, search, and graph-write calls with `thread.getContext`,
+  the five scoped graph search methods, `graph.getContext` for `auto`, and
+  `graph.episode.add`.
+- Updated the role mapper to omit unknown roles because V4 has no `norole` role.
+- Updated package documentation and examples for V4 and added the security
+  guidance for untrusted retrieved context.
+
 ## 0.2.0 (2026-07-07)
 
 ### Added

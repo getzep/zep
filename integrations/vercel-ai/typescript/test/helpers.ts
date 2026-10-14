@@ -8,15 +8,22 @@ import type { ZepClient } from "@getzep/zep-cloud";
 export interface FakeZep {
   thread: {
     addMessages: ReturnType<typeof vi.fn>;
-    getUserContext: ReturnType<typeof vi.fn>;
+    getContext: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
   };
   graph: {
-    add: ReturnType<typeof vi.fn>;
-    search: ReturnType<typeof vi.fn>;
+    getContext: ReturnType<typeof vi.fn>;
+    searchEdges: ReturnType<typeof vi.fn>;
+    searchNodes: ReturnType<typeof vi.fn>;
+    searchEpisodes: ReturnType<typeof vi.fn>;
+    searchObservations: ReturnType<typeof vi.fn>;
+    searchThreadSummaries: ReturnType<typeof vi.fn>;
+    episode: {
+      add: ReturnType<typeof vi.fn>;
+    };
   };
   user: {
-    add: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -25,15 +32,20 @@ export function makeFakeZep(): FakeZep {
   return {
     thread: {
       addMessages: vi.fn().mockResolvedValue({ context: "ctx" }),
-      getUserContext: vi.fn().mockResolvedValue({ context: "USER CONTEXT BLOCK" }),
-      create: vi.fn().mockResolvedValue({ uuid: "t1" }),
+      getContext: vi.fn().mockResolvedValue({ context: "USER CONTEXT BLOCK" }),
+      create: vi.fn().mockResolvedValue({ uuid: "thread-uuid" }),
     },
     graph: {
-      add: vi.fn().mockResolvedValue({ uuid: "ep1" }),
-      search: vi.fn().mockResolvedValue({ edges: [], nodes: [], episodes: [] }),
+      getContext: vi.fn().mockResolvedValue({ context: "GRAPH CONTEXT BLOCK" }),
+      searchEdges: vi.fn().mockResolvedValue({ data: [] }),
+      searchNodes: vi.fn().mockResolvedValue({ data: [] }),
+      searchEpisodes: vi.fn().mockResolvedValue({ data: [] }),
+      searchObservations: vi.fn().mockResolvedValue({ data: [] }),
+      searchThreadSummaries: vi.fn().mockResolvedValue({ data: [] }),
+      episode: { add: vi.fn().mockResolvedValue({ uuid: "episode-uuid" }) },
     },
     user: {
-      add: vi.fn().mockResolvedValue({ userId: "u" }),
+      create: vi.fn().mockResolvedValue({ uuid: "user-uuid", graphUuid: "graph-uuid" }),
     },
   };
 }

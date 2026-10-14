@@ -2,18 +2,11 @@
  * Vercel AI SDK + Zep long-term memory — `generateText` example.
  *
  * Demonstrates the full loop:
- *   1. Provision a Zep user + thread (`ensureZepUserAndThread`).
- *   2. Wrap the model with `createZepMiddleware` so the user's Context Block is
- *      injected as a system message on each new user turn. This example wires
- *      persistence explicitly via `createZepOnFinish` (below); pass
- *      `persist: true` to `createZepMiddleware` instead if you'd rather the
- *      middleware guarantee persistence for you — don't do both on the same
- *      call.
- *   3. Persist the whole turn once per turn via `createZepOnFinish` on the
- *      `generateText` call's `onFinish` (fires once with the final assistant
- *      text, even across a multi-step tool loop).
- *   4. Attach `createZepTools` so the model can also search/store on demand.
- *   5. Seed a couple of facts across turns, wait for asynchronous ingestion,
+ *   1. Create a Zep user and thread and keep their server-generated UUIDs.
+ *   2. Attach `createZepTools` so the model can search and store memory as
+ *      tool results.
+ *   3. Persist each completed turn once with `createZepOnFinish`.
+ *   4. Seed a couple of facts across turns, wait for asynchronous ingestion,
  *      then ask the agent to recall them.
  *
  * Prerequisites:
@@ -25,15 +18,13 @@
  *   npm run example
  */
 
-import { randomUUID } from "node:crypto";
 import { ZepClient } from "@getzep/zep-cloud";
 import { openai } from "@ai-sdk/openai";
-import { generateText, stepCountIs, wrapLanguageModel } from "ai";
+import { generateText, stepCountIs } from "ai";
 import {
-  createZepMiddleware,
   createZepOnFinish,
   createZepTools,
-  ensureZepUserAndThread,
+  createZepUserAndThread,
 } from "../src/index.js";
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
@@ -42,62 +33,51 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 if (!ZEP_API_KEY) throw new Error("ZEP_API_KEY is not set.");
 if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set.");
 
-const userId = `zep-vercel-example-${randomUUID().slice(0, 8)}`;
-const threadId = `thread-${randomUUID().slice(0, 8)}`;
-
 const SYSTEM =
-  "You are a helpful assistant with long-term memory powered by Zep. " +
-  "Relevant user context is injected for you automatically. Use the " +
+  "You are a helpful assistant with long-term memory powered by Zep. Use the " +
   "zepRemember tool to store new facts the user shares, and zepSearch to " +
   "look up specific details. Personalize your replies.";
 
 async function main(): Promise<void> {
   const client = new ZepClient({ apiKey: ZEP_API_KEY });
-
-  console.log("=".repeat(60));
-  console.log("Vercel AI SDK + Zep Memory Example (generateText)");
-  console.log(`  User ID:   ${userId}`);
-  console.log(`  Thread ID: ${threadId}`);
-  console.log("=".repeat(60));
-
-  // 1. Provision identity before the first turn.
-  await ensureZepUserAndThread({
+  const identity = await createZepUserAndThread({
     client,
-    userId,
-    threadId,
     firstName: "Alice",
     lastName: "Smith",
     email: "alice@example.com",
   });
+  if (!identity) throw new Error("Could not create Zep user and thread.");
+  const threadUuid = identity.threadUuid;
 
-  // 2. Wrap the model: inject the Context Block on each new user turn. `persist`
-  //    is left unset here — persistence happens explicitly via onFinish below
-  //    (pass `persist: true` instead to have the middleware do it for you).
-  //    We use the Chat Completions API (`openai.chat`) rather than the default
-  //    Responses API so the multi-step tool loop also works on OpenAI Zero Data
-  //    Retention (ZDR) organizations, which don't persist Responses item IDs.
-  const model = wrapLanguageModel({
-    model: openai.chat("gpt-5-mini"),
-    middleware: createZepMiddleware({ client, threadId }),
-  });
+  console.log("=".repeat(60));
+  console.log("Vercel AI SDK + Zep Memory Example (generateText)");
+  console.log(`  User UUID:   ${identity.userUuid}`);
+  console.log(`  Graph UUID:  ${identity.graphUuid}`);
+  console.log(`  Thread UUID: ${identity.threadUuid}`);
+  console.log("=".repeat(60));
 
-  // 3. Tools the model can call to search/store memory explicitly.
+  // Retrieved graph content stays in tool results, not system instructions.
+  const model = openai.chat("gpt-5-mini");
   const tools = createZepTools(client, {
-    binding: { userId, threadId },
+    binding: { graphUuid: identity.graphUuid, threadUuid: identity.threadUuid },
     defaultMessageName: "Alice",
   });
 
   async function ask(prompt: string): Promise<void> {
     console.log(`\nUser:  ${prompt}`);
-    // Persist the whole turn once via onFinish — fires a single time per turn
-    // with the final assistant text, even when the tool loop runs many steps.
+    // Persist the whole turn once after the tool loop completes.
     const { text } = await generateText({
       model,
       system: SYSTEM,
       tools,
       stopWhen: stepCountIs(5),
       prompt,
-      onFinish: createZepOnFinish({ client, threadId, user: prompt, userName: "Alice" }),
+      onFinish: createZepOnFinish({
+        client,
+        threadUuid,
+        user: prompt,
+        userName: "Alice",
+      }),
     });
     console.log(`Agent: ${text}`);
   }
@@ -112,7 +92,7 @@ async function main(): Promise<void> {
   console.log(`\n--- Waiting ${waitSeconds}s for Zep graph processing ---`);
   await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
 
-  // 4c. Recall (context is injected by the middleware; the model may also search).
+  // 4c. Recall with the memory tools.
   console.log("\n--- Phase 2: Recall ---");
   await ask("What do you remember about where I live and what I do?");
 

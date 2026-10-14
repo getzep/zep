@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { ZepClient } from "@getzep/zep-cloud";
-import { randomUUID } from "node:crypto";
 import {
-  ensureZepUserAndThread,
+  createZepUserAndThread,
   getZepContext,
   persistZepTurn,
+  createZepSearchTool,
   createZepTools,
 } from "../src/index.js";
 import { run } from "./helpers.js";
@@ -17,33 +17,51 @@ const apiKey = process.env.ZEP_API_KEY;
 const describeLive = apiKey ? describe : describe.skip;
 
 describeLive("live Zep integration", () => {
-  it("provisions identity, persists, and retrieves without throwing", async () => {
+  it("creates UUID resources, persists a turn, retrieves context, and searches every scope", async () => {
     const client = new ZepClient({ apiKey });
-    const userId = `zep-vercel-test-${randomUUID()}`;
-    const threadId = `thread-${randomUUID()}`;
-
-    const ready = await ensureZepUserAndThread({
+    const identity = await createZepUserAndThread({
       client,
-      userId,
-      threadId,
       firstName: "Test",
       lastName: "User",
     });
-    expect(ready).toBe(true);
+    expect(identity).not.toBeNull();
+    if (!identity) return;
 
-    const ctx = await persistZepTurn(
-      client,
-      threadId,
-      { user: "My favorite color is teal.", userName: "Test User" },
-      { returnContext: true },
-    );
-    expect(ctx === null || typeof ctx === "string").toBe(true);
+    try {
+      const ctx = await persistZepTurn(
+        client,
+        identity.threadUuid,
+        {
+          user: "My favorite color is teal.",
+          assistant: "I will remember that your favorite color is teal.",
+          userName: "Test User",
+        },
+        { returnContext: true },
+      );
+      expect(ctx === null || typeof ctx === "string").toBe(true);
+      expect(typeof await getZepContext(client, identity.threadUuid)).toBe("string");
 
-    const context = await getZepContext(client, threadId);
-    expect(typeof context).toBe("string");
+      const binding = { graphUuid: identity.graphUuid, threadUuid: identity.threadUuid };
+      const tools = createZepTools(client, { binding });
+      expect(Array.isArray((await run(tools.zepSearch, { query: "favorite color" })).facts)).toBe(
+        true,
+      );
 
-    const { zepSearch } = createZepTools(client, { binding: { userId, threadId } });
-    const result = await run(zepSearch, { query: "favorite color" });
-    expect(Array.isArray(result.facts)).toBe(true);
-  }, 30_000);
+      for (const scope of [
+        "edges",
+        "nodes",
+        "episodes",
+        "observations",
+        "thread_summaries",
+        "auto",
+      ] as const) {
+        const search = createZepSearchTool({ client, binding, scope });
+        const result = await run(search, { query: "favorite color" });
+        expect(Array.isArray(result.facts)).toBe(true);
+      }
+    } finally {
+      await client.thread.delete(identity.threadUuid).catch(() => undefined);
+      await client.user.delete(identity.userUuid).catch(() => undefined);
+    }
+  }, 90_000);
 });
