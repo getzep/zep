@@ -9,8 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **Migrating from V3?** Follow the [V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general procedure (the nullable UUID columns, the one-time `lookup` backfill, and the order of steps). The bullets below list only the changes that are specific to this package.
 - **The package now targets the Zep v4 SDK (`zep-cloud>=4.0.0,<5`).** Zep v4 addresses every user, thread, and graph by a server-generated UUID. A `user_id`, a `thread_id`, and a `graph_id` are names, not addresses.
-- **`ZepUserAgent` takes `user_uuid` and `thread_uuid`** in place of `user_id` and `thread_id`. The agent does not resolve a name at run time. Create the resources out of band, store the UUIDs, and give the stored UUIDs to the agent.
+- **`ZepUserAgent` takes `user_uuid` and `thread_uuid`** in place of `user_id` and `thread_id`. The agent does not resolve a name at run time. For new resources, create them out of band, store the UUIDs, and give the stored UUIDs to the agent.
 - **`ZepGraphAgent` takes `graph_uuid`** in place of `graph_id`. The `facts_limit`, `entity_limit`, `episode_limit`, and `reranker` parameters are removed. `ZepGraphAgent` now calls `graph.get_context`, which assembles the context block on the server, and the new `max_characters` parameter limits the size of that block.
 - **`ContextInput` exposes `user_uuid` and `thread_uuid`, and `GraphContextInput` exposes `graph_uuid`.** A custom context builder must read the new field names.
 - **`create_graph_search_tool` takes a required `graph_uuid`** in place of `graph_id` or `user_id`. To search the personal graph of a user, read `graph_uuid` from the user object.
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ensure_user` and `ensure_thread` are replaced by `create_user` and `create_thread`.** The new helpers create the resource and return the response object. Read `uuid_` from the response. The helpers raise on failure.
 - **`create_user` and `create_thread` take no client-chosen name.** The v4 create endpoints reject `user_id`, `thread_id`, `graph_id`, and `target_graph_id`, so the helpers no longer expose them.
 - **Lazy resource creation on `ZepUserAgent` is removed.** The `first_name`, `last_name`, `email`, and `on_created` constructor parameters are removed, because the agent cannot create a resource that the application must address by UUID. Use `create_user` and `create_thread` during onboarding.
+- **Warning:** For an existing V3 user, thread, or graph, do not call `create_user`, `create_thread`, or `graph.create`. Get its UUID one time with the backfill in the migration guide, and store it.
 
 ### Changed
 - The integration calls the v4 SDK methods: `user.create`, `thread.create(user_uuid=...)`, `thread.add_messages(thread_uuid, ...)`, `thread.get_context`, `graph.episode.add`, `graph.get_context`, and the dedicated search methods `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, and `graph.search_thread_summaries`. Each search method returns a pager. Read `.items`, or iterate the pager.
