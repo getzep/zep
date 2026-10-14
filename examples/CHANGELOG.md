@@ -8,9 +8,9 @@ All notable changes to the Zep examples are in this file.
 
 - The examples that show only the memory-layer pattern are in
   `examples/archive/` and are not maintained: Python `chat_history`,
-  `simple.py`, `autogen-agent`, `agent-memory-full-example`,
-  `elevenlabs-zep-example`, and `claude-prompt-caching-example`, and
-  TypeScript `memory` and `langgraph`. For new code, use the tool-based
+  `simple.py`, `agent-memory-full-example`, and
+  `claude-prompt-caching-example`, and TypeScript `memory`. For new code,
+  use the tool-based
   reference agents in `examples/python/agent-with-zep` and
   `examples/python/agent-with-zep-adk`.
 

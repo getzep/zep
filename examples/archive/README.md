@@ -18,10 +18,7 @@ reference agents:
 | Archived example | Earlier location |
 | --- | --- |
 | [`python/agent-memory-full-example`](./python/agent-memory-full-example) | `examples/python/agent-memory-full-example` |
-| [`python/autogen-agent`](./python/autogen-agent) | `examples/python/autogen-agent` |
 | [`python/chat_history`](./python/chat_history) | `examples/python/chat_history` |
 | [`python/claude-prompt-caching-example`](./python/claude-prompt-caching-example) | `examples/python/claude-prompt-caching-example` |
-| [`python/elevenlabs-zep-example`](./python/elevenlabs-zep-example) | `examples/python/elevenlabs-zep-example` |
 | [`python/simple`](./python/simple) | `examples/python/simple.py` |
-| [`typescript/langgraph`](./typescript/langgraph) | `examples/typescript/langgraph` |
 | [`typescript/memory`](./typescript/memory) | `examples/typescript/memory` |

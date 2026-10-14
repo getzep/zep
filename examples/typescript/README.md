@@ -1,6 +1,6 @@
 # Zep TypeScript examples (graph, users)
 
-Loose snippets that exercise the published [`@getzep/zep-cloud`](https://www.npmjs.com/package/@getzep/zep-cloud) v4 API. Packaged apps under this tree (`eve`, `chunking-example`, `zep-graph-visualization`) keep their own dependencies and are not part of this package.
+Loose snippets that exercise the published [`@getzep/zep-cloud`](https://www.npmjs.com/package/@getzep/zep-cloud) v4 API. Packaged apps under this tree (`eve`, `langgraph`, `chunking-example`, `zep-graph-visualization`) keep their own dependencies and are not part of this package.
 
 ## Setup
 
@@ -22,6 +22,6 @@ export ZEP_API_KEY=your_key   # required for live runs
 
 ## Notes
 
-- The `memory` and `langgraph` examples show the older memory-layer pattern. They are in [`../archive/typescript`](../archive/typescript) and are not maintained.
+- The `memory` example shows the older memory-layer pattern. It is in [`../archive/typescript/memory`](../archive/typescript/memory) and is not maintained.
 - Imports use only public package exports (`ZepClient`, `Zep.*` types/errors, ontology helpers such as `entityFields`).
 - `example:graph:entity-types` calls `project.setOntology`, which replaces the **project-level** ontology — use a disposable project key.
