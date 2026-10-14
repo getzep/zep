@@ -87,6 +87,9 @@ _SCOPE_RERANKERS: dict[str, tuple[str, ...]] = {
     "auto": (),
 }
 
+#: The reranker sent when the model gives none and the scope is not ``auto``.
+DEFAULT_RERANKER = "rrf"
+
 #: The ``mmr_lambda`` sent when the reranker is ``mmr`` and no value is set.
 #: Zep requires ``mmr_lambda`` for ``mmr``.
 DEFAULT_MMR_LAMBDA = 0.5
@@ -101,8 +104,9 @@ _SCOPE_METHODS: dict[str, str] = {
     "thread_summaries": "search_thread_summaries",
 }
 
-#: Parameters ``graph.get_context`` does not accept. They are dropped when the
-#: effective scope is ``auto``.
+#: Parameters ``graph.get_context`` does not accept. They are not shown for a
+#: pinned ``auto`` scope. A reranker for ``auto`` gives the model an error; the
+#: other parameters are dropped.
 _AUTO_UNSUPPORTED_PARAMS = ("reranker", "limit", "mmr_lambda", "center_node_uuid")
 
 #: Default tool name surfaced to the model.
@@ -239,10 +243,12 @@ def _reranker_description(rerankers: Sequence[str], *, scope_exposed: bool) -> s
         text += (
             " Each scope accepts only these rerankers: "
             + "; ".join(limits)
-            + ". Scope 'auto' uses no reranker."
+            + ". Scope 'auto' takes no reranker: leave the reranker out for 'auto'."
         )
     if "mmr" in rerankers:
         text += " 'mmr' uses mmr_lambda."
+    if "rrf" in rerankers:
+        text += f" Defaults to '{DEFAULT_RERANKER}'."
     return text
 
 
@@ -287,18 +293,13 @@ def _build_args_schema(
         default = spec["default"]
         description = spec["description"]
         if param_name == "scope" and pinned_reranker is not None:
-            scopes = [
-                name
-                for name in _ALL_SCOPES
-                if name == "auto" or pinned_reranker in _SCOPE_RERANKERS[name]
-            ]
+            scopes = [name for name in _ALL_SCOPES if pinned_reranker in _SCOPE_RERANKERS[name]]
             annotation = _literal(scopes)
             if default not in scopes:
                 default = scopes[0]
         elif param_name == "reranker":
             annotation = _literal(rerankers)
-            if default not in rerankers:
-                default = rerankers[0]
+            default = None
             description = _reranker_description(
                 rerankers, scope_exposed="scope" not in pinned and "scope" not in hidden
             )
@@ -491,8 +492,9 @@ def _build_search_kwargs(
     A model-provided ``limit`` is clamped to ``[1, MAX_SEARCH_LIMIT]`` and is
     sent to the v4 search method as ``page_size``. When
     the effective scope is ``auto``, the call goes to ``graph.get_context``,
-    which takes neither a reranker nor a limit, so those parameters are
-    dropped and the call never 400s on model-chosen parameters.
+    which takes neither a reranker nor a limit. The other unsupported
+    parameters are dropped, but a reranker is kept so that
+    ``_reranker_error`` can reject it.
 
     The returned mapping holds ``scope`` together with the keyword arguments
     of the search call. The caller removes ``scope`` and uses it to select the
@@ -524,23 +526,16 @@ def _build_search_kwargs(
         # graph.get_context serves auto scope. It always uses RRF internally
         # and accepts neither a reranker nor a result limit.
         for param_name in _AUTO_UNSUPPORTED_PARAMS:
-            search_kwargs.pop(param_name, None)
+            if param_name != "reranker":
+                search_kwargs.pop(param_name, None)
         search_kwargs.pop("bfs_origin_node_uuids", None)
         if "filters" in constructor_only:
             search_kwargs["filters"] = constructor_only["filters"]
         return search_kwargs
 
-    scope = str(search_kwargs.get("scope", "edges"))
-    reranker = search_kwargs.get("reranker")
-    if reranker is not None and reranker not in _SCOPE_RERANKERS.get(scope, _ALL_RERANKERS):
-        logger.warning(
-            "Graph-search reranker %r is invalid for scope=%r; omitting reranker.",
-            reranker,
-            scope,
-        )
-        search_kwargs.pop("reranker")
-        reranker = None
-    if reranker == "mmr" and search_kwargs.get("mmr_lambda") is None:
+    if "reranker" not in search_kwargs and "reranker" not in hidden:
+        search_kwargs["reranker"] = DEFAULT_RERANKER
+    if search_kwargs.get("reranker") == "mmr" and search_kwargs.get("mmr_lambda") is None:
         search_kwargs["mmr_lambda"] = DEFAULT_MMR_LAMBDA
     if "limit" in search_kwargs:
         search_kwargs["page_size"] = search_kwargs.pop("limit")
@@ -559,16 +554,40 @@ def _validation_error_message(exc: ValidationError) -> str:
 def _reranker_error(search_kwargs: dict[str, Any]) -> str | None:
     """Return an error message for the model if the reranker cannot run.
 
-    ``node_distance`` without ``center_node_uuid`` and ``episode_mentions``
-    without ``episode_uuids`` in the filters fail with HTTP 400. The message
-    names the setting and the rerankers to use in its place, so the model can
-    try again.
+    A reranker for scope ``auto``, a reranker that the scope does not accept,
+    ``node_distance`` without
+    ``center_node_uuid``, and ``episode_mentions`` without ``episode_uuids`` in
+    the filters fail with HTTP 400. The tool does not call Zep for them. The
+    message names the setting and the rerankers to use in its place, so the
+    model can try again.
     """
     reranker = search_kwargs.get("reranker")
     scope = str(search_kwargs.get("scope", "edges"))
-    alternatives = ", ".join(
-        repr(r) for r in _SCOPE_RERANKERS.get(scope, ()) if r in ("rrf", "mmr", "cross_encoder")
-    )
+    if reranker is None:
+        return None
+    if scope == "auto":
+        scopes = ", ".join(
+            repr(name) for name, accepted in _SCOPE_RERANKERS.items() if reranker in accepted
+        )
+        return (
+            f"Error: reranker {reranker!r} is not valid for scope 'auto'. Scope 'auto' "
+            "takes no reranker. Search again with no reranker, or use a scope that "
+            f"accepts reranker {reranker!r}: {scopes}."
+        )
+    scope_rerankers = _SCOPE_RERANKERS.get(scope, _ALL_RERANKERS)
+    usable = [
+        r
+        for r in scope_rerankers
+        if (r != "node_distance" or search_kwargs.get("center_node_uuid"))
+        and (r != "episode_mentions" or _filters_have_episode_uuids(search_kwargs.get("filters")))
+    ]
+    if reranker not in scope_rerankers:
+        return (
+            f"Error: reranker {reranker!r} is not valid for scope {scope!r}. "
+            f"Use one of these rerankers for scope {scope!r}: "
+            f"{', '.join(repr(r) for r in usable)}. Search again with a valid reranker."
+        )
+    alternatives = ", ".join(repr(r) for r in usable if r in ("rrf", "mmr", "cross_encoder"))
     if reranker == "node_distance" and not search_kwargs.get("center_node_uuid"):
         return (
             "Error: reranker 'node_distance' requires center_node_uuid. Give "
@@ -616,7 +635,9 @@ def create_graph_search_tool(
     selected scope accepts. ``node_distance`` is shown only when
     ``center_node_uuid`` is pinned, and ``episode_mentions`` only when
     ``search_filters`` sets ``episode_uuids``. If the model sends a reranker
-    that its scope does not accept, the tool omits the reranker. If the
+    that its scope does not accept, the tool does not call Zep. It returns an
+    error message that names the invalid pair and the valid rerankers for the
+    scope, so the model can search again. If the
     reranker is ``mmr`` and no ``mmr_lambda`` is set, the tool sends
     ``DEFAULT_MMR_LAMBDA``.
 

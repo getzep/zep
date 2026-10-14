@@ -383,14 +383,44 @@ class TestAutoScopeParameters:
         client.graph.get_context.return_value = _context("ctx")
         tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
 
-        await tool.ainvoke({"query": "x", "scope": "auto", "reranker": "mmr", "limit": 5})
+        await tool.ainvoke({"query": "x", "scope": "auto", "limit": 5, "mmr_lambda": 0.3})
 
         kwargs = client.graph.get_context.call_args.kwargs
-        # graph.get_context accepts neither a reranker nor a limit.
         assert "reranker" not in kwargs
         assert "limit" not in kwargs
+        assert "page_size" not in kwargs
         assert "mmr_lambda" not in kwargs
         assert kwargs["query"] == "x"
+
+    @pytest.mark.asyncio
+    async def test_model_provided_auto_scope_with_reranker_returns_error(self) -> None:
+        client = _make_async_client()
+        tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
+
+        out = await tool.ainvoke({"query": "x", "scope": "auto", "reranker": "mmr", "limit": 5})
+
+        client.graph.get_context.assert_not_called()
+        assert out == (
+            "Error: reranker 'mmr' is not valid for scope 'auto'. Scope 'auto' takes no "
+            "reranker. Search again with no reranker, or use a scope that accepts "
+            "reranker 'mmr': 'edges', 'nodes', 'episodes', 'observations', 'thread_summaries'."
+        )
+
+    def test_sync_auto_scope_with_reranker_returns_error(self) -> None:
+        client = _make_sync_client()
+        tool = create_graph_search_tool_sync(client, graph_uuid=GRAPH_UUID)
+
+        out = tool.invoke({"query": "x", "scope": "auto", "reranker": "rrf"})
+
+        client.graph.get_context.assert_not_called()
+        assert "reranker 'rrf' is not valid for scope 'auto'" in out
+
+    def test_pinned_reranker_removes_auto_from_scope_schema(self) -> None:
+        tool = create_graph_search_tool(
+            _make_async_client(), graph_uuid=GRAPH_UUID, pinned_params={"reranker": "mmr"}
+        )
+        scope_schema = tool.args_schema.model_json_schema()["properties"]["scope"]
+        assert "auto" not in scope_schema["enum"]
 
     @pytest.mark.asyncio
     async def test_auto_scope_keeps_filters(self) -> None:
@@ -466,7 +496,7 @@ class TestRerankerValidation:
             _make_async_client(), graph_uuid=GRAPH_UUID, pinned_params={"reranker": "node_distance"}
         )
         schema = tool.args_schema.model_json_schema()
-        assert schema["properties"]["scope"]["enum"] == ["edges", "nodes", "auto"]
+        assert schema["properties"]["scope"]["enum"] == ["edges", "nodes"]
         assert schema["required"] == ["query", "center_node_uuid"]
 
     @pytest.mark.parametrize(
@@ -611,11 +641,10 @@ class TestAsyncToolExecution:
             ("thread_summaries", "search_thread_summaries", "node_distance"),
         ],
     )
-    async def test_reranker_unsupported_by_scope_is_omitted(
+    async def test_reranker_unsupported_by_scope_returns_error(
         self, scope: str, method: str, reranker: str
     ) -> None:
         client = _make_async_client()
-        getattr(client.graph, method).return_value = _page([])
         tool = create_graph_search_tool(
             client,
             graph_uuid=GRAPH_UUID,
@@ -623,10 +652,35 @@ class TestAsyncToolExecution:
             pinned_params={"center_node_uuid": "n1"},
         )
 
-        await tool.ainvoke({"query": "x", "scope": scope, "reranker": reranker})
+        out = await tool.ainvoke({"query": "x", "scope": scope, "reranker": reranker})
 
-        call = getattr(client.graph, method).call_args.kwargs
-        assert "reranker" not in call
+        getattr(client.graph, method).assert_not_called()
+        assert f"reranker {reranker!r} is not valid for scope {scope!r}" in out
+        assert "'rrf'" in out and "'mmr'" in out
+
+    @pytest.mark.asyncio
+    async def test_unsupported_reranker_error_lists_valid_rerankers(self) -> None:
+        client = _make_async_client()
+        tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
+
+        out = await tool.ainvoke({"query": "x", "scope": "episodes", "reranker": "cross_encoder"})
+
+        client.graph.search_episodes.assert_not_called()
+        assert out == (
+            "Error: reranker 'cross_encoder' is not valid for scope 'episodes'. "
+            "Use one of these rerankers for scope 'episodes': 'rrf', 'mmr'. "
+            "Search again with a valid reranker."
+        )
+
+    def test_sync_reranker_unsupported_by_scope_returns_error(self) -> None:
+        client = _make_sync_client()
+        tool = create_graph_search_tool_sync(client, graph_uuid=GRAPH_UUID)
+
+        out = tool.invoke({"query": "x", "scope": "episodes", "reranker": "cross_encoder"})
+
+        client.graph.search_episodes.assert_not_called()
+        assert "reranker 'cross_encoder' is not valid for scope 'episodes'" in out
+        assert "'rrf', 'mmr'." in out
 
     @pytest.mark.asyncio
     async def test_reranker_supported_by_scope_is_kept(self) -> None:

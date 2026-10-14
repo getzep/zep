@@ -293,8 +293,12 @@ and `mmr`; `observations` and `thread_summaries` accept `rrf`, `mmr`, and
 (on `edges` only) is shown only when `search_filters` sets `episode_uuids`.
 When the reranker is `mmr` and no `mmr_lambda` is set, the tool sends
 `DEFAULT_MMR_LAMBDA` (0.5). If the model sends a reranker that its scope does
-not accept, the tool omits the reranker. If the model sends a value outside the
-schema, the tool returns an error message that names the setting and the valid
+not accept, the tool does not call Zep. It returns an error message that names
+the invalid pair and the valid rerankers for the scope, so the model can search
+again. The same rule applies to a reranker with scope `auto`. When the model
+gives no reranker, the tool sends `rrf` for every scope except `auto`. When a
+reranker is pinned, the `scope` field does not show `auto`. If the model sends
+a value outside the schema, the tool returns an error message that names the setting and the valid
 values, so the model can search again. A pinned scope and reranker pair that
 Zep rejects raises `ValueError` at construction.
 
