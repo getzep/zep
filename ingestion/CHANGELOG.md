@@ -11,22 +11,24 @@ All notable changes to `zep-ingest` are documented here. The project follows
   v5.** The dependency moved from `zep-cloud>=3.27.0` to
   `zep-cloud>=4.0.0,<5` (the stable release). The package gives no v3
   compatibility path.
-- **Every destination is a UUID.** v4 addresses a graph, a user, and a thread
-  by a server-generated UUID, so every public parameter takes a UUID. Episode
-  ingestion takes `graph_uuid=` in place of `graph_id=`/`user_id=`, and
-  `ThreadMessage` takes `thread_uuid` in place of `thread_id`. The application
-  creates the graph, the user, and the thread one time, stores each returned
-  UUID, and passes the UUID here. The package does no identifier lookup at run
-  time and creates no user or thread.
-- **Create calls carry no client-chosen identifier.** v4 rejects `user_id`,
-  `thread_id`, `graph_id`, and `target_graph_id` on the create endpoints with
-  `400 invalid_request`. The package passes none of them: create the resource
-  with no name and store the UUID the response returns.
-- **Removed parameters.** `NodeItem` no longer accepts `uuid` or
-  `created_at`, and `FactTriple` no longer accepts `fact_uuid` or
-  `created_at`; Zep assigns each node and fact identity, and the v4 node and
-  edge models take no developer-supplied reference time. Public function
-  names and every other parameter are unchanged.
+- **Migrating from v3:** follow the
+  [V4 migration guide](https://help.getzep.com/migrating-from-v3) for the
+  general procedure (the nullable UUID columns, the one-time `lookup`
+  backfill, and the order of steps). The API changes that are specific to
+  this package:
+  - Every ingest one-liner and `Pipeline.run` takes `graph_uuid=` in
+    place of `graph_id=`/`user_id=`.
+  - `ThreadMessage` takes `thread_uuid` in place of `thread_id`.
+  - `NodeItem` no longer accepts `uuid` or `created_at`, and `FactTriple`
+    no longer accepts `fact_uuid` or `created_at`; Zep assigns each node
+    and fact identity.
+  - `IngestResult.node_uuids` and `IngestResult.edge_uuids` return the
+    UUIDs that Zep assigned; store them in the application's own records.
+    Every other public function name and parameter is unchanged.
+  - For an existing V3 user, thread, or graph, do not call
+    `client.user.create`, `client.thread.create`, or `client.graph.create`.
+    Get its UUID one time with the backfill in the migration guide, and
+    store it.
 
 ### Changed
 
