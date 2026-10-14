@@ -53,15 +53,23 @@ async def main() -> None:
     ))
     task_uuid = results[-1].task.uuid_ if results[-1].task else None
     if task_uuid:
-        deadline = time.monotonic() + 180
+        deadline = time.monotonic() + 1200
+        next_status_report = time.monotonic() + 30
         while True:
             task = await client.task.get(task_uuid)
             if task.status == "succeeded":
                 break
-            if task.status in {"partial", "failed"}:
-                raise RuntimeError(f"Episode task ended with {task.status}: {task.error}")
-            if time.monotonic() >= deadline:
+            if task.status == "partial":
+                print(f"Warning: task {task_uuid} ended with partial status: {task.error}")
+                break
+            if task.status == "failed":
+                raise RuntimeError(f"Episode task ended with failed status: {task.error}")
+            now = time.monotonic()
+            if now >= deadline:
                 raise TimeoutError(f"Timed out waiting for task {task_uuid}")
+            if now >= next_status_report:
+                print(f"Task {task_uuid} status={task.status}; still waiting.")
+                next_status_report = now + 30
             await asyncio.sleep(2)
 
     print(f"Getting episodes from graph {graph_uuid}...")

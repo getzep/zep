@@ -202,14 +202,14 @@ def ingest_to_zep(zep_client: Zep, user_uuid: str, contextualized_chunk: str):
 
 # Terminal task statuses that mean ingestion will never finish, so polling
 # should stop rather than run to the timeout.
-TASK_FAILURE_STATUSES = {"failed", "error", "canceled", "cancelled", "partial"}
+TASK_FAILURE_STATUSES = {"failed", "error", "canceled", "cancelled"}
 
 
 def wait_for_task(
     zep_client: Zep,
     task_uuid: str,
     *,
-    timeout_seconds: float = 180.0,
+    timeout_seconds: float = 1200.0,
     poll_interval_seconds: float = 2.0,
 ):
     """Poll Zep until the task succeeds, fails, or times out."""
@@ -217,18 +217,26 @@ def wait_for_task(
         raise ValueError("task_uuid is required")
 
     deadline = time.monotonic() + timeout_seconds
+    next_status_report = time.monotonic() + 30
     while True:
         task = zep_client.task.get(task_uuid)
         status = (task.status or "").lower()
         if status == "succeeded":
             return task
+        if status == "partial":
+            print(f"Warning: task {task_uuid} ended with partial status: {task.error}")
+            return task
         if status in TASK_FAILURE_STATUSES:
             raise RuntimeError(f"Task {task_uuid} ended with status={status}: {task.error}")
 
-        if time.monotonic() >= deadline:
+        now = time.monotonic()
+        if now >= deadline:
             raise TimeoutError(
                 f"Timed out waiting for task {task_uuid} after {timeout_seconds}s"
             )
+        if now >= next_status_report:
+            print(f"Task {task_uuid} status={status}; still waiting.")
+            next_status_report = now + 30
         time.sleep(poll_interval_seconds)
 
 

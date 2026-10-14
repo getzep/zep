@@ -9,18 +9,27 @@ import { demoEmailForUserId, splitDisplayName } from "../agent/lib/zep-user-fiel
  * Usage: npm run smoke
  */
 
-const TIMEOUT_MS = 180_000;
+const TIMEOUT_MS = 1_200_000;
 
 async function waitForTask(
   zep: ZepClient,
   taskUuid: string,
 ): Promise<void> {
   const started = Date.now();
+  let nextStatusReport = started + 30_000;
   while (Date.now() - started < TIMEOUT_MS) {
     const task = await zep.task.get(taskUuid);
     if (task.status === "succeeded") return;
-    if (task.status === "failed" || task.status === "partial") {
-      throw new Error(`Message ingestion task ${task.status}`);
+    if (task.status === "partial") {
+      console.warn(`Warning: task ${taskUuid} ended with partial status.`);
+      return;
+    }
+    if (task.status === "failed") {
+      throw new Error(`Message ingestion task failed: ${task.error?.message ?? ""}`);
+    }
+    if (Date.now() >= nextStatusReport) {
+      console.log(`Task ${taskUuid} status=${task.status}; still waiting.`);
+      nextStatusReport = Date.now() + 30_000;
     }
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }

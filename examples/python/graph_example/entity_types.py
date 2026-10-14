@@ -99,15 +99,23 @@ async def main() -> None:
 
     if added.task and added.task.uuid_:
         print("Waiting for graph processing...")
-        deadline = time.monotonic() + 180
+        deadline = time.monotonic() + 1200
+        next_status_report = time.monotonic() + 30
         while True:
             task = await client.task.get(added.task.uuid_)
             if task.status == "succeeded":
                 break
-            if task.status in {"partial", "failed"}:
-                raise RuntimeError(f"Message ingestion task ended with {task.status}: {task.error}")
-            if time.monotonic() >= deadline:
+            if task.status == "partial":
+                print(f"Warning: task {added.task.uuid_} ended with partial status: {task.error}")
+                break
+            if task.status == "failed":
+                raise RuntimeError(f"Message ingestion task ended with failed status: {task.error}")
+            now = time.monotonic()
+            if now >= deadline:
                 raise TimeoutError("Timed out waiting for message ingestion")
+            if now >= next_status_report:
+                print(f"Task {added.task.uuid_} status={task.status}; still waiting.")
+                next_status_report = now + 30
             await asyncio.sleep(2)
 
     results = await client.graph.search_edges(

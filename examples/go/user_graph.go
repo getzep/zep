@@ -16,7 +16,8 @@ import (
 )
 
 func waitForTask(ctx context.Context, client *zepclient.Client, taskUUID string) error {
-	deadline := time.Now().Add(180 * time.Second)
+	deadline := time.Now().Add(1200 * time.Second)
+	nextStatusReport := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		task, err := client.Task.Get(ctx, taskUUID)
 		if err != nil {
@@ -26,9 +27,20 @@ func waitForTask(ctx context.Context, client *zepclient.Client, taskUUID string)
 			switch strings.ToLower(string(*task.Status)) {
 			case "succeeded", "completed":
 				return nil
-			case "failed", "error", "canceled", "cancelled", "partial":
+			case "partial":
+				fmt.Printf("Warning: task %s ended with partial status.\n", taskUUID)
+				return nil
+			case "failed", "error", "canceled", "cancelled":
 				return fmt.Errorf("task %s ended with status %s", taskUUID, *task.Status)
 			}
+		}
+		if time.Now().After(nextStatusReport) {
+			status := "unknown"
+			if task.Status != nil {
+				status = string(*task.Status)
+			}
+			fmt.Printf("Task %s status=%s; still waiting.\n", taskUUID, status)
+			nextStatusReport = time.Now().Add(30 * time.Second)
 		}
 		time.Sleep(2 * time.Second)
 	}

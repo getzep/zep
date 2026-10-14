@@ -22,7 +22,8 @@ async function main() {
         messages: history[2],
     });
     if (messageResult.task?.uuid) {
-        const deadline = Date.now() + 180_000;
+        const deadline = Date.now() + 1_200_000;
+        let nextStatusReport = Date.now() + 30_000;
         let completed = false;
         while (Date.now() < deadline) {
             const task = await client.task.get(messageResult.task.uuid);
@@ -30,8 +31,17 @@ async function main() {
                 completed = true;
                 break;
             }
-            if (task.status === "failed" || task.status === "partial") {
-                throw new Error(`Message ingestion task ${task.status}`);
+            if (task.status === "partial") {
+                console.warn(`Warning: task ${messageResult.task.uuid} ended with partial status.`);
+                completed = true;
+                break;
+            }
+            if (task.status === "failed") {
+                throw new Error(`Message ingestion task failed: ${task.error?.message ?? ""}`);
+            }
+            if (Date.now() >= nextStatusReport) {
+                console.log(`Task ${messageResult.task.uuid} status=${task.status}; still waiting.`);
+                nextStatusReport = Date.now() + 30_000;
             }
             await new Promise((resolve) => setTimeout(resolve, 2000));
         }
@@ -91,7 +101,8 @@ async function main() {
     ]);
     const lastTaskUuid = addedEpisodes.at(-1)?.task?.uuid;
     if (lastTaskUuid) {
-        const deadline = Date.now() + 180_000;
+        const deadline = Date.now() + 1_200_000;
+        let nextStatusReport = Date.now() + 30_000;
         let completed = false;
         while (Date.now() < deadline) {
             const task = await client.task.get(lastTaskUuid);
@@ -99,8 +110,17 @@ async function main() {
                 completed = true;
                 break;
             }
-            if (task.status === "failed" || task.status === "partial") {
-                throw new Error(`Episode ingestion task ${task.status}`);
+            if (task.status === "partial") {
+                console.warn(`Warning: task ${lastTaskUuid} ended with partial status.`);
+                completed = true;
+                break;
+            }
+            if (task.status === "failed") {
+                throw new Error(`Episode ingestion task failed: ${task.error?.message ?? ""}`);
+            }
+            if (Date.now() >= nextStatusReport) {
+                console.log(`Task ${lastTaskUuid} status=${task.status}; still waiting.`);
+                nextStatusReport = Date.now() + 30_000;
             }
             await new Promise((resolve) => setTimeout(resolve, 2000));
         }

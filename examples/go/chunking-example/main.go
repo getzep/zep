@@ -31,7 +31,7 @@ const (
 	defaultChunkSize    = 6000
 	defaultChunkOverlap = 200
 
-	waitTimeout      = 180 * time.Second
+	waitTimeout      = 1200 * time.Second
 	waitPollInterval = 2 * time.Second
 )
 
@@ -305,7 +305,6 @@ var taskFailureStatuses = map[string]bool{
 	"error":     true,
 	"canceled":  true,
 	"cancelled": true,
-	"partial":   true,
 }
 
 func waitForTask(ctx context.Context, client *zepclient.Client, taskUUID string) error {
@@ -314,6 +313,7 @@ func waitForTask(ctx context.Context, client *zepclient.Client, taskUUID string)
 	}
 
 	deadline := time.Now().Add(waitTimeout)
+	nextStatusReport := time.Now().Add(30 * time.Second)
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -329,6 +329,10 @@ func waitForTask(ctx context.Context, client *zepclient.Client, taskUUID string)
 			if status == "succeeded" || status == "completed" {
 				return nil
 			}
+			if status == "partial" {
+				fmt.Printf("Warning: task %s ended with partial status.\n", taskUUID)
+				return nil
+			}
 			if taskFailureStatuses[status] {
 				message := ""
 				if task.Error != nil && task.Error.Message != nil {
@@ -340,6 +344,14 @@ func waitForTask(ctx context.Context, client *zepclient.Client, taskUUID string)
 
 		if time.Now().After(deadline) {
 			return fmt.Errorf("timed out waiting for task %s after %s", taskUUID, waitTimeout)
+		}
+		if time.Now().After(nextStatusReport) {
+			status := "unknown"
+			if task.Status != nil {
+				status = strings.ToLower(strings.TrimSpace(string(*task.Status)))
+			}
+			fmt.Printf("Task %s status=%s; still waiting.\n", taskUUID, status)
+			nextStatusReport = time.Now().Add(30 * time.Second)
 		}
 		time.Sleep(waitPollInterval)
 	}

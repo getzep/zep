@@ -18,13 +18,21 @@ PROXY_URL = "http://localhost:8080"
 
 
 async def wait_for_task(zep: AsyncZep, task_uuid: str) -> None:
-    deadline = time.monotonic() + 180
+    deadline = time.monotonic() + 1200
+    next_status_report = time.monotonic() + 30
     while time.monotonic() < deadline:
         task = await zep.task.get(task_uuid)
         if task.status == "succeeded":
             return
-        if task.status in {"partial", "failed"}:
+        if task.status == "partial":
+            print(f"Warning: task {task_uuid} ended with partial status: {task.error}")
+            return
+        if task.status == "failed":
             raise RuntimeError(f"Zep task ended with {task.status}: {task.error}")
+        now = time.monotonic()
+        if now >= next_status_report:
+            print(f"Task {task_uuid} status={task.status}; still waiting.")
+            next_status_report = now + 30
         await asyncio.sleep(2)
     raise TimeoutError(f"Timed out waiting for Zep task {task_uuid}")
 

@@ -151,15 +151,23 @@ async def create_ticket_playground() -> str:
     print("Waiting for graph processing...")
     last_task = added_episodes[-1].task if added_episodes else None
     if last_task and last_task.uuid_:
-        deadline = time.monotonic() + 180
+        deadline = time.monotonic() + 1200
+        next_status_report = time.monotonic() + 30
         while True:
             task = await client.task.get(last_task.uuid_)
             if task.status == "succeeded":
                 break
-            if task.status in {"partial", "failed"}:
-                raise RuntimeError(f"Episode task ended with {task.status}: {task.error}")
-            if time.monotonic() >= deadline:
+            if task.status == "partial":
+                print(f"Warning: task {last_task.uuid_} ended with partial status: {task.error}")
+                break
+            if task.status == "failed":
+                raise RuntimeError(f"Episode task ended with failed status: {task.error}")
+            now = time.monotonic()
+            if now >= deadline:
                 raise TimeoutError("Timed out waiting for episode ingestion")
+            if now >= next_status_report:
+                print(f"Task {last_task.uuid_} status={task.status}; still waiting.")
+                next_status_report = now + 30
             await asyncio.sleep(2)
 
     episode_page = await client.graph.episode.list(user_uuid, page_size=100)

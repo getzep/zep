@@ -34,7 +34,8 @@ async function main() {
 
     const taskUuid = episodes.at(-1)?.task?.uuid;
     if (taskUuid) {
-        const deadline = Date.now() + 180_000;
+        const deadline = Date.now() + 1_200_000;
+        let nextStatusReport = Date.now() + 30_000;
         let completed = false;
         while (Date.now() < deadline) {
             const task = await client.task.get(taskUuid);
@@ -42,8 +43,17 @@ async function main() {
                 completed = true;
                 break;
             }
-            if (task.status === "failed" || task.status === "partial") {
-                throw new Error(`Graph ingestion task ${task.status}`);
+            if (task.status === "partial") {
+                console.warn(`Warning: task ${taskUuid} ended with partial status.`);
+                completed = true;
+                break;
+            }
+            if (task.status === "failed") {
+                throw new Error(`Graph ingestion task failed: ${task.error?.message ?? ""}`);
+            }
+            if (Date.now() >= nextStatusReport) {
+                console.log(`Task ${taskUuid} status=${task.status}; still waiting.`);
+                nextStatusReport = Date.now() + 30_000;
             }
             await new Promise((resolve) => setTimeout(resolve, 2000));
         }

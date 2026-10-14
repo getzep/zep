@@ -40,12 +40,21 @@ async function ensureGraph(client: ZepClient): Promise<string> {
 }
 
 async function waitForTask(client: ZepClient, taskUuid: string): Promise<void> {
-  const deadline = Date.now() + 240_000;
+  const deadline = Date.now() + 1_200_000;
+  let nextStatusReport = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const task = await client.task.get(taskUuid);
     if (task.status === "succeeded") return;
-    if (task.status === "failed" || task.status === "partial") {
-      throw new Error(`Company graph ingestion task ${task.status}`);
+    if (task.status === "partial") {
+      console.warn(`Warning: task ${taskUuid} ended with partial status.`);
+      return;
+    }
+    if (task.status === "failed") {
+      throw new Error(`Company graph ingestion task failed: ${task.error?.message ?? ""}`);
+    }
+    if (Date.now() >= nextStatusReport) {
+      console.log(`Task ${taskUuid} status=${task.status}; still waiting.`);
+      nextStatusReport = Date.now() + 30_000;
     }
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }

@@ -260,13 +260,21 @@ for messages in threads:
     last_task_uuid = result.task.uuid_ if result.task else last_task_uuid
 
 if last_task_uuid:
-    deadline = time.monotonic() + 180
+    deadline = time.monotonic() + 1200
+    next_status_report = time.monotonic() + 30
     while True:
         task = client.task.get(last_task_uuid)
         if task.status == "succeeded":
             break
-        if task.status in {"partial", "failed"}:
-            raise RuntimeError(f"Message ingestion task ended with {task.status}: {task.error}")
-        if time.monotonic() >= deadline:
+        if task.status == "partial":
+            print(f"Warning: task {last_task_uuid} ended with partial status: {task.error}")
+            break
+        if task.status == "failed":
+            raise RuntimeError(f"Message ingestion task ended with failed status: {task.error}")
+        now = time.monotonic()
+        if now >= deadline:
             raise TimeoutError(f"Timed out waiting for task {last_task_uuid}")
+        if now >= next_status_report:
+            print(f"Task {last_task_uuid} status={task.status}; still waiting.")
+            next_status_report = now + 30
         time.sleep(2)

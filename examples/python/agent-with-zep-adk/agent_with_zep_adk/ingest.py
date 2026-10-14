@@ -36,7 +36,7 @@ RECORD_FILES = [
 ]
 
 POLL_INTERVAL_S = 1.0
-POLL_TIMEOUT_S = 600.0
+POLL_TIMEOUT_S = 1200.0
 
 
 def load_reports() -> list[dict]:
@@ -72,10 +72,15 @@ def report_episode_kwargs(report: dict) -> dict:
 
 async def wait_processed(zep: AsyncZep, graph_uuid: str, episode_uuid: str) -> None:
     deadline = time.monotonic() + POLL_TIMEOUT_S
+    next_status_report = time.monotonic() + 30
     while time.monotonic() < deadline:
         episode = await zep.graph.episode.get(graph_uuid, episode_uuid)
         if episode.processed:
             return
+        now = time.monotonic()
+        if now >= next_status_report:
+            print(f"Episode {episode_uuid} processed={episode.processed}; still waiting.")
+            next_status_report = now + 30
         await asyncio.sleep(POLL_INTERVAL_S)
     raise TimeoutError(
         f"episode {episode_uuid} did not finish within {POLL_TIMEOUT_S}s; Zep can still finish it"
@@ -84,13 +89,22 @@ async def wait_processed(zep: AsyncZep, graph_uuid: str, episode_uuid: str) -> N
 
 async def wait_task(zep: AsyncZep, task_uuid: str):
     deadline = time.monotonic() + POLL_TIMEOUT_S
+    next_status_report = time.monotonic() + 30
     while time.monotonic() < deadline:
         task = await zep.task.get(task_uuid)
         if task.status in {"succeeded", "partial", "failed"}:
-            if task.status != "succeeded":
+            if task.status == "partial":
+                message = task.error.message if task.error and task.error.message else task.error
+                print(f"Warning: episode task {task_uuid} ended with partial status: {message}")
+                return task.status
+            if task.status == "failed":
                 message = task.error.message if task.error and task.error.message else task.error
                 raise RuntimeError(f"episode task {task_uuid} {task.status}: {message}")
             return task.status
+        now = time.monotonic()
+        if now >= next_status_report:
+            print(f"Task {task_uuid} status={task.status}; still waiting.")
+            next_status_report = now + 30
         await asyncio.sleep(POLL_INTERVAL_S)
     raise TimeoutError(
         f"episode task {task_uuid} did not finish within {POLL_TIMEOUT_S}s; Zep can still finish it"

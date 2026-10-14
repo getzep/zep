@@ -250,15 +250,24 @@ async function waitForTask(
   client: ZepClient,
   taskUuid: string,
 ): Promise<void> {
-  const timeoutMs = 180_000;
+  const timeoutMs = 1_200_000;
   const pollMs = 2000;
   const started = Date.now();
+  let nextStatusReport = started + 30_000;
 
   while (Date.now() - started < timeoutMs) {
     const task = await client.task.get(taskUuid);
     if (task.status === "succeeded") return;
-    if (task.status === "failed" || task.status === "partial") {
-      throw new Error(`Ingestion task ${task.status}`);
+    if (task.status === "partial") {
+      console.warn(`Warning: task ${taskUuid} ended with partial status.`);
+      return;
+    }
+    if (task.status === "failed") {
+      throw new Error(`Ingestion task failed: ${task.error?.message ?? ""}`);
+    }
+    if (Date.now() >= nextStatusReport) {
+      console.log(`Task ${taskUuid} status=${task.status}; still waiting.`);
+      nextStatusReport = Date.now() + 30_000;
     }
     await sleep(pollMs);
   }

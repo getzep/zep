@@ -35,7 +35,7 @@ async def wait_for_task(
     client: AsyncZep,
     task_id: str | None,
     *,
-    timeout_seconds: float = 180.0,
+    timeout_seconds: float = 1200.0,
     poll_interval_seconds: float = 2.0,
 ) -> None:
     """Poll Zep task status until complete, with a bounded timeout."""
@@ -43,15 +43,23 @@ async def wait_for_task(
         return
 
     deadline = time.monotonic() + timeout_seconds
+    next_status_report = time.monotonic() + 30
     while True:
         task = await client.task.get(task_id)
         status = (task.status or "").lower()
         if status in TASK_SUCCESS_STATUSES:
             return
+        if status == "partial":
+            print(f"Warning: task {task_id} ended with partial status: {task.error}")
+            return
         if status in TASK_FAILURE_STATUSES:
             raise RuntimeError(f"task {task_id} ended with status={status}: {task.error}")
-        if time.monotonic() >= deadline:
+        now = time.monotonic()
+        if now >= deadline:
             raise TimeoutError(f"Timed out waiting for task {task_id} after {timeout_seconds}s")
+        if now >= next_status_report:
+            print(f"Task {task_id} status={status}; still waiting.")
+            next_status_report = now + 30
         await asyncio.sleep(poll_interval_seconds)
 
 
