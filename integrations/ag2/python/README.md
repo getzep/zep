@@ -351,7 +351,17 @@ pattern: every search parameter (`scope`, `reranker`, `limit`, `mmr_lambda`,
 `center_node_uuid`) is exposed to the model by default. The `scope` selects the v4 search
 method: `edges`, `nodes`, `episodes`, `observations`, `thread_summaries`, or `auto`. The
 `auto` scope calls `graph.get_context`, which accepts neither a reranker nor a limit. The package sends
-`limit` as the `page_size` of the v4 search call. Use `pinned_params` to fix a
+`limit` as the `page_size` of the v4 search call.
+
+Each scope accepts only some rerankers. `edges` accepts all five, `nodes` accepts all but
+`episode_mentions`, `episodes` accepts `rrf` and `mmr`, and `observations` and
+`thread_summaries` accept `rrf`, `mmr`, and `cross_encoder`. The tool schema offers only valid
+choices: `episode_mentions` appears only when `filters` sets `episode_uuids`, and
+`node_distance` needs `center_node_uuid`. If the model sends an unsupported pair, the tool drops
+the reranker and Zep uses `rrf`. For `mmr` with no `mmr_lambda`, the tool sends `0.5`. A pinned
+pair that is not valid raises `ValueError` when you create the tool.
+
+Use `pinned_params` to fix a
 parameter to a constant (hidden from the model), or `hidden_params` to remove it from the
 schema without pinning (Zep's own default applies):
 

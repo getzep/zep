@@ -38,7 +38,7 @@ import asyncio
 import inspect
 import logging
 import threading
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
 
 from zep_cloud.client import AsyncZep, Zep
 
@@ -55,6 +55,31 @@ Scope = Literal[
     "auto",
 ]
 Reranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
+
+_ALL_SCOPES: tuple[str, ...] = get_args(Scope)
+_ALL_RERANKERS: tuple[str, ...] = get_args(Reranker)
+
+#: Rerankers that each v4 search method accepts. Zep rejects any other pair
+#: with HTTP 400. The ``auto`` scope takes no reranker.
+SCOPE_RERANKERS: dict[str, tuple[str, ...]] = {
+    "edges": ("rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"),
+    "nodes": ("rrf", "mmr", "node_distance", "cross_encoder"),
+    "episodes": ("rrf", "mmr"),
+    "observations": ("rrf", "mmr", "cross_encoder"),
+    "thread_summaries": ("rrf", "mmr", "cross_encoder"),
+}
+
+#: The ``mmr_lambda`` that the tools send when the reranker is ``mmr`` and no
+#: value is set. Zep requires ``mmr_lambda`` for ``mmr``.
+DEFAULT_MMR_LAMBDA = 0.5
+
+_RERANKER_LABELS: dict[str, str] = {
+    "rrf": "'rrf' (balanced)",
+    "mmr": f"'mmr' (diverse; uses mmr_lambda, default {DEFAULT_MMR_LAMBDA})",
+    "cross_encoder": "'cross_encoder' (highest accuracy)",
+    "node_distance": "'node_distance' (near the entity in center_node_uuid, which it needs)",
+    "episode_mentions": "'episode_mentions' (most mentioned in the configured episodes)",
+}
 
 #: Zep caps the search page size at 50; larger values are rejected.
 MAX_SEARCH_LIMIT = 50
@@ -88,11 +113,7 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
     },
     "reranker": {
         "annotation": Reranker,
-        "description": (
-            "Result ordering algorithm: 'rrf' (balanced), 'mmr' (diverse), "
-            "'cross_encoder' (highest accuracy), 'episode_mentions' "
-            "(frequently referenced), 'node_distance' (near a specific entity)."
-        ),
+        "description": "Result ordering algorithm.",
         "default": "rrf",
     },
     "limit": {
@@ -103,7 +124,8 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
     "mmr_lambda": {
         "annotation": float | None,
         "description": (
-            "Balance between diversity (0.0) and relevance (1.0). Only used when reranker is 'mmr'."
+            "Balance between diversity (0.0) and relevance (1.0). Only used when "
+            f"reranker is 'mmr'. Defaults to {DEFAULT_MMR_LAMBDA}."
         ),
         "default": None,
     },
@@ -123,6 +145,150 @@ _CONSTRUCTOR_ONLY_PARAMS = frozenset({"filters", "bfs_origin_node_uuids"})
 
 #: All parameters that may be pinned or hidden at construction.
 _PINNABLE_PARAMS = frozenset(_SEARCH_PARAM_SPECS.keys())
+
+
+def _has_episode_uuids(filters: dict[str, Any] | None) -> bool:
+    """Return ``True`` when the constructor filters set ``episode_uuids``."""
+    return bool(filters and filters.get("episode_uuids"))
+
+
+def _quoted(values: tuple[str, ...] | list[str]) -> str:
+    return ", ".join(f"'{value}'" for value in values)
+
+
+def _validate_pinned_search(pinned: dict[str, Any], filters: dict[str, Any] | None) -> None:
+    """Raise ``ValueError`` when the pinned scope and reranker are not a valid pair.
+
+    The ``auto`` scope is resolved before this check, so a pinned reranker is
+    never present here together with ``scope="auto"``.
+    """
+    scope = pinned.get("scope")
+    if scope is not None and scope not in _ALL_SCOPES:
+        raise ValueError(f"Unknown search scope {scope!r}. Use one of: {_quoted(_ALL_SCOPES)}.")
+    reranker = pinned.get("reranker")
+    if reranker is None:
+        return
+    if reranker not in _ALL_RERANKERS:
+        raise ValueError(f"Unknown reranker {reranker!r}. Use one of: {_quoted(_ALL_RERANKERS)}.")
+    if scope is not None and reranker not in SCOPE_RERANKERS[scope]:
+        raise ValueError(
+            f"The reranker {reranker!r} is not supported with scope {scope!r}. "
+            f"Use one of: {_quoted(SCOPE_RERANKERS[scope])}."
+        )
+    if reranker == "node_distance" and not pinned.get("center_node_uuid"):
+        raise ValueError(
+            "The reranker 'node_distance' needs a center node. Also pin 'center_node_uuid'."
+        )
+    if reranker == "episode_mentions" and not _has_episode_uuids(filters):
+        raise ValueError(
+            "The reranker 'episode_mentions' needs episodes. Set 'episode_uuids' in 'filters'."
+        )
+
+
+def _resolve_exposed_specs(
+    pinned: dict[str, Any], hidden: set[str], filters: dict[str, Any] | None
+) -> dict[str, dict[str, Any]]:
+    """Return the model-facing parameter specs, limited to valid choices.
+
+    The scope choices are limited to the scopes that support a pinned
+    reranker. The reranker choices are limited to the rerankers that the
+    pinned scope supports and that the model can use: ``node_distance`` only
+    when ``center_node_uuid`` is pinned or exposed, and ``episode_mentions``
+    only when ``filters`` sets ``episode_uuids``.
+    """
+    pinned_scope = pinned.get("scope")
+    pinned_reranker = pinned.get("reranker")
+
+    usable = [
+        name
+        for name in _ALL_RERANKERS
+        if not (
+            name == "node_distance"
+            and not pinned.get("center_node_uuid")
+            and "center_node_uuid" in hidden
+        )
+        and not (name == "episode_mentions" and not _has_episode_uuids(filters))
+    ]
+    if pinned_scope is not None and pinned_scope != "auto":
+        usable = [name for name in usable if name in SCOPE_RERANKERS[pinned_scope]]
+
+    scopes = list(_ALL_SCOPES)
+    if pinned_reranker is not None:
+        scopes = [
+            name for name in scopes if name == "auto" or pinned_reranker in SCOPE_RERANKERS[name]
+        ]
+
+    removed: set[str] = set()
+    if pinned_scope == "auto" or not usable:
+        removed.add("reranker")
+    model_picks_reranker = not ({"reranker"} & (pinned.keys() | hidden | removed))
+    for reranker_name, setting in (("mmr", "mmr_lambda"), ("node_distance", "center_node_uuid")):
+        offered = pinned_reranker == reranker_name or (
+            model_picks_reranker and reranker_name in usable
+        )
+        if not offered:
+            removed.add(setting)
+
+    exposed: dict[str, dict[str, Any]] = {}
+    for name, spec in _SEARCH_PARAM_SPECS.items():
+        if name in pinned or name in hidden or name in removed:
+            continue
+        if name == "scope":
+            spec = {**spec, "annotation": Literal[tuple(scopes)]}  # type: ignore[valid-type]
+        elif name == "reranker":
+            spec = {
+                **spec,
+                "annotation": Literal[tuple(usable)],  # type: ignore[valid-type]
+                "description": _reranker_description(usable, scopes),
+            }
+        exposed[name] = spec
+    return exposed
+
+
+def _reranker_description(rerankers: list[str], scopes: list[str]) -> str:
+    """Describe each reranker choice and the scopes that support it."""
+    search_scopes = [name for name in scopes if name != "auto"]
+    parts: list[str] = []
+    for name in rerankers:
+        label = _RERANKER_LABELS[name]
+        supported = [scope for scope in search_scopes if name in SCOPE_RERANKERS[scope]]
+        if search_scopes and len(supported) < len(search_scopes):
+            label += f" -- only with scope {_quoted(supported)}"
+        parts.append(label)
+    description = "Result ordering algorithm: " + "; ".join(parts) + "."
+    if "auto" in scopes:
+        description += " The 'auto' scope ignores the reranker."
+    return description
+
+
+def _correct_reranker(search_kwargs: dict[str, Any]) -> None:
+    """Make the scope and reranker of one call a pair that Zep accepts.
+
+    The tool drops a reranker that the scope does not support, or that is
+    missing its required setting, so Zep applies its default (``rrf``). It
+    sets ``mmr_lambda`` to ``DEFAULT_MMR_LAMBDA`` for ``mmr`` when no value is
+    set.
+    """
+    scope = str(search_kwargs.get("scope", "edges"))
+    reranker = search_kwargs.get("reranker")
+    if reranker is None or scope == "auto" or scope not in SCOPE_RERANKERS:
+        return
+    filters = search_kwargs.get("filters")
+    problem = None
+    if reranker not in SCOPE_RERANKERS[scope]:
+        problem = f"is not supported with scope {scope!r}"
+    elif reranker == "node_distance" and not search_kwargs.get("center_node_uuid"):
+        problem = "needs center_node_uuid"
+    elif reranker == "episode_mentions" and not (
+        isinstance(filters, dict) and _has_episode_uuids(filters)
+    ):
+        problem = "needs filters.episode_uuids"
+    if problem is not None:
+        logger.warning("reranker %r %s; omitting reranker (Zep uses rrf).", reranker, problem)
+        del search_kwargs["reranker"]
+        return
+    if reranker == "mmr" and search_kwargs.get("mmr_lambda") is None:
+        search_kwargs["mmr_lambda"] = DEFAULT_MMR_LAMBDA
 
 
 def _build_search_signature(
@@ -274,6 +440,7 @@ def _build_search_kwargs(
             )
 
     search_kwargs.update(constructor_only)
+    _correct_reranker(search_kwargs)
     return search_kwargs
 
 
@@ -534,12 +701,9 @@ def create_search_memory_tool(
     pinned, hidden = _resolve_pinned_and_hidden(
         pinned_params=pinned_params, hidden_params=hidden_params, scope=scope, limit=limit
     )
+    _validate_pinned_search(pinned, filters)
 
-    exposed = {
-        name: spec
-        for name, spec in _SEARCH_PARAM_SPECS.items()
-        if name not in pinned and name not in hidden
-    }
+    exposed = _resolve_exposed_specs(pinned, hidden, filters)
     signature, annotations = _build_search_signature(exposed)
 
     constructor_only: dict[str, Any] = {}
@@ -715,12 +879,9 @@ def create_search_graph_tool(
     pinned, hidden = _resolve_pinned_and_hidden(
         pinned_params=pinned_params, hidden_params=hidden_params, scope=scope, limit=limit
     )
+    _validate_pinned_search(pinned, filters)
 
-    exposed = {
-        name: spec
-        for name, spec in _SEARCH_PARAM_SPECS.items()
-        if name not in pinned and name not in hidden
-    }
+    exposed = _resolve_exposed_specs(pinned, hidden, filters)
     signature, annotations = _build_search_signature(exposed)
 
     constructor_only: dict[str, Any] = {}

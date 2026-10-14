@@ -57,6 +57,11 @@ def mock_zep_client() -> MagicMock:
     return _mock_zep_client()
 
 
+def _choices(tool: object, name: str) -> set[str]:
+    hints = get_type_hints(tool, include_extras=True)
+    return set(hints[name].__origin__.__args__)
+
+
 class TestSearchGraphToolExposedByDefault:
     def test_search_tool_exposes_params_by_default(self, mock_zep_client: MagicMock) -> None:
         tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
@@ -81,13 +86,23 @@ class TestSearchGraphToolExposedByDefault:
             "auto",
         }
 
-    def test_search_tool_five_rerankers(self, mock_zep_client: MagicMock) -> None:
+    def test_search_tool_rerankers_without_episode_uuids(self, mock_zep_client: MagicMock) -> None:
         tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
-        hints = get_type_hints(tool, include_extras=True)
-        reranker_hint = hints["reranker"]
-        literal_type = reranker_hint.__origin__
-        values = set(literal_type.__args__)
-        assert values == {"rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"}
+        assert _choices(tool, "reranker") == {"rrf", "mmr", "node_distance", "cross_encoder"}
+
+    def test_search_tool_five_rerankers_with_episode_uuids(
+        self, mock_zep_client: MagicMock
+    ) -> None:
+        tool = create_search_graph_tool(
+            mock_zep_client, GRAPH_UUID, filters={"episode_uuids": ["ep-1"]}
+        )
+        assert _choices(tool, "reranker") == {
+            "rrf",
+            "mmr",
+            "node_distance",
+            "episode_mentions",
+            "cross_encoder",
+        }
 
 
 class TestSearchGraphToolPinOrExpose:
@@ -364,3 +379,200 @@ class TestSearchMemoryToolPinOrExpose:
 
         call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
         assert call_kwargs["page_size"] == 9
+
+
+class TestRerankerScopeSchema:
+    """The schema offers only the scope and reranker pairs that Zep accepts."""
+
+    def test_pinned_episodes_scope_offers_rrf_and_mmr(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(
+            mock_zep_client, GRAPH_UUID, pinned_params={"scope": "episodes"}
+        )
+        sig = inspect.signature(tool)
+        assert _choices(tool, "reranker") == {"rrf", "mmr"}
+        assert "mmr_lambda" in sig.parameters
+        assert "center_node_uuid" not in sig.parameters
+
+    def test_pinned_nodes_scope_has_no_episode_mentions(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_memory_tool(
+            mock_zep_client,
+            GRAPH_UUID,
+            pinned_params={"scope": "nodes"},
+            filters={"episode_uuids": ["ep-1"]},
+        )
+        assert _choices(tool, "reranker") == {"rrf", "mmr", "node_distance", "cross_encoder"}
+
+    def test_pinned_reranker_limits_scopes(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(
+            mock_zep_client, GRAPH_UUID, pinned_params={"reranker": "cross_encoder"}
+        )
+        sig = inspect.signature(tool)
+        assert _choices(tool, "scope") == {
+            "edges",
+            "nodes",
+            "observations",
+            "thread_summaries",
+            "auto",
+        }
+        assert "mmr_lambda" not in sig.parameters
+        assert "center_node_uuid" not in sig.parameters
+
+    def test_hidden_center_node_removes_node_distance(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(
+            mock_zep_client, GRAPH_UUID, hidden_params={"center_node_uuid"}
+        )
+        assert _choices(tool, "reranker") == {"rrf", "mmr", "cross_encoder"}
+
+    def test_reranker_description_names_scope_limits(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
+        description = get_type_hints(tool, include_extras=True)["reranker"].__metadata__[0]
+        assert "'cross_encoder' (highest accuracy) -- only with scope" in description
+        assert "'episodes'" not in description.split("'cross_encoder'")[1]
+        assert "default 0.5" in description
+
+
+class TestPinnedRerankerValidation:
+    """An invalid pinned pair raises ValueError when the tool is created."""
+
+    @pytest.mark.parametrize(
+        ("scope", "reranker"),
+        [
+            ("episodes", "cross_encoder"),
+            ("episodes", "node_distance"),
+            ("episodes", "episode_mentions"),
+            ("nodes", "episode_mentions"),
+            ("observations", "node_distance"),
+            ("thread_summaries", "episode_mentions"),
+        ],
+    )
+    def test_unsupported_pair_raises(
+        self, mock_zep_client: MagicMock, scope: str, reranker: str
+    ) -> None:
+        with pytest.raises(ValueError, match=f"'{reranker}' is not supported with scope '{scope}'"):
+            create_search_graph_tool(
+                mock_zep_client,
+                GRAPH_UUID,
+                pinned_params={"scope": scope, "reranker": reranker, "center_node_uuid": "n"},
+                filters={"episode_uuids": ["ep-1"]},
+            )
+
+    def test_node_distance_without_center_node_raises(self, mock_zep_client: MagicMock) -> None:
+        with pytest.raises(ValueError, match="center_node_uuid"):
+            create_search_memory_tool(
+                mock_zep_client, GRAPH_UUID, pinned_params={"reranker": "node_distance"}
+            )
+
+    def test_episode_mentions_without_episode_uuids_raises(
+        self, mock_zep_client: MagicMock
+    ) -> None:
+        with pytest.raises(ValueError, match="episode_uuids"):
+            create_search_graph_tool(
+                mock_zep_client, GRAPH_UUID, pinned_params={"reranker": "episode_mentions"}
+            )
+
+    def test_unknown_scope_and_reranker_raise(self, mock_zep_client: MagicMock) -> None:
+        with pytest.raises(ValueError, match="Unknown search scope"):
+            create_search_graph_tool(mock_zep_client, GRAPH_UUID, pinned_params={"scope": "x"})
+        with pytest.raises(ValueError, match="Unknown reranker"):
+            create_search_graph_tool(mock_zep_client, GRAPH_UUID, pinned_params={"reranker": "x"})
+
+    def test_pinned_mmr_gets_default_lambda(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(
+            mock_zep_client, GRAPH_UUID, pinned_params={"scope": "episodes", "reranker": "mmr"}
+        )
+        assert "mmr_lambda" in inspect.signature(tool).parameters
+
+        tool(query="hello")
+
+        call_kwargs = mock_zep_client.graph.search_episodes.call_args.kwargs
+        assert call_kwargs["reranker"] == "mmr"
+        assert call_kwargs["mmr_lambda"] == 0.5
+
+    def test_valid_pinned_pair_is_sent(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(
+            mock_zep_client,
+            GRAPH_UUID,
+            pinned_params={"scope": "nodes", "reranker": "node_distance", "center_node_uuid": "n"},
+        )
+
+        tool(query="hello")
+
+        call_kwargs = mock_zep_client.graph.search_nodes.call_args.kwargs
+        assert call_kwargs["reranker"] == "node_distance"
+        assert call_kwargs["center_node_uuid"] == "n"
+
+
+class TestModelRerankerCorrection:
+    """An invalid pair from the model is corrected before the request."""
+
+    @pytest.mark.parametrize(
+        ("scope", "reranker", "method"),
+        [
+            ("episodes", "cross_encoder", "search_episodes"),
+            ("episodes", "episode_mentions", "search_episodes"),
+            ("nodes", "episode_mentions", "search_nodes"),
+            ("observations", "node_distance", "search_observations"),
+            ("thread_summaries", "node_distance", "search_thread_summaries"),
+        ],
+    )
+    def test_unsupported_reranker_dropped(
+        self,
+        mock_zep_client: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+        scope: str,
+        reranker: str,
+        method: str,
+    ) -> None:
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
+
+        with caplog.at_level(logging.WARNING, logger="zep_ag2.tools"):
+            result = tool(query="hello", scope=scope, reranker=reranker, center_node_uuid="n")
+
+        assert not result.startswith("Error")
+        call_kwargs = getattr(mock_zep_client.graph, method).call_args.kwargs
+        assert "reranker" not in call_kwargs
+        assert any(reranker in record.message for record in caplog.records)
+
+    def test_mmr_without_lambda_gets_default(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
+
+        tool(query="hello", scope="episodes", reranker="mmr")
+
+        call_kwargs = mock_zep_client.graph.search_episodes.call_args.kwargs
+        assert call_kwargs["reranker"] == "mmr"
+        assert call_kwargs["mmr_lambda"] == 0.5
+
+    def test_mmr_keeps_model_lambda(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
+
+        tool(query="hello", scope="nodes", reranker="mmr", mmr_lambda=0.9)
+
+        call_kwargs = mock_zep_client.graph.search_nodes.call_args.kwargs
+        assert call_kwargs["mmr_lambda"] == 0.9
+
+    def test_node_distance_without_center_node_dropped(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
+
+        tool(query="hello", scope="edges", reranker="node_distance")
+
+        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
+        assert "reranker" not in call_kwargs
+
+    def test_episode_mentions_with_episode_uuids_kept(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(
+            mock_zep_client, GRAPH_UUID, filters={"episode_uuids": ["ep-1"]}
+        )
+
+        tool(query="hello", scope="edges", reranker="episode_mentions")
+
+        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
+        assert call_kwargs["reranker"] == "episode_mentions"
+
+    def test_supported_pair_unchanged(self, mock_zep_client: MagicMock) -> None:
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
+
+        tool(query="hello", scope="observations", reranker="cross_encoder")
+
+        call_kwargs = mock_zep_client.graph.search_observations.call_args.kwargs
+        assert call_kwargs["reranker"] == "cross_encoder"
+        assert "mmr_lambda" not in call_kwargs
