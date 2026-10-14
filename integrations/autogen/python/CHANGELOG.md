@@ -5,16 +5,20 @@ All notable changes to the zep-autogen package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0]
+
+### Breaking
+
+- The package targets the Zep v4 API and requires `zep-cloud>=4.0.0,<5`. Zep v4 assigns the UUID of every user, thread, and graph. The public API takes UUIDs instead of names.
+- The resource parameters are renamed. `ZepUserMemory` takes `user_uuid`, `thread_uuid`, and the optional `graph_uuid`. `ZepGraphMemory` takes `graph_uuid`. `create_search_graph_tool` and `create_add_graph_data_tool` take `graph_uuid` or `user_uuid`. The `ContextInput` dataclass gives `user_uuid`, `thread_uuid`, and `graph_uuid`.
+- `ensure_user` and `ensure_thread` are replaced by `create_user` and `create_thread`. Zep v4 creates a resource and returns its UUID, so the create-then-catch-conflict pattern no longer applies. `create_user` returns the `User` model and `create_thread` returns the `Thread` model. Read `uuid_` from the response and store it in your own database.
+- `ZepUserMemory` no longer creates the Zep user. The application creates the user one time with `create_user`, or with `client.user.create`. `add()` still creates a thread when the constructor did not get a `thread_uuid`.
+- `ZepGraphMemory` replaces `facts_limit` and `entity_limit` with `max_characters`. Context retrieval calls `graph.get_context`, which returns an assembled context block and takes a character budget in place of a fact count and an entity count.
+- `ZepUserMemory` replaces `context_template_id` with `context_template_uuid`. The value is sent as `template_uuid` to `thread.get_context`.
+- The v3 types and helpers that Zep v4 does not give are removed: `GraphSearchResults` and `zep_cloud.graph.utils.compose_context_string`. The package formats the search results itself.
 
 ### Changed
 
-- **Breaking: the package targets the Zep v4 API and requires `zep-cloud>=4.0.0,<5`.** Zep v4 assigns the UUID of every user, thread, and graph. The public API takes UUIDs instead of names.
-- **Breaking: the resource parameters are renamed.** `ZepUserMemory` takes `user_uuid`, `thread_uuid`, and the optional `graph_uuid`. `ZepGraphMemory` takes `graph_uuid`. `create_search_graph_tool` and `create_add_graph_data_tool` take `graph_uuid` or `user_uuid`. The `ContextInput` dataclass gives `user_uuid`, `thread_uuid`, and `graph_uuid`.
-- **Breaking: `ensure_user` and `ensure_thread` are replaced by `create_user` and `create_thread`.** Zep v4 creates a resource and returns its UUID, so the create-then-catch-conflict pattern no longer applies. `create_user` returns the `User` model and `create_thread` returns the `Thread` model. Read `uuid_` from the response and store it in your own database.
-- **Breaking: `ZepUserMemory` no longer creates the Zep user.** The application creates the user one time with `create_user`, or with `client.user.create`. `add()` still creates a thread when the constructor did not get a `thread_uuid`.
-- **Breaking: `ZepGraphMemory` replaces `facts_limit` and `entity_limit` with `max_characters`.** Context retrieval calls `graph.get_context`, which returns an assembled context block and takes a character budget in place of a fact count and an entity count.
-- **Breaking: `ZepUserMemory` replaces `context_template_id` with `context_template_uuid`.** The value is sent as `template_uuid` to `thread.get_context`.
 - The default context retrieval calls `thread.get_context(thread_uuid)` in place of the v3 `thread.get_user_context`.
 - Message ingestion calls `thread.add_messages(thread_uuid, messages=[...])`.
 - Graph ingestion calls `graph.episode.add(graph_uuid, type=..., data=...)` in place of `graph.add`.
@@ -23,10 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Graph deletion calls `graph.delete(graph_uuid)`.
 - The search limit is clamped to the range 1 to 50.
 - `ZepGraphMemory` accepts each scoped `search_filters` type (`EdgeSearchFilters`, `NodeSearchFilters`, `EpisodeSearchFilters`, `ThreadSummarySearchFilters`, `SearchFilters`, or a plain `dict`). Each v4 search scope has its own filter type, and the server rejects a filter key that the scope does not support. `ZepGraphMemory.query` accepts a per-query `filters` argument that overrides the constructor `search_filters` for that call.
-
-### Removed
-
-- The v3 types and helpers that Zep v4 does not give: `GraphSearchResults` and `zep_cloud.graph.utils.compose_context_string`. The package formats the search results itself.
 
 ## [1.2.1] - 2026-07-29
 
@@ -114,5 +114,6 @@ memory = ZepUserMemory(client=zep_client, user_id="user-1", thread_id="thread-1"
 - Configurable memory retrieval limits
 - Compatible with AutoGen 0.6.1+
 
-[Unreleased]: https://github.com/getzep/zep/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/getzep/zep/compare/zep-autogen-python-v2.0.0...HEAD
+[2.0.0]: https://github.com/getzep/zep/compare/zep-autogen-python-v1.2.2...zep-autogen-python-v2.0.0
 [0.1.0]: https://github.com/getzep/zep/releases/tag/v0.1.0
