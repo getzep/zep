@@ -14,6 +14,8 @@ See [SETUP.md](SETUP.md) for how to sign up for Zep, create an API key, configur
 
 ```python
 import asyncio
+import os
+
 from pydantic_ai import Agent
 from zep_cloud.client import AsyncZep
 from zep_pydantic_ai import (
@@ -24,32 +26,32 @@ from zep_pydantic_ai import (
     zep_capabilities,
 )
 
-zep = AsyncZep(api_key="your-zep-api-key")
-
-# Create the Zep resources one time, and store the returned UUIDs in your own
-# database. Zep v4 addresses every user, thread, and graph by a UUID.
-user = await create_user(zep, first_name="Jane", last_name="Smith")
-thread = await create_thread(zep, user_uuid=user.uuid_)
-
-deps = ZepDeps(
-    client=zep,
-    user_uuid=user.uuid_,
-    thread_uuid=thread.uuid_,
-    graph_uuid=user.graph_uuid,
-    first_name="Jane",
-    last_name="Smith",
-)
-
-agent = Agent(
-    "openai:gpt-5-mini",
-    deps_type=ZepDeps,
-    capabilities=zep_capabilities(deps),
-    tools=[create_zep_search_tool()],
-    instructions="You are a helpful assistant with long-term memory.",
-)
-
 
 async def main() -> None:
+    zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
+
+    # Create the Zep resources one time, and store the returned UUIDs in your
+    # own database. Zep v4 addresses every user, thread, and graph by a UUID.
+    user = await create_user(zep, first_name="Jane", last_name="Smith")
+    thread = await create_thread(zep, user_uuid=user.uuid_)
+
+    deps = ZepDeps(
+        client=zep,
+        user_uuid=user.uuid_,
+        thread_uuid=thread.uuid_,
+        graph_uuid=user.graph_uuid,
+        first_name="Jane",
+        last_name="Smith",
+    )
+
+    agent = Agent(
+        "openai:gpt-5-mini",
+        deps_type=ZepDeps,
+        capabilities=zep_capabilities(deps),
+        tools=[create_zep_search_tool()],
+        instructions="You are a helpful assistant with long-term memory.",
+    )
+
     result = await agent.run("What did I tell you about my project?", deps=deps)
     print(result.output)
     # The user turn and the assistant's reply are both already persisted --
@@ -169,20 +171,21 @@ create call does not carry an application identifier. The response carries the
 server-generated UUID that every later call uses:
 
 ```python
+from zep_cloud.client import AsyncZep
 from zep_pydantic_ai import create_thread, create_user
 
-user = await create_user(
-    zep,
-    first_name="Jane",
-    last_name="Smith",
-    email="jane@example.com",
-)
-thread = await create_thread(zep, user_uuid=user.uuid_)
 
-# Store these values in your own database.
-user_uuid = user.uuid_
-graph_uuid = user.graph_uuid
-thread_uuid = thread.uuid_
+async def provision(zep: AsyncZep) -> tuple[str, str | None, str]:
+    user = await create_user(
+        zep,
+        first_name="Jane",
+        last_name="Smith",
+        email="jane@example.com",
+    )
+    thread = await create_thread(zep, user_uuid=user.uuid_)
+
+    # Store these values in your own database.
+    return user.uuid_, user.graph_uuid, thread.uuid_
 ```
 
 Both helpers raise on failure, because provisioning runs before the first turn
@@ -256,16 +259,20 @@ persists the assistant's reply once the run completes -- no explicit
 `persist_run` call needed:
 
 ```python
-from zep_pydantic_ai import zep_capabilities
+from pydantic_ai import Agent
+from zep_pydantic_ai import ZepDeps, zep_capabilities
 
-agent = Agent(
-    "openai:gpt-5-mini",
-    deps_type=ZepDeps,
-    capabilities=zep_capabilities(deps),
-)
 
-result = await agent.run("Hi", deps=deps)
-# Both sides of the turn are already in Zep.
+async def chat(deps: ZepDeps, message: str) -> str:
+    agent = Agent(
+        "openai:gpt-5-mini",
+        deps_type=ZepDeps,
+        capabilities=zep_capabilities(deps),
+    )
+
+    result = await agent.run(message, deps=deps)
+    # Both sides of the turn are already in Zep.
+    return result.output
 ```
 
 Use `create_zep_after_run_hook(deps)` directly if you want to compose it with

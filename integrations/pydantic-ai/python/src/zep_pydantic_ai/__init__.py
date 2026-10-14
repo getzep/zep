@@ -32,6 +32,9 @@ Installation::
 
 Usage::
 
+    import asyncio
+    import os
+
     from pydantic_ai import Agent
     from zep_cloud.client import AsyncZep
     from zep_pydantic_ai import (
@@ -42,32 +45,38 @@ Usage::
         zep_capabilities,
     )
 
-    zep = AsyncZep(api_key="your-api-key")
 
-    # Zep v4 addresses a user, a thread, and a graph by a UUID.  Create the
-    # user and the thread one time, and store the UUIDs in your database.
-    user = await create_user(zep, first_name="Jane", last_name="Smith")
-    thread = await create_thread(zep, user_uuid=user.uuid_)
+    async def main() -> None:
+        zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
 
-    deps = ZepDeps(
-        client=zep,
-        user_uuid=user.uuid_,
-        thread_uuid=thread.uuid_,
-        graph_uuid=user.graph_uuid,
-        first_name="Jane",
-        last_name="Smith",
-    )
+        # Zep v4 addresses a user, a thread, and a graph by a UUID.  Create the
+        # user and the thread one time, and store the UUIDs in your database.
+        user = await create_user(zep, first_name="Jane", last_name="Smith")
+        thread = await create_thread(zep, user_uuid=user.uuid_)
 
-    agent = Agent(
-        "openai:gpt-4o-mini",
-        deps_type=ZepDeps,
-        capabilities=zep_capabilities(deps),
-        tools=[create_zep_search_tool()],
-        instructions="You are a helpful assistant with long-term memory.",
-    )
+        deps = ZepDeps(
+            client=zep,
+            user_uuid=user.uuid_,
+            thread_uuid=thread.uuid_,
+            graph_uuid=user.graph_uuid,
+            first_name="Jane",
+            last_name="Smith",
+        )
 
-    result = await agent.run("What did I tell you about my project?", deps=deps)
-    # The user turn and the assistant's reply are both already persisted.
+        agent = Agent(
+            "openai:gpt-5-mini",
+            deps_type=ZepDeps,
+            capabilities=zep_capabilities(deps),
+            tools=[create_zep_search_tool()],
+            instructions="You are a helpful assistant with long-term memory.",
+        )
+
+        result = await agent.run("What did I tell you about my project?", deps=deps)
+        print(result.output)
+        # The user turn and the assistant's reply are both already persisted.
+
+
+    asyncio.run(main())
 """
 
 from .exceptions import ZepDependencyError
