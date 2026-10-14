@@ -64,9 +64,9 @@ MAX_SEARCH_LIMIT = 50
 SearchItems = list[Edge] | list[Node] | list[Episode] | list[Observation] | list[ThreadSummary]
 
 
-#: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
-#: retrieval and applies its own internal cross-scope rerank).
-_AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
+#: The scope annotation the model sees when a reranker is pinned: the
+#: ``auto`` scope takes no reranker, so it is not offered as a choice.
+_NON_AUTO_SCOPE = Literal["edges", "nodes", "episodes", "observations", "thread_summaries"]
 
 #: Filter keys that each search scope accepts, read from the typed
 #: search-filter models of the v4 SDK. ``None`` means the scope's filter
@@ -146,9 +146,10 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
         "description": (
             "Result ordering algorithm: 'rrf' (balanced), 'mmr' (diverse), "
             "'cross_encoder' (highest accuracy), 'episode_mentions' "
-            "(frequently referenced), 'node_distance' (near a specific entity)."
+            "(frequently referenced), 'node_distance' (near a specific entity). "
+            "The 'auto' scope takes no reranker: omit the reranker with scope 'auto'."
         ),
-        "default": "rrf",
+        "default": None,
     },
     "limit": {
         "annotation": int,
@@ -193,8 +194,11 @@ def _build_args_schema(*, pinned: dict[str, Any], hidden: set[str]) -> type[Base
     for param_name, spec in _SEARCH_PARAM_SPECS.items():
         if param_name in pinned or param_name in hidden:
             continue  # pinned or hidden -> not exposed to the model
+        annotation = spec["annotation"]
+        if param_name == "scope" and "reranker" in pinned:
+            annotation = _NON_AUTO_SCOPE
         fields[param_name] = (
-            spec["annotation"],
+            annotation,
             Field(default=spec["default"], description=spec["description"]),
         )
     return create_model("ZepSearchInput", **fields)
@@ -247,17 +251,15 @@ def _resolve_pinned_and_hidden(
         elif pinned_limit < 1:
             pinned["limit"] = 1
 
-    # Auto scope rejects node_distance / episode_mentions and ignores reranker
-    # entirely.  If scope is pinned to "auto" and reranker is also pinned,
-    # resolve the effective value once, here, so the call path is always valid.
+    # The auto scope takes no reranker: a pinned reranker with scope "auto"
+    # is a developer error, so fail at construction rather than calling Zep
+    # with an invalid pair on every search.
     if pinned.get("scope") == "auto" and "reranker" in pinned:
-        if pinned["reranker"] in _AUTO_INCOMPATIBLE_RERANKERS:
-            logger.warning(
-                "ZepSearchTool reranker %r is invalid for scope='auto'; "
-                "omitting reranker (auto search uses RRF).",
-                pinned["reranker"],
-            )
-        del pinned["reranker"]
+        raise ValueError(
+            "ZepSearchTool: scope 'auto' takes no reranker, but the reranker "
+            f"{pinned['reranker']!r} is pinned. Do not pin a reranker with "
+            "scope 'auto', or pin another scope."
+        )
 
     return pinned, hidden
 
@@ -306,17 +308,15 @@ def _build_search_kwargs(
         elif limit_value < 1:
             search_kwargs["limit"] = 1
 
-    effective_scope = search_kwargs.get("scope", "edges")
-    if effective_scope == "auto" and "reranker" in search_kwargs:
-        # Auto search always uses RRF internally and ignores reranker
-        # entirely; Zep rejects node_distance/episode_mentions outright.
-        # Warn only when the (would-be) reranker is one Zep would reject.
-        dropped_reranker = search_kwargs.pop("reranker")
-        if dropped_reranker in _AUTO_INCOMPATIBLE_RERANKERS:
-            logger.warning(
-                "ZepSearchTool reranker %r is invalid for scope='auto'; omitting reranker.",
-                dropped_reranker,
-            )
+    # Keep the request the tool sent before the schema default was removed:
+    # a model that omits the reranker gets 'rrf' on every scope except 'auto'.
+    # A hidden reranker stays omitted, so Zep's own default applies.
+    if (
+        search_kwargs.get("scope", "edges") != "auto"
+        and "reranker" not in search_kwargs
+        and "reranker" not in hidden
+    ):
+        search_kwargs["reranker"] = "rrf"
 
     search_kwargs.update(constructor_only)
     return search_kwargs
@@ -501,6 +501,13 @@ class ZepSearchTool(BaseTool):
         )
 
         effective_scope = str(search_kwargs.pop("scope", "edges"))
+
+        if effective_scope == "auto" and "reranker" in search_kwargs:
+            return (
+                f"Error: scope 'auto' takes no reranker, but the reranker "
+                f"{search_kwargs['reranker']!r} was given. Search again with "
+                "no reranker, or choose another scope."
+            )
 
         try:
             if "filters" in search_kwargs:

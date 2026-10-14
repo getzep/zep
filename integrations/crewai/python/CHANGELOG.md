@@ -56,6 +56,13 @@ backfill in the migration guide, and store it.
   `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`,
   and `graph.search_thread_summaries`. Scope `auto` calls `graph.get_context`.
   Each search method returns a pager, which the tool reads up to `limit`.
+- Scope `auto` takes no `reranker`, and the tool no longer drops one
+  silently. A model-supplied reranker with `auto` returns an error that asks
+  the model to search again with no reranker or with another scope, without
+  calling Zep. A pinned reranker with `scope` pinned to `auto` raises
+  `ValueError` at construction. The model-facing `reranker` parameter has no
+  schema default: a model that omits it gets `rrf` on every scope except
+  `auto`. When a reranker is pinned, the scope field does not offer `auto`.
 
 ## [1.2.1] - 2026-07-29
 

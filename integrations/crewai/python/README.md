@@ -162,6 +162,14 @@ its own filter keys — for example `edge_types` filters edge searches and
 the call uses. The tool validates `search_filters` against the resolved scope and
 reports an unsupported key instead of silently sending it.
 
+Scope `auto` takes no `reranker`. When the model sends a reranker with `auto`, the
+tool returns an error that asks the model to search again with no reranker or with
+another scope, and does not call Zep. A pinned reranker with a pinned `auto` scope
+raises `ValueError` at construction. The model-facing `reranker` parameter has no
+default, so a model that omits it gets no error with `auto`; for every other scope
+an omitted reranker sends `rrf`. When a reranker is pinned, the scope field does
+not offer `auto` to the model.
+
 ```python
 # All params model-exposed (default)
 search_tool = create_search_tool(
@@ -479,7 +487,7 @@ export ZEP_API_KEY="your-zep-api-key"
 #### Search Tool (model-exposed by default; pin or hide via `pinned_params`/`hidden_params`)
 - `query`: Search query string (always required, max 400 chars)
 - `scope`: "edges", "nodes", "episodes", "observations", "thread_summaries", or "auto" (default: "edges")
-- `reranker`: "rrf", "mmr", "node_distance", "episode_mentions", or "cross_encoder" (default: "rrf")
+- `reranker`: "rrf", "mmr", "node_distance", "episode_mentions", or "cross_encoder" (no schema default; an omitted reranker sends "rrf" on every scope except `auto`, which takes no reranker)
 - `limit`: Maximum results (default: 10)
 - `mmr_lambda`: Diversity/relevance balance for the "mmr" reranker (omitted when unset)
 - `center_node_uuid`: Center node for "node_distance" reranking (omitted when unset)

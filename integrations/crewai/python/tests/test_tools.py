@@ -76,9 +76,10 @@ class TestZepSearchTool:
         # CrewAI's run() fills args_schema defaults before reaching _run)
         result = tool._run(query="Python", limit=5, scope="edges")
 
-        # Verify the edge search method was called correctly
+        # Verify the edge search method was called correctly (an omitted
+        # reranker sends 'rrf', the same request as the old schema default)
         mock_client.graph.search_edges.assert_called_once_with(
-            GRAPH_UUID, query="Python", page_size=5
+            GRAPH_UUID, query="Python", reranker="rrf", page_size=5
         )
 
         # Check result formatting
@@ -101,7 +102,7 @@ class TestZepSearchTool:
         result = tool._run(query="preferences", limit=3, scope="nodes")
 
         mock_client.graph.search_nodes.assert_called_once_with(
-            GRAPH_UUID, query="preferences", page_size=3
+            GRAPH_UUID, query="preferences", reranker="rrf", page_size=3
         )
 
         assert "UserPreference" in result
@@ -366,47 +367,63 @@ class TestSearchLimitClamping:
 
 
 class TestAutoScopeReranker:
-    """scope='auto' ignores reranker and rejects node_distance /
-    episode_mentions outright -- the reranker must be dropped, not sent."""
+    """scope='auto' takes no reranker: a model-supplied reranker returns an
+    error without calling Zep, and a pinned reranker with scope 'auto' raises
+    at construction."""
 
-    def test_pinned_auto_scope_drops_incompatible_reranker(self, caplog):
+    def test_pinned_auto_scope_with_reranker_raises(self):
         mock_client = _make_mock_client()
 
-        with caplog.at_level(logging.WARNING, logger="zep_crewai.tools"):
-            tool = ZepSearchTool(
+        with pytest.raises(ValueError, match="auto.*takes no reranker"):
+            ZepSearchTool(
                 client=mock_client,
                 graph_uuid=GRAPH_UUID,
                 pinned_params={"scope": "auto", "reranker": "node_distance"},
             )
 
-        assert any("reranker" in record.message for record in caplog.records)
+        mock_client.graph.get_context.assert_not_called()
 
-        tool._run(query="hello")
-
-        call_kwargs = mock_client.graph.get_context.call_args.kwargs
-        assert "reranker" not in call_kwargs
-
-    def test_model_provided_auto_scope_drops_incompatible_reranker(self):
+    def test_model_provided_auto_scope_with_reranker_is_error(self):
         mock_client = _make_mock_client()
 
         tool = ZepSearchTool(client=mock_client, graph_uuid=GRAPH_UUID)
 
-        tool._run(query="hello", scope="auto", reranker="episode_mentions")
+        result = tool._run(query="hello", scope="auto", reranker="episode_mentions")
 
-        mock_client.graph.get_context.assert_called_once_with(GRAPH_UUID, query="hello")
+        assert "Error" in result
+        assert "auto" in result
+        assert "reranker" in result
+        mock_client.graph.get_context.assert_not_called()
+        mock_client.graph.search_edges.assert_not_called()
 
-    def test_pinned_auto_scope_with_model_reranker_dropped(self):
+    def test_pinned_auto_scope_with_model_reranker_is_error(self):
         """scope pinned to 'auto' + reranker left model-exposed: a
-        model-provided incompatible reranker is still dropped at call time."""
+        model-provided reranker returns an error and no Zep call is made."""
         mock_client = _make_mock_client()
 
         tool = ZepSearchTool(
             client=mock_client, graph_uuid=GRAPH_UUID, pinned_params={"scope": "auto"}
         )
 
-        tool._run(query="hello", reranker="node_distance")
+        result = tool._run(query="hello", reranker="node_distance")
+
+        assert "Error" in result
+        assert "reranker" in result
+        mock_client.graph.get_context.assert_not_called()
+
+    def test_pinned_auto_scope_omitted_reranker_runs(self):
+        """scope pinned to 'auto' with no reranker given runs get_context."""
+        mock_client = _make_mock_client()
+        mock_client.graph.get_context.return_value = MagicMock(context="Composed context")
+
+        tool = ZepSearchTool(
+            client=mock_client, graph_uuid=GRAPH_UUID, pinned_params={"scope": "auto"}
+        )
+
+        result = tool._run(query="hello")
 
         mock_client.graph.get_context.assert_called_once_with(GRAPH_UUID, query="hello")
+        assert result == "Composed context"
 
     def test_non_auto_scope_keeps_reranker(self):
         mock_client = _make_mock_client()
@@ -417,6 +434,46 @@ class TestAutoScopeReranker:
 
         call_kwargs = mock_client.graph.search_edges.call_args.kwargs
         assert call_kwargs["reranker"] == "node_distance"
+
+    def test_non_auto_scope_defaults_to_rrf(self):
+        """A model that omits the reranker gets 'rrf' on a non-auto scope --
+        the same request the tool sent before the schema default was removed."""
+        mock_client = _make_mock_client()
+
+        tool = ZepSearchTool(client=mock_client, graph_uuid=GRAPH_UUID)
+
+        tool._run(query="hello", scope="nodes")
+
+        call_kwargs = mock_client.graph.search_nodes.call_args.kwargs
+        assert call_kwargs["reranker"] == "rrf"
+
+    def test_reranker_schema_has_no_default(self):
+        """The model-facing reranker field defaults to None, so a model that
+        omits it with scope 'auto' is not turned into an error."""
+        mock_client = _make_mock_client()
+
+        tool = ZepSearchTool(client=mock_client, graph_uuid=GRAPH_UUID)
+
+        assert tool.args_schema.model_fields["reranker"].default is None
+
+    def test_pinned_reranker_hides_auto_scope_choice(self):
+        """With a reranker pinned, the model-facing scope field does not
+        offer 'auto', which takes no reranker."""
+        mock_client = _make_mock_client()
+
+        tool = ZepSearchTool(
+            client=mock_client, graph_uuid=GRAPH_UUID, pinned_params={"reranker": "mmr"}
+        )
+
+        scope_annotation = tool.args_schema.model_fields["scope"].annotation
+        assert "auto" not in set(scope_annotation.__args__)
+        assert set(scope_annotation.__args__) == {
+            "edges",
+            "nodes",
+            "episodes",
+            "observations",
+            "thread_summaries",
+        }
 
     def test_pinned_scope_rejects_unsupported_filters_at_construction(self):
         """node_labels is a nodes-scope key; with scope pinned to 'edges' the
