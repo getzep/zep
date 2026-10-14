@@ -93,7 +93,7 @@ python chunk_and_ingest.py sample_document.txt --user-id user123 --wait
 
 2. **Contextualization**: Each chunk is sent to OpenAI's gpt-5-mini with the full document context. The model generates a brief description situating the chunk within the document.
 
-3. **Ingestion**: The contextualized chunk (context + separator + original chunk) is ingested into Zep using `client.graph.add()`.
+3. **Ingestion**: The contextualized chunk (context + separator + original chunk) is ingested into Zep as an episode with `client.graph.episode.add()`.
 
 ## Example Output
 

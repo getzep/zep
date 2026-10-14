@@ -20,8 +20,6 @@ from agents import Agent, Runner, function_tool, set_default_openai_key
 from zep_cloud.client import AsyncZep
 from zep_cloud.types import Message as ZepMessage
 from zep_cloud import NotFoundError
-
-
 dotenv.load_dotenv()
 
 
@@ -81,7 +79,7 @@ class AsyncZepMemoryManager:
             first_name: Optional first name for the user.
             last_name: Optional last name for the user.
         """
-        self.thread_id = session_id or str(uuid.uuid4())
+        self.thread_id = session_id
         self.user_id = user_id or f"user-{str(uuid.uuid4())[:8]}"
         self.email = email
         self.first_name = first_name
@@ -91,7 +89,7 @@ class AsyncZepMemoryManager:
 
     async def initialize(self):
         """
-        Initialize the AsyncZep client, create or get the user, and create a new memory session.
+        Initialize the AsyncZep client, create a user, and create a thread.
         """
         if not ZEP_API_KEY:
             print(
@@ -101,31 +99,17 @@ class AsyncZepMemoryManager:
 
         self.zep_client = AsyncZep(api_key=ZEP_API_KEY)
 
-        # Create or get the user
-        try:
-            # Try to get the user first
-            await self.zep_client.user.get(self.user_id)
-            print(f"Using existing user: {self.user_id}")
-
-        except NotFoundError:
-            await self.zep_client.user.add(
-                user_id=self.user_id,
-                first_name=self.first_name,
-                last_name=self.last_name,
-                email=self.email,
-            )
-            print(f"Created new user with ID: {self.user_id}")
-
-        # Generate a timestamp-based thread ID for a new thread each time
-        timestamp = int(time.time())
-        self.thread_id = f"{self.thread_id}-{timestamp}"
-        print(f"Creating new thread with ID: {self.thread_id}")
-
-        # Always create a new thread with the user ID
-        await self.zep_client.thread.create(
-            thread_id=self.thread_id,
+        user = await self.zep_client.user.create(
             user_id=self.user_id,
+            first_name=self.first_name,
+            last_name=self.last_name,
+            email=self.email,
         )
+        self.user_id = user.uuid_
+        print(f"Created user UUID: {self.user_id}")
+        thread = await self.zep_client.thread.create(user_uuid=self.user_id)
+        self.thread_id = thread.uuid_
+        print(f"Created thread UUID: {self.thread_id}")
 
     async def add_message(self, message: dict) -> None:
         """
@@ -155,10 +139,11 @@ class AsyncZepMemoryManager:
         if not self.zep_client:
             raise ValueError("Zep client not initialized")
 
-        await self.zep_client.thread.add_messages(
-            thread_id=self.thread_id,
+        result = await self.zep_client.thread.add_messages(
+            thread_uuid=self.thread_id,
             messages=[zep_message],
         )
+        self.last_task_uuid = result.task.uuid_ if result.task else None
 
     async def get_memory(self) -> str:
         """
@@ -171,17 +156,29 @@ class AsyncZepMemoryManager:
             if not self.zep_client:
                 raise ValueError("Zep client not initialized")
 
-            # Use thread.get_user_context to retrieve memory context for the thread
-            context = await self.zep_client.thread.get_user_context(thread_id=self.thread_id)
+            # Wait for the latest message before retrieving the context.
+            if self.last_task_uuid:
+                deadline = time.monotonic() + 180
+                while True:
+                    task = await self.zep_client.task.get(self.last_task_uuid)
+                    if task.status == "succeeded":
+                        break
+                    if task.status in {"partial", "failed"}:
+                        raise RuntimeError(
+                            f"Message task ended with {task.status}: {task.error}"
+                        )
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(
+                            f"Timed out waiting for task {self.last_task_uuid}"
+                        )
+                    await asyncio.sleep(2)
+            context = await self.zep_client.thread.get_context(self.thread_id)
 
             # Use the context string provided by Zep instead of creating a summary
             if context.context:
                 return context.context
 
             return "No conversation history yet."
-        except NotFoundError:
-            print("Thread not found.")
-            raise
         except Exception as e:
             print(f"Error getting memory context: {e}")
             raise
@@ -209,18 +206,18 @@ class AsyncZepMemoryManager:
             # Use the user_id property directly instead of getting it from the session
             if self.user_id:
                 # Use graph.search to find relevant edges. Facts reside on graph edges
-                search_response = await self.zep_client.graph.search(
-                    query=query, user_id=self.user_id, scope="edges", limit=limit
+                search_response = await self.zep_client.graph.search_edges(
+                    self.user_id, query=query, page_size=limit
                 )
 
-                if search_response and search_response.edges:
+                if search_response and search_response.items:
                     # Convert graph search results to the expected format
                     formatted_messages = [
                         {
                             "role": "assistant",  # These are facts, so mark them as from the assistant
                             "content": edge.fact,
                         }
-                        for edge in search_response.edges[:limit]
+                        for edge in search_response.items[:limit]
                     ]
                     print(
                         f"Memory search found {len(formatted_messages)} relevant facts from graph search"

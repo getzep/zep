@@ -1,6 +1,4 @@
-"""Benchmark: the same conversation, with the Zep context block in the
-system prompt (only the static prefix can be cached) vs. as Opus 4.8
-mid-conversation system messages (everything can be cached).
+"""Benchmark two user-message placements for Zep context data.
 
 Prerequisite: run ``python ingest.py`` once — it seeds the demo user's Zep
 graph with two prior conversations, so the benchmark conversation starts
@@ -13,14 +11,12 @@ Phases:
    turn (and polling between turns so extraction keeps pace, like a
    real-paced conversation).
 2. **Replay × 2** — run the identical conversation through Claude Opus 4.8
-   twice: once with context in the system prompt and a breakpoint on the
-   static prefix (``system-prompt`` — the best caching can do with that
-   placement), once as a trailing mid-conversation system message with full
-   caching of everything before it (``system-message``). Both replays use
+   twice: once with context in the current user turn (``system-prompt``),
+   and once as a trailing user-data message (``system-message``). Both replays use
    the *same captured context blocks*, the *same scripted assistant
    replies*, and the same replace-each-turn context handling, so the
    prompts are token-for-token equivalent — the only variable is where the
-   context block sits, which determines whether the conversation history
+   context data sits, which determines whether the conversation history
    can be cached. Each replay gets a unique salt in its system prompt so
    runs cannot hit each other's cache (or a previous run's).
 3. **Report** — per-turn and aggregate token, cost, and latency comparison,
@@ -51,7 +47,6 @@ from pathlib import Path
 from anthropic import Anthropic
 from dotenv import load_dotenv
 from zep_cloud.client import Zep
-from zep_cloud.core.api_error import ApiError
 from zep_cloud.types import Message
 
 import pricing
@@ -74,33 +69,29 @@ RESULTS_DIR = Path(__file__).parent / "results"
 
 
 def capture_contexts(zep: Zep, turns: list[dict], wait_between_turns: bool) -> tuple[str, list[str | None]]:
-    user_id = scenario.DEMO_USER_ID
-    try:
-        zep.user.get(user_id=user_id)
-    except ApiError as e:
-        if e.status_code == 404:
-            sys.exit(f"Zep user '{user_id}' not found. Run `python ingest.py` first to seed the demo user.")
-        raise
+    user_id = os.getenv("ZEP_USER_UUID")
+    if not user_id:
+        sys.exit("Set ZEP_USER_UUID to the UUID printed by ingest.py.")
 
-    thread_id = f"{user_id}-bench-{uuid.uuid4().hex[:6]}"
-    zep.thread.create(thread_id=thread_id, user_id=user_id)
+    thread_id = zep.thread.create(user_uuid=user_id).uuid_
 
     print(f"Capture: playing {len(turns)} turns into thread {thread_id}...")
     contexts: list[str | None] = []
     for i, turn in enumerate(turns, start=1):
-        # Persist the user message and get the default Zep context block in
-        # the same call (one round trip instead of add + get_user_context).
+        # Persist the user message and wait for its context to be available.
         response = zep.thread.add_messages(
-            thread_id=thread_id,
+            thread_uuid=thread_id,
             messages=[Message(role="user", name="Dana", content=turn["user"])],
-            return_context=True,
         )
-        contexts.append(response.context)
+        if response.task and response.task.uuid_:
+            wait_for_zep_processing(zep, user_id, timeout_s=90.0)
+        context = zep.thread.get_context(thread_id).context
+        contexts.append(context)
         zep.thread.add_messages(
-            thread_id=thread_id,
+            thread_uuid=thread_id,
             messages=[Message(role="assistant", name="Mira", content=turn["assistant"])],
         )
-        print(f"Capture: turn {i}/{len(turns)} — context block {len(response.context or ''):,} chars")
+        print(f"Capture: turn {i}/{len(turns)} — context block {len(context or ''):,} chars")
         if wait_between_turns and i < len(turns):
             # Let extraction keep pace, like a real-paced conversation, so
             # later turns retrieve facts established in earlier ones.
@@ -228,7 +219,7 @@ def print_report(baseline: dict, cached: dict) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Compare prefix-only caching (context in system prompt) vs full caching (mid-conversation system messages)."
+        description="Compare prefix-only caching with cache-preserving user-data context placement."
     )
     parser.add_argument("--conversation", choices=sorted(scenario.CONVERSATIONS), default="short")
     parser.add_argument("--reuse", metavar="RESULTS_JSON", help="Reuse captured contexts from a previous results file (skips Zep seeding).")

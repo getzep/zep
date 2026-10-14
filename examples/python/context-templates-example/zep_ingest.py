@@ -1,45 +1,40 @@
 
 import os
-from zep_cloud.client import Zep
-from zep_cloud.types import Message, EntityEdgeSourceTarget
-from dotenv import load_dotenv
-import uuid
+import time
 import json
+from dotenv import load_dotenv
+from zep_cloud.client import Zep
+from zep_cloud.ontology import build_ontology
+from zep_cloud.types import EdgeSourceTarget, Message
 from ontology import *
 
 
 def create_user(zep_client):
-    """Load user config and create user. If user already exists, return existing user info."""
+    """Create a user or use the UUID configured for the companion app."""
     # Load user configuration
     with open("data/user.json", "r") as f:
         user_config = json.load(f)
 
-    user_id = user_config["user_id"]
     user_email = user_config["email"]
     user_first_name = user_config["first_name"]
     user_last_name = user_config["last_name"]
 
-    # Check if user already exists
-    try:
-        existing_user = zep_client.user.get(user_id=user_id)
-        print(f"\n👤 User {user_id} already exists, using existing user.")
-        return user_id, user_first_name, user_last_name
-    except Exception:
-        # User doesn't exist, create it
-        pass
+    user_uuid = os.getenv("ZEP_USER_UUID")
+    if user_uuid:
+        print(f"\nUsing user UUID from ZEP_USER_UUID: {user_uuid}")
+        return user_uuid, user_first_name, user_last_name
 
     # Create the user with default ontology disabled
-    print(f"\n👤 Creating user {user_id}...")
-    user = zep_client.user.add(
-        user_id=user_id,
+    print("\n👤 Creating user...")
+    user = zep_client.user.create(
         email=user_email,
         first_name=user_first_name,
         last_name=user_last_name,
         disable_default_ontology=True,
     )
-    print(f"✅ User {user_id} created successfully.")
+    print(f"✅ User created. Set ZEP_USER_UUID={user.uuid_} for the companion app.")
 
-    return user_id, user_first_name, user_last_name
+    return user.uuid_, user_first_name, user_last_name
 
 
 def set_custom_ontology(zep_client, user_id):
@@ -47,8 +42,7 @@ def set_custom_ontology(zep_client, user_id):
     print(f"\n🏗️  Setting custom real estate ontology for user {user_id}...")
 
     try:
-        zep_client.graph.set_ontology(
-            user_ids=[user_id],
+        entity_types, edge_types = build_ontology(
             entities={
                 "Property": Property,
                 "Neighborhood": Neighborhood,
@@ -62,38 +56,39 @@ def set_custom_ontology(zep_client, user_id):
             edges={
                 "INTERESTED_IN_PROPERTY": (
                     InterestedInProperty,
-                    [EntityEdgeSourceTarget(source="User", target="Property")]
+                    [EdgeSourceTarget(source="User", target="Property")]
                 ),
                 "VIEWED_PROPERTY": (
                     ViewedProperty,
-                    [EntityEdgeSourceTarget(source="User", target="Property")]
+                    [EdgeSourceTarget(source="User", target="Property")]
                 ),
                 "REJECTED_PROPERTY": (
                     RejectedProperty,
-                    [EntityEdgeSourceTarget(source="User", target="Property")]
+                    [EdgeSourceTarget(source="User", target="Property")]
                 ),
                 "MADE_OFFER": (
                     MadeOffer,
-                    [EntityEdgeSourceTarget(source="User", target="Property")]
+                    [EdgeSourceTarget(source="User", target="Property")]
                 ),
                 "HAS_REQUIREMENT": (
                     HasRequirement,
-                    [EntityEdgeSourceTarget(source="User")]
+                    [EdgeSourceTarget(source="User")]
                 ),
                 "PREFERS_NEIGHBORHOOD": (
                     PrefersNeighborhood,
-                    [EntityEdgeSourceTarget(source="User", target="Neighborhood")]
+                    [EdgeSourceTarget(source="User", target="Neighborhood")]
                 ),
                 "NEEDS_AMENITY": (
                     NeedsAmenity,
-                    [EntityEdgeSourceTarget(source="User", target="Amenity")]
+                    [EdgeSourceTarget(source="User", target="Amenity")]
                 ),
                 "HAS_BUDGET_CONSTRAINT": (
                     HasBudgetConstraint,
-                    [EntityEdgeSourceTarget(source="User")]
+                    [EdgeSourceTarget(source="User")]
                 ),
             }
         )
+        zep_client.graph.set_ontology(user_id, entity_types=entity_types, edge_types=edge_types)
         print(f"✅ Custom ontology set successfully for user {user_id}")
     except Exception as e:
         print(f"❌ Error setting custom ontology: {e}")
@@ -116,18 +111,6 @@ def ingest_user_data(zep_client, user_id, user_first_name, user_last_name):
             data_dict["user_id"] = user_id
             data_dict["user_full_name"] = user_full_name
 
-        # try:
-        #     zep_client.graph.add(
-        #         user_id=user_id,
-        #         data=json.dumps(item),
-        #         type="json"
-        #     )
-        #     # Get the key name for logging
-        #     key_name = list(item.keys())[0]
-        #     print(f"✅ Successfully added {key_name} data to graph")
-        # except Exception as e:
-        #     key_name = list(item.keys())[0] if item else "unknown"
-        #     print(f"❌ Error adding {key_name} data to graph: {e}")
 
 
 def ingest_conversations(zep_client, user_id, user_first_name, user_last_name):
@@ -138,16 +121,12 @@ def ingest_conversations(zep_client, user_id, user_first_name, user_last_name):
 
     print("\n💬 Adding conversations to threads...")
     # Process each conversation thread
+    last_task_uuid = None
     for conversation in conversations:
-        thread_id = f"conversation-{uuid.uuid4().hex[:8]}"
         messages_data = conversation["messages"]
 
         try:
-            # Create thread
-            zep_client.thread.create(
-                thread_id=thread_id,
-                user_id=user_id
-            )
+            thread = zep_client.thread.create(user_uuid=user_id)
 
             # Convert message data to Zep Message objects
             zep_messages = []
@@ -160,15 +139,26 @@ def ingest_conversations(zep_client, user_id, user_first_name, user_last_name):
                 zep_messages.append(zep_message)
 
             # Add messages to thread
-            zep_client.thread.add_messages(
-                thread_id=thread_id,
-                messages=zep_messages
+            result = zep_client.thread.add_messages(
+                thread_uuid=thread.uuid_, messages=zep_messages
             )
-            print(f"✅ Successfully added messages to thread {thread_id}")
+            last_task_uuid = result.task.uuid_ if result.task else last_task_uuid
+            print(f"✅ Successfully added messages to thread {thread.uuid_}")
 
         except Exception as e:
-            print(f"❌ Error processing thread {thread_id}: {e}")
+            print(f"❌ Error processing thread: {e}")
             continue
+    if last_task_uuid:
+        deadline = time.monotonic() + 180
+        while True:
+            task = zep_client.task.get(last_task_uuid)
+            if task.status == "succeeded":
+                break
+            if task.status in {"partial", "failed"}:
+                raise RuntimeError(f"Ingestion task ended with {task.status}: {task.error}")
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"Timed out waiting for task {last_task_uuid}")
+            time.sleep(2)
 
 
 if __name__ == "__main__":

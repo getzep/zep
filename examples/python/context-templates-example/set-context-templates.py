@@ -23,8 +23,9 @@ template = """
 %{episodes limit=2}
 """
 
-# Set the context template
-zep_client.context.create_context_template(
-    template_id="requirements-and-preferences-1",
+# Create the context template
+context_template = zep_client.context.create_template(
+    name="requirements-and-preferences",
     template=template
 )
+print(f"Set ZEP_CONTEXT_TEMPLATE_UUID={context_template.uuid_}")

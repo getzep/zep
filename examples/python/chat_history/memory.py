@@ -5,7 +5,7 @@ This script demonstrates the following functionality:
 - Creating a user.
 - Creating a thread associated with the created user.
 - Adding messages to the thread.
-- Retrieving synthesized user context with thread.get_user_context.
+- Retrieving synthesized user context with thread.get_context.
 - optionally deleting the thread.
 """
 
@@ -61,47 +61,43 @@ async def main() -> None:
     )
 
     # Create a user
-    user_id = uuid.uuid4().hex  # unique user id. can be any alphanum string
-    await client.user.add(
-        user_id=user_id,
+    user = await client.user.create(
+        user_id=f"examples-v4-chat-history-{uuid.uuid4().hex}",
         email="user@example.com",
         first_name="Jane",
         last_name="Smith",
     )
 
-    print(f"User added: {user_id}")
-    thread_id = uuid.uuid4().hex  # unique thread id. can be any alphanum string
+    user_uuid = user.uuid_
+    print(f"User created: {user_uuid}")
 
     # Create thread associated with the above user
-    print(f"\n---Creating thread: {thread_id}")
+    thread = await client.thread.create(user_uuid=user_uuid)
+    thread_uuid = thread.uuid_
+    print(f"\n---Created thread: {thread_uuid}")
 
-    await client.thread.create(
-        thread_id=thread_id,
-        user_id=user_id,
-    )
-
-    print(f"\n---Getting thread: {thread_id}")
-    thread = await client.thread.get(thread_id)
+    print(f"\n---Getting thread: {thread_uuid}")
+    thread = await client.thread.get(thread_uuid)
     print(f"thread details: {thread}")
 
-    print(f"\n---Add messages to the thread: {thread_id}")
-    last_task_id = None
-    for m in history:
-        print(f"{m['role']}: {m['content']}")
-        response = await client.thread.add_messages(
-            thread_id=thread_id, messages=[Message(**m)]
-        )
-        last_task_id = response.task_id or last_task_id
+    print(f"\n---Add messages to the thread: {thread_uuid}")
+    for message in history:
+        print(f"{message['role']}: {message['content']}")
+    response = await client.thread.add_messages(
+        thread_uuid=thread_uuid,
+        messages=[Message(**message) for message in history],
+    )
+    last_task_id = response.task.uuid_ if response.task else None
 
     await wait_for_task(client, last_task_id)
 
-    print(f"\n---Get user context for thread: {thread_id}")
-    memory = await client.thread.get_user_context(thread_id)
+    print(f"\n---Get user context for thread: {thread_uuid}")
+    memory = await client.thread.get_context(thread_uuid)
     print(f"Context: {memory.context}")
 
     # Delete thread and wipe thread memory
     # Uncomment to run
-    # await client.thread.delete(thread_id)
+    # await client.thread.delete(thread_uuid)
 
 
 if __name__ == "__main__":

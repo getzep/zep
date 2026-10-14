@@ -1,12 +1,14 @@
 import asyncio
 import os
+import time
 import uuid
 from dotenv import find_dotenv, load_dotenv
 
-from zep_cloud import EntityEdgeSourceTarget, SearchFilters, Message
+from zep_cloud import Message
 from zep_cloud.client import AsyncZep
+from zep_cloud.ontology import EdgeModel, EntityModel, EntityText, build_ontology
 from pydantic import Field
-from zep_cloud.external_clients.ontology import EntityModel, EntityText, EdgeModel
+from zep_cloud.types import EdgeSearchFilters, EdgeSourceTarget
 
 load_dotenv(
     dotenv_path=find_dotenv()
@@ -53,7 +55,7 @@ async def main() -> None:
             description="The purpose of travel (Business, Leisure, etc.)",
             default=None
         )
-    await client.graph.set_entity_types(
+    entity_types, edge_types = build_ontology(
         entities={
             "Destination": Destination,
         },
@@ -61,7 +63,7 @@ async def main() -> None:
             "TRAVELING_TO": (
                 TravelingTo,
                 [
-                    EntityEdgeSourceTarget(
+                    EdgeSourceTarget(
                         source="User",
                         target="Destination"
                     )
@@ -77,41 +79,46 @@ async def main() -> None:
         Message(content="Great planning! Tokyo for business in March and then Bali for leisure in April - that's a nice combination of work and relaxation.", role="assistant", name="Assistant"),
     ]
 
-    user_id = f"user-{uuid.uuid4()}"
-    await client.user.add(user_id=user_id, first_name="John", last_name="Doe", email="john.doe@example.com")
-    thread_id = f"thread-{uuid.uuid4()}"
-    await client.thread.create(thread_id=thread_id, user_id=user_id)
+    user = await client.user.create(
+        user_id=f"examples-v4-ontology-{uuid.uuid4().hex}",
+        first_name="John",
+        last_name="Doe",
+        email="john.doe@example.com",
+    )
+    user_uuid = user.uuid_
+    await client.graph.set_ontology(
+        user_uuid, entity_types=entity_types, edge_types=edge_types
+    )
+    thread = await client.thread.create(user_uuid=user_uuid)
+    thread_uuid = thread.uuid_
 
-    await client.thread.add_messages(
-        thread_id=thread_id,
+    added = await client.thread.add_messages(
+        thread_uuid=thread_uuid,
         messages=messages,
     )
 
-    # Wait for the graph to process the messages
-    print("Waiting for graph processing...")
-    await asyncio.sleep(10)
+    if added.task and added.task.uuid_:
+        print("Waiting for graph processing...")
+        deadline = time.monotonic() + 180
+        while True:
+            task = await client.task.get(added.task.uuid_)
+            if task.status == "succeeded":
+                break
+            if task.status in {"partial", "failed"}:
+                raise RuntimeError(f"Message ingestion task ended with {task.status}: {task.error}")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Timed out waiting for message ingestion")
+            await asyncio.sleep(2)
 
-    results = await client.graph.search(
-        user_id=user_id,
+    results = await client.graph.search_edges(
+        user_uuid,
         query="travel",
-        # scope="nodes",
-        scope="edges",
-        search_filters=SearchFilters(
-            edge_types=["TRAVELING_TO"]
-            # node_labels=["Destination"]
-        )
+        page_size=10,
+        filters=EdgeSearchFilters(edge_types=["TRAVELING_TO"]),
     )
-
-    if results.nodes:
-        for node in results.nodes:
-            print(Destination(**node.attributes))
-    if results.edges:
-        for edge in results.edges:
-            print(TravelingTo(**edge.attributes))
-
-
-    enntl = await client.graph.list_entity_types()
-    print(enntl)
+    for edge in results.items:
+        print(TravelingTo(**(edge.attributes or {})))
+    print(await client.graph.get_ontology(user_uuid))
 
 if __name__ == "__main__":
     asyncio.run(main())

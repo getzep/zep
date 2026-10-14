@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 from dotenv import find_dotenv, load_dotenv
 from zep_cloud.client import Zep
@@ -15,12 +16,12 @@ zep_assistant_role = "ShoeSalesSupportBot"
 ignore_roles = []
 
 uuid_value = uuid.uuid4().hex[:4]
-user_id = "default-graph-simple-" + uuid_value
-client.user.add(
+user_id = f"examples-v4-simple-{uuid_value}"
+user = client.user.create(
     user_id=user_id,
-    first_name = first_name,
-    last_name = last_name,
-    email=email
+    first_name=first_name,
+    last_name=last_name,
+    email=email,
 )
 
 threads = [
@@ -38,15 +39,23 @@ threads = [
     ]
 ]
 
+last_task_id = None
 for thread in threads:
-    uuid_value = uuid.uuid4().hex[:4]
-    thread_id = "thread-" + uuid_value
-    
-    client.thread.create(
-        thread_id=thread_id,
-        user_id=user_id
+    zep_thread = client.thread.create(user_uuid=user.uuid_)
+    result = client.thread.add_messages(
+        thread_uuid=zep_thread.uuid_,
+        messages=[Message(**message) for message in thread],
     )
-    
-    for m in thread:
-        client.thread.add_messages(thread_id=thread_id, messages=[Message(**m)])
+    last_task_id = result.task.uuid_ if result.task else last_task_id
 
+if last_task_id:
+    deadline = time.monotonic() + 120
+    while True:
+        task = client.task.get(last_task_id)
+        if task.status == "succeeded":
+            break
+        if task.status in {"partial", "failed"}:
+            raise RuntimeError(f"Message ingestion task {last_task_id} ended with {task.status}")
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Timed out waiting for task {last_task_id}")
+        time.sleep(2)

@@ -8,7 +8,7 @@ This is a proof-of-concept proxy server that sits between ElevenLabs Conversatio
 User speaks → ElevenLabs → This Proxy → OpenAI
                               ↓
                          Zep Retrieval
-                    (inject into system prompt)
+                    (add as user-message data)
 ```
 
 ## Quick Start
@@ -104,7 +104,7 @@ In your agent config, you can pass dynamic variables that get included in the re
 1. **ElevenLabs sends a request** to your proxy with the conversation messages
 2. **The proxy extracts the user_id** from the request
 3. **The proxy calls Zep** to get context (facts, memories) for that user
-4. **The proxy injects the context** into the system prompt
+4. **The proxy adds the context** to a user message as data
 5. **The proxy forwards to OpenAI** and streams the response back
 6. **ElevenLabs receives the response** with the context already incorporated
 
@@ -150,4 +150,4 @@ Make sure you're passing the user_id when starting the ElevenLabs conversation.
 ### Context not appearing
 - Verify the user exists in Zep
 - Check that facts have been extracted (may take time)
-- Look at the proxy logs for the injected system prompt
+- Look at the proxy logs for the context added to the user message

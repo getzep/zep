@@ -6,7 +6,7 @@ On every request, it:
 1. Validates the request has a valid API key (PROXY_API_KEY)
 2. Extracts the user_id and conversation_id from the request
 3. Fetches relevant context from Zep (user facts + thread history)
-4. Injects that context into the system prompt
+4. Adds that context to the user message as data
 5. Persists the user message to Zep for memory extraction
 6. Forwards to OpenAI and streams the response back
 7. Persists the assistant response to Zep
@@ -97,16 +97,12 @@ def validate_api_key(request: Request) -> bool:
 
 
 async def ensure_zep_user_exists(user_id: str) -> bool:
-    """Ensure the user exists in Zep, creating if necessary."""
+    """Check the user UUID supplied by the caller."""
     try:
         await zep_client.user.get(user_id)
         return True
     except Exception:
-        try:
-            await zep_client.user.add(user_id=user_id)
-            return True
-        except Exception:
-            return False
+        return False
 
 
 async def add_message_and_get_context(
@@ -117,15 +113,12 @@ async def add_message_and_get_context(
     """
     Add the user message to Zep and get context in a single optimized call.
 
-    PERFORMANCE OPTIMIZATION: Uses return_context=True to get Zep's full context
-    block directly from add_messages(), eliminating the need for separate
-    get_user_context() or graph.search() calls. The returned context block
+    The returned context block
     already includes relevant facts from the user's graph.
 
     Returns:
         The context block string, or None if unavailable.
     """
-    # Ensure thread exists first
     thread_exists = await ensure_zep_thread_exists(conversation_id, user_id)
     if not thread_exists:
         return None
@@ -134,38 +127,36 @@ async def add_message_and_get_context(
     message = Message(role="user", content=user_message)
 
     try:
-        # Add message and get context in single call (performance optimization)
-        # return_context=True returns Zep's full context block which includes
-        # relevant facts from the user's graph - no separate search needed
         memory_response = await zep_client.thread.add_messages(
-            thread_id=conversation_id,
+            thread_uuid=conversation_id,
             messages=[message],
-            return_context=True
         )
 
-        if memory_response and memory_response.context:
-            return memory_response.context
-
-        return None
+        if memory_response.task and memory_response.task.uuid_:
+            deadline = time.monotonic() + 180
+            while True:
+                task = await zep_client.task.get(memory_response.task.uuid_)
+                if task.status == "succeeded":
+                    break
+                if task.status in {"partial", "failed"}:
+                    raise RuntimeError(f"Message task ended with {task.status}: {task.error}")
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("Timed out waiting for message processing")
+                await asyncio.sleep(2)
+        context = await zep_client.thread.get_context(conversation_id)
+        return context.context
 
     except Exception:
         return None
 
 
 async def ensure_zep_thread_exists(thread_id: str, user_id: str) -> bool:
-    """Ensure the thread exists in Zep, creating if necessary."""
+    """Check the thread UUID supplied by the caller."""
     try:
-        await zep_client.thread.get(thread_id=thread_id)
+        await zep_client.thread.get(thread_uuid=thread_id)
         return True
     except Exception:
-        try:
-            await zep_client.thread.create(thread_id=thread_id, user_id=user_id)
-            return True
-        except Exception as e:
-            # Thread might already exist (race condition), that's ok
-            if "already exists" in str(e).lower() or "conflict" in str(e).lower():
-                return True
-            return False
+        return False
 
 
 async def persist_message_to_zep(
@@ -181,7 +172,6 @@ async def persist_message_to_zep(
     automatic fact extraction and graph updates.
     """
     try:
-        # Ensure thread exists first
         thread_exists = await ensure_zep_thread_exists(conversation_id, user_id)
         if not thread_exists:
             return
@@ -191,7 +181,7 @@ async def persist_message_to_zep(
 
         # Add message to thread
         await zep_client.thread.add_messages(
-            thread_id=conversation_id,
+            thread_uuid=conversation_id,
             messages=[message]
         )
 
@@ -201,40 +191,21 @@ async def persist_message_to_zep(
 
 
 def inject_context_into_messages(messages: list, zep_context: str) -> list:
-    """
-    Inject Zep context into the system prompt.
-
-    If there's an existing system message, append the context.
-    If not, create a new system message with the context.
-    """
+    """Add Zep context to a user message as data."""
     if not zep_context:
         return messages
 
-    context_block = f"""
-
-<zep_user_context>
-The following context about this user was retrieved from your memory system (Zep).
-Use this information to personalize your responses and maintain continuity across conversations.
-
-{zep_context}
-</zep_user_context>
-"""
-
-    # Make a copy to avoid modifying the original
     modified_messages = messages.copy()
-
-    if modified_messages and modified_messages[0].get("role") == "system":
-        # Append to existing system message
-        modified_messages[0] = {
-            **modified_messages[0],
-            "content": modified_messages[0]["content"] + context_block
-        }
+    context_block = f"\n\nRelevant memory data from Zep:\n{zep_context}"
+    for index in range(len(modified_messages) - 1, -1, -1):
+        if modified_messages[index].get("role") == "user":
+            modified_messages[index] = {
+                **modified_messages[index],
+                "content": modified_messages[index].get("content", "") + context_block,
+            }
+            break
     else:
-        # Insert a new system message at the beginning
-        modified_messages.insert(0, {
-            "role": "system",
-            "content": f"You are a helpful assistant.{context_block}"
-        })
+        modified_messages.append({"role": "user", "content": context_block})
 
     return modified_messages
 
@@ -327,7 +298,7 @@ async def chat_completions(request: Request):
 
     This mimics the OpenAI chat completions endpoint but:
     1. Fetches context from Zep (user facts + session history)
-    2. Injects that context into the system prompt
+    2. Adds that context to the user message as data
     3. Persists messages to Zep for memory extraction
     4. Forwards to OpenAI and streams the response back
 
@@ -336,7 +307,7 @@ async def chat_completions(request: Request):
     - X-API-Key: <key>
     - api-key: <key>
 
-    Pass user_id and conversation_id via elevenlabs_extra_body from the SDK.
+    Pass the Zep user UUID and thread UUID via elevenlabs_extra_body.
     """
     # Validate API key before processing
     if not validate_api_key(request):
@@ -380,10 +351,7 @@ async def chat_completions(request: Request):
                 user_message = msg.get("content", "")
                 break
 
-        # PERFORMANCE OPTIMIZATION: Use add_message_and_get_context which
-        # adds the user message to Zep AND returns the full context block in
-        # a single call via return_context=True. This eliminates the need for
-        # separate get_user_context() or graph.search() calls.
+        # Add the user message, wait for processing, and retrieve its context.
         if user_message:
             zep_context = await add_message_and_get_context(
                 user_id, conversation_id, user_message
@@ -449,7 +417,7 @@ async def warm_user_cache(request: Request):
         # Note: This may fail with 404 if the user has no graph data yet (new user)
         # That's fine - there's nothing to warm for new users
         try:
-            await zep_client.user.warm(user_id=user_id)
+            await zep_client.user.warm(user_uuid=user_id)
             return {
                 "status": "success",
                 "user_id": user_id,

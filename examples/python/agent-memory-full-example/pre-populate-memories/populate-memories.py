@@ -1,5 +1,6 @@
 
 import os
+import time
 from zep_cloud.client import Zep
 from zep_cloud.types import Message
 from dotenv import load_dotenv
@@ -11,19 +12,15 @@ USER_EMAIL = "john@example.com"
 USER_FIRST_NAME = "John"
 USER_LAST_NAME = "Doe"
 
-def get_or_create_user(zep_client):
-    """Get an existing user or create a new one if they don't exist."""
-    try:
-        user = zep_client.user.get(user_id=USER_ID)
-        print(f"User {USER_ID} already exists. Continuing with existing user.")
-    except Exception:
-        user = zep_client.user.add(
-            user_id=USER_ID,
-            email=USER_EMAIL,
-            first_name=USER_FIRST_NAME,
-            last_name=USER_LAST_NAME,
-        )
-        print(f"User {USER_ID} created.")
+def create_user(zep_client):
+    """Create a user for this example run."""
+    user = zep_client.user.create(
+        user_id=f"{USER_ID}-{uuid.uuid4().hex[:8]}",
+        email=USER_EMAIL,
+        first_name=USER_FIRST_NAME,
+        last_name=USER_LAST_NAME,
+    )
+    print(f"User created. Set ZEP_USER_UUID={user.uuid_} for the companion app.")
     return user
 
 
@@ -46,20 +43,22 @@ def populate_user_memory(zep_client):
     user_data = load_user_data()
 
     # Ensure user exists
-    user = get_or_create_user(zep_client)
+    user = create_user(zep_client)
+    last_task_uuid = None
 
     # Add user data to graph in pieces
     print("\n📊 Adding user data to graph...")
     for item in user_data:
         try:
-            zep_client.graph.add(
-                user_id=USER_ID,
+            result = zep_client.graph.episode.add(
+                user.uuid_,
                 data=json.dumps(item),
                 type="json"
             )
             # Get the key name for logging
             key_name = list(item.keys())[0]
-            print(f"✅ Successfully added {key_name} data to graph")
+            print(f"✅ Added {key_name} as episode {result.episode.uuid_}")
+            last_task_uuid = result.task.uuid_ if result.task else last_task_uuid
         except Exception as e:
             key_name = list(item.keys())[0] if item else "unknown"
             print(f"❌ Error adding {key_name} data to graph: {e}")
@@ -67,15 +66,11 @@ def populate_user_memory(zep_client):
     print("\n💬 Adding conversations to threads...")
     # Process each conversation thread
     for conversation in conversations:
-        thread_id = f"conversation-{uuid.uuid4().hex[:8]}"
         messages_data = conversation["messages"]
         
         try:
             # Create thread
-            zep_client.thread.create(
-                thread_id=thread_id,
-                user_id=USER_ID
-            )
+            thread = zep_client.thread.create(user_uuid=user.uuid_)
             
             # Convert message data to Zep Message objects
             zep_messages = []
@@ -88,15 +83,27 @@ def populate_user_memory(zep_client):
                 zep_messages.append(zep_message)
             
             # Add messages to thread
-            zep_client.thread.add_messages_batch(
-                thread_id=thread_id,
+            result = zep_client.thread.add_messages(
+                thread_uuid=thread.uuid_,
                 messages=zep_messages
             )
-            print(f"✅ Successfully added messages to thread {thread_id}")
+            last_task_uuid = result.task.uuid_ if result.task else last_task_uuid
+            print(f"✅ Successfully added messages to thread {thread.uuid_}")
             
         except Exception as e:
-            print(f"❌ Error processing thread {thread_id}: {e}")
+            print(f"❌ Error processing thread: {e}")
             continue
+    if last_task_uuid:
+        deadline = time.monotonic() + 180
+        while True:
+            task = zep_client.task.get(last_task_uuid)
+            if task.status == "succeeded":
+                break
+            if task.status in {"partial", "failed"}:
+                raise RuntimeError(f"Ingestion task ended with {task.status}: {task.error}")
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"Timed out waiting for task {last_task_uuid}")
+            time.sleep(2)
 
 if __name__ == "__main__":
     # Load environment variables

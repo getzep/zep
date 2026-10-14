@@ -48,9 +48,8 @@ async def load_users_from_zep() -> list:
 
     try:
         # Get all users (ordered by most recent)
-        users_response = await zep_client.user.list_ordered(page_size=100, page_number=1)
-        users = users_response.users if hasattr(users_response, 'users') else []
-        return users
+        users_response = await zep_client.user.list(page_size=100, order="desc")
+        return users_response.items
 
     except Exception as e:
         import traceback
@@ -69,20 +68,16 @@ async def create_new_user(first_name: str, last_name: str = "", email: str = "")
     Returns:
         str: The newly created user ID
     """
-    # Generate a unique user ID
-    user_id = f"{first_name.lower()}_{uuid.uuid4().hex[:8]}"
-
     # Create a fresh AsyncZep client for this operation
     zep_client = AsyncZep(api_key=st.session_state.zep_api_key)
 
     try:
-        await zep_client.user.add(
-            user_id=user_id,
+        user = await zep_client.user.create(
             first_name=first_name,
             last_name=last_name,
-            email=email if email else f"{user_id}@example.com"
+            email=email if email else f"{first_name.lower()}_{uuid.uuid4().hex[:8]}@example.com"
         )
-        return user_id
+        return user.uuid_
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -99,21 +94,16 @@ async def create_zep_thread(user_id: str) -> str:
     Returns:
         str: The newly created thread ID
     """
-    # Generate a unique thread ID
-    thread_id = str(uuid.uuid4())
-
     # Create a fresh AsyncZep client for this operation
     zep_client = AsyncZep(api_key=st.session_state.zep_api_key)
 
     try:
-        await zep_client.thread.create(
-            thread_id=thread_id,
-            user_id=user_id
-        )
+        thread = await zep_client.thread.create(user_uuid=user_id)
+        return thread.uuid_
     except Exception as e:
         import traceback
         traceback.print_exc()
-    return thread_id
+    return None
 
 # Initialize users list in session state
 if "users" not in st.session_state:
@@ -124,7 +114,7 @@ if "users" not in st.session_state:
 if "current_user_id" not in st.session_state:
     # If we have users, set current to the first one (most recent)
     if st.session_state.users:
-        st.session_state.current_user_id = st.session_state.users[0].user_id
+        st.session_state.current_user_id = st.session_state.users[0].uuid_
     else:
         st.session_state.current_user_id = None
 
@@ -151,20 +141,20 @@ async def load_threads_from_zep(user_id: str) -> dict:
 
     try:
         # Get all threads for the user
-        user_threads = await zep_client.user.get_threads(user_id=user_id)
+        user_threads = await zep_client.thread.list(user_uuid=user_id, page_size=100)
 
         # For each thread, load its messages
         for zep_thread in user_threads:
-            thread_id = zep_thread.thread_id
+            thread_id = zep_thread.uuid_
 
             try:
                 # Get messages for this thread
-                messages_response = await zep_client.thread.get(thread_id=thread_id)
+                messages_response = await zep_client.thread.list_messages(thread_uuid=thread_id, page_size=100)
 
                 # Convert Zep messages to our format
                 messages = []
-                if messages_response.messages:
-                    for msg in messages_response.messages:
+                if messages_response.items:
+                    for msg in messages_response.items:
                         messages.append({
                             "role": msg.role,
                             "content": msg.content,

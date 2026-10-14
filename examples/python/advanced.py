@@ -1,11 +1,12 @@
 import os
+import time
 import uuid
 from dotenv import find_dotenv, load_dotenv
 from zep_cloud.client import Zep
 from zep_cloud.types import Message
 from pydantic import Field
-from zep_cloud import EntityEdgeSourceTarget
-from zep_cloud.external_clients.ontology import EntityModel, EntityText, EntityInt, EdgeModel
+from zep_cloud.ontology import EdgeModel, EntityInt, EntityModel, EntityText, build_ontology
+from zep_cloud.types import EdgeSourceTarget
 
 
 load_dotenv(dotenv_path=find_dotenv())
@@ -109,8 +110,7 @@ class Recommends(EdgeModel):
     recommendation_date: EntityText = Field(description="When the recommendation was made", default=None)
     traveler_response: EntityText = Field(description="How the traveler responded to the recommendation", default=None)
 
-# Set the ontology with custom entity and edge types
-client.graph.set_ontology(
+entity_types, edge_types = build_ontology(
     entities={
         "Person": Person,
         "Destination": Destination,
@@ -121,27 +121,27 @@ client.graph.set_ontology(
     edges={
         "VISITS": (
             Visits,
-            [EntityEdgeSourceTarget(source="User", target="Destination")]
+            [EdgeSourceTarget(source="User", target="Destination")]
         ),
         "STAYS_AT": (
             StaysAt,
-            [EntityEdgeSourceTarget(source="User", target="Accommodation")]
+            [EdgeSourceTarget(source="User", target="Accommodation")]
         ),
         "PARTICIPATES": (
             Participates,
-            [EntityEdgeSourceTarget(source="User", target="Experience"),
-             EntityEdgeSourceTarget(source="Person", target="Experience")]
+            [EdgeSourceTarget(source="User", target="Experience"),
+             EdgeSourceTarget(source="Person", target="Experience")]
         ),
         "BOOKS": (
             Books,
-            [EntityEdgeSourceTarget(source="User", target="TravelService")]
+            [EdgeSourceTarget(source="User", target="TravelService")]
         ),
         "RECOMMENDS": (
             Recommends,
-            [EntityEdgeSourceTarget(source="User", target="Destination"),
-             EntityEdgeSourceTarget(source="User", target="Accommodation"),
-             EntityEdgeSourceTarget(source="User", target="Experience"),
-             EntityEdgeSourceTarget(source="User", target="TravelService")]
+            [EdgeSourceTarget(source="User", target="Destination"),
+             EdgeSourceTarget(source="User", target="Accommodation"),
+             EdgeSourceTarget(source="User", target="Experience"),
+             EdgeSourceTarget(source="User", target="TravelService")]
         )
     }
 )
@@ -154,13 +154,14 @@ zep_assistant_role = "TravelAssistantBot"
 ignore_roles = []
 
 uuid_value = uuid.uuid4().hex[:4]
-user_id = "default-graph-advanced-" + uuid_value
-client.user.add(
-    user_id=user_id,
+user = client.user.create(
+    user_id=f"examples-v4-advanced-{uuid_value}",
     first_name = first_name,
     last_name = last_name,
     email=email
 )
+user_uuid = user.uuid_
+client.graph.set_ontology(user_uuid, entity_types=entity_types, edge_types=edge_types)
 
 threads = [
     # Session 1: Italian Food Tour Planning - Showcases initial spicy food preference and past travel
@@ -249,14 +250,23 @@ threads = [
     ]
 ]
 
-for thread in threads:
-    uuid_value = uuid.uuid4().hex[:4]
-    thread_id = "thread-" + uuid_value
-    
-    client.thread.create(
-        thread_id=thread_id,
-        user_id=user_id
+last_task_uuid = None
+for messages in threads:
+    zep_thread = client.thread.create(user_uuid=user_uuid)
+    result = client.thread.add_messages(
+        thread_uuid=zep_thread.uuid_,
+        messages=[Message(**message) for message in messages],
     )
-    
-    for m in thread:
-        client.thread.add_messages(thread_id=thread_id, messages=[Message(**m)])
+    last_task_uuid = result.task.uuid_ if result.task else last_task_uuid
+
+if last_task_uuid:
+    deadline = time.monotonic() + 180
+    while True:
+        task = client.task.get(last_task_uuid)
+        if task.status == "succeeded":
+            break
+        if task.status in {"partial", "failed"}:
+            raise RuntimeError(f"Message ingestion task ended with {task.status}: {task.error}")
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Timed out waiting for task {last_task_uuid}")
+        time.sleep(2)

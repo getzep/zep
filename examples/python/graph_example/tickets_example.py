@@ -6,6 +6,7 @@ mixing chat messages and purchase events to build a knowledge graph.
 
 import asyncio
 import os
+import time
 import uuid
 import json
 from dotenv import find_dotenv, load_dotenv
@@ -17,13 +18,18 @@ load_dotenv(dotenv_path=find_dotenv())
 
 API_KEY = os.environ.get("ZEP_API_KEY") or "YOUR_API_KEY"
 
-async def create_ticket_playground() -> None:
+async def create_ticket_playground() -> str:
     client = AsyncZep(api_key=API_KEY)
     
     # Create a user for the playground
-    user_id = uuid.uuid4().hex
-    await client.user.add(user_id=user_id, first_name="Sarah", last_name="Smith", email="sarah.smith@example.com")
-    print(f"Created playground user: {user_id}")
+    user = await client.user.create(
+        user_id=f"examples-v4-tickets-{uuid.uuid4().hex}",
+        first_name="Sarah",
+        last_name="Smith",
+        email="sarah.smith@example.com",
+    )
+    user_uuid = user.uuid_
+    print(f"Created playground user UUID: {user_uuid}")
 
 
     # Sample user interactions and system events
@@ -36,7 +42,7 @@ async def create_ticket_playground() -> None:
             "type": "json",
             "data": {
                 "event_type": "search_performed",
-                "user_id": user_id,
+                "user_uuid": user_uuid,
                 "artist": "Taylor Swift",
                 "location": "New York",
                 "date_range": "2024-07",
@@ -55,7 +61,7 @@ async def create_ticket_playground() -> None:
             "type": "json",
             "data": {
                 "event_type": "ticket_purchase",
-                "user_id": user_id,
+                "user_uuid": user_uuid,
                 "email": "sarah.smith@example.com",
                 "concert_id": "TS-MSG-0715",
                 "artist": "Taylor Swift",
@@ -77,7 +83,7 @@ async def create_ticket_playground() -> None:
             "type": "json",
             "data": {
                 "event_type": "search_performed",
-                "user_id": user_id,
+                "user_uuid": user_uuid,
                 "artist": "Arctic Monkeys",
                 "timestamp": "2024-01-15T10:40:00Z"
             }
@@ -94,7 +100,7 @@ async def create_ticket_playground() -> None:
             "type": "json",
             "data": {
                 "event_type": "waitlist_addition",
-                "user_id": user_id,
+                "user_uuid": user_uuid,
                 "concert_id": "AM-BC-0805",
                 "artist": "Arctic Monkeys",
                 "venue": "Barclays Center",
@@ -110,7 +116,7 @@ async def create_ticket_playground() -> None:
             "type": "json",
             "data": {
                 "event_type": "ticket_purchase",
-                "user_id": user_id,
+                "user_uuid": user_uuid,
                 "concert_id": "AM-BC-0805",
                 "artist": "Arctic Monkeys",
                 "venue": "Barclays Center",
@@ -126,31 +132,43 @@ async def create_ticket_playground() -> None:
     ]
 
     # Add all episodes to the graph
+    added_episodes = []
     for episode in episodes:
         if episode["type"] == "json":
-            await client.graph.add(
-                user_id=user_id,
+            added_episodes.append(await client.graph.episode.add(
+                user_uuid,
                 type="json",
                 data=json.dumps(episode["data"]),
-            )
-        else:  # message type
-            await client.graph.add(
-                user_id=user_id,
-                type="message",
+            ))
+        else:
+            added_episodes.append(await client.graph.episode.add(
+                user_uuid,
+                type="text",
                 data=episode["data"],
-            )
+            ))
     
     print("Added all ticket purchase episodes to the graph")
     print("Waiting for graph processing...")
-    await asyncio.sleep(30)
+    last_task = added_episodes[-1].task if added_episodes else None
+    if last_task and last_task.uuid_:
+        deadline = time.monotonic() + 180
+        while True:
+            task = await client.task.get(last_task.uuid_)
+            if task.status == "succeeded":
+                break
+            if task.status in {"partial", "failed"}:
+                raise RuntimeError(f"Episode task ended with {task.status}: {task.error}")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Timed out waiting for episode ingestion")
+            await asyncio.sleep(2)
 
-    episodes = await client.graph.episode.get_by_user_id(user_id=user_id)
-    print(episodes)
+    episode_page = await client.graph.episode.list(user_uuid, page_size=100)
+    print(episode_page.items)
     
     
-    return user_id
+    return user_uuid
 
 if __name__ == "__main__":
     user_id = asyncio.run(create_ticket_playground())
-    print(f"\nPlayground ready! User ID: {user_id}")
+    print(f"\nPlayground ready! User UUID: {user_id}")
     print("You can now explore the ticket purchase graph and add new episodes!") 

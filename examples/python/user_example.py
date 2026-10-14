@@ -23,15 +23,15 @@ async def main() -> None:
     for i in range(3):
         user_id = f"user{i}" + uuid.uuid4().hex
         try:
-            user = await client.user.add(
+            user = await client.user.create(
                 user_id=user_id,
                 email=f"user{i}@example.com",
                 first_name=f"John{i}",
                 last_name=f"Doe{i}",
                 metadata={"foo": "bar"},
             )
-            created_user_ids.append(user.user_id or user_id)
-            print(f"Created user {i+1}: {user.user_id}")
+            created_user_ids.append(user.uuid_)
+            print(f"Created user {i+1}: {user.uuid_}")
         except ApiError as e:
             print(f"Failed to create user {i+1}: {e}")
 
@@ -42,23 +42,20 @@ async def main() -> None:
     user_id = created_user_ids[0]
     try:
         updated_user = await client.user.update(
-            user_id=user_id,
+            user_uuid=user_id,
             email="updated_user@example.com",
             first_name="UpdatedJohn",
             last_name="UpdatedDoe",
             metadata={"foo": "updated_bar"},
         )
-        print(f"Updated user: {updated_user.user_id}")
+        print(f"Updated user: {updated_user.uuid_}")
     except ApiError as e:
         print(f"Failed to update user: {e}")
         raise
 
     # Create a Thread for the first created user
-    thread_id = uuid.uuid4().hex
     try:
-        result = await client.thread.create(
-            thread_id=thread_id, user_id=user_id
-        )
+        result = await client.thread.create(user_uuid=user_id)
         print(f"Created session: {result}")
     except Exception as e:
         print(f"Failed to create session: {e}")
@@ -67,8 +64,8 @@ async def main() -> None:
     # Delete only a user created in this run
     user_id_to_delete = created_user_ids[1]
     try:
-        await client.user.delete(user_id=user_id_to_delete)
-        print(f"Deleted user: {user_id_to_delete}")
+        result = await client.user.delete(user_uuid=user_id_to_delete)
+        print(f"Delete task: {result.task.uuid_ if result.task else 'not returned'}")
     except ApiError as e:
         print(f"Failed to delete user: {e}")
         raise

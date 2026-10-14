@@ -1,55 +1,45 @@
 
 import os
+import time
 from zep_cloud.client import Zep
 from zep_cloud.types import Message
 from zep_cloud.types import UserInstruction
 from dotenv import load_dotenv
-import uuid
 import json
 
 
 def create_user(zep_client):
-    """Load user config and create user. Raises error if user already exists."""
+    """Create a user from the local demo configuration."""
     # Load user configuration
     with open("data/user.json", "r") as f:
         user_config = json.load(f)
     
-    user_id = user_config["user_id_prefix"] + "-" + uuid.uuid4().hex[:6]
     user_email = user_config["email"]
     user_first_name = user_config["first_name"]
     user_last_name = user_config["last_name"]
-    
-    # Check if user already exists
-    try:
-        existing_user = zep_client.user.get(user_id=user_id)
-        # User exists, raise error
-        raise ValueError(f"User {user_id} already exists. Cannot create duplicate user.")
-    except ValueError:
-        # Re-raise our custom ValueError
-        raise
-    except Exception:
-        # User doesn't exist (API returned an error), which is what we want
-        # Continue to create the user
-        pass
-    
-    # Create the user
-    print(f"\n👤 Creating user {user_id}...")
-    user = zep_client.user.add(
-        user_id=user_id,
+
+    user_uuid = os.getenv("ZEP_USER_UUID")
+    if user_uuid:
+        print(f"\nUsing user UUID from ZEP_USER_UUID: {user_uuid}")
+        return user_uuid, user_first_name, user_last_name
+
+    print("\n👤 Creating user...")
+    user = zep_client.user.create(
         email=user_email,
         first_name=user_first_name,
         last_name=user_last_name,
     )
-    print(f"✅ User {user_id} created successfully.")
+    print(f"✅ User created. Set ZEP_USER_UUID={user.uuid_} for the companion app.")
     
-    return user_id, user_first_name, user_last_name
+    return user.uuid_, user_first_name, user_last_name
 
 
 def set_user_summary_instructions(zep_client, user_id):
     """Set user summary instructions."""
     print("\n🎯 Setting user-specific custom user summary instructions...")
     try:
-        zep_client.user.add_user_summary_instructions(
+        zep_client.user.set_summary_instructions(
+            user_id,
             instructions=[
                 UserInstruction(
                     name="price_range",
@@ -72,7 +62,6 @@ def set_user_summary_instructions(zep_client, user_id):
                     text="What are the user's key family details that impact their housing needs?",
                 ),
             ],
-            user_ids=[user_id],
         )
         print("✅ Successfully set custom user summary instructions")
     except Exception as e:
@@ -88,6 +77,7 @@ def ingest_user_data(zep_client, user_id, user_first_name, user_last_name):
         user_data = json.load(f)
     
     print("\n📊 Adding user data to graph...")
+    last_task_uuid = None
     for item in user_data:
         # Add user_id and user_full_name to each piece of JSON
         # Each item is a dict with one key (e.g., "house_search") containing the data
@@ -96,20 +86,24 @@ def ingest_user_data(zep_client, user_id, user_first_name, user_last_name):
             data_dict["user_full_name"] = user_full_name
         
         try:
-            zep_client.graph.add(
-                user_id=user_id,
+            result = zep_client.graph.episode.add(
+                user_id,
                 data=json.dumps(item),
                 type="json"
             )
             # Get the key name for logging
             key_name = list(item.keys())[0]
-            print(f"✅ Successfully added {key_name} data to graph")
+            print(f"✅ Added {key_name} as episode {result.episode.uuid_}")
+            last_task_uuid = result.task.uuid_ if result.task else last_task_uuid
         except Exception as e:
             key_name = list(item.keys())[0] if item else "unknown"
             print(f"❌ Error adding {key_name} data to graph: {e}")
+    return last_task_uuid
 
 
-def ingest_conversations(zep_client, user_id, user_first_name, user_last_name):
+def ingest_conversations(
+    zep_client, user_id, user_first_name, user_last_name, last_task_uuid=None
+):
     """Ingest conversations into threads."""
     # Load conversations
     with open("data/conversations.json", "r") as f:
@@ -118,15 +112,11 @@ def ingest_conversations(zep_client, user_id, user_first_name, user_last_name):
     print("\n💬 Adding conversations to threads...")
     # Process each conversation thread
     for conversation in conversations:
-        thread_id = f"conversation-{uuid.uuid4().hex[:8]}"
         messages_data = conversation["messages"]
         
         try:
             # Create thread
-            zep_client.thread.create(
-                thread_id=thread_id,
-                user_id=user_id
-            )
+            thread = zep_client.thread.create(user_uuid=user_id)
             
             # Convert message data to Zep Message objects
             zep_messages = []
@@ -139,15 +129,27 @@ def ingest_conversations(zep_client, user_id, user_first_name, user_last_name):
                 zep_messages.append(zep_message)
             
             # Add messages to thread
-            zep_client.thread.add_messages(
-                thread_id=thread_id,
+            result = zep_client.thread.add_messages(
+                thread_uuid=thread.uuid_,
                 messages=zep_messages
             )
-            print(f"✅ Successfully added messages to thread {thread_id}")
+            last_task_uuid = result.task.uuid_ if result.task else last_task_uuid
+            print(f"✅ Successfully added messages to thread {thread.uuid_}")
             
         except Exception as e:
-            print(f"❌ Error processing thread {thread_id}: {e}")
+            print(f"❌ Error processing thread: {e}")
             continue
+    if last_task_uuid:
+        deadline = time.monotonic() + 180
+        while True:
+            task = zep_client.task.get(last_task_uuid)
+            if task.status == "succeeded":
+                break
+            if task.status in {"partial", "failed"}:
+                raise RuntimeError(f"Ingestion task ended with {task.status}: {task.error}")
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"Timed out waiting for task {last_task_uuid}")
+            time.sleep(2)
 
 
 if __name__ == "__main__":
@@ -170,7 +172,11 @@ if __name__ == "__main__":
     set_user_summary_instructions(zep_client, user_id)
     
     # Ingest user data
-    ingest_user_data(zep_client, user_id, user_first_name, user_last_name)
+    last_task_uuid = ingest_user_data(
+        zep_client, user_id, user_first_name, user_last_name
+    )
     
     # Ingest conversations
-    ingest_conversations(zep_client, user_id, user_first_name, user_last_name)
+    ingest_conversations(
+        zep_client, user_id, user_first_name, user_last_name, last_task_uuid
+    )

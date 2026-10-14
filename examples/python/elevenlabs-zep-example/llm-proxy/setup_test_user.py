@@ -6,6 +6,8 @@ Run this first to populate Zep with data that the proxy can retrieve.
 
 import asyncio
 import os
+import time
+import uuid
 from dotenv import load_dotenv
 from zep_cloud.client import AsyncZep
 from zep_cloud.types import Message
@@ -18,42 +20,27 @@ async def setup_test_user():
 
     zep = AsyncZep(api_key=os.getenv("ZEP_API_KEY"))
 
-    user_id = "test-user-123"
-    thread_id = "test-thread-123"
-
-    print(f"Setting up test user: {user_id}")
+    print("Setting up a test user")
     print("=" * 50)
 
-    # 1. Create or get the user
-    try:
-        user = await zep.user.get(user_id)
-        print(f"User already exists: {user.user_id}")
-    except Exception:
-        print("Creating new user...")
-        user = await zep.user.add(
-            user_id=user_id,
-            first_name="Randy",
-            last_name="Adams",
-            email="randy@talk2me.example.com",
-            metadata={
-                "company": "Talk2Me",
-                "role": "Founder",
-                "interests": ["AI", "voice technology", "celebrities"]
-            }
-        )
-        print(f"Created user: {user.user_id}")
+    user = await zep.user.create(
+        user_id=f"test-user-{uuid.uuid4().hex[:8]}",
+        first_name="Randy",
+        last_name="Adams",
+        email=f"randy-{uuid.uuid4().hex[:8]}@talk2me.example.com",
+        metadata={
+            "company": "Talk2Me",
+            "role": "Founder",
+            "interests": ["AI", "voice technology", "celebrities"]
+        }
+    )
+    user_uuid = user.uuid_
+    print(f"Created user UUID: {user_uuid}")
 
     # 2. Create a thread for this user
-    try:
-        thread = await zep.thread.get(thread_id)
-        print(f"Thread already exists: {thread_id}")
-    except Exception:
-        print("Creating new thread...")
-        thread = await zep.thread.create(
-            thread_id=thread_id,
-            user_id=user_id
-        )
-        print(f"Created thread: {thread_id}")
+    thread = await zep.thread.create(user_uuid=user_uuid)
+    thread_uuid = thread.uuid_
+    print(f"Created thread UUID: {thread_uuid}")
 
     # 3. Add some conversation history that will generate facts
     print("\nAdding conversation history...")
@@ -94,7 +81,19 @@ async def setup_test_user():
     ]
 
     try:
-        await zep.thread.add_messages(thread_id=thread_id, messages=messages)
+        result = await zep.thread.add_messages(thread_uuid=thread_uuid, messages=messages)
+        task_uuid = result.task.uuid_ if result.task else None
+        if task_uuid:
+            deadline = time.monotonic() + 180
+            while True:
+                task = await zep.task.get(task_uuid)
+                if task.status == "succeeded":
+                    break
+                if task.status in {"partial", "failed"}:
+                    raise RuntimeError(f"Message task ended with {task.status}: {task.error}")
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"Timed out waiting for task {task_uuid}")
+                await asyncio.sleep(2)
         print(f"Added {len(messages)} messages to thread")
     except Exception as e:
         print(f"Note: Messages may already exist or error occurred: {e}")
@@ -110,16 +109,15 @@ async def setup_test_user():
 
     # Get context for this user
     try:
-        context = await zep.graph.search(
-            user_id=user_id,
+        context = await zep.graph.search_edges(
+            user_uuid,
             query="Tell me about this person",
-            scope="edges",
-            limit=10
+            page_size=10
         )
 
-        if context.edges:
-            print(f"\nFacts/Edges ({len(context.edges)}):")
-            for i, edge in enumerate(context.edges, 1):
+        if context.items:
+            print(f"\nFacts/Edges ({len(context.items)}):")
+            for i, edge in enumerate(context.items, 1):
                 print(f"  {i}. {edge.fact}")
         else:
             print("\nNo edges found yet (facts may still be processing)")
@@ -129,14 +127,15 @@ async def setup_test_user():
 
     # Also try getting user summary
     try:
-        user_info = await zep.user.get(user_id)
+        user_info = await zep.user.get(user_uuid)
         print(f"\nUser info: {user_info}")
     except Exception as e:
         print(f"Error getting user: {e}")
 
     print("\n" + "=" * 50)
     print("Test user setup complete!")
-    print(f"Use user_id '{user_id}' when testing the proxy")
+    print(f"Set ZEP_USER_UUID={user_uuid}")
+    print(f"Set ZEP_THREAD_UUID={thread_uuid}")
     print("=" * 50)
 
 

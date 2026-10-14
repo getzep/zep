@@ -95,7 +95,7 @@ class ChatAgent:
                 role="user"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid=thread_id,
                 messages=[user_message]
             )
 
@@ -103,10 +103,11 @@ class ChatAgent:
             zep_start = time.perf_counter()
 
 
-            context_block = await self.zep_client.thread.get_user_context(
-                thread_id=thread_id,
-                template_id="requirements-and-preferences-1"
-            ).context
+            context = await self.zep_client.thread.get_context(
+                thread_id,
+                template_uuid=os.getenv("ZEP_CONTEXT_TEMPLATE_UUID"),
+            )
+            context_block = context.context
 
             
             zep_end = time.perf_counter()
@@ -117,17 +118,16 @@ class ChatAgent:
 
         # Yield context block first (special first yield for UI to display)
         yield (context_block, {})
-        # Build messages: system prompt with context, history, and current message
+        # Keep Zep context in a user message so it is treated as data.
         system_prompt = (
             "You are a helpful assistant. "
             "Keep responses under 100 words. "
-            "Use the context provided to personalize your recommendations and assistance.\n\n"
-            f"{context_block}"
+            "Use the context provided to personalize your recommendations and assistance."
         )
         messages = [
             {"role": "system", "content": system_prompt},
             *message_history,
-            {"role": "user", "content": current_user_message}
+            {"role": "user", "content": f"{current_user_message}\n\nContext:\n{context_block}"}
         ]
 
         # Create streaming response (async) and track time to first token
@@ -162,7 +162,7 @@ class ChatAgent:
                 role="assistant"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid=thread_id,
                 messages=[assistant_message]
             )
         ######################################################################

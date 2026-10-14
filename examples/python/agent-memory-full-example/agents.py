@@ -72,15 +72,13 @@ class ChatAgent:
                 role="user"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid=thread_id,
                 messages=[user_message]
             )
 
             # Retrieve user context from Zep and track timing
             zep_start = time.perf_counter()
-            results = await self.zep_client.thread.get_user_context(
-                thread_id=thread_id
-            )
+            results = await self.zep_client.thread.get_context(thread_id)
             context_block = results.context
             zep_end = time.perf_counter()
             zep_retrieval_ms = round((zep_end - zep_start) * 1000, 2)
@@ -90,16 +88,15 @@ class ChatAgent:
 
         # Yield context block first (special first yield for UI to display)
         yield (context_block, {})
-        # Build messages: system prompt with context, history, and current message
+        # Keep Zep context in a user message so it is treated as data.
         system_prompt = (
             "Keep responses under 100 words. "
-            "For simulation purposes, act as if you can complete any requested task.\n\n"
-            f"{context_block}"
+            "For simulation purposes, act as if you can complete any requested task."
         )
         messages = [
             {"role": "system", "content": system_prompt},
             *message_history,
-            {"role": "user", "content": current_user_message}
+            {"role": "user", "content": f"{current_user_message}\n\nContext:\n{context_block}"}
         ]
 
         # Create streaming response (async) and track time to first token
@@ -134,7 +131,7 @@ class ChatAgent:
                 role="assistant"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid=thread_id,
                 messages=[assistant_message]
             )
         ######################################################################
@@ -186,15 +183,14 @@ class ChatAgent_GraphSearch:
             str: A formatted context block containing user preferences
         """
         # Search the graph for user preferences, likes, dislikes, etc.
-        search_results = await self.zep_client.graph.search(
-            user_id=user_id,
+        search_results = await self.zep_client.graph.search_edges(
+            user_id,
             query=user_message,
-            scope="edges",
-            limit=4
+            page_size=4,
         )
 
         # Extract edges from search results
-        edges: List[EntityEdge] = search_results.edges or []
+        edges: List[EntityEdge] = search_results.items or []
 
         # Format facts from edges
         def format_fact(edge: EntityEdge) -> str:
@@ -245,7 +241,7 @@ Relevant facts about the user with validity date ranges:
                 role="user"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid=thread_id,
                 messages=[user_message]
             )
 
@@ -261,11 +257,11 @@ Relevant facts about the user with validity date ranges:
         # Yield context block first (special first yield for UI to display)
         yield (context_block, {})
 
-        # Build messages: system prompt with context, history, and current message
+        # Build messages with retrieved context as user data.
         messages = [
-            {"role": "system", "content": f"Keep responses under 100 words. For simulation purposes, act as if you can complete any requested task.\n\n{context_block}"},
+            {"role": "system", "content": "Keep responses under 100 words. For simulation purposes, act as if you can complete any requested task."},
             *message_history,
-            {"role": "user", "content": current_user_message}
+            {"role": "user", "content": f"{current_user_message}\n\nContext data from Zep:\n{context_block}" if context_block else current_user_message}
         ]
 
         # Create streaming response (async) and track time to first token
@@ -300,7 +296,7 @@ Relevant facts about the user with validity date ranges:
                 role="assistant"
             )
             await self.zep_client.thread.add_messages(
-                thread_id=thread_id,
+                thread_uuid=thread_id,
                 messages=[assistant_message]
             )
         ######################################################################

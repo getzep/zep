@@ -169,40 +169,26 @@ def validate_and_truncate_chunk(contextualized_chunk: str) -> str:
     return f"{truncated_context}{separator}{chunk}"
 
 
-def ensure_user_exists(zep_client: Zep, user_id: str) -> bool:
-    """Ensure a user exists in Zep, creating them if necessary."""
-    try:
-        zep_client.user.get(user_id)
-        print(f"User '{user_id}' exists")
-        return True
-    except Exception as e:
-        if "404" in str(e) or "not found" in str(e).lower():
-            print(f"User '{user_id}' not found, creating...")
-            try:
-                zep_client.user.add(user_id=user_id)
-                print(f"User '{user_id}' created successfully")
-                return True
-            except Exception as create_err:
-                print(f"ERROR creating user: {create_err}")
-                return False
-        else:
-            print(f"ERROR checking user: {e}")
-            return False
+def create_user(zep_client: Zep) -> str:
+    """Create a user graph for this document-ingestion run."""
+    user = zep_client.user.create()
+    print(f"Created user UUID: {user.uuid_}")
+    return user.uuid_
 
 
-def ingest_to_zep(zep_client: Zep, user_id: str, contextualized_chunk: str) -> str | None:
+def ingest_to_zep(zep_client: Zep, user_uuid: str, contextualized_chunk: str):
     """Ingest a contextualized chunk into Zep's knowledge graph."""
     max_retries = 3
     retry_delay = 1
 
     for attempt in range(max_retries):
         try:
-            episode = zep_client.graph.add(
-                user_id=user_id,
+            result = zep_client.graph.episode.add(
+                user_uuid,
                 type="text",
                 data=contextualized_chunk,
             )
-            return episode.uuid_
+            return result
         except Exception as e:
             if attempt < max_retries - 1:
                 print(f"  Error ingesting: {e}")
@@ -219,44 +205,36 @@ def ingest_to_zep(zep_client: Zep, user_id: str, contextualized_chunk: str) -> s
 TASK_FAILURE_STATUSES = {"failed", "error", "canceled", "cancelled", "partial"}
 
 
-def wait_for_episode(
+def wait_for_task(
     zep_client: Zep,
-    episode_uuid: str,
+    task_uuid: str,
     *,
     timeout_seconds: float = 180.0,
     poll_interval_seconds: float = 2.0,
 ):
-    """Poll Zep until the episode is processed, or the wait fails or times out."""
-    if not episode_uuid:
-        raise ValueError("episode_uuid is required")
+    """Poll Zep until the task succeeds, fails, or times out."""
+    if not task_uuid:
+        raise ValueError("task_uuid is required")
 
     deadline = time.monotonic() + timeout_seconds
     while True:
-        episode = zep_client.graph.episode.get(episode_uuid)
-        if getattr(episode, "processed", False):
-            print(f"  Episode {episode_uuid} processed")
-            return episode
-
-        task_id = getattr(episode, "task_id", None)
-        if task_id:
-            task = zep_client.task.get(task_id)
-            status = (getattr(task, "status", None) or "").lower()
-            if status in TASK_FAILURE_STATUSES:
-                err = getattr(task, "error", None)
-                raise RuntimeError(
-                    f"Episode {episode_uuid} task {task_id} ended with status={status}: {err}"
-                )
+        task = zep_client.task.get(task_uuid)
+        status = (task.status or "").lower()
+        if status == "succeeded":
+            return task
+        if status in TASK_FAILURE_STATUSES:
+            raise RuntimeError(f"Task {task_uuid} ended with status={status}: {task.error}")
 
         if time.monotonic() >= deadline:
             raise TimeoutError(
-                f"Timed out waiting for episode {episode_uuid} after {timeout_seconds}s"
+                f"Timed out waiting for task {task_uuid} after {timeout_seconds}s"
             )
         time.sleep(poll_interval_seconds)
 
 
 def process_document(
     document_path: str,
-    user_id: str,
+    user_uuid: str | None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
     dry_run: bool = False,
@@ -283,16 +261,14 @@ def process_document(
     print("DOCUMENT CHUNKING WITH CONTEXTUALIZED RETRIEVAL")
     print("=" * 60)
     print(f"Document: {document_path}")
-    print(f"User ID: {user_id}")
+    print(f"User UUID: {user_uuid or 'create a new user graph'}")
     print(f"Chunk size: {chunk_size}")
     print(f"Chunk overlap: {chunk_overlap}")
     print(f"Dry run: {dry_run}")
     print(f"Wait: {wait}")
 
-    if not dry_run:
-        print(f"\nChecking user: {user_id}")
-        if not ensure_user_exists(zep_client, user_id):
-            raise ValueError(f"Failed to ensure user '{user_id}' exists in Zep")
+    if not dry_run and not user_uuid:
+        user_uuid = create_user(zep_client)
 
     print(f"\nReading document: {document_path}")
     with open(document_path, "r", encoding="utf-8") as f:
@@ -311,6 +287,7 @@ def process_document(
     success = 0
     failed = 0
     contextualized_size = 0
+    last_task_uuid = None
 
     for i, chunk in enumerate(chunks):
         print(f"\nChunk {i + 1}/{len(chunks)} ({len(chunk):,} chars)")
@@ -335,18 +312,20 @@ def process_document(
 
         print("  Ingesting to Zep...")
         try:
-            episode_uuid = ingest_to_zep(zep_client, user_id, contextualized)
-            print(f"  Created episode: {episode_uuid}")
+            result = ingest_to_zep(zep_client, user_uuid, contextualized)
+            print(f"  Created episode: {result.episode.uuid_}")
             success += 1
-            if wait and episode_uuid:
-                print("  Waiting for episode processing...")
-                wait_for_episode(zep_client, episode_uuid)
+            if result.task:
+                last_task_uuid = result.task.uuid_
         except Exception as e:
             print(f"  ERROR ingesting: {e}")
             failed += 1
 
     print("\n" + "=" * 60)
     print("PROCESSING SUMMARY")
+    if wait and last_task_uuid:
+        print("\nWaiting for the last ingestion task...")
+        wait_for_task(zep_client, last_task_uuid)
     print("=" * 60)
     print(f"Total chunks: {len(chunks)}")
     print(f"Successfully processed: {success}")
@@ -369,9 +348,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("document", help="Path to the document to process")
     parser.add_argument(
-        "--user-id",
-        required=True,
-        help="Zep user ID for the knowledge graph",
+        "--user-uuid",
+        default=os.getenv("ZEP_USER_UUID"),
+        help="Existing Zep user UUID; omit this value to create a new user",
     )
     parser.add_argument(
         "--chunk-size",
@@ -402,7 +381,7 @@ if __name__ == "__main__":
     args = parse_args()
     process_document(
         document_path=args.document,
-        user_id=args.user_id,
+        user_uuid=args.user_uuid,
         chunk_size=args.chunk_size,
         chunk_overlap=args.chunk_overlap,
         dry_run=args.dry_run,

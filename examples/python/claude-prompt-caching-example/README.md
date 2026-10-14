@@ -1,32 +1,31 @@
 # Zep + Claude Opus 4.8: Cache-Preserving Memory Injection
 
-Memory-powered agents have always faced an awkward trade-off: the freshest place to put retrieved memory is the system prompt, but changing the system prompt every turn means **none of the conversation that follows it can be cached** — so you re-pay full input price for the entire history on every turn.
+> **Memory security:** Both modes pass retrieved Zep context through user messages. The mode names remain for compatibility with this benchmark. Retrieved context is never placed in the system prompt.
 
-Claude Opus 4.8 removes the trade-off with [mid-conversation system messages](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages): `{"role": "system"}` entries appended *inside* the messages array, after the user turn. The cached prefix stays byte-identical, the context still carries operator-level (system) authority, and every turn reads the whole conversation from cache.
+This example measures prompt caching with a static system prompt and two placements for retrieved context data.
 
-This example wires [Zep](https://www.getzep.com/) into that pattern and **measures the difference**.
+This example wires [Zep](https://www.getzep.com/) into that pattern and measures the difference.
 
 ## The two setups
 
-**`system-prompt` (the baseline — prefix-only caching).** The Zep context block rides in the system prompt as a second system block that changes every turn. Caching is enabled and used as well as this placement allows: a breakpoint on the static first block caches the persona and tools. But caching hashes the request prefix in order (tools → system → messages), so everything after the changing context block — the entire conversation history — can never be cached, and history is what grows with every turn:
+**`system-prompt` (the baseline — prefix-only caching).** The Zep context block is appended to the current user message. A breakpoint on the static system block caches the persona and tools. The conversation history is not cached in this mode:
 
 | Role | Content | Billed at |
 |---|---|---|
-| System (block 1) | Static prompt + tools (never changes) | ~90% off (cache read) |
-| System (block 2) | **Zep context block (changes every turn)** | full price, every turn |
+| System | Static prompt + tools (never changes) | ~90% off (cache read) |
 | User / Assistant | Conversation history | **full price, every turn** |
-| User | Latest message | full price |
+| User | Latest message + Zep context data | full price |
 
-**`system-message` (Claude Opus 4.8, cache-preserving).** The system prompt is static; each turn's context block arrives as a mid-conversation system message at the *very end* of the messages array, right after the latest user message — and **after the moving cache breakpoint, so it is never cached**. On the next turn the prior context message is simply replaced with a fresh one, which invalidates nothing (it was never part of any cache entry). Everything before it — the static prefix and the entire conversation history — stays byte-identical and reads from cache:
+**`system-message` (cache-preserving).** The system prompt is static. Each turn's context block arrives as a trailing user-data message after the latest user message. It is after the moving cache breakpoint, so it is not cached. On the next turn, the prior context data is replaced with a fresh block:
 
 | Role | Content | Billed at |
 |---|---|---|
 | System | Static prompt + tools (never changes) | ~90% off (cache read) |
 | User / Assistant | Conversation history | ~90% off (cache read) |
 | User | Latest message (+ prior turn's reply entering the cache) | cache write (1.25x, cached for next turn) |
-| **System** | **Fresh Zep context block** (replaced each turn, never cached) | full price, once |
+| **User** | **Fresh Zep context data** (replaced each turn, never cached) | full price, once |
 
-This is the trailing ["context message" pattern Zep has long recommended](https://help.getzep.com/retrieving-context) for cache efficiency — with one upgrade: Opus 4.8 lets that message be a true `system` message, giving retrieved memory operator-level authority instead of riding in a faked user or tool turn.
+This is a trailing user-data message. The system prompt contains only application-authored instructions.
 
 The agent (`agent.py`) is identical in both modes — same memory retrieval, same model, same parameters, caching enabled in both. The variable is placement, which determines how much of the prompt caching can actually protect.
 
@@ -41,7 +40,7 @@ cp .env.example .env   # then fill in both keys
 - **Zep**: sign up at [app.getzep.com](https://app.getzep.com) and create an API key
 - **Anthropic**: get a key from [platform.claude.com](https://platform.claude.com)
 
-> **Requirements**: mid-conversation system messages are available on **Claude Opus 4.8 only**, on the Claude API (not Bedrock/Vertex/Foundry). Prompt caching is opt-in — this example uses [explicit cache breakpoints](https://platform.claude.com/docs/en/build-with-claude/prompt-caching): the baseline places one on its static system block (the most that placement can cache), and the system-message mode places two — end of the static system prompt and the latest **user** message (moved forward each turn), never on the trailing context message. (Note: the SDK's *automatic* top-level `cache_control` field silently fails to engage when the messages array ends with a `role: "system"` entry — explicit breakpoints sidestep that.)
+> **Requirements**: Prompt caching is opt-in. This example uses [explicit cache breakpoints](https://platform.claude.com/docs/en/build-with-claude/prompt-caching): the baseline places one on its static system block, and system-message mode places two — on the static system prompt and the latest user turn. Retrieved context is not cached.
 
 ## 1. Seed the demo user
 
@@ -59,7 +58,7 @@ Re-seed from scratch with `python ingest.py --recreate`.
 # Cache-preserving mode (default)
 python chat.py
 
-# Baseline: context in the system prompt (only the static prefix caches)
+# Baseline: context in the current user message (only the static prefix caches)
 python chat.py --context-mode system-prompt
 ```
 
@@ -113,7 +112,7 @@ agent.py ── ZepMemoryAgent._build_request()   ← the only place the modes d
         │                 (persists the message + retrieves context in one call)
         │
         └── anthropic.messages.stream(model, system, messages)
-            (system-message mode marks explicit cache breakpoints inside system/messages)
+            (system-message mode marks explicit cache breakpoints in the system field and user messages)
 ```
 
 - `scenario.py` — the demo user ID, the static prefix (persona + operations manual + tool definitions), the prior conversations that seed the graph, and the scripted benchmark conversations
@@ -126,7 +125,7 @@ agent.py ── ZepMemoryAgent._build_request()   ← the only place the modes d
 
 ## Notes on the pattern
 
-- **Replacing the context message is cache-safe — because of where it sits.** Anthropic's docs warn against editing or removing an already-sent mid-conversation system message, and the stated reason is that doing so *"invalidates the cache from that point forward."* That applies to messages inside the cached prefix. The context message here sits **after the last cache breakpoint** — it never enters any cache entry, so replacing it each turn invalidates nothing. The general lesson: where a message sits relative to your breakpoints determines whether changing it costs anything.
+- **Replacing the context message is cache-safe — because of where it sits.** The user-data context message sits **after the last cache breakpoint** — it never enters any cache entry, so replacing it each turn invalidates nothing. The general lesson: where a message sits relative to your breakpoints determines whether changing it costs anything.
 - **Each context block is paid for exactly once.** Fresh block at full input price, dropped next turn — no write premium, no accumulating re-reads. The model always sees exactly one, current memory block per turn.
-- **Authority.** System-role placement gives memory operator-level priority. Zep context blocks are structured summaries generated by your own memory infrastructure — not raw third-party text, which Anthropic [recommends keeping out of system messages](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages#limitations). Treat your memory-write path accordingly.
+- **Security.** Retrieved context is data, not an instruction. Keep it in user messages. Keep application-authored instructions in the system prompt.
 - **Keeping blocks compact.** The fresh context block is the one full-price part of every turn, so its size sets your per-turn floor. Use Zep [context templates](https://help.getzep.com/context-templates) to cap facts/entities per block if you want to lower it.

@@ -17,6 +17,7 @@ the graph structure.
 
 import asyncio
 import os
+import time
 import uuid
 import json
 from dotenv import find_dotenv, load_dotenv
@@ -36,94 +37,101 @@ async def main() -> None:
     client = AsyncZep(
         api_key=API_KEY,
     )
-    user_id = uuid.uuid4().hex
-    thread_id = uuid.uuid4().hex
-    await client.user.add(user_id=user_id, first_name="Paul")
-    print(f"User {user_id} created")
-    await client.thread.create(thread_id=thread_id, user_id=user_id)
-    print(f"thread {thread_id} created")
-    for message in history[2]:
-        await client.thread.add_messages(
-            thread_id,
-            messages=[
-                Message(
-                    role=message["role"],
-                    name=message["name"],
-                    content=message["content"],
-                )
-            ],
-        )
-
-    print("Waiting for the graph to be updated...")
-    await asyncio.sleep(30)
+    user = await client.user.create(
+        user_id=f"examples-v4-{uuid.uuid4().hex}",
+        first_name="Paul",
+    )
+    user_uuid = user.uuid_
+    print(f"Created user UUID: {user_uuid}")
+    thread = await client.thread.create(user_uuid=user_uuid)
+    thread_uuid = thread.uuid_
+    print(f"Created thread UUID: {thread_uuid}")
+    messages = [
+        Message(role=message["role"], name=message["name"], content=message["content"])
+        for message in history[2]
+    ]
+    added = await client.thread.add_messages(thread_uuid, messages=messages)
+    if added.task and added.task.uuid_:
+        deadline = time.monotonic() + 180
+        while True:
+            task = await client.task.get(added.task.uuid_)
+            if task.status == "succeeded":
+                break
+            if task.status in {"partial", "failed"}:
+                raise RuntimeError(f"Message ingestion task ended with {task.status}: {task.error}")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Timed out waiting for message ingestion")
+            await asyncio.sleep(2)
     print("Getting memory for thread")
-    thread_memory = await client.thread.get_user_context(thread_id)
+    thread_memory = await client.thread.get_context(thread_uuid)
     print(thread_memory)
 
     print("Getting episodes for user")
-    episode_result = await client.graph.episode.get_by_user_id(user_id, lastn=3)
-    episodes = episode_result.episodes
-    print(f"Episodes for user {user_id}:")
+    episode_result = await client.graph.episode.list(user_uuid, page_size=3)
+    episodes = episode_result.items
+    print(f"Episodes for user {user_uuid}:")
     print(episodes)
-    episode = await client.graph.episode.get(episodes[0].uuid_)
+    episode = await client.graph.episode.get(user_uuid, episodes[0].uuid_)
     print(episode)
 
-    edges = await client.graph.edge.get_by_user_id(user_id)
-    print(f"Edges for user {user_id}:")
-    print(edges)
-    edge = await client.graph.edge.get(edges[0].uuid_)
+    edges = await client.graph.edge.list(user_uuid, page_size=10)
+    print(f"Edges for user {user_uuid}:")
+    print(edges.items)
+    edge = await client.graph.edge.get(user_uuid, edges.items[0].uuid_)
     print(edge)
 
-    nodes = await client.graph.node.get_by_user_id(user_id)
-    print(f"Nodes for user {user_id}:")
-    print(nodes)
-    node = await client.graph.node.get(nodes[0].uuid_)
+    nodes = await client.graph.node.list(user_uuid, page_size=10)
+    print(f"Nodes for user {user_uuid}:")
+    print(nodes.items)
+    node = await client.graph.node.get(user_uuid, nodes.items[0].uuid_)
     print(node)
 
     print("Searching user graph memory...")
-    search_results = await client.graph.search(
-        user_id=user_id,
+    search_results = await client.graph.search_edges(
+        user_uuid,
         query="What is the weather in San Francisco?",
+        page_size=10,
     )
-    print(search_results.edges)
+    print(search_results.items)
 
     print("Adding a new text episode to the graph...")
-    await client.graph.add(
-        user_id=user_id,
+    added_episodes = []
+    added_episodes.append(await client.graph.episode.add(
+        user_uuid,
         type="text",
         data="The user is an avid fan of Eric Clapton",
-    )
+    ))
     print("Text episode added")
     print("Adding a new JSON episode to the graph...")
     json_data = {
         "name": "Eric Clapton",
         "age": 78,
         "genre": "Rock",
-        "favorite_user_id": user_id,
+        "favorite_user_uuid": user_uuid,
     }
     json_string = json.dumps(json_data)
-    await client.graph.add(
-        user_id=user_id,
+    added_episodes.append(await client.graph.episode.add(
+        user_uuid,
         type="json",
         data=json_string,
-    )
+    ))
     print("JSON episode added")
-
-    print("Adding a new message episode to the graph...")
-    message = "Paul (user): I went to Eric Clapton concert last night"
-    await client.graph.add(
-        user_id=user_id,
-        type="message",
-        data=message,
-    )
-    print("Message episode added")
-
-    print("Waiting for the graph to be updated...")
-    # wait for the graph to be updated
-    await asyncio.sleep(30)
+    task_uuid = added_episodes[-1].task.uuid_ if added_episodes[-1].task else None
+    if task_uuid:
+        deadline = time.monotonic() + 180
+        while True:
+            task = await client.task.get(task_uuid)
+            if task.status == "succeeded":
+                break
+            if task.status in {"partial", "failed"}:
+                raise RuntimeError(f"Episode ingestion task ended with {task.status}: {task.error}")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Timed out waiting for episode ingestion")
+            await asyncio.sleep(2)
 
     print("Getting nodes from the graph...")
-    nodes = await client.graph.node.get_by_user_id(user_id)
+    nodes = await client.graph.node.list(user_uuid, page_size=100)
+    nodes = nodes.items
     print(nodes)
 
     print("Finding Eric Clapton in the graph...")
@@ -131,28 +139,22 @@ async def main() -> None:
     print(clapton_node)
 
     print("Performing Eric Clapton centered edge search...")
-    search_results = await client.graph.search(
-        user_id=user_id,
+    search_results = await client.graph.search_edges(
+        user_uuid,
         query="Eric Clapton",
         center_node_uuid=clapton_node[0].uuid_,
-        scope="edges",
+        page_size=10,
     )
-    print(search_results.edges)
+    print(search_results.items)
 
     print("Performing Eric Clapton centered node search...")
-    search_results = await client.graph.search(
-        user_id=user_id,
+    search_results = await client.graph.search_nodes(
+        user_uuid,
         query="Eric Clapton",
         center_node_uuid=clapton_node[0].uuid_,
-        scope="nodes",
+        page_size=10,
     )
-    print(search_results.nodes)
-    # Note: get_facts() method not available in ZEP v3
-    # Facts are now extracted from graph edges as demonstrated above
-
-    # Uncomment to delete the user
-    # await client.user.delete(user_id)
-    # print(f"User {user_id} deleted")
+    print(search_results.items)
 
 
 if __name__ == "__main__":

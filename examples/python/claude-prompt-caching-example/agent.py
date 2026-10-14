@@ -1,34 +1,9 @@
-"""A memory-backed chat agent that injects Zep context one of two ways.
+"""A memory-backed chat agent with two prompt-caching strategies.
 
-Modes (`--context-mode`):
-
-- ``system-prompt`` — the baseline: context in the system prompt, with
-  best-effort caching. The static prefix (persona + tools) is its own
-  system block with a cache breakpoint, so it is read from cache after
-  turn 1. But the Zep context block is appended as a second system block
-  that changes every turn, and because caching hashes the request prefix
-  in order (tools → system → messages), everything after that changing
-  block — the entire conversation history — can never be cached in this
-  mode. This is the best a developer can do without moving the context
-  out of the system prompt.
-
-- ``system-message`` — the pattern made possible by Claude Opus 4.8's
-  mid-conversation system messages, with full prompt caching. The static
-  system prompt never changes; each turn's Zep context block is appended as
-  a ``{"role": "system"}`` message immediately after the latest user
-  message, at the very end of the request — *after* the moving cache
-  breakpoint, so it is never cached. On the next turn the prior context
-  message is simply not re-sent (replaced by a fresh one), which is
-  cache-safe precisely because it was never part of any cache entry.
-  Everything before it — the static prefix and the entire user/assistant
-  history — stays byte-identical and is read from cache every turn. This is
-  the trailing "context message" pattern Zep has long recommended for
-  cache efficiency, now with proper system-level authority instead of a
-  faked user or tool turn.
-
-The agent itself is identical in both modes — same memory retrieval, same
-model parameters, same history. The difference is where the context block
-is placed, which determines how much of the prompt caching can protect.
+Retrieved context is user data in both modes. ``system-prompt`` appends it
+to the current user turn. ``system-message`` adds it as a trailing user-data
+message. The mode names describe the original benchmark, not the current
+context role.
 """
 
 from __future__ import annotations
@@ -43,8 +18,8 @@ from zep_cloud.types import Message
 import pricing
 from scenario import STATIC_SYSTEM_PROMPT, TOOL_DEFINITIONS
 
-MODE_SYSTEM_PROMPT = "system-prompt"  # context in system prompt (prefix-only caching)
-MODE_SYSTEM_MESSAGE = "system-message"  # mid-conversation system messages (full caching)
+MODE_SYSTEM_PROMPT = "system-prompt"  # context in the current user turn
+MODE_SYSTEM_MESSAGE = "system-message"  # context in a trailing user-data message
 MODES = (MODE_SYSTEM_PROMPT, MODE_SYSTEM_MESSAGE)
 
 _CONTEXT_HEADER = (
@@ -112,15 +87,25 @@ class ZepMemory:
         so this is one round trip, not two.
         """
         response = self.zep.thread.add_messages(
-            thread_id=self.thread_id,
+            thread_uuid=self.thread_id,
             messages=[Message(role="user", name=self.user_name, content=text)],
-            return_context=True,
         )
-        return response.context
+        if response.task and response.task.uuid_:
+            deadline = time.monotonic() + 180
+            while True:
+                task = self.zep.task.get(response.task.uuid_)
+                if task.status == "succeeded":
+                    break
+                if task.status in {"partial", "failed"}:
+                    raise RuntimeError(f"Message task ended with {task.status}: {task.error}")
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("Timed out waiting for message processing")
+                time.sleep(2)
+        return self.zep.thread.get_context(self.thread_id).context
 
     def on_assistant_message(self, text: str) -> None:
         self.zep.thread.add_messages(
-            thread_id=self.thread_id,
+            thread_uuid=self.thread_id,
             messages=[Message(role="assistant", name="Assistant", content=text)],
         )
 
@@ -185,48 +170,21 @@ class ZepMemoryAgent:
     def _build_request(self, user_text: str, context: str | None) -> tuple[list, list]:
         """Return the (system, messages) pair for this turn.
 
-        This method is the entire difference between the two modes.
-
-        In ``system-prompt`` mode there is one cache breakpoint, on the
-        static system block — the most a developer can usefully cache with
-        this placement. A breakpoint in the messages would never match,
-        because the changing context block upstream invalidates everything
-        after it.
-
-        In ``system-message`` mode there are two explicit breakpoints: one
-        at the end of the (fully static) system field and one on the latest
-        *user* message — never on the trailing context message, which is
-        the one part of the prompt that is new every turn. Because the
-        context message sits *after* the last breakpoint, it is never
-        cached, and dropping it next turn invalidates nothing. Moving the
-        message breakpoint forward each turn is the standard
-        incremental-conversation pattern: the previous breakpoint's cache
-        entry still matches the (unchanged) earlier prefix, so it is read,
-        and only the tokens after it (last turn's reply + the new user
-        message) are written as the new entry.
+        Retrieved context is user data in both modes. The modes only control
+        whether that data is part of the current user turn or a trailing user
+        message.
         """
         if self.mode == MODE_SYSTEM_PROMPT:
-            # Baseline: static prefix cached (own block + breakpoint), but
-            # the context block rides in a second system block that changes
-            # every turn — so the conversation history after it is re-read
-            # at full price on every single turn.
             system = [self._block(self._static_system, cached=True)]
-            if context:
-                system.append(self._block(_CONTEXT_HEADER + context))
-            user_message = {"role": "user", "content": [self._block(user_text)]}
+            text = f"{user_text}\n\n{_CONTEXT_HEADER}{context}" if context else user_text
+            user_message = {"role": "user", "content": [self._block(text)]}
             return system, [*self.history, user_message]
 
-        # Opus 4.8: the system field is static, and the context block rides
-        # in a mid-conversation system message placed immediately after the
-        # user turn — the one spot that adds operator-level context without
-        # touching anything earlier in the prompt. It sits after the moving
-        # breakpoint, so it is never cached and is replaced wholesale by the
-        # next turn's fresh block.
         system = [self._block(self._static_system, cached=True)]
         user_message = {"role": "user", "content": [self._block(user_text, cached=True)]}
         messages = [*self.history, user_message]
         if context:
-            messages.append({"role": "system", "content": [self._block(_CONTEXT_HEADER + context)]})
+            messages.append({"role": "user", "content": [self._block(_CONTEXT_HEADER + context)]})
         return system, messages
 
     # -- one conversation turn -------------------------------------------------
@@ -289,7 +247,7 @@ class ZepMemoryAgent:
         # cache_control markers — the breakpoint is added transiently at
         # request-build time and moves forward each turn. The context block
         # never enters history in either mode: it lives in the system field
-        # (system-prompt mode) or in the trailing, never-cached system
+        # (system-prompt mode) or in the trailing, never-cached user-data
         # message (system-message mode), and is replaced with a fresh block
         # on the next turn either way.
         self.history.append({"role": "user", "content": [self._block(user_text)]})
@@ -320,7 +278,7 @@ def wait_for_zep_processing(
     """
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        episodes = zep.graph.episode.get_by_user_id(user_id=user_id, lastn=100).episodes or []
+        episodes = zep.graph.episode.list(user_id, page_size=100).items or []
         pending = sum(1 for e in episodes if not e.processed)
         if pending == 0:
             if not quiet:

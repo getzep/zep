@@ -23,7 +23,7 @@ As new conversations arrive, **Zep continuously refines the user summary** to an
 This example provides:
 - **Pre-configured User Summary Instructions** for a real estate agent
 - **Sample data** with realistic home buyer preferences and conversations
-- **RealEstateSalesAgent** that uses `thread.get_user_context()` to retrieve the custom user summary
+- **RealEstateSalesAgent** that uses `thread.get_context()` to retrieve the custom user summary
 - **Interactive dashboard** to test and compare responses with/without Zep memory
 - **Side-by-side comparison** showing how User Summary Instructions improve agent responses
 - **Latency tracking** for Zep retrieval and LLM response times
@@ -48,6 +48,7 @@ Create a `.env` file in the project root with your API keys:
 
 ```bash
 ZEP_API_KEY=your_zep_api_key_here
+ZEP_USER_UUID=
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
@@ -57,7 +58,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 ### 3. Enable User Summary in Zep Project Settings
 
-**Important**: For the user summary to be automatically included in the context block returned by `get_user_context()`, you need to enable this setting in your Zep project:
+**Important**: For the user summary to be included in the context block returned by `thread.get_context()`, enable this setting in your Zep project:
 
 1. Go to the [Zep web app](https://app.getzep.com)
 2. Navigate to your project's **Settings** page
@@ -79,7 +80,9 @@ This script:
 3. Ingests sample conversations about home buying
 4. Adds structured preference data to Zep's knowledge graph
 
-The sample data represents realistic home buyer scenarios with budgets, bedroom requirements, location preferences, and must-have features.
+The script prints the created user UUID. Set `ZEP_USER_UUID` to that value before you launch the dashboard. The dashboard will use that user.
+
+The sample data represents home buyer scenarios with budgets, bedroom requirements, location preferences, and must-have features.
 
 ### 5. Launch the Dashboard
 
@@ -96,7 +99,8 @@ The dashboard will open in your browser at `http://localhost:8501`.
 The ingestion script (`zep_ingest.py`) configures User Summary Instructions that define what information should always be available:
 
 ```python
-zep_client.user.add_user_summary_instructions(
+zep_client.user.set_summary_instructions(
+    user_uuid=user_uuid,
     instructions=[
         UserInstruction(
             name="bedroom_requirements",
@@ -121,18 +125,15 @@ As Zep processes conversations and structured data, it generates a user summary 
 
 ### 3. Retrieving Context with User Summary
 
-The `RealEstateSalesAgent` retrieves context using `get_user_context()`, which automatically includes the custom user summary:
+The `RealEstateSalesAgent` retrieves context using `thread.get_context()`, which includes the custom user summary:
 
 ```python
-results = await zep_client.thread.get_user_context(
-    thread_id=thread_id
-)
+results = await zep_client.thread.get_context(thread_id)
 context_block = results.context  # Includes the user summary
 
 system_prompt = (
     "You are a helpful real estate sales agent. "
-    "Use the context provided to personalize your recommendations.\n\n"
-    f"{context_block}"
+    "Use the context data in the user's message to personalize your recommendations."
 )
 ```
 
@@ -150,7 +151,7 @@ With User Summary Instructions, the agent responds with full context—even when
 ### Dashboard Controls
 
 **Agent Selector** (in sidebar)
-- Default agent: `RealEstateSalesAgent` (uses `thread.get_user_context()`)
+- Default agent: `RealEstateSalesAgent` (uses `thread.get_context()`)
 - Add your own custom agents by copying and modifying the existing agent
 - All agent classes with an `on_receive_message` method automatically appear in this dropdown
 

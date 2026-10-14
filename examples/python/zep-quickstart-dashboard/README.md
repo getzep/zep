@@ -32,6 +32,7 @@ Create a `.env` file in the project root with your API keys:
 
 ```bash
 ZEP_API_KEY=your_zep_api_key_here
+ZEP_USER_UUID=
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
@@ -52,7 +53,9 @@ This creates:
 - Sample conversation threads
 - Structured JSON data in Zep's knowledge graph
 
-The sample data is about concerts/music preferences. You can replace the files in `data/` with your own data.
+The script prints the created user UUID. Set `ZEP_USER_UUID` to that value before you launch the dashboard. The dashboard will use that user.
+
+The sample data is about concerts and music preferences. You can replace the files in `data/` with your own data.
 
 ### 4. Launch the Dashboard
 
@@ -68,7 +71,7 @@ The dashboard will open in your browser at `http://localhost:8501`.
 
 **Agent Selector** (in sidebar)
 - Choose from available agent types defined in `agents.py`
-- Default agent: `ChatAgent` (uses `thread.get_user_context()`)
+- Default agent: `ChatAgent` (uses `thread.get_context()`)
 - All agent classes with an `on_receive_message` method automatically appear in this dropdown
 - Add your own custom agents by copying and modifying the default agent
 
