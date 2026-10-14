@@ -94,6 +94,11 @@ the migration guide, and store it.
   names the setting and the values to use, and the tool makes no Zep call.
   A pinned pair that Zep rejects makes `NewGraphSearchTool` return an error.
   The `mmr` reranker uses `mmr_lambda=0.5` when no value is set.
+- A reranker from the model with `scope="auto"` returns an error to the model,
+  and the tool makes no Zep call. Before, the tool ignored the reranker. The
+  `reranker` parameter of the schema has no default, so `auto` with no
+  reranker works. When the model sends no reranker, the tool still uses `rrf`
+  for every scope except `auto`.
 - With a non-nil client and no graph UUID, `NewGraphSearchTool` returns an
   error. `NewBeforeModelCallback`, `NewAfterModelCallback`, and
   `NewMemoryService` log an error when they are constructed with no thread

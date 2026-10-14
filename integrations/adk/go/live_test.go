@@ -257,4 +257,18 @@ func TestLiveGraphSearchToolSearchSettings(t *testing.T) {
 		t.Fatalf("episodes with cross_encoder: err = %v, want errInvalidSearchSettings", err)
 	}
 	t.Logf("episodes with cross_encoder: %v", err)
+
+	auto, rrf := "auto", "rrf"
+	_, err = handler(tc, SearchArgs{Query: "food", Scope: &auto, Reranker: &rrf})
+	if !errors.Is(err, errInvalidSearchSettings) || !strings.Contains(err.Error(), "takes no reranker") {
+		t.Fatalf("auto with rrf: err = %v, want errInvalidSearchSettings that says auto takes no reranker", err)
+	}
+	t.Logf("auto with rrf: %v", err)
+
+	if _, err := handler(tc, SearchArgs{Query: "food", Scope: &auto}); err != nil {
+		t.Fatalf("auto with no reranker: err = %v, want nil", err)
+	}
+	if strings.Contains(logs.String(), "graph search tool failed") {
+		t.Fatalf("Zep rejected an auto search: %s", logs.String())
+	}
 }

@@ -220,8 +220,13 @@ func TestGraphSearchToolSchemaDefaultExposesAllFiveParams(t *testing.T) {
 	if strings.Contains(reranker.Description, "episode_mentions") {
 		t.Fatalf("reranker description = %q, want no episode_mentions", reranker.Description)
 	}
-	if string(reranker.Default) != `"rrf"` {
-		t.Fatalf("reranker default = %s, want \"rrf\"", reranker.Default)
+	if len(reranker.Default) != 0 {
+		t.Fatalf("reranker default = %s, want no default, because scope auto takes no reranker", reranker.Default)
+	}
+	for _, want := range []string{"'auto' takes no reranker", "Omit reranker when scope is 'auto'", "When omitted, 'rrf' is used for every scope except 'auto'"} {
+		if !strings.Contains(reranker.Description, want) {
+			t.Fatalf("reranker description = %q, want it to contain %q", reranker.Description, want)
+		}
 	}
 
 	limit := schema.Properties["limit"]
@@ -801,10 +806,30 @@ func TestGraphSearchHandlerMMRWithoutLambdaUsesDefault(t *testing.T) {
 	}
 }
 
-func TestGraphSearchHandlerAutoScopeIgnoresReranker(t *testing.T) {
+func TestGraphSearchHandlerRejectsRerankerWithAutoScope(t *testing.T) {
+	for _, r := range modelSearchRerankers {
+		t.Run(string(r), func(t *testing.T) {
+			f := newSearchToolFixture(t, WithToolLogger(discardLogger()))
+			scope, reranker := "auto", string(r)
+			res, err := f.run(context.Background(), SearchArgs{Query: "q", Scope: &scope, Reranker: &reranker})
+			want := `scope "auto" takes no reranker; call the tool again with no reranker, or with a scope that accepts reranker "` + string(r) + `"`
+			if !errors.Is(err, errInvalidSearchSettings) || !strings.Contains(err.Error(), want) {
+				t.Fatalf("err = %v, want errInvalidSearchSettings containing %q", err, want)
+			}
+			if len(res.Facts) != 0 || f.api.searchCalls != 0 {
+				t.Fatalf("Facts = %v, searchCalls = %d, want no facts and no Zep call", res.Facts, f.api.searchCalls)
+			}
+		})
+	}
+}
+
+func TestGraphSearchHandlerAutoScopeWithoutReranker(t *testing.T) {
 	f := newSearchToolFixture(t)
-	scope, reranker := "auto", "node_distance"
-	if _, err := f.run(context.Background(), SearchArgs{Query: "q", Scope: &scope, Reranker: &reranker}); err != nil {
-		t.Fatalf("run err = %v, want nil because auto takes no reranker", err)
+	scope := "auto"
+	if _, err := f.run(context.Background(), SearchArgs{Query: "q", Scope: &scope}); err != nil {
+		t.Fatalf("run err = %v, want nil", err)
+	}
+	if f.api.searchCalls != 1 || f.api.lastSearchScope != SearchScopeAuto {
+		t.Fatalf("searchCalls = %d, scope = %v, want one auto call", f.api.searchCalls, f.api.lastSearchScope)
 	}
 }

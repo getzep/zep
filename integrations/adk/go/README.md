@@ -236,8 +236,10 @@ model can supply. Every search parameter — `scope`, `reranker`, `limit`,
 | **Pinned** | `WithToolSearchScope`, `WithToolSearchLimit`, `WithToolReranker`, `WithToolMMRLambda`, `WithToolCenterNodeUUID` | Hidden from the schema; always sent to Zep with the fixed value, regardless of what the model would have chosen. |
 | **Hidden** | `WithHiddenParams(zepadk.SearchParamScope, ...)` | Hidden from the schema AND omitted from the Zep call entirely — as if never set. |
 
-Defaults when exposed: `scope="edges"`, `reranker="rrf"`, `limit=10`, and
-`mmr_lambda=0.5` when the reranker is `mmr`. `center_node_uuid` has no
+Defaults when exposed: `scope="edges"`, `reranker="rrf"` for every scope
+except `auto`, `limit=10`, and `mmr_lambda=0.5` when the reranker is `mmr`.
+The `reranker` parameter has no schema default, because `auto` takes no
+reranker. `center_node_uuid` has no
 default. An invalid enum value from the model (`scope`/`reranker`) is
 rejected by ADK's schema validation before the tool runs and surfaced to the
 model as a tool error it can correct on the next call; it never reaches Zep
@@ -258,8 +260,11 @@ Each Zep v4 search scope accepts only some rerankers:
 the rerankers that the scope accepts. When the reranker is pinned, the schema
 shows only the scopes that accept it. If the model still sends a pair that Zep
 rejects, the tool makes no Zep call and returns an error to the model that
-names the setting that is not valid and the values to use. `NewGraphSearchTool`
-returns an error for a pinned scope and reranker pair that Zep rejects.
+names the setting that is not valid and the values to use. This includes any
+reranker that the model sends with `auto`: the error tells the model to call
+the tool again with no reranker, or with a scope that accepts the reranker.
+`NewGraphSearchTool` returns an error for a pinned scope and reranker pair
+that Zep rejects.
 
 `WithToolSearchFilters` and `WithToolBFSOriginNodeUUIDs` are constructor-only:
 never exposed to the model, always applied to every search when set.

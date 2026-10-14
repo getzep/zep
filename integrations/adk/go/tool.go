@@ -426,7 +426,7 @@ func rerankerScopeLimits(cfg *graphSearchToolOptions) string {
 	var parts []string
 	for _, scope := range exposedSearchScopes(cfg) {
 		if scope == SearchScopeAuto {
-			parts = append(parts, "'auto' ignores the reranker")
+			parts = append(parts, "'auto' takes no reranker")
 			continue
 		}
 		parts = append(parts, fmt.Sprintf("'%s' accepts %s", scope,
@@ -484,13 +484,18 @@ func buildSearchInputSchema(cfg *graphSearchToolOptions) *jsonschema.Schema {
 		}
 		description := "Result ordering algorithm: " + strings.Join(described, ", ") + "."
 		if !scopeFixed {
-			description += " Each scope accepts only some rerankers: " + rerankerScopeLimits(cfg) + "."
+			description += " Each scope accepts only some rerankers: " + rerankerScopeLimits(cfg) + "." +
+				" Omit reranker when scope is 'auto'."
 		}
+		description += fmt.Sprintf(" When omitted, '%s' is used", defaultSearchReranker)
+		if !scopeFixed {
+			description += " for every scope except 'auto'"
+		}
+		description += "."
 		properties["reranker"] = &jsonschema.Schema{
 			Type:        "string",
 			Description: description,
 			Enum:        enumValues(rerankers),
-			Default:     mustRaw(string(defaultSearchReranker)),
 		}
 	}
 
@@ -575,10 +580,14 @@ func validateGraphSearchToolOptions(cfg *graphSearchToolOptions) error {
 // v4 rejects. The message tells the model which setting is not valid and
 // what to use, so that the model can call the tool again correctly.
 func validateSearchSettings(cfg *graphSearchToolOptions, scope SearchScope, params *searchParams) error {
-	if scope == SearchScopeAuto || params.Reranker == nil {
+	if params.Reranker == nil {
 		return nil
 	}
 	r := *params.Reranker
+	if scope == SearchScopeAuto {
+		return fmt.Errorf("%w: scope %q takes no reranker; call the tool again with no reranker, or with a scope that accepts reranker %q",
+			errInvalidSearchSettings, scope, r)
+	}
 	if !rerankerSupported(scope, r) {
 		return fmt.Errorf("%w: reranker %q is not supported with scope %q; use one of these rerankers with scope %q: %s",
 			errInvalidSearchSettings, r, scope, scope, joinSearchValues(modelRerankersForScope(cfg, scope)))
@@ -617,10 +626,11 @@ func resolveScope(cfg *graphSearchToolOptions, modelValue *string) SearchScope {
 	}
 }
 
-// resolveReranker merges the pinned/model/default reranker value. As with
-// [resolveScope], the invalid-value branch is defense-in-depth only — ADK's
-// schema validation rejects invalid enum values before the handler runs.
-func resolveReranker(cfg *graphSearchToolOptions, modelValue *string) *SearchReranker {
+// resolveReranker merges the pinned/model/default reranker value. The
+// default applies to every scope except auto, which takes no reranker. As
+// with [resolveScope], the invalid-value branch is defense-in-depth only —
+// ADK's schema validation rejects invalid enum values before the handler runs.
+func resolveReranker(cfg *graphSearchToolOptions, scope SearchScope, modelValue *string) *SearchReranker {
 	switch cfg.rerankerState {
 	case statePinned:
 		return ptr(cfg.reranker)
@@ -635,6 +645,9 @@ func resolveReranker(cfg *graphSearchToolOptions, modelValue *string) *SearchRer
 				return ptr(defaultSearchReranker)
 			}
 			return ptr(reranker)
+		}
+		if scope == SearchScopeAuto {
+			return nil
 		}
 		return ptr(defaultSearchReranker)
 	}
@@ -728,7 +741,7 @@ func newGraphSearchHandlerFromConfig(api zepAPI, cfg *graphSearchToolOptions) fu
 
 		body := &searchParams{
 			Query:          args.Query,
-			Reranker:       resolveReranker(cfg, args.Reranker),
+			Reranker:       resolveReranker(cfg, scope, args.Reranker),
 			MmrLambda:      resolveMMRLambda(cfg, args.MMRLambda),
 			CenterNodeUUID: resolveCenterNodeUUID(cfg, args.CenterNodeUUID),
 		}
