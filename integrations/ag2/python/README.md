@@ -14,7 +14,7 @@ Zep v4 addresses every user, thread, and graph by a server-generated UUID. A
 create call takes no client-chosen name. The public API of this package takes
 `user_uuid`, `thread_uuid`, and `graph_uuid`.
 
-Create the user and the thread one time with `create_user` and `create_thread`,
+For a new user, create the user and the thread one time with `create_user` and `create_thread`,
 read the UUIDs from the responses, and store them in your own database. The
 package does not resolve a name at run time.
 
@@ -27,6 +27,23 @@ thread = await create_thread(zep, user_uuid=user.uuid_)
 # Store these three values in your application database.
 user.uuid_, user.graph_uuid, thread.uuid_
 ```
+
+## Migrating from V3
+
+Follow the [V3 to V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general procedure. The API changes that are specific to this package are:
+
+- `ensure_user(client, *, user_id, ...)` and `ensure_thread(client, *, thread_id, user_id)` are removed. `create_user(client, *, first_name=None, last_name=None, email=None, on_created=None)` and `create_thread(client, *, user_uuid)` replace them. They take no client-chosen name, and they return the created `User` and `Thread`. The `on_created` hook now receives the UUID of the user.
+- `ZepMemoryManager(client, user_id, session_id=None, ...)` is now `ZepMemoryManager(client, user_uuid, thread_uuid=None, *, graph_uuid=None, sync_client=None, ...)`. Give the stored user UUID, thread UUID, and user graph UUID here. The `user_id` and `session_id` properties are now `user_uuid` and `thread_uuid`.
+- The lazy provisioning path of `ZepMemoryManager` is removed: `ensure_user_and_thread()`, and the constructor arguments `first_name`, `last_name`, `email`, and `on_created`.
+- `ZepGraphMemoryManager(client, graph_id)` is now `ZepGraphMemoryManager(client, graph_uuid, *, sync_client=None)`. The `graph_id` property is now `graph_uuid`.
+- `create_search_memory_tool(client, user_id, session_id=None, ...)` is now `create_search_memory_tool(client, graph_uuid, ...)`. Give the stored user graph UUID.
+- `create_add_memory_tool(client, user_id, session_id=None)` is now `create_add_memory_tool(client, graph_uuid, thread_uuid=None)`. Give the stored user graph UUID and thread UUID.
+- `create_search_graph_tool(client, user_id=None, graph_id=None, ...)` and `create_add_graph_data_tool(client, user_id=None, graph_id=None)` now take one `graph_uuid`. Give the stored user graph UUID or the stored UUID of a named graph.
+- The `search_filters` argument of `create_search_memory_tool` and `create_search_graph_tool` is now `filters`.
+- `register_all_tools(agent, executor, client, user_id, session_id=None, graph_id=None)` is now `register_all_tools(agent, executor, client, graph_uuid, thread_uuid=None, memory_graph_uuid=None)`. The graph tools use `graph_uuid`. The memory tools use `memory_graph_uuid`, which defaults to `graph_uuid`. When `graph_uuid` is a named graph, give the stored user graph UUID as `memory_graph_uuid`.
+- The `user_id` and `thread_id` fields of `ContextInput` are now `user_uuid` and `thread_uuid`.
+
+For an existing V3 user, thread, or graph, do not call `create_user`, `create_thread`, or `graph.create`. Get its UUID one time with the backfill in the migration guide, and store it.
 
 ## Quick Start
 
