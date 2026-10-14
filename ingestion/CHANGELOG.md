@@ -1,10 +1,9 @@
 # Changelog
 
 All notable changes to `zep-ingest` are documented here. The project follows
-[Semantic Versioning](https://semver.org); while at `0.x` the public API may
-still change between minor versions.
+[Semantic Versioning](https://semver.org).
 
-## 0.4.0
+## 1.0.0
 
 ### Breaking
 

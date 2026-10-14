@@ -1,4 +1,4 @@
-"""Production smoke tests for zep-ingest 0.3.0 release candidates.
+"""Production smoke tests for zep-ingest 1.0.0 release candidates.
 
 Exercises submit-all-then-wait-once, tail polling, thread message UUIDs,
 multi-thread sagas, and phased node seeding. Requires ZEP_API_KEY (and
