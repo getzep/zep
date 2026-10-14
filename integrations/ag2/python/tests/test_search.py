@@ -103,7 +103,7 @@ class TestSearchGraphToolPinOrExpose:
         tool(query="hello")
 
         call_kwargs = mock_zep_client.graph.search_nodes.call_args.kwargs
-        assert call_kwargs["limit"] == 3
+        assert call_kwargs["page_size"] == 3
         mock_zep_client.graph.search_edges.assert_not_called()
 
     def test_search_tool_hidden_params_omitted_from_sdk_call(
@@ -143,7 +143,7 @@ class TestSearchGraphToolPinOrExpose:
         tool(query="hello")
 
         call_kwargs = mock_zep_client.graph.search_nodes.call_args.kwargs
-        assert call_kwargs["limit"] == 7
+        assert call_kwargs["page_size"] == 7
         mock_zep_client.graph.search_edges.assert_not_called()
 
     def test_search_tool_unknown_pinned_param_raises(self, mock_zep_client: MagicMock) -> None:
@@ -187,7 +187,7 @@ class TestSearchGraphToolPinOrExpose:
 
         call_kwargs = mock_zep_client.graph.search_episodes.call_args.kwargs
         assert call_kwargs["reranker"] == "mmr"
-        assert call_kwargs["limit"] == 20
+        assert call_kwargs["page_size"] == 20
         assert call_kwargs["mmr_lambda"] == 0.5
 
     def test_search_tool_requires_graph_uuid(self, mock_zep_client: MagicMock) -> None:
@@ -227,7 +227,7 @@ class TestSearchLimitClamp:
         tool(query="hello")
 
         call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
-        assert call_kwargs["limit"] == 50
+        assert call_kwargs["page_size"] == 50
 
     def test_pinned_limit_below_one_clamped_to_one(self, mock_zep_client: MagicMock) -> None:
         tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID, pinned_params={"limit": 0})
@@ -235,7 +235,7 @@ class TestSearchLimitClamp:
         tool(query="hello")
 
         call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
-        assert call_kwargs["limit"] == 1
+        assert call_kwargs["page_size"] == 1
 
     def test_model_limit_clamped_at_call_time(self, mock_zep_client: MagicMock) -> None:
         tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
@@ -243,7 +243,7 @@ class TestSearchLimitClamp:
         tool(query="hello", limit=200)
 
         call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
-        assert call_kwargs["limit"] == 50
+        assert call_kwargs["page_size"] == 50
 
     def test_model_limit_below_one_clamped_to_one(self, mock_zep_client: MagicMock) -> None:
         tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
@@ -251,7 +251,7 @@ class TestSearchLimitClamp:
         tool(query="hello", limit=-3)
 
         call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
-        assert call_kwargs["limit"] == 1
+        assert call_kwargs["page_size"] == 1
 
     def test_search_memory_tool_pinned_limit_clamped(self, mock_zep_client: MagicMock) -> None:
         tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID, limit=100)
@@ -259,7 +259,7 @@ class TestSearchLimitClamp:
         tool(query="hello")
 
         call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
-        assert call_kwargs["limit"] == 50
+        assert call_kwargs["page_size"] == 50
 
 
 class TestAutoScopeReranker:
@@ -363,4 +363,4 @@ class TestSearchMemoryToolPinOrExpose:
         tool(query="hello")
 
         call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
-        assert call_kwargs["limit"] == 9
+        assert call_kwargs["page_size"] == 9

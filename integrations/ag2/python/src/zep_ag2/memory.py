@@ -404,14 +404,14 @@ class ZepMemoryManager:
                     edge_pager = await self._client.graph.search_edges(
                         graph_uuid,
                         query=query,
-                        limit=limit,
+                        page_size=limit,
                     )
                     for edge in edge_pager.items or []:
                         facts.append(f"- {edge.fact}")
                     node_pager = await self._client.graph.search_nodes(
                         graph_uuid,
                         query=query,
-                        limit=limit,
+                        page_size=limit,
                     )
                     for node in node_pager.items or []:
                         summary = node.summary or "No summary"

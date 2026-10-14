@@ -199,7 +199,7 @@ class TestToolFactories:
         result = tool(query="hiking", limit=3)
 
         mock_zep_client.graph.search_edges.assert_called_once_with(
-            GRAPH_UUID, query="hiking", reranker="rrf", limit=3
+            GRAPH_UUID, query="hiking", reranker="rrf", page_size=3
         )
         assert isinstance(result, str)
 

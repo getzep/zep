@@ -324,7 +324,8 @@ reusing the `AsyncZep` client you pass in (no per-call client construction).
 pattern: every search parameter (`scope`, `reranker`, `limit`, `mmr_lambda`,
 `center_node_uuid`) is exposed to the model by default. The `scope` selects the v4 search
 method: `edges`, `nodes`, `episodes`, `observations`, `thread_summaries`, or `auto`. The
-`auto` scope calls `graph.get_context`, which accepts neither a reranker nor a limit. Use `pinned_params` to fix a
+`auto` scope calls `graph.get_context`, which accepts neither a reranker nor a limit. The package sends
+`limit` as the `page_size` of the v4 search call. Use `pinned_params` to fix a
 parameter to a constant (hidden from the model), or `hidden_params` to remove it from the
 schema without pinning (Zep's own default applies):
 
@@ -377,7 +378,7 @@ make ci             # CI validation
 
 - Python 3.11+
 - `ag2>=0.9.0`
-- `zep-cloud==4.0.0a5`
+- `zep-cloud>=4.0.0,<5`
 
 ## License
 

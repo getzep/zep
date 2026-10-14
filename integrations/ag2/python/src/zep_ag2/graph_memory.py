@@ -94,7 +94,7 @@ class ZepGraphMemoryManager:
         try:
             if selected_scope == "edges":
                 edge_pager = await self._client.graph.search_edges(
-                    self._graph_uuid, query=query, limit=limit
+                    self._graph_uuid, query=query, page_size=limit
                 )
                 for edge in edge_pager.items or []:
                     results.append(
@@ -108,7 +108,7 @@ class ZepGraphMemoryManager:
                     )
             elif selected_scope == "nodes":
                 node_pager = await self._client.graph.search_nodes(
-                    self._graph_uuid, query=query, limit=limit
+                    self._graph_uuid, query=query, page_size=limit
                 )
                 for node in node_pager.items or []:
                     summary = node.summary or "No summary"
@@ -123,7 +123,7 @@ class ZepGraphMemoryManager:
                     )
             elif selected_scope == "episodes":
                 episode_pager = await self._client.graph.search_episodes(
-                    self._graph_uuid, query=query, limit=limit
+                    self._graph_uuid, query=query, page_size=limit
                 )
                 for episode in episode_pager.items or []:
                     results.append(
@@ -198,7 +198,7 @@ class ZepGraphMemoryManager:
         else:
             # Retrieve recent episodes for automatic context
             try:
-                recent = await self._client.graph.episode.list(self._graph_uuid, limit=2)
+                recent = await self._client.graph.episode.list(self._graph_uuid, page_size=2)
                 episodes = recent.items or []
                 if episodes:
                     episode_query = ""

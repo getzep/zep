@@ -23,7 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "ag2>=0.9.0,<1",
-    "zep-cloud==4.0.0a5",
+    "zep-cloud>=4.0.0,<5",
 ]
 
 [project.urls]

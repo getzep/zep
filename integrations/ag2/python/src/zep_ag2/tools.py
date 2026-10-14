@@ -56,7 +56,7 @@ Scope = Literal[
 ]
 Reranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
 
-#: Zep caps the search ``limit`` at 50; larger values are rejected.
+#: Zep caps the search page size at 50; larger values are rejected.
 MAX_SEARCH_LIMIT = 50
 
 #: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
@@ -67,7 +67,8 @@ _AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
 # Parameter definitions
 # ---------------------------------------------------------------------------
 # Each entry describes a graph search parameter that can be pinned or exposed
-# to the model.  Keys match the kwargs of the Zep v4 graph search methods.  Model-
+# to the model.  Keys match the kwargs of the Zep v4 graph search methods, except
+# ``limit``, which ``_run_search`` sends as ``page_size``.  Model-
 # exposed by default; hidden only when pinned or explicitly listed in
 # ``hidden_params``. ``annotation`` is the real typed annotation used to build
 # the dynamic function signature AG2's ``Tool`` introspects.
@@ -435,6 +436,8 @@ async def _run_search(client: AsyncZep, graph_uuid: str, search_kwargs: dict[str
     """
     kwargs = dict(search_kwargs)
     scope = str(kwargs.pop("scope", "edges"))
+    if "limit" in kwargs:
+        kwargs["page_size"] = kwargs.pop("limit")
 
     if scope == "auto":
         dropped = [name for name in kwargs if name not in _AUTO_SUPPORTED_PARAMS]
@@ -673,9 +676,11 @@ def create_search_graph_tool(
         hidden_params: Optional set of search parameter names to hide from
             the model's tool schema without pinning them -- omitted from the
             SDK call so Zep's own default takes effect.
-        filters: Optional Zep search filters (constructor-only). Supports
-            ``node_labels``, ``edge_types``, ``exclude_node_labels``,
-            ``exclude_edge_types``, and property filters.
+        filters: Optional Zep search filters (constructor-only). Each search
+            scope accepts only its own filter keys. For example, edge search
+            accepts ``edge_types`` and ``exclude_edge_types``, and node search
+            accepts ``node_labels`` and ``exclude_node_labels``. Zep rejects a
+            key that the scope does not support.
         bfs_origin_node_uuids: Optional list of node UUIDs for BFS seeding
             (constructor-only).
         scope: Deprecated back-compat alias for ``pinned_params={"scope": scope}``.

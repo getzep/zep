@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The package now uses the Zep v4 SDK (`zep-cloud==4.0.0a5`). The package targets v4 only and gives no v3 compatibility.
+- The package now uses the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). The package targets v4 only and gives no v3 compatibility.
 - The public API takes server-generated UUIDs. `ZepMemoryManager` takes `client`, `user_uuid`, and an optional `thread_uuid`, with an optional `graph_uuid` keyword. `ZepGraphMemoryManager` takes `client` and `graph_uuid`. Every tool factory and `register_all_tools` take `graph_uuid` and, where a thread is needed, `thread_uuid`.
 - Graph search calls the scope-specific v4 methods `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, and `graph.search_thread_summaries`. The new `auto` scope calls `graph.get_context`, which accepts neither a reranker nor a limit.
 - Conversation context comes from `thread.get_context`, and messages go to `thread.add_messages` with the `AddMessage` model.
 - Graph ingestion calls `graph.episode.add`, and the recent-episode read calls `graph.episode.list`.
 - The examples, the README, and SETUP.md show the UUID workflow.
+- The search `limit` of the managers and the tools goes to the SDK as `page_size`. The `limit` name in the package API does not change.
+- Each search scope accepts only its own filter keys. Zep rejects a key that the scope does not support.
 - `create_user` and `create_thread` take no client-chosen name. The v4 create operations reject `user_id` and `thread_id`, and a v4 resource has no name.
 
 ### Added
