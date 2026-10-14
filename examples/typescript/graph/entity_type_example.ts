@@ -1,9 +1,6 @@
 import {
     ZepClient,
-    entityFields,
-    type EntityData,
-    type EntityType,
-    type EdgeType,
+    Zep,
 } from "@getzep/zep-cloud";
 
 const API_KEY = process.env.ZEP_API_KEY;
@@ -13,21 +10,21 @@ async function main() {
         apiKey: API_KEY,
     });
 
-    const travelDestinationSchema: EntityType = {
+    const travelDestinationSchema: Zep.EntityType = {
+        name: "TravelDestination",
         description: "A travel destination entity",
-        fields: {
-            destination_name: entityFields.text("The name of travel destination"),
-        },
+        properties: [
+            { name: "destination_name", type: "text", description: "The name of the travel destination" },
+        ],
     };
 
-    type TravelDestination = EntityData<typeof travelDestinationSchema>;
-
-    const isTravelingTo: EdgeType = {
+    const isTravelingTo: Zep.EdgeType = {
+        name: "IS_TRAVELING_TO",
         description: "An edge representing a traveler going to a destination.",
-        fields: {
-            travel_date: entityFields.text("The date of the travel"),
-            purpose: entityFields.text("The purpose of the travel"),
-        },
+        properties: [
+            { name: "travel_date", type: "text", description: "The date of the travel" },
+            { name: "purpose", type: "text", description: "The purpose of the travel" },
+        ],
         sourceTargets: [
             {
                 source: "User",
@@ -36,14 +33,13 @@ async function main() {
         ]
     }
 
-    await client.graph.setEntityTypes({
-        TravelDestination: travelDestinationSchema,
-    }, {
-        IS_TRAVELING_TO: isTravelingTo,
+    await client.project.setOntology({
+        entityTypes: [travelDestinationSchema],
+        edgeTypes: [isTravelingTo],
     });
 
-    const customTypes = await client.graph.listEntityTypes();
-    console.log(JSON.stringify(customTypes, null, 2));
+    const ontology = await client.project.getOntology();
+    console.log(JSON.stringify(ontology, null, 2));
 }
 
 main().catch(console.error);

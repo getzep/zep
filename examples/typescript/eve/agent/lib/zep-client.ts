@@ -12,10 +12,6 @@ export function getZepClient(): ZepClient {
     );
   }
 
-  const baseUrl = process.env.ZEP_API_URL?.trim();
-  client = new ZepClient({
-    apiKey,
-    ...(baseUrl ? { baseUrl } : {}),
-  });
+  client = new ZepClient({ apiKey });
   return client;
 }

@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 import { ZepClient } from '@getzep/zep-cloud';
 
 const API_KEY = process.env.ZEP_API_KEY;
@@ -8,54 +7,63 @@ async function main() {
         apiKey: API_KEY,
     });
 
-    const graphId = uuidv4();
-    console.log(`Creating graph ${graphId}...`);
+    console.log("Creating graph...");
     const graph = await client.graph.create({
-        graphId: graphId,
         name: "My graph",
         description: "This is my graph",
     });
-    console.log(`graph ${graphId} created`, graph);
+    const graphUuid = graph.uuid;
+    if (!graphUuid) throw new Error("Zep did not return a graph UUID");
+    console.log(`Graph ${graphUuid} created`, graph);
 
-    console.log(`Adding episode to graph ${graphId}...`);
-    await client.graph.add({
-        graphId: graphId,
-        type: "text",
-        data: "This is a test episode",
-    });
-
-    console.log(`Adding more meaningful episode to graph ${graphId}...`);
-    await client.graph.add({
-        graphId: graphId,
-        type: "text",
-        data: "Eric Clapton is a rock star",
-    });
-
-    console.log(`Adding a JSON episode to graph ${graphId}...`);
     const jsonString = '{"name": "Eric Clapton", "age": 78, "genre": "Rock"}';
-    await client.graph.add({
-        graphId: graphId,
-        type: "json",
-        data: jsonString,
-    });
+    const episodes = await Promise.all([
+        client.graph.episode.add(graphUuid, {
+            type: "text",
+            data: "This is a test episode",
+        }),
+        client.graph.episode.add(graphUuid, {
+            type: "text",
+            data: "Eric Clapton is a rock star",
+        }),
+        client.graph.episode.add(graphUuid, {
+            type: "json",
+            data: jsonString,
+        }),
+    ]);
 
-    console.log("Waiting for the graph to be updated...");
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    const taskUuid = episodes.at(-1)?.task?.uuid;
+    if (taskUuid) {
+        const deadline = Date.now() + 180_000;
+        let completed = false;
+        while (Date.now() < deadline) {
+            const task = await client.task.get(taskUuid);
+            if (task.status === "succeeded") {
+                completed = true;
+                break;
+            }
+            if (task.status === "failed" || task.status === "partial") {
+                throw new Error(`Graph ingestion task ${task.status}`);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+        if (!completed) throw new Error("Timed out waiting for graph ingestion.");
+    }
 
-    console.log(`Getting nodes from graph ${graphId}...`);
-    const nodes = await client.graph.node.getByGraphId(graphId, {limit: 10});
-    console.log(`Nodes from graph ${graphId}`, nodes);
+    console.log(`Getting nodes from graph ${graphUuid}...`);
+    const nodes = await client.graph.node.list(graphUuid, { pageSize: 10 });
+    console.log(`Nodes from graph ${graphUuid}`, nodes.data);
 
-    console.log(`Getting edges from graph ${graphId}...`);
-    const edges = await client.graph.edge.getByGraphId(graphId, {limit: 10});
-    console.log(`Edges from graph ${graphId}`, edges);
+    console.log(`Getting edges from graph ${graphUuid}...`);
+    const edges = await client.graph.edge.list(graphUuid, { pageSize: 10 });
+    console.log(`Edges from graph ${graphUuid}`, edges.data);
 
-    console.log(`Searching graph ${graphId}...`);
-    const searchResults = await client.graph.search({
-        graphId: graphId,
+    console.log(`Searching graph ${graphUuid}...`);
+    const searchResults = await client.graph.searchEdges(graphUuid, {
+        pageSize: 10,
         query: "Eric Clapton",
     });
-    console.log(`Search results from graph ${graphId}`, searchResults);
+    console.log(`Search results from graph ${graphUuid}`, searchResults.data);
 }
 
 main().catch(console.error);

@@ -9,100 +9,53 @@ import { v4 as uuidv4 } from "uuid";
  */
 export class ZepMemory {
   private client: ZepClient;
-  private threadId: string;
+  private threadUuid: string;
   private initialized: boolean = false;
-  private userId?: string;
+  private userUuid?: string;
 
   /**
    * Create a new ZepMemory instance
    * @param apiKey - Zep API key
-   * @param threadId - Optional thread ID, will generate a new one if not provided
-   * @param userId - Optional user ID to associate with the thread
+   * @param threadUuid - Optional Zep thread UUID
+   * @param userUuid - Optional Zep user UUID
    */
-  constructor(apiKey: string, threadId?: string, userId?: string) {
+  constructor(apiKey: string, threadUuid?: string, userUuid?: string) {
     this.client = new ZepClient({
       apiKey,
     });
-    this.threadId = threadId || uuidv4();
-    this.userId = userId;
+    this.threadUuid = threadUuid || "";
+    this.userUuid = userUuid;
   }
 
   /**
    * Initialize the memory thread
-   * @param userId - Optional user ID to associate with the thread
+   * Create a user and thread when their UUIDs are not provided.
    */
-  async initialize(userId?: string): Promise<void> {
+  async initialize(): Promise<void> {
     if (this.initialized) return;
 
     try {
-      // Use provided userId or the one from constructor or generate a new one
-      const userIdToUse = userId || this.userId || `user-${uuidv4()}`;
-      this.userId = userIdToUse;
-
-      // Check if user exists, create if not
-      let userExists = false;
-      try {
-        console.log("userIdToUse", userIdToUse);
-        await this.client.user.get(userIdToUse);
-        userExists = true;
-        console.log(`Using existing user: ${userIdToUse}`);
-      } catch (error) {
-        if (error instanceof Zep.NotFoundError) {
-          // User doesn't exist, we'll create it
-          console.log(`User ${userIdToUse} not found, will create`);
-        } else {
-          // For other errors, log and rethrow
-          console.error(`Error checking if user exists: ${userIdToUse}:`, error);
-          throw error;
-        }
+      if (Boolean(this.threadUuid) !== Boolean(this.userUuid)) {
+        throw new Error("Provide both --thread-uuid and --user-uuid to reuse a conversation.");
       }
 
-      // Create user if it doesn't exist
-      if (!userExists) {
-        try {
-          await this.client.user.add({
-            userId: userIdToUse,
-            firstName: 'Sarah',
-            lastName: 'Smith',
-            email: `${userIdToUse}@example.com`, // Placeholder email
-          });
-          console.log(`Created new user: ${userIdToUse}`);
-        } catch (error) {
-          console.error(`Failed to create user ${userIdToUse}:`, error);
-          throw error;
-        }
+      if (!this.userUuid) {
+        const user = await this.client.user.create({
+          userId: `langgraph-${uuidv4()}`,
+          firstName: "Sarah",
+          lastName: "Smith",
+          email: `langgraph-${uuidv4()}@example.com`,
+        });
+        this.userUuid = user.uuid;
       }
 
-      // Check if thread exists
-      let threadExists = false;
-      try {
-        await this.client.thread.get(this.threadId);
-        threadExists = true;
-        console.log(`Using existing thread: ${this.threadId}`);
-      } catch (error) {
-        if (error instanceof Zep.NotFoundError) {
-          // Thread doesn't exist, we'll create it
-          console.log(`Thread ${this.threadId} not found, will create`);
-        } else {
-          // For other errors, log and rethrow
-          console.error(`Error checking if thread exists ${this.threadId}:`, error);
-          throw error;
-        }
-      }
+      if (!this.userUuid) throw new Error("Zep did not return a user UUID");
 
-      // Create thread if it doesn't exist
-      if (!threadExists) {
-        try {
-          await this.client.thread.create({
-            threadId: this.threadId,
-            userId: userIdToUse,
-          });
-          console.log(`Created new thread: ${this.threadId}`);
-        } catch (error) {
-          console.error(`Failed to create thread ${this.threadId}:`, error);
-          throw error;
-        }
+      if (!this.threadUuid) {
+        const thread = await this.client.thread.create({ userUuid: this.userUuid });
+        this.threadUuid = thread.uuid;
       }
+      if (!this.threadUuid) throw new Error("Zep did not return a thread UUID");
 
       this.initialized = true;
     } catch (error) {
@@ -125,18 +78,11 @@ export class ZepMemory {
       // Convert LangChain message to Zep message format
       const zepMessage = this.convertToZepMessage(message);
       
-      // Add message to Zep memory
-      await this.client.thread.addMessages(this.threadId, {
+      const response = await this.client.thread.addMessages(this.threadUuid, {
         messages: [zepMessage],
+        ...(withContext ? { returnContext: true } : {}),
       });
-      
-      let context: string | undefined;
-      if (withContext) {
-        const contextResponse = await this.client.thread.getUserContext(this.threadId);
-        context = contextResponse.context;
-      }
-
-      return context;
+      return withContext ? response.context : undefined;
     } catch (error) {
       console.error("Failed to add message to Zep memory:", error);
       throw error;
@@ -157,7 +103,7 @@ export class ZepMemory {
       const zepMessages = messages.map(msg => this.convertToZepMessage(msg));
       
       // Add messages to Zep memory
-      await this.client.thread.addMessages(this.threadId, {
+      await this.client.thread.addMessages(this.threadUuid, {
         messages: zepMessages,
       });
     } catch (error) {
@@ -176,12 +122,12 @@ export class ZepMemory {
     }
 
     try {
-      const response = await this.client.thread.get(this.threadId, {
-        limit,
+      const response = await this.client.thread.listMessages(this.threadUuid, {
+        pageSize: limit,
       });
 
       // Convert Zep messages to LangChain messages
-      return (response.messages || []).map(msg => this.convertToLangChainMessage(msg));
+      return response.data.map(msg => this.convertToLangChainMessage(msg));
     } catch (error) {
       console.error("Failed to get messages from Zep memory:", error);
       throw error;
@@ -198,11 +144,11 @@ export class ZepMemory {
     }
 
     try {
-      const contextResponse = await this.client.thread.getUserContext(this.threadId);
-      const messagesResponse = await this.client.thread.get(this.threadId);
+      const contextResponse = await this.client.thread.getContext(this.threadUuid);
+      const messagesResponse = await this.client.thread.listMessages(this.threadUuid);
       
       // Convert messages to LangChain format
-      const messages = (messagesResponse.messages || []).map(msg => this.convertToLangChainMessage(msg));
+      const messages = messagesResponse.data.map(msg => this.convertToLangChainMessage(msg));
       
       return {
         messages,
@@ -214,18 +160,14 @@ export class ZepMemory {
     }
   }
 
-  /**
-   * Get the thread ID
-   */
-  getThreadId(): string {
-    return this.threadId;
+  /** Get the Zep thread UUID. */
+  getThreadUuid(): string {
+    return this.threadUuid;
   }
 
-  /**
-   * Get the user ID
-   */
-  getUserId(): string | undefined {
-    return this.userId;
+  /** Get the Zep user UUID. */
+  getUserUuid(): string | undefined {
+    return this.userUuid;
   }
 
   /**

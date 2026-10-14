@@ -1,5 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
-import { ZepClient, Zep } from '@getzep/zep-cloud';
+import { ZepClient } from '@getzep/zep-cloud';
 import { history } from './conversations';
 
 const API_KEY = process.env.ZEP_API_KEY
@@ -9,147 +8,138 @@ async function main() {
         apiKey: API_KEY,
     });
 
-    const userId = uuidv4();
-    const threadId = uuidv4();
+    const user = await client.user.create({ firstName: "Paul" });
+    const userUuid = user.uuid;
+    if (!userUuid) throw new Error("Zep did not return a user UUID");
+    console.log(`User ${userUuid} created`);
 
-    // Create a user
-    const userRequest: Zep.CreateUserRequest = {
-        userId: userId,
-        firstName: 'Paul',
-    };
-    await client.user.add(userRequest);
-    console.log(`User ${userId} created`);
+    const thread = await client.thread.create({ userUuid });
+    const threadUuid = thread.uuid;
+    if (!threadUuid) throw new Error("Zep did not return a thread UUID");
+    console.log(`Thread ${threadUuid} created`);
 
-    // Create a thread
-    await client.thread.create({
-        threadId: threadId,
-        userId: userId,
+    const messageResult = await client.thread.addMessages(threadUuid, {
+        messages: history[2],
     });
-    console.log(`thread ${threadId} created`);
-
-    // Add messages to the thread
-    for (const message of history[2]) {
-        await client.thread.addMessages(threadId, {
-            messages: [
-                {
-                    role: message.role,
-                    name: message.name,
-                    content: message.content,
-                },
-            ],
-        });
+    if (messageResult.task?.uuid) {
+        const deadline = Date.now() + 180_000;
+        let completed = false;
+        while (Date.now() < deadline) {
+            const task = await client.task.get(messageResult.task.uuid);
+            if (task.status === "succeeded") {
+                completed = true;
+                break;
+            }
+            if (task.status === "failed" || task.status === "partial") {
+                throw new Error(`Message ingestion task ${task.status}`);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+        if (!completed) throw new Error("Timed out waiting for message ingestion.");
     }
 
-    console.log("Waiting for the graph to be updated...");
-    await new Promise(resolve => setTimeout(resolve, 10000));
-
     console.log("Getting memory for thread");
-    const threadMemory = await client.thread.getUserContext(threadId);
+    const threadMemory = await client.thread.getContext(threadUuid);
     console.log(threadMemory);
 
     console.log("Getting episodes for user");
-    const episodeResult = await client.graph.episode.getByUserId(userId, { lastn: 3 });
-    const episodes = episodeResult.episodes;
-    console.log(`Episodes for user ${userId}:`);
+    const episodeResult = await client.graph.episode.list(userUuid, { pageSize: 3 });
+    const episodes = episodeResult.data;
+    console.log(`Episodes for user ${userUuid}:`);
     console.log(episodes);
 
     if (episodes && episodes.length > 0) {
-        const episode = await client.graph.episode.get(episodes[0].uuid!);
+        const episode = await client.graph.episode.get(userUuid, episodes[0].uuid!);
         console.log(episode);
     }
 
-    const edges = await client.graph.edge.getByUserId(userId, { limit: 10 });
-    console.log(`Edges for user ${userId}:`);
-    console.log(edges);
+    const edges = await client.graph.edge.list(userUuid, { pageSize: 10 });
+    console.log(`Edges for user ${userUuid}:`);
+    console.log(edges.data);
 
-    if (edges && edges.length > 0) {
-        const edge = await client.graph.edge.get(edges[0].uuid);
+    if (edges.data.length > 0) {
+        const edge = await client.graph.edge.get(userUuid, edges.data[0].uuid!);
         console.log(edge);
     }
 
-    const nodes = await client.graph.node.getByUserId(userId, { limit: 10 });
-    console.log(`Nodes for user ${userId}:`);
-    console.log(nodes);
+    const nodes = await client.graph.node.list(userUuid, { pageSize: 10 });
+    console.log(`Nodes for user ${userUuid}:`);
+    console.log(nodes.data);
 
-    if (nodes && nodes.length > 0) {
-        const node = await client.graph.node.get(nodes[0].uuid);
+    if (nodes.data.length > 0) {
+        const node = await client.graph.node.get(userUuid, nodes.data[0].uuid!);
         console.log(node);
     }
 
     console.log("Searching user graph memory...");
-    const graphSearchResults = await client.graph.search({
-        userId: userId,
+    const graphSearchResults = await client.graph.searchEdges(userUuid, {
         query: "What is the weather in San Francisco?",
+        pageSize: 10,
     });
-    console.log(graphSearchResults.edges);
+    console.log(graphSearchResults.data);
 
     console.log("Adding a new text episode to the graph...");
-    await client.graph.add({
-        userId: userId,
-        type: "text",
-        data: "The user is an avid fan of Eric Clapton",
-    });
-    console.log("Text episode added");
-
-    console.log("Adding a new JSON episode to the graph...");
     const jsonString = '{"name": "Eric Clapton", "age": 78, "genre": "Rock"}';
-    await client.graph.add({
-        userId: userId,
-        type: "json",
-        data: jsonString,
-    });
-    console.log("JSON episode added");
-
-    console.log("Adding a new message episode to the graph...");
     const message = "Paul (user): I went to Eric Clapton concert last night";
-    await client.graph.add({
-        userId: userId,
-        type: "message",
-        data: message,
-    });
-    console.log("Message episode added");
-
-    console.log("Waiting for the graph to be updated...");
-    await new Promise(resolve => setTimeout(resolve, 30000));
+    const addedEpisodes = await Promise.all([
+        client.graph.episode.add(userUuid, {
+            type: "text",
+            data: "The user is an avid fan of Eric Clapton",
+        }),
+        client.graph.episode.add(userUuid, { type: "json", data: jsonString }),
+        client.graph.episode.add(userUuid, { type: "message", data: message }),
+    ]);
+    const lastTaskUuid = addedEpisodes.at(-1)?.task?.uuid;
+    if (lastTaskUuid) {
+        const deadline = Date.now() + 180_000;
+        let completed = false;
+        while (Date.now() < deadline) {
+            const task = await client.task.get(lastTaskUuid);
+            if (task.status === "succeeded") {
+                completed = true;
+                break;
+            }
+            if (task.status === "failed" || task.status === "partial") {
+                throw new Error(`Episode ingestion task ${task.status}`);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+        if (!completed) throw new Error("Timed out waiting for episode ingestion.");
+    }
 
     console.log("Getting nodes from the graph...");
-    const updatedNodes = await client.graph.node.getByUserId(userId, { limit: 10 });
-    console.log(updatedNodes);
+    const updatedNodes = await client.graph.node.list(userUuid, { pageSize: 10 });
+    console.log(updatedNodes.data);
 
     console.log("Finding Eric Clapton in the graph...");
-    const claptonNode = updatedNodes.find(node => node.name === "Eric Clapton");
+    const claptonNode = updatedNodes.data.find(node => node.name === "Eric Clapton");
     console.log(claptonNode);
 
     if (claptonNode) {
         console.log("Performing Eric Clapton centered edge search...");
-        const edgeSearchResults = await client.graph.search({
-            userId: userId,
+        const edgeSearchResults = await client.graph.searchEdges(userUuid, {
             query: "Eric Clapton",
-            centerNodeUuid: claptonNode.uuid,
-            scope: "edges",
+            pageSize: 10,
         });
-        console.log(edgeSearchResults.edges);
+        console.log(edgeSearchResults.data);
 
         console.log("Performing Eric Clapton centered node search...");
-        const nodeSearchResults = await client.graph.search({
-            userId: userId,
+        const nodeSearchResults = await client.graph.searchNodes(userUuid, {
             query: "Eric Clapton",
-            centerNodeUuid: claptonNode.uuid,
-            scope: "nodes",
+            pageSize: 10,
         });
-        console.log(nodeSearchResults.nodes);
+        console.log(nodeSearchResults.data);
     }
 
-    const {node: userNode} = await client.user.getNode(userId)
-    if (userNode) {
-        console.log("User node: ", userNode)
-        const userCenteredSearch = await client.graph.search({
-            userId,
+    const userNode = nodes.data.find(node => node.labels?.includes("User"));
+    if (userNode?.uuid) {
+        const userNodeDetails = await client.graph.node.get(userUuid, userNode.uuid);
+        console.log("User node: ", userNodeDetails);
+        const userCenteredSearch = await client.graph.searchEdges(userUuid, {
             query: "User preferences",
-            centerNodeUuid: userNode.uuid,
-            reranker: "node_distance",
-        })
-        console.log("User centered search results", userCenteredSearch.edges)
+            pageSize: 10,
+        });
+        console.log("User centered search results", userCenteredSearch.data);
     }
 
 }

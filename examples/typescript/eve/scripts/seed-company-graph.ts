@@ -10,7 +10,7 @@ import { ZepClient } from "@getzep/zep-cloud";
  * Re-runs are skipped when the graph already has at least as many episodes
  * as this seed list (avoids duplicate-fact pollution).
  */
-const GRAPH_ID = process.env.ZEP_COMPANY_GRAPH_ID?.trim() || "eve-demo-company";
+const GRAPH_UUID = process.env.ZEP_COMPANY_GRAPH_UUID?.trim();
 
 const EPISODES: string[] = [
   "Acme Platform is a B2B SaaS company that sells Service A, Service B, and Capability X.",
@@ -25,58 +25,31 @@ const EPISODES: string[] = [
   "Internal escalation channel for production incidents is the company Slack channel named incidents.",
 ];
 
-async function ensureGraph(client: ZepClient, graphId: string): Promise<void> {
-  try {
-    await client.graph.create({
-      graphId,
-      name: "Acme company knowledge",
-      description: "Standalone graph of company-wide product and policy facts for the Eve demo.",
-    });
-    console.log(`Created graph: ${graphId}`);
-  } catch (error) {
-    try {
-      await client.graph.get(graphId);
-      console.log(`Graph already exists: ${graphId}`);
-    } catch {
-      throw error;
-    }
+async function ensureGraph(client: ZepClient): Promise<string> {
+  if (GRAPH_UUID) {
+    await client.graph.get(GRAPH_UUID);
+    return GRAPH_UUID;
   }
+
+  const graph = await client.graph.create({
+    name: "Acme company knowledge",
+    description: "Standalone graph of company-wide product and policy facts for the Eve demo.",
+  });
+  if (!graph.uuid) throw new Error("Zep did not return a graph UUID");
+  return graph.uuid;
 }
 
-async function waitUntilProcessed(
-  client: ZepClient,
-  graphId: string,
-  expectedMin: number,
-): Promise<void> {
-  const started = Date.now();
-  let lastPending = expectedMin;
-  while (Date.now() - started < 240_000) {
-    const response = await client.graph.episode.getByGraphId(graphId, {
-      lastn: 50,
-    });
-    const episodes = response.episodes ?? [];
-    const processed = episodes.filter((e) => e.processed).length;
-    const pending = episodes.length - processed;
-    lastPending = pending;
-    console.log(
-      `Episodes: ${episodes.length} total, ${processed} processed, ${pending} pending`,
-    );
-    if (episodes.length >= expectedMin && pending === 0) {
-      console.log("All episodes processed.");
-      return;
+async function waitForTask(client: ZepClient, taskUuid: string): Promise<void> {
+  const deadline = Date.now() + 240_000;
+  while (Date.now() < deadline) {
+    const task = await client.task.get(taskUuid);
+    if (task.status === "succeeded") return;
+    if (task.status === "failed" || task.status === "partial") {
+      throw new Error(`Company graph ingestion task ${task.status}`);
     }
-    // Demo seed: accept near-complete graphs so one stuck episode doesn't block.
-    if (episodes.length >= expectedMin && processed >= expectedMin - 1 && Date.now() - started > 90_000) {
-      console.warn(
-        `Proceeding with ${processed}/${episodes.length} processed (1 may still be pending).`,
-      );
-      return;
-    }
-    await new Promise((r) => setTimeout(r, 3000));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
   }
-  throw new Error(
-    `Timed out waiting for company graph episodes to process (${lastPending} still pending).`,
-  );
+  throw new Error("Timed out waiting for company graph episodes to process.");
 }
 
 async function main() {
@@ -87,57 +60,48 @@ async function main() {
 
   const client = new ZepClient({
     apiKey,
-    ...(process.env.ZEP_API_URL?.trim()
-      ? { baseUrl: process.env.ZEP_API_URL.trim() }
-      : {}),
   });
 
-  console.log(`Seeding company graph: ${GRAPH_ID}`);
-  await ensureGraph(client, GRAPH_ID);
+  const graphUuid = await ensureGraph(client);
+  console.log(`Seeding company graph: ${graphUuid}`);
 
-  const existing = await client.graph.episode.getByGraphId(GRAPH_ID, {
-    lastn: 50,
-  });
-  const existingCount = existing.episodes?.length ?? 0;
+  const existing = await client.graph.episode.list(graphUuid, { pageSize: 50 });
+  const existingCount = existing.data.length;
   if (existingCount >= EPISODES.length) {
     console.log(
       `Graph already has ${existingCount} episodes (≥ ${EPISODES.length}). Skipping ingest to avoid duplicates.`,
     );
     console.log(
-      `To re-seed, delete graph "${GRAPH_ID}" in the Zep app (or use a new ZEP_COMPANY_GRAPH_ID) and re-run.`,
+      `To re-seed, delete graph "${graphUuid}" in the Zep app and run without ZEP_COMPANY_GRAPH_UUID.`,
     );
   } else {
-    for (const [index, data] of EPISODES.entries()) {
-      const episode = await client.graph.add({
-        graphId: GRAPH_ID,
-        type: "text",
-        data,
-        sourceDescription: `company-seed-${index + 1}`,
-      });
-      console.log(`Added episode ${index + 1}/${EPISODES.length}: ${episode.uuid}`);
+    const addedEpisodes = await Promise.all(
+      EPISODES.map((data, index) =>
+        client.graph.episode.add(graphUuid, {
+          type: "text",
+          data,
+          sourceDescription: `company-seed-${index + 1}`,
+        }),
+      ),
+    );
+    const taskUuid = addedEpisodes.at(-1)?.task?.uuid;
+    if (taskUuid) {
+      console.log("Waiting for graph processing…");
+      await waitForTask(client, taskUuid);
     }
-
-    console.log("Waiting for graph processing…");
-    await waitUntilProcessed(client, GRAPH_ID, EPISODES.length);
   }
 
-  const sample = await client.graph.search({
-    graphId: GRAPH_ID,
+  const sample = await client.graph.getContext(graphUuid, {
     query: "refund policy Service A billing",
-    scope: "auto",
-    limit: 5,
-    returnRawResults: true,
+    maxCharacters: 5000,
+    includeResults: true,
   });
   console.log("\nSample search:");
   if (sample.context?.trim()) {
     console.log(sample.context.trim());
-  } else {
-    for (const edge of sample.edges ?? []) {
-      console.log(`- ${edge.fact}`);
-    }
   }
 
-  console.log(`\nDone. Set ZEP_COMPANY_GRAPH_ID=${GRAPH_ID} in .env (already the default).`);
+  console.log(`\nDone. Set ZEP_COMPANY_GRAPH_UUID=${graphUuid} in .env.`);
 }
 
 main().catch((error) => {

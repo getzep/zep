@@ -41,11 +41,11 @@ The agent supports various command-line options through Commander.js:
 # Get help
 npm start -- --help
 
-# Basic usage with user ID
-npm start -- --userId john_doe
+# Reuse a user and thread by their Zep UUIDs
+npm start -- --user-uuid <user-uuid> --thread-uuid <thread-uuid>
 
 # Using kebab-case format
-npm start -- --user-id john_doe --thread-id vacation_planning
+npm start -- --user-uuid <user-uuid> --thread-uuid <thread-uuid>
 
 # Customize the system message
 npm start -- --system-message "You are a travel assistant helping with vacation planning."
@@ -58,10 +58,8 @@ Available options:
 
 | Option                       | Description                                |
 | ---------------------------- | ------------------------------------------ |
-| `--userId <id>`              | User ID to associate with the conversation |
-| `--user-id <id>`             | Alternative format for user ID             |
-| `--threadId <id>`            | Thread ID for the conversation             |
-| `--thread-id <id>`           | Alternative format for thread ID           |
+| `--user-uuid <uuid>`         | Zep user UUID to reuse                      |
+| `--thread-uuid <uuid>`       | Zep thread UUID to reuse                    |
 | `--system-message <message>` | Custom system message to use               |
 | `--debug`                    | Enable debug mode with additional logging  |
 | `--help`                     | Display help information                   |
@@ -69,12 +67,18 @@ Available options:
 
 ### Memory Features
 
-Using the user ID and thread ID options allows you to:
+The agent creates a new Zep user and thread when UUID options are omitted. It prints the returned UUIDs so you can reuse the conversation:
+
+```bash
+npm start -- --user-uuid <user-uuid> --thread-uuid <thread-uuid>
+```
+
+The UUID options allow you to:
 
 - **Maintain separate conversation histories** for different users
-- **Continue specific conversations** by using the same thread ID
-- **Group related conversations** under the same user ID
-- **Switch between different contexts** by changing the thread ID
+- **Continue specific conversations** by using the same Zep thread UUID
+- **Group related conversations** under the same Zep user UUID
+- **Switch between different contexts** by changing the thread UUID
 
 The agent will automatically create users and threads in Zep if they don't exist, and will load previous conversation history when available.
 
@@ -118,18 +122,18 @@ The agent uses Zep for memory persistence. When a Zep API key is provided, the a
 
 ### User and Thread Management
 
-The agent supports specifying a user ID and thread ID via command-line arguments:
+The agent supports Zep user and thread UUIDs through command-line arguments:
 
-- **User ID**: Associates conversations with a specific user in Zep
-- **Thread ID**: Uses a specific thread ID for the conversation
+- **User UUID**: Associates conversations with a specific Zep user
+- **Thread UUID**: Uses a specific Zep thread
 
 This allows for powerful use cases such as:
 
 - **Multi-user support**: Different users can have their own conversation histories
 - **Topic-based threads**: Create different threads for different topics (e.g., "travel_planning", "tech_support")
-- **Conversation continuity**: Resume specific conversations by using the same thread ID
-- **Organizational structure**: Group related conversations under the same user ID
-- **A/B testing**: Compare different conversation flows by using different thread IDs
+- **Conversation continuity**: Resume specific conversations by using the same thread UUID
+- **Organizational structure**: Group related conversations under the same user UUID
+- **A/B testing**: Compare different conversation flows by using different thread UUIDs
 
 ### Advanced Memory Features
 

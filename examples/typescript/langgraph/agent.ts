@@ -65,10 +65,8 @@ function parseCommandLineArgs() {
     .name("langgraph-agent")
     .description("LangGraph CLI Agent with Zep memory integration")
     .version("1.0.0")
-    .option("--userId <id>", "User ID to associate with the conversation")
-    .option("--user-id <id>", "User ID to associate with the conversation (alternative format)")
-    .option("--threadId <id>", "Thread ID for the conversation")
-    .option("--thread-id <id>", "Thread ID for the conversation (alternative format)")
+    .option("--user-uuid <uuid>", "Zep user UUID to reuse")
+    .option("--thread-uuid <uuid>", "Zep thread UUID to reuse")
     .option("--system-message <message>", "Custom system message to use")
     .option("--debug", "Enable debug mode with additional logging");
   
@@ -78,8 +76,8 @@ function parseCommandLineArgs() {
   
   // Handle alternative formats and naming
   return {
-    userId: options.userId,
-    threadId: options.threadId,
+    userUuid: options.userUuid,
+    threadUuid: options.threadUuid,
     systemMessage: options.systemMessage || "You are a helpful assistant. Answer the user's questions to the best of your ability.",
     debug: !!options.debug
   };
@@ -107,8 +105,8 @@ const isMainModule = () => {
 
 // Parse command line arguments once and store the result
 const args = isMainModule() ? parseCommandLineArgs() : {
-  userId: undefined,
-  threadId: undefined,
+  userUuid: undefined,
+  threadUuid: undefined,
   systemMessage: "You are a helpful assistant. Answer the user's questions to the best of your ability.",
   debug: false
 };
@@ -116,14 +114,7 @@ const args = isMainModule() ? parseCommandLineArgs() : {
 // Initialize Zep memory if API key is available
 let zepMemory: ZepMemory | undefined;
 if (process.env.ZEP_API_KEY) {
-  zepMemory = new ZepMemory(process.env.ZEP_API_KEY, args.threadId, args.userId);
-  
-  if (args.debug) {
-    console.log("Zep memory initialized with thread ID:", zepMemory.getThreadId());
-    if (args.userId) {
-      console.log("Using user ID:", args.userId);
-    }
-  }
+  zepMemory = new ZepMemory(process.env.ZEP_API_KEY, args.threadUuid, args.userUuid);
 }
 
 // CLI interface
@@ -136,11 +127,11 @@ if (isMainModule()) {
     if (tools.length === 0) {
       console.log("Tavily search disabled (set TAVILY_API_KEY to enable web search)");
     }
-    if (args.userId) {
-      console.log(`User ID: ${args.userId}`);
+    if (args.userUuid) {
+      console.log(`User UUID: ${args.userUuid}`);
     }
-    if (args.threadId) {
-      console.log(`Thread ID: ${args.threadId}`);
+    if (args.threadUuid) {
+      console.log(`Thread UUID: ${args.threadUuid}`);
     }
     console.log("Type 'exit' to quit the application");
     console.log("------------------------------");
@@ -153,14 +144,16 @@ if (isMainModule()) {
     });
     
     // Create a new chat session
-    const config = { configurable: { sessionId: args.threadId || "cli-session" } };
+    const config = { configurable: { sessionId: args.threadUuid || "cli-session" } };
     let state = { messages: [] as BaseMessage[] };
     
     // Initialize Zep memory if available
     if (zepMemory) {
       try {
-        await zepMemory.initialize(args.userId);
+        await zepMemory.initialize();
         console.log("Connected to Zep memory service");
+        console.log(`Zep user UUID: ${zepMemory.getUserUuid()}`);
+        console.log(`Zep thread UUID: ${zepMemory.getThreadUuid()}`);
         
         // Try to load previous messages from Zep memory
         try {
@@ -190,7 +183,6 @@ if (isMainModule()) {
         
         // Add the user's message to the state
         const userMessage = new HumanMessage(input);
-        let systemMessageWithContext = systemMessage;
         
         // Persist user message to Zep memory if available
         let context: string | undefined;
@@ -203,12 +195,7 @@ if (isMainModule()) {
           }
           
           try {
-            if (args.debug) {
-              console.log(context);
-            }
-            if (context) {
-              systemMessageWithContext = systemMessage + "\n" + context;
-            }
+            if (context && args.debug) console.log("Retrieved memory context:", context);
           } catch (error) {
             console.error("Failed to get memory with context:", error);
           }
@@ -221,9 +208,11 @@ if (isMainModule()) {
         
         // Create new state with system message at the beginning followed by the history messages
         state.messages = [
-          new SystemMessage(systemMessageWithContext), 
+          new SystemMessage(systemMessage),
           ...previousMessages, 
-          userMessage
+          ...(context
+            ? [new HumanMessage(`Retrieved memory context:\n${context}`), userMessage]
+            : [userMessage])
         ];
         
         try {

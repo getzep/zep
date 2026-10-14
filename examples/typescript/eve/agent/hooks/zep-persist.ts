@@ -1,19 +1,16 @@
 import { defineHook } from "eve/hooks";
 import { resolveZepIdentity } from "../lib/identity";
-import { bindPendingUtteranceToSession } from "../lib/pending-utterance";
 import { getZepClient } from "../lib/zep-client";
 import { ensureZepUserAndThread } from "../lib/zep-memory";
 
 /**
  * Auto-persist Eve conversation turns into Zep.
  *
- * - session.started → provision Zep user/thread; rebind create-session stash
+ * - session.started → provision Zep user/thread
  * - message.received → user message
  * - message.completed (not tool-calls) → assistant reply
  *
- * Turn-relevant recall happens in `agent/instructions/zep-memory.ts`
- * (`turn.started` dynamic instructions, utterance stashed from channel
- * `onMessage`). This hook only writes to Zep; it does not inject model context.
+ * Turn-relevant recall is added to the user message by the Eve channel.
  *
  * Hooks are observe-only and at-least-once. Failures are swallowed so a Zep
  * outage never fails the Eve turn.
@@ -23,20 +20,12 @@ export default defineHook({
     async "session.started"(_event, ctx) {
       try {
         const identity = resolveZepIdentity(ctx);
-        // Create-session onMessage had no sessionId — move that utterance
-        // onto this session before turn.started instructions run (hooks for
-        // session.started fire before turn.started in the same preamble).
-        bindPendingUtteranceToSession({
-          sessionId: ctx.session.id,
-          userId: identity.userId,
-        });
-        await ensureZepUserAndThread(identity);
-        // Warm is best-effort and must not delay turn.started (stash TTL /
-        // first-turn recall). Fire-and-forget after provision.
+        const zepIdentity = await ensureZepUserAndThread(identity);
+        // Warm is best-effort and must not delay the Eve turn.
         void getZepClient()
-          .user.warm(identity.userId)
+          .graph.warm(zepIdentity.userUuid)
           .catch((error) => {
-            console.warn("[zep-persist] user.warm failed", error);
+            console.warn("[zep-persist] graph.warm failed", error);
           });
         // Do not log userId — it can come from env (ZEP_DEMO_USER_ID) and
         // CodeQL flags clear-text logging of process environment values.
@@ -54,9 +43,9 @@ export default defineHook({
         if (!text) return;
 
         const identity = resolveZepIdentity(ctx);
-        await ensureZepUserAndThread(identity);
+        const zepIdentity = await ensureZepUserAndThread(identity);
 
-        await getZepClient().thread.addMessages(identity.threadId, {
+        await getZepClient().thread.addMessages(zepIdentity.threadUuid, {
           messages: [
             {
               role: "user",
@@ -81,9 +70,9 @@ export default defineHook({
         if (!text) return;
 
         const identity = resolveZepIdentity(ctx);
-        await ensureZepUserAndThread(identity);
+        const zepIdentity = await ensureZepUserAndThread(identity);
 
-        await getZepClient().thread.addMessages(identity.threadId, {
+        await getZepClient().thread.addMessages(zepIdentity.threadUuid, {
           messages: [
             {
               role: "assistant",

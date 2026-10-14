@@ -5,7 +5,7 @@ export interface ZepIdentity {
   userId: string;
   /** Display name for Zep message `name` fields. */
   userName: string;
-  /** Zep thread_id — mapped from the Eve session. */
+  /** Application session key that maps to a Zep thread UUID. */
   threadId: string;
 }
 
@@ -39,8 +39,7 @@ function displayNameFromCaller(
 }
 
 /**
- * Shared userId / userName resolution for channel onMessage, hooks, and
- * dynamic instruction resolvers.
+ * Shared userId / userName resolution for the channel and hooks.
  * Returns null when there is not yet a stable id (create-session without
  * ZEP_DEMO_USER_ID / authenticated user).
  */

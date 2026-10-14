@@ -1,100 +1,56 @@
-import { v4 as uuidv4 } from "uuid";
-import { ZepClient, Zep } from "@getzep/zep-cloud";
+import { ZepClient } from "@getzep/zep-cloud";
 import { history } from "./chat_shoe_store_history";
 
-function sleep(ms: number) {
-    const date = Date.now();
-    let currentDate = 0;
-    do {
-        currentDate = Date.now();
-    } while (currentDate - date < ms);
+async function waitForTask(client: ZepClient, taskUuid: string) {
+    const deadline = Date.now() + 180_000;
+    while (Date.now() < deadline) {
+        const task = await client.task.get(taskUuid);
+        if (task.status === "succeeded") return;
+        if (task.status === "failed" || task.status === "partial") {
+            throw new Error(`Message ingestion task ${task.status}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    throw new Error("Timed out waiting for messages to process.");
 }
 
 async function main() {
     const projectApiKey = process.env.ZEP_API_KEY;
+    if (!projectApiKey) throw new Error("ZEP_API_KEY is required");
 
     const client = new ZepClient({
         apiKey: projectApiKey,
     });
 
-    // Create a user
-    const userId = uuidv4();
-    const userRequest: Zep.CreateUserRequest = {
-        userId: `amy${userId}`,
+    const runId = Date.now();
+    const user = await client.user.create({
+        userId: `typescript-memory-${runId}`,
         metadata: { role: "admin" },
-        email: "amy@acme.com",
+        email: `amy+${runId}@acme.com`,
         firstName: "Amy",
         lastName: "Wu",
-    };
-    const user = await client.user.add(userRequest);
-    console.debug("Created user ", user);
+    });
+    const userUuid = user.uuid;
+    if (!userUuid) throw new Error("Zep did not return a user UUID");
+    console.log(`Created user ${userUuid}`);
 
-    // Example thread ID
-    const threadId = uuidv4();
+    const thread = await client.thread.create({ userUuid });
+    const threadUuid = thread.uuid;
+    if (!threadUuid) throw new Error("Zep did not return a thread UUID");
+    console.log(`Created thread ${threadUuid}`);
 
-    // Add thread associated with the above user
-    try {
-        await client.thread.create({
-            threadId: threadId,
-            userId: user.userId!,
-        });
-        console.debug("Adding new thread ", threadId);
-    } catch (error) {
-        console.debug("Got error:", error);
-    }
+    const added = await client.thread.addMessages(threadUuid, {
+        messages: history,
+    });
+    if (added.task?.uuid) await waitForTask(client, added.task.uuid);
 
-    // Get thread
-    try {
-        const thread = await client.thread.get(threadId);
-        console.debug("Retrieved thread ", thread);
-    } catch (error) {
-        console.debug("Got error:", error);
-    }
+    const memory = await client.thread.getContext(threadUuid);
+    console.log("Context: ", memory.context);
 
-    // Add memory. We could do this in a batch, but we'll do it one by one rather to
-    // ensure that summaries and other artifacts are generated correctly.
-    try {
-        for (const { role, name, content } of history) {
-            await client.thread.addMessages(threadId, {
-                messages: [{ role, name, content }],
-            });
-        }
-        console.debug("Added new messages for thread ", threadId);
-    } catch (error) {
-        console.debug("Got error:", error);
-    }
-
-    console.log("Sleeping for 5 seconds to let background tasks complete...");
-    sleep(5000); // Sleep for 5 seconds
-    console.log("Done sleeping!");
-
-    // Get newly added memory
-    try {
-        console.debug("Getting user context for the thread ", threadId);
-        const memory = await client.thread.getUserContext(threadId);
-        console.log("Context: ", memory.context);
-        if (memory.context) {
-            console.debug("Memory Context: ", memory.context);
-        }
-    } catch (error) {
-        if (error instanceof Zep.NotFoundError) {
-            console.error("thread not found:", error.message);
-        } else {
-            console.error("Got error:", error);
-        }
-    }
-
-    // get thread messages
-    try {
-        const threadMessagesResult = await client.thread.get(threadId, { limit: 10, cursor: 1 });
-        console.debug("thread messages: ", JSON.stringify(threadMessagesResult));
-    } catch (error) {
-        if (error instanceof Zep.NotFoundError) {
-            console.error("thread not found:", error.message);
-        } else {
-            console.error("Got error:", error);
-        }
-    }
+    const threadMessages = await client.thread.listMessages(threadUuid, {
+        pageSize: 10,
+    });
+    console.log("Thread messages: ", JSON.stringify(threadMessages.data));
 }
 
 main();

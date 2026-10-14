@@ -9,32 +9,23 @@ import { demoEmailForUserId, splitDisplayName } from "../agent/lib/zep-user-fiel
  * Usage: npm run smoke
  */
 
-const POLL_MS = 3000;
 const TIMEOUT_MS = 180_000;
 
-async function waitForUserEpisodesProcessed(
+async function waitForTask(
   zep: ZepClient,
-  userId: string,
-  expectedMin: number,
+  taskUuid: string,
 ): Promise<void> {
   const started = Date.now();
   while (Date.now() - started < TIMEOUT_MS) {
-    const response = await zep.graph.episode.getByUserId(userId, {
-      lastn: 50,
-    });
-    const episodes = response.episodes ?? [];
-    const processed = episodes.filter((e) => e.processed).length;
-    const pending = episodes.length - processed;
-    console.log(
-      `Episodes: ${episodes.length} total, ${processed} processed, ${pending} pending`,
-    );
-    if (episodes.length >= expectedMin && pending === 0) {
-      return;
+    const task = await zep.task.get(taskUuid);
+    if (task.status === "succeeded") return;
+    if (task.status === "failed" || task.status === "partial") {
+      throw new Error(`Message ingestion task ${task.status}`);
     }
-    await new Promise((r) => setTimeout(r, POLL_MS));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
   }
   throw new Error(
-    `Timed out after ${TIMEOUT_MS}ms waiting for user episodes to process.`,
+    `Timed out after ${TIMEOUT_MS}ms waiting for messages to process.`,
   );
 }
 
@@ -44,35 +35,26 @@ async function main() {
     throw new Error("ZEP_API_KEY is required");
   }
 
-  const userId = process.env.ZEP_DEMO_USER_ID?.trim() || "eve-demo-user";
   const userName = process.env.ZEP_DEMO_USER_NAME?.trim() || "Demo User";
   const { firstName, lastName } = splitDisplayName(userName);
-  const threadId = `eve-smoke-${Date.now()}`;
   const zep = new ZepClient({
     apiKey,
-    ...(process.env.ZEP_API_URL?.trim()
-      ? { baseUrl: process.env.ZEP_API_URL.trim() }
-      : {}),
   });
 
-  // Do not log userId — sourced from env and flagged by CodeQL clear-text logging.
-  console.log("Provisioning user + thread…", { threadId });
-
-  try {
-    await zep.user.add({
-      userId,
-      firstName,
-      ...(lastName ? { lastName } : {}),
-      email: demoEmailForUserId(userId),
-    });
-  } catch {
-    await zep.user.get(userId);
-  }
-
-  await zep.thread.create({ threadId, userId });
+  const user = await zep.user.create({
+    firstName,
+    ...(lastName ? { lastName } : {}),
+    email: demoEmailForUserId(`eve-smoke-${Date.now()}`),
+  });
+  const userUuid = user.uuid;
+  if (!userUuid) throw new Error("Zep did not return a user UUID");
+  const thread = await zep.thread.create({ userUuid });
+  const threadUuid = thread.uuid;
+  if (!threadUuid) throw new Error("Zep did not return a thread UUID");
+  console.log("Provisioned user and thread.", { userUuid, threadUuid });
 
   console.log("Adding preference messages…");
-  await zep.thread.addMessages(threadId, {
+  const result = await zep.thread.addMessages(threadUuid, {
     messages: [
       {
         role: "user",
@@ -87,15 +69,13 @@ async function main() {
     ],
   });
 
-  console.log("Polling until graph episodes are processed…");
-  // Two chat messages → at least two episodes on the user graph.
-  await waitForUserEpisodesProcessed(zep, userId, 2);
+  if (result.task?.uuid) await waitForTask(zep, result.task.uuid);
 
-  const context = await zep.thread.getUserContext(threadId);
+  const context = await zep.thread.getContext(threadUuid);
   const block = context.context?.trim() ?? "";
   console.log("\n=== Context Block ===\n");
   console.log(block || "(empty)");
-  console.log(`\nThread: ${threadId}`);
+  console.log(`\nThread: ${threadUuid}`);
 
   if (!block) {
     console.error(
@@ -104,21 +84,16 @@ async function main() {
     process.exit(1);
   }
 
-  const search = await zep.graph.search({
-    userId,
+  const search = await zep.graph.getContext(userUuid, {
     query: "preferred billing service",
-    scope: "auto",
-    limit: 5,
+    maxCharacters: 5000,
+    includeResults: true,
   });
-  const hit =
-    Boolean(search.context?.trim()) ||
-    (search.edges ?? []).some((e) =>
-      /service a/i.test(e.fact ?? ""),
-    );
+  const hit = /service a/i.test(search.context ?? "");
 
   if (!hit) {
     console.error(
-      "Smoke test failed: graph.search did not return Service A preference.",
+      "Smoke test failed: graph.getContext did not return the Service A preference.",
     );
     process.exit(1);
   }

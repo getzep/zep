@@ -48,16 +48,22 @@ Employees may carry over up to 5 unused PTO days to the following year.
 
 ### Basic Usage
 
-Process a document and ingest it into Zep:
+Process a document and ingest it into a new Zep user graph:
 
 ```bash
-npm start -- sample_document.txt --user-id user123
+npm start -- sample_document.txt
 ```
 
 Or during development without building:
 
 ```bash
-npm run dev -- sample_document.txt --user-id user123
+npm run dev -- sample_document.txt
+```
+
+The script creates a user when `--user-uuid` is omitted. It prints the returned UUID. Pass that UUID on a later run to add chunks to the same user graph:
+
+```bash
+npm start -- sample_document.txt --user-uuid <user-uuid>
 ```
 
 ### Custom Chunk Size
@@ -65,7 +71,7 @@ npm run dev -- sample_document.txt --user-id user123
 Adjust the chunk size (default is 6000 characters):
 
 ```bash
-npm start -- sample_document.txt --user-id user123 --chunk-size 4000
+npm start -- sample_document.txt --chunk-size 4000
 ```
 
 ### Dry Run
@@ -73,15 +79,15 @@ npm start -- sample_document.txt --user-id user123 --chunk-size 4000
 Test the chunking and contextualization without ingesting to Zep:
 
 ```bash
-npm start -- sample_document.txt --user-id user123 --dry-run
+npm start -- sample_document.txt --dry-run
 ```
 
 ### Wait for Processing
 
-Wait for each episode to be processed before continuing:
+Wait once after the script submits all episodes:
 
 ```bash
-npm start -- sample_document.txt --user-id user123 --wait
+npm start -- sample_document.txt --wait
 ```
 
 ## Command Line Options
@@ -89,10 +95,10 @@ npm start -- sample_document.txt --user-id user123 --wait
 | Option | Description | Default |
 |--------|-------------|---------|
 | `document` | Path to the document to process | (required) |
-| `--user-id` | Zep user ID for the knowledge graph | (required) |
+| `--user-uuid` | Existing Zep user UUID for the knowledge graph | Creates a user |
 | `--chunk-size` | Maximum characters per chunk | 6000 |
 | `--chunk-overlap` | Character overlap between chunks | 200 |
-| `--wait` | Wait for processing after each chunk | False |
+| `--wait` | Wait once after all chunks are submitted | False |
 | `--dry-run` | Process without ingesting to Zep | False |
 
 ## How It Works
@@ -104,7 +110,7 @@ npm start -- sample_document.txt --user-id user123 --wait
 
 2. **Contextualization**: Each chunk is sent to OpenAI's gpt-5-mini with the full document context. The model generates a brief description situating the chunk within the document.
 
-3. **Ingestion**: The contextualized chunk (context + separator + original chunk) is ingested into Zep using `client.graph.add()`.
+3. **Ingestion**: The contextualized chunk (context + separator + original chunk) is added to the user graph with `client.graph.episode.add()`. All chunks from the same document use one `document_id`.
 
 ## Notes
 

@@ -1,77 +1,76 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { getZepClient } from "./zep-client";
 import type { ZepIdentity } from "./identity";
 import { demoEmailForUserId, splitDisplayName } from "./zep-user-fields";
 
-/** Ensure the Zep user exists (no thread). Safe to call repeatedly. */
+interface IdentityStore {
+  users: Record<string, string>;
+  threads: Record<string, string>;
+}
+
+const identityPath =
+  process.env.ZEP_IDENTITY_FILE?.trim() ||
+  join(process.cwd(), ".data", "zep-identities.json");
+let identityStorePromise: Promise<IdentityStore> | undefined;
+
+async function getIdentityStore(): Promise<IdentityStore> {
+  identityStorePromise ??= readFile(identityPath, "utf8")
+    .then((contents) => JSON.parse(contents) as IdentityStore)
+    .catch((error: unknown) => {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return { users: {}, threads: {} };
+      }
+      throw error;
+    });
+  return identityStorePromise;
+}
+
+async function saveIdentityStore(store: IdentityStore): Promise<void> {
+  await mkdir(dirname(identityPath), { recursive: true });
+  await writeFile(identityPath, JSON.stringify(store, null, 2));
+}
+
 export async function ensureZepUser(
   userId: string,
   userName: string,
-): Promise<void> {
+): Promise<string> {
   const zep = getZepClient();
-  const { firstName, lastName } = splitDisplayName(userName);
+  const store = await getIdentityStore();
+  const existingUuid = store.users[userId];
+  if (existingUuid) return existingUuid;
 
-  try {
-    await zep.user.add({
-      userId,
-      firstName,
-      ...(lastName ? { lastName } : {}),
-      email: demoEmailForUserId(userId),
-    });
-  } catch (error) {
-    if (!isAlreadyExists(error)) {
-      try {
-        await zep.user.get(userId);
-      } catch {
-        throw error;
-      }
-    }
-  }
+  const { firstName, lastName } = splitDisplayName(userName);
+  const user = await zep.user.create({
+    userId,
+    firstName,
+    ...(lastName ? { lastName } : {}),
+    email: demoEmailForUserId(userId),
+  });
+  if (!user.uuid) throw new Error("Zep did not return a user UUID");
+  store.users[userId] = user.uuid;
+  await saveIdentityStore(store);
+  return user.uuid;
 }
 
-/**
- * Ensure the Zep user + thread exist. Safe to call repeatedly.
- * Swallows only known "already exists" conflicts so hooks/tools stay idempotent.
- */
 export async function ensureZepUserAndThread(
   identity: ZepIdentity,
-): Promise<void> {
-  await ensureZepUser(identity.userId, identity.userName);
+): Promise<{ userUuid: string; threadUuid: string }> {
+  const userUuid = await ensureZepUser(identity.userId, identity.userName);
   const zep = getZepClient();
-
-  try {
-    await zep.thread.create({
-      threadId: identity.threadId,
-      userId: identity.userId,
-    });
-  } catch (error) {
-    if (!isAlreadyExists(error)) {
-      try {
-        await zep.thread.get(identity.threadId);
-      } catch {
-        throw error;
-      }
-    }
+  const store = await getIdentityStore();
+  let threadUuid = store.threads[identity.threadId];
+  if (!threadUuid) {
+    const thread = await zep.thread.create({ userUuid });
+    if (!thread.uuid) throw new Error("Zep did not return a thread UUID");
+    threadUuid = thread.uuid;
+    store.threads[identity.threadId] = threadUuid;
+    await saveIdentityStore(store);
   }
-}
-
-function isAlreadyExists(error: unknown): boolean {
-  const status =
-    typeof error === "object" &&
-    error !== null &&
-    "statusCode" in error &&
-    typeof (error as { statusCode: unknown }).statusCode === "number"
-      ? (error as { statusCode: number }).statusCode
-      : undefined;
-
-  // Conflict is unambiguous. Do not treat every 400 as "already exists" —
-  // validation failures are also 400s and must surface.
-  if (status === 409) return true;
-
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : "";
-  return /already exists|duplicate|conflict/i.test(message);
+  return { userUuid, threadUuid };
 }

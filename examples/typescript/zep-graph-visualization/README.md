@@ -74,6 +74,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 The application provides an interactive graph visualization of knowledge triplets from Zep. You can:
 
+- Enter a Zep-returned user UUID in user mode or a graph UUID in graph mode
 - Click on nodes to see their details
 - Click on edges to see relationship information
 - Zoom in/out using the mouse wheel

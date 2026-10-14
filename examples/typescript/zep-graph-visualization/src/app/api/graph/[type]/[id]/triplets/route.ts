@@ -14,59 +14,53 @@ type ResourceType = (typeof supportedResourceTypes)[number];
 const NODE_BATCH_SIZE = 100;
 const EDGE_BATCH_SIZE = 100;
 
-const transformSDKNode = (node: Zep.EntityNode): Node => {
+const transformSDKNode = (node: Zep.Node): Node => {
+  if (!node.uuid) throw new Error("Zep node response is missing a UUID");
   return {
     uuid: node.uuid,
-    name: node.name,
-    summary: node.summary,
-    labels: node.labels,
-    created_at: node.createdAt,
+    name: node.name ?? "",
+    summary: node.summary ?? "",
+    labels: node.labels ?? [],
+    created_at: node.createdAt ?? "",
     updated_at: "",
-    attributes: node.attributes,
+    attributes: node.attributes ?? {},
   };
 };
 
-const transformSDKEdge = (edge: Zep.EntityEdge): Edge => {
+const transformSDKEdge = (edge: Zep.Edge): Edge => {
+  if (!edge.uuid || !edge.sourceNodeUuid || !edge.targetNodeUuid) {
+    throw new Error("Zep edge response is missing a UUID or endpoint UUID");
+  }
   return {
     uuid: edge.uuid,
     source_node_uuid: edge.sourceNodeUuid,
     target_node_uuid: edge.targetNodeUuid,
-    type: "",
-    name: edge.name,
-    fact: edge.fact,
-    episodes: edge.episodes,
-    created_at: edge.createdAt,
+    type: edge.name ?? "",
+    name: edge.name ?? "",
+    fact: edge.fact ?? "",
+    episodes: edge.episodeUuids ?? [],
+    created_at: edge.createdAt ?? "",
     updated_at: "",
-    valid_at: edge.validAt,
+    valid_at: edge.validAt ?? "",
     expired_at: edge.expiredAt,
     invalid_at: edge.invalidAt,
   };
 };
 
 async function getNodes(
-  type: ResourceType,
   id: string,
   zep: ZepClient,
   cursor?: string
 ): Promise<PaginatedResponse<Node>> {
   try {
-    let nodes;
-    if (type === "user") {
-      nodes = await zep.graph.node.getByUserId(id, {
-        uuidCursor: cursor || "",
-        limit: NODE_BATCH_SIZE,
-      });
-    } else {
-      nodes = await zep.graph.node.getByGraphId(id, {
-        uuidCursor: cursor || "",
-        limit: NODE_BATCH_SIZE,
-      });
-    }
-    
-    const transformedNodes = nodes.map(transformSDKNode);
+    const page = await zep.graph.node.list(id, {
+      cursor,
+      pageSize: NODE_BATCH_SIZE,
+    });
+    const transformedNodes = page.data.map(transformSDKNode);
     return {
       data: transformedNodes,
-      nextCursor: transformedNodes.length > 0 ? transformedNodes[transformedNodes.length - 1].uuid : null,
+      nextCursor: page.response.nextCursor ?? null,
     };
   } catch (error) {
     console.error("Error fetching nodes:", error);
@@ -75,29 +69,19 @@ async function getNodes(
 }
 
 async function getEdges(
-  type: ResourceType, 
-  id: string, 
+  id: string,
   zep: ZepClient,
   cursor?: string
 ): Promise<PaginatedResponse<Edge>> {
   try {
-    let edges;
-    if (type === "user") {
-      edges = await zep.graph.edge.getByUserId(id, {
-        uuidCursor: cursor || "",
-        limit: EDGE_BATCH_SIZE,
-      });
-    } else {
-      edges = await zep.graph.edge.getByGraphId(id, {
-        uuidCursor: cursor || "",
-        limit: EDGE_BATCH_SIZE,
-      });
-    }
-    
-    const transformedEdges = edges.map(transformSDKEdge);
+    const page = await zep.graph.edge.list(id, {
+      cursor,
+      pageSize: EDGE_BATCH_SIZE,
+    });
+    const transformedEdges = page.data.map(transformSDKEdge);
     return {
       data: transformedEdges,
-      nextCursor: transformedEdges.length > 0 ? transformedEdges[transformedEdges.length - 1].uuid : null,
+      nextCursor: page.response.nextCursor ?? null,
     };
   } catch (error) {
     console.error("Error fetching edges:", error);
@@ -106,7 +90,6 @@ async function getEdges(
 }
 
 async function getAllNodes(
-  type: ResourceType,
   id: string,
   zep: ZepClient
 ): Promise<Node[]> {
@@ -115,7 +98,7 @@ async function getAllNodes(
   let hasMore = true;
 
   while (hasMore) {
-    const { data: nodes, nextCursor } = await getNodes(type, id, zep, cursor);
+    const { data: nodes, nextCursor } = await getNodes(id, zep, cursor);
     allNodes = [...allNodes, ...nodes];
 
     if (nextCursor === null || nodes.length === 0) {
@@ -129,7 +112,6 @@ async function getAllNodes(
 }
 
 async function getAllEdges(
-  type: ResourceType,
   id: string,
   zep: ZepClient
 ): Promise<Edge[]> {
@@ -138,7 +120,7 @@ async function getAllEdges(
   let hasMore = true;
 
   while (hasMore) {
-    const { data: edges, nextCursor } = await getEdges(type, id, zep, cursor);
+    const { data: edges, nextCursor } = await getEdges(id, zep, cursor);
     allEdges = [...allEdges, ...edges];
 
     if (nextCursor === null || edges.length === 0) {
@@ -179,8 +161,8 @@ export async function GET(
 
     // Fetch all nodes and edges using the batch completion wrappers
     const [nodes, edges] = await Promise.all([
-      getAllNodes(type, id, zep),
-      getAllEdges(type, id, zep),
+      getAllNodes(id, zep),
+      getAllEdges(id, zep),
     ]);
 
     if (!nodes.length && !edges.length) {

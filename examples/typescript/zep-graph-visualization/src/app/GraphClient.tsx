@@ -36,7 +36,7 @@ export function GraphClient({ userID: initialUserID }: UserDetailsProps) {
 
   const handleLoadGraph = async () => {
     if (!entityId.trim()) {
-      toast.error("Please enter an ID");
+      toast.error("Please enter a UUID");
       return;
     }
 
@@ -85,12 +85,12 @@ export function GraphClient({ userID: initialUserID }: UserDetailsProps) {
 
           <div className="flex-1 grid gap-2">
             <Label htmlFor="entity-id">
-              {isGroupMode ? "Group ID" : "User ID"}
+              {isGroupMode ? "Graph UUID" : "User UUID"}
             </Label>
             <Input
               id="entity-id"
               placeholder={
-                isGroupMode ? "Enter group ID..." : "Enter user ID..."
+                isGroupMode ? "Enter graph UUID..." : "Enter user UUID..."
               }
               value={entityId}
               onChange={(e: ChangeEvent<HTMLInputElement>) =>
