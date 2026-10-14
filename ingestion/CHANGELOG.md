@@ -1,8 +1,60 @@
 # Changelog
 
 All notable changes to `zep-ingest` are documented here. The project follows
-[Semantic Versioning](https://semver.org); while at `0.x` the public API may
-still change between minor versions.
+[Semantic Versioning](https://semver.org).
+
+## 0.4.0
+
+### Breaking
+
+- **The package requires the Zep v4 API and the `zep-cloud` 4.x SDK below
+  v5.** The dependency moved from `zep-cloud>=3.27.0` to
+  `zep-cloud>=4.0.0,<5` (the stable release). The package gives no v3
+  compatibility path.
+- **Migrating from v3:** follow the
+  [V4 migration guide](https://help.getzep.com/migrating-from-v3) for the
+  general procedure (the nullable UUID columns, the one-time `lookup`
+  backfill, and the order of steps). The API changes that are specific to
+  this package:
+  - Every ingest one-liner and `Pipeline.run` takes `graph_uuid=` in
+    place of `graph_id=`/`user_id=`.
+  - `ThreadMessage` takes `thread_uuid` in place of `thread_id`.
+  - `NodeItem` no longer accepts `uuid` or `created_at`, and `FactTriple`
+    no longer accepts `fact_uuid` or `created_at`; Zep assigns each node
+    and fact identity.
+  - `IngestResult.node_uuids` and `IngestResult.edge_uuids` return the
+    UUIDs that Zep assigned; store them in the application's own records.
+    Every other public function name and parameter is unchanged.
+  - For an existing V3 user, thread, or graph, do not call
+    `client.user.create`, `client.thread.create`, or `client.graph.create`.
+    Get its UUID one time with the backfill in the migration guide, and
+    store it.
+
+### Changed
+
+- **v4 submission methods.** Episodes go to `graph.episode.add`, batches go to
+  `batch.create` + `batch.add_items` + `batch.process`, nodes go to
+  `graph.node.add`, and fact triples go to `graph.edge.add` with
+  `edges=[EdgeInput]` and `deduplicate=True` to keep the v3
+  `add_fact_triple` behavior.
+- **Search uses the v4 scope methods.** `search_when_ready` calls
+  `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`,
+  `graph.search_observations`, or `graph.search_thread_summaries`, and returns
+  the first page of items.
+- **Reference time is sent on every path.** v4 renamed the
+  developer-supplied `created_at` field to `reference_time`. The package
+  sends `Episode.created_at` and `ThreadMessage.created_at` as
+  `reference_time` on `graph.episode.add`, on `batch.add_items` items, and
+  on `thread.add_messages` messages.
+- **Sequential thread ingestion is task-tracked.** v4 `thread.add_messages`
+  returns a task, so `wait()` polls the returned task instead of message UUIDs.
+- **Page size on list and search calls is `page_size`.** The stable SDK
+  renamed the `limit` parameter of each list and search operation to
+  `page_size`; `search_when_ready` passes it through.
+- **Batch rejections are reported.** `batch.add_items` can reject single
+  items of a page in `rejected_items`; the package now counts only the
+  accepted items and records each rejection as an `AddError` with its index
+  and reason.
 
 ## 0.3.1
 

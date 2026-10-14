@@ -33,9 +33,14 @@ from zep_ingest.types import (
 
 #: The only status that means "this deployment does not serve the Batch API",
 #: and so the only failure sequential ingestion can work around. Every other
-#: refusal — a rejected key, an exhausted quota — would refuse graph.add just
-#: as readily, so falling back would only hide the real error behind a slow run.
+#: refusal — a rejected key, an exhausted quota — would refuse an episode add
+#: just as readily, so falling back would only hide the real error behind a slow run.
 BATCH_UNAVAILABLE_STATUS_CODES = frozenset({404})
+
+
+def batch_uuid_of(batch: Any) -> Any:
+    """Read the UUID of a v4 ``Batch`` response, which is aliased to ``uuid``."""
+    return getattr(batch, "uuid_", None)
 
 
 def require_batch_id(
@@ -44,10 +49,10 @@ def require_batch_id(
     source: str = "batch.create",
     partial_result: IngestResult | None = None,
 ) -> str:
-    """Return a usable batch ID or fail before any add/process call."""
+    """Return a usable batch UUID or fail before any add/process call."""
     if not isinstance(batch_id, str) or not batch_id.strip():
         raise InvalidBatchResponseError(
-            f"{source} returned no usable batch_id; refusing to submit because "
+            f"{source} returned no usable batch uuid; refusing to submit because "
             "the batch may already have been created.",
             partial_result=partial_result,
         )
@@ -81,7 +86,7 @@ def process_batch(client: Zep, batch_id: str, result: IngestResult, *, max_retri
         lambda: client.batch.process(batch_id),
         max_retries=max_retries,
         # Processing a known batch is idempotent; retrying it cannot add items
-        # twice, unlike graph.add or batch.add.
+        # twice, unlike graph.episode.add or batch.add_items.
         retry_server_errors=True,
     )
     if error is not None:
@@ -91,6 +96,59 @@ def process_batch(client: Zep, batch_id: str, result: IngestResult, *, max_retri
             f"items were added but the batch was never processed — retry with "
             f"client.batch.process({batch_id!r}).",
         )
+
+
+def add_items_page(
+    client: Zep,
+    batch_id: str,
+    items: list[Any],
+    *,
+    max_retries: int,
+    page_index: int,
+    result: IngestResult,
+) -> int:
+    """Submit one page to a batch and return the count the API accepted.
+
+    The v4 ``BatchItemsResponse`` reports per-item rejections (``rejected_items``)
+    separately from a call-level error, so a successful response is not proof
+    that every item landed. Rejected items are recorded as AddErrors instead of
+    being counted as submitted.
+    """
+    attempts = 0
+
+    def add_page() -> Any:
+        nonlocal attempts
+        attempts += 1
+        return client.batch.add_items(batch_id, items=items)
+
+    response, error = call_with_retries(add_page, max_retries=max_retries)
+    if error is not None:
+        result.add_errors.append(
+            AddError(
+                index=page_index,
+                item_count=len(items),
+                error=f"{format_api_error('batch.add_items', error)} after {attempts} attempt(s)",
+                batch_id=batch_id,
+            )
+        )
+        return 0
+    rejected = getattr(response, "rejected_items", None)
+    if not isinstance(rejected, list | tuple):
+        rejected = []
+    if rejected:
+        detail = "; ".join(
+            f"index {getattr(rejection, 'index', '?')}: {getattr(rejection, 'reason', 'rejected')}"
+            for rejection in rejected
+        )
+        result.add_errors.append(
+            AddError(
+                index=page_index,
+                item_count=len(rejected),
+                error=f"batch.add_items rejected {len(rejected)} item(s): {detail}",
+                batch_id=batch_id,
+            )
+        )
+    return len(items) - len(rejected)
 
 
 class BatchSubmitter:
@@ -124,7 +182,7 @@ class BatchSubmitter:
         )
 
     def submit(self, episodes: Iterable[Episode], destination: Destination) -> IngestResult:
-        result = IngestResult(method="batch", client=self.client)
+        result = IngestResult(method="batch", client=self.client, graph_uuid=destination.graph_uuid)
         iterator = iter(episodes)
         batch_id: str | None = None
         items_in_batch = 0
@@ -142,9 +200,9 @@ class BatchSubmitter:
                     break
                 items_in_batch = 0
             items = [to_batch_item(ep, destination) for ep in page]
-            if self._add_page(batch_id, items, page_index, result):
-                items_in_batch += len(page)
-                result.items_submitted += len(page)
+            accepted = self._add_page(batch_id, items, page_index, result)
+            items_in_batch += accepted
+            result.items_submitted += accepted
             page_index += 1
         if batch_id is not None:
             process_batch(self.client, batch_id, result, max_retries=self.max_add_retries)
@@ -194,7 +252,7 @@ class BatchSubmitter:
                 raise BatchUnavailableError(partial_result=result) from error
             raise error
         batch_id = require_batch_id(
-            getattr(summary, "batch_id", None),
+            batch_uuid_of(summary),
             partial_result=result,
         )
         result.batch_ids.append(batch_id)
@@ -202,26 +260,12 @@ class BatchSubmitter:
 
     def _add_page(
         self, batch_id: str, items: list[Any], page_index: int, result: IngestResult
-    ) -> bool:
-        attempts = 0
-
-        def add_page() -> None:
-            nonlocal attempts
-            attempts += 1
-            self.client.batch.add(batch_id, items=items)
-
-        _, error = call_with_retries(
-            add_page,
+    ) -> int:
+        return add_items_page(
+            self.client,
+            batch_id,
+            items,
             max_retries=self.max_add_retries,
+            page_index=page_index,
+            result=result,
         )
-        if error is None:
-            return True
-        result.add_errors.append(
-            AddError(
-                index=page_index,
-                item_count=len(items),
-                error=f"{format_api_error('batch.add', error)} after {attempts} attempt(s)",
-                batch_id=batch_id,
-            )
-        )
-        return False

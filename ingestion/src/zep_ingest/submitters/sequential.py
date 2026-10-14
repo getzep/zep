@@ -1,12 +1,12 @@
-"""SequentialSubmitter: one graph.add per episode.
+"""SequentialSubmitter: one graph.episode.add per episode.
 
 Rate-limit aware: honors the Retry-After header on 429s and otherwise backs
 off exponentially with jitter. One call at a time also preserves stream order,
 which correct valid_at sequencing depends on. Sequential means the Batch API
-is not used — each episode is submitted with graph.add — not that processing
-must finish before the next episode or file is sent. The HTTP add returns as
-soon as the episode is queued; wait() is opt-in and polls the last-submitted
-episode (plain graph.add without document_id).
+is not used — each episode is submitted with graph.episode.add — not that
+processing must finish before the next episode or file is sent. The HTTP add
+returns as soon as the episode is queued; wait() is opt-in and polls the
+last-submitted episode (a plain add without document_id).
 """
 
 import math
@@ -24,7 +24,7 @@ from zep_cloud.core.api_error import ApiError
 from zep_ingest._errors import SubmitError, format_api_error
 from zep_ingest._validation import require_int_range, require_nonnegative_number
 from zep_ingest.result import AddError, IngestResult
-from zep_ingest.types import Destination, Episode, to_graph_add_kwargs
+from zep_ingest.types import Destination, Episode, to_episode_add_kwargs
 
 #: Ceiling on any single retry sleep. A server or proxy is free to send
 #: "Retry-After: 86400"; honoring that verbatim stalls the whole import.
@@ -114,26 +114,30 @@ class SequentialSubmitter:
         self.min_interval = min_interval
 
     def submit(self, episodes: Iterable[Episode], destination: Destination) -> IngestResult:
-        result = IngestResult(method="sequential", client=self.client)
+        result = IngestResult(method="sequential", client=self.client, graph_uuid=destination.graph)
         for index, episode in enumerate(episodes):
-            kwargs = to_graph_add_kwargs(episode, destination)
+            kwargs = to_episode_add_kwargs(episode, destination)
             self._add_episode(index, kwargs, result)
         return result
 
     def _add_episode(self, index: int, kwargs: dict, result: IngestResult) -> None:
-        zep_episode, error = call_with_retries(
-            lambda: self.client.graph.add(**kwargs), max_retries=self.max_retries
+        response, error = call_with_retries(
+            lambda: self.client.graph.episode.add(**kwargs), max_retries=self.max_retries
         )
         if error is not None:
             result.add_errors.append(
                 AddError(
                     index=index,
                     item_count=1,
-                    error=format_api_error("graph.add", error),
+                    error=format_api_error("graph.episode.add", error),
                 )
             )
             return
-        result.episode_uuids.append(zep_episode.uuid_)
+        episode_uuid = getattr(getattr(response, "episode", None), "uuid_", None)
+        if episode_uuid:
+            result.episode_uuids.append(str(episode_uuid))
+        else:
+            result.untracked_items += 1
         result.items_submitted += 1
         if self.min_interval > 0:
             time.sleep(self.min_interval)
