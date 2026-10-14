@@ -57,4 +57,4 @@ __all__ = [
     "DEFAULT_CONTEXT_TEMPLATE",
 ]
 
-__version__ = "0.3.0"
+__version__ = "1.0.0"
