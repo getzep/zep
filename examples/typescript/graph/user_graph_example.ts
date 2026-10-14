@@ -57,7 +57,7 @@ async function main() {
     console.log(threadContext);
 
     console.log("Getting episodes for the user graph");
-    const episodes = await collect(await client.graph.episode.list(graphUuid, { limit: 3, body: {} }), 3);
+    const episodes = await collect(await client.graph.episode.list(graphUuid, { pageSize: 3 }), 3);
     console.log(`Episodes for graph ${graphUuid}:`);
     console.log(episodes);
 
@@ -66,7 +66,7 @@ async function main() {
         console.log(episode);
     }
 
-    const edges = await collect(await client.graph.edge.list(graphUuid, { limit: 10, body: {} }), 10);
+    const edges = await collect(await client.graph.edge.list(graphUuid, { pageSize: 10 }), 10);
     console.log(`Edges for graph ${graphUuid}:`);
     console.log(edges);
 
@@ -75,7 +75,7 @@ async function main() {
         console.log(edge);
     }
 
-    const nodes = await collect(await client.graph.node.list(graphUuid, { limit: 10, body: {} }), 10);
+    const nodes = await collect(await client.graph.node.list(graphUuid, { pageSize: 10 }), 10);
     console.log(`Nodes for graph ${graphUuid}:`);
     console.log(nodes);
 
@@ -87,10 +87,8 @@ async function main() {
     console.log("Searching the user graph...");
     const graphSearchResults = await collect(
         await client.graph.searchEdges(graphUuid, {
-            limit: 10,
-            body: {
-                query: "What is the weather in San Francisco?",
-            },
+            pageSize: 10,
+            query: "What is the weather in San Francisco?",
         }),
         10,
     );
@@ -123,7 +121,7 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 30000));
 
     console.log("Getting nodes from the graph...");
-    const updatedNodes = await collect(await client.graph.node.list(graphUuid, { limit: 10, body: {} }), 10);
+    const updatedNodes = await collect(await client.graph.node.list(graphUuid, { pageSize: 10 }), 10);
     console.log(updatedNodes);
 
     console.log("Finding Eric Clapton in the graph...");
@@ -134,11 +132,9 @@ async function main() {
         console.log("Performing Eric Clapton centered edge search...");
         const edgeSearchResults = await collect(
             await client.graph.searchEdges(graphUuid, {
-                limit: 10,
-                body: {
-                    query: "Eric Clapton",
-                    centerNodeUuid: claptonNode.uuid,
-                },
+                pageSize: 10,
+                query: "Eric Clapton",
+                centerNodeUuid: claptonNode.uuid,
             }),
             10,
         );
@@ -147,11 +143,9 @@ async function main() {
         console.log("Performing Eric Clapton centered node search...");
         const nodeSearchResults = await collect(
             await client.graph.searchNodes(graphUuid, {
-                limit: 10,
-                body: {
-                    query: "Eric Clapton",
-                    centerNodeUuid: claptonNode.uuid,
-                },
+                pageSize: 10,
+                query: "Eric Clapton",
+                centerNodeUuid: claptonNode.uuid,
             }),
             10,
         );
@@ -163,12 +157,10 @@ async function main() {
         console.log("User node: ", userNode)
         const userCenteredSearch = await collect(
             await client.graph.searchEdges(graphUuid, {
-                limit: 10,
-                body: {
-                    query: "User preferences",
-                    centerNodeUuid: userNode.uuid,
-                    reranker: "node_distance",
-                },
+                pageSize: 10,
+                query: "User preferences",
+                centerNodeUuid: userNode.uuid,
+                reranker: "node_distance",
             }),
             10,
         );

@@ -21,8 +21,7 @@ async function waitForUserEpisodesProcessed(
   while (Date.now() - started < TIMEOUT_MS) {
     const episodes = [];
     for await (const episode of await zep.graph.episode.list(graphUuid, {
-      limit: 50,
-      body: {},
+      pageSize: 50,
     })) {
       episodes.push(episode);
       if (episodes.length >= 50) break;

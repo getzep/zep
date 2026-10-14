@@ -207,7 +207,7 @@ class AsyncZepMemoryManager:
                 # Use graph.search_edges to find relevant edges
                 edges = []
                 async for edge in await self.zep_client.graph.search_edges(
-                    self.graph_uuid, query=query, limit=limit
+                    self.graph_uuid, query=query, page_size=limit
                 ):
                     edges.append(edge)
 

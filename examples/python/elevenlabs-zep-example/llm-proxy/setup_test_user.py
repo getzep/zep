@@ -104,7 +104,7 @@ async def setup_test_user():
         async for edge in await zep.graph.search_edges(
             user.graph_uuid,
             query="Tell me about this person",
-            limit=10
+            page_size=10
         ):
             edges.append(edge)
 

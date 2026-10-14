@@ -96,12 +96,10 @@ func runEntityTypes() error {
 		return nil
 	}
 
-	nodeResults, err := client.Graph.SearchNodes(ctx, graphUUID, &zep.GraphSearchNodesRequest{
-		Body: &zep.SearchRequest{
-			Query: "destination",
-			Filters: &zep.SearchFilters{
-				NodeLabels: []string{"Destination"},
-			},
+	nodeResults, err := client.Graph.SearchNodes(ctx, graphUUID, &zep.SearchNodesRequest{
+		Query: "destination",
+		Filters: &zep.NodeSearchFilters{
+			NodeLabels: []string{"Destination"},
 		},
 	})
 	if err != nil {
@@ -124,10 +122,8 @@ func runEntityTypes() error {
 		fmt.Printf("Destination Name: %s\n", destination.DestinationName)
 	}
 
-	edgeResults, err := client.Graph.SearchEdges(ctx, graphUUID, &zep.GraphSearchEdgesRequest{
-		Body: &zep.SearchRequest{
-			Query: "traveling to a destination",
-		},
+	edgeResults, err := client.Graph.SearchEdges(ctx, graphUUID, &zep.SearchEdgesRequest{
+		Query: "traveling to a destination",
 	})
 	if err != nil {
 		return fmt.Errorf("searching graph edges: %w", err)

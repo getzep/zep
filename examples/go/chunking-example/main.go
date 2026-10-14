@@ -289,7 +289,7 @@ func ingestToZep(ctx context.Context, client *zepclient.Client, graphUUID, data 
 		}
 
 		result, err := client.Graph.Episode.Add(ctx, graphUUID, &graph.AddEpisodeRequest{
-			Type: graph.V4AddEpisodeRequestTypeText.Ptr(),
+			Type: graph.AddEpisodeRequestTypeText.Ptr(),
 			Data: data,
 		})
 		if err == nil {
@@ -344,7 +344,7 @@ func waitForEpisodeProcessing(ctx context.Context, client *zepclient.Client, gra
 			}
 			status := ""
 			if task.GetStatus() != nil {
-				status = strings.ToLower(strings.TrimSpace(*task.GetStatus()))
+				status = strings.ToLower(strings.TrimSpace(string(*task.GetStatus())))
 			}
 			if taskFailureStatuses[status] {
 				message := ""

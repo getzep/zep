@@ -52,7 +52,7 @@ async def load_users_from_zep() -> list:
     try:
         # Get all users (ordered by most recent)
         users = []
-        async for user in await zep_client.user.list(limit=100):
+        async for user in await zep_client.user.list(page_size=100):
             users.append(user)
         return users
 
@@ -158,7 +158,7 @@ async def load_threads_from_zep(user_uuid: str) -> dict:
     try:
         # Get all threads for the user
         user_threads = []
-        async for zep_thread in await zep_client.thread.list(user_uuid=user_uuid, limit=100):
+        async for zep_thread in await zep_client.thread.list(user_uuid=user_uuid, page_size=100):
             user_threads.append(zep_thread)
 
         # For each thread, load its messages
@@ -168,7 +168,7 @@ async def load_threads_from_zep(user_uuid: str) -> dict:
             try:
                 # Get the messages of this thread with the v4 cursor pager
                 messages = []
-                async for msg in await zep_client.thread.list_messages(thread_uuid, limit=100):
+                async for msg in await zep_client.thread.list_messages(thread_uuid, page_size=100):
                     messages.append({
                         "role": msg.role,
                         "content": msg.content,

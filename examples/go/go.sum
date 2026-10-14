@@ -1,7 +1,7 @@
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/getzep/zep-go/v4 v4.0.0-alpha.5 h1:LebIX3MBuYHsS+SxDUt5Su8oBes4yK8+5CaYXKHoHko=
-github.com/getzep/zep-go/v4 v4.0.0-alpha.5/go.mod h1:+z4Yv+XAUTW0/r6J9hv6DfD7R0OnEOxyt1VvEctNIvQ=
+github.com/getzep/zep-go/v4 v4.0.0 h1:SMoup8ihmJjcRCh2tSk4WZdHIWj6tlR0TikmbUf2HEc=
+github.com/getzep/zep-go/v4 v4.0.0/go.mod h1:+z4Yv+XAUTW0/r6J9hv6DfD7R0OnEOxyt1VvEctNIvQ=
 github.com/google/uuid v1.4.0 h1:MtMxsa51/r9yyhkyLsVeVt0B+BGQZzpQiTQ4eHZ8bc4=
 github.com/google/uuid v1.4.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

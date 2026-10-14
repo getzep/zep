@@ -2,7 +2,7 @@ import asyncio
 import os
 from dotenv import find_dotenv, load_dotenv
 
-from zep_cloud import AddMessage, EdgeSourceTarget, SearchFilters
+from zep_cloud import AddMessage, EdgeSearchFilters, EdgeSourceTarget
 from zep_cloud.client import AsyncZep
 from pydantic import Field
 from zep_cloud.ontology import EntityModel, EntityText, EdgeModel, build_ontology
@@ -94,7 +94,7 @@ async def main() -> None:
         async for edge in await client.graph.search_edges(
             user.graph_uuid,
             query="travel",
-            filters=SearchFilters(
+            filters=EdgeSearchFilters(
                 edge_types=["TRAVELING_TO"]
             ),
         )

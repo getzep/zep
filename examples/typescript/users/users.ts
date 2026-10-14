@@ -51,7 +51,7 @@ async function main() {
     // List a page of users (read-only; do not mutate list results)
     console.log("All users (first page):");
     let count = 0;
-    for await (const user of await client.user.list({ limit: 10 })) {
+    for await (const user of await client.user.list({ pageSize: 10 })) {
         console.log(user.uuid);
         count += 1;
         if (count >= 10) {

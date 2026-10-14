@@ -114,10 +114,10 @@
   resolved "https://registry.npmjs.org/@floating-ui/utils/-/utils-0.2.9.tgz"
   integrity sha512-MDWhGtE+eHw5JW7lq4qhc5yRLS11ERl1c7Z6Xd0a58DozHES6EnNNwUWbMiG4J9Cgj053Bhk8zvlhFYKVhULwg==
 
-"@getzep/zep-cloud@4.0.0-alpha.5":
-  version "4.0.0-alpha.5"
-  resolved "https://registry.npmjs.org/@getzep/zep-cloud/-/zep-cloud-4.0.0-alpha.5.tgz"
-  integrity sha512-0Y1OayaDebld/wXSlij/LebnRKpW/Kjt0L3qfGO4GDg6fVWQGvkRb8eO7RhAn7d3TfKYcZNZpnJwOXT73fAqmA==
+"@getzep/zep-cloud@^4.0.0":
+  version "4.0.0"
+  resolved "https://registry.npmjs.org/@getzep/zep-cloud/-/zep-cloud-4.0.0.tgz"
+  integrity sha512-l47N08/bAcyzL+1C59Jh4E68prJzSW1Eqj59AHtuo/sde0i80rKBAwLQg4ZH9aHGtLzBXEKs0l4UWTURCnrW0g==
   dependencies:
     zod "^3.23.8"
 

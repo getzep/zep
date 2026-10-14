@@ -79,8 +79,7 @@ func runUserGraph() error {
 
 	fmt.Println("Getting the episodes of the graph")
 	episodePage, err := client.Graph.Episode.List(ctx, *graphUUID, &graph.EpisodeListRequest{
-		Limit: zep.Int(3),
-		Body:  &zep.ArtifactListRequest{},
+		PageSize: zep.Int(3),
 	})
 	if err != nil {
 		return fmt.Errorf("getting episodes: %w", err)
@@ -96,9 +95,7 @@ func runUserGraph() error {
 		fmt.Printf("%+v\n", episode)
 	}
 
-	edgePage, err := client.Graph.Edge.List(ctx, *graphUUID, &graph.EdgeListRequest{
-		Body: &zep.ArtifactListRequest{},
-	})
+	edgePage, err := client.Graph.Edge.List(ctx, *graphUUID, &graph.EdgeListRequest{})
 	if err != nil {
 		return fmt.Errorf("getting edges: %w", err)
 	}
@@ -113,9 +110,7 @@ func runUserGraph() error {
 		fmt.Printf("%+v\n", edge)
 	}
 
-	nodePage, err := client.Graph.Node.List(ctx, *graphUUID, &graph.NodeListRequest{
-		Body: &zep.ArtifactListRequest{},
-	})
+	nodePage, err := client.Graph.Node.List(ctx, *graphUUID, &graph.NodeListRequest{})
 	if err != nil {
 		return fmt.Errorf("getting nodes: %w", err)
 	}
@@ -131,10 +126,8 @@ func runUserGraph() error {
 	}
 
 	fmt.Println("Searching the graph of the user...")
-	searchResults, err := client.Graph.SearchEdges(ctx, *graphUUID, &zep.GraphSearchEdgesRequest{
-		Body: &zep.SearchRequest{
-			Query: "What is the weather in San Francisco?",
-		},
+	searchResults, err := client.Graph.SearchEdges(ctx, *graphUUID, &zep.SearchEdgesRequest{
+		Query: "What is the weather in San Francisco?",
 	})
 	if err != nil {
 		return fmt.Errorf("searching graph: %w", err)
@@ -143,7 +136,7 @@ func runUserGraph() error {
 
 	fmt.Println("Adding a new text episode to the graph...")
 	_, err = client.Graph.Episode.Add(ctx, *graphUUID, &graph.AddEpisodeRequest{
-		Type: graph.V4AddEpisodeRequestTypeText.Ptr(),
+		Type: graph.AddEpisodeRequestTypeText.Ptr(),
 		Data: "The user is an avid fan of Eric Clapton",
 	})
 	if err != nil {
@@ -154,7 +147,7 @@ func runUserGraph() error {
 	fmt.Println("Adding a new JSON episode to the graph...")
 	jsonString := `{"name": "Eric Clapton", "age": 78, "genre": "Rock"}`
 	_, err = client.Graph.Episode.Add(ctx, *graphUUID, &graph.AddEpisodeRequest{
-		Type: graph.V4AddEpisodeRequestTypeJSON.Ptr(),
+		Type: graph.AddEpisodeRequestTypeJSON.Ptr(),
 		Data: jsonString,
 	})
 	if err != nil {
@@ -165,7 +158,7 @@ func runUserGraph() error {
 	fmt.Println("Adding a new message episode to the graph...")
 	message := "Paul (user): I went to Eric Clapton concert last night"
 	_, err = client.Graph.Episode.Add(ctx, *graphUUID, &graph.AddEpisodeRequest{
-		Type: graph.V4AddEpisodeRequestTypeMessage.Ptr(),
+		Type: graph.AddEpisodeRequestTypeMessage.Ptr(),
 		Data: message,
 	})
 	if err != nil {
@@ -177,9 +170,7 @@ func runUserGraph() error {
 	time.Sleep(30 * time.Second)
 
 	fmt.Println("Getting nodes from the graph...")
-	updatedNodePage, err := client.Graph.Node.List(ctx, *graphUUID, &graph.NodeListRequest{
-		Body: &zep.ArtifactListRequest{},
-	})
+	updatedNodePage, err := client.Graph.Node.List(ctx, *graphUUID, &graph.NodeListRequest{})
 	if err != nil {
 		return fmt.Errorf("getting updated nodes: %w", err)
 	}
@@ -197,12 +188,10 @@ func runUserGraph() error {
 
 	if claptonNode != nil {
 		fmt.Println("Performing Eric Clapton centered edge search...")
-		edgeSearchResults, err := client.Graph.SearchEdges(ctx, *graphUUID, &zep.GraphSearchEdgesRequest{
-			Body: &zep.SearchRequest{
-				Query:          "Eric Clapton",
-				CenterNodeUUID: claptonNode.GetUUID(),
-				Reranker:       zep.V4SearchRequestRerankerNodeDistance.Ptr(),
-			},
+		edgeSearchResults, err := client.Graph.SearchEdges(ctx, *graphUUID, &zep.SearchEdgesRequest{
+			Query:          "Eric Clapton",
+			CenterNodeUUID: claptonNode.GetUUID(),
+			Reranker:       zep.SearchEdgesRequestRerankerNodeDistance.Ptr(),
 		})
 		if err != nil {
 			return fmt.Errorf("performing edge search: %w", err)
@@ -210,12 +199,10 @@ func runUserGraph() error {
 		fmt.Printf("%+v\n", edgeSearchResults.Results)
 
 		fmt.Println("Performing Eric Clapton centered node search...")
-		nodeSearchResults, err := client.Graph.SearchNodes(ctx, *graphUUID, &zep.GraphSearchNodesRequest{
-			Body: &zep.SearchRequest{
-				Query:          "Eric Clapton",
-				CenterNodeUUID: claptonNode.GetUUID(),
-				Reranker:       zep.V4SearchRequestRerankerNodeDistance.Ptr(),
-			},
+		nodeSearchResults, err := client.Graph.SearchNodes(ctx, *graphUUID, &zep.SearchNodesRequest{
+			Query:          "Eric Clapton",
+			CenterNodeUUID: claptonNode.GetUUID(),
+			Reranker:       zep.SearchNodesRequestRerankerNodeDistance.Ptr(),
 		})
 		if err != nil {
 			return fmt.Errorf("performing node search: %w", err)

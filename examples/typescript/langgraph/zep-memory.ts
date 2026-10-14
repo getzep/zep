@@ -135,7 +135,7 @@ export class ZepMemory {
     try {
       const messages: Zep.Message[] = [];
       for await (const message of await this.client.thread.listMessages(this.threadUuid, {
-        limit,
+        pageSize: limit,
       })) {
         messages.push(message);
         if (messages.length >= limit) {

@@ -78,7 +78,7 @@ async function main() {
     // get thread messages
     try {
         const messages: Zep.Message[] = [];
-        for await (const message of await client.thread.listMessages(threadUuid, { limit: 10 })) {
+        for await (const message of await client.thread.listMessages(threadUuid, { pageSize: 10 })) {
             messages.push(message);
             if (messages.length >= 10) {
                 break;

@@ -64,7 +64,7 @@ async def main() -> None:
 
     print("Getting episodes for user")
     episodes = [
-        episode async for episode in await client.graph.episode.list(graph_uuid, limit=3)
+        episode async for episode in await client.graph.episode.list(graph_uuid, page_size=3)
     ]
     print(f"Episodes for user {user_uuid}:")
     print(episodes)

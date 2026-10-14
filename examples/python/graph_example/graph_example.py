@@ -66,7 +66,7 @@ async def main() -> None:
 
     print(f"Getting episodes from graph {graph_uuid}...")
     episodes = [
-        episode async for episode in await client.graph.episode.list(graph_uuid, limit=2)
+        episode async for episode in await client.graph.episode.list(graph_uuid, page_size=2)
     ]
     await asyncio.sleep(2)
     print(f"Episodes from graph {graph_uuid} {episodes}")

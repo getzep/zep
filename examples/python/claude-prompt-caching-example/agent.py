@@ -320,7 +320,7 @@ def wait_for_zep_processing(
     """
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        episodes = list(zep.graph.episode.list(graph_uuid, limit=100))
+        episodes = list(zep.graph.episode.list(graph_uuid, page_size=100))
         pending = sum(1 for e in episodes if not e.processed)
         if pending == 0:
             if not quiet:

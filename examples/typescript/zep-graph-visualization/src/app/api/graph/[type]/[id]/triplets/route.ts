@@ -60,8 +60,7 @@ async function resolveGraphUuid(
 async function getAllNodes(graphUuid: string, zep: ZepClient): Promise<Node[]> {
   const nodes: Node[] = [];
   for await (const node of await zep.graph.node.list(graphUuid, {
-    limit: NODE_BATCH_SIZE,
-    body: {},
+    pageSize: NODE_BATCH_SIZE,
   })) {
     nodes.push(transformSDKNode(node));
   }
@@ -71,8 +70,7 @@ async function getAllNodes(graphUuid: string, zep: ZepClient): Promise<Node[]> {
 async function getAllEdges(graphUuid: string, zep: ZepClient): Promise<Edge[]> {
   const edges: Edge[] = [];
   for await (const edge of await zep.graph.edge.list(graphUuid, {
-    limit: EDGE_BATCH_SIZE,
-    body: {},
+    pageSize: EDGE_BATCH_SIZE,
   })) {
     edges.push(transformSDKEdge(edge));
   }

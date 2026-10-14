@@ -51,8 +51,7 @@ async function ensureGraph(
 async function listEpisodes(client: ZepClient, graphUuid: string) {
   const episodes = [];
   for await (const episode of await client.graph.episode.list(graphUuid, {
-    limit: 50,
-    body: {},
+    pageSize: 50,
   })) {
     episodes.push(episode);
     if (episodes.length >= 50) break;

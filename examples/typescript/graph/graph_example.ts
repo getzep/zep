@@ -40,7 +40,7 @@ async function main() {
 
     console.log(`Getting nodes from graph ${graphUuid}...`);
     const nodes: Zep.Node[] = [];
-    for await (const node of await client.graph.node.list(graphUuid, { limit: 10, body: {} })) {
+    for await (const node of await client.graph.node.list(graphUuid, { pageSize: 10 })) {
         nodes.push(node);
         if (nodes.length >= 10) {
             break;
@@ -50,7 +50,7 @@ async function main() {
 
     console.log(`Getting edges from graph ${graphUuid}...`);
     const edges: Zep.Edge[] = [];
-    for await (const edge of await client.graph.edge.list(graphUuid, { limit: 10, body: {} })) {
+    for await (const edge of await client.graph.edge.list(graphUuid, { pageSize: 10 })) {
         edges.push(edge);
         if (edges.length >= 10) {
             break;
@@ -61,10 +61,8 @@ async function main() {
     console.log(`Searching graph ${graphUuid}...`);
     const searchResults: Zep.Edge[] = [];
     for await (const edge of await client.graph.searchEdges(graphUuid, {
-        limit: 10,
-        body: {
-            query: "Eric Clapton",
-        },
+        pageSize: 10,
+        query: "Eric Clapton",
     })) {
         searchResults.push(edge);
         if (searchResults.length >= 10) {
