@@ -4,7 +4,8 @@ import { getZepClient } from "./zep-client";
 export const ZEP_SEARCH_QUERY_MAX_CHARS = 400;
 
 /**
- * Character budget for user-role memory context.
+ * Turn-scoped system-instruction recall budget. The block is replaced each
+ * turn, so it does not accumulate in session history.
  */
 export const INSTRUCTION_RECALL_MAX_CHARS = 4000;
 

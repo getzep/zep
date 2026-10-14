@@ -1,16 +1,19 @@
 import { defineHook } from "eve/hooks";
 import { resolveZepIdentity } from "../lib/identity";
+import { bindPendingUtteranceToSession } from "../lib/pending-utterance";
 import { getZepClient } from "../lib/zep-client";
 import { ensureZepUserAndThread } from "../lib/zep-memory";
 
 /**
  * Auto-persist Eve conversation turns into Zep.
  *
- * - session.started → provision Zep user/thread
+ * - session.started → provision Zep user/thread; rebind create-session stash
  * - message.received → user message
  * - message.completed (not tool-calls) → assistant reply
  *
- * Turn-relevant recall is added to the user message by the Eve channel.
+ * Turn-relevant recall happens in `agent/instructions/zep-memory.ts`
+ * (`turn.started` dynamic instructions, with the utterance stashed from the
+ * channel's `onMessage`). This hook only writes to Zep.
  *
  * Hooks are observe-only and at-least-once. Failures are swallowed so a Zep
  * outage never fails the Eve turn.
@@ -20,8 +23,12 @@ export default defineHook({
     async "session.started"(_event, ctx) {
       try {
         const identity = resolveZepIdentity(ctx);
+        bindPendingUtteranceToSession({
+          sessionId: ctx.session.id,
+          userId: identity.userId,
+        });
         const zepIdentity = await ensureZepUserAndThread(identity);
-        // Warm is best-effort and must not delay the Eve turn.
+        // Warm is best-effort and must not delay first-turn recall.
         void getZepClient()
           .graph.warm(zepIdentity.userUuid)
           .catch((error) => {

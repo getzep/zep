@@ -7,15 +7,16 @@ Before changing agent files, read the relevant guide under `node_modules/eve/doc
 
 ## Memory architecture (this example)
 
-1. `agent/channels/eve.ts` — retrieve turn-relevant graph context and add it as user-message context
-2. `agent/hooks/zep-persist.ts` — provision the user and thread UUIDs, persist messages, and warm the user graph
-3. `agent/tools/zep_search.ts` — on-demand user-graph context retrieval
-4. `agent/tools/zep_search_company.ts` — on-demand standalone company-graph context retrieval
-5. `agent/lib/identity.ts` — map application identities to Zep UUIDs
-6. `scripts/seed-company-graph.ts` — seed the company standalone graph via Zep SDK only
+1. `agent/channels/eve.ts` — stash the inbound utterance for the next turn
+2. `agent/hooks/zep-persist.ts` — rebind the create-session stash, persist messages, and warm the user graph
+3. `agent/instructions/zep-memory.ts` — run `graph.getContext` on `turn.started` and replace turn-scoped system memory
+4. `agent/tools/zep_search.ts` — on-demand user-graph recall with the user UUID
+5. `agent/tools/zep_search_company.ts` — on-demand standalone company-graph recall with the graph UUID
+6. `agent/lib/identity.ts` / `agent/lib/pending-utterance.ts` — map application identities to returned UUIDs and bridge the utterance to the turn
+7. `scripts/seed-company-graph.ts` — seed the company standalone graph via Zep SDK only
 
-Never accept a Zep UUID from the model. Pin the application identity from session auth or the demo env fallback, then use the UUID stored in the identity file.
+Never accept a Zep UUID from the model. Pin the application identity from session auth or the demo environment fallback. Use the returned user and thread UUIDs stored in the identity file for Zep calls.
 
 The app stores returned user and thread UUIDs in `.data/zep-identities.json` by default. Keep this file across runs.
 
-The channel adds retrieved memory as user-message context. Eve keeps the context out of the system prompt.
+Eve emits `turn.started` before `message.received`, and the turn resolver does not include the inbound text. The channel stashes the text for the dynamic instruction resolver. Dynamic instructions replace the previous turn's memory block, so it does not accumulate in session history. Keep the stash and resolver in the same process.
