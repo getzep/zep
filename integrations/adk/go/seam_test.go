@@ -48,8 +48,10 @@ type fakeZepAPI struct {
 	searchCalls     int
 	lastSearchScope SearchScope
 	lastGraphUUID   string
-	lastSearchBody  *zep.SearchRequest
+	lastSearchBody  *searchParams
 	lastSearchLimit *int
+	lastPageSize    *int
+	lastEdgeFilters *zep.EdgeSearchFilters
 
 	createUserErr       error
 	createUserCalls     int
@@ -76,52 +78,93 @@ func (f *fakeZepAPI) AddMessages(_ context.Context, threadUUID string, req *zep.
 
 // recordSearch stores the arguments of a search call and reports whether the
 // fake must return an error.
-func (f *fakeZepAPI) recordSearch(scope SearchScope, graphUUID string, limit *int, body *zep.SearchRequest) error {
+func (f *fakeZepAPI) recordSearch(scope SearchScope, graphUUID string, limit, pageSize *int, body *searchParams) error {
 	f.searchCalls++
 	f.lastSearchScope = scope
 	f.lastGraphUUID = graphUUID
 	f.lastSearchLimit = limit
+	f.lastPageSize = pageSize
 	f.lastSearchBody = body
 	return f.searchErr
 }
 
-func (f *fakeZepAPI) SearchEdges(_ context.Context, graphUUID string, req *zep.GraphSearchEdgesRequest) ([]*zep.Edge, error) {
-	if err := f.recordSearch(SearchScopeEdges, graphUUID, req.Limit, req.Body); err != nil {
+// rerankerParam converts a scope-specific Zep reranker back to a
+// [SearchReranker], so the fake can record one parameter type for all scopes.
+func rerankerParam[R ~string](r *R) *SearchReranker {
+	if r == nil {
+		return nil
+	}
+	return ptr(SearchReranker(*r))
+}
+
+func (f *fakeZepAPI) SearchEdges(_ context.Context, graphUUID string, req *zep.SearchEdgesRequest, limit *int) ([]*zep.Edge, error) {
+	f.lastEdgeFilters = req.Filters
+	if err := f.recordSearch(SearchScopeEdges, graphUUID, limit, req.PageSize, &searchParams{
+		Query:              req.Query,
+		Reranker:           rerankerParam(req.Reranker),
+		MmrLambda:          req.MmrLambda,
+		CenterNodeUUID:     req.CenterNodeUUID,
+		BfsOriginNodeUUIDs: req.BfsOriginNodeUUIDs,
+	}); err != nil {
 		return nil, err
 	}
 	return f.edges, nil
 }
 
-func (f *fakeZepAPI) SearchNodes(_ context.Context, graphUUID string, req *zep.GraphSearchNodesRequest) ([]*zep.Node, error) {
-	if err := f.recordSearch(SearchScopeNodes, graphUUID, req.Limit, req.Body); err != nil {
+func (f *fakeZepAPI) SearchNodes(_ context.Context, graphUUID string, req *zep.SearchNodesRequest, limit *int) ([]*zep.Node, error) {
+	if err := f.recordSearch(SearchScopeNodes, graphUUID, limit, req.PageSize, &searchParams{
+		Query:              req.Query,
+		Reranker:           rerankerParam(req.Reranker),
+		MmrLambda:          req.MmrLambda,
+		CenterNodeUUID:     req.CenterNodeUUID,
+		BfsOriginNodeUUIDs: req.BfsOriginNodeUUIDs,
+	}); err != nil {
 		return nil, err
 	}
 	return f.nodes, nil
 }
 
-func (f *fakeZepAPI) SearchEpisodes(_ context.Context, graphUUID string, req *zep.GraphSearchEpisodesRequest) ([]*zep.Episode, error) {
-	if err := f.recordSearch(SearchScopeEpisodes, graphUUID, req.Limit, req.Body); err != nil {
+func (f *fakeZepAPI) SearchEpisodes(_ context.Context, graphUUID string, req *zep.SearchEpisodesRequest, limit *int) ([]*zep.Episode, error) {
+	if err := f.recordSearch(SearchScopeEpisodes, graphUUID, limit, req.PageSize, &searchParams{
+		Query:              req.Query,
+		Reranker:           rerankerParam(req.Reranker),
+		MmrLambda:          req.MmrLambda,
+		CenterNodeUUID:     req.CenterNodeUUID,
+		BfsOriginNodeUUIDs: req.BfsOriginNodeUUIDs,
+	}); err != nil {
 		return nil, err
 	}
 	return f.episodes, nil
 }
 
-func (f *fakeZepAPI) SearchObservations(_ context.Context, graphUUID string, req *zep.GraphSearchObservationsRequest) ([]*zep.Observation, error) {
-	if err := f.recordSearch(SearchScopeObservations, graphUUID, req.Limit, req.Body); err != nil {
+func (f *fakeZepAPI) SearchObservations(_ context.Context, graphUUID string, req *zep.SearchObservationsRequest, limit *int) ([]*zep.Observation, error) {
+	if err := f.recordSearch(SearchScopeObservations, graphUUID, limit, req.PageSize, &searchParams{
+		Query:              req.Query,
+		Reranker:           rerankerParam(req.Reranker),
+		MmrLambda:          req.MmrLambda,
+		CenterNodeUUID:     req.CenterNodeUUID,
+		BfsOriginNodeUUIDs: req.BfsOriginNodeUUIDs,
+	}); err != nil {
 		return nil, err
 	}
 	return f.observations, nil
 }
 
-func (f *fakeZepAPI) SearchThreadSummaries(_ context.Context, graphUUID string, req *zep.GraphSearchThreadSummariesRequest) ([]*zep.ThreadSummary, error) {
-	if err := f.recordSearch(SearchScopeThreadSummaries, graphUUID, req.Limit, req.Body); err != nil {
+func (f *fakeZepAPI) SearchThreadSummaries(_ context.Context, graphUUID string, req *zep.SearchThreadSummariesRequest, limit *int) ([]*zep.ThreadSummary, error) {
+	if err := f.recordSearch(SearchScopeThreadSummaries, graphUUID, limit, req.PageSize, &searchParams{
+		Query:              req.Query,
+		Reranker:           rerankerParam(req.Reranker),
+		MmrLambda:          req.MmrLambda,
+		CenterNodeUUID:     req.CenterNodeUUID,
+		BfsOriginNodeUUIDs: req.BfsOriginNodeUUIDs,
+	}); err != nil {
 		return nil, err
 	}
 	return f.threadSummaries, nil
 }
 
 func (f *fakeZepAPI) GetGraphContext(_ context.Context, graphUUID string, req *zep.GraphContextRequest) (*zep.GraphContextResponse, error) {
-	if err := f.recordSearch(SearchScopeAuto, graphUUID, nil, &zep.SearchRequest{Query: req.Query, Filters: req.Filters}); err != nil {
+	if err := f.recordSearch(SearchScopeAuto, graphUUID, nil, nil, &searchParams{Query: req.Query, Filters: req.Filters}); err != nil {
 		return nil, err
 	}
 	return &zep.GraphContextResponse{Context: zep.String(f.graphContext)}, nil

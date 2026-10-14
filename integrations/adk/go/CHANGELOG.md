@@ -5,7 +5,7 @@
 ### Changed
 
 - **Breaking:** the package now targets the Zep v4 SDK
-  (`github.com/getzep/zep-go/v4` v4.0.0-alpha.5). The module path of this
+  (`github.com/getzep/zep-go/v4` v4.0.0). The module path of this
   integration does not change.
 - **Breaking:** Zep v4 addresses every user, thread, and graph by a
   server-generated UUID, so the package takes UUIDs instead of names. The
@@ -33,7 +33,15 @@
   (`SearchScopeEdges`, `SearchScopeNodes`, `SearchScopeEpisodes`,
   `SearchScopeObservations`, `SearchScopeThreadSummaries`, and
   `SearchScopeAuto`), because Zep v4 has one search method for each scope and
-  exports no scope enum. The reranker is now `zep.V4SearchRequestReranker`.
+  exports no scope enum. For the same reason, the reranker is now the package
+  type `zepadk.SearchReranker` (`SearchRerankerRRF`, `SearchRerankerMMR`,
+  `SearchRerankerNodeDistance`, `SearchRerankerEpisodeMentions`, and
+  `SearchRerankerCrossEncoder`), and `WithToolReranker` takes this type.
+- Each Zep v4 search scope accepts only some filter keys. When the filters of
+  `WithToolSearchFilters` have a key that the selected scope cannot apply, the
+  search tool logs an error and returns no facts.
+- A search sends the configured limit as the Zep v4 `page_size`, up to the
+  Zep maximum of 50.
 - The memory service and the search tool read every page of a Zep v4 search
   result, up to the configured limit. Zep v4 returns a cursor-based page.
 

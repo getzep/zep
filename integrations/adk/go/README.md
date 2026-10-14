@@ -29,7 +29,7 @@ import zepadk "github.com/getzep/zep/integrations/adk/go"
 ```
 
 Requirements: Go 1.25+ (`google.golang.org/adk` v1.4.0 requires Go 1.25),
-`google.golang.org/adk` v1.4.0, `github.com/getzep/zep-go/v4` v4.0.0-alpha.5.
+`google.golang.org/adk` v1.4.0, `github.com/getzep/zep-go/v4` v4.0.0.
 
 ## Identifiers in Zep v4
 
@@ -154,9 +154,9 @@ does not prevent a successful builder result from being injected.
 
 ```go
 builder := func(ctx context.Context, in zepadk.ContextInput) (string, error) {
-    page, err := in.Client.Graph.SearchEdges(ctx, graphUUID, &zep.GraphSearchEdgesRequest{
-        Limit: zep.Int(10),
-        Body:  &zep.SearchRequest{Query: in.UserMessage},
+    page, err := in.Client.Graph.SearchEdges(ctx, graphUUID, &zep.SearchEdgesRequest{
+        PageSize: zep.Int(10),
+        Query:    in.UserMessage,
     })
     if err != nil {
         return "", err

@@ -165,9 +165,6 @@ func TestCreateThreadReturnsUUID(t *testing.T) {
 	if req == nil {
 		t.Fatal("CreateThread was not called with a request")
 	}
-	if req.ThreadID != nil {
-		t.Fatalf("ThreadID = %v, want nil; Zep v4 accepts no thread ID on create", *req.ThreadID)
-	}
 	if req.UserUUID != "user-uuid-1" {
 		t.Fatalf("UserUUID = %q, want user-uuid-1", req.UserUUID)
 	}

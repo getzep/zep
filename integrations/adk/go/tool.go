@@ -41,7 +41,7 @@ const (
 // hidden. They mirror the Python and TypeScript zep-adk defaults exactly.
 const (
 	defaultSearchScope    = SearchScopeEdges
-	defaultSearchReranker = zep.V4SearchRequestRerankerRrf
+	defaultSearchReranker = SearchRerankerRRF
 	defaultSearchLimit    = 10
 )
 
@@ -58,11 +58,11 @@ var (
 		string(SearchScopeAuto),
 	}
 	searchRerankerEnum = []any{
-		string(zep.V4SearchRequestRerankerRrf),
-		string(zep.V4SearchRequestRerankerMmr),
-		string(zep.V4SearchRequestRerankerNodeDistance),
-		string(zep.V4SearchRequestRerankerEpisodeMentions),
-		string(zep.V4SearchRequestRerankerCrossEncoder),
+		string(SearchRerankerRRF),
+		string(SearchRerankerMMR),
+		string(SearchRerankerNodeDistance),
+		string(SearchRerankerEpisodeMentions),
+		string(SearchRerankerCrossEncoder),
 	}
 )
 
@@ -123,7 +123,7 @@ type graphSearchToolOptions struct {
 	scopeState      pinState
 	scope           SearchScope
 	rerankerState   pinState
-	reranker        zep.V4SearchRequestReranker
+	reranker        SearchReranker
 	limitState      pinState
 	limit           int
 	mmrLambdaState  pinState
@@ -227,7 +227,7 @@ func WithToolSearchLimit(limit int) GraphSearchToolOption {
 
 // WithToolReranker pins and hides the result reranking algorithm, removing it
 // from the model's tool schema and always using the given value.
-func WithToolReranker(reranker zep.V4SearchRequestReranker) GraphSearchToolOption {
+func WithToolReranker(reranker SearchReranker) GraphSearchToolOption {
 	return func(o *graphSearchToolOptions) {
 		o.rerankerState = statePinned
 		o.reranker = reranker
@@ -419,23 +419,23 @@ func resolveScope(cfg *graphSearchToolOptions, modelValue *string) SearchScope {
 // resolveReranker merges the pinned/model/default reranker value. As with
 // [resolveScope], the invalid-value branch is defense-in-depth only — ADK's
 // schema validation rejects invalid enum values before the handler runs.
-func resolveReranker(cfg *graphSearchToolOptions, modelValue *string) *zep.V4SearchRequestReranker {
+func resolveReranker(cfg *graphSearchToolOptions, modelValue *string) *SearchReranker {
 	switch cfg.rerankerState {
 	case statePinned:
-		return cfg.reranker.Ptr()
+		return ptr(cfg.reranker)
 	case stateHidden:
 		return nil
 	default:
 		if modelValue != nil {
-			reranker, err := zep.NewV4SearchRequestRerankerFromString(*modelValue)
+			reranker, err := newSearchRerankerFromString(*modelValue)
 			if err != nil {
 				cfg.logger.Warn("zepadk: invalid reranker value from model; falling back to default",
 					slog.String("value", *modelValue), slog.String("default", string(defaultSearchReranker)))
-				return defaultSearchReranker.Ptr()
+				return ptr(defaultSearchReranker)
 			}
-			return reranker.Ptr()
+			return ptr(reranker)
 		}
-		return defaultSearchReranker.Ptr()
+		return ptr(defaultSearchReranker)
 	}
 }
 
@@ -525,7 +525,7 @@ func newGraphSearchHandlerFromConfig(api zepAPI, cfg *graphSearchToolOptions) fu
 			return out, nil
 		}
 
-		body := &zep.SearchRequest{
+		body := &searchParams{
 			Query:          args.Query,
 			Reranker:       resolveReranker(cfg, args.Reranker),
 			MmrLambda:      resolveMMRLambda(cfg, args.MMRLambda),

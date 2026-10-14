@@ -147,7 +147,7 @@ func (s *memoryService) SearchMemory(ctx context.Context, req *memory.SearchRequ
 		return out, nil
 	}
 
-	texts, err := searchGraph(ctx, s.api, s.scope, graphUUID, s.limit, &zep.SearchRequest{Query: req.Query})
+	texts, err := searchGraph(ctx, s.api, s.scope, graphUUID, s.limit, &searchParams{Query: req.Query})
 	if err != nil {
 		s.logger.Error("zepadk: memory search failed; returning no memories",
 			slog.String("user_id", req.UserID), slog.Any("error", err))

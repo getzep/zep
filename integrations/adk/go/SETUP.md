@@ -42,7 +42,7 @@ go mod download
 ```
 
 Requirements: Go 1.25+ (`google.golang.org/adk` v1.4.0 requires Go 1.25),
-`google.golang.org/adk` v1.4.0, `github.com/getzep/zep-go/v4` v4.0.0-alpha.5.
+`google.golang.org/adk` v1.4.0, `github.com/getzep/zep-go/v4` v4.0.0.
 
 ## 4. Configure environment variables
 

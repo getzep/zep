@@ -32,11 +32,11 @@ const messageTruncateChars = 4000
 // seam carries one method for each supported scope.
 type zepAPI interface {
 	AddMessages(ctx context.Context, threadUUID string, req *zep.AddMessagesRequest) (*zep.AddMessagesResult, error)
-	SearchEdges(ctx context.Context, graphUUID string, req *zep.GraphSearchEdgesRequest) ([]*zep.Edge, error)
-	SearchNodes(ctx context.Context, graphUUID string, req *zep.GraphSearchNodesRequest) ([]*zep.Node, error)
-	SearchEpisodes(ctx context.Context, graphUUID string, req *zep.GraphSearchEpisodesRequest) ([]*zep.Episode, error)
-	SearchObservations(ctx context.Context, graphUUID string, req *zep.GraphSearchObservationsRequest) ([]*zep.Observation, error)
-	SearchThreadSummaries(ctx context.Context, graphUUID string, req *zep.GraphSearchThreadSummariesRequest) ([]*zep.ThreadSummary, error)
+	SearchEdges(ctx context.Context, graphUUID string, req *zep.SearchEdgesRequest, limit *int) ([]*zep.Edge, error)
+	SearchNodes(ctx context.Context, graphUUID string, req *zep.SearchNodesRequest, limit *int) ([]*zep.Node, error)
+	SearchEpisodes(ctx context.Context, graphUUID string, req *zep.SearchEpisodesRequest, limit *int) ([]*zep.Episode, error)
+	SearchObservations(ctx context.Context, graphUUID string, req *zep.SearchObservationsRequest, limit *int) ([]*zep.Observation, error)
+	SearchThreadSummaries(ctx context.Context, graphUUID string, req *zep.SearchThreadSummariesRequest, limit *int) ([]*zep.ThreadSummary, error)
 	GetGraphContext(ctx context.Context, graphUUID string, req *zep.GraphContextRequest) (*zep.GraphContextResponse, error)
 	CreateUser(ctx context.Context, req *zep.CreateUserRequest) (*zep.User, error)
 	CreateThread(ctx context.Context, req *zep.CreateThreadRequest) (*zep.Thread, error)
@@ -63,44 +63,44 @@ func (a *clientAdapter) AddMessages(ctx context.Context, threadUUID string, req 
 	return a.client.Thread.AddMessages(ctx, threadUUID, req)
 }
 
-func (a *clientAdapter) SearchEdges(ctx context.Context, graphUUID string, req *zep.GraphSearchEdgesRequest) ([]*zep.Edge, error) {
+func (a *clientAdapter) SearchEdges(ctx context.Context, graphUUID string, req *zep.SearchEdgesRequest, limit *int) ([]*zep.Edge, error) {
 	page, err := a.client.Graph.SearchEdges(ctx, graphUUID, req)
 	if err != nil {
 		return nil, err
 	}
-	return collectPage(ctx, page, req.Limit)
+	return collectPage(ctx, page, limit)
 }
 
-func (a *clientAdapter) SearchNodes(ctx context.Context, graphUUID string, req *zep.GraphSearchNodesRequest) ([]*zep.Node, error) {
+func (a *clientAdapter) SearchNodes(ctx context.Context, graphUUID string, req *zep.SearchNodesRequest, limit *int) ([]*zep.Node, error) {
 	page, err := a.client.Graph.SearchNodes(ctx, graphUUID, req)
 	if err != nil {
 		return nil, err
 	}
-	return collectPage(ctx, page, req.Limit)
+	return collectPage(ctx, page, limit)
 }
 
-func (a *clientAdapter) SearchEpisodes(ctx context.Context, graphUUID string, req *zep.GraphSearchEpisodesRequest) ([]*zep.Episode, error) {
+func (a *clientAdapter) SearchEpisodes(ctx context.Context, graphUUID string, req *zep.SearchEpisodesRequest, limit *int) ([]*zep.Episode, error) {
 	page, err := a.client.Graph.SearchEpisodes(ctx, graphUUID, req)
 	if err != nil {
 		return nil, err
 	}
-	return collectPage(ctx, page, req.Limit)
+	return collectPage(ctx, page, limit)
 }
 
-func (a *clientAdapter) SearchObservations(ctx context.Context, graphUUID string, req *zep.GraphSearchObservationsRequest) ([]*zep.Observation, error) {
+func (a *clientAdapter) SearchObservations(ctx context.Context, graphUUID string, req *zep.SearchObservationsRequest, limit *int) ([]*zep.Observation, error) {
 	page, err := a.client.Graph.SearchObservations(ctx, graphUUID, req)
 	if err != nil {
 		return nil, err
 	}
-	return collectPage(ctx, page, req.Limit)
+	return collectPage(ctx, page, limit)
 }
 
-func (a *clientAdapter) SearchThreadSummaries(ctx context.Context, graphUUID string, req *zep.GraphSearchThreadSummariesRequest) ([]*zep.ThreadSummary, error) {
+func (a *clientAdapter) SearchThreadSummaries(ctx context.Context, graphUUID string, req *zep.SearchThreadSummariesRequest, limit *int) ([]*zep.ThreadSummary, error) {
 	page, err := a.client.Graph.SearchThreadSummaries(ctx, graphUUID, req)
 	if err != nil {
 		return nil, err
 	}
-	return collectPage(ctx, page, req.Limit)
+	return collectPage(ctx, page, limit)
 }
 
 // collectPage reads results from a Zep v4 cursor page, and it follows the
@@ -184,4 +184,9 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// ptr returns a pointer to v.
+func ptr[T any](v T) *T {
+	return &v
 }

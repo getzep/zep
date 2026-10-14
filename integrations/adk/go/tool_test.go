@@ -234,7 +234,7 @@ func TestGraphSearchToolSchemaPinnedParamsAreAbsent(t *testing.T) {
 	schema := declarationSchema(t, buildSearchTool(t,
 		WithToolSearchScope(SearchScopeNodes),
 		WithToolSearchLimit(5),
-		WithToolReranker(zep.V4SearchRequestRerankerMmr),
+		WithToolReranker(SearchRerankerMMR),
 		WithToolMMRLambda(0.5),
 		WithToolCenterNodeUUID("node-1"),
 	))
@@ -349,11 +349,14 @@ func TestGraphSearchHandlerMergePrecedence(t *testing.T) {
 		if f.api.lastSearchScope != SearchScopeEdges {
 			t.Fatalf("scope = %v, want default edges", f.api.lastSearchScope)
 		}
-		if f.api.lastSearchBody.Reranker == nil || *f.api.lastSearchBody.Reranker != zep.V4SearchRequestRerankerRrf {
+		if f.api.lastSearchBody.Reranker == nil || *f.api.lastSearchBody.Reranker != SearchRerankerRRF {
 			t.Fatalf("reranker = %v, want default rrf", f.api.lastSearchBody.Reranker)
 		}
 		if f.api.lastSearchLimit == nil || *f.api.lastSearchLimit != 10 {
 			t.Fatalf("limit = %v, want default 10", f.api.lastSearchLimit)
+		}
+		if f.api.lastPageSize == nil || *f.api.lastPageSize != 10 {
+			t.Fatalf("page_size = %v, want 10", f.api.lastPageSize)
 		}
 	})
 
@@ -385,7 +388,7 @@ func TestGraphSearchHandlerMergePrecedence(t *testing.T) {
 		if _, err := f.run(context.Background(), SearchArgs{Query: "q", Reranker: &bad}); err != nil {
 			t.Fatalf("run err = %v", err)
 		}
-		if f.api.lastSearchBody.Reranker == nil || *f.api.lastSearchBody.Reranker != zep.V4SearchRequestRerankerRrf {
+		if f.api.lastSearchBody.Reranker == nil || *f.api.lastSearchBody.Reranker != SearchRerankerRRF {
 			t.Fatalf("reranker = %v, want fallback default rrf", f.api.lastSearchBody.Reranker)
 		}
 	})
@@ -451,7 +454,7 @@ func TestGraphSearchHandlerMergePrecedence(t *testing.T) {
 // --- Filters / BFS pass-through ---------------------------------------------
 
 func TestGraphSearchHandlerFiltersAndBFSAlwaysApplied(t *testing.T) {
-	filters := &zep.SearchFilters{NodeLabels: []string{"Person"}}
+	filters := &zep.SearchFilters{EdgeTypes: []string{"LIKES"}}
 	bfs := []string{"origin-1", "origin-2"}
 	f := newSearchToolFixture(t,
 		WithToolSearchFilters(filters),
@@ -460,11 +463,39 @@ func TestGraphSearchHandlerFiltersAndBFSAlwaysApplied(t *testing.T) {
 	if _, err := f.run(context.Background(), SearchArgs{Query: "q"}); err != nil {
 		t.Fatalf("run err = %v", err)
 	}
-	if f.api.lastSearchBody.Filters != filters {
-		t.Fatalf("Filters = %v, want the pinned filters", f.api.lastSearchBody.Filters)
+	if f.api.lastEdgeFilters == nil || len(f.api.lastEdgeFilters.EdgeTypes) != 1 || f.api.lastEdgeFilters.EdgeTypes[0] != "LIKES" {
+		t.Fatalf("edge filters = %v, want the pinned filters", f.api.lastEdgeFilters)
 	}
 	if len(f.api.lastSearchBody.BfsOriginNodeUUIDs) != 2 {
 		t.Fatalf("BfsOriginNodeUUIDs = %v, want %v", f.api.lastSearchBody.BfsOriginNodeUUIDs, bfs)
+	}
+}
+
+// TestGraphSearchHandlerFilterKeyUnsupportedByScope asserts that the tool
+// returns no facts and makes no Zep call when the filters have a key that the
+// selected search scope cannot apply.
+func TestGraphSearchHandlerFilterKeyUnsupportedByScope(t *testing.T) {
+	f := newSearchToolFixture(t,
+		WithToolSearchFilters(&zep.SearchFilters{NodeLabels: []string{"Person"}}),
+		WithToolLogger(discardLogger()),
+	)
+	res, err := f.run(context.Background(), SearchArgs{Query: "q"})
+	if err != nil {
+		t.Fatalf("run err = %v", err)
+	}
+	if len(res.Facts) != 0 || f.api.searchCalls != 0 {
+		t.Fatalf("Facts = %v, searchCalls = %d, want no facts and no call", res.Facts, f.api.searchCalls)
+	}
+}
+
+// TestSearchPageSizeCapsAtZepMaximum asserts that a limit above the Zep v4
+// maximum page_size sends the maximum page_size.
+func TestSearchPageSizeCapsAtZepMaximum(t *testing.T) {
+	if got := searchPageSize(zep.Int(200)); got == nil || *got != maxSearchPageSize {
+		t.Fatalf("searchPageSize(200) = %v, want %d", got, maxSearchPageSize)
+	}
+	if got := searchPageSize(nil); got != nil {
+		t.Fatalf("searchPageSize(nil) = %v, want nil", *got)
 	}
 }
 
