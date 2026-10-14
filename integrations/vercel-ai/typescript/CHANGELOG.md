@@ -4,23 +4,28 @@
 
 ### Breaking
 
+Follow the [V3-to-V4 migration guide](https://help.getzep.com/migrating-from-v3)
+for the general procedure — the nullable UUID columns, the one-time `lookup`
+backfill, and the order of steps.
+
+The API changes that are specific to this package:
+
 - **The package requires the Zep v4 SDK (`@getzep/zep-cloud` `>=4.0.0`
   and `<5`).** The v3 SDK is no longer supported, and the package does
   not contain a compatibility layer.
-- **The public API takes UUIDs.** Zep v4 addresses every user,
-  thread, and graph by a server-generated UUID, and a create call takes no
-  client-chosen identifier. `ZepBinding` now has `graphUuid` and `threadUuid`.
-  `createZepMiddleware`, `createZepOnFinish`, `createZepContextTool`,
-  `getZepContext`, and `persistZepTurn` take `threadUuid`, `userUuid`, and
-  `templateUuid`. The package does not call a lookup method at run time. An
-  application stores the returned UUIDs in its own database.
 - **`ensureZepUserAndThread` is replaced by
-  `createZepUserAndThread`.** The new function creates the user and the thread
-  with no client-chosen identifier, and returns `{ userUuid, graphUuid,
-  threadUuid }` from the Zep responses, or `null` when Zep does not create
-  both resources. `EnsureIdentityOptions` is replaced by
+  `createZepUserAndThread`.** `EnsureIdentityOptions` is replaced by
   `CreateIdentityOptions`, and the new `ZepIdentity` type is exported. The
+  function returns `{ userUuid, graphUuid, threadUuid }` from the Zep
+  responses, or `null` when Zep does not create both resources. The
   `onUserCreated` hook now receives the new user UUID.
+- **Parameters are renamed to UUIDs.** `createZepMiddleware`,
+  `createZepOnFinish`, `createZepContextTool`, `getZepContext`, and
+  `persistZepTurn` take `threadUuid`; `createZepMiddleware` and
+  `createZepOnFinish` also take the optional `userUuid`, and `templateId` is
+  renamed to `templateUuid`. `createZepTools` and the tool factories take the
+  stored graph UUID in `binding.graphUuid`, and `createZepTools` and
+  `createZepRememberTool` take the stored thread UUID in `binding.threadUuid`.
 - **`toRoleType` can return `undefined`.** Zep v4 removed the
   `norole` member of `RoleType`. An unrecognized or absent role maps to
   `undefined`, and the package omits the role from the message.
@@ -28,6 +33,10 @@
   returns the bound graph UUID.
 - **The `searchFilters` option of `createZepSearchTool` is renamed to
   `filters`**, which matches the field of the v4 search requests.
+
+For an existing V3 user, thread, or graph, do not call
+`createZepUserAndThread`, `thread.create`, or `graph.create`. Get its UUID one
+time with the backfill in the migration guide, and store it.
 
 ### Changed
 
