@@ -20,8 +20,9 @@ describe("createZepSearchTool", () => {
       found: true,
     });
     expect(zep.graph.searchEdges).toHaveBeenCalledWith("g1", {
-      limit: 10,
-      body: { query: "where does Jane live", reranker: "rrf" },
+      pageSize: 10,
+      query: "where does Jane live",
+      reranker: "rrf",
     });
   });
 
@@ -210,7 +211,7 @@ describe("createZepSearchTool", () => {
       expect(zep.graph.searchEdges).not.toHaveBeenCalled();
       expect(zep.graph.searchNodes).toHaveBeenCalledWith(
         "g1",
-        expect.objectContaining({ limit: 3 }),
+        expect.objectContaining({ pageSize: 3 }),
       );
     });
 
@@ -227,11 +228,9 @@ describe("createZepSearchTool", () => {
       expect(shape.centerNodeUuid).toBeUndefined();
 
       await run(tool, { query: "q" });
-      const sentBody = (
-        zep.graph.searchEdges.mock.calls[0]![1] as { body: Record<string, unknown> }
-      ).body;
-      expect(sentBody).not.toHaveProperty("mmrLambda");
-      expect(sentBody).not.toHaveProperty("centerNodeUuid");
+      const sent = zep.graph.searchEdges.mock.calls[0]![1] as Record<string, unknown>;
+      expect(sent).not.toHaveProperty("mmrLambda");
+      expect(sent).not.toHaveProperty("centerNodeUuid");
     });
 
     it("omits unset optional params from the Zep call (query-only call)", async () => {
@@ -243,7 +242,7 @@ describe("createZepSearchTool", () => {
       });
 
       await run(tool, { query: "q" });
-      expect(zep.graph.searchEdges).toHaveBeenCalledWith("g1", { body: { query: "q" } });
+      expect(zep.graph.searchEdges).toHaveBeenCalledWith("g1", { query: "q" });
     });
 
     it("legacy scope/limit/reranker constructor args pin (and hide) their parameter", async () => {
@@ -265,8 +264,9 @@ describe("createZepSearchTool", () => {
       const result = await run(tool, { query: "q" } as never);
       expect(result.facts).toEqual(["raw text"]);
       expect(zep.graph.searchEpisodes).toHaveBeenCalledWith("g1", {
-        limit: 5,
-        body: { query: "q", reranker: "mmr" },
+        pageSize: 5,
+        query: "q",
+        reranker: "mmr",
       });
     });
 
@@ -288,10 +288,8 @@ describe("createZepSearchTool", () => {
       expect(zep.graph.searchEdges).toHaveBeenCalledWith(
         "g1",
         expect.objectContaining({
-          body: expect.objectContaining({
-            filters,
-            bfsOriginNodeUuids: ["uuid-1", "uuid-2"],
-          }),
+          filters,
+          bfsOriginNodeUuids: ["uuid-1", "uuid-2"],
         }),
       );
     });
@@ -337,7 +335,7 @@ describe("createZepSearchTool", () => {
 
       expect(zep.graph.searchEdges).toHaveBeenCalledWith(
         "g1",
-        expect.objectContaining({ limit: 50 }),
+        expect.objectContaining({ pageSize: 50 }),
       );
     });
 
@@ -356,7 +354,7 @@ describe("createZepSearchTool", () => {
 
       expect(zep.graph.searchEdges).toHaveBeenCalledWith(
         "g1",
-        expect.objectContaining({ limit: 50 }),
+        expect.objectContaining({ pageSize: 50 }),
       );
     });
 
@@ -375,13 +373,11 @@ describe("createZepSearchTool", () => {
       });
 
       expect(zep.graph.searchNodes).toHaveBeenCalledWith("g1", {
-        limit: 7,
-        body: {
-          query: "q",
-          reranker: "mmr",
-          mmrLambda: 0.5,
-          centerNodeUuid: "uuid-9",
-        },
+        pageSize: 7,
+        query: "q",
+        reranker: "mmr",
+        mmrLambda: 0.5,
+        centerNodeUuid: "uuid-9",
       });
     });
   });

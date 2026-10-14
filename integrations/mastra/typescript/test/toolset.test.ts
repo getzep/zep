@@ -28,8 +28,9 @@ describe("createZepToolset", () => {
     // scope/limit are pinned by createZepToolset; reranker is left exposed
     // (pin-or-expose default) and so is sent with Zep's documented default.
     expect(zep.graph.searchEpisodes).toHaveBeenCalledWith("g1", {
-      limit: 3,
-      body: { query: "q", reranker: "rrf" },
+      pageSize: 3,
+      query: "q",
+      reranker: "rrf",
     });
   });
 

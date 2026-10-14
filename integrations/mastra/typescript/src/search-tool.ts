@@ -36,9 +36,18 @@ const RERANKER_VALUES = [
   "node_distance",
   "episode_mentions",
   "cross_encoder",
-] as const satisfies readonly Zep.V4SearchRequestReranker[];
+] as const satisfies readonly Zep.SearchEdgesRequestReranker[];
 
-type Reranker = Zep.V4SearchRequestReranker;
+type Reranker = Zep.SearchEdgesRequestReranker;
+
+/**
+ * The request fields that every scope-specific search method shares. Each
+ * method has its own filter type; `filters` is the union of their keys, and
+ * Zep rejects a key that the selected scope cannot apply.
+ */
+type SearchParams = Omit<Zep.SearchEdgesRequest, "filters" | "cursor"> & {
+  filters?: Zep.SearchFilters;
+};
 
 const DEFAULT_SCOPE: ZepSearchScope = "edges";
 const DEFAULT_RERANKER: Reranker = "rrf";
@@ -104,8 +113,10 @@ export interface ZepSearchToolOptions {
   hiddenParams?: Set<PinnableParamName>;
   /**
    * Optional Zep search filters (entity/edge types, properties, dates), sent
-   * as the `filters` field of the v4 search body. Always constructor-only —
-   * never exposed to the model — and applied whenever set.
+   * as the `filters` field of the v4 search request. Zep rejects a filter key
+   * that the selected scope cannot apply with HTTP 400 `unsupported_filter`.
+   * Always constructor-only — never exposed to the model — and applied
+   * whenever set.
    */
   filters?: Zep.SearchFilters;
   /**
@@ -167,36 +178,37 @@ async function runSearch(
   client: ZepClient,
   graphUuid: string,
   scope: ZepSearchScope,
-  body: Zep.SearchRequest,
-  limit: number | undefined,
+  params: SearchParams,
 ): Promise<string[]> {
-  const page = limit !== undefined ? { limit } : {};
   switch (scope) {
     case "auto": {
-      const request: Zep.GraphContextRequest = { query: body.query };
-      if (body.filters !== undefined) request.filters = body.filters;
+      const request: Zep.GraphContextRequest = { query: params.query };
+      if (params.filters !== undefined) request.filters = params.filters;
       const result = await client.graph.getContext(graphUuid, request);
       const ctx = result.context?.trim();
       return ctx ? [ctx] : [];
     }
     case "edges": {
-      const result = await client.graph.searchEdges(graphUuid, { ...page, body });
+      const result = await client.graph.searchEdges(graphUuid, params);
       return result.data.map((e) => e.fact).filter(isNonEmpty);
     }
     case "nodes": {
-      const result = await client.graph.searchNodes(graphUuid, { ...page, body });
+      const result = await client.graph.searchNodes(graphUuid, params);
       return result.data.map(nameAndSummary).filter(isNonEmpty);
     }
     case "episodes": {
-      const result = await client.graph.searchEpisodes(graphUuid, { ...page, body });
+      const result = await client.graph.searchEpisodes(graphUuid, params);
       return result.data.map((e) => e.content).filter(isNonEmpty);
     }
     case "observations": {
-      const result = await client.graph.searchObservations(graphUuid, { ...page, body });
+      const { filters, ...rest } = params;
+      const request: Zep.SearchObservationsRequest =
+        filters !== undefined ? { ...rest, filters: { ...filters } } : rest;
+      const result = await client.graph.searchObservations(graphUuid, request);
       return result.data.map(nameAndSummary).filter(isNonEmpty);
     }
     case "thread_summaries": {
-      const result = await client.graph.searchThreadSummaries(graphUuid, { ...page, body });
+      const result = await client.graph.searchThreadSummaries(graphUuid, params);
       return result.data.map((s) => s.summary?.trim()).filter(isNonEmpty);
     }
     default: {
@@ -424,18 +436,19 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
       }
 
       try {
-        const body: Zep.SearchRequest = { query };
-        if (reranker !== undefined) body.reranker = reranker;
-        if (mmrLambda !== undefined) body.mmrLambda = mmrLambda;
-        if (centerNodeUuid !== undefined) body.centerNodeUuid = centerNodeUuid;
+        const params: SearchParams = { query };
+        if (limit !== undefined) params.pageSize = limit;
+        if (reranker !== undefined) params.reranker = reranker;
+        if (mmrLambda !== undefined) params.mmrLambda = mmrLambda;
+        if (centerNodeUuid !== undefined) params.centerNodeUuid = centerNodeUuid;
         if (options.filters !== undefined) {
-          body.filters = options.filters;
+          params.filters = options.filters;
         }
         if (options.bfsOriginNodeUuids !== undefined) {
-          body.bfsOriginNodeUuids = options.bfsOriginNodeUuids;
+          params.bfsOriginNodeUuids = options.bfsOriginNodeUuids;
         }
 
-        const facts = await runSearch(client, graphUuid, scope ?? DEFAULT_SCOPE, body, limit);
+        const facts = await runSearch(client, graphUuid, scope ?? DEFAULT_SCOPE, params);
         return { facts, found: facts.length > 0 };
       } catch (error) {
         logger.warn(`[zep-search] Zep graph search failed: ${errorMessage(error)}`);

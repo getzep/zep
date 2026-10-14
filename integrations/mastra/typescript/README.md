@@ -91,7 +91,7 @@ const { inputProcessor, outputProcessor } = createZepProcessors({
   // Replace thread.getContext with your own retrieval:
   contextBuilder: async ({ client, graphUuid, userMessage }) => {
     if (!graphUuid) return undefined;
-    const result = await client.graph.searchEdges(graphUuid, { body: { query: userMessage } });
+    const result = await client.graph.searchEdges(graphUuid, { query: userMessage });
     return result.data.map((e) => e.fact).join("\n");
   },
   // Or just customize the wrapping template (must contain a literal `{context}`):
@@ -267,7 +267,7 @@ npm run build       # tsup → dist (ESM + CJS + d.ts)
 ## Requirements
 
 - Node.js >= 20
-- `@getzep/zep-cloud` 4.0.0-alpha.5 (Zep v4)
+- `@getzep/zep-cloud` `^4.0.0` (Zep v4)
 - `@mastra/core` >= 1.42.0 (peer)
 
 ## Links
