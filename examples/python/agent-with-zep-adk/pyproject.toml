@@ -5,7 +5,7 @@ description = "Reference agent that uses a Zep context graph as its context laye
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "zep-cloud>=4.0.0rc2,<5",
+    "zep-cloud>=4.0.0,<5",
     "google-adk>=2.11,<3",
     "litellm>=1.104",
     "fastapi>=0.115",

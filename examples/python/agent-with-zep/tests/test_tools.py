@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from zep_cloud.types import EpisodeSearchFilters
+
 from agent_with_zep.config import MAX_TOOL_CALLS
 from agent_with_zep.handles import HandleRegistry
 from agent_with_zep.tools import build_toolset
@@ -102,13 +104,21 @@ async def test_search_context_filters(deps, fake_zep):
 
 
 async def test_episode_search_omits_reranker(deps, fake_zep):
-    out = await _tool("search_context")(_ctx(deps), query="complaint report", scope="episodes")
+    out = await _tool("search_context")(
+        _ctx(deps), query="complaint report", scope="episodes", report_type="complaint_summary"
+    )
     name, kwargs = fake_zep.graph.calls[-1]
     assert name == "search_episodes"
     assert "reranker" not in kwargs
     assert "bfs_origin_node_uuids" not in kwargs
     assert kwargs["graph_uuid"] == "test-graph"
     assert kwargs["page_size"] == 10
+    assert isinstance(kwargs["filters"], EpisodeSearchFilters)
+    group = kwargs["filters"].metadata_filters
+    assert group.type == "and"
+    assert [(f.property_name, f.value, f.operator) for f in group.filters] == [
+        ("report_type", "complaint_summary", "eq")
+    ]
     assert out.startswith("ranked sample")
 
 

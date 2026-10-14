@@ -20,6 +20,7 @@ from zep_cloud import AsyncZep
 from zep_cloud.core.api_error import ApiError
 from zep_cloud.types import (
     EdgeSearchFilters,
+    EpisodeSearchFilters,
     MetadataFilter,
     MetadataFilterGroup,
     NodeListFilters,
@@ -208,7 +209,7 @@ def build_tools(deps: AgentDeps) -> list[Callable]:
                 node_labels=list(node_labels) if node_labels else None,
                 metadata_filters=metadata_filters,
             ),
-            "episodes": SearchFilters(metadata_filters=metadata_filters),
+            "episodes": EpisodeSearchFilters(metadata_filters=metadata_filters),
         }[scope]
         search = {
             "edges": deps.zep.graph.search_edges,

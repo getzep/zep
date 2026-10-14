@@ -55,7 +55,7 @@ with short handles (`n1`, `e1`, `p1`) in place of UUIDs.
 ## Requirements
 
 - Python 3.10 or later, and [uv](https://docs.astral.sh/uv/).
-- `zep-cloud>=4.0.0rc2,<5`.
+- `zep-cloud>=4.0.0,<5`.
 - Node.js 20.19 or later, for the frontend.
 - A Zep API key, and an API key for your model provider.
 

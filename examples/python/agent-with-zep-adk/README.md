@@ -32,7 +32,7 @@ selects queries, filters, and handles. Each result uses a short handle, such as
 ## Requirements
 
 - The example uses Python 3.10 or later and [uv](https://docs.astral.sh/uv/).
-- The example uses `zep-cloud>=4.0.0rc2,<5`.
+- The example uses `zep-cloud>=4.0.0,<5`.
 - The frontend uses Node.js 20.19 or later.
 - The example uses a Zep API key and one model-provider API key.
 
