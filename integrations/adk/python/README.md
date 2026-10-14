@@ -212,46 +212,22 @@ await session_service.create_session(
 
 4. That's it. No factory function, no per-session agent instances.
 
-## Migrating to the Zep v4 SDK
+## Migrating from Zep V3
 
-This version targets `zep-cloud` 4.x only. There is no v3 compatibility layer.
+Follow the [V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general procedure: the nullable UUID columns, the one-time `lookup` backfill, and the order of the steps.
 
-- **Identifiers are UUIDs.** Replace the `zep_user_id` and `zep_thread_id` session-state keys with `zep_user_uuid` and `zep_thread_uuid`, and add `zep_graph_uuid` when you already hold it. `ContextInput` carries `user_uuid` and `thread_uuid`.
-- **`ensure_user`/`ensure_thread` are replaced by `create_user`/`create_thread`.** The new helpers create a resource and return it, because Zep generates a new UUID on every create call:
+The changes that are specific to this package are:
 
-  ```python
-  from zep_adk import create_user, create_thread
+- The package requires `zep-cloud>=4.0.0,<5`. There is no V3 compatibility layer.
+- `ensure_user` is replaced by `create_user(client, *, first_name=None, last_name=None, email=None)`. The `user_id` parameter is removed. The function returns the `User`; store `user.uuid_` and `user.graph_uuid`.
+- `ensure_thread` is replaced by `create_thread(client, *, user_uuid)`. The `thread_id` and `user_id` parameters are removed. The function returns the `Thread`; store `thread.uuid_`.
+- The `on_created` parameter of `ensure_user` and the `UserSetupHook` type are removed. Run one-time user setup after `create_user` returns.
+- The session-state key `zep_user_id` is now `zep_user_uuid`, and `zep_thread_id` is now `zep_thread_uuid`. The new optional key `zep_graph_uuid` takes the stored `user.graph_uuid`. `ZepContextTool`, `create_after_model_callback`, and `ZepGraphSearchTool` read these keys. They use the ADK `user_id` and `session_id` only when no key is set, so those values must then be the Zep UUIDs.
+- `ContextInput.user_id` is now `ContextInput.user_uuid`, and `ContextInput.thread_id` is now `ContextInput.thread_uuid`. A custom `context_builder` must call the V4 SDK, for example `ctx.zep.graph.search_edges(graph_uuid, query=ctx.user_message)` in place of `ctx.zep.graph.search(user_id=ctx.user_id, ...)`.
+- The `graph_id` parameter of `ZepGraphSearchTool` is now `graph_uuid`.
+- `ZepMemoryService.search_memory` reads the ADK `user_id` as the Zep user UUID. Set the ADK `user_id` to the stored user UUID, or give a fixed graph UUID to the new `graph_uuid` parameter of `ZepMemoryService`.
 
-  user = await create_user(zep, first_name=first_name, last_name=last_name, email=email)
-  thread = await create_thread(zep, user_uuid=user.uuid_)
-  ```
-
-- **The `on_created` hook and the `UserSetupHook` type are removed.** Run one-time user setup after `create_user` returns:
-
-  ```python
-  user = await create_user(zep)
-  await my_setup_hook(zep, user.uuid_)
-  ```
-
-- **A custom `ContextBuilder` uses the v4 search methods and UUIDs:**
-
-  ```python
-  # Before (v3)
-  async def my_builder(ctx: ContextInput) -> str | None:
-      results = await ctx.zep.graph.search(user_id=ctx.user_id, query=ctx.user_message, scope="edges")
-      return "\n".join(e.fact for e in results.edges or [])
-
-
-  # After (v4)
-  async def my_builder(ctx: ContextInput) -> str | None:
-      user = await ctx.zep.user.get(ctx.user_uuid)
-      pager = await ctx.zep.graph.search_edges(user.graph_uuid, query=ctx.user_message)
-      return "\n".join(e.fact for e in pager.items or [] if e.fact)
-  ```
-
-  `ContextInput` also exposes `tool_context` (ADK session state / invocation metadata) and `llm_request` (the outgoing model request), which the old signature had no room for.
-
-  Error isolation is unchanged in spirit but now applies independently to both sides of the concurrent persist/build: if the builder raises, a warning is logged and injection is skipped, but persistence still completes and the turn is marked as persisted. If persistence raises, a warning is logged and the turn is **not** marked as persisted (so it can be retried), but a successful builder result may still be injected.
+For an existing V3 user or thread, do not call `create_user` or `create_thread`. Get its UUID one time with the backfill in the migration guide, and store it.
 
 ## Changes in 0.3.0
 

@@ -4,9 +4,20 @@
 
 ### Breaking
 
-- **Migrated to the Zep v4 SDK (`zep-cloud>=4.0.0,<5`).** The integration targets v4 only. There is no v3 compatibility layer.
-- **The public API takes UUIDs.** Zep v4 addresses every user, thread, and graph by a server-generated UUID. A v4 create call takes no client-chosen identifier, thus `create_user` and `create_thread` accept no `user_id` and no `thread_id`, and a v4 resource has no name. The session-state keys are now `zep_user_uuid`, `zep_thread_uuid`, and `zep_graph_uuid` (previously `zep_user_id` and `zep_thread_id`), and `ContextInput` carries `user_uuid` and `thread_uuid` (previously `user_id` and `thread_id`). The integration never calls `lookup` at run time: the application resolves a v3 identifier one time and stores the UUID.
-- **`ensure_user` / `ensure_thread` are replaced by `create_user` / `create_thread`.** The v3 helpers were idempotent and returned whether the resource was new, which has no meaning when the server generates a new UUID for every create call. The new helpers return the `User` and `Thread` objects, so a caller reads `user.uuid_`, `user.graph_uuid`, and `thread.uuid_`. The `on_created` hook and the `UserSetupHook` type are removed; run one-time user setup after `create_user` returns.
+Follow the [V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general procedure: the nullable UUID columns, the one-time `lookup` backfill, and the order of the steps.
+
+The changes that are specific to this package are:
+
+- The package requires `zep-cloud>=4.0.0,<5`. There is no V3 compatibility layer.
+- `ensure_user` is replaced by `create_user(client, *, first_name=None, last_name=None, email=None)`. The `user_id` parameter is removed. The function returns the `User`; store `user.uuid_` and `user.graph_uuid`.
+- `ensure_thread` is replaced by `create_thread(client, *, user_uuid)`. The `thread_id` and `user_id` parameters are removed. The function returns the `Thread`; store `thread.uuid_`.
+- The `on_created` parameter of `ensure_user` and the `UserSetupHook` type are removed. Run one-time user setup after `create_user` returns.
+- The session-state key `zep_user_id` is now `zep_user_uuid`, and `zep_thread_id` is now `zep_thread_uuid`. The new optional key `zep_graph_uuid` takes the stored `user.graph_uuid`. `ZepContextTool`, `create_after_model_callback`, and `ZepGraphSearchTool` read these keys. They use the ADK `user_id` and `session_id` only when no key is set, so those values must then be the Zep UUIDs.
+- `ContextInput.user_id` is now `ContextInput.user_uuid`, and `ContextInput.thread_id` is now `ContextInput.thread_uuid`. A custom `context_builder` must call the V4 SDK, for example `ctx.zep.graph.search_edges(graph_uuid, query=ctx.user_message)` in place of `ctx.zep.graph.search(user_id=ctx.user_id, ...)`.
+- The `graph_id` parameter of `ZepGraphSearchTool` is now `graph_uuid`.
+- `ZepMemoryService.search_memory` reads the ADK `user_id` as the Zep user UUID. Set the ADK `user_id` to the stored user UUID, or give a fixed graph UUID to the new `graph_uuid` parameter of `ZepMemoryService`.
+
+For an existing V3 user or thread, do not call `create_user` or `create_thread`. Get its UUID one time with the backfill in the migration guide, and store it.
 
 ### Changed
 
