@@ -51,6 +51,10 @@ All notable changes to `zep-ingest` are documented here. The project follows
 - **Page size on list and search calls is `page_size`.** The stable SDK
   renamed the `limit` parameter of each list and search operation to
   `page_size`; `search_when_ready` passes it through.
+- **Batch rejections are reported.** `batch.add_items` can reject single
+  items of a page in `rejected_items`; the package now counts only the
+  accepted items and records each rejection as an `AddError` with its index
+  and reason.
 
 ## 0.3.0
 
