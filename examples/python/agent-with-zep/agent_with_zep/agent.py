@@ -150,12 +150,13 @@ async def prepare_run(
     zep: AsyncZep | None = None,
 ) -> tuple[Agent, AgentDeps, dict | None]:
     """Build the agent, deps, and orientation for one run."""
+    graph_uuid = settings.require_graph_uuid()
     zep = zep or AsyncZep(
         api_key=settings.zep_api_key,
         **({"base_url": settings.zep_base_url} if settings.zep_base_url else {}),
     )
-    deps = AgentDeps(zep=zep, graph_id=settings.graph_id)
-    orientation = await load_orientation(zep, settings.graph_id) if config.orientation else None
+    deps = AgentDeps(zep=zep, graph_uuid=graph_uuid)
+    orientation = await load_orientation(zep, graph_uuid) if config.orientation else None
     agent = build_agent(
         config,
         model or settings.agent_model,
@@ -165,5 +166,5 @@ async def prepare_run(
     return agent, deps, orientation
 
 
-def new_deps(zep: AsyncZep, graph_id: str) -> AgentDeps:
-    return AgentDeps(zep=zep, graph_id=graph_id, registry=HandleRegistry())
+def new_deps(zep: AsyncZep, graph_uuid: str) -> AgentDeps:
+    return AgentDeps(zep=zep, graph_uuid=graph_uuid, registry=HandleRegistry())

@@ -52,7 +52,7 @@ async def test_budget_exhaustion(deps):
     deps.calls_left = 0
     out = await fn(label="Product")
     assert "budget exhausted" in out
-    assert not any(c[0] == "get_by_graph_id" for c in deps.zep.graph.calls)
+    assert not any(c[0] == "node.list" for c in deps.zep.graph.calls)
 
 
 async def test_thirteenth_call_is_budget_notice(deps):
@@ -90,17 +90,29 @@ async def test_search_context_filters(deps, fake_zep):
         limit=50,
     )
     name, kwargs = fake_zep.graph.calls[-1]
-    assert name == "search"
+    assert name == "search_edges"
     assert kwargs["reranker"] == "cross_encoder"
-    assert kwargs["limit"] == 20  # capped
+    assert kwargs["page_size"] == 50  # capped
+    assert kwargs["graph_uuid"] == "test-graph"
     assert kwargs["bfs_origin_node_uuids"] == [some_uuid]
-    group = kwargs["search_filters"].episode_metadata_filters
+    group = kwargs["filters"].metadata_filters
     assert group.type == "and"
-    props = {(f.property_name, f.property_value, f.comparison_operator) for f in group.filters}
+    props = {(f.property_name, f.value, f.operator) for f in group.filters}
     assert props == {
-        ("report_type", "complaint_summary", "="),
-        ("product", "Aster 410", "="),
+        ("report_type", "complaint_summary", "eq"),
+        ("product", "Aster 410", "eq"),
     }
+    assert out.startswith("ranked sample")
+
+
+async def test_episode_search_omits_reranker(deps, fake_zep):
+    out = await _tool("search_context", deps)(query="complaint report", scope="episodes")
+    name, kwargs = fake_zep.graph.calls[-1]
+    assert name == "search_episodes"
+    assert "reranker" not in kwargs
+    assert "bfs_origin_node_uuids" not in kwargs
+    assert kwargs["graph_uuid"] == "test-graph"
+    assert kwargs["page_size"] == 10
     assert out.startswith("ranked sample")
 
 
@@ -180,7 +192,7 @@ async def test_search_products_query_filter(deps):
     assert "Aster 410" not in out
 
 
-# 8. Page-size clamping (the list API returns at most 50 nodes per page)
+# 8. Page-size clamping (the list API returns at most 100 nodes per page)
 
 
 def _add_nodes(fake_zep, label, prefix, count):
@@ -197,22 +209,22 @@ def _add_nodes(fake_zep, label, prefix, count):
 
 
 async def test_list_nodes_truncated_at_api_page_size(deps, fake_zep):
-    _add_nodes(fake_zep, "Team", "Extra Team", 50)
+    _add_nodes(fake_zep, "Team", "Extra Team", 100)
     out = await _tool("list_nodes", deps)(label="Team")
-    assert out.startswith("truncated at 49")
-    assert sum(1 for line in out.splitlines() if line.startswith("- ")) == 49
+    assert out.startswith("truncated at 99")
+    assert sum(1 for line in out.splitlines() if line.startswith("- ")) == 99
 
 
 async def test_search_products_truncated_at_api_page_size(deps, fake_zep):
-    _add_nodes(fake_zep, "Product", "Extra Product", 50)
+    _add_nodes(fake_zep, "Product", "Extra Product", 100)
     out = await _tool("search_products", deps)()
-    assert out.startswith("truncated at 49")
+    assert out.startswith("truncated at 99")
 
 
 async def test_get_employees_no_match_in_truncated_list(deps, fake_zep):
-    _add_nodes(fake_zep, "Team", "Extra Team", 50)
+    _add_nodes(fake_zep, "Team", "Extra Team", 100)
     out = await _tool("get_employees", deps)(team="No Such Team")
-    assert "in the first 50 Team nodes" in out
+    assert "in the first 100 Team nodes" in out
     assert "search_context" in out
 
 
