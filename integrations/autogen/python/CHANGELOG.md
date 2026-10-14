@@ -9,13 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
-- The package targets the Zep v4 API and requires `zep-cloud>=4.0.0,<5`. Zep v4 assigns the UUID of every user, thread, and graph. The public API takes UUIDs instead of names.
-- The resource parameters are renamed. `ZepUserMemory` takes `user_uuid`, `thread_uuid`, and the optional `graph_uuid`. `ZepGraphMemory` takes `graph_uuid`. `create_search_graph_tool` and `create_add_graph_data_tool` take `graph_uuid` or `user_uuid`. The `ContextInput` dataclass gives `user_uuid`, `thread_uuid`, and `graph_uuid`.
-- `ensure_user` and `ensure_thread` are replaced by `create_user` and `create_thread`. Zep v4 creates a resource and returns its UUID, so the create-then-catch-conflict pattern no longer applies. `create_user` returns the `User` model and `create_thread` returns the `Thread` model. Read `uuid_` from the response and store it in your own database.
-- `ZepUserMemory` no longer creates the Zep user. The application creates the user one time with `create_user`, or with `client.user.create`. `add()` still creates a thread when the constructor did not get a `thread_uuid`.
-- `ZepGraphMemory` replaces `facts_limit` and `entity_limit` with `max_characters`. Context retrieval calls `graph.get_context`, which returns an assembled context block and takes a character budget in place of a fact count and an entity count.
-- `ZepUserMemory` replaces `context_template_id` with `context_template_uuid`. The value is sent as `template_uuid` to `thread.get_context`.
-- The v3 types and helpers that Zep v4 does not give are removed: `GraphSearchResults` and `zep_cloud.graph.utils.compose_context_string`. The package formats the search results itself.
+To migrate from Zep v3, follow the
+[V4 migration guide](https://help.getzep.com/migrating-from-v3) for the general
+procedure. This package has these API changes:
+
+- The package requires the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). It does not
+  support the v3 SDK.
+- `ZepUserMemory` takes `user_uuid` and `thread_uuid` instead of `user_id`
+  and `thread_id`. Give the stored user UUID and thread UUID to these
+  parameters. It also takes an optional `graph_uuid`, and
+  `context_template_uuid` replaces `context_template_id` (the value is sent
+  as `template_uuid` to `thread.get_context`).
+- `ZepUserMemory` does not create the Zep user on the turn path, and it makes
+  no `lookup` call. `add()` still creates a thread when the constructor did
+  not get a `thread_uuid`.
+- `ZepUserMemory` no longer takes `first_name`, `last_name`, `email`, or
+  `on_created`. Give `first_name`, `last_name`, and `email` to `create_user`,
+  and give the hook to `create_user(on_created=...)`.
+- `ZepGraphMemory` takes `graph_uuid` instead of `graph_id`. Give it the
+  stored standalone graph UUID.
+- `ZepGraphMemory` replaces `facts_limit` and `entity_limit` with
+  `max_characters`. Context retrieval calls `graph.get_context`, which takes
+  a character budget in place of a fact count and an entity count.
+- `create_search_graph_tool` and `create_add_graph_data_tool` take a
+  `graph_uuid` or `user_uuid` instead of `graph_id` or `user_id`. Give them
+  the stored user graph UUID or standalone graph UUID.
+- `ContextInput` has `user_uuid`, `thread_uuid`, and `graph_uuid` instead of
+  `user_id` and `thread_id`.
+- `create_user` replaces `ensure_user`. It takes no `user_id`, and it returns
+  the created `User` (with `uuid_` and `graph_uuid`) instead of a `bool`.
+- `create_thread` replaces `ensure_thread`. It takes `user_uuid` instead of
+  `thread_id` and `user_id`, and it returns the created `Thread` (with
+  `uuid_`) instead of a `bool`.
+- The v3 types and helpers that Zep v4 does not give are removed:
+  `GraphSearchResults` and `zep_cloud.graph.utils.compose_context_string`.
+  The package formats the search results itself.
+
+For an existing V3 user, thread, or graph, do not call `create_user`,
+`create_thread`, or `graph.create`. Get its UUID one time with the backfill
+in the migration guide, and store it.
 
 ### Changed
 
