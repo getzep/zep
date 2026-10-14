@@ -361,7 +361,7 @@ class TestPinOrExposeSchema:
         tool = create_zep_search_tool(
             zep_client=client,
             graph_uuid=GRAPH_UUID,
-            search_filters={"node_labels": ["Person"]},
+            search_filters={"edge_types": ["WORKS_AT"]},
             bfs_origin_node_uuids=["uuid-1"],
         )
         properties = tool.parameters()["properties"]
@@ -375,15 +375,111 @@ class TestPinOrExposeSchema:
         tool = create_zep_search_tool(
             zep_client=client,
             graph_uuid=GRAPH_UUID,
-            search_filters={"node_labels": ["Person"]},
+            search_filters={"edge_types": ["WORKS_AT"]},
             bfs_origin_node_uuids=["uuid-1"],
         )
 
         await _call(tool, query="query")
 
         kwargs = client.graph.search_edges.call_args.kwargs
-        assert kwargs["filters"] == {"node_labels": ["Person"]}
+        assert kwargs["filters"] == {"edge_types": ["WORKS_AT"]}
         assert kwargs["bfs_origin_node_uuids"] == ["uuid-1"]
+
+
+class TestSearchFilterValidation:
+    def test_node_filter_on_default_edges_scope_raises(self) -> None:
+        with pytest.raises(ValueError) as exc_info:
+            create_zep_search_tool(
+                zep_client=_make_mock_client(),
+                graph_uuid=GRAPH_UUID,
+                search_filters={"node_labels": ["Person"]},
+            )
+        message = str(exc_info.value)
+        assert "'node_labels'" in message
+        assert "'edges'" in message
+        assert "nodes, auto" in message
+
+    def test_edge_filter_on_pinned_nodes_scope_raises(self) -> None:
+        with pytest.raises(ValueError, match="'edge_types'.*'nodes'.*edges, auto"):
+            create_zep_search_tool(
+                zep_client=_make_mock_client(),
+                graph_uuid=GRAPH_UUID,
+                search_pinned_params={"scope": "nodes"},
+                search_filters={"edge_types": ["WORKS_AT"]},
+            )
+
+    def test_any_filter_on_observations_scope_raises(self) -> None:
+        with pytest.raises(ValueError, match="'metadata_filters'.*'observations'"):
+            create_zep_search_tool(
+                zep_client=_make_mock_client(),
+                graph_uuid=GRAPH_UUID,
+                search_pinned_params={"scope": "observations"},
+                search_filters={"metadata_filters": {"type": "and", "filters": []}},
+            )
+
+    def test_unknown_filter_key_raises(self) -> None:
+        with pytest.raises(ValueError, match="'no_such_key'.*any search scope"):
+            create_zep_search_tool(
+                zep_client=_make_mock_client(),
+                graph_uuid=GRAPH_UUID,
+                search_filters={"no_such_key": True},
+            )
+
+    @pytest.mark.asyncio
+    async def test_node_filter_on_pinned_nodes_scope_is_sent(self) -> None:
+        client = _make_mock_client()
+        tool = create_zep_search_tool(
+            zep_client=client,
+            graph_uuid=GRAPH_UUID,
+            search_pinned_params={"scope": "nodes"},
+            search_filters={"node_labels": ["Person"]},
+        )
+
+        await _call(tool, query="query")
+
+        kwargs = client.graph.search_nodes.call_args.kwargs
+        assert kwargs["filters"] == {"node_labels": ["Person"]}
+
+    @pytest.mark.asyncio
+    async def test_model_scope_without_filter_support_returns_error(self) -> None:
+        client = _make_mock_client()
+        tool = create_zep_search_tool(
+            zep_client=client,
+            graph_uuid=GRAPH_UUID,
+            search_filters={"edge_types": ["WORKS_AT"]},
+        )
+
+        result = await _call(tool, query="query", scope="nodes")
+
+        assert "'edge_types'" in result
+        assert "'nodes'" in result
+        client.graph.search_nodes.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_scope_accepts_node_and_edge_filters(self) -> None:
+        client = _make_mock_client()
+        filters = {"node_labels": ["Person"], "edge_types": ["WORKS_AT"]}
+        tool = create_zep_search_tool(
+            zep_client=client,
+            graph_uuid=GRAPH_UUID,
+            search_pinned_params={"scope": "auto"},
+            search_filters=filters,
+        )
+
+        await _call(tool, query="query")
+
+        assert client.graph.get_context.call_args.kwargs["filters"] == filters
+
+    def test_provider_raises_for_unsupported_filter(self) -> None:
+        with pytest.raises(ValueError, match="'node_labels'"):
+            ZepContextProvider(
+                zep_client=_make_mock_client(),
+                user_uuid=USER_UUID,
+                thread_uuid=THREAD_UUID,
+                graph_uuid=GRAPH_UUID,
+                expose_search_tool=True,
+                search_filters={"node_labels": ["Person"]},
+            )
 
 
 class TestExposeSearchToolOnProvider:

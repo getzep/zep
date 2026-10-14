@@ -202,6 +202,38 @@ tool = create_zep_search_tool(
 
 `search_filters` and `bfs_origin_node_uuids` are always constructor-only (their complex shapes are not exposed to the model).
 
+### Search filters
+
+Each search scope accepts only its own `search_filters` keys. The default scope is `edges`. To use a filter of a different scope, pin that scope:
+
+```python
+# Edge filters on the default "edges" scope.
+tool = create_zep_search_tool(
+    zep_client=zep,
+    graph_uuid=user.graph_uuid,
+    search_filters={"edge_types": ["WORKS_AT"]},
+)
+
+# Node filters need the "nodes" scope.
+tool = create_zep_search_tool(
+    zep_client=zep,
+    graph_uuid=user.graph_uuid,
+    search_pinned_params={"scope": "nodes"},
+    search_filters={"node_labels": ["Person"]},
+)
+```
+
+| Scope | Supported `search_filters` keys |
+|-------|---------------------------------|
+| `edges` | `edge_types`, `exclude_edge_types`, `edge_uuids`, `episode_uuids`, `connected_node_uuids`, `source_node_uuids`, `target_node_uuids`, `metadata_filters`, `date_filters`, `property_filters` |
+| `nodes` | `node_labels`, `exclude_node_labels`, `episode_uuids`, `metadata_filters`, `property_filters` |
+| `episodes` | `metadata_filters`, `content_policy_violated` |
+| `observations` | None |
+| `thread_summaries` | `metadata_filters` |
+| `auto` | The keys of `edges` and `nodes` |
+
+If a key does not suit the pinned scope, or the default `edges` scope when the scope is not pinned, `create_zep_search_tool` raises `ValueError`. The error names the key, the scope, and the scopes that support the key. If the model selects a scope that does not support a key, the tool returns the same message to the model and does not call Zep.
+
 ## Identity and Threads
 
 Memory is scoped per `ZepContextProvider` instance to one `user_uuid` + `thread_uuid`. For a multi-user application, construct one provider (and one agent, or one agent per request) per user and conversation. Give real names to `create_user` so that Zep can resolve the user's identity node in the graph.
@@ -223,7 +255,7 @@ Memory is scoped per `ZepContextProvider` instance to one `user_uuid` + `thread_
 | `expose_search_tool` | Optional | `False` | Register a model-callable graph-search tool every run; see [`create_zep_search_tool`](#create_zep_search_tool--expose_search_tool) |
 | `search_pinned_params` | Optional | `None` | Fix a search parameter to a value; hidden from the model schema |
 | `search_hidden_params` | Optional | `None` | Hide a search parameter from the schema without pinning (Zep's default applies) |
-| `search_filters` | Optional | `None` | Constructor-only Zep search filters (`node_labels`, `edge_types`, etc.) |
+| `search_filters` | Optional | `None` | Constructor-only Zep search filters. Each scope accepts only its own keys; see [Search filters](#search-filters) |
 | `bfs_origin_node_uuids` | Optional | `None` | Constructor-only node UUIDs for BFS seeding |
 
 ## Features

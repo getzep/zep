@@ -133,6 +133,51 @@ _CONSTRUCTOR_ONLY_PARAMS = frozenset({"search_filters", "bfs_origin_node_uuids"}
 #: All parameters that may be pinned or hidden at construction.
 _PINNABLE_PARAMS = frozenset(_SEARCH_PARAM_SPECS.keys())
 
+_EDGE_FILTER_KEYS = frozenset(
+    {
+        "connected_node_uuids",
+        "date_filters",
+        "edge_types",
+        "edge_uuids",
+        "episode_uuids",
+        "exclude_edge_types",
+        "metadata_filters",
+        "property_filters",
+        "source_node_uuids",
+        "target_node_uuids",
+    }
+)
+_NODE_FILTER_KEYS = frozenset(
+    {"episode_uuids", "exclude_node_labels", "metadata_filters", "node_labels", "property_filters"}
+)
+
+#: The ``search_filters`` keys that each scope accepts.  Zep v4 rejects any
+#: other key with HTTP 400 ``unsupported_filter``.
+SCOPE_FILTER_KEYS: dict[str, frozenset[str]] = {
+    "edges": _EDGE_FILTER_KEYS,
+    "nodes": _NODE_FILTER_KEYS,
+    "episodes": frozenset({"metadata_filters", "content_policy_violated"}),
+    "observations": frozenset(),
+    "thread_summaries": frozenset({"metadata_filters"}),
+    "auto": _EDGE_FILTER_KEYS | _NODE_FILTER_KEYS,
+}
+
+
+def _unsupported_filter_message(search_filters: dict[str, Any], scope: str) -> str | None:
+    """Return an error message if a filter key is not supported on ``scope``."""
+    allowed = SCOPE_FILTER_KEYS.get(scope, frozenset())
+    for key in sorted(search_filters):
+        if key in allowed:
+            continue
+        supporting = [name for name, keys in SCOPE_FILTER_KEYS.items() if key in keys]
+        if not supporting:
+            return f"search_filters key {key!r} is not supported on any search scope."
+        return (
+            f"search_filters key {key!r} is not supported on the {scope!r} scope. "
+            f"Scopes that support it: {', '.join(supporting)}."
+        )
+    return None
+
 
 def create_zep_search_tool(
     *,
@@ -189,11 +234,11 @@ def create_zep_search_tool(
             from the model's tool schema without pinning them -- omitted from
             the SDK call so Zep's own default takes effect.
         search_filters: Optional Zep search filters (constructor-only), sent
-            as the SDK's ``filters`` argument.  Supports ``node_labels``,
-            ``edge_types``, ``exclude_node_labels``, ``exclude_edge_types``,
-            and property filters.  Each scope accepts only its own filter
-            keys; Zep rejects a key that the scope cannot apply with HTTP
-            400 ``unsupported_filter``.
+            as the SDK's ``filters`` argument.  Each scope accepts only its
+            own filter keys (see :data:`SCOPE_FILTER_KEYS`).  For example,
+            ``edge_types`` applies to the ``edges`` scope, and
+            ``node_labels`` applies to the ``nodes`` scope.  If the scope is
+            not pinned, the filters must suit the default ``edges`` scope.
         bfs_origin_node_uuids: Optional list of node UUIDs for BFS seeding
             (constructor-only).
         name: The tool name exposed to the model.  Defaults to ``"zep_search"``.
@@ -207,9 +252,11 @@ def create_zep_search_tool(
         string -- the tool never raises.
 
     Raises:
-        ValueError: If ``graph_uuid`` is empty, or if
+        ValueError: If ``graph_uuid`` is empty, if
             ``search_pinned_params``/``search_hidden_params`` contains an
-            unknown parameter name.
+            unknown parameter name, or if ``search_filters`` contains a key
+            that the pinned scope (or the default ``edges`` scope, when the
+            scope is not pinned) does not support.
     """
     if not graph_uuid:
         raise ValueError("graph_uuid must be a non-empty string")
@@ -243,6 +290,17 @@ def create_zep_search_tool(
         elif pinned_limit < 1:
             pinned["limit"] = 1
 
+    if search_filters:
+        fixed_scope = str(pinned.get("scope", _SEARCH_PARAM_SPECS["scope"]["default"]))
+        filter_error = _unsupported_filter_message(search_filters, fixed_scope)
+        if filter_error is not None:
+            if "scope" not in pinned:
+                filter_error += (
+                    " The scope is not pinned, so the filters must suit the default"
+                    " 'edges' scope. Pin a scope with search_pinned_params={'scope': ...}."
+                )
+            raise ValueError(filter_error)
+
     json_schema = _build_json_schema(pinned=pinned, hidden=hidden, description=description)
 
     async def zep_search(**kwargs: Any) -> str:
@@ -274,6 +332,10 @@ def create_zep_search_tool(
         if "limit" in search_kwargs:
             search_kwargs["page_size"] = search_kwargs.pop("limit")
 
+        if search_filters:
+            filter_error = _unsupported_filter_message(search_filters, effective_scope)
+            if filter_error is not None:
+                return f"Error: {filter_error}"
         if search_filters is not None:
             search_kwargs["filters"] = search_filters
         if bfs_origin_node_uuids is not None:

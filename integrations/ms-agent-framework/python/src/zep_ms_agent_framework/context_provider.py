@@ -229,9 +229,9 @@ class ZepContextProvider(ContextProvider):
             -- omitted from the SDK call so Zep's own default applies.  Only
             meaningful when ``expose_search_tool=True``.
         search_filters: Optional Zep search filters (constructor-only, never
-            exposed to the model).  Supports ``node_labels``, ``edge_types``,
-            ``exclude_node_labels``, ``exclude_edge_types``, and property
-            filters.  Only meaningful when ``expose_search_tool=True``.
+            exposed to the model).  Each scope accepts only its own filter
+            keys; see ``create_zep_search_tool``.  Only meaningful when
+            ``expose_search_tool=True``.
         bfs_origin_node_uuids: Optional list of node UUIDs for BFS seeding
             (constructor-only).  Only meaningful when
             ``expose_search_tool=True``.
