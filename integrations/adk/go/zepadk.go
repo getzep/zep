@@ -190,6 +190,10 @@ func WithContextBuilder(b ContextBuilder) CallbackOption {
 // many threads passes [WithThreadUUIDResolver] instead.
 func WithThreadUUID(threadUUID string) CallbackOption {
 	return func(o *callbackOptions) {
+		if threadUUID == "" {
+			o.threadUUID = nil
+			return
+		}
 		o.threadUUID = func(agent.CallbackContext) string { return threadUUID }
 	}
 }
@@ -297,8 +301,9 @@ func renderContextTemplate(template, contextBlock string) string {
 // The integration contract is: the application creates the Zep user and
 // thread out of band (see [CreateUser] and [CreateThread]), stores the
 // returned UUIDs, and supplies the thread UUID through [WithThreadUUID] or
-// [WithThreadUUIDResolver]. Without a thread UUID the callback persists
-// nothing and injects nothing.
+// [WithThreadUUIDResolver]. With a non-nil client and no thread UUID,
+// NewBeforeModelCallback logs an error when it is constructed, and the
+// callback persists nothing and injects nothing.
 func NewBeforeModelCallback(client *zepclient.Client, opts ...CallbackOption) llmagent.BeforeModelCallback {
 	return newBeforeModelCallback(client, newZepAPI(client), opts...)
 }
@@ -309,6 +314,10 @@ func NewBeforeModelCallback(client *zepclient.Client, opts ...CallbackOption) ll
 // concrete *zepclient.Client without requiring every test to construct one.
 func newBeforeModelCallback(client *zepclient.Client, api zepAPI, opts ...CallbackOption) llmagent.BeforeModelCallback {
 	cfg := resolveCallbackOptions(opts)
+	if api != nil && cfg.threadUUID == nil {
+		cfg.logger.Error("zepadk: NewBeforeModelCallback has no Zep thread UUID; the callback will persist nothing and inject no context. " +
+			"Use WithThreadUUID or WithThreadUUIDResolver with the thread UUID that the application stored")
+	}
 
 	return func(cc agent.CallbackContext, req *model.LLMRequest) (*model.LLMResponse, error) {
 		// No client configured: do not short-circuit the model.
@@ -462,6 +471,10 @@ type afterCallbackOptions struct {
 // before-model callback.
 func WithAfterThreadUUID(threadUUID string) AfterCallbackOption {
 	return func(o *afterCallbackOptions) {
+		if threadUUID == "" {
+			o.threadUUID = nil
+			return
+		}
 		o.threadUUID = func(agent.CallbackContext) string { return threadUUID }
 	}
 }
@@ -526,6 +539,10 @@ func NewAfterModelCallback(client *zepclient.Client, opts ...AfterCallbackOption
 // A nil api makes the callback a no-op.
 func newAfterModelCallback(api zepAPI, opts ...AfterCallbackOption) llmagent.AfterModelCallback {
 	cfg := resolveAfterCallbackOptions(opts)
+	if api != nil && cfg.threadUUID == nil {
+		cfg.logger.Error("zepadk: NewAfterModelCallback has no Zep thread UUID; the callback will persist no assistant reply. " +
+			"Use WithAfterThreadUUID or WithAfterThreadUUIDResolver with the thread UUID that the application stored")
+	}
 
 	return func(cc agent.CallbackContext, resp *model.LLMResponse, respErr error) (*model.LLMResponse, error) {
 		// Never touch the response; we only observe it.

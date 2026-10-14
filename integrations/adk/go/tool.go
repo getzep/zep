@@ -176,6 +176,10 @@ type ToolGraphUUIDResolver func(tc agent.ToolContext) string
 // [WithGraphUUIDResolver] instead.
 func WithGraphUUID(graphUUID string) GraphSearchToolOption {
 	return func(o *graphSearchToolOptions) {
+		if graphUUID == "" {
+			o.graphUUID = nil
+			return
+		}
 		o.graphUUID = func(agent.ToolContext) string { return graphUUID }
 	}
 }
@@ -756,8 +760,10 @@ func newGraphSearchHandlerFromConfig(api zepAPI, cfg *graphSearchToolOptions) fu
 
 // NewGraphSearchTool returns an ADK [tool.Tool] the model can call to search
 // a Zep knowledge graph on demand. The application supplies the UUID of the
-// graph through [WithGraphUUID] or [WithGraphUUIDResolver]. Without one the
-// tool returns an empty result.
+// graph through [WithGraphUUID] or [WithGraphUUIDResolver]. With a non-nil
+// client and no graph UUID, NewGraphSearchTool returns an error. When a
+// resolver returns an empty UUID for a call, the tool logs an error and
+// returns an empty result.
 //
 // Every model-exposable search parameter (scope, reranker, limit, mmr_lambda,
 // center_node_uuid) can be pinned to a fixed value (hidden from the model,
@@ -774,6 +780,9 @@ func newGraphSearchHandlerFromConfig(api zepAPI, cfg *graphSearchToolOptions) fu
 // than an error, so a failed lookup never aborts the model turn.
 func NewGraphSearchTool(client *zepclient.Client, opts ...GraphSearchToolOption) (tool.Tool, error) {
 	cfg := resolveGraphSearchToolOptions(opts...)
+	if client != nil && cfg.graphUUID == nil {
+		return nil, errNoGraphUUID
+	}
 	if err := validateGraphSearchToolOptions(&cfg); err != nil {
 		return nil, err
 	}

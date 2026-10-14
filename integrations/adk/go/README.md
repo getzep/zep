@@ -183,6 +183,8 @@ content containing `%`, `{`, or `}` is always safe:
 
 ```go
 before := zepadk.NewBeforeModelCallback(zep,
+    zepadk.WithThreadUUID(threadUUID),
+    zepadk.WithUserUUID(userUUID),
     zepadk.WithContextTemplate("Known facts about the user:\n{context}"))
 ```
 
@@ -290,6 +292,7 @@ old always-pinned behavior, pin every parameter explicitly:
 
 ```go
 tool, _ := zepadk.NewGraphSearchTool(zep,
+    zepadk.WithGraphUUID(graphUUID),
     zepadk.WithToolSearchScope(zepadk.SearchScopeEdges),
     zepadk.WithToolSearchLimit(10),
     zepadk.WithHiddenParams(
@@ -313,8 +316,8 @@ Each constructor accepts functional options:
 
 `WithGraphUUID` selects the graph that the search tool reads. The UUID of the
 graph of a user is the second value that `CreateUser` returns. A standalone
-graph has its own UUID. Without a graph UUID the tool returns no facts and
-logs an error.
+graph has its own UUID. With a non-nil client and no graph UUID,
+`NewGraphSearchTool` returns an error.
 
 When a pinning option (e.g. `WithToolSearchScope`) and `WithHiddenParams` target
 the same parameter, whichever is passed later to `NewGraphSearchTool` wins —
@@ -325,8 +328,12 @@ options are applied in call order, last write wins.
 A Zep failure never crashes the host agent:
 
 - A `nil` client (for example when `ZEP_API_KEY` is unset) makes the callback,
-  memory service, and tool safe no-ops. A missing thread UUID or graph UUID
-  has the same effect for the affected component.
+  memory service, and tool safe no-ops.
+- With a non-nil client, `NewGraphSearchTool` returns an error when it has no
+  graph UUID. `NewBeforeModelCallback`, `NewAfterModelCallback`, and
+  `NewMemoryService` cannot return an error, because ADK defines their
+  types. They log an error when they are constructed with no thread UUID or
+  graph UUID, and then they persist nothing or return no memories.
 - Transient Zep errors are logged via the configured `slog.Logger` and swallowed;
   the callback proceeds to the model without injected memory, and the memory
   service and tool return empty results.

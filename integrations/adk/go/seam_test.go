@@ -1,6 +1,7 @@
 package zepadk
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -729,4 +730,82 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// --- Missing UUID at construction --------------------------------------------
+
+func TestNewGraphSearchToolRequiresGraphUUIDWithClient(t *testing.T) {
+	client := NewClient("test-key")
+	if _, err := NewGraphSearchTool(client); !errors.Is(err, errNoGraphUUID) {
+		t.Fatalf("no graph option: err = %v, want errNoGraphUUID", err)
+	}
+	if _, err := NewGraphSearchTool(client, WithGraphUUID("")); !errors.Is(err, errNoGraphUUID) {
+		t.Fatalf("empty graph UUID: err = %v, want errNoGraphUUID", err)
+	}
+	if _, err := NewGraphSearchTool(client, WithGraphUUID("graph-uuid-1")); err != nil {
+		t.Fatalf("graph UUID: err = %v, want nil", err)
+	}
+	resolver := func(agent.ToolContext) string { return "graph-uuid-1" }
+	if _, err := NewGraphSearchTool(client, WithGraphUUIDResolver(resolver)); err != nil {
+		t.Fatalf("graph UUID resolver: err = %v, want nil", err)
+	}
+	if _, err := NewGraphSearchTool(nil); err != nil {
+		t.Fatalf("nil client: err = %v, want nil", err)
+	}
+}
+
+func TestConstructorsLogMissingUUID(t *testing.T) {
+	logged := func(build func(*slog.Logger)) string {
+		var buf bytes.Buffer
+		build(slog.New(slog.NewTextHandler(&buf, nil)))
+		return buf.String()
+	}
+	api := &fakeZepAPI{}
+	cases := []struct {
+		name string
+		want string
+		bad  func(*slog.Logger)
+		good func(*slog.Logger)
+	}{
+		{
+			name: "before-model callback",
+			want: "NewBeforeModelCallback has no Zep thread UUID",
+			bad: func(l *slog.Logger) {
+				newBeforeModelCallback(nil, api, WithThreadUUID(""), WithLogger(l))
+			},
+			good: func(l *slog.Logger) {
+				newBeforeModelCallback(nil, api, WithThreadUUID("thread-uuid-1"), WithLogger(l))
+			},
+		},
+		{
+			name: "after-model callback",
+			want: "NewAfterModelCallback has no Zep thread UUID",
+			bad: func(l *slog.Logger) {
+				newAfterModelCallback(api, WithAfterLogger(l))
+			},
+			good: func(l *slog.Logger) {
+				newAfterModelCallback(api, WithAfterThreadUUID("thread-uuid-1"), WithAfterLogger(l))
+			},
+		},
+		{
+			name: "memory service",
+			want: "NewMemoryService has no Zep graph UUID",
+			bad: func(l *slog.Logger) {
+				NewMemoryService(NewClient("test-key"), WithMemoryGraphUUID(""), WithMemoryLogger(l))
+			},
+			good: func(l *slog.Logger) {
+				NewMemoryService(NewClient("test-key"), WithMemoryGraphUUID("graph-uuid-1"), WithMemoryLogger(l))
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := logged(tc.bad); !strings.Contains(got, tc.want) {
+				t.Fatalf("log = %q, want it to contain %q", got, tc.want)
+			}
+			if got := logged(tc.good); got != "" {
+				t.Fatalf("log = %q, want no log with a UUID", got)
+			}
+		})
+	}
 }

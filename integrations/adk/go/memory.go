@@ -60,6 +60,10 @@ func WithSearchLimit(limit int) MemoryOption {
 // [CreateUser] returns.
 func WithMemoryGraphUUID(graphUUID string) MemoryOption {
 	return func(s *memoryService) {
+		if graphUUID == "" {
+			s.graphUUID = nil
+			return
+		}
 		s.graphUUID = func(*memory.SearchRequest) string { return graphUUID }
 	}
 }
@@ -92,8 +96,9 @@ func WithMemoryLogger(logger *slog.Logger) MemoryOption {
 //
 // Zep v4 addresses a graph by a server-generated UUID, and the ADK user ID is
 // not such a UUID. The application therefore supplies the graph UUID through
-// [WithMemoryGraphUUID] or [WithMemoryGraphUUIDResolver]. Without one the
-// service returns no memories.
+// [WithMemoryGraphUUID] or [WithMemoryGraphUUIDResolver]. With a non-nil
+// client and no graph UUID, NewMemoryService logs an error when it is
+// constructed, and every search returns no memories.
 //
 // AddSessionToMemory is intentionally a no-op: conversation turns are ingested
 // live by [NewBeforeModelCallback] via Thread.AddMessages, which routes
@@ -107,6 +112,10 @@ func NewMemoryService(client *zepclient.Client, opts ...MemoryOption) memory.Ser
 	}
 	for _, opt := range opts {
 		opt(svc)
+	}
+	if svc.api != nil && svc.graphUUID == nil {
+		svc.logger.Error("zepadk: NewMemoryService has no Zep graph UUID; every search will return no memories. " +
+			"Use WithMemoryGraphUUID or WithMemoryGraphUUIDResolver with the graph UUID that the application stored")
 	}
 	return svc
 }

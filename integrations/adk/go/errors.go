@@ -25,3 +25,7 @@ var errUnsupportedFilter = errors.New("zepadk: the search filters have a key tha
 // errInvalidSearchSettings reports a graph search scope, reranker, or reranker
 // setting that Zep v4 rejects.
 var errInvalidSearchSettings = errors.New("zepadk: invalid search settings")
+
+// errNoGraphUUID reports that a graph search tool has a Zep client but no
+// graph UUID. Zep v4 addresses a graph only by its UUID.
+var errNoGraphUUID = errors.New("zepadk: no Zep graph UUID; use WithGraphUUID or WithGraphUUIDResolver with the graph UUID that the application stored")

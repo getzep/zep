@@ -94,6 +94,10 @@ the migration guide, and store it.
   names the setting and the values to use, and the tool makes no Zep call.
   A pinned pair that Zep rejects makes `NewGraphSearchTool` return an error.
   The `mmr` reranker uses `mmr_lambda=0.5` when no value is set.
+- With a non-nil client and no graph UUID, `NewGraphSearchTool` returns an
+  error. `NewBeforeModelCallback`, `NewAfterModelCallback`, and
+  `NewMemoryService` log an error when they are constructed with no thread
+  UUID or graph UUID. An empty UUID string counts as no UUID.
 
 ### Changed
 
