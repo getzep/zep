@@ -9,6 +9,7 @@ import pytest
 from langchain_core.tools import StructuredTool
 
 from zep_langgraph.tools import (
+    DEFAULT_MMR_LAMBDA,
     _format_results,
     create_graph_search_tool,
     create_graph_search_tool_sync,
@@ -121,8 +122,9 @@ class TestPinOrExposeSchema:
         tool = create_graph_search_tool(_make_async_client(), graph_uuid=GRAPH_UUID)
         schema = tool.args_schema.model_json_schema()
         properties = schema["properties"]
-        for name in ("query", "scope", "reranker", "limit", "mmr_lambda", "center_node_uuid"):
+        for name in ("query", "scope", "reranker", "limit", "mmr_lambda"):
             assert name in properties, f"{name} should be exposed by default"
+        assert "center_node_uuid" not in properties
         assert schema["required"] == ["query"]
 
     def test_search_tool_six_scopes(self) -> None:
@@ -138,17 +140,12 @@ class TestPinOrExposeSchema:
             "auto",
         }
 
-    def test_search_tool_five_rerankers(self) -> None:
+    def test_search_tool_default_rerankers_are_usable_by_the_model(self) -> None:
         tool = create_graph_search_tool(_make_async_client(), graph_uuid=GRAPH_UUID)
         schema = tool.args_schema.model_json_schema()
-        reranker_enum = schema["properties"]["reranker"]["enum"]
-        assert set(reranker_enum) == {
-            "rrf",
-            "mmr",
-            "node_distance",
-            "episode_mentions",
-            "cross_encoder",
-        }
+        reranker = schema["properties"]["reranker"]
+        assert reranker["enum"] == ["rrf", "mmr", "cross_encoder"]
+        assert "episodes: rrf, mmr;" in reranker["description"]
 
     def test_constructor_only_params_never_in_schema(self) -> None:
         tool = create_graph_search_tool(
@@ -366,24 +363,19 @@ class TestLimitClamping:
 
 
 class TestAutoScopeParameters:
-    @pytest.mark.asyncio
-    async def test_pinned_auto_scope_drops_incompatible_reranker(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        client = _make_async_client()
-        client.graph.get_context.return_value = _context("ctx")
-        with caplog.at_level(logging.WARNING, logger="zep_langgraph.tools"):
-            tool = create_graph_search_tool(
-                client,
+    def test_pinned_auto_scope_with_reranker_rejected(self) -> None:
+        with pytest.raises(ValueError, match="takes no reranker"):
+            create_graph_search_tool(
+                _make_async_client(),
                 graph_uuid=GRAPH_UUID,
-                pinned_params={"scope": "auto", "reranker": "node_distance"},
+                pinned_params={"scope": "auto", "reranker": "rrf"},
             )
-        assert "node_distance" in caplog.text
 
-        await tool.ainvoke({"query": "x"})
-
-        kwargs = client.graph.get_context.call_args.kwargs
-        assert "reranker" not in kwargs
+    def test_pinned_auto_scope_hides_reranker_params(self) -> None:
+        tool = create_graph_search_tool(
+            _make_async_client(), graph_uuid=GRAPH_UUID, pinned_params={"scope": "auto"}
+        )
+        assert set(tool.args_schema.model_json_schema()["properties"]) == {"query"}
 
     @pytest.mark.asyncio
     async def test_model_provided_auto_scope_drops_unsupported_params(self) -> None:
@@ -391,14 +383,13 @@ class TestAutoScopeParameters:
         client.graph.get_context.return_value = _context("ctx")
         tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
 
-        await tool.ainvoke(
-            {"query": "x", "scope": "auto", "reranker": "episode_mentions", "limit": 5}
-        )
+        await tool.ainvoke({"query": "x", "scope": "auto", "reranker": "mmr", "limit": 5})
 
         kwargs = client.graph.get_context.call_args.kwargs
         # graph.get_context accepts neither a reranker nor a limit.
         assert "reranker" not in kwargs
         assert "limit" not in kwargs
+        assert "mmr_lambda" not in kwargs
         assert kwargs["query"] == "x"
 
     @pytest.mark.asyncio
@@ -420,9 +411,163 @@ class TestAutoScopeParameters:
         client.graph.search_edges.return_value = _page([])
         tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
 
-        await tool.ainvoke({"query": "x", "scope": "edges", "reranker": "node_distance"})
+        await tool.ainvoke({"query": "x", "scope": "edges", "reranker": "cross_encoder"})
 
-        assert client.graph.search_edges.call_args.kwargs["reranker"] == "node_distance"
+        assert client.graph.search_edges.call_args.kwargs["reranker"] == "cross_encoder"
+
+
+class TestRerankerValidation:
+    @pytest.mark.parametrize(
+        ("scope", "expected"),
+        [
+            ("edges", ["rrf", "mmr", "cross_encoder"]),
+            ("nodes", ["rrf", "mmr", "cross_encoder"]),
+            ("episodes", ["rrf", "mmr"]),
+            ("observations", ["rrf", "mmr", "cross_encoder"]),
+            ("thread_summaries", ["rrf", "mmr", "cross_encoder"]),
+        ],
+    )
+    def test_pinned_scope_shows_only_its_rerankers(self, scope: str, expected: list[str]) -> None:
+        tool = create_graph_search_tool(
+            _make_async_client(), graph_uuid=GRAPH_UUID, pinned_params={"scope": scope}
+        )
+        schema = tool.args_schema.model_json_schema()
+        assert schema["properties"]["reranker"]["enum"] == expected
+
+    def test_pinned_center_node_shows_node_distance(self) -> None:
+        tool = create_graph_search_tool(
+            _make_async_client(),
+            graph_uuid=GRAPH_UUID,
+            pinned_params={"scope": "nodes", "center_node_uuid": "n1"},
+        )
+        enum = tool.args_schema.model_json_schema()["properties"]["reranker"]["enum"]
+        assert enum == ["rrf", "mmr", "node_distance", "cross_encoder"]
+
+    def test_episode_uuids_filter_shows_episode_mentions_for_edges(self) -> None:
+        tool = create_graph_search_tool(
+            _make_async_client(),
+            graph_uuid=GRAPH_UUID,
+            search_filters={"episode_uuids": ["e1"]},
+            pinned_params={"scope": "edges"},
+        )
+        enum = tool.args_schema.model_json_schema()["properties"]["reranker"]["enum"]
+        assert "episode_mentions" in enum
+
+    def test_pinned_reranker_limits_scopes(self) -> None:
+        tool = create_graph_search_tool(
+            _make_async_client(), graph_uuid=GRAPH_UUID, pinned_params={"reranker": "cross_encoder"}
+        )
+        properties = tool.args_schema.model_json_schema()["properties"]
+        assert "episodes" not in properties["scope"]["enum"]
+        assert "mmr_lambda" not in properties
+
+    def test_pinned_node_distance_requires_center_node_from_model(self) -> None:
+        tool = create_graph_search_tool(
+            _make_async_client(), graph_uuid=GRAPH_UUID, pinned_params={"reranker": "node_distance"}
+        )
+        schema = tool.args_schema.model_json_schema()
+        assert schema["properties"]["scope"]["enum"] == ["edges", "nodes", "auto"]
+        assert schema["required"] == ["query", "center_node_uuid"]
+
+    @pytest.mark.parametrize(
+        ("pinned", "match"),
+        [
+            ({"scope": "episodes", "reranker": "cross_encoder"}, "not valid for scope"),
+            ({"scope": "nodes", "reranker": "episode_mentions"}, "not valid for scope"),
+            ({"scope": "observations", "reranker": "node_distance"}, "not valid for scope"),
+            ({"scope": "auto", "reranker": "mmr"}, "takes no reranker"),
+            ({"reranker": "episode_mentions"}, "requires search_filters"),
+            ({"scope": "bogus"}, "Unknown graph-search scope"),
+            ({"reranker": "bogus"}, "Unknown graph-search reranker"),
+        ],
+    )
+    def test_invalid_pinned_setting_rejected(self, pinned: dict[str, str], match: str) -> None:
+        with pytest.raises(ValueError, match=match):
+            create_graph_search_tool(
+                _make_async_client(), graph_uuid=GRAPH_UUID, pinned_params=pinned
+            )
+
+    def test_pinned_node_distance_with_hidden_center_node_rejected(self) -> None:
+        with pytest.raises(ValueError, match="requires center_node_uuid"):
+            create_graph_search_tool_sync(
+                _make_sync_client(),
+                graph_uuid=GRAPH_UUID,
+                pinned_params={"reranker": "node_distance"},
+                hidden_params={"center_node_uuid"},
+            )
+
+    def test_valid_pinned_settings_accepted(self) -> None:
+        create_graph_search_tool(
+            _make_async_client(),
+            graph_uuid=GRAPH_UUID,
+            pinned_params={"scope": "edges", "reranker": "episode_mentions"},
+            search_filters={"episode_uuids": ["e1"]},
+        )
+        create_graph_search_tool(
+            _make_async_client(),
+            graph_uuid=GRAPH_UUID,
+            pinned_params={"scope": "nodes", "reranker": "node_distance", "center_node_uuid": "n"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_mmr_without_lambda_gets_default(self) -> None:
+        client = _make_async_client()
+        client.graph.search_episodes.return_value = _page([])
+        tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
+
+        await tool.ainvoke({"query": "x", "scope": "episodes", "reranker": "mmr"})
+
+        call = client.graph.search_episodes.call_args.kwargs
+        assert call["reranker"] == "mmr"
+        assert call["mmr_lambda"] == DEFAULT_MMR_LAMBDA
+
+    def test_pinned_mmr_without_lambda_gets_default_sync(self) -> None:
+        client = _make_sync_client()
+        client.graph.search_nodes.return_value = _page([])
+        tool = create_graph_search_tool_sync(
+            client, graph_uuid=GRAPH_UUID, pinned_params={"scope": "nodes", "reranker": "mmr"}
+        )
+
+        tool.invoke({"query": "x"})
+
+        assert client.graph.search_nodes.call_args.kwargs["mmr_lambda"] == DEFAULT_MMR_LAMBDA
+
+    @pytest.mark.asyncio
+    async def test_model_reranker_outside_schema_returns_clear_error(self) -> None:
+        client = _make_async_client()
+        tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
+
+        out = await tool.ainvoke({"query": "x", "scope": "edges", "reranker": "node_distance"})
+
+        assert out.startswith("Error: invalid search arguments.")
+        assert "reranker" in out
+        assert "'rrf', 'mmr' or 'cross_encoder'" in out
+        client.graph.search_edges.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_node_distance_without_center_node_returns_clear_error(self) -> None:
+        client = _make_async_client()
+        tool = create_graph_search_tool(
+            client, graph_uuid=GRAPH_UUID, pinned_params={"reranker": "node_distance"}
+        )
+        assert tool.coroutine is not None
+
+        out = await tool.coroutine(query="x", scope="edges")
+
+        assert "requires center_node_uuid" in out
+        assert "'rrf'" in out
+        client.graph.search_edges.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_episode_mentions_without_filter_returns_clear_error(self) -> None:
+        client = _make_async_client()
+        tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
+        assert tool.coroutine is not None
+
+        out = await tool.coroutine(query="x", scope="edges", reranker="episode_mentions")
+
+        assert "'episode_mentions' is not available" in out
+        client.graph.search_edges.assert_not_called()
 
 
 class TestAsyncToolExecution:
@@ -471,7 +616,12 @@ class TestAsyncToolExecution:
     ) -> None:
         client = _make_async_client()
         getattr(client.graph, method).return_value = _page([])
-        tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
+        tool = create_graph_search_tool(
+            client,
+            graph_uuid=GRAPH_UUID,
+            search_filters={"episode_uuids": ["e1"]},
+            pinned_params={"center_node_uuid": "n1"},
+        )
 
         await tool.ainvoke({"query": "x", "scope": scope, "reranker": reranker})
 
@@ -560,7 +710,7 @@ class TestSyncToolExecution:
     def test_sync_tool_exposes_params_by_default(self) -> None:
         tool = create_graph_search_tool_sync(_make_sync_client(), graph_uuid=GRAPH_UUID)
         schema = tool.args_schema.model_json_schema()
-        for name in ("query", "scope", "reranker", "limit", "mmr_lambda", "center_node_uuid"):
+        for name in ("query", "scope", "reranker", "limit", "mmr_lambda"):
             assert name in schema["properties"]
 
     def test_sync_tool_pinned_params(self) -> None:

@@ -32,10 +32,11 @@ agent loop never crashes.
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from collections.abc import Sequence
+from typing import Any, Literal, get_args
 
 from langchain_core.tools import StructuredTool
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, Field, ValidationError, create_model
 from zep_cloud.client import AsyncZep, Zep
 from zep_cloud.types import (
     EdgeSearchFilters,
@@ -70,17 +71,25 @@ GraphSearchFilters = (
 #: Zep caps the graph-search ``page_size`` at 50; larger values are rejected.
 MAX_SEARCH_LIMIT = 50
 
-#: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
-#: retrieval and applies its own internal cross-scope rerank).
-_AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
+#: Every scope and every reranker, in schema order.
+_ALL_SCOPES: tuple[str, ...] = get_args(GraphSearchScope)
+_ALL_RERANKERS: tuple[str, ...] = get_args(GraphSearchReranker)
 
-#: Rerankers that the dedicated v4 search method of a scope rejects.
-_SCOPE_INCOMPATIBLE_RERANKERS: dict[str, tuple[str, ...]] = {
-    "nodes": ("episode_mentions",),
-    "episodes": ("node_distance", "episode_mentions", "cross_encoder"),
-    "observations": ("node_distance", "episode_mentions"),
-    "thread_summaries": ("node_distance", "episode_mentions"),
+#: The rerankers that the v4 search method of each scope accepts. Zep rejects
+#: any other pair with HTTP 400. ``auto`` calls ``graph.get_context``, which
+#: takes no reranker.
+_SCOPE_RERANKERS: dict[str, tuple[str, ...]] = {
+    "edges": ("rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"),
+    "nodes": ("rrf", "mmr", "node_distance", "cross_encoder"),
+    "episodes": ("rrf", "mmr"),
+    "observations": ("rrf", "mmr", "cross_encoder"),
+    "thread_summaries": ("rrf", "mmr", "cross_encoder"),
+    "auto": (),
 }
+
+#: The ``mmr_lambda`` sent when the reranker is ``mmr`` and no value is set.
+#: Zep requires ``mmr_lambda`` for ``mmr``.
+DEFAULT_MMR_LAMBDA = 0.5
 
 #: The Zep v4 search method for each scope. ``auto`` is served by
 #: ``graph.get_context`` instead, which takes a different parameter set.
@@ -103,7 +112,8 @@ DEFAULT_TOOL_NAME = "search_memory"
 DEFAULT_TOOL_DESCRIPTION = (
     "Search long-term memory for facts, entities, and prior context relevant to "
     "the query. Use this to recall details the user shared earlier or knowledge "
-    "stored in the graph. The input is a natural-language search query."
+    "stored in the graph. The input is a natural-language search query. Each "
+    "scope accepts only some rerankers; the reranker parameter lists them."
 )
 
 # ---------------------------------------------------------------------------
@@ -131,11 +141,7 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
     },
     "reranker": {
         "annotation": GraphSearchReranker,
-        "description": (
-            "Result ordering algorithm: 'rrf' (balanced), 'mmr' (diverse), "
-            "'cross_encoder' (highest accuracy), 'episode_mentions' "
-            "(frequently referenced), 'node_distance' (near a specific entity)."
-        ),
+        "description": "Result ordering algorithm.",
         "default": "rrf",
     },
     "limit": {
@@ -146,14 +152,15 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
     "mmr_lambda": {
         "annotation": float | None,
         "description": (
-            "Balance between diversity (0.0) and relevance (1.0). Only used when reranker is 'mmr'."
+            "Balance between diversity (0.0) and relevance (1.0). Only used when "
+            f"reranker is 'mmr'. Defaults to {DEFAULT_MMR_LAMBDA}."
         ),
         "default": None,
     },
     "center_node_uuid": {
         "annotation": str | None,
         "description": (
-            "UUID of the center node for distance-based reranking. "
+            "UUID of the node to rank results by distance from. "
             "Required when reranker is 'node_distance'."
         ),
         "default": None,
@@ -168,27 +175,137 @@ _CONSTRUCTOR_ONLY_PARAMS = frozenset({"filters", "bfs_origin_node_uuids"})
 _PINNABLE_PARAMS = frozenset(_SEARCH_PARAM_SPECS.keys())
 
 
+_RERANKER_LABELS: dict[str, str] = {
+    "rrf": "'rrf' (balanced)",
+    "mmr": "'mmr' (diverse)",
+    "node_distance": "'node_distance' (near the center node)",
+    "episode_mentions": "'episode_mentions' (frequently referenced)",
+    "cross_encoder": "'cross_encoder' (highest accuracy)",
+}
+
+
+def _literal(values: Sequence[str]) -> Any:
+    """Return a ``Literal`` type of ``values`` for the dynamic args schema."""
+    return Literal.__getitem__(tuple(values))  # type: ignore[attr-defined]
+
+
+def _filters_have_episode_uuids(filters: Any) -> bool:
+    """Return whether the constructor-only filters set ``episode_uuids``."""
+    if filters is None:
+        return False
+    if isinstance(filters, dict):
+        return bool(filters.get("episode_uuids"))
+    if isinstance(filters, EdgeSearchFilters | NodeSearchFilters | SearchFilters):
+        return bool(filters.episode_uuids)
+    return False
+
+
+def _model_rerankers(
+    *,
+    pinned: dict[str, Any],
+    hidden: set[str],
+    constructor_only: dict[str, Any],
+) -> tuple[str, ...]:
+    """Return the rerankers that the model can use correctly.
+
+    The list holds only the rerankers that the pinned scope accepts, or that
+    some scope accepts when the model selects the scope. ``node_distance``
+    needs a ``center_node_uuid``, and the search results do not show node
+    UUIDs, so it is available only when ``center_node_uuid`` is pinned.
+    ``episode_mentions`` needs ``episode_uuids`` in ``search_filters``, which
+    only the developer can set.
+    """
+    if "reranker" in pinned:
+        return (str(pinned["reranker"]),)
+    scope = pinned.get("scope", "edges" if "scope" in hidden else None)
+    scopes = [scope] if scope is not None else list(_ALL_SCOPES)
+    candidates = {reranker for name in scopes for reranker in _SCOPE_RERANKERS[name]}
+    if "center_node_uuid" not in pinned:
+        candidates.discard("node_distance")
+    if not _filters_have_episode_uuids(constructor_only.get("filters")):
+        candidates.discard("episode_mentions")
+    return tuple(reranker for reranker in _ALL_RERANKERS if reranker in candidates)
+
+
+def _reranker_description(rerankers: Sequence[str], *, scope_exposed: bool) -> str:
+    """Describe the reranker options, and the limits of each scope."""
+    text = "Result ordering algorithm: " + ", ".join(_RERANKER_LABELS[r] for r in rerankers) + "."
+    if scope_exposed:
+        limits = [
+            f"{name}: {', '.join(r for r in _SCOPE_RERANKERS[name] if r in rerankers)}"
+            for name in _ALL_SCOPES
+            if name != "auto"
+        ]
+        text += (
+            " Each scope accepts only these rerankers: "
+            + "; ".join(limits)
+            + ". Scope 'auto' uses no reranker."
+        )
+    if "mmr" in rerankers:
+        text += " 'mmr' uses mmr_lambda."
+    return text
+
+
 def _build_args_schema(
     *,
     pinned: dict[str, Any],
     hidden: set[str],
+    constructor_only: dict[str, Any],
 ) -> type[BaseModel]:
     """Build the pydantic model ``StructuredTool`` uses as its ``args_schema``.
 
     ``query`` is always present and required. Params in ``_SEARCH_PARAM_SPECS``
     that are neither pinned nor hidden become model-visible fields with their
-    documented default.
+    documented default. The ``reranker`` field lists only the rerankers that
+    the model can use correctly, and the ``scope`` field lists only the scopes
+    that accept a pinned reranker. A field that no available option uses is
+    not shown: the reranker parameters for a pinned ``auto`` scope,
+    ``mmr_lambda`` when ``mmr`` is not available, and ``center_node_uuid``
+    unless the reranker is pinned to ``node_distance``.
     """
+    rerankers = _model_rerankers(pinned=pinned, hidden=hidden, constructor_only=constructor_only)
+    pinned_reranker = pinned.get("reranker")
+    pinned_scope = pinned.get("scope")
+
+    omitted: set[str] = set()
+    if pinned_scope == "auto":
+        omitted.update(_AUTO_UNSUPPORTED_PARAMS)
+    if not rerankers:
+        omitted.add("reranker")
+    if "mmr" not in rerankers and pinned_reranker != "mmr":
+        omitted.add("mmr_lambda")
+    if pinned_reranker != "node_distance":
+        omitted.add("center_node_uuid")
+
     fields: dict[str, Any] = {
         "query": (str, Field(description="Natural-language search query (max 400 characters)."))
     }
     for param_name, spec in _SEARCH_PARAM_SPECS.items():
-        if param_name in pinned or param_name in hidden:
-            continue  # pinned or hidden -> not exposed to the model
-        fields[param_name] = (
-            spec["annotation"],
-            Field(default=spec["default"], description=spec["description"]),
-        )
+        if param_name in pinned or param_name in hidden or param_name in omitted:
+            continue  # pinned, hidden, or unused -> not exposed to the model
+        annotation = spec["annotation"]
+        default = spec["default"]
+        description = spec["description"]
+        if param_name == "scope" and pinned_reranker is not None:
+            scopes = [
+                name
+                for name in _ALL_SCOPES
+                if name == "auto" or pinned_reranker in _SCOPE_RERANKERS[name]
+            ]
+            annotation = _literal(scopes)
+            if default not in scopes:
+                default = scopes[0]
+        elif param_name == "reranker":
+            annotation = _literal(rerankers)
+            if default not in rerankers:
+                default = rerankers[0]
+            description = _reranker_description(
+                rerankers, scope_exposed="scope" not in pinned and "scope" not in hidden
+            )
+        elif param_name == "center_node_uuid":
+            fields[param_name] = (str, Field(description=description))
+            continue
+        fields[param_name] = (annotation, Field(default=default, description=description))
     return create_model("GraphSearchInput", **fields)
 
 
@@ -307,19 +424,52 @@ def _resolve_pinned_and_hidden(
         elif pinned_limit < 1:
             pinned["limit"] = 1
 
-    # Auto scope rejects node_distance / episode_mentions and ignores reranker
-    # entirely.  If scope is pinned to "auto" and reranker is also pinned,
-    # resolve the effective value once, here, so the call path is always valid.
-    if pinned.get("scope") == "auto" and "reranker" in pinned:
-        if pinned["reranker"] in _AUTO_INCOMPATIBLE_RERANKERS:
-            logger.warning(
-                "Graph-search reranker %r is invalid for scope='auto'; "
-                "omitting reranker (auto search uses RRF).",
-                pinned["reranker"],
-            )
-        del pinned["reranker"]
-
     return pinned, hidden
+
+
+def _validate_pinned(
+    pinned: dict[str, Any],
+    hidden: set[str],
+    constructor_only: dict[str, Any],
+) -> None:
+    """Reject a pinned scope and reranker setting that Zep rejects.
+
+    Raises:
+        ValueError: If the pinned scope or reranker is unknown, the pinned
+            reranker is not valid for the pinned scope, ``node_distance`` has
+            no way to get a ``center_node_uuid``, or ``episode_mentions`` has
+            no ``episode_uuids`` in ``search_filters``.
+    """
+    scope = pinned.get("scope")
+    reranker = pinned.get("reranker")
+    if scope is not None and scope not in _ALL_SCOPES:
+        raise ValueError(f"Unknown graph-search scope {scope!r}. Allowed: {list(_ALL_SCOPES)}")
+    if reranker is None:
+        return
+    if reranker not in _ALL_RERANKERS:
+        raise ValueError(
+            f"Unknown graph-search reranker {reranker!r}. Allowed: {list(_ALL_RERANKERS)}"
+        )
+    if scope == "auto":
+        raise ValueError(
+            "Scope 'auto' calls graph.get_context, which takes no reranker. "
+            "Remove the pinned reranker, or pin another scope."
+        )
+    if scope is not None and reranker not in _SCOPE_RERANKERS[scope]:
+        raise ValueError(
+            f"Reranker {reranker!r} is not valid for scope {scope!r}. "
+            f"Use one of: {list(_SCOPE_RERANKERS[scope])}."
+        )
+    if reranker == "node_distance" and "center_node_uuid" not in pinned:
+        if "center_node_uuid" in hidden:
+            raise ValueError(
+                "Reranker 'node_distance' requires center_node_uuid. Pin "
+                "center_node_uuid, or do not hide it."
+            )
+    if reranker == "episode_mentions" and not _filters_have_episode_uuids(
+        constructor_only.get("filters")
+    ):
+        raise ValueError("Reranker 'episode_mentions' requires search_filters with episode_uuids.")
 
 
 def _build_search_kwargs(
@@ -373,12 +523,6 @@ def _build_search_kwargs(
     if search_kwargs.get("scope", "edges") == "auto":
         # graph.get_context serves auto scope. It always uses RRF internally
         # and accepts neither a reranker nor a result limit.
-        dropped_reranker = search_kwargs.get("reranker")
-        if dropped_reranker in _AUTO_INCOMPATIBLE_RERANKERS:
-            logger.warning(
-                "Graph-search reranker %r is invalid for scope='auto'; omitting reranker.",
-                dropped_reranker,
-            )
         for param_name in _AUTO_UNSUPPORTED_PARAMS:
             search_kwargs.pop(param_name, None)
         search_kwargs.pop("bfs_origin_node_uuids", None)
@@ -388,17 +532,56 @@ def _build_search_kwargs(
 
     scope = str(search_kwargs.get("scope", "edges"))
     reranker = search_kwargs.get("reranker")
-    if reranker in _SCOPE_INCOMPATIBLE_RERANKERS.get(scope, ()):
+    if reranker is not None and reranker not in _SCOPE_RERANKERS.get(scope, _ALL_RERANKERS):
         logger.warning(
             "Graph-search reranker %r is invalid for scope=%r; omitting reranker.",
             reranker,
             scope,
         )
         search_kwargs.pop("reranker")
+        reranker = None
+    if reranker == "mmr" and search_kwargs.get("mmr_lambda") is None:
+        search_kwargs["mmr_lambda"] = DEFAULT_MMR_LAMBDA
     if "limit" in search_kwargs:
         search_kwargs["page_size"] = search_kwargs.pop("limit")
     search_kwargs.update(constructor_only)
     return search_kwargs
+
+
+def _validation_error_message(exc: ValidationError) -> str:
+    """Return a tool result that names each invalid argument and its fix."""
+    problems = "; ".join(
+        f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}" for error in exc.errors()
+    )
+    return f"Error: invalid search arguments. {problems}. Correct the arguments and search again."
+
+
+def _reranker_error(search_kwargs: dict[str, Any]) -> str | None:
+    """Return an error message for the model if the reranker cannot run.
+
+    ``node_distance`` without ``center_node_uuid`` and ``episode_mentions``
+    without ``episode_uuids`` in the filters fail with HTTP 400. The message
+    names the setting and the rerankers to use in its place, so the model can
+    try again.
+    """
+    reranker = search_kwargs.get("reranker")
+    scope = str(search_kwargs.get("scope", "edges"))
+    alternatives = ", ".join(
+        repr(r) for r in _SCOPE_RERANKERS.get(scope, ()) if r in ("rrf", "mmr", "cross_encoder")
+    )
+    if reranker == "node_distance" and not search_kwargs.get("center_node_uuid"):
+        return (
+            "Error: reranker 'node_distance' requires center_node_uuid. Give "
+            f"center_node_uuid, or use one of these rerankers: {alternatives}."
+        )
+    if reranker == "episode_mentions" and not _filters_have_episode_uuids(
+        search_kwargs.get("filters")
+    ):
+        return (
+            "Error: reranker 'episode_mentions' is not available for this tool. "
+            f"Use one of these rerankers: {alternatives}."
+        )
+    return None
 
 
 def create_graph_search_tool(
@@ -428,6 +611,14 @@ def create_graph_search_tool(
     use ``hidden_params`` to remove a parameter from the schema *without*
     pinning it -- Zep's own server-side default applies, and the parameter is
     simply omitted from the SDK call.
+
+    **Valid search settings.** The schema shows only the rerankers that the
+    selected scope accepts. ``node_distance`` is shown only when
+    ``center_node_uuid`` is pinned, and ``episode_mentions`` only when
+    ``search_filters`` sets ``episode_uuids``. If the model sends a reranker
+    that its scope does not accept, the tool omits the reranker. If the
+    reranker is ``mmr`` and no ``mmr_lambda`` is set, the tool sends
+    ``DEFAULT_MMR_LAMBDA``.
 
     ``search_filters`` and ``bfs_origin_node_uuids`` are always
     constructor-only: their complex/list-of-object shapes are not exposed to
@@ -466,7 +657,8 @@ def create_graph_search_tool(
 
     Raises:
         ValueError: If ``pinned_params``/``hidden_params`` (or a legacy alias)
-            contains an unknown parameter name.
+            contains an unknown parameter name, or if the pinned scope and
+            reranker are a setting that Zep rejects.
     """
     pinned, hidden = _resolve_pinned_and_hidden(
         pinned_params=pinned_params,
@@ -477,7 +669,10 @@ def create_graph_search_tool(
     )
 
     constructor_only = _build_constructor_only(search_filters, bfs_origin_node_uuids)
-    args_schema = _build_args_schema(pinned=pinned, hidden=hidden)
+    _validate_pinned(pinned, hidden, constructor_only)
+    args_schema = _build_args_schema(
+        pinned=pinned, hidden=hidden, constructor_only=constructor_only
+    )
 
     async def _search(**kwargs: Any) -> str:
         query = str(kwargs.get("query", "")).strip()
@@ -490,6 +685,9 @@ def create_graph_search_tool(
             hidden=hidden,
             constructor_only=constructor_only,
         )
+        error = _reranker_error(search_kwargs)
+        if error is not None:
+            return error
         effective_scope = str(search_kwargs.pop("scope", "edges"))
         search_method = resolve_search_method(zep_client, effective_scope)
 
@@ -506,6 +704,7 @@ def create_graph_search_tool(
         name=name,
         description=description,
         args_schema=args_schema,
+        handle_validation_error=_validation_error_message,
     )
 
 
@@ -531,7 +730,8 @@ def create_graph_search_tool_sync(
 
     Raises:
         ValueError: If ``pinned_params``/``hidden_params`` (or a legacy alias)
-            contains an unknown parameter name.
+            contains an unknown parameter name, or if the pinned scope and
+            reranker are a setting that Zep rejects.
     """
     pinned, hidden = _resolve_pinned_and_hidden(
         pinned_params=pinned_params,
@@ -542,7 +742,10 @@ def create_graph_search_tool_sync(
     )
 
     constructor_only = _build_constructor_only(search_filters, bfs_origin_node_uuids)
-    args_schema = _build_args_schema(pinned=pinned, hidden=hidden)
+    _validate_pinned(pinned, hidden, constructor_only)
+    args_schema = _build_args_schema(
+        pinned=pinned, hidden=hidden, constructor_only=constructor_only
+    )
 
     def _search(**kwargs: Any) -> str:
         query = str(kwargs.get("query", "")).strip()
@@ -555,6 +758,9 @@ def create_graph_search_tool_sync(
             hidden=hidden,
             constructor_only=constructor_only,
         )
+        error = _reranker_error(search_kwargs)
+        if error is not None:
+            return error
         effective_scope = str(search_kwargs.pop("scope", "edges"))
         search_method = resolve_search_method(zep_client, effective_scope)
 
@@ -571,4 +777,5 @@ def create_graph_search_tool_sync(
         name=name,
         description=description,
         args_schema=args_schema,
+        handle_validation_error=_validation_error_message,
     )

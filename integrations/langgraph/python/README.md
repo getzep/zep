@@ -276,6 +276,20 @@ tool = create_graph_search_tool(
 tool = create_graph_search_tool(zep, graph_uuid=user.graph_uuid, hidden_params={"mmr_lambda"})
 ```
 
+**Valid search settings.** Each scope accepts only some rerankers, and the
+schema shows the model only the rerankers that it can use correctly: `edges`
+and `nodes` accept `rrf`, `mmr`, and `cross_encoder`; `episodes` accepts `rrf`
+and `mmr`; `observations` and `thread_summaries` accept `rrf`, `mmr`, and
+`cross_encoder`; `auto` takes no reranker. `node_distance` (on `edges` and
+`nodes`) is shown only when you pin `center_node_uuid`, and `episode_mentions`
+(on `edges` only) is shown only when `search_filters` sets `episode_uuids`.
+When the reranker is `mmr` and no `mmr_lambda` is set, the tool sends
+`DEFAULT_MMR_LAMBDA` (0.5). If the model sends a reranker that its scope does
+not accept, the tool omits the reranker. If the model sends a value outside the
+schema, the tool returns an error message that names the setting and the valid
+values, so the model can search again. A pinned scope and reranker pair that
+Zep rejects raises `ValueError` at construction.
+
 `search_filters` (sent to Zep as the v4 `filters` argument) and
 `bfs_origin_node_uuids` are always constructor-only (their complex shapes are
 not exposed to the model). The schema is built
