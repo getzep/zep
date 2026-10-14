@@ -176,9 +176,9 @@ Every search parameter is **tri-state** at construction time:
 | Option | Model param | Default when exposed | Notes |
 |--------|-------------|------------------------|-------|
 | `scope` | `scope` | `"edges"` | `"edges"` \| `"nodes"` \| `"episodes"` \| `"observations"` \| `"thread_summaries"` \| `"auto"` |
-| `reranker` | `reranker` | `"rrf"` | `"rrf"` \| `"mmr"` \| `"node_distance"` \| `"episode_mentions"` \| `"cross_encoder"` |
+| `reranker` | `reranker` | `"rrf"` | `"rrf"` \| `"mmr"` \| `"node_distance"` \| `"episode_mentions"` \| `"cross_encoder"`. Each scope accepts only some rerankers (see below). |
 | `limit` | `limit` | `10` | Maximum number of results |
-| `mmrLambda` | `mmrLambda` | — (no default; omitted unless set) | Diversity (`0.0`) vs. relevance (`1.0`); only used when `reranker` is `"mmr"` |
+| `mmrLambda` | `mmrLambda` | `0.5` when `reranker` is `"mmr"`; omitted otherwise | Diversity (`0.0`) vs. relevance (`1.0`); only used when `reranker` is `"mmr"` |
 | `centerNodeUuid` | `centerNodeUuid` | — (no default; omitted unless set) | Required when `reranker` is `"node_distance"` |
 
 `searchFilters` and `bfsOriginNodeUuids` are always constructor-only — never exposed to the model, always applied to every search when set. `searchFilters` takes the v4 `Zep.SearchFilters` shape, whose fields are camelCase (`nodeLabels`, `edgeTypes`, `dateFilters`, `metadataFilters`, and the other v4 filter fields). Each scope accepts only the filter keys that apply to it. Zep returns HTTP 400 `unsupported_filter` for a key that the scope cannot apply.
@@ -186,6 +186,16 @@ Every search parameter is **tri-state** at construction time:
 Each scope calls its own v4 SDK method: `edges` calls `graph.searchEdges`, `nodes` calls `graph.searchNodes`, `episodes` calls `graph.searchEpisodes`, `observations` calls `graph.searchObservations`, and `thread_summaries` calls `graph.searchThreadSummaries`. The `auto` scope calls `graph.getContext` and returns Zep's assembled Context Block. The search methods return one page, and the tool reads that page.
 
 An invalid enum value sent by the model (e.g. an unsupported `scope`) falls back to the documented default and logs a warning; it never throws.
+
+Each v4 search scope accepts only some rerankers:
+
+- `edges`: `"rrf"`, `"mmr"`, `"node_distance"`, `"episode_mentions"`, and `"cross_encoder"`.
+- `nodes`: `"rrf"`, `"mmr"`, `"node_distance"`, and `"cross_encoder"`.
+- `episodes`: `"rrf"` and `"mmr"`.
+- `observations` and `thread_summaries`: `"rrf"`, `"mmr"`, and `"cross_encoder"`.
+- `auto`: the reranker is ignored.
+
+`"node_distance"` requires `centerNodeUuid`, and `"episode_mentions"` requires `searchFilters.episodeUuids`. The tool shows the model only the rerankers that it can use: it removes `"episode_mentions"` when `searchFilters.episodeUuids` is not set, `"mmr"` when `mmrLambda` is `null`, and `"node_distance"` when `centerNodeUuid` is `null`. When `scope` is pinned, the tool shows only the rerankers of that scope. When `reranker` is pinned, the tool shows only the scopes that accept it. The constructor throws an error for pinned options that cannot work together. If the model still sends a pair that Zep rejects, the tool sends no request and returns an error message that names the setting that is not valid and the values to use.
 
 ```ts
 // Fully dynamic: the model chooses scope, reranker, limit, mmrLambda, centerNodeUuid.

@@ -22,6 +22,7 @@ For an existing V3 user, thread, or graph, do not call `createUser`, `createThre
 ### Changed
 
 - `ZepGraphSearchTool` and `ZepMemoryService` read one page of results from the v4 search methods, which replaces the v3 page number and cursor behavior.
+- `ZepGraphSearchTool` checks each scope and reranker pair before the request. The model sees only the rerankers that the tool can use, and the tool returns an error message that names the valid values for a pair that Zep rejects. The constructor throws an error for pinned options that cannot work together. The tool sends `mmrLambda: 0.5` when the reranker is `"mmr"` and no value is set.
 
 ### Added
 

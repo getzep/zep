@@ -65,6 +65,8 @@ const SCOPE_ENUM = [
   "auto",
 ] as const;
 
+type Reranker = Zep.SearchEdgesRequestReranker;
+
 /** Zep's supported rerankers (`SearchEdgesRequestReranker`). */
 const RERANKER_ENUM = [
   "rrf",
@@ -72,7 +74,30 @@ const RERANKER_ENUM = [
   "node_distance",
   "episode_mentions",
   "cross_encoder",
-] as const;
+] as const satisfies readonly Reranker[];
+
+/**
+ * The rerankers that each v4 search scope accepts. Zep returns HTTP 400
+ * "reranker is not supported on this search scope" for any other pair. The
+ * `"auto"` scope calls `graph.getContext`, which takes no reranker.
+ */
+const RERANKERS_BY_SCOPE: Record<
+  Exclude<ZepGraphSearchScope, "auto">,
+  readonly Reranker[]
+> = {
+  edges: ["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"],
+  nodes: ["rrf", "mmr", "node_distance", "cross_encoder"],
+  episodes: ["rrf", "mmr"],
+  observations: ["rrf", "mmr", "cross_encoder"],
+  thread_summaries: ["rrf", "mmr", "cross_encoder"],
+};
+
+function scopeSupportsReranker(
+  scope: ZepGraphSearchScope,
+  reranker: Reranker,
+): boolean {
+  return scope === "auto" || RERANKERS_BY_SCOPE[scope].includes(reranker);
+}
 
 /**
  * Search scopes this tool knows how to format, matching {@link SCOPE_ENUM}
@@ -88,8 +113,10 @@ const SUPPORTED_SCOPES = [
 ] as const satisfies readonly ZepGraphSearchScope[];
 
 const DEFAULT_SCOPE: ZepGraphSearchScope = "edges";
-const DEFAULT_RERANKER: Zep.SearchEdgesRequestReranker = "rrf";
+const DEFAULT_RERANKER: Reranker = "rrf";
 const DEFAULT_LIMIT = 10;
+/** The `mmrLambda` that the tool sends when the reranker is `"mmr"` and no value is set. */
+export const DEFAULT_MMR_LAMBDA = 0.5;
 
 /** Options for the {@link ZepGraphSearchTool} constructor. */
 export interface ZepGraphSearchToolOptions extends ZepIdentityOptions {
@@ -122,11 +149,20 @@ export interface ZepGraphSearchToolOptions extends ZepIdentityOptions {
    * `"cross_encoder"` (highest accuracy), `"episode_mentions"` (frequently
    * referenced), `"node_distance"` (near a specific entity).
    *
+   * Each scope accepts only some rerankers: `edges` accepts all five,
+   * `nodes` accepts all except `"episode_mentions"`, `episodes` accepts
+   * `"rrf"` and `"mmr"`, and `observations` and `thread_summaries` accept
+   * `"rrf"`, `"mmr"`, and `"cross_encoder"`. `"node_distance"` requires a
+   * `centerNodeUuid`, and `"episode_mentions"` requires
+   * `searchFilters.episodeUuids`. The constructor throws for a pinned value
+   * that cannot work with the other pinned options.
+   *
    * Tri-state: a concrete value pins the reranker (hidden from the model,
    * always used); `null` hides it AND omits it from the search call;
    * `undefined`/omitted exposes it to the model, defaulting to `"rrf"`.
+   * The exposed list contains only the rerankers that the tool can use.
    */
-  reranker?: Zep.SearchEdgesRequestReranker | null;
+  reranker?: Reranker | null;
   /**
    * Maximum number of results to return.
    *
@@ -137,11 +173,14 @@ export interface ZepGraphSearchToolOptions extends ZepIdentityOptions {
   limit?: number | null;
   /**
    * Balance between diversity (`0.0`) and relevance (`1.0`). Only used when
-   * `reranker` is `"mmr"`.
+   * `reranker` is `"mmr"`. Zep requires it for `"mmr"`, so the tool sends
+   * {@link DEFAULT_MMR_LAMBDA} when the reranker is `"mmr"` and no value is
+   * set.
    *
    * Tri-state: a concrete value pins `mmrLambda` (hidden from the model,
-   * always used); `null` hides it AND omits it from the search call;
-   * `undefined`/omitted exposes it to the model with no default.
+   * always used); `null` hides it AND omits it from the search call, which
+   * also removes `"mmr"` from the rerankers that the tool can use;
+   * `undefined`/omitted exposes it to the model.
    */
   mmrLambda?: number | null;
   /**
@@ -238,12 +277,16 @@ export class ZepGraphSearchTool extends BaseTool {
   private readonly graphUuidByUser = new Map<string, string>();
 
   private readonly scopeState: PinState<ZepGraphSearchScope>;
-  private readonly rerankerState: PinState<Zep.SearchEdgesRequestReranker>;
+  private readonly rerankerState: PinState<Reranker>;
   private readonly limitState: PinState<number>;
   private readonly mmrLambdaState: PinState<number>;
   private readonly centerNodeUuidState: PinState<string>;
   private readonly searchFilters?: Zep.SearchFilters;
   private readonly bfsOriginNodeUuids?: string[];
+  /** The rerankers that the other options let the tool use, for any scope. */
+  private readonly usableRerankers: readonly Reranker[];
+  /** The scopes that the model can select. */
+  private readonly selectableScopes: readonly ZepGraphSearchScope[];
 
   constructor(options: ZepGraphSearchToolOptions) {
     super({
@@ -279,7 +322,143 @@ export class ZepGraphSearchTool extends BaseTool {
     this.searchFilters = options.searchFilters;
     this.bfsOriginNodeUuids = options.bfsOriginNodeUuids;
 
+    this.usableRerankers = RERANKER_ENUM.filter(
+      (reranker) => this.rerankerUnavailableReason(reranker) === undefined,
+    );
+    this.validatePinnedReranker();
+    this.selectableScopes = this.computeSelectableScopes();
+
     this.declaration = this.buildDeclaration();
+  }
+
+  /**
+   * Returns why the other options prevent the use of a reranker, or
+   * `undefined` when the tool can use it.
+   */
+  private rerankerUnavailableReason(reranker: Reranker): string | undefined {
+    if (reranker === "mmr" && this.mmrLambdaState.kind === "hidden") {
+      return "'mmr' requires 'mmrLambda', but 'mmrLambda' is null";
+    }
+    if (
+      reranker === "node_distance" &&
+      this.centerNodeUuidState.kind === "hidden"
+    ) {
+      return "'node_distance' requires 'centerNodeUuid', but 'centerNodeUuid' is null";
+    }
+    if (
+      reranker === "episode_mentions" &&
+      !this.searchFilters?.episodeUuids?.length
+    ) {
+      return "'episode_mentions' requires 'searchFilters.episodeUuids'";
+    }
+    return undefined;
+  }
+
+  /** Throws when a pinned reranker cannot work with the other options. */
+  private validatePinnedReranker(): void {
+    if (this.rerankerState.kind !== "pinned") return;
+    const reranker = this.rerankerState.value;
+    if (!(RERANKER_ENUM as readonly string[]).includes(reranker)) {
+      throw new Error(
+        `Unsupported Zep graph search reranker: '${reranker}'. ` +
+          `Supported rerankers are: ${RERANKER_ENUM.join(", ")}.`,
+      );
+    }
+    const reason = this.rerankerUnavailableReason(reranker);
+    if (reason !== undefined) {
+      throw new Error(`Invalid Zep graph search options: ${reason}.`);
+    }
+    if (
+      this.scopeState.kind === "pinned" &&
+      !scopeSupportsReranker(this.scopeState.value, reranker)
+    ) {
+      const scope = this.scopeState.value as Exclude<
+        ZepGraphSearchScope,
+        "auto"
+      >;
+      throw new Error(
+        `Invalid Zep graph search options: scope '${scope}' does not ` +
+          `support reranker '${reranker}'. Rerankers for scope '${scope}' ` +
+          `are: ${RERANKERS_BY_SCOPE[scope].join(", ")}.`,
+      );
+    }
+  }
+
+  /** The scopes that support the pinned reranker, or every scope. */
+  private computeSelectableScopes(): readonly ZepGraphSearchScope[] {
+    if (this.scopeState.kind === "pinned") return [this.scopeState.value];
+    const pinned =
+      this.rerankerState.kind === "pinned"
+        ? this.rerankerState.value
+        : undefined;
+    if (pinned === undefined) return SCOPE_ENUM;
+    return SCOPE_ENUM.filter((scope) => scopeSupportsReranker(scope, pinned));
+  }
+
+  /** The usable rerankers that a scope accepts. */
+  private rerankersForScope(
+    scope: Exclude<ZepGraphSearchScope, "auto">,
+  ): Reranker[] {
+    return this.usableRerankers.filter((reranker) =>
+      RERANKERS_BY_SCOPE[scope].includes(reranker),
+    );
+  }
+
+  /**
+   * The rerankers that the model can select: the usable rerankers that at
+   * least one selectable scope accepts.
+   */
+  private selectableRerankers(): Reranker[] {
+    return this.usableRerankers.filter((reranker) =>
+      this.selectableScopes.some(
+        (scope) => scope !== "auto" && scopeSupportsReranker(scope, reranker),
+      ),
+    );
+  }
+
+  /**
+   * Checks the resolved scope and reranker before the request. Returns an
+   * error message for the model, or `undefined` when the pair is valid.
+   */
+  private validateSearchSettings(
+    scope: ZepGraphSearchScope,
+    reranker: Reranker | undefined,
+    centerNodeUuid: string | undefined,
+  ): string | undefined {
+    if (scope === "auto" || reranker === undefined) return undefined;
+    const reason = this.rerankerUnavailableReason(reranker);
+    if (reason !== undefined) {
+      return (
+        `Error: reranker '${reranker}' is not available in this tool, ` +
+        `because ${reason}. Use one of these rerankers for scope ` +
+        `'${scope}': ${this.rerankersForScope(scope).join(", ")}.`
+      );
+    }
+    if (!scopeSupportsReranker(scope, reranker)) {
+      if (this.rerankerState.kind === "pinned") {
+        return (
+          `Error: scope '${scope}' does not support reranker ` +
+          `'${reranker}', which this tool always uses. Use one of these ` +
+          `scopes: ${this.selectableScopes.join(", ")}.`
+        );
+      }
+      return (
+        `Error: reranker '${reranker}' is not supported for scope ` +
+        `'${scope}'. Use one of these rerankers for scope '${scope}': ` +
+        `${this.rerankersForScope(scope).join(", ")}.`
+      );
+    }
+    if (reranker === "node_distance" && centerNodeUuid === undefined) {
+      const others = this.rerankersForScope(scope).filter(
+        (other) => other !== "node_distance",
+      );
+      return (
+        "Error: reranker 'node_distance' requires 'centerNodeUuid'. Give " +
+        "the UUID of a graph node in 'centerNodeUuid', or use one of " +
+        `these rerankers: ${others.join(", ")}.`
+      );
+    }
+    return undefined;
   }
 
   /**
@@ -304,18 +483,16 @@ export class ZepGraphSearchTool extends BaseTool {
           "'observations' for derived memories, " +
           "'thread_summaries' for incremental thread summaries, " +
           "'auto' to let Zep decide the best mix of results.",
-        enum: [...SCOPE_ENUM],
+        enum: [...this.selectableScopes],
       };
     }
 
-    if (this.rerankerState.kind === "exposed") {
+    const rerankers = this.selectableRerankers();
+    if (this.rerankerState.kind === "exposed" && rerankers.length > 0) {
       properties.reranker = {
         type: Type.STRING,
-        description:
-          "Result ordering algorithm: 'rrf' (balanced), 'mmr' (diverse), " +
-          "'cross_encoder' (highest accuracy), 'episode_mentions' " +
-          "(frequently referenced), 'node_distance' (near a specific entity).",
-        enum: [...RERANKER_ENUM],
+        description: this.rerankerDescription(rerankers),
+        enum: rerankers,
       };
     }
 
@@ -330,7 +507,8 @@ export class ZepGraphSearchTool extends BaseTool {
       properties.mmrLambda = {
         type: Type.NUMBER,
         description:
-          "Balance between diversity (0.0) and relevance (1.0). Only used when reranker is 'mmr'.",
+          "Balance between diversity (0.0) and relevance (1.0). Only used " +
+          `when reranker is 'mmr'. Defaults to ${DEFAULT_MMR_LAMBDA}.`,
       };
     }
 
@@ -352,6 +530,30 @@ export class ZepGraphSearchTool extends BaseTool {
         required: ["query"],
       },
     };
+  }
+
+  /** Describes each selectable reranker and the scopes that accept it. */
+  private rerankerDescription(rerankers: readonly Reranker[]): string {
+    const meaning: Record<Reranker, string> = {
+      rrf: "balanced",
+      mmr: "diverse",
+      cross_encoder: "highest accuracy",
+      episode_mentions: "frequently referenced",
+      node_distance: "near the entity in centerNodeUuid, which is required",
+    };
+    const lines = rerankers.map((reranker) => {
+      const scopes = this.selectableScopes.filter(
+        (scope) => scope !== "auto" && scopeSupportsReranker(scope, reranker),
+      );
+      return `'${reranker}' (${meaning[reranker]}; scopes: ${scopes.join(", ")})`;
+    });
+    const autoNote = this.selectableScopes.includes("auto")
+      ? " The 'auto' scope ignores the reranker."
+      : "";
+    return (
+      `Result ordering algorithm. Each reranker works only with the listed scopes: ${lines.join(", ")}.` +
+      autoNote
+    );
   }
 
   /** Exposes the declaration built from non-pinned, non-hidden parameters. */
@@ -406,9 +608,24 @@ export class ZepGraphSearchTool extends BaseTool {
       typedArgs.centerNodeUuid,
     );
 
+    const resolvedScope = scope ?? DEFAULT_SCOPE;
+    const settingsError = this.validateSearchSettings(
+      resolvedScope,
+      reranker,
+      centerNodeUuid,
+    );
+    if (settingsError !== undefined) {
+      this.logger.warn(`Zep graph search: ${settingsError}`);
+      return settingsError;
+    }
+
     const body: GraphScopeSearchBody = { query };
     if (reranker !== undefined) body.reranker = reranker;
-    if (mmrLambda !== undefined) body.mmrLambda = mmrLambda;
+    if (mmrLambda !== undefined) {
+      body.mmrLambda = mmrLambda;
+    } else if (reranker === "mmr") {
+      body.mmrLambda = DEFAULT_MMR_LAMBDA;
+    }
     if (centerNodeUuid !== undefined) body.centerNodeUuid = centerNodeUuid;
     if (this.searchFilters !== undefined) {
       body.filters = this.searchFilters;
@@ -425,7 +642,6 @@ export class ZepGraphSearchTool extends BaseTool {
       return "Error: could not determine which graph to search.";
     }
 
-    const resolvedScope = scope ?? DEFAULT_SCOPE;
     try {
       const texts = await searchGraphScope(this.zep, graphUuid, {
         scope: resolvedScope,
@@ -566,8 +782,8 @@ function nameSummaryText(
 export interface GraphScopeSearchBody {
   /** The search query. */
   query: string;
-  /** The reranker. The five search methods accept the same values. */
-  reranker?: Zep.SearchEdgesRequestReranker;
+  /** The reranker. Each scope accepts only some rerankers. */
+  reranker?: Reranker;
   /** The diversity weight for the `"mmr"` reranker. */
   mmrLambda?: number;
   /** The node to rank results by distance from. */

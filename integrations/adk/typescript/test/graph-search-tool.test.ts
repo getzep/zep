@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { ZepClient } from "@getzep/zep-cloud";
 import type { Context } from "@google/adk";
 import { Type } from "@google/genai";
-import { ZepGraphSearchTool } from "../src/graph-search-tool.js";
+import {
+  DEFAULT_MMR_LAMBDA,
+  ZepGraphSearchTool,
+} from "../src/graph-search-tool.js";
 import {
   fakeContext,
   capturingLogger,
@@ -62,7 +65,6 @@ describe("ZepGraphSearchTool — default declaration", () => {
       "rrf",
       "mmr",
       "node_distance",
-      "episode_mentions",
       "cross_encoder",
     ]);
 
@@ -543,5 +545,211 @@ describe("ZepGraphSearchTool — errors", () => {
     const out = await callTool(tool, { query: "q" });
     expect(out).toContain("Graph search failed");
     expect(out).toContain("search exploded");
+  });
+});
+
+describe("ZepGraphSearchTool — scope and reranker validation", () => {
+  function makeTool(options: Record<string, unknown> = {}) {
+    const { client, mocks } = mockZepClient();
+    const logger = capturingLogger();
+    const tool = new ZepGraphSearchTool({
+      zep: client as unknown as ZepClient,
+      graphUuid: GRAPH_UUID,
+      logger,
+      ...options,
+    });
+    return { tool, mocks, logger };
+  }
+
+  function searchCalls(mocks: ReturnType<typeof mockZepClient>["mocks"]) {
+    return [
+      mocks.searchEdges,
+      mocks.searchNodes,
+      mocks.searchEpisodes,
+      mocks.searchObservations,
+      mocks.searchThreadSummaries,
+      mocks.getContext,
+    ].reduce((total, fn) => total + fn.mock.calls.length, 0);
+  }
+
+  it.each([
+    ["episodes", "cross_encoder", "rrf, mmr"],
+    ["episodes", "node_distance", "rrf, mmr"],
+    ["observations", "node_distance", "rrf, mmr, cross_encoder"],
+    ["thread_summaries", "node_distance", "rrf, mmr, cross_encoder"],
+  ])(
+    "returns a retryable error for scope '%s' with reranker '%s' and sends no request",
+    async (scope, reranker, valid) => {
+      const { tool, mocks } = makeTool();
+      const result = await callTool(tool, {
+        query: "q",
+        scope,
+        reranker,
+        centerNodeUuid: "node-1",
+      });
+      expect(result).toBe(
+        `Error: reranker '${reranker}' is not supported for scope '${scope}'. ` +
+          `Use one of these rerankers for scope '${scope}': ${valid}.`,
+      );
+      expect(searchCalls(mocks)).toBe(0);
+    },
+  );
+
+  it("returns a retryable error for episode_mentions without searchFilters.episodeUuids", async () => {
+    const { tool, mocks } = makeTool();
+    const result = await callTool(tool, {
+      query: "q",
+      scope: "nodes",
+      reranker: "episode_mentions",
+    });
+    expect(result).toBe(
+      "Error: reranker 'episode_mentions' is not available in this tool, " +
+        "because 'episode_mentions' requires 'searchFilters.episodeUuids'. " +
+        "Use one of these rerankers for scope 'nodes': rrf, mmr, node_distance, cross_encoder.",
+    );
+    expect(searchCalls(mocks)).toBe(0);
+  });
+
+  it("returns a retryable error for node_distance without centerNodeUuid", async () => {
+    const { tool, mocks } = makeTool();
+    const result = await callTool(tool, {
+      query: "q",
+      scope: "edges",
+      reranker: "node_distance",
+    });
+    expect(result).toBe(
+      "Error: reranker 'node_distance' requires 'centerNodeUuid'. Give the " +
+        "UUID of a graph node in 'centerNodeUuid', or use one of these " +
+        "rerankers: rrf, mmr, cross_encoder.",
+    );
+    expect(searchCalls(mocks)).toBe(0);
+  });
+
+  it("sends the default mmrLambda when the reranker is mmr and no value is set", async () => {
+    const { tool, mocks } = makeTool();
+    await callTool(tool, { query: "q", scope: "episodes", reranker: "mmr" });
+    expect(mocks.searchEpisodes).toHaveBeenCalledWith(GRAPH_UUID, {
+      pageSize: 10,
+      query: "q",
+      reranker: "mmr",
+      mmrLambda: DEFAULT_MMR_LAMBDA,
+    });
+  });
+
+  it("sends the mmrLambda of the model when it is set", async () => {
+    const { tool, mocks } = makeTool();
+    await callTool(tool, { query: "q", reranker: "mmr", mmrLambda: 0.2 });
+    expect(mocks.searchEdges).toHaveBeenCalledWith(
+      GRAPH_UUID,
+      expect.objectContaining({ reranker: "mmr", mmrLambda: 0.2 }),
+    );
+  });
+
+  it("sends each supported pair to the scope method", async () => {
+    const { tool, mocks } = makeTool();
+    await callTool(tool, { query: "q", scope: "nodes", reranker: "cross_encoder" });
+    await callTool(tool, {
+      query: "q",
+      scope: "observations",
+      reranker: "cross_encoder",
+    });
+    expect(mocks.searchNodes).toHaveBeenCalledWith(
+      GRAPH_UUID,
+      expect.objectContaining({ reranker: "cross_encoder" }),
+    );
+    expect(mocks.searchObservations).toHaveBeenCalledWith(
+      GRAPH_UUID,
+      expect.objectContaining({ reranker: "cross_encoder" }),
+    );
+  });
+
+  it("allows episode_mentions on edges when searchFilters.episodeUuids is set", async () => {
+    const { tool, mocks } = makeTool({
+      searchFilters: { episodeUuids: ["ep-1"] },
+    });
+    const props = tool._getDeclaration().parameters?.properties ?? {};
+    expect(props.reranker?.enum).toContain("episode_mentions");
+    await callTool(tool, { query: "q", reranker: "episode_mentions" });
+    expect(mocks.searchEdges).toHaveBeenCalledWith(
+      GRAPH_UUID,
+      expect.objectContaining({
+        reranker: "episode_mentions",
+        filters: { episodeUuids: ["ep-1"] },
+      }),
+    );
+  });
+
+  it("shows only the rerankers of a pinned scope", () => {
+    const { tool } = makeTool({ scope: "episodes" });
+    const props = tool._getDeclaration().parameters?.properties ?? {};
+    expect(props.reranker?.enum).toEqual(["rrf", "mmr"]);
+  });
+
+  it("removes mmr when mmrLambda is null and node_distance when centerNodeUuid is null", () => {
+    const { tool } = makeTool({ mmrLambda: null, centerNodeUuid: null });
+    const props = tool._getDeclaration().parameters?.properties ?? {};
+    expect(props.reranker?.enum).toEqual(["rrf", "cross_encoder"]);
+  });
+
+  it("shows only the scopes that support a pinned reranker", () => {
+    const { tool } = makeTool({ reranker: "cross_encoder" });
+    const props = tool._getDeclaration().parameters?.properties ?? {};
+    expect(props.scope?.enum).toEqual([
+      "edges",
+      "nodes",
+      "observations",
+      "thread_summaries",
+      "auto",
+    ]);
+  });
+
+  it("returns a retryable error when the model selects a scope that the pinned reranker does not support", async () => {
+    const { tool, mocks } = makeTool({ reranker: "cross_encoder" });
+    const result = await callTool(tool, { query: "q", scope: "episodes" });
+    expect(result).toBe(
+      "Error: scope 'episodes' does not support reranker 'cross_encoder', " +
+        "which this tool always uses. Use one of these scopes: edges, nodes, " +
+        "observations, thread_summaries, auto.",
+    );
+    expect(searchCalls(mocks)).toBe(0);
+  });
+
+  it("sends no reranker for the auto scope", async () => {
+    const { tool, mocks } = makeTool();
+    await callTool(tool, { query: "q", scope: "auto", reranker: "cross_encoder" });
+    expect(mocks.getContext).toHaveBeenCalledWith(GRAPH_UUID, {
+      query: "q",
+      filters: undefined,
+    });
+  });
+
+  it.each([
+    [{ scope: "episodes", reranker: "cross_encoder" }, "scope 'episodes' does not support reranker 'cross_encoder'. Rerankers for scope 'episodes' are: rrf, mmr."],
+    [{ scope: "nodes", reranker: "episode_mentions", searchFilters: { episodeUuids: ["ep-1"] } }, "scope 'nodes' does not support reranker 'episode_mentions'. Rerankers for scope 'nodes' are: rrf, mmr, node_distance, cross_encoder."],
+    [{ scope: "observations", reranker: "node_distance" }, "scope 'observations' does not support reranker 'node_distance'. Rerankers for scope 'observations' are: rrf, mmr, cross_encoder."],
+    [{ reranker: "episode_mentions" }, "'episode_mentions' requires 'searchFilters.episodeUuids'."],
+    [{ reranker: "mmr", mmrLambda: null }, "'mmr' requires 'mmrLambda', but 'mmrLambda' is null."],
+    [{ reranker: "node_distance", centerNodeUuid: null }, "'node_distance' requires 'centerNodeUuid', but 'centerNodeUuid' is null."],
+    [{ reranker: "bogus" }, "Unsupported Zep graph search reranker: 'bogus'."],
+  ])("throws at construction for invalid pinned options %j", (options, message) => {
+    expect(() => makeTool(options)).toThrow(message);
+  });
+
+  it("accepts every supported pinned pair at construction", () => {
+    const pairs: [string, string][] = [
+      ["edges", "rrf"],
+      ["edges", "mmr"],
+      ["edges", "node_distance"],
+      ["edges", "cross_encoder"],
+      ["nodes", "node_distance"],
+      ["nodes", "cross_encoder"],
+      ["episodes", "mmr"],
+      ["observations", "cross_encoder"],
+      ["thread_summaries", "cross_encoder"],
+      ["auto", "rrf"],
+    ];
+    for (const [scope, reranker] of pairs) {
+      expect(() => makeTool({ scope, reranker })).not.toThrow();
+    }
   });
 });
