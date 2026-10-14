@@ -109,7 +109,7 @@ async def wait_for_episodes_processed(
             logger.warning("Timed out waiting for episode processing; continuing.")
             return
         try:
-            pager = await zep.graph.episode.list(graph_uuid, limit=20)
+            pager = await zep.graph.episode.list(graph_uuid, page_size=20)
         except Exception as exc:
             logger.warning("Episode poll failed (%s); retrying.", exc)
             await asyncio.sleep(poll_interval)
@@ -233,7 +233,7 @@ async def test_store_round_trip() -> None:
         entries = await store.search("ceramics")
         assert isinstance(entries, list)
 
-        pager = await zep.thread.list_messages(thread_uuid, limit=20)
+        pager = await zep.thread.list_messages(thread_uuid, page_size=20)
         messages = list(pager.items or [])
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)
@@ -282,7 +282,7 @@ async def test_integration_full_lifecycle() -> None:
         assert user.email == EMAIL
         assert user.graph_uuid is not None
 
-        pager = await zep.thread.list_messages(thread_1, limit=20)
+        pager = await zep.thread.list_messages(thread_1, page_size=20)
         messages = list(pager.items or [])
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)
@@ -357,7 +357,7 @@ async def main() -> None:
         passed &= check("user has a graph", user.graph_uuid is not None, str(user.graph_uuid))
 
         print("\n[Step 3] Verifying thread 1 messages...")
-        pager = await zep.thread.list_messages(thread_1, limit=20)
+        pager = await zep.thread.list_messages(thread_1, page_size=20)
         messages = list(pager.items or [])
         user_msgs = [m for m in messages if m.role == "user"]
         asst_msgs = [m for m in messages if m.role == "assistant"]

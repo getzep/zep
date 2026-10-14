@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Migrated the package to the Zep v4 SDK (`zep-cloud==4.0.0a5`). The package
+- Migrated the package to the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). The package
   supports v4 only.
 - `ZepMemoryStore` now takes `user_uuid`, `thread_uuid`, and `graph_uuid`. Zep
   v4 addresses a user, a thread, and a graph by a server-generated UUID. The

@@ -72,7 +72,7 @@ class TestCreateZepSearchTool:
         args, kwargs = client.graph.search_edges.await_args
         assert args[0] == GRAPH_UUID
         assert kwargs["query"] == "hiking"
-        assert kwargs["limit"] == 5
+        assert kwargs["page_size"] == 5
 
     @pytest.mark.asyncio
     async def test_tool_auto_scope_uses_get_context(self) -> None:

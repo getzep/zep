@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "strands-agents>=1.45.0",
-    "zep-cloud==4.0.0a5",
+    "zep-cloud>=4.0.0,<5",
 ]
 
 [project.urls]

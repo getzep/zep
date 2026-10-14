@@ -10,7 +10,7 @@ Add long-term agent memory to [Strands Agents](https://strandsagents.com) via Ze
 pip install zep-strands
 ```
 
-Requires Python 3.11+, `strands-agents>=1.45.0`, `zep-cloud==4.0.0a5`, and a Zep Cloud API key from [app.getzep.com](https://app.getzep.com/).
+Requires Python 3.11+, `strands-agents>=1.45.0`, `zep-cloud>=4.0.0,<5`, and a Zep Cloud API key from [app.getzep.com](https://app.getzep.com/).
 
 Zep v4 addresses a user, a thread, and a graph by a server-generated UUID. A v4 create operation accepts no client-chosen name. Create each resource one time, keep the UUID from the response in your own database, and give the UUID to the store.
 
@@ -238,7 +238,7 @@ make all          # format + lint + type-check + test
 
 - Python 3.11+
 - `strands-agents>=1.45.0`
-- `zep-cloud==4.0.0a5`
+- `zep-cloud>=4.0.0,<5`
 
 ## Support
 

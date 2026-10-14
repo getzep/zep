@@ -34,10 +34,7 @@ cd zep/integrations/strands/python
 make install        # uv sync --extra dev (includes strands-agents[openai])
 ```
 
-Requirements: Python 3.11+, `strands-agents>=1.45.0`, `zep-cloud==4.0.0a5`.
-
-`zep-cloud` 4.0.0a5 is a pre-release. With `pip`, install it with
-`pip install --pre 'zep-cloud==4.0.0a5'`.
+Requirements: Python 3.11+, `strands-agents>=1.45.0`, `zep-cloud>=4.0.0,<5`.
 
 ## 4. Configure environment variables
 

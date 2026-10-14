@@ -182,7 +182,7 @@ async def run_graph_search(
 
     kwargs: dict[str, Any] = {"query": query}
     if limit is not None:
-        kwargs["limit"] = limit
+        kwargs["page_size"] = limit
     if reranker is not None:
         kwargs["reranker"] = reranker
     if mmr_lambda is not None:
