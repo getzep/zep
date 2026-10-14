@@ -24,9 +24,9 @@ The API changes that are specific to this package are:
 - `ContextInput` carries `user_uuid`, `thread_uuid`, `graph_uuid`, and
   `user_message` instead of `user_id` and `thread_id`.
 - `ensure_user` and `ensure_thread` take no `user_id` or `thread_id`:
-  `ensure_thread` takes `user_uuid`, and both helpers return the created or
-  existing resource together with a flag that shows whether the resource was
-  newly created.
+  `ensure_thread` takes `user_uuid`, and both helpers return the new resource
+  together with a creation flag. A failed create, including a conflict, raises
+  the error.
 - The `on_created` hook signature is now `Callable[[Zep, User], None]`. The
   hook receives the created `User`, which carries `uuid_` and `graph_uuid`.
 - `ZepUserStorage` and `ZepGraphStorage` replace `facts_limit` and
