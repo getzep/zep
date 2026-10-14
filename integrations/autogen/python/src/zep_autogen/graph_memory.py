@@ -19,6 +19,7 @@ from autogen_core.model_context import ChatCompletionContext
 from autogen_core.models import SystemMessage
 from zep_cloud.client import AsyncZep
 
+from .exceptions import reject_removed_kwargs
 from .limits import truncate_graph_data
 from .search import (
     SearchFiltersLike,
@@ -26,6 +27,14 @@ from .search import (
     results_to_memory_content,
     search_scope,
 )
+
+#: Keyword arguments of the V3 ``ZepGraphMemory`` constructor that V4 removed,
+#: mapped to the text that names the replacement in the error message.
+_REMOVED_V3_KWARGS = {
+    "graph_id": "pass `graph_uuid`",
+    "facts_limit": "pass `max_characters`",
+    "entity_limit": "pass `max_characters`",
+}
 
 
 class ZepGraphMemory(Memory):
@@ -68,7 +77,10 @@ class ZepGraphMemory(Memory):
                 ``query()`` to override this value for one call.
             max_characters: Optional maximum length of the retrieved context
                 block. When omitted, Zep applies its own default.
-            **kwargs: Additional configuration options
+            **kwargs: Rejected with ``TypeError``. A removed V3 argument
+                (``graph_id``, ``facts_limit``, ``entity_limit``) names its
+                V4 replacement in the error; any other name is an
+                unexpected-argument error.
         """
         if not isinstance(client, AsyncZep):
             raise TypeError("client must be an instance of AsyncZep")
@@ -76,12 +88,12 @@ class ZepGraphMemory(Memory):
         if not graph_uuid:
             raise ValueError("graph_uuid is required")
 
+        reject_removed_kwargs("ZepGraphMemory", kwargs, _REMOVED_V3_KWARGS)
+
         self._client = client
         self._graph_uuid = graph_uuid
         self._search_filters = search_filters
         self._max_characters = max_characters
-
-        self._config = kwargs
 
         # Set up module logger
         self._logger = logging.getLogger(__name__)

@@ -259,8 +259,16 @@ export ZEP_API_KEY="your-zep-api-key"
 ```
 
 The SDK sends requests to the Zep v4 API at `https://api.getzep.com/api/v4` by
-default. Set `ZEP_API_URL=https://api.getzep.com` only if your environment needs
-an explicit value; the SDK appends the `/api/v4` path.
+default. The SDK does not read `ZEP_API_URL` itself, and it uses `base_url`
+verbatim. To call a non-default API, pass the base URL when you create the
+client:
+
+```python
+zep_client = AsyncZep(
+    api_key=os.environ["ZEP_API_KEY"],
+    base_url=f"{os.environ['ZEP_API_URL']}/api/v4",
+)
+```
 
 ### Memory Classes
 

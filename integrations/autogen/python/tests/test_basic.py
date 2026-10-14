@@ -7,8 +7,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from autogen_core.memory import MemoryContent, MemoryMimeType
 from conftest import FakePager
+from zep_cloud.client import AsyncZep
 
-from zep_autogen import ZepUserMemory
+from zep_autogen import ZepGraphMemory, ZepUserMemory
 
 USER_UUID = "11111111-1111-1111-1111-111111111111"
 THREAD_UUID = "22222222-2222-2222-2222-222222222222"
@@ -303,3 +304,51 @@ class TestZepMemoryMock:
         args, kwargs = mock_client.thread.get_context.call_args
         assert args[0] == THREAD_UUID
         assert kwargs["template_uuid"] == template_uuid
+
+
+class TestRemovedV3Kwargs:
+    """Test that the constructors reject the keyword arguments that V3 removed."""
+
+    def test_zep_user_memory_rejects_user_id(self):
+        mock_client = MagicMock(spec=AsyncZep)
+        with pytest.raises(TypeError, match="`user_id` was removed; pass `user_uuid`"):
+            ZepUserMemory(client=mock_client, user_uuid=USER_UUID, user_id="alice")
+
+    def test_zep_user_memory_rejects_thread_id(self):
+        mock_client = MagicMock(spec=AsyncZep)
+        with pytest.raises(TypeError, match="`thread_id` was removed; pass `thread_uuid`"):
+            ZepUserMemory(client=mock_client, user_uuid=USER_UUID, thread_id="thread-1")
+
+    def test_zep_user_memory_rejects_context_template_id(self):
+        mock_client = MagicMock(spec=AsyncZep)
+        with pytest.raises(TypeError, match="`context_template_id` was removed"):
+            ZepUserMemory(client=mock_client, user_uuid=USER_UUID, context_template_id="template-1")
+
+    def test_zep_user_memory_rejects_provisioning_kwargs(self):
+        mock_client = MagicMock(spec=AsyncZep)
+        for name in ("first_name", "last_name", "email", "on_created"):
+            with pytest.raises(
+                TypeError, match=f"`{name}` was removed; pass `{name}` to `create_user`"
+            ):
+                ZepUserMemory(client=mock_client, user_uuid=USER_UUID, **{name: "value"})
+
+    def test_zep_user_memory_rejects_unknown_kwarg(self):
+        mock_client = MagicMock(spec=AsyncZep)
+        with pytest.raises(TypeError, match="unexpected keyword arguments: 'bogus'"):
+            ZepUserMemory(client=mock_client, user_uuid=USER_UUID, bogus=True)
+
+    def test_zep_graph_memory_rejects_graph_id(self):
+        mock_client = MagicMock(spec=AsyncZep)
+        with pytest.raises(TypeError, match="`graph_id` was removed; pass `graph_uuid`"):
+            ZepGraphMemory(client=mock_client, graph_uuid=GRAPH_UUID, graph_id="graph-1")
+
+    def test_zep_graph_memory_rejects_fact_and_entity_limits(self):
+        mock_client = MagicMock(spec=AsyncZep)
+        for name in ("facts_limit", "entity_limit"):
+            with pytest.raises(TypeError, match=f"`{name}` was removed; pass `max_characters`"):
+                ZepGraphMemory(client=mock_client, graph_uuid=GRAPH_UUID, **{name: 5})
+
+    def test_zep_graph_memory_rejects_unknown_kwarg(self):
+        mock_client = MagicMock(spec=AsyncZep)
+        with pytest.raises(TypeError, match="unexpected keyword arguments: 'bogus'"):
+            ZepGraphMemory(client=mock_client, graph_uuid=GRAPH_UUID, bogus=True)

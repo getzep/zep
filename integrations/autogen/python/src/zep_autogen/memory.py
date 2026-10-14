@@ -44,11 +44,24 @@ from autogen_core.models import SystemMessage
 from zep_cloud.client import AsyncZep
 from zep_cloud.types import AddMessage
 
+from .exceptions import reject_removed_kwargs
 from .limits import truncate_graph_data, truncate_message_content
 from .provisioning import create_thread as _create_thread
 from .search import collect, results_to_memory_content, search_scope
 
 logger = logging.getLogger(__name__)
+
+#: Keyword arguments of the V3 ``ZepUserMemory`` constructor that V4 removed,
+#: mapped to the text that names the replacement in the error message.
+_REMOVED_V3_KWARGS = {
+    "user_id": "pass `user_uuid`",
+    "thread_id": "pass `thread_uuid`",
+    "context_template_id": "pass `context_template_uuid`",
+    "first_name": "pass `first_name` to `create_user`",
+    "last_name": "pass `last_name` to `create_user`",
+    "email": "pass `email` to `create_user`",
+    "on_created": "pass `on_created` to `create_user`",
+}
 
 #: Default template used to wrap retrieved Zep context before injecting it
 #: into the model context as a system message.  Rendered via plain string
@@ -214,13 +227,19 @@ class ZepUserMemory(Memory):
                 contain a literal ``{context}`` placeholder, replaced via plain
                 string replacement (never ``str.format``). Defaults to
                 :data:`DEFAULT_CONTEXT_TEMPLATE`.
-            **kwargs: Additional configuration options
+            **kwargs: Rejected with ``TypeError``. A removed V3 argument
+                (``user_id``, ``thread_id``, ``context_template_id``,
+                ``first_name``, ``last_name``, ``email``, ``on_created``)
+                names its V4 replacement in the error; any other name is an
+                unexpected-argument error.
         """
         if not isinstance(client, AsyncZep):
             raise TypeError("client must be an instance of AsyncZep")
 
         if not user_uuid:
             raise ValueError("user_uuid is required")
+
+        reject_removed_kwargs("ZepUserMemory", kwargs, _REMOVED_V3_KWARGS)
 
         self._client = client
         self._user_uuid = user_uuid
@@ -229,7 +248,6 @@ class ZepUserMemory(Memory):
         self._context_template_uuid = context_template_uuid
         self._context_builder = context_builder
         self._context_template = context_template
-        self._config = kwargs
 
         # Set up module logger
         self._logger = logging.getLogger(__name__)

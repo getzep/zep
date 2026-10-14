@@ -48,14 +48,19 @@ thread, and graph. The public API of the package takes `user_uuid`,
 export ZEP_API_KEY="your-zep-api-key"
 export OPENAI_API_KEY="your-openai-api-key"
 
-# Optional: the SDK uses https://api.getzep.com/api/v4 by default.
+# Optional: the API origin, used by the examples and the live test to build
+# the base URL of the client. The SDK uses https://api.getzep.com/api/v4 by
+# default.
 export ZEP_API_URL="https://api.getzep.com"
 
 # Optional: override the OpenAI model used by the live test (default: gpt-4o-mini)
 export OPENAI_MODEL="gpt-4o-mini"
 ```
 
-The SDK appends the `/api/v4` path to `ZEP_API_URL`.
+The SDK does not read `ZEP_API_URL` itself. The examples and the live test
+read the variable and pass `base_url=f"{ZEP_API_URL}/api/v4"` to `AsyncZep`;
+the SDK uses `base_url` verbatim. To call a non-default API in your own code,
+pass the base URL explicitly the same way.
 
 ## 5. Run the example
 
