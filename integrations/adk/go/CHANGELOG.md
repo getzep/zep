@@ -87,6 +87,13 @@ the migration guide, and store it.
 - `ContextInput` is the input of a custom `ContextBuilder`. It has the Zep
   client, the user UUID, the thread UUID, the text of the user message, the
   ADK callback context, and the outgoing `*model.LLMRequest`.
+- `NewGraphSearchTool` validates the scope and reranker pair against the
+  pairs that Zep v4 accepts. The schema shows only the rerankers that a pinned
+  or hidden scope accepts, and only the scopes that a pinned reranker accepts.
+  A pair from the model that Zep rejects returns an error to the model that
+  names the setting and the values to use, and the tool makes no Zep call.
+  A pinned pair that Zep rejects makes `NewGraphSearchTool` return an error.
+  The `mmr` reranker uses `mmr_lambda=0.5` when no value is set.
 
 ### Changed
 

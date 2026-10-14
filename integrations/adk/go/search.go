@@ -2,6 +2,7 @@ package zepadk
 
 import (
 	"context"
+	"slices"
 
 	zep "github.com/getzep/zep-go/v4"
 )
@@ -92,6 +93,39 @@ func newModelSearchRerankerFromString(s string) (SearchReranker, error) {
 	default:
 		return "", errUnsupportedReranker
 	}
+}
+
+// defaultMMRLambda is the mmr_lambda that the graph search tool sends when the
+// reranker is mmr and no mmr_lambda is set. Zep v4 rejects an mmr search that
+// has no mmr_lambda.
+const defaultMMRLambda = 0.5
+
+// searchRerankersByScope lists the rerankers that each Zep v4 search scope
+// accepts, in the canonical order. Zep v4 rejects any other pair with HTTP
+// 400. The auto scope has no entry, because Graph.GetContext takes no
+// reranker.
+var searchRerankersByScope = map[SearchScope][]SearchReranker{
+	SearchScopeEdges: {
+		SearchRerankerRRF, SearchRerankerMMR, SearchRerankerNodeDistance,
+		SearchRerankerEpisodeMentions, SearchRerankerCrossEncoder,
+	},
+	SearchScopeNodes: {
+		SearchRerankerRRF, SearchRerankerMMR, SearchRerankerNodeDistance,
+		SearchRerankerCrossEncoder,
+	},
+	SearchScopeEpisodes:        {SearchRerankerRRF, SearchRerankerMMR},
+	SearchScopeObservations:    {SearchRerankerRRF, SearchRerankerMMR, SearchRerankerCrossEncoder},
+	SearchScopeThreadSummaries: {SearchRerankerRRF, SearchRerankerMMR, SearchRerankerCrossEncoder},
+}
+
+// rerankerSupported reports whether Zep v4 accepts reranker on scope.
+func rerankerSupported(scope SearchScope, reranker SearchReranker) bool {
+	return slices.Contains(searchRerankersByScope[scope], reranker)
+}
+
+// rerankerKnown reports whether reranker is one of the package rerankers.
+func rerankerKnown(reranker SearchReranker) bool {
+	return rerankerSupported(SearchScopeEdges, reranker)
 }
 
 // maxSearchPageSize is the largest page_size that a Zep v4 search accepts.

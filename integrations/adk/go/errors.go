@@ -21,3 +21,7 @@ var errUnsupportedReranker = errors.New("zepadk: unsupported search reranker")
 // errUnsupportedFilter reports that the search filters have a key that the
 // selected Zep v4 search scope cannot apply.
 var errUnsupportedFilter = errors.New("zepadk: the search filters have a key that the search scope cannot apply")
+
+// errInvalidSearchSettings reports a graph search scope, reranker, or reranker
+// setting that Zep v4 rejects.
+var errInvalidSearchSettings = errors.New("zepadk: invalid search settings")

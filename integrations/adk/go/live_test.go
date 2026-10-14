@@ -3,6 +3,7 @@ package zepadk
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
@@ -218,4 +219,42 @@ func TestLiveMemoryServiceSearch(t *testing.T) {
 		return
 	}
 	t.Logf("memory entries returned: %d", len(resp.Memories))
+}
+
+// TestLiveGraphSearchToolSearchSettings asserts that a scope and reranker pair
+// that Zep v4 rejected before validation now works or returns a clear error
+// to the model without a Zep call.
+func TestLiveGraphSearchToolSearchSettings(t *testing.T) {
+	client := requireLiveClient(t)
+	ctx := context.Background()
+
+	userUUID, graphUUID, err := CreateUser(ctx, client, "Live", "Settings", "")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	t.Cleanup(func() { deleteLiveUser(t, client, userUUID) })
+
+	var logs strings.Builder
+	handler := newGraphSearchHandler(newZepAPI(client),
+		WithGraphUUID(graphUUID),
+		WithToolLogger(slog.New(slog.NewTextHandler(&logs, nil))),
+	)
+	tc := fakeSearchToolContext{Context: ctx, userID: "zepadk-live-settings"}
+
+	for _, scope := range []string{"edges", "nodes", "episodes", "observations", "thread_summaries"} {
+		mmr := "mmr"
+		if _, err := handler(tc, SearchArgs{Query: "food", Scope: &scope, Reranker: &mmr}); err != nil {
+			t.Fatalf("%s with mmr and no mmr_lambda: err = %v, want nil", scope, err)
+		}
+	}
+	if strings.Contains(logs.String(), "graph search tool failed") {
+		t.Fatalf("Zep rejected an mmr search: %s", logs.String())
+	}
+
+	scope, reranker := "episodes", "cross_encoder"
+	_, err = handler(tc, SearchArgs{Query: "food", Scope: &scope, Reranker: &reranker})
+	if !errors.Is(err, errInvalidSearchSettings) {
+		t.Fatalf("episodes with cross_encoder: err = %v, want errInvalidSearchSettings", err)
+	}
+	t.Logf("episodes with cross_encoder: %v", err)
 }

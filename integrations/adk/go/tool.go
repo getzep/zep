@@ -2,7 +2,10 @@ package zepadk
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"slices"
+	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
 
@@ -45,23 +48,25 @@ const (
 	defaultSearchLimit    = 10
 )
 
-// searchScopeEnum and searchRerankerEnum are the model-facing enum values for
-// the scope and reranker parameters, in the canonical order used across
-// zep-adk's Python, Go, and TypeScript implementations.
+// allSearchScopes and modelSearchRerankers are the scope and reranker values
+// that the model can select, in the canonical order used across zep-adk's
+// Python, Go, and TypeScript implementations. The model cannot select
+// [SearchRerankerEpisodeMentions], because Zep requires episode UUIDs for it
+// and the model has no way to supply them.
 var (
-	searchScopeEnum = []any{
-		string(SearchScopeEdges),
-		string(SearchScopeNodes),
-		string(SearchScopeEpisodes),
-		string(SearchScopeObservations),
-		string(SearchScopeThreadSummaries),
-		string(SearchScopeAuto),
+	allSearchScopes = []SearchScope{
+		SearchScopeEdges,
+		SearchScopeNodes,
+		SearchScopeEpisodes,
+		SearchScopeObservations,
+		SearchScopeThreadSummaries,
+		SearchScopeAuto,
 	}
-	searchRerankerEnum = []any{
-		string(SearchRerankerRRF),
-		string(SearchRerankerMMR),
-		string(SearchRerankerNodeDistance),
-		string(SearchRerankerCrossEncoder),
+	modelSearchRerankers = []SearchReranker{
+		SearchRerankerRRF,
+		SearchRerankerMMR,
+		SearchRerankerNodeDistance,
+		SearchRerankerCrossEncoder,
 	}
 )
 
@@ -225,7 +230,12 @@ func WithToolSearchLimit(limit int) GraphSearchToolOption {
 }
 
 // WithToolReranker pins and hides the result reranking algorithm, removing it
-// from the model's tool schema and always using the given value.
+// from the model's tool schema and always using the given value. The model
+// can then select only the scopes that accept the reranker.
+// [NewGraphSearchTool] returns an error when a pinned or hidden scope does not
+// accept the reranker, when [SearchRerankerEpisodeMentions] has no
+// EpisodeUUIDs in [WithToolSearchFilters], or when
+// [SearchRerankerNodeDistance] has a hidden center node UUID.
 func WithToolReranker(reranker SearchReranker) GraphSearchToolOption {
 	return func(o *graphSearchToolOptions) {
 		o.rerankerState = statePinned
@@ -235,7 +245,8 @@ func WithToolReranker(reranker SearchReranker) GraphSearchToolOption {
 
 // WithToolMMRLambda pins and hides the MMR diversity/relevance balance,
 // removing it from the model's tool schema and always using the given value.
-// Only meaningful when the reranker is "mmr".
+// Only meaningful when the reranker is "mmr". Without this option and without
+// a model value, an mmr search uses 0.5.
 func WithToolMMRLambda(lambda float64) GraphSearchToolOption {
 	return func(o *graphSearchToolOptions) {
 		o.mmrLambdaState = statePinned
@@ -319,11 +330,114 @@ func mustRaw(v any) json.RawMessage {
 	return json.RawMessage(b)
 }
 
+// fixedSearchScope returns the scope that every search uses when the model
+// cannot select the scope, and false when the model can select it.
+func fixedSearchScope(cfg *graphSearchToolOptions) (SearchScope, bool) {
+	switch cfg.scopeState {
+	case statePinned:
+		return cfg.scope, true
+	case stateHidden:
+		return defaultSearchScope, true
+	default:
+		return "", false
+	}
+}
+
+// exposedSearchScopes returns the scopes that the model can select. When the
+// reranker is pinned, it returns only the scopes that accept that reranker.
+func exposedSearchScopes(cfg *graphSearchToolOptions) []SearchScope {
+	if cfg.rerankerState != statePinned {
+		return allSearchScopes
+	}
+	var out []SearchScope
+	for _, scope := range allSearchScopes {
+		if rerankerSupported(scope, cfg.reranker) {
+			out = append(out, scope)
+		}
+	}
+	return out
+}
+
+// modelRerankersForScope returns the rerankers that the model can select for
+// scope. It removes node_distance when the model cannot supply a center node.
+func modelRerankersForScope(cfg *graphSearchToolOptions, scope SearchScope) []SearchReranker {
+	var out []SearchReranker
+	for _, r := range modelSearchRerankers {
+		if !rerankerSupported(scope, r) {
+			continue
+		}
+		if r == SearchRerankerNodeDistance && cfg.centerNodeState == stateHidden {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// exposedSearchRerankers returns the rerankers that the model can select.
+// When the scope is fixed, it returns only the rerankers that the scope
+// accepts. When the model selects the scope, it returns every reranker that
+// at least one scope accepts, and the tool validates the pair at call time.
+func exposedSearchRerankers(cfg *graphSearchToolOptions) []SearchReranker {
+	if scope, ok := fixedSearchScope(cfg); ok {
+		return modelRerankersForScope(cfg, scope)
+	}
+	return modelRerankersForScope(cfg, SearchScopeEdges)
+}
+
+// rerankerSelectable reports whether the search can use reranker: the
+// reranker is pinned to it, or the model can select it.
+func rerankerSelectable(cfg *graphSearchToolOptions, reranker SearchReranker) bool {
+	switch cfg.rerankerState {
+	case statePinned:
+		return cfg.reranker == reranker
+	case stateHidden:
+		return false
+	default:
+		return slices.Contains(exposedSearchRerankers(cfg), reranker)
+	}
+}
+
+// joinSearchValues joins values as a comma-separated list.
+func joinSearchValues[T ~string](values []T) string {
+	parts := make([]string, len(values))
+	for i, v := range values {
+		parts[i] = string(v)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// enumValues converts values to JSON schema enum values.
+func enumValues[T ~string](values []T) []any {
+	out := make([]any, len(values))
+	for i, v := range values {
+		out[i] = string(v)
+	}
+	return out
+}
+
+// rerankerScopeLimits describes which rerankers each scope accepts, for the
+// rerankers that the model can select.
+func rerankerScopeLimits(cfg *graphSearchToolOptions) string {
+	var parts []string
+	for _, scope := range exposedSearchScopes(cfg) {
+		if scope == SearchScopeAuto {
+			parts = append(parts, "'auto' ignores the reranker")
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("'%s' accepts %s", scope,
+			joinSearchValues(modelRerankersForScope(cfg, scope))))
+	}
+	return strings.Join(parts, "; ")
+}
+
 // buildSearchInputSchema builds the explicit JSON schema for the graph
 // search tool's model-facing arguments, containing "query" (always required)
 // plus every exposed (non-pinned, non-hidden) parameter, with enum values,
-// descriptions, and defaults matching the Python reference implementation
-// exactly.
+// descriptions, and defaults. The schema shows only the reranker values that
+// the fixed scope accepts, and only the scope values that accept a pinned
+// reranker. It shows mmr_lambda and center_node_uuid only when the search can
+// use the reranker that needs them.
 func buildSearchInputSchema(cfg *graphSearchToolOptions) *jsonschema.Schema {
 	properties := map[string]*jsonschema.Schema{
 		"query": {
@@ -331,6 +445,7 @@ func buildSearchInputSchema(cfg *graphSearchToolOptions) *jsonschema.Schema {
 			Description: "Search query text (max 400 characters).",
 		},
 	}
+	required := []string{"query"}
 
 	if cfg.scopeState == stateExposed {
 		properties["scope"] = &jsonschema.Schema{
@@ -341,18 +456,37 @@ func buildSearchInputSchema(cfg *graphSearchToolOptions) *jsonschema.Schema {
 				"'observations' for derived memories, " +
 				"'thread_summaries' for incremental thread summaries, " +
 				"'auto' to let Zep decide the best mix of results.",
-			Enum:    searchScopeEnum,
+			Enum:    enumValues(exposedSearchScopes(cfg)),
 			Default: mustRaw(string(defaultSearchScope)),
 		}
 	}
 
+	fixedScope, scopeFixed := fixedSearchScope(cfg)
+	if scopeFixed && fixedScope == SearchScopeAuto {
+		return &jsonschema.Schema{Type: "object", Properties: properties, Required: required}
+	}
+
 	if cfg.rerankerState == stateExposed {
+		rerankers := exposedSearchRerankers(cfg)
+		labels := map[SearchReranker]string{
+			SearchRerankerRRF:          "'rrf' (balanced)",
+			SearchRerankerMMR:          "'mmr' (diverse; uses mmr_lambda)",
+			SearchRerankerNodeDistance: "'node_distance' (near a specific entity; requires center_node_uuid)",
+			SearchRerankerCrossEncoder: "'cross_encoder' (highest accuracy)",
+		}
+		described := make([]string, len(rerankers))
+		for i, r := range rerankers {
+			described[i] = labels[r]
+		}
+		description := "Result ordering algorithm: " + strings.Join(described, ", ") + "."
+		if !scopeFixed {
+			description += " Each scope accepts only some rerankers: " + rerankerScopeLimits(cfg) + "."
+		}
 		properties["reranker"] = &jsonschema.Schema{
-			Type: "string",
-			Description: "Result ordering algorithm: 'rrf' (balanced), 'mmr' (diverse), " +
-				"'cross_encoder' (highest accuracy), 'node_distance' (near a specific entity).",
-			Enum:    searchRerankerEnum,
-			Default: mustRaw(string(defaultSearchReranker)),
+			Type:        "string",
+			Description: description,
+			Enum:        enumValues(rerankers),
+			Default:     mustRaw(string(defaultSearchReranker)),
 		}
 	}
 
@@ -364,27 +498,92 @@ func buildSearchInputSchema(cfg *graphSearchToolOptions) *jsonschema.Schema {
 		}
 	}
 
-	if cfg.mmrLambdaState == stateExposed {
+	if cfg.mmrLambdaState == stateExposed && rerankerSelectable(cfg, SearchRerankerMMR) {
 		properties["mmr_lambda"] = &jsonschema.Schema{
 			Type: "number",
 			Description: "Balance between diversity (0.0) and relevance (1.0). " +
 				"Only used when reranker is 'mmr'.",
+			Minimum: zep.Float64(0),
+			Maximum: zep.Float64(1),
+			Default: mustRaw(defaultMMRLambda),
 		}
 	}
 
-	if cfg.centerNodeState == stateExposed {
+	if cfg.centerNodeState == stateExposed && rerankerSelectable(cfg, SearchRerankerNodeDistance) {
 		properties["center_node_uuid"] = &jsonschema.Schema{
 			Type: "string",
 			Description: "UUID of the center node for distance-based reranking. " +
 				"Required when reranker is 'node_distance'.",
+		}
+		if cfg.rerankerState == statePinned {
+			required = append(required, "center_node_uuid")
 		}
 	}
 
 	return &jsonschema.Schema{
 		Type:       "object",
 		Properties: properties,
-		Required:   []string{"query"},
+		Required:   required,
 	}
+}
+
+// validateGraphSearchToolOptions reports a developer-set scope and reranker
+// configuration that Zep v4 always rejects.
+func validateGraphSearchToolOptions(cfg *graphSearchToolOptions) error {
+	if cfg.scopeState == statePinned && !searchScopeSupported(cfg.scope) {
+		return fmt.Errorf("%w: WithToolSearchScope(%q) is not a supported scope; use one of %s",
+			errInvalidSearchSettings, cfg.scope, joinSearchValues(allSearchScopes))
+	}
+	if cfg.rerankerState != statePinned {
+		return nil
+	}
+	r := cfg.reranker
+	if !rerankerKnown(r) {
+		return fmt.Errorf("%w: WithToolReranker(%q) is not a supported reranker; use one of %s",
+			errInvalidSearchSettings, r, joinSearchValues(searchRerankersByScope[SearchScopeEdges]))
+	}
+	if scope, ok := fixedSearchScope(cfg); ok {
+		if scope == SearchScopeAuto {
+			return fmt.Errorf("%w: scope %q takes no reranker; remove WithToolReranker or use another scope",
+				errInvalidSearchSettings, scope)
+		}
+		if !rerankerSupported(scope, r) {
+			return fmt.Errorf("%w: reranker %q is not supported with scope %q; use one of %s",
+				errInvalidSearchSettings, r, scope, joinSearchValues(searchRerankersByScope[scope]))
+		}
+	}
+	switch r {
+	case SearchRerankerNodeDistance:
+		if cfg.centerNodeState == stateHidden {
+			return fmt.Errorf("%w: reranker %q requires center_node_uuid; use WithToolCenterNodeUUID or do not hide center_node_uuid",
+				errInvalidSearchSettings, r)
+		}
+	case SearchRerankerEpisodeMentions:
+		if cfg.searchFilters == nil || len(cfg.searchFilters.EpisodeUUIDs) == 0 {
+			return fmt.Errorf("%w: reranker %q requires EpisodeUUIDs in WithToolSearchFilters",
+				errInvalidSearchSettings, r)
+		}
+	}
+	return nil
+}
+
+// validateSearchSettings reports a resolved scope and reranker pair that Zep
+// v4 rejects. The message tells the model which setting is not valid and
+// what to use, so that the model can call the tool again correctly.
+func validateSearchSettings(cfg *graphSearchToolOptions, scope SearchScope, params *searchParams) error {
+	if scope == SearchScopeAuto || params.Reranker == nil {
+		return nil
+	}
+	r := *params.Reranker
+	if !rerankerSupported(scope, r) {
+		return fmt.Errorf("%w: reranker %q is not supported with scope %q; use one of these rerankers with scope %q: %s",
+			errInvalidSearchSettings, r, scope, scope, joinSearchValues(modelRerankersForScope(cfg, scope)))
+	}
+	if r == SearchRerankerNodeDistance && deref(params.CenterNodeUUID) == "" {
+		return fmt.Errorf("%w: reranker %q requires center_node_uuid; set center_node_uuid to the UUID of a graph node, or use another reranker",
+			errInvalidSearchSettings, r)
+	}
+	return nil
 }
 
 // resolveScope merges the pinned/model/default scope value.
@@ -535,6 +734,14 @@ func newGraphSearchHandlerFromConfig(api zepAPI, cfg *graphSearchToolOptions) fu
 		if cfg.bfsOriginNodeUUIDs != nil {
 			body.BfsOriginNodeUUIDs = cfg.bfsOriginNodeUUIDs
 		}
+		if body.Reranker != nil && *body.Reranker == SearchRerankerMMR && body.MmrLambda == nil {
+			body.MmrLambda = zep.Float64(defaultMMRLambda)
+		}
+		if err := validateSearchSettings(cfg, scope, body); err != nil {
+			cfg.logger.Warn("zepadk: invalid graph search settings; returning the error to the model",
+				slog.Any("error", err))
+			return out, err
+		}
 
 		facts, err := searchGraph(tc, api, scope, graphUUID, resolveLimit(cfg, args.Limit), body)
 		if err != nil {
@@ -567,6 +774,9 @@ func newGraphSearchHandlerFromConfig(api zepAPI, cfg *graphSearchToolOptions) fu
 // than an error, so a failed lookup never aborts the model turn.
 func NewGraphSearchTool(client *zepclient.Client, opts ...GraphSearchToolOption) (tool.Tool, error) {
 	cfg := resolveGraphSearchToolOptions(opts...)
+	if err := validateGraphSearchToolOptions(&cfg); err != nil {
+		return nil, err
+	}
 	api := newZepAPI(client)
 	handler := newGraphSearchHandlerFromConfig(api, &cfg)
 	schema := buildSearchInputSchema(&cfg)
