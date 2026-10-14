@@ -146,7 +146,7 @@ async def inspect_graph(
 
     if "entities" in includes:
         nodes = await collect_page_items(
-            zep_client.graph.node.list(graph_uuid, limit=PAGE_SIZE)
+            zep_client.graph.node.list(graph_uuid, page_size=PAGE_SIZE)
         )
         print(f"ENTITIES ({len(nodes)})")
         print("-" * 60)
@@ -154,7 +154,7 @@ async def inspect_graph(
 
     if "edges" in includes:
         edges = await collect_page_items(
-            zep_client.graph.edge.list(graph_uuid, limit=PAGE_SIZE)
+            zep_client.graph.edge.list(graph_uuid, page_size=PAGE_SIZE)
         )
         print(f"EDGES ({len(edges)})")
         print("-" * 60)
@@ -162,7 +162,7 @@ async def inspect_graph(
 
     if "episodes" in includes:
         episodes = await collect_page_items(
-            zep_client.graph.episode.list(graph_uuid, limit=PAGE_SIZE)
+            zep_client.graph.episode.list(graph_uuid, page_size=PAGE_SIZE)
         )
         print(f"EPISODES ({len(episodes)})")
         print("-" * 60)

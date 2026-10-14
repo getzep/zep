@@ -407,7 +407,7 @@ To add more users:
 Retrieval is defined by a single module: `config/evaluation_config/retrieval_strategy.py`. Its `build_context_block()` function is the source of truth — edit that function (and the constants it uses) to change how context is retrieved and assembled.
 
 Default strategy:
-- `graph.get_context`: Zep packs edges, nodes, episodes, observations, and thread summaries into a pre-assembled context string
+- `graph.get_context`: Zep packs edges, nodes, observations, and thread summaries into a pre-assembled context string
 - `MAX_CHARACTERS = 10000`: character budget for the context block
 - User-node summary is fetched once per user via `fetch_user_summary()` and prepended (the context endpoint does not include it)
 

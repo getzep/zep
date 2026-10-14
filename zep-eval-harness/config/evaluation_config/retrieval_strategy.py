@@ -6,8 +6,8 @@ context. Edit ``build_context_block`` (and the constants it closes over) to
 change search behavior — there is no separate per-scope limit/reranker config.
 
 Default: ``graph.get_context`` with a 10k character budget. The v4 context
-endpoint packs edges, nodes, episodes, observations, and thread summaries into
-a pre-assembled ``result.context`` string. The user-node summary is fetched
+endpoint packs edges, nodes, observations, and thread summaries into a
+pre-assembled ``result.context`` string. The user-node summary is fetched
 separately (once per user by the eval loop) and prepended — the context
 endpoint does not include it.
 """
