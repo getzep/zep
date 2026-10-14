@@ -29,7 +29,7 @@ class TestPackageMetadata:
     def test_version_exists(self) -> None:
         import zep_strands
 
-        assert zep_strands.__version__ == "0.2.0"
+        assert zep_strands.__version__ == "1.0.0"
 
     def test_author_and_description(self) -> None:
         import zep_strands
