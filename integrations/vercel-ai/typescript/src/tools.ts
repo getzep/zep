@@ -25,8 +25,8 @@ interface BaseToolOptions {
  * Every search parameter that can be pinned or exposed to the model, by name.
  * `scope` selects the Zep v4 search method (`graph.searchEdges`,
  * `graph.searchNodes`, and the other scope methods). The remaining keys match
- * the camelCase fields of the SDK's `SearchRequest`, except `limit`, which is
- * the page size of the search request.
+ * the camelCase fields of the SDK's per-scope search requests, except `limit`,
+ * which maps to the `pageSize` field of the request.
  */
 export type ZepSearchParamName = "scope" | "reranker" | "limit" | "mmrLambda" | "centerNodeUuid";
 
@@ -70,7 +70,7 @@ export interface ZepSearchToolOptions extends BaseToolOptions {
   /** Deprecated back-compat alias for `pinnedParams.limit`. */
   limit?: number;
   /** Deprecated back-compat alias for `pinnedParams.reranker`. */
-  reranker?: Zep.V4SearchRequestReranker;
+  reranker?: Zep.SearchEdgesRequestReranker;
 }
 
 /** Options for {@link createZepRememberTool}. */
@@ -114,7 +114,7 @@ const SCOPE_VALUES = [
   "auto",
 ] as const;
 
-/** Zep's supported rerankers (`V4SearchRequestReranker`). */
+/** Zep's supported rerankers (the per-scope request reranker enums). */
 const RERANKER_VALUES = ["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"] as const;
 
 const DEFAULT_SEARCH_SCOPE: ZepSearchScope = "edges";
@@ -248,39 +248,71 @@ const isNonEmpty = (s: string | undefined): s is string => Boolean(s);
  * default makes a new scope a compile error rather than a silently-empty
  * result.
  */
+interface ResolvedSearchRequest {
+  query: string;
+  pageSize?: number;
+  reranker?: Zep.SearchEdgesRequestReranker;
+  mmrLambda?: number;
+  centerNodeUuid?: string;
+  bfsOriginNodeUuids?: string[];
+  filters?: Zep.SearchFilters;
+}
+
 async function searchByScope(
   client: ZepClient,
   graphUuid: string,
   scope: ZepSearchScope,
-  request: { limit?: number; body: Zep.SearchRequest },
+  request: ResolvedSearchRequest,
 ): Promise<string[]> {
+  // Each scope's request type takes its own filters type; the package accepts
+  // the generic `SearchFilters` and applies it to whichever scope is active.
+  const { filters, ...rest } = request;
   switch (scope) {
     case "auto": {
       const response = await client.graph.getContext(graphUuid, {
-        query: request.body.query,
-        ...(request.body.filters !== undefined ? { filters: request.body.filters } : {}),
+        query: request.query,
+        ...(filters !== undefined ? { filters } : {}),
       });
       const context = response.context?.trim();
       return context ? [context] : [];
     }
     case "edges": {
-      const page = await client.graph.searchEdges(graphUuid, request);
+      const page = await client.graph.searchEdges(graphUuid, {
+        ...rest,
+        ...(filters !== undefined ? { filters: filters as Zep.EdgeSearchFilters } : {}),
+      });
       return page.data.map((edge) => edge.fact).filter(isNonEmpty);
     }
     case "nodes": {
-      const page = await client.graph.searchNodes(graphUuid, request);
+      const page = await client.graph.searchNodes(graphUuid, {
+        ...rest,
+        ...(filters !== undefined ? { filters: filters as Zep.NodeSearchFilters } : {}),
+      });
       return page.data.map(nameAndSummary).filter(isNonEmpty);
     }
     case "episodes": {
-      const page = await client.graph.searchEpisodes(graphUuid, request);
+      const page = await client.graph.searchEpisodes(graphUuid, {
+        ...rest,
+        ...(filters !== undefined ? { filters: filters as Zep.EpisodeSearchFilters } : {}),
+      });
       return page.data.map((episode) => episode.content).filter(isNonEmpty);
     }
     case "thread_summaries": {
-      const page = await client.graph.searchThreadSummaries(graphUuid, request);
+      const page = await client.graph.searchThreadSummaries(graphUuid, {
+        ...rest,
+        ...(filters !== undefined
+          ? { filters: filters as Zep.ThreadSummarySearchFilters }
+          : {}),
+      });
       return page.data.map((summary) => summary.summary).filter(isNonEmpty);
     }
     case "observations": {
-      const page = await client.graph.searchObservations(graphUuid, request);
+      const page = await client.graph.searchObservations(graphUuid, {
+        ...rest,
+        ...(filters !== undefined
+          ? { filters: filters as Zep.ObservationSearchFilters }
+          : {}),
+      });
       return page.data.map(nameAndSummary).filter(isNonEmpty);
     }
     default: {
@@ -414,23 +446,25 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
         // actually resolved — never an explicit null/undefined. `scope` selects
         // the method and `limit` is the page size, so neither belongs in the
         // search body.
-        const bodyFields: Record<string, unknown> = { query: trimmed };
+        const request: ResolvedSearchRequest = { query: trimmed };
         for (const [name, value] of Object.entries(resolved)) {
-          if (name === "scope" || name === "limit") continue;
-          if (value !== undefined && value !== null) {
-            bodyFields[name] = value;
+          if (name === "scope" || value === undefined || value === null) continue;
+          if (name === "limit") {
+            request.pageSize = value as number;
+          } else if (name === "reranker") {
+            request.reranker = value as Zep.SearchEdgesRequestReranker;
+          } else if (name === "mmrLambda") {
+            request.mmrLambda = value as number;
+          } else if (name === "centerNodeUuid") {
+            request.centerNodeUuid = value as string;
           }
         }
         if (options.filters !== undefined) {
-          bodyFields.filters = options.filters;
+          request.filters = options.filters;
         }
         if (options.bfsOriginNodeUuids !== undefined) {
-          bodyFields.bfsOriginNodeUuids = options.bfsOriginNodeUuids;
+          request.bfsOriginNodeUuids = options.bfsOriginNodeUuids;
         }
-        const request = {
-          ...(typeof resolved.limit === "number" ? { limit: resolved.limit } : {}),
-          body: bodyFields as unknown as Zep.SearchRequest,
-        };
 
         const facts = await searchByScope(client, target, effectiveScope, request);
         return { facts, found: facts.length > 0 };

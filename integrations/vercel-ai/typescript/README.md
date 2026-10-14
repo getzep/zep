@@ -321,7 +321,7 @@ npm run build       # tsup → dist (ESM + CJS + d.ts)
 - `ai` >= 6 (peer) — the Vercel AI SDK v6 (this package targets the v3
   middleware/provider interfaces; it is **not** compatible with AI SDK v5)
 - `zod` 3 or 4 (peer; `^3.25.0 || ^4.0.0`)
-- `@getzep/zep-cloud` >= 4.0.0-alpha.5 (Zep v4)
+- `@getzep/zep-cloud` >= 4.0.0 (Zep v4)
 
 ## Links
 

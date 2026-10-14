@@ -25,7 +25,7 @@ describe("createZepSearchTool", () => {
       found: true,
     });
     expect(zep.graph.searchEdges).toHaveBeenCalledWith(GRAPH_UUID, {
-      body: { query: "where does Jane live" },
+      query: "where does Jane live",
     });
   });
 
@@ -45,8 +45,8 @@ describe("createZepSearchTool", () => {
 
     expect(result.facts).toEqual(["Apollo: A spacecraft program"]);
     expect(zep.graph.searchNodes).toHaveBeenCalledWith(GRAPH_UUID, {
-      limit: 5,
-      body: { query: "Apollo" },
+      pageSize: 5,
+      query: "Apollo",
     });
   });
 
@@ -160,7 +160,7 @@ describe("createZepSearchTool pin-or-expose", () => {
     await run(tool, { query: "Apollo" });
     expect(zep.graph.searchNodes).toHaveBeenCalledWith(
       GRAPH_UUID,
-      expect.objectContaining({ limit: 5 }),
+      expect.objectContaining({ pageSize: 5 }),
     );
   });
 
@@ -176,7 +176,7 @@ describe("createZepSearchTool pin-or-expose", () => {
     expect(Object.keys(schema.shape)).not.toContain("centerNodeUuid");
 
     await run(tool, { query: "x" });
-    const body = zep.graph.searchEdges.mock.calls[0]![1].body as Record<string, unknown>;
+    const body = zep.graph.searchEdges.mock.calls[0]![1] as Record<string, unknown>;
     expect(body).not.toHaveProperty("mmrLambda");
     expect(body).not.toHaveProperty("centerNodeUuid");
   });
@@ -188,7 +188,7 @@ describe("createZepSearchTool pin-or-expose", () => {
       binding: { graphUuid: GRAPH_UUID },
     });
     await run(tool, { query: "hello" });
-    const body = zep.graph.searchEdges.mock.calls[0]![1].body as Record<string, unknown>;
+    const body = zep.graph.searchEdges.mock.calls[0]![1] as Record<string, unknown>;
     // mmrLambda/centerNodeUuid must never be sent as null/undefined.
     expect(body).not.toHaveProperty("mmrLambda");
     expect(body).not.toHaveProperty("centerNodeUuid");
@@ -210,7 +210,7 @@ describe("createZepSearchTool pin-or-expose", () => {
     await run(tool, { query: "x" });
     expect(zep.graph.searchEpisodes).toHaveBeenCalledWith(
       GRAPH_UUID,
-      expect.objectContaining({ limit: 7 }),
+      expect.objectContaining({ pageSize: 7 }),
     );
   });
 
@@ -222,7 +222,9 @@ describe("createZepSearchTool pin-or-expose", () => {
     });
     await run(tool, { query: "x", scope: "nodes", reranker: "mmr", mmrLambda: 0.5 });
     expect(zep.graph.searchNodes).toHaveBeenCalledWith(GRAPH_UUID, {
-      body: { query: "x", reranker: "mmr", mmrLambda: 0.5 },
+      query: "x",
+      reranker: "mmr",
+      mmrLambda: 0.5,
     });
   });
 
@@ -235,7 +237,7 @@ describe("createZepSearchTool pin-or-expose", () => {
       bfsOriginNodeUuids: ["44444444-4444-4444-8444-444444444444"],
     });
     await run(tool, { query: "x" });
-    const body = zep.graph.searchEdges.mock.calls[0]![1].body as Record<string, unknown>;
+    const body = zep.graph.searchEdges.mock.calls[0]![1] as Record<string, unknown>;
     expect(body.filters).toEqual({ nodeLabels: ["Person"] });
     expect(body.bfsOriginNodeUuids).toEqual(["44444444-4444-4444-8444-444444444444"]);
   });
@@ -286,7 +288,7 @@ describe("createZepSearchTool sanitization", () => {
     await run(tool, { query: "x" });
     expect(zep.graph.searchEdges).toHaveBeenCalledWith(
       GRAPH_UUID,
-      expect.objectContaining({ limit: 50 }),
+      expect.objectContaining({ pageSize: 50 }),
     );
   });
 
@@ -300,7 +302,7 @@ describe("createZepSearchTool sanitization", () => {
     await run(tool, { query: "x", limit: 200 });
     expect(zep.graph.searchEdges).toHaveBeenCalledWith(
       GRAPH_UUID,
-      expect.objectContaining({ limit: 50 }),
+      expect.objectContaining({ pageSize: 50 }),
     );
   });
 });
@@ -524,8 +526,8 @@ describe("createZepTools", () => {
     const result = await run(zepSearch, { query: "q" });
     expect(result.facts).toEqual(["raw text"]);
     expect(zep.graph.searchEpisodes).toHaveBeenCalledWith(GRAPH_UUID, {
-      limit: 3,
-      body: { query: "q" },
+      pageSize: 3,
+      query: "q",
     });
   });
 });

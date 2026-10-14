@@ -19,12 +19,11 @@ This guide walks you from zero to a running Vercel AI SDK call with Zep memory.
 ## 3. Install
 
 ```bash
-npm install @getzep/zep-vercel-ai @getzep/zep-cloud@preview ai zod
+npm install @getzep/zep-vercel-ai @getzep/zep-cloud ai zod
 ```
 
-This package targets the Zep v4 SDK (`@getzep/zep-cloud` 4.0.0-alpha.5, npm
-dist-tag `preview`). The v4 SDK sends requests to `https://api.getzep.com/api/v4`
-by default.
+This package targets the Zep v4 SDK (`@getzep/zep-cloud` 4.0.0). The v4 SDK
+sends requests to `https://api.getzep.com/api/v4` by default.
 
 `ai` (the Vercel AI SDK, v6) and `zod` are peer dependencies. Install a model
 provider too — the examples use OpenAI:

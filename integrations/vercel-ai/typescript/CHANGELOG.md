@@ -5,7 +5,7 @@
 ### Changed
 
 - **Breaking: the package targets the Zep v4 SDK (`@getzep/zep-cloud`
-  `4.0.0-alpha.5`).** The v3 SDK is no longer supported, and the package does
+  `4.0.0`).** The v3 SDK is no longer supported, and the package does
   not contain a compatibility layer.
 - **Breaking: the public API takes UUIDs.** Zep v4 addresses every user,
   thread, and graph by a server-generated UUID, and a create call takes no
@@ -27,14 +27,15 @@
 - **Breaking: `resolveGraphTarget` returns `string | null`.** The function
   returns the bound graph UUID.
 - **Breaking: the `searchFilters` option of `createZepSearchTool` is renamed to
-  `filters`**, which matches the v4 search request body.
+  `filters`**, which matches the field of the v4 search requests.
 - Zep calls now use the v4 methods: `user.create`, `thread.create` with a
   `userUuid`, `thread.getContext`, `graph.episode.add`, and the scope-specific
   search methods `graph.searchEdges`, `graph.searchNodes`,
   `graph.searchEpisodes`, `graph.searchObservations`, and
   `graph.searchThreadSummaries`. The `auto` search scope calls
-  `graph.getContext`. The search request carries `limit` at the top level and
-  the query, the reranker, and the filters in a nested `body`.
+  `graph.getContext`. Each scope-specific search request carries the query,
+  the reranker, the filters, and the other parameters as flat fields, and the
+  `limit` parameter maps to the `pageSize` field of the request.
 - The examples, the tests, the README, and SETUP.md show the v4 API and the
   UUID identifier convention.
 
