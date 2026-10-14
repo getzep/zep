@@ -194,11 +194,14 @@ async def test_4_tool_factories() -> bool:
         thread = await create_thread(zep, user_uuid=user_uuid)
         thread_uuid = thread.uuid_ or ""
 
-        # Create tools
-        search_mem = create_search_memory_tool(zep, graph_uuid)
-        add_mem = create_add_memory_tool(zep, graph_uuid, thread_uuid)
-        search_graph = create_search_graph_tool(zep, graph_uuid)
-        add_graph = create_add_graph_data_tool(zep, graph_uuid)
+        # The synchronous tools run on a background event loop, and an
+        # AsyncZep client binds to the loop that first drives a request.
+        # Thus the tools use a second client.
+        tools_zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
+        search_mem = create_search_memory_tool(tools_zep, graph_uuid)
+        add_mem = create_add_memory_tool(tools_zep, graph_uuid, thread_uuid)
+        search_graph = create_search_graph_tool(tools_zep, graph_uuid)
+        add_graph = create_add_graph_data_tool(tools_zep, graph_uuid)
         print("  OK: All 4 tool factories created tools")
 
         # Test add_memory tool
@@ -287,7 +290,9 @@ async def test_5_ag2_agent_with_tools() -> bool:
         print("  OK: AG2 agents created")
 
         # Register all Zep tools
-        tools = register_all_tools(assistant, user_proxy, zep, graph_uuid, thread_uuid)
+        # The synchronous tools use a second client (see test 4).
+        tools_zep = AsyncZep(api_key=os.environ["ZEP_API_KEY"])
+        tools = register_all_tools(assistant, user_proxy, tools_zep, graph_uuid, thread_uuid)
         print(f"  OK: Registered {len(tools)} tools: {list(tools.keys())}")
 
         # Enrich with any existing memory
