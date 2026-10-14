@@ -4,21 +4,29 @@
 
 ### Breaking
 
-- The package requires the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). The package
-  supports v4 only.
-- `ZepMemoryStore` takes `user_uuid`, `thread_uuid`, and `graph_uuid` instead
-  of `user_id`, `thread_id`, and `graph_id`. `create_zep_search_tool` takes
-  `user_uuid` and `graph_uuid` instead of `user_id` and `graph_id`. Zep v4
-  addresses a user, a thread, and a graph by a server-generated UUID. The
-  package does not resolve a name at run time. The application creates each
-  resource one time and keeps the UUID.
-- `ensure_user` and `ensure_thread` are removed. Use `create_user` and
-  `create_thread`, which return the object that Zep created, and read `uuid_`
-  from the response. These helpers accept no `user_id` or `thread_id`, because
-  a Zep v4 create operation accepts no client-chosen name.
-- The store does not create a user or a thread. The `email` and
-  `on_user_created` parameters of `ZepMemoryStore` are removed. Pass `email` and
-  `on_created` to `create_user`.
+To migrate from Zep v3, follow the
+[V3 to V4 migration guide](https://help.getzep.com/migrating-from-v3) for the
+general procedure. The changes below are specific to this package.
+
+- The package requires the Zep v4 SDK (`zep-cloud>=4.0.0,<5`).
+- `ZepMemoryStore`: the `user_id`, `thread_id`, and `graph_id` parameters are
+  renamed to `user_uuid`, `thread_uuid`, and `graph_uuid`. Give the stored user
+  UUID and thread UUID to `user_uuid` and `thread_uuid` in user-graph mode, or
+  the stored graph UUID to `graph_uuid` in standalone-graph mode.
+- `create_zep_search_tool`: the `user_id` and `graph_id` parameters are renamed
+  to `user_uuid` and `graph_uuid`. Give the stored user UUID or graph UUID.
+- `ensure_user` and `ensure_thread` are removed. For a new user or thread, use
+  `create_user` and `create_thread`. They return the created `User` and
+  `Thread`, and you read `uuid_` from each. `create_user` has no `user_id`
+  parameter. `create_thread` takes `user_uuid` instead of `thread_id` and
+  `user_id`. The `on_created` hook of `create_user` receives the user UUID.
+- `ZepMemoryStore` does not create a user or a thread. Its `email` and
+  `on_user_created` parameters are removed. Give `email` and `on_created` to
+  `create_user`.
+
+For an existing V3 user, thread, or graph, do not call `create_user`,
+`create_thread`, or `graph.create`. Get its UUID one time with the backfill in
+the migration guide, and store it.
 
 ### Changed
 
