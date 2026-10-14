@@ -229,7 +229,7 @@ async def wait_for_episodes(
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds
     while loop.time() < deadline:
-        pager = await zep.graph.episode.list(graph_uuid, limit=20)
+        pager = await zep.graph.episode.list(graph_uuid, page_size=20)
         episodes = pager.items or []
         if episodes and all(episode.processed for episode in episodes):
             print(f"  All {len(episodes)} episodes are processed.\n")

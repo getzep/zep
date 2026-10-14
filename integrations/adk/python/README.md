@@ -159,7 +159,7 @@ runner = Runner(
 )
 ```
 
-When the model calls `load_memory`, ADK invokes `ZepMemoryService.search_memory(app_name=..., user_id=..., query=...)`, where `user_id` holds the Zep user UUID. The service resolves the graph UUID of that user and runs the v4 search method for the configured scope (for example `zep.graph.search_edges(graph_uuid, query=query, limit=limit)`) and maps each result into a `MemoryEntry` (the same result shapes -- edges, nodes, episodes, observations, thread_summaries, auto -- as `ZepGraphSearchTool`). A Zep failure is logged (as a warning, with lengths/counts only) and returns an empty result rather than raising into the agent.
+When the model calls `load_memory`, ADK invokes `ZepMemoryService.search_memory(app_name=..., user_id=..., query=...)`, where `user_id` holds the Zep user UUID. The service resolves the graph UUID of that user and runs the v4 search method for the configured scope (for example `zep.graph.search_edges(graph_uuid, query=query, page_size=limit)`) and maps each result into a `MemoryEntry` (the same result shapes -- edges, nodes, episodes, observations, thread_summaries, auto -- as `ZepGraphSearchTool`). A Zep failure is logged (as a warning, with lengths/counts only) and returns an empty result rather than raising into the agent.
 
 `add_session_to_memory` is intentionally a no-op: Zep already ingests each turn live via `ZepContextTool` (or `thread.add_messages`) and `create_after_model_callback`, so re-ingesting the full session here would persist the same conversation into the graph twice.
 
@@ -414,7 +414,7 @@ make ci          # Strict CI checks
 ## Requirements
 
 - Python 3.11+
-- `zep-cloud==4.0.0a5` (pre-release)
+- `zep-cloud>=4.0.0,<5`
 - `google-adk>=1.19.0,<3`
 
 ## Support

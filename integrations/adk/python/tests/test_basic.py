@@ -1669,7 +1669,7 @@ class TestGraphSearchToolExecution:
 
         client.graph.search_nodes.assert_called_once()  # pinned scope wins
         client.graph.search_edges.assert_not_called()
-        assert client.graph.search_nodes.call_args[1]["limit"] == 5  # pinned wins
+        assert client.graph.search_nodes.call_args[1]["page_size"] == 5  # pinned wins
 
     @pytest.mark.asyncio
     async def test_defaults_applied_when_model_omits(self) -> None:
@@ -1683,7 +1683,7 @@ class TestGraphSearchToolExecution:
 
         call_kwargs = client.graph.search_edges.call_args[1]  # default scope
         assert call_kwargs["reranker"] == "rrf"  # default
-        assert call_kwargs["limit"] == 10  # default
+        assert call_kwargs["page_size"] == 10  # default
 
     @pytest.mark.asyncio
     async def test_model_provided_params_used(self) -> None:
@@ -1699,7 +1699,7 @@ class TestGraphSearchToolExecution:
         )
 
         client.graph.search_nodes.assert_called_once()
-        assert client.graph.search_nodes.call_args[1]["limit"] == 3
+        assert client.graph.search_nodes.call_args[1]["page_size"] == 3
 
     @pytest.mark.asyncio
     async def test_auto_scope_calls_get_context(self) -> None:

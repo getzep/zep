@@ -145,7 +145,7 @@ async def wait_for_episodes_processed(
             return
 
         try:
-            pager = await zep_client.graph.episode.list(graph_uuid, limit=20)
+            pager = await zep_client.graph.episode.list(graph_uuid, page_size=20)
         except Exception as exc:
             logger.warning("Episode poll failed (%s); retrying.", exc)
             await asyncio.sleep(poll_interval)
@@ -173,7 +173,7 @@ async def wait_for_episodes_processed(
 
 async def count_messages(zep_client: AsyncZep, thread_uuid: str) -> int:
     """Count the messages on one page of a thread."""
-    pager = await zep_client.thread.list_messages(thread_uuid, limit=20)
+    pager = await zep_client.thread.list_messages(thread_uuid, page_size=20)
     return len(pager.items or [])
 
 
@@ -582,7 +582,7 @@ async def main() -> None:
         # Fetch all messages from thread 4 and inspect
         print("  Inspecting messages persisted to Zep thread 4:")
         try:
-            pager = await zep_client.thread.list_messages(thread_4.uuid_, limit=20)
+            pager = await zep_client.thread.list_messages(thread_4.uuid_, page_size=20)
             messages = pager.items or []
             for i, msg in enumerate(messages):
                 role = msg.role or "unknown"

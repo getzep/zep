@@ -39,10 +39,7 @@ cd zep/integrations/adk/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `google-adk>=1.19.0,<3`, `zep-cloud==4.0.0a5`.
-
-`zep-cloud` 4.x is a pre-release. With `pip`, install it with `pip install --pre
-zep-cloud==4.0.0a5`. With `uv`, use `uv add "zep-cloud==4.0.0a5"`.
+Requirements: Python 3.11+, `google-adk>=1.19.0,<3`, `zep-cloud>=4.0.0,<5`.
 
 ## 4. Configure environment variables
 

@@ -510,7 +510,7 @@ class TestSearchMemoryParameterPassthrough:
         await service.search_memory(app_name="my_app", user_id=USER_UUID, query="hi")
 
         call_kwargs = client.graph.search_edges.call_args[1]
-        assert call_kwargs["limit"] == 7
+        assert call_kwargs["page_size"] == 7
 
     @pytest.mark.asyncio
     async def test_no_limit_omits_limit_kwarg(self) -> None:
@@ -524,7 +524,7 @@ class TestSearchMemoryParameterPassthrough:
         await service.search_memory(app_name="my_app", user_id=USER_UUID, query="hi")
 
         call_kwargs = client.graph.search_edges.call_args[1]
-        assert "limit" not in call_kwargs or call_kwargs["limit"] is None
+        assert "page_size" not in call_kwargs or call_kwargs["page_size"] is None
 
     @pytest.mark.asyncio
     async def test_app_name_not_forwarded_to_zep(self) -> None:

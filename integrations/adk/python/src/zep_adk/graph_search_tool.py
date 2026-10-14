@@ -232,7 +232,7 @@ async def search_graph(
         return [context.strip()] if context and context.strip() else []
 
     if limit is not None:
-        kwargs["limit"] = limit
+        kwargs["page_size"] = limit
     if reranker is not None:
         kwargs["reranker"] = reranker
     if mmr_lambda is not None:
@@ -284,7 +284,9 @@ class ZepGraphSearchTool(BaseTool):
         description: Tool description visible to the model.
         search_filters: Optional Zep search filters (constructor-only).
             Supports ``node_labels``, ``edge_types``, ``exclude_node_labels``,
-            ``exclude_edge_types``, and property filters.
+            ``exclude_edge_types``, and property filters.  Each search scope
+            accepts only its own filter keys; Zep rejects a key that the
+            scope cannot apply.
         bfs_origin_node_uuids: Optional list of node UUIDs for BFS seeding
             (constructor-only).
         **pinned: Any search parameter to fix at construction time.
