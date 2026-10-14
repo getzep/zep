@@ -45,9 +45,7 @@ def main() -> None:
             "Avery Brown": ["Avery Brown"],
         },
         risky_words=DEFAULT_RISKY_WORDS,  # reject aliases that are common words
-        # Batch items for a standalone graph return 404 in the current v4
-        # deployment, so episodes go one at a time.
-        method="sequential",
+        # "auto" uses the Batch API; pass method="sequential" for one at a time.
     )
     # Submission returns immediately; blocking is opt-in. Bind the result first
     # so a wait() timeout still leaves you the ids below to resume from.

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from zep_cloud.client import Zep
+from zep_cloud.types.edge_input import EdgeInput
 from zep_cloud.types.edge_node_ref import EdgeNodeRef
 
 from zep_ingest._errors import format_api_error
@@ -128,9 +129,13 @@ class FactTriple:
         return EdgeNodeRef(**fields)
 
     def to_api_kwargs(self, destination: Destination) -> dict[str, Any]:
-        """Build the ``graph.edge.add`` keyword arguments for this triple."""
-        kwargs: dict[str, Any] = {
-            "graph_uuid": destination.graph,
+        """Build the ``graph.edge.add`` keyword arguments for this triple.
+
+        The stable v4 call takes an ``edges`` list and a ``deduplicate``
+        flag. One triple means one edge; ``deduplicate=True`` keeps the
+        V3 ``add_fact_triple`` behavior.
+        """
+        edge_fields: dict[str, Any] = {
             "fact": self.fact,
             "fact_name": self.fact_name,
             "source_node": self._node_ref("source"),
@@ -139,8 +144,12 @@ class FactTriple:
         for field in ("valid_at", "invalid_at", "metadata", "attributes"):
             value = getattr(self, field)
             if value is not None:
-                kwargs[field] = value
-        return kwargs
+                edge_fields[field] = value
+        return {
+            "graph_uuid": destination.graph,
+            "edges": [EdgeInput(**edge_fields)],
+            "deduplicate": True,
+        }
 
 
 _RETIRED_TRIPLE_FIELDS = {

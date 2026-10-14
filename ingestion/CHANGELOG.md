@@ -7,8 +7,8 @@ still change between minor versions.
 ## Unreleased
 
 - **The package targets the Zep v4 API and the `zep-cloud` 4.x SDK.** The
-  dependency is pinned to `zep-cloud==4.0.0a5`. The package gives no v3
-  compatibility path.
+  dependency is pinned to `zep-cloud>=4.0.0,<5` (the stable release). The
+  package gives no v3 compatibility path.
 - **Every destination is a UUID.** v4 addresses a graph, a user, and a thread
   by a server-generated UUID, so every public parameter takes a UUID. Episode
   ingestion takes `graph_uuid=` in place of `graph_id=`/`user_id=`, and
@@ -22,7 +22,9 @@ still change between minor versions.
   with no name and store the UUID the response returns.
 - **v4 submission methods.** Episodes go to `graph.episode.add`, batches go to
   `batch.create` + `batch.add_items` + `batch.process`, nodes go to
-  `graph.node.add`, and fact triples go to `graph.edge.add`.
+  `graph.node.add`, and fact triples go to `graph.edge.add` with
+  `edges=[EdgeInput]` and `deduplicate=True` to keep the v3
+  `add_fact_triple` behavior.
 - **Search uses the v4 scope methods.** `search_when_ready` calls
   `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`,
   `graph.search_observations`, or `graph.search_thread_summaries`, and returns
@@ -31,15 +33,12 @@ still change between minor versions.
   developer-supplied `created_at` field to `reference_time`. The package
   sends `Episode.created_at` and `ThreadMessage.created_at` as
   `reference_time` on `graph.episode.add`, on `batch.add_items` items, and
-  on `thread.add_messages` messages. On `zep-cloud==4.0.0a5` the field
-  travels as an SDK extra or `additional_body_parameters`; the declared
-  field arrives in the v4.0.0-rc.1 SDK.
+  on `thread.add_messages` messages.
 - **Sequential thread ingestion is task-tracked.** v4 `thread.add_messages`
   returns a task, so `wait()` polls the returned task instead of message UUIDs.
-- **Known gap in the current v4 deployment.** Batch items for a standalone
-  graph return 404 against `api.getzep.com`. The batch path works for user
-  graphs and thread messages; submit standalone-graph episodes with
-  `method="sequential"`.
+- **Page size on list and search calls is `page_size`.** The stable SDK
+  renamed the `limit` parameter of each list and search operation to
+  `page_size`; `search_when_ready` passes it through.
 
 ## 0.3.0
 

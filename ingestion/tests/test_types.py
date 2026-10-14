@@ -216,15 +216,15 @@ class TestToBatchItem:
         assert item.metadata == {"source_type": "slack", "channel": "general"}
         assert item.graph_uuid == GRAPH_UUID
         assert item.user_uuid is None
-        assert (item.model_extra or {}).get("reference_time") == "2024-06-15T10:30:00Z"
+        assert item.reference_time == "2024-06-15T10:30:00Z"
 
     def test_reference_time_is_carried_by_a_batch_item(self):
         # created_at maps to the v4 reference_time field on the batch item.
         ep = Episode(data="hello", created_at="2024-06-15T10:30:00Z")
         item = to_batch_item(ep, Destination(graph_uuid=GRAPH_UUID))
-        assert (item.model_extra or {})["reference_time"] == "2024-06-15T10:30:00Z"
+        assert item.reference_time == "2024-06-15T10:30:00Z"
         item_without = to_batch_item(Episode(data="x"), Destination(graph_uuid=GRAPH_UUID))
-        assert "reference_time" not in (item_without.model_extra or {})
+        assert item_without.reference_time is None
 
     def test_metadata_over_limit_rejected(self):
         metadata = {f"k{i}": i for i in range(12)}
@@ -244,9 +244,7 @@ class TestToEpisodeAddKwargs:
         assert kwargs == {
             "data": "hello",
             "type": "text",
-            "request_options": {
-                "additional_body_parameters": {"reference_time": "2024-06-15T10:30:00Z"}
-            },
+            "reference_time": "2024-06-15T10:30:00Z",
             "metadata": {"source_type": "document", "file_name": "handbook.md"},
             "graph_uuid": GRAPH_UUID,
         }

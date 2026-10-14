@@ -114,13 +114,13 @@ class TestBatchPath:
             mock_zep, [message(created_at="2024-06-15T10:30:00Z")], method="batch"
         )
         [item] = mock_zep.batch.add_items.call_args.kwargs["items"]
-        assert (item.model_extra or {})["reference_time"] == "2024-06-15T10:30:00Z"
+        assert item.reference_time == "2024-06-15T10:30:00Z"
         assert result.warnings == []
         result = ingest_thread_messages(
             mock_zep, [message(created_at="2024-06-15T10:30:00Z")], method="sequential"
         )
         [sent] = mock_zep.thread.add_messages.call_args.kwargs["messages"]
-        assert (sent.model_extra or {})["reference_time"] == "2024-06-15T10:30:00Z"
+        assert sent.reference_time == "2024-06-15T10:30:00Z"
         assert result.warnings == []
 
     def test_sequential_sends_metadata(self, mock_zep):

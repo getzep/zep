@@ -61,9 +61,7 @@ def main() -> None:
         graph_uuid=graph_uuid,
         llm=llm,
         created_at="2025-06-01T00:00:00Z",  # generated source date
-        # Batch items for a standalone graph return 404 in the current v4
-        # deployment, so episodes go one at a time.
-        method="sequential",
+        # "auto" uses the Batch API; pass method="sequential" for one at a time.
     )
     # Submission returns immediately; blocking is opt-in. Bind the result first
     # so a wait() timeout still leaves you the ids below to resume from.

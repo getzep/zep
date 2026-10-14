@@ -90,29 +90,22 @@ class Destination:
 def to_batch_item(episode: Episode, destination: Destination) -> BatchItemInput:
     """Map a validated Episode to a Batch API item.
 
-    ``created_at`` maps to the v4 ``reference_time`` field. The installed
-    4.0.0a5 model does not declare the field, so it travels as a pydantic
-    extra; the SDK serializes extras into the request body.
+    ``created_at`` maps to the v4 ``reference_time`` field on the batch item.
     """
-    fields: dict[str, Any] = {
-        "type": "graph_episode",
-        "data": episode.data,
-        "data_type": episode.data_type,
-        "metadata": episode.metadata,
-        "graph_uuid": destination.graph_uuid,
-    }
-    if episode.created_at is not None:
-        fields["reference_time"] = episode.created_at
-    return BatchItemInput(**fields)
+    return BatchItemInput(
+        type="graph_episode",
+        data=episode.data,
+        data_type=episode.data_type,
+        metadata=episode.metadata,
+        graph_uuid=destination.graph_uuid,
+        reference_time=episode.created_at,
+    )
 
 
 def to_episode_add_kwargs(episode: Episode, destination: Destination) -> dict[str, Any]:
     """Map an Episode to graph.episode.add(**kwargs) (unset fields omitted).
 
-    ``created_at`` maps to the v4 ``reference_time`` field. The installed
-    4.0.0a5 client method does not declare it, so the field is merged into
-    the request body through the SDK's ``additional_body_parameters``
-    request option.
+    ``created_at`` maps to the v4 ``reference_time`` field.
     """
     kwargs: dict[str, Any] = {
         "graph_uuid": destination.graph,
@@ -120,9 +113,7 @@ def to_episode_add_kwargs(episode: Episode, destination: Destination) -> dict[st
         "type": episode.data_type,
     }
     if episode.created_at is not None:
-        kwargs["request_options"] = {
-            "additional_body_parameters": {"reference_time": episode.created_at}
-        }
+        kwargs["reference_time"] = episode.created_at
     if episode.metadata is not None:
         kwargs["metadata"] = episode.metadata
     return kwargs

@@ -91,11 +91,7 @@ it applies on both the batch and sequential paths.
 **Reference time:** the v4 API accepts a `reference_time` field on episodes,
 batch items, and thread messages. `Episode.created_at` and
 `ThreadMessage.created_at` are validated client-side and sent as
-`reference_time` on the batch and sequential paths alike. The pinned SDK
-(`4.0.0a5`) does not declare the field, so the package carries it as a
-pydantic extra on the wire models and through the SDK's
-`additional_body_parameters` request option for `graph.episode.add`; the
-declared field arrives in the v4.0.0-rc.1 SDK.
+`reference_time` on the batch and sequential paths alike.
 
 **Slack conversation types:** a Slack export indexes its conversations in four
 files — `channels.json` (public channels), `groups.json` (private channels),
@@ -163,12 +159,6 @@ instead of the Batch API. Submit every file into the graph first; `wait()` is
 opt-in. On the default Batch path it monitors `batch.get` on the last batch;
 on sequential fallback it polls the last-submitted episode's `processed` flag
 (see [Check data ingestion status](https://help.getzep.com/check-data-ingestion-status)).
-
-**Known gap in the current v4 deployment** (`zep-cloud==4.0.0a5` against
-`api.getzep.com`): batch items for a standalone graph return 404 — the batch
-path works for user graphs and thread messages, so submit standalone-graph
-episodes with `method="sequential"`. This is a server-side gap in the alpha,
-not package behavior.
 
 ## The pipeline
 

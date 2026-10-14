@@ -54,7 +54,7 @@ class TestPaging:
             [Episode(data="hello", created_at="2024-01-01T00:00:00Z")], DEST
         )
         [item] = mock_zep.batch.add_items.call_args.kwargs["items"]
-        assert (item.model_extra or {})["reference_time"] == "2024-01-01T00:00:00Z"
+        assert item.reference_time == "2024-01-01T00:00:00Z"
         assert result.warnings == []
 
     def test_no_warning_without_a_reference_time(self, mock_zep):

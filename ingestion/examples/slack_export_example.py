@@ -68,9 +68,7 @@ def main() -> None:
         # skip_subtypes=DEFAULT_SKIP_SUBTYPES | {"huddle_thread"},  # skip more
         #   (import DEFAULT_SKIP_SUBTYPES from zep_ingest to extend the default)
         # include_bots=True,  # keep bot messages
-        # Batch items for a standalone graph return 404 in the current v4
-        # deployment, so episodes go one at a time.
-        method="sequential",
+        # "auto" uses the Batch API; pass method="sequential" for one at a time.
     )
     # Submission returns immediately; blocking is opt-in. Bind the result first
     # so a wait() timeout still leaves you the ids below to resume from.

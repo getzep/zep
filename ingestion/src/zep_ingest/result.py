@@ -68,6 +68,8 @@ def _identity_from_task_result(params: Any) -> tuple[list[str], list[str]]:
     task result; after ``graph.edge.add`` succeeds it merges ``edge_uuid``. A
     pending task does not carry these keys yet.
     """
+    if hasattr(params, "model_dump"):
+        params = params.model_dump()
     if not isinstance(params, dict):
         return [], []
     node_uuids: list[str] = []

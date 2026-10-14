@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from zep_cloud.client import Zep
-from zep_cloud.types.add_edge_result import AddEdgeResult
+from zep_cloud.types.add_edges_result import AddEdgesResult
 from zep_cloud.types.add_episode_result import AddEpisodeResult
 from zep_cloud.types.add_messages_result import AddMessagesResult
 from zep_cloud.types.add_nodes_result import AddNodesResult
@@ -89,9 +89,9 @@ def mock_zep() -> MagicMock:
     )
     client.graph.edge = MagicMock()
     client.graph.edge.add = MagicMock(
-        return_value=AddEdgeResult(
+        return_value=AddEdgesResult(
             task=make_task(),
-            edge=AddedEdge(uuid_="66666666-6666-4666-8666-666666666666"),
+            edges=[AddedEdge(uuid_="66666666-6666-4666-8666-666666666666")],
         )
     )
     client.user = MagicMock()

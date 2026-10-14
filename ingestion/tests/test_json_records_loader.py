@@ -416,4 +416,4 @@ class TestOneLiner:
         assert json.loads(items[0].data)["id"] == "P1"
         # created_at_field parses each record's date, and each value travels
         # as the v4 reference_time field on the batch item.
-        assert all((i.model_extra or {}).get("reference_time") for i in items)
+        assert all(i.reference_time for i in items)

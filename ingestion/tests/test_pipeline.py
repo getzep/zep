@@ -276,7 +276,7 @@ class TestConvenience:
         assert all(i.data_type == "text" for i in items)
         assert result.items_submitted == len(items) == 4
         # Each loaded created_at travels as the v4 reference_time field.
-        assert all((i.model_extra or {}).get("reference_time") for i in items)
+        assert all(i.reference_time for i in items)
 
     def test_ingest_slack_export_channel_filter(self, mock_zep):
         result = ingest_slack_export(mock_zep, FIXTURE, graph_uuid=GRAPH_UUID, channels=["random"])

@@ -183,9 +183,7 @@ def _prepare(messages: list[ThreadMessage], warnings: list[str]) -> list[ThreadM
 def _message_wire_fields(message: ThreadMessage) -> dict[str, Any]:
     """Map a ThreadMessage to the fields the v4 wire models share.
 
-    ``created_at`` maps to the v4 ``reference_time`` field. The installed
-    4.0.0a5 models do not declare the field, so it travels as a pydantic
-    extra; the SDK serializes extras into the request body.
+    ``created_at`` maps to the v4 ``reference_time`` field.
     """
     fields: dict[str, Any] = {
         "content": message.content,
@@ -306,6 +304,9 @@ def _submit_sequential(
     by_thread: dict[str, list[ThreadMessage]] = {}
     for message in messages:
         by_thread.setdefault(message.thread_uuid, []).append(message)
+    # More than one thread means more than one extraction queue, so a
+    # single-tail poll would not be safe if episodes were tracked.
+    result._single_queue_episode_poll = len(by_thread) <= 1
     chunk_index = 0
     for thread_uuid, thread_messages in by_thread.items():
         for start in range(0, len(thread_messages), messages_per_call):

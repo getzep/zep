@@ -59,7 +59,7 @@ def search_when_ready(
     search = getattr(client.graph, _SEARCH_METHODS[scope])
     deadline = time.monotonic() + timeout
     while True:
-        pager = search(destination.graph, query=query, limit=limit, **search_kwargs)
+        pager = search(destination.graph, query=query, page_size=limit, **search_kwargs)
         items = list(pager.items or [])
         if items:
             return items
