@@ -37,6 +37,14 @@ from typing import Any, Literal
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, create_model
 from zep_cloud.client import AsyncZep, Zep
+from zep_cloud.types import (
+    EdgeSearchFilters,
+    EpisodeSearchFilters,
+    NodeSearchFilters,
+    ObservationSearchFilters,
+    SearchFilters,
+    ThreadSummarySearchFilters,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +57,15 @@ GraphSearchScope = Literal[
     "auto",
 ]
 GraphSearchReranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
+GraphSearchFilters = (
+    EdgeSearchFilters
+    | NodeSearchFilters
+    | EpisodeSearchFilters
+    | ObservationSearchFilters
+    | ThreadSummarySearchFilters
+    | SearchFilters
+    | dict[str, Any]
+)
 
 #: Zep caps the graph-search ``page_size`` at 50; larger values are rejected.
 MAX_SEARCH_LIMIT = 50
@@ -56,6 +73,14 @@ MAX_SEARCH_LIMIT = 50
 #: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
 #: retrieval and applies its own internal cross-scope rerank).
 _AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
+
+#: Rerankers that the dedicated v4 search method of a scope rejects.
+_SCOPE_INCOMPATIBLE_RERANKERS: dict[str, tuple[str, ...]] = {
+    "nodes": ("episode_mentions",),
+    "episodes": ("node_distance", "episode_mentions", "cross_encoder"),
+    "observations": ("node_distance", "episode_mentions"),
+    "thread_summaries": ("node_distance", "episode_mentions"),
+}
 
 #: The Zep v4 search method for each scope. ``auto`` is served by
 #: ``graph.get_context`` instead, which takes a different parameter set.
@@ -211,7 +236,7 @@ def _format_results(result: Any, scope: str) -> str:
 
 
 def _build_constructor_only(
-    search_filters: dict[str, Any] | None,
+    search_filters: GraphSearchFilters | None,
     bfs_origin_node_uuids: list[str] | None,
 ) -> dict[str, Any]:
     """Return the constructor-only keyword arguments of the search call."""
@@ -361,6 +386,15 @@ def _build_search_kwargs(
             search_kwargs["filters"] = constructor_only["filters"]
         return search_kwargs
 
+    scope = str(search_kwargs.get("scope", "edges"))
+    reranker = search_kwargs.get("reranker")
+    if reranker in _SCOPE_INCOMPATIBLE_RERANKERS.get(scope, ()):
+        logger.warning(
+            "Graph-search reranker %r is invalid for scope=%r; omitting reranker.",
+            reranker,
+            scope,
+        )
+        search_kwargs.pop("reranker")
     if "limit" in search_kwargs:
         search_kwargs["page_size"] = search_kwargs.pop("limit")
     search_kwargs.update(constructor_only)
@@ -375,7 +409,7 @@ def create_graph_search_tool(
     description: str = DEFAULT_TOOL_DESCRIPTION,
     pinned_params: dict[str, Any] | None = None,
     hidden_params: set[str] | None = None,
-    search_filters: dict[str, Any] | None = None,
+    search_filters: GraphSearchFilters | None = None,
     bfs_origin_node_uuids: list[str] | None = None,
     # Back-compat: the original constructor args.  Each, if passed, pins
     # (hides) the corresponding parameter -- equivalent to putting it in
@@ -483,7 +517,7 @@ def create_graph_search_tool_sync(
     description: str = DEFAULT_TOOL_DESCRIPTION,
     pinned_params: dict[str, Any] | None = None,
     hidden_params: set[str] | None = None,
-    search_filters: dict[str, Any] | None = None,
+    search_filters: GraphSearchFilters | None = None,
     bfs_origin_node_uuids: list[str] | None = None,
     scope: GraphSearchScope | None = None,
     reranker: GraphSearchReranker | None = None,

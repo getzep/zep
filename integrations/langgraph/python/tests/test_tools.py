@@ -456,6 +456,39 @@ class TestAsyncToolExecution:
         assert "Alice" in out
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("scope", "method", "reranker"),
+        [
+            ("episodes", "search_episodes", "cross_encoder"),
+            ("episodes", "search_episodes", "node_distance"),
+            ("nodes", "search_nodes", "episode_mentions"),
+            ("observations", "search_observations", "episode_mentions"),
+            ("thread_summaries", "search_thread_summaries", "node_distance"),
+        ],
+    )
+    async def test_reranker_unsupported_by_scope_is_omitted(
+        self, scope: str, method: str, reranker: str
+    ) -> None:
+        client = _make_async_client()
+        getattr(client.graph, method).return_value = _page([])
+        tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
+
+        await tool.ainvoke({"query": "x", "scope": scope, "reranker": reranker})
+
+        call = getattr(client.graph, method).call_args.kwargs
+        assert "reranker" not in call
+
+    @pytest.mark.asyncio
+    async def test_reranker_supported_by_scope_is_kept(self) -> None:
+        client = _make_async_client()
+        client.graph.search_episodes.return_value = _page([])
+        tool = create_graph_search_tool(client, graph_uuid=GRAPH_UUID)
+
+        await tool.ainvoke({"query": "x", "scope": "episodes", "reranker": "rrf"})
+
+        assert client.graph.search_episodes.call_args.kwargs["reranker"] == "rrf"
+
+    @pytest.mark.asyncio
     async def test_search_filters_passed_as_v4_filters(self) -> None:
         client = _make_async_client()
         client.graph.search_edges.return_value = _page([])
