@@ -35,7 +35,7 @@ Create the user and the thread one time with
 database, and give them to the store.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Zep AI"
 __description__ = "Strands Agents memory-store integration for Zep"
 

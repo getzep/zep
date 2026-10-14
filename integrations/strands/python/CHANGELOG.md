@@ -1,39 +1,42 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
+
+### Breaking
+
+- The package requires the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). The package
+  supports v4 only.
+- `ZepMemoryStore` takes `user_uuid`, `thread_uuid`, and `graph_uuid` instead
+  of `user_id`, `thread_id`, and `graph_id`. `create_zep_search_tool` takes
+  `user_uuid` and `graph_uuid` instead of `user_id` and `graph_id`. Zep v4
+  addresses a user, a thread, and a graph by a server-generated UUID. The
+  package does not resolve a name at run time. The application creates each
+  resource one time and keeps the UUID.
+- `ensure_user` and `ensure_thread` are removed. Use `create_user` and
+  `create_thread`, which return the object that Zep created, and read `uuid_`
+  from the response. These helpers accept no `user_id` or `thread_id`, because
+  a Zep v4 create operation accepts no client-chosen name.
+- The store does not create a user or a thread. The `email` and
+  `on_user_created` parameters of `ZepMemoryStore` are removed. Pass `email` and
+  `on_created` to `create_user`.
 
 ### Changed
 
-- Migrated the package to the Zep v4 SDK (`zep-cloud>=4.0.0,<5`). The package
-  supports v4 only.
-- `ZepMemoryStore` now takes `user_uuid`, `thread_uuid`, and `graph_uuid`. Zep
-  v4 addresses a user, a thread, and a graph by a server-generated UUID. The
-  store does not resolve a name at run time. The application creates each
-  resource one time and keeps the UUID.
 - `search` now calls `graph.get_context` for `scope="auto"` and the scoped
   `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`,
   `graph.search_observations`, and `graph.search_thread_summaries` methods for
   the other scopes. A scoped search returns a pager, and the store reads the
   items of the first page.
 - `add` now calls `graph.episode.add`.
-- `create_user` and `create_thread` no longer accept a `user_id` or a
-  `thread_id`. A Zep v4 create operation accepts no client-chosen name.
 - An unknown message role now becomes `user`. Zep v4 accepts the roles
   `user`, `assistant`, `system`, `tool`, and `function`.
-
-### Removed
-
-- `ensure_user` and `ensure_thread`. Use `create_user` and `create_thread`,
-  which return the object that Zep created. Read `uuid_` from the response.
-- Resource provisioning inside the store. The store never creates a user or a
-  thread.
 
 ### Added
 
 - `create_user` and `create_thread` provisioning helpers for Zep v4.
 - Live agent integration test (`test_integration_full_lifecycle`) exercising
   `Agent` + `MemoryManager` + `ZepMemoryStore` against Zep Cloud and OpenAI,
-  including cross-thread recall and `on_user_created` (gated on
+  including cross-thread recall and the `create_user` `on_created` hook (gated on
   `ZEP_API_KEY` + `OPENAI_API_KEY`). Store-only round-trip remains available
   with just `ZEP_API_KEY`.
 
