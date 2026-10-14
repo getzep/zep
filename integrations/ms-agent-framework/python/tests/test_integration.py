@@ -95,7 +95,7 @@ async def wait_for_episodes_processed(
             logger.warning("Timed out waiting for episode processing; continuing.")
             return
         try:
-            pager = await zep.graph.episode.list(graph_uuid, limit=20)
+            pager = await zep.graph.episode.list(graph_uuid, page_size=20)
         except Exception as exc:
             logger.warning("Episode poll failed (%s); retrying.", exc)
             await asyncio.sleep(poll_interval)
@@ -189,7 +189,7 @@ async def main() -> None:
 
         # -- Verify thread 1 captured both sides ----------------------------
         print("\n[Step 3] Verifying thread 1 messages...")
-        pager = await zep.thread.list_messages(thread_1, limit=20)
+        pager = await zep.thread.list_messages(thread_1, page_size=20)
         messages = pager.items or []
         user_msgs = [m for m in messages if m.role == "user"]
         asst_msgs = [m for m in messages if m.role == "assistant"]
@@ -293,7 +293,7 @@ async def test_provisioning_and_before_after_run() -> None:
         )
 
         # -- Context retrieval round-trips: the thread now has both turns ---
-        pager = await zep.thread.list_messages(thread_uuid, limit=20)
+        pager = await zep.thread.list_messages(thread_uuid, page_size=20)
         messages = pager.items or []
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)
@@ -333,7 +333,7 @@ async def test_integration_full_lifecycle() -> None:
         assert fetched.first_name == FIRST_NAME
         assert fetched.email == EMAIL
 
-        pager = await zep.thread.list_messages(thread_1, limit=20)
+        pager = await zep.thread.list_messages(thread_1, page_size=20)
         messages = pager.items or []
         assert any(m.role == "user" for m in messages)
         assert any(m.role == "assistant" for m in messages)

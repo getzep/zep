@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Migrated the package to the Zep v4 SDK (`zep-cloud==4.0.0a5`).
+- Migrated the package to the Zep v4 SDK (`zep-cloud>=4.0.0,<5`).
 - `ZepContextProvider` now takes `user_uuid`, `thread_uuid`, and an optional
   `graph_uuid`. Zep v4 addresses a user, a thread, and a graph by a
   server-generated UUID. The provider makes no lookup call at run time.
@@ -15,6 +15,7 @@
   v4 per-scope search methods (`graph.search_edges`, `graph.search_nodes`,
   `graph.search_episodes`, `graph.search_observations`,
   `graph.search_thread_summaries`). The `auto` scope uses `graph.get_context`.
+- The search tool sends its `limit` parameter as the v4 `page_size` argument.
 
 ### Removed
 

@@ -34,11 +34,7 @@ cd zep/integrations/ms-agent-framework/python
 make install        # uv sync --extra dev (includes agent-framework-openai)
 ```
 
-Requirements: Python 3.11+, `agent-framework-core>=1.8.1`, `zep-cloud==4.0.0a5`.
-
-`zep-cloud` 4.0.0a5 is a pre-release. With `pip`, install it with
-`pip install --pre "zep-cloud==4.0.0a5"`. With `uv`, install it with
-`uv add "zep-cloud==4.0.0a5" --prerelease=allow`.
+Requirements: Python 3.11+, `agent-framework-core>=1.8.1`, `zep-cloud>=4.0.0,<5`.
 
 ## 4. Configure environment variables
 

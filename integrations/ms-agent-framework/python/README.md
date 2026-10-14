@@ -92,7 +92,7 @@ async def my_builder(ctx: ContextInput) -> str | None:
     pager = await ctx.zep.graph.search_edges(
         ctx.graph_uuid,
         query=ctx.user_message,
-        limit=10,
+        page_size=10,
     )
     edges = pager.items or []
     if not edges:
@@ -278,7 +278,7 @@ uv run pytest tests/test_integration.py -v -s -m integration
 ## Requirements
 
 - Python 3.11+
-- `zep-cloud==4.0.0a5`
+- `zep-cloud>=4.0.0,<5`
 - `agent-framework-core>=1.8.1`
 
 ## Support

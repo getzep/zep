@@ -40,7 +40,8 @@ Scope = Literal[
 ]
 Reranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
 
-#: Zep caps the search ``limit`` at 50; larger values are rejected.
+#: Zep caps the search page size at 50; larger values are rejected. The
+#: tool sends its ``limit`` parameter as the SDK ``page_size`` argument.
 MAX_SEARCH_LIMIT = 50
 
 #: The type of a v4 graph search method: it takes the graph UUID and the
@@ -52,7 +53,7 @@ def _scope_methods(client: AsyncZep) -> dict[str, _SearchMethod]:
     """Map each scope to the v4 graph search method that serves it.
 
     The ``auto`` scope has no search method. It maps to ``graph.get_context``,
-    which assembles a context block across all scopes.
+    which assembles a context block. The context block has no episodes.
     """
     graph = client.graph
     return {
@@ -84,7 +85,7 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
             "'episodes' for raw text data (unstructured text, messages, or JSON), "
             "'observations' for derived memories, "
             "'thread_summaries' for incremental thread summaries, "
-            "'auto' to let Zep assemble a context block across all scopes."
+            "'auto' to let Zep assemble a context block (it has no episodes)."
         ),
         "enum": ["edges", "nodes", "episodes", "observations", "thread_summaries", "auto"],
         "default": "edges",
@@ -190,7 +191,9 @@ def create_zep_search_tool(
         search_filters: Optional Zep search filters (constructor-only), sent
             as the SDK's ``filters`` argument.  Supports ``node_labels``,
             ``edge_types``, ``exclude_node_labels``, ``exclude_edge_types``,
-            and property filters.
+            and property filters.  Each scope accepts only its own filter
+            keys; Zep rejects a key that the scope cannot apply with HTTP
+            400 ``unsupported_filter``.
         bfs_origin_node_uuids: Optional list of node UUIDs for BFS seeding
             (constructor-only).
         name: The tool name exposed to the model.  Defaults to ``"zep_search"``.
@@ -268,6 +271,8 @@ def create_zep_search_tool(
             search_kwargs["limit"] = min(max(search_kwargs["limit"], 1), MAX_SEARCH_LIMIT)
 
         effective_scope = str(search_kwargs.pop("scope", "edges"))
+        if "limit" in search_kwargs:
+            search_kwargs["page_size"] = search_kwargs.pop("limit")
 
         if search_filters is not None:
             search_kwargs["filters"] = search_filters
@@ -279,6 +284,7 @@ def create_zep_search_tool(
             # no ranking parameters.
             for param_name in _AUTO_UNSUPPORTED_PARAMS:
                 search_kwargs.pop(param_name, None)
+            search_kwargs.pop("page_size", None)
             search_kwargs.pop("bfs_origin_node_uuids", None)
             try:
                 response = await zep_client.graph.get_context(graph_uuid, **search_kwargs)
@@ -301,7 +307,7 @@ def create_zep_search_tool(
             return f"Graph search failed: {exc}"
 
         # A v4 search method returns a cursor pager. The first page holds up
-        # to ``limit`` results, which is the full result set that the tool
+        # to ``page_size`` results, which is the full result set that the tool
         # asks for, so the tool does not follow the cursor.
         return _format_results(pager.items or [], effective_scope)
 

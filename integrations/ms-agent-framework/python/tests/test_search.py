@@ -114,7 +114,8 @@ class TestSearchTargeting:
 
         kwargs = client.graph.search_edges.call_args.kwargs
         assert kwargs["reranker"] == "rrf"
-        assert kwargs["limit"] == 10
+        assert kwargs["page_size"] == 10
+        assert "limit" not in kwargs
         assert "scope" not in kwargs
 
     def test_custom_tool_name(self) -> None:
@@ -194,6 +195,7 @@ class TestResultFormatting:
         # graph.get_context takes no ranking parameters.
         kwargs = client.graph.get_context.call_args.kwargs
         assert "limit" not in kwargs
+        assert "page_size" not in kwargs
         assert "reranker" not in kwargs
 
     @pytest.mark.asyncio
@@ -241,7 +243,7 @@ class TestModelProvidedArguments:
 
         await _call(tool, query="q", limit=200)
 
-        assert client.graph.search_edges.call_args.kwargs["limit"] == 50
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == 50
 
     @pytest.mark.asyncio
     async def test_model_limit_below_floor_is_clamped(self) -> None:
@@ -250,7 +252,7 @@ class TestModelProvidedArguments:
 
         await _call(tool, query="q", limit=0)
 
-        assert client.graph.search_edges.call_args.kwargs["limit"] == 1
+        assert client.graph.search_edges.call_args.kwargs["page_size"] == 1
 
     def test_limit_schema_carries_bounds(self) -> None:
         client = _make_mock_client()
@@ -328,7 +330,7 @@ class TestPinOrExposeSchema:
         await _call(tool, query="query")
 
         client.graph.search_nodes.assert_called_once()
-        assert client.graph.search_nodes.call_args.kwargs["limit"] == 5
+        assert client.graph.search_nodes.call_args.kwargs["page_size"] == 5
 
     def test_hidden_params_removed_from_schema_without_pinning(self) -> None:
         client = _make_mock_client()

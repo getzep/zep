@@ -79,7 +79,7 @@ async def wait_for_ingestion(
     """
     start = time.monotonic()
     while time.monotonic() - start < timeout_seconds:
-        pager = await zep.graph.episode.list(graph_uuid, limit=20)
+        pager = await zep.graph.episode.list(graph_uuid, page_size=20)
         episodes = pager.items or []
         if episodes and all(episode.processed for episode in episodes):
             print(f"Zep processed {len(episodes)} episodes.\n")
