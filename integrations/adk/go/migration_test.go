@@ -17,6 +17,8 @@ import (
 
 type fakeZepAPI struct {
 	added         []*zep.AddMessage
+	addCalls      int
+	lastAddReq    *zep.AddMessagesRequest
 	addErr        error
 	context       string
 	searchResults []string
@@ -27,6 +29,8 @@ type fakeZepAPI struct {
 }
 
 func (f *fakeZepAPI) AddMessages(_ context.Context, threadUUID string, req *zep.AddMessagesRequest) (*zep.AddMessagesResult, error) {
+	f.addCalls++
+	f.lastAddReq = req
 	f.addThreadUUID = threadUUID
 	f.added = append(f.added, req.Messages...)
 	if f.addErr != nil {

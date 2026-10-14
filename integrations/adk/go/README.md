@@ -103,7 +103,10 @@ scopes:
 
 The `auto` scope uses `Graph.GetContext`. Other scopes use the matching
 scope-specific V4 search method. Search results become text facts for the
-model.
+model. The V4 Go SDK's `GraphContextRequest` does not expose reranker,
+breadth-first-search origins, page size, MMR lambda, or center-node UUID
+fields. The `auto` scope therefore sends the query and supported generic
+filters only; it does not apply those other search parameters.
 
 The tool exposes search parameters to the model unless an option pins or hides
 them. Use `WithToolSearchScope`, `WithToolSearchLimit`, `WithToolReranker`,
