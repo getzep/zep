@@ -227,7 +227,7 @@ Each script imports only from its relevant config subfolder. The response prompt
 
 ## Run Tracking
 
-Each pipeline step writes its output to a numbered, timestamped subdirectory under `runs/`. Every run includes a **config snapshot** — a copy of the config files that were active at the time the run was created. This ensures reproducibility even if config files are changed later.
+Each pipeline step writes its output to a numbered, timestamped subdirectory under `runs/`. Git ignores the `runs/` directory, so a new clone has no runs. Run the ingestion scripts before you run `zep_evaluate.py`. Every run includes a **config snapshot** — a copy of the config files that were active at the time the run was created. This ensures reproducibility even if config files are changed later.
 
 ```
 runs/
@@ -428,7 +428,7 @@ The system prompt used when generating AI responses during evaluation is defined
 
 ### Customize Context Block / Retrieval
 
-Change retrieval by editing `build_context_block()` in `config/evaluation_config/retrieval_strategy.py`. For example, you can switch to manual `graph.search` calls with per-type limits and a chosen reranker, or adjust the context character budget. See the [Customize Your Context Block documentation](https://help.getzep.com/cookbook/customize-your-context-block) and [Searching the Graph](https://help.getzep.com/searching-the-graph) for best practices.
+Change retrieval by editing `build_context_block()` in `config/evaluation_config/retrieval_strategy.py`. For example, you can call the v4 search methods for each scope (`graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, and `graph.search_thread_summaries`) with a `page_size` and a reranker for each scope, or adjust the context character budget. See the [Customize Your Context Block documentation](https://help.getzep.com/cookbook/customize-your-context-block) and [Searching the Graph](https://help.getzep.com/searching-the-graph) for best practices.
 
 ### Add JSON/Text Data
 

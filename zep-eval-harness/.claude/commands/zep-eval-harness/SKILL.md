@@ -42,9 +42,9 @@ Metrics are calculated in aggregate, per-category (based on test case `category`
 
 The evaluation script retrieves context via `build_context_block()` in `config/evaluation_config/retrieval_strategy.py`. The default strategy calls `graph.get_context` with `MAX_CHARACTERS = 10000`, and prepends the user-node summary (fetched once per user via `fetch_user_summary` — the context endpoint does not include it).
 
-The context endpoint packs relevant edges (facts), nodes (entities), episodes, observations, and thread summaries into a pre-assembled context string. The character budget controls the volume.
+The context endpoint packs relevant edges (facts), nodes (entities), observations, and thread summaries into a pre-assembled context string. It does not include episodes. The character budget controls the volume.
 
-To change retrieval (for example, manual `graph.search` calls with per-type limits and a reranker), edit `build_context_block` in that module. That function is the source of truth for the strategy.
+To change retrieval (for example, calls to the v4 search methods for each scope — `graph.search_edges`, `graph.search_nodes`, `graph.search_episodes`, `graph.search_observations`, and `graph.search_thread_summaries` — with a `page_size` and a reranker for each scope), edit `build_context_block` in that module. That function is the source of truth for the strategy.
 
 All commands run from `zep-eval-harness/` using `uv run`. Depending on the user's request, either run the scripts directly or provide the terminal commands for the user.
 

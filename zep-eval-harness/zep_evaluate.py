@@ -103,6 +103,23 @@ def get_latest_run(run_type: str) -> Optional[Tuple[int, str]]:
     return run_num, latest_run_dir
 
 
+def check_v4_manifest(manifest: Dict[str, Any], run_type: str, manifest_path: str):
+    """Stop with a clear message when a run manifest has no v4 Zep UUIDs."""
+    if run_type == "users":
+        users = manifest.get("users", [])
+        complete = all(
+            u.get("zep_user_uuid") and u.get("zep_user_graph_uuid") for u in users
+        )
+    else:
+        complete = bool(manifest.get("graph_uuid"))
+    if not complete:
+        sys.exit(
+            f"Error: The {run_type} run manifest {manifest_path} has no Zep UUIDs. "
+            f"This manifest is from a V3 run. Run zep_ingest_{run_type}.py again "
+            f"to make a V4 run."
+        )
+
+
 def load_run_manifest(
     run_number: Optional[int], run_type: str
 ) -> Tuple[Dict[str, Any], str]:
@@ -134,6 +151,8 @@ def load_run_manifest(
     manifest_path = os.path.join(run_dir, "manifest.json")
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
+
+    check_v4_manifest(manifest, run_type, manifest_path)
 
     print(f"Loaded manifest from: {manifest_path}")
     if run_type == "users":
@@ -1143,13 +1162,8 @@ async def main():
         doc_run_dir = None
         if args.doc_run is not None:
             doc_manifest, doc_run_dir = load_run_manifest(args.doc_run, "documents")
-            doc_graph_uuid = doc_manifest.get("graph_uuid")
-            if doc_graph_uuid:
-                print(f"Document graph: {doc_graph_uuid}")
-            else:
-                print(
-                    "Warning: --doc-run specified but no graph_uuid found in document manifest"
-                )
+            doc_graph_uuid = doc_manifest["graph_uuid"]
+            print(f"Document graph: {doc_graph_uuid}")
 
         # Load test cases
         test_cases_by_user = await load_all_test_cases()

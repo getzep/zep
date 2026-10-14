@@ -2,3 +2,5 @@
 .env
 __pycache__/
 uv.lock
+runs/*
+!runs/.gitkeep

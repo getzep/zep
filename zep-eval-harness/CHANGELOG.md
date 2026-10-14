@@ -30,3 +30,10 @@ All notable changes to the Zep eval harness are recorded in this file.
   succeeded. After a poll timeout, they print a warning with the number of
   completed tasks. After a failed task, they print the failure count. The
   manifest timing records the timeout in a `timed_out` field.
+- `zep_evaluate.py` stops with a clear message when a run manifest has no Zep
+  UUIDs, because the manifest is from a V3 run.
+- The repository does not include run artifacts any more, and Git ignores the
+  `runs/` directory. The V3 run artifacts caused `zep_evaluate.py` to fail on a
+  new clone.
+- The `README.md` and the harness skill name the v4 search methods for each
+  scope. The `zep-cloud` 4.0.0 SDK has no `graph.search` method.
