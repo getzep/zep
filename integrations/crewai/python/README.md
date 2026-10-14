@@ -520,7 +520,7 @@ mypy src/zep_crewai
 ## Requirements
 
 - Python 3.11+
-- `zep-cloud==4.0.0a5`
+- `zep-cloud>=4.0.0,<5`
 - `crewai>=1.0.0`
 - `pydantic>=2.0.0`
 

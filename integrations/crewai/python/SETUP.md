@@ -34,14 +34,7 @@ cd zep/integrations/crewai/python
 make install        # uv sync --extra dev
 ```
 
-Requirements: Python 3.11+, `crewai>=1.0.0`, `zep-cloud==4.0.0a5`.
-
-`zep-cloud` 4.x is a pre-release. To install it with `pip`, add the `--pre`
-flag, or pin the version:
-
-```bash
-pip install "zep-cloud==4.0.0a5"
-```
+Requirements: Python 3.11+, `crewai>=1.0.0`, `zep-cloud>=4.0.0,<5`.
 
 ## 4. Configure environment variables
 
