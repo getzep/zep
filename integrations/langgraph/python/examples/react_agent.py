@@ -122,18 +122,19 @@ async def main() -> None:
 
     async def chat(user_text: str) -> str:
         """Run one turn through the agent and persist it to Zep."""
+        # Add the user message first: thread.get_context uses the most recent
+        # thread messages as its query, so a thread with no messages gets no context.
+        await persist_messages(
+            zep,
+            thread_uuid=thread.uuid_,
+            messages=[AddMessage(role="user", content=user_text, name=f"{FIRST_NAME} {LAST_NAME}")],
+        )
         result = await agent.ainvoke({"messages": [HumanMessage(content=user_text)]})
         reply = result["messages"][-1]
         reply_text = reply.content if isinstance(reply.content, str) else str(reply.content)
 
-        # Persist the user turn and the assistant reply to Zep.
         await persist_messages(
-            zep,
-            thread_uuid=thread.uuid_,
-            messages=[
-                AddMessage(role="user", content=user_text, name=f"{FIRST_NAME} {LAST_NAME}"),
-                AIMessage(content=reply_text),
-            ],
+            zep, thread_uuid=thread.uuid_, messages=[AIMessage(content=reply_text)]
         )
         return reply_text
 

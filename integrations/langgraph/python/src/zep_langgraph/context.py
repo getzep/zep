@@ -3,9 +3,11 @@ Context-injection helpers for LangGraph nodes.
 
 These helpers wrap Zep's :meth:`thread.get_context` so a graph node can
 fetch the user's :class:`Context Block <zep_cloud.types.thread_context_response.ThreadContextResponse>`
--- a prompt-ready summary assembled from the *entire* user graph (the thread
-only scopes what is currently relevant) -- and inject it into the system
-prompt.
+-- a prompt-ready summary from the *entire* user graph, with the four most
+recent thread messages as the query -- and inject it into the system prompt.
+A thread with no messages gives no context, so add the user message of the
+turn with :func:`~zep_langgraph.persistence.persist_messages` before the model
+runs.
 
 Zep v4 addresses every user, thread, and graph by a server-generated UUID, so
 these helpers take a ``thread_uuid`` and a ``graph_uuid``. Resolve a legacy
@@ -133,9 +135,10 @@ async def get_zep_context(
 ) -> str | None:
     """Fetch the Zep Context Block for a thread.
 
-    Wraps :meth:`AsyncZep.thread.get_context`. The returned block is
-    assembled from the whole user graph; the thread is used only to determine
-    what is relevant right now.
+    Wraps :meth:`AsyncZep.thread.get_context`. Zep searches the whole user
+    graph, and the four most recent messages of the thread form the query. A
+    thread with no messages gives no context, so add the user message of the
+    turn to the thread before you call this function.
 
     Args:
         zep_client: An initialised :class:`~zep_cloud.client.AsyncZep` client.

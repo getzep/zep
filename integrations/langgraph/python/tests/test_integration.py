@@ -160,16 +160,16 @@ def build_agent(
     agent = create_react_agent(model=model, tools=[search_tool], prompt=prompt)
 
     async def chat(user_text: str) -> str:
+        await persist_messages(
+            zep,
+            thread_uuid=thread_uuid,
+            messages=[AddMessage(role="user", content=user_text, name=f"{FIRST_NAME} {LAST_NAME}")],
+        )
         result = await agent.ainvoke({"messages": [HumanMessage(content=user_text)]})
         reply = result["messages"][-1]
         reply_text = reply.content if isinstance(reply.content, str) else str(reply.content)
         await persist_messages(
-            zep,
-            thread_uuid=thread_uuid,
-            messages=[
-                AddMessage(role="user", content=user_text, name=f"{FIRST_NAME} {LAST_NAME}"),
-                AIMessage(content=reply_text),
-            ],
+            zep, thread_uuid=thread_uuid, messages=[AIMessage(content=reply_text)]
         )
         return reply_text
 

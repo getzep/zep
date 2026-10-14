@@ -89,9 +89,10 @@ def create_zep_pre_model_hook(
     re-fetched fresh on every turn rather than baked into history.
 
     This hook does not persist anything. Call
-    :func:`~zep_langgraph.persistence.persist_messages` separately (e.g. in
-    your agent node, after the model responds, or in a ``post_model_hook``)
-    to save the turn to Zep.
+    :func:`~zep_langgraph.persistence.persist_messages` separately to save the
+    turn to Zep. Add the user message before the agent runs:
+    ``thread.get_context`` uses the most recent thread messages as its query,
+    and a thread with no messages gives no context.
 
     Args:
         zep_client: An initialised :class:`~zep_cloud.client.AsyncZep` client.

@@ -89,13 +89,17 @@ agent = create_react_agent(
     prompt=prompt,
 )
 
-result = await agent.ainvoke({"messages": [HumanMessage(content="Where do I work?")]})
-reply = result["messages"][-1]
+user_text = "Where do I work?"
+# Add the user message before the agent runs. thread.get_context uses the most
+# recent thread messages as its query.
 await persist_messages(
     zep,
     thread_uuid=thread.uuid_,
-    messages=[AddMessage(role="user", content="Where do I work?", name="Alice Smith"), reply],
+    messages=[AddMessage(role="user", content=user_text, name="Alice Smith")],
 )
+result = await agent.ainvoke({"messages": [HumanMessage(content=user_text)]})
+reply = result["messages"][-1]
+await persist_messages(zep, thread_uuid=thread.uuid_, messages=[reply])
 ```
 
 A complete runnable version is in
@@ -109,9 +113,13 @@ from inside a graph node.
 
 ### Context injection — `build_system_message` / `get_zep_context`
 
-`thread.get_context(thread_uuid)` returns a token-efficient **Context Block**
-assembled from the *entire user graph* (the thread only scopes what is relevant
-right now). `build_system_message` fetches it and folds it into a
+`thread.get_context(thread_uuid)` returns a token-efficient **Context Block**.
+Zep searches the entire user graph, and the four most recent messages of the
+thread form the query. The block can contain context from other threads of the
+same user. A thread with no messages has no query, so Zep returns no context.
+Add the user message of the turn to the thread with `persist_messages` before
+the model runs, as the Quick Start shows. Then the first turn of a new thread
+also gets context. `build_system_message` fetches the block and folds it into a
 `SystemMessage` together with your base instructions, ready to prepend to the
 model's message list. `get_zep_context` returns just the raw block.
 
