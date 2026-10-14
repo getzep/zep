@@ -2,14 +2,13 @@
   "name": "zep-typescript-examples",
   "version": "1.0.0",
   "private": true,
-  "description": "Runnable loose TypeScript snippets for @getzep/zep-cloud v4 (graph, memory, users)",
+  "description": "Runnable loose TypeScript snippets for @getzep/zep-cloud v4 (graph, users)",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "example:graph": "tsx graph/graph_example.ts",
     "example:graph:user": "tsx graph/user_graph_example.ts",
     "example:graph:entity-types": "tsx graph/entity_type_example.ts",
-    "example:memory": "tsx memory/memory_example.ts",
     "example:users": "tsx users/users.ts"
   },
   "dependencies": {

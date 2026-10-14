@@ -36,3 +36,10 @@ the address of the resource. A v4 create call accepts no client-chosen name,
 so a new resource has no `user_id`, no `thread_id`, and no `graph_id`. The
 examples create a resource, read the UUID from the response, and use that UUID
 in all later calls.
+
+## Archived examples
+
+The [`archive`](./archive) directory contains examples that show the older
+memory-layer pattern. These examples are not maintained. For new code, use the
+tool-based reference agents in [`python/agent-with-zep`](./python/agent-with-zep)
+and [`python/agent-with-zep-adk`](./python/agent-with-zep-adk).
