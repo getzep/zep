@@ -225,13 +225,11 @@ add_tool = create_add_data_tool(
 
 `ensure_user(client, *, first_name=None, last_name=None, email=None,
 on_created=None)` and `ensure_thread(client, *, user_uuid)` are
-create-then-catch-conflict helpers for **onboarding only**. Zep v4 accepts no
+create helpers for **onboarding only**. Zep v4 accepts no
 client-chosen identifier on create, so a successful call always creates a new
 resource. Each returns a tuple of the resource and a flag: the flag is `True`
-when the resource was newly created and `False` when the create conflicted and
-the returned resource already existed (the helper resolves the UUID of the
-existing resource from `details.uuid` of the conflict response — never a
-`lookup`). Genuine failures (auth, network, 5xx) always raise. Read
+when the resource was newly created. A failed create (auth, network,
+conflict, 5xx) raises the error — the helpers never call `lookup`. Read
 `user.uuid_`, `user.graph_uuid`, and `thread.uuid_` from the result and store them
 in your own database.
 
