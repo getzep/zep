@@ -188,7 +188,8 @@ with custom options.
 
 `createZepSearchTool`'s parameters — `scope`, `reranker`, `limit`, `mmrLambda`,
 `centerNodeUuid` — are each **exposed to the model by default** (with Zep's documented
-defaults: `scope: "edges"`, `reranker: "rrf"`, `limit: 10`), so the model can choose them
+defaults: `scope: "edges"`, `reranker: "rrf"` for every scope except `auto`, `limit: 10`),
+so the model can choose them
 per call. Use `pinnedParams` to fix a parameter to a constant value (removed from the
 model's schema, always sent); use `hiddenParams` to remove a parameter from the schema
 *without* pinning it (omitted from the Zep call entirely — Zep's own server default
@@ -215,12 +216,16 @@ model — and applied whenever set.
 
 Each scope accepts only some rerankers: `edges` accepts all five, `nodes` accepts all
 except `episode_mentions`, `episodes` accepts `rrf` and `mmr`, and `observations` and
-`thread_summaries` accept `rrf`, `mmr`, and `cross_encoder`. `node_distance` requires
+`thread_summaries` accept `rrf`, `mmr`, and `cross_encoder`. `auto` takes no reranker,
+and the tool sends no default reranker for `auto`. `node_distance` requires
 `centerNodeUuid`, and `episode_mentions` requires `filters.episodeUuids`. The schema
 shows the model only the valid choices for a pinned scope or reranker, and it hides
 `episode_mentions` when `filters.episodeUuids` is not set. When the model sends an
 invalid pair, the tool does not call Zep and returns an `error` that names the
-setting and the valid choices. An invalid pinned pair throws at construction. When
+setting and the valid choices. For example, when the model sends a reranker with
+`auto`, the `error` tells the model to search again with no reranker or with a scope
+that accepts the reranker. An invalid pinned pair, for example a pinned `scope: "auto"`
+with a pinned reranker, throws at construction. When
 the reranker is `mmr` and no `mmrLambda` is set, the tool sends `mmrLambda: 0.5`.
 
 ## Binding: user graph vs standalone graph

@@ -299,37 +299,52 @@ describe("createZepSearchTool", () => {
       );
     });
 
-    it("omits a model-provided auto-incompatible reranker when scope is 'auto'", async () => {
+    it.each(["rrf", "mmr", "cross_encoder", "node_distance", "episode_mentions"] as const)(
+      "returns an error and does not call Zep for a model-provided %s reranker with scope 'auto'",
+      async (reranker) => {
+        const zep = makeFakeZep();
+        const tool = createZepSearchTool({
+          client: asZep(zep),
+          binding: { graphUuid: "g1" },
+          filters: { episodeUuids: ["e1"] },
+          logger: { warn: vi.fn() },
+        });
+
+        const result = await run(tool, { query: "q", scope: "auto", reranker });
+
+        expect(result.found).toBe(false);
+        expect(result.facts).toEqual([]);
+        expect(result.error).toMatch(
+          new RegExp(
+            `Reranker '${reranker}' is not valid for scope 'auto'\\. Scope 'auto' takes no reranker\\. ` +
+              "Give no reranker, or use a scope that accepts",
+          ),
+        );
+        expect(zep.graph.getContext).not.toHaveBeenCalled();
+        expect(zep.graph.searchEdges).not.toHaveBeenCalled();
+      },
+    );
+
+    it("sends no default reranker for a model-provided scope 'auto' with no reranker", async () => {
       const zep = makeFakeZep();
       zep.graph.getContext.mockResolvedValueOnce({ context: "block" });
-      const warn = vi.fn();
-      const tool = createZepSearchTool({
-        client: asZep(zep),
-        binding: { graphUuid: "g1" },
-        logger: { warn },
-      });
+      const tool = createZepSearchTool({ client: asZep(zep), binding: { graphUuid: "g1" } });
 
-      await run(tool, { query: "q", scope: "auto", reranker: "node_distance" });
+      const result = await run(tool, { query: "q", scope: "auto" });
 
+      expect(result).toEqual({ facts: ["block"], found: true });
       expect(zep.graph.getContext).toHaveBeenCalledWith("g1", { query: "q" });
-      expect(warn).toHaveBeenCalledOnce();
     });
 
-    it("resolves a pinned auto-incompatible scope/reranker pair at construction", async () => {
+    it("throws at construction for a pinned scope 'auto' with a pinned reranker", () => {
       const zep = makeFakeZep();
-      zep.graph.getContext.mockResolvedValueOnce({ context: "block" });
-      const warn = vi.fn();
-      const tool = createZepSearchTool({
-        client: asZep(zep),
-        binding: { graphUuid: "g1" },
-        pinnedParams: { scope: "auto", reranker: "episode_mentions" },
-        logger: { warn },
-      });
-      expect(warn).toHaveBeenCalledOnce();
-
-      await run(tool, { query: "q" });
-
-      expect(zep.graph.getContext).toHaveBeenCalledWith("g1", { query: "q" });
+      expect(() =>
+        createZepSearchTool({
+          client: asZep(zep),
+          binding: { graphUuid: "g1" },
+          pinnedParams: { scope: "auto", reranker: "rrf" },
+        }),
+      ).toThrow(/Reranker 'rrf' is not valid for scope 'auto'\. Scope 'auto' takes no reranker/);
     });
 
     it("clamps a model-provided limit to Zep's 50-result ceiling", async () => {
@@ -417,7 +432,7 @@ describe("createZepSearchTool", () => {
       expect(rerankerOptions(observations)).toEqual(["cross_encoder", "mmr", "rrf"]);
     });
 
-    it("exposes only the scopes that a pinned reranker supports", () => {
+    it("exposes only the scopes that a pinned reranker supports, with no 'auto'", () => {
       const zep = makeFakeZep();
       const tool = createZepSearchTool({
         client: asZep(zep),
@@ -428,7 +443,7 @@ describe("createZepSearchTool", () => {
         tool.inputSchema as unknown as { shape: { scope: { unwrap(): { options: string[] } } } }
       ).shape;
       expect(shape.scope.unwrap().options.sort()).toEqual(
-        ["auto", "edges", "nodes", "observations", "thread_summaries"].sort(),
+        ["edges", "nodes", "observations", "thread_summaries"].sort(),
       );
     });
 

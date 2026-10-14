@@ -42,7 +42,7 @@ type Reranker = Zep.SearchEdgesRequestReranker;
 
 /**
  * The rerankers that each scope-specific search method accepts. Zep rejects
- * any other pair with HTTP 400. `auto` ignores the reranker.
+ * any other pair with HTTP 400. `auto` (`graph.getContext`) takes no reranker.
  */
 const SCOPE_RERANKERS: Record<Exclude<ZepSearchScope, "auto">, readonly Reranker[]> = {
   edges: ["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"],
@@ -56,7 +56,7 @@ const SCOPE_RERANKERS: Record<Exclude<ZepSearchScope, "auto">, readonly Reranker
 const DEFAULT_MMR_LAMBDA = 0.5;
 
 function scopeSupportsReranker(scope: ZepSearchScope, reranker: Reranker): boolean {
-  return scope === "auto" || SCOPE_RERANKERS[scope].includes(reranker);
+  return scope !== "auto" && SCOPE_RERANKERS[scope].includes(reranker);
 }
 
 function scopesForReranker(reranker: Reranker): ZepSearchScope[] {
@@ -75,7 +75,13 @@ function rerankerError(
   hasCenterNode: boolean,
   hasEpisodeUuids: boolean,
 ): string | undefined {
-  if (scope === "auto") return undefined;
+  if (scope === "auto") {
+    return (
+      `Reranker '${reranker}' is not valid for scope 'auto'. Scope 'auto' takes no ` +
+      "reranker. Give no reranker, or use a scope that accepts reranker " +
+      `'${reranker}': ${scopesForReranker(reranker).join(", ")}.`
+    );
+  }
   if (!SCOPE_RERANKERS[scope].includes(reranker)) {
     return (
       `Reranker '${reranker}' is not supported for scope '${scope}'. ` +
@@ -113,15 +119,6 @@ const DEFAULT_LIMIT = 10;
 
 /** Zep caps a search page at 50 results; a higher limit is rejected with a 400. */
 const MAX_SEARCH_LIMIT = 50;
-
-/**
- * Rerankers Zep rejects outright when `scope` is `"auto"` (context assembly
- * always uses RRF internally and ignores `reranker` entirely).
- */
-const AUTO_INCOMPATIBLE_RERANKERS: readonly Reranker[] = [
-  "node_distance",
-  "episode_mentions",
-];
 
 /**
  * Every search parameter that can be pinned, hidden, or exposed to the model.
@@ -342,19 +339,6 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
     }
   }
 
-  // Auto scope rejects node_distance/episode_mentions and ignores reranker
-  // entirely. If both are pinned, resolve the conflict once, here, so the
-  // call path is always valid.
-  if (pinned.scope === "auto" && pinned.reranker !== undefined) {
-    if (AUTO_INCOMPATIBLE_RERANKERS.includes(pinned.reranker)) {
-      logger.warn(
-        `[zep-search] Reranker '${pinned.reranker}' is invalid for scope 'auto'; ` +
-          "omitting reranker (auto search uses RRF).",
-      );
-    }
-    delete pinned.reranker;
-  }
-
   const hidden = new Set(options.hiddenParams ?? []);
   for (const name of hidden) {
     if (!(PINNABLE_PARAM_NAMES as readonly string[]).includes(name)) {
@@ -404,7 +388,8 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
           "entities and their summaries, 'episodes' for raw text data " +
           "(unstructured text, messages, or JSON), 'observations' for derived " +
           "memories, 'thread_summaries' for incremental thread summaries, " +
-          "'auto' to let Zep decide the best mix of results. Defaults to 'edges'.",
+          "'auto' to let Zep decide the best mix of results (takes no reranker). " +
+          "Defaults to 'edges'.",
       );
   }
   const scopeIsPinnedAuto = scopeState.kind === "pinned" && scopeState.value === "auto";
@@ -416,8 +401,8 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
         (r !== "node_distance" || centerNodeUuidState.kind !== "hidden"),
     ) as [Reranker, ...Reranker[]];
     const rerankerNotes: Record<Reranker, string> = {
-      rrf: "'rrf' (balanced, all scopes)",
-      mmr: "'mmr' (diverse, all scopes; uses mmrLambda)",
+      rrf: "'rrf' (balanced)",
+      mmr: "'mmr' (diverse; uses mmrLambda)",
       cross_encoder: "'cross_encoder' (highest accuracy; not for scope 'episodes')",
       node_distance:
         "'node_distance' (near a specific entity; scopes 'edges' and 'nodes' only; requires centerNodeUuid)",
@@ -428,7 +413,8 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
       .optional()
       .describe(
         `Result ordering algorithm: ${exposedRerankers.map((r) => rerankerNotes[r]).join(", ")}. ` +
-          "Scope 'auto' ignores the reranker. Defaults to 'rrf'.",
+          "Scope 'auto' takes no reranker: leave the reranker out for 'auto'. " +
+          "For the other scopes, defaults to 'rrf'.",
       );
   }
   if (limitState.kind === "exposed") {
@@ -504,22 +490,13 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
       }
 
       const scope = resolveParam(scopeState, inputData.scope, DEFAULT_SCOPE);
-      let reranker = resolveParam(rerankerState, inputData.reranker, DEFAULT_RERANKER);
+      let reranker = resolveParam(rerankerState, inputData.reranker);
       let limit = resolveParam(limitState, inputData.limit, DEFAULT_LIMIT);
       let mmrLambda = resolveParam(mmrLambdaState, inputData.mmrLambda);
       const centerNodeUuid = resolveParam(centerNodeUuidState, inputData.centerNodeUuid);
 
-      // Auto search always uses RRF internally and ignores reranker entirely;
-      // Zep rejects node_distance/episode_mentions outright. Omit the reranker
-      // for auto scope, warning only when the value is one Zep would reject.
-      if (scope === "auto" && reranker !== undefined) {
-        if (AUTO_INCOMPATIBLE_RERANKERS.includes(reranker)) {
-          logger.warn(
-            `[zep-search] Reranker '${reranker}' is invalid for scope 'auto'; ` +
-              "omitting reranker.",
-          );
-        }
-        reranker = undefined;
+      if (reranker === undefined && rerankerState.kind === "exposed" && scope !== "auto") {
+        reranker = DEFAULT_RERANKER;
       }
 
       if (reranker !== undefined && scope !== undefined) {
