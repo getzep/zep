@@ -45,9 +45,8 @@ Reranker = Literal["rrf", "mmr", "node_distance", "episode_mentions", "cross_enc
 #: Zep caps the search ``page_size`` at 50; larger values are rejected.
 MAX_SEARCH_LIMIT = 50
 
-#: Rerankers Zep rejects when ``scope == "auto"`` (auto always uses RRF
-#: retrieval and applies its own internal cross-scope rerank).
-_AUTO_INCOMPATIBLE_RERANKERS = ("node_distance", "episode_mentions")
+#: The reranker sent when the model gives none and the scope is not ``auto``.
+DEFAULT_RERANKER: Reranker = "rrf"
 
 #: The type of the tool ``create_zep_search_tool`` returns.
 ZepSearchTool = Tool[ZepDeps]
@@ -79,10 +78,11 @@ _SEARCH_PARAM_SPECS: dict[str, dict[str, Any]] = {
         "description": (
             "Result ordering algorithm: 'rrf' (balanced), 'mmr' (diverse), "
             "'cross_encoder' (highest accuracy), 'episode_mentions' "
-            "(frequently referenced), 'node_distance' (near a specific entity)."
+            "(frequently referenced), 'node_distance' (near a specific entity). "
+            "Defaults to 'rrf'. The 'auto' scope takes no reranker: omit the "
+            "reranker with scope 'auto'."
         ),
         "enum": ["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"],
-        "default": "rrf",
     },
     "limit": {
         "type": "integer",
@@ -244,6 +244,15 @@ def create_zep_search_tool(
     ``filters`` and ``bfs_origin_node_uuids`` are always constructor-only:
     their complex/list-of-object shapes are not exposed to the model.
 
+    **Reranker and the auto scope.** The ``auto`` scope calls
+    ``graph.get_context``, which takes no reranker.  If the model sends a
+    reranker with ``scope="auto"``, the tool does not call Zep and returns an
+    error message, so the model can search again with no reranker or with
+    another scope.  When the model sends no reranker for another scope, the
+    tool sends ``rrf``.  When a reranker is pinned, the schema does not offer
+    the ``auto`` scope.  When ``scope="auto"`` is pinned, the schema does not
+    offer the reranker.
+
     Args:
         graph_uuid: Optional standalone graph UUID.  When set, all searches
             target this graph; when ``None`` (default), the graph UUID comes
@@ -279,7 +288,9 @@ def create_zep_search_tool(
     Raises:
         ValueError: If ``pinned_params`` (or a legacy alias) contains an
             unknown parameter name, or pins a required parameter to ``None``.
-            Also if ``filters`` contains an unknown key, or a key that no
+            Also if a reranker is pinned together with ``scope="auto"``,
+            because the ``auto`` scope takes no reranker.  Also if ``filters``
+            contains an unknown key, or a key that no
             scope the tool can search supports (for example ``node_labels``
             with ``scope`` pinned to ``"edges"``).
     """
@@ -321,17 +332,11 @@ def create_zep_search_tool(
         elif pinned_limit < 1:
             pinned["limit"] = 1
 
-    # Auto scope rejects node_distance / episode_mentions and ignores reranker
-    # entirely.  If scope is pinned to "auto" and reranker is also pinned,
-    # resolve the effective value once, here, so the call path is always valid.
-    if pinned.get("scope") == "auto" and "reranker" in pinned:
-        if pinned["reranker"] in _AUTO_INCOMPATIBLE_RERANKERS:
-            logger.warning(
-                "zep_search reranker %r is invalid for scope='auto'; "
-                "omitting reranker (auto search uses RRF).",
-                pinned["reranker"],
-            )
-        del pinned["reranker"]
+    if pinned.get("scope") == "auto" and pinned.get("reranker") is not None:
+        raise ValueError(
+            f"The 'auto' scope takes no reranker, but the reranker {pinned['reranker']!r} "
+            "is pinned. Do not pin a reranker with scope 'auto', or pin another scope."
+        )
 
     if filters:
         _validate_filters(filters, pinned=pinned, hidden=hidden)
@@ -380,6 +385,15 @@ def create_zep_search_tool(
             search_kwargs["limit"] = clamped_limit
 
         effective_scope: Scope = search_kwargs.pop("scope", "edges")
+        if effective_scope == "auto":
+            if search_kwargs.get("reranker") is not None:
+                return (
+                    "Error: the 'auto' scope takes no reranker, but the reranker "
+                    f"{search_kwargs['reranker']!r} was given. Search again with no "
+                    "reranker, or choose another scope."
+                )
+        elif "reranker" not in search_kwargs and "reranker" not in hidden:
+            search_kwargs["reranker"] = DEFAULT_RERANKER
         if "limit" in search_kwargs:
             search_kwargs["page_size"] = search_kwargs.pop("limit")
 
@@ -392,8 +406,8 @@ def create_zep_search_tool(
                 search_kwargs["filters"] = scope_filters
 
         if effective_scope == "auto":
-            # graph.get_context accepts the query and filters only; it always
-            # applies its own retrieval and rerank.
+            # graph.get_context accepts the query and filters only; it applies
+            # its own retrieval and rerank.
             context_kwargs = {
                 key: value for key, value in search_kwargs.items() if key in ("query", "filters")
             }
@@ -453,10 +467,14 @@ def _build_json_schema(
     for param_name, spec in _SEARCH_PARAM_SPECS.items():
         if param_name in pinned or param_name in hidden:
             continue  # pinned or hidden -> not exposed to the model
+        if param_name == "reranker" and pinned.get("scope") == "auto":
+            continue
 
         prop: dict[str, Any] = {"type": spec["type"], "description": spec["description"]}
         if "enum" in spec:
             prop["enum"] = spec["enum"]
+        if param_name == "scope" and pinned.get("reranker") is not None:
+            prop["enum"] = [value for value in spec["enum"] if value != "auto"]
         if "minimum" in spec:
             prop["minimum"] = spec["minimum"]
         if "maximum" in spec:

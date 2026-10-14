@@ -280,7 +280,7 @@ class TestAutoScope:
         """The auto scope uses graph.get_context, which takes the query and
         the filters only."""
         client = _make_context_client("ctx")
-        tool = create_zep_search_tool(scope="auto", reranker="node_distance", limit=25)
+        tool = create_zep_search_tool(scope="auto", limit=25)
         ctx = _make_ctx(_make_deps(client))
 
         await _call(tool, ctx, "query")
@@ -288,6 +288,98 @@ class TestAutoScope:
         assert client.graph.get_context.call_args.args[0] == GRAPH_UUID
         kwargs = client.graph.get_context.call_args.kwargs
         assert kwargs == {"query": "query"}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "reranker", ["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"]
+    )
+    async def test_model_reranker_with_auto_returns_error(self, reranker: str) -> None:
+        client = _make_context_client("ctx")
+        tool = create_zep_search_tool()
+        ctx = _make_ctx(_make_deps(client))
+
+        out = await _call(tool, ctx, "query", scope="auto", reranker=reranker)
+
+        assert out.startswith("Error:")
+        assert "'auto' scope takes no reranker" in out
+        assert repr(reranker) in out
+        client.graph.get_context.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_model_auto_without_reranker_calls_get_context(self) -> None:
+        client = _make_context_client("ctx")
+        tool = create_zep_search_tool()
+        ctx = _make_ctx(_make_deps(client))
+
+        out = await _call(tool, ctx, "query", scope="auto")
+
+        assert out == "ctx"
+        assert client.graph.get_context.call_args.kwargs == {"query": "query"}
+
+    @pytest.mark.asyncio
+    async def test_pinned_reranker_with_model_auto_returns_error(self) -> None:
+        client = _make_context_client("ctx")
+        tool = create_zep_search_tool(pinned_params={"reranker": "mmr"})
+        ctx = _make_ctx(_make_deps(client))
+
+        out = await _call(tool, ctx, "query", scope="auto")
+
+        assert "'auto' scope takes no reranker" in out
+        client.graph.get_context.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"scope": "auto", "reranker": "rrf"},
+            {"pinned_params": {"scope": "auto", "reranker": "node_distance"}},
+            {"scope": "auto", "pinned_params": {"reranker": "cross_encoder"}},
+        ],
+    )
+    def test_pinned_reranker_with_pinned_auto_raises(self, kwargs: dict[str, object]) -> None:
+        with pytest.raises(ValueError, match="'auto' scope takes no reranker"):
+            create_zep_search_tool(**kwargs)  # type: ignore[arg-type]
+
+    def test_pinned_auto_hides_reranker(self) -> None:
+        tool = create_zep_search_tool(scope="auto")
+        properties = tool.tool_def.parameters_json_schema["properties"]
+
+        assert "reranker" not in properties
+
+    def test_pinned_reranker_removes_auto_from_scope_enum(self) -> None:
+        tool = create_zep_search_tool(pinned_params={"reranker": "rrf"})
+        properties = tool.tool_def.parameters_json_schema["properties"]
+
+        assert "auto" not in properties["scope"]["enum"]
+        assert "edges" in properties["scope"]["enum"]
+
+    def test_reranker_has_no_schema_default(self) -> None:
+        tool = create_zep_search_tool()
+        properties = tool.tool_def.parameters_json_schema["properties"]
+
+        assert "default" not in properties["reranker"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "scope", ["edges", "nodes", "episodes", "observations", "thread_summaries"]
+    )
+    async def test_omitted_reranker_sends_rrf_for_other_scopes(self, scope: str) -> None:
+        client = _make_client(scope=scope)
+        tool = create_zep_search_tool()
+        ctx = _make_ctx(_make_deps(client))
+
+        await _call(tool, ctx, "query", scope=scope)
+
+        assert _search_mock(client, scope).call_args.kwargs["reranker"] == "rrf"
+
+    @pytest.mark.asyncio
+    async def test_hidden_reranker_is_omitted(self) -> None:
+        client = _make_client()
+        tool = create_zep_search_tool(hidden_params={"reranker"})
+        ctx = _make_ctx(_make_deps(client))
+
+        await _call(tool, ctx, "query")
+
+        assert "reranker" not in _search_mock(client).call_args.kwargs
 
     @pytest.mark.asyncio
     async def test_auto_scope_sends_filters(self) -> None:

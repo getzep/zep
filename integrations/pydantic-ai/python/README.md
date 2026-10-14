@@ -222,6 +222,15 @@ tool = create_zep_search_tool(hidden_params={"mmr_lambda"})
 `filters` and `bfs_origin_node_uuids` are always constructor-only
 (their complex shapes are not exposed to the model).
 
+The `auto` scope calls `graph.get_context`, which takes no reranker. If the
+model sends a reranker with `scope="auto"`, the tool does not call Zep. It
+returns an error message, so the model can search again with no reranker or
+with another scope. When the model sends no reranker for another scope, the
+tool sends `rrf`. When a reranker is pinned, the `scope` field does not offer
+`auto`. When `scope="auto"` is pinned, the schema does not offer the reranker.
+A reranker pinned together with `scope="auto"` raises `ValueError` when you
+build the tool.
+
 Each search scope accepts its own filter keys. The tool sends each search
 only the filters that its scope accepts. A filter that no scope of the tool
 accepts raises `ValueError` when you build the tool:
@@ -338,7 +347,7 @@ Model-exposed search parameters (when not pinned/hidden), with their defaults:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `scope` | `"edges" \| "nodes" \| "episodes" \| "observations" \| "thread_summaries" \| "auto"` | `"edges"` | What to search |
-| `reranker` | `"rrf" \| "mmr" \| "node_distance" \| "episode_mentions" \| "cross_encoder"` | `"rrf"` | Result ordering (ignored for `scope="auto"`) |
+| `reranker` | `"rrf" \| "mmr" \| "node_distance" \| "episode_mentions" \| "cross_encoder"` | `"rrf"` (not for `auto`) | Result ordering. The `auto` scope takes no reranker |
 | `limit` | `int` | `10` | Maximum results (clamped to Zep's ceiling of 50) |
 | `mmr_lambda` | `float` | -- | Diversity/relevance balance; only used when `reranker="mmr"` |
 | `center_node_uuid` | `str` | -- | Center node for `reranker="node_distance"` |
