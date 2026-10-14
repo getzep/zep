@@ -357,8 +357,9 @@ Each scope accepts only some rerankers. `edges` accepts all five, `nodes` accept
 `episode_mentions`, `episodes` accepts `rrf` and `mmr`, and `observations` and
 `thread_summaries` accept `rrf`, `mmr`, and `cross_encoder`. The tool schema offers only valid
 choices: `episode_mentions` appears only when `filters` sets `episode_uuids`, and
-`node_distance` needs `center_node_uuid`. If the model sends an unsupported pair, the tool drops
-the reranker and Zep uses `rrf`. For `mmr` with no `mmr_lambda`, the tool sends `0.5`. A pinned
+`node_distance` needs `center_node_uuid`. If the model sends a pair that Zep rejects, the tool
+does not call Zep. It returns an error message that names the pair and lists the valid
+rerankers for the scope, so the model can call the tool again. For `mmr` with no `mmr_lambda`, the tool sends `0.5`. A pinned
 pair that is not valid raises `ValueError` when you create the tool.
 
 Use `pinned_params` to fix a

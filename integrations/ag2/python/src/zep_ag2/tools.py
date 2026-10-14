@@ -261,34 +261,45 @@ def _reranker_description(rerankers: list[str], scopes: list[str]) -> str:
     return description
 
 
-def _correct_reranker(search_kwargs: dict[str, Any]) -> None:
-    """Make the scope and reranker of one call a pair that Zep accepts.
+def _apply_mmr_default(search_kwargs: dict[str, Any]) -> None:
+    """Send ``DEFAULT_MMR_LAMBDA`` for ``mmr`` when no ``mmr_lambda`` is set."""
+    if search_kwargs.get("reranker") == "mmr" and search_kwargs.get("mmr_lambda") is None:
+        search_kwargs["mmr_lambda"] = DEFAULT_MMR_LAMBDA
 
-    The tool drops a reranker that the scope does not support, or that is
-    missing its required setting, so Zep applies its default (``rrf``). It
-    sets ``mmr_lambda`` to ``DEFAULT_MMR_LAMBDA`` for ``mmr`` when no value is
-    set.
+
+def _reranker_error(search_kwargs: dict[str, Any]) -> str | None:
+    """Return an error for the model when Zep will reject the reranker of a call.
+
+    The tool returns this message as its result and does not call Zep, so the
+    model can call the tool again with a valid reranker.
     """
     scope = str(search_kwargs.get("scope", "edges"))
     reranker = search_kwargs.get("reranker")
     if reranker is None or scope == "auto" or scope not in SCOPE_RERANKERS:
-        return
-    filters = search_kwargs.get("filters")
-    problem = None
+        return None
+    valid = _quoted(SCOPE_RERANKERS[scope])
     if reranker not in SCOPE_RERANKERS[scope]:
-        problem = f"is not supported with scope {scope!r}"
-    elif reranker == "node_distance" and not search_kwargs.get("center_node_uuid"):
-        problem = "needs center_node_uuid"
-    elif reranker == "episode_mentions" and not (
+        return (
+            f"Error: the reranker {reranker!r} is not valid with scope {scope!r}. "
+            f"Valid rerankers for scope {scope!r}: {valid}. Call the tool again "
+            "with one of these rerankers, or with no reranker."
+        )
+    if reranker == "node_distance" and not search_kwargs.get("center_node_uuid"):
+        return (
+            "Error: the reranker 'node_distance' needs center_node_uuid. Call the tool "
+            f"again with center_node_uuid, or use another reranker for scope {scope!r}: "
+            f"{valid}."
+        )
+    filters = search_kwargs.get("filters")
+    if reranker == "episode_mentions" and not (
         isinstance(filters, dict) and _has_episode_uuids(filters)
     ):
-        problem = "needs filters.episode_uuids"
-    if problem is not None:
-        logger.warning("reranker %r %s; omitting reranker (Zep uses rrf).", reranker, problem)
-        del search_kwargs["reranker"]
-        return
-    if reranker == "mmr" and search_kwargs.get("mmr_lambda") is None:
-        search_kwargs["mmr_lambda"] = DEFAULT_MMR_LAMBDA
+        others = _quoted([name for name in SCOPE_RERANKERS[scope] if name != reranker])
+        return (
+            "Error: the reranker 'episode_mentions' needs episode UUIDs, and this tool "
+            f"has none. Call the tool again with one of these rerankers: {others}."
+        )
+    return None
 
 
 def _build_search_signature(
@@ -440,7 +451,7 @@ def _build_search_kwargs(
             )
 
     search_kwargs.update(constructor_only)
-    _correct_reranker(search_kwargs)
+    _apply_mmr_default(search_kwargs)
     return search_kwargs
 
 
@@ -718,6 +729,9 @@ def create_search_memory_tool(
         )
         if not search_kwargs.get("query"):
             return "Error: No search query provided."
+        error = _reranker_error(search_kwargs)
+        if error is not None:
+            return error
         try:
             return _run_search(client, graph_uuid, search_kwargs)
         except Exception as e:
@@ -896,6 +910,9 @@ def create_search_graph_tool(
         )
         if not search_kwargs.get("query"):
             return "Error: No search query provided."
+        error = _reranker_error(search_kwargs)
+        if error is not None:
+            return error
         try:
             return _run_search(client, graph_uuid, search_kwargs)
         except Exception as e:

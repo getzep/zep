@@ -503,35 +503,59 @@ class TestPinnedRerankerValidation:
 
 
 class TestModelRerankerCorrection:
-    """An invalid pair from the model is corrected before the request."""
+    """An invalid pair from the model returns an error and makes no Zep call."""
 
     @pytest.mark.parametrize(
-        ("scope", "reranker", "method"),
+        ("scope", "reranker", "method", "valid"),
         [
-            ("episodes", "cross_encoder", "search_episodes"),
-            ("episodes", "episode_mentions", "search_episodes"),
-            ("nodes", "episode_mentions", "search_nodes"),
-            ("observations", "node_distance", "search_observations"),
-            ("thread_summaries", "node_distance", "search_thread_summaries"),
+            ("episodes", "cross_encoder", "search_episodes", "'rrf', 'mmr'"),
+            ("episodes", "episode_mentions", "search_episodes", "'rrf', 'mmr'"),
+            (
+                "nodes",
+                "episode_mentions",
+                "search_nodes",
+                "'rrf', 'mmr', 'node_distance', 'cross_encoder'",
+            ),
+            (
+                "observations",
+                "node_distance",
+                "search_observations",
+                "'rrf', 'mmr', 'cross_encoder'",
+            ),
+            (
+                "thread_summaries",
+                "node_distance",
+                "search_thread_summaries",
+                "'rrf', 'mmr', 'cross_encoder'",
+            ),
         ],
     )
-    def test_unsupported_reranker_dropped(
+    def test_unsupported_pair_returns_error(
         self,
         mock_zep_client: MagicMock,
-        caplog: pytest.LogCaptureFixture,
         scope: str,
         reranker: str,
         method: str,
+        valid: str,
     ) -> None:
         tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
 
-        with caplog.at_level(logging.WARNING, logger="zep_ag2.tools"):
-            result = tool(query="hello", scope=scope, reranker=reranker, center_node_uuid="n")
+        result = tool(query="hello", scope=scope, reranker=reranker, center_node_uuid="n")
 
-        assert not result.startswith("Error")
-        call_kwargs = getattr(mock_zep_client.graph, method).call_args.kwargs
-        assert "reranker" not in call_kwargs
-        assert any(reranker in record.message for record in caplog.records)
+        assert result.startswith("Error:")
+        assert f"'{reranker}' is not valid with scope '{scope}'" in result
+        assert valid in result
+        getattr(mock_zep_client.graph, method).assert_not_called()
+
+    def test_search_memory_tool_unsupported_pair_returns_error(
+        self, mock_zep_client: MagicMock
+    ) -> None:
+        tool = create_search_memory_tool(mock_zep_client, GRAPH_UUID)
+
+        result = tool(query="hello", scope="episodes", reranker="cross_encoder")
+
+        assert "'cross_encoder' is not valid with scope 'episodes'" in result
+        mock_zep_client.graph.search_episodes.assert_not_called()
 
     def test_mmr_without_lambda_gets_default(self, mock_zep_client: MagicMock) -> None:
         tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
@@ -550,13 +574,27 @@ class TestModelRerankerCorrection:
         call_kwargs = mock_zep_client.graph.search_nodes.call_args.kwargs
         assert call_kwargs["mmr_lambda"] == 0.9
 
-    def test_node_distance_without_center_node_dropped(self, mock_zep_client: MagicMock) -> None:
+    def test_node_distance_without_center_node_returns_error(
+        self, mock_zep_client: MagicMock
+    ) -> None:
         tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
 
-        tool(query="hello", scope="edges", reranker="node_distance")
+        result = tool(query="hello", scope="edges", reranker="node_distance")
 
-        call_kwargs = mock_zep_client.graph.search_edges.call_args.kwargs
-        assert "reranker" not in call_kwargs
+        assert result.startswith("Error:")
+        assert "center_node_uuid" in result
+        mock_zep_client.graph.search_edges.assert_not_called()
+
+    def test_episode_mentions_without_episode_uuids_returns_error(
+        self, mock_zep_client: MagicMock
+    ) -> None:
+        tool = create_search_graph_tool(mock_zep_client, GRAPH_UUID)
+
+        result = tool(query="hello", scope="edges", reranker="episode_mentions")
+
+        assert result.startswith("Error:")
+        assert "episode_mentions" in result
+        mock_zep_client.graph.search_edges.assert_not_called()
 
     def test_episode_mentions_with_episode_uuids_kept(self, mock_zep_client: MagicMock) -> None:
         tool = create_search_graph_tool(
