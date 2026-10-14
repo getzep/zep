@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.2.0 (2026-10-14)
+
+### Changed
+
+- Migrated to `zep-cloud>=4.0.0,<5`. User and thread creation now use
+  server-generated UUIDs through `create_user` and `create_thread`.
+- Added the optional `on_created` hook to `create_user`.
+- Removed store-side provisioning. User-graph operations resolve and cache
+  `graph_uuid` with `user.get`.
+- Replaced V3 graph search and writes with scope-specific V4 searches,
+  `graph.get_context`, and `graph.episode.add`.
+- Added all six search scopes and pin-or-expose controls for model-callable
+  search parameters.
+- Applications must create users and threads before a run and pass their
+  server-generated UUIDs to the store.
+- Updated the README, setup guide, example, and tests for the V4 API.
+
 ## 0.1.1 (2026-10-01)
 
 ### Changed

@@ -16,21 +16,23 @@ from zep_strands.memory_store import _extract_text, _results_to_entries, _role_t
 def _make_mock_client() -> MagicMock:
     client = MagicMock()
     client.user = MagicMock()
-    client.user.add = AsyncMock()
+    client.user.get = AsyncMock()
     client.thread = MagicMock()
     client.thread.create = AsyncMock()
     client.thread.add_messages = AsyncMock(return_value=SimpleNamespace(message_uuids=["m1"]))
     client.graph = MagicMock()
-    client.graph.search = AsyncMock()
-    client.graph.add = AsyncMock(return_value=SimpleNamespace(uuid_="ep-1"))
+    client.user.get.return_value = SimpleNamespace(graph_uuid="graph-1")
+    client.graph.get_context = AsyncMock(return_value=SimpleNamespace(context="context"))
+    client.graph.search_edges = AsyncMock()
+    client.graph.episode.add = AsyncMock(return_value=SimpleNamespace(uuid_="ep-1"))
     return client
 
 
 def _make_store(**kwargs: object) -> ZepMemoryStore:
     defaults: dict[str, object] = {
         "zep_client": _make_mock_client(),
-        "user_id": "user-1",
-        "thread_id": "thread-1",
+        "user_uuid": "user-1",
+        "thread_uuid": "thread-1",
         "first_name": "Ada",
         "last_name": "Lovelace",
     }
@@ -66,21 +68,44 @@ class TestHelpers:
 
     def test_results_to_entries_edges(self) -> None:
         result = SimpleNamespace(
-            context=None,
-            edges=[
+            items=[
                 SimpleNamespace(fact="Ada likes math", uuid_="e1"),
                 SimpleNamespace(fact="Ada lives in London", uuid_="e2"),
-            ],
-            nodes=None,
-            episodes=None,
-            observations=None,
-            thread_summaries=None,
+            ]
         )
         entries = _results_to_entries(result, "edges", limit=1)
         assert len(entries) == 1
         assert entries[0].content == "Ada likes math"
         assert entries[0].metadata is not None
         assert entries[0].metadata["scope"] == "edges"
+
+    @pytest.mark.parametrize(
+        ("scope", "item", "expected"),
+        [
+            ("nodes", SimpleNamespace(name="Ada", summary="mathematician"), "Ada: mathematician"),
+            (
+                "episodes",
+                SimpleNamespace(content="Ada wrote notes"),
+                "Ada wrote notes",
+            ),
+            (
+                "observations",
+                SimpleNamespace(name="Ada", summary="likes math"),
+                "Ada: likes math",
+            ),
+            (
+                "thread_summaries",
+                SimpleNamespace(summary="Discussed mathematics"),
+                "Discussed mathematics",
+            ),
+        ],
+    )
+    def test_results_to_entries_scoped_results(
+        self, scope: str, item: SimpleNamespace, expected: str
+    ) -> None:
+        entries = _results_to_entries(SimpleNamespace(items=[item]), scope, limit=10)
+        assert len(entries) == 1
+        assert entries[0].content == expected
 
 
 class TestInitialize:
@@ -90,34 +115,32 @@ class TestInitialize:
         ``Agent.__init__``, so it must not touch the caller's client."""
         store = _make_store()
         await store.initialize()
-        store._zep.user.add.assert_not_awaited()
+        store._zep.user.get.assert_not_awaited()
         store._zep.thread.create.assert_not_awaited()
-        assert store._resources_ready is False
 
     @pytest.mark.asyncio
-    async def test_first_search_provisions_user_and_thread(self) -> None:
+    async def test_first_search_resolves_user_graph_uuid(self) -> None:
         store = _make_store()
         await store.search("anything")
-        store._zep.user.add.assert_awaited_once()
-        store._zep.thread.create.assert_awaited_once()
-        assert store._resources_ready is True
+        store._zep.user.get.assert_awaited_once()
+        store._zep.thread.create.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_provisioning_happens_only_once(self) -> None:
-        store = _make_store()
+    async def test_user_graph_uuid_is_cached(self) -> None:
+        store = _make_store(search_scope="edges")
         await store.search("first")
         await store.search("second")
         await store.add("a fact")
-        store._zep.user.add.assert_awaited_once()
-        store._zep.thread.create.assert_awaited_once()
+        store._zep.user.get.assert_awaited_once()
+        store._zep.thread.create.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_graph_mode_never_provisions(self) -> None:
         client = _make_mock_client()
-        store = ZepMemoryStore(zep_client=client, graph_id="g1")
+        store = ZepMemoryStore(zep_client=client, graph_uuid="g1")
         await store.initialize()
         await store.search("anything")
-        client.user.add.assert_not_awaited()
+        client.user.get.assert_not_awaited()
         client.thread.create.assert_not_awaited()
 
 
@@ -125,28 +148,37 @@ class TestSearch:
     @pytest.mark.asyncio
     async def test_search_user_graph(self) -> None:
         store = _make_store(search_scope="edges")
-        store._zep.graph.search.return_value = SimpleNamespace(
-            context=None,
-            edges=[SimpleNamespace(fact="Prefers dark mode", uuid_="e1")],
-            nodes=None,
-            episodes=None,
-            observations=None,
-            thread_summaries=None,
+        store._zep.graph.search_edges.return_value = SimpleNamespace(
+            items=[SimpleNamespace(fact="Prefers dark mode", uuid_="e1")]
         )
         entries = await store.search("preferences")
         assert len(entries) == 1
         assert "dark mode" in entries[0].content
-        store._zep.graph.search.assert_awaited_once()
-        kwargs = store._zep.graph.search.await_args.kwargs
-        assert kwargs["user_id"] == "user-1"
-        assert kwargs["scope"] == "edges"
+        store._zep.graph.search_edges.assert_awaited_once()
+        args = store._zep.graph.search_edges.await_args
+        assert args.args[0] == "graph-1"
+        kwargs = args.kwargs
+        assert kwargs["page_size"] == 10
         assert kwargs["query"] == "preferences"
+
+    @pytest.mark.asyncio
+    async def test_search_auto_uses_context_block(self) -> None:
+        store = _make_store(search_scope="auto")
+        store._zep.graph.get_context.return_value = SimpleNamespace(context="assembled facts")
+
+        entries = await store.search("preferences")
+
+        assert len(entries) == 1
+        assert entries[0].content == "assembled facts"
+        store._zep.graph.get_context.assert_awaited_once_with("graph-1", query="preferences")
+        store._zep.graph.search_edges.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_search_empty_query_returns_empty(self) -> None:
         store = _make_store()
         assert await store.search("   ") == []
-        store._zep.graph.search.assert_not_awaited()
+        store._zep.graph.search_edges.assert_not_awaited()
+        store._zep.graph.get_context.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_search_rejects_invalid_max(self) -> None:
@@ -160,9 +192,10 @@ class TestAdd:
     async def test_add_text_to_user_graph(self) -> None:
         store = _make_store()
         await store.add("User prefers aisle seats", metadata={"source": "prefs"})
-        store._zep.graph.add.assert_awaited_once()
-        kwargs = store._zep.graph.add.await_args.kwargs
-        assert kwargs["user_id"] == "user-1"
+        store._zep.graph.episode.add.assert_awaited_once()
+        args = store._zep.graph.episode.add.await_args
+        assert args.args[0] == "graph-1"
+        kwargs = args.kwargs
         assert kwargs["type"] == "text"
         assert kwargs["data"] == "User prefers aisle seats"
         assert kwargs["metadata"] == {"source": "prefs"}
@@ -171,7 +204,7 @@ class TestAdd:
     async def test_add_json_type(self) -> None:
         store = _make_store()
         await store.add('{"plan": "premium"}', metadata={"type": "json"})
-        kwargs = store._zep.graph.add.await_args.kwargs
+        kwargs = store._zep.graph.episode.add.await_args.kwargs
         assert kwargs["type"] == "json"
         assert "metadata" not in kwargs  # type key consumed
 
@@ -184,17 +217,17 @@ class TestAdd:
     @pytest.mark.asyncio
     async def test_add_to_standalone_graph(self) -> None:
         client = _make_mock_client()
-        store = ZepMemoryStore(zep_client=client, graph_id="kb-1", writable=True)
+        store = ZepMemoryStore(zep_client=client, graph_uuid="kb-1", writable=True)
         await store.add("Company holiday is July 4")
-        kwargs = client.graph.add.await_args.kwargs
-        assert kwargs["graph_id"] == "kb-1"
-        assert "user_id" not in kwargs
+        args = client.graph.episode.add.await_args
+        assert args.args[0] == "kb-1"
+        assert "user_uuid" not in args.kwargs
 
     @pytest.mark.asyncio
     async def test_add_truncates_oversize_text(self) -> None:
         store = _make_store()
         await store.add("z" * (GRAPH_DATA_TRUNCATE_LIMIT + 500))
-        kwargs = store._zep.graph.add.await_args.kwargs
+        kwargs = store._zep.graph.episode.add.await_args.kwargs
         assert len(kwargs["data"]) == GRAPH_DATA_TRUNCATE_LIMIT
 
     @pytest.mark.asyncio
@@ -208,7 +241,7 @@ class TestAdd:
         with pytest.raises(ValueError, match="cannot be truncated safely"):
             await store.add(payload, metadata={"type": "json"})
 
-        store._zep.graph.add.assert_not_awaited()
+        store._zep.graph.episode.add.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_add_allows_json_at_the_limit(self) -> None:
@@ -218,7 +251,7 @@ class TestAdd:
         assert len(payload) == GRAPH_DATA_TRUNCATE_LIMIT
 
         await store.add(payload, metadata={"type": "json"})
-        sent = store._zep.graph.add.await_args.kwargs["data"]
+        sent = store._zep.graph.episode.add.await_args.kwargs["data"]
         assert json.loads(sent) == {"k": filler}
 
 
@@ -233,7 +266,7 @@ class TestAddMessages:
         await store.add_messages(messages)  # type: ignore[arg-type]
         store._zep.thread.add_messages.assert_awaited_once()
         kwargs = store._zep.thread.add_messages.await_args.kwargs
-        assert kwargs["thread_id"] == "thread-1"
+        assert kwargs["thread_uuid"] == "thread-1"
         assert len(kwargs["messages"]) == 2
         assert kwargs["messages"][0].role == "user"
         assert kwargs["messages"][0].content == "I love hiking"
@@ -254,14 +287,14 @@ class TestAddMessages:
 
     @pytest.mark.asyncio
     async def test_add_messages_requires_thread(self) -> None:
-        store = _make_store(thread_id=None, extraction=False)
-        with pytest.raises(ValueError, match="thread_id"):
+        store = _make_store(thread_uuid=None, extraction=False)
+        with pytest.raises(ValueError, match="thread_uuid"):
             await store.add_messages([{"role": "user", "content": [{"text": "hi"}]}])  # type: ignore[arg-type]
 
     @pytest.mark.asyncio
     async def test_add_messages_rejects_graph_mode(self) -> None:
         client = _make_mock_client()
-        store = ZepMemoryStore(zep_client=client, graph_id="g1", writable=True)
+        store = ZepMemoryStore(zep_client=client, graph_uuid="g1", writable=True)
         with pytest.raises(ValueError, match="user-graph"):
             await store.add_messages([{"role": "user", "content": [{"text": "hi"}]}])  # type: ignore[arg-type]
 
@@ -277,15 +310,15 @@ class TestZepFailuresPropagate:
 
     @pytest.mark.asyncio
     async def test_search_propagates(self) -> None:
-        store = _make_store()
-        store._zep.graph.search.side_effect = RuntimeError("zep down")
+        store = _make_store(search_scope="edges")
+        store._zep.graph.search_edges.side_effect = RuntimeError("zep down")
         with pytest.raises(RuntimeError, match="zep down"):
             await store.search("anything")
 
     @pytest.mark.asyncio
     async def test_add_propagates(self) -> None:
         store = _make_store()
-        store._zep.graph.add.side_effect = RuntimeError("zep down")
+        store._zep.graph.episode.add.side_effect = RuntimeError("zep down")
         with pytest.raises(RuntimeError, match="zep down"):
             await store.add("a fact")
 

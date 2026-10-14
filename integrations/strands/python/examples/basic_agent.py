@@ -30,7 +30,7 @@ from strands.models.openai import OpenAIModel
 from strands.types.content import Message
 from zep_cloud.client import AsyncZep
 
-from zep_strands import ZepMemoryStore, ensure_thread, ensure_user
+from zep_strands import ZepMemoryStore, create_thread, create_user
 
 
 def _message_text(message: Message | object) -> str:
@@ -58,29 +58,16 @@ if not OPENAI_API_KEY:
     raise SystemExit("OPENAI_API_KEY is not set.")
 
 _suffix = uuid4().hex[:8]
-USER_ID = f"strands-example-user-{_suffix}"
-THREAD_1 = f"strands-example-thread1-{_suffix}"
-THREAD_2 = f"strands-example-thread2-{_suffix}"
 
 
-async def build_agent(zep: AsyncZep, thread_id: str) -> Agent:
-    """Build an agent whose memory is scoped to USER_ID on the given thread."""
-    await ensure_user(
-        zep,
-        user_id=USER_ID,
-        first_name="Alice",
-        last_name="Nguyen",
-        email="alice@example.com",
-    )
-    await ensure_thread(zep, thread_id=thread_id, user_id=USER_ID)
-
+async def build_agent(zep: AsyncZep, user_uuid: str, thread_uuid: str) -> Agent:
+    """Build an agent for a user and thread that already exist."""
     store = ZepMemoryStore(
         zep_client=zep,
-        user_id=USER_ID,
-        thread_id=thread_id,
+        user_uuid=user_uuid,
+        thread_uuid=thread_uuid,
         first_name="Alice",
         last_name="Nguyen",
-        email="alice@example.com",
         writable=True,
         extraction=True,
         expose_search_tool=True,
@@ -99,17 +86,32 @@ async def build_agent(zep: AsyncZep, thread_id: str) -> Agent:
 
 async def main() -> None:
     zep = AsyncZep(api_key=ZEP_API_KEY)
+    user = await create_user(
+        zep,
+        first_name="Alice",
+        last_name="Nguyen",
+        email=f"alice-{_suffix}@example.com",
+    )
+    user_uuid = user.uuid_
+    if not user_uuid:
+        raise RuntimeError("Zep created a user without a UUID")
+    thread1 = await create_thread(zep, user_uuid=user_uuid)
+    thread2 = await create_thread(zep, user_uuid=user_uuid)
+    thread1_uuid = thread1.uuid_
+    thread2_uuid = thread2.uuid_
+    if not thread1_uuid or not thread2_uuid:
+        raise RuntimeError("Zep created a thread without a UUID")
 
     print("=" * 64)
     print("Strands Agents + Zep MemoryStore Example")
     print("=" * 64)
-    print(f"  User ID:   {USER_ID}")
-    print(f"  Thread 1:  {THREAD_1}")
-    print(f"  Thread 2:  {THREAD_2}")
+    print(f"  User UUID:   {user_uuid}")
+    print(f"  Thread 1:    {thread1_uuid}")
+    print(f"  Thread 2:    {thread2_uuid}")
     print("=" * 64, "\n")
 
     print("--- Conversation 1: seeding facts ---\n")
-    agent1 = await build_agent(zep, THREAD_1)
+    agent1 = await build_agent(zep, user_uuid, thread1_uuid)
     seed_messages = [
         "Hi! I'm Alice, a data scientist living in Portland, Oregon.",
         "On weekends I love hiking and landscape photography.",
@@ -129,7 +131,7 @@ async def main() -> None:
     await asyncio.sleep(wait_seconds)
 
     print("--- Conversation 2: recall in a brand-new thread ---\n")
-    agent2 = await build_agent(zep, THREAD_2)
+    agent2 = await build_agent(zep, user_uuid, thread2_uuid)
     recall = "Where do I live, and what do I like to do on weekends?"
     print(f"User:  {recall}")
     result = await agent2.invoke_async(recall)

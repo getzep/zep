@@ -5,7 +5,7 @@ exceeded:
 
 * A single thread message's ``content`` must be at most **4,096** characters
   (see https://help.getzep.com/adding-messages#message-limits).
-* A single ``graph.add`` payload must be at most **10,000** characters.
+* A single ``graph.episode.add`` payload must be at most **10,000** characters.
 
 This module centralises the size guards so they are not duplicated across the
 store's write paths.  Rather than letting an oversize payload trigger a 400 that
@@ -29,10 +29,10 @@ ZEP_MESSAGE_CONTENT_LIMIT = 4096
 #: there is headroom and the persisted content is comfortably within bounds.
 MESSAGE_TRUNCATE_LIMIT = 4000
 
-#: Hard per-call content limit enforced by Zep's ``graph.add`` API.
+#: Hard per-call content limit enforced by Zep's episode-add API.
 ZEP_GRAPH_DATA_LIMIT = 10_000
 
-#: Truncation ceiling for ``graph.add`` payloads.  Kept below the hard 10,000
+#: Truncation ceiling for episode-add payloads. Kept below the hard 10,000
 #: limit so there is headroom.
 GRAPH_DATA_TRUNCATE_LIMIT = 9900
 
@@ -83,7 +83,7 @@ def truncate_graph_data(
     label: str = "graph data",
     limit: int = GRAPH_DATA_TRUNCATE_LIMIT,
 ) -> str:
-    """Truncate ``content`` for ``graph.add``, warning if truncation occurs.
+    """Truncate ``content`` for a graph episode, warning if truncation occurs.
 
     Args:
         content: The raw graph payload text.
@@ -101,7 +101,7 @@ def truncate_graph_data(
         return content
 
     logger.warning(
-        "Truncating %s before graph.add to Zep: %d chars exceeds limit of %d; "
+        "Truncating %s before graph.episode.add to Zep: %d chars exceeds limit of %d; "
         "keeping first %d chars.",
         label,
         original_length,

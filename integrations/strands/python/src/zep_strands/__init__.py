@@ -19,8 +19,8 @@ Usage::
     zep = AsyncZep(api_key="your-api-key")
     store = ZepMemoryStore(
         zep_client=zep,
-        user_id="user-123",
-        thread_id="thread-abc",
+        user_uuid="user-123",
+        thread_uuid="thread-abc",
         first_name="Jane",
         last_name="Smith",
         writable=True,
@@ -29,7 +29,7 @@ Usage::
     agent = Agent(memory_manager=MemoryManager(stores=[store]))
 """
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 __author__ = "Zep AI"
 __description__ = "Strands Agents memory-store integration for Zep"
 
@@ -53,7 +53,7 @@ from .memory_store import (
     DEFAULT_STORE_NAME,
     ZepMemoryStore,
 )
-from .provisioning import UserSetupHook, ensure_thread, ensure_user
+from .provisioning import UserSetupHook, create_thread, create_user
 from .search import (
     Reranker,
     Scope,
@@ -73,6 +73,6 @@ __all__ = [
     "ZepMemoryStore",
     "ZepSearchTool",
     "create_zep_search_tool",
-    "ensure_user",
-    "ensure_thread",
+    "create_user",
+    "create_thread",
 ]

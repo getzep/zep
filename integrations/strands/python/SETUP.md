@@ -34,7 +34,7 @@ cd zep/integrations/strands/python
 make install        # uv sync --extra dev (includes strands-agents[openai])
 ```
 
-Requirements: Python 3.11+, `strands-agents>=1.45.0`, `zep-cloud>=3.23.0`.
+Requirements: Python 3.11+, `strands-agents>=1.45.0`, `zep-cloud>=4.0.0,<5`.
 
 ## 4. Configure environment variables
 
@@ -63,6 +63,9 @@ The example:
 2. Waits for Zep to process the knowledge graph (ingestion is asynchronous).
 3. Starts a **new** thread for the same user and asks recall questions — the
    agent answers using facts fused into the user's graph from the first thread.
+
+The example creates the user and threads before the agent run. Zep assigns each
+resource a UUID. The application must save and reuse those UUIDs.
 
 ## 6. Run the tests
 
@@ -94,6 +97,6 @@ uv run python tests/test_integration.py
   flush / use an every-turn trigger if your graph is large or under load.
 - **Authentication errors** — confirm `ZEP_API_KEY` is set in the same shell and
   belongs to the intended project.
-- **`extraction=True` / `add_messages` errors about `thread_id`** — user-graph
-  mode with extraction requires both `user_id` and `thread_id` at construction.
+- **`extraction=True` / `add_messages` errors about `thread_uuid`** — user-graph
+  mode with extraction requires both `user_uuid` and `thread_uuid` at construction.
   Standalone graphs must use `extraction=False` and `add()` only.
