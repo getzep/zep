@@ -32,7 +32,7 @@ class TestPackageMetadata:
         import zep_pydantic_ai
 
         assert hasattr(zep_pydantic_ai, "__version__")
-        assert zep_pydantic_ai.__version__ == "0.3.0"
+        assert zep_pydantic_ai.__version__ == "1.0.0"
 
     def test_author_and_description(self) -> None:
         import zep_pydantic_ai
