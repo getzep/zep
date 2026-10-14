@@ -1,12 +1,16 @@
 import type { SessionAuth } from "eve/context";
 
 export interface ZepIdentity {
-  /** Zep user_id — never accept this from the model. */
-  userId: string;
+  /**
+   * Stable application key for the person. v4 addresses a Zep user by a
+   * server-generated UUID, so the application maps its own key to that UUID.
+   * Never accept this key from the model.
+   */
+  userKey: string;
   /** Display name for Zep message `name` fields. */
   userName: string;
-  /** Zep thread_id — mapped from the Eve session. */
-  threadId: string;
+  /** Application key of the Eve session, mapped to one Zep thread UUID. */
+  sessionKey: string;
 }
 
 /** Minimal principal fields used for Zep user mapping. */
@@ -39,36 +43,36 @@ function displayNameFromCaller(
 }
 
 /**
- * Shared userId / userName resolution for channel onMessage, hooks, and
+ * Shared user key / userName resolution for channel onMessage, hooks, and
  * dynamic instruction resolvers.
- * Returns null when there is not yet a stable id (create-session without
- * ZEP_DEMO_USER_ID / authenticated user).
+ * Returns null when there is not yet a stable key (create-session without
+ * ZEP_DEMO_USER_KEY / authenticated user).
  */
 export function resolveZepUserFields(options: {
   caller?: ZepCallerLike | null;
   /** Existing Eve session id, when known. */
   sessionId?: string | null;
-}): { userId: string; userName: string } | null {
-  const envUserId = process.env.ZEP_DEMO_USER_ID?.trim();
+}): { userKey: string; userName: string } | null {
+  const envUserKey = process.env.ZEP_DEMO_USER_KEY?.trim();
   const envUserName = process.env.ZEP_DEMO_USER_NAME?.trim() || "Demo User";
   const caller = options.caller;
 
-  const userId =
+  const userKey =
     (caller?.principalType === "user" && caller.principalId) ||
-    envUserId ||
+    envUserKey ||
     (options.sessionId ? `eve-session-${options.sessionId}` : null);
 
-  if (!userId) return null;
+  if (!userKey) return null;
 
   return {
-    userId,
+    userKey,
     userName: displayNameFromCaller(caller, envUserName),
   };
 }
 
 /**
  * Resolve Zep identity from Eve session auth when present.
- * Falls back to ZEP_DEMO_USER_ID for local demos without auth.
+ * Falls back to ZEP_DEMO_USER_KEY for local demos without auth.
  */
 export function resolveZepIdentity(ctx: IdentitySessionContext): ZepIdentity {
   const caller =
@@ -81,10 +85,10 @@ export function resolveZepIdentity(ctx: IdentitySessionContext): ZepIdentity {
   });
 
   // session.id always exists here, so fields is non-null.
-  const { userId, userName } = fields!;
+  const { userKey, userName } = fields!;
 
   // One Eve session ↔ one Zep thread keeps conversation continuity clean.
-  const threadId = `eve-${ctx.session.id}`;
+  const sessionKey = `eve-${ctx.session.id}`;
 
-  return { userId, userName, threadId };
+  return { userKey, userName, sessionKey };
 }

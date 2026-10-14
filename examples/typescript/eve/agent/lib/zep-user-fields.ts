@@ -14,8 +14,8 @@ export function splitDisplayName(userName: string): {
   };
 }
 
-/** Stable demo email derived from userId (helps Zep entity dedup). */
-export function demoEmailForUserId(userId: string): string {
-  const local = userId.replace(/[^a-zA-Z0-9._+-]/g, "-").slice(0, 64) || "user";
+/** Stable demo email derived from the application user key (helps Zep entity dedup). */
+export function demoEmailForUserKey(userKey: string): string {
+  const local = userKey.replace(/[^a-zA-Z0-9._+-]/g, "-").slice(0, 64) || "user";
   return `${local}@example.invalid`;
 }

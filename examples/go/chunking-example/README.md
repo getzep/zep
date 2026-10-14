@@ -1,6 +1,6 @@
 # Document Chunking with Contextualized Retrieval for Zep
 
-This example demonstrates Anthropic's **contextualized retrieval** technique with Zep. The program chunks a document, uses OpenAI to generate contextual descriptions for each chunk, and ingests the contextualized chunks into Zep's knowledge graph via `github.com/getzep/zep-go/v3`.
+This example demonstrates Anthropic's **contextualized retrieval** technique with Zep. The program chunks a document, uses OpenAI to generate contextual descriptions for each chunk, and ingests the contextualized chunks into Zep's knowledge graph via `github.com/getzep/zep-go/v4`.
 
 ## Why Contextualized Retrieval?
 
@@ -27,13 +27,13 @@ Traditional RAG systems chunk documents and embed them directly. This loses impo
 ### Basic usage
 
 ```bash
-go run . sample_document.txt --user-id user123
+go run . sample_document.txt --user-uuid <user-uuid>
 ```
 
 ### Custom chunk size
 
 ```bash
-go run . sample_document.txt --user-id user123 --chunk-size 4000
+go run . sample_document.txt --user-uuid <user-uuid> --chunk-size 4000
 ```
 
 ### Dry run
@@ -41,7 +41,7 @@ go run . sample_document.txt --user-id user123 --chunk-size 4000
 Process chunking/contextualization without ingesting to Zep (still requires `OPENAI_API_KEY`):
 
 ```bash
-go run . sample_document.txt --user-id user123 --dry-run
+go run . sample_document.txt --user-uuid <user-uuid> --dry-run
 ```
 
 ### Wait for processing
@@ -49,7 +49,7 @@ go run . sample_document.txt --user-id user123 --dry-run
 Poll each created episode until `processed` is true (or a linked task fails / timeout):
 
 ```bash
-go run . sample_document.txt --user-id user123 --wait
+go run . sample_document.txt --user-uuid <user-uuid> --wait
 ```
 
 ### Help
@@ -63,7 +63,7 @@ go run . --help
 | Option | Description | Default |
 |--------|-------------|---------|
 | `document` | Path to the document to process | (required) |
-| `--user-id` | Zep user ID for the knowledge graph | (required) |
+| `--user-uuid` | The UUID of an existing Zep user. The tool creates a user if you do not give one. | (optional) |
 | `--chunk-size` | Maximum characters per chunk | 6000 |
 | `--chunk-overlap` | Character overlap between chunks | 200 |
 | `--wait` | Wait for processing after each chunk | false |

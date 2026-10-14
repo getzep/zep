@@ -1,8 +1,7 @@
 import os
-import uuid
 from dotenv import find_dotenv, load_dotenv
+from zep_cloud import AddMessage
 from zep_cloud.client import Zep
-from zep_cloud.types import Message
 
 load_dotenv(dotenv_path=find_dotenv())
 client = Zep(api_key=os.environ.get("ZEP_API_KEY"))
@@ -14,14 +13,12 @@ zep_user_role = f"{first_name} {last_name}"
 zep_assistant_role = "ShoeSalesSupportBot"
 ignore_roles = []
 
-uuid_value = uuid.uuid4().hex[:4]
-user_id = "default-graph-simple-" + uuid_value
-client.user.add(
-    user_id=user_id,
+user = client.user.create(
     first_name = first_name,
     last_name = last_name,
     email=email
 )
+print(f"Created user {user.uuid_}")
 
 threads = [
     [
@@ -38,15 +35,10 @@ threads = [
     ]
 ]
 
-for thread in threads:
-    uuid_value = uuid.uuid4().hex[:4]
-    thread_id = "thread-" + uuid_value
-    
-    client.thread.create(
-        thread_id=thread_id,
-        user_id=user_id
-    )
-    
-    for m in thread:
-        client.thread.add_messages(thread_id=thread_id, messages=[Message(**m)])
+for messages in threads:
+    thread = client.thread.create(user_uuid=user.uuid_)
+    print(f"Created thread {thread.uuid_}")
+
+    for m in messages:
+        client.thread.add_messages(thread.uuid_, messages=[AddMessage(**m)])
 

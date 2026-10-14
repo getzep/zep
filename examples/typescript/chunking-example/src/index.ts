@@ -10,7 +10,7 @@ config();
 
 interface CliOptions {
   document: string;
-  userId: string;
+  userUuid?: string;
   chunkSize: number;
   chunkOverlap: number;
   dryRun: boolean;
@@ -24,7 +24,10 @@ function parseCliArgs(argv: string[]): CliOptions {
       "Chunk a document, contextualize each chunk with OpenAI, and ingest into Zep",
     )
     .argument("<document>", "Path to the document to process")
-    .requiredOption("--user-id <id>", "Zep user ID for the knowledge graph")
+    .option(
+      "--user-uuid <uuid>",
+      "The UUID of an existing Zep user. The tool creates a user if you do not give one.",
+    )
     .option("--chunk-size <n>", "Maximum characters per chunk", "6000")
     .option("--chunk-overlap <n>", "Character overlap between chunks", "200")
     .option("--dry-run", "Process without ingesting to Zep", false)
@@ -36,7 +39,7 @@ function parseCliArgs(argv: string[]): CliOptions {
 
   return {
     document: program.args[0],
-    userId: String(opts.userId),
+    userUuid: opts.userUuid ? String(opts.userUuid) : undefined,
     chunkSize: Number(opts.chunkSize),
     chunkOverlap: Number(opts.chunkOverlap),
     dryRun: Boolean(opts.dryRun),
@@ -243,20 +246,22 @@ function validateAndTruncate(
 }
 
 /**
- * Ensure a user exists in Zep
+ * Resolve the graph of a user. v4 addresses a user and a graph by UUID, so the
+ * tool gets the graph UUID from the user record.
  */
-async function ensureUserExists(
+async function resolveGraphUuid(
   client: ZepClient,
-  userId: string,
-): Promise<void> {
-  try {
-    await client.user.get(userId);
-    console.log(`User ${userId} already exists.`);
-  } catch (error) {
-    console.log(`Creating user ${userId}...`);
-    await client.user.add({ userId });
-    console.log(`User ${userId} created.`);
+  userUuid?: string,
+): Promise<{ userUuid: string; graphUuid: string }> {
+  const user = userUuid
+    ? await client.user.get(userUuid)
+    : await client.user.create({});
+
+  if (!user.uuid || !user.graphUuid) {
+    throw new Error("The server did not return a user UUID and a graph UUID");
   }
+  console.log(`User ${user.uuid} uses graph ${user.graphUuid}`);
+  return { userUuid: user.uuid, graphUuid: user.graphUuid };
 }
 
 /**
@@ -264,6 +269,7 @@ async function ensureUserExists(
  */
 async function waitForEpisode(
   client: ZepClient,
+  graphUuid: string,
   episodeUuid: string,
 ): Promise<void> {
   const timeoutMs = 180_000;
@@ -271,7 +277,7 @@ async function waitForEpisode(
   const started = Date.now();
 
   while (Date.now() - started < timeoutMs) {
-    const episode = await client.graph.episode.get(episodeUuid);
+    const episode = await client.graph.episode.get(graphUuid, episodeUuid);
     if (episode.processed) {
       console.log(`  Episode ${episodeUuid} processed`);
       return;
@@ -289,19 +295,18 @@ async function waitForEpisode(
  */
 async function ingestToZep(
   client: ZepClient,
-  userId: string,
+  graphUuid: string,
   data: string,
 ): Promise<string | null> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const episode = await client.graph.add({
-        userId,
+      const episode = await client.graph.episode.add(graphUuid, {
         type: "text",
         data,
       });
-      return episode.uuid;
+      return episode.episode?.uuid ?? null;
     } catch (error) {
       lastError = error as Error;
       const delay = BASE_DELAY_MS * Math.pow(2, attempt);
@@ -321,7 +326,7 @@ async function ingestToZep(
  * Process a document through the full pipeline
  */
 export async function processDocument(options: CliOptions): Promise<void> {
-  const { document: documentPath, userId, chunkSize, chunkOverlap, dryRun, wait } =
+  const { document: documentPath, userUuid, chunkSize, chunkOverlap, dryRun, wait } =
     options;
 
   const openaiApiKey = process.env.OPENAI_API_KEY;
@@ -348,14 +353,15 @@ export async function processDocument(options: CliOptions): Promise<void> {
     : null;
 
   console.log(`\nConfiguration:`);
-  console.log(`  User ID: ${userId}`);
+  console.log(`  User UUID: ${userUuid ?? "(a new user)"}`);
   console.log(`  Chunk size: ${chunkSize}`);
   console.log(`  Chunk overlap: ${chunkOverlap}`);
   console.log(`  Dry run: ${dryRun}`);
   console.log(`  Wait: ${wait}`);
 
+  let graphUuid: string | null = null;
   if (!dryRun && zepClient) {
-    await ensureUserExists(zepClient, userId);
+    graphUuid = (await resolveGraphUuid(zepClient, userUuid)).graphUuid;
   }
 
   console.log(`\nChunking document...`);
@@ -396,18 +402,18 @@ export async function processDocument(options: CliOptions): Promise<void> {
       continue;
     }
 
-    if (!zepClient) {
+    if (!zepClient || !graphUuid) {
       throw new Error("Zep client not initialized");
     }
 
     console.log(`  Ingesting to Zep...`);
-    const episodeUuid = await ingestToZep(zepClient, userId, contextualizedChunk);
+    const episodeUuid = await ingestToZep(zepClient, graphUuid, contextualizedChunk);
 
     if (episodeUuid) {
       console.log(`  Successfully ingested chunk ${i + 1} (${episodeUuid})`);
       successCount++;
       if (wait) {
-        await waitForEpisode(zepClient, episodeUuid);
+        await waitForEpisode(zepClient, graphUuid, episodeUuid);
       }
     } else {
       console.log(`  Failed to ingest chunk ${i + 1}`);

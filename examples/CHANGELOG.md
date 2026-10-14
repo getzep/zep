@@ -1,0 +1,31 @@
+# Changelog
+
+All notable changes to the Zep examples are in this file.
+
+## [Unreleased]
+
+### Deprecated
+
+- The examples that show only the memory-layer pattern are in
+  `examples/archive/` and are not maintained: Python `chat_history`,
+  `simple.py`, `agent-memory-full-example`, and
+  `claude-prompt-caching-example`, and TypeScript `memory`. For new code,
+  use the tool-based
+  reference agents in `examples/python/agent-with-zep` and
+  `examples/python/agent-with-zep-adk`.
+
+### Changed
+
+- The Python examples use `zep-cloud` 4.0.0.
+- The TypeScript examples use `@getzep/zep-cloud` 4.0.0.
+- The Go examples use `github.com/getzep/zep-go/v4` v4.0.0.
+- Every example addresses a user, a thread, and a graph by the
+  server-generated UUID that the create call returns.
+- No create call sends a `user_id`, a `thread_id`, or a `graph_id`, because
+  the v4 create operations accept no client-chosen name.
+- The graph examples use the v4 episode, node, and edge clients, and the
+  separate edge search and node search methods.
+- The ontology examples use the v4 ontology builder.
+- The README files show the v4 SDK packages and the v4 methods.
+- The examples that set a base URL use the v4 base URL
+  `https://api.getzep.com/api/v4`.

@@ -9,6 +9,8 @@ protects. Claude Code, for reference, carries ~16-19k tokens of tool
 definitions alone, so the savings shown here are still conservative.
 """
 
+from pathlib import Path
+
 # ---------------------------------------------------------------------------
 # Persona (the first part of the static system prompt)
 # ---------------------------------------------------------------------------
@@ -591,14 +593,28 @@ STATIC_SYSTEM_PROMPT = _PERSONA_PROMPT + "\n\n" + _OPERATIONS_MANUAL
 # ---------------------------------------------------------------------------
 # Demo user + prior conversations that seed their Zep graph
 # ---------------------------------------------------------------------------
-# A fixed user ID shared by ingest.py, chat.py, and benchmark.py. Run
-# `python ingest.py` once to create the user and ingest the two prior
-# conversations below; the CLI and benchmark then start with genuine
-# cross-session memory — the agent "remembers" these facts even though they
-# never appear in the current conversation. That cross-session recall is
-# the point of Zep.
+# v4 addresses a user by the UUID that Zep returns, so the demo scripts share
+# a UUID instead of a user ID. Run `python ingest.py` once to create the user
+# and ingest the two prior conversations below. `ingest.py` writes the UUID of
+# the demo user to the file below, and `chat.py` and `benchmark.py` read it. A
+# real application keeps this UUID in its own database. The CLI and the
+# benchmark then start with genuine cross-session memory — the agent
+# "remembers" these facts even though they never appear in the current
+# conversation. That cross-session recall is the point of Zep.
 
-DEMO_USER_ID = "claude-caching-demo-dana"
+DEMO_USER_UUID_FILE = Path(__file__).parent / ".demo-user-uuid"
+
+
+def save_demo_user_uuid(user_uuid: str) -> None:
+    """Store the UUID of the demo user for the other demo scripts."""
+    DEMO_USER_UUID_FILE.write_text(f"{user_uuid}\n")
+
+
+def load_demo_user_uuid() -> str | None:
+    """Read the UUID of the demo user, or return None if it does not exist."""
+    if not DEMO_USER_UUID_FILE.exists():
+        return None
+    return DEMO_USER_UUID_FILE.read_text().strip() or None
 
 # Conversation 1 — getting set up: who Dana is, the team, personal preferences.
 _PRIOR_CONVERSATION_1 = [

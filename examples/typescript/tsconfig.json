@@ -11,6 +11,6 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["graph/**/*.ts", "memory/**/*.ts", "users/**/*.ts"],
+  "include": ["graph/**/*.ts", "users/**/*.ts"],
   "exclude": ["node_modules", "eve", "langgraph", "chunking-example", "zep-graph-visualization"]
 }
