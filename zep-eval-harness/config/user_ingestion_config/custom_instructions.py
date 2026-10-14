@@ -62,17 +62,21 @@ INSTRUCTION_NAMES = [i.name for i in CUSTOM_INSTRUCTIONS]
 # ============================================================================
 
 
-async def set_custom_instructions(zep_client, user_ids=None):
+async def set_custom_instructions(zep_client, graph_uuids=None):
     """
     Set custom instructions for user graph extraction.
 
     Args:
         zep_client: AsyncZep client instance
-        user_ids: Optional list of user IDs to apply to.
-                 If None, applies project-wide.
+        graph_uuids: Optional list of graph UUIDs to apply to.
+                 A user graph UUID is the ``graph_uuid`` of the user.
+                 If None, applies to the project default.
     """
-    kwargs = {"instructions": CUSTOM_INSTRUCTIONS}
-    if user_ids:
-        kwargs["user_ids"] = user_ids
+    if not graph_uuids:
+        await zep_client.project.set_instructions(instructions=CUSTOM_INSTRUCTIONS)
+        return
 
-    await zep_client.graph.add_custom_instructions(**kwargs)
+    for graph_uuid in graph_uuids:
+        await zep_client.graph.set_instructions(
+            graph_uuid, instructions=CUSTOM_INSTRUCTIONS
+        )

@@ -64,17 +64,22 @@ DOCUMENT_INSTRUCTION_NAMES = [i.name for i in DOCUMENT_CUSTOM_INSTRUCTIONS]
 # ============================================================================
 
 
-async def set_document_custom_instructions(zep_client, graph_ids=None):
+async def set_document_custom_instructions(zep_client, graph_uuids=None):
     """
     Set custom instructions for standalone document graph extraction.
 
     Args:
         zep_client: AsyncZep client instance
-        graph_ids: Optional list of graph IDs to apply to.
-                  If None, applies project-wide.
+        graph_uuids: Optional list of graph UUIDs to apply to.
+                  If None, applies to the project default.
     """
-    kwargs = {"instructions": DOCUMENT_CUSTOM_INSTRUCTIONS}
-    if graph_ids:
-        kwargs["graph_ids"] = graph_ids
+    if not graph_uuids:
+        await zep_client.project.set_instructions(
+            instructions=DOCUMENT_CUSTOM_INSTRUCTIONS
+        )
+        return
 
-    await zep_client.graph.add_custom_instructions(**kwargs)
+    for graph_uuid in graph_uuids:
+        await zep_client.graph.set_instructions(
+            graph_uuid, instructions=DOCUMENT_CUSTOM_INSTRUCTIONS
+        )

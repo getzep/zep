@@ -47,17 +47,22 @@ INSTRUCTION_NAMES = [i.name for i in USER_SUMMARY_INSTRUCTIONS]
 # ============================================================================
 
 
-async def set_user_summary_instructions(zep_client, user_ids=None):
+async def set_user_summary_instructions(zep_client, user_uuids=None):
     """
     Set user summary instructions for user node summary generation.
 
     Args:
         zep_client: AsyncZep client instance
-        user_ids: Optional list of user IDs to apply to.
-                 If None, applies project-wide.
+        user_uuids: Optional list of user UUIDs to apply to.
+                 If None, applies to the project default.
     """
-    kwargs = {"instructions": USER_SUMMARY_INSTRUCTIONS}
-    if user_ids:
-        kwargs["user_ids"] = user_ids
+    if not user_uuids:
+        await zep_client.project.set_user_summary_instructions(
+            instructions=USER_SUMMARY_INSTRUCTIONS
+        )
+        return
 
-    await zep_client.user.add_user_summary_instructions(**kwargs)
+    for user_uuid in user_uuids:
+        await zep_client.user.set_summary_instructions(
+            user_uuid, instructions=USER_SUMMARY_INSTRUCTIONS
+        )
