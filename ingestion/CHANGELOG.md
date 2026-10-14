@@ -4,11 +4,14 @@ All notable changes to `zep-ingest` are documented here. The project follows
 [Semantic Versioning](https://semver.org); while at `0.x` the public API may
 still change between minor versions.
 
-## Unreleased
+## 0.4.0
 
-- **The package targets the Zep v4 API and the `zep-cloud` 4.x SDK.** The
-  dependency is pinned to `zep-cloud>=4.0.0,<5` (the stable release). The
-  package gives no v3 compatibility path.
+### Breaking
+
+- **The package requires the Zep v4 API and the `zep-cloud` 4.x SDK below
+  v5.** The dependency moved from `zep-cloud>=3.27.0` to
+  `zep-cloud>=4.0.0,<5` (the stable release). The package gives no v3
+  compatibility path.
 - **Every destination is a UUID.** v4 addresses a graph, a user, and a thread
   by a server-generated UUID, so every public parameter takes a UUID. Episode
   ingestion takes `graph_uuid=` in place of `graph_id=`/`user_id=`, and
@@ -20,6 +23,14 @@ still change between minor versions.
   `thread_id`, `graph_id`, and `target_graph_id` on the create endpoints with
   `400 invalid_request`. The package passes none of them: create the resource
   with no name and store the UUID the response returns.
+- **Removed parameters.** `NodeItem` no longer accepts `uuid` or
+  `created_at`, and `FactTriple` no longer accepts `fact_uuid` or
+  `created_at`; Zep assigns each node and fact identity, and the v4 node and
+  edge models take no developer-supplied reference time. Public function
+  names and every other parameter are unchanged.
+
+### Changed
+
 - **v4 submission methods.** Episodes go to `graph.episode.add`, batches go to
   `batch.create` + `batch.add_items` + `batch.process`, nodes go to
   `graph.node.add`, and fact triples go to `graph.edge.add` with
