@@ -41,6 +41,64 @@ const RERANKER_VALUES = [
 type Reranker = Zep.SearchEdgesRequestReranker;
 
 /**
+ * The rerankers that each scope-specific search method accepts. Zep rejects
+ * any other pair with HTTP 400. `auto` ignores the reranker.
+ */
+const SCOPE_RERANKERS: Record<Exclude<ZepSearchScope, "auto">, readonly Reranker[]> = {
+  edges: ["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"],
+  nodes: ["rrf", "mmr", "node_distance", "cross_encoder"],
+  episodes: ["rrf", "mmr"],
+  observations: ["rrf", "mmr", "cross_encoder"],
+  thread_summaries: ["rrf", "mmr", "cross_encoder"],
+};
+
+/** Zep requires `mmrLambda` with the `mmr` reranker. */
+const DEFAULT_MMR_LAMBDA = 0.5;
+
+function scopeSupportsReranker(scope: ZepSearchScope, reranker: Reranker): boolean {
+  return scope === "auto" || SCOPE_RERANKERS[scope].includes(reranker);
+}
+
+function scopesForReranker(reranker: Reranker): ZepSearchScope[] {
+  return (Object.keys(SCOPE_RERANKERS) as Exclude<ZepSearchScope, "auto">[]).filter((s) =>
+    SCOPE_RERANKERS[s].includes(reranker),
+  );
+}
+
+/**
+ * Return a message that names the invalid setting and the valid choices, or
+ * `undefined` when Zep accepts the combination.
+ */
+function rerankerError(
+  scope: ZepSearchScope,
+  reranker: Reranker,
+  hasCenterNode: boolean,
+  hasEpisodeUuids: boolean,
+): string | undefined {
+  if (scope === "auto") return undefined;
+  if (!SCOPE_RERANKERS[scope].includes(reranker)) {
+    return (
+      `Reranker '${reranker}' is not supported for scope '${scope}'. ` +
+      `For scope '${scope}', use one of: ${SCOPE_RERANKERS[scope].join(", ")}. ` +
+      `Reranker '${reranker}' works only with scope: ${scopesForReranker(reranker).join(", ")}.`
+    );
+  }
+  if (reranker === "node_distance" && !hasCenterNode) {
+    return (
+      "Reranker 'node_distance' requires centerNodeUuid, the UUID of the node to " +
+      "rank results by distance from. Give centerNodeUuid, or use reranker 'rrf'."
+    );
+  }
+  if (reranker === "episode_mentions" && !hasEpisodeUuids) {
+    return (
+      "Reranker 'episode_mentions' requires filters.episodeUuids, which only the " +
+      "developer can set on the tool. Use reranker 'rrf'."
+    );
+  }
+  return undefined;
+}
+
+/**
  * The request fields that every scope-specific search method shares. Each
  * method has its own filter type; `filters` is the union of their keys, and
  * Zep rejects a key that the selected scope cannot apply.
@@ -148,6 +206,10 @@ const outputSchema = z.object({
     .array(z.string())
     .describe("Relevant facts retrieved from the knowledge graph."),
   found: z.boolean().describe("Whether any relevant memory was found."),
+  error: z
+    .string()
+    .optional()
+    .describe("Why the search did not run, and the setting to change before you retry."),
 });
 
 type SearchOutput = z.infer<typeof outputSchema>;
@@ -302,6 +364,17 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
     }
   }
 
+  const hasEpisodeUuids = (options.filters?.episodeUuids?.length ?? 0) > 0;
+  if (pinned.reranker !== undefined) {
+    const pinnedError = rerankerError(
+      pinned.scope ?? scopesForReranker(pinned.reranker)[0]!,
+      pinned.reranker,
+      pinned.centerNodeUuid !== undefined || !hidden.has("centerNodeUuid"),
+      hasEpisodeUuids,
+    );
+    if (pinnedError) throw new Error(`[zep-search] Invalid pinned search settings. ${pinnedError}`);
+  }
+
   const scopeState = resolvePinState<ZepSearchScope>("scope", pinned, hidden);
   const rerankerState = resolvePinState<Reranker>("reranker", pinned, hidden);
   const limitState = resolvePinState<number>("limit", pinned, hidden);
@@ -320,8 +393,11 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
   };
 
   if (scopeState.kind === "exposed") {
+    const exposedScopes = SCOPE_VALUES.filter(
+      (s) => rerankerState.kind !== "pinned" || scopeSupportsReranker(s, rerankerState.value),
+    ) as [ZepSearchScope, ...ZepSearchScope[]];
     schemaFields.scope = z
-      .enum(SCOPE_VALUES)
+      .enum(exposedScopes)
       .optional()
       .describe(
         "What to search for: 'edges' for facts and relationships, 'nodes' for " +
@@ -331,14 +407,28 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
           "'auto' to let Zep decide the best mix of results. Defaults to 'edges'.",
       );
   }
-  if (rerankerState.kind === "exposed") {
+  const scopeIsPinnedAuto = scopeState.kind === "pinned" && scopeState.value === "auto";
+  if (rerankerState.kind === "exposed" && !scopeIsPinnedAuto) {
+    const exposedRerankers = RERANKER_VALUES.filter(
+      (r) =>
+        (scopeState.kind !== "pinned" || scopeSupportsReranker(scopeState.value, r)) &&
+        (r !== "episode_mentions" || hasEpisodeUuids) &&
+        (r !== "node_distance" || centerNodeUuidState.kind !== "hidden"),
+    ) as [Reranker, ...Reranker[]];
+    const rerankerNotes: Record<Reranker, string> = {
+      rrf: "'rrf' (balanced, all scopes)",
+      mmr: "'mmr' (diverse, all scopes; uses mmrLambda)",
+      cross_encoder: "'cross_encoder' (highest accuracy; not for scope 'episodes')",
+      node_distance:
+        "'node_distance' (near a specific entity; scopes 'edges' and 'nodes' only; requires centerNodeUuid)",
+      episode_mentions: "'episode_mentions' (frequently referenced; scope 'edges' only)",
+    };
     schemaFields.reranker = z
-      .enum(RERANKER_VALUES)
+      .enum(exposedRerankers)
       .optional()
       .describe(
-        "Result ordering algorithm: 'rrf' (balanced), 'mmr' (diverse), " +
-          "'cross_encoder' (highest accuracy), 'episode_mentions' (frequently " +
-          "referenced), 'node_distance' (near a specific entity). Defaults to 'rrf'.",
+        `Result ordering algorithm: ${exposedRerankers.map((r) => rerankerNotes[r]).join(", ")}. ` +
+          "Scope 'auto' ignores the reranker. Defaults to 'rrf'.",
       );
   }
   if (limitState.kind === "exposed") {
@@ -353,7 +443,8 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
       .number()
       .optional()
       .describe(
-        "Balance between diversity (0.0) and relevance (1.0). Only used when reranker is 'mmr'.",
+        "Balance between diversity (0.0) and relevance (1.0). Only used when " +
+          `reranker is 'mmr'. Defaults to ${DEFAULT_MMR_LAMBDA}.`,
       );
   }
   if (centerNodeUuidState.kind === "exposed") {
@@ -392,7 +483,8 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
       options.description ??
       "Search long-term memory for facts about the user or domain that were " +
         "learned in previous turns or conversations. Use this to recall " +
-        "specific details the user shared before.",
+        "specific details the user shared before. If the result has an " +
+        "error, change the setting that it names and search again.",
     inputSchema,
     outputSchema,
     execute: async (
@@ -414,7 +506,7 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
       const scope = resolveParam(scopeState, inputData.scope, DEFAULT_SCOPE);
       let reranker = resolveParam(rerankerState, inputData.reranker, DEFAULT_RERANKER);
       let limit = resolveParam(limitState, inputData.limit, DEFAULT_LIMIT);
-      const mmrLambda = resolveParam(mmrLambdaState, inputData.mmrLambda);
+      let mmrLambda = resolveParam(mmrLambdaState, inputData.mmrLambda);
       const centerNodeUuid = resolveParam(centerNodeUuidState, inputData.centerNodeUuid);
 
       // Auto search always uses RRF internally and ignores reranker entirely;
@@ -428,6 +520,22 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
           );
         }
         reranker = undefined;
+      }
+
+      if (reranker !== undefined && scope !== undefined) {
+        const settingsError = rerankerError(
+          scope,
+          reranker,
+          centerNodeUuid !== undefined,
+          hasEpisodeUuids,
+        );
+        if (settingsError) {
+          logger.warn(`[zep-search] ${settingsError}`);
+          return { facts: [], found: false, error: settingsError };
+        }
+      }
+      if (reranker === "mmr" && mmrLambda === undefined) {
+        mmrLambda = DEFAULT_MMR_LAMBDA;
       }
 
       // Clamp the effective limit to Zep's ceiling so the call never 400s.

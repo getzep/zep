@@ -21,6 +21,7 @@ For an existing v3 user, thread, or graph, do not call `createZepUserAndThread` 
 ### Changed
 
 - The Zep calls are migrated to their v4 replacements: `thread.getUserContext` to `thread.getContext`, `graph.add` to `graph.episode.add`, `user.add` to `user.create`, and `graph.search` to the scope methods `graph.searchEdges`, `graph.searchNodes`, `graph.searchEpisodes`, `graph.searchObservations`, `graph.searchThreadSummaries`, and `graph.getContext` for the `auto` scope. The `zepSearch` tool keeps the model-visible `scope` parameter and maps each paginated result to its facts.
+- `zepSearch` validates the scope and reranker pair before the request, because each Zep v4 search method accepts only some rerankers. The schema shows only the valid choices, an invalid model choice returns an `error` that names the valid choices, an invalid pinned pair throws at construction, and `mmr` sends a default `mmrLambda` of 0.5.
 
 ## 0.2.0 (2026-07-07)
 

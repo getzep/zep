@@ -213,6 +213,16 @@ createZepSearchTool({
 `filters` and `bfsOriginNodeUuids` are always constructor-only — never exposed to the
 model — and applied whenever set.
 
+Each scope accepts only some rerankers: `edges` accepts all five, `nodes` accepts all
+except `episode_mentions`, `episodes` accepts `rrf` and `mmr`, and `observations` and
+`thread_summaries` accept `rrf`, `mmr`, and `cross_encoder`. `node_distance` requires
+`centerNodeUuid`, and `episode_mentions` requires `filters.episodeUuids`. The schema
+shows the model only the valid choices for a pinned scope or reranker, and it hides
+`episode_mentions` when `filters.episodeUuids` is not set. When the model sends an
+invalid pair, the tool does not call Zep and returns an `error` that names the
+setting and the valid choices. An invalid pinned pair throws at construction. When
+the reranker is `mmr` and no `mmrLambda` is set, the tool sends `mmrLambda: 0.5`.
+
 ## Binding: user graph vs standalone graph
 
 Zep v4 addresses every graph by its server-generated UUID, so a user graph and a

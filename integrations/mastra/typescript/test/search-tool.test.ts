@@ -179,9 +179,13 @@ describe("createZepSearchTool", () => {
       );
     });
 
-    it("supports all five reranker values in the exposed enum", () => {
+    it("exposes all five reranker values when the developer sets filters.episodeUuids", () => {
       const zep = makeFakeZep();
-      const tool = createZepSearchTool({ client: asZep(zep), binding: { graphUuid: "g1" } });
+      const tool = createZepSearchTool({
+        client: asZep(zep),
+        binding: { graphUuid: "g1" },
+        filters: { episodeUuids: ["ep-1"] },
+      });
       const shape = (
         tool.inputSchema as unknown as {
           shape: { reranker: { unwrap(): { options: string[] } } };
@@ -267,6 +271,7 @@ describe("createZepSearchTool", () => {
         pageSize: 5,
         query: "q",
         reranker: "mmr",
+        mmrLambda: 0.5,
       });
     });
 
@@ -379,6 +384,184 @@ describe("createZepSearchTool", () => {
         mmrLambda: 0.5,
         centerNodeUuid: "uuid-9",
       });
+    });
+  });
+
+  describe("scope and reranker validation", () => {
+    const rerankerOptions = (tool: unknown): string[] =>
+      (
+        tool as { inputSchema: { shape: { reranker: { unwrap(): { options: string[] } } } } }
+      ).inputSchema.shape.reranker
+        .unwrap()
+        .options.sort();
+
+    it("hides episode_mentions when the developer sets no filters.episodeUuids", () => {
+      const zep = makeFakeZep();
+      const tool = createZepSearchTool({ client: asZep(zep), binding: { graphUuid: "g1" } });
+      expect(rerankerOptions(tool)).toEqual(["cross_encoder", "mmr", "node_distance", "rrf"]);
+    });
+
+    it("exposes only the rerankers that a pinned scope supports", () => {
+      const zep = makeFakeZep();
+      const episodes = createZepSearchTool({
+        client: asZep(zep),
+        binding: { graphUuid: "g1" },
+        pinnedParams: { scope: "episodes" },
+      });
+      expect(rerankerOptions(episodes)).toEqual(["mmr", "rrf"]);
+      const observations = createZepSearchTool({
+        client: asZep(zep),
+        binding: { graphUuid: "g1" },
+        pinnedParams: { scope: "observations" },
+      });
+      expect(rerankerOptions(observations)).toEqual(["cross_encoder", "mmr", "rrf"]);
+    });
+
+    it("exposes only the scopes that a pinned reranker supports", () => {
+      const zep = makeFakeZep();
+      const tool = createZepSearchTool({
+        client: asZep(zep),
+        binding: { graphUuid: "g1" },
+        pinnedParams: { reranker: "cross_encoder" },
+      });
+      const shape = (
+        tool.inputSchema as unknown as { shape: { scope: { unwrap(): { options: string[] } } } }
+      ).shape;
+      expect(shape.scope.unwrap().options.sort()).toEqual(
+        ["auto", "edges", "nodes", "observations", "thread_summaries"].sort(),
+      );
+    });
+
+    it("throws at construction for a pinned unsupported scope and reranker pair", () => {
+      const zep = makeFakeZep();
+      expect(() =>
+        createZepSearchTool({
+          client: asZep(zep),
+          binding: { graphUuid: "g1" },
+          pinnedParams: { scope: "episodes", reranker: "cross_encoder" },
+        }),
+      ).toThrow(/Reranker 'cross_encoder' is not supported for scope 'episodes'.*rrf, mmr/);
+    });
+
+    it("throws at construction for a pinned episode_mentions with no filters.episodeUuids", () => {
+      const zep = makeFakeZep();
+      expect(() =>
+        createZepSearchTool({
+          client: asZep(zep),
+          binding: { graphUuid: "g1" },
+          pinnedParams: { reranker: "episode_mentions" },
+        }),
+      ).toThrow(/filters\.episodeUuids/);
+    });
+
+    it("throws at construction for a pinned node_distance with a hidden centerNodeUuid", () => {
+      const zep = makeFakeZep();
+      expect(() =>
+        createZepSearchTool({
+          client: asZep(zep),
+          binding: { graphUuid: "g1" },
+          pinnedParams: { scope: "nodes", reranker: "node_distance" },
+          hiddenParams: new Set(["centerNodeUuid"]),
+        }),
+      ).toThrow(/requires centerNodeUuid/);
+    });
+
+    it.each([
+      ["episodes", "cross_encoder"],
+      ["episodes", "node_distance"],
+      ["nodes", "episode_mentions"],
+      ["observations", "node_distance"],
+      ["thread_summaries", "node_distance"],
+    ])(
+      "returns an error to the model for scope '%s' with reranker '%s' and sends no request",
+      async (scope, reranker) => {
+        const zep = makeFakeZep();
+        const tool = createZepSearchTool({
+          client: asZep(zep),
+          binding: { graphUuid: "g1" },
+          filters: { episodeUuids: ["ep-1"] },
+          logger: { warn: vi.fn() },
+        });
+        const result = await run(tool, {
+          query: "q",
+          scope,
+          reranker,
+          centerNodeUuid: "n1",
+        } as never);
+        expect(result.found).toBe(false);
+        expect(result.error).toContain(`Reranker '${reranker}' is not supported for scope '${scope}'`);
+        expect(result.error).toContain("use one of: rrf, mmr");
+        expect(zep.graph.searchEdges).not.toHaveBeenCalled();
+        expect(zep.graph.searchNodes).not.toHaveBeenCalled();
+        expect(zep.graph.searchEpisodes).not.toHaveBeenCalled();
+        expect(zep.graph.searchObservations).not.toHaveBeenCalled();
+        expect(zep.graph.searchThreadSummaries).not.toHaveBeenCalled();
+      },
+    );
+
+    it("returns an error to the model for node_distance with no centerNodeUuid", async () => {
+      const zep = makeFakeZep();
+      const tool = createZepSearchTool({
+        client: asZep(zep),
+        binding: { graphUuid: "g1" },
+        logger: { warn: vi.fn() },
+      });
+      const result = await run(tool, { query: "q", scope: "edges", reranker: "node_distance" });
+      expect(result.error).toMatch(/requires centerNodeUuid/);
+      expect(zep.graph.searchEdges).not.toHaveBeenCalled();
+    });
+
+    it("rejects episode_mentions in the input schema when filters.episodeUuids is not set", async () => {
+      const zep = makeFakeZep();
+      const tool = createZepSearchTool({
+        client: asZep(zep),
+        binding: { graphUuid: "g1" },
+        logger: { warn: vi.fn() },
+      });
+      const result = await run(tool, { query: "q", reranker: "episode_mentions" } as never);
+      expect(result.error).toBeTruthy();
+      expect(zep.graph.searchEdges).not.toHaveBeenCalled();
+    });
+
+    it("sends the default mmrLambda when the model selects mmr with no mmrLambda", async () => {
+      const zep = makeFakeZep();
+      const tool = createZepSearchTool({ client: asZep(zep), binding: { graphUuid: "g1" } });
+      await run(tool, { query: "q", scope: "episodes", reranker: "mmr" });
+      expect(zep.graph.searchEpisodes).toHaveBeenCalledWith(
+        "g1",
+        expect.objectContaining({ reranker: "mmr", mmrLambda: 0.5 }),
+      );
+    });
+
+    it("keeps a model-provided mmrLambda", async () => {
+      const zep = makeFakeZep();
+      const tool = createZepSearchTool({ client: asZep(zep), binding: { graphUuid: "g1" } });
+      await run(tool, { query: "q", reranker: "mmr", mmrLambda: 0.2 });
+      expect(zep.graph.searchEdges).toHaveBeenCalledWith(
+        "g1",
+        expect.objectContaining({ reranker: "mmr", mmrLambda: 0.2 }),
+      );
+    });
+
+    it("accepts every supported pair and sends the request", async () => {
+      const pairs: [string, string][] = [
+        ["edges", "cross_encoder"],
+        ["nodes", "node_distance"],
+        ["episodes", "rrf"],
+        ["observations", "cross_encoder"],
+        ["thread_summaries", "mmr"],
+      ];
+      for (const [scope, reranker] of pairs) {
+        const zep = makeFakeZep();
+        const tool = createZepSearchTool({ client: asZep(zep), binding: { graphUuid: "g1" } });
+        const result = await run(tool, {
+          query: "q",
+          scope,
+          reranker,
+          centerNodeUuid: "n1",
+        } as never);
+        expect(result.error).toBeUndefined();
+      }
     });
   });
 });
