@@ -1,8 +1,8 @@
 """The six retrieval tools the agent uses against the Zep graph.
 
-All tools share one deps object (the Zep client, the graph id, the handle
+All tools share one deps object (the Zep client, the graph UUID, the handle
 registry, the plan list, and the retrieval budget). The application pins the
-graph id, reranker, and page-size caps; the model controls queries, filters,
+graph UUID, reranker, and page-size caps; the model controls queries, filters,
 and handles. Each result is marked "ranked sample", "complete", or
 "truncated at N" so the model knows whether a set is exhaustive.
 """
@@ -18,7 +18,15 @@ from typing import Literal
 
 from zep_cloud import AsyncZep
 from zep_cloud.core.api_error import ApiError
-from zep_cloud.types import EpisodeMetadataFilter, MetadataFilterGroup, SearchFilters
+from zep_cloud.types import (
+    EdgeSearchFilters,
+    EpisodeSearchFilters,
+    MetadataFilter,
+    MetadataFilterGroup,
+    NodeListFilters,
+    NodeSearchFilters,
+    SearchFilters,
+)
 
 from . import ontology
 from .config import (
@@ -43,7 +51,7 @@ class AgentDeps:
     """Per-run shared state for the retrieval tools and the planner."""
 
     zep: AsyncZep
-    graph_id: str
+    graph_uuid: str
     registry: HandleRegistry = field(default_factory=HandleRegistry)
     plans: list[RetrievalPlan] = field(default_factory=list)
     calls_left: int = MAX_TOOL_CALLS
@@ -157,7 +165,7 @@ def build_tools(deps: AgentDeps) -> list[Callable]:
     ) -> str:
         """Search the graph for the items most relevant to a query. Returns a ranked sample, not a complete set.
 
-        Use scope="edges" for facts and relationships, scope="nodes" for entities, and scope="episodes" for the source reports. Use report_type and product to restrict the search to reports with that metadata. Use near with one or more handles, and scope="edges" or scope="nodes", to add results from the graph neighborhood of known nodes. The results can also include matches from outside the neighborhood."""
+        Use scope="edges" for facts and relationships, scope="nodes" for entities, and scope="episodes" for the source reports. Use report_type and product to restrict the search to reports with that metadata. Use near with one or more handles only with scope="edges" or scope="nodes". The results can also include matches from outside the neighborhood. Episode searches do not use near or the cross-encoder reranker."""
         args = {
             "query": query,
             "scope": scope,
@@ -184,42 +192,47 @@ def build_tools(deps: AgentDeps) -> list[Callable]:
         if notice:
             return notice
         start = time.monotonic()
-        meta_filters = []
-        if report_type:
-            meta_filters.append(
-                EpisodeMetadataFilter(
-                    comparison_operator="=", property_name="report_type", property_value=report_type
-                )
-            )
-        if product:
-            meta_filters.append(
-                EpisodeMetadataFilter(
-                    comparison_operator="=", property_name="product", property_value=product
-                )
-            )
-        filters = SearchFilters(
-            node_labels=list(node_labels) if node_labels else None,
-            edge_types=list(edge_types) if edge_types else None,
-            episode_metadata_filters=MetadataFilterGroup(type="and", filters=meta_filters)
-            if meta_filters
-            else None,
+        meta_filters = [
+            MetadataFilter(operator="eq", property_name=name, value=value)
+            for name, value in (("report_type", report_type), ("product", product))
+            if value
+        ]
+        metadata_filters = (
+            MetadataFilterGroup(type="and", filters=meta_filters) if meta_filters else None
         )
-        results = await deps.zep.graph.search(
-            graph_id=deps.graph_id,
-            query=query,
-            scope=scope,
-            limit=min(limit, SEARCH_LIMIT_MAX),
-            reranker="cross_encoder",
-            bfs_origin_node_uuids=bfs,
-            search_filters=filters,
-        )
+        filters = {
+            "edges": EdgeSearchFilters(
+                edge_types=list(edge_types) if edge_types else None,
+                metadata_filters=metadata_filters,
+            ),
+            "nodes": NodeSearchFilters(
+                node_labels=list(node_labels) if node_labels else None,
+                metadata_filters=metadata_filters,
+            ),
+            "episodes": EpisodeSearchFilters(metadata_filters=metadata_filters),
+        }[scope]
+        search = {
+            "edges": deps.zep.graph.search_edges,
+            "nodes": deps.zep.graph.search_nodes,
+            "episodes": deps.zep.graph.search_episodes,
+        }[scope]
+        search_kwargs = {
+            "query": query,
+            "page_size": min(limit, SEARCH_LIMIT_MAX),
+            "filters": filters,
+        }
+        if scope != "episodes":
+            search_kwargs["bfs_origin_node_uuids"] = bfs
+            search_kwargs["reranker"] = "cross_encoder"
+        results = await search(deps.graph_uuid, **search_kwargs)
         lines: list[str] = []
-        for edge in results.edges or []:
-            lines.append(_edge_line(deps, edge))
-        for node in results.nodes or []:
-            lines.append(_node_line(deps, node))
-        for episode in results.episodes or []:
-            lines.append(_episode_line(deps, episode))
+        for item in results.items:
+            if scope == "edges":
+                lines.append(_edge_line(deps, item))
+            elif scope == "nodes":
+                lines.append(_node_line(deps, item))
+            else:
+                lines.append(_episode_line(deps, item))
         return _finish(deps, "search_context", args, "ranked sample:", lines, start)
 
     @_catch_zep_errors
@@ -237,13 +250,13 @@ def build_tools(deps: AgentDeps) -> list[Callable]:
             return notice
         start = time.monotonic()
         page_size = min(limit, LIST_LIMIT_MAX)
-        nodes = await deps.zep.graph.node.get_by_graph_id(
-            deps.graph_id,
-            filters=SearchFilters(node_labels=[label]),
+        nodes_page = await deps.zep.graph.node.list(
+            deps.graph_uuid,
+            filters=NodeListFilters(node_labels=[label]),
             order_by=order_by,
-            limit=page_size + 1,
+            page_size=page_size + 1,
         )
-        nodes = list(nodes or [])
+        nodes = nodes_page.items
         truncated = len(nodes) > page_size
         nodes = nodes[:page_size]
         marker = f"truncated at {page_size}" if truncated else "complete"
@@ -269,13 +282,14 @@ def build_tools(deps: AgentDeps) -> list[Callable]:
             return notice
         start = time.monotonic()
         page_size = min(limit, NEIGHBOR_LIMIT_MAX)
-        neighbors = await deps.zep.graph.node.get_neighbors(
+        neighbors_page = await deps.zep.graph.node.list_neighbors(
+            deps.graph_uuid,
             node_uuid,
             filters=SearchFilters(edge_types=list(edge_types)) if edge_types else None,
             direction=direction,
-            limit=page_size + 1,
+            page_size=page_size + 1,
         )
-        neighbors = list(neighbors or [])
+        neighbors = neighbors_page.items
         truncated = len(neighbors) > page_size
         neighbors = neighbors[:page_size]
         marker = f"truncated at {page_size}" if truncated else "complete"
@@ -301,7 +315,7 @@ def build_tools(deps: AgentDeps) -> list[Callable]:
             if notice:
                 return notice
             start = time.monotonic()
-            episode = await deps.zep.graph.episode.get(uuid)
+            episode = await deps.zep.graph.episode.get(deps.graph_uuid, uuid)
             content = episode.content or ""
             if len(content) > EPISODE_TEXT_MAX_CHARS:
                 content = content[:EPISODE_TEXT_MAX_CHARS] + "\n[truncated]"
@@ -315,7 +329,7 @@ def build_tools(deps: AgentDeps) -> list[Callable]:
             if notice:
                 return notice
             start = time.monotonic()
-            node = await deps.zep.graph.node.get(uuid)
+            node = await deps.zep.graph.node.get(deps.graph_uuid, uuid)
             attrs = json.dumps(node.attributes or {}, ensure_ascii=False)
             text = (
                 f"- {handle} {node.name} [{','.join(node.labels or [])}]\n"
@@ -342,12 +356,12 @@ def build_tools(deps: AgentDeps) -> list[Callable]:
         start = time.monotonic()
 
         async def node_by_name(label: str, name: str):
-            nodes = await deps.zep.graph.node.get_by_graph_id(
-                deps.graph_id,
-                filters=SearchFilters(node_labels=[label]),
-                limit=LIST_LIMIT_MAX + 1,
+            nodes_page = await deps.zep.graph.node.list(
+                deps.graph_uuid,
+                filters=NodeListFilters(node_labels=[label]),
+                page_size=LIST_LIMIT_MAX + 1,
             )
-            nodes = list(nodes or [])
+            nodes = nodes_page.items
             truncated = len(nodes) > LIST_LIMIT_MAX
             for n in nodes:
                 if (n.name or "").strip().casefold() == name.strip().casefold():
@@ -355,13 +369,14 @@ def build_tools(deps: AgentDeps) -> list[Callable]:
             return None, truncated
 
         async def member_uuids(node_uuid: str, edge_type: str) -> tuple[dict[str, object], bool]:
-            neighbors = await deps.zep.graph.node.get_neighbors(
+            neighbors_page = await deps.zep.graph.node.list_neighbors(
+                deps.graph_uuid,
                 node_uuid,
                 filters=SearchFilters(edge_types=[edge_type]),
                 direction="in",
-                limit=NEIGHBOR_LIMIT_MAX + 1,
+                page_size=NEIGHBOR_LIMIT_MAX + 1,
             )
-            neighbors = list(neighbors or [])
+            neighbors = neighbors_page.items
             truncated = len(neighbors) > NEIGHBOR_LIMIT_MAX
             out = {}
             for nb in neighbors[:NEIGHBOR_LIMIT_MAX]:
@@ -401,13 +416,14 @@ def build_tools(deps: AgentDeps) -> list[Callable]:
         lines = []
         for uuid, node in employees.items():
             manager = ""
-            neighbors = await deps.zep.graph.node.get_neighbors(
+            neighbors_page = await deps.zep.graph.node.list_neighbors(
+                deps.graph_uuid,
                 uuid,
                 filters=SearchFilters(edge_types=["REPORTS_TO"]),
                 direction="out",
-                limit=5,
+                page_size=5,
             )
-            for nb in neighbors or []:
+            for nb in neighbors_page.items:
                 if nb.node is not None:
                     manager = f"; manager: {nb.node.name}"
             handle = deps.registry.register(uuid, "n")
@@ -431,12 +447,12 @@ def build_tools(deps: AgentDeps) -> list[Callable]:
         if notice:
             return notice
         start = time.monotonic()
-        products = await deps.zep.graph.node.get_by_graph_id(
-            deps.graph_id,
-            filters=SearchFilters(node_labels=["Product"]),
-            limit=LIST_LIMIT_MAX + 1,
+        products_page = await deps.zep.graph.node.list(
+            deps.graph_uuid,
+            filters=NodeListFilters(node_labels=["Product"]),
+            page_size=LIST_LIMIT_MAX + 1,
         )
-        products = list(products or [])
+        products = products_page.items
         truncated = len(products) > LIST_LIMIT_MAX
         products = products[:LIST_LIMIT_MAX]
         lines = []
@@ -452,12 +468,13 @@ def build_tools(deps: AgentDeps) -> list[Callable]:
                 continue
             handle = deps.registry.register(product.uuid_, "n")
             filings = []
-            neighbors = await deps.zep.graph.node.get_neighbors(
+            neighbors_page = await deps.zep.graph.node.list_neighbors(
+                deps.graph_uuid,
                 product.uuid_,
                 filters=SearchFilters(edge_types=["FILED_FOR"]),
-                limit=NEIGHBOR_LIMIT_MAX,
+                page_size=NEIGHBOR_LIMIT_MAX,
             )
-            for nb in neighbors or []:
+            for nb in neighbors_page.items:
                 n = nb.node
                 if n is None or "RegulatoryFiling" not in (n.labels or []):
                     continue

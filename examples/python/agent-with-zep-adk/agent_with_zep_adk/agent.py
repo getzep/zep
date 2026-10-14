@@ -224,12 +224,13 @@ async def prepare_run(
     zep: AsyncZep | None = None,
 ) -> tuple[LlmAgent, AgentDeps, dict | None]:
     """Build the ADK agent, its dependencies, and optional graph orientation."""
+    graph_uuid = settings.require_graph_uuid()
     zep = zep or AsyncZep(
         api_key=settings.zep_api_key,
         **({"base_url": settings.zep_base_url} if settings.zep_base_url else {}),
     )
-    deps = AgentDeps(zep=zep, graph_id=settings.graph_id, registry=HandleRegistry())
-    orientation = await load_orientation(zep, settings.graph_id) if config.orientation else None
+    deps = AgentDeps(zep=zep, graph_uuid=graph_uuid, registry=HandleRegistry())
+    orientation = await load_orientation(zep, graph_uuid) if config.orientation else None
     resolved_model, generate_content_config = resolve_model(
         model or settings.agent_model, settings.model_thinking
     )

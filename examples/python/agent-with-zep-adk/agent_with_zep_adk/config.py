@@ -20,12 +20,12 @@ MAX_TOOL_CALLS = 12
 MAX_PLANS = 2
 MAX_RESULT_CHARS = 4_000
 SEARCH_LIMIT_DEFAULT = 10
-SEARCH_LIMIT_MAX = 20
-# When a request sets a limit, the list API returns at most 50 nodes per page;
-# the tools request one extra node to detect truncation, so 49 is the largest
-# page the tools can report.
-LIST_LIMIT_MAX = 49
-NEIGHBOR_LIMIT_MAX = 30
+# The v4 search APIs return at most 50 results per page.
+SEARCH_LIMIT_MAX = 50
+# The v4 list APIs return at most 100 results per page. The tools request one
+# extra result to detect truncation, so they can report at most 99.
+LIST_LIMIT_MAX = 99
+NEIGHBOR_LIMIT_MAX = 99
 EPISODE_TEXT_MAX_CHARS = 3_000
 ORIENTATION_SAMPLE_SIZE = 30
 
@@ -39,7 +39,7 @@ class Settings:
 
     zep_api_key: str
     zep_base_url: str | None
-    graph_id: str
+    graph_uuid: str
     agent_model: str
     judge_model: str
     model_thinking: str = "low"
@@ -50,6 +50,11 @@ class Settings:
                 f"MODEL_THINKING must be one of {', '.join(THINKING_LEVELS)}; got {self.model_thinking!r}."
             )
 
+    def require_graph_uuid(self) -> str:
+        if not self.graph_uuid:
+            raise RuntimeError("GRAPH_UUID is empty. Run ingest first to create a graph.")
+        return self.graph_uuid
+
     @classmethod
     def from_env(cls, require_zep_key: bool = True) -> Settings:
         load_dotenv(ENV_FILE)
@@ -59,7 +64,7 @@ class Settings:
         return cls(
             zep_api_key=zep_api_key,
             zep_base_url=os.environ.get("ZEP_BASE_URL") or None,
-            graph_id=os.environ.get("GRAPH_ID", "pemberline-demo"),
+            graph_uuid=os.environ.get("GRAPH_UUID", "").strip(),
             agent_model=os.environ.get("AGENT_MODEL", "openai/gpt-6-luna"),
             judge_model=os.environ.get("JUDGE_MODEL", "openai/gpt-6-luna"),
             model_thinking=os.environ.get("MODEL_THINKING", "low"),

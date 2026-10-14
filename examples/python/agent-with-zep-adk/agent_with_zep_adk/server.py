@@ -58,11 +58,18 @@ def _settings_and_zep() -> tuple[Settings, AsyncZep]:
     global _settings, _zep
     if _settings is None:
         _settings = Settings.from_env()
+        _settings.require_graph_uuid()
         _zep = AsyncZep(
             api_key=_settings.zep_api_key,
             **({"base_url": _settings.zep_base_url} if _settings.zep_base_url else {}),
         )
     return _settings, _zep
+
+
+@app.on_event("startup")
+async def validate_graph_uuid() -> None:
+    settings, _ = _settings_and_zep()
+    settings.require_graph_uuid()
 
 
 def _message_text_parts(message: dict) -> list[types.Part]:
@@ -99,8 +106,9 @@ async def chat(request: Request):
         domain_knowledge=query.get("domain_knowledge", "true").lower() != "false",
         planning=query.get("planning", "true").lower() != "false",
     )
-    deps = AgentDeps(zep=zep, graph_id=settings.graph_id, registry=registry)
-    orientation = await load_orientation(zep, settings.graph_id)
+    graph_uuid = settings.require_graph_uuid()
+    deps = AgentDeps(zep=zep, graph_uuid=graph_uuid, registry=registry)
+    orientation = await load_orientation(zep, graph_uuid)
     sample = graph_sample_prompt(deps, orientation)
     model, generate_content_config = resolve_model(settings.agent_model, settings.model_thinking)
     agent = build_agent(
@@ -169,7 +177,7 @@ async def chat(request: Request):
 @app.get("/api/orientation")
 async def get_orientation():
     settings, zep = _settings_and_zep()
-    return JSONResponse(await load_orientation(zep, settings.graph_id))
+    return JSONResponse(await load_orientation(zep, settings.require_graph_uuid()))
 
 
 @app.get("/api/domain-knowledge")

@@ -8,7 +8,7 @@ from agent_with_zep.prompts import ROLE, render_graph_data, render_system_prompt
 
 def _orientation():
     return {
-        "graph_id": "test-graph",
+        "graph_uuid": "test-graph",
         "nodes": [
             {"uuid": "uuid-aster", "name": "Aster 410", "labels": ["Entity", "Product"]},
             {"uuid": "uuid-voss", "name": "Vossbridge Sensors", "labels": ["Entity", "Supplier"]},

@@ -77,7 +77,7 @@ async def test_get_neighborhood_direction(deps, fake_zep):
     )
     assert "FS-20" in out
     name, kwargs = fake_zep.graph.calls[-1]
-    assert name == "get_neighbors"
+    assert name == "node.list_neighbors"
     assert kwargs["direction"] == "out"
 
 
@@ -96,7 +96,7 @@ def test_report_episode_kwargs_dates():
         "body": "body text",
     }
     kw = report_episode_kwargs(report)
-    assert kw["created_at"] == "2026-05-02T00:00:00Z"
+    assert kw["reference_time"] == "2026-05-02T00:00:00Z"
     assert kw["metadata"]["date"] == "2026-05-02"
     assert isinstance(kw["metadata"]["date"], str)
     assert kw["metadata"]["report_id"] == "R06"
@@ -106,9 +106,9 @@ def test_settings_reads_zep_base_url(monkeypatch):
     from agent_with_zep_adk.config import Settings
 
     monkeypatch.setenv("ZEP_API_KEY", "k")
-    monkeypatch.setenv("ZEP_BASE_URL", "https://zep.example.com/api/v2")
+    monkeypatch.setenv("ZEP_BASE_URL", "https://zep.example.com/api/v4")
     s = Settings.from_env(require_zep_key=False)
-    assert s.zep_base_url == "https://zep.example.com/api/v2"
+    assert s.zep_base_url == "https://zep.example.com/api/v4"
 
     monkeypatch.delenv("ZEP_BASE_URL")
     s = Settings.from_env(require_zep_key=False)

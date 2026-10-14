@@ -37,13 +37,13 @@ def _client(monkeypatch, fake_zep, model: ScriptedLlm) -> TestClient:
     settings = Settings(
         zep_api_key="test",
         zep_base_url=None,
-        graph_id="test-graph",
+        graph_uuid="test-graph",
         agent_model="scripted",
         judge_model="scripted",
     )
 
-    async def fake_load_orientation(zep, graph_id):
-        return {"graph_id": graph_id, "nodes": []}
+    async def fake_load_orientation(zep, graph_uuid):
+        return {"graph_uuid": graph_uuid, "nodes": []}
 
     monkeypatch.setattr(server, "_settings_and_zep", lambda: (settings, fake_zep))
     monkeypatch.setattr(server, "load_orientation", fake_load_orientation)

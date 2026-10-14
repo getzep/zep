@@ -4,9 +4,8 @@ This example uses Google ADK to run an agent with a Zep Context Graph. The
 agent uses retrieval tools to answer questions about product quality,
 regulatory status, suppliers, and ownership.
 
-This example shares the Pemberline dataset, graph ID, gold questions, and
-frontend with the [Pydantic AI example](../agent-with-zep). It does not copy the
-dataset or change the existing example.
+This example uses the Pemberline dataset, gold questions, and frontend from the
+[Pydantic AI example](../agent-with-zep). Each example can use its own graph.
 
 ## Security boundary
 
@@ -26,13 +25,14 @@ in the first user message and sends tool results as tool output.
 | `get_employees` | Employees on a team or product |
 | `search_products` | Products and their regulatory filings |
 
-The application sets the graph ID, reranker, and result limits. The model
+The application sets the graph UUID, reranker, and result limits. The model
 selects queries, filters, and handles. Each result uses a short handle, such as
 `n1`, `e1`, or `p1`, instead of a UUID.
 
 ## Requirements
 
 - The example uses Python 3.10 or later and [uv](https://docs.astral.sh/uv/).
+- The example uses `zep-cloud>=4.0.0,<5`.
 - The frontend uses Node.js 20.19 or later.
 - The example uses a Zep API key and one model-provider API key.
 
@@ -58,26 +58,30 @@ For a Gemini model, set `AGENT_MODEL=gemini-3.5-flash` and provide
 default thinking level is `low`. Gemini supports `minimal`, `low`, `medium`,
 and `high`. LiteLLM model strings can also use `xhigh`.
 
+`ZEP_BASE_URL` is optional. The v4 SDK uses this value as given, so include
+`/api/v4`. For example, use `https://api.getzep.com/api/v4`.
+
 ## Load the dataset
 
-The default graph ID is `pemberline-demo`. The Pydantic AI example uses the
-same graph. Skip ingestion if that example has already loaded the graph.
+Leave `GRAPH_UUID` empty to create a graph. The `ingest` command creates a
+graph named `Pemberline Medical demo`. It prints the graph UUID and the line
+that you must add to `.env`. Set that value before you run the other commands.
 
 ```bash
 uv run python -m agent_with_zep_adk.ingest
 uv run python -m agent_with_zep_adk.orientation
 ```
 
-The `ingest` command creates the graph, sets the ontology, adds the shared
-records and reports, and waits for processing. Use `--reset` to delete and
-recreate the graph.
-`--reset` deletes the shared graph, so run
-`uv run python -m agent_with_zep_adk.orientation --refresh` here and
-`uv run python -m agent_with_zep.orientation --refresh` in
-`../agent-with-zep` after a reset.
+When `GRAPH_UUID` is set, `ingest` checks that the graph exists, sets the
+ontology, adds the shared records and reports, and waits for each episode.
+If you run `ingest` again, it adds the episodes again. To replace the graph,
+use `--reset`. This deletes the selected graph and its orientation cache, then
+creates a new graph. Set the new UUID in `.env`.
 
 The `orientation` command reads the most connected nodes and writes a cache to
-`.cache/` inside this example. Use `--refresh` to read the graph again.
+`.cache/orientation-{GRAPH_UUID}.json` inside this example. Use `--refresh` to
+read the graph again. The CLI, server, orientation command, and evaluation
+require `GRAPH_UUID`.
 
 ## Ask a question from the command line
 

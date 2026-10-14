@@ -307,7 +307,7 @@ async def test_string_limit_is_coerced_and_uses_budget(deps):
     assert _answer_text(events) == "done"
     assert deps.calls_left == MAX_TOOL_CALLS - 1
     assert deps.call_log[0]["args"]["limit"] == 5
-    assert deps.zep.graph.calls[-1][1]["limit"] == 6
+    assert deps.zep.graph.calls[-1][1]["page_size"] == 6
 
 
 @pytest.mark.parametrize(

@@ -56,11 +56,18 @@ def _settings_and_zep() -> tuple[Settings, AsyncZep]:
     global _settings, _zep
     if _settings is None:
         _settings = Settings.from_env()
+        _settings.require_graph_uuid()
         _zep = AsyncZep(
             api_key=_settings.zep_api_key,
             **({"base_url": _settings.zep_base_url} if _settings.zep_base_url else {}),
         )
     return _settings, _zep
+
+
+@app.on_event("startup")
+async def validate_graph_uuid() -> None:
+    settings, _ = _settings_and_zep()
+    settings.require_graph_uuid()
 
 
 def _registry_for_chat(chat_id: object) -> HandleRegistry:
@@ -125,7 +132,8 @@ async def chat(request: Request):
         domain_knowledge=q.get("domain_knowledge", "true").lower() != "false",
         planning=q.get("planning", "true").lower() != "false",
     )
-    deps = AgentDeps(zep=zep, graph_id=settings.graph_id, registry=registry)
+    graph_uuid = settings.require_graph_uuid()
+    deps = AgentDeps(zep=zep, graph_uuid=graph_uuid, registry=registry)
     agent = build_agent(
         config,
         settings.agent_model,
@@ -135,7 +143,7 @@ async def chat(request: Request):
 
     orientation = None
     if config.orientation:
-        orientation = await load_orientation(zep, settings.graph_id)
+        orientation = await load_orientation(zep, graph_uuid)
 
     adapter = await VercelAIAdapter.from_request(request, agent=agent, sdk_version=7)
     # Inject the graph sample as graph data before the UI messages so the
@@ -154,7 +162,7 @@ async def chat(request: Request):
 @app.get("/api/orientation")
 async def get_orientation():
     settings, zep = _settings_and_zep()
-    return JSONResponse(await load_orientation(zep, settings.graph_id))
+    return JSONResponse(await load_orientation(zep, settings.require_graph_uuid()))
 
 
 @app.get("/api/domain-knowledge")

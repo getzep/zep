@@ -109,10 +109,10 @@ def test_report_in_system_prompt():
 async def test_tool_returns_zep_error_text(deps, monkeypatch):
     from zep_cloud.core.api_error import ApiError
 
-    async def boom(**kw):
+    async def boom(*args, **kw):
         raise ApiError(status_code=502, body="bad gateway")
 
-    monkeypatch.setattr(deps.zep.graph, "search", boom)
+    monkeypatch.setattr(deps.zep.graph, "search_edges", boom)
     out = await _tool("search_context")(_ctx(deps), query="flow")
     assert out.startswith("zep error 502")
     assert "bad gateway" in out
@@ -145,7 +145,7 @@ def _settings(**kw):
     base = {
         "zep_api_key": "k",
         "zep_base_url": None,
-        "graph_id": "g",
+        "graph_uuid": "g",
         "agent_model": "openai:gpt-6-luna",
         "judge_model": "openai:gpt-6-luna",
     }

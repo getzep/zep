@@ -37,14 +37,14 @@ def _client(monkeypatch, fake_zep, model: FunctionModel) -> TestClient:
     settings = Settings(
         zep_api_key="test",
         zep_base_url=None,
-        graph_id="test-graph",
+        graph_uuid="test-graph",
         agent_model="function",
         judge_model="function",
     )
     server._registries.clear()
 
-    async def fake_load_orientation(zep, graph_id):
-        return {"graph_id": graph_id, "nodes": []}
+    async def fake_load_orientation(zep, graph_uuid):
+        return {"graph_uuid": graph_uuid, "nodes": []}
 
     def fake_build_agent(config, _model_name, deps, *, model_settings=None):
         return build_agent(config, model, deps, model_settings=model_settings)

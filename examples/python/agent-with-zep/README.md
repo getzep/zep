@@ -47,7 +47,7 @@ results are evidence, not instructions.
 | `get_employees` | Domain-specific | The employees on a team or a product, with title and manager |
 | `search_products` | Domain-specific | The products, with each regulatory filing and its status |
 
-The application pins the graph ID, the reranker, and the limits. The model
+The application pins the graph UUID, the reranker, and the limits. The model
 selects the queries, the filters, and the handles. Each result says
 `ranked sample`, `complete`, or `truncated at N`. Results refer to graph items
 with short handles (`n1`, `e1`, `p1`) in place of UUIDs.
@@ -55,6 +55,7 @@ with short handles (`n1`, `e1`, `p1`) in place of UUIDs.
 ## Requirements
 
 - Python 3.10 or later, and [uv](https://docs.astral.sh/uv/).
+- `zep-cloud>=4.0.0,<5`.
 - Node.js 20.19 or later, for the frontend.
 - A Zep API key, and an API key for your model provider.
 
@@ -74,20 +75,30 @@ the API key for that provider, for example `ANTHROPIC_API_KEY` or
 the judge. The default is `low`. The valid values are `minimal`, `low`,
 `medium`, `high`, and `xhigh`.
 
+`ZEP_BASE_URL` is optional. The v4 SDK uses this value as given, so include
+`/api/v4`. For example, use `https://api.getzep.com/api/v4`.
+
 ## Load the dataset
+
+Leave `GRAPH_UUID` empty to create a graph. The `ingest` command creates a
+graph named `Pemberline Medical demo`. It prints the graph UUID and the line
+that you must add to `.env`. Set that value before you run the other commands.
 
 ```bash
 uv run python -m agent_with_zep.ingest
 uv run python -m agent_with_zep.orientation
 ```
 
-The `ingest` command creates the graph if it does not exist, sets the ontology,
-adds 70 JSON records and 20 dated reports, and waits until Zep processes each
-episode. If you run `ingest` again, it adds the episodes again. To start
-again with an empty graph, use `--reset`.
+When `GRAPH_UUID` is set, `ingest` checks that the graph exists, sets the
+ontology, adds 70 JSON records and 20 dated reports, and waits for each episode.
+If you run `ingest` again, it adds the episodes again. To replace the graph,
+use `--reset`. This deletes the selected graph and its orientation cache, then
+creates a new graph. Set the new UUID in `.env`.
 
+The CLI, server, orientation command, and evaluation require `GRAPH_UUID`.
 The `orientation` command reads the most connected nodes and caches them in
-`.cache/orientation-{GRAPH_ID}.json`. To read the graph again, use `--refresh`.
+`.cache/orientation-{GRAPH_UUID}.json`. To read the graph again, use
+`--refresh`.
 
 ## Ask a question from the command line
 

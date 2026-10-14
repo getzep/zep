@@ -61,49 +61,40 @@ class FakeNodeClient:
     def __init__(self, graph):
         self._g = graph
 
-    async def get_by_graph_id(
-        self,
-        graph_id,
-        cursor=None,
-        direction=None,
-        filters=None,
-        limit=None,
-        order_by=None,
-        uuid_cursor=None,
-        request_options=None,
-    ):
+    async def list(self, graph_uuid, *, filters=None, order_by=None, page_size=None, **kwargs):
         nodes = list(self._g.nodes.values())
         if filters and filters.node_labels:
             nodes = [n for n in nodes if any(l in filters.node_labels for l in n.labels)]
         if order_by == "degree":
             nodes.sort(key=lambda n: -n.degree)
         self._g.calls.append(
-            ("get_by_graph_id", {"filters": filters, "order_by": order_by, "limit": limit})
+            (
+                "node.list",
+                {
+                    "graph_uuid": graph_uuid,
+                    "filters": filters,
+                    "order_by": order_by,
+                    "page_size": page_size,
+                },
+            )
         )
-        return nodes[: limit or 50]
+        return SimpleNamespace(items=nodes[: page_size or 50])
 
-    async def get(self, uuid_, request_options=None):
+    async def get(self, graph_uuid, uuid_, request_options=None):
         return self._g.nodes[uuid_]
 
-    async def get_neighbors(
-        self,
-        node_uuid,
-        cursor=None,
-        direction=None,
-        direction_sort=None,
-        filters=None,
-        limit=None,
-        order_by=None,
-        request_options=None,
+    async def list_neighbors(
+        self, graph_uuid, node_uuid, *, direction=None, filters=None, page_size=None, **kwargs
     ):
         self._g.calls.append(
             (
-                "get_neighbors",
+                "node.list_neighbors",
                 {
+                    "graph_uuid": graph_uuid,
                     "node_uuid": node_uuid,
                     "filters": filters,
                     "direction": direction,
-                    "limit": limit,
+                    "page_size": page_size,
                 },
             )
         )
@@ -116,15 +107,20 @@ class FakeNodeClient:
                 out.append(SimpleNamespace(node=self._g.nodes[e.target_node_uuid], edges=[e]))
             elif e.target_node_uuid == node_uuid and direction in (None, "both", "in"):
                 out.append(SimpleNamespace(node=self._g.nodes[e.source_node_uuid], edges=[e]))
-        return out[: limit or 30]
+        return SimpleNamespace(items=out[: page_size or 50])
 
 
 class FakeEpisodeClient:
     def __init__(self, graph):
         self._g = graph
 
-    async def get(self, uuid_, request_options=None):
+    async def get(self, graph_uuid, uuid_, request_options=None):
         return self._g.episodes[uuid_]
+
+    async def add(self, graph_uuid, **kwargs):
+        ep = FakeEpisode(kwargs.get("data", ""), kwargs.get("metadata"))
+        self._g.episodes[ep.uuid_] = ep
+        return SimpleNamespace(episode=ep, task=None)
 
 
 class FakeGraph:
@@ -137,23 +133,41 @@ class FakeGraph:
         self.node = FakeNodeClient(self)
         self.episode = FakeEpisodeClient(self)
 
-    async def search(self, **kwargs):
-        self.calls.append(("search", kwargs))
-        return SimpleNamespace(edges=[], nodes=[], episodes=[])
+    async def _search(self, name, graph_uuid, **kwargs):
+        self.calls.append((name, {"graph_uuid": graph_uuid, **kwargs}))
+        return SimpleNamespace(items=[])
 
-    async def create(self, graph_id, **kw):
-        self.calls.append(("create", graph_id))
+    async def search_edges(self, graph_uuid, **kwargs):
+        return await self._search("search_edges", graph_uuid, **kwargs)
 
-    async def delete(self, graph_id, **kw):
-        self.calls.append(("delete", graph_id))
+    async def search_nodes(self, graph_uuid, **kwargs):
+        return await self._search("search_nodes", graph_uuid, **kwargs)
 
-    async def set_ontology(self, entities, edges=None, graph_ids=None, **kw):
+    async def search_episodes(self, graph_uuid, **kwargs):
+        return await self._search("search_episodes", graph_uuid, **kwargs)
+
+    async def create(self, **kwargs):
+        self.calls.append(("create", kwargs))
+        return SimpleNamespace(uuid_="created-graph")
+
+    async def get(self, graph_uuid):
+        self.calls.append(("get", graph_uuid))
+
+    async def delete(self, graph_uuid, **kw):
+        self.calls.append(("delete", graph_uuid))
+
+    async def set_ontology(self, graph_uuid, *, entity_types=None, edge_types=None, **kwargs):
+        self.calls.append(
+            (
+                "set_ontology",
+                {
+                    "graph_uuid": graph_uuid,
+                    "entity_types": entity_types,
+                    "edge_types": edge_types,
+                },
+            )
+        )
         self.ontology_set = True
-
-    async def add(self, **kw):
-        ep = FakeEpisode(kw.get("data", ""), kw.get("metadata"))
-        self.episodes[ep.uuid_] = ep
-        return ep
 
 
 class FakeZep:
@@ -275,4 +289,4 @@ def fake_zep():
 def deps(fake_zep):
     from agent_with_zep_adk.tools import AgentDeps
 
-    return AgentDeps(zep=fake_zep, graph_id="test-graph")
+    return AgentDeps(zep=fake_zep, graph_uuid="test-graph")
