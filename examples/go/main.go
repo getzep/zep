@@ -7,10 +7,10 @@ import (
 
 const usage = `Usage:
   go run .                 Run the user-graph example
-  go run . entity-types    Register custom entity/edge types (project-wide ontology)
+  go run . entity-types    Set custom entity/edge types on a user graph
 
 Notes:
-  entity-types replaces the project-level ontology — use a disposable Zep project key.
+  entity-types requires ZEP_ENTITY_TYPES_USER_UUID and replaces that graph's ontology.
 `
 
 func main() {
@@ -21,8 +21,7 @@ func main() {
 	case len(args) == 0:
 		run = runUserGraph
 	case len(args) == 1 && args[0] == "entity-types":
-		fmt.Println("WARNING: Setting entity types replaces the project-wide ontology.")
-		fmt.Println("Use a disposable Zep project/API key for this example.")
+		fmt.Println("WARNING: Setting entity types replaces the selected user graph's ontology.")
 		fmt.Println()
 		run = runEntityTypes
 	default:

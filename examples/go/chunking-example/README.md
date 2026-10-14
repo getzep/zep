@@ -1,6 +1,6 @@
 # Document Chunking with Contextualized Retrieval for Zep
 
-This example demonstrates Anthropic's **contextualized retrieval** technique with Zep. The program chunks a document, uses OpenAI to generate contextual descriptions for each chunk, and ingests the contextualized chunks into Zep's knowledge graph via `github.com/getzep/zep-go/v3`.
+This example demonstrates Anthropic's **contextualized retrieval** technique with Zep. The program chunks a document, uses OpenAI to generate contextual descriptions for each chunk, and ingests the contextualized chunks into Zep's knowledge graph via `github.com/getzep/zep-go/v4`.
 
 ## Why Contextualized Retrieval?
 
@@ -24,16 +24,24 @@ Traditional RAG systems chunk documents and embed them directly. This loses impo
 
 ## Usage
 
-### Basic usage
+Create a user with the root Go example and copy its printed Zep user UUID:
 
 ```bash
-go run . sample_document.txt --user-id user123
+cd ../
+go run .
+```
+
+Run the chunking example with that returned UUID:
+
+```bash
+cd chunking-example
+go run . sample_document.txt --user-uuid <zep-user-uuid>
 ```
 
 ### Custom chunk size
 
 ```bash
-go run . sample_document.txt --user-id user123 --chunk-size 4000
+go run . sample_document.txt --user-uuid <zep-user-uuid> --chunk-size 4000
 ```
 
 ### Dry run
@@ -41,15 +49,15 @@ go run . sample_document.txt --user-id user123 --chunk-size 4000
 Process chunking/contextualization without ingesting to Zep (still requires `OPENAI_API_KEY`):
 
 ```bash
-go run . sample_document.txt --user-id user123 --dry-run
+go run . sample_document.txt --user-uuid <zep-user-uuid> --dry-run
 ```
 
 ### Wait for processing
 
-Poll each created episode until `processed` is true (or a linked task fails / timeout):
+Submit all chunks, then wait once for the final submitted task:
 
 ```bash
-go run . sample_document.txt --user-id user123 --wait
+go run . sample_document.txt --user-uuid <zep-user-uuid> --wait
 ```
 
 ### Help
@@ -63,18 +71,18 @@ go run . --help
 | Option | Description | Default |
 |--------|-------------|---------|
 | `document` | Path to the document to process | (required) |
-| `--user-id` | Zep user ID for the knowledge graph | (required) |
+| `--user-uuid` | Zep-returned user UUID for the knowledge graph | (required) |
 | `--chunk-size` | Maximum characters per chunk | 6000 |
 | `--chunk-overlap` | Character overlap between chunks | 200 |
-| `--wait` | Wait for processing after each chunk | false |
+| `--wait` | Wait once for the final submitted task | false |
 | `--dry-run` | Process without ingesting to Zep | false |
 
 ## How it works
 
 1. **Document chunking**: Split by paragraphs, then sentences when needed, with configurable overlap.
 2. **Contextualization**: Each chunk is sent to OpenAI (`gpt-5-mini`) with the full document; the model returns a short situating context.
-3. **Ingestion**: Contextualized chunks are added with `client.Graph.Add` (`type=text`).
-4. **`--wait`**: Bounded polling of `Graph.Episode.Get` using `episode.processed`, with fail-fast on linked task statuses `failed` / `error` / `canceled` / `cancelled` / `partial`.
+3. **Ingestion**: Contextualized chunks are added with `client.Graph.Episode.Add` (`type=text`) and grouped by a content-based document ID.
+4. **`--wait`**: The program submits every chunk before it polls the final task. Polling stops on success, a terminal task error, or timeout.
 
 ## Notes
 
