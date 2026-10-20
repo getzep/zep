@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for Zep MCP Server
 # Stage 1: Build
-FROM golang:1.23.0-alpine3.19 AS builder
+FROM golang:1.26.10-alpine3.23 AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
