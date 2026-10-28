@@ -22,6 +22,18 @@ class TestOpenAIAdapter:
         assert kwargs["model"] == "gpt-5-mini"
         assert kwargs["messages"] == [{"role": "user", "content": "prompt text"}]
 
+    def test_default_model(self):
+        from zep_ingest.llm.openai import OpenAILLM
+
+        client = MagicMock()
+        client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="context"))]
+        )
+        OpenAILLM(client=client).complete("prompt")
+        kwargs = client.chat.completions.create.call_args.kwargs
+        assert kwargs["model"] == "gpt-5.6-terra"
+        assert kwargs["max_completion_tokens"] == 200
+
     def test_missing_sdk_raises_dependency_error(self, monkeypatch):
         from zep_ingest.llm.openai import OpenAILLM
 

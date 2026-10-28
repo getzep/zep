@@ -30,7 +30,7 @@ class OpenAILLM:
         self,
         client: Any | None = None,
         *,
-        model: str = "gpt-5-mini",
+        model: str = "gpt-5.6-terra",
         max_tokens: int = 200,
     ) -> None:
         require_int_range("max_tokens", max_tokens, minimum=1)
