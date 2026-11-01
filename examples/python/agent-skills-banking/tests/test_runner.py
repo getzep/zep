@@ -69,10 +69,13 @@ def scripted_model(operations, seen=None):
             seen.append([t.parameters_json_schema for t in info.function_tools])
         item = next(iterator, None)
         if item is None:
-            return ModelResponse(parts=[TextPart("The account review is complete.")])
+            return ModelResponse(
+                parts=[TextPart("The account review is complete.")], finish_reason="stop"
+            )
         name, args = item
         return ModelResponse(
-            parts=[ToolCallPart(name, args, tool_call_id=f"call-{len(_messages)}")]
+            parts=[ToolCallPart(name, args, tool_call_id=f"call-{len(_messages)}")],
+            finish_reason="tool_call",
         )
 
     return FunctionModel(respond)
@@ -86,11 +89,30 @@ def valid_operations(case):
         ("read_document", {"document_id": "monthly-interest"}),
         ("calculator", {"expression": "1.005"}),
     ]
+    operations.append(
+        (
+            "compare_packages",
+            {
+                "packages": [
+                    report.model_dump(
+                        mode="json", include={"account_id", "checking_account_id", "card_id"}
+                    )
+                    for report in db.reports
+                ]
+            },
+        )
+    )
     for credit, report in zip(db.credits, db.reports, strict=True):
-        args = credit.model_dump(mode="json")
-        args.pop("credit_id")
-        operations.append(("credit_interest", args))
-        operations.append(("file_discrepancy_report", {"report": report.model_dump(mode="json")}))
+        operations.append(("credit_interest", {"account_id": credit.account_id}))
+        operations.append(
+            (
+                "file_discrepancy_report",
+                {
+                    "account_id": report.account_id,
+                    "correction_credit_id": report.correction_credit_id,
+                },
+            )
+        )
     return operations
 
 
@@ -101,7 +123,7 @@ def test_framework_persists_and_scores_complete_db(tmp_path):
     assert result["passed"]
     assert json.loads((path / "start.json").read_text())["model"] == "claude-haiku-5-5"
     assert result["validation_corrections"] == 0
-    assert len(json.loads((path / "database.json").read_text())["reports"]) == 2
+    assert len(json.loads((path / "database.json").read_text())["reports"]) == 4
     events = trace_events(path)
     call = next(
         e
@@ -110,14 +132,15 @@ def test_framework_persists_and_scores_complete_db(tmp_path):
     )
     assert json.loads(call["content"])["account_id"] == case.savings[0].account_id
     assert "arguments" not in json.loads(call["content"])
-    assert sum(e["event_type"] == "tool_result" for e in events) == 8
+    assert sum(e["event_type"] == "tool_result" for e in events) == 13
 
 
 def test_four_refused_quotes_do_not_consume_validation_retries_or_mutate_state(tmp_path):
     case = make_case(2)
     args = {
         "account_id": case.savings[0].account_id,
-        "checking_account_id": case.checking[0].account_id,
+        "checking_account_id": case.checking[-1].account_id,
+        "card_id": case.cards[-1].card_id,
     }
     path = tmp_path / "refused"
     result = asyncio.run(
@@ -157,17 +180,12 @@ def test_teaching_request_is_only_in_the_teacher_prompt(tmp_path):
         assert json.loads((path / "start.json").read_text())["teaching"] is teaching
 
 
-def test_invalid_money_is_visible_and_does_not_mutate(tmp_path):
+def test_invalid_credit_request_is_visible_and_does_not_mutate(tmp_path):
     case = make_case(0)
     ops = [
         (
             "credit_interest",
-            {
-                "account_id": case.savings[0].account_id,
-                "statement_month": case.statement_month,
-                "amount": "1.001",
-                "reason_code": "interest_shortfall",
-            },
+            {"request": {}},
         )
     ]
     path = tmp_path / "validation"
@@ -208,7 +226,7 @@ def test_both_arms_expose_identical_schemas():
         agent.run_sync("Review this invented test case.")
         schemas.append(seen[0])
     assert schemas[0] == schemas[1]
-    assert len(schemas[0]) == 8
+    assert len(schemas[0]) == 9
 
 
 def test_treatment_requires_actual_skill_read(tmp_path):

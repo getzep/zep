@@ -17,8 +17,8 @@ from banking import (
 )
 
 
-@pytest.mark.parametrize("seed", [0, 1, 2, 3, 54, 404])
-def test_quotes_agree_with_the_independent_scorer_without_selecting_a_package(seed):
+@pytest.mark.parametrize("seed", [0, 1, 2, 3, 54, 404, 1009])
+def test_selected_quotes_agree_with_the_independent_global_allocation_scorer(seed):
     case = make_case(seed)
     wanted = expected_database(case)
     for account, report, credit in zip(case.savings, wanted.reports, wanted.credits, strict=True):
@@ -29,25 +29,29 @@ def test_quotes_agree_with_the_independent_scorer_without_selecting_a_package(se
                 if isinstance(quote, PackageQuote):
                     quotes.append(quote)
         assert len(quotes) > 1
-        best = max(
-            quotes, key=lambda q: (q.annual_bonus, q.card_bonus_percent, q.checking_bonus_percent)
+        selected = next(
+            q
+            for q in quotes
+            if q.checking_account_id == report.checking_account_id and q.card_id == report.card_id
         )
         fields = report.model_dump(exclude={"correction_credit_id"})
-        assert {k: getattr(best, k) for k in fields} == fields
-        assert best.correction_amount == credit.amount
+        assert {k: getattr(selected, k) for k in fields} == fields
+        assert selected.correction_amount == credit.amount
         base = quote_package(case, account.account_id)
         assert isinstance(base, PackageQuote) and base.annual_bonus == 0
 
 
 def test_quote_rejects_unknown_ineligible_and_excluded_packages():
     case = make_case(2)
+    case.checking[0].payroll = Decimal(0)
+    case.cards[0].purchases = Decimal(0)
     with pytest.raises(ValueError, match="not in"):
         quote_package(case, "missing")
     refused = [
         quote_package(case, case.savings[0].account_id, case.checking[0].account_id),
         quote_package(case, case.savings[0].account_id, card_id=case.cards[0].card_id),
         quote_package(
-            case, case.savings[0].account_id, case.checking[2].account_id, case.cards[2].card_id
+            case, case.savings[0].account_id, case.checking[-1].account_id, case.cards[-1].card_id
         ),
     ]
     assert all(isinstance(q, QuoteRefusal) and not q.permitted for q in refused)
@@ -79,13 +83,18 @@ def test_reproducible_cases_and_strict_scorer():
     expected = expected_database(case)
     assert score(case, expected)["passed"]
     assert not score(case, Database())["passed"]
-    assert len(expected.credits) == len(expected.reports) == 2
+    assert len(expected.credits) == len(expected.reports) == 4
     assert expected.reports[0].base_rate_percent == Decimal("2.15")
     assert expected.reports[1].base_rate_percent == Decimal("4.85")
-    assert expected.reports[0].checking_bonus_percent == Decimal("0.65")
+    assert expected.reports[0].checking_bonus_percent == Decimal("0.30")
     assert expected.reports[0].card_bonus_percent == Decimal("0.90")
-    assert expected.reports[1].checking_bonus_percent == Decimal("0.35")
-    assert expected.reports[1].card_bonus_percent == Decimal("0.75")
+    assert expected.reports[1].checking_bonus_percent == Decimal(0)
+    assert expected.reports[1].card_bonus_percent == Decimal(0)
+    assert expected.reports[2].checking_bonus_percent == Decimal(0)
+    assert expected.reports[2].card_bonus_percent == Decimal(0)
+    assert expected.reports[3].base_rate_percent == Decimal("3.90")
+    assert expected.reports[3].checking_bonus_percent == Decimal("1.00")
+    assert expected.reports[3].card_bonus_percent == Decimal("0.90")
     changed = expected.model_copy(deep=True)
     changed.credits[0].amount += Decimal("0.01")
     assert not score(case, changed)["passed"]
@@ -97,7 +106,7 @@ def test_numeric_format_and_order_are_not_task_requirements():
     case = make_case(42)
     expected = expected_database(case)
     changed = expected.model_copy(deep=True)
-    changed.reports[0].checking_bonus_percent = Decimal("0.650")
+    changed.reports[0].checking_bonus_percent = Decimal("0.300")
     changed.credits.reverse()
     changed.reports.reverse()
     assert score(case, changed)["passed"]
@@ -130,9 +139,24 @@ def test_statement_records_include_both_policy_capped_balances(balance, checking
 @pytest.mark.parametrize(
     "seed,checking,card,corrections",
     [
-        (0, ("0.65", "0.35"), ("0.90", "0.75"), ("29.20", "91.48")),
-        (1, ("0.30", "0.20"), ("0.90", "0.75"), ("19.24", "78.81")),
-        (2, ("0.65", "0.35"), ("0.90", "0.40"), ("19.29", "53.73")),
+        (
+            0,
+            ("0", "0", "0.75", "1.00"),
+            ("0.90", "0", "0.65", "0"),
+            ("29.38", "83.50", "45.69", "23.13"),
+        ),
+        (
+            1,
+            ("1.10", "0.55", "0", "0"),
+            ("0", "0", "1.10", "0.90"),
+            ("17.85", "70.99", "67.66", "78.11"),
+        ),
+        (
+            2,
+            ("1.10", "0", "0.75", "0"),
+            ("0", "0", "0.65", "1.00"),
+            ("9.97", "47.85", "29.46", "47.56"),
+        ),
     ],
 )
 def test_permitted_packages_use_capped_dollars_not_advertised_rates(

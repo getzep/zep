@@ -72,6 +72,21 @@ def test_walkthrough_cli_selects_the_student_model(tmp_path, monkeypatch, option
     assert selected == [expected]
 
 
+def test_walkthrough_defaults_use_different_optimal_allocations(tmp_path, monkeypatch):
+    import walkthrough
+
+    selected = []
+
+    async def fake_run_demo(args):
+        selected.append((args.seed, args.teacher_seed))
+
+    monkeypatch.setattr(walkthrough, "run_demo", fake_run_demo)
+    monkeypatch.setattr("sys.argv", ["walkthrough.py", "run", "--output", str(tmp_path)])
+    walkthrough.main()
+    assert selected == [(10134, 22)]
+    assert walkthrough.allocation_signature(22) != walkthrough.allocation_signature(10134)
+
+
 @pytest.mark.parametrize("teacher_effort", ["none", "max"])
 def test_run_uses_and_records_the_selected_teacher_effort(tmp_path, monkeypatch, teacher_effort):
     import argparse
@@ -95,7 +110,7 @@ def test_run_uses_and_records_the_selected_teacher_effort(tmp_path, monkeypatch,
         teacher="anthropic:custom-teacher",
         teacher_effort=teacher_effort,
         seed=404,
-        teacher_seed=54,
+        teacher_seed=22,
     )
     with pytest.raises(RuntimeError, match="teacher did not pass"):
         asyncio.run(walkthrough.run_demo(args))
@@ -135,7 +150,7 @@ def test_repeat_mode_makes_six_calls_for_three_pairs_instead_of_reusing_results(
             "student": "test-model",
             "effort": "none",
             "seed": 3,
-            "teacher_seed": 54,
+            "teacher_seed": 22,
             "screening_seeds": [0, 1, 2, 3],
         },
     )
@@ -178,7 +193,10 @@ def test_repeat_mode_makes_six_calls_for_three_pairs_instead_of_reusing_results(
     assert len(calls) == 6
 
 
-def test_walkthrough_uses_sdk_for_the_learning_loop_and_resume(tmp_path, monkeypatch):
+@pytest.mark.parametrize("stop_after_skill", [False, True])
+def test_walkthrough_uses_sdk_for_the_learning_loop_and_resume(
+    tmp_path, monkeypatch, stop_after_skill
+):
     import argparse
     import asyncio
 
@@ -240,6 +258,7 @@ def test_walkthrough_uses_sdk_for_the_learning_loop_and_resume(tmp_path, monkeyp
         row = {
             "passed": bool(skills) or teaching,
             "termination": "final_answer",
+            "finish_reason": "stop",
             "tokens": 1,
             "seconds": 0.1,
             "failed_provider_calls": 0,
@@ -262,8 +281,9 @@ def test_walkthrough_uses_sdk_for_the_learning_loop_and_resume(tmp_path, monkeyp
         effort="none",
         teacher_effort="max",
         seed=404,
-        teacher_seed=54,
+        teacher_seed=22,
         compile_timeout=1,
+        stop_after_skill=stop_after_skill,
     )
     asyncio.run(walkthrough.run_demo(args))
     expected_episodes = [
@@ -271,6 +291,12 @@ def test_walkthrough_uses_sdk_for_the_learning_loop_and_resume(tmp_path, monkeyp
         ("teacher", "claude-opus-5-5"),
         ("with-skill", "claude-haiku-5-5"),
     ]
+    if stop_after_skill:
+        assert episodes == expected_episodes[:2]
+        assert not (tmp_path / "run" / "summary.json").exists()
+        args.resume = True
+        args.stop_after_skill = False
+        asyncio.run(walkthrough.run_demo(args))
     assert episodes == expected_episodes
     output = tmp_path / "run"
     assert json.loads((output / "upload.json").read_text())["final_trace"]["status"] == "closed"

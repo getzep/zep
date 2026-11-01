@@ -67,13 +67,30 @@ def money_patterns(value: Decimal) -> list[str]:
     return [r"(?<![\d.])" + re.escape(item) + r"0*(?!\d|\.\d)" for item in variants]
 
 
+def allocation_signature(seed: int) -> tuple:
+    case = make_case(seed)
+    checking = {account.account_id: account.product for account in case.checking}
+    cards = {card.card_id: card.product for card in case.cards}
+    products = {account.account_id: account.product for account in case.savings}
+    return tuple(
+        (
+            products[report.account_id],
+            checking[report.checking_account_id] if report.checking_account_id else None,
+            cards[report.card_id] if report.card_id else None,
+        )
+        for report in expected_database(case).reports
+    )
+
+
 def check_leakage(skills: list[dict], seeds: list[int]) -> dict:
     markdown = "\n".join(item["markdown"] for item in skills)
     hits = []
     for seed in seeds:
         case = make_case(seed)
         gold = expected_database(case)
-        for value in [case.case_id] + [a.account_id for a in case.savings]:
+        identifiers = [case.case_id] + [a.account_id for a in case.savings]
+        identifiers += [a.account_id for a in case.checking] + [c.card_id for c in case.cards]
+        for value in identifiers:
             if value in markdown:
                 hits.append({"case_id": case.case_id, "value": value})
         amounts = [a.statement_balance for a in case.savings]
@@ -85,6 +102,9 @@ def check_leakage(skills: list[dict], seeds: list[int]) -> dict:
                 hits.append({"case_id": case.case_id, "value": f"{amount:.2f}"})
     return {
         "exact_heldout_identifiers_balances_or_corrections": hits,
+        "source_id_suffixes": sorted(
+            set(re.findall(r"(?<![\w-])[ck][1-3](?!\w)", markdown, re.IGNORECASE))
+        ),
         "note": "This conservative exact-match check is not a semantic leakage review.",
     }
 
@@ -120,7 +140,10 @@ async def stage(
     path = output / name
     result = path / "result.json"
     if result.exists():
-        return json.loads(result.read_text())
+        row = json.loads(result.read_text())
+        if row.get("finish_reason") != "stop":
+            raise RuntimeError(f"The saved {name} response did not finish normally.")
+        return row
     if path.exists():
         raise RuntimeError(f"The {name} stage is incomplete. It will not be overwritten.")
     row = await episode(path, make_case(seed), model, effort, skills, teaching=teaching)
@@ -143,12 +166,16 @@ async def run_demo(args: argparse.Namespace) -> None:
         "student_temperature": None,
         "seed": args.seed,
         "teacher_seed": args.teacher_seed,
-        "screening_seeds": [0, 1, 2, 3],
+        "screening_seeds": [args.seed],
         "source": source_hashes(),
         "installed_versions": installed_versions(),
     }
     if args.seed == args.teacher_seed:
         raise ValueError("Use different teacher and walkthrough cases.")
+    if allocation_signature(args.seed) == allocation_signature(args.teacher_seed):
+        raise ValueError(
+            "Use teacher and student cases with different optimal product allocations."
+        )
     if config_file.exists():
         if json.loads(config_file.read_text()) != config:
             raise RuntimeError("The saved configuration differs from this command.")
@@ -176,7 +203,11 @@ async def run_demo(args: argparse.Namespace) -> None:
             config["source"],
             teaching=True,
         )
-        if not teacher["passed"] or teacher["termination"] != "final_answer":
+        if (
+            not teacher["passed"]
+            or teacher["termination"] != "final_answer"
+            or teacher.get("finish_reason") != "stop"
+        ):
             raise RuntimeError("The teacher did not pass. No successful Trace will be uploaded.")
         agent_file = output / "agent.json"
         if not agent_file.exists():
@@ -215,6 +246,14 @@ async def run_demo(args: argparse.Namespace) -> None:
         write_json(output / "leakage-audit.json", leakage)
         if leakage["exact_heldout_identifiers_balances_or_corrections"]:
             raise RuntimeError("The Skill contains a held-out identifier, balance, or correction.")
+        if leakage["source_id_suffixes"]:
+            raise RuntimeError("The Skill contains case-specific checking or card ID suffixes.")
+        if args.stop_after_skill:
+            print(
+                "The Skill is saved. Review its procedure before resuming the student run.",
+                flush=True,
+            )
+            return
         skills = live_skills(hosted, agent, pin, output / "live-search-before-student.json")
         treatment = await stage(
             output, "with-skill", args.seed, args.student, args.effort, config["source"], skills
@@ -261,6 +300,8 @@ async def verify(args: argparse.Namespace) -> None:
         write_json(output / "leakage-audit.json", leakage)
         if leakage["exact_heldout_identifiers_balances_or_corrections"]:
             raise RuntimeError("The Skill contains final-case values. Do not run the check.")
+        if leakage["source_id_suffixes"]:
+            raise RuntimeError("The Skill contains case-specific checking or card ID suffixes.")
         manifest = {
             "configuration": config,
             "agent_uuid": agent,
@@ -338,9 +379,6 @@ async def verify(args: argparse.Namespace) -> None:
                     arm: len({p[arm]["database_sha256"] for p in pairs})
                     for arm in ("without-skill", "with-skill")
                 },
-                "all_flip_lower_bound_if_independent": 0.05 ** (1 / args.count)
-                if all(p["flip"] for p in pairs)
-                else None,
                 "by_pattern": {
                     str(pattern): {
                         "pairs": sum(p["pattern"] == pattern for p in pairs),
@@ -397,10 +435,15 @@ def main() -> None:
     run.add_argument("--effort", default="none")
     run.add_argument("--teacher", default="claude-opus-5-5")
     run.add_argument("--teacher-effort", default="max")
-    run.add_argument("--seed", type=int, default=404)
-    run.add_argument("--teacher-seed", type=int, default=54)
+    run.add_argument("--seed", type=int, default=10134)
+    run.add_argument("--teacher-seed", type=int, default=22)
     run.add_argument("--compile-timeout", type=int, default=900)
     run.add_argument("--resume", action="store_true")
+    run.add_argument(
+        "--stop-after-skill",
+        action="store_true",
+        help="Save and display the compiled Skill before the student run.",
+    )
     check = commands.add_parser("verify")
     check.add_argument("--learned-run", required=True)
     check.add_argument("--output", required=True)

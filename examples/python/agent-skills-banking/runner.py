@@ -16,6 +16,7 @@ from openai import AsyncOpenAI
 from pydantic_ai import Agent, ModelRetry, capture_run_messages
 from pydantic_ai.messages import (
     ModelMessagesTypeAdapter,
+    ModelResponse,
     RetryPromptPart,
     TextPart,
     ToolCallPart,
@@ -32,18 +33,31 @@ from pydantic_ai.usage import UsageLimits
 from audit import AuditedTransport
 from banking import (
     DOCUMENTS,
+    AllocationQuote,
     Case,
-    Credit,
     Database,
-    PositiveMoney,
-    Report,
+    PackageSelection,
+    QuoteRefusal,
+    ReportRequest,
+    allocation_rank,
     calculate,
+    credit_from_quote,
     make_case,
     quote_package,
+    report_from_quote,
     score,
+)
+from banking import (
+    compare_packages as compare_submitted_packages,
 )
 
 DEFAULT_STUDENT_MODEL = "claude-haiku-5-5"
+REQUEST_TIMEOUT = 600
+MAX_OUTPUT_TOKENS = 32768
+NORMAL_PROVIDER_FINISH_REASONS = {
+    "anthropic": {"stop": "end_turn", "tool_call": "tool_use"},
+    "openai": {"stop": "completed", "tool_call": "completed"},
+}
 
 SYSTEM = (
     "You are a banking service agent. Resolve the customer's request using the local "
@@ -55,19 +69,27 @@ SYSTEM = (
     "The Skill catalog is: {catalog}"
 )
 USER = (
-    "Please investigate the savings interest for statement month {month} on my two "
+    "Please investigate the savings interest for statement month {month} on all my "
     "savings accounts. Correct each underpayment and save the discrepancy reports. "
     "You have my permission to complete these actions. My case ID is {case_id}."
 )
 TEACHING_REQUEST = (
     "For this teaching run, keep the action summary short. Then show a comparison table "
     "of every eligible, permitted checking/card package for each savings account, "
-    "including its capped bonus contribution and the selected package. "
+    "including its three capped bonus contributions. Submit all permitted packages to "
+    "compare_packages, including unboosted and single-source alternatives. This tool "
+    "compares complete allocations without reusing sources, but it does not generate "
+    "omitted packages. Complete the comparisons before posting any credit. The bank retains "
+    "the best quoted allocation. Post each correction using its savings account ID, then "
+    "file the report using that account ID and its saved credit ID. "
     "Use quote_interest to evaluate each package instead of reimplementing its arithmetic. "
     "After the tables, document the reusable procedure that another banking agent "
     "can follow on different account records. State the general selection rule with "
     "variables and policy caps. Do not use customer identifiers or case-specific "
-    "amounts in the reusable procedure."
+    "amounts in the reusable procedure. Use symbolic variables for source identities. "
+    "Do not use c1, c2, c3, k1, k2, or k3 as symbolic names. "
+    "The reusable procedure must not prescribe fixed product pairings; the winning "
+    "allocation depends on each case's balances."
 )
 
 
@@ -78,9 +100,16 @@ def write_json(path: Path, value: Any) -> None:
 def source_hashes() -> dict[str, str]:
     root = Path(__file__).resolve().parent
     return {
-        p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-        for p in sorted(root.iterdir())
-        if p.suffix == ".py" or p.name in {"uv.lock", "pyproject.toml"}
+        name: hashlib.sha256((root / name).read_bytes()).hexdigest()
+        for name in (
+            "audit.py",
+            "banking.py",
+            "hosted.py",
+            "pyproject.toml",
+            "runner.py",
+            "uv.lock",
+            "walkthrough.py",
+        )
     }
 
 
@@ -106,6 +135,8 @@ def build_agent(
     db: Database,
     calls: list[dict[str, Any]],
 ) -> Agent:
+    best_comparison: AllocationQuote | None = None
+    allocation_locked = False
     catalog = [
         {
             "uuid": s["uuid"],
@@ -118,8 +149,8 @@ def build_agent(
     anthropic_settings = AnthropicModelSettings(
         anthropic_thinking={"type": "disabled"} if effort == "none" else {"type": "adaptive"},
         anthropic_effort=None if effort == "none" else cast(Any, effort),
-        max_tokens=16384,
-        timeout=120,
+        max_tokens=MAX_OUTPUT_TOKENS,
+        timeout=REQUEST_TIMEOUT,
         parallel_tool_calls=False,
     )
     agent = Agent(
@@ -127,8 +158,8 @@ def build_agent(
         instructions=SYSTEM.format(catalog=json.dumps(catalog)),
         model_settings=OpenAIResponsesModelSettings(
             openai_reasoning_effort=cast(Any, effort),
-            max_tokens=16384,
-            timeout=120,
+            max_tokens=MAX_OUTPUT_TOKENS,
+            timeout=REQUEST_TIMEOUT,
             parallel_tool_calls=False,
         )
         if isinstance(model, OpenAIResponsesModel)
@@ -192,45 +223,98 @@ def build_agent(
             quote.model_dump(mode="json"),
         )
 
-    @agent.tool_plain
-    def credit_interest(
-        account_id: str,
-        statement_month: str,
-        amount: PositiveMoney,
-        reason_code: str,
-    ) -> dict:
-        """Post one interest correction credit. Use the policy to determine its amount."""
-        if account_id not in {a.account_id for a in case.savings}:
-            raise ModelRetry("The savings account is not in this case.")
-        credit = Credit(
-            credit_id=f"credit-{account_id}-{statement_month}",
-            account_id=account_id,
-            statement_month=statement_month,
-            amount=amount,
-            reason_code=reason_code,
+    @agent.tool_plain(sequential=True)
+    def compare_packages(packages: list[PackageSelection]) -> dict:
+        """Compare submitted packages and retain the best complete allocation quoted so far. No omitted packages or unions of separate batches are added. The first saved credit locks the allocation."""
+        nonlocal best_comparison
+        arguments = {"packages": [package.model_dump(mode="json") for package in packages]}
+        if allocation_locked:
+            return record(
+                "compare_packages",
+                arguments,
+                QuoteRefusal(reason="The first saved credit has locked the allocation.").model_dump(
+                    mode="json"
+                ),
+            )
+        comparison = compare_submitted_packages(case, packages)
+        if isinstance(comparison, AllocationQuote):
+            if best_comparison is None or allocation_rank(comparison) > allocation_rank(
+                best_comparison
+            ):
+                best_comparison = comparison
+            comparison = best_comparison
+        return record(
+            "compare_packages",
+            arguments,
+            comparison.model_dump(mode="json"),
         )
+
+    def selected_package(account_id: str) -> PackageSelection | QuoteRefusal:
+        if best_comparison is None:
+            return QuoteRefusal(reason="Compare packages before posting a correction.")
+        quote = next((q for q in best_comparison.quotes if q.account_id == account_id), None)
+        if quote is None:
+            return QuoteRefusal(reason="The savings account is not in the quoted allocation.")
+        return PackageSelection.model_validate(quote.model_dump())
+
+    @agent.tool_plain(sequential=True)
+    def credit_interest(account_id: str) -> dict:
+        """Post one correction from this account's package in the best quoted allocation. The bank derives the amount. The first saved credit locks the allocation."""
+        nonlocal allocation_locked
+        arguments = {"account_id": account_id}
+        request = selected_package(account_id)
+        if isinstance(request, QuoteRefusal):
+            return record("credit_interest", arguments, {"saved": False, "reason": request.reason})
+        credit = credit_from_quote(case, request)
+        if isinstance(credit, QuoteRefusal):
+            return record("credit_interest", arguments, {"saved": False, "reason": credit.reason})
         if any(c.credit_id == credit.credit_id for c in db.credits):
             raise ModelRetry("A correction for this account and month already exists.")
         db.credits.append(credit)
+        allocation_locked = True
         return record(
             "credit_interest",
-            credit.model_dump(mode="json"),
-            {"saved": True, "credit_id": credit.credit_id},
+            arguments,
+            {
+                "saved": True,
+                "credit": credit.model_dump(mode="json"),
+                "package": request.model_dump(mode="json"),
+            },
         )
 
-    @agent.tool_plain
-    def file_discrepancy_report(report: Report) -> dict:
-        """Save a discrepancy report in the local database after the correction credit."""
-        credit = next((c for c in db.credits if c.credit_id == report.correction_credit_id), None)
-        if not credit or credit.account_id != report.account_id:
-            raise ModelRetry("The report must refer to a saved credit on the same account.")
+    @agent.tool_plain(sequential=True)
+    def file_discrepancy_report(account_id: str, correction_credit_id: str) -> dict:
+        """Save this account's report from the locked allocation and its saved correction credit. The bank derives the report fields."""
+        arguments = {"account_id": account_id, "correction_credit_id": correction_credit_id}
+        selection = selected_package(account_id)
+        if isinstance(selection, QuoteRefusal):
+            return record(
+                "file_discrepancy_report", arguments, {"saved": False, "reason": selection.reason}
+            )
+        request = ReportRequest(**selection.model_dump(), correction_credit_id=correction_credit_id)
+        credit = next((c for c in db.credits if c.credit_id == correction_credit_id), None)
+        if credit is None:
+            return record(
+                "file_discrepancy_report",
+                arguments,
+                {"saved": False, "reason": "The report must refer to a saved correction credit."},
+            )
+        report = report_from_quote(case, request, credit)
+        if isinstance(report, QuoteRefusal):
+            return record(
+                "file_discrepancy_report", arguments, {"saved": False, "reason": report.reason}
+            )
         if any(
             r.account_id == report.account_id and r.statement_month == report.statement_month
             for r in db.reports
         ):
             raise ModelRetry("A report already exists for this account and month.")
         db.reports.append(report)
-        return record("file_discrepancy_report", report.model_dump(mode="json"), {"saved": True})
+        return record(
+            "file_discrepancy_report",
+            arguments,
+            {"saved": True, "report": report.model_dump(mode="json")},
+        )
 
     @agent.tool_plain
     def read_skill(skill_uuid: str) -> dict:
@@ -277,7 +361,9 @@ async def episode(
             ],
         },
     )
-    client = httpx.AsyncClient(transport=AuditedTransport(provider_calls, "agent"), timeout=120)
+    client = httpx.AsyncClient(
+        transport=AuditedTransport(provider_calls, "agent"), timeout=REQUEST_TIMEOUT
+    )
     transcript = []
     try:
         if test_model is not None:
@@ -289,7 +375,7 @@ async def episode(
                     name,
                     provider=OpenAIProvider(
                         openai_client=AsyncOpenAI(
-                            max_retries=0, timeout=120, http_client=cast(Any, client)
+                            max_retries=0, timeout=REQUEST_TIMEOUT, http_client=cast(Any, client)
                         )
                     ),
                 )
@@ -298,7 +384,7 @@ async def episode(
                     name,
                     provider=AnthropicProvider(
                         anthropic_client=AsyncAnthropic(
-                            max_retries=0, timeout=120, http_client=client
+                            max_retries=0, timeout=REQUEST_TIMEOUT, http_client=client
                         )
                     ),
                 )
@@ -310,7 +396,7 @@ async def episode(
                 result = await agent.run(
                     USER.format(month=case.statement_month, case_id=case.case_id)
                     + ("\n\n" + TEACHING_REQUEST if teaching else ""),
-                    usage_limits=UsageLimits(request_limit=100, total_tokens_limit=1000000),
+                    usage_limits=UsageLimits(request_limit=150, total_tokens_limit=3000000),
                 )
         elapsed = time.monotonic() - started
         transcript = result.all_messages()
@@ -318,6 +404,36 @@ async def episode(
             ModelMessagesTypeAdapter.dump_json(transcript, indent=2)
         )
         usage = result.usage
+        finish_reason = result.response.finish_reason
+        responses = [message for message in transcript if isinstance(message, ModelResponse)]
+        response_finish_reasons = [message.finish_reason for message in responses]
+        write_json(
+            path / "completion.json",
+            {
+                "finish_reason": finish_reason,
+                "response_finish_reasons": response_finish_reasons,
+                "provider_finish_reasons": [
+                    (message.provider_details or {}).get("finish_reason") for message in responses
+                ],
+                "provider_details": result.response.provider_details,
+            },
+        )
+        if (
+            finish_reason != "stop"
+            or any(reason not in {"stop", "tool_call"} for reason in response_finish_reasons)
+            or any(
+                message.provider_name in NORMAL_PROVIDER_FINISH_REASONS
+                and (message.provider_details or {}).get("finish_reason")
+                != NORMAL_PROVIDER_FINISH_REASONS[message.provider_name].get(
+                    message.finish_reason or ""
+                )
+                for message in responses
+            )
+        ):
+            raise RuntimeError(
+                f"The agent response is incomplete: finish_reason={finish_reason}; "
+                f"response_finish_reasons={response_finish_reasons}."
+            )
         if not result.output.strip():
             raise RuntimeError("The agent returned an empty final answer.")
         if any(c["status"] != 200 for c in provider_calls):
@@ -360,6 +476,7 @@ async def episode(
             "validation_corrections": len(validation),
             "skill_reads": [{"uuid": s["uuid"], "version": s["version"]} for s in reads],
             "termination": "final_answer",
+            "finish_reason": finish_reason,
             "final_answer": result.output,
         }
         write_json(path / "evaluation.json", evaluation)

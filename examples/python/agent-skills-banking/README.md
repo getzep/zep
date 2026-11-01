@@ -113,6 +113,24 @@ The teacher must pass before a successful Trace is uploaded.
 The student must read a retrieved Skill for its Skill-assisted run to be valid.
 The generated Skill is not edited or replaced with a local procedure.
 
+To inspect the generated Skill before the assisted student starts, use a new output directory with `--stop-after-skill`:
+
+```bash
+uv run --frozen python walkthrough.py run --output runs/inspect-001 --stop-after-skill
+```
+
+Check the procedure against the bank policies and tool input schemas.
+A generated Skill can contain an incorrect tool argument.
+
+After you inspect the printed Skill, resume the same attempt:
+
+```bash
+uv run --frozen python walkthrough.py run --output runs/inspect-001 --resume
+```
+
+Completed stages do not repeat. The token count adds input and output tokens across each episode's model calls.
+Episode time excludes Skill compilation and the waits between stages.
+
 Haiku uses disabled thinking in both student configurations. The runner does not
 send a temperature setting because Haiku 5.5 does not accept sampling parameters.
 Both configurations receive the same task, policies, tools, and limits.
@@ -140,24 +158,41 @@ OpenAI models use the Responses API and require `OPENAI_API_KEY` instead of
 
 ## Understand the task and score
 
-The task has two savings accounts and several checking and card products.
-The agent must find eligible, permitted packages, select the package with the
-greatest interest-dollar benefit, post one correction credit per underpaid account,
-and save one complete discrepancy report per credit.
+The task has Cedar, Orchid, Maple, and Willow savings accounts, two checking accounts, and two cards.
+Each checking account or card can support at most one savings account.
+The allocation must maximize the total unrounded annual bonus across all four savings accounts.
+The agent must find eligible, permitted packages, select a complete allocation, post each correction credit, and save its discrepancy report.
 
 The policies apply different checking and card balance caps, qualification rules,
 and package exclusions. Both student configurations have a `quote_interest` tool.
 That tool evaluates one proposed package and calculates the correction amount.
 It does not select the best package or write a credit or report.
 
+Both student configurations also have a `compare_packages` tool.
+The tool compares complete allocations from each submitted batch and retains the best allocation already quoted during the episode.
+The tool does not combine batches, generate omitted alternatives, or read the scorer's expected answer.
+The rank uses the unrounded annual bonus and the policy tie-break.
+An invalid proposed package makes the batch return a refusal that identifies the package.
+The agent must apply the policy exclusions and submit the permitted alternatives.
+If the agent omits a useful package, the tool can return a globally incorrect allocation.
+
+The `credit_interest` tool takes an account ID and derives its credit from the best retained allocation.
+The first saved credit locks that allocation. The comparison tool then refuses further batches.
+The bank saves one correction for the quoted shortfall and case statement month.
+The bank does not verify global optimality or search for missing alternatives.
+The `file_discrepancy_report` tool takes the account ID and its saved credit ID.
+The report tool verifies the credit, then derives the report fields from the locked allocation.
+
 The evaluator compares the complete final database, including report fields.
 A correct final message cannot replace correct database records.
-The example tests package selection and completion of the required writes.
-It does not test arithmetic accuracy. It does not promise lower token use or latency.
+The example tests policy filtering, candidate submission, and completion of the required writes.
+The tools perform the allocation and credit arithmetic. The agent must submit the necessary alternatives before the first credit and complete the required writes.
+The example does not promise lower token use or latency.
 
 The synthetic policies are in `banking.py` under `DOCUMENTS`. The `make_case(seed)`
 function generates account records locally. No dataset download or internal Zep
-service is required. The default teacher seed is 54; the student seed is 404.
+service is required. The default teacher seed is 22; the student seed is 10134.
+The optimal product allocations differ between the teacher and student cases.
 The run saves both cases and the policies in `cases.json` for inspection.
 
 ## Inspect the output
@@ -229,10 +264,11 @@ The summary's strict `accepted` flag requires every baseline to fail and every
 Skill-assisted episode to pass. The flag is specific to this demonstration goal.
 
 Repeated runs of one selected case do not establish performance on unseen tasks.
+The default student case was selected after earlier trials.
 Model responses can vary between runs, even with disabled thinking.
-The conditional lower bound in the summary assumes independence; the example does
-not establish that assumption. Fresh-case checks are exploratory and can include
-baseline successes. One successful learning loop does not guarantee future results.
+These checks do not establish performance for new Skill compilations.
+Fresh-case checks are exploratory and can include baseline successes.
+One successful learning loop does not guarantee future results.
 
 ## Local code checks
 
@@ -241,6 +277,7 @@ These commands need no API keys or paid services:
 ```bash
 uv run --frozen pytest -q
 uv run --frozen ruff check .
+uv run --frozen ruff format --check .
 uv run --frozen pyright
 uv run --frozen python walkthrough.py run --help
 uv run --frozen python walkthrough.py verify --help
