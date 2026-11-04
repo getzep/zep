@@ -28,10 +28,17 @@ class GraphParams(BaseModel):
 class ModelConfig(BaseModel):
     """Model configuration."""
 
-    response_model: str = Field(default="gpt-4o-mini")
+    response_model: str = Field(default="gpt-6-luna")
     response_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
-    grader_model: str = Field(default="gpt-4o-mini")
+    grader_model: str = Field(default="gpt-6-luna")
     grader_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+
+    def generation_parameters(self, *, grader: bool = False) -> dict:
+        model = self.grader_model if grader else self.response_model
+        if model == "gpt-6-luna" or model.startswith("gpt-6-luna-"):
+            return {"reasoning_effort": "low"}
+        temperature = self.grader_temperature if grader else self.response_temperature
+        return {"temperature": temperature}
 
 
 class LocomoConfig(BaseModel):

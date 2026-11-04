@@ -700,6 +700,10 @@ def test_task_answer_audit_blocks_leaked_answers(decision: str, safe: bool) -> N
     task.model_dump.return_value = {"description": "Resolve the request"}
     assert audit_task_answers(client, "Check the policy first", [task]) is safe
     sent = client.chat.completions.create.call_args.kwargs["messages"]
+    kwargs = client.chat.completions.create.call_args.kwargs
+    assert kwargs["model"] == "gpt-6-luna"
+    assert kwargs["reasoning_effort"] == "low"
+    assert "temperature" not in kwargs
     assert "Resolve the request" in sent[1]["content"]
     assert "Check the policy first" in sent[1]["content"]
 

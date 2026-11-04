@@ -26,8 +26,8 @@ def audit_task_answers(openai_client: OpenAI, markdown: str, tasks: list[Task]) 
         for task in tasks
     ]
     response = openai_client.chat.completions.create(
-        model="gpt-4.1",
-        temperature=0,
+        model="gpt-6-luna",
+        reasoning_effort="low",
         response_format={"type": "json_object"},
         messages=[
             {

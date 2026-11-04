@@ -86,6 +86,7 @@ from skill_index import SnapshotSkillToolkit, load_snapshot_skills
 from skill_snapshot import compile_snapshot, write_funnel
 from skill_snapshot import wait_for_compilation as wait_for_trace_coverage
 from tracing import CURRENT_TRACE, TRACER, instrument_tau2_user
+from user_simulator import ResponsesUserSimulator
 from zep_capture import (
     DISCOVERABLE_TOOL_ARGUMENTS,
     EventSink,
@@ -223,6 +224,11 @@ def _run_config(
             "task_ids": None,
             "num_tasks": None,
             "agent": "zep_responses_agent",
+            "user": (
+                "zep_responses_user"
+                if args.user_model == "gpt-6-luna" or args.user_model.startswith("gpt-6-luna-")
+                else "user_simulator"
+            ),
             "llm_agent": args.agent_model,
             "llm_args_agent": {"reasoning_effort": args.reasoning_effort},
             "llm_user": args.user_model,
@@ -239,6 +245,7 @@ def _run_config(
 
 
 registry.register_agent_factory(create_zep_responses_agent, "zep_responses_agent")
+registry.register_user(ResponsesUserSimulator, "zep_responses_user")
 
 
 @dataclass
@@ -1803,7 +1810,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--trials", type=int, default=4)
     parser.add_argument("--trial-start", type=int, default=1)
     parser.add_argument("--agent-model", default="gpt-6-sol")
-    parser.add_argument("--user-model", default="gpt-5.2")
+    parser.add_argument("--user-model", default="gpt-6-luna")
     parser.add_argument(
         "--agent-base-url",
         help="An OpenAI-compatible Responses endpoint for the agent, for example OpenRouter.",

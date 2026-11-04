@@ -55,12 +55,12 @@ async def zep_response(llm_client, context: str, question: str) -> str:
     """
 
     response = await llm_client.chat.completions.create(
-        model="gpt-4.1-mini",
+        model="gpt-6-luna",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
-        temperature=0,
+        reasoning_effort="low",
     )
     result = response.choices[0].message.content or ""
 

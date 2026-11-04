@@ -94,10 +94,8 @@ graph_params:
 
 # Model configuration
 models:
-  response_model: "gpt-4o-mini"
-  response_temperature: 0.0
-  grader_model: "gpt-4o-mini"
-  grader_temperature: 0.0
+  response_model: "gpt-6-luna"
+  grader_model: "gpt-6-luna"
 
 # LOCOMO-specific settings
 locomo:
@@ -107,6 +105,9 @@ locomo:
 ```
 
 ### Configuration Options
+
+Luna response and grader calls use explicit low reasoning without temperature.
+Temperature settings apply only to other model overrides.
 
 #### Graph Parameters
 - `edge_limit`: Number of facts to retrieve (1-100)
