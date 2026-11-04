@@ -45,7 +45,7 @@
  * const { graphUuid, threadUuid } = identity;
  *
  * const model = wrapLanguageModel({
- *   model: openai("gpt-4o-mini"),
+ *   model: openai.responses("gpt-6-luna"),
  *   middleware: createZepMiddleware({ client, threadUuid, persist: true }),
  * });
  *
@@ -54,6 +54,7 @@
  *   model,
  *   tools,
  *   stopWhen: stepCountIs(5),
+ *   providerOptions: { openai: { reasoningEffort: "low" } },
  *   prompt: "What do you remember about me?",
  * });
  * ```

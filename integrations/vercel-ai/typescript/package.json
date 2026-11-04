@@ -62,7 +62,7 @@
     "@getzep/zep-cloud": "^4.0.0"
   },
   "devDependencies": {
-    "@ai-sdk/openai": "^3.0.0",
+    "@ai-sdk/openai": "^3.0.136",
     "@eslint/js": "^9.39.4",
     "@types/node": "^22.0.0",
     "ai": "^6.0.0",

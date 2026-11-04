@@ -57,7 +57,7 @@ const { graphUuid, threadUuid } = identity;
 // 2. Wrap the model: inject the Context Block on each new user turn AND
 //    guarantee the turn is persisted — no onFinish wiring needed.
 const model = wrapLanguageModel({
-  model: openai("gpt-5-mini"),
+  model: openai.responses("gpt-6-luna"),
   middleware: createZepMiddleware({ client, threadUuid, persist: true }),
 });
 
@@ -68,6 +68,7 @@ const { text } = await generateText({
   model,
   tools,
   stopWhen: stepCountIs(5),
+  providerOptions: { openai: { reasoningEffort: "low" } },
   prompt: "What do you remember about me?",
 });
 ```
@@ -80,7 +81,7 @@ middleware stays injection-only) and pair it with `createZepOnFinish`:
 
 ```ts
 const model = wrapLanguageModel({
-  model: openai("gpt-5-mini"),
+  model: openai.responses("gpt-6-luna"),
   middleware: createZepMiddleware({ client, threadUuid }), // injection only
 });
 
@@ -89,6 +90,7 @@ const { text } = await generateText({
   model,
   tools,
   stopWhen: stepCountIs(5),
+  providerOptions: { openai: { reasoningEffort: "low" } },
   prompt,
   onFinish: createZepOnFinish({ client, threadUuid, user: prompt }),
 });
@@ -112,12 +114,13 @@ import { openai } from "@ai-sdk/openai";
 import { createZepMiddleware } from "@getzep/zep-vercel-ai";
 
 const model = wrapLanguageModel({
-  model: openai("gpt-5-mini"),
+  model: openai.responses("gpt-6-luna"),
   middleware: createZepMiddleware({ client, threadUuid, persist: true }),
 });
 
 const result = streamText({
   model,
+  providerOptions: { openai: { reasoningEffort: "low" } },
   prompt: "I just adopted a beagle named Cooper.",
 });
 

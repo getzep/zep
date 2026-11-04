@@ -4,13 +4,14 @@
   "description": "A simple agent built with LangGraph.js",
   "type": "module",
   "scripts": {
-    "start": "tsx agent.ts"
+    "start": "tsx agent.ts",
+    "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@getzep/zep-cloud": "^4.0.0",
-    "@langchain/core": "^1.2.10",
+    "@langchain/core": "^1.2.20",
     "@langchain/langgraph": "^1.4.14",
-    "@langchain/openai": "^1.5.12",
+    "@langchain/openai": "^1.6.3",
     "@langchain/tavily": "^1.2.0",
     "commander": "^12.1.0",
     "dotenv": "^16.4.7",
