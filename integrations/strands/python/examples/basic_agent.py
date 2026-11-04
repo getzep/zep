@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from typing import Any
 
 from strands import Agent
 from strands.memory import MemoryManager
@@ -62,11 +63,33 @@ if not OPENAI_API_KEY:
 
 
 def build_model() -> OpenAIResponsesModel:
-    return OpenAIResponsesModel(
+    return StatefulResponsesModel(
         client_args={"api_key": OPENAI_API_KEY},
         model_id=OPENAI_MODEL,
         params={"reasoning": {"effort": "low"}},
+        stateful=True,
     )
+
+
+class StatefulResponsesModel(OpenAIResponsesModel):
+    """Omit history already stored by the server from stateful continuation input."""
+
+    def _format_request(self, messages: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        model_state = kwargs.get("model_state")
+        if model_state is None and len(args) > 3:
+            model_state = args[3]
+        if self.stateful and model_state and model_state.get("response_id"):
+            last_assistant = next(
+                (
+                    index
+                    for index in range(len(messages) - 1, -1, -1)
+                    if messages[index]["role"] == "assistant"
+                ),
+                None,
+            )
+            if last_assistant is not None:
+                messages = messages[last_assistant + 1 :]
+        return super()._format_request(messages, *args, **kwargs)
 
 
 async def build_agent(zep: AsyncZep, user_uuid: str, thread_uuid: str) -> Agent:

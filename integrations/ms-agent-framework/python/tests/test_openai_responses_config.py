@@ -5,9 +5,12 @@ import json
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from agent_framework import Agent
-from openai._base_client import httpx2
+from openai import _base_client
+
+httpx2 = getattr(_base_client, "httpx2", getattr(_base_client, "_httpx2", httpx))
 
 
 def load_example(monkeypatch: pytest.MonkeyPatch) -> Any:

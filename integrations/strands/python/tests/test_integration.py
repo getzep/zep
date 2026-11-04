@@ -28,10 +28,12 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import logging
 import os
 import sys
 import time
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -96,6 +98,16 @@ def _message_text(message: Message | object) -> str:
     return "\n".join(parts) if parts else str(message)
 
 
+def build_model() -> OpenAIResponsesModel:
+    """Build the stateful Responses model configured by the basic example."""
+    path = Path(__file__).parents[1] / "examples" / "basic_agent.py"
+    spec = importlib.util.spec_from_file_location("strands_basic_agent_example", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.build_model()
+
+
 async def wait_for_episodes_processed(
     zep: AsyncZep,
     graph_uuid: str,
@@ -143,11 +155,7 @@ async def build_agent(
         search_pinned_params={"scope": "auto"},
     )
     return Agent(
-        model=OpenAIResponsesModel(
-            client_args={"api_key": OPENAI_API_KEY},
-            model_id=OPENAI_MODEL,
-            params={"reasoning": {"effort": "low"}},
-        ),
+        model=build_model(),
         system_prompt=(
             "You are a helpful assistant with access to long-term memory. "
             "When memory context is provided, use it to give personalised, "
