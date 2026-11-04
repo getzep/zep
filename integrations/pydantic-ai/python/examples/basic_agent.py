@@ -32,12 +32,18 @@ Prerequisites:
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import os
 import sys
 import time
 
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIResponsesModelSettings
+from pydantic_ai.models.openai import (
+    OpenAIModelProfile,
+    OpenAIResponsesModel,
+    OpenAIResponsesModelSettings,
+)
+from pydantic_ai.profiles.openai import openai_model_profile
 from zep_cloud.client import AsyncZep
 
 from zep_pydantic_ai import (
@@ -56,11 +62,22 @@ if not ZEP_API_KEY:
 if not OPENAI_API_KEY:
     raise OSError("OPENAI_API_KEY is not set.")
 
-MODEL = "openai-responses:gpt-6-luna"
+# Pydantic AI does not yet mark gpt-6-luna as a reasoning model.
+LUNA_PROFILE = dataclasses.replace(
+    OpenAIModelProfile.from_profile(openai_model_profile("gpt-6-luna")),
+    supports_thinking=True,
+    openai_supports_reasoning=True,
+    openai_supports_encrypted_reasoning_content=True,
+)
 MODEL_SETTINGS = OpenAIResponsesModelSettings(
     openai_reasoning_effort="low",
+    openai_store=False,
     openai_send_reasoning_ids=True,
 )
+
+
+def build_model() -> OpenAIResponsesModel:
+    return OpenAIResponsesModel("gpt-6-luna", provider="openai", profile=LUNA_PROFILE)
 
 
 async def wait_for_ingestion(
@@ -120,7 +137,7 @@ async def main() -> None:
     )
 
     agent = Agent(
-        MODEL,
+        build_model(),
         model_settings=MODEL_SETTINGS,
         deps_type=ZepDeps,
         capabilities=zep_capabilities(deps),
