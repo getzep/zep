@@ -26,13 +26,13 @@
  */
 
 import { ZepClient } from "@getzep/zep-cloud";
-import { openai } from "@ai-sdk/openai";
 import { streamText, wrapLanguageModel } from "ai";
 import {
   createZepMiddleware,
   createZepOnFinish,
   createZepUserAndThread,
 } from "../src/index.js";
+import { exampleModel, exampleProviderOptions } from "./model.js";
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
 
   // 1. Wrap the model: inject the Context Block on each new user turn.
   const model = wrapLanguageModel({
-    model: openai("gpt-5-mini"),
+    model: exampleModel(),
     middleware: createZepMiddleware({ client, threadUuid }),
   });
 
@@ -69,6 +69,7 @@ async function main(): Promise<void> {
   const result = streamText({
     model,
     system: "You are a helpful assistant.",
+    providerOptions: exampleProviderOptions,
     prompt: userInput,
     onFinish: createZepOnFinish({ client, threadUuid, user: userInput, userName: "Bob" }),
   });

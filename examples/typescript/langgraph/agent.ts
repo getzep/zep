@@ -22,9 +22,12 @@ const tools = tavilyApiKey
   : [];
 const toolNode = new ToolNode(tools);
 
-// Create a model and give it access to the tools
-const baseModel = new ChatOpenAI({
-  model: "gpt-5-mini",
+// Create a model and give it access to the tools. gpt-6-luna supports tool
+// calls with reasoning only on the Responses API.
+export const baseModel = new ChatOpenAI({
+  model: "gpt-6-luna",
+  useResponsesApi: true,
+  reasoning: { effort: "low" },
 });
 const model = tools.length > 0 ? baseModel.bindTools(tools) : baseModel;
 

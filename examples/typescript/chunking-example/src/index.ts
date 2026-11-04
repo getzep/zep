@@ -48,7 +48,7 @@ function parseCliArgs(argv: string[]): CliOptions {
 }
 
 const ZEP_MAX_EPISODE_SIZE = 10000;
-const OPENAI_MODEL = "gpt-5-mini";
+const OPENAI_MODEL = "gpt-6-luna";
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 
@@ -164,7 +164,7 @@ export function chunkDocument(
 /**
  * Add context to a chunk using OpenAI
  */
-async function contextualizeChunk(
+export async function contextualizeChunk(
   openai: OpenAI,
   fullDocument: string,
   chunk: string,
@@ -187,6 +187,7 @@ Please give a short succinct context to situate this chunk within the overall do
       const response = await openai.chat.completions.create({
         model: OPENAI_MODEL,
         messages: [{ role: "user", content: prompt }],
+        reasoning_effort: "low",
         max_completion_tokens: 256,
       });
 

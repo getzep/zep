@@ -50,7 +50,8 @@ server-generated UUIDs from the responses. An application stores the
 Zep v4 addresses every resource by UUID.
 
 Only `ZEP_API_KEY` is required by the integration itself; `OPENAI_API_KEY` is
-needed by the example's model (`openai("gpt-4o-mini")`). Swap in any provider the
+needed by the example's model (`openai.responses("gpt-6-luna")` at low reasoning
+effort, in [`examples/model.ts`](./examples/model.ts)). Swap in any provider the
 AI SDK supports if you prefer.
 
 ## 5. Run the examples
@@ -78,13 +79,14 @@ middleware, persist the completed turn from `onFinish` with `createZepOnFinish`.
 `onFinish` fires once per turn with the final assistant text for both
 `generateText` and `streamText`.
 
-> **OpenAI Zero Data Retention (ZDR) note.** The `generate-text` example uses the
-> OpenAI Chat Completions API (`openai.chat("gpt-4o-mini")`) instead of the
-> default Responses API. The Responses API references server-persisted item IDs
-> across a multi-step tool loop, which ZDR organizations reject ("Items are not
-> persisted for Zero Data Retention organizations"). This is an OpenAI/account
-> constraint, not a Zep issue — using the Chat Completions API (or a non-ZDR key)
-> avoids it.
+> **OpenAI Responses API and Zero Data Retention (ZDR) note.** The examples use
+> the OpenAI Responses API, because gpt-6-luna supports tool calls with reasoning
+> only on that API. By default, the Responses API references server-persisted
+> item IDs across a multi-step tool loop, and ZDR organizations reject those
+> references ("Items are not persisted for Zero Data Retention organizations").
+> The examples set `store: false`, so the AI SDK requests encrypted reasoning
+> items and sends them back on each step instead. This is an OpenAI account
+> constraint, not a Zep issue.
 
 ## 6. Run the tests
 

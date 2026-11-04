@@ -27,7 +27,6 @@
  */
 
 import { ZepClient } from "@getzep/zep-cloud";
-import { openai } from "@ai-sdk/openai";
 import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import {
   createZepMiddleware,
@@ -35,6 +34,7 @@ import {
   createZepTools,
   createZepUserAndThread,
 } from "../src/index.js";
+import { exampleModel, exampleProviderOptions } from "./model.js";
 
 const ZEP_API_KEY = process.env.ZEP_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -76,11 +76,10 @@ async function main(): Promise<void> {
   // 2. Wrap the model: inject the Context Block on each new user turn. `persist`
   //    is left unset here — persistence happens explicitly via onFinish below
   //    (pass `persist: true` instead to have the middleware do it for you).
-  //    We use the Chat Completions API (`openai.chat`) rather than the default
-  //    Responses API so the multi-step tool loop also works on OpenAI Zero Data
-  //    Retention (ZDR) organizations, which don't persist Responses item IDs.
+  //    The model uses the Responses API at low reasoning effort. See
+  //    `examples/model.ts` for the settings and the ZDR note.
   const model = wrapLanguageModel({
-    model: openai.chat("gpt-5-mini"),
+    model: exampleModel(),
     middleware: createZepMiddleware({ client, threadUuid }),
   });
 
@@ -99,6 +98,7 @@ async function main(): Promise<void> {
       system: SYSTEM,
       tools,
       stopWhen: stepCountIs(5),
+      providerOptions: exampleProviderOptions,
       prompt,
       onFinish: createZepOnFinish({ client, threadUuid, user: prompt, userName: "Alice" }),
     });
