@@ -7,172 +7,70 @@ context template. `set-context-templates.py` creates the template
 two episodes. The chat agent finds the template UUID by its name and uses the
 template when it gets context for each message.
 
-## What This Dashboard Does
+## Requirements
 
-This dashboard helps you:
-- **Experiment with Zep's memory features** in an interactive environment
-- **Compare AI responses** with and without Zep memory side-by-side
-- **Test different agent types** with automatic agent discovery - just add new agent classes and they appear in the UI
-- **Manage multiple users and conversations** with full thread history
-- **Track latency metrics** for Zep retrieval and LLM response times
-- **Visualize memory context** to see what information Zep provides to the LLM
+- Python 3.10 or later.
+- Packages: `openai==3.13.0`, `python-dotenv==1.2.2`, `streamlit==1.54.0`, and `zep-cloud>=4.0.0,<5`.
+- `ZEP_API_KEY` for Zep and `OPENAI_API_KEY` for the chat agent. The scripts load these values from the environment or `.env`.
 
-## Setup
+## Run
 
-### 1. Install Dependencies
+Run these commands from `examples/python/context-templates-example/`:
 
 ```bash
-# Create and activate a virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate  # On macOS/Linux
-# venv\Scripts\activate   # On Windows
-
-# Install required packages
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env
 ```
 
-### 2. Configure Environment Variables
-
-Create a `.env` file in the project root with your API keys:
-
-```bash
-ZEP_API_KEY=your_zep_api_key_here
-OPENAI_API_KEY=your_openai_api_key_here
-```
-
-**Get your API keys:**
-- **Zep**: Sign up at [app.getzep.com](https://app.getzep.com) and generate an API key
-- **OpenAI**: Get your key from [platform.openai.com](https://platform.openai.com)
-
-### 3. Set Context Templates
-
-Register the example context templates with Zep before chatting:
+Set `ZEP_API_KEY` and `OPENAI_API_KEY` in `.env`. Create the context template:
 
 ```bash
 python set-context-templates.py
 ```
 
-This creates the context templates used by the dashboard agents.
-
-### 4. Pre-populate with Sample Data (Optional)
-
-Run the ingestion script to create a test user and add sample data to Zep:
+To create the sample user, set the real estate ontology on its graph, and add the conversation data to Zep, run:
 
 ```bash
 python zep_ingest.py
 ```
 
-This creates:
-- A test user with a unique ID
-- Sample conversation threads
-- Structured JSON data in Zep's knowledge graph
-
-The sample data is about concerts/music preferences. You can replace the files in `data/` with your own data.
-
-### 5. Launch the Dashboard
+Start the Streamlit app:
 
 ```bash
 streamlit run ui.py
 ```
 
-The dashboard will open in your browser at `http://localhost:8501`.
+Warning: The setup creates a project context template and a graph ontology. Use a disposable project key.
 
-## Using the Dashboard
+## What the example does
 
-### Dashboard Controls
+- `set-context-templates.py` creates a template with a user summary, up to four `HAS_REQUIREMENT` and `PREFERS_NEIGHBORHOOD` edges, up to three entities, and up to two episodes.
+- `ontology.py` defines real estate entity and edge types. `zep_ingest.py` sets these types on the graph for the new user.
+- `data/` contains Jane Doe's profile, house-search records, and home-buying conversations. `zep_ingest.py` creates a user from `user.json` and adds messages from `conversations.json` to threads. Its graph episode upload for `user_data.json` is commented out.
+- `agents.py` stores user and assistant messages in the thread, gets context with the template UUID, and streams a response from OpenAI.
 
-**Agent Selector** (in sidebar)
-- Choose from available agent types defined in `agents.py`
-- Default agent: `ChatAgent` (uses `thread.get_context()`)
-- All agent classes with an `on_receive_message` method automatically appear in this dropdown
-- Add your own custom agents by copying and modifying the default agent
-
-**Display Mode** (in sidebar)
-- **Both Responses**: Side-by-side comparison of responses with/without Zep
-- **With Zep**: Show only the response using Zep memory
-- **Without Zep**: Show only the response without Zep memory
-
-**User Management** (in sidebar)
-- Select existing users from the dropdown
-- Click "➕ New User" to create a new user
-
-**Thread Management** (in sidebar)
-- Click "➕ New Thread" to start a new conversation
-- Click on any existing thread to switch to it
-
-### What Gets Displayed
-
-When you send a message:
-- **User message** appears right-aligned in gray
-- **Context block** (if using Zep) shows what memory Zep retrieved
-- **AI responses** appear in boxes below, with latency metrics
-- **Side-by-side view** lets you compare responses with/without memory
-
-## Customizing for Your Use Case
-
-This dashboard is a template designed to be copied and customized. To create your own example:
-
-1. **Copy this folder** to a new location
-
-2. **Replace data files** in `data/` with your domain-specific data:
-   - `conversations.json`: Sample conversation threads
-   - `user_data.json`: Structured data for your use case (note: user profile info like name/email is defined here, not in the ingestion script)
-
-3. **Update `zep_ingest.py`** to customize:
-   - Add custom ontology for your domain's knowledge graph
-   - Configure user-summary-instructions for personalized memory retrieval
-   - Customize how your specific data types are ingested into Zep
-   - Adjust graph structure and relationships
-
-4. **Create custom agents in `agents.py`**:
-   - Copy an existing agent class (e.g., `ChatAgent`) and rename it
-   - Modify the system prompt for your domain/persona
-   - Customize the Zep implementation (different retrieval methods, context formatting, etc.)
-   - Your new agent will **automatically appear in the dropdown** - no other code changes needed!
-   - Example: Create `CustomerSupportAgent`, `SalesAgent`, etc.
-
-5. **Run the ingestion** and **test in the dashboard**
-
-## Project Structure
+## Project structure
 
 ```
-zep-quickstart-dashboard/
-├── README.md              # This file
-├── requirements.txt       # Python dependencies
-├── .env                  # Your API keys (create this)
-├── .env.example          # Template
-│
-├── ui.py                 # Streamlit dashboard
-├── agents.py             # Agent implementations
-├── zep_ingest.py         # Data ingestion script
-│
-├── assets/               # UI assets
+context-templates-example/
+├── .env.example
+├── README.md
+├── agents.py
+├── assets/
 │   └── zep-logo.png
-│
-└── data/                 # Sample data
-    ├── conversations.json
-    └── user_data.json
+├── data/
+│   ├── conversations.json
+│   ├── user.json
+│   └── user_data.json
+├── ontology.py
+├── requirements.txt
+├── set-context-templates.py
+├── ui.py
+└── zep_ingest.py
 ```
 
-## Learn More
+## Learn more
 
-- [Zep Documentation](https://help.getzep.com)
-- [Retrieving Memory](https://help.getzep.com/retrieving-memory)
-- [User Summary Instructions](https://help.getzep.com/user-summary-instructions)
-- [Customize Context Block](https://help.getzep.com/cookbook/customize-your-context-block)
-
-## Troubleshooting
-
-**Import errors**
-- Activate your virtual environment and run `pip install -r requirements.txt`
-
-**API key errors**
-- Check that `.env` file exists with valid `ZEP_API_KEY` and `OPENAI_API_KEY`
-
-**No context being retrieved**
-- Run `python zep_ingest.py` to populate Zep with sample data
-- Make sure you're selecting a user that has data in Zep
-
-**Ingestion fails**
-- Verify `data/conversations.json` and `data/user_data.json` exist
-- Check your Zep API key is valid
+- [Context templates](https://help.getzep.com/context-templates)
