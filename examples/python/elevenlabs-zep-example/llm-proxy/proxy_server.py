@@ -247,7 +247,7 @@ def message_text(content) -> str:
     return ""
 
 
-def latest_user_message(input_items) -> Optional[str]:
+def new_user_turn(input_items) -> Optional[str]:
     """Get a user turn only when it is the final input item.
 
     A tool continuation repeats earlier turns. Those turns are already in
@@ -471,7 +471,7 @@ async def responses(request: Request):
         await ensure_zep_user_exists(user_uuid)
 
         # Find the latest user message
-        user_message = latest_user_message(body.get("input", []))
+        user_message = new_user_turn(body.get("input", []))
 
         # PERFORMANCE OPTIMIZATION: Use add_message_and_get_context which
         # adds the user message to Zep AND returns the full context block in

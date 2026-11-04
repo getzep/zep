@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 class ReasoningReplayOpenAICompletion(OpenAICompletion):
-    """Replay encrypted reasoning items before their matching function calls."""
+    """Replay reasoning only while its tool call remains in the input history."""
 
     model: str = "gpt-6-luna"
     api: Literal["responses"] = "responses"

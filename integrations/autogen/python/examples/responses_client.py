@@ -21,6 +21,12 @@ from pydantic import BaseModel
 
 
 class OpenAIResponsesChatCompletionClient(ChatCompletionClient):
+    """Keep reasoning only for tool calls in the current input history.
+
+    A new conversation or a trimmed history drops unreferenced entries.
+    Referenced entries remain available for repeated tool-loop requests.
+    """
+
     def __init__(
         self,
         model: str = "gpt-6-luna",

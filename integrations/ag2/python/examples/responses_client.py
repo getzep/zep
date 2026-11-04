@@ -16,6 +16,8 @@ from openai.types.completion_usage import CompletionUsage
 
 
 class OpenAIResponsesModelClient(ModelClient):
+    """Keep reasoning only while the input history references its tool call."""
+
     RESPONSE_USAGE_KEYS = ["prompt_tokens", "completion_tokens", "total_tokens", "cost", "model"]
 
     def __init__(self, config: dict[str, Any], **kwargs: Any) -> None:
