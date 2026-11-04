@@ -71,10 +71,13 @@
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.61.1",
-    "vitest": "^3.2.6",
-    "zod": "^3.25.0"
+    "vitest": "^4.1.12",
+    "zod": "^4.6.6"
   },
   "overrides": {
-    "esbuild": ">=0.28.1"
+    "esbuild": ">=0.28.1",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    }
   }
 }

@@ -18,6 +18,10 @@ dependencies = [
 [dependency-groups]
 dev = ["pytest>=8.3,<10", "ruff>=0.9,<1", "pyright>=1.1.390"]
 
+[tool.uv]
+# google-adk 2.13.0 caps opentelemetry at <=1.44; 1.45.1 fixes GHSA-xcq7-p3pf-p88h. Remove when google-adk lifts the cap.
+override-dependencies = ["opentelemetry-api>=1.45.1", "opentelemetry-sdk>=1.45.1"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

@@ -67,7 +67,7 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.61.1",
-    "vitest": "^3.2.6"
+    "vitest": "^4.1.12"
   },
   "overrides": {
     "tar": "^7.5.16",
@@ -77,6 +77,14 @@
     "@opentelemetry/core": "2.8.0",
     "@opentelemetry/resources": "2.8.0",
     "@opentelemetry/sdk-metrics": "2.8.0",
-    "@opentelemetry/sdk-trace-base": "2.8.0"
+    "@opentelemetry/sdk-trace-base": "2.8.0",
+    "mariadb": "3.5.4",
+    "mysql2": "3.24.6",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    },
+    "@ts-morph/common": {
+      "minimatch": "^11.0.1"
+    }
   }
 }
