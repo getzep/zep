@@ -34,4 +34,17 @@ describe("banking tools", () => {
     expect(result.permitted).toBe(true);
     expect((tools.calls[0].arguments.packages as unknown[])[0]).toEqual(row.comparison_inputs[0]);
   });
+
+  it("returns a refused comparison instead of the retained allocation", () => {
+    const row = golden.cases[0];
+    const caseData = makeCase(row.seed);
+    const tools = new BankingTools(caseData);
+    expect((tools.compare_packages(row.comparison_inputs) as { permitted: boolean }).permitted).toBe(true);
+    const first = caseData.savings[0];
+    const refusal = tools.compare_packages([
+      ...row.comparison_inputs.slice(0, caseData.savings.length),
+      { account_id: first.account_id, checking_account_id: "not-a-checking-account", card_id: null },
+    ]) as { permitted: boolean };
+    expect(refusal.permitted).toBe(false);
+  });
 });

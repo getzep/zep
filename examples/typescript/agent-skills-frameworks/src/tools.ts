@@ -1,12 +1,25 @@
+import { Decimal } from "decimal.js";
 import { z } from "zod";
 import {
   calculate,
+  compareRank,
   comparePackages,
   quoteInterest,
+  type Allocation,
   type Case,
   type Database,
   type Selection,
 } from "./banking.js";
+
+function allocationRank(allocation: Allocation): Decimal[] {
+  return [
+    new Decimal(allocation.total_annual_bonus),
+    ...allocation.quotes.flatMap((quote) => [
+      new Decimal(quote.card_bonus_percent),
+      new Decimal(quote.checking_bonus_percent),
+    ]),
+  ];
+}
 
 export class ToolError extends Error {}
 
@@ -109,8 +122,9 @@ export class BankingTools {
     const args = { packages: packages.map((item) => ({ ...item })) };
     if (this.locked) return this.record("compare_packages", args, { permitted: false, reason: "The first saved credit has locked the allocation." });
     const result = comparePackages(this.caseData, packages);
-    if (result.permitted && (!this.best?.permitted || Number(result.total_annual_bonus) > Number(this.best.total_annual_bonus))) this.best = result;
-    return this.record("compare_packages", args, this.best ?? result);
+    if (!result.permitted) return this.record("compare_packages", args, result);
+    if (!this.best?.permitted || compareRank(allocationRank(result), allocationRank(this.best)) > 0) this.best = result;
+    return this.record("compare_packages", args, this.best);
   }
   private selected(account_id: string): Selection | null {
     if (!this.best?.permitted) return null;
