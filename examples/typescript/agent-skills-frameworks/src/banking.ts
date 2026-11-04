@@ -456,7 +456,12 @@ export function calculate(expression: string): string {
     } else {
       const op = expectValue && (token === "+" || token === "-") ? `u${token}` : token;
       const precedence = (value: string) => value.startsWith("u") ? 3 : value === "*" || value === "/" ? 2 : 1;
-      while (operators.length && operators.at(-1) !== "(" && precedence(operators.at(-1)!) >= precedence(op)) output.push(operators.pop()!);
+      while (
+        operators.length
+        && operators.at(-1) !== "("
+        && !(op.startsWith("u") && operators.at(-1)!.startsWith("u"))
+        && precedence(operators.at(-1)!) >= precedence(op)
+      ) output.push(operators.pop()!);
       operators.push(op);
       expectValue = true;
     }

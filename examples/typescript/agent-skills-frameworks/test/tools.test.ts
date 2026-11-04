@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { makeCase, score } from "../src/banking.js";
+import { calculate, makeCase, score } from "../src/banking.js";
 import { BankingTools, ToolError, invokeBankingTool } from "../src/tools.js";
 
 const golden = JSON.parse(readFileSync(new URL("./golden/banking.json", import.meta.url), "utf8"));
@@ -46,5 +46,16 @@ describe("banking tools", () => {
       { account_id: first.account_id, checking_account_id: "not-a-checking-account", card_id: null },
     ]) as { permitted: boolean };
     expect(refusal.permitted).toBe(false);
+  });
+
+  it("matches Python arithmetic for consecutive unary signs", () => {
+    expect(["--2", "-(-2)", "1+-2", "2*-3", "-2*3", "2-+1"].map(calculate)).toEqual([
+      "2.00",
+      "2.00",
+      "-1.00",
+      "-6.00",
+      "-6.00",
+      "1.00",
+    ]);
   });
 });
