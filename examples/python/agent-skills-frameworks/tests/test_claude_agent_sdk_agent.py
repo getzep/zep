@@ -81,6 +81,33 @@ def test_claude_hooks_and_mcp_tool_expose_tool_error() -> None:
     assert trace.events[1][2:] == ("read_document", "call-1")
 
 
+def test_post_tool_use_unwraps_success_mcp_content() -> None:
+    trace = RecordingTrace()
+    hooks = TraceHooks(trace)  # type: ignore[arg-type]
+    asyncio.run(
+        hooks.post_tool_use(
+            {
+                "tool_name": "mcp__banking__compare_packages",
+                "tool_response": {
+                    "content": [
+                        {"type": "text", "text": '{"permitted": true}'},
+                        {"type": "text", "text": '{"total_annual_bonus": 0}'},
+                    ]
+                },
+                "tool_use_id": "call-2",
+            }
+        )
+    )
+    assert trace.events == [
+        (
+            "tool_result",
+            '{"permitted": true}\n{"total_annual_bonus": 0}',
+            "compare_packages",
+            "call-2",
+        )
+    ]
+
+
 def test_compare_packages_uses_typed_schema_and_validates_arguments() -> None:
     tools = build_tools(BankingTools(make_case(10134), []))
     compare = next(item for item in tools if item.name == "compare_packages")

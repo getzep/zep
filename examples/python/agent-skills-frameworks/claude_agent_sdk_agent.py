@@ -54,12 +54,15 @@ def _argument_model(method: Any) -> type[BaseModel]:
 
 
 def _tool_result(value: Any) -> str:
-    if isinstance(value, dict) and value.get("is_error"):
-        content = value.get("content", [])
-        if isinstance(content, list):
-            return "\n".join(
-                str(item["text"]) for item in content if isinstance(item, dict) and "text" in item
-            )
+    content = value.get("content") if isinstance(value, dict) else value
+    if isinstance(content, list):
+        text_blocks = [
+            str(item["text"])
+            for item in content
+            if isinstance(item, dict) and isinstance(item.get("text"), str)
+        ]
+        if text_blocks:
+            return "\n".join(text_blocks)
     model_dump = getattr(value, "model_dump", None)
     if callable(model_dump):
         value = model_dump(mode="json")
