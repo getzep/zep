@@ -1,4 +1,8 @@
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { addHookEventCount, writeHookEventCount } from "../agent/eve-event-count.js";
 import { mapEveEvent } from "../agent/hooks/trace.js";
 
 describe("Eve event mapping", () => {
@@ -21,5 +25,19 @@ describe("Eve event mapping", () => {
       type: "content.completed",
       data: { kind: "text", value: "complete" },
     })).toEqual({ eventType: "decision", content: "complete" });
+  });
+
+  it("adds hook event counts from the episode file to the recorder", () => {
+    const workdir = mkdtempSync(join(tmpdir(), "eve-event-count-"));
+    const path = join(workdir, "trace-event-count.txt");
+    const recorder = { eventCount: 1 };
+    try {
+      writeHookEventCount(path, 4);
+      addHookEventCount(recorder, path);
+      expect(readFileSync(path, "utf8")).toBe("4\n");
+      expect(recorder.eventCount).toBe(5);
+    } finally {
+      rmSync(workdir, { recursive: true, force: true });
+    }
   });
 });

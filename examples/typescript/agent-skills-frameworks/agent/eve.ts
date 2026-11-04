@@ -10,8 +10,9 @@ import { BankingTools } from "../src/tools.js";
 import type { EpisodeResult } from "../src/episode.js";
 import type { TraceRecorder } from "../src/zep-skills.js";
 import { SYSTEM, userPrompt } from "../src/prompts.js";
+import { addHookEventCount } from "./eve-event-count.js";
 
-type EveRecorder = Pick<TraceRecorder, "append">;
+type EveRecorder = Pick<TraceRecorder, "append" | "eventCount" | "traceUuid">;
 
 async function freePort() {
   const server = createServer();
@@ -49,8 +50,9 @@ export async function runEpisode(
   const packageDir = process.cwd();
   const workdir = mkdtempSync(join(tmpdir(), "zep-banking-eve-"));
   const output = join(workdir, "state.json");
+  const eventCountPath = join(workdir, "trace-event-count.txt");
   const input = join(workdir, "input.json");
-  const traceUuid = (recorder as TraceRecorder).traceUuid;
+  const traceUuid = recorder.traceUuid;
   const agentUuid = process.env.BANKING_AGENT_UUID;
   const ledger = process.env.BANKING_LEDGER_PATH;
   if (!traceUuid || !agentUuid || !ledger) throw new Error("The Eve adapter needs an open Trace.");
@@ -65,6 +67,7 @@ export async function runEpisode(
     writeFileSync(join(workdir, "agent", "instructions.md"), SYSTEM.replace("{catalog}", JSON.stringify(skills)));
     writeFileSync(input, JSON.stringify({ case: caseData, skills }));
     writeFileSync(output, JSON.stringify({ calls: [], database: { credits: [], reports: [] } }));
+    writeFileSync(eventCountPath, "0\n");
 
     const port = await freePort();
     const packageJson = JSON.parse(readFileSync(join(packageDir, "node_modules/eve/package.json"), "utf8")) as { bin: string | Record<string, string> };
@@ -77,6 +80,7 @@ export async function runEpisode(
         BANKING_EFFORT: effort,
         BANKING_INPUT_PATH: input,
         BANKING_STATE_PATH: output,
+        BANKING_EVENT_COUNT_PATH: eventCountPath,
         BANKING_AGENT_UUID: agentUuid,
         BANKING_TRACE_UUID: traceUuid,
         BANKING_LEDGER_PATH: ledger,
@@ -109,6 +113,7 @@ export async function runEpisode(
     tools.calls.push(...state.calls);
     tools.database.credits.push(...state.database.credits);
     tools.database.reports.push(...state.database.reports);
+    addHookEventCount(recorder, eventCountPath);
     return { finalAnswer: result.reply ?? "", tokens, tools };
   } finally {
     if (child && child.exitCode === null) {

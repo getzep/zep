@@ -1,5 +1,6 @@
 import { defineHook } from "eve/hooks";
 import { TraceRecorder, ZepSkills } from "../../src/zep-skills.js";
+import { writeHookEventCount } from "../eve-event-count.js";
 
 let recorder: TraceRecorder | undefined;
 const names = new Map<string, string>();
@@ -29,11 +30,21 @@ function getRecorder() {
   const agent = process.env.BANKING_AGENT_UUID;
   const trace = process.env.BANKING_TRACE_UUID;
   const ledger = process.env.BANKING_LEDGER_PATH;
-  if (!agent || !trace || !ledger) throw new Error("The Eve Trace hook is missing its run identifiers.");
+  if (!agent || !trace || !ledger || !process.env.BANKING_EVENT_COUNT_PATH) {
+    throw new Error("The Eve Trace hook is missing its run identifiers.");
+  }
   const zep = new ZepSkills(ledger, "eve");
   recorder = new TraceRecorder(zep, agent);
   recorder.traceUuid = trace;
   return recorder;
+}
+
+async function recordEvent(event: NonNullable<ReturnType<typeof mapEveEvent>>) {
+  const eventCountPath = process.env.BANKING_EVENT_COUNT_PATH;
+  if (!eventCountPath) throw new Error("The Eve Trace hook is missing its event count path.");
+  const activeRecorder = getRecorder();
+  await activeRecorder.append(event.eventType, event.content, event.toolName, event.toolCallId);
+  writeHookEventCount(eventCountPath, activeRecorder.eventCount);
 }
 
 export default defineHook({
@@ -43,19 +54,19 @@ export default defineHook({
       if (!mapped || mapped.eventType !== "tool_call") return;
       if (!mapped.toolName) return;
       names.set(mapped.toolCallId, mapped.toolName);
-      await getRecorder().append(mapped.eventType, mapped.content, mapped.toolName, mapped.toolCallId);
+      await recordEvent(mapped);
     },
     async "call.settled"(event) {
       const name = names.get(event.data.callId);
       if (!name) return;
       const mapped = mapEveEvent(event, name);
       if (!mapped) return;
-      await getRecorder().append(mapped.eventType, mapped.content, mapped.toolName, mapped.toolCallId);
+      await recordEvent(mapped);
       names.delete(event.data.callId);
     },
     async "content.completed"(event) {
       const mapped = mapEveEvent(event);
-      if (mapped) await getRecorder().append(mapped.eventType, mapped.content);
+      if (mapped) await recordEvent(mapped);
     },
   },
 });

@@ -16,6 +16,21 @@ export type CodexMapping =
   | { kind: "tokens"; tokens: number }
   | { kind: "failure"; message: string };
 
+export function createCodexProviderConfig(baseUrl = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1") {
+  return {
+    model_provider: "openai_http",
+    model_providers: {
+      openai_http: {
+        name: "OpenAI",
+        base_url: baseUrl,
+        env_key: "OPENAI_API_KEY",
+        wire_api: "responses",
+        supports_websockets: false,
+      },
+    },
+  };
+}
+
 export function mapCodexEvent(event: ThreadEvent): CodexMapping | null {
   if (event.type === "turn.failed") return { kind: "failure", message: event.error.message };
   if (event.type === "error") return { kind: "failure", message: event.message };
@@ -61,13 +76,13 @@ export async function runEpisode(
   const packageDir = process.cwd();
   const codex = new Codex({
     apiKey: process.env.OPENAI_API_KEY,
-    baseUrl: process.env.OPENAI_BASE_URL,
     env: {
       ...process.env as Record<string, string>,
       BANKING_INPUT_PATH: inputPath,
       BANKING_STATE_PATH: statePath,
     },
     config: {
+      ...createCodexProviderConfig(),
       developer_instructions: SYSTEM.replace("{catalog}", JSON.stringify(skills)),
       mcp_servers: {
         banking: {
@@ -80,7 +95,7 @@ export async function runEpisode(
       features: {
         shell_tool: false,
         code_mode: false,
-        code_mode_host: false,
+        code_mode_host: true,
         code_mode_interrupt: false,
         code_mode_only: false,
         code_mode_only_strict_3p_tools: false,

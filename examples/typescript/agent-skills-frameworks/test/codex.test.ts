@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@openai/codex-sdk";
-import { mapCodexEvent } from "../agent/codex.js";
+import { createCodexProviderConfig, mapCodexEvent } from "../agent/codex.js";
 
 describe("Codex event mapping", () => {
   it("records bare MCP tool names, errors, decisions, and token totals", () => {
@@ -34,5 +34,22 @@ describe("Codex event mapping", () => {
       type: "item.completed",
       item: { type: "command_execution", id: "cmd", command: "echo unsafe", aggregated_output: "", status: "completed" },
     } as ThreadEvent)).toMatchObject({ kind: "failure", message: expect.stringContaining("command_execution") });
+  });
+});
+
+describe("Codex provider configuration", () => {
+  it("selects the HTTP Responses provider", () => {
+    expect(createCodexProviderConfig("http://127.0.0.1:14100/openai/v1")).toEqual({
+      model_provider: "openai_http",
+      model_providers: {
+        openai_http: {
+          name: "OpenAI",
+          base_url: "http://127.0.0.1:14100/openai/v1",
+          env_key: "OPENAI_API_KEY",
+          wire_api: "responses",
+          supports_websockets: false,
+        },
+      },
+    });
   });
 });

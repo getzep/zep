@@ -66,7 +66,7 @@ function help() {
   return `Usage: npm run run -- run --framework <mastra|codex|eve> --output <dir> [options]
 
 Options:
-  --teacher <model>          Teacher model (default: claude-opus-5-5)
+  --teacher <model>          Teacher model (default: claude-opus-5-5; Codex: gpt-6-astra)
   --teacher-effort <effort>  Teacher reasoning effort (default: max; Codex: ultra)
   --student <model>          Student model (default: claude-haiku-5-5; Codex: gpt-6-luna)
   --effort <effort>          Student reasoning effort (default: none; Codex: low)
