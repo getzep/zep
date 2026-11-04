@@ -213,7 +213,7 @@ class EvaluationRunner:
                 {"role": "system", "content": RESPONSE_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            temperature=self.config.models.response_temperature,
+            **self.config.models.generation_parameters(),
         )
 
         return response.choices[0].message.content or ""
@@ -233,7 +233,7 @@ class EvaluationRunner:
                 {"role": "user", "content": grader_prompt},
             ],
             response_format=Grade,
-            temperature=self.config.models.grader_temperature,
+            **self.config.models.generation_parameters(grader=True),
         )
 
         result = grader_response.choices[0].message.parsed
@@ -322,7 +322,7 @@ Please evaluate the context completeness:
                 {"role": "user", "content": input_text},
             ],
             response_format=CompletenessGrade,
-            temperature=self.config.models.grader_temperature,
+            **self.config.models.generation_parameters(grader=True),
         )
 
         completeness_grade = (

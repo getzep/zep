@@ -22,8 +22,8 @@ from zep_cloud import EntityEdge, EntityNode, Message
 from zep_cloud.client import AsyncZep
 
 # Configuration Constants
-RESPONSE_MODEL = "gpt-4o"
-GRADER_MODEL = "gpt-4o"
+RESPONSE_MODEL = "gpt-6-luna"
+GRADER_MODEL = "gpt-6-luna"
 DATA_PATH = "data"
 
 # Context template for search results
@@ -277,7 +277,7 @@ class LongMemEvalRunner:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0,
+            reasoning_effort="low",
         )
         return response.choices[0].message.content or ""
 
@@ -303,7 +303,7 @@ class LongMemEvalRunner:
                 {"role": "user", "content": prompt},
             ],
             response_format=Grade,
-            temperature=0,
+            reasoning_effort="low",
         )
 
         result = completion.choices[0].message.parsed
