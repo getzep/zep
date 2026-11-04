@@ -1,0 +1,674 @@
+{
+  "calendar": {
+    "create_event": {
+      "name": "create_event",
+      "description": "Create a new event in the specified calendar following Google Calendar API v3 specification.\n        \n        Creates a new event with full Google Calendar API v3 compatibility. Supports all standard event properties\n        including attendees, attachments, conference data, reminders, and event type-specific properties.\n        \n        Required Properties:\n          - calendarId: Calendar identifier where event will be created\n          - end: Event end time (dateTime/date object with optional timeZone)\n          - start: Event start time (dateTime/date object with optional timeZone)\n        \n        Optional Properties (Google Calendar API v3 compliant):\n          - attachments: File attachments for the event\n          - attendees: List of event attendees with email, displayName, responseStatus\n          - colorId: Color ID of the event (1-11 for event colors)\n          - conferenceData: Conference/meeting data for video calls\n          - description: Event description text\n          - eventType: Event type (default, outOfOffice, focusTime, workingLocation)\n          - extendedProperties: Private and shared extended properties\n          - focusTimeProperties: Focus time properties for focusTime events\n          - guestsCanInviteOthers: Whether guests can invite others\n          - guestsCanModify: Whether guests can modify the event\n          - guestsCanSeeOtherGuests: Whether guests can see other guests\n          - hangoutLink: Hangout video call link\n          - iCalUID: iCalendar UID for external integration\n          - location: Geographic location of the event\n          - locked: Whether the event is locked against changes\n          - originalStartTime: Original start time for recurring event instances (must match start values)\n          - outOfOfficeProperties: Out of office properties for outOfOffice events\n          - privateCopy: Whether this is a private copy of the event\n          - recurrence: List of RRULE, EXRULE, RDATE and EXDATE lines\n          - reminders: Reminder settings with useDefault and overrides\n          - sequence: iCalendar sequence number\n          - source: Source from which the event was created\n          - status: Event status (confirmed, tentative, cancelled)\n          - summary: Event title/summary\n          - transparency: Whether event blocks time (opaque, transparent)\n          - visibility: Event visibility (default, public, private, confidential)\n          - workingLocationProperties: Working location properties for workingLocation events\n        \n        Query Parameters:\n          - conferenceDataVersion: Conference data version supported (0-1)\n          - maxAttendees: Maximum number of attendees to include in response\n          - sendUpdates: Guests who should receive notifications (all, externalOnly, none)\n          - supportsAttachments: Whether client supports event attachments\n        \n        Response Structure:\n          - Returns created event with complete Google Calendar API v3 format\n          - Includes generated event ID, timestamps, and all provided properties\n          - Attendees list may be limited by maxAttendees parameter\n        \n        Status Codes:\n          - 201: Created - Event created successfully\n          - 400: Bad Request - Invalid event data or missing required fields\n          - 404: Not Found - Calendar not found\n          - 500: Internal Server Error",
+      "inputSchema": {
+        "properties": {
+          "attachments": {
+            "description": "File attachments for the event",
+            "items": {
+              "properties": {
+                "fileUrl": {
+                  "description": "URL of attached file",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "fileUrl"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "attendees": {
+            "description": "List of event attendees",
+            "items": {
+              "properties": {
+                "additionalGuests": {
+                  "description": "Number of additional guests",
+                  "type": "integer"
+                },
+                "comment": {
+                  "description": "Attendee comment",
+                  "type": "string"
+                },
+                "displayName": {
+                  "description": "Attendee display name",
+                  "type": "string"
+                },
+                "email": {
+                  "description": "Attendee email address",
+                  "type": "string"
+                },
+                "optional": {
+                  "default": false,
+                  "description": "Whether attendee is optional",
+                  "type": "boolean"
+                },
+                "resource": {
+                  "default": false,
+                  "description": "Whether attendee is a resource",
+                  "type": "boolean"
+                },
+                "responseStatus": {
+                  "description": "Response status: needsAction, declined, tentative, accepted",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "email"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "birthdayProperties": {
+            "description": "Birthday properties for birthday events",
+            "properties": {
+              "type": {
+                "description": "Type of birthday event, must be 'birthday'. Cannot be changed after event creation.",
+                "enum": [
+                  "birthday"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          },
+          "calendarId": {
+            "description": "Calendar identifier where event will be created",
+            "type": "string"
+          },
+          "colorId": {
+            "description": "Color ID of the event (1-11 for event colors)",
+            "type": "string"
+          },
+          "conferenceData": {
+            "description": "Conference/meeting data for video calls",
+            "properties": {
+              "conferenceId": {
+                "description": "Conference ID",
+                "type": "string"
+              },
+              "conferenceSolution": {
+                "description": "Conference solution details",
+                "properties": {
+                  "iconUri": {
+                    "description": "Icon URI for the conference solution",
+                    "type": "string"
+                  },
+                  "key": {
+                    "description": "Conference solution key",
+                    "properties": {
+                      "type": {
+                        "description": "Conference solution type",
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "name": {
+                    "description": "Name of the conference solution",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "createRequest": {
+                "description": "Conference create request details",
+                "properties": {
+                  "conferenceSolutionKey": {
+                    "description": "Conference solution for the create request",
+                    "properties": {
+                      "type": {
+                        "description": "Conference solution key type",
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "requestId": {
+                    "description": "Request ID for creating the conference",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "entryPoints": {
+                "description": "Conference entry points",
+                "items": {
+                  "properties": {
+                    "accessCode": {
+                      "description": "Access code for the conference",
+                      "type": "string"
+                    },
+                    "entryPointType": {
+                      "description": "Type of entry point",
+                      "type": "string"
+                    },
+                    "label": {
+                      "description": "Label for the entry point",
+                      "type": "string"
+                    },
+                    "meetingCode": {
+                      "description": "Meeting code for the conference",
+                      "type": "string"
+                    },
+                    "passcode": {
+                      "description": "Passcode for the conference",
+                      "type": "string"
+                    },
+                    "password": {
+                      "description": "Password for the conference",
+                      "type": "string"
+                    },
+                    "pin": {
+                      "description": "PIN for the conference",
+                      "type": "string"
+                    },
+                    "uri": {
+                      "description": "URI for the conference entry point",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "notes": {
+                "description": "Conference notes",
+                "type": "string"
+              },
+              "signature": {
+                "description": "Conference signature",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "conferenceDataVersion": {
+            "description": "Conference data version supported (0-1)",
+            "maximum": 1,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": {
+            "description": "Event description text",
+            "type": "string"
+          },
+          "end": {
+            "description": "Event end time (required)",
+            "properties": {
+              "date": {
+                "description": "Date in YYYY-MM-DD format for all-day events",
+                "type": "string"
+              },
+              "dateTime": {
+                "description": "RFC3339 timestamp with timezone for timed events",
+                "type": "string"
+              },
+              "timeZone": {
+                "description": "IANA timezone identifier",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "eventType": {
+            "description": "Event type: default, birthday, outOfOffice, focusTime, workingLocation",
+            "enum": [
+              "default",
+              "birthday",
+              "outOfOffice",
+              "focusTime",
+              "workingLocation"
+            ],
+            "type": "string"
+          },
+          "extendedProperties": {
+            "description": "Extended properties",
+            "properties": {
+              "private": {
+                "description": "Private extended properties",
+                "type": "object"
+              },
+              "shared": {
+                "description": "Shared extended properties",
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "focusTimeProperties": {
+            "description": "Focus time properties for focusTime events",
+            "properties": {
+              "autoDeclineMode": {
+                "description": "Whether to decline meeting invitations which overlap Focus Time events",
+                "enum": [
+                  "declineNone",
+                  "declineAllConflictingInvitations",
+                  "declineOnlyNewConflictingInvitations"
+                ],
+                "type": "string"
+              },
+              "chatStatus": {
+                "description": "The status to mark the user in Chat and related products",
+                "enum": [
+                  "available",
+                  "doNotDisturb"
+                ],
+                "type": "string"
+              },
+              "declineMessage": {
+                "description": "Response message to set if an existing event or new invitation is automatically declined by Calendar",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "guestsCanInviteOthers": {
+            "default": true,
+            "description": "Whether guests can invite others",
+            "type": "boolean"
+          },
+          "guestsCanModify": {
+            "default": false,
+            "description": "Whether guests can modify the event",
+            "type": "boolean"
+          },
+          "guestsCanSeeOtherGuests": {
+            "default": true,
+            "description": "Whether guests can see other guests",
+            "type": "boolean"
+          },
+          "iCalUID": {
+            "description": "iCalendar UID for external integration",
+            "type": "string"
+          },
+          "location": {
+            "description": "Geographic location of the event",
+            "type": "string"
+          },
+          "maxAttendees": {
+            "description": "Maximum number of attendees to include in response",
+            "type": "integer"
+          },
+          "originalStartTime": {
+            "description": "Original start time for recurring event instances (must match start field values)",
+            "properties": {
+              "date": {
+                "description": "Date in YYYY-MM-DD format for all-day events",
+                "type": "string"
+              },
+              "dateTime": {
+                "description": "RFC3339 timestamp with timezone for timed events",
+                "type": "string"
+              },
+              "timeZone": {
+                "description": "IANA timezone identifier",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "outOfOfficeProperties": {
+            "description": "Out of office properties for outOfOffice events",
+            "properties": {
+              "autoDeclineMode": {
+                "description": "Whether to decline meeting invitations which overlap Focus Time events",
+                "enum": [
+                  "declineNone",
+                  "declineAllConflictingInvitations",
+                  "declineOnlyNewConflictingInvitations"
+                ],
+                "type": "string"
+              },
+              "declineMessage": {
+                "description": "Response message to set if an existing event or new invitation is automatically declined by Calendar",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "recurrence": {
+            "description": "List of RRULE, EXRULE, RDATE and EXDATE lines for recurring events following RFC 5545 (iCalendar) standard.\n                    \n                    Supported Recurrence Types:\n                    \n                    RRULE (Recurrence Rule) - Defines the pattern for recurring events:\n                    \u2022 FREQ: Frequency (DAILY, WEEKLY, MONTHLY, YEARLY)\n                    \u2022 INTERVAL: Interval between occurrences (e.g., INTERVAL=2 for every 2 weeks)\n                    \u2022 COUNT: Maximum number of occurrences\n                    \u2022 UNTIL: End date (format: YYYYMMDDTHHMMSSZ)\n                    \u2022 BYDAY: Days of week (MO, TU, WE, TH, FR, SA, SU)\n                    \u2022 BYMONTHDAY: Days of month (1-31)\n                    \u2022 BYMONTH: Months (1-12)\n                    \u2022 BYSETPOS: Position in set (e.g., 1st, 2nd, -1 for last)\n                    \n                    EXDATE (Exception Dates) - Exclude specific occurrences:\n                    \u2022 Format: EXDATE:YYYYMMDDTHHMMSSZ or EXDATE;VALUE=DATE:YYYYMMDD\n                    \u2022 Use timezone format for timed events, date format for all-day events\n                    \n                    RDATE (Recurrence Dates) - Add specific occurrences:\n                    \u2022 Format: RDATE:YYYYMMDDTHHMMSSZ or RDATE;VALUE=DATE:YYYYMMDD\n                    \n                    Common Examples:\n                    \u2022 Daily: [\"RRULE:FREQ=DAILY\"]\n                    \u2022 Every weekday: [\"RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR\"]\n                    \u2022 Weekly on specific days: [\"RRULE:FREQ=WEEKLY;BYDAY=TU,TH\"]\n                    \u2022 Monthly on specific date: [\"RRULE:FREQ=MONTHLY;BYMONTHDAY=15\"]\n                    \u2022 First Monday of month: [\"RRULE:FREQ=MONTHLY;BYDAY=1MO\"]\n                    \u2022 Last Friday of month: [\"RRULE:FREQ=MONTHLY;BYDAY=-1FR\"]\n                    \u2022 Yearly: [\"RRULE:FREQ=YEARLY\"]\n                    \u2022 Every 2 weeks: [\"RRULE:FREQ=WEEKLY;INTERVAL=2\"]\n                    \u2022 10 times only: [\"RRULE:FREQ=WEEKLY;COUNT=10\"]\n                    \u2022 Until specific date: [\"RRULE:FREQ=DAILY;UNTIL=20231231T235959Z\"]\n                    \n                    Complex Examples:\n                    \u2022 Weekly with exceptions: [\"RRULE:FREQ=WEEKLY;BYDAY=TU,TH\", \"EXDATE:20231024T100000Z\"]\n                    \u2022 Monthly with additional dates: [\"RRULE:FREQ=MONTHLY;BYMONTHDAY=1\", \"RDATE:20231215T100000Z\"]\n                    \u2022 Every other month on 2nd Tuesday: [\"RRULE:FREQ=MONTHLY;INTERVAL=2;BYDAY=2TU\"]\n                    \n                    All-Day Event Examples:\n                    \u2022 Daily all-day: [\"RRULE:FREQ=DAILY\"]\n                    \u2022 Weekly all-day with exceptions: [\"RRULE:FREQ=WEEKLY;BYDAY=MO\", \"EXDATE;VALUE=DATE:20231030\"]\n                    \n                    Note: For all-day events, use VALUE=DATE format for EXDATE/RDATE. For timed events, use full timestamp format.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "reminders": {
+            "description": "Reminder settings",
+            "properties": {
+              "overrides": {
+                "description": "Custom reminder overrides",
+                "items": {
+                  "properties": {
+                    "method": {
+                      "description": "Reminder method",
+                      "enum": [
+                        "email",
+                        "popup"
+                      ],
+                      "type": "string"
+                    },
+                    "minutes": {
+                      "description": "Minutes before event",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "method",
+                    "minutes"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "useDefault": {
+                "description": "Whether to use default reminders",
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "sendUpdates": {
+            "description": "Guests who should receive notifications: all, externalOnly, none",
+            "enum": [
+              "all",
+              "externalOnly",
+              "none"
+            ],
+            "type": "string"
+          },
+          "sequence": {
+            "description": "iCalendar sequence number",
+            "type": "integer"
+          },
+          "source": {
+            "description": "Source from which the event was created",
+            "properties": {
+              "title": {
+                "description": "Source title",
+                "type": "string"
+              },
+              "url": {
+                "description": "Source URL",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "start": {
+            "description": "Event start time (required)",
+            "properties": {
+              "date": {
+                "description": "Date in YYYY-MM-DD format for all-day events",
+                "type": "string"
+              },
+              "dateTime": {
+                "description": "RFC3339 timestamp with timezone for timed events",
+                "type": "string"
+              },
+              "timeZone": {
+                "description": "IANA timezone identifier",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "status": {
+            "description": "Event status: confirmed, tentative, cancelled",
+            "enum": [
+              "confirmed",
+              "tentative",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "summary": {
+            "description": "Event title/summary",
+            "type": "string"
+          },
+          "supportsAttachments": {
+            "default": false,
+            "description": "Whether client supports event attachments",
+            "type": "boolean"
+          },
+          "transparency": {
+            "description": "Whether event blocks time: opaque, transparent",
+            "enum": [
+              "opaque",
+              "transparent"
+            ],
+            "type": "string"
+          },
+          "visibility": {
+            "description": "Event visibility: default, public, private, confidential",
+            "enum": [
+              "default",
+              "public",
+              "private",
+              "confidential"
+            ],
+            "type": "string"
+          },
+          "workingLocationProperties": {
+            "description": "Working location properties for workingLocation events",
+            "properties": {
+              "customLocation": {
+                "description": "If present, specifies that the user is working from a custom location",
+                "properties": {
+                  "label": {
+                    "description": "An optional extra label for additional information",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "homeOffice": {
+                "additionalProperties": true,
+                "description": "If present, specifies that the user is working at home",
+                "properties": {
+                  "address_1": {
+                    "description": "Home Office address 1",
+                    "type": "string"
+                  },
+                  "address_2": {
+                    "description": "Home Office address 2",
+                    "type": "string"
+                  },
+                  "city": {
+                    "description": "City located",
+                    "type": "string"
+                  },
+                  "postal_code": {
+                    "description": "Postal code of the home office",
+                    "type": "string"
+                  },
+                  "state": {
+                    "description": "State of the home office",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "officeLocation": {
+                "description": "If present, specifies that the user is working from an office",
+                "properties": {
+                  "buildingId": {
+                    "description": "An optional building identifier. This should reference a building ID in the organization's Resources database",
+                    "type": "string"
+                  },
+                  "deskId": {
+                    "description": "An optional desk identifier",
+                    "type": "string"
+                  },
+                  "floorId": {
+                    "description": "An optional floor identifier",
+                    "type": "string"
+                  },
+                  "floorSectionId": {
+                    "description": "An optional floor section identifier",
+                    "type": "string"
+                  },
+                  "label": {
+                    "description": "The office name that's displayed in Calendar Web and Mobile clients. We recommend you reference a building name in the organization's Resources database",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": {
+                "description": "Type of the working location. Required when adding working location properties",
+                "enum": [
+                  "homeOffice",
+                  "officeLocation",
+                  "customLocation"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "calendarId",
+          "end",
+          "start"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "email": {
+    "send_message": {
+      "name": "send_message",
+      "description": "Send an email from this user. Provide exactly ONE message source: (1) 'raw' (RFC 2822 base64url), (2) 'payload' (Email-like parts with non-empty headers), or ",
+      "inputSchema": {
+        "oneOf": [
+          {
+            "required": [
+              "raw"
+            ]
+          },
+          {
+            "required": [
+              "payload"
+            ]
+          }
+        ],
+        "properties": {
+          "historyId": {
+            "description": "The ID of the last history record that modified this message",
+            "type": "string"
+          },
+          "internalDate": {
+            "description": "The internal date of the message in UNIX ms timestamp format",
+            "type": "string"
+          },
+          "labelIds": {
+            "default": [],
+            "description": "List of IDs of labels to apply to this message",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "payload": {
+            "description": "The parsed email structure in the message parts",
+            "properties": {
+              "body": {
+                "properties": {
+                  "attachmentId": {
+                    "description": "The ID of the attachment",
+                    "type": "string"
+                  },
+                  "data": {
+                    "description": "The body data of the message part, required",
+                    "type": "string"
+                  },
+                  "size": {
+                    "description": "Size of the body in bytes, must be greater than 0",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "size"
+                ],
+                "type": "object"
+              },
+              "filename": {
+                "description": "The filename of the attachment (if any)",
+                "type": "string"
+              },
+              "headers": {
+                "items": {
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "mimeType": {
+                "description": "The MIME type of the message part",
+                "type": "string"
+              },
+              "partId": {
+                "description": "The MIME part ID",
+                "type": "string"
+              },
+              "parts": {
+                "items": {
+                  "description": "Child message parts (for multipart messages)",
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "raw": {
+            "description": "The entire email message in an RFC 2822 formatted and base64url encoded string",
+            "type": "string"
+          },
+          "sizeEstimate": {
+            "description": "Estimated size of the message in bytes",
+            "type": "integer"
+          },
+          "snippet": {
+            "description": "A short snippet of the message content",
+            "type": "string"
+          },
+          "threadId": {
+            "description": "The ID of the thread the message belongs to",
+            "type": "string"
+          },
+          "userId": {
+            "description": "Specifies the userId by email address or uses me to refer to the currently authenticated user.",
+            "pattern": "^(?:me|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,})$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

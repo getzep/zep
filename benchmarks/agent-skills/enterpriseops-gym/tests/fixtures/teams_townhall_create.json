@@ -1,0 +1,33 @@
+{
+  "audience": "organization",
+  "coOrganizers": [
+    {
+      "id": "test.organizer"
+    }
+  ],
+  "description": {
+    "content": "This sample meeting will review a fictional service update and record next steps.",
+    "contentType": "text"
+  },
+  "displayName": "Sample Service Update",
+  "endDateTime": {
+      "dateTime": "2030-01-15T11:00:00",
+    "timeZone": "UTC"
+  },
+  "invitedAttendees": [
+    {
+      "id": "test.attendee.one"
+    },
+    {
+      "id": "test.attendee.two"
+    },
+    {
+      "id": "test.attendee.three"
+    }
+  ],
+  "isInviteOnly": false,
+  "startDateTime": {
+      "dateTime": "2030-01-15T10:00:00",
+    "timeZone": "UTC"
+  }
+}
