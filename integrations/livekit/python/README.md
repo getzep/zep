@@ -472,7 +472,6 @@ make ci          # Strict CI-style checks
 
 ### Zep Resources
 - 📖 [Zep Documentation](https://help.getzep.com)
-- 💬 [Zep Discord Community](https://discord.gg/W8xaHrqWVc)  
 - 🐛 [GitHub Issues](https://github.com/getzep/zep/issues)
 - 📧 [Email Support](mailto:support@getzep.com)
 
