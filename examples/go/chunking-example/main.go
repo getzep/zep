@@ -49,8 +49,8 @@ func parseArgs(args []string) (Options, error) {
 
 	fs := flag.NewFlagSet("chunking-example", flag.ContinueOnError)
 	fs.Usage = func() {
-		fmt.Fprint(fs.Output(), "Usage: chunking-example <document> [--user-uuid <uuid>] [options]\n\n")
-		fmt.Fprint(fs.Output(), "Chunk a document, contextualize each chunk with OpenAI, and ingest into Zep.\n\n")
+		_, _ = fmt.Fprint(fs.Output(), "Usage: chunking-example <document> [--user-uuid <uuid>] [options]\n\n")
+		_, _ = fmt.Fprint(fs.Output(), "Chunk a document, contextualize each chunk with OpenAI, and ingest into Zep.\n\n")
 		fs.PrintDefaults()
 	}
 	fs.StringVar(&opts.UserUUID, "user-uuid", "", "The UUID of an existing Zep user. The tool creates a user if you do not give one.")
