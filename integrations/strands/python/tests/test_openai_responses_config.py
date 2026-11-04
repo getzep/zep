@@ -33,19 +33,36 @@ async def test_example_formats_low_reasoning_responses_request(
     model = module.build_model()
 
     assert isinstance(model, OpenAIResponsesModel)
-    assert model.stateful is True
+    assert model.stateful is False
     request = model._format_request([])
     assert request["model"] == "gpt-6-luna"
     assert request["reasoning"]["effort"] == "low"
+    assert "reasoning.encrypted_content" in request["include"]
+    assert request["store"] is False
 
 
 @pytest.mark.asyncio
-async def test_stateful_tool_loop_replays_response_ids_without_duplicate_input(
+async def test_stateless_tool_loop_replays_encrypted_reasoning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = load_example(monkeypatch)
     model = module.build_model()
     requests: list[tuple[str, dict[str, Any]]] = []
+    responses_seen: list[str] = []
+    events_seen: list[str] = []
+    capture_response = model._capture_response
+    capture_reasoning_event = model._capture_reasoning_event
+
+    async def record_response(response: Any) -> None:
+        responses_seen.append(type(response).__module__)
+        await capture_response(response)
+
+    def record_event(event: dict[str, Any], pending: list[dict[str, Any]]) -> None:
+        events_seen.append(event.get("type", ""))
+        capture_reasoning_event(event, pending)
+
+    monkeypatch.setattr(model, "_capture_response", record_response)
+    monkeypatch.setattr(model, "_capture_reasoning_event", record_event)
 
     def response(response_id: str, status: str, output: list[dict[str, Any]]) -> dict[str, Any]:
         return {
@@ -62,7 +79,7 @@ async def test_stateful_tool_loop_replays_response_ids_without_duplicate_input(
             "parallel_tool_calls": True,
             "previous_response_id": None,
             "reasoning": {"effort": "low", "summary": None},
-            "store": True,
+            "store": False,
             "temperature": None,
             "text": {"format": {"type": "text"}},
             "tool_choice": "auto",
@@ -89,19 +106,27 @@ async def test_stateful_tool_loop_replays_response_ids_without_duplicate_input(
             sequence += 1
             return item
 
-        if index == 1:
-            reasoning = {"type": "reasoning", "id": "rs_1", "summary": []}
+        if index in (1, 2):
+            call_number = index
+            reasoning = {
+                "type": "reasoning",
+                "id": f"rs_{call_number}",
+                "summary": [],
+                "encrypted_content": f"enc_{call_number}",
+                "status": "completed",
+            }
             call = {
                 "type": "function_call",
-                "id": "fc_1",
-                "call_id": "call_1",
+                "id": f"fc_{call_number}",
+                "call_id": f"call_{call_number}",
                 "name": "dummy_tool",
                 "arguments": "{}",
                 "status": "completed",
             }
             return [
-                event("response.created", response=response("resp_1", "in_progress", [])),
+                event("response.created", response=response(f"resp_{index}", "in_progress", [])),
                 event("response.output_item.added", output_index=0, item=reasoning),
+                event("response.output_item.done", output_index=0, item=reasoning),
                 event(
                     "response.output_item.added",
                     output_index=1,
@@ -109,24 +134,24 @@ async def test_stateful_tool_loop_replays_response_ids_without_duplicate_input(
                 ),
                 event(
                     "response.function_call_arguments.delta",
-                    item_id="fc_1",
+                    item_id=f"fc_{call_number}",
                     output_index=1,
                     delta="{}",
                 ),
                 event(
                     "response.function_call_arguments.done",
-                    item_id="fc_1",
+                    item_id=f"fc_{call_number}",
                     output_index=1,
                     arguments="{}",
                 ),
                 event("response.output_item.done", output_index=1, item=call),
                 event(
                     "response.completed",
-                    response=response("resp_1", "completed", [reasoning, call]),
+                    response=response(f"resp_{index}", "completed", [reasoning, call]),
                 ),
             ]
 
-        text = "done" if index == 2 else "new answer"
+        text = "done" if index == 3 else "done again"
         message = {
             "type": "message",
             "id": f"msg_{index}",
@@ -143,6 +168,7 @@ async def test_stateful_tool_loop_replays_response_ids_without_duplicate_input(
                 content_index=0,
                 delta=text,
             ),
+            event("response.output_item.done", output_index=0, item=message),
             event(
                 "response.completed",
                 response=response(f"resp_{index}", "completed", [message]),
@@ -159,10 +185,19 @@ async def test_stateful_tool_loop_replays_response_ids_without_duplicate_input(
         response_type = (
             httpx2.Response if isinstance(transport, httpx2.AsyncHTTPTransport) else httpx.Response
         )
+        stream_module = httpx2 if isinstance(transport, httpx2.AsyncHTTPTransport) else httpx
+
+        class FakeAsyncByteStream(stream_module.AsyncByteStream):
+            async def __aiter__(self) -> Any:
+                yield stream.encode()
+
+            async def aclose(self) -> None:
+                return
+
         return response_type(
             200,
             headers={"content-type": "text/event-stream"},
-            content=stream.encode(),
+            stream=FakeAsyncByteStream(),
             request=request,
         )
 
@@ -177,31 +212,109 @@ async def test_stateful_tool_loop_replays_response_ids_without_duplicate_input(
     agent = Agent(model=model, tools=[dummy_tool], callback_handler=None)
     await agent.invoke_async("Use the tool.")
 
-    assert len(requests) == 2
+    await agent.invoke_async("A new turn.")
+
+    assert len(requests) == 4
+    assert len(responses_seen) == 4
+    assert any(event.startswith("response.output_item.done") for event in events_seen)
     for url, body in requests:
         assert url.endswith("/responses")
         assert body["reasoning"]["effort"] == "low"
-        assert body["store"] is True
+        assert "reasoning.encrypted_content" in body["include"]
+        assert body["store"] is False
+        assert "previous_response_id" not in body
         assert "temperature" not in body
 
-    second_url, second_body = requests[1]
-    assert second_url.endswith("/responses")
-    assert second_body["previous_response_id"] == "resp_1"
-    assert any(
-        item.get("type") == "function_call_output" and item.get("call_id") == "call_1"
-        for item in second_body["input"]
+    first_turn_follow_up = requests[1][1]["input"]
+    second_tool_follow_up = requests[2][1]["input"]
+    second_turn = requests[3][1]["input"]
+    assert model._reasoning_by_call_id.keys() == {"call_1", "call_2"}
+
+    def assert_reasoning_before_call(
+        input_items: list[dict[str, Any]], reasoning_id: str, encrypted_content: str, call_id: str
+    ) -> None:
+        call_index = next(
+            index
+            for index, item in enumerate(input_items)
+            if item.get("type") == "function_call" and item.get("call_id") == call_id
+        )
+        assert call_index > 0
+        assert input_items[call_index - 1] == {
+            "type": "reasoning",
+            "id": reasoning_id,
+            "summary": [],
+            "encrypted_content": encrypted_content,
+        }
+
+    assert_reasoning_before_call(first_turn_follow_up, "rs_1", "enc_1", "call_1")
+    for input_items in (second_tool_follow_up, second_turn):
+        assert_reasoning_before_call(input_items, "rs_1", "enc_1", "call_1")
+        assert_reasoning_before_call(input_items, "rs_2", "enc_2", "call_2")
+    assert second_turn[-1]["role"] == "user"
+    assert second_turn[-1]["content"][0]["text"] == "A new turn."
+
+
+def test_sse_parser_handles_an_event_split_across_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_example(monkeypatch)
+    event = {
+        "type": "response.output_item.done",
+        "item": {
+            "type": "reasoning",
+            "id": "rs_1",
+            "summary": [],
+            "encrypted_content": "enc_1",
+        },
+    }
+    payload = f"event: {event['type']}\ndata: {json.dumps(event)}\r\n\r\n".encode()
+    split_at = payload.index(b"enc_1") + 2
+
+    buffer, parsed = module._parse_sse_chunk(b"", payload[:split_at])
+    assert parsed == []
+    buffer, parsed = module._parse_sse_chunk(buffer, payload[split_at:])
+    assert parsed == [event]
+
+
+def test_reasoning_is_attached_only_to_the_first_parallel_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = load_example(monkeypatch).build_model()
+    pending: list[dict[str, Any]] = []
+    model._capture_reasoning_event(
+        {
+            "type": "response.output_item.done",
+            "item": {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [],
+                "encrypted_content": "enc_1",
+                "status": "completed",
+            },
+        },
+        pending,
     )
-    assert not any(item.get("role") == "user" for item in second_body["input"]), second_body[
-        "input"
-    ]
-    assert not any(item.get("type") == "function_call" for item in second_body["input"])
+    model._capture_reasoning_event(
+        {
+            "type": "response.output_item.done",
+            "item": {"type": "function_call", "call_id": "call_1"},
+        },
+        pending,
+    )
+    model._capture_reasoning_event(
+        {
+            "type": "response.output_item.done",
+            "item": {"type": "function_call", "call_id": "call_2"},
+        },
+        pending,
+    )
 
-    await agent.invoke_async("A new turn.")
-
-    assert len(requests) == 3
-    third_url, third_body = requests[2]
-    assert third_url.endswith("/responses")
-    assert third_body["previous_response_id"] == "resp_2"
-    assert len(third_body["input"]) == 1
-    assert third_body["input"][0]["role"] == "user"
-    assert third_body["input"][0]["content"][0]["text"] == "A new turn."
+    assert pending == []
+    assert model._reasoning_by_call_id == {
+        "call_1": [
+            {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [],
+                "encrypted_content": "enc_1",
+            }
+        ]
+    }
