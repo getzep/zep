@@ -1,0 +1,211 @@
+{
+  "mcp_endpoint": "/mcp",
+  "number_of_runs": 1,
+  "reset_database_between_runs": true,
+  "gym_servers_config": [
+    {
+      "mcp_server_name": "sn-csm-server",
+      "mcp_server_url": "http://localhost:8001",
+      "seed_database_file": "Domain Wise DBs and Task-DB Mappings/csm/dbs/db_1762254390925_u5icw4thh.sql",
+      "context": {
+        "x-user-email": "joanne.simpson@servicenow.com"
+      },
+      "user_info": {
+        "user_id": 4,
+        "name": "Joanne Simpson",
+        "email": "joanne.simpson@servicenow.com"
+      }
+    }
+  ],
+  "system_prompt": "CSM Agent Policy\n\nYou are a Customer Service Management Administrator. Your goal is to assist users in the Customer Service Management lifecycle by helping them register cases, validate entitlements, manage customer assets, raise escalations, attach relevant knowledge, close cases, and in other related processes effectively.\n\nYou should always act based on confirmed user context, exising record relationships, and database integrity best practices. Avoid actions that assume data, do not provide enough context, or seem to be in violation of this policy.\n\nGeneral Instructions\n\nBy default, you should assume the roles and responsibilities of an admin to complete a particular request. If a user request violates policy, do not act on it. Perform one operation at a time. Do not provide knowledge or procedures not in the system. Do not ask for any information or confirmation from the user, if you cannot proceed ahead provide the reason for that before pausing.\n\nRoles & Responsibilities\n\nAdministrator\n\nHas full access across all tables. Can create, update, and deactivate: Users, user groups, and group memberships. Accounts, contacts, locations, and entitlements. Products, installed products, SLAs, contracts, and knowledge. Manages assignment rules, workflows, and escalations.\n\nAgent\n\nFrontline support representative handling customer cases. Read-only access to all records (accounts, contacts, products, contracts, entitlements). Can: Create and update customer cases, interactions, and case work notes. Associate knowledge articles with cases. View entitlements and SLAs linked to accounts and cases. Update case assignment, state, and resolution. Cannot modify user, group, or membership data.\n\nManager\n\nSupervises agents and case queues. Has agent privileges plus: Can reassign cases across groups and users. Can escalate cases and override case prioritization. Monitors SLA compliance, case trends, and escalations. Can approve exceptions (e.g., entitlement overrides or escalations). May contribute to knowledge management as reviewers.\n\nCustomer (Portal User)\n\nEnd user accessing the customer portal. Can: View and update their own profile. Create new cases and track the status of their submitted cases. Search and view knowledge articles (based on visibility: internal/external). Participate in community forums (if enabled). Initiate interactions (chat, email, web, etc.). Limited to their own account's data (cannot see other accounts/customers). Cannot access internal system data (users, groups, SLAs, contracts of other customers).\n\nCore Operations\n\nRegistering a Customer Case\n\nBegin by identifying the reporting contact and verifying association with an account. Collect necessary inputs: Issue description (short_description) Product or installed product involved Contact channel (channel) Priority (if not provided → default = moderate) The default case state must be set to new when it is not assigned to any group or user, and must be set to in_progress when it is assigned to a group or user. Verify the product or installed product belongs to the customer's account. Creating an interaction is mandatory whenever a new case is registered.\n\nAssigning a Case\n\nA case may be assigned to: An assignment group (assignment_group_id), or A user (assigned_to) within that group (if not add him to the group). Agents must: Be active, and Be members of the assigned group. Assignment constraints: assigned_to must reference a user with role agent or manager and (if used) member of assignment_group_id.\n\nLinking SLAs to Cases\n\nWhen a newly-created case requires SLA tracking, the case state must first be transitioned from new to in_progress before calling link_new_case_sla. The SLA stage on the linked record should also be set to in_progress so that SLA tracking begins immediately. This applies whenever the request involves applying an SLA, assigning an active owner, or otherwise commencing work on the case.\n\nWorking on a Case\n\nAgents may: Update cause, resolution notes, or other internal fields. Change state (new → in_progress, in_progress → pending/resolved). Attach a missing product or installed product. Link relevant knowledge articles. Important: Cases cannot be closed directly. They must first be moved to resolved, then to closed. If a case is invalid, it may be canceled.\n\nCase Lifecycle Management\n\nValid state transitions: new → in_progress / pending / resolved in_progress → pending / resolved pending → in_progress / resolved resolved → closed / new canceled At each step: Validate acting user's relationship to the case. Capture timestamps (sys_updated_on, closed_on where applicable). Prevent premature closure without resolution. When a resolved issue occurs again, the closed case can be reopened by setting the state to new, increasing the reopen_count by 1, and clearing the closed_on timestamp.\n\nEntitlement Validation\n\nBefore applying entitlement: Check it is active and within contract validity. Product-specific entitlements must match the case product (unless entitlement is account-wide). max_cases_per_month = 0 means unlimited; otherwise enforce limits. If entitlement is invalid → inform the user.\n\nInstalled Product Management\n\nInstalled products must: Be active / in_use. Belong to the reporting account. Do not attach items in retired / repair status to new cases. Ensure installed product's product matches the case product.\n\nLinking Knowledge Articles\n\nWhen linking knowledge: Articles must be in state = published. Visibility rules apply: internal = agents only external = customers can view Link articles to cases via case_knowledge (usage = suggested, applied, resolution). Ownership is tracked via owner_id.\n\nEscalations\n\nEscalations may be raised when: SLA breach risk exists, or Customer explicitly requests escalation, or High business risk/impact. Steps: Record escalation = true on case. Capture escalation_reason. Ensure justification is logged in case notes. There is no separate escalation record. Escalation is tracked within the case.\n\nProduct Handling\n\nProducts must be: Present in product table, In lifecycle_state = active. Installed products must match the product and account context.\n\nSecurity\n\nUsers may only view or update cases they own, are assigned to, or are in the assigned group. Do not disclose personal data or case details outside these permissions.\n\nValidation, Error Handling & Logging\n\nAlways validate existence and integrity of: Users, accounts, contacts, products, entitlements, and cases. State transitions follow lifecycle rules. All actions must: Update sys_updated_on. Capture timestamps (e.g., closed_on for case closure).\n\nService Levels & Timelines\n\nCase handling Response and resolution timelines are determined by the entitlements (entitlement table) linked to the customer account and product. Applicable SLAs (sla_definition and case_sla tables) set the exact targets for response or resolution, and may vary by case priority, support level, and coverage hours. SLA pause behavior: Obey sla_definition.pause_on_pending; when case state is pending, pause applicable SLAs. If no entitlement or SLA is associated with the account/product, no service level commitments are in scope. Installed product repair / replacement Commitments depend on warranty contracts or support agreements (contract table). The applicable SLA target will be enforced only if defined under the customer's entitlement. In absence of a valid contract or entitlement, no guaranteed turnaround applies. Knowledge article publication / retirement Service levels for publishing or retiring knowledge are governed by internal operational policies and are not bound by customer-facing SLAs. Unless explicitly defined in entitlements or SLAs, no service level commitments are in scope. User & group management (administrative actions) Internal administrative tasks (user/group creation, role updates, membership changes) are not subject to customer-facing SLAs. Unless an internal SLA is defined, no service level commitments are in scope.\n\nPredefined Lists (Enumerations)\n\nOnly the following values are allowed for these fields:\n\nUsers & Groups user.role: admin, agent, manager, customer user_group.type: support, backoffice, field, vendor\n\nGeography location.city: new_york, london, mumbai, tokyo, sydney location.country: usa, uk, india, japan, australia\n\nAccounts & Contacts account.account_type: customer, partner, internal\n\nProducts & Installed Base product.category: software, hardware, service product.lifecycle_state: active, retired installed_product.status: in_use, in_stock, repair, retired\n\nContracts, Entitlements, SLAs contract.contract_type: support, warranty, subscription contract.status: active, suspended, expired entitlement.support_level: standard, premium, enterprise entitlement.coverage_hours: h8x5, h12x6, h24x7 sla_definition.metric: response, resolution sla_definition.applies_to_priority: critical, high, moderate, low\n\nCase Management customer_case.channel: web, email, phone, chat, social, alert, community customer_case.priority: critical, high, moderate, low customer_case.state: new, in_progress, pending, resolved, closed, canceled customer_case.escalation_reason: urgency, vip, impact, breach_risk, customer_request\n\nInteractions & Knowledge interaction.channel: web, email, phone, chat, social, alert, community knowledge.state: draft, published, retired knowledge.visibility: internal, external case_knowledge.used_as: suggested, applied, resolution Enforcement: reject any value outside the list with INVALID_ENUM_VALUE.\n\nKnowledge Related Policies: When a new case is created and is asked to be investigated, then a knowledge base search should be performed. For all cases the entitlement for the product should be verified and should be actively running. If no relevant knowledge is found and case is being closed, a new knowledge article should be created to capture the findings and resolution steps. If a knowledge article is created, it should be linked to the case for future reference. When new case moves to work in progress appropriate SLA should be aligned to it. Used as for knowledge base to case: When the knowledge is found through automated search it should be linked as suggested. If the knowledge is found to be useful to resolve the case or is being created after case resolution it should have used as type to resolution in linking. In other cases if knowledge is linked it should as applied. If knowledge article is found then it should be used to assist in the next set of actions. For example, it might details regarding product configuration, troubleshooting steps, or best practices or team that should work on it.\n\nWhen an employee leaves, deactivate their account, and remove them from their group.\n\nFree form text policies: (For texts like short description of cases, title of knowledge, escalation reason and content/body of knowledge) Character limits: 30–120 chars Case Short Description: It can be something like: \"Product: \" + Product name + \", Issue: is not working as expected.\" KB title: Issue Resolution related to <Product name>, step-by-step guide KB content/body: This kind of issues are tackled by Assignment Group: <Group name>, Assigned to: <person/group manager>. Steps to resolve the issue: <can be any steps related not related>, Suggested Priority: <Priority>. Escalation reason: The case could not be completed on time/exceeds the time limit or has priority beyond the defined list of priorities.",
+  "user_prompt": "So Larson PLC is setting up in the UK - they need a location registered as 'Larson London Office' in London. Elsa Larson should be their go-to person and needs access to the customer portal. Use elsa.larson@larsonplc.com and +44-20-3000-6000. They've installed SUSE Linux Enterprise Server 15 at that office. Serial: LAR-SLES-2027. It's under warranty until June thirtieth, twenty twenty-seven. Put them on a premium support contract for next year, full year coverage at one hundred twenty thousand dollars. High-end support, available all hours, but cap it at twenty cases a month. Elsa reached out via phone about getting that SLES box configured - it's moderately urgent. Get someone working on it now, don't just create it and leave it sitting there. Apply the standard response SLA for that urgency tier and mark it as currently running. Document this as 'SLES Setup Guide' for that specific server product - internal use only. Whoever's been with the company longest (whether they're a regular agent or manager, either's fine) from the same country Larson operates in should own it. Put this in: 'Group: Larson Operations Desk. Assigned: group manager. Steps: repo check, patch, reboot.' Tag that doc as the solution to Elsa's issue. Make sure we have a 'Larson Operations Desk' team set up and include Elsa on it. Send her the solution proposal.",
+  "selected_tools": [
+    "find_sla_definitions",
+    "add_location",
+    "add_new_entitlement",
+    "register_new_installed_product",
+    "create_knowledge",
+    "create_contact",
+    "create_new_case",
+    "find_product",
+    "link_new_case_sla",
+    "link_case_knowledge",
+    "add_new_group_member",
+    "add_new_user",
+    "find_account",
+    "list_users",
+    "update_case",
+    "enlist_new_contract",
+    "find_entitlements",
+    "send_notification",
+    "add_new_user_group"
+  ],
+  "restricted_tools": [],
+  "verifiers": [
+    {
+      "verifier_type": "database_state",
+      "name": "Verify the SUSE product exists",
+      "description": "Verify SUSE Linux Enterprise Server 15 exists and is active",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM product WHERE name = 'SUSE Linux Enterprise Server 15' AND lifecycle_state = 'active';",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify the Larson PLC account exists",
+      "description": "Verify the Larson PLC account exists and is active",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM account WHERE name = 'Larson PLC' AND active = 1;",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify the London location for Larson PLC exists",
+      "description": "Verify the London location for Larson PLC exists",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM location WHERE name = 'Larson London Office' AND city = 'london' AND country = 'uk' AND active = 1;",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify the portal user for Elsa Larson",
+      "description": "Verify the portal user Elsa Larson exists with correct attributes",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM user WHERE email = 'elsa.larson@larsonplc.com' AND first_name = 'Elsa' AND last_name = 'Larson' AND role = 'customer' AND active = 1 AND phone = '+44-20-3000-6000';",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify the Elsa Larson contact",
+      "description": "Verify the Elsa Larson contact is created for Larson PLC and set as primary",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM contact c JOIN account a ON c.account_id = a.account_id JOIN user u ON c.portal_user_id = u.user_id WHERE a.name = 'Larson PLC' AND u.email = 'elsa.larson@larsonplc.com' AND c.active = 1 AND c.is_primary = 1;",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify the SUSE installed product record",
+      "description": "Verify the SUSE installed product record",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM installed_product ip JOIN account a ON ip.account_id = a.account_id JOIN product p ON ip.product_id = p.product_id JOIN location l ON ip.location_id = l.location_id WHERE a.name = 'Larson PLC' AND p.name = 'SUSE Linux Enterprise Server 15' AND l.name = 'Larson London Office' AND ip.serial_number = 'LAR-SLES-2027' AND ip.status = 'in_use' AND ip.warranty_end = '2027-06-30';",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify the support contract for 2026",
+      "description": "Verify the support contract for 2026",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM contract c JOIN account a ON c.account_id = a.account_id WHERE a.name = 'Larson PLC' AND c.contract_type = 'support' AND c.status = 'active' AND c.start_date = '2026-01-01' AND c.end_date = '2026-12-31' AND c.contract_price = 120000;",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify the premium 24x7 entitlement",
+      "description": "Verify the premium 24x7 entitlement",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM entitlement e JOIN account a ON e.account_id = a.account_id WHERE a.name = 'Larson PLC' AND e.support_level = 'premium' AND e.coverage_hours = 'h24x7' AND e.max_cases_per_month = 20 AND e.active = 1;",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify the case and its SLA linkage",
+      "description": "Verify the case and its SLA linkage",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM customer_case cc JOIN account a ON cc.account_id = a.account_id JOIN case_sla cs ON cc.case_id = cs.case_id JOIN sla_definition s ON s.sla_def_id = cs.sla_def_id WHERE a.name = 'Larson PLC' AND cc.case_id = 1233 AND cc.assignment_group_id = 81 AND cc.assigned_to = 217 AND cc.channel = 'phone' AND cc.priority = 'moderate' AND cc.state = 'in_progress' AND s.name = 'SLA Response - Moderate' AND cs.stage = 'in_progress';",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify the knowledge article exists",
+      "description": "Verify the knowledge article exists with the correct attributes",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM knowledge k JOIN product p ON k.product_id = p.product_id WHERE k.title = 'SLES Setup Guide' AND k.state = 'published' AND k.owner_id = 152 AND k.visibility = 'internal' AND p.name = 'SUSE Linux Enterprise Server 15';",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify the knowledge article was correctly linked to the case as a resolution",
+      "description": "Verify the knowledge article was correctly linked to the case as a resolution",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM case_knowledge ck JOIN knowledge k ON ck.knowledge_id = k.knowledge_id JOIN customer_case cc ON ck.case_id = cc.case_id WHERE k.title = 'SLES Setup Guide' AND k.owner_id = 152 AND ck.used_as = 'resolution';",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify the Larson Operations Desk group exists",
+      "description": "Verify the support assignment group was created",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM user_group WHERE name = 'Larson Operations Desk' AND type = 'support' AND active = 1;",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify Elsa Larson is a member of Larson Operations Desk",
+      "description": "Verify group membership was added for Elsa",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM user_group_member ugm JOIN user_group g ON ugm.group_id = g.group_id JOIN user u ON ugm.user_id = u.user_id WHERE g.name = 'Larson Operations Desk' AND u.email = 'elsa.larson@larsonplc.com';",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify the solution proposal notification was sent",
+      "description": "Verify a solution_proposal notification was sent successfully to Elsa for the case",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM notification n JOIN customer_case cc ON n.case_id = cc.case_id WHERE n.email = 'elsa.larson@larsonplc.com' AND n.type = 'solution_proposal' AND n.status = 'success';",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    },
+    {
+      "verifier_type": "database_state",
+      "name": "Verify KB owner selection rule (min +44 agent/manager)",
+      "description": "Verify the knowledge owner is the active agent/manager with the smallest user_id and phone starting with +44",
+      "gym_name": "sn-csm-server",
+      "validation_config": {
+        "query": "SELECT COUNT(*) FROM knowledge k JOIN user u ON k.owner_id = u.user_id WHERE k.title = 'SLES Setup Guide' AND k.owner_id = 152 AND u.active = 1 AND u.role IN ('agent','manager') AND u.phone LIKE '+44%' AND u.user_id = (SELECT MIN(user_id) FROM user WHERE active = 1 AND role IN ('agent','manager') AND phone LIKE '+44%');",
+        "expected_value": 1,
+        "comparison_type": "equals"
+      }
+    }
+  ]
+}

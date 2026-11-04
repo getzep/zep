@@ -1,0 +1,52 @@
+[project]
+name = "enterpriseops-gym-skills"
+version = "0.1.0"
+description = "A benchmark harness for compiled Skills on EnterpriseOps-Gym."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "anthropic>=0.60,<1",
+    "datasets>=5.0.1,<6",
+    "httpx==0.28.1",
+    "langfuse==4.16.0",
+    "openai>=2.45",
+    "pyarrow>=20",
+    "pydantic>=2.11,<3",
+    "scipy>=1.14,<2",
+    "zep-cloud==4.1.0",
+    "stirrup @ git+https://github.com/ArtificialAnalysis/Stirrup.git@247f24d56b2108235880ed2a2baea5d35b5a67ee",
+    "claude-agent-sdk==0.2.167",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.14",
+]
+
+[tool.uv]
+package = true
+override-dependencies = ["pillow>=13.0.0"]
+
+[tool.uv.build-backend]
+module-name = "eog"
+module-root = "src"
+
+[build-system]
+requires = ["uv-build>=0.9,<0.10"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+stirrup = { git = "https://github.com/ArtificialAnalysis/Stirrup.git", rev = "247f24d56b2108235880ed2a2baea5d35b5a67ee" }
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+addopts = ["--strict-markers"]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = ["live: makes one short provider call; skipped by default"]

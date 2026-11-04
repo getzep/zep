@@ -1,0 +1,22 @@
+--- appworld/common/code_parsing.py (original)	2026-10-13 16:54:48.270828575 +0000
++++ appworld/common/code_parsing.py	2026-10-13 16:54:48.279828525 +0000
+@@ -585,6 +585,19 @@
+                         module_name = ".".join(
+                             FunctionPathVisitor(None, None)._get_full_name_parts(import_.module)
+                         )
++                    if isinstance(import_.names, cst.ImportStar):
++                        # Map a star import like `import X`: the module check in
++                        # parse_imports applies, and bare names of blocked functions
++                        # of X resolve to their full paths.
++                        from appworld.common.safety_guard import (
++                            DISALLOWED_MODULE_TO_FUNCTION_NAMES,
++                        )
++
++                        for function_name in DISALLOWED_MODULE_TO_FUNCTION_NAMES.get(
++                            module_name, ()
++                        ):
++                            aliases[function_name] = f"{module_name}.{function_name}"
++                        continue
+                     for alias in import_.names:
+                         if isinstance(alias, cst.ImportAlias):
+                             if alias.asname:

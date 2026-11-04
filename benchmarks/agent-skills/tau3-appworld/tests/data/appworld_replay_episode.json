@@ -1,0 +1,32 @@
+{
+  "task_id": "scenario_demo_2",
+  "task_index": 0,
+  "trial": 1,
+  "succeeded": true,
+  "end_reason": "complete_task",
+  "stop_reason": null,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Supervisor: Demo User, demo-email, 555-0100\nTask: Inspect a sample event."
+    },
+    {
+      "role": "assistant",
+      "content": "I will inspect the sample event.",
+      "tool_calls": [
+        {
+          "id": "call_demo_001",
+          "name": "execute_python",
+          "arguments": {
+            "code": "print('sample')"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "id": "call_demo_001",
+      "content": "Sample result."
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+[project]
+name = "tau2-bench-skills"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx==0.28.1",
+    "loguru==0.7.3",
+    "opentelemetry-exporter-otlp-proto-http==1.45.1",
+    "opentelemetry-sdk==1.45.1",
+    "openai>=2.45.0",
+    "audioop-lts>=0.2.2; python_version >= '3.13'",
+    "tenacity>=9.0.0",
+    "tau2[knowledge] @ git+https://github.com/sierra-research/tau2-bench.git@b7ea9074c1cba482b30687fecdb5c8425fd6f619",
+    "websockets>=13.0",
+    "zep-cloud==4.1.0",
+    "anthropic>=0.60,<1",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.390",
+    "pytest>=8.3.0",
+    "ruff>=0.9.0",
+]
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pyright]
+include = ["."]
+exclude = ["results"]
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.uv]
+# tau2 pins litellm<1.82.7. Versions before 1.84.0 have known exploited CVEs.
+override-dependencies = ["litellm==1.101.3"]

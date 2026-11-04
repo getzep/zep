@@ -1,0 +1,2603 @@
+{
+  "seed": 20260519,
+  "task_list_sha256": "582fe1069da7d813253c381485a31367e1aabb58fb7ce90f6e57094a0f3452d7",
+  "tasks": {
+    "task_20251117_165528_648_bca89e7d_3e81ece9": {
+      "cluster": "c99d40f1908b37e8",
+      "side": "teach"
+    },
+    "task_20251121_102744_757_7ebc1127_dadb0c94": {
+      "cluster": "e49ed27e5bf4bc4b",
+      "side": "teach"
+    },
+    "task_20251121_134729_533_464ee3e0_2dcf2712": {
+      "cluster": "1d681e659983637d",
+      "side": "score"
+    },
+    "task_20251123_232016_480_7ebc1127_7a8d85a7": {
+      "cluster": "0a6c33ab063d1e38",
+      "side": "score"
+    },
+    "task_20251124_112741_995_0a0bf089_3906a767": {
+      "cluster": "fc18793208ee0517",
+      "side": "score"
+    },
+    "task_20251125_110309_032_464ee3e0_33f12828": {
+      "cluster": "63f6abdc89eea7ee",
+      "side": "score"
+    },
+    "task_20251125_113335_636_7ebc1127_a4ebffe8": {
+      "cluster": "215fa9de3d0cac17",
+      "side": "teach"
+    },
+    "task_20251125_115122_370_8e9e30d7_e2700b24": {
+      "cluster": "1e84fa8284366980",
+      "side": "score"
+    },
+    "task_20251125_150631_436_e5bf1251_77dd7cbb": {
+      "cluster": "69539d5a40077bc8",
+      "side": "score"
+    },
+    "task_20251125_152842_063_b393a327_9622ac64": {
+      "cluster": "99c0fddd05353d97",
+      "side": "teach"
+    },
+    "task_20251125_154624_258_701c5774_59c41eed": {
+      "cluster": "8fec7d3337fee212",
+      "side": "teach"
+    },
+    "task_20251125_202309_857_e7cfb93b_9c156259": {
+      "cluster": "c42b14b848ed8065",
+      "side": "teach"
+    },
+    "task_20251126_054150_897_7ebc1127_60097647": {
+      "cluster": "28e9d08f3196b386",
+      "side": "score"
+    },
+    "task_20251126_055301_905_8e9e30d7_6aab00b8": {
+      "cluster": "9a1adc7730e21cf0",
+      "side": "teach"
+    },
+    "task_20251126_070103_077_501bbb2c_7c7c4ea6": {
+      "cluster": "78b2eecdc894a542",
+      "side": "score"
+    },
+    "task_20251126_122314_557_be6c9105_daf0aae1": {
+      "cluster": "73be603bec7a31e1",
+      "side": "teach"
+    },
+    "task_20251126_122651_325_be6c9105_1864c322": {
+      "cluster": "7b203380470b0bdb",
+      "side": "score"
+    },
+    "task_20251126_145836_025_be6c9105_3b572b98": {
+      "cluster": "16ff2efdf1125c7a",
+      "side": "score"
+    },
+    "task_20251126_174607_703_8ce75c22_a984b9e7": {
+      "cluster": "5706dfe90fdca914",
+      "side": "teach"
+    },
+    "task_20251126_182216_326_66392a82_d3ff64ca": {
+      "cluster": "10a520a845a59a0b",
+      "side": "score"
+    },
+    "task_20251126_230708_209_a9f62433_84d414ed": {
+      "cluster": "63a19df1aab16242",
+      "side": "score"
+    },
+    "task_20251127_070938_325_b393a327_a40b1f4e": {
+      "cluster": "37a7a303e7e6c9b3",
+      "side": "teach"
+    },
+    "task_20251127_150451_336_701c5774_c2e9609a": {
+      "cluster": "034da6e7ef7695b8",
+      "side": "score"
+    },
+    "task_20251127_152838_396_99ba2325_8391501f": {
+      "cluster": "9740b6b0210d8354",
+      "side": "score"
+    },
+    "task_20251127_173847_074_4d9df647_632c493d": {
+      "cluster": "57817b2de7ca42b1",
+      "side": "teach"
+    },
+    "task_20251128_072831_616_6cd2e092_426f7c81": {
+      "cluster": "c5516dd1bbcfa1ed",
+      "side": "teach"
+    },
+    "task_20251128_092702_025_be6c9105_23729a97": {
+      "cluster": "ae6faaa89a2a649e",
+      "side": "teach"
+    },
+    "task_20251128_120055_076_8e9e30d7_e5dcfa22": {
+      "cluster": "8cfe73a44768d3cd",
+      "side": "score"
+    },
+    "task_20251128_123025_545_13762b97_ad80b87c": {
+      "cluster": "736b6c505fa94952",
+      "side": "score"
+    },
+    "task_20251128_123035_919_64a4ebb9_8b93bf99": {
+      "cluster": "f8a5020349812b79",
+      "side": "score"
+    },
+    "task_20251128_123301_181_64a4ebb9_4c1d5329": {
+      "cluster": "cfa0f6b268751d16",
+      "side": "teach"
+    },
+    "task_20251128_123526_889_64a4ebb9_20d5e6ae": {
+      "cluster": "85194d3665dbccac",
+      "side": "teach"
+    },
+    "task_20251128_131539_998_13762b97_bea81d98": {
+      "cluster": "afc8b2ebc542be0f",
+      "side": "score"
+    },
+    "task_20251128_154607_365_1628b966_a730b5cf": {
+      "cluster": "57892d346eef09de",
+      "side": "score"
+    },
+    "task_20251128_200856_738_0154326e_752f99ad": {
+      "cluster": "f1bea20a8c4f6b51",
+      "side": "score"
+    },
+    "task_20251128_204735_353_66392a82_3f8ef4a1": {
+      "cluster": "2c2fc6fb832c4d98",
+      "side": "teach"
+    },
+    "task_20251128_212546_987_b5bd4eb9_fe2748c8": {
+      "cluster": "ca3795926bdbf3e3",
+      "side": "score"
+    },
+    "task_20251128_220140_863_df2c536d_4aa7dcfd": {
+      "cluster": "b02a85b27651c7d5",
+      "side": "score"
+    },
+    "task_20251129_042304_817_df0ecdeb_3df990f2": {
+      "cluster": "c6f24edb8cb8edd3",
+      "side": "score"
+    },
+    "task_20251129_042357_079_d809b0d6_b11e3d3b": {
+      "cluster": "5314461f38f7d822",
+      "side": "score"
+    },
+    "task_20251129_042410_343_df0ecdeb_573538d3": {
+      "cluster": "ddd1cf680c4a50ce",
+      "side": "teach"
+    },
+    "task_20251130_105156_866_0a0bf089_eef6d2ed": {
+      "cluster": "311b1e787793aa57",
+      "side": "score"
+    },
+    "task_20251201_113908_295_e81f6083_e770442c": {
+      "cluster": "1ec60220f5040216",
+      "side": "score"
+    },
+    "task_20251201_164641_724_109c89c0_1b29acb9": {
+      "cluster": "53b80bb5137a0e45",
+      "side": "teach"
+    },
+    "task_20251201_191924_271_e81f6083_21fbee85": {
+      "cluster": "6a56747b6af8e847",
+      "side": "score"
+    },
+    "task_20251202_041242_095_99ba2325_a63db5e8": {
+      "cluster": "5f0c9bfd9e6b42e9",
+      "side": "score"
+    },
+    "task_20251202_052822_939_66392a82_0479926e": {
+      "cluster": "9f26aee4322f3842",
+      "side": "score"
+    },
+    "task_20251202_100743_745_109c89c0_958a07c1": {
+      "cluster": "0ed6e8932fad449f",
+      "side": "score"
+    },
+    "task_20251202_121726_036_e81f6083_cc1636ad": {
+      "cluster": "be64b06b4776da49",
+      "side": "score"
+    },
+    "task_20251202_171004_871_0a0bf089_489e2b2d": {
+      "cluster": "98019943366d8a47",
+      "side": "score"
+    },
+    "task_20251202_174228_665_df0ecdeb_e84a9e55": {
+      "cluster": "08181663cd06c6e7",
+      "side": "score"
+    },
+    "task_20251202_190412_439_e81f6083_83a8a0ca": {
+      "cluster": "25656723bb620d90",
+      "side": "score"
+    },
+    "task_20251203_051113_560_99ba2325_1ff9b6e5": {
+      "cluster": "4c06b1dc6ed3d7bc",
+      "side": "score"
+    },
+    "task_20251203_064555_149_66392a82_d124b805": {
+      "cluster": "39d64e390b9cf88d",
+      "side": "score"
+    },
+    "task_20251203_080219_432_6f5b66fc_03eb353c": {
+      "cluster": "823f02533185ee11",
+      "side": "score"
+    },
+    "task_20251203_080912_583_df0ecdeb_a3470951": {
+      "cluster": "e3eed9def94defa2",
+      "side": "score"
+    },
+    "task_20251203_091910_549_bca89e7d_de59e44a": {
+      "cluster": "21681c30615db94f",
+      "side": "teach"
+    },
+    "task_20251203_093009_456_701c5774_24b57fbd": {
+      "cluster": "aa8fb249e7aee356",
+      "side": "score"
+    },
+    "task_20251203_104951_949_701c5774_5a606512": {
+      "cluster": "0227887650dced48",
+      "side": "score"
+    },
+    "task_20251203_113003_327_701c5774_2e2c97d2": {
+      "cluster": "a968a99d922d8bd6",
+      "side": "score"
+    },
+    "task_20251203_115913_239_b5bd4eb9_2e02dcf0": {
+      "cluster": "462ec1b11ef4e69f",
+      "side": "score"
+    },
+    "task_20251203_120537_904_701c5774_849b4b7c": {
+      "cluster": "a968a99d922d8bd6",
+      "side": "score"
+    },
+    "task_20251203_125054_648_be6c9105_0ec24467": {
+      "cluster": "6339a219dc92f2c9",
+      "side": "score"
+    },
+    "task_20251203_132337_123_be6c9105_2058c06b": {
+      "cluster": "edd5113315358906",
+      "side": "score"
+    },
+    "task_20251203_133512_548_e81f6083_738dfe0c": {
+      "cluster": "f88dfee9336915fc",
+      "side": "score"
+    },
+    "task_20251203_142634_160_bca89e7d_193f597f": {
+      "cluster": "41ab4fef5afef34a",
+      "side": "score"
+    },
+    "task_20251203_142725_377_6f5b66fc_c990483e": {
+      "cluster": "d52ef151ac630299",
+      "side": "teach"
+    },
+    "task_20251203_174736_530_df0ecdeb_f2560c93": {
+      "cluster": "855b731574ac04da",
+      "side": "score"
+    },
+    "task_20251203_180743_144_e7cfb93b_56dbcb89": {
+      "cluster": "1249e65b3f519287",
+      "side": "score"
+    },
+    "task_20251203_184109_641_6f5b66fc_e62d330e": {
+      "cluster": "79190853707f04c2",
+      "side": "score"
+    },
+    "task_20251203_190727_704_e81f6083_f2fd8fe6": {
+      "cluster": "2483318bf994136a",
+      "side": "teach"
+    },
+    "task_20251203_192307_250_bca89e7d_f0f2e9d5": {
+      "cluster": "5e9d39c259f8130d",
+      "side": "teach"
+    },
+    "task_20251203_194320_796_df2c536d_c885488e": {
+      "cluster": "f470f0d5dd4f0563",
+      "side": "teach"
+    },
+    "task_20251203_194626_202_391f1eff_1336fae8": {
+      "cluster": "cc054232a67d7c64",
+      "side": "teach"
+    },
+    "task_20251204_045548_265_4d9df647_18dae74a": {
+      "cluster": "bb548d43f789a830",
+      "side": "score"
+    },
+    "task_20251204_083406_171_e7cfb93b_89e0d558": {
+      "cluster": "1333650e06b0290b",
+      "side": "score"
+    },
+    "task_20251204_085603_739_ae7b45e2_b7a96253": {
+      "cluster": "4543cc64a22417fd",
+      "side": "score"
+    },
+    "task_20251204_092258_460_be6c9105_33990b9e": {
+      "cluster": "7c9270b46165c0dc",
+      "side": "score"
+    },
+    "task_20251204_092557_093_ae7b45e2_24132aa0": {
+      "cluster": "ba9e55544669b865",
+      "side": "score"
+    },
+    "task_20251204_095942_786_b5bd4eb9_636f2147": {
+      "cluster": "107406e0a4f5e411",
+      "side": "score"
+    },
+    "task_20251204_100249_196_701c5774_af32832e": {
+      "cluster": "dde252b7a270d57d",
+      "side": "score"
+    },
+    "task_20251204_100825_050_df0ecdeb_c1b28adf": {
+      "cluster": "0c8cc44f99b0879e",
+      "side": "score"
+    },
+    "task_20251204_101148_724_701c5774_7cb6254a": {
+      "cluster": "982dbf8894b5b092",
+      "side": "score"
+    },
+    "task_20251204_115043_305_e81f6083_4acfd9ea": {
+      "cluster": "5d6e29371cd54bcc",
+      "side": "score"
+    },
+    "task_20251204_115902_743_13762b97_19892db1": {
+      "cluster": "cef59505d1a91923",
+      "side": "score"
+    },
+    "task_20251204_120643_371_8ce75c22_f09e1799": {
+      "cluster": "c8fc1681151f72a7",
+      "side": "teach"
+    },
+    "task_20251204_122816_238_13762b97_cd4a8a4f": {
+      "cluster": "d6418801a958c8d2",
+      "side": "teach"
+    },
+    "task_20251204_125827_230_6f5b66fc_51e4bc12": {
+      "cluster": "94f702733bf1cbe0",
+      "side": "teach"
+    },
+    "task_20251204_132620_055_5c0cd3a2_048c6e95": {
+      "cluster": "a9b4e3fa44b422d1",
+      "side": "score"
+    },
+    "task_20251204_142444_575_e5bf1251_65039f7d": {
+      "cluster": "974e234d117ea9bf",
+      "side": "score"
+    },
+    "task_20251204_142744_756_e5bf1251_9501fccb": {
+      "cluster": "c7cda669804b122b",
+      "side": "score"
+    },
+    "task_20251204_144745_585_e5bf1251_4e4c189d": {
+      "cluster": "2b409f5e81e7c16e",
+      "side": "score"
+    },
+    "task_20251204_145059_811_e5bf1251_3b195ec1": {
+      "cluster": "c7cda669804b122b",
+      "side": "score"
+    },
+    "task_20251204_151109_029_ae7b45e2_1fa53dbc": {
+      "cluster": "480350646125667b",
+      "side": "teach"
+    },
+    "task_20251204_153830_645_1628b966_3df25b52": {
+      "cluster": "8682583a5f86c4c9",
+      "side": "score"
+    },
+    "task_20251204_155848_470_1628b966_f45fd2fb": {
+      "cluster": "02ac7f18c790ff28",
+      "side": "score"
+    },
+    "task_20251204_160336_295_5c0cd3a2_26d1b04a": {
+      "cluster": "e0c286bc5b87bae3",
+      "side": "score"
+    },
+    "task_20251204_161024_294_46ca2862_1cc82f4c": {
+      "cluster": "6d698e13ba2e767c",
+      "side": "teach"
+    },
+    "task_20251204_180957_224_6f5b66fc_aaa65d0e": {
+      "cluster": "79909bcff2ed5fde",
+      "side": "score"
+    },
+    "task_20251204_191200_036_e81f6083_95fa872f": {
+      "cluster": "80d3cf3178fdd94b",
+      "side": "score"
+    },
+    "task_20251204_231522_245_e6427839_5d09c3c2": {
+      "cluster": "d9ce1f02745c7bdb",
+      "side": "score"
+    },
+    "task_20251205_032409_945_0a0bf089_61f5be29": {
+      "cluster": "831a4a94d174e6c7",
+      "side": "teach"
+    },
+    "task_20251205_060649_946_66392a82_354af85a": {
+      "cluster": "2670b6ba4ea66774",
+      "side": "score"
+    },
+    "task_20251205_072016_336_46ca2862_e9006fbb": {
+      "cluster": "3d3a30d0c8cbb577",
+      "side": "score"
+    },
+    "task_20251205_075543_102_46ca2862_7ba653d0": {
+      "cluster": "734179f9ed8ebdbe",
+      "side": "score"
+    },
+    "task_20251205_095558_939_5c0cd3a2_4af4214c": {
+      "cluster": "2c5bcec6eb94786a",
+      "side": "score"
+    },
+    "task_20251205_101915_742_d4a463c3_8eac8077": {
+      "cluster": "f30d553b6802509a",
+      "side": "teach"
+    },
+    "task_20251205_134123_742_b5bd4eb9_003270a9": {
+      "cluster": "f0acb5193158f345",
+      "side": "score"
+    },
+    "task_20251205_135905_848_391f1eff_9344499e": {
+      "cluster": "e3b71938cf0af4db",
+      "side": "score"
+    },
+    "task_20251205_143732_430_4d9df647_6aceefba": {
+      "cluster": "f09a2fbb876c82a1",
+      "side": "score"
+    },
+    "task_20251205_150335_071_464ee3e0_19d263cd": {
+      "cluster": "0b741704b3c257b1",
+      "side": "score"
+    },
+    "task_20251205_153330_906_a8eea1c0_8c7a6205": {
+      "cluster": "01461c394b44a631",
+      "side": "score"
+    },
+    "task_20251205_154853_044_d4a463c3_fce76046": {
+      "cluster": "e760221457f5db81",
+      "side": "score"
+    },
+    "task_20251205_162218_909_4d9df647_8538c2ae": {
+      "cluster": "5e34ea7dc05f7ec4",
+      "side": "score"
+    },
+    "task_20251205_192805_864_464ee3e0_91f2c02f": {
+      "cluster": "ebfc7d9601898898",
+      "side": "teach"
+    },
+    "task_20251205_194841_224_391f1eff_136bedae": {
+      "cluster": "6b8bea568818b68f",
+      "side": "teach"
+    },
+    "task_20251205_210412_800_0154326e_3caf7df7": {
+      "cluster": "ce5aaae7ea58fbc7",
+      "side": "teach"
+    },
+    "task_20251206_091748_833_a8eea1c0_7775ff15": {
+      "cluster": "7a58374f1cc22077",
+      "side": "score"
+    },
+    "task_20251206_113950_467_6cd2e092_1a268d87": {
+      "cluster": "91dcb5e5b8e6f17e",
+      "side": "score"
+    },
+    "task_20251206_114027_879_5c0cd3a2_904991cc": {
+      "cluster": "018f07ef4c721fae",
+      "side": "score"
+    },
+    "task_20251206_130444_802_6cd2e092_8979087f": {
+      "cluster": "c5516dd1bbcfa1ed",
+      "side": "teach"
+    },
+    "task_20251207_012657_395_accab84d_6ec27d2f": {
+      "cluster": "6cf5bf001aa09b67",
+      "side": "score"
+    },
+    "task_20251207_174704_642_5c0cd3a2_c124578d": {
+      "cluster": "31eaa8f670ca6f8c",
+      "side": "score"
+    },
+    "task_20251208_035402_755_ad5a67e3_8ca9a646": {
+      "cluster": "5ed6820014ba5701",
+      "side": "teach"
+    },
+    "task_20251208_072220_004_99ba2325_74403162": {
+      "cluster": "2c290c887f37497e",
+      "side": "score"
+    },
+    "task_20251208_102635_187_c4ad7a70_43753a9a": {
+      "cluster": "d769d1efd938f85c",
+      "side": "score"
+    },
+    "task_20251208_123126_960_c4ad7a70_f974dae7": {
+      "cluster": "7bacb35238593973",
+      "side": "score"
+    },
+    "task_20251208_153512_199_46ca2862_3f951375": {
+      "cluster": "cf5e8038c7b3303d",
+      "side": "teach"
+    },
+    "task_20251208_182210_511_ae7b45e2_8d2f867e": {
+      "cluster": "a64ac239155e6e4a",
+      "side": "score"
+    },
+    "task_20251209_063042_139_66392a82_81ffc0b0": {
+      "cluster": "c967e35259a5aa5f",
+      "side": "score"
+    },
+    "task_20251209_085836_811_a8eea1c0_6bbced3d": {
+      "cluster": "bfa2ef5f7828db92",
+      "side": "teach"
+    },
+    "task_20251209_094942_478_701c5774_dc4a4b13": {
+      "cluster": "54ecf1450a5828f8",
+      "side": "score"
+    },
+    "task_20251209_122452_734_d4a463c3_e5f1961c": {
+      "cluster": "36194a8c92ba088a",
+      "side": "teach"
+    },
+    "task_20251209_141356_232_4a23b9c9_9d41f343": {
+      "cluster": "36e8870afc2b6d72",
+      "side": "score"
+    },
+    "task_20251210_002938_761_897c3e0b_f075229a": {
+      "cluster": "2e15568a888e135c",
+      "side": "score"
+    },
+    "task_20251210_051952_801_99ba2325_a136867b": {
+      "cluster": "fdcb55254c45ee46",
+      "side": "teach"
+    },
+    "task_20251210_113549_827_d4a463c3_47b48a98": {
+      "cluster": "ca454c8d9f0e79b9",
+      "side": "score"
+    },
+    "task_20251210_145940_356_accab84d_c16e9916": {
+      "cluster": "cf041f4f0ddec326",
+      "side": "score"
+    },
+    "task_20251210_150413_088_8db296d5_81f04ff0": {
+      "cluster": "a45c4bafbe56df18",
+      "side": "teach"
+    },
+    "task_20251210_161511_924_2aa6b0ad_1446c2b4": {
+      "cluster": "70ffa0dc4bb8b3c5",
+      "side": "teach"
+    },
+    "task_20251210_183114_382_99ba2325_071a72ab": {
+      "cluster": "9e6bf397470e5abe",
+      "side": "score"
+    },
+    "task_20251210_200511_673_4a23b9c9_dcd88f59": {
+      "cluster": "36e8870afc2b6d72",
+      "side": "score"
+    },
+    "task_20251210_205620_593_391f1eff_ad65c160": {
+      "cluster": "567b3ec1309d1615",
+      "side": "teach"
+    },
+    "task_20251211_021838_048_accab84d_a511ee6e": {
+      "cluster": "403b6072acb5c1f5",
+      "side": "score"
+    },
+    "task_20251211_054846_540_e5bf1251_265c5883": {
+      "cluster": "664f695b5cee9fe6",
+      "side": "score"
+    },
+    "task_20251211_100706_985_701c5774_8d658f71": {
+      "cluster": "69de9b05f9a2bc57",
+      "side": "teach"
+    },
+    "task_20251211_105500_082_ae7b45e2_ee28e324": {
+      "cluster": "97ced91a03455d8e",
+      "side": "score"
+    },
+    "task_20251211_113022_685_23fcbcdb_906c78e7": {
+      "cluster": "795948f663876a6d",
+      "side": "score"
+    },
+    "task_20251211_141114_742_4d9df647_e15bd80a": {
+      "cluster": "5b055afa9eaddfc9",
+      "side": "teach"
+    },
+    "task_20251211_192109_853_99ba2325_b21298a0": {
+      "cluster": "d68c0341cf4705ce",
+      "side": "score"
+    },
+    "task_20251211_194841_657_8ce75c22_43c6bc2f": {
+      "cluster": "237fc25f75e9c10f",
+      "side": "teach"
+    },
+    "task_20251212_011224_384_accab84d_4ad9b557": {
+      "cluster": "b438e41286528e84",
+      "side": "score"
+    },
+    "task_20251212_011327_431_4a23b9c9_32256f29": {
+      "cluster": "36e8870afc2b6d72",
+      "side": "score"
+    },
+    "task_20251212_072144_983_8ce75c22_1b848fdd": {
+      "cluster": "e82a66b69b872135",
+      "side": "score"
+    },
+    "task_20251212_081413_439_66392a82_7eb34f57": {
+      "cluster": "d8bf180e4cb1ef40",
+      "side": "score"
+    },
+    "task_20251212_114043_514_b25153b4_e98b68ff": {
+      "cluster": "eff96fe64238f607",
+      "side": "score"
+    },
+    "task_20251212_162948_602_8ce75c22_8b25a027": {
+      "cluster": "8820120b4458c5ab",
+      "side": "score"
+    },
+    "task_20251212_172511_458_e6427839_47076c15": {
+      "cluster": "c5fa55baa558d20b",
+      "side": "teach"
+    },
+    "task_20251212_175622_173_d61a01c6_62164687": {
+      "cluster": "9b2a17b3bc8ed641",
+      "side": "teach"
+    },
+    "task_20251212_184405_886_e6427839_6413728a": {
+      "cluster": "160de8ea6fba5ceb",
+      "side": "score"
+    },
+    "task_20251212_191411_655_391f1eff_2fef896f": {
+      "cluster": "09eeb5393df7ea44",
+      "side": "score"
+    },
+    "task_20251212_191815_314_391f1eff_c23d76df": {
+      "cluster": "c2a12a3fe25627aa",
+      "side": "teach"
+    },
+    "task_20251212_194942_087_761f6b82_451ef3b7": {
+      "cluster": "607ca4583bdbc975",
+      "side": "score"
+    },
+    "task_20251212_222304_435_66392a82_815cd745": {
+      "cluster": "8ec8b181019d2f75",
+      "side": "teach"
+    },
+    "task_20251215_113102_438_df2c536d_49cda522": {
+      "cluster": "7a6a0e0ff0addeba",
+      "side": "score"
+    },
+    "task_20251216_123530_079_ec0cb5dd_3b89aab7": {
+      "cluster": "f6d890c4131dab2e",
+      "side": "teach"
+    },
+    "task_20251216_131651_690_764e5ead_f8619b02": {
+      "cluster": "67e480f6a3bb4e8f",
+      "side": "score"
+    },
+    "task_20251216_223804_332_df2c536d_a1d9c559": {
+      "cluster": "20a66ca0b953624b",
+      "side": "score"
+    },
+    "task_20251217_030654_663_99ba2325_f931fd42": {
+      "cluster": "941045e76f166e9e",
+      "side": "score"
+    },
+    "task_20251217_040407_761_6f5b66fc_eecce10e": {
+      "cluster": "2ca2b025a8317690",
+      "side": "teach"
+    },
+    "task_20251217_073807_153_761f6b82_cba63024": {
+      "cluster": "1b7faf1df4c5ef48",
+      "side": "score"
+    },
+    "task_20251217_081417_887_0a0bf089_487054de": {
+      "cluster": "715d84737a94633d",
+      "side": "score"
+    },
+    "task_20251217_125948_467_6f5b66fc_10d57868": {
+      "cluster": "3519043c0ccea641",
+      "side": "teach"
+    },
+    "task_20251217_130333_406_df2c536d_96566d89": {
+      "cluster": "3493f7ed8eadb25a",
+      "side": "score"
+    },
+    "task_20251217_140216_182_701c5774_9fcdf867": {
+      "cluster": "41f0c8147de0dd41",
+      "side": "teach"
+    },
+    "task_20251217_153037_688_97d7df7d_be0bd794": {
+      "cluster": "9de45087e3e42c8d",
+      "side": "score"
+    },
+    "task_20251217_160053_417_701c5774_db625115": {
+      "cluster": "15f82fbb86e9d175",
+      "side": "score"
+    },
+    "task_20251217_161056_114_d9bcd1e5_c8f3ccb9": {
+      "cluster": "7b6954221229a25a",
+      "side": "score"
+    },
+    "task_20251217_183416_700_764e5ead_4c46beb0": {
+      "cluster": "2a91ac1b64b2f7cd",
+      "side": "teach"
+    },
+    "task_20251217_205244_161_764e5ead_20429ef8": {
+      "cluster": "d0e379de0bcaad4f",
+      "side": "score"
+    },
+    "task_20251217_211242_026_391f1eff_27934d6b": {
+      "cluster": "92217d3dde557aab",
+      "side": "score"
+    },
+    "task_20251217_211723_514_87437950_3bbbb519": {
+      "cluster": "6d4558e7be060d3a",
+      "side": "teach"
+    },
+    "task_20251217_231709_248_b25153b4_4c5f9bde": {
+      "cluster": "1a7b15fd4b009b84",
+      "side": "score"
+    },
+    "task_20251218_055646_898_97d7df7d_be7218cc": {
+      "cluster": "2cd1887a2e881535",
+      "side": "teach"
+    },
+    "task_20251218_061956_641_109c89c0_423ed8ee": {
+      "cluster": "08db417e83695702",
+      "side": "score"
+    },
+    "task_20251218_063226_501_97d7df7d_8fd400d1": {
+      "cluster": "13fd6ac8bd456df1",
+      "side": "score"
+    },
+    "task_20251218_082708_201_99ba2325_51726f9c": {
+      "cluster": "afefab2e8a5bd513",
+      "side": "score"
+    },
+    "task_20251218_093719_611_764e5ead_5817d09a": {
+      "cluster": "ee7f98400ca3f6b9",
+      "side": "score"
+    },
+    "task_20251218_102205_211_1628b966_06687c79": {
+      "cluster": "2ffa15e3f4e682a3",
+      "side": "score"
+    },
+    "task_20251218_103430_472_701c5774_42c99459": {
+      "cluster": "50150eb89285451d",
+      "side": "score"
+    },
+    "task_20251218_104259_233_66392a82_74b17170": {
+      "cluster": "19665fa716181da4",
+      "side": "teach"
+    },
+    "task_20251218_114039_038_66392a82_c66d4f22": {
+      "cluster": "dcc9d10891341c70",
+      "side": "score"
+    },
+    "task_20251218_115158_065_1628b966_72217cb4": {
+      "cluster": "add8448ee859befc",
+      "side": "score"
+    },
+    "task_20251218_120340_971_701c5774_de18aa54": {
+      "cluster": "50150eb89285451d",
+      "side": "score"
+    },
+    "task_20251218_121722_423_1d219d93_8218da6c": {
+      "cluster": "c4eeadf2841bc3a5",
+      "side": "score"
+    },
+    "task_20251218_124419_383_66392a82_52c8290e": {
+      "cluster": "ebbc14a790c62523",
+      "side": "score"
+    },
+    "task_20251218_132315_968_66392a82_d610f253": {
+      "cluster": "ee6de261b1c98b74",
+      "side": "score"
+    },
+    "task_20251218_143555_095_97d7df7d_ece487bd": {
+      "cluster": "d2185efc4461ffb2",
+      "side": "score"
+    },
+    "task_20251218_155314_617_c5ca08eb_3ce3c52f": {
+      "cluster": "808116cf70dab9b3",
+      "side": "teach"
+    },
+    "task_20251218_164829_676_97d7df7d_893f6b2c": {
+      "cluster": "2e7e4c0720b73e5e",
+      "side": "score"
+    },
+    "task_20251218_171924_336_ad5a67e3_af252cf6": {
+      "cluster": "1f36dd0430d96bce",
+      "side": "score"
+    },
+    "task_20251218_173030_490_23fcbcdb_0e698d81": {
+      "cluster": "62427751e7f3c8a5",
+      "side": "teach"
+    },
+    "task_20251218_183102_136_391f1eff_ac9a6986": {
+      "cluster": "c2095d6c6f814979",
+      "side": "teach"
+    },
+    "task_20251218_183819_272_99ba2325_dd71c332": {
+      "cluster": "4d751248d7573c98",
+      "side": "teach"
+    },
+    "task_20251218_184224_139_764e5ead_e6e42358": {
+      "cluster": "06f41a35f1930cdd",
+      "side": "score"
+    },
+    "task_20251218_193035_592_391f1eff_5293f595": {
+      "cluster": "9193a5babf21ba88",
+      "side": "teach"
+    },
+    "task_20251218_220134_063_391f1eff_30369342": {
+      "cluster": "4f8b056b6d87d95f",
+      "side": "score"
+    },
+    "task_20251218_234518_453_d9bcd1e5_72c94403": {
+      "cluster": "d56bdfdb706aa80d",
+      "side": "score"
+    },
+    "task_20251218_234602_633_391f1eff_09a746e7": {
+      "cluster": "d3db845460465049",
+      "side": "teach"
+    },
+    "task_20251219_062202_346_66392a82_1d2065dd": {
+      "cluster": "968d39b531d3c582",
+      "side": "score"
+    },
+    "task_20251219_081545_939_99ba2325_887f5580": {
+      "cluster": "af4576bd81df2744",
+      "side": "score"
+    },
+    "task_20251219_091707_306_ad5a67e3_a76dbe57": {
+      "cluster": "1efe3dbfd3f8c6ef",
+      "side": "score"
+    },
+    "task_20251219_111409_528_c5ca08eb_db61cf35": {
+      "cluster": "424563ea8927300e",
+      "side": "score"
+    },
+    "task_20251219_111447_756_66392a82_1c69521d": {
+      "cluster": "3ccb8648c7e65102",
+      "side": "teach"
+    },
+    "task_20251219_114935_971_a8eea1c0_188fc892": {
+      "cluster": "25a37cd7a9d7d471",
+      "side": "score"
+    },
+    "task_20251219_115208_288_701c5774_66a236f8": {
+      "cluster": "2fc36c29142b5304",
+      "side": "teach"
+    },
+    "task_20251219_115925_475_1d219d93_53d34d23": {
+      "cluster": "5ae535b1effe7ba7",
+      "side": "score"
+    },
+    "task_20251219_130920_558_99ba2325_7f9481df": {
+      "cluster": "ed4da4751f5dc6d5",
+      "side": "score"
+    },
+    "task_20251219_134543_563_fa1836dc_00dab62f": {
+      "cluster": "80755fceaef8751d",
+      "side": "score"
+    },
+    "task_20251219_144431_663_97d7df7d_a52988e5": {
+      "cluster": "5043d0d91258522e",
+      "side": "teach"
+    },
+    "task_20251219_155215_361_00364ece_c1c6ffc8": {
+      "cluster": "f262518b3e320083",
+      "side": "score"
+    },
+    "task_20251219_155520_685_a8eea1c0_c6fb88a1": {
+      "cluster": "88eb857a7f5923cd",
+      "side": "teach"
+    },
+    "task_20251219_174221_127_64a4ebb9_3a8bb36b": {
+      "cluster": "aff4b5dc69f0a73f",
+      "side": "score"
+    },
+    "task_20251219_174851_846_764e5ead_250f05e1": {
+      "cluster": "5c7a960762c56835",
+      "side": "score"
+    },
+    "task_20251219_205632_335_cd46e60f_4db23138": {
+      "cluster": "c620235a7c2f9d49",
+      "side": "score"
+    },
+    "task_20251220_074606_220_0be70e35_6bb33392": {
+      "cluster": "9f98b54af766165e",
+      "side": "score"
+    },
+    "task_20251220_151043_591_0a0bf089_22634f28": {
+      "cluster": "83a7c86769066224",
+      "side": "score"
+    },
+    "task_20251221_045452_579_99ba2325_0e601eac": {
+      "cluster": "21f865db9b068887",
+      "side": "score"
+    },
+    "task_20251221_150109_770_e5bf1251_93959046": {
+      "cluster": "8d9e4c8dad2dc5a0",
+      "side": "score"
+    },
+    "task_20251221_191123_397_97d7df7d_7196ef19": {
+      "cluster": "920bc5bf29b7cf0a",
+      "side": "score"
+    },
+    "task_20251221_222713_409_64a4ebb9_9915366d": {
+      "cluster": "00deb5015181226b",
+      "side": "teach"
+    },
+    "task_20251221_222834_884_97d7df7d_c088062a": {
+      "cluster": "fc49de7792c23afa",
+      "side": "score"
+    },
+    "task_20251221_231733_401_66392a82_514cea3c": {
+      "cluster": "18b0f3801e99a5c0",
+      "side": "score"
+    },
+    "task_20251221_233237_652_66392a82_c1a599bb": {
+      "cluster": "b2436f9b45268c4c",
+      "side": "teach"
+    },
+    "task_20251222_071447_442_13762b97_b353b16a": {
+      "cluster": "a00aeb62b6c8b74f",
+      "side": "teach"
+    },
+    "task_20251222_072805_599_99ba2325_ae6b0778": {
+      "cluster": "7d7afe9b489ed74e",
+      "side": "teach"
+    },
+    "task_20251222_075116_761_30600918_a7f0a69a": {
+      "cluster": "8fe6e1cf9974f1b0",
+      "side": "teach"
+    },
+    "task_20251222_084449_326_66392a82_cadddb04": {
+      "cluster": "4a6b493a578637fa",
+      "side": "score"
+    },
+    "task_20251222_105710_498_391f1eff_8b25dbef": {
+      "cluster": "eafba8d209b12d2b",
+      "side": "score"
+    },
+    "task_20251222_113047_572_64a4ebb9_cd2083a8": {
+      "cluster": "d7bb6451d7059811",
+      "side": "score"
+    },
+    "task_20251222_120551_813_1628b966_8e21a82f": {
+      "cluster": "1aa4107516b33986",
+      "side": "teach"
+    },
+    "task_20251222_124541_619_64a4ebb9_abb23ceb": {
+      "cluster": "8b9874dd14c4ef3d",
+      "side": "score"
+    },
+    "task_20251222_130954_812_a9f62433_c0252ed2": {
+      "cluster": "740be07219f6069a",
+      "side": "score"
+    },
+    "task_20251222_131624_825_8ce75c22_535e7ced": {
+      "cluster": "847494683876fa62",
+      "side": "score"
+    },
+    "task_20251222_133355_087_30600918_e9215c57": {
+      "cluster": "1f0cb16fee6a8ca7",
+      "side": "score"
+    },
+    "task_20251222_140957_029_c5ca08eb_3c4271f0": {
+      "cluster": "742f431c3608c318",
+      "side": "score"
+    },
+    "task_20251222_151946_409_060e2c81_253357ab": {
+      "cluster": "750a8082d77ac423",
+      "side": "score"
+    },
+    "task_20251222_181355_411_764e5ead_48850a98": {
+      "cluster": "55d2da16ec7bebab",
+      "side": "score"
+    },
+    "task_20251222_190928_391_391f1eff_8cb006f5": {
+      "cluster": "2fd60c498c76f5a1",
+      "side": "score"
+    },
+    "task_20251222_195853_743_0be70e35_0916fba8": {
+      "cluster": "ec4e3b1fb718dee3",
+      "side": "score"
+    },
+    "task_20251223_004550_249_13762b97_a4b09854": {
+      "cluster": "908ed830407a1e0d",
+      "side": "teach"
+    },
+    "task_20251223_005949_519_13762b97_e08c84a3": {
+      "cluster": "33337ca9124a6845",
+      "side": "teach"
+    },
+    "task_20251223_044459_066_97d7df7d_6de880ec": {
+      "cluster": "8bdf0091c1f4f5c3",
+      "side": "score"
+    },
+    "task_20251223_061756_991_a8eea1c0_e497a345": {
+      "cluster": "e2e1fcefe2214f18",
+      "side": "score"
+    },
+    "task_20251223_063905_655_30600918_3e736be9": {
+      "cluster": "af9ad0f7a11a018e",
+      "side": "score"
+    },
+    "task_20251223_064316_340_01395ded_9c6f3e01": {
+      "cluster": "47d42a5a6e33a766",
+      "side": "score"
+    },
+    "task_20251223_064932_736_01395ded_eff85dae": {
+      "cluster": "2bbb9f8713680cb1",
+      "side": "score"
+    },
+    "task_20251223_081019_100_d4a463c3_f8774fe4": {
+      "cluster": "bbc359afdfb6120b",
+      "side": "teach"
+    },
+    "task_20251223_101136_983_1d219d93_d1ba6c2d": {
+      "cluster": "4067d4658b46cf56",
+      "side": "score"
+    },
+    "task_20251223_132605_091_764e5ead_dd00cc8f": {
+      "cluster": "ba008f8717b7348b",
+      "side": "score"
+    },
+    "task_20251223_135402_072_c5ca08eb_67009578": {
+      "cluster": "0ff4461d32719083",
+      "side": "score"
+    },
+    "task_20251223_150001_549_d9bcd1e5_475d93ab": {
+      "cluster": "ced6f25b66883e4c",
+      "side": "teach"
+    },
+    "task_20251223_151555_341_764e5ead_9648644d": {
+      "cluster": "443a62e0f53a60c4",
+      "side": "score"
+    },
+    "task_20251223_153021_454_66392a82_0d6d8897": {
+      "cluster": "a76e0c96610de289",
+      "side": "score"
+    },
+    "task_20251223_174414_238_a8eea1c0_0c3b20c1": {
+      "cluster": "74c117b9944192cd",
+      "side": "teach"
+    },
+    "task_20251223_181749_418_8ce75c22_28d85190": {
+      "cluster": "e9f22764f7052f0f",
+      "side": "score"
+    },
+    "task_20251223_184833_888_a8eea1c0_87c53cb9": {
+      "cluster": "0b6eedfbcd49435f",
+      "side": "score"
+    },
+    "task_20251223_194142_190_46ca2862_d9cae434": {
+      "cluster": "e5d004b6a400d745",
+      "side": "teach"
+    },
+    "task_20251223_194912_450_46ca2862_0084047c": {
+      "cluster": "976241910c553c24",
+      "side": "teach"
+    },
+    "task_20251223_201118_525_46ca2862_e3f79e09": {
+      "cluster": "127a5880cb03699b",
+      "side": "teach"
+    },
+    "task_20251223_224508_138_97d7df7d_b4505336": {
+      "cluster": "d2cc3962dfdf5c28",
+      "side": "score"
+    },
+    "task_20251224_030218_157_00364ece_79650819": {
+      "cluster": "d72e01f4e52d71b6",
+      "side": "teach"
+    },
+    "task_20251224_064352_705_ec0cb5dd_46d83d4e": {
+      "cluster": "97f075030ed7e8fe",
+      "side": "score"
+    },
+    "task_20251224_074251_092_46ca2862_b5b99f66": {
+      "cluster": "1fd923dee9d46e35",
+      "side": "teach"
+    },
+    "task_20251224_094258_495_c4ad7a70_42fbe372": {
+      "cluster": "e18619eaba93fac1",
+      "side": "score"
+    },
+    "task_20251224_104537_197_701c5774_5c104832": {
+      "cluster": "045ab27e69f6259b",
+      "side": "score"
+    },
+    "task_20251224_112727_844_701c5774_58c1bbfb": {
+      "cluster": "7be9b20212591484",
+      "side": "score"
+    },
+    "task_20251224_133749_739_c4ad7a70_9df76270": {
+      "cluster": "48ff06de57b6e49b",
+      "side": "score"
+    },
+    "task_20251224_150114_483_a8eea1c0_d44f97ad": {
+      "cluster": "9db6fe706ca0a3a8",
+      "side": "score"
+    },
+    "task_20251224_153415_365_0a0bf089_01602883": {
+      "cluster": "36599c7ca9972415",
+      "side": "teach"
+    },
+    "task_20251224_183116_594_e5bf1251_c2cb6205": {
+      "cluster": "4883b2f2d9021686",
+      "side": "score"
+    },
+    "task_20251224_195437_497_e6427839_6357fed2": {
+      "cluster": "042292417a2ca7a3",
+      "side": "teach"
+    },
+    "task_20251224_215807_175_8ce75c22_1c31b786": {
+      "cluster": "402a35db160d3f96",
+      "side": "score"
+    },
+    "task_20251224_234036_267_accab84d_f26a18f7": {
+      "cluster": "e048026224766cd0",
+      "side": "score"
+    },
+    "task_20251225_062927_003_d9bcd1e5_d996901a": {
+      "cluster": "f9a11b3e1544984e",
+      "side": "score"
+    },
+    "task_20251225_064512_901_701c5774_964bf3bf": {
+      "cluster": "ee9bf6aedd03dc58",
+      "side": "score"
+    },
+    "task_20251225_071630_879_701c5774_99b636e9": {
+      "cluster": "a52399775fe7c5b6",
+      "side": "score"
+    },
+    "task_20251225_074839_957_701c5774_eef4d0c4": {
+      "cluster": "c5fc8f2af9ee67fa",
+      "side": "teach"
+    },
+    "task_20251225_124750_039_7e2e0039_de8a9d94": {
+      "cluster": "69ba3ce8f3a5288a",
+      "side": "score"
+    },
+    "task_20251225_130546_796_4d9df647_7e32b59a": {
+      "cluster": "675f68cfdf83303b",
+      "side": "score"
+    },
+    "task_20251225_133905_252_060e2c81_7e4fd228": {
+      "cluster": "ac41b1a58d0cb6be",
+      "side": "teach"
+    },
+    "task_20251225_140851_135_64a4ebb9_c37d6b1b": {
+      "cluster": "d435256d70829d6e",
+      "side": "teach"
+    },
+    "task_20251225_152803_886_ae7b45e2_15fd131c": {
+      "cluster": "73e35bd7c435840c",
+      "side": "score"
+    },
+    "task_20251225_152926_506_4d9df647_e4e518ca": {
+      "cluster": "ff7c6a33c2cc34cd",
+      "side": "score"
+    },
+    "task_20251225_161315_197_13762b97_44595aaa": {
+      "cluster": "0a2df4af0f91256c",
+      "side": "teach"
+    },
+    "task_20251225_165311_201_4d9df647_7b3f1641": {
+      "cluster": "7b4099f8f1b50673",
+      "side": "teach"
+    },
+    "task_20251225_180047_141_a8eea1c0_002e725f": {
+      "cluster": "f8a5a09adf5c467f",
+      "side": "score"
+    },
+    "task_20251226_010313_969_accab84d_77306049": {
+      "cluster": "26f0cd419cfce589",
+      "side": "score"
+    },
+    "task_20251226_041218_355_d9bcd1e5_bc84c9d5": {
+      "cluster": "ee1be69bf3904c00",
+      "side": "teach"
+    },
+    "task_20251226_072511_447_4f1a62dd_cdc0e960": {
+      "cluster": "f6d0e3b3db086230",
+      "side": "score"
+    },
+    "task_20251226_090527_363_b25153b4_6caf1a47": {
+      "cluster": "2c1d6a1c10248f11",
+      "side": "score"
+    },
+    "task_20251226_094920_495_99ba2325_627386b2": {
+      "cluster": "d6f444a85d96243e",
+      "side": "score"
+    },
+    "task_20251226_101143_297_99ba2325_75b99d9a": {
+      "cluster": "9427dfff572ef7d5",
+      "side": "score"
+    },
+    "task_20251226_102334_184_b25153b4_08c0849c": {
+      "cluster": "f9adf14bd62bf143",
+      "side": "teach"
+    },
+    "task_20251226_104747_127_30600918_559da326": {
+      "cluster": "5bfb4b0abdd353b1",
+      "side": "teach"
+    },
+    "task_20251226_110144_731_b25153b4_773380f8": {
+      "cluster": "1be5bb083b2e9e57",
+      "side": "score"
+    },
+    "task_20251226_113744_669_0a0bf089_6a786508": {
+      "cluster": "e6649c81d976d367",
+      "side": "score"
+    },
+    "task_20251226_114207_539_30600918_6211eb4b": {
+      "cluster": "5f1d883aca0da2e1",
+      "side": "score"
+    },
+    "task_20251226_121423_362_c4ad7a70_4be55408": {
+      "cluster": "4926942b38920ead",
+      "side": "teach"
+    },
+    "task_20251226_132052_338_e6427839_727d852c": {
+      "cluster": "14649d68ac11b8b0",
+      "side": "score"
+    },
+    "task_20251226_133324_902_e5bf1251_942c943a": {
+      "cluster": "557b9bf784a51008",
+      "side": "score"
+    },
+    "task_20251226_133552_038_99ba2325_71415006": {
+      "cluster": "19f7d7cea4f8bf8b",
+      "side": "score"
+    },
+    "task_20251226_135729_497_c4ad7a70_788f5baf": {
+      "cluster": "cff0274361ed4ff0",
+      "side": "teach"
+    },
+    "task_20251226_150609_837_4d9df647_84917c0b": {
+      "cluster": "35a2a2a33925905f",
+      "side": "score"
+    },
+    "task_20251226_150647_118_13762b97_8da0c6a5": {
+      "cluster": "be4b08de1b7d45b6",
+      "side": "teach"
+    },
+    "task_20251226_153702_699_ad5a67e3_43cd2d47": {
+      "cluster": "a4eb69c15be04a79",
+      "side": "teach"
+    },
+    "task_20251226_153741_362_13762b97_efb07353": {
+      "cluster": "4371b8b070ea50aa",
+      "side": "score"
+    },
+    "task_20251226_173040_372_95fd9f79_c7e85ec1": {
+      "cluster": "3b2000100650b96f",
+      "side": "teach"
+    },
+    "task_20251226_180126_405_bca89e7d_c0d5b9ee": {
+      "cluster": "ccc3dbfcad7f02e3",
+      "side": "teach"
+    },
+    "task_20251226_225931_685_bca89e7d_597733d7": {
+      "cluster": "27b811b3838192cd",
+      "side": "score"
+    },
+    "task_20251231_123548_425_8cd8e61e_9303271e": {
+      "cluster": "155f7b1bd396ec40",
+      "side": "score"
+    },
+    "task_20251231_152332_133_ad5a67e3_2a4e226c": {
+      "cluster": "19ef45bda6c46655",
+      "side": "score"
+    },
+    "task_20251231_162628_797_a8eea1c0_0a53db6c": {
+      "cluster": "01c5df491aa5cfad",
+      "side": "teach"
+    },
+    "task_20251231_164213_376_00364ece_724e98d5": {
+      "cluster": "550e1cb0d6f6e156",
+      "side": "score"
+    },
+    "task_20260101_043715_660_a8eea1c0_7304e48e": {
+      "cluster": "8bd2adb4e6c2f47a",
+      "side": "score"
+    },
+    "task_20260101_074825_586_a8eea1c0_e596bab2": {
+      "cluster": "8a5dccc9dc7a13ce",
+      "side": "score"
+    },
+    "task_20260101_111750_695_30600918_80637585": {
+      "cluster": "ba2023128a423833",
+      "side": "teach"
+    },
+    "task_20260101_122222_300_ad5a67e3_3757206c": {
+      "cluster": "3a770b60a0f9e073",
+      "side": "teach"
+    },
+    "task_20260101_162109_100_a8eea1c0_e88250ef": {
+      "cluster": "9b380728c92a8a15",
+      "side": "score"
+    },
+    "task_20260101_191529_659_a8eea1c0_27d3bf1b": {
+      "cluster": "08aa4c9b0c7e46ab",
+      "side": "score"
+    },
+    "task_20260101_202840_239_a8eea1c0_0f425b23": {
+      "cluster": "f8807e9aaeaa9139",
+      "side": "score"
+    },
+    "task_20260101_233731_695_00364ece_187f2808": {
+      "cluster": "3d30dbd18f23ec7c",
+      "side": "teach"
+    },
+    "task_20260102_002012_363_00364ece_a3936446": {
+      "cluster": "b3238ffc862c6a03",
+      "side": "score"
+    },
+    "task_20260102_012109_160_accab84d_686b76ff": {
+      "cluster": "cc60ce64925b4a7e",
+      "side": "score"
+    },
+    "task_20260102_031908_712_accab84d_886a7365": {
+      "cluster": "05d3ef751e9f12e3",
+      "side": "score"
+    },
+    "task_20260102_063731_186_d4a463c3_f1c4df9b": {
+      "cluster": "f5a144715baffd55",
+      "side": "score"
+    },
+    "task_20260102_080409_151_d4a463c3_56c32265": {
+      "cluster": "1688c67f5e073da0",
+      "side": "score"
+    },
+    "task_20260102_080520_113_d4a463c3_90b440a8": {
+      "cluster": "ed2a379fc1e70726",
+      "side": "teach"
+    },
+    "task_20260102_094108_584_a8eea1c0_34a39e46": {
+      "cluster": "b59e5b5842d21b7a",
+      "side": "score"
+    },
+    "task_20260102_100510_709_66392a82_3d301c18": {
+      "cluster": "988e8f7cfe809aa4",
+      "side": "score"
+    },
+    "task_20260102_155148_014_accab84d_910b176a": {
+      "cluster": "85fcf58866e7e74c",
+      "side": "score"
+    },
+    "task_20260102_162857_012_391f1eff_39478d55": {
+      "cluster": "a576a57518248c25",
+      "side": "score"
+    },
+    "task_20260102_165223_158_99ba2325_67a4a1e9": {
+      "cluster": "ed1292995aca53ca",
+      "side": "score"
+    },
+    "task_20260102_171008_763_ad5a67e3_cb101d3b": {
+      "cluster": "7f282f06a9386867",
+      "side": "score"
+    },
+    "task_20260102_172945_725_ad5a67e3_5480e26f": {
+      "cluster": "382f5391713cc472",
+      "side": "teach"
+    },
+    "task_20260102_175948_337_6f5b66fc_f9bfbf1d": {
+      "cluster": "d6b62df89022a703",
+      "side": "score"
+    },
+    "task_20260102_210829_972_2aa6b0ad_e3d70e04": {
+      "cluster": "830cb3a9a099c03b",
+      "side": "score"
+    },
+    "task_20260104_143530_440_6f5b66fc_b6b24e96": {
+      "cluster": "826d05cfb076e299",
+      "side": "score"
+    },
+    "task_20260104_192853_372_6f5b66fc_12ceda34": {
+      "cluster": "d02f27f0245be5c1",
+      "side": "score"
+    },
+    "task_20260104_205924_379_e0ac0c6d_cec96398": {
+      "cluster": "347abd76b4a521cd",
+      "side": "teach"
+    },
+    "task_20260105_074654_229_bca89e7d_39d9c8ac": {
+      "cluster": "3f6205e3d6ac4857",
+      "side": "score"
+    },
+    "task_20260105_095412_678_a9f62433_bb5f5bb7": {
+      "cluster": "6950fb434aaac0e5",
+      "side": "teach"
+    },
+    "task_20260105_101355_392_e0ac0c6d_4d94d938": {
+      "cluster": "6ab6303166d50768",
+      "side": "score"
+    },
+    "task_20260105_105429_833_a9f62433_b38b55f2": {
+      "cluster": "eee2be16a9e5a5d7",
+      "side": "teach"
+    },
+    "task_20260105_113049_430_a9f62433_6dd18613": {
+      "cluster": "657a6e98529f2983",
+      "side": "score"
+    },
+    "task_20260105_122123_327_8ce75c22_e27766ca": {
+      "cluster": "ff0419f03f449efb",
+      "side": "score"
+    },
+    "task_20260105_124102_961_e0ac0c6d_0b196906": {
+      "cluster": "9965e42ec0043b43",
+      "side": "score"
+    },
+    "task_20260105_135614_999_8e9e30d7_f02407b9": {
+      "cluster": "d45d502bdb05e86a",
+      "side": "score"
+    },
+    "task_20260105_140440_086_e0ac0c6d_27ecac16": {
+      "cluster": "b03f9f52fc714b8a",
+      "side": "score"
+    },
+    "task_20260105_145825_060_701c5774_1054ca6e": {
+      "cluster": "d6d2616f6d244de3",
+      "side": "score"
+    },
+    "task_20260105_153912_808_8ce75c22_f7553dba": {
+      "cluster": "61b6d8e6c07296db",
+      "side": "score"
+    },
+    "task_20260105_155141_430_a9f62433_b5eb63ea": {
+      "cluster": "1d31ade574b854f7",
+      "side": "teach"
+    },
+    "task_20260105_161440_926_701c5774_7dd66a6f": {
+      "cluster": "9f4f05a87c6c83eb",
+      "side": "score"
+    },
+    "task_20260105_163511_384_79b3b025_1ff6d0c6": {
+      "cluster": "c10a807be59236ae",
+      "side": "score"
+    },
+    "task_20260105_163515_719_8e9e30d7_d86e69de": {
+      "cluster": "b3161e0660edae94",
+      "side": "score"
+    },
+    "task_20260105_170909_782_a9f62433_ecdfc657": {
+      "cluster": "cea64f9b4c923050",
+      "side": "teach"
+    },
+    "task_20260105_173202_829_8e9e30d7_9740a454": {
+      "cluster": "3b7e26382f064142",
+      "side": "score"
+    },
+    "task_20260105_173701_207_8ce75c22_3b124b32": {
+      "cluster": "e21d3f909a5414cc",
+      "side": "score"
+    },
+    "task_20260105_175342_189_e5bf1251_60089921": {
+      "cluster": "6ab64e05e18d878e",
+      "side": "teach"
+    },
+    "task_20260105_182555_369_e7cfb93b_c2cc205b": {
+      "cluster": "cdff530779a3059b",
+      "side": "score"
+    },
+    "task_20260105_191634_257_2aa6b0ad_ea0bbd82": {
+      "cluster": "76f2c78a6ebe9385",
+      "side": "score"
+    },
+    "task_20260105_212045_832_e0ac0c6d_84c7f524": {
+      "cluster": "c5daf4e0a829ef2e",
+      "side": "score"
+    },
+    "task_20260105_212540_480_79b3b025_84db5210": {
+      "cluster": "29527fd723671144",
+      "side": "score"
+    },
+    "task_20260105_214127_504_e7cfb93b_e6640be3": {
+      "cluster": "69cdaeb3ecd3ce58",
+      "side": "teach"
+    },
+    "task_20260105_221239_098_e0ac0c6d_f5f338f3": {
+      "cluster": "b03f9f52fc714b8a",
+      "side": "score"
+    },
+    "task_20260105_221816_258_00364ece_50f56980": {
+      "cluster": "a5b35a05735d1f6e",
+      "side": "score"
+    },
+    "task_20260105_222434_398_79b3b025_ccd9b889": {
+      "cluster": "34de67b381cef935",
+      "side": "teach"
+    },
+    "task_20260105_225106_969_0154326e_fc0d4a7b": {
+      "cluster": "17f2bf0e067c37ae",
+      "side": "score"
+    },
+    "task_20260105_233603_790_e7cfb93b_cc802e4b": {
+      "cluster": "c42b14b848ed8065",
+      "side": "teach"
+    },
+    "task_20260106_003109_589_b5bd4eb9_d0454fa5": {
+      "cluster": "ea0525b0622b4220",
+      "side": "teach"
+    },
+    "task_20260106_040225_149_7ebc1127_e9ac645c": {
+      "cluster": "1be1480e1ff08c38",
+      "side": "score"
+    },
+    "task_20260106_050111_551_701c5774_419d6733": {
+      "cluster": "1076ae7ab7612e26",
+      "side": "score"
+    },
+    "task_20260106_052248_226_1628b966_d8c22aed": {
+      "cluster": "f51f38a64c372fcf",
+      "side": "score"
+    },
+    "task_20260106_053348_337_1628b966_4896f265": {
+      "cluster": "72b131c69cadfa21",
+      "side": "teach"
+    },
+    "task_20260106_054515_137_1628b966_fe1068d4": {
+      "cluster": "2d719fe16d95b35e",
+      "side": "score"
+    },
+    "task_20260106_055343_364_79b3b025_7d5c0c6b": {
+      "cluster": "0c0832260227df20",
+      "side": "score"
+    },
+    "task_20260106_060646_574_1628b966_0fc7207a": {
+      "cluster": "aed9bed09d2d3771",
+      "side": "score"
+    },
+    "task_20260106_070321_497_accab84d_6f4a8da8": {
+      "cluster": "0f1e3ea7ab02ebe7",
+      "side": "score"
+    },
+    "task_20260106_071510_179_911d75d7_0ae789ae": {
+      "cluster": "584d04eff30a4322",
+      "side": "score"
+    },
+    "task_20260106_073527_320_e6427839_e2e2ac8d": {
+      "cluster": "9e830a44b4b2669a",
+      "side": "score"
+    },
+    "task_20260106_075904_098_a8eea1c0_a6cfe625": {
+      "cluster": "62230441a0643b94",
+      "side": "score"
+    },
+    "task_20260106_085129_923_e5bf1251_dd76af07": {
+      "cluster": "20a117f969ae2337",
+      "side": "score"
+    },
+    "task_20260106_090444_873_99ba2325_980a3405": {
+      "cluster": "2d422e299119601b",
+      "side": "score"
+    },
+    "task_20260106_093832_516_bca89e7d_3703f213": {
+      "cluster": "66d72d3da1849d40",
+      "side": "score"
+    },
+    "task_20260106_102032_602_8e9e30d7_286c0816": {
+      "cluster": "6dcd5eb9d42810ec",
+      "side": "teach"
+    },
+    "task_20260106_103319_873_baf0b358_69ce7445": {
+      "cluster": "5fac76464b082deb",
+      "side": "score"
+    },
+    "task_20260106_104903_639_0154326e_81f6a68a": {
+      "cluster": "7176642d202ac3a4",
+      "side": "teach"
+    },
+    "task_20260106_112632_846_bca89e7d_5d19e8f3": {
+      "cluster": "f2c1e02f2253611b",
+      "side": "teach"
+    },
+    "task_20260106_112645_853_8e9e30d7_1d4b934c": {
+      "cluster": "b4e84f215aa87bc2",
+      "side": "teach"
+    },
+    "task_20260106_114228_782_79b3b025_b556c84d": {
+      "cluster": "0cd55309fca0bb9c",
+      "side": "score"
+    },
+    "task_20260106_123222_425_8e9e30d7_7dea421b": {
+      "cluster": "5d61d6d1531dd9a9",
+      "side": "score"
+    },
+    "task_20260106_123514_994_0154326e_7a42392c": {
+      "cluster": "5e8fd056e24c5c2f",
+      "side": "score"
+    },
+    "task_20260106_132019_309_bca89e7d_5ae689d9": {
+      "cluster": "e6ffb2804de10213",
+      "side": "teach"
+    },
+    "task_20260106_133642_894_66392a82_3e083fa5": {
+      "cluster": "8ed69be891767d10",
+      "side": "score"
+    },
+    "task_20260106_134616_649_e6427839_7dba5a00": {
+      "cluster": "154cf0b1e6663e04",
+      "side": "teach"
+    },
+    "task_20260106_140034_876_e7cfb93b_fc943e0e": {
+      "cluster": "98fb098c0563eb58",
+      "side": "teach"
+    },
+    "task_20260106_143218_938_79b3b025_ce953a94": {
+      "cluster": "b941be8637c244c4",
+      "side": "teach"
+    },
+    "task_20260106_143232_971_0154326e_0af4275b": {
+      "cluster": "5038a4e70701927e",
+      "side": "teach"
+    },
+    "task_20260106_144651_681_4d9df647_72f9f11e": {
+      "cluster": "2962354c25713d41",
+      "side": "score"
+    },
+    "task_20260106_145907_700_a8eea1c0_f5bae698": {
+      "cluster": "95bf9365cf5f1fea",
+      "side": "teach"
+    },
+    "task_20260106_151754_319_d4a463c3_41f0af13": {
+      "cluster": "9a90e12760954fb6",
+      "side": "score"
+    },
+    "task_20260106_152415_149_6f5b66fc_aad3df17": {
+      "cluster": "35ec95597c68ff9a",
+      "side": "score"
+    },
+    "task_20260106_153333_351_1628b966_f96547a2": {
+      "cluster": "6ea55029176c0d5a",
+      "side": "score"
+    },
+    "task_20260106_153404_124_79b3b025_914e7207": {
+      "cluster": "bf43cad43473a979",
+      "side": "score"
+    },
+    "task_20260106_155537_908_a9f62433_6d26efe3": {
+      "cluster": "50e32e7d5e99ceb0",
+      "side": "score"
+    },
+    "task_20260106_155841_121_e6427839_fa425cbe": {
+      "cluster": "1f61a88f0e054b80",
+      "side": "score"
+    },
+    "task_20260106_155851_715_df0ecdeb_7b4347ef": {
+      "cluster": "6760d44ce594b3d5",
+      "side": "teach"
+    },
+    "task_20260106_160701_640_ae7b45e2_d0d75212": {
+      "cluster": "3b716d6e975236dc",
+      "side": "score"
+    },
+    "task_20260106_161324_272_c4ad7a70_4b3980fc": {
+      "cluster": "da71f01fcb8967f0",
+      "side": "teach"
+    },
+    "task_20260106_161816_678_a8eea1c0_1ef46cba": {
+      "cluster": "0d23a1f1a1853909",
+      "side": "score"
+    },
+    "task_20260106_161859_265_00364ece_0e836ce8": {
+      "cluster": "72bbbbac8794d308",
+      "side": "score"
+    },
+    "task_20260106_170941_065_df2c536d_5b164657": {
+      "cluster": "9a20ca04f79a4b53",
+      "side": "score"
+    },
+    "task_20260106_170952_179_e0ac0c6d_791fba5e": {
+      "cluster": "cf1e49d1ffe4045f",
+      "side": "score"
+    },
+    "task_20260106_172901_590_a9f62433_f7baa0fa": {
+      "cluster": "f2a25e7ebe9df26f",
+      "side": "teach"
+    },
+    "task_20260106_185201_238_00364ece_8ab4fd80": {
+      "cluster": "866a723d7ae6cf1d",
+      "side": "score"
+    },
+    "task_20260106_192119_816_ad5a67e3_87a5a87c": {
+      "cluster": "f8c6ec9eacf3816c",
+      "side": "score"
+    },
+    "task_20260106_213903_609_e7cfb93b_5e95c001": {
+      "cluster": "151870fc51587639",
+      "side": "teach"
+    },
+    "task_20260107_032952_337_7ebc1127_75b96b98": {
+      "cluster": "76810212a13b21c7",
+      "side": "score"
+    },
+    "task_20260107_044347_094_7ebc1127_4e1fc798": {
+      "cluster": "7c85ad8a8f251e6f",
+      "side": "teach"
+    },
+    "task_20260107_093643_038_df2c536d_f90fd06e": {
+      "cluster": "46356a8c10ac41c2",
+      "side": "score"
+    },
+    "task_20260107_101232_309_be6c9105_fefb9d10": {
+      "cluster": "c84114df64eca99f",
+      "side": "score"
+    },
+    "task_20260107_101510_200_e7cfb93b_142300ed": {
+      "cluster": "f193f243c0bfd5ea",
+      "side": "score"
+    },
+    "task_20260107_104648_226_df2c536d_860ba76c": {
+      "cluster": "3a5db50c1658cf5c",
+      "side": "teach"
+    },
+    "task_20260107_111155_131_0154326e_96e0246b": {
+      "cluster": "9a07d6bbf0d8f61c",
+      "side": "teach"
+    },
+    "task_20260107_111503_670_2aa6b0ad_e9611a77": {
+      "cluster": "e7d41f1b875ab70f",
+      "side": "score"
+    },
+    "task_20260107_114621_723_df2c536d_d9f135a4": {
+      "cluster": "57f9324f63a3a517",
+      "side": "teach"
+    },
+    "task_20260107_125943_886_1628b966_f951b083": {
+      "cluster": "7b4ea9b0bede82e2",
+      "side": "score"
+    },
+    "task_20260107_131200_705_1628b966_84e87e0f": {
+      "cluster": "baccff5953336c5f",
+      "side": "score"
+    },
+    "task_20260107_132943_755_911d75d7_4c944103": {
+      "cluster": "3c65601f827f3c67",
+      "side": "score"
+    },
+    "task_20260107_135115_794_be6c9105_f0911f6a": {
+      "cluster": "19eb9b7da07718e8",
+      "side": "score"
+    },
+    "task_20260107_141130_029_1628b966_8e264839": {
+      "cluster": "dd611c6b3890a821",
+      "side": "score"
+    },
+    "task_20260107_141655_644_911d75d7_9516dfe1": {
+      "cluster": "d325d86f23e6ef5e",
+      "side": "teach"
+    },
+    "task_20260107_142454_824_1628b966_4a482da4": {
+      "cluster": "4a114c883764c13d",
+      "side": "teach"
+    },
+    "task_20260107_144751_333_79b3b025_92bfb77e": {
+      "cluster": "37afb810a070dbeb",
+      "side": "score"
+    },
+    "task_20260107_153010_997_be6c9105_6165e5db": {
+      "cluster": "c6f91a6ca1580060",
+      "side": "score"
+    },
+    "task_20260107_160335_693_911d75d7_d116d7cf": {
+      "cluster": "8739017c2ad08248",
+      "side": "score"
+    },
+    "task_20260107_162554_472_accab84d_41d2e871": {
+      "cluster": "b4e6822fcdab6587",
+      "side": "teach"
+    },
+    "task_20260107_162724_374_13762b97_6a97d001": {
+      "cluster": "a4813f9e16c5571c",
+      "side": "score"
+    },
+    "task_20260107_162939_118_e5bf1251_437648af": {
+      "cluster": "d84fe8af88dd2df4",
+      "side": "score"
+    },
+    "task_20260107_163801_607_64a4ebb9_6f9c4d1b": {
+      "cluster": "843a37e626dbd79b",
+      "side": "score"
+    },
+    "task_20260107_164033_273_a8eea1c0_c0de2fed": {
+      "cluster": "3b33adabaf08cd07",
+      "side": "score"
+    },
+    "task_20260107_170006_026_64a4ebb9_d8e1ce16": {
+      "cluster": "3a1858fd4076394d",
+      "side": "score"
+    },
+    "task_20260107_173403_203_64a4ebb9_e8ddb8d7": {
+      "cluster": "d16865685d73dd3b",
+      "side": "score"
+    },
+    "task_20260107_174626_202_64a4ebb9_e3e54b1d": {
+      "cluster": "5053b9d3785f4a2d",
+      "side": "teach"
+    },
+    "task_20260107_174701_432_464ee3e0_16e768aa": {
+      "cluster": "d1ce5432ba7e753c",
+      "side": "teach"
+    },
+    "task_20260107_180857_873_ae7b45e2_47771a8c": {
+      "cluster": "79ade7794bc050d3",
+      "side": "teach"
+    },
+    "task_20260107_181520_716_64a4ebb9_ec0278c5": {
+      "cluster": "984e01795ea50b86",
+      "side": "score"
+    },
+    "task_20260107_191539_515_911d75d7_3ea7750e": {
+      "cluster": "5e3b6aeacc965b6b",
+      "side": "teach"
+    },
+    "task_20260107_193032_599_e0ac0c6d_403469c5": {
+      "cluster": "6e7451aced70108a",
+      "side": "score"
+    },
+    "task_20260107_202437_273_911d75d7_89789b9a": {
+      "cluster": "d2a13f6d85560605",
+      "side": "teach"
+    },
+    "task_20260107_212831_019_911d75d7_d1212b63": {
+      "cluster": "99045d0f14e8cc90",
+      "side": "score"
+    },
+    "task_20260107_214637_627_911d75d7_eb9d8622": {
+      "cluster": "d2a13f6d85560605",
+      "side": "teach"
+    },
+    "task_20260108_021903_359_0154326e_ed8c1265": {
+      "cluster": "f7c358c6c8605bac",
+      "side": "score"
+    },
+    "task_20260108_031733_760_e5bf1251_9e81ad1b": {
+      "cluster": "8cb26d8026ebb08a",
+      "side": "score"
+    },
+    "task_20260108_041838_219_df0ecdeb_3f8c0642": {
+      "cluster": "58bb095d91e69a98",
+      "side": "score"
+    },
+    "task_20260108_050214_962_e5bf1251_0cabbd3d": {
+      "cluster": "bb1f20c9d83ff994",
+      "side": "score"
+    },
+    "task_20260108_054521_589_7ebc1127_7e843385": {
+      "cluster": "b6a0f54660767dac",
+      "side": "score"
+    },
+    "task_20260108_075149_000_df0ecdeb_ead1b33a": {
+      "cluster": "179c46fd4943338e",
+      "side": "score"
+    },
+    "task_20260108_082113_548_df0ecdeb_2725d17f": {
+      "cluster": "699485b7ad6d8744",
+      "side": "score"
+    },
+    "task_20260108_101001_581_701c5774_3ac4e4fb": {
+      "cluster": "c1fb4543d67e2e25",
+      "side": "teach"
+    },
+    "task_20260108_101953_397_be6c9105_0ebb2503": {
+      "cluster": "148c4a37d60ce682",
+      "side": "score"
+    },
+    "task_20260108_105408_681_be6c9105_852c4b49": {
+      "cluster": "a7c8c55eddaba072",
+      "side": "score"
+    },
+    "task_20260108_113744_344_a9f62433_9cdd0a8f": {
+      "cluster": "9209efbbae979ddf",
+      "side": "teach"
+    },
+    "task_20260108_133740_739_13762b97_41fc6ac0": {
+      "cluster": "1040489370f8096c",
+      "side": "score"
+    },
+    "task_20260108_142310_191_df2c536d_c6edcf9f": {
+      "cluster": "6a25e45b059993f2",
+      "side": "score"
+    },
+    "task_20260108_143038_654_e5bf1251_b9e616b8": {
+      "cluster": "80928565e8a6b3c0",
+      "side": "score"
+    },
+    "task_20260108_160714_025_8e9e30d7_80cf63dd": {
+      "cluster": "2284b7068578cefe",
+      "side": "teach"
+    },
+    "task_20260108_160846_466_8e9e30d7_7e50c8e2": {
+      "cluster": "94efcb16c909b0cb",
+      "side": "score"
+    },
+    "task_20260108_160928_699_391f1eff_905701cb": {
+      "cluster": "6ce8119b3f4d368c",
+      "side": "score"
+    },
+    "task_20260108_162316_574_13762b97_098a086c": {
+      "cluster": "5c7358486aed3041",
+      "side": "score"
+    },
+    "task_20260108_162420_138_df0ecdeb_96950310": {
+      "cluster": "a5085d0e1e6b8d17",
+      "side": "score"
+    },
+    "task_20260108_165812_020_4d9df647_eeacd121": {
+      "cluster": "151e457c2dc69622",
+      "side": "score"
+    },
+    "task_20260108_172650_003_8e9e30d7_a1ff8588": {
+      "cluster": "7013ca3e6f1a4ef7",
+      "side": "score"
+    },
+    "task_20260108_174958_137_df0ecdeb_a05f1e14": {
+      "cluster": "928e7bb28810e539",
+      "side": "teach"
+    },
+    "task_20260108_182727_772_4608325d_60b7f5d9": {
+      "cluster": "ab1ca70316ab8bcf",
+      "side": "teach"
+    },
+    "task_20260108_194921_186_8e9e30d7_a087d6f8": {
+      "cluster": "4d8804604efffa76",
+      "side": "score"
+    },
+    "task_20260108_203842_162_d8f93f2d_1aa3f29b": {
+      "cluster": "70b49e9f39642220",
+      "side": "score"
+    },
+    "task_20260109_004703_994_7ebc1127_6f97f3e9": {
+      "cluster": "bcd6a9f0ba2ae7f2",
+      "side": "score"
+    },
+    "task_20260109_034708_645_be6c9105_8b22bcd8": {
+      "cluster": "19eb9b7da07718e8",
+      "side": "score"
+    },
+    "task_20260109_042243_802_df0ecdeb_e6cc6185": {
+      "cluster": "c49ea64d745d4dfc",
+      "side": "score"
+    },
+    "task_20260109_043327_590_806f1a83_d690097e": {
+      "cluster": "009d0248d9317345",
+      "side": "score"
+    },
+    "task_20260109_060901_602_8e9e30d7_06581f9f": {
+      "cluster": "4d094450c906ae82",
+      "side": "score"
+    },
+    "task_20260109_063128_468_8e9e30d7_e983fafa": {
+      "cluster": "0f6d8b4a9ef1fc0a",
+      "side": "score"
+    },
+    "task_20260109_063639_321_8e9e30d7_c31290aa": {
+      "cluster": "326110587e3de346",
+      "side": "score"
+    },
+    "task_20260109_074002_906_060e2c81_e0a9e99d": {
+      "cluster": "8c6cea2bcfe7a66f",
+      "side": "score"
+    },
+    "task_20260109_075544_800_464ee3e0_7852c2fb": {
+      "cluster": "00dcdc37d9ad2621",
+      "side": "teach"
+    },
+    "task_20260109_080715_585_911d75d7_ded91685": {
+      "cluster": "7417ebc75a8bd616",
+      "side": "score"
+    },
+    "task_20260109_085044_179_911d75d7_57c54b4e": {
+      "cluster": "d2a13f6d85560605",
+      "side": "teach"
+    },
+    "task_20260109_100633_248_4c1a4a14_20a0385b": {
+      "cluster": "30a77817ff89c0bb",
+      "side": "score"
+    },
+    "task_20260109_104953_156_be6c9105_f8ed16bb": {
+      "cluster": "a9e7a2c53fb66068",
+      "side": "score"
+    },
+    "task_20260109_122356_038_0154326e_d224a99d": {
+      "cluster": "e12ede0909bc2b1a",
+      "side": "score"
+    },
+    "task_20260109_133046_369_391f1eff_7e44fdca": {
+      "cluster": "6c21c93cb96e3395",
+      "side": "teach"
+    },
+    "task_20260109_134319_026_64a4ebb9_98c48f81": {
+      "cluster": "b96fa835dda704f2",
+      "side": "score"
+    },
+    "task_20260109_145235_208_64a4ebb9_9befb3ae": {
+      "cluster": "d8f22dc228b88440",
+      "side": "teach"
+    },
+    "task_20260109_154737_612_4d9df647_ca8cc4b2": {
+      "cluster": "f588bcc6f3ab0097",
+      "side": "score"
+    },
+    "task_20260109_155926_434_df0ecdeb_405562a2": {
+      "cluster": "4e5dd9cc5bfdcfb7",
+      "side": "score"
+    },
+    "task_20260109_160851_122_911d75d7_3ece8e5e": {
+      "cluster": "b2a977a59caf85eb",
+      "side": "score"
+    },
+    "task_20260109_162344_706_95fd9f79_85a7972c": {
+      "cluster": "321fc5f165202998",
+      "side": "score"
+    },
+    "task_20260109_170111_125_8ce75c22_1c7034c5": {
+      "cluster": "11289df6391e243b",
+      "side": "teach"
+    },
+    "task_20260109_172559_279_e6427839_f711406f": {
+      "cluster": "d158bd2d5af87e4b",
+      "side": "score"
+    },
+    "task_20260109_180543_808_391f1eff_02357fea": {
+      "cluster": "1f706b7d1f342622",
+      "side": "score"
+    },
+    "task_20260109_185510_803_a8eea1c0_b51123d7": {
+      "cluster": "0d3619a85919bc15",
+      "side": "score"
+    },
+    "task_20260109_192935_678_e6427839_4c081ddc": {
+      "cluster": "5dd2d0856000fd98",
+      "side": "score"
+    },
+    "task_20260109_202436_533_a8eea1c0_755eabdd": {
+      "cluster": "8e7856689473da21",
+      "side": "score"
+    },
+    "task_20260111_151647_667_a8eea1c0_c7c264ba": {
+      "cluster": "e2a9da59baf6dc06",
+      "side": "score"
+    },
+    "task_20260111_161750_847_a8eea1c0_3649940a": {
+      "cluster": "ecf5f1a9875683d6",
+      "side": "score"
+    },
+    "task_20260111_190744_927_a8eea1c0_17bea726": {
+      "cluster": "a5206965f17be6b0",
+      "side": "score"
+    },
+    "task_20260111_204619_117_a8eea1c0_b69d59bc": {
+      "cluster": "77a8d97b6824eed0",
+      "side": "score"
+    },
+    "task_20260112_110449_677_701c5774_9562f6db": {
+      "cluster": "c5fc8f2af9ee67fa",
+      "side": "teach"
+    },
+    "task_20260112_111113_212_060e2c81_99e6099d": {
+      "cluster": "b0b6f4e233b74e01",
+      "side": "teach"
+    },
+    "task_20260112_124137_537_761f6b82_9e1a6b99": {
+      "cluster": "194ea0556e83c6db",
+      "side": "score"
+    },
+    "task_20260112_125407_584_1628b966_f5dd38b6": {
+      "cluster": "11ca993d41ea863a",
+      "side": "score"
+    },
+    "task_20260112_141226_936_7aad91c1_61df8f2b": {
+      "cluster": "21a1f02311b461b2",
+      "side": "score"
+    },
+    "task_20260112_181636_272_c4ad7a70_c9cdfa29": {
+      "cluster": "d857e8d2ebb79a11",
+      "side": "score"
+    },
+    "task_20260112_183416_157_a8eea1c0_0d6acfd0": {
+      "cluster": "5508e2d446bf7c38",
+      "side": "score"
+    },
+    "task_20260112_194743_238_a8eea1c0_a4b1468a": {
+      "cluster": "20e56219b44c7716",
+      "side": "score"
+    },
+    "task_20260113_031046_703_99ba2325_54f35603": {
+      "cluster": "025bada57ded98fb",
+      "side": "score"
+    },
+    "task_20260113_032200_394_ad5a67e3_5e3873b8": {
+      "cluster": "69e0c0515a1c13c8",
+      "side": "score"
+    },
+    "task_20260113_114937_574_4d9df647_a8d4341b": {
+      "cluster": "41b2a2b4c233bb2a",
+      "side": "score"
+    },
+    "task_20260113_115527_352_9a1e131b_a1aa39d6": {
+      "cluster": "5c58a92dbc913724",
+      "side": "score"
+    },
+    "task_20260113_120745_735_4d9df647_017a9009": {
+      "cluster": "847494683876fa62",
+      "side": "score"
+    },
+    "task_20260113_125933_225_accab84d_d7ec710e": {
+      "cluster": "52fdd956e78de336",
+      "side": "teach"
+    },
+    "task_20260113_141542_776_911d75d7_78be6b0f": {
+      "cluster": "0c6f6833686fb68c",
+      "side": "teach"
+    },
+    "task_20260113_141825_482_911d75d7_ecab6320": {
+      "cluster": "c94339056486268f",
+      "side": "score"
+    },
+    "task_20260113_143610_437_46ca2862_56a4f834": {
+      "cluster": "249b83c2f4682552",
+      "side": "teach"
+    },
+    "task_20260113_151550_104_a8eea1c0_7e9733a5": {
+      "cluster": "95bbb61456469609",
+      "side": "score"
+    },
+    "task_20260113_152354_165_9a1e131b_fc5e2cac": {
+      "cluster": "d086e4e247059468",
+      "side": "score"
+    },
+    "task_20260113_153008_006_46ca2862_c5083638": {
+      "cluster": "8b7ccfce95217319",
+      "side": "score"
+    },
+    "task_20260113_182216_716_a8eea1c0_7a0619e9": {
+      "cluster": "b7f35b6d548e6f08",
+      "side": "score"
+    },
+    "task_20260113_182602_664_46ca2862_b6ef60ca": {
+      "cluster": "e2b17cef269e0b39",
+      "side": "score"
+    },
+    "task_20260113_183935_893_e6427839_03a04c19": {
+      "cluster": "8ff28ee18573bbb7",
+      "side": "score"
+    },
+    "task_20260113_212050_548_a8eea1c0_73a73ce7": {
+      "cluster": "27c586489912093f",
+      "side": "teach"
+    },
+    "task_20260114_073013_180_911d75d7_cc244085": {
+      "cluster": "9e0bd922cd7e28d9",
+      "side": "score"
+    },
+    "task_20260114_073658_459_78a5b71e_cab5cc9f": {
+      "cluster": "371fe686cdc54498",
+      "side": "score"
+    },
+    "task_20260114_081229_036_78a5b71e_a4fb07a9": {
+      "cluster": "80000a58bed6e09b",
+      "side": "teach"
+    },
+    "task_20260114_085016_654_e6427839_ca9119ec": {
+      "cluster": "597efe0db696e9b6",
+      "side": "score"
+    },
+    "task_20260114_090455_089_accab84d_0032df92": {
+      "cluster": "f327ae63fc0c574d",
+      "side": "teach"
+    },
+    "task_20260114_091008_897_accab84d_786931e4": {
+      "cluster": "b9aec488a702ba7b",
+      "side": "score"
+    },
+    "task_20260114_094327_107_46ca2862_796e7685": {
+      "cluster": "119eb8911ffff009",
+      "side": "score"
+    },
+    "task_20260114_105830_112_4d9df647_c7664e8a": {
+      "cluster": "7a7035598b11ddba",
+      "side": "score"
+    },
+    "task_20260114_124106_138_1628b966_ddc2587a": {
+      "cluster": "1415c11ae628e588",
+      "side": "teach"
+    },
+    "task_20260114_133032_536_4d9df647_0635001b": {
+      "cluster": "b835b2d64a8cbc5e",
+      "side": "score"
+    },
+    "task_20260114_134336_659_e6427839_91142068": {
+      "cluster": "0b61ee7e8be6448b",
+      "side": "score"
+    },
+    "task_20260114_163605_721_1628b966_187c9544": {
+      "cluster": "e6e7f8332ab5c003",
+      "side": "score"
+    },
+    "task_20260114_164939_471_4d9df647_2aaff95f": {
+      "cluster": "5f2107da0acb4033",
+      "side": "teach"
+    },
+    "task_20260114_170216_532_accab84d_9dc7ddd5": {
+      "cluster": "3056b0119df081ca",
+      "side": "teach"
+    },
+    "task_20260114_171738_367_a8eea1c0_3f57db74": {
+      "cluster": "3795363f1cd59154",
+      "side": "score"
+    },
+    "task_20260114_172823_954_a8eea1c0_b725e936": {
+      "cluster": "9761e7c6ca9c951c",
+      "side": "score"
+    },
+    "task_20260114_172825_147_1628b966_cc356289": {
+      "cluster": "5b127df37623b54b",
+      "side": "score"
+    },
+    "task_20260114_173716_566_46ca2862_301e0b47": {
+      "cluster": "5eda493b52a2a5cf",
+      "side": "teach"
+    },
+    "task_20260114_173911_329_a8eea1c0_b687c646": {
+      "cluster": "01ec18ba4e1197a8",
+      "side": "score"
+    },
+    "task_20260114_174427_042_99ba2325_7915481a": {
+      "cluster": "f77c219f6e697ffe",
+      "side": "score"
+    },
+    "task_20260114_174605_380_1628b966_b09f4a35": {
+      "cluster": "93ee80d3afd3b3ff",
+      "side": "score"
+    },
+    "task_20260114_180423_838_00364ece_9f2ad35c": {
+      "cluster": "c634da6fd600d0a7",
+      "side": "score"
+    },
+    "task_20260114_180601_485_99ba2325_2dc8b3ce": {
+      "cluster": "60b8c06a985280ec",
+      "side": "teach"
+    },
+    "task_20260114_181932_082_99ba2325_92ddef90": {
+      "cluster": "5bbb84cfcef6c59a",
+      "side": "score"
+    },
+    "task_20260114_214705_137_4d9df647_d451b853": {
+      "cluster": "0537ce5b00b01a70",
+      "side": "score"
+    },
+    "task_20260114_220447_370_00364ece_0c9c7534": {
+      "cluster": "806da4d7157865e3",
+      "side": "score"
+    },
+    "task_20260115_034527_380_66392a82_a172d90d": {
+      "cluster": "ef7a71299785fc30",
+      "side": "score"
+    },
+    "task_20260115_041440_817_ad5a67e3_07f8ca42": {
+      "cluster": "1be5bb083b2e9e57",
+      "side": "score"
+    },
+    "task_20260115_043251_808_ad5a67e3_2a60bc82": {
+      "cluster": "7e5ee90b0305d1c0",
+      "side": "score"
+    },
+    "task_20260115_043503_499_a8eea1c0_4b943c9b": {
+      "cluster": "db8b59e4f6c10820",
+      "side": "teach"
+    },
+    "task_20260115_064627_351_66392a82_cd4009dd": {
+      "cluster": "73b85d6733edbcd8",
+      "side": "score"
+    },
+    "task_20260115_101420_305_4d9df647_d2d873db": {
+      "cluster": "141576233ac07a10",
+      "side": "teach"
+    },
+    "task_20260115_111059_508_9a1e131b_a201f065": {
+      "cluster": "5338190c3c54e9c3",
+      "side": "score"
+    },
+    "task_20260115_121701_840_1628b966_ff394d2f": {
+      "cluster": "4883b2f2d9021686",
+      "side": "score"
+    },
+    "task_20260115_122753_129_1628b966_0c22c9cc": {
+      "cluster": "557b9bf784a51008",
+      "side": "score"
+    },
+    "task_20260115_124602_090_accab84d_91ac1840": {
+      "cluster": "23be13e396b9e63f",
+      "side": "score"
+    },
+    "task_20260115_125430_649_fa1836dc_e02d5824": {
+      "cluster": "9f0b0f6ff399c02b",
+      "side": "score"
+    },
+    "task_20260115_130330_068_00364ece_cf2e9cf1": {
+      "cluster": "fd60d0ac1b0b0299",
+      "side": "score"
+    },
+    "task_20260115_130852_498_a8eea1c0_e9192d7e": {
+      "cluster": "b97947e544202a74",
+      "side": "teach"
+    },
+    "task_20260115_143541_964_fa1836dc_dc6652fd": {
+      "cluster": "41d3b6aa0252ca1f",
+      "side": "score"
+    },
+    "task_20260115_145329_475_23fcbcdb_3a970315": {
+      "cluster": "9bbafcb80df8ed3b",
+      "side": "score"
+    },
+    "task_20260115_151312_690_57529556_9fca8861": {
+      "cluster": "a0dbf69e580b32ec",
+      "side": "teach"
+    },
+    "task_20260115_152733_296_46ca2862_55f848d3": {
+      "cluster": "c5f1c843ae85e6a1",
+      "side": "score"
+    },
+    "task_20260115_153041_899_d4a463c3_cab6d59b": {
+      "cluster": "327e918fb69d70fb",
+      "side": "teach"
+    },
+    "task_20260115_154856_907_1628b966_275e920f": {
+      "cluster": "a12974b548ef1f73",
+      "side": "teach"
+    },
+    "task_20260115_170553_772_ae7b45e2_daae994c": {
+      "cluster": "a4aee475f837cc30",
+      "side": "score"
+    },
+    "task_20260115_172636_260_fa1836dc_7a703e50": {
+      "cluster": "4cca75befe86b9da",
+      "side": "score"
+    },
+    "task_20260115_190725_477_a8eea1c0_eba3a1c5": {
+      "cluster": "6e8a5ed95c42051c",
+      "side": "score"
+    },
+    "task_20260115_201951_323_391f1eff_659b9dae": {
+      "cluster": "034f9475b1dc68f6",
+      "side": "teach"
+    },
+    "task_20260116_054437_417_59bb807c_d73ca3e4": {
+      "cluster": "d46f27eeee02889d",
+      "side": "score"
+    },
+    "task_20260116_055008_115_c5cac200_a905eff3": {
+      "cluster": "6e7b09208700721d",
+      "side": "score"
+    },
+    "task_20260116_055513_891_99ba2325_849991b8": {
+      "cluster": "a54bdd46683a54fb",
+      "side": "score"
+    },
+    "task_20260116_064331_915_d8f93f2d_854d09b8": {
+      "cluster": "85faf1d32a6915d2",
+      "side": "score"
+    },
+    "task_20260116_070521_300_a8eea1c0_d9458bf7": {
+      "cluster": "a1486ae92f9983c7",
+      "side": "score"
+    },
+    "task_20260116_074121_437_1628b966_f42c4b3f": {
+      "cluster": "8e11129b95e49fb2",
+      "side": "score"
+    },
+    "task_20260116_080150_885_1628b966_5a58d8e3": {
+      "cluster": "87122fde760e1b31",
+      "side": "score"
+    },
+    "task_20260116_081645_096_66392a82_fd509f97": {
+      "cluster": "c8e5030f381fb23f",
+      "side": "teach"
+    },
+    "task_20260116_084548_120_fa1836dc_679067bc": {
+      "cluster": "397e4d241f223276",
+      "side": "score"
+    },
+    "task_20260116_085958_358_a8eea1c0_6d7f242a": {
+      "cluster": "1424b8a4e1046b19",
+      "side": "score"
+    },
+    "task_20260116_091935_817_d4a463c3_3f20bdca": {
+      "cluster": "47976380e4f67e0c",
+      "side": "teach"
+    },
+    "task_20260116_094554_219_c5cac200_82f2d2a8": {
+      "cluster": "d85d86d037a9e3c2",
+      "side": "teach"
+    },
+    "task_20260116_095226_245_4d9df647_08f9f5b1": {
+      "cluster": "e847ba1f56a6ca29",
+      "side": "teach"
+    },
+    "task_20260116_095609_650_c5cac200_741831a8": {
+      "cluster": "b5d086d1136d7f54",
+      "side": "teach"
+    },
+    "task_20260116_101840_488_e6427839_81df8ba3": {
+      "cluster": "4e19303e7c0d7af1",
+      "side": "teach"
+    },
+    "task_20260116_104653_444_99ba2325_320d5ca4": {
+      "cluster": "d6f444a85d96243e",
+      "side": "score"
+    },
+    "task_20260116_105748_962_99ba2325_dcc658fa": {
+      "cluster": "9427dfff572ef7d5",
+      "side": "score"
+    },
+    "task_20260116_112336_208_c5cac200_da33db0a": {
+      "cluster": "80335a04427ba04e",
+      "side": "score"
+    },
+    "task_20260116_112648_773_99ba2325_c572f123": {
+      "cluster": "19f7d7cea4f8bf8b",
+      "side": "score"
+    },
+    "task_20260116_122712_166_d4a463c3_196fe24f": {
+      "cluster": "722a3fdd3680b543",
+      "side": "score"
+    },
+    "task_20260116_124300_245_1d219d93_76cd5b4d": {
+      "cluster": "e3e72697754d4eb6",
+      "side": "score"
+    },
+    "task_20260116_124631_826_d4a463c3_0319223c": {
+      "cluster": "141230769b108643",
+      "side": "score"
+    },
+    "task_20260116_125421_530_806f1a83_3e703812": {
+      "cluster": "a896f54e5649104d",
+      "side": "score"
+    },
+    "task_20260116_125449_931_e6427839_50663277": {
+      "cluster": "f8809cf3c21036dc",
+      "side": "score"
+    },
+    "task_20260116_125857_450_1628b966_25b7eec5": {
+      "cluster": "07fc98ac1900611e",
+      "side": "score"
+    },
+    "task_20260116_131741_243_1628b966_c66e5972": {
+      "cluster": "03b649061b76a6dc",
+      "side": "score"
+    },
+    "task_20260116_133210_131_806f1a83_4c204063": {
+      "cluster": "b17a9bf17e54e2e7",
+      "side": "score"
+    },
+    "task_20260116_134415_018_fa1836dc_d8efb574": {
+      "cluster": "868084953594234a",
+      "side": "teach"
+    },
+    "task_20260116_143750_504_a8eea1c0_7d91efa1": {
+      "cluster": "e1ac0d4715334939",
+      "side": "score"
+    },
+    "task_20260116_150213_342_a8eea1c0_6d6fe792": {
+      "cluster": "082afa206684b89f",
+      "side": "teach"
+    },
+    "task_20260116_155214_819_baf0b358_0cf4418f": {
+      "cluster": "2c214287a4feb64e",
+      "side": "score"
+    },
+    "task_20260116_160908_725_46ca2862_923e672e": {
+      "cluster": "e5d004b6a400d745",
+      "side": "teach"
+    },
+    "task_20260116_165226_829_46ca2862_ff6cdacb": {
+      "cluster": "96ddf16ec73b1660",
+      "side": "score"
+    },
+    "task_20260116_170758_750_d4a463c3_3885de59": {
+      "cluster": "f146232637bbd2e7",
+      "side": "score"
+    },
+    "task_20260116_174925_124_d8f93f2d_9e20df73": {
+      "cluster": "0919232c84d35e41",
+      "side": "score"
+    },
+    "task_20260116_185136_779_46ca2862_2b77b852": {
+      "cluster": "e07ae2f8168662ff",
+      "side": "score"
+    },
+    "task_20260116_192842_208_46ca2862_04093fc7": {
+      "cluster": "07a3e5df8e845b86",
+      "side": "score"
+    },
+    "task_20260116_203855_584_57529556_7b20a1d8": {
+      "cluster": "49790bcd01ef4fa4",
+      "side": "teach"
+    },
+    "task_20260116_224538_330_66392a82_10d0806e": {
+      "cluster": "f6f5e360de8ef8bc",
+      "side": "teach"
+    },
+    "task_20260116_235649_372_66392a82_ccb66a9a": {
+      "cluster": "37b45e67fc53e7f5",
+      "side": "teach"
+    },
+    "task_20260117_000130_134_2aa6b0ad_a20f3a61": {
+      "cluster": "d671dc781a3c5ed9",
+      "side": "teach"
+    },
+    "task_20260117_074123_393_ae7b45e2_1ed4ee80": {
+      "cluster": "266b57728d83d0e5",
+      "side": "score"
+    },
+    "task_20260117_084409_361_4d9df647_9892db8c": {
+      "cluster": "140a4a66ad5bb142",
+      "side": "teach"
+    },
+    "task_20260119_022056_842_ad5a67e3_964df197": {
+      "cluster": "8400821ef4dd78b1",
+      "side": "score"
+    },
+    "task_20260119_045416_534_ad5a67e3_78445838": {
+      "cluster": "525ff183ff5d1c83",
+      "side": "score"
+    },
+    "task_20260119_162417_443_d8f93f2d_2b15bc38": {
+      "cluster": "8d9e4c8dad2dc5a0",
+      "side": "score"
+    },
+    "task_20260121_143201_590_1afb323a_5a03bf03": {
+      "cluster": "b3ead2da9d338973",
+      "side": "teach"
+    },
+    "task_20260121_144251_116_38405923_9438dabd": {
+      "cluster": "2bb42616663b165e",
+      "side": "score"
+    },
+    "task_20260121_145409_648_1afb323a_4e203caa": {
+      "cluster": "4fa8196784d22893",
+      "side": "teach"
+    },
+    "task_20260121_150447_596_1afb323a_0a1e4085": {
+      "cluster": "bfaddd317a311cc1",
+      "side": "teach"
+    },
+    "task_20260121_161936_323_cbcf38f8_50ccd164": {
+      "cluster": "2704a09d9355f200",
+      "side": "teach"
+    },
+    "task_20260121_162252_344_1afb323a_f878fac7": {
+      "cluster": "4c06b1dc6ed3d7bc",
+      "side": "score"
+    },
+    "task_20260121_163208_054_1afb323a_7f40ee66": {
+      "cluster": "dd4c2cb6369d7c37",
+      "side": "score"
+    },
+    "task_20260121_171247_475_cbcf38f8_c0a86487": {
+      "cluster": "0de0464b6a525bc4",
+      "side": "score"
+    },
+    "task_20260121_171958_007_cbcf38f8_0349e59e": {
+      "cluster": "2b432d336d4f4a63",
+      "side": "teach"
+    },
+    "task_20260121_183027_058_1afb323a_c53cb400": {
+      "cluster": "2bc2287119ec342f",
+      "side": "teach"
+    },
+    "task_20260121_214553_691_cbcf38f8_abce7315": {
+      "cluster": "6a25e45b059993f2",
+      "side": "score"
+    },
+    "task_20260122_024556_370_38405923_1a174d84": {
+      "cluster": "9a1fbf45eaa5afc7",
+      "side": "score"
+    }
+  },
+  "teach_share": 0.3
+}
