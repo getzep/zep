@@ -9,7 +9,8 @@ import os
 import sys
 import time
 
-from crewai import LLM, Agent, Crew, Process, Task
+from crewai import Agent, Crew, Process, Task
+from responses_llm import ReasoningReplayOpenAICompletion
 from zep_cloud.client import Zep
 
 from zep_crewai import create_add_data_tool, create_search_tool
@@ -73,12 +74,7 @@ def main():
         knowledge base where you can store and retrieve information specific to him.""",
         tools=[user_search_tool, user_add_tool],
         verbose=True,
-        llm=LLM(
-            model="gpt-6-luna",
-            api="responses",
-            reasoning_effort="low",
-            store=False,
-        ),
+        llm=ReasoningReplayOpenAICompletion(),
     )
 
     knowledge_curator = Agent(
@@ -89,12 +85,7 @@ def main():
         benefits everyone.""",
         tools=[graph_search_tool, graph_add_tool],
         verbose=True,
-        llm=LLM(
-            model="gpt-6-luna",
-            api="responses",
-            reasoning_effort="low",
-            store=False,
-        ),
+        llm=ReasoningReplayOpenAICompletion(),
     )
 
     research_analyst = Agent(
@@ -104,12 +95,7 @@ def main():
         knowledge to provide comprehensive insights and recommendations.""",
         tools=[user_search_tool, graph_search_tool],  # Read-only access to both
         verbose=True,
-        llm=LLM(
-            model="gpt-6-luna",
-            api="responses",
-            reasoning_effort="low",
-            store=False,
-        ),
+        llm=ReasoningReplayOpenAICompletion(),
     )
 
     # Task 1: Store Bob's personal information
