@@ -137,6 +137,7 @@ export async function runStage(
     process.env.BANKING_LEDGER_PATH = zep.ledger;
     const adapter = await FRAMEWORKS[framework]();
     const result = await adapter.runEpisode(caseData, model, effort, skills, recorder, teaching);
+    // The score checks the banking state only. A student can pass without the Skill; the run then records the Skill use as ignored.
     const evaluation = score(caseData, result.tools.database);
     const seconds = (Date.now() - start) / 1000;
     const summary = { passed: evaluation.passed, tokens: result.tokens, seconds, final_answer: result.finalAnswer };
