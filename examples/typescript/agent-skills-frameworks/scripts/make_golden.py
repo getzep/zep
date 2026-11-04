@@ -16,6 +16,7 @@ from banking import (  # noqa: E402
     allocation_rank,
     compare_packages,
     expected_database,
+    InterestEntry,
     make_case,
     quote_package,
     score,
@@ -126,7 +127,15 @@ def main() -> None:
             ],
             "checking": [tie_checking],
             "cards": [tie_card],
-            "interest_entries": [],
+            "interest_entries": [
+                InterestEntry(
+                    account_id=account.account_id,
+                    statement_month=tie_source.statement_month,
+                    kind="interest",
+                    amount=Decimal("0.00"),
+                )
+                for account in tie_accounts
+            ],
         }
     )
     first, second = tie_case.savings

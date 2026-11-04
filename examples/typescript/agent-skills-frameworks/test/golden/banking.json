@@ -8990,7 +8990,20 @@
           "purchases": "500"
         }
       ],
-      "interest_entries": []
+      "interest_entries": [
+        {
+          "account_id": "case-000000-s1",
+          "statement_month": "2031-04",
+          "kind": "interest",
+          "amount": "0.00"
+        },
+        {
+          "account_id": "case-000000-s2",
+          "statement_month": "2031-04",
+          "kind": "interest",
+          "amount": "0.00"
+        }
+      ]
     },
     "expected_database": {
       "credits": [
@@ -9019,7 +9032,7 @@
           "checking_boosted_balance": "5000.00",
           "card_boosted_balance": "5000.00",
           "expected_interest": "24.58",
-          "net_interest_before_run": "0",
+          "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
           "package_boosted_balance": "5000.00",
           "checking_account_id": "case-000000-c1",
@@ -9035,7 +9048,7 @@
           "checking_boosted_balance": "5000.00",
           "card_boosted_balance": "5000.00",
           "expected_interest": "16.25",
-          "net_interest_before_run": "0",
+          "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
           "package_boosted_balance": "5000.00",
           "checking_account_id": null,
@@ -9068,7 +9081,7 @@
           "checking_boosted_balance": "5000.00",
           "card_boosted_balance": "5000.00",
           "expected_interest": "24.58",
-          "net_interest_before_run": "0",
+          "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
           "package_boosted_balance": "5000.00",
           "checking_account_id": "case-000000-c1",
@@ -9086,7 +9099,7 @@
           "checking_boosted_balance": "5000.00",
           "card_boosted_balance": "5000.00",
           "expected_interest": "16.25",
-          "net_interest_before_run": "0",
+          "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
           "package_boosted_balance": "5000.00",
           "checking_account_id": null,
@@ -9122,7 +9135,7 @@
           "checking_boosted_balance": "5000.00",
           "card_boosted_balance": "5000.00",
           "expected_interest": "20.42",
-          "net_interest_before_run": "0",
+          "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
           "package_boosted_balance": "5000.00",
           "checking_account_id": null,
@@ -9140,7 +9153,7 @@
           "checking_boosted_balance": "5000.00",
           "card_boosted_balance": "5000.00",
           "expected_interest": "20.42",
-          "net_interest_before_run": "0",
+          "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
           "package_boosted_balance": "5000.00",
           "checking_account_id": "case-000000-c1",
@@ -9186,7 +9199,7 @@
           "checking_boosted_balance": "5000.00",
           "card_boosted_balance": "5000.00",
           "expected_interest": "24.58",
-          "net_interest_before_run": "0",
+          "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
           "package_boosted_balance": "5000.00",
           "checking_account_id": "case-000000-c1",
@@ -9204,7 +9217,7 @@
           "checking_boosted_balance": "5000.00",
           "card_boosted_balance": "5000.00",
           "expected_interest": "16.25",
-          "net_interest_before_run": "0",
+          "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
           "package_boosted_balance": "5000.00",
           "checking_account_id": null,
@@ -9250,7 +9263,7 @@
           "checking_boosted_balance": "5000.00",
           "card_boosted_balance": "5000.00",
           "expected_interest": "24.58",
-          "net_interest_before_run": "0",
+          "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
           "package_boosted_balance": "5000.00",
           "checking_account_id": "case-000000-c1",
@@ -9268,7 +9281,7 @@
           "checking_boosted_balance": "5000.00",
           "card_boosted_balance": "5000.00",
           "expected_interest": "16.25",
-          "net_interest_before_run": "0",
+          "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
           "package_boosted_balance": "5000.00",
           "checking_account_id": null,

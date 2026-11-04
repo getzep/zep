@@ -46,6 +46,9 @@ describe("Python banking parity", () => {
     expect(expectedDatabase(row.case)).toEqual(row.expected_database);
     const pair = comparePackages(row.case, row.pair_inputs);
     const split = comparePackages(row.case, row.split_inputs);
+    if (!pair.permitted || !split.permitted) {
+      throw new Error("The golden tie allocations must be permitted.");
+    }
     expect(pair).toEqual(row.pair_comparison);
     expect(split).toEqual(row.split_comparison);
     expect(pair.total_annual_bonus).toBe(split.total_annual_bonus);
