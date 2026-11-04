@@ -3,7 +3,7 @@ import os
 
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.ui import Console
-from autogen_ext.models.openai import OpenAIChatCompletionClient
+from responses_client import OpenAIResponsesChatCompletionClient
 from zep_cloud.client import AsyncZep
 
 from zep_autogen import create_search_graph_tool
@@ -41,7 +41,7 @@ async def main():
     search_tool = create_search_graph_tool(zep_client, graph_uuid=graph_uuid)
 
     # Create assistant agent with search tool and reflection
-    model_client = OpenAIChatCompletionClient(model="gpt-4.1-mini")
+    model_client = OpenAIResponsesChatCompletionClient(model="gpt-6-luna", reasoning_effort="low")
     agent = AssistantAgent(
         name="SearchAssistant",
         model_client=model_client,

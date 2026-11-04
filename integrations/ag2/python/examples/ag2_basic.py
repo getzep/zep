@@ -23,6 +23,7 @@ import asyncio
 import os
 
 from autogen import AssistantAgent, LLMConfig, UserProxyAgent
+from responses_client import OpenAIResponsesModelClient
 from zep_cloud.client import AsyncZep, Zep
 
 from zep_ag2 import ZepMemoryManager, create_thread, create_user, register_all_tools
@@ -71,7 +72,14 @@ def main() -> None:
     sync_zep = Zep(api_key=os.environ["ZEP_API_KEY"])
 
     # Configure AG2 agents
-    llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
+    llm_config = LLMConfig(
+        {
+            "model": "gpt-6-luna",
+            "reasoning_effort": "low",
+            "model_client_cls": "OpenAIResponsesModelClient",
+            "api_key": os.environ["OPENAI_API_KEY"],
+        }
+    )
 
     assistant = AssistantAgent(
         name="assistant",
@@ -98,6 +106,7 @@ def main() -> None:
     # explicitly (pin-or-expose: scope/reranker/limit/mmr_lambda/center_node_uuid
     # are all model-visible by default -- see README for pinning options).
     register_all_tools(assistant, user_proxy, sync_zep, graph_uuid, thread_uuid)
+    assistant.register_model_client(model_client_cls=OpenAIResponsesModelClient)
 
     # Run a conversation -- no manual memory calls needed per turn.
     try:

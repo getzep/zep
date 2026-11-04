@@ -60,6 +60,11 @@ Other runnable examples live in [`examples/`](examples):
 - `ag2_tools_full.py` — all tools across a multi-agent GroupChat
 - `manual_test.py` — end-to-end integration test against real APIs
 
+Tool calls use the Responses API with low reasoning. The
+`examples/responses_client.py` file contains a client for tool calls. Copy this
+file into your project and register `OpenAIResponsesModelClient` with each
+agent that has an `llm_config`.
+
 ## Identifiers
 
 Zep v4 addresses every user, thread, and graph by a server-generated UUID. Use

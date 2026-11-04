@@ -43,7 +43,7 @@ ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 _api_url = os.environ.get("ZEP_API_URL")
 ZEP_BASE_URL = f"{_api_url}/api/v4" if _api_url else None
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
 
 if not ZEP_API_KEY or not OPENAI_API_KEY:
     pytest.skip(
@@ -112,7 +112,17 @@ def build_agent(
     memory = ZepUserMemory(client=zep, user_uuid=user_uuid, thread_uuid=thread_uuid)
     agent = AssistantAgent(
         name="MemoryAwareAssistant",
-        model_client=OpenAIChatCompletionClient(model=OPENAI_MODEL),
+        model_client=OpenAIChatCompletionClient(
+            model=OPENAI_MODEL,
+            reasoning_effort="low",
+            model_info={
+                "vision": False,
+                "function_calling": False,
+                "json_output": True,
+                "structured_output": True,
+                "family": "unknown",
+            },
+        ),
         memory=[memory],
         system_message=(
             "You are a helpful assistant with long-term memory. Use any injected "

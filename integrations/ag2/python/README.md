@@ -55,6 +55,7 @@ import os
 from autogen import AssistantAgent, UserProxyAgent, LLMConfig
 from zep_cloud.client import AsyncZep, Zep
 from zep_ag2 import ZepMemoryManager, create_thread, create_user, register_all_tools
+from responses_client import OpenAIResponsesModelClient
 
 
 async def main():
@@ -67,7 +68,14 @@ async def main():
     thread = await create_thread(zep, user_uuid=user.uuid_)
     user_uuid, graph_uuid, thread_uuid = user.uuid_, user.graph_uuid, thread.uuid_
 
-    llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
+    llm_config = LLMConfig(
+        {
+            "model": "gpt-6-luna",
+            "reasoning_effort": "low",
+            "model_client_cls": "OpenAIResponsesModelClient",
+            "api_key": os.environ["OPENAI_API_KEY"],
+        }
+    )
 
     assistant = AssistantAgent(
         name="assistant",
@@ -87,12 +95,18 @@ async def main():
 
     # Register memory tools. AG2 calls them synchronously, so they take the sync client.
     register_all_tools(assistant, user_proxy, sync_zep, graph_uuid, thread_uuid)
+    assistant.register_model_client(model_client_cls=OpenAIResponsesModelClient)
 
     result = user_proxy.initiate_chat(assistant, message="What do you remember about me?")
 
 
 asyncio.run(main())
 ```
+
+Tool calls use the Responses API with low reasoning. The
+`examples/responses_client.py` file contains a client for tool calls. Copy this
+file into your project and register `OpenAIResponsesModelClient` with each
+agent that has an `llm_config`.
 
 ### Tool-Based Memory Access
 

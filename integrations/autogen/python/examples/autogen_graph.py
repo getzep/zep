@@ -92,7 +92,17 @@ async def main():
     # Create assistant agent with Zep graph memory
     agent = AssistantAgent(
         name="GraphMemoryAssistant",
-        model_client=OpenAIChatCompletionClient(model="gpt-4.1-mini"),
+        model_client=OpenAIChatCompletionClient(
+            model="gpt-6-luna",
+            reasoning_effort="low",
+            model_info={
+                "vision": False,
+                "function_calling": False,
+                "json_output": True,
+                "structured_output": True,
+                "family": "unknown",
+            },
+        ),
         memory=[memory],
     )
 

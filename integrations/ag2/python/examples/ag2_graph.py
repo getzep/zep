@@ -17,6 +17,7 @@ import asyncio
 import os
 
 from autogen import AssistantAgent, LLMConfig, UserProxyAgent
+from responses_client import OpenAIResponsesModelClient
 from zep_cloud.client import AsyncZep, Zep
 
 from zep_ag2 import ZepGraphMemoryManager, create_add_graph_data_tool, create_search_graph_tool
@@ -40,7 +41,14 @@ def main() -> None:
     sync_zep = Zep(api_key=os.environ["ZEP_API_KEY"])
 
     # Configure AG2 agents
-    llm_config = LLMConfig({"model": "gpt-5-mini", "api_key": os.environ["OPENAI_API_KEY"]})
+    llm_config = LLMConfig(
+        {
+            "model": "gpt-6-luna",
+            "reasoning_effort": "low",
+            "model_client_cls": "OpenAIResponsesModelClient",
+            "api_key": os.environ["OPENAI_API_KEY"],
+        }
+    )
 
     assistant = AssistantAgent(
         name="knowledge_assistant",
@@ -63,6 +71,7 @@ def main() -> None:
 
     assistant.register_for_llm(description="Add data to the knowledge graph")(add_tool)
     user_proxy.register_for_execution()(add_tool)
+    assistant.register_model_client(model_client_cls=OpenAIResponsesModelClient)
 
     # Optionally enrich system message with existing knowledge
     # The chat runs in synchronous code, so the example uses search_sync,
