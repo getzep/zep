@@ -25,9 +25,13 @@ Prerequisites:
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+from collections.abc import AsyncIterator, Callable
+from importlib import import_module
 from typing import Any
 
+import openai
 from strands import Agent
 from strands.memory import MemoryManager
 from strands.models.openai_responses import OpenAIResponsesModel
@@ -62,34 +66,146 @@ if not OPENAI_API_KEY:
     raise SystemExit("OPENAI_API_KEY is not set.")
 
 
-def build_model() -> OpenAIResponsesModel:
-    return StatefulResponsesModel(
-        client_args={"api_key": OPENAI_API_KEY},
-        model_id=OPENAI_MODEL,
-        params={"reasoning": {"effort": "low"}},
-        stateful=True,
+def _parse_sse_chunk(buffer: bytes, chunk: bytes) -> tuple[bytes, list[dict[str, Any]]]:
+    lines = (buffer + chunk).split(b"\n")
+    remainder = lines.pop()
+    events = []
+    for line in lines:
+        line = line.rstrip(b"\r")
+        if not line.startswith(b"data:"):
+            continue
+        data = line[5:].strip()
+        if not data or data == b"[DONE]":
+            continue
+        try:
+            event = json.loads(data)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return remainder, events
+
+
+def _make_tee_stream(
+    stream: Any,
+    async_byte_stream: Any,
+    on_chunk: Callable[[bytes], None],
+    on_end: Callable[[], None],
+) -> Any:
+    def initialize(
+        self: Any,
+        original: Any,
+        chunk_callback: Callable[[bytes], None],
+        end_callback: Callable[[], None],
+    ) -> None:
+        self._original = original
+        self._on_chunk = chunk_callback
+        self._on_end = end_callback
+
+    async def iterate(self: Any) -> AsyncIterator[bytes]:
+        async for chunk in self._original:
+            self._on_chunk(chunk)
+            yield chunk
+        self._on_end()
+
+    async def close(self: Any) -> None:
+        await self._original.aclose()
+
+    tee_type = type(
+        "TeeAsyncByteStream",
+        (async_byte_stream,),
+        {"__init__": initialize, "__aiter__": iterate, "aclose": close},
     )
+    return tee_type(stream, on_chunk, on_end)
 
 
-class StatefulResponsesModel(OpenAIResponsesModel):
-    """Omit history already stored by the server from stateful continuation input."""
+class ReasoningReplayResponsesModel(OpenAIResponsesModel):
+    """Replay encrypted reasoning items before their matching tool calls."""
+
+    def _resolve_client_args(self) -> dict[str, Any]:
+        client_args = super()._resolve_client_args()
+        if "http_client" in client_args:
+            return client_args
+        return {
+            **client_args,
+            "http_client": openai.DefaultAsyncHttpxClient(
+                event_hooks={"response": [self._capture_response]}
+            ),
+        }
+
+    async def _capture_response(self, response: Any) -> None:
+        pending: list[dict[str, Any]] = []
+        buffer = b""
+
+        def on_chunk(chunk: bytes) -> None:
+            nonlocal buffer
+            buffer, events = _parse_sse_chunk(buffer, chunk)
+            for event in events:
+                self._capture_reasoning_event(event, pending)
+
+        def on_end() -> None:
+            nonlocal buffer
+            if buffer:
+                buffer, events = _parse_sse_chunk(buffer, b"\n")
+                for event in events:
+                    self._capture_reasoning_event(event, pending)
+
+        module_name = type(response).__module__.split(".", maxsplit=1)[0]
+        async_byte_stream = vars(import_module(module_name))["AsyncByteStream"]
+        response.stream = _make_tee_stream(response.stream, async_byte_stream, on_chunk, on_end)
+
+    def _capture_reasoning_event(
+        self, event: dict[str, Any], pending: list[dict[str, Any]]
+    ) -> None:
+        if event.get("type") != "response.output_item.done":
+            return
+        item = event.get("item")
+        if not isinstance(item, dict):
+            return
+        if item.get("type") == "reasoning":
+            keys = ("type", "id", "summary", "encrypted_content", "content")
+            pending.append({key: item[key] for key in keys if item.get(key) is not None})
+        elif item.get("type") == "function_call":
+            call_id = item.get("call_id")
+            if pending and call_id:
+                reasoning_by_call_id = getattr(self, "_reasoning_by_call_id", {})
+                reasoning_by_call_id[call_id] = list(pending)
+                self._reasoning_by_call_id = reasoning_by_call_id
+            pending.clear()
+        elif item.get("type") == "message":
+            pending.clear()
 
     def _format_request(self, messages: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        model_state = kwargs.get("model_state")
-        if model_state is None and len(args) > 3:
-            model_state = args[3]
-        if self.stateful and model_state and model_state.get("response_id"):
-            last_assistant = next(
-                (
-                    index
-                    for index in range(len(messages) - 1, -1, -1)
-                    if messages[index]["role"] == "assistant"
-                ),
-                None,
-            )
-            if last_assistant is not None:
-                messages = messages[last_assistant + 1 :]
-        return super()._format_request(messages, *args, **kwargs)
+        request = super()._format_request(messages, *args, **kwargs)
+        input_items = request.get("input")
+        if not isinstance(input_items, list):
+            return request
+
+        reasoning_by_call_id = getattr(self, "_reasoning_by_call_id", {})
+        existing_reasoning_ids = {
+            item.get("id")
+            for item in input_items
+            if isinstance(item, dict) and item.get("type") == "reasoning"
+        }
+        replayed_input = []
+        for item in input_items:
+            if isinstance(item, dict) and item.get("type") == "function_call":
+                for reasoning in reasoning_by_call_id.get(item.get("call_id"), []):
+                    reasoning_id = reasoning.get("id")
+                    if reasoning_id not in existing_reasoning_ids:
+                        replayed_input.append(reasoning)
+                        existing_reasoning_ids.add(reasoning_id)
+            replayed_input.append(item)
+        request["input"] = replayed_input
+        return request
+
+
+def build_model() -> OpenAIResponsesModel:
+    return ReasoningReplayResponsesModel(
+        client_args={"api_key": OPENAI_API_KEY},
+        model_id=OPENAI_MODEL,
+        params={"reasoning": {"effort": "low"}, "include": ["reasoning.encrypted_content"]},
+    )
 
 
 async def build_agent(zep: AsyncZep, user_uuid: str, thread_uuid: str) -> Agent:
