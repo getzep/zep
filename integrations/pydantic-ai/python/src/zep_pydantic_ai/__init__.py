@@ -64,7 +64,11 @@ Usage::
         )
 
         agent = Agent(
-            "openai:gpt-5-mini",
+            "openai-responses:gpt-6-luna",
+            model_settings={
+                "openai_reasoning_effort": "low",
+                "openai_send_reasoning_ids": True,
+            },
             deps_type=ZepDeps,
             capabilities=zep_capabilities(deps),
             tools=[create_zep_search_tool()],

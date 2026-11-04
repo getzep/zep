@@ -64,6 +64,7 @@ from livekit import agents
 from livekit.plugins import openai, silero
 from zep_cloud.client import AsyncZep
 from zep_livekit import ZepUserAgent
+from openai.types import Reasoning
 
 
 async def entrypoint(ctx: agents.JobContext):
@@ -85,7 +86,10 @@ async def entrypoint(ctx: agents.JobContext):
     # Create session with providers
     session = agents.AgentSession(
         stt=openai.STT(),
-        llm=openai.LLM(model="gpt-5-mini"),
+        llm=openai.responses.LLM(
+            model="gpt-6-luna",
+            reasoning=Reasoning(effort="low"),
+        ),
         tts=openai.TTS(),
         vad=silero.VAD.load(),
     )
@@ -158,6 +162,7 @@ For explicit control over what gets stored as facts, entities, and relationships
 
 ```python
 from zep_livekit import ZepGraphAgent
+from openai.types import Reasoning
 
 
 async def entrypoint(ctx: agents.JobContext):
@@ -176,7 +181,10 @@ async def entrypoint(ctx: agents.JobContext):
     # Create session
     session = agents.AgentSession(
         stt=openai.STT(),
-        llm=openai.LLM(model="gpt-5-mini"),
+        llm=openai.responses.LLM(
+            model="gpt-6-luna",
+            reasoning=Reasoning(effort="low"),
+        ),
         tts=openai.TTS(),
         vad=silero.VAD.load(),
     )

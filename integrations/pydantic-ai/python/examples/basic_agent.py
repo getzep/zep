@@ -37,6 +37,7 @@ import sys
 import time
 
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIResponsesModelSettings
 from zep_cloud.client import AsyncZep
 
 from zep_pydantic_ai import (
@@ -54,6 +55,12 @@ if not ZEP_API_KEY:
     raise OSError("ZEP_API_KEY is not set.")
 if not OPENAI_API_KEY:
     raise OSError("OPENAI_API_KEY is not set.")
+
+MODEL = "openai-responses:gpt-6-luna"
+MODEL_SETTINGS = OpenAIResponsesModelSettings(
+    openai_reasoning_effort="low",
+    openai_send_reasoning_ids=True,
+)
 
 
 async def wait_for_ingestion(
@@ -113,7 +120,8 @@ async def main() -> None:
     )
 
     agent = Agent(
-        "openai:gpt-5-mini",
+        MODEL,
+        model_settings=MODEL_SETTINGS,
         deps_type=ZepDeps,
         capabilities=zep_capabilities(deps),
         tools=[create_zep_search_tool()],

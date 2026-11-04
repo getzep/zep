@@ -84,7 +84,11 @@ async def prompt(state):
 
 
 agent = create_react_agent(
-    model=ChatOpenAI(model="gpt-5-mini"),
+    model=ChatOpenAI(
+        model="gpt-6-luna",
+        use_responses_api=True,
+        reasoning={"effort": "low"},
+    ),
     tools=[create_graph_search_tool(zep, graph_uuid=user.graph_uuid)],
     prompt=prompt,
 )

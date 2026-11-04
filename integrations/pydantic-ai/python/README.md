@@ -17,6 +17,7 @@ import asyncio
 import os
 
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIResponsesModelSettings
 from zep_cloud.client import AsyncZep
 from zep_pydantic_ai import (
     ZepDeps,
@@ -45,7 +46,11 @@ async def main() -> None:
     )
 
     agent = Agent(
-        "openai:gpt-5-mini",
+        "openai-responses:gpt-6-luna",
+        model_settings=OpenAIResponsesModelSettings(
+            openai_reasoning_effort="low",
+            openai_send_reasoning_ids=True,
+        ),
         deps_type=ZepDeps,
         capabilities=zep_capabilities(deps),
         tools=[create_zep_search_tool()],
@@ -269,12 +274,17 @@ persists the assistant's reply once the run completes -- no explicit
 
 ```python
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIResponsesModelSettings
 from zep_pydantic_ai import ZepDeps, zep_capabilities
 
 
 async def chat(deps: ZepDeps, message: str) -> str:
     agent = Agent(
-        "openai:gpt-5-mini",
+        "openai-responses:gpt-6-luna",
+        model_settings=OpenAIResponsesModelSettings(
+            openai_reasoning_effort="low",
+            openai_send_reasoning_ids=True,
+        ),
         deps_type=ZepDeps,
         capabilities=zep_capabilities(deps),
     )

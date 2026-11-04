@@ -142,7 +142,11 @@ async def zep_history_processor(
         from zep_pydantic_ai import ZepDeps, zep_history_processor
 
         agent = Agent(
-            "openai:gpt-4o-mini",
+            "openai-responses:gpt-6-luna",
+            model_settings={
+                "openai_reasoning_effort": "low",
+                "openai_send_reasoning_ids": True,
+            },
             deps_type=ZepDeps,
             capabilities=[ProcessHistory(zep_history_processor)],
         )

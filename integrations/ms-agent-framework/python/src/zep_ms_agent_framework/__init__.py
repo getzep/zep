@@ -29,7 +29,8 @@ Usage::
     thread = await create_thread(zep, user_uuid=user.uuid_)
 
     agent = Agent(
-        OpenAIChatClient(model="gpt-5-mini"),
+        OpenAIChatClient(model="gpt-6-luna"),
+        default_options={"reasoning": {"effort": "low"}},
         instructions="You are a helpful assistant with long-term memory.",
         context_providers=[
             ZepContextProvider(

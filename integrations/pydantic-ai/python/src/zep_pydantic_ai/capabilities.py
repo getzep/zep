@@ -17,7 +17,11 @@ Zep automatically; :func:`zep_capabilities` bundles it with
     from zep_pydantic_ai import ZepDeps, zep_capabilities
 
     agent = Agent(
-        "openai:gpt-4o-mini",
+        "openai-responses:gpt-6-luna",
+        model_settings={
+            "openai_reasoning_effort": "low",
+            "openai_send_reasoning_ids": True,
+        },
         deps_type=ZepDeps,
         capabilities=zep_capabilities(deps),
     )
@@ -107,7 +111,11 @@ def zep_capabilities(
     ``persist_run`` call after ``agent.run``::
 
         agent = Agent(
-            "openai:gpt-4o-mini",
+            "openai-responses:gpt-6-luna",
+            model_settings={
+                "openai_reasoning_effort": "low",
+                "openai_send_reasoning_ids": True,
+            },
             deps_type=ZepDeps,
             capabilities=zep_capabilities(deps),
         )
