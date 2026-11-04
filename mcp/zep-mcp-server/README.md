@@ -362,7 +362,6 @@ Apache License 2.0 - see [LICENSE](LICENSE) for details.
 
 - **Issues**: [GitHub Issues](https://github.com/getzep/zep/issues)
 - **Documentation**: [Zep Cloud Docs](https://help.getzep.com/)
-- **Community**: [Zep Discord](https://discord.gg/W8Kw6bsgXQ)
 
 ## Contributing
 
