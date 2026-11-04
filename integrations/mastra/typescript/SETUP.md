@@ -34,8 +34,9 @@ export OPENAI_API_KEY="your-openai-api-key"
 ```
 
 Only `ZEP_API_KEY` is required by the integration itself; `OPENAI_API_KEY` is
-needed by the example agent's model (`openai/gpt-5-mini`). Swap in any model
-Mastra supports if you prefer a different provider.
+needed by the example agent's model (`openai/gpt-6-luna` at low reasoning effort,
+in [`examples/model.ts`](./examples/model.ts)). Swap in any model Mastra
+supports if you prefer a different provider.
 
 ## 5. Run the example
 

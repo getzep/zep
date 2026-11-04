@@ -25,6 +25,11 @@ and `DEEPSEEK_BEARER_TOKEN` as the key variable.
 
 ## Tau3 Banking
 
+The user simulator defaults to `gpt-6-luna` with low reasoning through the
+Responses API. The local simulator adapter preserves reasoning and tool output
+items in the tau2 state. Responses calls do not support tau2's model seed.
+Other user-model overrides keep the upstream tau2 simulator.
+
 Run `python run.py --help` to list the stages. A run uses a teacher stage to
 capture traces, a compile stage to create a frozen skill snapshot, and held-out
 stages to compare the `none` and `skills` arms. Use the same frozen manifest

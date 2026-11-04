@@ -23,6 +23,7 @@ import os
 
 from livekit import agents
 from livekit.plugins import openai, silero
+from openai.types import Reasoning
 from zep_cloud.client import AsyncZep
 
 from zep_livekit import ZepGraphAgent, create_graph_search_tool
@@ -34,6 +35,14 @@ logger = logging.getLogger(__name__)
 # Configuration. Zep v4 addresses a graph by a server-generated UUID; a create
 # call takes no client-chosen name.
 ZEP_GRAPH_NAME = "Knowledge Graph for Voice Assistant"
+OPENAI_MODEL = "gpt-6-luna"
+
+
+def build_llm() -> openai.responses.LLM:
+    return openai.responses.LLM(
+        model=OPENAI_MODEL,
+        reasoning=Reasoning(effort="low"),
+    )
 
 
 async def entrypoint(ctx: agents.JobContext):
@@ -60,7 +69,7 @@ async def entrypoint(ctx: agents.JobContext):
     # Create AgentSession with providers
     session = agents.AgentSession(
         stt=openai.STT(),
-        llm=openai.LLM(model="gpt-4.1-mini"),
+        llm=build_llm(),
         tts=openai.TTS(),
         vad=silero.VAD.load(),
     )

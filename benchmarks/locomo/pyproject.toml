@@ -9,7 +9,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "zep-cloud>=0.70.0",
-    "openai>=1.0.0",
+    "openai>=1.58.1",
     "pandas>=2.0.0",
     "scipy>=1.10.0",
     "python-dotenv>=1.0.0",

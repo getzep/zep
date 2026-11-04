@@ -207,10 +207,11 @@ def test_published_user_defaults_reach_tau2_config(monkeypatch):
         ["run.py", "--stage", "teacher", "--domains", "banking_knowledge", "--concurrency", "1"],
     )
     args = parse_args()
-    assert args.user_model == "gpt-5.2"
+    assert args.user_model == "gpt-6-luna"
     assert user_args(args) == {"reasoning_effort": "low"}
     config = _run_config(args, "banking_knowledge")
-    assert config.llm_user == "gpt-5.2"
+    assert config.llm_user == "gpt-6-luna"
+    assert config.user == "zep_responses_user"
     assert config.llm_args_user == {"reasoning_effort": "low"}
 
 

@@ -53,7 +53,10 @@ const agent = new Agent({
   id: "memory-agent",
   name: "Memory Agent",
   instructions: "You have long-term memory about the user. Use it to personalize replies.",
-  model: "openai/gpt-5-mini",
+  model: "openai/gpt-6-luna",
+  defaultOptions: {
+    providerOptions: { openai: { reasoningEffort: "low", forceReasoning: true } },
+  },
   inputProcessors: [inputProcessor],
   outputProcessors: [outputProcessor],
 });
@@ -169,7 +172,10 @@ const agent = new Agent({
   id: "memory-agent",
   name: "Memory Agent",
   instructions: "You have long-term memory. Store and recall user facts.",
-  model: "openai/gpt-5-mini",
+  model: "openai/gpt-6-luna",
+  defaultOptions: {
+    providerOptions: { openai: { reasoningEffort: "low", forceReasoning: true } },
+  },
   tools: { zepRemember, zepSearch, zepContext },
 });
 ```

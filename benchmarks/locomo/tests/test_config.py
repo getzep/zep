@@ -11,7 +11,10 @@ def test_default_config():
     config = BenchmarkConfig()
     assert config.evaluation_concurrency == 10
     assert config.graph_params.edge_limit == 20
-    assert config.models.response_model == "gpt-4o-mini"
+    assert config.models.response_model == "gpt-6-luna"
+    assert config.models.grader_model == "gpt-6-luna"
+    assert config.models.generation_parameters() == {"reasoning_effort": "low"}
+    assert config.models.generation_parameters(grader=True) == {"reasoning_effort": "low"}
 
 
 def test_graph_params_validation():
@@ -44,6 +47,17 @@ def test_model_config_validation():
 
     with pytest.raises(ValidationError):
         ModelConfig(response_temperature=2.1)
+
+
+def test_model_override_keeps_temperature():
+    config = ModelConfig(
+        response_model="custom-response",
+        response_temperature=0.5,
+        grader_model="custom-grader",
+        grader_temperature=0.2,
+    )
+    assert config.generation_parameters() == {"temperature": 0.5}
+    assert config.generation_parameters(grader=True) == {"temperature": 0.2}
 
 
 def test_config_yaml_roundtrip(tmp_path):

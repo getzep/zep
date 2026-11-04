@@ -37,13 +37,13 @@ async def zep_grader(
     """
 
     response = await llm_client.beta.chat.completions.parse(
-        model="gpt-4.1-mini",
+        model="gpt-6-luna",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": ACCURACY_PROMPT},
         ],
         response_format=Grade,
-        temperature=0,
+        reasoning_effort="low",
     )
     result = response.choices[0].message.parsed
 

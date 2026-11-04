@@ -5,7 +5,7 @@ description = "CrewAI integration for Zep"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "crewai>=1.0.0",
+    "crewai>=1.15.7",
     "aiohttp>=3.8.0",
     "python-dotenv>=1.0.0",
     "python-slugify>=8.0.4",

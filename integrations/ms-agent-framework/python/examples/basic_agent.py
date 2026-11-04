@@ -38,7 +38,8 @@ from zep_ms_agent_framework import ZepContextProvider, create_thread, create_use
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5-mini")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
+DEFAULT_OPTIONS = {"reasoning": {"effort": "low"}}
 
 if not ZEP_API_KEY:
     raise SystemExit("ZEP_API_KEY is not set.")
@@ -46,10 +47,15 @@ if not OPENAI_API_KEY:
     raise SystemExit("OPENAI_API_KEY is not set.")
 
 
+def build_chat_client() -> OpenAIChatClient:
+    return OpenAIChatClient(model=OPENAI_MODEL, api_key=OPENAI_API_KEY)
+
+
 def build_agent(zep: AsyncZep, user_uuid: str, thread_uuid: str, graph_uuid: str) -> Agent:
     """Build an agent whose memory is scoped to the given user and thread."""
     return Agent(
-        OpenAIChatClient(model=OPENAI_MODEL, api_key=OPENAI_API_KEY),
+        build_chat_client(),
+        default_options=DEFAULT_OPTIONS,
         instructions=(
             "You are a helpful assistant with access to long-term memory. "
             "When context from Zep is provided, use it to give personalised, "

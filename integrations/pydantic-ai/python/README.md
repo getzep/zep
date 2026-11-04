@@ -14,9 +14,16 @@ See [SETUP.md](SETUP.md) for how to sign up for Zep, create an API key, configur
 
 ```python
 import asyncio
+import dataclasses
 import os
 
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import (
+    OpenAIModelProfile,
+    OpenAIResponsesModel,
+    OpenAIResponsesModelSettings,
+)
+from pydantic_ai.profiles.openai import openai_model_profile
 from zep_cloud.client import AsyncZep
 from zep_pydantic_ai import (
     ZepDeps,
@@ -25,6 +32,24 @@ from zep_pydantic_ai import (
     create_zep_search_tool,
     zep_capabilities,
 )
+
+
+# Pydantic AI does not yet mark gpt-6-luna as a reasoning model.
+LUNA_PROFILE = dataclasses.replace(
+    OpenAIModelProfile.from_profile(openai_model_profile("gpt-6-luna")),
+    supports_thinking=True,
+    openai_supports_reasoning=True,
+    openai_supports_encrypted_reasoning_content=True,
+)
+MODEL_SETTINGS = OpenAIResponsesModelSettings(
+    openai_reasoning_effort="low",
+    openai_store=False,
+    openai_send_reasoning_ids=True,
+)
+
+
+def build_model() -> OpenAIResponsesModel:
+    return OpenAIResponsesModel("gpt-6-luna", provider="openai", profile=LUNA_PROFILE)
 
 
 async def main() -> None:
@@ -45,7 +70,8 @@ async def main() -> None:
     )
 
     agent = Agent(
-        "openai:gpt-5-mini",
+        build_model(),
+        model_settings=MODEL_SETTINGS,
         deps_type=ZepDeps,
         capabilities=zep_capabilities(deps),
         tools=[create_zep_search_tool()],
@@ -268,13 +294,40 @@ persists the assistant's reply once the run completes -- no explicit
 `persist_run` call needed:
 
 ```python
+import dataclasses
+
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import (
+    OpenAIModelProfile,
+    OpenAIResponsesModel,
+    OpenAIResponsesModelSettings,
+)
+from pydantic_ai.profiles.openai import openai_model_profile
 from zep_pydantic_ai import ZepDeps, zep_capabilities
+
+
+# Pydantic AI does not yet mark gpt-6-luna as a reasoning model.
+LUNA_PROFILE = dataclasses.replace(
+    OpenAIModelProfile.from_profile(openai_model_profile("gpt-6-luna")),
+    supports_thinking=True,
+    openai_supports_reasoning=True,
+    openai_supports_encrypted_reasoning_content=True,
+)
+MODEL_SETTINGS = OpenAIResponsesModelSettings(
+    openai_reasoning_effort="low",
+    openai_store=False,
+    openai_send_reasoning_ids=True,
+)
+
+
+def build_model() -> OpenAIResponsesModel:
+    return OpenAIResponsesModel("gpt-6-luna", provider="openai", profile=LUNA_PROFILE)
 
 
 async def chat(deps: ZepDeps, message: str) -> str:
     agent = Agent(
-        "openai:gpt-5-mini",
+        build_model(),
+        model_settings=MODEL_SETTINGS,
         deps_type=ZepDeps,
         capabilities=zep_capabilities(deps),
     )

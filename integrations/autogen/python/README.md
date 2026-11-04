@@ -40,7 +40,17 @@ async def main():
     # Create AutoGen agent with Zep memory
     agent = AssistantAgent(
         name="MemoryAwareAssistant",
-        model_client=OpenAIChatCompletionClient(model="gpt-4.1-mini"),
+        model_client=OpenAIChatCompletionClient(
+            model="gpt-6-luna",
+            reasoning_effort="low",
+            model_info={
+                "vision": False,
+                "function_calling": False,
+                "json_output": True,
+                "structured_output": True,
+                "family": "unknown",
+            },
+        ),
         memory=[memory],  # Add Zep memory to the agent
     )
 
@@ -60,7 +70,7 @@ from zep_cloud.client import AsyncZep
 from zep_autogen import create_search_graph_tool, create_add_graph_data_tool
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.ui import Console
-from autogen_ext.models.openai import OpenAIChatCompletionClient
+from responses_client import OpenAIResponsesChatCompletionClient
 
 
 async def main():
@@ -74,7 +84,9 @@ async def main():
     # Create agent with tools and reflection
     agent = AssistantAgent(
         name="KnowledgeAssistant",
-        model_client=OpenAIChatCompletionClient(model="gpt-5-mini"),
+        model_client=OpenAIResponsesChatCompletionClient(
+            model="gpt-6-luna", reasoning_effort="low"
+        ),
         tools=[search_tool, add_tool],
         system_message="You can search and add information to knowledge bases.",
         reflect_on_tool_use=True,  # Enables natural language responses
@@ -87,6 +99,11 @@ async def main():
 
 asyncio.run(main())
 ```
+
+Tool calls use the Responses API with low reasoning. The
+[`examples/responses_client.py`](examples/responses_client.py) file contains a
+client for tool calls. Copy this file into your project and import
+`OpenAIResponsesChatCompletionClient`.
 
 ## Features
 

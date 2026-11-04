@@ -28,6 +28,7 @@ import os
 
 from livekit import agents
 from livekit.plugins import openai, silero
+from openai.types import Reasoning
 from zep_cloud.client import AsyncZep
 
 from zep_livekit import ZepUserAgent, create_graph_search_tool, create_thread, create_user
@@ -40,6 +41,14 @@ logger = logging.getLogger(__name__)
 # is no user name constant here. The example creates the user and prints the
 # UUID.
 USER_FIRST_NAME = "Mark"
+OPENAI_MODEL = "gpt-6-luna"
+
+
+def build_llm() -> openai.responses.LLM:
+    return openai.responses.LLM(
+        model=OPENAI_MODEL,
+        reasoning=Reasoning(effort="low"),
+    )
 
 
 async def seed_user_preferences(zep_client: AsyncZep, user_uuid: str) -> None:
@@ -76,7 +85,7 @@ async def entrypoint(ctx: agents.JobContext):
     # Create AgentSession with providers
     session = agents.AgentSession(
         stt=openai.STT(),
-        llm=openai.LLM(model="gpt-4.1-mini"),
+        llm=build_llm(),
         tts=openai.TTS(),
         vad=silero.VAD.load(),
     )

@@ -242,7 +242,7 @@ function persistTurn(
  * import { createZepMiddleware } from "@getzep/zep-vercel-ai";
  *
  * const model = wrapLanguageModel({
- *   model: openai("gpt-4o-mini"),
+ *   model: openai.responses("gpt-6-luna"),
  *   // `persist: true` guarantees the turn is written to Zep — no separate
  *   // onFinish wiring required.
  *   middleware: createZepMiddleware({ client, threadUuid, persist: true }),
@@ -252,6 +252,7 @@ function persistTurn(
  *   model,
  *   prompt: "What do you know about me?",
  *   stopWhen: stepCountIs(5),
+ *   providerOptions: { openai: { reasoningEffort: "low" } },
  * });
  * ```
  *

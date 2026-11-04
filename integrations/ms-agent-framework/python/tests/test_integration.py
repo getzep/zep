@@ -44,7 +44,8 @@ import pytest
 # ---------------------------------------------------------------------------
 ZEP_API_KEY = os.environ.get("ZEP_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
+DEFAULT_OPTIONS = {"reasoning": {"effort": "low"}}
 
 if not ZEP_API_KEY:
     pytest.skip("ZEP_API_KEY required for integration tests", allow_module_level=True)
@@ -111,6 +112,7 @@ def build_agent(zep: AsyncZep, user_uuid: str, thread_uuid: str) -> Agent:
     """Build an agent scoped to the given user and thread UUIDs."""
     return Agent(
         OpenAIChatClient(model=OPENAI_MODEL, api_key=OPENAI_API_KEY),
+        default_options=DEFAULT_OPTIONS,
         instructions=(
             "You are a helpful assistant with long-term memory. When context "
             "from Zep is provided, use it to answer questions about the user. "

@@ -108,6 +108,7 @@ crew = Crew(agents=[agent], tasks=[...])
 ### Tool-Equipped Agents
 
 ```python
+from responses_llm import ReasoningReplayOpenAICompletion
 from zep_crewai import create_search_tool, create_add_data_tool
 
 # Both tools are bound to one graph. For a user graph, pass the user's graph_uuid.
@@ -119,9 +120,16 @@ agent = Agent(
     role="Knowledge Assistant",
     goal="Manage and retrieve information efficiently",
     tools=[search_tool, add_tool],
-    llm="gpt-5-mini",
+    llm=ReasoningReplayOpenAICompletion(),
 )
 ```
+
+Tool calls use the Responses API with low reasoning. The examples use
+`examples/responses_llm.py`, which sends the encrypted reasoning items back
+before their function calls. CrewAI's `auto_chain_reasoning` option keeps only
+the last reasoning items and puts them at the start of the input, so the
+examples extend it.
+Copy `examples/responses_llm.py` into your project before you use the class.
 
 ## Features
 
@@ -527,7 +535,7 @@ mypy src/zep_crewai
 
 - Python 3.11+
 - `zep-cloud>=4.0.0,<5`
-- `crewai>=1.0.0`
+- `crewai>=1.15.7`
 - `pydantic>=2.0.0`
 
 ## Best Practices
