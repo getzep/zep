@@ -121,7 +121,7 @@ def main() -> None:
         update={
             "savings": [
                 account.model_copy(
-                    update={"product": "Willow", "statement_balance": Decimal("5000.00")}
+                    update={"product": "Willow", "statement_balance": Decimal("5000.01")}
                 )
                 for account in tie_accounts
             ],

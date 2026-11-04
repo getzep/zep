@@ -8960,16 +8960,16 @@
         {
           "account_id": "case-000000-s1",
           "product": "Willow",
-          "statement_balance": "5000.00",
-          "checking_boosted_balance": "5000.00",
-          "card_boosted_balance": "5000.00"
+          "statement_balance": "5000.01",
+          "checking_boosted_balance": "5000",
+          "card_boosted_balance": "5000.01"
         },
         {
           "account_id": "case-000000-s2",
           "product": "Willow",
-          "statement_balance": "5000.00",
-          "checking_boosted_balance": "5000.00",
-          "card_boosted_balance": "5000.00"
+          "statement_balance": "5000.01",
+          "checking_boosted_balance": "5000",
+          "card_boosted_balance": "5000.01"
         }
       ],
       "checking": [
@@ -9029,12 +9029,12 @@
           "base_rate_percent": "3.90",
           "checking_bonus_percent": "1.00",
           "card_bonus_percent": "1.00",
-          "checking_boosted_balance": "5000.00",
-          "card_boosted_balance": "5000.00",
+          "checking_boosted_balance": "5000",
+          "card_boosted_balance": "5000.01",
           "expected_interest": "24.58",
           "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
-          "package_boosted_balance": "5000.00",
+          "package_boosted_balance": "5000.01",
           "checking_account_id": "case-000000-c1",
           "card_id": "case-000000-k1",
           "correction_credit_id": "credit-case-000000-s1-2031-04"
@@ -9045,12 +9045,12 @@
           "base_rate_percent": "3.90",
           "checking_bonus_percent": "0",
           "card_bonus_percent": "0",
-          "checking_boosted_balance": "5000.00",
-          "card_boosted_balance": "5000.00",
+          "checking_boosted_balance": "5000",
+          "card_boosted_balance": "5000.01",
           "expected_interest": "16.25",
           "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
-          "package_boosted_balance": "5000.00",
+          "package_boosted_balance": "5000.01",
           "checking_account_id": null,
           "card_id": null,
           "correction_credit_id": "credit-case-000000-s2-2031-04"
@@ -9078,16 +9078,16 @@
           "base_rate_percent": "3.90",
           "checking_bonus_percent": "1.00",
           "card_bonus_percent": "1.00",
-          "checking_boosted_balance": "5000.00",
-          "card_boosted_balance": "5000.00",
+          "checking_boosted_balance": "5000",
+          "card_boosted_balance": "5000.01",
           "expected_interest": "24.58",
           "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
-          "package_boosted_balance": "5000.00",
+          "package_boosted_balance": "5000.01",
           "checking_account_id": "case-000000-c1",
           "card_id": "case-000000-k1",
           "permitted": true,
-          "annual_bonus": "100.0000",
+          "annual_bonus": "100.0001",
           "correction_amount": "24.58"
         },
         {
@@ -9096,12 +9096,12 @@
           "base_rate_percent": "3.90",
           "checking_bonus_percent": "0",
           "card_bonus_percent": "0",
-          "checking_boosted_balance": "5000.00",
-          "card_boosted_balance": "5000.00",
+          "checking_boosted_balance": "5000",
+          "card_boosted_balance": "5000.01",
           "expected_interest": "16.25",
           "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
-          "package_boosted_balance": "5000.00",
+          "package_boosted_balance": "5000.01",
           "checking_account_id": null,
           "card_id": null,
           "permitted": true,
@@ -9109,7 +9109,7 @@
           "correction_amount": "16.25"
         }
       ],
-      "total_annual_bonus": "100.0000"
+      "total_annual_bonus": "100.0001"
     },
     "split_inputs": [
       {
@@ -9132,16 +9132,16 @@
           "base_rate_percent": "3.90",
           "checking_bonus_percent": "0",
           "card_bonus_percent": "1.00",
-          "checking_boosted_balance": "5000.00",
-          "card_boosted_balance": "5000.00",
+          "checking_boosted_balance": "5000",
+          "card_boosted_balance": "5000.01",
           "expected_interest": "20.42",
           "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
-          "package_boosted_balance": "5000.00",
+          "package_boosted_balance": "5000.01",
           "checking_account_id": null,
           "card_id": "case-000000-k1",
           "permitted": true,
-          "annual_bonus": "50.0000",
+          "annual_bonus": "50.0001",
           "correction_amount": "20.42"
         },
         {
@@ -9150,20 +9150,20 @@
           "base_rate_percent": "3.90",
           "checking_bonus_percent": "1.00",
           "card_bonus_percent": "0",
-          "checking_boosted_balance": "5000.00",
-          "card_boosted_balance": "5000.00",
+          "checking_boosted_balance": "5000",
+          "card_boosted_balance": "5000.01",
           "expected_interest": "20.42",
           "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
-          "package_boosted_balance": "5000.00",
+          "package_boosted_balance": "5000.01",
           "checking_account_id": "case-000000-c1",
           "card_id": null,
           "permitted": true,
-          "annual_bonus": "50.0000",
+          "annual_bonus": "50.00",
           "correction_amount": "20.42"
         }
       ],
-      "total_annual_bonus": "100.0000"
+      "total_annual_bonus": "100.0001"
     },
     "comparison_inputs": [
       {
@@ -9196,16 +9196,16 @@
           "base_rate_percent": "3.90",
           "checking_bonus_percent": "1.00",
           "card_bonus_percent": "1.00",
-          "checking_boosted_balance": "5000.00",
-          "card_boosted_balance": "5000.00",
+          "checking_boosted_balance": "5000",
+          "card_boosted_balance": "5000.01",
           "expected_interest": "24.58",
           "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
-          "package_boosted_balance": "5000.00",
+          "package_boosted_balance": "5000.01",
           "checking_account_id": "case-000000-c1",
           "card_id": "case-000000-k1",
           "permitted": true,
-          "annual_bonus": "100.0000",
+          "annual_bonus": "100.0001",
           "correction_amount": "24.58"
         },
         {
@@ -9214,12 +9214,12 @@
           "base_rate_percent": "3.90",
           "checking_bonus_percent": "0",
           "card_bonus_percent": "0",
-          "checking_boosted_balance": "5000.00",
-          "card_boosted_balance": "5000.00",
+          "checking_boosted_balance": "5000",
+          "card_boosted_balance": "5000.01",
           "expected_interest": "16.25",
           "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
-          "package_boosted_balance": "5000.00",
+          "package_boosted_balance": "5000.01",
           "checking_account_id": null,
           "card_id": null,
           "permitted": true,
@@ -9227,7 +9227,7 @@
           "correction_amount": "16.25"
         }
       ],
-      "total_annual_bonus": "100.0000"
+      "total_annual_bonus": "100.0001"
     },
     "comparison_reverse_inputs": [
       {
@@ -9260,16 +9260,16 @@
           "base_rate_percent": "3.90",
           "checking_bonus_percent": "1.00",
           "card_bonus_percent": "1.00",
-          "checking_boosted_balance": "5000.00",
-          "card_boosted_balance": "5000.00",
+          "checking_boosted_balance": "5000",
+          "card_boosted_balance": "5000.01",
           "expected_interest": "24.58",
           "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
-          "package_boosted_balance": "5000.00",
+          "package_boosted_balance": "5000.01",
           "checking_account_id": "case-000000-c1",
           "card_id": "case-000000-k1",
           "permitted": true,
-          "annual_bonus": "100.0000",
+          "annual_bonus": "100.0001",
           "correction_amount": "24.58"
         },
         {
@@ -9278,12 +9278,12 @@
           "base_rate_percent": "3.90",
           "checking_bonus_percent": "0",
           "card_bonus_percent": "0",
-          "checking_boosted_balance": "5000.00",
-          "card_boosted_balance": "5000.00",
+          "checking_boosted_balance": "5000",
+          "card_boosted_balance": "5000.01",
           "expected_interest": "16.25",
           "net_interest_before_run": "0.00",
           "package_bonus_percent": "0",
-          "package_boosted_balance": "5000.00",
+          "package_boosted_balance": "5000.01",
           "checking_account_id": null,
           "card_id": null,
           "permitted": true,
@@ -9291,7 +9291,7 @@
           "correction_amount": "16.25"
         }
       ],
-      "total_annual_bonus": "100.0000"
+      "total_annual_bonus": "100.0001"
     }
   }
 }
