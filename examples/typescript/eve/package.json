@@ -23,7 +23,7 @@
     "ai": "^7.0.97",
     "dotenv": "^17.4.2",
     "eve": "^0.32.0",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -32,7 +32,11 @@
     "typescript": "7.0.2"
   },
   "overrides": {
-    "ai": "^7.0.97"
+    "ai": "^7.0.97",
+    "eve": {
+      "undici": "8.12.2"
+    },
+    "zod": "4.6.6"
   },
   "engines": {
     "node": ">=24"

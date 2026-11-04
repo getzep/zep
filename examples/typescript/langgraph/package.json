@@ -14,13 +14,13 @@
     "@langchain/tavily": "^1.2.0",
     "commander": "^12.1.0",
     "dotenv": "^16.4.7",
-    "langsmith": "^0.3.15",
+    "langsmith": "^0.6.0",
     "tsx": "^4.22.4",
     "typescript": "^5.8.2",
     "uuid": "^11.1.1"
   },
   "overrides": {
-    "langsmith": "^0.3.15",
+    "langsmith": "^0.6.0",
     "uuid": "^11.1.1",
     "esbuild": "^0.28.1"
   }

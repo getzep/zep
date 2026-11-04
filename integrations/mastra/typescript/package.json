@@ -57,11 +57,17 @@
   },
   "overrides": {
     "esbuild": ">=0.28.1",
-    "js-yaml": "4.3.0"
+    "js-yaml": "4.3.2",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    },
+    "zod-from-json-schema": {
+      "zod": "^4.6.6"
+    }
   },
   "dependencies": {
     "@getzep/zep-cloud": "^4.0.0",
-    "zod": "^3.25.0"
+    "zod": "^3.25.0 || ^4.6.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
@@ -72,6 +78,6 @@
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.61.1",
-    "vitest": "^3.2.6"
+    "vitest": "^4.1.12"
   }
 }

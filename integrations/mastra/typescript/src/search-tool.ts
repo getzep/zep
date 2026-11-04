@@ -445,6 +445,7 @@ export function createZepSearchTool(options: ZepSearchToolOptions) {
 
   const inputSchema = z.object(schemaFields);
   type SearchInput = z.infer<typeof inputSchema> & {
+    query?: string;
     scope?: ZepSearchScope;
     reranker?: Reranker;
     limit?: number;
