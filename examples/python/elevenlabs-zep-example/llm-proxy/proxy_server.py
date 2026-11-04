@@ -344,6 +344,8 @@ def build_openai_request(body: dict, zep_context: Optional[str]) -> dict:
     openai_request["model"] = body.get("model") or DEFAULT_MODEL
     openai_request["input"] = restore_reasoning_items(body.get("input", []))
     openai_request["reasoning"] = {**(body.get("reasoning") or {}), "effort": "low"}
+    openai_request["store"] = False
+    openai_request["include"] = ["reasoning.encrypted_content"]
     if zep_context:
         instructions = body.get("instructions") or ""
         openai_request["instructions"] = (instructions + zep_context_block(zep_context)).lstrip()

@@ -115,6 +115,8 @@ def test_responses_request_uses_gpt_6_luna_with_low_reasoning(fake_openai):
     request = responses.requests[0]
     assert request["model"] == "gpt-6-luna"
     assert request["reasoning"] == {"summary": "auto", "effort": "low"}
+    assert request["store"] is False
+    assert request["include"] == ["reasoning.encrypted_content"]
     assert request["stream"] is True
     assert request["tools"] == body["tools"]
     assert "temperature" not in request
@@ -124,7 +126,10 @@ def test_responses_request_uses_gpt_6_luna_with_low_reasoning(fake_openai):
 
 def test_tool_loop_sends_the_reasoning_items_back(fake_openai):
     reasoning = ResponseReasoningItem(
-        id="rs_1", type="reasoning", summary=[Summary(type="summary_text", text="Plan")]
+        id="rs_1",
+        type="reasoning",
+        summary=[Summary(type="summary_text", text="Plan")],
+        encrypted_content="encrypted-test-reasoning",
     )
     function_call = ResponseFunctionToolCall(
         id="fc_1", call_id="call_1", type="function_call", name="end_call", arguments="{}"
@@ -223,7 +228,12 @@ def test_reasoning_items_are_not_sent_twice(fake_openai):
     proxy_server.remember_reasoning_items(
         [reasoning, {"type": "function_call", "call_id": "call_1"}]
     )
-    call_item = {"type": "function_call", "call_id": "call_1", "name": "end_call", "arguments": "{}"}
+    call_item = {
+        "type": "function_call",
+        "call_id": "call_1",
+        "name": "end_call",
+        "arguments": "{}",
+    }
 
     assert proxy_server.restore_reasoning_items([reasoning, call_item]) == [reasoning, call_item]
 

@@ -117,6 +117,8 @@ In your agent config, you can pass dynamic variables that get included in the re
 5. **The proxy forwards to the OpenAI Responses API** with `gpt-6-luna` and low reasoning, and streams the events back. The proxy keeps the reasoning items of each function call (at most 1,000 calls, for at most one hour) and sends them again when ElevenLabs continues the tool loop. The proxy forwards `instructions` and `previous_response_id` without change, and appends the Zep context to the instructions only when Zep returns context.
 6. **ElevenLabs receives the response** with the context already incorporated
 
+The proxy sets `store=False` and requests encrypted reasoning content. The proxy can replay reasoning without storing Responses on the OpenAI server.
+
 ## Files
 
 - `proxy_server.py` - Main proxy server
