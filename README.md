@@ -75,7 +75,6 @@ snippets.
 | [Zep Memory](https://github.com/getzep/zep-memory-plugin) | Agent plugin for Claude Desktop/Cowork and ChatGPT Work (separate repository) |
 | [`benchmarks/`](benchmarks/) | Agent memory benchmarks (LoCoMo, LongMemEval) |
 | [`zep-eval-harness/`](zep-eval-harness/) | Evaluation harness for ingestion and retrieval |
-| [`legacy/`](legacy/) | Deprecated Zep Community Edition (unsupported) |
 
 ## Integrations
 
@@ -95,9 +94,3 @@ links, and [`integrations/CLAUDE.md`](integrations/CLAUDE.md) for conventions.
 
 We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines covering code,
 documentation, bug reports, and community examples.
-
-## Community Edition (Deprecated)
-
-Zep Community Edition is no longer supported. Its code has been moved to the
-[`legacy/`](legacy/) folder. Read more in
-[Announcing a New Direction for Zep's Open Source Strategy](https://blog.getzep.com/announcing-a-new-direction-for-zeps-open-source-strategy/).
