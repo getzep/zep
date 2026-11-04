@@ -40,4 +40,19 @@ describe("Python banking parity", () => {
       });
     }
   });
+
+  it("uses the account-order tie tuple for either package submission order", () => {
+    const row = golden.allocation_tie;
+    expect(expectedDatabase(row.case)).toEqual(row.expected_database);
+    const pair = comparePackages(row.case, row.pair_inputs);
+    const split = comparePackages(row.case, row.split_inputs);
+    expect(pair).toEqual(row.pair_comparison);
+    expect(split).toEqual(row.split_comparison);
+    expect(pair.total_annual_bonus).toBe(split.total_annual_bonus);
+    expect(pair.quotes.map((quote) => [quote.card_bonus_percent, quote.checking_bonus_percent]))
+      .not.toEqual(split.quotes.map((quote) => [quote.card_bonus_percent, quote.checking_bonus_percent]));
+    expect(comparePackages(row.case, row.comparison_inputs)).toEqual(row.comparison);
+    expect(comparePackages(row.case, row.comparison_reverse_inputs)).toEqual(row.comparison_reverse);
+    expect(row.comparison).toEqual(row.comparison_reverse);
+  });
 });

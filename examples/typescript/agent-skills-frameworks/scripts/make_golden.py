@@ -13,6 +13,7 @@ sys.path.insert(0, str(PYTHON_BANKING))
 
 from banking import (  # noqa: E402
     PackageSelection,
+    allocation_rank,
     compare_packages,
     expected_database,
     make_case,
@@ -97,10 +98,85 @@ def main() -> None:
                 "comparison_inputs": dump(comparison_inputs),
             }
         )
+    tie_source = make_case(0)
+    tie_accounts = sorted(tie_source.savings, key=lambda account: account.account_id)[:2]
+    tie_checking = tie_source.checking[0].model_copy(
+        update={
+            "product": "Premier",
+            "active": True,
+            "payroll": Decimal("1500"),
+            "debit_purchases": 10,
+        }
+    )
+    tie_card = tie_source.cards[0].model_copy(
+        update={
+            "product": "Travel",
+            "open": True,
+            "delinquent": False,
+            "purchases": Decimal("500"),
+        }
+    )
+    tie_case = tie_source.model_copy(
+        update={
+            "savings": [
+                account.model_copy(
+                    update={"product": "Willow", "statement_balance": Decimal("5000.00")}
+                )
+                for account in tie_accounts
+            ],
+            "checking": [tie_checking],
+            "cards": [tie_card],
+            "interest_entries": [],
+        }
+    )
+    first, second = tie_case.savings
+    pair_inputs = [
+        PackageSelection(
+            account_id=first.account_id,
+            checking_account_id=tie_checking.account_id,
+            card_id=tie_card.card_id,
+        ),
+        PackageSelection(account_id=second.account_id),
+    ]
+    split_inputs = [
+        PackageSelection(account_id=first.account_id, card_id=tie_card.card_id),
+        PackageSelection(account_id=second.account_id, checking_account_id=tie_checking.account_id),
+    ]
+    pair_result = compare_packages(tie_case, pair_inputs)
+    split_result = compare_packages(tie_case, split_inputs)
+    if not pair_result.permitted or not split_result.permitted:
+        raise AssertionError("The allocation tie case must have two permitted allocations.")
+    if pair_result.total_annual_bonus != split_result.total_annual_bonus:
+        raise AssertionError("The allocation tie case must have equal annual bonuses.")
+    if allocation_rank(pair_result) == allocation_rank(split_result):
+        raise AssertionError("The allocation tie case must have different tie tuples.")
+    tie_comparison_inputs = [*pair_inputs[:1], *split_inputs[:1], *pair_inputs[1:], *split_inputs[1:]]
+    tie_comparison_reverse_inputs = list(reversed(tie_comparison_inputs))
+    tie_comparison = compare_packages(tie_case, tie_comparison_inputs)
+    tie_comparison_reverse = compare_packages(tie_case, tie_comparison_reverse_inputs)
+    if (
+        not tie_comparison.permitted
+        or not tie_comparison_reverse.permitted
+        or allocation_rank(tie_comparison) != allocation_rank(pair_result)
+        or allocation_rank(tie_comparison_reverse) != allocation_rank(pair_result)
+    ):
+        raise AssertionError("Both submission orders must select the higher allocation rank.")
+    tie_row = {
+        "case": dump(tie_case),
+        "expected_database": dump(expected_database(tie_case)),
+        "pair_inputs": dump(pair_inputs),
+        "pair_comparison": dump(pair_result),
+        "split_inputs": dump(split_inputs),
+        "split_comparison": dump(split_result),
+        "comparison_inputs": dump(tie_comparison_inputs),
+        "comparison": dump(tie_comparison),
+        "comparison_reverse_inputs": dump(tie_comparison_reverse_inputs),
+        "comparison_reverse": dump(tie_comparison_reverse),
+    }
     output = root / "test" / "golden" / "banking.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     prompts = {name: read_prompt(name) for name in ("SYSTEM", "USER", "TEACHING_REQUEST")}
-    output.write_text(json.dumps({"prompts": prompts, "cases": rows}, indent=2) + "\n")
+    output.write_text(json.dumps({"prompts": prompts, "cases": rows, "allocation_tie": tie_row}, indent=2) + "\n")
     print(output)
 
 
