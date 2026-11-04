@@ -19,22 +19,22 @@ To use with ElevenLabs:
 5. In ElevenLabs, set the API key header to match your PROXY_API_KEY
 """
 
-import os
+import asyncio
 import json
 import logging
-import time
+import os
 import secrets
+import time
 from collections import OrderedDict
-import asyncio
 from typing import AsyncGenerator, Optional
 
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI
-from zep_cloud.client import AsyncZep
 from zep_cloud import AddMessage
+from zep_cloud.client import AsyncZep
 
 # Load environment variables
 load_dotenv()
