@@ -147,6 +147,8 @@ async def run_stage(
         )
         return {**row, "trace": trace_result}
     except BaseException as error:
+        # The adapter owns the episode state. A failed episode returns no state, so the
+        # evidence is failure.json and the events already in the remote Trace.
         if recorder.trace_uuid is not None and not recorder.close_requested:
             try:
                 trace_result = recorder.close(False)
