@@ -1,0 +1,32 @@
+{
+  "name": "agent-skills-frameworks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "run": "tsx src/run.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "4.0.96",
+    "@getzep/zep-cloud": "4.1.0",
+    "@mastra/core": "1.82.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@openai/codex": "0.166.0",
+    "@openai/codex-sdk": "0.166.0",
+    "ai": "7.0.137",
+    "decimal.js": "10.6.0",
+    "eve": "1.0.0-rc.3",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.0",
+    "tsx": "4.20.0",
+    "typescript": "5.8.2",
+    "vitest": "3.2.4"
+  }
+}
