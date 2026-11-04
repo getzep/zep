@@ -120,6 +120,7 @@ def build_agent(
                 "function_calling": False,
                 "json_output": True,
                 "structured_output": True,
+                "multiple_system_messages": True,
                 "family": "unknown",
             },
         ),

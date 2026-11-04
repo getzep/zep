@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -7,8 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from autogen_agentchat.agents import AssistantAgent
-from autogen_core.models import UserMessage
+from autogen_core.models import SystemMessage, UserMessage
 from autogen_core.tools import FunctionTool
+from openai.types.chat import ChatCompletion
 
 EXAMPLES = Path(__file__).parents[1] / "examples"
 sys.path.insert(0, str(EXAMPLES))
@@ -23,6 +25,60 @@ def response(output: list[dict[str, object]], status: str = "completed") -> Simp
         incomplete_details=None,
         usage=SimpleNamespace(input_tokens=12, output_tokens=8),
     )
+
+
+@pytest.mark.asyncio
+async def test_live_agent_accepts_memory_between_conversation_turns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ZEP_API_KEY", "test-zep-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:9/v1")
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    path = Path(__file__).with_name("test_integration.py")
+    spec = importlib.util.spec_from_file_location("autogen_live_config", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    agent, _ = module.build_agent(MagicMock(), "user-uuid", "thread-uuid")
+    client = agent._model_client
+    create = AsyncMock(
+        return_value=ChatCompletion(
+            id="completion-1",
+            object="chat.completion",
+            created=0,
+            model="gpt-6-luna",
+            choices=[
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "done"},
+                }
+            ],
+            usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        )
+    )
+    monkeypatch.setattr(client._client.chat.completions, "create", create)
+
+    result = await client.create(
+        [
+            SystemMessage(content="Instructions"),
+            UserMessage(content="Earlier turn", source="user"),
+            SystemMessage(content="Memory context"),
+            UserMessage(content="Follow-up turn", source="user"),
+        ]
+    )
+
+    assert result.content == "done"
+    assert create.await_args.kwargs["model"] == "gpt-6-luna"
+    assert create.await_args.kwargs["reasoning_effort"] == "low"
+    assert [message["role"] for message in create.await_args.kwargs["messages"]] == [
+        "system",
+        "user",
+        "system",
+        "user",
+    ]
+    await client.close()
 
 
 @pytest.mark.asyncio
