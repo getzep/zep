@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -124,7 +125,9 @@ def test_responses_request_uses_gpt_6_luna_with_low_reasoning(fake_openai):
     assert "The user likes hiking." in request["instructions"]
 
 
-def test_tool_loop_sends_the_reasoning_items_back(fake_openai):
+def test_tool_loop_sends_the_reasoning_items_back(fake_openai, monkeypatch):
+    add_message = AsyncMock(return_value="The user likes hiking.")
+    monkeypatch.setattr(proxy_server, "add_message_and_get_context", add_message)
     reasoning = ResponseReasoningItem(
         id="rs_1",
         type="reasoning",
@@ -165,6 +168,26 @@ def test_tool_loop_sends_the_reasoning_items_back(fake_openai):
     ]
     assert second_input[1]["id"] == "rs_1"
     assert responses.requests[1]["reasoning"]["effort"] == "low"
+    add_message.assert_awaited_once_with("user-uuid", "conversation-1", "Bye")
+
+
+def test_a_new_user_turn_after_a_tool_result_is_persisted(fake_openai, monkeypatch):
+    add_message = AsyncMock(return_value=None)
+    monkeypatch.setattr(proxy_server, "add_message_and_get_context", add_message)
+    fake_openai([[FakeEvent("response.completed", response=FakeResponse([]))]])
+    body = {
+        "input": [
+            {"role": "user", "content": "Earlier turn"},
+            {"type": "function_call_output", "call_id": "call_1", "output": "ok"},
+            {"role": "user", "content": "New turn"},
+        ],
+        "elevenlabs_extra_body": EXTRA_BODY,
+    }
+
+    result = TestClient(proxy_server.app).post("/v1/responses", json=body, headers=HEADERS)
+
+    assert result.status_code == 200
+    add_message.assert_awaited_once_with("user-uuid", "conversation-1", "New turn")
 
 
 def test_instructions_and_previous_response_id_are_kept_without_zep_context(

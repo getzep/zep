@@ -249,10 +249,15 @@ def message_text(content) -> str:
 
 
 def latest_user_message(input_items) -> Optional[str]:
-    """Find the text of the latest user message in a Responses API input."""
+    """Get a user turn only when it is the final input item.
+
+    A tool continuation repeats earlier turns. Those turns are already in
+    Zep and must not be added again.
+    """
     if isinstance(input_items, str):
         return input_items or None
-    for item in reversed(input_items or []):
+    if input_items:
+        item = input_items[-1]
         if isinstance(item, dict) and item.get("role") == "user":
             return message_text(item.get("content")) or None
     return None
@@ -467,7 +472,7 @@ async def responses(request: Request):
                 user_uuid, conversation_id, user_message
             )
         else:
-            # No user message - this shouldn't normally happen
+            # Tool continuations do not add another user turn.
             zep_context = None
 
         openai_request = build_openai_request(body, zep_context)
