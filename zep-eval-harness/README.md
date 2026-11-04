@@ -191,7 +191,7 @@ Rate limits are handled automatically — if you hit limits, the retry backoff w
 
 **This harness evaluates single-shot retrieval only.** Each test case issues one retrieval — the raw test question through the context endpoint on the user graph (and any document graph), using the strategy in `config/evaluation_config/retrieval_strategy.py` — and hands the resulting context block to the response model in a single turn. There is no second retrieval round and no query reformulation. That mirrors *deterministic/programmatic* retrieval, where your application searches on every turn and injects the context itself.
 
-Production agents are frequently built the other way: Zep is exposed to the model as **tools** — for example `search_graph` from the [Zep MCP server](../mcp/zep-mcp-server/), or your own tool definitions — and the LLM decides when to search, how to phrase each query, and whether to search again after seeing results.
+Production agents are frequently built the other way: Zep is exposed to the model as **tools** — for example your own `search_graph` tool definition — and the LLM decides when to search, how to phrase each query, and whether to search again after seeing results.
 
 Read the scores accordingly:
 

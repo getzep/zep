@@ -15,7 +15,7 @@ The pipeline has four steps:
 
 ### Scope: Single-Shot Retrieval
 
-**The harness evaluates single-shot retrieval only.** Every test case issues one retrieval from the raw test question through the context endpoint (`config/evaluation_config/retrieval_strategy.py`), then hands the resulting context block to the response model in a single turn — no second retrieval round, no query reformulation. This mirrors deterministic/programmatic retrieval, not the tool-based pattern where an agent is handed Zep search tools (e.g. `search_graph` from the Zep MCP server) and decides when and what to search.
+**The harness evaluates single-shot retrieval only.** Every test case issues one retrieval from the raw test question through the context endpoint (`config/evaluation_config/retrieval_strategy.py`), then hands the resulting context block to the response model in a single turn — no second retrieval round, no query reformulation. This mirrors deterministic/programmatic retrieval, not the tool-based pattern where an agent is handed Zep search tools (e.g. a `search_graph` tool) and decides when and what to search.
 
 That makes the harness a clean instrument for the ingestion and search configuration, but it says nothing about agent tool-use behavior. A tool-based agent may do better (several targeted searches, reformulating after a weak result) or worse (never searching, poorly phrased queries, running out of turns). When reporting results, scope conclusions to the config under test and never present them as a prediction of production agent performance.
 
