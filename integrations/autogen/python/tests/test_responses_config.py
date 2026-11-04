@@ -40,7 +40,7 @@ async def test_live_agent_accepts_memory_between_conversation_turns(
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    agent, _ = module.build_agent(MagicMock(), "user-uuid", "thread-uuid")
+    agent, _ = module.build_agent(MagicMock(spec=module.AsyncZep), "user-uuid", "thread-uuid")
     client = agent._model_client
     create = AsyncMock(
         return_value=ChatCompletion(
