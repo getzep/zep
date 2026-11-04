@@ -1,6 +1,11 @@
-# Zep Quickstart Dashboard
+# Context templates example
 
-An interactive Streamlit dashboard for experimenting with Zep's memory features. This dashboard provides a complete UI for testing different memory retrieval methods, comparing responses with and without Zep, and managing multiple users and conversation threads.
+This example is a Streamlit chat dashboard whose agent gets its context from a Zep
+context template. `set-context-templates.py` creates the template
+`requirements-and-preferences-1`. The template returns the user summary, up to four
+`HAS_REQUIREMENT` and `PREFERS_NEIGHBORHOOD` facts, up to three entities, and up to
+two episodes. The chat agent finds the template UUID by its name and uses the
+template when it gets context for each message.
 
 ## What This Dashboard Does
 
